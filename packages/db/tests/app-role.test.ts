@@ -67,6 +67,32 @@ describe.skipIf(!hasDatabase)('the app role restro_app', () => {
     })
   })
 
+  it('starts every session with statement_timeout 30s and idle_in_transaction_session_timeout 60s', async () => {
+    // The connection string above carries no startup parameters, so these come from the role
+    // itself (ALTER ROLE ... SET in db:roles), which is what Supabase's session pooler honours.
+    const { rows } = await app.query(
+      `select current_setting('statement_timeout') as statement_timeout,
+              current_setting('idle_in_transaction_session_timeout') as idle_in_transaction`,
+    )
+    expect(rows[0]).toEqual({ statement_timeout: '30s', idle_in_transaction: '1min' })
+
+    const stored = await owner.query<{ database: string | null; setconfig: string[] }>(
+      `select d.datname as database, s.setconfig
+       from pg_db_role_setting s
+       left join pg_database d on d.oid = s.setdatabase
+       where s.setrole = $1::regrole`,
+      [APP_ROLE],
+    )
+    // One row, for all databases, with exactly these two settings: nothing scoped to one
+    // database that would override them.
+    expect(stored.rows).toHaveLength(1)
+    expect(stored.rows[0]?.database).toBeNull()
+    expect([...(stored.rows[0]?.setconfig ?? [])].sort()).toEqual([
+      'idle_in_transaction_session_timeout=60s',
+      'statement_timeout=30s',
+    ])
+  })
+
   it('owns nothing in schema restro and is a member of no other role', async () => {
     const owned = await owner.query(
       `select relname from pg_class

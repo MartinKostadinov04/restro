@@ -11,6 +11,10 @@
 //   `restro`, and use and create in `pgboss` (pg-boss's own tables);
 // - on every table in `restro` it holds exactly the privileges in TABLE_ACCESS (never TRUNCATE,
 //   REFERENCES or TRIGGER), and no role other than the owner and restro_app holds any;
+// - every session of the role starts with `statement_timeout = 30s` and
+//   `idle_in_transaction_session_timeout = 60s` (ALTER ROLE ... SET). They are set on the role
+//   rather than in the connection string because Supabase's session pooler ignores startup
+//   parameters (T46), while Postgres applies a role's own settings itself when a session starts;
 // - it fails if a table exists in `restro` that TABLE_ACCESS does not list, so a new table
 //   cannot ship without someone deciding what the app may do with it.
 import pg from 'pg'
@@ -37,6 +41,16 @@ const ALL_TABLE_PRIVILEGES = [
 const ALL_SCHEMA_PRIVILEGES = ['USAGE', 'CREATE'] as const
 const RELATION_KINDS = ['r', 'p', 'v', 'm', 'f']
 const LOCK_NAME = 'restro:db:roles'
+
+/**
+ * Session defaults of the app role, set with ALTER ROLE ... SET (T46). A statement running
+ * longer than the first is cancelled; a session idle inside an open transaction for longer than
+ * the second is ended. Values are stored, and compared, exactly as written here.
+ */
+const ROLE_SETTINGS = {
+  statement_timeout: '30s',
+  idle_in_transaction_session_timeout: '60s',
+} as const
 
 const tableAccess: Record<string, TableAccess> = TABLE_ACCESS
 const schemaPrivileges: Record<string, readonly string[]> = APP_SCHEMA_PRIVILEGES
@@ -86,6 +100,16 @@ async function upsertRole(client: Client, password: string): Promise<'created' |
   if (!current.rolcanlogin) fixes.push('login')
   await client.query(`alter role ${role} with ${[...fixes, `password ${verifier}`].join(' ')}`)
   return 'updated'
+}
+
+/** Sets the session defaults of the role (see ROLE_SETTINGS). Takes effect on new sessions. */
+async function applyRoleSettings(client: Client): Promise<void> {
+  for (const [name, value] of Object.entries(ROLE_SETTINGS)) {
+    // `name` is one of the constants above and `value` a literal; neither comes from outside.
+    await client.query(
+      `alter role ${id(client, APP_ROLE)} set ${id(client, name)} = ${client.escapeLiteral(value)}`,
+    )
+  }
 }
 
 /** Grantees other than the object's owner and restro_app, from an ACL column. */
@@ -207,6 +231,32 @@ async function verify(client: Client): Promise<void> {
     }
   }
 
+  // Session defaults. A setting scoped to one database (ALTER ROLE ... IN DATABASE) would win
+  // over the role-wide one, so it counts as a problem too.
+  const settings = await client.query<{ database: string | null; setconfig: string[] }>(
+    `select d.datname as database, s.setconfig
+     from pg_catalog.pg_db_role_setting s
+     join pg_catalog.pg_roles r on r.oid = s.setrole
+     left join pg_catalog.pg_database d on d.oid = s.setdatabase
+     where r.rolname = $1`,
+    [APP_ROLE],
+  )
+  const roleWide = new Map<string, string>()
+  for (const { database, setconfig } of settings.rows) {
+    for (const entry of setconfig) {
+      const at = entry.indexOf('=')
+      const name = entry.slice(0, at)
+      if (!Object.hasOwn(ROLE_SETTINGS, name)) continue
+      if (database === null) roleWide.set(name, entry.slice(at + 1))
+      else problems.push(`${APP_ROLE} has ${name} set for database ${database}; reset it by hand`)
+    }
+  }
+  for (const [name, wanted] of Object.entries(ROLE_SETTINGS)) {
+    const actual = roleWide.get(name)
+    if (actual !== wanted)
+      problems.push(`${APP_ROLE} ${name} is ${actual ?? 'not set'}, expected ${wanted}`)
+  }
+
   const memberships = await client.query<{ rolname: string }>(
     `select r.rolname from pg_catalog.pg_auth_members m
      join pg_catalog.pg_roles r on r.oid = m.roleid
@@ -290,6 +340,7 @@ async function main(): Promise<void> {
     }
 
     const outcome = await upsertRole(client, password)
+    await applyRoleSettings(client)
     await client.query(
       `revoke all on database ${id(client, database)} from ${id(client, APP_ROLE)}`,
     )
@@ -302,7 +353,10 @@ async function main(): Promise<void> {
     await client.query('commit')
     console.log(
       `db:roles: ${APP_ROLE} ${outcome} on ${describeTarget(url)}; privileges match ` +
-        `src/table-access.ts (${Object.keys(tableAccess).length} tables).`,
+        `src/table-access.ts (${Object.keys(tableAccess).length} tables); ` +
+        `${Object.entries(ROLE_SETTINGS)
+          .map(([name, value]) => `${name} = ${value}`)
+          .join(', ')}.`,
     )
   } catch (error) {
     await client.query('rollback').catch(() => undefined)
