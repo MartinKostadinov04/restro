@@ -1,0 +1,9 @@
+{
+  "method": "Misc_ping_user",
+  "params": {},
+  "bid": null,
+  "recordedAt": "2026-10-08T22:30:26.037Z",
+  "status": 200,
+  "requestId": "1:1132880",
+  "body": "1"
+}
