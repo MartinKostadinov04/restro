@@ -1,8 +1,30 @@
 {
   "name": "restro",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.34.6",
   "engines": {
     "node": ">=24.21.0 <25"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --if-present run dev",
+    "build": "pnpm -r --if-present run build",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @restro/web run test:e2e",
+    "deps:check": "depcruise apps packages --config .dependency-cruiser.cjs",
+    "db:generate": "node scripts/not-implemented.mjs db:generate",
+    "db:migrate": "node scripts/not-implemented.mjs db:migrate",
+    "barsy:record": "node scripts/not-implemented.mjs barsy:record"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "24.19.0",
+    "dependency-cruiser": "18.5.0",
+    "fast-check": "4.10.2",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
   }
 }

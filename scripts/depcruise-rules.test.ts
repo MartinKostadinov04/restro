@@ -1,0 +1,244 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+
+import { cruise, type IConfiguration, type ICruiseResult } from 'dependency-cruiser'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+// Proves that every rule in .dependency-cruiser.cjs fires on a forbidden import, and that a
+// legitimate layout produces no violations. Each case builds a tiny fake repository in a
+// temporary folder (so no violation is ever committed), runs dependency-cruiser on it with the
+// real rule set, and compares the violations that come back.
+
+const config = createRequire(import.meta.url)('../.dependency-cruiser.cjs') as IConfiguration
+
+type Files = Record<string, string>
+
+let sandbox: string
+let caseNumber = 0
+
+beforeAll(() => {
+  sandbox = mkdtempSync(join(tmpdir(), 'restro-depcruise-'))
+})
+
+afterAll(() => {
+  rmSync(sandbox, { recursive: true, force: true })
+})
+
+/** Writes the files to a fresh folder, cruises it, and returns "rule: from -> to" lines. */
+async function violationsFor(files: Files): Promise<string[]> {
+  caseNumber += 1
+  const root = join(sandbox, `case-${caseNumber}`)
+  for (const [path, content] of Object.entries(files)) {
+    const file = join(root, path)
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, content)
+  }
+  const result = await cruise(
+    ['apps', 'packages'],
+    { ...config.options, ruleSet: config, validate: true, baseDir: root, outputType: 'json' },
+    config.options?.enhancedResolveOptions,
+  )
+  // With outputType 'json' the result arrives as a JSON string.
+  const output = JSON.parse(result.output as string) as ICruiseResult
+  return output.summary.violations
+    .map((violation) => `${violation.rule.name}: ${violation.from} -> ${violation.to}`)
+    .sort()
+}
+
+const ruleNames = (lines: string[]) => [...new Set(lines.map((line) => line.split(':')[0]))].sort()
+
+const seenRules = new Set<string>()
+async function expectRules(files: Files, expected: string[]) {
+  const lines = await violationsFor(files)
+  const names = ruleNames(lines)
+  for (const name of names) if (name) seenRules.add(name)
+  expect(names, lines.join('\n')).toEqual([...expected].sort())
+  return lines
+}
+
+// Files that exist in most fixtures, so relative and package imports have something to resolve to.
+const base: Files = {
+  'packages/db/src/index.ts': 'export const db = 1',
+  'packages/db/src/write/index.ts': 'export const write = 1',
+  'packages/barsy/src/index.ts': 'export const barsy = 1',
+  'packages/core/src/index.ts': 'export const core = 1',
+  'packages/shell/src/index.ts': 'export const shell = 1',
+  'packages/faces/qr-phone/src/index.ts': 'export const face = 1',
+  'apps/web/app/page.ts': 'export const page = 1',
+  'apps/worker/src/index.ts': 'export const worker = 1',
+}
+
+describe('allowed layout', () => {
+  it('reports nothing for the imports the architecture permits', async () => {
+    const lines = await violationsFor({
+      ...base,
+      'packages/core/src/apply/apply.ts':
+        "import { write } from '@restro/db/write'\nexport const a = write",
+      'packages/core/src/apply/relative.ts':
+        "import { write } from '../../../db/src/write/index'\nexport const b = write",
+      'packages/core/src/read.ts': "import { db } from '../../db/src/index'\nexport const c = db",
+      'packages/shell/src/view.ts':
+        "import { core } from '../../core/src/index'\nexport const d = core",
+      'packages/faces/qr-phone/src/view.ts':
+        "import type { shell } from '../../../shell/src/index'\nexport type E = typeof shell",
+      'packages/barsy/src/client.ts': "import { barsy } from './index'\nexport const f = barsy",
+      'apps/web/app/layout.ts':
+        "import { core } from '../../../packages/core/src/index'\nimport { db } from '../../../packages/db/src/index'\nexport const g = [core, db]",
+      'apps/worker/src/sync.ts':
+        "import { barsy } from '../../../packages/barsy/src/index'\nimport '@restro/barsy'\nexport const h = barsy",
+    })
+    expect(lines).toEqual([])
+  })
+})
+
+describe('rule 1: shell and faces stay pure', () => {
+  it('rejects @restro/db, @restro/barsy and apps/ from the shell (as written and by path)', async () => {
+    const lines = await expectRules(
+      {
+        ...base,
+        'packages/shell/src/a.ts': "import '@restro/db'",
+        'packages/shell/src/b.ts': "import '../../db/src/index'",
+        'packages/shell/src/c.ts': "import '../../barsy/src/index'",
+        'packages/shell/src/d.ts': "import '../../../apps/web/app/page'",
+        'packages/shell/src/e.ts':
+          "import type { db } from '@restro/db'\nexport type T = typeof db",
+      },
+      ['pure-layers-no-data-or-apps', 'barsy-only-from-worker', 'packages-never-import-apps'],
+    )
+    for (const file of ['a', 'b', 'c', 'd', 'e']) {
+      expect(lines.some((line) => line.includes(`packages/shell/src/${file}.ts`))).toBe(true)
+    }
+  })
+
+  it('rejects the same imports from a face', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/faces/qr-phone/src/a.ts': "import '@restro/db'",
+        'packages/faces/qr-phone/src/b.ts': "import '@restro/barsy'",
+        'packages/faces/qr-phone/src/c.ts': "import '../../../../apps/web/app/page'",
+      },
+      ['pure-layers-no-data-or-apps', 'barsy-only-from-worker', 'packages-never-import-apps'],
+    )
+  })
+
+  it.each([
+    'fs',
+    'node:fs',
+    'fs/promises',
+    'node:fs/promises',
+    'net',
+    'http',
+    'https',
+    'child_process',
+  ])('rejects the Node built-in %s from the shell and from a face', async (builtin) => {
+    const lines = await expectRules(
+      {
+        ...base,
+        'packages/shell/src/io.ts': `import '${builtin}'`,
+        'packages/faces/qr-phone/src/io.ts': `import '${builtin}'`,
+      },
+      ['pure-layers-no-io-builtins'],
+    )
+    expect(lines).toHaveLength(2)
+  })
+
+  it.each(['pg', 'pg-boss', 'postgres'])('rejects the database package %s', async (name) => {
+    await expectRules({ ...base, 'packages/shell/src/io.ts': `import '${name}'` }, [
+      'pure-layers-no-database-drivers',
+    ])
+  })
+
+  it('allows harmless built-ins and packages in the shell', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/shell/src/ok.ts': "import 'node:crypto'\nimport 'node:util'\nimport 'react'",
+      },
+      [],
+    )
+  })
+})
+
+describe('rule 2: only core/apply imports the db write side', () => {
+  it('rejects @restro/db/write from anywhere else', async () => {
+    const lines = await expectRules(
+      {
+        ...base,
+        'packages/core/src/apply/apply.ts': "import '@restro/db/write'",
+        'packages/core/src/other.ts': "import '@restro/db/write'",
+        'packages/core/src/relative.ts': "import '../../db/src/write/index'",
+        'apps/web/app/action.ts': "import '@restro/db/write'",
+        'apps/worker/src/job.ts': "import '../../../packages/db/src/write/index'",
+      },
+      ['db-write-only-from-core-apply'],
+    )
+    expect(lines).toHaveLength(4)
+    expect(lines.some((line) => line.includes('packages/core/src/apply/'))).toBe(false)
+  })
+})
+
+describe('rules 3 and 4: only the worker imports barsy', () => {
+  it('rejects @restro/barsy from the web app, core and db', async () => {
+    const lines = await expectRules(
+      {
+        ...base,
+        'apps/web/app/barsy.ts': "import '@restro/barsy'",
+        'apps/web/app/relative.ts': "import '../../../packages/barsy/src/index'",
+        'packages/core/src/barsy.ts': "import '@restro/barsy'",
+        'packages/db/src/barsy.ts': "import '@restro/barsy'",
+      },
+      ['barsy-only-from-worker', 'web-no-barsy'],
+    )
+    expect(lines.filter((line) => line.startsWith('web-no-barsy'))).toHaveLength(2)
+    expect(lines.filter((line) => line.startsWith('barsy-only-from-worker'))).toHaveLength(4)
+  })
+})
+
+describe('rule 5: packages never import apps', () => {
+  it('rejects apps/ by path and by package name', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/core/src/a.ts': "import '../../../apps/web/app/page'",
+        'packages/db/src/b.ts': "import '@restro/web'",
+        'packages/barsy/src/c.ts': "import '@restro/worker'",
+      },
+      ['packages-never-import-apps'],
+    )
+  })
+})
+
+describe('rule 6: no circular dependencies', () => {
+  it('rejects a cycle of two modules', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/core/src/a.ts': "import { b } from './b'\nexport const a = b",
+        'packages/core/src/b.ts': "import { a } from './a'\nexport const b = a",
+      },
+      ['no-circular'],
+    )
+  })
+
+  it('rejects a cycle that only goes through type imports', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/core/src/a.ts': "import type { B } from './b'\nexport type A = { b: B }",
+        'packages/core/src/b.ts': "import type { A } from './a'\nexport type B = { a: A }",
+      },
+      ['no-circular'],
+    )
+  })
+})
+
+describe('coverage of the rule set', () => {
+  it('has a case above for every forbidden rule in the config', () => {
+    const configured = (config.forbidden ?? []).map((rule) => rule.name).sort()
+    expect(configured.length).toBeGreaterThanOrEqual(6)
+    expect([...seenRules].sort()).toEqual(configured)
+  })
+})

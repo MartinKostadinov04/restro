@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/faces/*
+
+# pnpm 10 does not run dependency install scripts unless they are listed here.
+# Add a package only after checking why it needs a build step.
+onlyBuiltDependencies:
+  - esbuild

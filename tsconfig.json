@@ -1,0 +1,10 @@
+{
+  // Type checks the repo-level files that belong to no package: the Vitest config and scripts/.
+  // Packages and apps have their own tsconfig.json and are checked by `pnpm -r typecheck`.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": ["vitest.config.ts", "scripts"]
+}
