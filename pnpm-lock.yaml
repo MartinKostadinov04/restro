@@ -69,7 +69,14 @@ importers:
 
   packages/barsy: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      fractional-indexing:
+        specifier: 4.0.0
+        version: 4.0.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/db: {}
 
@@ -1282,6 +1289,10 @@ packages:
   fix-dts-default-cjs-exports@1.0.1:
     resolution: {integrity: sha512-pVIECanWFC61Hzl2+oOCtoJ3F17kglZC/6N94eRWycFgBH35hHx0Li604ZIzhseh97mf2p0cv7vVrOZGoqhlEg==}
 
+  fractional-indexing@4.0.0:
+    resolution: {integrity: sha512-Nr2P1Yyaj2sy1Qdt/wI3GcByxrUdbSKg5+cGvw8f18hT2SkQt6V72iOjBpk7IO3UkzBsdlGRs2a4z6dLrJprgw==}
+    engines: {node: ^14.13.1 || >=16.0.0}
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -1957,6 +1968,9 @@ packages:
   xtend@4.0.2:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
+
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -2768,6 +2782,8 @@ snapshots:
       mlly: 1.8.2
       rollup: 4.64.2
 
+  fractional-indexing@4.0.0: {}
+
   fsevents@2.3.3:
     optional: true
 
@@ -3339,3 +3355,5 @@ snapshots:
   why-is-node-running@3.2.1: {}
 
   xtend@4.0.2: {}
+
+  zod@4.6.5: {}
