@@ -18,8 +18,9 @@
     "db:local": "node scripts/local-db.mjs start",
     "db:local:stop": "node scripts/local-db.mjs stop",
     "db:local:reset": "node scripts/local-db.mjs reset",
-    "db:generate": "node scripts/not-implemented.mjs db:generate",
-    "db:migrate": "node scripts/not-implemented.mjs db:migrate",
+    "db:generate": "pnpm --filter @restro/db run db:generate",
+    "db:migrate": "pnpm --filter @restro/db run db:migrate",
+    "db:roles": "pnpm --filter @restro/db run db:roles",
     "barsy:record": "node scripts/not-implemented.mjs barsy:record"
   },
   "devDependencies": {
