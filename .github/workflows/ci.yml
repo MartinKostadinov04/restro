@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
-    # Postgres for the integration tests that arrive with packages/db. CI never uses
+    # Postgres for the packages/db integration tests (required in CI). CI never uses
     # docker-compose.yml or `pnpm db:local`; this container is the CI database.
     services:
       postgres:
@@ -41,8 +41,13 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+    # CI-only values for the throwaway service container above; they are not secrets.
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/restro
+      # The app connects as restro_app (created by `pnpm db:roles`), never as the owner.
+      DATABASE_URL: postgres://restro_app:ci-only-not-a-secret@localhost:5432/restro
+      # Migration owner: used by db:migrate, db:roles and the integration tests' set-up only.
+      DATABASE_URL_OWNER: postgres://postgres:postgres@localhost:5432/restro
+      DATABASE_APP_PASSWORD: ci-only-not-a-secret
       NEXT_TELEMETRY_DISABLED: '1'
 
     steps:
@@ -82,6 +87,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The job log and the failed check are enough; no pull request comments.
           GITLEAKS_ENABLE_COMMENTS: 'false'
+
+      # Schema, row-level security and the app role must exist before the integration tests,
+      # which fail (instead of skipping) when CI is set.
+      - name: Database migrations and app role
+        run: pnpm db:migrate && pnpm db:roles
 
       - name: Test
         run: pnpm test
