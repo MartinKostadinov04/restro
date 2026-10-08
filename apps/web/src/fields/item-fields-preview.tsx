@@ -36,10 +36,12 @@ export function ItemFieldsPreview() {
             <CardDescription>{t('item.description')}</CardDescription>
           </CardHeader>
           <CardContent className="px-0 py-2">
-            <dl>
-              {ITEM_GROUPS.map((group) => (
-                <div key={group.id}>
-                  <FieldGroupDivider>{t(`groups.${group.id}`)}</FieldGroupDivider>
+            {/* One <dl> per group, with the group label outside it, so every dl holds only
+                row wrappers around dt/dd pairs (valid content model for assistive tech). */}
+            {ITEM_GROUPS.map((group) => (
+              <section key={group.id} aria-label={t(`groups.${group.id}`)}>
+                <FieldGroupDivider>{t(`groups.${group.id}`)}</FieldGroupDivider>
+                <dl>
                   {group.keys.map((key) => {
                     const definition = byKey.get(key)
                     if (!definition) return null
@@ -52,9 +54,9 @@ export function ItemFieldsPreview() {
                       />
                     )
                   })}
-                </div>
-              ))}
-            </dl>
+                </dl>
+              </section>
+            ))}
           </CardContent>
         </Card>
         <Card className="h-fit gap-0 py-0" data-testid="extra-types-preview">

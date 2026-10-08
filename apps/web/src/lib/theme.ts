@@ -21,7 +21,13 @@ export function parseThemeCookie(cookie: string): ThemeChoice {
   for (const part of cookie.split(';')) {
     const [name, ...rest] = part.trim().split('=')
     if (name === THEME_COOKIE) {
-      const value = decodeURIComponent(rest.join('='))
+      let value: string
+      try {
+        value = decodeURIComponent(rest.join('='))
+      } catch {
+        // A malformed escape (e.g. `restro_theme=%`) must not crash rendering.
+        return 'system'
+      }
       return isThemeChoice(value) ? value : 'system'
     }
   }
@@ -40,12 +46,35 @@ export function isDark(choice: ThemeChoice, systemPrefersDark: boolean): boolean
 export const THEME_INIT_SCRIPT = `(function(){try{var m=document.cookie.match(/(?:^|; )${THEME_COOKIE}=([^;]*)/);var c=m?decodeURIComponent(m[1]):"system";var d=c==="dark"||(c!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d)}catch(e){}})()`
 
 const listeners = new Set<() => void>()
+let stopFollowingSystem: (() => void) | null = null
+
+/**
+ * While anything is subscribed, follow the operating system's colour scheme: when it changes and
+ * the stored choice is `system`, re-apply it and notify subscribers.
+ */
+function followSystemScheme(): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {}
+  const query = window.matchMedia('(prefers-color-scheme: dark)')
+  if (typeof query.addEventListener !== 'function') return () => {}
+  const onChange = () => {
+    if (readThemeChoice() !== 'system') return
+    applyThemeChoice('system')
+    for (const listener of listeners) listener()
+  }
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
 
 /** For `useSyncExternalStore`. */
 export function subscribeToTheme(listener: () => void): () => void {
   listeners.add(listener)
+  if (stopFollowingSystem === null) stopFollowingSystem = followSystemScheme()
   return () => {
     listeners.delete(listener)
+    if (listeners.size === 0 && stopFollowingSystem !== null) {
+      stopFollowingSystem()
+      stopFollowingSystem = null
+    }
   }
 }
 

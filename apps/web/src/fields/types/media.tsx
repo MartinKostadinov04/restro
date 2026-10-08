@@ -3,7 +3,7 @@
 // image, file and reference: shown here, edited in Stage 2. There is no asset store yet, so an
 // image shows a placeholder with its alt text and asset id (a value never holds a URL).
 import { FileIcon, ImageIcon, LinkIcon } from 'lucide-react'
-import { useFormatter, useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 
 import { ComingSoonEditor } from '../coming-soon'
 import { useFieldEnvironment } from '../environment'
@@ -29,15 +29,39 @@ function ImageDisplay({ value }: DisplayProps<'image'>) {
 
 export const image = { Display: ImageDisplay, Editor: ComingSoonEditor } satisfies FieldUi<'image'>
 
+/** Exact bytes below 1 KiB, otherwise KiB/MiB rounded to one decimal (zero-byte files show 0 B). */
+export function formatFileSize(bytes: number, locale: string): string {
+  const formatNumber = (value: number, options: Intl.NumberFormatOptions) =>
+    new Intl.NumberFormat(locale, options).format(value)
+  if (bytes < 1024) {
+    return formatNumber(bytes, { style: 'unit', unit: 'byte', unitDisplay: 'short' })
+  }
+  const kib = bytes / 1024
+  if (kib < 1024) {
+    return formatNumber(kib, {
+      style: 'unit',
+      unit: 'kilobyte',
+      unitDisplay: 'short',
+      maximumFractionDigits: 1,
+    })
+  }
+  return formatNumber(kib / 1024, {
+    style: 'unit',
+    unit: 'megabyte',
+    unitDisplay: 'short',
+    maximumFractionDigits: 1,
+  })
+}
+
 function FileDisplay({ value }: DisplayProps<'file'>) {
-  const format = useFormatter()
+  const locale = useLocale()
   return (
     <div className="flex items-center gap-3">
       <FileIcon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
       <div className="grid min-w-0 gap-0.5">
         <span className="truncate text-foreground">{value.filename}</span>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {format.number(Math.max(1, Math.round(value.size / 1024)))} KB
+          {formatFileSize(value.size, locale)}
         </span>
       </div>
     </div>

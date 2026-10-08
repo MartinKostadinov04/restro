@@ -144,9 +144,13 @@ describe('FieldEditorSheet', () => {
       const { onSave } = open(sample.definition, sample.value)
       expect(screen.getByTestId('editor-coming-soon')).toBeTruthy()
       expect(screen.getByText('Coming in Stage 2')).toBeTruthy()
-      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-      // The value is unchanged, so saving hands back the original value.
-      await waitFor(() => expect(onSave).toHaveBeenCalledWith(sample.value))
+      // A placeholder editor offers no Save or Clear (saving would mark a barsy value as
+      // overridden), and Ctrl+Enter does nothing; only Cancel remains.
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy()
+      await userEvent.keyboard('{Control>}{Enter}{/Control}')
+      expect(onSave).not.toHaveBeenCalled()
     },
   )
 

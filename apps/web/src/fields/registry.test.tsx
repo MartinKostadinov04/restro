@@ -10,7 +10,7 @@ import { screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { MESSAGES, renderWithIntl } from '../test-utils'
-import { FIELD_REGISTRY, FieldValueView } from './registry'
+import { FIELD_REGISTRY, FieldValueView, isFieldEditable } from './registry'
 import { EXTRA_TYPE_SAMPLES, ITEM_SAMPLE_VALUES, itemDefinitions } from './samples'
 import type { FieldRegistry } from './types'
 
@@ -88,5 +88,24 @@ describe('the field-type registry (UI side)', () => {
     if (!price) throw new Error('the Item template has a price')
     renderWithIntl(<FieldValueView definition={price} value={12.5} />)
     expect(screen.getByText(/not valid for this field type/)).toBeTruthy()
+  })
+})
+
+describe('isFieldEditable', () => {
+  it('is false for Stage 2 placeholder editors and true for real ones', () => {
+    for (const type of [
+      'date',
+      'datetime',
+      'range',
+      'image',
+      'file',
+      'availability',
+      'reference',
+    ] as const) {
+      expect(isFieldEditable(type)).toBe(false)
+    }
+    for (const type of ['short_text', 'money', 'enum_set', 'localized_text'] as const) {
+      expect(isFieldEditable(type)).toBe(true)
+    }
   })
 })

@@ -275,6 +275,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - [x] T26. Scaffold the repo (pnpm monorepo, CLAUDE.md, CI gates, import rules, fixtures harness), document-model foundation, DB with RLS, admin and worker shells, barsy read client skeleton — Claude + subagents, merged on `s1/ground` 10-09 (662 tests + 6 browser tests green); pull request to `main` for Martin
 - [ ] T42. First real barsy recording (`pnpm barsy:record -- --method Misc_ping_user`, plus a wrong-password recording) — Claude, after T38
 - [ ] T43. Bootstrap Supabase `restro-staging` (migrations + `restro_app` role) — Claude, needs Martin's explicit OK
+- [ ] T45. Production deploy pipeline (Stage 3, with Railway) re-runs `scripts/freeze-window.mjs` at deploy time and refuses to deploy inside the freeze window; the PR check is only an early warning — Claude
 - [ ] T44. Review Bulgarian interface wording in `apps/web/messages/bg.json` — Martin
 - [ ] T40. Doc updates: "Core rules" section; QR-phone-only scope; polling; Supabase; trace 4 manager-only; barsy corrections; new "Stage plan" tab — Claude
 - [ ] T37. Supabase: new organisation "Restro" (Free), project `restro-staging` in Central EU (Frankfurt), Data API off; send the project ref — Martin

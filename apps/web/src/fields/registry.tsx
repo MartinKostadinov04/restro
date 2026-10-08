@@ -50,6 +50,14 @@ function uiFor(type: FieldType): {
 }
 
 /**
+ * False while a type's Editor is the Stage 2 placeholder (`ComingSoonEditor`). The editor sheet
+ * then offers no Save or Clear, so opening it can never change a value or its provenance.
+ */
+export function isFieldEditable(type: FieldType): boolean {
+  return (FIELD_REGISTRY[type].Editor as unknown) !== ComingSoonEditor
+}
+
+/**
  * Shows a stored value with its field type's Display. The value is parsed with core's schema for
  * the type first: stale or foreign data shows a notice instead of crashing a screen.
  */

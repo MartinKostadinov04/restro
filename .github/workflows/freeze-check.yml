@@ -5,6 +5,11 @@
 # A pull request into `production` fails inside the window unless it carries the label
 # `freeze-override` (Martin adds it for an approved fix). The check re-runs when a label is
 # added or removed.
+#
+# Known limit: this check is evaluated on PR activity, so a PR that went green before Thursday
+# 18:00 can still be merged inside the window. The production deploy pipeline (added with
+# Railway in Stage 3, tracker T45) must run `scripts/freeze-window.mjs` again at deploy time and
+# refuse to deploy inside the window; this PR check is only the early warning.
 name: Production freeze check
 
 on:

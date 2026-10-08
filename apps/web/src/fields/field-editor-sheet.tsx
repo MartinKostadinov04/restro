@@ -33,7 +33,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 
 import { useFieldLabel } from './field-row'
-import { FieldEditor } from './registry'
+import { FieldEditor, isFieldEditable } from './registry'
 import { buildEditorSchema, type EditorFormValues, type EditorIssue } from './schema'
 
 export interface FieldEditorSheetProps {
@@ -67,7 +67,12 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
     resolver: zodResolver(schema),
     defaultValues: { value },
   })
-  const save = handleSubmit((data) => onSave(data.value))
+  // Placeholder editors (Stage 2 types) must never save: the unchanged value would still mark a
+  // barsy value as overridden.
+  const editable = isFieldEditable(definition.type)
+  const save = handleSubmit((data) => {
+    if (editable) onSave(data.value)
+  })
   const issue = errors.value?.message as EditorIssue | undefined
 
   return (
@@ -75,7 +80,7 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
       onSubmit={save}
       // Scoped to this form: Cmd/Ctrl+Enter saves while focus is inside it. No window listener.
       onKeyDown={(event) => {
-        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        if (editable && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
           event.preventDefault()
           void save()
         }
@@ -105,9 +110,9 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
         ) : null}
       </div>
       <div className="mt-auto grid gap-3">
-        <p className="text-xs text-muted-foreground">{t('shortcutHint')}</p>
+        {editable ? <p className="text-xs text-muted-foreground">{t('shortcutHint')}</p> : null}
         <div className="flex flex-wrap justify-end gap-2">
-          {value !== undefined && definition.required !== true ? (
+          {editable && value !== undefined && definition.required !== true ? (
             <Button
               type="button"
               variant="ghost"
@@ -120,7 +125,7 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
           <Button type="button" variant="outline" onClick={onCancel}>
             {t('cancel')}
           </Button>
-          <Button type="submit">{t('save')}</Button>
+          {editable ? <Button type="submit">{t('save')}</Button> : null}
         </div>
       </div>
     </form>
