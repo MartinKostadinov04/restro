@@ -1,4 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "compilerOptions": {
+    // scripts/ runs on Node's built-in TypeScript support (type stripping), which needs
+    // relative imports with their .ts extension and nothing but erasable syntax. src/ keeps
+    // extensionless imports: apps type-check it with their own tsconfig.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src", "scripts", "tests", "drizzle.config.ts"]
 }
