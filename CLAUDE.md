@@ -28,7 +28,7 @@ QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up t
 | `pnpm test:e2e` | Playwright |
 | `pnpm deps:check` | dependency-cruiser import rules |
 | `pnpm build` | Build all |
-| `pnpm db:generate` / `pnpm db:migrate` | Drizzle migrations (local / CI only) |
+| `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:roles` | Drizzle migrations and the `restro_app` role (owner URL; local / CI only — remote needs `RESTRO_DB_ALLOW_REMOTE=1` and Martin's OK) |
 | `pnpm barsy:record` | Record barsy read responses as fixtures (credentials from `.env.local`) |
 
 A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass.

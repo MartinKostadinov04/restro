@@ -29,6 +29,15 @@ The venue admin's frame, so Stage 2 can drop the composer into it: sign-in, orga
 - [ ] **Tests:** component tests (Vitest + Testing Library + jsdom) for the tabs↔URL sync, the registry exhaustiveness, money editor conversion; Playwright e2e on a local build with `pnpm db:local`: log in → venue grid → open venue → switch tabs (URL updates, reload keeps the tab) → switch language → log out
 - [ ] `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass; e2e passes locally
 
+## Binding facts from S1-02 (core) and S1-03 (db) — read their code before starting
+- `@restro/db`: `createPool(url)` returns an opaque handle; `withTenant(pool, tenantId, fn)` is a **READ ONLY** transaction (RLS-scoped); `withSystem(pool, fn)` for system tables; `@restro/db/write` → `withTenantWrite(pool, tenantId, fn)`. The import rule allows `@restro/db/write` **only from `packages/core/src/apply/`**.
+- Therefore tenant/venue creation goes through core: add `packages/core/src/apply/provision.ts` with `provisionTenant(pool, { tenantId, name })` and `provisionVenue(pool, tenantId, { name, slug, … })`, exported from a **new subpath `@restro/core/apply`** (never re-exported from `@restro/core`, so pure consumers like the shell never pull in `pg`). Integration-test both against local Postgres.
+- Every table must be declared in `packages/db/src/table-access.ts` (tenancy + exact app-role privileges) or the RLS guard test fails. Auth tables: schema `restro`, prefix `auth_`, declared as system tables (not tenant-scoped) with the privileges Better Auth needs (no DELETE unless required — say which).
+- Better Auth talks to Postgres through its own `pg` Pool on `DATABASE_URL` (the `restro_app` role) with Drizzle schema objects for the auth tables; it never uses the owner role.
+- Ids: `newId('tn')` etc. from `@restro/core`; the db checks `tn_|vn_|tp_` + base62. Organisation id must be produced by `newId('tn')`.
+- Local DB: `pnpm db:local`, then `pnpm db:migrate && pnpm db:roles` with `DATABASE_URL_OWNER` / `DATABASE_APP_PASSWORD` from `.env.example`. If port 54329 is already serving (another agent), use your own database name; stop only what you started.
+- Log `error.cause` (Postgres message/code), never the Drizzle error message — it contains query parameters.
+
 ## Allowed dependencies
 `better-auth`, `next-intl`, shadcn/ui via its CLI (and what it installs: Radix primitives, `class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`, `tw-animate-css`, `vaul`, `sonner`), `react-hook-form`, `@hookform/resolvers`, `zod` (already used), `@testing-library/react`, `@testing-library/user-event`, `jsdom`. Exact versions, ≥ 7 days old unless a security patch. Anything else → ask.
 

@@ -17,6 +17,13 @@ The always-on worker process that every future job runs in: pg-boss 12 started s
 - [ ] `.env.example` gains `WORKER_ID`, `WORKER_HEALTH_PORT`, `LOG_LEVEL`
 - [ ] `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass
 
+## Binding facts from S1-03 (db)
+- `@restro/db`: `createPool(url)` (opaque handle), `withSystem(pool, fn)` for `worker_heartbeats`. Read the package before starting.
+- pg-boss **must** be configured with `schema: 'pgboss', createSchema: false` — the owner migration creates the schema; `restro_app` has `USAGE, CREATE` on `pgboss` only and must never get database-level CREATE.
+- Set `statement_timeout` and `idle_in_transaction_session_timeout` on the worker's connections and keep the pool small (≤ 5) so Supabase's session pooler limit is respected.
+- Log `error.cause` (Postgres message/code), never the Drizzle error message (it contains query parameters).
+- Also add two import rules in `.dependency-cruiser.cjs` with matching cases in `scripts/depcruise-rules.test.ts`: (a) nothing outside `packages/db` may deep-import `packages/db/src/**` (only the `@restro/db` and `@restro/db/write` entry points); (b) `packages/db/src` read-side files may not import `packages/db/src/write`. Remove the stale "path does not exist yet" comment.
+
 ## Local database
 Docker does not work on this PC. Use `pnpm db:local` (localhost:54329). If port 54329 is already serving (another agent), reuse it with your own database (`restro_s1_06`); stop only an instance you started; leave nothing running.
 

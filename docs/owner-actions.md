@@ -10,7 +10,7 @@ Three short tasks. None needs technical knowledge; each takes 5–15 minutes. Te
    - Database password: click **Generate a password**, then save it in your password manager as "Supabase restro-staging DB". Do not paste it in chat.
    - Region: **Central EU (Frankfurt)**.
    - Create and wait about 2 minutes until the project is ready.
-4. Switch off the public data API: in the project, **Project Settings → Data API** → turn **Enable Data API** off → Save. (We never use it; leaving it on would expose tables to the internet.)
+4. Switch off the public data API: in the project, **Integrations → Data API** (older dashboards: Project Settings → Data API) → turn **Enable Data API** off → Save. (We never use it; leaving it on would expose tables to the internet.)
 5. Copy the **project reference**: Project Settings → General → "Reference ID" (about 20 letters). Paste only that reference in chat.
 6. The lead agent will then ask you to paste the database password into a local file on this PC (`E:\Restro\.env.local`) — never into chat.
 
