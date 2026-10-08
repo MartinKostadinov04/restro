@@ -19,11 +19,14 @@ Everything runs through `pnpm` (pinned by `packageManager`; pnpm also runs scrip
 
 ```
 pnpm install
-pnpm db:local        # Postgres 17 on localhost:54329, stays in the foreground; Ctrl+C stops it cleanly
-pnpm dev             # web on http://localhost:3000 and the worker
+pnpm db:local                       # Postgres 17 on localhost:54329, stays in the foreground; Ctrl+C stops it cleanly
+pnpm db:migrate && pnpm db:roles    # in a second terminal: create the tables, then the app role (see below)
+pnpm dev                            # web on http://localhost:3000 and the worker
 ```
 
 Copy `.env.example` to `.env.local` when a task needs settings. The default `DATABASE_URL` already points at `pnpm db:local`. The database lives in `.local/pg` (ignored by git); `pnpm db:local:reset` deletes it, `pnpm db:local:stop` stops it from another terminal. `docker-compose.yml` is an optional alternative for people who prefer a container.
+
+`pnpm db:migrate` creates the tables and `pnpm db:roles` creates the login role `restro_app` that the web app and the worker connect as. It gives that role exactly the privileges listed in `packages/db/src/table-access.ts` and, as session defaults, a 30 s `statement_timeout` and a 60 s `idle_in_transaction_session_timeout`. Run both once on a fresh database and again after every new migration (both are safe to repeat). Neither script reads `.env` files: export `DATABASE_URL_OWNER` and `DATABASE_APP_PASSWORD` (the values in `.env.example`) in your shell first. Until both scripts have run, the app and the worker have no role to connect as.
 
 ### The venue admin (`apps/web`)
 Needs the database, its tables, the app role and a demo owner. With `pnpm db:local` running and `.env.local` copied from `.env.example`:
@@ -54,7 +57,7 @@ curl http://localhost:8081/health
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `DATABASE_URL` | `restro_app` connection string. The worker adds a 30 s `statement_timeout` and a 60 s `idle_in_transaction_session_timeout` and keeps five connections at most | required |
+| `DATABASE_URL` | `restro_app` connection string. The role carries a 30 s `statement_timeout` and a 60 s `idle_in_transaction_session_timeout` (set by `pnpm db:roles`, so they also hold behind Supabase's session pooler); the worker keeps five connections at most | required |
 | `WORKER_ID` | Name of this process in `worker_heartbeats` | the host name |
 | `WORKER_HEALTH_PORT` | Port of `GET /health` | `8081` |
 | `LOG_LEVEL` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent` | `info` |
@@ -69,7 +72,7 @@ curl http://localhost:8081/health
 **Tests.** Unit tests run anywhere. `apps/worker/tests/worker.integration.test.ts` boots the real worker in the test process against a throw-away database it creates (and drops) through `DATABASE_URL_OWNER`, running `db:migrate` and `db:roles` on it first; it needs the same variables as the `packages/db` tests and is required in CI.
 
 ## Scaffold conventions
-- **Workspace packages export TypeScript source** (`"exports": { ".": "./src/index.ts" }`), so there is no build step for packages and changes show up at once. Next.js compiles them (`transpilePackages` in `apps/web/next.config.ts`), the worker bundles them (`noExternal` in `apps/worker/tsup.config.ts`), Vitest runs them as they are. A new package needs a `package.json` like its neighbours, a `tsconfig.json` extending `tsconfig.base.json`, and a `workspace:*` dependency from whoever uses it.
+- **Workspace packages export TypeScript source** (`"exports": { ".": "./src/index.ts" }`), so there is no build step for packages and changes show up at once. Next.js compiles them (`transpilePackages` in `apps/web/next.config.ts`), the worker bundles them (`noExternal` in `apps/worker/tsup.config.ts`), Vitest runs them as they are. The npm packages the bundled code imports (`pg`, `drizzle-orm`, `zod`) are declared in the worker's own `package.json` too, at the same exact versions: that keeps them out of the bundle (tsup leaves a declared dependency external), and an undeclared CommonJS package such as `pg` would be bundled into the ES module and need a `require` shim. A new package needs a `package.json` like its neighbours, a `tsconfig.json` extending `tsconfig.base.json`, and a `workspace:*` dependency from whoever uses it.
 - **Code style** is set by `biome.json`: 2-space indent, single quotes, semicolons only where needed, trailing commas, 100 columns. Run `pnpm format` to fix; `pnpm lint` only checks.
 - **Tests:** Vitest files end in `.test.ts(x)` and sit next to the code (or in `tests/`); Playwright specs end in `.spec.ts` and live in `apps/web/e2e/`. One Vitest project per package or app is found automatically from `vitest.config.ts`.
 - **Import rules** live in `.dependency-cruiser.cjs`; `scripts/depcruise-rules.test.ts` proves each one fires. Changing a rule means changing that test.
