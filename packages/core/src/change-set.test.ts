@@ -1,0 +1,227 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  ChangeSetSchema,
+  type FieldWrite,
+  FieldWriteSchema,
+  isLayer,
+  isScope,
+  isSource,
+  layerAllowedForSource,
+  parseChangeSet,
+} from './change-set'
+import { newId } from './ids'
+
+const itemId = newId('nd')
+const sectionId = newId('nd')
+const venueId = newId('vn')
+
+function manualSet(ops: unknown[]): Record<string, unknown> {
+  return {
+    id: newId('cs'),
+    source: 'manual',
+    jobId: 'job_manual_1',
+    actor: 'user:us_42',
+    observedAt: '2026-10-08T21:03:41+03:00',
+    ops,
+  }
+}
+
+const describeWrite = {
+  op: 'setField',
+  node: { id: itemId },
+  fieldKey: 'description',
+  layer: 'manual',
+  scope: 'master',
+  value: { en_US: 'Gin, Campari, vermouth' },
+} as const
+
+const barsyPrice = {
+  op: 'setField',
+  node: { link: { integration: 'int_club', externalType: 'article', externalId: '102751' } },
+  fieldKey: 'price',
+  layer: 'barsy',
+  scope: `venue:${venueId}`,
+  value: { amount_minor: 1250, currency: 'EUR' },
+  sourceRecordId: 'sr_1',
+  mappingVersion: 3,
+} as const
+
+function issuesOf(json: unknown): string {
+  const parsed = parseChangeSet(json)
+  expect(parsed.ok).toBe(false)
+  return parsed.ok ? '' : parsed.reason
+}
+
+describe('ChangeSetSchema', () => {
+  it('parses a valid manual change set with field writes and structural ops', () => {
+    const newItem = newId('nd')
+    const parsed = parseChangeSet(
+      manualSet([
+        { op: 'createNode', id: newItem, nodeType: 'item', parent: null, status: 'active' },
+        { ...describeWrite, node: { id: newItem } },
+        { op: 'setPlacement', item: { id: newItem }, section: { id: sectionId }, sortKey: 'a0' },
+        { op: 'removePlacement', item: { id: itemId }, section: { id: sectionId } },
+        { op: 'setNodeStatus', node: { id: itemId }, status: 'hidden' },
+        {
+          op: 'linkSource',
+          node: { id: newItem },
+          link: { integration: 'int_club', externalType: 'article', externalId: '102751' },
+        },
+        {
+          ...describeWrite,
+          fieldKey: 'name',
+          layer: 'override',
+          value: { en_US: 'Negroni Sbagliato' },
+          basis: { en_US: 'Negroni' },
+        },
+        {
+          ...describeWrite,
+          fieldKey: 'for_sale',
+          layer: 'edition:service-2026-10-08',
+          value: false,
+        },
+      ]),
+    )
+    if (!parsed.ok) throw new Error(parsed.reason)
+    expect(parsed.value.ops).toHaveLength(8)
+  })
+
+  it('parses a valid barsy change set that names nodes by link', () => {
+    const parsed = parseChangeSet({
+      ...manualSet([barsyPrice]),
+      source: 'barsy:int_club',
+      actor: 'integration:int_club',
+      jobId: 'job_barsy_full_7',
+    })
+    if (!parsed.ok) throw new Error(parsed.reason)
+    expect(parsed.value.source).toBe('barsy:int_club')
+  })
+
+  it('rejects a change set without job, source, actor, time or ops (rule 2)', () => {
+    for (const key of ['jobId', 'source', 'actor', 'observedAt', 'id']) {
+      const set = manualSet([describeWrite])
+      delete set[key]
+      expect(ChangeSetSchema.safeParse(set).success, key).toBe(false)
+    }
+    expect(issuesOf(manualSet([]))).toContain('ops')
+    expect(
+      issuesOf({ ...manualSet([describeWrite]), observedAt: '2026-10-08T21:03:41' }),
+    ).toContain('observedAt')
+  })
+
+  it('rejects a field write without a layer, scope or value', () => {
+    for (const key of ['layer', 'scope', 'value', 'node', 'fieldKey']) {
+      const write: Record<string, unknown> = { ...describeWrite }
+      delete write[key]
+      expect(FieldWriteSchema.safeParse(write).success, key).toBe(false)
+      expect(ChangeSetSchema.safeParse(manualSet([write])).success, key).toBe(false)
+    }
+  })
+
+  it('rejects writes into a layer the source may not write', () => {
+    expect(issuesOf(manualSet([barsyPrice]))).toContain('cannot write the barsy layer')
+    const fromImport = { ...manualSet([describeWrite]), source: 'import:wine-list' }
+    expect(issuesOf(fromImport)).toContain('cannot write the manual layer')
+  })
+
+  it('rejects link refs in manual sets and links of another integration in barsy sets', () => {
+    expect(issuesOf(manualSet([{ ...describeWrite, node: barsyPrice.node }]))).toContain(
+      'manual change sets name nodes by id',
+    )
+    const otherIntegration = {
+      ...manualSet([barsyPrice]),
+      source: 'barsy:int_other',
+      actor: 'integration:int_other',
+    }
+    expect(issuesOf(otherIntegration)).toContain('another integration')
+  })
+
+  it('requires a basis on overrides and only there', () => {
+    const noBasis = { ...describeWrite, fieldKey: 'name', layer: 'override' }
+    expect(issuesOf(manualSet([noBasis]))).toContain('basis')
+    expect(issuesOf(manualSet([{ ...noBasis, basis: null }]))).toContain('basis')
+    expect(issuesOf(manualSet([{ ...describeWrite, basis: { en_US: 'x' } }]))).toContain('basis')
+  })
+
+  it('keeps venue scope to barsy values, with our venue id (never a barsy bid)', () => {
+    expect(issuesOf(manualSet([{ ...describeWrite, scope: `venue:${venueId}` }]))).toContain(
+      'venue-scoped',
+    )
+    const withBid = {
+      ...manualSet([{ ...barsyPrice, scope: 'venue:1' }]),
+      source: 'barsy:int_club',
+    }
+    expect(issuesOf(withBid)).toContain('scope')
+  })
+
+  it('requires source record and mapping version on barsy writes', () => {
+    const { sourceRecordId: _record, mappingVersion: _version, ...bare } = barsyPrice
+    const set = { ...manualSet([bare]), source: 'barsy:int_club', actor: 'integration:int_club' }
+    const reason = issuesOf(set)
+    expect(reason).toContain('sourceRecordId')
+    expect(reason).toContain('mappingVersion')
+  })
+
+  it('checks createNode parents and duplicate ids', () => {
+    const id = newId('nd')
+    expect(
+      issuesOf(
+        manualSet([
+          { op: 'createNode', id, nodeType: 'item', parent: { id: sectionId }, status: 'active' },
+        ]),
+      ),
+    ).toContain('has no parent')
+    expect(
+      issuesOf(
+        manualSet([{ op: 'createNode', id, nodeType: 'section', parent: null, status: 'active' }]),
+      ),
+    ).toContain('needs a parent')
+    const create = { op: 'createNode', id, nodeType: 'item', parent: null, status: 'active' }
+    expect(issuesOf(manualSet([create, create]))).toContain('created twice')
+  })
+
+  it('rejects bad sort keys, unknown ops and unknown keys', () => {
+    const placement = { op: 'setPlacement', item: { id: itemId }, section: { id: sectionId } }
+    expect(ChangeSetSchema.safeParse(manualSet([{ ...placement, sortKey: 'a' }])).success).toBe(
+      false,
+    )
+    expect(
+      ChangeSetSchema.safeParse(manualSet([{ op: 'deleteNode', node: { id: itemId } }])).success,
+    ).toBe(false)
+    expect(ChangeSetSchema.safeParse(manualSet([{ ...describeWrite, extra: 1 }])).success).toBe(
+      false,
+    )
+    expect(ChangeSetSchema.safeParse({ ...manualSet([describeWrite]), tenant: 'x' }).success).toBe(
+      false,
+    )
+  })
+
+  it('types a parsed write', () => {
+    const write: FieldWrite = FieldWriteSchema.parse(describeWrite)
+    expect(write.layer).toBe('manual')
+  })
+})
+
+describe('sources, layers and scopes', () => {
+  it('recognises the allowed forms', () => {
+    expect(['manual', 'import:wine-list', 'barsy:int_club'].every(isSource)).toBe(true)
+    expect(['', 'import:', 'barsy', 'webhook:x', 'manual:x'].some(isSource)).toBe(false)
+    expect(['barsy', 'import', 'manual', 'override', 'edition:venue-1'].every(isLayer)).toBe(true)
+    expect(['edition:', 'master', 'Barsy'].some(isLayer)).toBe(false)
+    expect(isScope('master') && isScope(`venue:${venueId}`)).toBe(true)
+    expect(isScope('venue:vn_beach') || isScope('venue:')).toBe(false)
+  })
+
+  it('maps each source to the layers it may write', () => {
+    expect(layerAllowedForSource('barsy:int_club', 'barsy')).toBe(true)
+    expect(layerAllowedForSource('barsy:int_club', 'manual')).toBe(false)
+    expect(layerAllowedForSource('import:wine-list', 'import')).toBe(true)
+    expect(layerAllowedForSource('import:wine-list', 'override')).toBe(false)
+    expect(layerAllowedForSource('manual', 'manual')).toBe(true)
+    expect(layerAllowedForSource('manual', 'override')).toBe(true)
+    expect(layerAllowedForSource('manual', 'edition:venue-1')).toBe(true)
+    expect(layerAllowedForSource('manual', 'barsy')).toBe(false)
+    expect(layerAllowedForSource('manual', 'import')).toBe(false)
+  })
+})
