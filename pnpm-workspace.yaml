@@ -7,3 +7,13 @@ packages:
 # Add a package only after checking why it needs a build step.
 onlyBuiltDependencies:
   - esbuild
+  # The Postgres binaries for `pnpm db:local`. Their install script only recreates the symlinks
+  # that npm cannot ship on Linux and macOS (it does nothing on Windows).
+  - '@embedded-postgres/darwin-arm64'
+  - '@embedded-postgres/darwin-x64'
+  - '@embedded-postgres/linux-arm'
+  - '@embedded-postgres/linux-arm64'
+  - '@embedded-postgres/linux-ia32'
+  - '@embedded-postgres/linux-ppc64'
+  - '@embedded-postgres/linux-x64'
+  - '@embedded-postgres/windows-x64'
