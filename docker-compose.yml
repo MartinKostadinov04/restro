@@ -1,0 +1,37 @@
+# OPTIONAL. The default local database is `pnpm db:local` (no Docker; see README.md).
+# Use this file only if you prefer a Postgres container. It is not used by CI, which runs a
+# `postgres:17` service container in .github/workflows/ci.yml.
+#
+#   docker compose up -d        start Postgres 17 on localhost:54329
+#   docker compose down         stop it (the data stays in the named volume)
+#   docker compose down -v      stop it and delete the data
+#
+# It uses the same port and credentials as `pnpm db:local`, so DATABASE_URL in .env.example
+# works for both. Run only one of the two at a time.
+#
+# LOCAL DEVELOPMENT ONLY: the password is public on purpose and the port is bound to
+# 127.0.0.1. Never reuse these values anywhere else.
+name: restro
+
+services:
+  postgres:
+    image: postgres:17.10
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: restro
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # UTF8 for Bulgarian text; the C locale matches `pnpm db:local`.
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    ports:
+      - '127.0.0.1:54329:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d restro']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

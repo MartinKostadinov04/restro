@@ -1,0 +1,28 @@
+{
+  // Shared by every package and app. Each tsconfig.json extends this file.
+  // Type checking only (noEmit): Next.js, tsup and Vitest do the actual compiling.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // TypeScript 6 no longer loads every @types/* package by default, so name them.
+    // Node globals (console, URL, setTimeout) are typed everywhere. That is only typing:
+    // the import rules in .dependency-cruiser.cjs keep shell and faces free of I/O.
+    "types": ["node"]
+  }
+}
