@@ -53,6 +53,23 @@ export const TABLE_ACCESS = {
   templates: { tenancy: 'tenant-or-system', app: ['SELECT', 'INSERT'] },
   // Upserted by the worker through withSystem().
   worker_heartbeats: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+
+  // Better Auth (apps/web talks to these through its own pool on the app role). They are not
+  // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
+  // tenant id (see schema.ts). The app role can read every row of them, password hashes
+  // included; that is what "not tenant-scoped" means, so keep Better Auth's endpoints narrow.
+  // DELETE is granted only where a flow we keep needs it: `auth_session` (sign-out, revoking a
+  // session, clearing expired ones) and `auth_verification` (single-use tokens are consumed by
+  // deleting them; nothing writes there yet). Users, accounts, organisations, members and
+  // invitations are never deleted by the app: removing a person or an organisation is an
+  // operator task (apps/web switches off Better Auth's endpoints that would delete them).
+  auth_user: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  auth_session: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+  auth_account: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  auth_verification: { tenancy: 'system', app: ['SELECT', 'INSERT', 'DELETE'] },
+  auth_organization: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  auth_member: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  auth_invitation: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
 } as const satisfies Record<string, TableAccess>
 
 /** Name of a table in schema `restro`. */

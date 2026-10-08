@@ -21,7 +21,8 @@
     "db:generate": "pnpm --filter @restro/db run db:generate",
     "db:migrate": "pnpm --filter @restro/db run db:migrate",
     "db:roles": "pnpm --filter @restro/db run db:roles",
-    "barsy:record": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local packages/barsy/src/record/cli.ts"
+    "barsy:record": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local packages/barsy/src/record/cli.ts",
+    "db:seed:dev": "pnpm --filter @restro/web run db:seed:dev"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

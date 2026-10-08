@@ -1,0 +1,65 @@
+// Set-up shared by the integration tests of this folder (they need a real Postgres). Same rules
+// as packages/db/tests/database.ts: the tests run when DATABASE_URL_OWNER is set (after
+// `pnpm db:migrate && pnpm db:roles`), are skipped with a message otherwise, and fail instead of
+// skipping when CI is set. They never read .env files and refuse a database that is not local.
+import pg from 'pg'
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+
+const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
+
+/** True when the integration tests can run. */
+export const hasDatabase = ownerUrl !== ''
+
+if (!hasDatabase) {
+  if (process.env.CI) {
+    throw new Error(
+      'DATABASE_URL_OWNER is not set. The database integration tests are required in CI: ' +
+        'run `pnpm db:migrate && pnpm db:roles` against the CI Postgres service first.',
+    )
+  }
+  process.stderr.write(
+    '\n[@restro/core] Skipping the provisioning integration tests: DATABASE_URL_OWNER is not ' +
+      'set. Start `pnpm db:local`, run `pnpm db:migrate && pnpm db:roles`, then `pnpm test`.\n',
+  )
+}
+
+function assertLocal(url: string, name: string): void {
+  const parsed = new URL(url)
+  const host = parsed.searchParams.get('host') ?? parsed.hostname
+  if (!LOCAL_HOSTS.has(host) && !host.startsWith('/')) {
+    throw new Error(
+      `${name} points at ${host}; the integration tests only run on a local database.`,
+    )
+  }
+}
+
+/** restro_app connection string: DATABASE_URL, or the owner URL with restro_app's password. */
+export function appDatabaseUrl(): string {
+  const explicit = process.env.DATABASE_URL
+  if (explicit) {
+    assertLocal(explicit, 'DATABASE_URL')
+    return explicit
+  }
+  const password = process.env.DATABASE_APP_PASSWORD
+  if (!password) {
+    throw new Error('Set DATABASE_URL (restro_app) or DATABASE_APP_PASSWORD for the tests.')
+  }
+  assertLocal(ownerUrl, 'DATABASE_URL_OWNER')
+  const url = new URL(ownerUrl)
+  url.username = 'restro_app'
+  url.password = encodeURIComponent(password)
+  return url.toString()
+}
+
+/** Owner pool for clean-up only (the app role has no DELETE on tenants and venues). */
+export function openOwnerPool(): pg.Pool {
+  assertLocal(ownerUrl, 'DATABASE_URL_OWNER')
+  return new pg.Pool({ connectionString: ownerUrl, max: 2 })
+}
+
+/** Deletes the venues and tenants a test created. */
+export async function cleanUp(owner: pg.Pool, tenantIds: readonly string[]): Promise<void> {
+  await owner.query('delete from restro.venues where tenant_id = any($1)', [tenantIds])
+  await owner.query('delete from restro.tenants where id = any($1)', [tenantIds])
+}

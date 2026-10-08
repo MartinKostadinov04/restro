@@ -1,7 +1,7 @@
+import { redirect } from 'next/navigation'
+
+// The admin has no landing page of its own: the venues are the home screen. Not signed in? The
+// proxy has already sent the visitor to /login before this runs.
 export default function HomePage() {
-  return (
-    <main className="flex min-h-screen items-center justify-center">
-      <h1 className="text-4xl font-semibold tracking-tight">Restro</h1>
-    </main>
-  )
+  redirect('/venues')
 }

@@ -1,0 +1,241 @@
+{
+  "meta": {
+    "description": "Venue admin for QR menus and ordering in nightclubs."
+  },
+  "common": {
+    "yes": "Yes",
+    "no": "No",
+    "none": "None"
+  },
+  "fields": {
+    "noValue": "No value set",
+    "invalidStored": "The stored value is not valid for this field type.",
+    "about": "About the field {field}",
+    "keyLabel": "Field key",
+    "typeLabel": "Type",
+    "edit": "Edit {field}",
+    "set": "Set {field}",
+    "types": {
+      "short_text": "Short text",
+      "long_text": "Long text",
+      "localized_text": "Text in several languages",
+      "number": "Number",
+      "boolean": "Yes / no",
+      "date": "Date",
+      "datetime": "Date and time",
+      "money": "Money",
+      "measurement": "Quantity with a unit",
+      "range": "Range",
+      "tags": "Tags",
+      "enum": "Choice from a list",
+      "enum_set": "Several choices from a list",
+      "image": "Image",
+      "file": "File",
+      "availability": "Availability schedule",
+      "reference": "Reference"
+    },
+    "provenance": {
+      "barsy": "From barsy",
+      "owned": "Owned here",
+      "overridden": "Overridden",
+      "stale": "Stale"
+    },
+    "editor": {
+      "title": "Edit {field}",
+      "description": "Saving is local for now: nothing is written to the database until Stage 2.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "clear": "Clear value",
+      "shortcutHint": "Ctrl/⌘ + Enter saves · Esc cancels",
+      "choose": "Choose…",
+      "chooseMany": "Choose all that apply",
+      "setNotSet": "Not set",
+      "setNone": "None selected (an explicit “none”)",
+      "setCount": "{count, plural, one {# selected} other {# selected}}",
+      "savedLocally": "Updated here (not saved to the database yet)",
+      "errors": {
+        "required": "This field is required.",
+        "invalid": "This value is not valid for this field."
+      }
+    },
+    "hints": {
+      "maxLength": "Up to {max} characters",
+      "integer": "Whole numbers only.",
+      "between": "Between {min} and {max}.",
+      "atLeast": "At least {min}.",
+      "atMost": "At most {max}.",
+      "moneyFormat": "Amount in euro, for example 12.50 (up to two decimals).",
+      "minorUnits": "Stored as {minor, plural, one {# cent} other {# cents}}."
+    },
+    "units": {
+      "g": "g",
+      "kg": "kg",
+      "ml": "ml",
+      "l": "l",
+      "cl": "cl",
+      "pcs": "pcs"
+    },
+    "tags": {
+      "placeholder": "Type a tag and press Enter",
+      "remove": "Remove tag {tag}"
+    },
+    "availability": {
+      "always": "Always available",
+      "nextDay": "next day"
+    },
+    "media": {
+      "noAlt": "No description"
+    },
+    "comingSoon": {
+      "title": "Coming in Stage 2",
+      "description": "This kind of field can be viewed here already. Editing it arrives in Stage 2."
+    }
+  },
+  "options": {
+    "allergens": {
+      "gluten": "Gluten",
+      "crustaceans": "Crustaceans",
+      "eggs": "Eggs",
+      "fish": "Fish",
+      "peanuts": "Peanuts",
+      "soybeans": "Soybeans",
+      "milk": "Milk",
+      "nuts": "Nuts",
+      "celery": "Celery",
+      "mustard": "Mustard",
+      "sesame": "Sesame",
+      "sulphites": "Sulphites",
+      "lupin": "Lupin",
+      "molluscs": "Molluscs"
+    },
+    "dietary": {
+      "vegan": "Vegan",
+      "vegetarian": "Vegetarian",
+      "gluten_free": "Gluten-free",
+      "lactose_free": "Lactose-free",
+      "halal": "Halal",
+      "kosher": "Kosher"
+    },
+    "order_mode": {
+      "orderable": "Can be ordered",
+      "ask_waiter": "Ask your waiter",
+      "hidden": "Hidden"
+    }
+  },
+  "devFields": {
+    "title": "Field preview (development only)",
+    "description": "Every field of an item in the default template, with a sample value. Press a pencil to open its editor; what you save stays on this page only.",
+    "item": {
+      "title": "Item: Negroni",
+      "description": "The fields of an item in “Venue menu”, laid out like the composer's item sheet."
+    },
+    "extra": {
+      "title": "The other field types",
+      "description": "The types an item does not use, so that all 17 can be seen."
+    },
+    "groups": {
+      "content": "Content",
+      "pricing": "Price and portion",
+      "attributes": "Attributes",
+      "ordering": "Ordering and availability",
+      "internal": "Internal"
+    }
+  },
+  "ui": {
+    "close": "Close",
+    "sidebar": "Sidebar",
+    "sidebarDescription": "The main navigation of the admin.",
+    "toggleSidebar": "Toggle sidebar"
+  },
+  "auth": {
+    "title": "Sign in",
+    "description": "Sign in to the Restro venue admin.",
+    "email": "Email",
+    "password": "Password",
+    "emailInvalid": "Enter a valid email address.",
+    "passwordRequired": "Enter your password.",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "inviteOnly": "Access is by invitation only.",
+    "error": {
+      "invalid": "The email or password is not right.",
+      "tooMany": "Too many attempts. Wait a moment and try again.",
+      "unknown": "Signing in failed. Try again."
+    }
+  },
+  "noOrganization": {
+    "title": "No organisation yet",
+    "description": "{email} is not a member of any organisation. Ask the Restro team to invite you."
+  },
+  "language": {
+    "label": "Language",
+    "short": { "bg": "BG", "en": "EN" },
+    "name": { "bg": "Български", "en": "English" }
+  },
+  "user": {
+    "theme": "Theme",
+    "themes": { "system": "System", "light": "Light", "dark": "Dark" },
+    "signOut": "Sign out"
+  },
+  "nav": {
+    "manage": "Manage",
+    "venues": "Venues",
+    "breadcrumb": "Breadcrumb"
+  },
+  "venueSwitcher": {
+    "label": "Venue",
+    "choose": "Choose a venue",
+    "venues": "Venues",
+    "allVenues": "All venues",
+    "organization": "Organisation"
+  },
+  "venues": {
+    "title": "Venues",
+    "description": "The venues of {organization}.",
+    "languages": "Languages",
+    "open": "Open",
+    "empty": {
+      "title": "No venues yet",
+      "description": "Your first venue is set up together with the Restro team."
+    }
+  },
+  "workspace": {
+    "switchTab": "Switch tab",
+    "comingInStage": "Coming in Stage {stage}",
+    "tabs": {
+      "composer": "Composer",
+      "tables": "Tables & QR",
+      "publishing": "Publishing",
+      "integration": "Integration",
+      "settings": "Settings"
+    },
+    "composer": {
+      "title": "Menu composer",
+      "description": "Arrange the menu that comes from barsy here: move items between sections, reorder them, and add images, descriptions and translations."
+    },
+    "tables": {
+      "title": "Tables & QR codes",
+      "description": "Every table from barsy gets its own QR code here, ready to print."
+    },
+    "publishing": {
+      "title": "Publishing",
+      "description": "Publish the menu to guests' phones and see what is live."
+    },
+    "integration": {
+      "title": "barsy integration",
+      "description": "Connect the venue to barsy and follow the sync."
+    },
+    "settings": {
+      "title": "Venue settings",
+      "description": "How this venue keeps time, which languages and which currency it uses.",
+      "name": "Name",
+      "slug": "Identifier",
+      "timezone": "Time zone",
+      "serviceDayEnd": "Service day ends at",
+      "languages": "Languages",
+      "defaultLanguage": "default",
+      "currency": "Currency",
+      "readOnly": "These settings are read-only for now. Editing them arrives with the composer."
+    }
+  }
+}
