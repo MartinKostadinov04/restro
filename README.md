@@ -27,6 +27,33 @@ Copy `.env.example` to `.env.local` when a task needs settings. The default `DAT
 
 Before a pull request: `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build`. `pnpm test:e2e` runs the Playwright smoke test against a production build (`pnpm --filter @restro/web exec playwright install chromium` once).
 
+## The worker
+`apps/worker` is the always-on process every background job runs in: pg-boss 12 on our own Postgres, started as the app role `restro_app`. On start it checks the database role (it refuses a superuser or the table owner), lets pg-boss install its tables in schema `pgboss` (the migration owner creates the schema; the app role may only use and create in it), registers the jobs, and serves `GET /health`. Today the only job is `worker-heartbeat`: every minute it upserts this process's row in `restro.worker_heartbeats`.
+
+Run it against the local database (once: `pnpm db:local` in one terminal, then `pnpm db:migrate && pnpm db:roles` with the owner variables from `.env.example` exported; the worker never reads `.env` files itself):
+
+```
+export DATABASE_URL=postgres://restro_app:local-only-not-a-secret@localhost:54329/restro   # PowerShell: $env:DATABASE_URL='...'
+pnpm --filter @restro/worker dev        # watch mode; `start` runs the built bundle
+curl http://localhost:8081/health
+```
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `DATABASE_URL` | `restro_app` connection string. The worker adds a 30 s `statement_timeout` and a 60 s `idle_in_transaction_session_timeout` and keeps five connections at most | required |
+| `WORKER_ID` | Name of this process in `worker_heartbeats` | the host name |
+| `WORKER_HEALTH_PORT` | Port of `GET /health` | `8081` |
+| `LOG_LEVEL` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent` | `info` |
+| `NODE_ENV` | `production` writes JSON logs (one object per line); anything else, readable lines | unset |
+
+`GET /health` answers `200 {"status":"ok","lastBeatAt":"…","pgboss":"started"}` while pg-boss is started and the last heartbeat is under three minutes old, and `503` with a `reason` otherwise (starting, stopping, no heartbeat yet, stale heartbeat). The answer comes from memory; a probe never touches the database. Run one worker replica for now: each heartbeat job is taken by one replica, so with two the other would look stale.
+
+**Adding a job.** Create `apps/worker/src/jobs/<name>.ts` exporting `defineJob({ name, schedule?, handler, options })`, then add it to the list in `apps/worker/src/jobs/index.ts`. Everything else is done for it: the queue `<name>` and its dead-letter queue `<name>.dead` (where a job lands after its last retry), the option updates on every start, the schedule, and a safe error log. The convention is written out at the top of `apps/worker/src/jobs/types.ts`. Database access goes through the scoped helpers of `@restro/db`; handlers log errors as `log.error({ err }, '…')`, which drops query parameters and keeps Postgres's message and code.
+
+**Stopping.** SIGTERM and SIGINT stop the worker cleanly: `/health` turns 503, pg-boss stops fetching and gives running jobs 20 seconds, both connection pools close, the process exits 0. A second signal, or a stop that takes longer than 30 seconds, exits 1. The platform's shutdown grace period must be longer than 20 seconds.
+
+**Tests.** Unit tests run anywhere. `apps/worker/tests/worker.integration.test.ts` boots the real worker in the test process against a throw-away database it creates (and drops) through `DATABASE_URL_OWNER`, running `db:migrate` and `db:roles` on it first; it needs the same variables as the `packages/db` tests and is required in CI.
+
 ## Scaffold conventions
 - **Workspace packages export TypeScript source** (`"exports": { ".": "./src/index.ts" }`), so there is no build step for packages and changes show up at once. Next.js compiles them (`transpilePackages` in `apps/web/next.config.ts`), the worker bundles them (`noExternal` in `apps/worker/tsup.config.ts`), Vitest runs them as they are. A new package needs a `package.json` like its neighbours, a `tsconfig.json` extending `tsconfig.base.json`, and a `workspace:*` dependency from whoever uses it.
 - **Code style** is set by `biome.json`: 2-space indent, single quotes, semicolons only where needed, trailing commas, 100 columns. Run `pnpm format` to fix; `pnpm lint` only checks.
