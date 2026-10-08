@@ -1,0 +1,117 @@
+// Shared set-up for the integration tests that need a real Postgres.
+//
+// They need DATABASE_URL_OWNER (the migration owner; local: the db:local superuser) and either
+// DATABASE_URL (restro_app) or DATABASE_APP_PASSWORD to build it, after `pnpm db:migrate` and
+// `pnpm db:roles`. Without DATABASE_URL_OWNER they are skipped with a message; in CI (CI is set)
+// a missing variable fails the run instead, because there these tests are required.
+// They never read .env files, and refuse any database that is not on this machine.
+import { randomUUID } from 'node:crypto'
+
+import pg from 'pg'
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+
+const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
+
+/** True when the integration tests can run. */
+export const hasDatabase = ownerUrl !== ''
+
+if (!hasDatabase) {
+  if (process.env.CI) {
+    throw new Error(
+      'DATABASE_URL_OWNER is not set. The database integration tests are required in CI: ' +
+        'run `pnpm db:migrate && pnpm db:roles` against the CI Postgres service first.',
+    )
+  }
+  process.stderr.write(
+    '\n[@restro/db] Skipping the database integration tests: DATABASE_URL_OWNER is not set. ' +
+      'Start `pnpm db:local`, set DATABASE_URL_OWNER, DATABASE_APP_PASSWORD (and DATABASE_URL), ' +
+      'run `pnpm db:migrate && pnpm db:roles`, then `pnpm test`.\n',
+  )
+}
+
+function assertLocal(url: string, name: string): void {
+  const parsed = new URL(url)
+  const host = parsed.searchParams.get('host') ?? parsed.hostname
+  if (!LOCAL_HOSTS.has(host) && !host.startsWith('/')) {
+    throw new Error(
+      `${name} points at ${host}; the integration tests only run on a local database.`,
+    )
+  }
+}
+
+/** Owner connection string (tests use it for set-up and clean-up only). */
+export function ownerDatabaseUrl(): string {
+  assertLocal(ownerUrl, 'DATABASE_URL_OWNER')
+  return ownerUrl
+}
+
+/** restro_app connection string: DATABASE_URL, or the owner URL with restro_app's password. */
+export function appDatabaseUrl(): string {
+  const explicit = process.env.DATABASE_URL
+  if (explicit) {
+    assertLocal(explicit, 'DATABASE_URL')
+    return explicit
+  }
+  const password = process.env.DATABASE_APP_PASSWORD
+  if (!password) {
+    throw new Error('Set DATABASE_URL (restro_app) or DATABASE_APP_PASSWORD for the tests.')
+  }
+  const url = new URL(ownerDatabaseUrl())
+  url.username = 'restro_app'
+  url.password = encodeURIComponent(password)
+  return url.toString()
+}
+
+/** A fresh id of a kind (`tn`, `vn`, `tp`): unique per test run, valid for the id checks. */
+export function testId(kind: string): string {
+  return `${kind}_test${randomUUID().replaceAll('-', '')}`
+}
+
+/**
+ * Owner pool for set-up and clean-up. The owner must bypass row-level security (true for the
+ * db:local and CI superuser): only it can add system templates and delete test rows.
+ */
+export async function openOwnerPool(): Promise<pg.Pool> {
+  const pool = new pg.Pool({ connectionString: ownerDatabaseUrl(), max: 2 })
+  const { rows } = await pool.query<{ bypass: boolean }>(
+    'select rolsuper or rolbypassrls as bypass from pg_roles where rolname = current_user',
+  )
+  if (!rows[0]?.bypass) {
+    await pool.end()
+    throw new Error('DATABASE_URL_OWNER must be a superuser (or BYPASSRLS) for the test set-up.')
+  }
+  return pool
+}
+
+/**
+ * Awaits a statement that must fail and returns Postgres's own message. Drizzle wraps driver
+ * errors ("Failed query: ...", with the parameters); the database's reason is the `cause`.
+ */
+export async function databaseError(work: Promise<unknown>): Promise<string> {
+  try {
+    await work
+  } catch (error) {
+    let current: unknown = error
+    while (current instanceof Error && current.cause instanceof Error) current = current.cause
+    return current instanceof Error ? current.message : String(current)
+  }
+  throw new Error('Expected the database to reject the statement, but it succeeded.')
+}
+
+/** Deletes everything the tests created for these tenants, templates and workers. */
+export async function cleanUp(
+  owner: pg.Pool,
+  ids: { tenants?: string[]; templates?: string[]; workers?: string[] },
+): Promise<void> {
+  const tenants = ids.tenants ?? []
+  await owner.query('delete from restro.venues where tenant_id = any($1)', [tenants])
+  await owner.query('delete from restro.templates where tenant_id = any($1) or id = any($2)', [
+    tenants,
+    ids.templates ?? [],
+  ])
+  await owner.query('delete from restro.tenants where id = any($1)', [tenants])
+  await owner.query('delete from restro.worker_heartbeats where worker_id = any($1)', [
+    ids.workers ?? [],
+  ])
+}
