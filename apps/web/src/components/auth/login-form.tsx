@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -26,6 +26,10 @@ export function LoginForm({ next }: { next: string }) {
   const t = useTranslations('auth')
   const router = useRouter()
   const [error, setError] = useState<LoginError | null>(null)
+  // Until the page is interactive the button stays disabled: a submit before then would be the
+  // browser's own form submit, which puts the email and password into the address bar.
+  const [ready, setReady] = useState(false)
+  useEffect(() => setReady(true), [])
   const {
     register,
     handleSubmit,
@@ -50,7 +54,9 @@ export function LoginForm({ next }: { next: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
+    // method="post" is only a fallback: if JavaScript failed to load, credentials would not go
+    // into the URL.
+    <form method="post" onSubmit={handleSubmit(onSubmit)} className="grid gap-4" noValidate>
       <div className="grid gap-2">
         <Label htmlFor="email">{t('email')}</Label>
         <Input
@@ -87,7 +93,7 @@ export function LoginForm({ next }: { next: string }) {
           {t(`error.${error}`)}
         </p>
       ) : null}
-      <Button type="submit" disabled={isSubmitting}>
+      <Button type="submit" disabled={!ready || isSubmitting}>
         {isSubmitting ? t('signingIn') : t('signIn')}
       </Button>
     </form>
