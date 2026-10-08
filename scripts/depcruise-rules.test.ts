@@ -88,6 +88,17 @@ describe('allowed layout', () => {
         "import { core } from '../../../packages/core/src/index'\nimport { db } from '../../../packages/db/src/index'\nexport const g = [core, db]",
       'apps/worker/src/sync.ts':
         "import { barsy } from '../../../packages/barsy/src/index'\nimport '@restro/barsy'\nexport const h = barsy",
+      // The db package may use its own insides; everyone else uses the entry points.
+      'packages/db/src/internal/pool.ts': 'export const pool = 1',
+      'packages/db/src/schema.ts': 'export const schema = 1',
+      'packages/db/src/read.ts':
+        "import { pool } from './internal/pool'\nimport { schema } from './schema'\nexport const r = [pool, schema]",
+      'packages/db/src/write/tx.ts':
+        "import { pool } from '../internal/pool'\nimport { schema } from '../schema'\nexport const tx = [pool, schema]",
+      'packages/db/tests/pool.test.ts':
+        "import { pool } from '../src/internal/pool'\nimport { write } from '../src/write/index'\nexport const t = [pool, write]",
+      'apps/worker/src/heartbeat.ts':
+        "import { db } from '@restro/db'\nimport { db as again } from '../../../packages/db/src/index'\nexport const i = [db, again]",
     })
     expect(lines).toEqual([])
   })
@@ -177,6 +188,106 @@ describe('rule 2: only core/apply imports the db write side', () => {
     )
     expect(lines).toHaveLength(4)
     expect(lines.some((line) => line.includes('packages/core/src/apply/'))).toBe(false)
+  })
+})
+
+describe('rule 2b: outside packages/db only the two entry points are importable', () => {
+  const inside: Files = {
+    ...base,
+    'packages/db/src/internal/pool.ts': 'export const pool = 1',
+    'packages/db/src/schema.ts': 'export const schema = 1',
+  }
+
+  it('rejects deep imports of packages/db/src from apps and packages', async () => {
+    const lines = await expectRules(
+      {
+        ...inside,
+        'apps/worker/src/a.ts': "import '../../../packages/db/src/internal/pool'",
+        'apps/web/app/b.ts': "import '../../../packages/db/src/schema'",
+        'packages/core/src/c.ts': "import '../../db/src/internal/pool'",
+        'packages/core/src/d.ts': "import type { schema } from '../../db/src/schema'",
+      },
+      ['db-entry-points-only'],
+    )
+    expect(lines).toHaveLength(4)
+  })
+
+  it('rejects the package-name form of a deep import', async () => {
+    const lines = await expectRules(
+      {
+        ...inside,
+        'apps/worker/src/a.ts': "import '@restro/db/src/internal/pool'",
+        'packages/core/src/b.ts': "import '@restro/db/src/schema'",
+        'packages/core/src/c.ts': "import '@restro/db/src'",
+      },
+      ['db-entry-points-only'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('allows both entry points, by package name and by path', async () => {
+    await expectRules(
+      {
+        ...inside,
+        'apps/worker/src/a.ts': "import '@restro/db'",
+        'packages/core/src/apply/b.ts': "import '@restro/db/write'",
+        'packages/core/src/apply/c.ts': "import '../../../db/src/write/index'",
+        'apps/web/app/d.ts': "import '../../../packages/db/src/index'",
+      },
+      [],
+    )
+  })
+
+  it('does not restrict code inside packages/db', async () => {
+    await expectRules(
+      {
+        ...inside,
+        'packages/db/src/read.ts': "import './internal/pool'\nimport './schema'",
+        'packages/db/tests/t.test.ts': "import '../src/internal/pool'\nimport '../src/schema'",
+      },
+      [],
+    )
+  })
+})
+
+describe('rule 2c: the db read side never imports the write side', () => {
+  it('rejects the read entry, the pool and the schema importing packages/db/src/write', async () => {
+    const lines = await expectRules(
+      {
+        ...base,
+        'packages/db/src/index.ts':
+          "import { write } from './write/index'\nexport const db = write",
+        'packages/db/src/internal/pool.ts':
+          "import { write } from '../write/index'\nexport const pool = write",
+        'packages/db/src/schema.ts':
+          "import type { write } from './write/index'\nexport type S = typeof write",
+      },
+      ['db-read-side-no-write'],
+    )
+    expect(lines).toHaveLength(3)
+    for (const file of ['index', 'internal/pool', 'schema']) {
+      expect(lines.some((line) => line.includes(`packages/db/src/${file}.ts`))).toBe(true)
+    }
+  })
+
+  it('allows the write side to use the pool and the schema', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/db/src/internal/pool.ts': 'export const pool = 1',
+        'packages/db/src/schema.ts': 'export const schema = 1',
+        'packages/db/src/write/index.ts':
+          "import { pool } from '../internal/pool'\nimport { schema } from '../schema'\nexport const write = [pool, schema]",
+      },
+      [],
+    )
+  })
+
+  it('does not apply to tests outside src', async () => {
+    await expectRules(
+      { ...base, 'packages/db/tests/write.test.ts': "import '../src/write/index'" },
+      [],
+    )
   })
 })
 
