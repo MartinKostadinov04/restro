@@ -9,30 +9,17 @@
 // that is not on this machine.
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-const run = promisify(execFile)
+import pg from 'pg'
 
-// `pg` is not a dependency of the worker (only pg-boss and @restro/db bring it), so this helper
-// loads the copy pg-boss uses and types the few calls it needs. Declaring pg (and @types/pg) as a
-// devDependency of the worker would make this a plain import.
-interface PgClient {
-  connect(): Promise<void>
-  query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[] }>
-  end(): Promise<void>
-  escapeIdentifier(value: string): string
-}
-interface PgModule {
-  Client: new (config: { connectionString: string }) => PgClient
-}
-const pg = createRequire(createRequire(import.meta.url).resolve('pg-boss'))('pg') as PgModule
+const run = promisify(execFile)
 
 /** A short-lived owner connection, for set-up and for inspecting what the worker did. */
 export async function withOwnerClient<T>(
   url: string,
-  fn: (client: PgClient) => Promise<T>,
+  fn: (client: pg.Client) => Promise<T>,
 ): Promise<T> {
   const client = new pg.Client({ connectionString: url })
   await client.connect()

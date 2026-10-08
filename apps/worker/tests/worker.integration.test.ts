@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { request } from 'node:http'
 
 import { withSystem, workerHeartbeats } from '@restro/db'
+import type { QueryResultRow } from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { WorkerConfig } from '../src/config'
@@ -109,7 +110,7 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
   const logged = () => lines.map((line) => JSON.parse(line) as Record<string, unknown>)
   let baseline = { clients: 0, servers: 0 }
 
-  const query = <Row>(sql: string, values: unknown[] = []) =>
+  const query = <Row extends QueryResultRow>(sql: string, values: unknown[] = []) =>
     withOwnerClient(db.ownerUrl, async (client) => (await client.query<Row>(sql, values)).rows)
 
   beforeAll(async () => {
@@ -214,7 +215,9 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
     expect(privileges).toEqual({ create_restro: false, create_db: false })
   })
 
-  it('applies the statement and idle-in-transaction timeouts to both pools', async () => {
+  // The worker puts no timeouts in the connection string: they come from `ALTER ROLE restro_app
+  // SET ...` in db:roles, which createTestDatabase() ran on this database.
+  it('gives both pools the statement and idle-in-transaction timeouts of the role', async () => {
     const [queueSide] = await worker.boss
       .getDb()
       .executeSql(
