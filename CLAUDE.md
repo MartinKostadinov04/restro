@@ -18,7 +18,8 @@ QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up t
 | Command | What |
 |---|---|
 | `pnpm install` | Install (pnpm via corepack, Node 24 LTS) |
-| `pnpm db:local` | Local Postgres 17 on localhost:54329 (embedded, no Docker — Docker Desktop does not run on this PC) |
+| `pnpm db:local` | Local Postgres 17 on localhost:54329 (embedded, no Docker — Docker Desktop does not run on this PC); foreground, Ctrl+C stops it |
+| `pnpm db:local:stop` / `pnpm db:local:reset` | Stop it from another terminal / stop and delete the local data |
 | `pnpm dev` | Web + worker in watch mode |
 | `pnpm lint` | Biome (lint + format check) |
 | `pnpm format` | Biome write |
@@ -64,7 +65,9 @@ docs/               tracker, architecture mirrors, platform reference, agent bri
 - Packages never import apps.
 
 ## Conventions
-- **TypeScript strict** everywhere. Zod at every boundary (barsy responses, change sets, snapshots, server-action inputs).
+- **Next.js 16.4 is newer than your training data.** Before writing Next.js code, read the relevant guide in `apps/web/node_modules/next/dist/docs/` (see `apps/web/AGENTS.md`).
+- **Workspace packages export TypeScript source** (no package build step); conventions in `README.md` → "Scaffold conventions". Biome style: 2 spaces, single quotes, semicolons only where needed.
+- **TypeScript strict** everywhere (TypeScript 6.0.3; 7.x is not yet supported by Next.js and dependency-cruiser). Zod at every boundary (barsy responses, change sets, snapshots, server-action inputs).
 - **Data fetching (U4):** admin = server components for reads, server actions that call `apply()` for writes. Guest = static shell that reads snapshots from the CDN. TanStack Query only for ordering later.
 - **One field-type registry.** Each field type registers `{ schema, Display, Editor, DefinitionEditor }` once. Never write a `switch (type)` over field types in a component (the Platform's main flaw).
 - **Layout is separate from schema.** Section membership and order are `placements` with fractional `sort_key`s, not part of the template.
