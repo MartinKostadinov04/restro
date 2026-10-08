@@ -18,7 +18,7 @@ QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up t
 | Command | What |
 |---|---|
 | `pnpm install` | Install (pnpm via corepack, Node 24 LTS) |
-| `docker compose up -d` | Local Postgres 17 |
+| `pnpm db:local` | Local Postgres 17 on localhost:54329 (embedded, no Docker — Docker Desktop does not run on this PC) |
 | `pnpm dev` | Web + worker in watch mode |
 | `pnpm lint` | Biome (lint + format check) |
 | `pnpm format` | Biome write |

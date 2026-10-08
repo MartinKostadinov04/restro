@@ -8,13 +8,13 @@
 A Postgres foundation that is safe for AI-written code from day one: Drizzle schema and migrations in our own schema, a migration owner role and a non-owner app role, row-level security that isolates tenants even when a query forgets its filter, a tenant-scoped client, a read/write split the import rules can police, and an integration test that proves isolation. Works on local Docker Postgres 17, in CI, and on Supabase (Frankfurt) later.
 
 ## Decisions already made (do not reopen)
-- Database = Postgres 17. Local: the scaffold's `docker-compose.yml`. Hosted: Supabase free plan, **Data API off**; we never use Supabase's `anon`/`authenticated` roles or PostgREST.
+- Database = Postgres 17. Local: `pnpm db:local` (embedded-postgres on localhost:54329; Docker does not work on this PC — D53). Hosted: Supabase free plan, **Data API off**; we never use Supabase's `anon`/`authenticated` roles or PostgREST.
 - All our tables live in schema **`restro`** (not `public`). pg-boss will use schema **`pgboss`**.
 - Ids are opaque prefixed text (`tn_…`, `vn_…`, `tp_…`, see `@restro/core` `newId` once S1-02 lands; until then accept any non-empty text with a check constraint on the prefix).
 - Driver: `pg` (node-postgres) — the same driver pg-boss uses. ORM: Drizzle ORM + drizzle-kit.
 
 ## Done when
-- [ ] `pnpm db:generate` and `pnpm db:migrate` work locally against Docker Postgres, using `DATABASE_URL_OWNER` for migrations
+- [ ] `pnpm db:generate` and `pnpm db:migrate` work locally against `pnpm db:local`, using `DATABASE_URL_OWNER` for migrations
 - [ ] `pnpm db:roles` (idempotent script) creates/updates the login role `restro_app` with the password from `DATABASE_APP_PASSWORD`, grants it only what it needs, `NOBYPASSRLS`, not owner of any `restro` table
 - [ ] Integration tests (Vitest, real Postgres; skipped with a clear message if `DATABASE_URL_OWNER` is absent, but **required in CI**) prove the isolation cases below
 - [ ] `docs/runbooks/supabase-setup.md` explains, step by step, how the lead will apply roles and migrations to Supabase `restro-staging` (session pooler connection string format, which SQL runs as `postgres`, how to switch off the Data API, how to verify)
