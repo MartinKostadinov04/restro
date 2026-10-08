@@ -76,6 +76,20 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 | D53 | **Local Postgres without Docker:** Docker Desktop fails on every start on this PC (Windows 11 Insider build 26300 cannot remove or read unix-socket files: `dockerInference`, `docker-secrets-engine\engine.sock`), so local development and tests use `embedded-postgres` 17.10 (`pnpm db:local`, port 54329). CI keeps the GitHub Actions `postgres:17` service container; `docker-compose.yml` stays as an optional alternative | Applied 10-08 |
 | D50 | **Defaults applied unless Martin vetoes:** one menu per venue (P47); default order_mode deferred to ordering (P45); barsy credentials encrypted in the app with AES-256-GCM, key only in the worker's environment (P38); Railway Hobby (P39); nightly full pull at 12:00 local (P31); data fetching convention U4 as written below | Applied 10-08 |
 
+## Engineering notes for Stage 2 (from Stage 1 agent reports, accepted by the lead 10-08)
+- `apply()` passes node context to `validateWrite`: manual/import prices allowed only on items **not** linked to barsy (hand-made wine list); unlink copies barsy values into the manual layer.
+- Add a `clearField {node, fieldKey, layer, scope}` op (revert override, take barsy's value, undo a builder hide).
+- Placement ops accept a position hint `'end'`; adapters never compute sort keys themselves.
+- The resolver hides nodes whose barsy link is `missing` or `deleted`, whatever their own status (rules 5, 6).
+- Edition layers write only `all_true` flags for now (hide here, sold out tonight = `for_sale = false`).
+- Add id kinds `jb` (job), `in` (integration), `us` (user), `sr` (source record).
+- Casing: stored values and snapshots use snake_case (`amount_minor`); code-level config objects (field definitions, change sets) use camelCase.
+- `placements.sort_key` needs `COLLATE "C"`; `value_hash` is SHA-256 (64 hex chars), not the doc's 8.
+- Check real barsy `supplement_price` data for negative option deltas before allowing them.
+- Specials: no fields in `venue-menu@1` yet; added when needed. Modifier-group `min ≤ max` checked at node level in the resolver.
+- barsy client: record the real wrong-password response to learn the auth-error shape; one failing method inside a multi-method call is undocumented — record a real case.
+- **Doc fixes to apply in one pass at the end of Stage 1:** specials sit under the menu only (series never under many); Section hints are two fields `hint_color`/`hint_icon`; trace 4 writes `for_sale = false` (no `sold_out` field); price = `locked` + `never_when_orderable`; mapping-only fields (`slug`, Option `description`) to add to the template; scopes use our `vn_` ids, never a barsy `bid`; `value_hash` is SHA-256; refresh `docs/architecture/` mirrors from the live doc.
+
 ## Conflicts between the Menu Engine doc and earlier decisions
 - **C1. Build order vs D4/D2** — **resolved by D39.**
 - **C2. Open-account rounds vs D5** — resolved on the product side (D5). barsy side open (Q21, Q47); recommendation P41.
