@@ -1,4 +1,3 @@
-import { type Locale, localeToBcp47 } from '@restro/core'
 import type { Venue } from '@restro/db'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { Badge } from '@/components/ui/badge'
@@ -18,8 +17,9 @@ export async function VenueSettings({ venue }: { venue: Venue }) {
   const t = await getTranslations('workspace.settings')
   const uiLocale = await getLocale()
   const languageNames = new Intl.DisplayNames([uiLocale], { type: 'language' })
+  // The language only (`en`), not the dialect (`en-US`): "английски", not "американски английски".
   const languageName = (locale: string) =>
-    languageNames.of(localeToBcp47(locale as Locale)) ?? locale
+    languageNames.of(locale.split('_')[0] ?? locale) ?? locale
 
   return (
     <FormSection title={t('title')} description={t('description')}>
@@ -36,6 +36,7 @@ export async function VenueSettings({ venue }: { venue: Venue }) {
               <Badge
                 key={locale}
                 variant={locale === venue.defaultLocale ? 'default' : 'secondary'}
+                className="capitalize"
               >
                 {languageName(locale)}
                 {locale === venue.defaultLocale ? ` · ${t('defaultLanguage')}` : ''}

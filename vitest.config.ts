@@ -23,14 +23,30 @@ function workspaceDirs(): string[] {
   })
 }
 
-const projects = [...workspaceDirs(), 'scripts'].map((dir) => ({
-  test: {
-    name: dir,
-    root: toPath(`${dir}/`),
-    include: ['**/*.test.{ts,tsx}'],
-    environment: 'node' as const,
-  },
-}))
+// The web app's component tests (Testing Library) need the `@/` alias of its tsconfig and a
+// setup file (DOM clean-up, matchMedia). A component test opts into jsdom with the docblock
+// `// @vitest-environment jsdom`; every other test stays in Node.
+function projectExtras(dir: string) {
+  if (dir !== 'apps/web') return {}
+  return {
+    resolve: { alias: { '@': toPath('apps/web/src') } },
+    test: { setupFiles: [toPath('apps/web/vitest.setup.ts')] },
+  }
+}
+
+const projects = [...workspaceDirs(), 'scripts'].map((dir) => {
+  const extras = projectExtras(dir)
+  return {
+    ...(extras.resolve ? { resolve: extras.resolve } : {}),
+    test: {
+      name: dir,
+      root: toPath(`${dir}/`),
+      include: ['**/*.test.{ts,tsx}'],
+      environment: 'node' as const,
+      ...extras.test,
+    },
+  }
+})
 
 export default defineConfig({
   test: { projects },
