@@ -66,14 +66,32 @@ module.exports = {
       to: { path: IO_PACKAGES },
     },
 
-    // 2. One write path (rule 1): only apply() may use the write side of the db package.
+    // 2. One write path (rule 1): only apply() may use the write side of the db package, and
+    //    the package has exactly two doors.
     {
       name: 'db-write-only-from-core-apply',
       severity: 'error',
-      comment:
-        'Only files under packages/core/src/apply/ may import @restro/db/write. The path does not exist yet; the rule is in place before it does.',
+      comment: 'Only files under packages/core/src/apply/ may import @restro/db/write.',
       from: { pathNot: ['^packages/core/src/apply/', '^packages/db/'] },
       to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
+    },
+    {
+      name: 'db-entry-points-only',
+      severity: 'error',
+      comment:
+        'Outside packages/db, import the database package only through its two entry points, @restro/db and @restro/db/write (packages/db/src/index.ts and packages/db/src/write/index.ts). Anything else under packages/db/src, such as the connection pool, would let code run queries outside a tenant-scoped transaction.',
+      from: { pathNot: '^packages/db/' },
+      to: {
+        path: ['^packages/db/src/(?!(index|write/index)\\.ts$)', '^@restro/db/src(/|$)'],
+      },
+    },
+    {
+      name: 'db-read-side-no-write',
+      severity: 'error',
+      comment:
+        'Inside packages/db/src, only files under packages/db/src/write/ may import packages/db/src/write: the read side (the @restro/db entry, the pool, the schema) must never reach the write side, or the read-only entry point could end up exposing a write transaction.',
+      from: { path: '^packages/db/src/', pathNot: '^packages/db/src/write/' },
+      to: { path: '^packages/db/src/write(/|\\.|$)' },
     },
 
     // 3 and 4. barsy is read by the worker only (CLAUDE.md "Never": web never calls barsy).
