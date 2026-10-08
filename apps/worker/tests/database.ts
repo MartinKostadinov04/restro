@@ -1,0 +1,142 @@
+// Set-up for the worker's integration test: a brand-new Postgres database, migrated and with the
+// app role in place, so pg-boss really installs its tables as `restro_app` (the same privileges
+// production gives it) and nothing the test does touches any other database.
+//
+// Needs DATABASE_URL_OWNER (the migration owner; local: the db:local superuser) and either
+// DATABASE_URL (restro_app) or DATABASE_APP_PASSWORD. Without DATABASE_URL_OWNER the test is
+// skipped with a message; in CI (CI is set) a missing variable fails the run, because there the
+// test is required. Like the packages/db tests it never reads .env files and refuses a database
+// that is not on this machine.
+import { execFile } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
+
+const run = promisify(execFile)
+
+// `pg` is not a dependency of the worker (only pg-boss and @restro/db bring it), so this helper
+// loads the copy pg-boss uses and types the few calls it needs. Declaring pg (and @types/pg) as a
+// devDependency of the worker would make this a plain import.
+interface PgClient {
+  connect(): Promise<void>
+  query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[] }>
+  end(): Promise<void>
+  escapeIdentifier(value: string): string
+}
+interface PgModule {
+  Client: new (config: { connectionString: string }) => PgClient
+}
+const pg = createRequire(createRequire(import.meta.url).resolve('pg-boss'))('pg') as PgModule
+
+/** A short-lived owner connection, for set-up and for inspecting what the worker did. */
+export async function withOwnerClient<T>(
+  url: string,
+  fn: (client: PgClient) => Promise<T>,
+): Promise<T> {
+  const client = new pg.Client({ connectionString: url })
+  await client.connect()
+  try {
+    return await fn(client)
+  } finally {
+    await client.end()
+  }
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const DB_SCRIPTS = fileURLToPath(new URL('../../../packages/db/scripts/', import.meta.url))
+
+const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
+
+/** True when the integration test can run. */
+export const hasDatabase = ownerUrl !== ''
+
+if (!hasDatabase) {
+  if (process.env.CI) {
+    throw new Error(
+      'DATABASE_URL_OWNER is not set. The worker integration test is required in CI: set ' +
+        'DATABASE_URL_OWNER and DATABASE_APP_PASSWORD (or DATABASE_URL) for the CI Postgres service.',
+    )
+  }
+  process.stderr.write(
+    '\n[@restro/worker] Skipping the integration test: DATABASE_URL_OWNER is not set. ' +
+      'Start `pnpm db:local`, set DATABASE_URL_OWNER and DATABASE_APP_PASSWORD, then `pnpm test`.\n',
+  )
+}
+
+function assertLocal(url: string, name: string): void {
+  const parsed = new URL(url)
+  const host = parsed.searchParams.get('host') ?? parsed.hostname
+  if (!LOCAL_HOSTS.has(host) && !host.startsWith('/')) {
+    throw new Error(
+      `${name} points at ${host}; the integration test only runs on a local database.`,
+    )
+  }
+}
+
+/** `url` pointing at database `name` instead. */
+function withDatabase(url: string, name: string): string {
+  const parsed = new URL(url)
+  parsed.pathname = `/${name}`
+  return parsed.toString()
+}
+
+export interface TestDatabase {
+  readonly name: string
+  /** Connection string of the app role `restro_app` for the new database. */
+  readonly appUrl: string
+  /** Connection string of the migration owner for the new database (set-up and inspection). */
+  readonly ownerUrl: string
+  /** Drops the database, closing whatever is still connected to it. */
+  drop(): Promise<void>
+}
+
+/** Creates a fresh database, applies the migrations and sets up the app role in it. */
+export async function createTestDatabase(): Promise<TestDatabase> {
+  assertLocal(ownerUrl, 'DATABASE_URL_OWNER')
+  const explicitAppUrl = process.env.DATABASE_URL
+  if (explicitAppUrl) assertLocal(explicitAppUrl, 'DATABASE_URL')
+  const password = process.env.DATABASE_APP_PASSWORD
+  if (!explicitAppUrl && !password) {
+    throw new Error('Set DATABASE_URL (restro_app) or DATABASE_APP_PASSWORD for the test.')
+  }
+
+  const name = `restro_worker_${randomUUID().replaceAll('-', '').slice(0, 16)}`
+  await withOwnerClient(ownerUrl, (client) =>
+    client.query(`create database ${client.escapeIdentifier(name)}`),
+  )
+
+  const newOwnerUrl = withDatabase(ownerUrl, name)
+  let appUrl: string
+  if (explicitAppUrl) {
+    appUrl = withDatabase(explicitAppUrl, name)
+  } else {
+    const parsed = new URL(newOwnerUrl)
+    parsed.username = 'restro_app'
+    parsed.password = encodeURIComponent(password ?? '')
+    appUrl = parsed.toString()
+  }
+
+  const drop = async () => {
+    await withOwnerClient(ownerUrl, (client) =>
+      client.query(`drop database if exists ${client.escapeIdentifier(name)} with (force)`),
+    )
+  }
+
+  try {
+    const env = {
+      ...process.env,
+      DATABASE_URL_OWNER: newOwnerUrl,
+      ...(password ? { DATABASE_APP_PASSWORD: password } : {}),
+    }
+    for (const script of ['migrate.ts', 'roles.ts']) {
+      await run(process.execPath, ['--disable-warning=ExperimentalWarning', DB_SCRIPTS + script], {
+        env,
+      })
+    }
+  } catch (error) {
+    await drop().catch(() => undefined)
+    throw error
+  }
+  return { name, appUrl, ownerUrl: newOwnerUrl, drop }
+}
