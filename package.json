@@ -20,7 +20,7 @@
     "db:local:reset": "node scripts/local-db.mjs reset",
     "db:generate": "node scripts/not-implemented.mjs db:generate",
     "db:migrate": "node scripts/not-implemented.mjs db:migrate",
-    "barsy:record": "node scripts/not-implemented.mjs barsy:record"
+    "barsy:record": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local packages/barsy/src/record/cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

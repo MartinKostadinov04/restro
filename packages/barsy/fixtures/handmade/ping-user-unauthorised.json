@@ -1,0 +1,11 @@
+{
+  "method": "Misc_ping_user",
+  "params": {},
+  "bid": null,
+  "recordedAt": null,
+  "status": 401,
+  "requestId": null,
+  "body": "",
+  "handmade": true,
+  "note": "HANDMADE, not a recording. The docs say invalid credentials give 'a standard authorisation error' but not its shape (https://docs.lukanet.com/barsy.api/methods/misc/ping_user.html). 401 with an empty body is an assumption that only exercises the client's 401 path. Record the real one with a wrong password: pnpm barsy:record -- --method Misc_ping_user --name ping-user-unauthorised"
+}

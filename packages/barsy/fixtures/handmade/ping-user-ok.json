@@ -1,0 +1,11 @@
+{
+  "method": "Misc_ping_user",
+  "params": {},
+  "bid": null,
+  "recordedAt": null,
+  "status": 200,
+  "requestId": null,
+  "body": "1",
+  "handmade": true,
+  "note": "HANDMADE, not a recording. Written from the official docs (Misc_ping_user returns 1 for valid credentials; https://docs.lukanet.com/barsy.api/methods/misc/ping_user.html). Replace with a real one: pnpm barsy:record -- --method Misc_ping_user"
+}

@@ -1,4 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The recorder runs under Node's built-in TypeScript support (no tsx), which needs explicit
+    // ".ts" extensions on relative imports and only understands erasable syntax.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
+  },
   "include": ["src"]
 }
