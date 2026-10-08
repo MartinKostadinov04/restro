@@ -73,6 +73,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 | D49 | **Platform reference:** the Synex Platform is the reference for document → view engine, management and navigation; reviewed at the start of every stage and named in every brief (`docs/platform-reference.md`) | Firm (Martin, 10-08); code reuse allowed (D51) |
 | D51 | **Synex Platform code may be reused** in Restro (code and patterns), ported to TypeScript (answers Q72) | Firm (Martin, 10-08) |
 | D52 | **Toolchain pinned per repo, not system-wide:** pnpm 10.34.6 (`packageManager`; pnpm 12 is six weeks old and less known to coding agents) and Node 24.21.0 via pnpm `use-node-version`; the PC's system Node 22 (used by the Platform) stays untouched | Applied 10-08 |
+| D54 | **Supabase `restro-staging` is in West EU (Ireland, `eu-west-1`)**, not Frankfurt as D43 planned; session pooler `aws-0-eu-west-1.pooler.supabase.com:5432`. Adds a few ms from Railway Amsterdam; acceptable. Create `restro-prod` in the same region | Recorded 10-09 |
 | D53 | **Local Postgres without Docker:** Docker Desktop fails on every start on this PC (Windows 11 Insider build 26300 cannot remove or read unix-socket files: `dockerInference`, `docker-secrets-engine\engine.sock`), so local development and tests use `embedded-postgres` 17.10 (`pnpm db:local`, port 54329). CI keeps the GitHub Actions `postgres:17` service container; `docker-compose.yml` stays as an optional alternative | Applied 10-08 |
 | D50 | **Defaults applied unless Martin vetoes:** one menu per venue (P47); default order_mode deferred to ordering (P45); barsy credentials encrypted in the app with AES-256-GCM, key only in the worker's environment (P38); Railway Hobby (P39); nightly full pull at 12:00 local (P31); data fetching convention U4 as written below | Applied 10-08 |
 
@@ -273,13 +274,14 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - [x] T35. Platform reference map (`docs/platform-reference.md`) — Claude, 10-08
 - [x] T36. Repo `E:\Restro` initialised; research moved to `docs/research/`; doc mirrors in `docs/architecture/`; agent brief template — Claude, 10-08
 - [x] T26. Scaffold the repo (pnpm monorepo, CLAUDE.md, CI gates, import rules, fixtures harness), document-model foundation, DB with RLS, admin and worker shells, barsy read client skeleton — Claude + subagents, merged on `s1/ground` 10-09 (662 tests + 6 browser tests green); pull request to `main` for Martin
-- [ ] T42. First real barsy recording (`pnpm barsy:record -- --method Misc_ping_user`, plus a wrong-password recording) — Claude, after T38
-- [ ] T43. Bootstrap Supabase `restro-staging` (migrations + `restro_app` role) — Claude, needs Martin's explicit OK
+- [x] T42. First real barsy recording (`pnpm barsy:record -- --method Misc_ping_user`, plus a wrong-password recording) — done 10-09: Misc_ping and Misc_ping_user return 1; a wrong password returns HTTP 401 with plain-text body "Проблем с автентикацията: Грешен потребител или парола"
+- [x] T43. Bootstrap Supabase `restro-staging` (migrations + `restro_app` role) — done 10-09 with Martin's OK: 3 migrations, `restro_app` safe, RLS forced on tenant tables, `anon`/`authenticated`/`service_role`/`authenticator` have no access to `restro` or `pgboss`, app login through the session pooler with a verified certificate
+- [ ] T46. The Supabase session pooler ignores startup `options` (statement_timeout came back as Supabase's 2min default): set `statement_timeout=30s` and `idle_in_transaction_session_timeout=60s` with `ALTER ROLE restro_app SET …` in `db:roles` before the app runs on staging — Claude
 - [ ] T45. Production deploy pipeline (Stage 3, with Railway) re-runs `scripts/freeze-window.mjs` at deploy time and refuses to deploy inside the freeze window; the PR check is only an early warning — Claude
 - [ ] T44. Review Bulgarian interface wording in `apps/web/messages/bg.json` — Martin
 - [ ] T40. Doc updates: "Core rules" section; QR-phone-only scope; polling; Supabase; trace 4 manager-only; barsy corrections; new "Stage plan" tab — Claude
-- [ ] T37. Supabase: new organisation "Restro" (Free), project `restro-staging` in Central EU (Frankfurt), Data API off; send the project ref — Martin
-- [ ] T38. Request the barsy demo password via the form at barsy.bg/demo — Martin
+- [x] T37. Supabase organisation "Restro" + project `restro-staging` (created in West EU/Ireland, D54) — Martin, 10-09; Data API toggle not found in his dashboard: not critical (no API role can reach our schemas, verified)
+- [x] T38. barsy demo credentials received — Martin, 10-09 (in `.env.local`)
 - [ ] T39. Send the Lukanet test-environment request (draft by Claude, includes Q41, Q60, Q71) — Martin
 - [x] T41. Answer Q72 (Synex code reuse) — Martin, 10-08: yes
 
