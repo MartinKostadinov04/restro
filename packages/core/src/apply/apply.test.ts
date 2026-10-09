@@ -44,10 +44,11 @@ describe('module boundary', () => {
     }
   })
 
-  it('links items to articles, sections to categories, options to modificators or supplements', () => {
+  it('links items to articles, sections to categories, groups to supplement groups, options to modificators or supplements', () => {
     expect(BARSY_LINK_TYPES).toEqual({
       item: ['article'],
       section: ['category'],
+      modifier_group: ['supplement_group'],
       option: ['modificator', 'supplement'],
     })
   })
@@ -300,6 +301,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect(again).toEqual({
       applied: 0,
       unchanged: pull.ops.length,
+      skipped: 0,
       rejected: [],
       createdNodeIds: [],
       eventsWritten: 0,
