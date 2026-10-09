@@ -266,7 +266,8 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect(result.rejected).toEqual([])
     expect(result.createdNodeIds).toEqual([section, item])
     expect(result.applied).toBe(pull.ops.length)
-    expect(result.eventsWritten).toBe(5)
+    // 5 field values + 2 created nodes + 2 links + 1 placement.
+    expect(result.eventsWritten).toBe(10)
     expect(await nodeOf(section)).toMatchObject({
       nodeType: 'section',
       parentId: menu.id,
@@ -281,11 +282,14 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
       valid: true,
       mappingVersion: 1,
     })
-    expect((await eventsOf(item)).map((event) => event.fieldKey).sort()).toEqual([
-      'for_sale',
-      'name',
-      'price',
-      'visible',
+    expect((await eventsOf(item)).map((event) => `${event.op}:${event.fieldKey}`).sort()).toEqual([
+      'createNode:node',
+      'linkSource:link',
+      'setField:for_sale',
+      'setField:name',
+      'setField:price',
+      'setField:visible',
+      'setPlacement:placement',
     ])
   })
 

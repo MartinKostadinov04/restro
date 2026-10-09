@@ -15,13 +15,12 @@
 import { type DbPool, withTenant } from '@restro/db'
 import { sql } from 'drizzle-orm'
 
-import type { Layer, Scope, Source } from '../change-set'
 import type { MenuDocument } from '../document/types'
 import { isId, type NodeId } from '../ids'
-import type { NodeStatus, NodeType } from '../node-types'
 import { ApplyError } from './apply'
+import { type DocumentPartRows, documentPartsFromRows } from './document-rows'
 
-interface DocumentRow {
+interface DocumentRow extends DocumentPartRows {
   menu: {
     id: string
     venue_id: string
@@ -29,28 +28,7 @@ interface DocumentRow {
     template_version: number
     root_node_id: string
   } | null
-  nodes: {
-    id: string
-    type: string
-    parentId: string | null
-    status: string
-    revision: number
-    sortKey: string | null
-  }[]
   placements: { itemId: string; sectionId: string; sortKey: string }[]
-  values: {
-    nodeId: string
-    fieldKey: string
-    layer: string
-    scope: string
-    value: unknown
-    valueHash: string
-    source: string
-    observedAt: string
-    basis: unknown
-    valid: boolean
-  }[]
-  links: { nodeId: string; source: string; externalType: string; state: string }[]
 }
 
 /**
@@ -131,36 +109,11 @@ export async function loadMenuDocument(
       templateVersion: menu.template_version,
       rootNodeId: menu.root_node_id as NodeId,
     },
-    nodes: row.nodes.map((node) => ({
-      id: node.id as NodeId,
-      type: node.type as NodeType,
-      parentId: node.parentId as NodeId | null,
-      status: node.status as NodeStatus,
-      revision: node.revision,
-      sortKey: node.sortKey,
-    })),
+    ...documentPartsFromRows(row),
     placements: row.placements.map((placement) => ({
       itemId: placement.itemId as NodeId,
       sectionId: placement.sectionId as NodeId,
       sortKey: placement.sortKey,
-    })),
-    values: row.values.map((value) => ({
-      nodeId: value.nodeId as NodeId,
-      fieldKey: value.fieldKey,
-      layer: value.layer as Layer,
-      scope: value.scope as Scope,
-      value: value.value,
-      valueHash: value.valueHash,
-      source: value.source as Source,
-      observedAt: new Date(value.observedAt).toISOString(),
-      basis: value.basis ?? null,
-      valid: value.valid,
-    })),
-    links: row.links.map((link) => ({
-      nodeId: link.nodeId as NodeId,
-      source: link.source as Source,
-      externalType: link.externalType,
-      state: link.state as 'active' | 'missing' | 'deleted',
     })),
   }
 }

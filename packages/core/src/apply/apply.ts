@@ -15,8 +15,14 @@
 // Each op ends applied, unchanged (a no-op) or rejected with a reason; a rejected op changes
 // nothing, except that an invalid value (V1/V2) is kept as a `valid = false` row when its slot
 // has no good value to protect (doc: "Invalid writes are kept as rejected rows with a reason;
-// they never replace the last good value"). Doc step 5 (mark menus dirty, queue a resolve) comes
-// with the jobs of S2-06.
+// they never replace the last good value"). A caller whose ops only make sense together (the
+// composer's "move an item": place it there, take it out of here) passes `atomic: true`: then a
+// single rejected op refuses the whole change set and nothing is written. Doc step 5 (mark menus
+// dirty, queue a resolve) comes with the jobs of S2-06.
+//
+// The changelog (`events`) records every applied change, not only field values: a new node, a
+// status change, a placement, a removal, a move and a link each append one row whose `op` says
+// what kind of change it is (see the `events` table in @restro/db).
 
 import {
   type DbPool,
@@ -35,6 +41,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import {
   type ChangeSet,
+  type ChangeSetOpName,
   type ClearField,
   type FieldWrite,
   type Layer,
@@ -47,7 +54,7 @@ import {
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 import { canonicalJson, sha256Hex } from '../hash'
 import type { NodeId } from '../ids'
-import { canNest, type NodeStatus, type NodeType } from '../node-types'
+import { canNest, MAX_SECTION_DEPTH, type NodeStatus, type NodeType } from '../node-types'
 import type { RejectionCode } from '../result'
 import { sortKeyBetween } from '../sort-keys'
 import { findField, type Template } from '../template'
@@ -68,8 +75,14 @@ export type ApplyRejectionCode =
   | 'unknown_source_record'
   /** A link names an integration the tenant does not have. */
   | 'unknown_integration'
-  /** The parent cannot hold this node type at this depth (`canNest`). */
+  /**
+   * The parent cannot hold this node type at this depth (`canNest`); a moved section would land
+   * in its own subtree, in another menu, or push its sub-sections below depth 3; a modifier
+   * group or option was moved to another parent.
+   */
   | 'invalid_parent'
+  /** moveNode of something that is not moved this way (a menu, an item, a special). */
+  | 'invalid_move'
   /** createNode with an id that exists as another type or under another parent. */
   | 'id_conflict'
   /** A placement of something that is not an item, or into something that is not a section. */
@@ -114,7 +127,10 @@ export interface ApplyResult {
   readonly rejected: readonly ApplyRejection[]
   /** Nodes this change set created (a createNode resolved onto a linked node is not one). */
   readonly createdNodeIds: readonly NodeId[]
-  /** Rows appended to `events`: one per changed field value. */
+  /**
+   * Rows appended to `events`: one per applied change (a field value set or cleared, a node
+   * created, a status change, a placement, a removal, a move, a link or an unlink).
+   */
   readonly eventsWritten: number
 }
 
@@ -122,6 +138,13 @@ export interface ApplyResult {
 export interface ApplyOptions {
   /** The template field writes are validated against. Default: `VENUE_MENU_TEMPLATE`. */
   readonly template?: Template
+  /**
+   * All or nothing: if any op is rejected the whole change set is refused with an `ApplyError`
+   * (`change_set_rejected`, the rejections in `error.rejected`) and nothing is written. For
+   * changes whose ops belong together, such as a person's drag in the composer. Default: false
+   * (the applied ops commit, the rejected ones are reported, as a sync needs).
+   */
+  readonly atomic?: boolean
 }
 
 /** Why a whole change set (or a document read) was refused; nothing was written. */
@@ -132,15 +155,20 @@ export type ApplyErrorCode =
   | 'unknown_integration'
   /** `loadMenuDocument`: the tenant has no menu with this id. */
   | 'menu_not_found'
+  /** `atomic` apply: at least one op was rejected, so none was applied. */
+  | 'change_set_rejected'
 
 /** Thrown when a change set is refused as a whole, or a document cannot be read. */
 export class ApplyError extends Error {
   override name = 'ApplyError'
   readonly code: ApplyErrorCode
+  /** `change_set_rejected` only: every rejected op. */
+  readonly rejected: readonly ApplyRejection[]
 
-  constructor(code: ApplyErrorCode, message: string) {
+  constructor(code: ApplyErrorCode, message: string, rejected: readonly ApplyRejection[] = []) {
     super(message)
     this.code = code
+    this.rejected = rejected
   }
 }
 
@@ -149,8 +177,9 @@ type LinkLifecycle = 'active' | 'missing' | 'deleted'
 interface NodeState {
   readonly id: NodeId
   readonly type: NodeType
-  readonly parentId: NodeId | null
-  readonly sortKey: string | null
+  /** Changed by moveNode (sections move; groups and options only change `sortKey`). */
+  parentId: NodeId | null
+  sortKey: string | null
   status: NodeStatus
 }
 
@@ -181,6 +210,7 @@ interface ValueRow {
 }
 
 interface EventRow {
+  readonly op: ChangeSetOpName
   readonly nodeId: NodeId
   readonly fieldKey: string
   readonly layer: Layer
@@ -248,6 +278,8 @@ class DocumentState {
   readonly lastChildKey = new Map<NodeId, string>()
 
   readonly createdNodes: NodeState[] = []
+  /** Where each moved node stood before this change set (the first move records it). */
+  readonly movedFrom = new Map<NodeId, { parentId: NodeId | null; sortKey: string | null }>()
   readonly statusChanged = new Set<NodeId>()
   readonly touched = new Set<NodeId>()
   readonly dirtyLinks = new Set<string>()
@@ -432,6 +464,37 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
     }
   }
 
+  // The sections below every section a moveNode moves (their depth must still fit after the move).
+  const movedIds = new Set<NodeId>()
+  for (const op of set.ops) if (op.op === 'moveNode' && 'id' in op.node) movedIds.add(op.node.id)
+  if (movedIds.size > 0) {
+    const below = await tx.execute<{
+      id: string
+      node_type: string
+      parent_id: string | null
+      sort_key: string | null
+      status: string
+    }>(sql`
+      with recursive down as (
+        select id, node_type, parent_id, sort_key, status from restro.nodes
+        where parent_id = any(${sql.param([...movedIds])}::text[]) and node_type = 'section'
+        union
+        select n.id, n.node_type, n.parent_id, n.sort_key, n.status
+        from restro.nodes n join down d on n.parent_id = d.id where n.node_type = 'section'
+      )
+      select id, node_type, parent_id, sort_key, status from down`)
+    for (const row of below.rows) {
+      if (state.nodes.has(row.id as NodeId)) continue
+      state.nodes.set(row.id as NodeId, {
+        id: row.id as NodeId,
+        type: row.node_type as NodeType,
+        parentId: row.parent_id as NodeId | null,
+        sortKey: row.sort_key,
+        status: row.status as NodeStatus,
+      })
+    }
+  }
+
   // Identity: a createNode whose node is linked (by a linkSource of the same set) to an external
   // object that is already linked collapses onto the existing node, if the type matches.
   const linksByCreatedId = new Map<string, SourceLink[]>()
@@ -449,10 +512,12 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
     }
   }
 
-  // The last sibling key under every parent a createNode names (so 'end' sees the current last).
+  // The last sibling key under every parent a createNode or moveNode names (so 'end' sees the
+  // current last).
   const parentIds = new Set<NodeId>()
   for (const op of set.ops) {
-    if (op.op !== 'createNode' || op.parent === null) continue
+    if (op.op !== 'createNode' && op.op !== 'moveNode') continue
+    if (op.parent === null) continue
     const ref = op.parent
     const id =
       'id' in ref
@@ -505,6 +570,8 @@ class Run {
   applied = 0
   unchanged = 0
   private readonly barsyIntegration: string | null
+  /** The layer of the source, which structural events (no field, no layer of their own) carry. */
+  private readonly sourceLayer: Layer
 
   constructor(
     private readonly set: ChangeSet,
@@ -512,6 +579,8 @@ class Run {
     private readonly state: DocumentState,
   ) {
     this.barsyIntegration = set.source.startsWith('barsy:') ? set.source.slice(6) : null
+    this.sourceLayer =
+      this.barsyIntegration !== null ? 'barsy' : set.source === 'manual' ? 'manual' : 'import'
   }
 
   processAll(): void {
@@ -532,6 +601,9 @@ class Run {
           break
         case 'removePlacement':
           outcome = this.removePlacement(op)
+          break
+        case 'moveNode':
+          outcome = this.moveNode(op)
           break
         case 'setNodeStatus':
           outcome = this.setNodeStatus(op)
@@ -583,6 +655,24 @@ class Run {
     newValue: unknown,
   ) {
     this.state.events.push({ ...row, oldValue, newValue })
+  }
+
+  /**
+   * A changelog row for a structural change: a reserved key (`node`, `status`, `placement`,
+   * `parent`, `link`), the source's layer, scope master. Values name our own ids only (rule 3).
+   */
+  private structuralEvent(
+    op: ChangeSetOpName,
+    nodeId: NodeId,
+    fieldKey: string,
+    oldValue: unknown,
+    newValue: unknown,
+  ) {
+    this.event(
+      { op, nodeId, fieldKey, layer: this.sourceLayer, scope: 'master' },
+      oldValue,
+      newValue,
+    )
   }
 
   private valueRow(
@@ -671,7 +761,13 @@ class Run {
     this.state.putValue(this.valueRow(node.id, write, hash, null))
     this.state.dirtyValues.add(key)
     this.event(
-      { nodeId: node.id, fieldKey: write.fieldKey, layer: write.layer, scope: write.scope },
+      {
+        op: 'setField',
+        nodeId: node.id,
+        fieldKey: write.fieldKey,
+        layer: write.layer,
+        scope: write.scope,
+      },
       current?.valid ? current.value : null,
       write.value,
     )
@@ -692,7 +788,13 @@ class Run {
     this.state.deleteValue(key)
     if (current.valid) {
       this.event(
-        { nodeId: node.id, fieldKey: clear.fieldKey, layer: clear.layer, scope: clear.scope },
+        {
+          op: 'clearField',
+          nodeId: node.id,
+          fieldKey: clear.fieldKey,
+          layer: clear.layer,
+          scope: clear.scope,
+        },
         current.value,
         null,
       )
@@ -762,6 +864,11 @@ class Run {
     }
     this.state.nodes.set(node.id, node)
     this.state.createdNodes.push(node)
+    this.structuralEvent('createNode', node.id, 'node', null, {
+      type: node.type,
+      parent: node.parentId,
+      status: node.status,
+    })
     return APPLIED
   }
 
@@ -804,6 +911,13 @@ class Run {
       sectionId: section.id,
       itemId: item.id,
     })
+    this.structuralEvent(
+      'setPlacement',
+      item.id,
+      'placement',
+      current === undefined ? null : { section: section.id, sort_key: current },
+      { section: section.id, sort_key: sortKey },
+    )
     return APPLIED
   }
 
@@ -814,19 +928,136 @@ class Run {
     if ('kind' in targets) return targets
     const { item, section } = targets
     const inSection = this.state.placementsOf(section.id)
-    if (!inSection.has(item.id)) return UNCHANGED
+    const current = inSection.get(item.id)
+    if (current === undefined) return UNCHANGED
     inSection.delete(item.id)
     this.state.dirtyPlacements.set(pairKey(section.id, item.id), {
       sectionId: section.id,
       itemId: item.id,
     })
+    this.structuralEvent(
+      'removePlacement',
+      item.id,
+      'placement',
+      { section: section.id, sort_key: current },
+      null,
+    )
     return APPLIED
+  }
+
+  /**
+   * Moves a section (new parent, new place) or reorders a modifier group or option among its
+   * siblings. A section keeps its depth rules: a menu or section parent, never inside its own
+   * subtree, never in another menu, and no sub-section deeper than `MAX_SECTION_DEPTH`.
+   */
+  private moveNode(op: Extract<ChangeSet['ops'][number], { op: 'moveNode' }>): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', 'only a person moves nodes (a manual change set)')
+    }
+    const node = this.node(op.node)
+    if (isOutcome(node)) return node
+    const parent = this.node(op.parent)
+    if (isOutcome(parent)) return parent
+
+    if (node.type === 'section') {
+      if (parent.id === node.id || this.isBelow(parent, node.id)) {
+        return refused('invalid_parent', 'a section cannot move into itself or its own sections')
+      }
+      if (this.rootOf(parent) !== this.rootOf(node)) {
+        return refused('invalid_parent', 'a section cannot move to another menu')
+      }
+      const depth = this.depthOf(parent) + 1
+      if (!canNest(parent.type, 'section', depth)) {
+        return refused(
+          'invalid_parent',
+          `a section cannot sit under a ${parent.type} at depth ${depth}`,
+        )
+      }
+      if (depth + this.sectionHeight(node) > MAX_SECTION_DEPTH) {
+        return refused(
+          'invalid_parent',
+          `the section and the sections inside it would be deeper than ${MAX_SECTION_DEPTH} levels`,
+        )
+      }
+    } else if (node.type === 'modifier_group' || node.type === 'option') {
+      if (parent.id !== node.parentId) {
+        return refused('invalid_parent', `a ${node.type} only changes its place among its siblings`)
+      }
+    } else {
+      return refused('invalid_move', `a ${node.type} is not moved this way`)
+    }
+
+    const sameParent = node.parentId === parent.id
+    let sortKey: string
+    if (op.sortKey === 'end') {
+      // 'end' puts a node after the current last sibling; one already under this parent stays.
+      if (sameParent) return UNCHANGED
+      sortKey = sortKeyBetween(this.state.lastChildKey.get(parent.id) ?? null, null)
+    } else {
+      sortKey = op.sortKey
+    }
+    if (sameParent && node.sortKey === sortKey) return UNCHANGED
+
+    if (!this.state.movedFrom.has(node.id)) {
+      this.state.movedFrom.set(node.id, { parentId: node.parentId, sortKey: node.sortKey })
+    }
+    this.structuralEvent(
+      'moveNode',
+      node.id,
+      'parent',
+      { parent: node.parentId, sort_key: node.sortKey },
+      { parent: parent.id, sort_key: sortKey },
+    )
+    node.parentId = parent.id
+    node.sortKey = sortKey
+    const last = this.state.lastChildKey.get(parent.id) ?? null
+    if (last === null || sortKey > last) this.state.lastChildKey.set(parent.id, sortKey)
+    this.touch(node.id)
+    return APPLIED
+  }
+
+  /** True if `ancestorId` is `node` or one of the nodes above it. */
+  private isBelow(node: NodeState, ancestorId: NodeId): boolean {
+    let current: NodeState | undefined = node
+    for (let guard = 0; current && guard <= 16; guard += 1) {
+      if (current.id === ancestorId) return true
+      current = current.parentId ? this.state.nodes.get(current.parentId) : undefined
+    }
+    return false
+  }
+
+  /** The id of the node at the top of the chain above `node` (the menu, for a section). */
+  private rootOf(node: NodeState): NodeId {
+    let current = node
+    for (let guard = 0; guard <= 16 && current.parentId; guard += 1) {
+      const next = this.state.nodes.get(current.parentId)
+      if (!next) break
+      current = next
+    }
+    return current.id
+  }
+
+  /** How many levels of sections sit below a section (0 when it has no sub-section). */
+  private sectionHeight(section: NodeState): number {
+    let height = 0
+    for (const candidate of this.state.nodes.values()) {
+      if (candidate.type !== 'section' || candidate.id === section.id) continue
+      let level = 0
+      let current: NodeState | undefined = candidate
+      while (current && current.id !== section.id && level <= 16) {
+        level += 1
+        current = current.parentId ? this.state.nodes.get(current.parentId) : undefined
+      }
+      if (current?.id === section.id) height = Math.max(height, level)
+    }
+    return height
   }
 
   private setNodeStatus(op: Extract<ChangeSet['ops'][number], { op: 'setNodeStatus' }>): Outcome {
     const node = this.node(op.node)
     if (isOutcome(node)) return node
     if (node.status === op.status) return UNCHANGED
+    this.structuralEvent('setNodeStatus', node.id, 'status', node.status, op.status)
     node.status = op.status
     this.state.statusChanged.add(node.id)
     this.touch(node.id)
@@ -888,8 +1119,17 @@ class Run {
     }
     this.state.addLink(link)
     this.state.dirtyLinks.add(linkKey(link))
+    this.structuralEvent('linkSource', node.id, 'link', null, this.linkEventValue(link))
     this.touch(node.id)
     return APPLIED
+  }
+
+  /** What a link event records: the source and the kind of external object, never its id. */
+  private linkEventValue(link: Pick<LinkState, 'integrationId' | 'externalType'>) {
+    return {
+      source: `${this.state.integrations.get(link.integrationId)?.kind}:${link.integrationId}`,
+      external_type: link.externalType,
+    }
   }
 
   /**
@@ -911,6 +1151,7 @@ class Run {
 
     this.state.removeLink(key)
     this.state.dirtyLinks.add(key)
+    this.structuralEvent('unlinkSource', node.id, 'link', this.linkEventValue(existing), null)
     const linkedToBarsy = this.state.hasBarsyLink(node.id)
     const source = `${this.state.integrations.get(op.link.integration)?.kind}:${op.link.integration}`
     const rowsByField = new Map<string, ValueRow[]>()
@@ -949,7 +1190,7 @@ class Run {
           this.state.putValue(this.valueRow(node.id, write, spec.hash(copy.value as never), null))
           this.state.dirtyValues.add(manualKey)
           this.event(
-            { nodeId: node.id, fieldKey, layer: 'manual', scope: 'master' },
+            { op: 'setField', nodeId: node.id, fieldKey, layer: 'manual', scope: 'master' },
             manualBefore ?? null,
             copy.value,
           )
@@ -959,7 +1200,7 @@ class Run {
         this.state.deleteValue(slotKey(row.nodeId, row.fieldKey, row.layer, row.scope))
         if (row.valid) {
           this.event(
-            { nodeId: node.id, fieldKey, layer: 'barsy', scope: row.scope },
+            { op: 'clearField', nodeId: node.id, fieldKey, layer: 'barsy', scope: row.scope },
             row.value,
             null,
           )
@@ -971,6 +1212,27 @@ class Run {
   }
 }
 
+/** The created nodes with every parent before its children, otherwise in creation order. */
+function parentsFirst(created: readonly NodeState[]): NodeState[] {
+  const ids = new Set(created.map((node) => node.id))
+  const written = new Set<NodeId>()
+  const ordered: NodeState[] = []
+  let pending = [...created]
+  while (pending.length > 0) {
+    const ready = pending.filter(
+      (node) => node.parentId === null || !ids.has(node.parentId) || written.has(node.parentId),
+    )
+    // A cycle among new nodes cannot be ordered; the foreign key reports it.
+    if (ready.length === 0) return [...ordered, ...pending]
+    for (const node of ready) {
+      ordered.push(node)
+      written.add(node.id)
+    }
+    pending = pending.filter((node) => !written.has(node.id))
+  }
+  return ordered
+}
+
 /** Writes what the run decided (step 3). */
 async function flush(
   tx: WriteTx,
@@ -978,8 +1240,9 @@ async function flush(
   set: ChangeSet,
   state: DocumentState,
 ): Promise<void> {
-  // New nodes, parents before children (one statement checks its foreign keys at its end).
-  for (const batch of batches(state.createdNodes)) {
+  // New nodes, parents before children (one statement checks its foreign keys at its end). A
+  // node created and then moved in this set is written where it ended up.
+  for (const batch of batches(parentsFirst(state.createdNodes))) {
     await tx.insert(nodes).values(
       batch.map((node) => ({
         id: node.id,
@@ -996,6 +1259,14 @@ async function flush(
     const node = state.nodes.get(id)
     if (!node || created.has(id)) continue
     await tx.execute(sql`update restro.nodes set status = ${node.status} where id = ${id}`)
+  }
+  for (const [id, before] of state.movedFrom) {
+    const node = state.nodes.get(id)
+    if (!node || created.has(id)) continue
+    if (node.parentId === before.parentId && node.sortKey === before.sortKey) continue
+    await tx.execute(
+      sql`update restro.nodes set parent_id = ${node.parentId}, sort_key = ${node.sortKey} where id = ${id}`,
+    )
   }
 
   // Links: removed ones first, so a link can move within one change set.
@@ -1150,6 +1421,14 @@ export async function apply(
     }
     const run = new Run(set, template, state)
     run.processAll()
+    if (options.atomic === true && run.rejected.length > 0) {
+      const first = run.rejected[0]
+      throw new ApplyError(
+        'change_set_rejected',
+        `${run.rejected.length} op(s) were refused and nothing was written; the first: ${first?.code} (${first?.reason})`,
+        run.rejected,
+      )
+    }
     await flush(tx, tenantId, set, state)
     return run.result()
   })

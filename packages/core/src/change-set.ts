@@ -210,6 +210,21 @@ export const RemovePlacementSchema = z.strictObject({
   section: NodeRefSchema,
 })
 
+/**
+ * Moves a node among its siblings, or under another parent: a section may change parent (the menu
+ * or another section; `apply()` keeps sections at most 3 deep and out of their own subtree) and
+ * position; a modifier group or option only changes position among its siblings. `sortKey` is a
+ * fractional key between two neighbours or the hint `'end'` (after the current last sibling; a
+ * node already under that parent stays put). Only a person moves nodes: adapters create nodes
+ * and never reorder the builder's composition.
+ */
+export const MoveNodeSchema = z.strictObject({
+  op: z.literal('moveNode'),
+  node: NodeRefSchema,
+  parent: NodeRefSchema,
+  sortKey: PlacementPositionSchema,
+})
+
 /** Sets a node's lifecycle status. */
 export const SetNodeStatusSchema = z.strictObject({
   op: z.literal('setNodeStatus'),
@@ -262,6 +277,7 @@ export const StructuralOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
   SetPlacementSchema,
   RemovePlacementSchema,
+  MoveNodeSchema,
   SetNodeStatusSchema,
   LinkSourceSchema,
   UnlinkSourceSchema,
@@ -277,6 +293,7 @@ export const ChangeSetOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
   SetPlacementSchema,
   RemovePlacementSchema,
+  MoveNodeSchema,
   SetNodeStatusSchema,
   LinkSourceSchema,
   UnlinkSourceSchema,
@@ -284,6 +301,22 @@ export const ChangeSetOpSchema = z.discriminatedUnion('op', [
 
 /** One op of a change set. */
 export type ChangeSetOp = z.output<typeof ChangeSetOpSchema>
+
+/** The name of an op kind (`setField`, `moveNode`, ...); `events.op` holds one of them. */
+export type ChangeSetOpName = ChangeSetOp['op']
+
+/** Every op name: the values `events.op` may hold (a database check mirrors this list). */
+export const CHANGE_SET_OP_NAMES = [
+  'setField',
+  'clearField',
+  'createNode',
+  'setPlacement',
+  'removePlacement',
+  'moveNode',
+  'setNodeStatus',
+  'linkSource',
+  'unlinkSource',
+] as const satisfies readonly ChangeSetOpName[]
 
 /** The layers each kind of source may write: barsy в†’ barsy, import в†’ import, manual в†’ the rest. */
 export function layerAllowedForSource(source: Source, layer: Layer): boolean {
@@ -306,6 +339,8 @@ export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
     case 'setPlacement':
     case 'removePlacement':
       return [op.item, op.section]
+    case 'moveNode':
+      return [op.node, op.parent]
   }
 }
 
@@ -337,7 +372,7 @@ export const ChangeSetSchema = z
         issue(`a ${set.source} change set cannot clear the ${op.layer} layer`)
       }
       const ownSortKey =
-        (op.op === 'setPlacement' || op.op === 'createNode') &&
+        (op.op === 'setPlacement' || op.op === 'createNode' || op.op === 'moveNode') &&
         op.sortKey !== undefined &&
         op.sortKey !== 'end'
       if (ownSortKey && set.source !== 'manual') {

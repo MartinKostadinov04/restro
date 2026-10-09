@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CHANGE_SET_OP_NAMES,
+  ChangeSetOpSchema,
   ChangeSetSchema,
   type FieldWrite,
   FieldWriteSchema,
@@ -8,6 +10,7 @@ import {
   isScope,
   isSource,
   layerAllowedForSource,
+  nodeRefsOf,
   parseChangeSet,
 } from './change-set'
 import { newId } from './ids'
@@ -293,5 +296,39 @@ describe('sources, layers and scopes', () => {
     expect(layerAllowedForSource('manual', 'edition:venue-1')).toBe(true)
     expect(layerAllowedForSource('manual', 'barsy')).toBe(false)
     expect(layerAllowedForSource('manual', 'import')).toBe(false)
+  })
+})
+
+describe('moveNode', () => {
+  const move = { op: 'moveNode', node: { id: sectionId }, parent: { id: newId('nd') } }
+
+  it('takes a fractional key or the hint end, from a person', () => {
+    expect(parseChangeSet(manualSet([{ ...move, sortKey: 'end' }])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([{ ...move, sortKey: 'a0' }])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([{ ...move, sortKey: 'start' }])).ok).toBe(false)
+    expect(parseChangeSet(manualSet([{ ...move }])).ok).toBe(false)
+    expect(parseChangeSet(manualSet([{ ...move, sortKey: 'a0', extra: 1 }])).ok).toBe(false)
+  })
+
+  it("holds an adapter to 'end', like every other position", () => {
+    const fromBarsy = (sortKey: string) => ({
+      ...manualSet([{ ...move, sortKey }]),
+      source: 'barsy:int_club',
+      actor: 'integration:int_club',
+    })
+    expect(parseChangeSet(fromBarsy('end')).ok).toBe(true)
+    expect(issuesOf(fromBarsy('a0'))).toContain("places nodes with 'end'")
+  })
+
+  it('names both nodes it touches, so they are loaded and checked like any reference', () => {
+    const op = ChangeSetSchema.parse(manualSet([{ ...move, sortKey: 'end' }])).ops[0]
+    expect(op && nodeRefsOf(op)).toEqual([move.node, move.parent])
+  })
+})
+
+describe('op names', () => {
+  it('list every op the schema knows, once', () => {
+    const schemaOps = ChangeSetOpSchema.options.map((option) => option.shape.op.value).sort()
+    expect([...CHANGE_SET_OP_NAMES].sort()).toEqual(schemaOps)
   })
 })
