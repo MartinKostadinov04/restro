@@ -1,14 +1,14 @@
-// Source plumbing that a change set cites: the configured integration and the tier-1 record a
+// Source plumbing that a change set cites: the configured integration and the tier-1 records a
 // barsy write names (`sourceRecordId`). Rule 1 keeps writes to the document (nodes, values,
-// links, placements, events) in apply(); these two tables are not the document, and until the
-// sync jobs of S2-03 write them for real, the dev seed needs a way in that stays inside
-// core/apply (only this folder may import the write side of the database).
+// links, placements, events) in apply(); these two tables are not the document, but the web app
+// (the Integration tab) and the worker (the sync jobs) both write them, and only this folder may
+// import the write side of the database.
 //
 // Exported as `@restro/core/apply`, never from `@restro/core` itself.
 
-import { type DbPool, integrations, sourceRecords } from '@restro/db'
+import { type DbPool, type Integration, integrations, sourceRecords } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { isScope, type Scope } from '../change-set'
 import { sha256Hex } from '../hash'
 import { isId, newId } from '../ids'
@@ -18,15 +18,54 @@ import { ProvisionError } from './provision'
 /** The integration kinds a tenant can configure. */
 export type IntegrationKind = 'barsy'
 
-/** What `provisionIntegration` needs. */
-export interface ProvisionIntegrationInput {
-  readonly kind: IntegrationKind
-  /** The installation's host, e.g. `demo.barsyonline.com`. No credentials go through here. */
-  readonly host: string
+/** The states of an integration (`integrations.status`). */
+export const INTEGRATION_STATUSES = ['new', 'connected', 'error'] as const
+export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number]
+
+const MAX_STATUS_DETAIL_LENGTH = 500
+const MAX_SEALED_LENGTH = 4096
+
+function checkedHost(value: unknown): string {
+  const host = typeof value === 'string' ? value.trim() : ''
+  if (host === '' || host.length > 253 || /[\s/@]/.test(host)) {
+    throw new ProvisionError('invalid_input', 'the host must be a bare host name')
+  }
+  return host
 }
 
-/** An integration row after `provisionIntegration`; `created` is false when it existed. */
-export interface ProvisionedIntegration {
+function checkedTenant(tenantId: string): void {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+}
+
+function checkedSealed(value: string): string {
+  if (value.length === 0 || value.length > MAX_SEALED_LENGTH || /\s/.test(value)) {
+    throw new ProvisionError('invalid_input', 'the sealed credentials are not a sealed envelope')
+  }
+  return value
+}
+
+function checkedDetail(value: string | null): string | null {
+  if (value === null) return null
+  return value.length > MAX_STATUS_DETAIL_LENGTH
+    ? `${value.slice(0, MAX_STATUS_DETAIL_LENGTH - 3)}...`
+    : value
+}
+
+/** What `createIntegration` needs. */
+export interface CreateIntegrationInput {
+  readonly kind: IntegrationKind
+  /** The installation's host, e.g. `demo.barsyonline.com`. Bare: no scheme, path or user info. */
+  readonly host: string
+  /**
+   * The credentials sealed with the worker's public key (`sealBarsyCredentials`, bound to this
+   * tenant, integration and host), when the caller has them. Plain credentials never go through
+   * here.
+   */
+  readonly credentialsSealed?: string
+}
+
+/** An integration row after `createIntegration`; `created` is false when it existed. */
+export interface CreatedIntegration {
   /** The `in_` id that sources name (`barsy:<id>`). */
   readonly id: string
   readonly kind: IntegrationKind
@@ -36,19 +75,25 @@ export interface ProvisionedIntegration {
 
 /**
  * Creates the tenant's integration for a host, or returns the one it has (matched by kind and
- * host). The row starts with status `new` and no credentials: connecting it, and storing sealed
- * credentials, is the Integration tab's job (S2-05).
+ * host; an existing row is not changed, `updateIntegration` does that). The row starts with
+ * status `new`.
+ *
+ * Sealing binds the credentials to the integration id, so a caller that has the credentials
+ * generates the id first: pass `id` (an `in_` id from `newId('in')`) together with the sealed
+ * value.
  */
-export async function provisionIntegration(
+export async function createIntegration(
   pool: DbPool,
   tenantId: string,
-  input: ProvisionIntegrationInput,
-): Promise<ProvisionedIntegration> {
-  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
-  const host = typeof input.host === 'string' ? input.host.trim() : ''
-  if (host === '' || host.length > 253 || /[\s/@]/.test(host)) {
-    throw new ProvisionError('invalid_input', 'the host must be a bare host name')
+  input: CreateIntegrationInput & { readonly id?: string },
+): Promise<CreatedIntegration> {
+  checkedTenant(tenantId)
+  const host = checkedHost(input.host)
+  if (input.id !== undefined && !isId('in', input.id)) {
+    throw new ProvisionError('invalid_input', 'id must be an in_ id from newId("in")')
   }
+  const sealed =
+    input.credentialsSealed === undefined ? null : checkedSealed(input.credentialsSealed)
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
     const [existing] = await tx
@@ -56,67 +101,205 @@ export async function provisionIntegration(
       .from(integrations)
       .where(and(eq(integrations.kind, input.kind), eq(integrations.host, host)))
     if (existing) return { id: existing.id, kind: input.kind, host, created: false }
-    const id = newId('in')
-    await tx.insert(integrations).values({ id, tenantId, kind: input.kind, host })
+    const id = input.id ?? newId('in')
+    await tx
+      .insert(integrations)
+      .values({ id, tenantId, kind: input.kind, host, credentialsSealed: sealed })
     return { id, kind: input.kind, host, created: true }
   })
 }
 
-/** What `recordSource` needs: one object exactly as a source returned it. */
-export interface RecordSourceInput {
-  readonly integrationId: string
+/** What `updateIntegration` may change; a field that is left out stays as it is. */
+export interface UpdateIntegrationInput {
+  /** Changing the host invalidates the sealed credentials (they are bound to it): seal again. */
+  readonly host?: string
+  /** A new sealed envelope, or null to forget the credentials. */
+  readonly credentialsSealed?: string | null
+  /**
+   * Merged into the stored config at the top level (`config || patch`): keys named here are
+   * replaced, others stay. A key set to null is removed.
+   */
+  readonly config?: Readonly<Record<string, unknown>>
+  readonly status?: IntegrationStatus
+  /** Why the status is what it is, for people ("Wrong user or password"); null clears it. */
+  readonly statusDetail?: string | null
+  readonly lastCheckedAt?: Date
+}
+
+/**
+ * Changes an integration of this tenant and returns the row, or null when the tenant has no such
+ * integration. Only the named fields change; the row's `updated_at` follows by trigger.
+ */
+export async function updateIntegration(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  patch: UpdateIntegrationInput,
+): Promise<Integration | null> {
+  checkedTenant(tenantId)
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  if (patch.status !== undefined && !INTEGRATION_STATUSES.includes(patch.status)) {
+    throw new ProvisionError(
+      'invalid_input',
+      `status must be one of ${INTEGRATION_STATUSES.join(', ')}`,
+    )
+  }
+  const set: Record<string, unknown> = {}
+  if (patch.host !== undefined) set.host = checkedHost(patch.host)
+  if (patch.credentialsSealed !== undefined) {
+    set.credentialsSealed =
+      patch.credentialsSealed === null ? null : checkedSealed(patch.credentialsSealed)
+  }
+  if (patch.status !== undefined) set.status = patch.status
+  if (patch.statusDetail !== undefined) set.statusDetail = checkedDetail(patch.statusDetail)
+  if (patch.lastCheckedAt !== undefined) set.lastCheckedAt = patch.lastCheckedAt
+  if (patch.config !== undefined) {
+    // jsonb concatenation replaces whole top-level keys; null values are stripped afterwards so
+    // that `{ key: null }` removes the key. One statement, so concurrent patches do not lose
+    // each other's keys.
+    set.config = sql`jsonb_strip_nulls(${integrations.config} || ${JSON.stringify(patch.config)}::jsonb)`
+  }
+  if (Object.keys(set).length === 0) {
+    throw new ProvisionError('invalid_input', 'there is nothing to change')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const [row] = await tx
+      .update(integrations)
+      .set(set)
+      .where(eq(integrations.id, integrationId))
+      .returning()
+    return row ?? null
+  })
+}
+
+/** One tier-1 record to store: an object exactly as a source returned it. */
+export interface SourceRecordInput {
+  /**
+   * The record's `sr_` id when the caller derives it from the content (barsy's mapping does:
+   * the same content always has the same id). Without one a random id is drawn.
+   */
+  readonly id?: string
   /** `article`, `category`, … (the external type of the object). */
   readonly externalType: string
   readonly externalId: string
   /** `master`, or `venue:<vn_ id>` for an object that differs per venue. */
   readonly scope: Scope
-  /** The exact response slice (lossless), kept as text. */
+  /** The exact text (lossless: barsy prices are floats on the wire); its SHA-256 is the content hash. */
   readonly raw: string
   /** Its parsed form. */
   readonly payload: unknown
 }
 
+/** What `appendSourceRecords` did with one record. */
+export interface AppendedSourceRecord {
+  /** The record's `sr_` id: the stored one when the content was known already. */
+  readonly id: string
+  readonly created: boolean
+}
+
+const EXISTENCE_BATCH = 500
+const INSERT_BATCH = 100
+
 /**
- * Stores a tier-1 record, or returns the latest one when its content is the same (a new row only
- * when the content hash changes: the table is append-only). Returns its `sr_` id, which barsy
- * writes cite.
+ * Stores tier-1 records of one integration, append-only. A record whose content is already
+ * stored (same integration, type, external id, scope and content hash, whichever version is the
+ * latest: an object that goes A, B, A reuses record A) is not stored again, and its existing id
+ * is returned. The result has one entry per input, in order.
+ *
+ * Ids derived from the content make the insert `on conflict do nothing`, so two writers storing
+ * the same object cannot collide. Recency never comes from this table: the sync reads it from
+ * `source_links.last_hash`.
  */
-export async function recordSource(
+export async function appendSourceRecords(
   pool: DbPool,
   tenantId: string,
-  input: RecordSourceInput,
-): Promise<{ id: string; created: boolean }> {
-  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
-  if (!isScope(input.scope)) throw new ProvisionError('invalid_input', 'scope is master or venue:…')
-  const contentHash = sha256Hex(input.raw)
+  integrationId: string,
+  records: readonly SourceRecordInput[],
+): Promise<AppendedSourceRecord[]> {
+  checkedTenant(tenantId)
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  for (const record of records) {
+    if (!isScope(record.scope)) {
+      throw new ProvisionError('invalid_input', 'scope is master or venue:…')
+    }
+    if (record.id !== undefined && !isId('sr', record.id)) {
+      throw new ProvisionError('invalid_input', 'a record id must be an sr_ id')
+    }
+  }
+  if (records.length === 0) return []
+  const prepared = records.map((record) => ({ record, contentHash: sha256Hex(record.raw) }))
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
-    const [latest] = await tx
-      .select({ id: sourceRecords.id, contentHash: sourceRecords.contentHash })
-      .from(sourceRecords)
-      .where(
-        and(
-          eq(sourceRecords.integrationId, input.integrationId),
-          eq(sourceRecords.externalType, input.externalType),
-          eq(sourceRecords.externalId, input.externalId),
-          eq(sourceRecords.scope, input.scope),
-        ),
-      )
-      .orderBy(desc(sourceRecords.fetchedAt), desc(sourceRecords.id))
-      .limit(1)
-    if (latest?.contentHash === contentHash) return { id: latest.id, created: false }
-    const id = newId('sr')
-    await tx.insert(sourceRecords).values({
-      id,
-      tenantId,
-      integrationId: input.integrationId,
-      externalType: input.externalType,
-      externalId: input.externalId,
-      scope: input.scope,
-      contentHash,
-      raw: input.raw,
-      payload: input.payload,
-    })
-    return { id, created: true }
+
+    // What is stored already, per external type (one indexed query per type and batch).
+    const known = new Map<string, string>()
+    const key = (type: string, id: string, scope: string, hash: string) =>
+      `${type}\u0000${id}\u0000${scope}\u0000${hash}`
+    const byType = new Map<string, Set<string>>()
+    for (const { record } of prepared) {
+      const ids = byType.get(record.externalType) ?? new Set<string>()
+      ids.add(record.externalId)
+      byType.set(record.externalType, ids)
+    }
+    for (const [type, idSet] of byType) {
+      const ids = [...idSet]
+      for (let start = 0; start < ids.length; start += EXISTENCE_BATCH) {
+        const rows = await tx
+          .select({
+            id: sourceRecords.id,
+            externalId: sourceRecords.externalId,
+            scope: sourceRecords.scope,
+            contentHash: sourceRecords.contentHash,
+          })
+          .from(sourceRecords)
+          .where(
+            and(
+              eq(sourceRecords.integrationId, integrationId),
+              eq(sourceRecords.externalType, type),
+              inArray(sourceRecords.externalId, ids.slice(start, start + EXISTENCE_BATCH)),
+            ),
+          )
+        for (const row of rows) {
+          const mapKey = key(type, row.externalId, row.scope, row.contentHash)
+          if (!known.has(mapKey)) known.set(mapKey, row.id)
+        }
+      }
+    }
+
+    const results: AppendedSourceRecord[] = []
+    const toInsert: (typeof sourceRecords.$inferInsert)[] = []
+    for (const { record, contentHash } of prepared) {
+      const mapKey = key(record.externalType, record.externalId, record.scope, contentHash)
+      const existing = known.get(mapKey)
+      if (existing !== undefined) {
+        results.push({ id: existing, created: false })
+        continue
+      }
+      const id = record.id ?? newId('sr')
+      known.set(mapKey, id)
+      results.push({ id, created: true })
+      toInsert.push({
+        id,
+        tenantId,
+        integrationId,
+        externalType: record.externalType,
+        externalId: record.externalId,
+        scope: record.scope,
+        contentHash,
+        raw: record.raw,
+        payload: record.payload,
+      })
+    }
+    for (let start = 0; start < toInsert.length; start += INSERT_BATCH) {
+      await tx
+        .insert(sourceRecords)
+        .values(toInsert.slice(start, start + INSERT_BATCH))
+        .onConflictDoNothing()
+    }
+    return results
   })
 }

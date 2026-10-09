@@ -2,7 +2,7 @@
 // composer would show. Goes through core/apply only; see ./demo-menu.ts for what is in it.
 
 import { type NodeId, newId } from '@restro/core'
-import { apply, provisionIntegration, provisionMenu, recordSource } from '@restro/core/apply'
+import { appendSourceRecords, apply, createIntegration, provisionMenu } from '@restro/core/apply'
 import type { DbPool } from '@restro/db'
 import { fieldValues, sourceLinks, withTenant } from '@restro/db'
 import { and, eq, sql } from 'drizzle-orm'
@@ -30,7 +30,7 @@ export async function seedDemoMenu(
   userId: string,
 ): Promise<{ sections: number; articles: number; created: number }> {
   const menu = await provisionMenu(pool, tenantId, venueId)
-  const integration = await provisionIntegration(pool, tenantId, {
+  const integration = await createIntegration(pool, tenantId, {
     kind: 'barsy',
     host: DEMO_BARSY_HOST,
   })
@@ -38,14 +38,16 @@ export async function seedDemoMenu(
   const categoryRecords = new Map<string, string>()
   const articleRecords = new Map<string, string>()
   for (const record of demoSourceRecords()) {
-    const stored = await recordSource(pool, tenantId, {
-      integrationId: integration.id,
-      externalType: record.externalType,
-      externalId: record.externalId,
-      scope: 'master',
-      raw: record.raw,
-      payload: record.payload,
-    })
+    const [stored] = await appendSourceRecords(pool, tenantId, integration.id, [
+      {
+        externalType: record.externalType,
+        externalId: record.externalId,
+        scope: 'master',
+        raw: record.raw,
+        payload: record.payload,
+      },
+    ])
+    if (!stored) throw new Error('a source record was not stored')
     ;(record.externalType === 'category' ? categoryRecords : articleRecords).set(
       record.externalId,
       stored.id,
