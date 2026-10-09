@@ -121,6 +121,7 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       healthPort: 0,
       logLevel: 'debug',
       prettyLogs: false,
+      seal: null,
     }
     const logger = await createLogger({
       level: 'debug',

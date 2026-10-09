@@ -3,8 +3,11 @@
 // stops the process before anything opens a connection. Error messages name the variable, never
 // its value (DATABASE_URL carries a password): every problem is "<VARIABLE> <what is wrong>",
 // built from the schema's own path and the fixed text written below, not from the input.
+import type { KeyObject } from 'node:crypto'
 import { hostname } from 'node:os'
 
+import { parseSealPublicKey } from '@restro/core/seal'
+import { isSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open'
 import { z } from 'zod'
 
 /** Port of the health endpoint when WORKER_HEALTH_PORT is not set. */
@@ -26,6 +29,18 @@ export interface WorkerConfig {
   readonly logLevel: LogLevel
   /** True: human-readable log lines (development). False: one JSON object per line (production). */
   readonly prettyLogs: boolean
+  /**
+   * The key pair that opens sealed barsy credentials (SEAL_PUBLIC_KEY + SEAL_PRIVATE_KEY), or
+   * null when neither is set. Barsy sync jobs need it: see {@link requireSealKeys}. KeyObjects,
+   * not text, so logging the config could never print the private key.
+   */
+  readonly seal: SealKeys | null
+}
+
+/** The worker's sealing key pair. */
+export interface SealKeys {
+  readonly publicKey: KeyObject
+  readonly privateKey: KeyObject
 }
 
 /** Thrown by {@link loadConfig}; the message lists every problem found. */
@@ -56,6 +71,32 @@ const NOT_A_POSTGRES_URL = 'must be a postgres:// or postgresql:// URL.'
 const BAD_WORKER_ID = `must be 1 to ${MAX_WORKER_ID_LENGTH} characters.`
 const BAD_PORT = 'must be a whole number from 1 to 65535.'
 const BAD_LOG_LEVEL = `must be one of: ${LOG_LEVELS.join(', ')}.`
+const BAD_SEAL_PUBLIC_KEY =
+  'must be base64url DER (SPKI) of an X25519 public key. Generate a pair with pnpm keys:seal.'
+const BAD_SEAL_PRIVATE_KEY =
+  'must be base64url DER (PKCS8) of an X25519 private key. Generate a pair with pnpm keys:seal.'
+const SEAL_PUBLIC_KEY_MISSING = 'is not set. It goes with SEAL_PRIVATE_KEY (pnpm keys:seal).'
+const SEAL_PRIVATE_KEY_MISSING = 'is not set. It goes with SEAL_PUBLIC_KEY (pnpm keys:seal).'
+const SEAL_KEYS_DO_NOT_MATCH = 'is not the private half of SEAL_PUBLIC_KEY.'
+
+/** An optional key variable: blank is unset (null); otherwise it must parse, or one issue. */
+function sealKeySchema(parse: (text: string) => KeyObject, message: string) {
+  return z.preprocess(
+    unsetWhenBlank,
+    z
+      .string()
+      .optional()
+      .transform((value, ctx): KeyObject | null => {
+        if (value === undefined) return null
+        try {
+          return parse(value)
+        } catch {
+          ctx.addIssue({ code: 'custom', message })
+          return z.NEVER
+        }
+      }),
+  )
+}
 
 /**
  * The schema of the environment. Its keys are the variable names, so an issue's path names the
@@ -96,6 +137,22 @@ function environmentSchema(defaultWorkerId: () => string) {
           .default('info'),
       ),
       NODE_ENV: z.string().optional(),
+      SEAL_PUBLIC_KEY: sealKeySchema(parseSealPublicKey, BAD_SEAL_PUBLIC_KEY),
+      SEAL_PRIVATE_KEY: sealKeySchema(parseSealPrivateKey, BAD_SEAL_PRIVATE_KEY),
+    })
+    .superRefine((env, ctx) => {
+      const issue = (variable: string, message: string) =>
+        ctx.addIssue({ code: 'custom', path: [variable], message })
+      const { SEAL_PUBLIC_KEY: publicKey, SEAL_PRIVATE_KEY: privateKey } = env
+      if (publicKey !== null && privateKey === null) {
+        issue('SEAL_PRIVATE_KEY', SEAL_PRIVATE_KEY_MISSING)
+      }
+      if (publicKey === null && privateKey !== null) {
+        issue('SEAL_PUBLIC_KEY', SEAL_PUBLIC_KEY_MISSING)
+      }
+      if (publicKey !== null && privateKey !== null && !isSealKeyPair(publicKey, privateKey)) {
+        issue('SEAL_PRIVATE_KEY', SEAL_KEYS_DO_NOT_MATCH)
+      }
     })
     .transform(
       (env): WorkerConfig => ({
@@ -104,6 +161,10 @@ function environmentSchema(defaultWorkerId: () => string) {
         healthPort: env.WORKER_HEALTH_PORT,
         logLevel: env.LOG_LEVEL,
         prettyLogs: env.NODE_ENV !== 'production',
+        seal:
+          env.SEAL_PUBLIC_KEY !== null && env.SEAL_PRIVATE_KEY !== null
+            ? { publicKey: env.SEAL_PUBLIC_KEY, privateKey: env.SEAL_PRIVATE_KEY }
+            : null,
       }),
     )
 }
@@ -123,6 +184,8 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `WORKER_HEALTH_PORT` | port of `GET /health` | 8081 |
  * | `LOG_LEVEL` | fatal, error, warn, info, debug, trace or silent | info |
  * | `NODE_ENV` | `production` switches the logs to JSON | pretty logs |
+ * | `SEAL_PUBLIC_KEY` | base64url DER (SPKI) X25519 public key; set with the private key | unset |
+ * | `SEAL_PRIVATE_KEY` | base64url DER (PKCS8) X25519 private key; worker only | unset |
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -131,4 +194,18 @@ export function loadConfig(
   const result = environmentSchema(defaultWorkerId).safeParse(env)
   if (!result.success) throw new ConfigError(result.error.issues.map(describeIssue))
   return result.data
+}
+
+/**
+ * The sealing key pair, for the barsy sync jobs (S2-03b calls this when it registers them, so a
+ * worker without the keys stops at start instead of failing on the first pull).
+ */
+export function requireSealKeys(config: WorkerConfig): SealKeys {
+  if (config.seal === null) {
+    throw new ConfigError([
+      'SEAL_PRIVATE_KEY is not set. The worker needs SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY to ' +
+        'open barsy credentials (generate a pair with pnpm keys:seal).',
+    ])
+  }
+  return config.seal
 }

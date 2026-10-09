@@ -16,6 +16,7 @@
     "tsx": "4.23.15"
   },
   "dependencies": {
+    "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
     "drizzle-orm": "0.45.3",
     "pg": "8.23.0",

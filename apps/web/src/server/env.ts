@@ -2,7 +2,11 @@
 // loads every route module) does not need them. Names only in messages, never values.
 import { z } from 'zod'
 
-const ServerEnvSchema = z.object({
+/**
+ * The web app never declares the sealing private key: it may seal barsy credentials with the
+ * worker's public key, never open them (D55; env.test.ts checks this).
+ */
+export const ServerEnvSchema = z.object({
   /** The app role (restro_app), never the migration owner. */
   DATABASE_URL: z.string().min(1),
   /** Signs session cookies. 32+ characters; generate with `openssl rand -base64 32`. */
