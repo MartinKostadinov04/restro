@@ -43,6 +43,9 @@ export interface ItemSheetMediaTabProps {
   onRemove: () => Promise<boolean>
 }
 
+/** A fraction as a CSS percentage without floating-point noise (0.55 is `55%`, not `55.0000…%`). */
+const percent = (fraction: number) => `${Math.round(fraction * 10_000) / 100}%`
+
 /** How far an arrow key moves the focal point: a twentieth of the photo. */
 const KEY_STEPS: Readonly<Record<string, readonly [number, number]>> = {
   ArrowLeft: [-0.05, 0],
@@ -118,7 +121,7 @@ function Preview({
             aria-hidden
             data-testid="focal-marker"
             className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-md ring-1 ring-black/30"
-            style={{ left: `${focal.x * 100}%`, top: `${focal.y * 100}%` }}
+            style={{ left: percent(focal.x), top: percent(focal.y) }}
           />
         ) : null}
       </div>
