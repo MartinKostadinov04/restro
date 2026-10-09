@@ -572,12 +572,16 @@ class Run {
   private readonly barsyIntegration: string | null
   /** The layer of the source, which structural events (no field, no layer of their own) carry. */
   private readonly sourceLayer: Layer
+  private readonly set: ChangeSet
+  private readonly template: Template
+  private readonly state: DocumentState
 
-  constructor(
-    private readonly set: ChangeSet,
-    private readonly template: Template,
-    private readonly state: DocumentState,
-  ) {
+  // No parameter properties: the dev seed runs this file under Node's type stripping, which does
+  // not support them (it is also the only TypeScript construct here that must be rewritten).
+  constructor(set: ChangeSet, template: Template, state: DocumentState) {
+    this.set = set
+    this.template = template
+    this.state = state
     this.barsyIntegration = set.source.startsWith('barsy:') ? set.source.slice(6) : null
     this.sourceLayer =
       this.barsyIntegration !== null ? 'barsy' : set.source === 'manual' ? 'manual' : 'import'
