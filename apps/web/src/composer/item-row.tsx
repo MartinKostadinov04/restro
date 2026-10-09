@@ -56,14 +56,15 @@ export function ItemRow({
             snapshot.isDragging && 'shadow-lg ring-2 ring-ring',
           )}
         >
-          <button
-            type="button"
+          {/* A div, not a button: the library does not start a drag from an interactive element. */}
+          {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
+          <div
             {...drag.dragHandleProps}
             aria-label={t('actions.dragItem', { name })}
             className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
           >
             <GripVerticalIcon className="size-4" aria-hidden />
-          </button>
+          </div>
 
           <div className={cn('grid min-w-0 flex-1 gap-1', hidden && 'opacity-70')}>
             <button

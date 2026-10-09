@@ -120,3 +120,30 @@ export function resolveDrop(drop: DropLike): DropIntent | null {
     index: to.kind === 'list' ? destination.index : undefined,
   }
 }
+
+/** Attribute of the tree rows an item can be dropped on; its value is a section id or `unsorted`. */
+export const DROP_TARGET_ATTR = 'data-drop-target'
+
+/**
+ * A drop decided by where the pointer is rather than where the library puts the dragged row's
+ * centre: the row is wider than the tree, so its centre can never reach a tree row while the
+ * pointer is on it. `target` is the `data-drop-target` of the row under the pointer. An item
+ * dropped on the section it came from changes nothing.
+ */
+export function resolvePointerDrop(
+  drop: Pick<DropLike, 'draggableId' | 'source'>,
+  target: string,
+): DropIntent | null {
+  const dragged = parseDraggable(drop.draggableId)
+  const from = parseItemDroppable(drop.source.droppableId)
+  const to = parseItemDroppable(`target:${target}`)
+  if (dragged?.kind !== 'item' || from?.kind !== 'list' || !to) return null
+  if (to.sectionId === from.sectionId) return null
+  return {
+    kind: 'placeItem',
+    itemId: dragged.id,
+    fromSectionId: from.sectionId,
+    toSectionId: to.sectionId,
+    index: undefined,
+  }
+}

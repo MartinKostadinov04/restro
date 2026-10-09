@@ -36,6 +36,8 @@ export interface ComposerState extends ComposerActions {
   readonly expanded: ReadonlySet<NodeId>
   /** The language the interface (and so the menu text on this screen) is in. */
   readonly locale: Locale
+  /** While an item is dragged: the tree row (a section id or `unsorted`) the pointer is over. */
+  readonly overTarget: string | null
 }
 
 const Context = createContext<ComposerState | null>(null)

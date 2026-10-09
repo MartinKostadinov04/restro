@@ -20,7 +20,7 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 
 import { useComposer } from './composer-context'
-import { UNSORTED_KEY } from './dnd'
+import { DROP_TARGET_ATTR, UNSORTED_KEY } from './dnd'
 import { sectionTitle } from './labels'
 import { SectionMenu } from './row-menus'
 import { ROOT_KEY } from './tree'
@@ -31,7 +31,7 @@ function Count({ value }: { value: number }) {
 
 function SectionNode({ id, index }: { id: NodeId; index: number }) {
   const t = useTranslations('composer')
-  const { view, selection, expanded, select, toggleExpanded } = useComposer()
+  const { view, selection, expanded, select, toggleExpanded, overTarget } = useComposer()
   const section = view.sections[id]
   if (!section) return null
   const title = sectionTitle(view, id, t('untitledSection'))
@@ -57,21 +57,24 @@ function SectionNode({ id, index }: { id: NodeId; index: number }) {
                 ref={drop.innerRef}
                 {...drop.droppableProps}
                 data-testid="section-row"
+                {...{ [DROP_TARGET_ATTR]: id }}
                 data-selected={selected || undefined}
                 className={cn(
                   'relative flex items-center gap-0.5 rounded-md py-0.5 pr-0.5 pl-0.5 text-sm',
                   selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50',
-                  dropSnapshot.isDraggingOver && 'bg-accent ring-2 ring-ring',
+                  (dropSnapshot.isDraggingOver || overTarget === id) &&
+                    'bg-accent ring-2 ring-ring',
                 )}
               >
-                <button
-                  type="button"
+                {/* A div, not a button: the library does not start a drag from an interactive element. */}
+                {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
+                <div
                   {...drag.dragHandleProps}
                   aria-label={t('actions.dragSection', { name: title })}
                   className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
                 >
                   <GripVerticalIcon className="size-4" aria-hidden />
-                </button>
+                </div>
                 {hasChildren ? (
                   <button
                     type="button"
@@ -147,7 +150,7 @@ function SectionList({ parentId, ids }: { parentId: NodeId | null; ids: readonly
 /** The Unsorted entry: select it to see the loose items; drop an item on it to take it out. */
 function UnsortedRow() {
   const t = useTranslations('composer')
-  const { view, selection, select } = useComposer()
+  const { view, selection, select, overTarget } = useComposer()
   const selected = selection === UNSORTED_KEY
   return (
     <Droppable droppableId={`target:${UNSORTED_KEY}`} type="ITEM">
@@ -156,11 +159,13 @@ function UnsortedRow() {
           ref={drop.innerRef}
           {...drop.droppableProps}
           data-testid="unsorted-row"
+          {...{ [DROP_TARGET_ATTR]: UNSORTED_KEY }}
           data-selected={selected || undefined}
           className={cn(
             'relative flex items-center gap-1 rounded-md py-0.5 pr-1 pl-2 text-sm',
             selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50',
-            snapshot.isDraggingOver && 'bg-accent ring-2 ring-ring',
+            (snapshot.isDraggingOver || overTarget === UNSORTED_KEY) &&
+              'bg-accent ring-2 ring-ring',
           )}
         >
           <button

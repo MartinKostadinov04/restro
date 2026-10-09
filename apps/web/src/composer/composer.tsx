@@ -20,7 +20,7 @@ import { isId, type Locale, type LocalizedText, type NodeId, newId } from '@rest
 import { PlusIcon } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { useMemo, useOptimistic, useState, useTransition } from 'react'
+import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -42,10 +42,12 @@ import {
 } from './actions'
 import { type ComposerActions, ComposerProvider, type Selection } from './composer-context'
 import {
+  DROP_TARGET_ATTR,
   parseDraggable,
   parseItemDroppable,
   parseSectionList,
   resolveDrop,
+  resolvePointerDrop,
   UNSORTED_KEY,
 } from './dnd'
 import { ItemPane } from './item-pane'
@@ -251,7 +253,42 @@ export function Composer({
     return list ? childIdsOf(view, list.parentId).length : 0
   }
 
+  // While an item is dragged with a mouse or a finger, follow the pointer: a tree row can only be
+  // reached by the pointer (the dragged row is wider than the tree, so its centre cannot).
+  const overRef = useRef<string | null>(null)
+  const [overTarget, setOverTarget] = useState<string | null>(null)
+  const stopPointer = useRef<(() => void) | null>(null)
+  useEffect(() => () => stopPointer.current?.(), [])
+
+  function followPointer() {
+    stopPointer.current?.()
+    const onMove = (event: PointerEvent) => {
+      const row = document
+        .elementsFromPoint(event.clientX, event.clientY)
+        .map((element) => element.closest(`[${DROP_TARGET_ATTR}]`))
+        .find((element) => element !== null)
+      const next = row?.getAttribute(DROP_TARGET_ATTR) ?? null
+      if (next !== overRef.current) {
+        overRef.current = next
+        setOverTarget(next)
+      }
+    }
+    window.addEventListener('pointermove', onMove)
+    stopPointer.current = () => window.removeEventListener('pointermove', onMove)
+  }
+
+  /** Ends the tracking; returns the tree row the pointer was over at the end, if any. */
+  function stopFollowingPointer(): string | null {
+    stopPointer.current?.()
+    stopPointer.current = null
+    const over = overRef.current
+    overRef.current = null
+    setOverTarget(null)
+    return over
+  }
+
   function onDragStart(start: DragStart, provided: ResponderProvided) {
+    if (parseDraggable(start.draggableId)?.kind === 'item') followPointer()
     provided.announce(
       t('dnd.lifted', {
         name: describe(start.draggableId),
@@ -285,6 +322,22 @@ export function Composer({
 
   function onDragEnd(result: DropResult, provided: ResponderProvided) {
     const name = describe(result.draggableId)
+    const over = stopFollowingPointer()
+    if (over !== null && result.reason === 'DROP') {
+      // The pointer is on a tree row: the item goes to that section, wherever the library put it.
+      const target = resolvePointerDrop(result, over)
+      if (target?.kind === 'placeItem') {
+        placeItem(target.itemId, target.fromSectionId, target.toSectionId)
+        const section =
+          target.toSectionId === null
+            ? t('unsorted')
+            : sectionTitle(view, target.toSectionId, t('untitledSection'))
+        provided.announce(t('dnd.droppedInSection', { name, section }))
+      } else {
+        provided.announce(t('dnd.cancelled', { name }))
+      }
+      return
+    }
     const intent = resolveDrop(result)
     if (!result.destination) {
       provided.announce(t('dnd.cancelled', { name }))
@@ -332,7 +385,7 @@ export function Composer({
   const sectionOptions = flattenSections(view)
 
   return (
-    <ComposerProvider value={{ ...actions, view, selection, expanded, locale }}>
+    <ComposerProvider value={{ ...actions, view, selection, expanded, locale, overTarget }}>
       <DragDropContext
         onDragStart={onDragStart}
         onDragUpdate={onDragUpdate}

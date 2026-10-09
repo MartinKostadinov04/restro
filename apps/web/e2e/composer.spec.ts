@@ -1,0 +1,350 @@
+import { mkdirSync } from 'node:fs'
+import path from 'node:path'
+
+import { expect, type Locator, type Page, test } from '@playwright/test'
+
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
+
+// The composer on a production build, in Bulgarian, against the demo menu that `pnpm db:seed:dev`
+// builds (four sections, 20 items, one hidden by barsy, two unsorted). One sign-in, one page, the
+// tests in order. Every change a test makes is undone before it ends (moves go back, switches
+// flip back), except the section it creates, which stays (a section cannot be deleted from the
+// composer, only hidden) under a name that is new on each run. With SCREENSHOT_DIR set, the last
+// tests save the screenshots of the brief (BG light, EN dark, mobile) there.
+test.describe.configure({ mode: 'serial' })
+
+let page: Page
+
+const SECTIONS = ['Коктейли', 'Бира', 'Безалкохолни', 'Храна']
+
+test.beforeAll(async ({ browser }) => {
+  // Tall enough that a whole section of the demo menu is on screen: a mouse drag can only start
+  // on a handle that is inside the viewport.
+  page = await browser.newPage({ viewport: { width: 1280, height: 1100 } })
+  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.goto('/venues')
+    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
+    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
+    await page.getByRole('button', { name: 'Вход' }).click()
+    try {
+      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
+      break
+    } catch {
+      await page.waitForTimeout(10_000)
+    }
+  }
+  await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+  await expect(page.getByTestId('composer')).toBeVisible()
+})
+
+test.afterAll(async () => {
+  await page.close()
+})
+
+// --- helpers ---------------------------------------------------------------------------------
+const treeRow = (name: string): Locator =>
+  page.getByTestId('section-row').filter({ has: page.getByRole('button', { name, exact: true }) })
+const itemRow = (name: string): Locator =>
+  page.getByTestId('item-row').filter({ has: page.getByRole('button', { name, exact: true }) })
+
+async function openSection(name: string) {
+  await page.getByTestId('section-select').getByText(name, { exact: true }).click()
+  await expect(page.getByTestId('pane-title')).toHaveText(name)
+}
+
+async function openUnsorted() {
+  await page.getByTestId('unsorted-select').click()
+  await expect(page.getByTestId('pane-title')).toHaveText('Неподредени')
+}
+
+/** The names of the items in the open list, in order. */
+const itemNames = () => page.getByTestId('item-open').allTextContents()
+
+/** The top-level sections of the tree, in order. */
+const topSections = () =>
+  page
+    .locator('nav[data-testid=section-tree] > ul > li > [data-testid=section-row]')
+    .getByTestId('section-select')
+    .allTextContents()
+
+/** Waits until the pending server action has answered, so that a reload shows what was saved. */
+async function settle() {
+  await page.waitForLoadState('networkidle')
+  await page.waitForTimeout(300)
+}
+
+/** Lifts a row by its handle with the keyboard (the library's own, accessible way) and moves it. */
+async function keyboardDrag(handleName: string, key: 'ArrowUp' | 'ArrowDown', times: number) {
+  const handle = page.getByRole('button', { name: handleName, exact: true })
+  await handle.focus()
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(250)
+  for (let i = 0; i < times; i += 1) {
+    await page.keyboard.press(key)
+    await page.waitForTimeout(250)
+  }
+  await page.keyboard.press('Space')
+  await settle()
+}
+
+/** Drags an item by its handle with the mouse onto the row of a section in the tree. */
+async function mouseDragItemToSection(itemName: string, sectionName: string) {
+  const handle = page.getByRole('button', { name: `Плъзни ${itemName}`, exact: true })
+  await handle.scrollIntoViewIfNeeded()
+  const from = await handle.boundingBox()
+  const to = await treeRow(sectionName).boundingBox()
+  if (!from || !to) throw new Error('nothing to drag')
+  const startX = from.x + from.width / 2
+  const startY = from.y + from.height / 2
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(startX + 12, startY + 12, { steps: 4 })
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 30 })
+  await page.waitForTimeout(400)
+  await page.mouse.up()
+  await settle()
+}
+
+async function snapshot(fileName: string, target: Page = page) {
+  const dir = process.env.SCREENSHOT_DIR
+  if (!dir) return
+  mkdirSync(dir, { recursive: true })
+  await target.screenshot({ path: path.join(dir, fileName), fullPage: true })
+}
+
+// --- tests -----------------------------------------------------------------------------------
+test('opens on the Composer tab with the demo menu: sections, items, badges', async () => {
+  expect((await topSections()).slice(0, 4)).toEqual(SECTIONS)
+  await expect(page.getByTestId('pane-title')).toHaveText('Коктейли')
+  expect((await itemNames()).slice(0, 2)).toEqual(['Негрони', 'Аперол Шприц'])
+  await expect(page.getByTestId('item-row')).toHaveCount(7)
+  await expect(itemRow('Негрони').getByTestId('origin-badge')).toHaveText('От barsy')
+  // Items without allergens or an English name carry an issues badge.
+  await expect(itemRow('Мохито').getByTestId('issues-badge')).toBeVisible()
+  await expect(itemRow('Негрони').getByTestId('issues-badge')).toHaveCount(0)
+  // The open section is in the URL.
+  await expect(page.getByTestId('section-row').first()).toHaveAttribute('data-selected', 'true')
+  await snapshot('composer-bg-light-desktop.png')
+})
+
+test('the item barsy hides cannot be shown from the composer', async () => {
+  await openSection('Бира')
+  const row = itemRow('Гинес 440 мл')
+  await expect(row).toHaveAttribute('data-hidden-by', 'barsy')
+  await expect(row.getByTestId('hidden-badge')).toHaveText('Скрито от barsy')
+  await expect(row.getByTestId('item-visible')).toBeDisabled()
+  await expect(row).toContainText('Скрито в barsy. Показвайте го там.')
+  await row.getByTestId('item-visible').click({ force: true })
+  await settle()
+  await page.reload()
+  await openSection('Бира')
+  await expect(itemRow('Гинес 440 мл')).toHaveAttribute('data-hidden-by', 'barsy')
+})
+
+test('hides an item and shows it again; the choice survives a reload', async () => {
+  await openSection('Коктейли')
+  const row = itemRow('Космополитан')
+  await expect(row).not.toHaveAttribute('data-hidden-by', /.+/)
+  await row.getByTestId('item-visible').click()
+  await expect(row).toHaveAttribute('data-hidden-by', 'builder')
+  await expect(row.getByTestId('hidden-badge')).toHaveText('Скрито')
+  await settle()
+
+  await page.reload()
+  await expect(itemRow('Космополитан')).toHaveAttribute('data-hidden-by', 'builder')
+
+  await itemRow('Космополитан').getByTestId('item-visible').click()
+  await expect(itemRow('Космополитан')).not.toHaveAttribute('data-hidden-by', /.+/)
+  await settle()
+  await page.reload()
+  await expect(itemRow('Космополитан')).not.toHaveAttribute('data-hidden-by', /.+/)
+})
+
+test('reorders an item with the keyboard; the order survives a reload', async () => {
+  await openSection('Бира')
+  const before = await itemNames()
+  expect(before.length).toBeGreaterThanOrEqual(2)
+  const last = before[before.length - 1] as string
+  const swapped = [...before.slice(0, -2), last, before[before.length - 2] as string]
+
+  await keyboardDrag(`Плъзни ${last}`, 'ArrowUp', 1)
+  expect(await itemNames()).toEqual(swapped)
+
+  await page.reload()
+  await openSection('Бира')
+  expect(await itemNames()).toEqual(swapped)
+
+  // And back.
+  await keyboardDrag(`Плъзни ${last}`, 'ArrowDown', 1)
+  expect(await itemNames()).toEqual(before)
+  await page.reload()
+  await openSection('Бира')
+  expect(await itemNames()).toEqual(before)
+})
+
+test('moves an item to another section by dragging it onto the section; the move survives a reload', async () => {
+  await openSection('Коктейли')
+  const names = await itemNames()
+  const moved = names[names.length - 1] as string
+  const beerBefore = await (async () => {
+    await openSection('Бира')
+    const list = await itemNames()
+    await openSection('Коктейли')
+    return list
+  })()
+
+  await mouseDragItemToSection(moved, 'Бира')
+  await expect(itemRow(moved)).toHaveCount(0)
+  expect(await itemNames()).toEqual(names.slice(0, -1))
+  await openSection('Бира')
+  expect(await itemNames()).toEqual([...beerBefore, moved])
+
+  await page.reload()
+  await openSection('Бира')
+  expect(await itemNames()).toEqual([...beerBefore, moved])
+  await openSection('Коктейли')
+  expect(await itemNames()).toEqual(names.slice(0, -1))
+
+  // Back with the "Move to" menu: it goes to the end of the section, where it was.
+  await openSection('Бира')
+  await itemRow(moved).getByTestId('item-menu').click()
+  await page.getByRole('menuitem', { name: 'Премести в…' }).click()
+  await page
+    .getByTestId('move-target')
+    .filter({ hasText: /^Коктейли$/ })
+    .click()
+  await settle()
+  await openSection('Коктейли')
+  expect(await itemNames()).toEqual(names)
+  await page.reload()
+  await openSection('Коктейли')
+  expect(await itemNames()).toEqual(names)
+})
+
+test('Unsorted holds the items in no section, one of them made here', async () => {
+  await openUnsorted()
+  const names = await itemNames()
+  expect(names).toEqual(expect.arrayContaining(['Лимонада на къщата', 'Текила шот']))
+  await expect(itemRow('Лимонада на къщата').getByTestId('origin-badge')).toHaveText(
+    'Създадено тук',
+  )
+  await expect(itemRow('Текила шот').getByTestId('origin-badge')).toHaveText('От barsy')
+
+  // Drop one into a section, then take it out again.
+  await mouseDragItemToSection('Текила шот', 'Безалкохолни')
+  await expect(itemRow('Текила шот')).toHaveCount(0)
+  await openSection('Безалкохолни')
+  expect(await itemNames()).toContain('Текила шот')
+  await itemRow('Текила шот').getByTestId('item-menu').click()
+  await page.getByRole('menuitem', { name: 'Премести в „Неподредени“' }).click()
+  await settle()
+  await openUnsorted()
+  expect(await itemNames()).toEqual(names)
+})
+
+test('reorders a section among its siblings with the keyboard', async () => {
+  const before = (await topSections()).slice(0, 4)
+  expect(before).toEqual(SECTIONS)
+  await keyboardDrag('Плъзни Храна', 'ArrowUp', 1)
+  expect((await topSections()).slice(0, 4)).toEqual(['Коктейли', 'Бира', 'Храна', 'Безалкохолни'])
+  await page.reload()
+  expect((await topSections()).slice(0, 4)).toEqual(['Коктейли', 'Бира', 'Храна', 'Безалкохолни'])
+  await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
+  await page.reload()
+  expect((await topSections()).slice(0, 4)).toEqual(SECTIONS)
+})
+
+const newSectionName = `Тест ${Date.now()}`
+
+test('creates a section of our own, nests it under another and hides it', async () => {
+  await page.getByTestId('new-section').click()
+  await page.getByTestId('new-section-name-bg_BG').fill(newSectionName)
+  await page.getByTestId('new-section-name-en_US').fill('E2E section')
+  await page.getByTestId('new-section-submit').click()
+
+  await expect(page.getByTestId('pane-title')).toHaveText(newSectionName)
+  await expect(page.getByTestId('origin-badge')).toHaveText('Създадено тук')
+  await expect(page.getByTestId('item-list-empty')).toContainText('В тази секция няма артикули')
+  await settle()
+  await page.reload()
+  await expect(page.getByTestId('pane-title')).toHaveText(newSectionName)
+  expect(await topSections()).toContain(newSectionName)
+
+  // Under "Коктейли" with its menu, then back to the top level.
+  await treeRow(newSectionName).getByTestId('section-menu').click()
+  await page.getByRole('menuitem', { name: 'Премести в…' }).click()
+  await page
+    .getByTestId('move-target')
+    .filter({ hasText: /^Коктейли$/ })
+    .click()
+  await settle()
+  await expect(
+    page
+      .getByTestId('section-node')
+      .filter({ has: page.getByRole('button', { name: 'Коктейли', exact: true }) })
+      .first()
+      .getByTestId('section-row')
+      .filter({ hasText: newSectionName }),
+  ).toHaveCount(1)
+  expect(await topSections()).not.toContain(newSectionName)
+
+  await treeRow(newSectionName).getByTestId('section-menu').click()
+  await page.getByRole('menuitem', { name: 'Премести в…' }).click()
+  await page
+    .getByTestId('move-target')
+    .filter({ hasText: /^Най-горно ниво$/ })
+    .click()
+  await settle()
+  await page.reload()
+  expect(await topSections()).toContain(newSectionName)
+
+  // Hide it: guests would not see it, and it has no items anyway.
+  await openSection(newSectionName)
+  await page.getByTestId('section-visible').click()
+  await expect(page.getByTestId('hidden-badge')).toHaveText('Скрито')
+  await settle()
+  await page.reload()
+  await expect(page.getByTestId('hidden-badge')).toHaveText('Скрито')
+})
+
+test('saves the screenshots of the brief when SCREENSHOT_DIR is set', async ({ browser }) => {
+  test.skip(!process.env.SCREENSHOT_DIR, 'SCREENSHOT_DIR is not set')
+  const state = await page.context().storageState()
+  const base = new URL(page.url())
+
+  // English, dark, desktop.
+  const dark = await browser.newContext({
+    storageState: state,
+    colorScheme: 'dark',
+    viewport: { width: 1440, height: 900 },
+  })
+  await dark.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: base.origin }])
+  const darkPage = await dark.newPage()
+  await darkPage.goto(base.pathname)
+  await expect(darkPage.getByTestId('composer')).toBeVisible()
+  await expect(darkPage.getByTestId('pane-title')).toHaveText('Cocktails')
+  await snapshot('composer-en-dark-desktop.png', darkPage)
+  await dark.close()
+
+  // Bulgarian, light, phone.
+  const phone = await browser.newContext({
+    storageState: state,
+    colorScheme: 'light',
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  })
+  const phonePage = await phone.newPage()
+  await phonePage.goto(base.pathname)
+  await expect(phonePage.getByTestId('composer')).toBeVisible()
+  // The picker fills in as the page hydrates.
+  await expect(phonePage.getByTestId('section-picker')).toContainText('Коктейли')
+  await snapshot('composer-bg-light-mobile.png', phonePage)
+  await phone.close()
+
+  // Bulgarian, light, desktop, Unsorted and the open item sheet stub.
+  await openUnsorted()
+  await snapshot('composer-bg-light-unsorted.png')
+})

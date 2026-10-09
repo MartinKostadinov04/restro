@@ -7,6 +7,7 @@ import {
   parseItemDroppable,
   parseSectionList,
   resolveDrop,
+  resolvePointerDrop,
   sectionDraggableId,
   UNSORTED_KEY,
 } from './dnd'
@@ -131,5 +132,42 @@ describe('resolveDrop: sections', () => {
 
   it('does not take a drop into another sibling list (reparenting is "Move to")', () => {
     expect(resolveDrop(drag('children:root', 0, `children:${b}`, 0))).toBeNull()
+  })
+})
+
+describe('resolvePointerDrop', () => {
+  const drop = (from: string) => ({
+    draggableId: itemDraggableId(item),
+    source: { droppableId: from, index: 0 },
+  })
+
+  it('puts the item in the section whose tree row the pointer is on', () => {
+    expect(resolvePointerDrop(drop(`items:${a}`), b)).toEqual({
+      kind: 'placeItem',
+      itemId: item,
+      fromSectionId: a,
+      toSectionId: b,
+      index: undefined,
+    })
+    expect(resolvePointerDrop(drop(`items:${UNSORTED_KEY}`), b)).toMatchObject({
+      fromSectionId: null,
+      toSectionId: b,
+    })
+    expect(resolvePointerDrop(drop(`items:${a}`), UNSORTED_KEY)).toMatchObject({
+      fromSectionId: a,
+      toSectionId: null,
+    })
+  })
+
+  it('does nothing on the row of its own section, or for something that is not an item', () => {
+    expect(resolvePointerDrop(drop(`items:${a}`), a)).toBeNull()
+    expect(resolvePointerDrop(drop(`items:${UNSORTED_KEY}`), UNSORTED_KEY)).toBeNull()
+    expect(
+      resolvePointerDrop(
+        { draggableId: sectionDraggableId(a), source: { droppableId: 'children:root', index: 0 } },
+        b,
+      ),
+    ).toBeNull()
+    expect(resolvePointerDrop(drop(`items:${a}`), 'nope')).toBeNull()
   })
 })
