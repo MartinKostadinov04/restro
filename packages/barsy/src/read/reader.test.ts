@@ -120,6 +120,38 @@ describe('the nine wrappers on the demo recordings', () => {
     expect(mock.requests[0]?.authorization).toMatch(/^Basic /)
   })
 
+  it('getArticlesPage with lastUpdateAfter: filters.last_update is ">" plus the time, the rest unchanged', async () => {
+    await reader.getArticlesPage(10, {
+      rootCatId: 1091,
+      offset: 0,
+      length: 60,
+      lastUpdateAfter: '2026-10-09 09:55:00',
+    })
+    expect(mock.requests[0]?.params).toMatchObject({
+      filters: { cat_id_deep: '1091', last_update: '>2026-10-09 09:55:00' },
+      order_by: ARTICLES_ORDER_BY,
+    })
+    // Not a time the guide's example would accept: refused before anything is sent.
+    for (const bad of [
+      '',
+      'yesterday',
+      '2026-10-09T09:55:00Z',
+      '2026-10-09',
+      '> 2026-10-09 09:55:00',
+    ]) {
+      await expect(
+        reader.getArticlesPage(10, {
+          rootCatId: 1091,
+          offset: 0,
+          length: 60,
+          lastUpdateAfter: bad,
+        }),
+        bad,
+      ).rejects.toBeInstanceOf(BarsyConfigError)
+    }
+    expect(mock.requests).toHaveLength(1)
+  })
+
   it('getSupplements: the burger combo, four groups with prices and flags', async () => {
     const { data } = await reader.getSupplements(10, 7183)
     expect(data.map((group) => group.supplement_group_id)).toStrictEqual([192, 191, 160, 190])

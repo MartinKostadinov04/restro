@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The worker type-checks packages/barsy, whose relative imports carry their .ts extension
+    // (the fixture recorder runs on Node's type stripping). Nothing is emitted: tsup bundles.
+    "allowImportingTsExtensions": true
+  },
   "include": ["src", "tests", "tsup.config.ts"]
 }

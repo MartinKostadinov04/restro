@@ -1,6 +1,6 @@
 // Registers the jobs from jobs/index.ts with pg-boss: queues, dead-letter queues, workers and
 // schedules. The convention a job author follows is described in jobs/types.ts.
-import type { Job, PgBoss, QueueOptions } from 'pg-boss'
+import type { Job, PgBoss, QueueOptions, QueuePolicy } from 'pg-boss'
 
 import { summarizeError } from './errors'
 import type { JobDefinition, WorkerContext } from './jobs/types'
@@ -40,13 +40,17 @@ export function assertValidJobs(jobs: readonly JobDefinition[]): void {
   }
 }
 
-/** Creates the queue if it is missing, then applies the options (createQueue never updates). */
+/**
+ * Creates the queue if it is missing, then applies the options (createQueue never updates). The
+ * policy is part of creation only: pg-boss cannot change it afterwards.
+ */
 async function ensureQueue(
   boss: PgBoss,
   name: string,
   options: QueueOptions & { deadLetter?: string },
+  policy?: QueuePolicy,
 ) {
-  await boss.createQueue(name, options)
+  await boss.createQueue(name, policy === undefined ? options : { ...options, policy })
   await boss.updateQueue(name, options)
 }
 
@@ -113,7 +117,7 @@ export async function registerJobs(
     const deadLetter = deadLetterName(job.name)
     // The dead-letter queue must exist before the queue that points at it.
     await ensureQueue(boss, deadLetter, { retentionSeconds: DEAD_LETTER_RETENTION_SECONDS })
-    await ensureQueue(boss, job.name, { ...job.options.queue, deadLetter })
+    await ensureQueue(boss, job.name, { ...job.options.queue, deadLetter }, job.options.policy)
     await boss.work(job.name, job.options.work ?? {}, guarded(job, context))
     if (job.schedule) {
       await boss.schedule(job.name, job.schedule.cron, null, { tz: job.schedule.tz ?? 'UTC' })

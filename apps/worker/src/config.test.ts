@@ -28,6 +28,9 @@ describe('loadConfig', () => {
       logLevel: 'info',
       prettyLogs: true,
       seal: null,
+      barsy: { env: 'development', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+      // Local files under the repository's .local/assets unless told otherwise.
+      assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -40,6 +43,11 @@ describe('loadConfig', () => {
         WORKER_HEALTH_PORT: '9090',
         LOG_LEVEL: 'DEBUG',
         NODE_ENV: 'production',
+        ASSET_STORE: 'local',
+        LOCAL_ASSET_DIR: '/data/assets',
+        BARSY_ENV: ' Staging ',
+        BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
+        BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
       }),
     ).toEqual({
       databaseUrl: URL,
@@ -48,7 +56,39 @@ describe('loadConfig', () => {
       logLevel: 'debug',
       prettyLogs: false,
       seal: null,
+      barsy: {
+        env: 'staging',
+        allowedHostSuffixes: ['.barsyonline.com', '.barsy.test'],
+        productionHosts: ['club.barsyonline.com', 'other.barsyonline.com'],
+      },
+      assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
     })
+  })
+
+  it('refuses unusable barsy and asset settings by name, without repeating the values', () => {
+    expect(problemsOf({ DATABASE_URL: URL, BARSY_ENV: 'live' })).toEqual([
+      'BARSY_ENV must be one of: development, test, staging, production.',
+    ])
+    const problems = problemsOf({
+      DATABASE_URL: URL,
+      BARSY_ALLOWED_HOST_SUFFIXES: 'barsyonline.com',
+      BARSY_PRODUCTION_HOSTS: 'http://club.example/path?token=s3cret',
+    })
+    expect(problems).toEqual([
+      'BARSY_ALLOWED_HOST_SUFFIXES must be a comma-separated list of host suffixes that start with a dot, e.g. .barsyonline.com.',
+      'BARSY_PRODUCTION_HOSTS must be a comma-separated list of bare host names (no scheme, port or path).',
+    ])
+    expect(problems.join('\n')).not.toContain('s3cret')
+  })
+
+  it('production needs an asset store, and R2 needs its settings', () => {
+    expect(problemsOf({ DATABASE_URL: URL, NODE_ENV: 'production' })).toEqual([
+      'ASSET_STORE must be set to "local" or "r2" in production.',
+    ])
+    const r2 = problemsOf({ DATABASE_URL: URL, ASSET_STORE: 'r2', R2_BUCKET: 'bucket-secret-name' })
+    expect(r2).toHaveLength(1)
+    expect(r2[0]).toContain('R2_ACCOUNT_ID')
+    expect(r2[0]).not.toContain('bucket-secret-name')
   })
 
   it('accepts postgresql:// too', () => {
@@ -69,7 +109,9 @@ describe('loadConfig', () => {
     expect(loadConfig(base).prettyLogs).toBe(true)
     expect(loadConfig({ ...base, NODE_ENV: 'development' }).prettyLogs).toBe(true)
     expect(loadConfig({ ...base, NODE_ENV: 'test' }).prettyLogs).toBe(true)
-    expect(loadConfig({ ...base, NODE_ENV: 'production' }).prettyLogs).toBe(false)
+    expect(loadConfig({ ...base, NODE_ENV: 'production', ASSET_STORE: 'local' }).prettyLogs).toBe(
+      false,
+    )
   })
 
   it('names every problem and never repeats the connection string', () => {

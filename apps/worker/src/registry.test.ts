@@ -53,6 +53,7 @@ async function context() {
     version: '1.2.3',
     now: () => new Date('2026-10-08T12:00:00Z'),
     status: new WorkerStatus(),
+    queue: { send: async () => null },
   }
   return { ctx, lines }
 }
