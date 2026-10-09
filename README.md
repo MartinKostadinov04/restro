@@ -33,11 +33,12 @@ Needs the database, its tables, the app role and a demo owner. With `pnpm db:loc
 
 ```
 pnpm db:migrate && pnpm db:roles    # DATABASE_URL_OWNER and DATABASE_APP_PASSWORD from .env.local; set them in your shell first (the db scripts do not read .env files)
-pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club)
+pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club) + its demo menu
 pnpm dev                            # http://localhost:3000 → sign in with DEV_ADMIN_EMAIL / DEV_ADMIN_PASSWORD
 ```
 
 - `pnpm db:seed:dev` is safe to repeat. It refuses to run unless `NODE_ENV` is `development` and the database is on this machine.
+- The demo menu (Composer tab) is made through `apply()` like a barsy pull, with made-up ids: four sections (Коктейли, Бира, Безалкохолни, Храна), 20 items in them (one hidden by barsy, one with a description written here) and two in Unsorted (one made here). Running the seed again never undoes what you moved in the composer.
 - The admin starts in Bulgarian; the user menu (bottom of the sidebar) switches the language (a cookie) and the light/dark theme.
 - `http://localhost:3000/dev/fields` (development only, no sign-in) shows every field type as an editable row; saving there only changes the page, never the database.
 - `apps/web` reads the repo-level `.env.local` too (`apps/web/next.config.ts`), so one file serves the scripts and the app. Sign-up is off: new people arrive by invitation, later.

@@ -4,4 +4,6 @@
 export * from './apply'
 export * from './load-document'
 export * from './provision'
+export * from './sources'
 export * from './unlink'
+export * from './unplaced'

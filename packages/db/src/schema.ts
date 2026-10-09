@@ -616,9 +616,37 @@ export const fieldValues = restro.table(
 )
 
 /**
- * Append-only changelog (rule 2): one row per change of a field value, old -> new (null = no
- * value). The app role may only SELECT and INSERT. `seq` is an identity column, so inserting
- * needs no privilege on its sequence.
+ * The change-set ops an `events` row can record (`op`): the same names as `ChangeSetOp['op']` in
+ * @restro/core (a core test keeps the two lists equal). Duplicated here because this package
+ * cannot import core.
+ */
+export const EVENT_OPS = [
+  'setField',
+  'clearField',
+  'createNode',
+  'setPlacement',
+  'removePlacement',
+  'moveNode',
+  'setNodeStatus',
+  'linkSource',
+  'unlinkSource',
+] as const
+
+/**
+ * Append-only changelog (rule 2): one row per change, old -> new (null = nothing). The app role
+ * may only SELECT and INSERT. `seq` is an identity column, so inserting needs no privilege on
+ * its sequence.
+ *
+ * `op` says what kind of change the row records. `setField` and `clearField` rows are changes of
+ * a field value: `field_key` is the field, `layer` and `scope` the slot. The structural ops
+ * (`createNode`, `setNodeStatus`, `setPlacement`, `removePlacement`, `moveNode`, `linkSource`,
+ * `unlinkSource`) fill the same columns with a reserved key naming what changed (`node`,
+ * `status`, `placement`, `parent`, `link`), the layer of their source (`manual`, `import` or
+ * `barsy`), scope `master`, and JSON in `old_value` / `new_value` that names only our own ids
+ * and never an external id (rule 3): `{section, sort_key}` for a placement, `{parent, sort_key}`
+ * for a move, `{type, parent, status}` for a new node, `{source, external_type}` for a link, the
+ * status text for a status change. `node_id` is the node that changed (the item, for a
+ * placement).
  */
 export const events = restro.table(
   'events',
@@ -628,6 +656,8 @@ export const events = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     nodeId: text('node_id').notNull(),
+    /** What kind of change this row records; rows from before the column count as `setField`. */
+    op: text('op').notNull().default('setField'),
     fieldKey: text('field_key').notNull(),
     layer: text('layer').notNull(),
     scope: text('scope').notNull(),
@@ -646,6 +676,10 @@ export const events = restro.table(
       foreignColumns: [nodes.tenantId, nodes.id],
     }),
     index('events_node_id_seq_idx').on(t.nodeId, t.seq),
+    check(
+      'events_op',
+      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource')`,
+    ),
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
       'events_layer',
