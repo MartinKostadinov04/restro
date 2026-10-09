@@ -51,7 +51,7 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
-      name: 'item-sheet (next dev)',
+      name: 'item-sheet-dev',
       testMatch: /item-sheet\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: DEV_ORIGIN },
     },

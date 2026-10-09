@@ -18,7 +18,7 @@
 import type { Locale, LocalizedText } from '@restro/core'
 import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -83,6 +83,13 @@ export function ItemSheet({
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' })
   const [tab, setTab] = useState<TabId>('details')
   const [busy, setBusy] = useState(false)
+  const scroller = useRef<HTMLDivElement>(null)
+
+  // Every tab starts at its top, not where the previous one was scrolled to.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the tab is the trigger, not an input
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0
+  }, [tab])
 
   // Fetch the item's data whenever the sheet opens for an item.
   useEffect(() => {
@@ -238,31 +245,38 @@ export function ItemSheet({
                   ))}
                 </TabsList>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                {/* Details, Translations and Media stay mounted when hidden, so a half-written
+              <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto p-4">
+                {/* Details, Translations and Media stay mounted when hidden (Radix leaves a
+                    force-mounted panel showing, so the wrapper hides it), so a half-written
                     translation survives a look at another tab. History loads when it is opened. */}
                 <TabsContent value="details" forceMount>
-                  <ItemSheetDetailsTab
-                    data={data}
-                    busy={busy}
-                    onSave={saveField}
-                    onRevert={revertField}
-                    onKeep={keepField}
-                    onOpenMedia={() => setTab('media')}
-                  />
+                  <div hidden={tab !== 'details'}>
+                    <ItemSheetDetailsTab
+                      data={data}
+                      busy={busy}
+                      onSave={saveField}
+                      onRevert={revertField}
+                      onKeep={keepField}
+                      onOpenMedia={() => setTab('media')}
+                    />
+                  </div>
                 </TabsContent>
                 <TabsContent value="translations" forceMount>
-                  <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
+                  <div hidden={tab !== 'translations'}>
+                    <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
+                  </div>
                 </TabsContent>
                 <TabsContent value="media" forceMount>
-                  <ItemSheetMediaTab
-                    key={`${data.revision}:${data.image?.assetId ?? ''}`}
-                    data={data}
-                    busy={busy}
-                    onAttach={attachImage}
-                    onSaveDetails={saveImageDetails}
-                    onRemove={removeImage}
-                  />
+                  <div hidden={tab !== 'media'}>
+                    <ItemSheetMediaTab
+                      key={`${data.revision}:${data.image?.assetId ?? ''}`}
+                      data={data}
+                      busy={busy}
+                      onAttach={attachImage}
+                      onSaveDetails={saveImageDetails}
+                      onRemove={removeImage}
+                    />
+                  </div>
                 </TabsContent>
                 <TabsContent value="history">
                   {venueId ? (

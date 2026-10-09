@@ -32,8 +32,15 @@ export function getAssetStore(): Promise<AssetStore> {
   return globals.__restroAssetStore
 }
 
-/** The local store when that is the chosen one (the serving route needs its `read`), else null. */
+/**
+ * The local store when that is the chosen one (the serving route needs its `read`), else null.
+ * Recognised by what it can do, not by `instanceof`: `next dev` may evaluate this module twice,
+ * and the store kept on `globalThis` then belongs to the other copy of the class.
+ */
 export async function getLocalAssetStore(): Promise<LocalAssetStore | null> {
   const store = await getAssetStore()
-  return store instanceof LocalAssetStore ? store : null
+  const local = store as Partial<LocalAssetStore>
+  return typeof local.read === 'function' && typeof local.linkSecret === 'string'
+    ? (store as LocalAssetStore)
+    : null
 }

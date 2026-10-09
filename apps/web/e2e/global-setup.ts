@@ -10,6 +10,9 @@ function runScript(script: string) {
     process.execPath,
     [
       '--disable-warning=ExperimentalWarning',
+      // apply() uses constructor parameter properties, which Node's default type stripping
+      // refuses; this flag transforms them instead.
+      '--experimental-transform-types',
       '--env-file-if-exists=../../.env.local',
       '--env-file=./scripts/dev.env',
       '--import',

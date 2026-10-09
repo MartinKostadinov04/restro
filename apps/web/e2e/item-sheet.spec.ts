@@ -21,7 +21,10 @@ const SCREENSHOT_DIR =
 async function shot(page: Page, name: string) {
   if (!SCREENSHOT_DIR) return
   mkdirSync(SCREENSHOT_DIR, { recursive: true })
-  await page.screenshot({ path: path.join(SCREENSHOT_DIR, `s2-06b-${name}.png`) })
+  await page.screenshot({
+    path: path.join(SCREENSHOT_DIR, `s2-06b-${name}.png`),
+    animations: 'disabled',
+  })
 }
 
 async function setPreferences(page: Page, language: 'bg' | 'en', theme: 'light' | 'dark') {
@@ -38,8 +41,7 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
   baseURL,
 }) => {
   // The first request to each page compiles it in development.
-  test.setTimeout(300_000)
-  test.slow()
+  test.setTimeout(240_000)
   const origin = new URL(baseURL ?? 'http://127.0.0.1:3101').origin
   await context.addCookies([
     { name: 'NEXT_LOCALE', value: 'en', url: origin },
@@ -51,11 +53,13 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
 
   // --- sign in, open the item -----------------------------------------------------------------
   await page.goto('/dev/item-sheet')
-  await expect(page).toHaveURL(/\/login\?next=/)
+  // The harness checks the session itself (the proxy lets /dev through), so nobody is signed in.
+  await expect(page).toHaveURL(/\/login/)
   await page.getByLabel('Email').fill(ADMIN_EMAIL)
   await page.getByLabel('Password').fill(ADMIN_PASSWORD)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).toHaveURL(/\/dev\/item-sheet$/, { timeout: 120_000 })
+  await expect(page).toHaveURL(/\/venues/, { timeout: 120_000 })
+  await page.goto('/dev/item-sheet')
   await page.getByRole('link', { name: `Open ${ITEM_SHEET_ITEM}` }).click()
   const sheet = page.getByTestId('item-sheet')
   await expect(sheet.getByTestId('item-sheet-title')).toHaveText(ITEM_SHEET_ITEM, {
@@ -99,6 +103,8 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
 
   // --- Translations: barsy's Bulgarian is read-only, add the English name ----------------------
   await sheet.getByRole('tab', { name: 'Translations' }).click()
+  await expect(sheet.getByTestId('item-sheet-translations')).toBeVisible()
+  await expect(sheet.getByTestId('item-sheet-details')).toBeHidden()
   const bg = sheet.locator(
     '[data-testid="translation-cell"][data-field="name"][data-locale="bg_BG"]',
   )
@@ -117,6 +123,7 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
 
   // --- Media: upload a photo (the local store), it is shown through the signed route -----------
   await sheet.getByRole('tab', { name: 'Media' }).click()
+  await expect(sheet.getByTestId('item-sheet-translations')).toBeHidden()
   await expect(sheet.getByTestId('item-sheet-media')).toContainText('No photo yet')
   await sheet.getByTestId('photo-input').setInputFiles({
     name: 'negroni.png',
@@ -138,6 +145,7 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
 
   // --- the image row in Details now shows the photo ---------------------------------------------
   await sheet.getByRole('tab', { name: 'Details' }).click()
+  await expect(sheet.getByTestId('item-sheet-media')).toBeHidden()
   await expect(sheet.locator('[data-field-key="image"] img')).toBeVisible()
 
   // --- History shows the changes, newest first, with who made them -----------------------------
@@ -145,18 +153,17 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
   const history = sheet.getByTestId('item-sheet-history')
   const entries = history.getByTestId('history-entry')
   await expect(entries.first()).toBeVisible()
-  await expect(history.locator('[data-testid="history-entry"][data-field="image"]')).toBeVisible()
-  await expect(history.locator('[data-testid="history-entry"][data-field="name"]')).toContainText(
-    englishName,
-  )
+  const mine = history.getByTestId('history-entry').filter({ hasText: 'Demo Owner' })
+  const byField = (field: string) => mine.and(page.locator(`[data-field="${field}"]`))
+  // The photo and then its alt text.
+  await expect(byField('image')).toHaveCount(2)
+  await expect(byField('name')).toContainText(englishName)
+  await expect(byField('description')).toContainText(description)
+  // The allergens override and its revert are both there; so is the seed's barsy sync line.
+  await expect(byField('allergens')).toHaveCount(2)
   await expect(
-    history.locator('[data-testid="history-entry"][data-field="description"]'),
-  ).toContainText(description)
-  await expect(history).toContainText('Demo Owner')
-  // The allergens override and its revert are both there.
-  await expect(
-    history.locator('[data-testid="history-entry"][data-field="allergens"]'),
-  ).toHaveCount(2)
+    history.getByTestId('history-entry').filter({ hasText: 'The barsy sync' }).first(),
+  ).toBeVisible()
   const order = await entries.evaluateAll((els) => els.map((el) => el.getAttribute('data-field')))
   expect(order.indexOf('image')).toBeLessThan(order.indexOf('description'))
   await shot(page, 'history-en-light')

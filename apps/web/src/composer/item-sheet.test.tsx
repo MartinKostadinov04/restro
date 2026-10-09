@@ -178,6 +178,12 @@ describe('ItemSheet', () => {
     const imageRow = document.querySelector('[data-field-key="image"]') as HTMLElement
     await userEvent.click(within(imageRow).getByRole('button', { name: /^(edit|set) image/i }))
     expect(screen.getByRole('tab', { name: 'Media' }).getAttribute('aria-selected')).toBe('true')
+    // Only the selected tab's panel shows; the others stay mounted but hidden.
+    const hidden = (testId: string) =>
+      document.querySelector(`[data-testid="${testId}"]`)?.closest('[hidden]') != null
+    expect(hidden('item-sheet-media')).toBe(false)
+    expect(hidden('item-sheet-details')).toBe(true)
+    expect(hidden('item-sheet-translations')).toBe(true)
 
     // A draft survives a visit to another tab.
     await userEvent.click(screen.getByRole('tab', { name: 'Translations' }))

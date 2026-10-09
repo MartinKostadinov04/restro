@@ -40,6 +40,8 @@ pnpm dev                            # http://localhost:3000 → sign in with DEV
 - `pnpm db:seed:dev` is safe to repeat. It refuses to run unless `NODE_ENV` is `development` and the database is on this machine.
 - The admin starts in Bulgarian; the user menu (bottom of the sidebar) switches the language (a cookie) and the light/dark theme.
 - `http://localhost:3000/dev/fields` (development only, no sign-in) shows every field type as an editable row; saving there only changes the page, never the database.
+- `http://localhost:3000/dev/item-sheet` (development only, sign in first) opens the item sheet (Details, Translations, Media, History) for the items of the first venue, without the composer. Unlike `/dev/fields`, saves there are real: they go through `apply()`. Photos go to `.local/assets` (`ASSET_STORE=local`); staging and production use the private R2 bucket (`ASSET_STORE=r2`, see `.env.example`).
+- The Playwright test of the item sheet runs on a `next dev` server beside the production build (the harness does not exist in a build); `E2E_PORT` moves both servers off 3100/3101. It seeds its item with `apps/web/scripts/seed-item-sheet.ts`.
 - `apps/web` reads the repo-level `.env.local` too (`apps/web/next.config.ts`), so one file serves the scripts and the app. Sign-up is off: new people arrive by invitation, later.
 
 Before a pull request: `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build`. The database tests run when `DATABASE_URL_OWNER` is set (CI sets it and then fails instead of skipping). `pnpm test:e2e` builds the web app and runs the Playwright tests against it (`pnpm --filter @restro/web exec playwright install chromium` once); it needs the migrated local database and seeds the demo owner itself.
