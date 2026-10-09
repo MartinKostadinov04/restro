@@ -163,7 +163,7 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
   const codesOf = (result: ApplyResult) =>
     result.rejected.map((rejection) => [rejection.opIndex, rejection.code])
 
-  async function resolvedItem(itemId: string) {
+  async function resolvedItem(itemId: NodeId) {
     const doc = await loadMenuDocument(app, tenant, menu.id)
     return resolve(VENUE_MENU_TEMPLATE, doc, {
       venueScope: `venue:${venueId}`,
