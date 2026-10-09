@@ -300,9 +300,8 @@ describe('ChangeSetSchema', () => {
     )
     expect(parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'gone' })).ok).toBe(false)
     expect(
-      parseChangeSet(
-        fromBarsy({ op: 'setLinkState', link, state: 'active', seenAt: 'yesterday' }),
-      ).ok,
+      parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'active', seenAt: 'yesterday' }))
+        .ok,
     ).toBe(false)
     expect(
       parseChangeSet(
@@ -315,10 +314,14 @@ describe('ChangeSetSchema', () => {
         }),
       ).ok,
     ).toBe(false)
-    expect(issuesOf(fromBarsy({ op: 'setLinkState', link, state: 'missing' }, 'int_other'))).toContain(
-      'cannot link another integration',
-    )
-    expect(parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'missing', node: { id: itemId } })).ok).toBe(false)
+    expect(
+      issuesOf(fromBarsy({ op: 'setLinkState', link, state: 'missing' }, 'int_other')),
+    ).toContain('cannot link another integration')
+    expect(
+      parseChangeSet(
+        fromBarsy({ op: 'setLinkState', link, state: 'missing', node: { id: itemId } }),
+      ).ok,
+    ).toBe(false)
   })
 
   it('gives a new section, group or option a sibling position, and a menu or item none', () => {

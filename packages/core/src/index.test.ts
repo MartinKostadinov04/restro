@@ -56,7 +56,12 @@ describe('@restro/core public surface', () => {
   it('exports the rule-6 conclusion, and no sealing: that needs node:crypto (@restro/core/seal)', () => {
     const exported = Object.keys(core)
     expect(exported).toEqual(expect.arrayContaining(['concludeFullPull', 'LINK_TRANSITIONS']))
-    for (const name of ['sealSecret', 'openSecret', 'sealBarsyCredentials', 'openBarsyCredentials']) {
+    for (const name of [
+      'sealSecret',
+      'openSecret',
+      'sealBarsyCredentials',
+      'openBarsyCredentials',
+    ]) {
       expect(exported, name).not.toContain(name)
     }
   })

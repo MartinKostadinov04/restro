@@ -66,7 +66,10 @@ describe('sealSecret', () => {
 
   it('never contains the plaintext, in any common encoding', () => {
     const secret = 'barsy-password-Пароль-123!'
-    const sealed = sealBarsyCredentials({ user: 'api-user', password: secret }, { ...context, publicKey: publicDer })
+    const sealed = sealBarsyCredentials(
+      { user: 'api-user', password: secret },
+      { ...context, publicKey: publicDer },
+    )
     for (const form of [
       secret,
       'api-user',

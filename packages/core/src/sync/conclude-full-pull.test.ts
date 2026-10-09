@@ -117,8 +117,9 @@ describe('concludeFullPull: an incomplete pull concludes nothing about absence (
 
 describe('concludeFullPull: caller bugs throw (the pull then concludes nothing)', () => {
   it('refuses a duplicate key, a key both seen and reported deleted, and bad numbers', () => {
-    expect(() => concludeFullPull(evidence({ links: [link('a', 'active'), link('a', 'missing')] })))
-      .toThrow(TypeError)
+    expect(() =>
+      concludeFullPull(evidence({ links: [link('a', 'active'), link('a', 'missing')] })),
+    ).toThrow(TypeError)
     expect(() =>
       concludeFullPull(evidence({ seen: new Set(['a']), deletedSeen: new Set(['a']) })),
     ).toThrow(/both seen and reported deleted/)

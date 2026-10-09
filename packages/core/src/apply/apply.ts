@@ -10,8 +10,9 @@
 //      the node's context, resolve identity through source_links (a createNode + linkSource pair
 //      whose link already exists collapses onto the linked node), skip writes whose value hash
 //      equals the stored one, compute 'end' sort keys;
-//   3. write the result: new nodes, statuses, links, placements, field values (upserts and
-//      deletions), one events row per changed value, and one revision step per touched node.
+//   3. write the result: new nodes, statuses, links and their lifecycle (setLinkState),
+//      placements, field values (upserts and deletions), one events row per changed value, and
+//      one revision step per touched node.
 // Each op ends applied, unchanged (a no-op) or rejected with a reason; a rejected op changes
 // nothing, except that an invalid value (V1/V2) is kept as a `valid = false` row when its slot
 // has no good value to protect (doc: "Invalid writes are kept as rejected rows with a reason;
@@ -1278,7 +1279,8 @@ class Run {
       const stored = link.lastSeenAt?.getTime() ?? Number.NEGATIVE_INFINITY
       if (seenAt.getTime() >= stored) {
         if (seenAt.getTime() !== stored) next = { ...next, lastSeenAt: seenAt }
-        if (op.hash !== undefined && op.hash !== link.lastHash) next = { ...next, lastHash: op.hash }
+        if (op.hash !== undefined && op.hash !== link.lastHash)
+          next = { ...next, lastHash: op.hash }
       }
     }
     if (next === link) return UNCHANGED

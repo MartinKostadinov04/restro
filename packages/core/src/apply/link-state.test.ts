@@ -211,7 +211,10 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
     let item: NodeId
 
     beforeAll(async () => {
-      const pulled = await barsy([...categoryOps('9100', { id: menu.id }), ...articleOps('91001', ['9100'])])
+      const pulled = await barsy([
+        ...categoryOps('9100', { id: menu.id }),
+        ...articleOps('91001', ['9100']),
+      ])
       expect(pulled.rejected).toEqual([])
       item = await nodeOf(art)
       // The manager's enrichment: a builder value and an override of barsy's name.
@@ -314,9 +317,9 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
       expect(await barsy([setLinkState(art, 'deleted')])).toMatchObject({ applied: 1 })
       expect(await barsy([setLinkState(art, 'active')])).toMatchObject({ applied: 1 })
       const section = await nodeOf(cat)
-      expect(await barsy([setLinkState(cat, 'missing'), setLinkState(cat, 'active')])).toMatchObject(
-        { applied: 2, eventsWritten: 2 },
-      )
+      expect(
+        await barsy([setLinkState(cat, 'missing'), setLinkState(cat, 'active')]),
+      ).toMatchObject({ applied: 2, eventsWritten: 2 })
       expect((await linkRow(cat)).state).toBe('active')
       expect((await eventsOf(section)).filter((event) => event.op === 'setLinkState')).toHaveLength(
         2,
@@ -362,7 +365,9 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
       })
 
       // An older observation (a chunk of an earlier pull applied late) changes nothing.
-      await barsy([setLinkState(art, 'active', { seenAt: earlier.toISOString(), hash: hash('v1') })])
+      await barsy([
+        setLinkState(art, 'active', { seenAt: earlier.toISOString(), hash: hash('v1') }),
+      ])
       expect(await linkRow(art)).toMatchObject({ lastSeenAt: later, lastHash: hash('v2') })
 
       await barsy([

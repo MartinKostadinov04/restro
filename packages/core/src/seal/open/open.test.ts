@@ -168,9 +168,7 @@ describe('key helpers', () => {
       type: 'spki',
     })
     expect(isSealKeyPair(publicKey, privateKey)).toBe(true)
-    expect(
-      isSealKeyPair(publicKey, parseSealPrivateKey(other.privateKey)),
-    ).toBe(false)
+    expect(isSealKeyPair(publicKey, parseSealPrivateKey(other.privateKey))).toBe(false)
   })
 })
 

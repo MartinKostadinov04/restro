@@ -21,7 +21,7 @@ const freshFile = (content?: string) => {
 }
 
 /** The value of `NAME=` in an env file. */
-const valueOf = (text: string, name: string) =>
+const envValue = (text: string, name: string) =>
   new RegExp(`^${name}=(.*)$`, 'm').exec(text)?.[1] ?? ''
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -32,8 +32,8 @@ describe('pnpm keys:seal', () => {
     const result = writeEnv(file)
     const text = readFileSync(file, 'utf8')
     expect(text.startsWith('DATABASE_URL=postgres://x\n')).toBe(true)
-    const publicText = valueOf(text, 'SEAL_PUBLIC_KEY')
-    const privateText = valueOf(text, 'SEAL_PRIVATE_KEY')
+    const publicText = envValue(text, 'SEAL_PUBLIC_KEY')
+    const privateText = envValue(text, 'SEAL_PRIVATE_KEY')
     expect(result).toEqual({ outcome: 'written', path: file, publicKey: publicText })
     expect(isSealKeyPair(parseSealPublicKey(publicText), parseSealPrivateKey(privateText))).toBe(
       true,
@@ -60,9 +60,9 @@ describe('pnpm keys:seal', () => {
     const run = spawnSync(process.execPath, [SCRIPT, '--write-env', file], { encoding: 'utf8' })
     expect(run.status).toBe(0)
     const text = readFileSync(file, 'utf8')
-    const privateText = valueOf(text, 'SEAL_PRIVATE_KEY')
+    const privateText = envValue(text, 'SEAL_PRIVATE_KEY')
     expect(privateText.length).toBeGreaterThan(40)
-    expect(run.stdout).toContain(valueOf(text, 'SEAL_PUBLIC_KEY'))
+    expect(run.stdout).toContain(envValue(text, 'SEAL_PUBLIC_KEY'))
     expect(run.stdout).toContain(file)
     expect(`${run.stdout}${run.stderr}`).not.toContain(privateText)
   })
