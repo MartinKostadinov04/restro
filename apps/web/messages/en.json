@@ -199,6 +199,124 @@
       "description": "Your first venue is set up together with the Restro team."
     }
   },
+  "composer": {
+    "sections": "Sections",
+    "newSection": "New section",
+    "unsorted": "Unsorted",
+    "unsortedHint": "Items that are in no section yet. Drag one onto a section, or use “Move to…”.",
+    "itemCount": "{count, plural, one {# item} other {# items}}",
+    "chooseSection": "Choose a section",
+    "untitledSection": "Section without a title",
+    "unnamedItem": "Item without a name",
+    "noPrice": "No price",
+    "treeLabel": "Sections of the menu",
+    "listLabel": "Items in {section}",
+    "empty": {
+      "noMenu": {
+        "title": "This venue has no menu yet",
+        "description": "Create it to start arranging sections and items.",
+        "action": "Create the menu"
+      },
+      "noSections": {
+        "title": "No sections yet",
+        "description": "The menu from barsy arrives here already sorted once the connection is set up. Until then you can create a section of your own.",
+        "action": "Create a section"
+      },
+      "noItems": {
+        "title": "No items in this section",
+        "description": "Drag items here from another section or from Unsorted."
+      },
+      "noUnsorted": {
+        "title": "Every item has a section",
+        "description": "Items that are in no section show up here."
+      },
+      "noSelection": {
+        "title": "Choose a section",
+        "description": "Pick a section on the left to see and arrange its items."
+      }
+    },
+    "badges": {
+      "barsy": "From barsy",
+      "owned": "Owned here",
+      "hiddenByBarsy": "Hidden by barsy",
+      "hidden": "Hidden",
+      "hiddenOther": "Hidden (setting)",
+      "issues": "{count, plural, one {# issue} other {# issues}}"
+    },
+    "visibility": {
+      "toggleItem": "Shown to guests: {name}",
+      "toggleSection": "Section shown to guests",
+      "lockedByBarsy": "Hidden in barsy. Show it there.",
+      "lockedOther": "Hidden by another setting. Change it in the item.",
+      "sectionHidden": "This section is hidden from guests.",
+      "hideSection": "Hide section",
+      "showSection": "Show section"
+    },
+    "actions": {
+      "open": "Open {name}",
+      "more": "More actions for {name}",
+      "moveTo": "Move to…",
+      "newInside": "New section inside",
+      "topLevel": "Top level",
+      "expand": "Expand {name}",
+      "collapse": "Collapse {name}",
+      "dragItem": "Drag {name}",
+      "dragSection": "Drag {name}",
+      "removeFromSection": "Move to Unsorted"
+    },
+    "dnd": {
+      "instructions": "Press space to pick up, the arrow keys to move, space to drop, escape to cancel.",
+      "lifted": "Picked up {name}. Position {position} of {total}.",
+      "moved": "{name}: position {position} of {total}.",
+      "overSection": "{name} is over the section {section}.",
+      "dropped": "{name} dropped at position {position} of {total}.",
+      "droppedInSection": "{name} moved to {section}.",
+      "cancelled": "Move cancelled. {name} is back where it was."
+    },
+    "new": {
+      "title": "New section",
+      "description": "Create a section of your own that does not come from barsy, for example “Tonight’s cocktails”.",
+      "parent": "Where",
+      "topLevel": "Top level",
+      "names": "Section name",
+      "name": "Name ({language})",
+      "optional": "optional",
+      "nameRequired": "Enter a name in the main language.",
+      "create": "Create",
+      "creating": "Creating…",
+      "cancel": "Cancel"
+    },
+    "itemSheet": {
+      "stub": "Details, translations, photos and history arrive with the item sheet."
+    },
+    "errors": {
+      "not_found": "This venue or its menu was not found. Reload the page.",
+      "invalid": "This action is not allowed.",
+      "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most.",
+      "failed": "Something went wrong. The change was not saved, try again."
+    },
+    "issues": {
+      "fallback": "Needs attention.",
+      "V3": "Missing name in the main language.",
+      "V4": "Allergens are not filled in.",
+      "V5": "The sources disagree about a value.",
+      "V6": "Missing price.",
+      "V7": "Not translated into {language}.",
+      "V9": "This section has nothing to show yet.",
+      "stale_override": "barsy’s value changed since you overrode it.",
+      "link_missing": "Not found in barsy any more.",
+      "link_deleted": "Deleted in barsy.",
+      "invalid_value": "A stored value is not valid.",
+      "ignored_value": "A value is ignored because barsy owns that field.",
+      "required_missing": "A required field is empty.",
+      "group_min_max": "The minimum of a choice group is above its maximum.",
+      "required_group_unsatisfiable": "A required choice has too few options.",
+      "translation_review": "barsy’s text changed. Check the {language} translation.",
+      "price_not_venue_scoped": "The price is not set for this venue.",
+      "unplaced_item": "Not in any section.",
+      "orphan_node": "Not attached to the menu."
+    }
+  },
   "workspace": {
     "switchTab": "Switch tab",
     "comingInStage": "Coming in Stage {stage}",
