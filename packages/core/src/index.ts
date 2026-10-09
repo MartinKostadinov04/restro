@@ -4,6 +4,7 @@
 
 export * from './allergens'
 export * from './change-set'
+export * from './document/types'
 export * from './field-definition'
 export * from './field-types/catalog'
 export * from './field-types/specs'

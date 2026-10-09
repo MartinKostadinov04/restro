@@ -197,6 +197,53 @@ describe('ChangeSetSchema', () => {
     )
   })
 
+  it('parses clearField and holds it to the same layer and scope rules as a write', () => {
+    const clear = {
+      op: 'clearField',
+      node: { id: itemId },
+      fieldKey: 'name',
+      layer: 'override',
+      scope: 'master',
+    }
+    const parsed = parseChangeSet(manualSet([clear]))
+    if (!parsed.ok) throw new Error(parsed.reason)
+    expect(parsed.value.ops[0]?.op).toBe('clearField')
+    expect(issuesOf(manualSet([{ ...clear, layer: 'barsy' }]))).toContain(
+      'cannot clear the barsy layer',
+    )
+    expect(issuesOf(manualSet([{ ...clear, scope: `venue:${venueId}` }]))).toContain('venue-scoped')
+    expect(issuesOf(manualSet([{ ...clear, node: barsyPrice.node, layer: 'manual' }]))).toContain(
+      'manual change sets name nodes by id',
+    )
+    const barsyClear = {
+      ...manualSet([
+        { ...clear, node: barsyPrice.node, layer: 'barsy', scope: `venue:${venueId}` },
+      ]),
+      source: 'barsy:int_club',
+      actor: 'integration:int_club',
+    }
+    expect(parseChangeSet(barsyClear).ok).toBe(true)
+  })
+
+  it("accepts the position hint 'end', and only 'end' from adapters", () => {
+    const placement = {
+      op: 'setPlacement',
+      item: barsyPrice.node,
+      section: { link: { integration: 'int_club', externalType: 'category', externalId: '7' } },
+    }
+    const fromBarsy = (sortKey: string) => ({
+      ...manualSet([{ ...placement, sortKey }]),
+      source: 'barsy:int_club',
+      actor: 'integration:int_club',
+    })
+    expect(parseChangeSet(fromBarsy('end')).ok).toBe(true)
+    expect(issuesOf(fromBarsy('a0'))).toContain("places items with 'end'")
+    const manual = { op: 'setPlacement', item: { id: itemId }, section: { id: sectionId } }
+    expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'end' }])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'a0' }])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'start' }])).ok).toBe(false)
+  })
+
   it('types a parsed write', () => {
     const write: FieldWrite = FieldWriteSchema.parse(describeWrite)
     expect(write.layer).toBe('manual')

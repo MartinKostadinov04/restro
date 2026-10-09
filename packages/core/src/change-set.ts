@@ -106,7 +106,10 @@ export const NodeRefSchema = z.union([NodeIdRefSchema, z.strictObject({ link: So
 /** A reference to a node by id or by source link. */
 export type NodeRef = z.output<typeof NodeRefSchema>
 
-/** Job ids come from the jobs table; the id kind for jobs is not fixed yet, so any safe name. */
+/**
+ * The job a change set belongs to: a pull or import names its `jb_` job run; a manual save, which
+ * has no job run, names its own job (any safe name). Kept loose until the composer settles it.
+ */
 const JobIdSchema = z.string().regex(NAME_PATTERN, 'expected a job id')
 
 /**
@@ -172,12 +175,23 @@ export const CreateNodeSchema = z
     }
   })
 
+/**
+ * Where a placement goes: a fractional sort key (the composer computes it between two
+ * neighbours), or the position hint `'end'`, which `apply()` turns into a key after the section's
+ * current last item. `'end'` never moves an item that is already in the section. Adapters (barsy,
+ * import) only ever send `'end'`: they never compute sort keys themselves.
+ */
+export const PlacementPositionSchema = z.union([SortKeySchema, z.literal('end')])
+
+/** A sort key or the hint `'end'`. */
+export type PlacementPosition = z.output<typeof PlacementPositionSchema>
+
 /** Places an item in a section at a sort position (one row; moving rewrites only this row). */
 export const SetPlacementSchema = z.strictObject({
   op: z.literal('setPlacement'),
   item: NodeRefSchema,
   section: NodeRefSchema,
-  sortKey: SortKeySchema,
+  sortKey: PlacementPositionSchema,
 })
 
 /** Removes an item's placement from a section (the item itself stays). */
@@ -208,6 +222,32 @@ export const UnlinkSourceSchema = z.strictObject({
   link: SourceLinkSchema,
 })
 
+/**
+ * Removes the value of one field in one layer and scope, so the layers below show through:
+ * revert an override, take barsy's value instead of ours, undo a builder hide. Same layer and
+ * scope rules as a write; clearing a slot that holds nothing changes nothing.
+ */
+export const ClearFieldSchema = z
+  .strictObject({
+    op: z.literal('clearField'),
+    node: NodeRefSchema,
+    fieldKey: z.string().regex(FIELD_KEY_PATTERN, 'field keys are snake_case'),
+    layer: LayerSchema,
+    scope: ScopeSchema,
+  })
+  .superRefine((clear, ctx) => {
+    if (clear.scope !== 'master' && clear.layer !== 'barsy') {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'only barsy values are venue-scoped; editions use edition layers',
+        path: ['scope'],
+      })
+    }
+  })
+
+/** A field clear. */
+export type ClearField = z.output<typeof ClearFieldSchema>
+
 /** Any structural op: node creation, placements, status, source links. */
 export const StructuralOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
@@ -221,9 +261,10 @@ export const StructuralOpSchema = z.discriminatedUnion('op', [
 /** A structural op. */
 export type StructuralOp = z.output<typeof StructuralOpSchema>
 
-/** Any op in a change set: a field write or a structural op. */
+/** Any op in a change set: a field write, a field clear or a structural op. */
 export const ChangeSetOpSchema = z.discriminatedUnion('op', [
   FieldWriteSchema,
+  ClearFieldSchema,
   CreateNodeSchema,
   SetPlacementSchema,
   RemovePlacementSchema,
@@ -242,9 +283,11 @@ export function layerAllowedForSource(source: Source, layer: Layer): boolean {
   return layer === 'manual' || layer === 'override' || isEditionLayer(layer)
 }
 
-function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
+/** Every node reference in one op (the node it acts on, a parent, an item and its section). */
+export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
   switch (op.op) {
     case 'setField':
+    case 'clearField':
     case 'setNodeStatus':
     case 'linkSource':
     case 'unlinkSource':
@@ -259,8 +302,9 @@ function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
 
 /**
  * The change set: id, source, job, actor, when the source observed the data, and its ops, applied
- * atomically. Cross-checks: each write's layer matches the source; manual sets name nodes by id;
- * a barsy set only touches links of its own integration; created ids are unique.
+ * atomically. Cross-checks: each write's and clear's layer matches the source; manual sets name
+ * nodes by id; a barsy set only touches links of its own integration; adapters place items only
+ * with `'end'`; created ids are unique.
  */
 export const ChangeSetSchema = z
   .strictObject({
@@ -279,6 +323,12 @@ export const ChangeSetSchema = z
         ctx.addIssue({ code: 'custom', message, path: ['ops', index] })
       if (op.op === 'setField' && !layerAllowedForSource(set.source, op.layer)) {
         issue(`a ${set.source} change set cannot write the ${op.layer} layer`)
+      }
+      if (op.op === 'clearField' && !layerAllowedForSource(set.source, op.layer)) {
+        issue(`a ${set.source} change set cannot clear the ${op.layer} layer`)
+      }
+      if (op.op === 'setPlacement' && set.source !== 'manual' && op.sortKey !== 'end') {
+        issue(`a ${set.source} change set places items with 'end', never with its own sort key`)
       }
       for (const ref of nodeRefsOf(op)) {
         if (!('link' in ref)) continue
