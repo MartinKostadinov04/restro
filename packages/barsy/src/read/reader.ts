@@ -52,7 +52,17 @@ export interface BarsyPage {
 export interface BarsyArticlesPage extends BarsyPage {
   /** The venue's catalogue root category (`filters.cat_id_deep`): the pull reads that subtree only. */
   readonly rootCatId: number
+  /**
+   * Only articles changed after this venue-local time (`YYYY-MM-DD HH:mm:ss`, no offset): sent as
+   * `filters.last_update = ">" + time`, as the official guide's first example does
+   * (https://docs.lukanet.com/barsy.api/integrations/20-articles.html). The incremental sync's
+   * cursor; never the guide's second example (`all_last_update` plus a write into barsy).
+   */
+  readonly lastUpdateAfter?: string
 }
+
+/** barsy's timestamp text in the guide's example: `2012-09-27 17:12:29`. */
+const LAST_UPDATE_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
 
 /** The `extra_properties` the full pull asks for, as an object of "1" flags (as recorded). */
 export const ARTICLE_EXTRA_PROPERTIES = {
@@ -165,10 +175,15 @@ export function createBarsyReader(client: BarsyCaller): BarsyReader {
     getArticlesPage: async (bid, page) => {
       assertCatId(page.rootCatId)
       assertPage(page)
+      if (page.lastUpdateAfter !== undefined && !LAST_UPDATE_PATTERN.test(page.lastUpdateAfter)) {
+        throw new BarsyConfigError('barsy lastUpdateAfter must look like "YYYY-MM-DD HH:mm:ss"')
+      }
+      const filters: Record<string, string> = { cat_id_deep: String(page.rootCatId) }
+      if (page.lastUpdateAfter !== undefined) filters.last_update = `>${page.lastUpdateAfter}`
       return read(
         'Articles_getlist',
         {
-          filters: { cat_id_deep: String(page.rootCatId) },
+          filters,
           order_by: ARTICLES_ORDER_BY,
           extra_properties: ARTICLE_EXTRA_PROPERTIES,
           offset: String(page.offset),
