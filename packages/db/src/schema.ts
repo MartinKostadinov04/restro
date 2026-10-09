@@ -271,6 +271,8 @@ export interface IntegrationConfig {
   price_source?: string
   /** The barsy article-detail key mapped to allergens. */
   allergen_detail_key?: string
+  /** The language barsy text without a language tag is stored in (a key of `LOCALES`). */
+  default_locale?: string
   /** The mapping version barsy writes record (doc "Barsy to canonical mapping"). */
   mapping_version?: number
 }
@@ -701,6 +703,16 @@ export const events = restro.table(
   ],
 )
 
+/**
+ * What a run records beside its counters (`job_runs.details`): the lines of text it wrote down
+ * (what it skipped, and why) and the writes `apply()` refused. Our ids only: `nodeRef` is a node
+ * id (`nd_…`), never a barsy id, and is null when the op named a node that does not exist.
+ */
+export interface JobRunDetails {
+  notes: string[]
+  refused: { nodeRef: string | null; fieldKey?: string; code: string }[]
+}
+
 /** One run of a job (full pull, incremental pull, photo fetch, …) with its counters. */
 export const jobRuns = restro.table(
   'job_runs',
@@ -717,6 +729,8 @@ export const jobRuns = restro.table(
     counters: jsonb('counters').$type<Record<string, number>>().notNull().default({}),
     /** What went wrong, for people. Never query parameters, credentials or personal data. */
     errorSummary: text('error_summary'),
+    /** The same, structured for the Integration tab. Null on runs recorded before it existed. */
+    details: jsonb('details').$type<JobRunDetails>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -729,6 +743,10 @@ export const jobRuns = restro.table(
     check('job_runs_kind', sql`${t.kind} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check('job_runs_status', sql`${t.status} in ('queued', 'running', 'completed', 'failed')`),
     check('job_runs_counters_object', sql`jsonb_typeof(${t.counters}) = 'object'`),
+    check(
+      'job_runs_details_object',
+      sql`${t.details} is null or jsonb_typeof(${t.details}) = 'object'`,
+    ),
   ],
 )
 

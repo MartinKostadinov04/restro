@@ -50,6 +50,13 @@
       "when": 1791555041739,
       "tag": "0006_link_state_changed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791575249882,
+      "tag": "0007_job_runs_details",
+      "breakpoints": true
     }
   ]
 }
