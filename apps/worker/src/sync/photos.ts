@@ -200,7 +200,10 @@ export async function fetchPhoto(
   // An article that is gone or was unlinked has nothing to show a photo: download nothing.
   const recordId = await articleRecordId(env, tenantId, integrationId, request.articleExternalId)
   if (recordId === null) return { asset: 'none', rejected: [], applied: false }
-  const bytes = await downloadPhoto(env, session, request.url)
+  // The picture server is the installation: its two-requests-at-a-time limit covers it too.
+  const bytes = await env.limiters
+    .forHost(session.host)
+    .run(() => downloadPhoto(env, session, request.url))
   const inspected = inspectImage(bytes)
   if (!inspected.ok) {
     throw new PhotoRefused(

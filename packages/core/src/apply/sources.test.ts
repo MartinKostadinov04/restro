@@ -239,6 +239,30 @@ describe.skipIf(!hasDatabase)('integrations and source records (as the restro_ap
     expect(venueScoped[0]?.created).toBe(true)
   })
 
+  it('a record with a content-derived id is stored under that id even if the content exists under another', async () => {
+    const integration = await createIntegration(app, tenant, { kind: 'barsy', host: 'ids.test' })
+    const content = {
+      externalType: 'article',
+      externalId: '77',
+      scope: 'master' as const,
+      raw: '{"article_id":77}',
+      payload: { article_id: 77 },
+    }
+    // A writer without ids (the dev seed) stored it first, under a random id.
+    const [random] = await appendSourceRecords(app, tenant, integration.id, [content])
+    // The sync names the record by an id derived from the content: change sets cite that id, so
+    // it must exist; the random-id row with the same content does not stand in for it.
+    const derived = newId('sr')
+    const [named] = await appendSourceRecords(app, tenant, integration.id, [
+      { ...content, id: derived },
+    ])
+    expect(named).toEqual({ id: derived, created: true })
+    expect(derived).not.toBe(random?.id)
+    expect(
+      await appendSourceRecords(app, tenant, integration.id, [{ ...content, id: derived }]),
+    ).toEqual([{ id: derived, created: false }])
+  })
+
   it('a barsy change set can cite the record it recorded', async () => {
     const venue = await provisionVenue(app, tenant, { name: 'Seeded', slug: 'seeded' })
     const menu = await provisionMenu(app, tenant, venue.id)

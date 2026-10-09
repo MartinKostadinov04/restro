@@ -269,9 +269,9 @@ async function queuePhotos(
   mapping: CatalogueMapping,
   before: ReadonlyMap<string, StoredLink>,
   hashes: ReadonlyMap<string, string>,
-): Promise<number> {
+): Promise<{ queued: number; elsewhere: number }> {
   const { env, session } = ctx
-  if (mapping.assetRequests.length === 0) return 0
+  if (mapping.assetRequests.length === 0) return { queued: 0, elsewhere: 0 }
   const tenantId = session.tenantId
   const integrationId = session.integration.id
   const withPhoto = await articlesWithPhoto(env, tenantId, integrationId)
@@ -285,7 +285,21 @@ async function queuePhotos(
     }),
   )
   let queued = 0
+  let elsewhere = 0
+  const ownOrigin = new URL(`https://${session.host}`).origin
   for (const request of mapping.assetRequests) {
+    // Only pictures on the integration's own host are fetched (the job refuses the rest too).
+    // The demo has a few on a Cloudflare Images host: they are counted, not queued over and over.
+    let origin: string | null = null
+    try {
+      origin = new URL(request.url).origin
+    } catch {
+      origin = null
+    }
+    if (origin !== ownOrigin) {
+      elsewhere += 1
+      continue
+    }
     const id = request.articleExternalId
     const stored = before.get(`article:${id}`)
     const current = hashes.get(`article:${id}`)
@@ -294,19 +308,26 @@ async function queuePhotos(
       stored?.lastHash != null && previous.get(stored.lastHash) === request.pictureName
     const needed = stored === undefined || !withPhoto.has(id) || (!unchanged && !samePicture)
     if (!needed) continue
-    const job = prepareJob(JOB_NAMES.assetFetch, {
-      tenantId,
-      integrationId,
-      articleExternalId: id,
-      pictureName: request.pictureName,
-      url: request.url,
-    })
+    let job: ReturnType<typeof prepareJob<typeof JOB_NAMES.assetFetch>>
+    try {
+      job = prepareJob(JOB_NAMES.assetFetch, {
+        tenantId,
+        integrationId,
+        articleExternalId: id,
+        pictureName: request.pictureName,
+        url: request.url,
+      })
+    } catch {
+      // An address or file name the job's payload cannot carry: not worth failing the pull for.
+      elsewhere += 1
+      continue
+    }
     const jobId = await env.enqueue(JOB_NAMES.assetFetch, job.data, {
       singletonKey: job.singletonKey,
     })
     if (jobId !== null) queued += 1
   }
-  return queued
+  return { queued, elsewhere }
 }
 
 // --- the shared middle: map, record, apply, mark, conclude ----------------------------------
@@ -491,7 +512,9 @@ async function syncFetched(
   counters.ops_unchanged = totals.unchanged
   counters.ops_skipped = totals.skipped
   counters.warnings = mapping.warnings.length
-  counters.photos_queued = await queuePhotos(ctx, mapping, before, hashes)
+  const photos = await queuePhotos(ctx, mapping, before, hashes)
+  counters.photos_queued = photos.queued
+  counters.photos_elsewhere = photos.elsewhere
   return { counters, notes, totals, complete }
 }
 

@@ -192,11 +192,16 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     const mapped = new Set(
       (await links()).filter((l) => l.external_type === 'article').map((l) => l.external_id),
     )
-    const expected = fake.articles.filter(
+    // Pictures on the integration's own host are queued. The demo has three whose `picture` is a
+    // full URL on a Cloudflare Images host: counted, not queued (the job would refuse them).
+    const withPicture = fake.articles.filter(
       (article) => mapped.has(String(article.article_id)) && article.picture,
     )
+    const expected = withPicture.filter((article) => article.picture_url)
     expect(expected.length).toBeGreaterThan(40)
+    expect(withPicture.length - expected.length).toBe(3)
     expect(photos).toHaveLength(expected.length)
+    expect((await lastPull()).counters.photos_elsewhere).toBe(3)
     expect(photos[0]?.data).toMatchObject({
       tenantId: world.tenantId,
       integrationId: world.integrationId,
