@@ -1,6 +1,7 @@
-// The asset store this process uses, chosen by the environment (./config.ts) and created on first
-// use, once per process (it survives Next.js hot reloads in development). The R2 implementation
-// is loaded only when it is chosen, so a local run never loads the AWS SDK.
+// The asset store this process uses, chosen by the environment (`assetStoreConfig` in
+// @restro/assets) and created on first use, once per process (it survives Next.js hot reloads in
+// development). The R2 implementation is loaded only when it is chosen, so a local run never
+// loads the AWS SDK.
 
 import type { AssetStore } from '@restro/assets'
 import { assetStoreConfig, createAssetStore, type LocalAssetStore } from '@restro/assets'
