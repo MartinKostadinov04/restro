@@ -3,3 +3,5 @@
 export const ADMIN_EMAIL = process.env.DEV_ADMIN_EMAIL ?? 'owner@demo-club.test'
 export const ADMIN_PASSWORD = process.env.DEV_ADMIN_PASSWORD ?? 'local-only-not-a-secret'
 export const VENUE_NAME = 'Demo Club Sofia'
+// The barsy-linked item that `scripts/seed-item-sheet.ts` puts in the demo venue (Bulgarian name).
+export const ITEM_SHEET_ITEM = 'Негрони (e2e)'

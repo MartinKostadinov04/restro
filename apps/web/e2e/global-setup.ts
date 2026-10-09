@@ -3,10 +3,8 @@ import { fileURLToPath } from 'node:url'
 
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
 
-// Before the tests: put the demo organisation, its venue and the demo owner into the local
-// database, the same way a developer does with `pnpm db:seed:dev` (same script, same refusals:
-// development mode and a database on this machine only). Idempotent.
-export default function globalSetup() {
+/** Runs one of the dev scripts the way `pnpm db:seed:dev` does (same flags, same refusals). */
+function runScript(script: string) {
   const webDir = fileURLToPath(new URL('..', import.meta.url))
   const result = spawnSync(
     process.execPath,
@@ -16,7 +14,7 @@ export default function globalSetup() {
       '--env-file=./scripts/dev.env',
       '--import',
       './scripts/register-ts.mjs',
-      './scripts/seed-dev.ts',
+      script,
     ],
     {
       cwd: webDir,
@@ -31,6 +29,15 @@ export default function globalSetup() {
     },
   )
   if (result.status !== 0) {
-    throw new Error(`The demo seed failed:\n${result.stdout}\n${result.stderr}`)
+    throw new Error(`${script} failed:\n${result.stdout}\n${result.stderr}`)
   }
+}
+
+// Before the tests: put the demo organisation, its venue and the demo owner into the local
+// database, the same way a developer does with `pnpm db:seed:dev` (same script, same refusals:
+// development mode and a database on this machine only), then the item the item sheet's test
+// opens. Both are idempotent.
+export default function globalSetup() {
+  runScript('./scripts/seed-dev.ts')
+  runScript('./scripts/seed-item-sheet.ts')
 }
