@@ -166,7 +166,15 @@ describe('call', () => {
 
   it('refuses a method that is not on the read allowlist, before any request', async () => {
     const client = newClient()
-    for (const method of ['Accounts_place', 'Articles_getlist', 'constructor', '__proto__', '']) {
+    for (const method of [
+      'Accounts_place',
+      'Poses_register',
+      'Webhooks_subscribe',
+      'Articledetails_setdetailvalue',
+      'constructor',
+      '__proto__',
+      '',
+    ]) {
       await expect(client.call(method as never), method).rejects.toBeInstanceOf(
         BarsyMethodNotAllowedError,
       )
