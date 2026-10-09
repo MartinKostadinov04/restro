@@ -17,6 +17,8 @@ export interface Organization {
   readonly id: string
   readonly name: string
   readonly slug: string
+  /** The person's role in it: `owner`, `admin` or `member` (Better Auth may join several with commas). */
+  readonly role: string
 }
 
 /** A signed-in person and the organisation they are working in. */
@@ -29,7 +31,12 @@ export interface Access {
 
 async function organizationsOf(userId: string): Promise<Organization[]> {
   return getAuthDb()
-    .select({ id: authOrganization.id, name: authOrganization.name, slug: authOrganization.slug })
+    .select({
+      id: authOrganization.id,
+      name: authOrganization.name,
+      slug: authOrganization.slug,
+      role: authMember.role,
+    })
     .from(authMember)
     .innerJoin(authOrganization, eq(authOrganization.id, authMember.organizationId))
     .where(eq(authMember.userId, userId))
