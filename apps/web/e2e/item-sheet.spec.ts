@@ -141,6 +141,7 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
   await sheet.getByLabel(/^Alt text, English/).fill('A glass of Negroni')
   await sheet.getByTestId('image-details').getByRole('button', { name: 'Save' }).click()
   await expect(sheet.getByTestId('item-image')).toHaveAttribute('alt', /.+/)
+  await image.scrollIntoViewIfNeeded()
   await shot(page, 'media-en-light')
 
   // --- the image row in Details now shows the photo ---------------------------------------------
