@@ -5,6 +5,7 @@
 // when this test is skipped.
 import { randomUUID } from 'node:crypto'
 import { request } from 'node:http'
+import { tmpdir } from 'node:os'
 
 import { withSystem, workerHeartbeats } from '@restro/db'
 import type { QueryResultRow } from 'pg'
@@ -122,6 +123,8 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       logLevel: 'debug',
       prettyLogs: false,
       seal: null,
+      barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+      assets: { kind: 'local', dir: tmpdir() },
     }
     const logger = await createLogger({
       level: 'debug',

@@ -26,7 +26,7 @@ import type { WorkerConfig } from './config'
 import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
 import { WorkerStatus } from './health'
 import { type HealthServer, startHealthServer } from './health-server'
-import { jobs as defaultJobs } from './jobs'
+import { buildJobs } from './jobs'
 import type { JobDefinition, WorkerContext } from './jobs/types'
 import { WORKER_HEARTBEAT_JOB } from './jobs/worker-heartbeat'
 import type { Logger } from './logger'
@@ -69,7 +69,6 @@ export async function startWorker(
   options: StartWorkerOptions,
 ): Promise<Worker> {
   const log = options.logger.child({ workerId: config.workerId })
-  const jobs = options.jobs ?? defaultJobs
   const now = options.now ?? (() => new Date())
   const version = options.version ?? WORKER_VERSION
   const status = new WorkerStatus()
@@ -100,6 +99,8 @@ export async function startWorker(
   }
 
   try {
+    // Before anything is opened: a bad asset store setting stops the start here.
+    const jobs = options.jobs ?? (await buildJobs(config, log))
     health = await startHealthServer(config.healthPort, () => status.report(now()))
 
     pool = createPool(config.databaseUrl, {
@@ -132,6 +133,7 @@ export async function startWorker(
       version,
       now,
       status,
+      queue: boss,
     }
     await registerJobs(boss, jobs, context)
     if (jobs.some((job) => job.name === WORKER_HEARTBEAT_JOB)) {

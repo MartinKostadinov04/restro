@@ -208,8 +208,9 @@ const INSERT_BATCH = 100
  * latest: an object that goes A, B, A reuses record A) is not stored again, and its existing id
  * is returned. The result has one entry per input, in order.
  *
- * Ids derived from the content make the insert `on conflict do nothing`, so two writers storing
- * the same object cannot collide. Recency never comes from this table: the sync reads it from
+ * A record that comes with an id derived from its content (barsy's mapping does this) counts as
+ * stored when that id exists, since change sets cite the id; the insert is `on conflict do
+ * nothing`, so two writers storing the same object cannot collide. Recency never comes from this table: the sync reads it from
  * `source_links.last_hash`.
  */
 export async function appendSourceRecords(
@@ -237,6 +238,7 @@ export async function appendSourceRecords(
 
     // What is stored already, per external type (one indexed query per type and batch).
     const known = new Map<string, string>()
+    const knownIds = new Set<string>()
     const key = (type: string, id: string, scope: string, hash: string) =>
       `${type}\u0000${id}\u0000${scope}\u0000${hash}`
     const byType = new Map<string, Set<string>>()
@@ -266,6 +268,7 @@ export async function appendSourceRecords(
         for (const row of rows) {
           const mapKey = key(type, row.externalId, row.scope, row.contentHash)
           if (!known.has(mapKey)) known.set(mapKey, row.id)
+          knownIds.add(row.id)
         }
       }
     }
@@ -274,13 +277,22 @@ export async function appendSourceRecords(
     const toInsert: (typeof sourceRecords.$inferInsert)[] = []
     for (const { record, contentHash } of prepared) {
       const mapKey = key(record.externalType, record.externalId, record.scope, contentHash)
-      const existing = known.get(mapKey)
+      // With an id the caller derived from the content, "stored" means that id exists: ops cite
+      // the id, so a random-id row with the same content would not do. Without one, any row
+      // with the same content will.
+      const existing =
+        record.id !== undefined
+          ? knownIds.has(record.id)
+            ? record.id
+            : undefined
+          : known.get(mapKey)
       if (existing !== undefined) {
         results.push({ id: existing, created: false })
         continue
       }
       const id = record.id ?? newId('sr')
       known.set(mapKey, id)
+      knownIds.add(id)
       results.push({ id, created: true })
       toInsert.push({
         id,

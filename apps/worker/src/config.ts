@@ -6,6 +6,8 @@
 import type { KeyObject } from 'node:crypto'
 import { hostname } from 'node:os'
 
+import { type AssetStoreConfig, AssetStoreConfigError, assetStoreConfig } from '@restro/assets'
+import { BARSY_ENVS, type BarsyEnv, parseAllowedHosts } from '@restro/barsy'
 import { parseSealPublicKey } from '@restro/core/seal'
 import { isSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open'
 import { z } from 'zod'
@@ -35,7 +37,27 @@ export interface WorkerConfig {
    * not text, so logging the config could never print the private key.
    */
   readonly seal: SealKeys | null
+  /** Which barsy installations this process may talk to (CLAUDE.md rule 9). */
+  readonly barsy: BarsyPolicy
+  /** Where barsy photos are stored: the same store the web app reads (`@restro/assets`). */
+  readonly assets: AssetStoreConfig
 }
+
+/**
+ * The barsy host rules of this environment. An integration's host is checked against them before
+ * the client is built (apps/worker/src/sync/host-policy.ts).
+ */
+export interface BarsyPolicy {
+  /** `development`, `test`, `staging` or `production` (BARSY_ENV). */
+  readonly env: BarsyEnv
+  /** A host must end with one of these (each starts with a dot): default `.barsyonline.com`. */
+  readonly allowedHostSuffixes: readonly string[]
+  /** Hosts of live venues: every environment except `production` refuses them. */
+  readonly productionHosts: readonly string[]
+}
+
+/** Default of BARSY_ALLOWED_HOST_SUFFIXES. */
+export const DEFAULT_BARSY_HOST_SUFFIXES = ['.barsyonline.com'] as const
 
 /** The worker's sealing key pair. */
 export interface SealKeys {
@@ -78,6 +100,22 @@ const BAD_SEAL_PRIVATE_KEY =
 const SEAL_PUBLIC_KEY_MISSING = 'is not set. It goes with SEAL_PRIVATE_KEY (pnpm keys:seal).'
 const SEAL_PRIVATE_KEY_MISSING = 'is not set. It goes with SEAL_PUBLIC_KEY (pnpm keys:seal).'
 const SEAL_KEYS_DO_NOT_MATCH = 'is not the private half of SEAL_PUBLIC_KEY.'
+const BAD_BARSY_ENV = `must be one of: ${BARSY_ENVS.join(', ')}.`
+const BAD_HOST_SUFFIXES =
+  'must be a comma-separated list of host suffixes that start with a dot, e.g. .barsyonline.com.'
+const BAD_PRODUCTION_HOSTS =
+  'must be a comma-separated list of bare host names (no scheme, port or path).'
+
+const HOST_SUFFIX = /^\.[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
+
+/** A comma-separated list; blank means unset (undefined). */
+function commaList(value: unknown): string[] | undefined {
+  if (typeof value !== 'string' || value.trim() === '') return undefined
+  return value
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry !== '')
+}
 
 /** An optional key variable: blank is unset (null); otherwise it must parse, or one issue. */
 function sealKeySchema(parse: (text: string) => KeyObject, message: string) {
@@ -137,6 +175,25 @@ function environmentSchema(defaultWorkerId: () => string) {
           .default('info'),
       ),
       NODE_ENV: z.string().optional(),
+      BARSY_ENV: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .pipe(z.enum(BARSY_ENVS, { error: BAD_BARSY_ENV }))
+          .default('development'),
+      ),
+      BARSY_ALLOWED_HOST_SUFFIXES: z.preprocess(commaList, z.array(z.string()).optional()),
+      BARSY_PRODUCTION_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
+      // Passed on to @restro/assets (assetStoreConfig), which names the problems itself.
+      ASSET_STORE: z.string().optional(),
+      LOCAL_ASSET_DIR: z.string().optional(),
+      R2_ACCOUNT_ID: z.string().optional(),
+      R2_ACCESS_KEY_ID: z.string().optional(),
+      R2_SECRET_ACCESS_KEY: z.string().optional(),
+      R2_BUCKET: z.string().optional(),
+      R2_ENDPOINT: z.string().optional(),
       SEAL_PUBLIC_KEY: sealKeySchema(parseSealPublicKey, BAD_SEAL_PUBLIC_KEY),
       SEAL_PRIVATE_KEY: sealKeySchema(parseSealPrivateKey, BAD_SEAL_PRIVATE_KEY),
     })
@@ -153,9 +210,38 @@ function environmentSchema(defaultWorkerId: () => string) {
       if (publicKey !== null && privateKey !== null && !isSealKeyPair(publicKey, privateKey)) {
         issue('SEAL_PRIVATE_KEY', SEAL_KEYS_DO_NOT_MATCH)
       }
+      if (env.BARSY_ALLOWED_HOST_SUFFIXES?.some((suffix) => !HOST_SUFFIX.test(suffix))) {
+        issue('BARSY_ALLOWED_HOST_SUFFIXES', BAD_HOST_SUFFIXES)
+      }
+      try {
+        parseAllowedHosts(env.BARSY_PRODUCTION_HOSTS)
+      } catch {
+        issue('BARSY_PRODUCTION_HOSTS', BAD_PRODUCTION_HOSTS)
+      }
     })
-    .transform(
-      (env): WorkerConfig => ({
+    .transform((env, ctx): WorkerConfig => {
+      let assets: AssetStoreConfig
+      try {
+        assets = assetStoreConfig({
+          NODE_ENV: env.NODE_ENV,
+          ASSET_STORE: env.ASSET_STORE,
+          LOCAL_ASSET_DIR: env.LOCAL_ASSET_DIR,
+          R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+          R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+          R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+          R2_BUCKET: env.R2_BUCKET,
+          R2_ENDPOINT: env.R2_ENDPOINT,
+        })
+      } catch (error) {
+        // Its messages name variables, never values.
+        const message =
+          error instanceof AssetStoreConfigError
+            ? error.message.replace(/^ASSET_STORE /, '')
+            : 'is not usable.'
+        ctx.addIssue({ code: 'custom', path: ['ASSET_STORE'], message })
+        return z.NEVER
+      }
+      return {
         databaseUrl: env.DATABASE_URL,
         workerId: env.WORKER_ID,
         healthPort: env.WORKER_HEALTH_PORT,
@@ -165,8 +251,14 @@ function environmentSchema(defaultWorkerId: () => string) {
           env.SEAL_PUBLIC_KEY !== null && env.SEAL_PRIVATE_KEY !== null
             ? { publicKey: env.SEAL_PUBLIC_KEY, privateKey: env.SEAL_PRIVATE_KEY }
             : null,
-      }),
-    )
+        barsy: {
+          env: env.BARSY_ENV,
+          allowedHostSuffixes: env.BARSY_ALLOWED_HOST_SUFFIXES ?? [...DEFAULT_BARSY_HOST_SUFFIXES],
+          productionHosts: parseAllowedHosts(env.BARSY_PRODUCTION_HOSTS),
+        },
+        assets,
+      }
+    })
 }
 
 /** "<VARIABLE> <message>": the variable from the schema path, the text fixed above. */
@@ -186,6 +278,10 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `NODE_ENV` | `production` switches the logs to JSON | pretty logs |
  * | `SEAL_PUBLIC_KEY` | base64url DER (SPKI) X25519 public key; set with the private key | unset |
  * | `SEAL_PRIVATE_KEY` | base64url DER (PKCS8) X25519 private key; worker only | unset |
+ * | `BARSY_ENV` | development, test, staging or production (the host rules below) | development |
+ * | `BARSY_ALLOWED_HOST_SUFFIXES` | comma-separated; an integration host must end with one | .barsyonline.com |
+ * | `BARSY_PRODUCTION_HOSTS` | comma-separated hosts of live venues; every env but production refuses them | none |
+ * | `ASSET_STORE`, `LOCAL_ASSET_DIR`, `R2_*` | where barsy photos go (see @restro/assets) | local in development |
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,

@@ -71,6 +71,9 @@ importers:
       pg:
         specifier: 8.23.0
         version: 8.23.0
+      pg-boss:
+        specifier: 12.35.1
+        version: 12.35.1
       radix-ui:
         specifier: 1.6.7
         version: 1.6.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -132,6 +135,12 @@ importers:
 
   apps/worker:
     dependencies:
+      '@restro/assets':
+        specifier: workspace:*
+        version: link:../../packages/assets
+      '@restro/barsy':
+        specifier: workspace:*
+        version: link:../../packages/barsy
       '@restro/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -157,6 +166,9 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+      msw:
+        specifier: 2.15.0
+        version: 2.15.0(@types/node@24.19.0)(typescript@6.0.3)
       pino-pretty:
         specifier: 13.1.3
         version: 13.1.3
