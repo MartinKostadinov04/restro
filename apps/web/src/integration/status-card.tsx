@@ -18,6 +18,7 @@ import type {
 } from '@/server/integration/view'
 
 import { ErrorNote, Notice } from './error-note'
+import { useClearWhenIdle } from './use-clear-when-idle'
 import { useMoment } from './use-moment'
 
 /** The worker's own wording for rejected credentials (apps/worker/src/sync/run.ts), which we translate. */
@@ -48,6 +49,7 @@ export function StatusCard({ venueId, view }: { venueId: string; view: Integrati
   const [queued, setQueued] = useState(false)
   const [pending, startTransition] = useTransition()
   const info = view.integration
+  useClearWhenIdle(view.activeJob, () => setQueued(false))
 
   function checkAgain() {
     setError(null)

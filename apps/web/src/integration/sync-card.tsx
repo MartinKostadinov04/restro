@@ -14,6 +14,7 @@ import { syncNowAction } from '@/server/integration/actions'
 import type { IntegrationErrorCode, IntegrationView } from '@/server/integration/view'
 
 import { ErrorNote, Notice } from './error-note'
+import { useClearWhenIdle } from './use-clear-when-idle'
 import { useMoment } from './use-moment'
 
 export function SyncCard({ venueId, view }: { venueId: string; view: IntegrationView }) {
@@ -22,6 +23,7 @@ export function SyncCard({ venueId, view }: { venueId: string; view: Integration
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [queued, setQueued] = useState(false)
   const [pending, startTransition] = useTransition()
+  useClearWhenIdle(view.activeJob, () => setQueued(false))
   const { gate } = view
   const lastSynced = moment(view.lastSyncedAt)
 

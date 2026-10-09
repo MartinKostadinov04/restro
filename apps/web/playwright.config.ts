@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -19,6 +20,15 @@ const DEV_ORIGIN = `http://127.0.0.1:${DEV_PORT}`
 // Where the item sheet's test stores the photos it uploads (git ignores `.local`).
 const E2E_ASSET_DIR = fileURLToPath(new URL('../../.local/assets-e2e', import.meta.url))
 
+// A throwaway key pair for the Integration tab's test, made here because the web servers start
+// before the global setup runs. Only the public half (base64url DER, what `pnpm keys:seal` prints)
+// goes to the servers; the other half is dropped at once, since the worker does not run in this
+// test and nothing needs to open what the tab seals. Without `SEAL_PUBLIC_KEY` the tab would show
+// the 'sync keys are not set up' message instead of the form.
+const SEAL_PUBLIC_KEY = generateKeyPairSync('x25519')
+  .publicKey.export({ type: 'spki', format: 'der' })
+  .toString('base64url')
+
 const serverEnvironment = (origin: string) => ({
   ...(process.env as Record<string, string>),
   BETTER_AUTH_URL: origin,
@@ -28,6 +38,7 @@ const serverEnvironment = (origin: string) => ({
   // Photos go to disk, in a folder of their own.
   ASSET_STORE: 'local',
   LOCAL_ASSET_DIR: E2E_ASSET_DIR,
+  SEAL_PUBLIC_KEY,
 })
 
 export default defineConfig({

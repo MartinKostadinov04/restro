@@ -19,6 +19,7 @@ import { saveConnectionAction } from '@/server/integration/actions'
 import type { IntegrationErrorCode, IntegrationView } from '@/server/integration/view'
 
 import { ErrorNote, Notice } from './error-note'
+import { useClearWhenIdle } from './use-clear-when-idle'
 
 interface ConnectCardProps {
   readonly venueId: string
@@ -39,6 +40,7 @@ export function ConnectCard({ venueId, view }: ConnectCardProps) {
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [notice, setNotice] = useState<'queued' | 'notQueued' | null>(null)
   const [pending, startTransition] = useTransition()
+  useClearWhenIdle(view.activeJob, () => setNotice(null))
 
   function submit(event: FormEvent) {
     event.preventDefault()

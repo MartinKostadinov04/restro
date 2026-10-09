@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { IntegrationInfo } from '@/server/integration/view'
 import { renderWithIntl } from '@/test-utils'
 import { StatusCard } from './status-card'
 import { emptyView, integrationView, VENUE_ID } from './test-view'
@@ -14,11 +15,16 @@ beforeEach(() => {
   actions.checkConnectionAction.mockReset()
 })
 
-const withIntegration = (
-  change: Partial<NonNullable<ReturnType<typeof integrationView>['integration']>>,
-) =>
+const withIntegration = (change: Partial<IntegrationInfo>) =>
   integrationView({
-    integration: { ...integrationView().integration!, ...change },
+    integration: {
+      host: 'demo.barsyonline.com',
+      hasCredentials: true,
+      status: 'connected',
+      statusDetail: null,
+      lastCheckedAt: '2026-10-09T10:00:00.000Z',
+      ...change,
+    },
   })
 
 describe('the Status card', () => {

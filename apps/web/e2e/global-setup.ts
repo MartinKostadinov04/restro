@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
 
 /** Runs one of the dev scripts the way `pnpm db:seed:dev` does (same flags, same refusals). */
-function runScript(script: string) {
+export function runScript(script: string, ...args: string[]) {
   const webDir = fileURLToPath(new URL('..', import.meta.url))
   const result = spawnSync(
     process.execPath,
@@ -18,6 +18,7 @@ function runScript(script: string) {
       '--import',
       './scripts/register-ts.mjs',
       script,
+      ...args,
     ],
     {
       cwd: webDir,
@@ -43,4 +44,5 @@ function runScript(script: string) {
 export default function globalSetup() {
   runScript('./scripts/seed-dev.ts')
   runScript('./scripts/seed-item-sheet.ts')
+  runScript('./scripts/seed-integration-e2e.ts', 'seed')
 }
