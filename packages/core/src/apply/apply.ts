@@ -1,0 +1,1097 @@
+// apply(): the one write path (rule 1; doc "The internal data source" → "One write path"). Every
+// collection path (barsy sync, the composer, imports later) hands a change set to this function,
+// and nothing else writes nodes, placements, field_values, source_links or events.
+//
+// One transaction per change set, under the tenant's document lock (./lock.ts):
+//   1. read, in a few batched queries, everything the ops refer to: the nodes (with their
+//      ancestors), their links and field values, the placements of the sections named, the
+//      source records cited, the tenant's integrations and venues;
+//   2. decide every op in order, in memory: validate each write against its field definition and
+//      the node's context, resolve identity through source_links (a createNode + linkSource pair
+//      whose link already exists collapses onto the linked node), skip writes whose value hash
+//      equals the stored one, compute 'end' sort keys;
+//   3. write the result: new nodes, statuses, links, placements, field values (upserts and
+//      deletions), one events row per changed value, and one revision step per touched node.
+// Each op ends applied, unchanged (a no-op) or rejected with a reason; a rejected op changes
+// nothing, except that an invalid value (V1/V2) is kept as a `valid = false` row when its slot
+// has no good value to protect (doc: "Invalid writes are kept as rejected rows with a reason;
+// they never replace the last good value"). Doc step 5 (mark menus dirty, queue a resolve) comes
+// with the jobs of S2-06.
+
+import {
+  type DbPool,
+  events,
+  fieldValues,
+  integrations,
+  nodes,
+  placements,
+  sourceLinks,
+  sourceRecords,
+  venues,
+} from '@restro/db'
+import { type WriteTx, withTenantWrite } from '@restro/db/write'
+import { type SQL, sql } from 'drizzle-orm'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
+
+import {
+  type ChangeSet,
+  type ClearField,
+  type FieldWrite,
+  type Layer,
+  type NodeRef,
+  nodeRefsOf,
+  parseChangeSet,
+  type Scope,
+  type SourceLink,
+} from '../change-set'
+import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
+import { canonicalJson, sha256Hex } from '../hash'
+import type { NodeId } from '../ids'
+import { canNest, type NodeStatus, type NodeType } from '../node-types'
+import type { RejectionCode } from '../result'
+import { sortKeyBetween } from '../sort-keys'
+import { findField, type Template } from '../template'
+import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
+import { validateWrite } from '../validate-write'
+import { lockTenantDocument } from './lock'
+import { unlinkCopy } from './unlink'
+
+/** Why one op of a change set was refused. */
+export type ApplyRejectionCode =
+  /** From `validateWrite`: V1, V2, unknown_node_type, unknown_field, layer_not_allowed, … */
+  | RejectionCode
+  /** The op names a node by an id or a link that does not exist. */
+  | 'unknown_node'
+  /** A `venue:` scope names a venue the tenant does not have. */
+  | 'unknown_venue'
+  /** A barsy write cites a source record that does not exist or belongs to another integration. */
+  | 'unknown_source_record'
+  /** A link names an integration the tenant does not have. */
+  | 'unknown_integration'
+  /** The parent cannot hold this node type at this depth (`canNest`). */
+  | 'invalid_parent'
+  /** createNode with an id that exists as another type or under another parent. */
+  | 'id_conflict'
+  /** A placement of something that is not an item, or into something that is not a section. */
+  | 'invalid_placement'
+  /** The external object is linked to another node. */
+  | 'link_taken'
+  /** The node already has a link from this integration (one link per source per node). */
+  | 'already_linked'
+  /** This source may not do this (unlink from an adapter, create a menu, link another source). */
+  | 'source_not_allowed'
+
+/** One refused op: its index in `changeSet.ops`, a code and a reason for people. */
+export interface ApplyRejection {
+  readonly opIndex: number
+  readonly code: ApplyRejectionCode
+  readonly reason: string
+}
+
+/**
+ * What `apply` did. Every op is counted once: `applied + unchanged + rejected.length` equals the
+ * number of ops.
+ */
+export interface ApplyResult {
+  /** Ops that changed something. */
+  readonly applied: number
+  /** Ops that were no-ops (same value hash, existing node or link, placement already there). */
+  readonly unchanged: number
+  readonly rejected: readonly ApplyRejection[]
+  /** Nodes this change set created (a createNode resolved onto a linked node is not one). */
+  readonly createdNodeIds: readonly NodeId[]
+  /** Rows appended to `events`: one per changed field value. */
+  readonly eventsWritten: number
+}
+
+/** Options of `apply`. */
+export interface ApplyOptions {
+  /** The template field writes are validated against. Default: `VENUE_MENU_TEMPLATE`. */
+  readonly template?: Template
+}
+
+/** Why a whole change set (or a document read) was refused; nothing was written. */
+export type ApplyErrorCode =
+  /** The change set does not parse (`parseChangeSet`). */
+  | 'invalid_change_set'
+  /** A barsy change set names an integration the tenant does not have. */
+  | 'unknown_integration'
+  /** `loadMenuDocument`: the tenant has no menu with this id. */
+  | 'menu_not_found'
+
+/** Thrown when a change set is refused as a whole, or a document cannot be read. */
+export class ApplyError extends Error {
+  override name = 'ApplyError'
+  readonly code: ApplyErrorCode
+
+  constructor(code: ApplyErrorCode, message: string) {
+    super(message)
+    this.code = code
+  }
+}
+
+type LinkLifecycle = 'active' | 'missing' | 'deleted'
+
+interface NodeState {
+  readonly id: NodeId
+  readonly type: NodeType
+  readonly parentId: NodeId | null
+  status: NodeStatus
+}
+
+interface LinkState {
+  readonly integrationId: string
+  readonly externalType: string
+  readonly externalId: string
+  readonly nodeId: NodeId
+  readonly state: LinkLifecycle
+}
+
+interface ValueRow {
+  readonly nodeId: NodeId
+  readonly fieldKey: string
+  readonly layer: Layer
+  readonly scope: Scope
+  readonly value: unknown
+  readonly valueHash: string
+  readonly source: string
+  readonly jobId: string
+  readonly actor: string
+  readonly observedAt: Date
+  readonly sourceRecordId: string | null
+  readonly mappingVersion: number | null
+  readonly basis: unknown
+  readonly valid: boolean
+  readonly rejectReason: string | null
+}
+
+interface EventRow {
+  readonly nodeId: NodeId
+  readonly fieldKey: string
+  readonly layer: Layer
+  readonly scope: Scope
+  readonly oldValue: unknown
+  readonly newValue: unknown
+}
+
+type Outcome =
+  | { readonly kind: 'applied' | 'unchanged' }
+  | { readonly kind: 'rejected'; readonly code: ApplyRejectionCode; readonly reason: string }
+
+const APPLIED: Outcome = { kind: 'applied' }
+const UNCHANGED: Outcome = { kind: 'unchanged' }
+
+function refused(code: ApplyRejectionCode, reason: string): Outcome {
+  return { kind: 'rejected', code, reason }
+}
+
+function isOutcome(value: NodeState | Outcome): value is Outcome {
+  return 'kind' in value
+}
+
+const linkKey = (link: Pick<LinkState, 'integrationId' | 'externalType' | 'externalId'>) =>
+  JSON.stringify([link.integrationId, link.externalType, link.externalId])
+const refKey = (link: SourceLink) =>
+  linkKey({
+    integrationId: link.integration,
+    externalType: link.externalType,
+    externalId: link.externalId,
+  })
+const slotKey = (nodeId: string, fieldKey: string, layer: string, scope: string) =>
+  JSON.stringify([nodeId, fieldKey, layer, scope])
+const pairKey = (sectionId: string, itemId: string) => JSON.stringify([sectionId, itemId])
+const describeLink = (link: SourceLink) =>
+  `${link.integration} ${link.externalType} ${link.externalId}`
+
+/** `column = any($1::text[])` with the whole list as one parameter. */
+function anyOf(column: AnyPgColumn, values: readonly string[]): SQL {
+  return sql`${column} = any(${sql.param([...values])}::text[])`
+}
+
+/** Splits rows into batches that stay far below Postgres's 65 535 parameters per statement. */
+function batches<T>(rows: readonly T[], size = 500): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size))
+  return out
+}
+
+/** The document as far as one change set can see it, and what the change set does to it. */
+class DocumentState {
+  readonly integrations = new Map<string, { kind: string }>()
+  readonly venues = new Set<string>()
+  readonly records = new Map<string, string>()
+  readonly nodes = new Map<NodeId, NodeState>()
+  readonly aliases = new Map<NodeId, NodeId>()
+  readonly links = new Map<string, LinkState>()
+  readonly originalLinks = new Map<string, LinkState>()
+  readonly linksOfNode = new Map<NodeId, Set<string>>()
+  readonly values = new Map<string, ValueRow>()
+  readonly valuesOfNode = new Map<NodeId, Set<string>>()
+  readonly placements = new Map<NodeId, Map<NodeId, string>>()
+  readonly originalPlacements = new Map<string, string>()
+
+  readonly createdNodes: NodeState[] = []
+  readonly statusChanged = new Set<NodeId>()
+  readonly touched = new Set<NodeId>()
+  readonly dirtyLinks = new Set<string>()
+  readonly dirtyValues = new Set<string>()
+  readonly dirtyPlacements = new Map<string, { sectionId: NodeId; itemId: NodeId }>()
+  readonly events: EventRow[] = []
+
+  addLink(link: LinkState): void {
+    const key = linkKey(link)
+    this.links.set(key, link)
+    const own = this.linksOfNode.get(link.nodeId) ?? new Set<string>()
+    own.add(key)
+    this.linksOfNode.set(link.nodeId, own)
+  }
+
+  removeLink(key: string): void {
+    const link = this.links.get(key)
+    if (!link) return
+    this.links.delete(key)
+    this.linksOfNode.get(link.nodeId)?.delete(key)
+  }
+
+  /** The node's link from one integration, if any (in any state). */
+  linkOf(nodeId: NodeId, integrationId: string): LinkState | undefined {
+    for (const key of this.linksOfNode.get(nodeId) ?? []) {
+      const link = this.links.get(key)
+      if (link?.integrationId === integrationId) return link
+    }
+    return undefined
+  }
+
+  /** True if the node has a link from a barsy integration, in any state. */
+  hasBarsyLink(nodeId: NodeId): boolean {
+    for (const key of this.linksOfNode.get(nodeId) ?? []) {
+      const link = this.links.get(key)
+      if (link && this.integrations.get(link.integrationId)?.kind === 'barsy') return true
+    }
+    return false
+  }
+
+  putValue(row: ValueRow): void {
+    const key = slotKey(row.nodeId, row.fieldKey, row.layer, row.scope)
+    this.values.set(key, row)
+    const own = this.valuesOfNode.get(row.nodeId) ?? new Set<string>()
+    own.add(key)
+    this.valuesOfNode.set(row.nodeId, own)
+  }
+
+  deleteValue(key: string): void {
+    const row = this.values.get(key)
+    if (!row) return
+    this.values.delete(key)
+    this.valuesOfNode.get(row.nodeId)?.delete(key)
+    this.dirtyValues.add(key)
+  }
+
+  /** The placements of a section (all of them were read, or the section is new). */
+  placementsOf(sectionId: NodeId): Map<NodeId, string> {
+    let inSection = this.placements.get(sectionId)
+    if (!inSection) {
+      inSection = new Map()
+      this.placements.set(sectionId, inSection)
+    }
+    return inSection
+  }
+}
+
+/** Reads what the change set refers to (step 1). */
+async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
+  const state = new DocumentState()
+  const idRefs = new Set<NodeId>()
+  const linkRefs = new Map<string, SourceLink>()
+  const recordIds = new Set<string>()
+  for (const op of set.ops) {
+    for (const ref of nodeRefsOf(op)) {
+      if ('id' in ref) idRefs.add(ref.id)
+      else linkRefs.set(refKey(ref.link), ref.link)
+    }
+    if (op.op === 'createNode') idRefs.add(op.id)
+    if (op.op === 'linkSource' || op.op === 'unlinkSource') linkRefs.set(refKey(op.link), op.link)
+    if (op.op === 'setField' && op.sourceRecordId !== undefined) recordIds.add(op.sourceRecordId)
+  }
+
+  for (const row of await tx
+    .select({ id: integrations.id, kind: integrations.kind })
+    .from(integrations)) {
+    state.integrations.set(row.id, { kind: row.kind })
+  }
+  for (const row of await tx.select({ id: venues.id }).from(venues)) state.venues.add(row.id)
+  if (recordIds.size > 0) {
+    const rows = await tx
+      .select({ id: sourceRecords.id, integrationId: sourceRecords.integrationId })
+      .from(sourceRecords)
+      .where(anyOf(sourceRecords.id, [...recordIds]))
+    for (const row of rows) state.records.set(row.id, row.integrationId)
+  }
+
+  const linkColumns = {
+    integrationId: sourceLinks.integrationId,
+    externalType: sourceLinks.externalType,
+    externalId: sourceLinks.externalId,
+    nodeId: sourceLinks.nodeId,
+    state: sourceLinks.state,
+  }
+  const remember = (rows: { nodeId: string; state: string }[]) => {
+    for (const row of rows) {
+      const link = { ...row, nodeId: row.nodeId as NodeId, state: row.state as LinkLifecycle }
+      state.addLink(link as LinkState)
+      state.originalLinks.set(linkKey(link as LinkState), link as LinkState)
+    }
+  }
+  if (linkRefs.size > 0) {
+    const refs = [...linkRefs.values()]
+    remember(
+      await tx
+        .select(linkColumns)
+        .from(sourceLinks)
+        .where(
+          sql`(${sourceLinks.integrationId}, ${sourceLinks.externalType}, ${sourceLinks.externalId}) in (
+            select * from unnest(
+              ${sql.param(refs.map((ref) => ref.integration))}::text[],
+              ${sql.param(refs.map((ref) => ref.externalType))}::text[],
+              ${sql.param(refs.map((ref) => ref.externalId))}::text[]))`,
+        ),
+    )
+    for (const link of state.links.values()) idRefs.add(link.nodeId)
+  }
+
+  if (idRefs.size > 0) {
+    // The nodes named, and every ancestor (createNode checks a new node's depth).
+    const found = await tx.execute<{
+      id: string
+      node_type: string
+      parent_id: string | null
+      status: string
+    }>(sql`
+      with recursive up as (
+        select id, node_type, parent_id, status from restro.nodes
+        where id = any(${sql.param([...idRefs])}::text[])
+        union
+        select n.id, n.node_type, n.parent_id, n.status
+        from restro.nodes n join up on n.id = up.parent_id
+      )
+      select id, node_type, parent_id, status from up`)
+    for (const row of found.rows) {
+      state.nodes.set(row.id as NodeId, {
+        id: row.id as NodeId,
+        type: row.node_type as NodeType,
+        parentId: row.parent_id as NodeId | null,
+        status: row.status as NodeStatus,
+      })
+    }
+  }
+  const nodeIds = [...state.nodes.keys()]
+  if (nodeIds.length > 0) {
+    remember(
+      (await tx.select(linkColumns).from(sourceLinks).where(anyOf(sourceLinks.nodeId, nodeIds)))
+        // A link already read by its key is not added twice.
+        .filter((row) => !state.originalLinks.has(linkKey(row as LinkState))),
+    )
+    const rows = await tx.select().from(fieldValues).where(anyOf(fieldValues.nodeId, nodeIds))
+    for (const row of rows) {
+      state.putValue({
+        nodeId: row.nodeId as NodeId,
+        fieldKey: row.fieldKey,
+        layer: row.layer as Layer,
+        scope: row.scope as Scope,
+        value: row.value,
+        valueHash: row.valueHash,
+        source: row.source,
+        jobId: row.jobId,
+        actor: row.actor,
+        observedAt: row.observedAt,
+        sourceRecordId: row.sourceRecordId,
+        mappingVersion: row.mappingVersion,
+        basis: row.basis,
+        valid: row.valid,
+        rejectReason: row.rejectReason,
+      })
+    }
+  }
+
+  // Identity: a createNode whose node is linked (by a linkSource of the same set) to an external
+  // object that is already linked collapses onto the existing node, if the type matches.
+  const linksByCreatedId = new Map<string, SourceLink[]>()
+  for (const op of set.ops) {
+    if (op.op === 'linkSource') {
+      linksByCreatedId.set(op.node.id, [...(linksByCreatedId.get(op.node.id) ?? []), op.link])
+    }
+  }
+  for (const op of set.ops) {
+    if (op.op !== 'createNode' || state.nodes.has(op.id)) continue
+    for (const link of linksByCreatedId.get(op.id) ?? []) {
+      const existing = state.links.get(refKey(link))
+      const target = existing && state.nodes.get(existing.nodeId)
+      if (target && target.type === op.nodeType) state.aliases.set(op.id, target.id)
+    }
+  }
+
+  // All placements of every section a placement op names (so 'end' sees the current last).
+  const sectionIds = new Set<NodeId>()
+  for (const op of set.ops) {
+    if (op.op !== 'setPlacement' && op.op !== 'removePlacement') continue
+    const ref = op.section
+    const id =
+      'id' in ref
+        ? (state.aliases.get(ref.id) ?? ref.id)
+        : state.links.get(refKey(ref.link))?.nodeId
+    if (id !== undefined && state.nodes.has(id)) sectionIds.add(id)
+  }
+  if (sectionIds.size > 0) {
+    const rows = await tx
+      .select({
+        itemId: placements.itemId,
+        sectionId: placements.sectionId,
+        sortKey: placements.sortKey,
+      })
+      .from(placements)
+      .where(anyOf(placements.sectionId, [...sectionIds]))
+    for (const id of sectionIds) state.placementsOf(id)
+    for (const row of rows) {
+      state.placementsOf(row.sectionId as NodeId).set(row.itemId as NodeId, row.sortKey)
+      state.originalPlacements.set(pairKey(row.sectionId, row.itemId), row.sortKey)
+    }
+  }
+  return state
+}
+
+/** Decides every op of the change set in order (step 2). */
+class Run {
+  readonly rejected: ApplyRejection[] = []
+  applied = 0
+  unchanged = 0
+  private readonly barsyIntegration: string | null
+
+  constructor(
+    private readonly set: ChangeSet,
+    private readonly template: Template,
+    private readonly state: DocumentState,
+  ) {
+    this.barsyIntegration = set.source.startsWith('barsy:') ? set.source.slice(6) : null
+  }
+
+  processAll(): void {
+    this.set.ops.forEach((op, opIndex) => {
+      let outcome: Outcome
+      switch (op.op) {
+        case 'setField':
+          outcome = this.setField(op)
+          break
+        case 'clearField':
+          outcome = this.clearField(op)
+          break
+        case 'createNode':
+          outcome = this.createNode(op)
+          break
+        case 'setPlacement':
+          outcome = this.setPlacement(op)
+          break
+        case 'removePlacement':
+          outcome = this.removePlacement(op)
+          break
+        case 'setNodeStatus':
+          outcome = this.setNodeStatus(op)
+          break
+        case 'linkSource':
+          outcome = this.linkSource(op)
+          break
+        case 'unlinkSource':
+          outcome = this.unlinkSource(op)
+          break
+      }
+      if (outcome.kind === 'rejected') {
+        this.rejected.push({ opIndex, code: outcome.code, reason: outcome.reason })
+      } else if (outcome.kind === 'applied') {
+        this.applied += 1
+      } else {
+        this.unchanged += 1
+      }
+    })
+  }
+
+  result(): ApplyResult {
+    return {
+      applied: this.applied,
+      unchanged: this.unchanged,
+      rejected: this.rejected,
+      createdNodeIds: this.state.createdNodes.map((node) => node.id),
+      eventsWritten: this.state.events.length,
+    }
+  }
+
+  private node(ref: NodeRef): NodeState | Outcome {
+    if ('id' in ref) {
+      const node = this.state.nodes.get(this.state.aliases.get(ref.id) ?? ref.id)
+      return node ?? refused('unknown_node', `there is no node ${ref.id}`)
+    }
+    const link = this.state.links.get(refKey(ref.link))
+    const node = link && this.state.nodes.get(link.nodeId)
+    return node ?? refused('unknown_node', `no node is linked to ${describeLink(ref.link)}`)
+  }
+
+  private touch(nodeId: NodeId): void {
+    this.state.touched.add(nodeId)
+  }
+
+  private event(
+    row: Omit<EventRow, 'oldValue' | 'newValue'>,
+    oldValue: unknown,
+    newValue: unknown,
+  ) {
+    this.state.events.push({ ...row, oldValue, newValue })
+  }
+
+  private valueRow(
+    nodeId: NodeId,
+    write: FieldWrite,
+    valueHash: string,
+    rejectReason: string | null,
+  ): ValueRow {
+    return {
+      nodeId,
+      fieldKey: write.fieldKey,
+      layer: write.layer,
+      scope: write.scope,
+      value: write.value,
+      valueHash,
+      source: this.set.source,
+      jobId: this.set.jobId,
+      actor: this.set.actor,
+      observedAt: new Date(this.set.observedAt),
+      sourceRecordId: write.sourceRecordId ?? null,
+      mappingVersion: write.mappingVersion ?? null,
+      basis: write.basis ?? null,
+      valid: rejectReason === null,
+      rejectReason,
+    }
+  }
+
+  /** The checks a barsy-layer op needs before anything else: the node is linked to this source. */
+  private barsyLinkProblem(node: NodeState): Outcome | null {
+    const integration = this.barsyIntegration
+    if (integration === null || this.state.linkOf(node.id, integration)) return null
+    return refused('not_linked', `${node.id} has no link to ${integration}: barsy values need one`)
+  }
+
+  private setField(write: FieldWrite): Outcome {
+    const node = this.node(write.node)
+    if (isOutcome(node)) return node
+    if (write.layer === 'barsy') {
+      const problem = this.barsyLinkProblem(node)
+      if (problem) return problem
+      const recordIntegration = this.state.records.get(write.sourceRecordId ?? '')
+      if (recordIntegration !== this.barsyIntegration) {
+        return refused(
+          'unknown_source_record',
+          `source record ${write.sourceRecordId} does not exist for ${this.barsyIntegration}`,
+        )
+      }
+    }
+    if (write.scope !== 'master' && !this.state.venues.has(write.scope.slice('venue:'.length))) {
+      return refused('unknown_venue', `${write.scope} is not a venue of this tenant`)
+    }
+
+    const key = slotKey(node.id, write.fieldKey, write.layer, write.scope)
+    const current = this.state.values.get(key)
+    const verdict = validateWrite(this.template, node.type, write, {
+      linkedToBarsy: this.state.hasBarsyLink(node.id),
+    })
+    if (!verdict.ok) {
+      // Keep an invalid value (V1/V2) with its reason, unless it would replace a good value.
+      const keep =
+        (verdict.code === 'V1' || verdict.code === 'V2') &&
+        write.value !== null &&
+        (current === undefined || !current.valid)
+      if (keep) {
+        const hash = sha256Hex(canonicalJson(write.value))
+        if (current?.valueHash !== hash || current.rejectReason !== verdict.reason) {
+          this.state.putValue(this.valueRow(node.id, write, hash, verdict.reason))
+          this.state.dirtyValues.add(key)
+        }
+      }
+      return refused(verdict.code, verdict.reason)
+    }
+
+    // validateWrite found the definition, so it exists.
+    const definition = findField(this.template, node.type, write.fieldKey)
+    if (!definition) return refused('unknown_field', `${node.type} has no field ${write.fieldKey}`)
+    const spec = FIELD_TYPES[definition.type] as FieldTypeSpec
+    const hash = spec.hash(write.value as never)
+    const sameBasis =
+      write.layer !== 'override' ||
+      (current?.basis !== undefined &&
+        current.basis !== null &&
+        spec.hash(current.basis as never) === spec.hash(write.basis as never))
+    if (current?.valid && current.valueHash === hash && sameBasis) return UNCHANGED
+
+    this.state.putValue(this.valueRow(node.id, write, hash, null))
+    this.state.dirtyValues.add(key)
+    this.event(
+      { nodeId: node.id, fieldKey: write.fieldKey, layer: write.layer, scope: write.scope },
+      current?.valid ? current.value : null,
+      write.value,
+    )
+    this.touch(node.id)
+    return APPLIED
+  }
+
+  private clearField(clear: ClearField): Outcome {
+    const node = this.node(clear.node)
+    if (isOutcome(node)) return node
+    if (clear.layer === 'barsy') {
+      const problem = this.barsyLinkProblem(node)
+      if (problem) return problem
+    }
+    const key = slotKey(node.id, clear.fieldKey, clear.layer, clear.scope)
+    const current = this.state.values.get(key)
+    if (!current) return UNCHANGED
+    this.state.deleteValue(key)
+    if (current.valid) {
+      this.event(
+        { nodeId: node.id, fieldKey: clear.fieldKey, layer: clear.layer, scope: clear.scope },
+        current.value,
+        null,
+      )
+    }
+    this.touch(node.id)
+    return APPLIED
+  }
+
+  /** The node's depth below its root (a menu or an item): 0 for the root itself. */
+  private depthOf(node: NodeState): number {
+    let depth = 0
+    let current: NodeState | undefined = node
+    while (current?.parentId) {
+      depth += 1
+      current = this.state.nodes.get(current.parentId)
+      if (current === undefined || depth > 16) return Number.POSITIVE_INFINITY
+    }
+    return depth
+  }
+
+  private createNode(op: Extract<ChangeSet['ops'][number], { op: 'createNode' }>): Outcome {
+    // Identity resolved through source_links: the external object already has its node.
+    if (this.state.aliases.has(op.id)) return UNCHANGED
+    let parent: NodeState | null = null
+    if (op.parent !== null) {
+      const found = this.node(op.parent)
+      if (isOutcome(found)) return found
+      parent = found
+    }
+    const existing = this.state.nodes.get(op.id)
+    if (existing) {
+      if (existing.type === op.nodeType && existing.parentId === (parent?.id ?? null)) {
+        return UNCHANGED
+      }
+      return refused(
+        'id_conflict',
+        `${op.id} already exists as a ${existing.type} under ${existing.parentId ?? 'no parent'}`,
+      )
+    }
+    if (op.nodeType === 'menu') {
+      return refused('source_not_allowed', 'a menu is created with its venue (provisionMenu)')
+    }
+    if (this.template.nodeTypes[op.nodeType] === undefined) {
+      return refused('unknown_node_type', `the template has no ${op.nodeType} node type`)
+    }
+    if (parent !== null) {
+      const depth = this.depthOf(parent) + 1
+      if (!canNest(parent.type, op.nodeType, depth)) {
+        return refused(
+          'invalid_parent',
+          `a ${op.nodeType} cannot sit under a ${parent.type} at depth ${depth}`,
+        )
+      }
+    }
+    const node: NodeState = {
+      id: op.id,
+      type: op.nodeType,
+      parentId: parent?.id ?? null,
+      status: op.status,
+    }
+    this.state.nodes.set(node.id, node)
+    this.state.createdNodes.push(node)
+    return APPLIED
+  }
+
+  private placementTargets(op: {
+    item: NodeRef
+    section: NodeRef
+  }): { item: NodeState; section: NodeState } | Outcome {
+    const item = this.node(op.item)
+    if (isOutcome(item)) return item
+    const section = this.node(op.section)
+    if (isOutcome(section)) return section
+    if (item.type !== 'item' || section.type !== 'section') {
+      return refused(
+        'invalid_placement',
+        `only an item is placed, only in a section (got a ${item.type} in a ${section.type})`,
+      )
+    }
+    return { item, section }
+  }
+
+  private setPlacement(op: Extract<ChangeSet['ops'][number], { op: 'setPlacement' }>): Outcome {
+    const targets = this.placementTargets(op)
+    if ('kind' in targets) return targets
+    const { item, section } = targets
+    const inSection = this.state.placementsOf(section.id)
+    const current = inSection.get(item.id)
+    let sortKey: string
+    if (op.sortKey === 'end') {
+      // 'end' places a new item after the current last; an item already there stays put.
+      if (current !== undefined) return UNCHANGED
+      let last: string | null = null
+      for (const key of inSection.values()) if (last === null || key > last) last = key
+      sortKey = sortKeyBetween(last, null)
+    } else {
+      if (current === op.sortKey) return UNCHANGED
+      sortKey = op.sortKey
+    }
+    inSection.set(item.id, sortKey)
+    this.state.dirtyPlacements.set(pairKey(section.id, item.id), {
+      sectionId: section.id,
+      itemId: item.id,
+    })
+    return APPLIED
+  }
+
+  private removePlacement(
+    op: Extract<ChangeSet['ops'][number], { op: 'removePlacement' }>,
+  ): Outcome {
+    const targets = this.placementTargets(op)
+    if ('kind' in targets) return targets
+    const { item, section } = targets
+    const inSection = this.state.placementsOf(section.id)
+    if (!inSection.has(item.id)) return UNCHANGED
+    inSection.delete(item.id)
+    this.state.dirtyPlacements.set(pairKey(section.id, item.id), {
+      sectionId: section.id,
+      itemId: item.id,
+    })
+    return APPLIED
+  }
+
+  private setNodeStatus(op: Extract<ChangeSet['ops'][number], { op: 'setNodeStatus' }>): Outcome {
+    const node = this.node(op.node)
+    if (isOutcome(node)) return node
+    if (node.status === op.status) return UNCHANGED
+    node.status = op.status
+    this.state.statusChanged.add(node.id)
+    this.touch(node.id)
+    return APPLIED
+  }
+
+  /** The integration a link names, and whether this change set's source may (un)link it. */
+  private linkAuthority(link: SourceLink, manualOnly: boolean): Outcome | null {
+    const integration = this.state.integrations.get(link.integration)
+    if (!integration) {
+      return refused('unknown_integration', `this tenant has no integration ${link.integration}`)
+    }
+    const own = `${integration.kind}:${link.integration}`
+    if (this.set.source !== 'manual' && (manualOnly || this.set.source !== own)) {
+      return refused(
+        'source_not_allowed',
+        manualOnly
+          ? 'only a person unlinks (a manual change set)'
+          : `a ${this.set.source} change set cannot link through ${link.integration}`,
+      )
+    }
+    return null
+  }
+
+  private linkSource(op: Extract<ChangeSet['ops'][number], { op: 'linkSource' }>): Outcome {
+    const problem = this.linkAuthority(op.link, false)
+    if (problem) return problem
+    const node = this.node(op.node)
+    if (isOutcome(node)) return node
+    const existing = this.state.links.get(refKey(op.link))
+    if (existing) {
+      return existing.nodeId === node.id
+        ? UNCHANGED
+        : refused('link_taken', `${describeLink(op.link)} is linked to ${existing.nodeId}`)
+    }
+    if (this.state.linkOf(node.id, op.link.integration)) {
+      return refused(
+        'already_linked',
+        `${node.id} already has a link from ${op.link.integration}; unlink it first`,
+      )
+    }
+    const link: LinkState = {
+      integrationId: op.link.integration,
+      externalType: op.link.externalType,
+      externalId: op.link.externalId,
+      nodeId: node.id,
+      state: 'active',
+    }
+    this.state.addLink(link)
+    this.state.dirtyLinks.add(linkKey(link))
+    this.touch(node.id)
+    return APPLIED
+  }
+
+  /**
+   * Unlink (doc "Linking and unlinking"): the current barsy values are copied into the manual
+   * layer (`unlinkCopy`), the barsy rows of this integration are removed (so the node's own
+   * values show from now on), and the link is deleted. Overrides stay where they are.
+   */
+  private unlinkSource(op: Extract<ChangeSet['ops'][number], { op: 'unlinkSource' }>): Outcome {
+    const problem = this.linkAuthority(op.link, true)
+    if (problem) return problem
+    const node = this.node(op.node)
+    if (isOutcome(node)) return node
+    const key = refKey(op.link)
+    const existing = this.state.links.get(key)
+    if (!existing) return UNCHANGED
+    if (existing.nodeId !== node.id) {
+      return refused('link_taken', `${describeLink(op.link)} is linked to ${existing.nodeId}`)
+    }
+
+    this.state.removeLink(key)
+    this.state.dirtyLinks.add(key)
+    const linkedToBarsy = this.state.hasBarsyLink(node.id)
+    const source = `${this.state.integrations.get(op.link.integration)?.kind}:${op.link.integration}`
+    const rowsByField = new Map<string, ValueRow[]>()
+    for (const slot of this.state.valuesOfNode.get(node.id) ?? []) {
+      const row = this.state.values.get(slot)
+      if (row?.layer !== 'barsy' || row.source !== source) continue
+      rowsByField.set(row.fieldKey, [...(rowsByField.get(row.fieldKey) ?? []), row])
+    }
+    const validValue = (layer: Layer, fieldKey: string) => {
+      const row = this.state.values.get(slotKey(node.id, fieldKey, layer, 'master'))
+      return row?.valid ? row.value : undefined
+    }
+
+    for (const [fieldKey, rows] of rowsByField) {
+      const definition = findField(this.template, node.type, fieldKey)
+      const manualBefore = validValue('manual', fieldKey)
+      const copy =
+        definition &&
+        unlinkCopy(definition, {
+          barsy: rows.filter((row) => row.valid).map((row) => row.value),
+          manual: manualBefore,
+          import: validValue('import', fieldKey),
+        })
+      if (definition && copy) {
+        const write: FieldWrite = {
+          op: 'setField',
+          node: { id: node.id },
+          fieldKey,
+          layer: 'manual',
+          scope: 'master',
+          value: copy.value as FieldWrite['value'],
+        }
+        if (validateWrite(this.template, node.type, write, { linkedToBarsy }).ok) {
+          const spec = FIELD_TYPES[definition.type] as FieldTypeSpec
+          const manualKey = slotKey(node.id, fieldKey, 'manual', 'master')
+          this.state.putValue(this.valueRow(node.id, write, spec.hash(copy.value as never), null))
+          this.state.dirtyValues.add(manualKey)
+          this.event(
+            { nodeId: node.id, fieldKey, layer: 'manual', scope: 'master' },
+            manualBefore ?? null,
+            copy.value,
+          )
+        }
+      }
+      for (const row of rows) {
+        this.state.deleteValue(slotKey(row.nodeId, row.fieldKey, row.layer, row.scope))
+        if (row.valid) {
+          this.event(
+            { nodeId: node.id, fieldKey, layer: 'barsy', scope: row.scope },
+            row.value,
+            null,
+          )
+        }
+      }
+    }
+    this.touch(node.id)
+    return APPLIED
+  }
+}
+
+/** Writes what the run decided (step 3). */
+async function flush(
+  tx: WriteTx,
+  tenantId: string,
+  set: ChangeSet,
+  state: DocumentState,
+): Promise<void> {
+  // New nodes, parents before children (one statement checks its foreign keys at its end).
+  for (const batch of batches(state.createdNodes)) {
+    await tx.insert(nodes).values(
+      batch.map((node) => ({
+        id: node.id,
+        tenantId,
+        nodeType: node.type,
+        parentId: node.parentId,
+        status: node.status,
+      })),
+    )
+  }
+  const created = new Set(state.createdNodes.map((node) => node.id))
+  for (const id of state.statusChanged) {
+    const node = state.nodes.get(id)
+    if (!node || created.has(id)) continue
+    await tx.execute(sql`update restro.nodes set status = ${node.status} where id = ${id}`)
+  }
+
+  // Links: removed ones first, so a link can move within one change set.
+  const removedLinks: LinkState[] = []
+  const addedLinks: LinkState[] = []
+  for (const key of state.dirtyLinks) {
+    const before = state.originalLinks.get(key)
+    const after = state.links.get(key)
+    if (before && after && before.nodeId === after.nodeId) continue
+    if (before) removedLinks.push(before)
+    if (after) addedLinks.push(after)
+  }
+  for (const batch of batches(removedLinks)) {
+    await tx.execute(sql`
+      delete from restro.source_links
+      where (integration_id, external_type, external_id) in (
+        select * from unnest(
+          ${sql.param(batch.map((link) => link.integrationId))}::text[],
+          ${sql.param(batch.map((link) => link.externalType))}::text[],
+          ${sql.param(batch.map((link) => link.externalId))}::text[]))`)
+  }
+  const seenAt = new Date(set.observedAt)
+  for (const batch of batches(addedLinks)) {
+    await tx.insert(sourceLinks).values(
+      batch.map((link) => ({
+        tenantId,
+        integrationId: link.integrationId,
+        externalType: link.externalType,
+        externalId: link.externalId,
+        nodeId: link.nodeId,
+        state: link.state,
+        firstSeenAt: seenAt,
+        lastSeenAt: seenAt,
+      })),
+    )
+  }
+
+  // Placements.
+  const removedPlacements: { sectionId: NodeId; itemId: NodeId }[] = []
+  const placed: { sectionId: NodeId; itemId: NodeId; sortKey: string }[] = []
+  for (const pair of state.dirtyPlacements.values()) {
+    const sortKey = state.placements.get(pair.sectionId)?.get(pair.itemId)
+    const before = state.originalPlacements.get(pairKey(pair.sectionId, pair.itemId))
+    if (sortKey === before) continue
+    if (sortKey === undefined) removedPlacements.push(pair)
+    else placed.push({ ...pair, sortKey })
+  }
+  for (const batch of batches(removedPlacements)) {
+    await tx.execute(sql`
+      delete from restro.placements
+      where (section_id, item_id) in (
+        select * from unnest(
+          ${sql.param(batch.map((pair) => pair.sectionId))}::text[],
+          ${sql.param(batch.map((pair) => pair.itemId))}::text[]))`)
+  }
+  for (const batch of batches(placed)) {
+    await tx
+      .insert(placements)
+      .values(batch.map((pair) => ({ tenantId, ...pair })))
+      .onConflictDoUpdate({
+        target: [placements.sectionId, placements.itemId],
+        set: { sortKey: sql`excluded.sort_key` },
+      })
+  }
+
+  // Field values: deletions, then upserts of each slot's final row.
+  const removedSlots: [string, string, string, string][] = []
+  const keptRows: ValueRow[] = []
+  for (const key of state.dirtyValues) {
+    const row = state.values.get(key)
+    if (row) keptRows.push(row)
+    else removedSlots.push(JSON.parse(key) as [string, string, string, string])
+  }
+  for (const batch of batches(removedSlots)) {
+    const column = (index: number) => sql.param(batch.map((slot) => slot[index]))
+    await tx.execute(sql`
+      delete from restro.field_values
+      where (node_id, field_key, layer, scope) in (
+        select * from unnest(
+          ${column(0)}::text[], ${column(1)}::text[], ${column(2)}::text[], ${column(3)}::text[]))`)
+  }
+  for (const batch of batches(keptRows, 250)) {
+    await tx
+      .insert(fieldValues)
+      .values(batch.map((row) => ({ tenantId, ...row })))
+      .onConflictDoUpdate({
+        target: [fieldValues.nodeId, fieldValues.fieldKey, fieldValues.layer, fieldValues.scope],
+        set: {
+          value: sql`excluded.value`,
+          valueHash: sql`excluded.value_hash`,
+          source: sql`excluded.source`,
+          jobId: sql`excluded.job_id`,
+          actor: sql`excluded.actor`,
+          observedAt: sql`excluded.observed_at`,
+          sourceRecordId: sql`excluded.source_record_id`,
+          mappingVersion: sql`excluded.mapping_version`,
+          basis: sql`excluded.basis`,
+          valid: sql`excluded.valid`,
+          rejectReason: sql`excluded.reject_reason`,
+        },
+      })
+  }
+
+  // The changelog, in op order, then one revision step per touched node that existed before.
+  for (const batch of batches(state.events)) {
+    await tx.insert(events).values(
+      batch.map((event) => ({
+        tenantId,
+        ...event,
+        source: set.source,
+        actor: set.actor,
+        jobId: set.jobId,
+        changeSetId: set.id,
+      })),
+    )
+  }
+  const bumped = [...state.touched].filter((id) => !created.has(id))
+  if (bumped.length > 0) {
+    await tx.execute(
+      sql`update restro.nodes set revision = revision + 1 where ${anyOf(nodes.id, bumped)}`,
+    )
+  }
+}
+
+/**
+ * Applies a change set to one tenant's document, atomically (rule 1: the only write path).
+ * Refuses the whole set with an `ApplyError` when it does not parse or names an integration the
+ * tenant does not have; otherwise every op is applied, a no-op, or rejected with a reason (see
+ * `ApplyResult`), and the applied ones are committed together.
+ */
+export async function apply(
+  pool: DbPool,
+  tenantId: string,
+  changeSet: ChangeSet,
+  options: ApplyOptions = {},
+): Promise<ApplyResult> {
+  const parsed = parseChangeSet(changeSet)
+  if (!parsed.ok) throw new ApplyError('invalid_change_set', parsed.reason)
+  const set = parsed.value
+  const template = options.template ?? VENUE_MENU_TEMPLATE
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const state = await loadState(tx, set)
+    if (set.source.startsWith('barsy:')) {
+      const integration = set.source.slice('barsy:'.length)
+      if (state.integrations.get(integration)?.kind !== 'barsy') {
+        throw new ApplyError(
+          'unknown_integration',
+          `this tenant has no barsy integration ${integration}`,
+        )
+      }
+    }
+    const run = new Run(set, template, state)
+    run.processAll()
+    await flush(tx, tenantId, set, state)
+    return run.result()
+  })
+}
