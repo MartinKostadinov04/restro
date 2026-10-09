@@ -51,7 +51,10 @@ export interface World {
   readonly logLines: string[]
   /** The test's clock. */
   clock: Date
-  query<Row extends Record<string, unknown>>(sql: string, values?: unknown[]): Promise<Row[]>
+  query<Row extends object = Record<string, unknown>>(
+    sql: string,
+    values?: unknown[],
+  ): Promise<Row[]>
   /** Runs a job's real handler with a payload. */
   run(name: string, data: object): Promise<void>
   close(): Promise<void>
@@ -95,7 +98,10 @@ export async function createWorld(
     credentialsSealed: sealed,
   })
   await upsertBarsyVenues(pool, tenantId, integrationId, [{ bid: DEMO_BID, name: 'Demo' }])
-  const query = <Row extends Record<string, unknown>>(sql: string, values: unknown[] = []) =>
+  const query = <Row extends object = Record<string, unknown>>(
+    sql: string,
+    values: unknown[] = [],
+  ) =>
     withOwnerClient(db.ownerUrl, async (client) => (await client.query(sql, values)).rows as Row[])
   if (options.mapVenue !== false) {
     await query(

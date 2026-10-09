@@ -15,9 +15,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 // Test-only reach into the asset package's sample images.
 import { makePng } from '../../../packages/assets/src/test-images.ts'
-import { createTestDatabase, hasDatabase, type TestDatabase } from './database'
-import { createFakeBarsy, type FakeBarsy } from './fake-barsy'
+import {
+  allowSlowSetup,
+  createTestDatabase,
+  hasDatabase,
+  SETUP_TIMEOUT_MS,
+  type TestDatabase,
+} from './database'
+import { createFakeBarsy } from './fake-barsy'
 import { createWorld, type World } from './world'
+
+allowSlowSetup()
 
 describe.skipIf(!hasDatabase)('asset-fetch', () => {
   const fake = createFakeBarsy()
@@ -38,10 +46,10 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
   beforeAll(async () => {
     db = await createTestDatabase()
     fake.listen()
-  })
+  }, SETUP_TIMEOUT_MS)
   afterAll(async () => {
     fake.close()
-    await db.drop()
+    await db?.drop()
   })
   beforeEach(async () => {
     fake.reset()
@@ -402,5 +410,3 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
     })
   })
 })
-
-export type { FakeBarsy }

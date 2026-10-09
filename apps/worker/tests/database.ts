@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import pg from 'pg'
+import { vi } from 'vitest'
 
 const run = promisify(execFile)
 
@@ -34,6 +35,21 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const DB_SCRIPTS = fileURLToPath(new URL('../../../packages/db/scripts/', import.meta.url))
 
 const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
+
+/**
+ * How long a test file may take to set its database up. Files queue on the lock below while the
+ * whole suite runs in parallel, and each set-up runs the migrations and `db:roles`.
+ */
+export const SETUP_TIMEOUT_MS = 180_000
+
+/**
+ * Gives the calling test file generous hook and test timeouts. With the whole suite running at
+ * once the machine is busy, and a hook that waits for the lock or drops a database can take a
+ * while; a timeout there is a false failure.
+ */
+export function allowSlowSetup(): void {
+  vi.setConfig({ hookTimeout: SETUP_TIMEOUT_MS, testTimeout: 120_000 })
+}
 
 /** Advisory lock key that serialises test-database set-up across processes. */
 const ROLES_LOCK = 7_311_020_926

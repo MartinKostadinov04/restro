@@ -35,7 +35,7 @@ export type PageFault = 'network' | 'server_error' | 'bad_json'
 
 export interface FakeBarsy {
   readonly host: string
-  readonly server: SetupServer
+  server: SetupServer
   /** Articles as the list serves them: change them between pulls. */
   articles: Json[]
   tree: Json

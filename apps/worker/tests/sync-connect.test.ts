@@ -5,9 +5,17 @@ import { JOB_NAMES, newId } from '@restro/core'
 import { updateIntegration } from '@restro/core/apply'
 import { sealBarsyCredentials } from '@restro/core/seal'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { createTestDatabase, hasDatabase, type TestDatabase } from './database'
+import {
+  allowSlowSetup,
+  createTestDatabase,
+  hasDatabase,
+  SETUP_TIMEOUT_MS,
+  type TestDatabase,
+} from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, DEMO_BID, type World } from './world'
+
+allowSlowSetup()
 
 describe.skipIf(!hasDatabase)('barsy-connect', () => {
   const fake = createFakeBarsy()
@@ -17,10 +25,10 @@ describe.skipIf(!hasDatabase)('barsy-connect', () => {
   beforeAll(async () => {
     db = await createTestDatabase()
     fake.listen()
-  })
+  }, SETUP_TIMEOUT_MS)
   afterAll(async () => {
     fake.close()
-    await db.drop()
+    await db?.drop()
   })
   beforeEach(async () => {
     fake.reset()

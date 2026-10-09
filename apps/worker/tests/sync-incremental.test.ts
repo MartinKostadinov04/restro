@@ -5,11 +5,19 @@ import { JOB_NAMES } from '@restro/core'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { lastUpdateFilter, localTimeText } from '../src/sync/cursor'
-import { createTestDatabase, hasDatabase, type TestDatabase } from './database'
+import {
+  allowSlowSetup,
+  createTestDatabase,
+  hasDatabase,
+  SETUP_TIMEOUT_MS,
+  type TestDatabase,
+} from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, DEMO_BID, type World } from './world'
 
 const MINUTE = 60_000
+
+allowSlowSetup()
 
 describe.skipIf(!hasDatabase)('barsy-incremental', () => {
   const fake = createFakeBarsy()
@@ -19,10 +27,10 @@ describe.skipIf(!hasDatabase)('barsy-incremental', () => {
   beforeAll(async () => {
     db = await createTestDatabase()
     fake.listen()
-  })
+  }, SETUP_TIMEOUT_MS)
   afterAll(async () => {
     fake.close()
-    await db.drop()
+    await db?.drop()
   })
   beforeEach(async () => {
     fake.reset()

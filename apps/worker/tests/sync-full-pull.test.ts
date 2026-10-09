@@ -15,8 +15,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 // Test-only reach into barsy's mapping to name the node it would derive (not exported on purpose).
 import { deriveId } from '../../../packages/barsy/src/mapping/ids.ts'
-import { createTestDatabase, hasDatabase, type TestDatabase } from './database'
-import { createFakeBarsy, type FakeBarsy } from './fake-barsy'
+import {
+  allowSlowSetup,
+  createTestDatabase,
+  hasDatabase,
+  SETUP_TIMEOUT_MS,
+  type TestDatabase,
+} from './database'
+import { createFakeBarsy } from './fake-barsy'
 import { createWorld, DEMO_BID, DEMO_ROOT_CAT, type World } from './world'
 
 /** Gives a category of the fake tree a public title (BG and EN). Returns whether it was found. */
@@ -32,6 +38,8 @@ function titleCategory(node: Record<string, unknown>, catId: number, title: stri
   )
 }
 
+allowSlowSetup()
+
 describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
   const fake = createFakeBarsy()
   let db: TestDatabase
@@ -40,10 +48,10 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
   beforeAll(async () => {
     db = await createTestDatabase()
     fake.listen()
-  })
+  }, SETUP_TIMEOUT_MS)
   afterAll(async () => {
     fake.close()
-    await db.drop()
+    await db?.drop()
   })
   beforeEach(async () => {
     fake.reset()
@@ -376,7 +384,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     it('a pull with a failed page concludes nothing, however many articles are absent', async () => {
       await pull()
       const before = await links()
-      fake.articles = fake.articles.filter((article) => article.article_id > 1000)
+      fake.articles = fake.articles.filter((article) => Number(article.article_id) > 1000)
       fake.articleFault = (offset, length) =>
         length > 25 || offset === 25 ? 'server_error' : undefined
       await pull()
