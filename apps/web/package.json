@@ -12,10 +12,9 @@
     "db:seed:dev": "node --disable-warning=ExperimentalWarning --env-file-if-exists=../../.env.local --env-file=./scripts/dev.env --import ./scripts/register-ts.mjs ./scripts/seed-dev.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1146.0",
-    "@aws-sdk/s3-request-presigner": "3.1146.0",
     "@hello-pangea/dnd": "18.0.1",
     "@hookform/resolvers": "5.9.1",
+    "@restro/assets": "workspace:*",
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
     "better-auth": "1.7.7",

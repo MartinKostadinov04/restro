@@ -1,16 +1,15 @@
 // The upload path end to end on a real Postgres, as the restro_app role: validation, the stored
 // bytes, the assets row written through core, tenant isolation and the route's guards.
+
+import { type AssetStore, parseAssetKey } from '@restro/assets'
 import { MAX_IMAGE_BYTES, newId } from '@restro/core'
 import { provisionTenant } from '@restro/core/apply'
 import { assets, createPool, type DbPool, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-
+import { jpegHeader, makePng, pngHeader } from '../../../../../packages/assets/src/test-images'
 import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
-import { parseAssetKey } from './keys'
-import { jpegHeader, makePng, pngHeader } from './test-images'
-import type { AssetStore } from './types'
 import { checksumOf, storeImage, UploadError } from './upload'
 import { handleUpload, isSameOrigin, readBodyLimited } from './upload-handler'
 

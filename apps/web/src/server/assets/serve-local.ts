@@ -2,9 +2,7 @@
 // A request needs three things: a signed-in person of the file's tenant, a key this module's
 // naming builds, and an unexpired signature on that key. Any other file, tenant or tamper is a
 // plain 404 or 403 with no detail.
-import { parseAssetKey } from './keys'
-import type { LocalAssetStore } from './local-store'
-import { verifyAssetLink } from './signing'
+import { type LocalAssetStore, parseAssetKey, verifyAssetLink } from '@restro/assets'
 
 /** What the route knows about the request. */
 export interface LocalAssetRequest {

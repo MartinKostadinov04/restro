@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { expect, type Page, test } from '@playwright/test'
 
-import { makePng } from '../src/server/assets/test-images'
+import { makePng } from '../../../packages/assets/src/test-images'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, ITEM_SHEET_ITEM } from './support'
 
 // The item sheet on the development harness (/dev/item-sheet, which exists under `next dev`
