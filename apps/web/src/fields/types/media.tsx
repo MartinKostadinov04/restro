@@ -29,10 +29,8 @@ function ImageDisplay({ value }: DisplayProps<'image'>) {
           <ImageIcon className="size-6" aria-hidden />
         )}
       </div>
-      <div className="grid min-w-0 gap-0.5">
-        <span className="truncate text-foreground">{alt ?? t('noAlt')}</span>
-        <code className="truncate font-mono text-xs text-muted-foreground">{value.asset_id}</code>
-      </div>
+      {/* Never the asset id: internal ids stay off the screen. */}
+      <span className="min-w-0 truncate text-foreground">{alt ?? t('noAlt')}</span>
     </div>
   )
 }
