@@ -14,19 +14,8 @@ import { withTenantWrite } from '@restro/db/write'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { ASSET_IMAGE_TYPES, ASSET_ORIGINS, MAX_IMAGE_SIDE } from '../assets'
 import { type AssetId, idSchema, newId } from '../ids'
-
-/** The image types an asset may have: the ones the guest phone shell can show. */
-export const ASSET_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
-
-/** One of the accepted image content types. */
-export type AssetImageType = (typeof ASSET_IMAGE_TYPES)[number]
-
-/** Where an asset came from: a person's upload or a photo fetched from barsy. */
-export const ASSET_ORIGINS = ['upload', 'barsy'] as const
-
-/** The largest side of an image in pixels (WebP's own limit is 16 383). */
-export const MAX_IMAGE_SIDE = 16_383
 
 /**
  * Storage keys: path-like, ASCII, no `..` or empty segment, at most 255 characters. The asset
