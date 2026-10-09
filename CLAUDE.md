@@ -1,6 +1,6 @@
 # Restro — rules for coding agents
 
-Restro is a QR-to-phone menu and ordering web app for Bulgarian nightclubs on the barsy POS. Martin Kostadinov is the product owner; he does not read code. AI agents write all code. The lead agent writes briefs, reviews every diff and reports to Martin.
+Restro is a QR-to-phone menu and ordering web app for Bulgarian nightclubs on the barsy POS. Martin Kostadinov is the product owner; he does not read code. AI agents write all code. The lead agent writes briefs, reviews every diff and reports to Martin. Model per task (D58): Haiku for simple, precisely specified tasks; Sonnet by default; Opus only for complex work.
 
 ## Read before any task
 1. This file.
