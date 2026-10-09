@@ -29,6 +29,14 @@
 - **barsy state lives in link state only.** The sync never writes a section's or item's `status`; that belongs to the manager (hide/show in the composer).
 - **No TypeScript parameter properties** in code the dev seed or scripts load: Node's type stripping cannot run them.
 - **The asset store is `@restro/assets`** (S2-03c): `createAssetStore(assetStoreConfig(env), signingSecret)`, `inspectImage`, the storage key helpers. Add it to the worker's dependencies, parse `ASSET_STORE`/`R2_*` in the worker's Zod config, and keep the R2 implementation mocked in tests.
+- **From S2-03a (merged):**
+  - Sealing: seal with `@restro/core/seal`, open with `@restro/core/seal-open` (worker only). Call `requireSealKeys(config)` when the sync jobs are registered: without keys the worker still starts but registers no sync jobs, and logs one warning.
+  - `ApplyResult` now has `skipped`. Counters: applied + unchanged + skipped + rejected = ops.
+  - `setLinkState` is accepted only from the link's own barsy source.
+  - `concludeFullPull` throws when a key is both seen and deleted (the mapper never produces this).
+- **Race guard:** before turning `concludeFullPull`'s `missing`/`deleted` changes into ops, drop any change for a link whose `last_seen_at` is later than this pull's start (an incremental saw it meanwhile). This applies on top of the `singletonKey`.
+- **One venue for now:** source links belong to the integration, but the pull is per venue. Run the absence conclusion only when the integration has exactly one venue with a catalogue root. Otherwise skip it with a job-run note (tracker T50).
+- **Local keys:** the worker's `dev` script loads the root `.env.local` and then `.env.worker.local` (worker-only, holds `SEAL_PRIVATE_KEY`; `.env*` is git-ignored), each only if it exists (`--env-file-if-exists`). The web app never loads `.env.worker.local`.
 - **`ARTICLES_ORDER_BY`** uses the object form `{cat_weight_deep: 'asc', article_id: 'asc'}`. The lead confirms it on the next recording.
 
 ## Do
