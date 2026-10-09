@@ -33,6 +33,11 @@ QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up t
 
 A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass.
 
+**Database tests** run only with `CI=true` and `DATABASE_URL`, `DATABASE_URL_OWNER` and `DATABASE_APP_PASSWORD` set; the local values are in `.env.example`.
+- **If a local Postgres is already running on 54329,** reuse it with your own database name: create it, then `pnpm db:migrate` and `pnpm db:roles` against it.
+- **Never stop an instance you did not start.**
+- **Always go through `pnpm`**, never bare `node`: `use-node-version` pins Node 24.21.0.
+
 ## Repository layout
 ```
 apps/web            Next.js 16.4: venue admin, guest phone shell, small API (/t/[token], /api/events, /api/health)

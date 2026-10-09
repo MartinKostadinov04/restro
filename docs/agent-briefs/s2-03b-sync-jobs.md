@@ -28,6 +28,7 @@
 - **Reuse S2-06a's writers:** `provisionIntegration` and `recordSource` exist in `packages/core/src/apply/sources.ts`. Extend or rename them; never add a second pair.
 - **barsy state lives in link state only.** The sync never writes a section's or item's `status`; that belongs to the manager (hide/show in the composer).
 - **No TypeScript parameter properties** in code the dev seed or scripts load: Node's type stripping cannot run them.
+- **The asset store is `@restro/assets`** (S2-03c): `createAssetStore(assetStoreConfig(env), signingSecret)`, `inspectImage`, the storage key helpers. Add it to the worker's dependencies, parse `ASSET_STORE`/`R2_*` in the worker's Zod config, and keep the R2 implementation mocked in tests.
 - **`ARTICLES_ORDER_BY`** uses the object form `{cat_weight_deep: 'asc', article_id: 'asc'}`. The lead confirms it on the next recording.
 
 ## Do

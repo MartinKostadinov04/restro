@@ -4,11 +4,12 @@
 // A route handler is not covered by Server Actions' origin check, and a multipart POST is a
 // "simple" cross-site request, so this checks the Origin header itself, and reads the body with a
 // hard cap instead of letting `formData()` buffer whatever arrives.
+
+import type { AssetStore } from '@restro/assets'
 import { MAX_IMAGE_BYTES } from '@restro/core'
 import type { DbPool } from '@restro/db'
 
 import { logError } from '../log'
-import type { AssetStore } from './types'
 import { storeImage, UploadError } from './upload'
 
 /** Multipart framing around the file (boundaries, part headers) on top of the file's own bytes. */

@@ -1,6 +1,8 @@
 // The item sheet's reads and saves against a real Postgres, as the restro_app role: where each
 // kind of edit lands (manual, override with a basis, per-language translation), what is locked,
 // revert / keep / take barsy's, the picture, the history and tenant isolation (brief S2-06b).
+
+import type { AssetStore } from '@restro/assets'
 import { type ChangeSet, newId } from '@restro/core'
 import {
   apply,
@@ -14,8 +16,7 @@ import { and, eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { makePng } from '../assets/test-images'
-import type { AssetStore } from '../assets/types'
+import { makePng } from '../../../../../packages/assets/src/test-images'
 import { storeImage } from '../assets/upload'
 import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
 import {

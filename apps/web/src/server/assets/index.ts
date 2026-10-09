@@ -1,22 +1,13 @@
-// The asset store this process uses, chosen by the environment (./config.ts) and created on first
-// use, once per process (it survives Next.js hot reloads in development). The R2 implementation
-// is loaded only when it is chosen, so a local run never loads the AWS SDK.
+// The asset store this process uses, chosen by the environment (`assetStoreConfig` in
+// @restro/assets) and created on first use, once per process (it survives Next.js hot reloads in
+// development). The R2 implementation is loaded only when it is chosen, so a local run never
+// loads the AWS SDK.
+
+import type { AssetStore } from '@restro/assets'
+import { assetStoreConfig, createAssetStore, type LocalAssetStore } from '@restro/assets'
 import { serverEnv } from '../env'
-import { type AssetStoreConfig, assetStoreConfig } from './config'
-import { LocalAssetStore } from './local-store'
-import type { AssetStore } from './types'
 
-export { ADMIN_URL_TTL_SECONDS, type AssetStore } from './types'
-
-/** Builds the store a configuration describes. `signingSecret` signs the local store's links. */
-export async function createAssetStore(
-  config: AssetStoreConfig,
-  signingSecret: string,
-): Promise<AssetStore> {
-  if (config.kind === 'local') return new LocalAssetStore({ rootDir: config.dir, signingSecret })
-  const { R2AssetStore } = await import('./r2-store')
-  return R2AssetStore.fromSettings(config)
-}
+export { ADMIN_URL_TTL_SECONDS, type AssetStore } from '@restro/assets'
 
 const globals = globalThis as typeof globalThis & { __restroAssetStore?: Promise<AssetStore> }
 
