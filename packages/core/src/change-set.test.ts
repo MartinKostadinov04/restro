@@ -244,6 +244,30 @@ describe('ChangeSetSchema', () => {
     expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'start' }])).ok).toBe(false)
   })
 
+  it('carries the optional onlyIfUnplaced flag on a placement, and only as a boolean', () => {
+    const placement = {
+      op: 'setPlacement',
+      item: barsyPrice.node,
+      section: { link: { integration: 'int_club', externalType: 'category', externalId: '7' } },
+      sortKey: 'end',
+    }
+    const fromBarsy = (op: unknown) => ({
+      ...manualSet([op]),
+      source: 'barsy:int_club',
+      actor: 'integration:int_club',
+    })
+    const withFlag = parseChangeSet(fromBarsy({ ...placement, onlyIfUnplaced: true }))
+    if (!withFlag.ok) throw new Error(withFlag.reason)
+    expect(withFlag.value.ops[0]).toMatchObject({ op: 'setPlacement', onlyIfUnplaced: true })
+    // Without the flag nothing changes (it stays absent, not false).
+    const without = parseChangeSet(fromBarsy(placement))
+    if (!without.ok) throw new Error(without.reason)
+    expect(without.value.ops[0]).not.toHaveProperty('onlyIfUnplaced')
+    expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplaced: false })).ok).toBe(true)
+    expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplaced: 'yes' })).ok).toBe(false)
+    expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplacd: true })).ok).toBe(false)
+  })
+
   it('gives a new section, group or option a sibling position, and a menu or item none', () => {
     const create = (nodeType: string, parent: unknown, sortKey?: string) => ({
       op: 'createNode',

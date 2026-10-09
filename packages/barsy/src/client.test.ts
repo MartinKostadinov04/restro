@@ -158,6 +158,18 @@ describe('call', () => {
     })
   })
 
+  it('hands back the response text byte for byte as raw, next to the parsed data', async () => {
+    const body = '{ "actual_price": 2.40,\n  "name": "\\u041a\\u0430\\u0444\\u0435" }'
+    mock.setFixtures([fixture({ method: 'Misc_ping', body })])
+    const single = await newClient().call('Misc_ping')
+    expect(single.raw).toBe(body)
+    expect(single.data).toStrictEqual({ actual_price: '2.40', name: 'Кафе' })
+
+    mock.setFixtures([fixture({ method: 'Misc_ping', body })])
+    const many = await newClient().callMany({ Misc_ping: {} })
+    expect(many.raw).toBe(`{"Misc_ping":${body}}`)
+  })
+
   it('returns the parsed value untyped when no schema is given', async () => {
     mock.setFixtures([fixture({ method: 'Misc_ping', body: '[1, 2.50]' })])
     const { data } = await newClient().call('Misc_ping')
