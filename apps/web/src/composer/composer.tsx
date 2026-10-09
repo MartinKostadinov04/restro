@@ -18,7 +18,7 @@ import {
 } from '@hello-pangea/dnd'
 import { isId, type Locale, type LocalizedText, type NodeId, newId } from '@restro/core'
 import { PlusIcon } from 'lucide-react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -51,7 +51,13 @@ import {
   UNSORTED_KEY,
 } from './dnd'
 import { ItemPane } from './item-pane'
-import { ITEM_PARAM, itemIdFromParam, replaceSearchParams, SECTION_PARAM } from './item-param'
+import {
+  clearOpenItem,
+  ITEM_PARAM,
+  itemIdFromParam,
+  replaceSearchParams,
+  SECTION_PARAM,
+} from './item-param'
 import { ItemSheet } from './item-sheet'
 import { itemName, sectionTitle } from './labels'
 import { NewSectionDialog } from './new-section-dialog'
@@ -85,6 +91,7 @@ export function Composer({
   const uiLocale = useLocale()
   const locale = toDataLocale(isAdminLocale(uiLocale) ? uiLocale : 'bg')
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [view, applyOptimistic] = useOptimistic(serverView, reduceView)
   const [, startTransition] = useTransition()
 
@@ -441,7 +448,19 @@ export function Composer({
         </div>
       </DragDropContext>
 
-      {openItemId ? <ItemSheet key={openItemId} itemId={openItemId} /> : null}
+      {openItemId ? (
+        <ItemSheet
+          key={openItemId}
+          itemId={openItemId}
+          onOpenChange={(open) => {
+            if (open) return
+            clearOpenItem()
+            // The sheet saves through its own actions; reload the composer's view so names,
+            // badges and issue counts match what was saved.
+            router.refresh()
+          }}
+        />
+      ) : null}
 
       <NewSectionDialog
         open={dialog.open}

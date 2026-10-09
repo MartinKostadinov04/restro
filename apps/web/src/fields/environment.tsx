@@ -15,21 +15,28 @@ export interface FieldEnvironment {
   readonly currency: Currency
   /** The venue's IANA time zone: datetimes are shown in it, never in the browser's. */
   readonly timezone: string
+  /**
+   * Short-lived links to the files behind image values, by asset id, when the screen has them
+   * (the item sheet does). A value holds the id only; without a link an image shows a placeholder.
+   */
+  readonly assetUrls: Readonly<Record<string, string>>
 }
 
 export type FieldEnvironmentOverrides = Partial<Omit<FieldEnvironment, 'locale'>>
 
 const Context = createContext<FieldEnvironmentOverrides | null>(null)
 
+const NO_ASSET_URLS: Readonly<Record<string, string>> = {}
+
 /** Tells the fields below it about the venue they belong to (languages, currency, time zone). */
 export function FieldEnvironmentProvider({
   children,
   ...environment
 }: FieldEnvironmentOverrides & { children: ReactNode }) {
-  const { enabledLocales, currency, timezone } = environment
+  const { enabledLocales, currency, timezone, assetUrls } = environment
   const value = useMemo(
-    () => ({ enabledLocales, currency, timezone }),
-    [enabledLocales, currency, timezone],
+    () => ({ enabledLocales, currency, timezone, assetUrls }),
+    [enabledLocales, currency, timezone, assetUrls],
   )
   return <Context.Provider value={value}>{children}</Context.Provider>
 }
@@ -44,6 +51,7 @@ export function useFieldEnvironment(): FieldEnvironment {
       enabledLocales: overrides?.enabledLocales ?? ['bg_BG', 'en_US'],
       currency: overrides?.currency ?? 'EUR',
       timezone: overrides?.timezone ?? 'Europe/Sofia',
+      assetUrls: overrides?.assetUrls ?? NO_ASSET_URLS,
     }),
     [uiLocale, overrides],
   )

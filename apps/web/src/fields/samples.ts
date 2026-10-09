@@ -56,14 +56,8 @@ export const ITEM_SAMPLE_PROVENANCE: Readonly<Record<string, Provenance>> = {
   visible: 'stale',
 }
 
-/** The groups the preview divides the Item's rows into (the Platform's category pills). */
-export const ITEM_GROUPS = [
-  { id: 'content', keys: ['name', 'description', 'image'] },
-  { id: 'pricing', keys: ['price', 'portion', 'abv'] },
-  { id: 'attributes', keys: ['allergens', 'dietary', 'tags'] },
-  { id: 'ordering', keys: ['order_mode', 'for_sale', 'visible', 'availability'] },
-  { id: 'internal', keys: ['internal_note'] },
-] as const
+/** The groups the preview divides the Item's rows into: the item sheet's own (./item-groups). */
+export { ITEM_GROUPS } from './item-groups'
 
 /** The definitions of the default template's Item node, in the template's order. */
 export function itemDefinitions(): readonly FieldDefinition[] {

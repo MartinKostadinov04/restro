@@ -38,7 +38,8 @@
       "barsy": "From barsy",
       "owned": "Owned here",
       "overridden": "Overridden",
-      "stale": "Stale"
+      "stale": "Stale",
+      "locked": "Locked"
     },
     "editor": {
       "title": "Edit {field}",
@@ -140,6 +141,165 @@
       "ordering": "Ordering and availability",
       "internal": "Internal"
     }
+  },
+  "itemSheet": {
+    "loadingTitle": "Loading item…",
+    "untitled": "Untitled item",
+    "description": "Details, translations, photo and history of this item.",
+    "linked": "From barsy",
+    "createdHere": "Created here",
+    "linkState": {
+      "missing": "barsy no longer lists it",
+      "deleted": "Deleted in barsy"
+    },
+    "issueCount": "{count, plural, =0 {Nothing to check} one {# thing to check} other {# things to check}}",
+    "missing": "This item could not be found in this venue.",
+    "loadError": "The item could not be loaded. Close the sheet and try again.",
+    "saved": "Saved",
+    "reverted": "Back to barsy's value",
+    "kept": "Your value is kept",
+    "imageSaved": "Photo saved",
+    "imageRemoved": "Photo removed",
+    "errors": {
+      "not_found": "This item or field could not be found.",
+      "read_only": "This value cannot be changed here.",
+      "locked": "barsy owns this value. Change it in barsy.",
+      "nothing_to_revert": "There is nothing to revert.",
+      "no_basis": "barsy no longer holds a value for this, so there is nothing to keep yours against. Revert it instead.",
+      "invalid_value": "That value is not valid for this field.",
+      "asset_not_found": "The uploaded photo could not be found. Upload it again.",
+      "refused": "The change was refused and nothing was saved.",
+      "failed": "Saving failed. Try again."
+    },
+    "tabs": {
+      "details": "Details",
+      "translations": "Translations",
+      "media": "Media",
+      "history": "History"
+    },
+    "issues": {
+      "title": "Things to check",
+      "blocking": "Keeps the item off the menu",
+      "showMore": "Show {count} more",
+      "showLess": "Show fewer",
+      "unknown": "Finding {code}.",
+      "V3": "The name is missing in the default language, so the item stays off the guest menu.",
+      "V4": "Allergens are not filled in.",
+      "V5": "barsy and this venue disagree about {field}. Choose the right value.",
+      "V6": "There is no price, so the item stays off the guest menu.",
+      "V7": "{field} has no text in {language}.",
+      "stale_override": "barsy changed {field} after you replaced it here.",
+      "link_missing": "barsy no longer lists this item, so guests do not see it.",
+      "link_deleted": "This item was deleted in barsy, so guests do not see it.",
+      "invalid_value": "A stored value for {field} is not valid and is ignored.",
+      "ignored_value": "A stored value for {field} sits in a layer that does not apply to it and is ignored.",
+      "required_missing": "{field} is required.",
+      "translation_review": "barsy's {field} changed after the {language} translation was written. Check it.",
+      "price_not_venue_scoped": "barsy's price is not stored for this venue yet.",
+      "unplaced_item": "This item is in no section, so guests do not see it.",
+      "required_group_unsatisfiable": "A required choice has too few options, so the item cannot be ordered."
+    },
+    "details": {
+      "groups": {
+        "content": "Content",
+        "pricing": "Price and portion",
+        "attributes": "Attributes",
+        "ordering": "Ordering and availability",
+        "internal": "Internal"
+      },
+      "editorDescription": "The change is saved to the menu at once. The History tab keeps who changed what.",
+      "readOnly": {
+        "locked_to_barsy": "Change this in barsy.",
+        "barsy_decides": "barsy has hidden this or taken it off sale. Change it in barsy.",
+        "composer_toggle": "Show or hide the item from the list in the composer.",
+        "sold_out_later": "Marking items sold out comes in Stage 3."
+      },
+      "conflict": "barsy and this venue disagree. Choose the right value.",
+      "staleHint": "barsy changed this after you replaced it. barsy now says:",
+      "barsyValueHint": "barsy's value:",
+      "keep": "Keep mine",
+      "keepFor": "Keep my value for {field}",
+      "takeBarsy": "Take barsy's",
+      "takeBarsyFor": "Take barsy's value for {field}",
+      "revert": "Revert",
+      "revertFor": "Revert {field} to barsy's value"
+    },
+    "translations": {
+      "intro": "Every language of this venue. Languages barsy already holds are read-only; the ones you add are saved as your own translations.",
+      "missing": "Missing",
+      "review": "Review",
+      "reviewHint": "barsy's text changed after this translation was written. It stays live; edit it to clear this flag.",
+      "placeholder": "No text yet",
+      "save": "Save",
+      "heldByBarsy": "Held by barsy"
+    },
+    "media": {
+      "title": "Photo",
+      "noPreview": "The photo cannot be shown",
+      "dimensions": "Size",
+      "type": "Type",
+      "openFull": "Open full size",
+      "fromBarsyHint": "This photo comes from barsy. Uploading yours replaces it here.",
+      "none": "No photo yet",
+      "upload": "Upload a photo or drop one here",
+      "replace": "Replace the photo or drop a new one here",
+      "limits": "JPEG, PNG or WebP, up to 10 MB",
+      "uploading": "Uploading…",
+      "saving": "Saving…",
+      "remove": "Remove photo",
+      "detailsTitle": "Description and focus",
+      "altHint": "Alt text describes the photo for people who cannot see it. Write it in each language.",
+      "altFor": "Alt text, {language}",
+      "noAlt": "Photo without a description",
+      "focalSet": "Set focal point",
+      "focalDone": "Done",
+      "focalClear": "Clear focal point",
+      "focalHint": "Click the part of the photo that must stay in frame.",
+      "focalPicker": "Photo: click to set the focal point, or use the arrow keys",
+      "saveDetails": "Save",
+      "errors": {
+        "unauthorized": "Sign in again and try once more.",
+        "bad_origin": "The request was refused. Reload the page.",
+        "no_file": "No file was chosen.",
+        "empty": "The file is empty.",
+        "too_large": "The file is larger than 10 MB.",
+        "unsupported_type": "Only JPEG, PNG and WebP photos are accepted.",
+        "corrupt": "The file looks damaged.",
+        "dimensions": "The photo's size is not allowed (at most 16,383 pixels a side and 100 megapixels).",
+        "server_error": "The upload failed. Try again.",
+        "network": "The connection dropped. Try again."
+      }
+    },
+    "history": {
+      "someone": "Someone",
+      "barsySync": "The barsy sync",
+      "system": "The system",
+      "set": "{who} set {field} to {value}",
+      "changed": "{who} changed {field} from {from} to {to}",
+      "cleared": "{who} removed {field} (it was {value})",
+      "structure": {
+        "createNode": "{who} created the item",
+        "setPlacement": "{who} placed the item in a section",
+        "removePlacement": "{who} took the item out of a section",
+        "moveNode": "{who} moved the item",
+        "setNodeStatus": "{who} changed whether the item is shown",
+        "linkSource": "{who} linked the item to barsy",
+        "unlinkSource": "{who} unlinked the item from barsy",
+        "setLinkState": "{who} updated the item's barsy status",
+        "other": "{who} changed the item's place in the menu"
+      },
+      "empty": "No changes yet.",
+      "error": "The history could not be loaded.",
+      "loadMore": "Show older"
+    }
+  },
+  "devItemSheet": {
+    "title": "Item sheet (development only)",
+    "description": "Open the item sheet for an item of the first venue, without the composer. Saves here are real: they go through apply().",
+    "noMenu": "This tenant has no venue with a menu yet. Run the seed.",
+    "noItems": "The menu has no items yet.",
+    "open": "Open {name}",
+    "unnamed": "Unnamed item"
   },
   "ui": {
     "close": "Close",
