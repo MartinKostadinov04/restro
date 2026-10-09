@@ -4,6 +4,20 @@ import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig } from './config'
 
 const URL = 'postgres://restro_app:s3cret-pw@localhost:54329/restro'
 
+/** The lines of the error `loadConfig` throws for `env`. */
+function problemsOf(env: Record<string, string | undefined>, defaultWorkerId?: () => string) {
+  let error: unknown
+  try {
+    loadConfig(env, defaultWorkerId)
+  } catch (caught) {
+    error = caught
+  }
+  expect(error).toBeInstanceOf(ConfigError)
+  const [heading, ...lines] = (error as Error).message.split('\n')
+  expect(heading).toBe('Invalid worker configuration:')
+  return lines.map((line) => line.replace(/^- /, ''))
+}
+
 describe('loadConfig', () => {
   it('applies the defaults', () => {
     expect(loadConfig({ DATABASE_URL: URL }, () => 'my-host')).toEqual({
@@ -38,34 +52,110 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ DATABASE_URL: 'postgresql://u:p@h/db' })).not.toThrow()
   })
 
+  it('treats blank optional settings as unset', () => {
+    expect(
+      loadConfig(
+        { DATABASE_URL: URL, WORKER_ID: '  ', WORKER_HEALTH_PORT: '', LOG_LEVEL: ' ' },
+        () => 'my-host',
+      ),
+    ).toMatchObject({ workerId: 'my-host', healthPort: DEFAULT_HEALTH_PORT, logLevel: 'info' })
+  })
+
+  it('ignores variables it does not know, and any NODE_ENV but production means pretty logs', () => {
+    const base = { DATABASE_URL: URL, SOMETHING_ELSE: 'x' }
+    expect(loadConfig(base).prettyLogs).toBe(true)
+    expect(loadConfig({ ...base, NODE_ENV: 'development' }).prettyLogs).toBe(true)
+    expect(loadConfig({ ...base, NODE_ENV: 'test' }).prettyLogs).toBe(true)
+    expect(loadConfig({ ...base, NODE_ENV: 'production' }).prettyLogs).toBe(false)
+  })
+
   it('names every problem and never repeats the connection string', () => {
     const bad = 'mysql://restro_app:s3cret-pw@localhost/restro'
-    let error: unknown
-    try {
-      loadConfig({ DATABASE_URL: bad, WORKER_HEALTH_PORT: '70000', LOG_LEVEL: 'loud' })
-    } catch (caught) {
-      error = caught
-    }
-    expect(error).toBeInstanceOf(ConfigError)
-    const message = (error as Error).message
-    expect(message).toContain('DATABASE_URL must be a postgres://')
-    expect(message).toContain('WORKER_HEALTH_PORT')
-    expect(message).toContain('LOG_LEVEL')
-    expect(message).not.toContain('s3cret-pw')
+    const problems = problemsOf({
+      DATABASE_URL: bad,
+      WORKER_HEALTH_PORT: '70000',
+      LOG_LEVEL: 'loud',
+    })
+    expect(problems).toEqual([
+      'DATABASE_URL must be a postgres:// or postgresql:// URL.',
+      'WORKER_HEALTH_PORT must be a whole number from 1 to 65535.',
+      'LOG_LEVEL must be one of: fatal, error, warn, info, debug, trace, silent.',
+    ])
+    expect(problems.join('\n')).not.toContain('s3cret-pw')
   })
 
-  it('requires DATABASE_URL', () => {
-    expect(() => loadConfig({})).toThrow(/DATABASE_URL is not set/)
-    expect(() => loadConfig({ DATABASE_URL: '   ' })).toThrow(/DATABASE_URL is not set/)
+  it('requires DATABASE_URL, with one problem line whether it is missing or blank', () => {
+    const expected = [
+      'DATABASE_URL is not set. It is the connection string of the app role restro_app ' +
+        '(local: see .env.example).',
+    ]
+    expect(problemsOf({})).toEqual(expected)
+    expect(problemsOf({ DATABASE_URL: '' })).toEqual(expected)
+    expect(problemsOf({ DATABASE_URL: '   ' })).toEqual(expected)
   })
 
-  it.each(['0', '-1', '80.5', 'abc', '65536', '1e3'])('rejects WORKER_HEALTH_PORT=%s', (port) => {
-    expect(() => loadConfig({ DATABASE_URL: URL, WORKER_HEALTH_PORT: port })).toThrow(
-      /WORKER_HEALTH_PORT/,
+  it('reports problems in several variables at once', () => {
+    const problems = problemsOf({ WORKER_ID: 'x'.repeat(129), WORKER_HEALTH_PORT: 'abc' })
+    expect(problems.map((line) => line.split(' ')[0])).toEqual([
+      'DATABASE_URL',
+      'WORKER_ID',
+      'WORKER_HEALTH_PORT',
+    ])
+  })
+
+  it.each(['0', '-1', '80.5', 'abc', '65536', '1e3', '0x50', '9'.repeat(400)])(
+    'rejects WORKER_HEALTH_PORT=%s',
+    (port) => {
+      expect(problemsOf({ DATABASE_URL: URL, WORKER_HEALTH_PORT: port })).toEqual([
+        'WORKER_HEALTH_PORT must be a whole number from 1 to 65535.',
+      ])
+    },
+  )
+
+  it.each(['1', '8081', '65535', ' 443 '])('accepts WORKER_HEALTH_PORT=%s', (port) => {
+    expect(loadConfig({ DATABASE_URL: URL, WORKER_HEALTH_PORT: port }).healthPort).toBe(
+      Number(port),
     )
   })
 
-  it('rejects an over-long WORKER_ID', () => {
-    expect(() => loadConfig({ DATABASE_URL: URL, WORKER_ID: 'x'.repeat(129) })).toThrow(/WORKER_ID/)
+  it.each(['FATAL', 'Error', ' warn ', 'silent'])('accepts LOG_LEVEL=%s', (level) => {
+    expect(loadConfig({ DATABASE_URL: URL, LOG_LEVEL: level }).logLevel).toBe(
+      level.trim().toLowerCase(),
+    )
+  })
+
+  it('rejects an over-long WORKER_ID without repeating it', () => {
+    const id = `id-${'x'.repeat(129)}`
+    const problems = problemsOf({ DATABASE_URL: URL, WORKER_ID: id })
+    expect(problems).toEqual(['WORKER_ID must be 1 to 128 characters.'])
+    expect(problems.join('\n')).not.toContain(id)
+  })
+
+  it('rejects a default worker id that is empty or too long', () => {
+    expect(problemsOf({ DATABASE_URL: URL }, () => '')).toEqual([
+      'WORKER_ID must be 1 to 128 characters.',
+    ])
+    expect(problemsOf({ DATABASE_URL: URL }, () => 'h'.repeat(129))).toEqual([
+      'WORKER_ID must be 1 to 128 characters.',
+    ])
+  })
+
+  it('does not ask for the default worker id when WORKER_ID is set', () => {
+    const config = loadConfig({ DATABASE_URL: URL, WORKER_ID: 'w1' }, () => {
+      throw new Error('should not be called')
+    })
+    expect(config.workerId).toBe('w1')
+  })
+
+  it('never repeats a value in its messages, whatever the variable', () => {
+    const secret = 's3cret-value'
+    const lines = problemsOf({
+      DATABASE_URL: `mysql://u:${secret}@h/db`,
+      WORKER_ID: secret.repeat(20),
+      WORKER_HEALTH_PORT: secret,
+      LOG_LEVEL: secret,
+    })
+    expect(lines).toHaveLength(4)
+    expect(lines.join('\n')).not.toContain(secret)
   })
 })

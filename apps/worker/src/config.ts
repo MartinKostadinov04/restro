@@ -1,8 +1,11 @@
 // The worker's settings, read once at start from environment variables. Values are validated
-// here and nowhere else; an invalid or missing setting stops the process before anything opens a
-// connection. Error messages name the variable, never its value (DATABASE_URL carries a
-// password).
+// here and nowhere else (with Zod, like every other boundary); an invalid or missing setting
+// stops the process before anything opens a connection. Error messages name the variable, never
+// its value (DATABASE_URL carries a password): every problem is "<VARIABLE> <what is wrong>",
+// built from the schema's own path and the fixed text written below, not from the input.
 import { hostname } from 'node:os'
+
+import { z } from 'zod'
 
 /** Port of the health endpoint when WORKER_HEALTH_PORT is not set. */
 export const DEFAULT_HEALTH_PORT = 8081
@@ -42,6 +45,74 @@ function isPostgresUrl(value: string): boolean {
   }
 }
 
+/** A variable left empty counts as unset, so its default applies. */
+function unsetWhenBlank(value: unknown): unknown {
+  return typeof value === 'string' && value.trim() === '' ? undefined : value
+}
+
+const NOT_SET =
+  'is not set. It is the connection string of the app role restro_app (local: see .env.example).'
+const NOT_A_POSTGRES_URL = 'must be a postgres:// or postgresql:// URL.'
+const BAD_WORKER_ID = `must be 1 to ${MAX_WORKER_ID_LENGTH} characters.`
+const BAD_PORT = 'must be a whole number from 1 to 65535.'
+const BAD_LOG_LEVEL = `must be one of: ${LOG_LEVELS.join(', ')}.`
+
+/**
+ * The schema of the environment. Its keys are the variable names, so an issue's path names the
+ * variable; every message is a continuation of that name (see {@link describeIssue}). Variables
+ * not listed here are ignored.
+ */
+function environmentSchema(defaultWorkerId: () => string) {
+  return z
+    .object({
+      DATABASE_URL: z
+        .string({ error: NOT_SET })
+        .trim()
+        .min(1, { error: NOT_SET, abort: true })
+        .refine(isPostgresUrl, { error: NOT_A_POSTGRES_URL }),
+      WORKER_ID: z
+        .string()
+        .optional()
+        .transform((value) => value?.trim() || defaultWorkerId())
+        .pipe(z.string().min(1, BAD_WORKER_ID).max(MAX_WORKER_ID_LENGTH, BAD_WORKER_ID)),
+      WORKER_HEALTH_PORT: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .refine((value) => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 65535, {
+            error: BAD_PORT,
+          })
+          .transform(Number)
+          .default(DEFAULT_HEALTH_PORT),
+      ),
+      LOG_LEVEL: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .pipe(z.enum(LOG_LEVELS, { error: BAD_LOG_LEVEL }))
+          .default('info'),
+      ),
+      NODE_ENV: z.string().optional(),
+    })
+    .transform(
+      (env): WorkerConfig => ({
+        databaseUrl: env.DATABASE_URL,
+        workerId: env.WORKER_ID,
+        healthPort: env.WORKER_HEALTH_PORT,
+        logLevel: env.LOG_LEVEL,
+        prettyLogs: env.NODE_ENV !== 'production',
+      }),
+    )
+}
+
+/** "<VARIABLE> <message>": the variable from the schema path, the text fixed above. */
+function describeIssue(issue: z.core.$ZodIssue): string {
+  return `${issue.path.join('.')} ${issue.message}`
+}
+
 /**
  * Reads the configuration from `env`.
  *
@@ -57,45 +128,7 @@ export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
   defaultWorkerId: () => string = hostname,
 ): WorkerConfig {
-  const problems: string[] = []
-
-  const databaseUrl = env.DATABASE_URL?.trim() ?? ''
-  if (databaseUrl === '') {
-    problems.push(
-      'DATABASE_URL is not set. It is the connection string of the app role restro_app ' +
-        '(local: see .env.example).',
-    )
-  } else if (!isPostgresUrl(databaseUrl)) {
-    problems.push('DATABASE_URL must be a postgres:// or postgresql:// URL.')
-  }
-
-  const workerId = env.WORKER_ID?.trim() || defaultWorkerId()
-  if (workerId === '' || workerId.length > MAX_WORKER_ID_LENGTH) {
-    problems.push(`WORKER_ID must be 1 to ${MAX_WORKER_ID_LENGTH} characters.`)
-  }
-
-  let healthPort = DEFAULT_HEALTH_PORT
-  const rawPort = env.WORKER_HEALTH_PORT?.trim()
-  if (rawPort) {
-    healthPort = Number(rawPort)
-    if (!/^\d+$/.test(rawPort) || healthPort < 1 || healthPort > 65535) {
-      problems.push('WORKER_HEALTH_PORT must be a whole number from 1 to 65535.')
-    }
-  }
-
-  const rawLevel = env.LOG_LEVEL?.trim().toLowerCase() || 'info'
-  const logLevel = LOG_LEVELS.find((level) => level === rawLevel)
-  if (!logLevel) {
-    problems.push(`LOG_LEVEL must be one of: ${LOG_LEVELS.join(', ')}.`)
-  }
-
-  if (problems.length > 0 || !logLevel) throw new ConfigError(problems)
-
-  return {
-    databaseUrl,
-    workerId,
-    healthPort,
-    logLevel,
-    prettyLogs: env.NODE_ENV !== 'production',
-  }
+  const result = environmentSchema(defaultWorkerId).safeParse(env)
+  if (!result.success) throw new ConfigError(result.error.issues.map(describeIssue))
+  return result.data
 }
