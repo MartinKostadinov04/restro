@@ -199,12 +199,12 @@ export const CreateNodeSchema = z
  * Places an item in a section at a sort position (one row; moving rewrites only this row).
  *
  * `onlyIfUnplaced` (default false) is for adapters that mirror a source's categories (barsy,
- * mirror mode): the placement is applied only when the item had no placement in any section
- * before this change set, so a re-sync never re-adds an item the manager moved or removed and
- * never reorders their arrangement (D20: a new item lands at the end of its section). All the
- * set's placements for an item that was unplaced still apply, so a new item reaches every section
- * its source category maps to. How `apply()` honours the flag is the applier's business; this
- * schema only carries it.
+ * mirror mode): the placement is skipped (counted as `skipped`) when the item already had a
+ * placement in a section of the same menu before this change set started, so a re-sync never
+ * re-adds an item the manager moved and never reorders their arrangement (D20: a new item lands
+ * at the end of its section). Placements made earlier in the same change set do not count, so a
+ * new item still reaches every section its source categories map to. Known edge: an item the
+ * manager took out of every section counts as unplaced, so the next sync places it again.
  */
 export const SetPlacementSchema = z.strictObject({
   op: z.literal('setPlacement'),
@@ -257,6 +257,58 @@ export const UnlinkSourceSchema = z.strictObject({
   link: SourceLinkSchema,
 })
 
+/** The states of a source link (doc "Link lifecycle"). */
+export const LINK_STATES = ['active', 'missing', 'deleted'] as const
+
+/** `active`, `missing` (absent from a complete full pull) or `deleted` (gone in the source). */
+export type LinkStateName = (typeof LINK_STATES)[number]
+
+/**
+ * The Link lifecycle (doc "Link lifecycle"): the states each state may move to. Staying in the
+ * same state is not a move. `deleted` → `missing` has no row: a deleted object stays deleted
+ * until it is seen again.
+ */
+export const LINK_TRANSITIONS: { readonly [From in LinkStateName]: readonly LinkStateName[] } = {
+  active: ['missing', 'deleted'],
+  missing: ['deleted', 'active'],
+  deleted: ['active'],
+}
+
+/**
+ * Moves a source link through its lifecycle (doc "Link lifecycle"): `active` → `missing` when a
+ * complete full pull no longer has the object, `active`/`missing` → `deleted` (barsy's
+ * `delete_flag`, or missing for 7 days), `missing`/`deleted` → `active` when it is seen again.
+ * Only the link's own source sends it. A state change never touches field values, overrides or
+ * placements (the enrichment is kept, rule 6); hiding is the resolver's job.
+ *
+ * `seenAt` (with an optional content `hash`) records that this pull saw the object: `apply()`
+ * moves `last_seen_at` / `last_hash` forward, never back, so a sync marks "seen" through the one
+ * write path and an older observation never overwrites a newer one.
+ */
+export const SetLinkStateSchema = z
+  .strictObject({
+    op: z.literal('setLinkState'),
+    link: SourceLinkSchema,
+    state: z.enum(LINK_STATES),
+    seenAt: z.iso.datetime({ offset: true }).optional(),
+    hash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/, 'a content hash is SHA-256 in lower-case hex')
+      .optional(),
+  })
+  .superRefine((op, ctx) => {
+    if (op.hash !== undefined && op.seenAt === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'a content hash comes with the time it was seen (seenAt)',
+        path: ['hash'],
+      })
+    }
+  })
+
+/** A link-state change. */
+export type SetLinkState = z.output<typeof SetLinkStateSchema>
+
 /**
  * Removes the value of one field in one layer and scope, so the layers below show through:
  * revert an override, take barsy's value instead of ours, undo a builder hide. Same layer and
@@ -283,7 +335,7 @@ export const ClearFieldSchema = z
 /** A field clear. */
 export type ClearField = z.output<typeof ClearFieldSchema>
 
-/** Any structural op: node creation, placements, status, source links. */
+/** Any structural op: node creation, placements, status, source links and their state. */
 export const StructuralOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
   SetPlacementSchema,
@@ -292,6 +344,7 @@ export const StructuralOpSchema = z.discriminatedUnion('op', [
   SetNodeStatusSchema,
   LinkSourceSchema,
   UnlinkSourceSchema,
+  SetLinkStateSchema,
 ])
 
 /** A structural op. */
@@ -308,6 +361,7 @@ export const ChangeSetOpSchema = z.discriminatedUnion('op', [
   SetNodeStatusSchema,
   LinkSourceSchema,
   UnlinkSourceSchema,
+  SetLinkStateSchema,
 ])
 
 /** One op of a change set. */
@@ -327,6 +381,7 @@ export const CHANGE_SET_OP_NAMES = [
   'setNodeStatus',
   'linkSource',
   'unlinkSource',
+  'setLinkState',
 ] as const satisfies readonly ChangeSetOpName[]
 
 /** The layers each kind of source may write: barsy в†’ barsy, import в†’ import, manual в†’ the rest. */
@@ -352,6 +407,9 @@ export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
       return [op.item, op.section]
     case 'moveNode':
       return [op.node, op.parent]
+    case 'setLinkState':
+      // Names a link, not a node: apply() finds the node through the link.
+      return []
   }
 }
 
@@ -397,7 +455,7 @@ export const ChangeSetSchema = z
         }
       }
       if (
-        (op.op === 'linkSource' || op.op === 'unlinkSource') &&
+        (op.op === 'linkSource' || op.op === 'unlinkSource' || op.op === 'setLinkState') &&
         barsyIntegration !== null &&
         op.link.integration !== barsyIntegration
       ) {

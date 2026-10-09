@@ -271,6 +271,59 @@ describe('ChangeSetSchema', () => {
     expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplacd: true })).ok).toBe(false)
   })
 
+  it('setLinkState names a link of its own integration, a lifecycle state, and a hash only with seenAt', () => {
+    const link = { integration: 'int_club', externalType: 'article', externalId: '102751' }
+    const fromBarsy = (op: unknown, integration = 'int_club') => ({
+      ...manualSet([op]),
+      source: `barsy:${integration}`,
+      actor: `integration:${integration}`,
+    })
+    const hash = 'a'.repeat(64)
+    for (const state of ['active', 'missing', 'deleted']) {
+      expect(parseChangeSet(fromBarsy({ op: 'setLinkState', link, state })).ok).toBe(true)
+    }
+    const seen = parseChangeSet(
+      fromBarsy({
+        op: 'setLinkState',
+        link,
+        state: 'active',
+        seenAt: '2026-10-09T12:00:00+03:00',
+        hash,
+      }),
+    )
+    if (!seen.ok) throw new Error(seen.reason)
+    expect(seen.value.ops[0]).toMatchObject({ op: 'setLinkState', hash })
+    expect(nodeRefsOf(seen.value.ops[0] as never)).toEqual([])
+
+    expect(issuesOf(fromBarsy({ op: 'setLinkState', link, state: 'active', hash }))).toContain(
+      'seenAt',
+    )
+    expect(parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'gone' })).ok).toBe(false)
+    expect(
+      parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'active', seenAt: 'yesterday' }))
+        .ok,
+    ).toBe(false)
+    expect(
+      parseChangeSet(
+        fromBarsy({
+          op: 'setLinkState',
+          link,
+          state: 'active',
+          seenAt: '2026-10-09T12:00:00Z',
+          hash: 'A'.repeat(64),
+        }),
+      ).ok,
+    ).toBe(false)
+    expect(
+      issuesOf(fromBarsy({ op: 'setLinkState', link, state: 'missing' }, 'int_other')),
+    ).toContain('cannot link another integration')
+    expect(
+      parseChangeSet(
+        fromBarsy({ op: 'setLinkState', link, state: 'missing', node: { id: itemId } }),
+      ).ok,
+    ).toBe(false)
+  })
+
   it('gives a new section, group or option a sibling position, and a menu or item none', () => {
     const create = (nodeType: string, parent: unknown, sortKey?: string) => ({
       op: 'createNode',

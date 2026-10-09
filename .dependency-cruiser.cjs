@@ -112,6 +112,18 @@ module.exports = {
       to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
     },
 
+    // Sealed credentials (D55): the web seals with the worker's public key; only the worker
+    // opens. The opening half (packages/core/src/seal/open/, `@restro/core/seal-open`) holds
+    // every use of the private key, so nothing else may import it, the web app least of all.
+    {
+      name: 'seal-open-only-from-worker',
+      severity: 'error',
+      comment:
+        'Only apps/worker may import @restro/core/seal-open (packages/core/src/seal/open/): opening sealed credentials needs the private key, which only the worker holds.',
+      from: { pathNot: ['^apps/worker/', '^packages/core/src/seal/open/'] },
+      to: { path: ['^packages/core/src/seal/open/', '^@restro/core/seal-open(/|$)'] },
+    },
+
     // 5. Dependencies point one way: apps use packages, never the other way round.
     {
       name: 'packages-never-import-apps',

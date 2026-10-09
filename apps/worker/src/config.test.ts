@@ -1,6 +1,7 @@
+import { generateSealKeyPair } from '@restro/core/seal-open'
 import { describe, expect, it } from 'vitest'
 
-import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig } from './config'
+import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig, requireSealKeys } from './config'
 
 const URL = 'postgres://restro_app:s3cret-pw@localhost:54329/restro'
 
@@ -26,6 +27,7 @@ describe('loadConfig', () => {
       healthPort: DEFAULT_HEALTH_PORT,
       logLevel: 'info',
       prettyLogs: true,
+      seal: null,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -45,6 +47,7 @@ describe('loadConfig', () => {
       healthPort: 9090,
       logLevel: 'debug',
       prettyLogs: false,
+      seal: null,
     })
   })
 
@@ -147,6 +150,62 @@ describe('loadConfig', () => {
     expect(config.workerId).toBe('w1')
   })
 
+  describe('SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY', () => {
+    const keys = generateSealKeyPair()
+    const other = generateSealKeyPair()
+    const base = { DATABASE_URL: URL }
+
+    it('reads the pair as KeyObjects that belong together', () => {
+      const config = loadConfig({
+        ...base,
+        SEAL_PUBLIC_KEY: ` ${keys.publicKey} `,
+        SEAL_PRIVATE_KEY: keys.privateKey,
+      })
+      expect(config.seal?.publicKey.type).toBe('public')
+      expect(config.seal?.privateKey.type).toBe('private')
+      expect(config.seal?.privateKey.asymmetricKeyType).toBe('x25519')
+      expect(requireSealKeys(config)).toBe(config.seal)
+      // Logging the config can never print the private key.
+      expect(JSON.stringify(config)).not.toContain(keys.privateKey)
+    })
+
+    it('is optional until the sync jobs need it (requireSealKeys)', () => {
+      const config = loadConfig({ ...base, SEAL_PUBLIC_KEY: '', SEAL_PRIVATE_KEY: '  ' })
+      expect(config.seal).toBeNull()
+      expect(() => requireSealKeys(config)).toThrow(ConfigError)
+      expect(() => requireSealKeys(config)).toThrow(/SEAL_PRIVATE_KEY is not set/)
+    })
+
+    it('needs both halves, of one pair, in the right formats, and never repeats a key', () => {
+      expect(problemsOf({ ...base, SEAL_PUBLIC_KEY: keys.publicKey })).toEqual([
+        'SEAL_PRIVATE_KEY is not set. It goes with SEAL_PUBLIC_KEY (pnpm keys:seal).',
+      ])
+      expect(problemsOf({ ...base, SEAL_PRIVATE_KEY: keys.privateKey })).toEqual([
+        'SEAL_PUBLIC_KEY is not set. It goes with SEAL_PRIVATE_KEY (pnpm keys:seal).',
+      ])
+      const mismatched = problemsOf({
+        ...base,
+        SEAL_PUBLIC_KEY: keys.publicKey,
+        SEAL_PRIVATE_KEY: other.privateKey,
+      })
+      expect(mismatched).toEqual(['SEAL_PRIVATE_KEY is not the private half of SEAL_PUBLIC_KEY.'])
+      const swapped = problemsOf({
+        ...base,
+        SEAL_PUBLIC_KEY: keys.privateKey,
+        SEAL_PRIVATE_KEY: keys.publicKey,
+      })
+      expect(swapped.map((line) => line.split(' ')[0])).toEqual([
+        'SEAL_PUBLIC_KEY',
+        'SEAL_PRIVATE_KEY',
+      ])
+      for (const line of [...mismatched, ...swapped]) {
+        for (const key of [keys.publicKey, keys.privateKey, other.privateKey]) {
+          expect(line).not.toContain(key)
+        }
+      }
+    })
+  })
+
   it('never repeats a value in its messages, whatever the variable', () => {
     const secret = 's3cret-value'
     const lines = problemsOf({
@@ -154,8 +213,10 @@ describe('loadConfig', () => {
       WORKER_ID: secret.repeat(20),
       WORKER_HEALTH_PORT: secret,
       LOG_LEVEL: secret,
+      SEAL_PUBLIC_KEY: secret,
+      SEAL_PRIVATE_KEY: secret,
     })
-    expect(lines).toHaveLength(4)
+    expect(lines).toHaveLength(6)
     expect(lines.join('\n')).not.toContain(secret)
   })
 })

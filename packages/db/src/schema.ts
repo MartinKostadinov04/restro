@@ -511,6 +511,11 @@ export const sourceLinks = restro.table(
     externalId: text('external_id').notNull(),
     nodeId: text('node_id').notNull(),
     state: text('state').notNull().default('active'),
+    /**
+     * When `state` last changed (set by `apply()` on every transition; creation counts). The
+     * sync's "missing for 7 days → deleted" step reads it.
+     */
+    stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
     lastHash: text('last_hash'),
@@ -630,6 +635,7 @@ export const EVENT_OPS = [
   'setNodeStatus',
   'linkSource',
   'unlinkSource',
+  'setLinkState',
 ] as const
 
 /**
@@ -640,13 +646,14 @@ export const EVENT_OPS = [
  * `op` says what kind of change the row records. `setField` and `clearField` rows are changes of
  * a field value: `field_key` is the field, `layer` and `scope` the slot. The structural ops
  * (`createNode`, `setNodeStatus`, `setPlacement`, `removePlacement`, `moveNode`, `linkSource`,
- * `unlinkSource`) fill the same columns with a reserved key naming what changed (`node`,
- * `status`, `placement`, `parent`, `link`), the layer of their source (`manual`, `import` or
- * `barsy`), scope `master`, and JSON in `old_value` / `new_value` that names only our own ids
- * and never an external id (rule 3): `{section, sort_key}` for a placement, `{parent, sort_key}`
- * for a move, `{type, parent, status}` for a new node, `{source, external_type}` for a link, the
- * status text for a status change. `node_id` is the node that changed (the item, for a
- * placement).
+ * `unlinkSource`, `setLinkState`) fill the same columns with a reserved key naming what changed
+ * (`node`, `status`, `placement`, `parent`, `link`), the layer of their source (`manual`,
+ * `import` or `barsy`), scope `master`, and JSON in `old_value` / `new_value` that names only our
+ * own ids and never an external id (rule 3): `{section, sort_key}` for a placement,
+ * `{parent, sort_key}` for a move, `{type, parent, status}` for a new node,
+ * `{source, external_type}` for a link, `{source, external_type, state}` for a link-state
+ * change, the status text for a status change. `node_id` is the node that changed (the item,
+ * for a placement).
  */
 export const events = restro.table(
   'events',
@@ -678,7 +685,7 @@ export const events = restro.table(
     index('events_node_id_seq_idx').on(t.nodeId, t.seq),
     check(
       'events_op',
-      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource')`,
+      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState')`,
     ),
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(

@@ -132,6 +132,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@restro/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@restro/db':
         specifier: workspace:*
         version: link:../../packages/db

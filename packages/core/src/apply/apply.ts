@@ -10,8 +10,9 @@
 //      the node's context, resolve identity through source_links (a createNode + linkSource pair
 //      whose link already exists collapses onto the linked node), skip writes whose value hash
 //      equals the stored one, compute 'end' sort keys;
-//   3. write the result: new nodes, statuses, links, placements, field values (upserts and
-//      deletions), one events row per changed value, and one revision step per touched node.
+//   3. write the result: new nodes, statuses, links and their lifecycle (setLinkState),
+//      placements, field values (upserts and deletions), one events row per changed value, and
+//      one revision step per touched node.
 // Each op ends applied, unchanged (a no-op) or rejected with a reason; a rejected op changes
 // nothing, except that an invalid value (V1/V2) is kept as a `valid = false` row when its slot
 // has no good value to protect (doc: "Invalid writes are kept as rejected rows with a reason;
@@ -45,10 +46,13 @@ import {
   type ClearField,
   type FieldWrite,
   type Layer,
+  LINK_TRANSITIONS,
+  type LinkStateName,
   type NodeRef,
   nodeRefsOf,
   parseChangeSet,
   type Scope,
+  type SetLinkState,
   type SourceLink,
 } from '../change-set'
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
@@ -95,16 +99,22 @@ export type ApplyRejectionCode =
   | 'invalid_link_type'
   /** This source may not do this (unlink from an adapter, create a menu, link another source). */
   | 'source_not_allowed'
+  /** setLinkState names a link that does not exist (never linked, or unlinked). */
+  | 'unknown_link'
+  /** setLinkState asks for a move the Link lifecycle has no row for (`deleted` → `missing`). */
+  | 'invalid_transition'
 
 /**
  * The barsy external types each node type may be linked to (doc "Barsy to canonical mapping"):
- * an item mirrors an article, a section a category, an option a modificator or a supplement
- * article. The resolver counts only an active `article` link towards `orderable`. Other node
- * types (the menu, modifier groups, specials) take no barsy link.
+ * an item mirrors an article, a section a category, a modifier group a supplement group of one
+ * combo article (`<articleId>:<groupId>`), an option a modificator or a supplement article
+ * (`<articleId>:<groupId>:<optionArticleId>`). The resolver counts only an active `article`
+ * link towards `orderable`. Other node types (the menu, specials) take no barsy link.
  */
 export const BARSY_LINK_TYPES: { readonly [K in NodeType]?: readonly string[] } = {
   item: ['article'],
   section: ['category'],
+  modifier_group: ['supplement_group'],
   option: ['modificator', 'supplement'],
 }
 
@@ -116,20 +126,30 @@ export interface ApplyRejection {
 }
 
 /**
- * What `apply` did. Every op is counted once: `applied + unchanged + rejected.length` equals the
- * number of ops.
+ * What `apply` did. Every op is counted once: `applied + unchanged + skipped + rejected.length`
+ * equals the number of ops.
  */
 export interface ApplyResult {
   /** Ops that changed something. */
   readonly applied: number
-  /** Ops that were no-ops (same value hash, existing node or link, placement already there). */
+  /**
+   * Ops that were no-ops (same value hash, existing node or link, placement already there, a
+   * link already in that state). A setLinkState that only records `seenAt` / `hash` counts here:
+   * the document did not change.
+   */
   readonly unchanged: number
+  /**
+   * `setPlacement` ops with `onlyIfUnplaced` left out because the item already had a placement
+   * in that menu before this change set (the manager's arrangement wins).
+   */
+  readonly skipped: number
   readonly rejected: readonly ApplyRejection[]
   /** Nodes this change set created (a createNode resolved onto a linked node is not one). */
   readonly createdNodeIds: readonly NodeId[]
   /**
    * Rows appended to `events`: one per applied change (a field value set or cleared, a node
-   * created, a status change, a placement, a removal, a move, a link or an unlink).
+   * created, a status change, a placement, a removal, a move, a link, an unlink or a link-state
+   * change).
    */
   readonly eventsWritten: number
 }
@@ -172,7 +192,7 @@ export class ApplyError extends Error {
   }
 }
 
-type LinkLifecycle = 'active' | 'missing' | 'deleted'
+type LinkLifecycle = LinkStateName
 
 interface NodeState {
   readonly id: NodeId
@@ -183,12 +203,19 @@ interface NodeState {
   status: NodeStatus
 }
 
+/**
+ * A source link as this change set sees it. Never changed in place: a change replaces the object
+ * in `DocumentState.links`, so `originalLinks` keeps what was read.
+ */
 interface LinkState {
   readonly integrationId: string
   readonly externalType: string
   readonly externalId: string
   readonly nodeId: NodeId
   readonly state: LinkLifecycle
+  /** The stored `last_seen_at`; null for a link this change set creates (it takes `observedAt`). */
+  readonly lastSeenAt: Date | null
+  readonly lastHash: string | null
 }
 
 interface ValueRow {
@@ -220,11 +247,12 @@ interface EventRow {
 }
 
 type Outcome =
-  | { readonly kind: 'applied' | 'unchanged' }
+  | { readonly kind: 'applied' | 'unchanged' | 'skipped' }
   | { readonly kind: 'rejected'; readonly code: ApplyRejectionCode; readonly reason: string }
 
 const APPLIED: Outcome = { kind: 'applied' }
 const UNCHANGED: Outcome = { kind: 'unchanged' }
+const SKIPPED: Outcome = { kind: 'skipped' }
 
 function refused(code: ApplyRejectionCode, reason: string): Outcome {
   return { kind: 'rejected', code, reason }
@@ -283,6 +311,15 @@ class DocumentState {
   readonly statusChanged = new Set<NodeId>()
   readonly touched = new Set<NodeId>()
   readonly dirtyLinks = new Set<string>()
+  /** Links whose state, last seen time or last hash a setLinkState changed. */
+  readonly dirtyLinkStates = new Set<string>()
+  /** Links whose state moved (their `state_changed_at` becomes the transaction time). */
+  readonly linkStateMoved = new Set<string>()
+  /**
+   * For each item an `onlyIfUnplaced` placement names: the menus (root node ids) it had a
+   * placement in before this change set started.
+   */
+  readonly menusPlacedBefore = new Map<NodeId, Set<NodeId>>()
   readonly dirtyValues = new Set<string>()
   readonly dirtyPlacements = new Map<string, { sectionId: NodeId; itemId: NodeId }>()
   readonly events: EventRow[] = []
@@ -359,7 +396,9 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
       else linkRefs.set(refKey(ref.link), ref.link)
     }
     if (op.op === 'createNode') idRefs.add(op.id)
-    if (op.op === 'linkSource' || op.op === 'unlinkSource') linkRefs.set(refKey(op.link), op.link)
+    if (op.op === 'linkSource' || op.op === 'unlinkSource' || op.op === 'setLinkState') {
+      linkRefs.set(refKey(op.link), op.link)
+    }
     if (op.op === 'setField' && op.sourceRecordId !== undefined) recordIds.add(op.sourceRecordId)
   }
 
@@ -383,12 +422,28 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
     externalId: sourceLinks.externalId,
     nodeId: sourceLinks.nodeId,
     state: sourceLinks.state,
+    lastSeenAt: sourceLinks.lastSeenAt,
+    lastHash: sourceLinks.lastHash,
   }
-  const remember = (rows: { nodeId: string; state: string }[]) => {
+  const remember = (
+    rows: {
+      integrationId: string
+      externalType: string
+      externalId: string
+      nodeId: string
+      state: string
+      lastSeenAt: Date
+      lastHash: string | null
+    }[],
+  ) => {
     for (const row of rows) {
-      const link = { ...row, nodeId: row.nodeId as NodeId, state: row.state as LinkLifecycle }
-      state.addLink(link as LinkState)
-      state.originalLinks.set(linkKey(link as LinkState), link as LinkState)
+      const link: LinkState = {
+        ...row,
+        nodeId: row.nodeId as NodeId,
+        state: row.state as LinkLifecycle,
+      }
+      state.addLink(link)
+      state.originalLinks.set(linkKey(link), link)
     }
   }
   if (linkRefs.size > 0) {
@@ -440,7 +495,7 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
     remember(
       (await tx.select(linkColumns).from(sourceLinks).where(anyOf(sourceLinks.nodeId, nodeIds)))
         // A link already read by its key is not added twice.
-        .filter((row) => !state.originalLinks.has(linkKey(row as LinkState))),
+        .filter((row) => !state.originalLinks.has(linkKey(row))),
     )
     const rows = await tx.select().from(fieldValues).where(anyOf(fieldValues.nodeId, nodeIds))
     for (const row of rows) {
@@ -561,6 +616,37 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
       state.originalPlacements.set(pairKey(row.sectionId, row.itemId), row.sortKey)
     }
   }
+
+  // `onlyIfUnplaced`: the menus each named item was placed in before this change set (every
+  // placement of the item, in any section, walked up to its menu). Read once, before any op runs,
+  // so placements made by this change set never count.
+  const guardedItems = new Set<NodeId>()
+  for (const op of set.ops) {
+    if (op.op !== 'setPlacement' || op.onlyIfUnplaced !== true) continue
+    const ref = op.item
+    const id =
+      'id' in ref
+        ? (state.aliases.get(ref.id) ?? ref.id)
+        : state.links.get(refKey(ref.link))?.nodeId
+    if (id !== undefined && state.nodes.has(id)) guardedItems.add(id)
+  }
+  if (guardedItems.size > 0) {
+    const found = await tx.execute<{ item_id: string; menu_id: string }>(sql`
+      with recursive up as (
+        select p.item_id, n.id, n.parent_id
+        from restro.placements p join restro.nodes n on n.id = p.section_id
+        where p.item_id = any(${sql.param([...guardedItems])}::text[])
+        union
+        select up.item_id, n.id, n.parent_id
+        from up join restro.nodes n on n.id = up.parent_id
+      )
+      select distinct item_id, id as menu_id from up where parent_id is null`)
+    for (const row of found.rows) {
+      const menus = state.menusPlacedBefore.get(row.item_id as NodeId) ?? new Set<NodeId>()
+      menus.add(row.menu_id as NodeId)
+      state.menusPlacedBefore.set(row.item_id as NodeId, menus)
+    }
+  }
   return state
 }
 
@@ -569,6 +655,7 @@ class Run {
   readonly rejected: ApplyRejection[] = []
   applied = 0
   unchanged = 0
+  skipped = 0
   private readonly barsyIntegration: string | null
   /** The layer of the source, which structural events (no field, no layer of their own) carry. */
   private readonly sourceLayer: Layer
@@ -618,11 +705,16 @@ class Run {
         case 'unlinkSource':
           outcome = this.unlinkSource(op)
           break
+        case 'setLinkState':
+          outcome = this.setLinkState(op)
+          break
       }
       if (outcome.kind === 'rejected') {
         this.rejected.push({ opIndex, code: outcome.code, reason: outcome.reason })
       } else if (outcome.kind === 'applied') {
         this.applied += 1
+      } else if (outcome.kind === 'skipped') {
+        this.skipped += 1
       } else {
         this.unchanged += 1
       }
@@ -633,6 +725,7 @@ class Run {
     return {
       applied: this.applied,
       unchanged: this.unchanged,
+      skipped: this.skipped,
       rejected: this.rejected,
       createdNodeIds: this.state.createdNodes.map((node) => node.id),
       eventsWritten: this.state.events.length,
@@ -893,10 +986,23 @@ class Run {
     return { item, section }
   }
 
+  /**
+   * Places an item in a section. With `onlyIfUnplaced`, the placement is skipped when the item
+   * already had a placement in this section's menu before the change set started: a re-sync
+   * never re-adds, moves or reorders what the manager arranged, while a first import still
+   * places a new item in every section its categories map to (placements made earlier in the
+   * same change set do not count). Known edge, left on purpose (tracker T47): an item the
+   * manager took out of every section of the menu counts as unplaced, so the next sync places
+   * it again.
+   */
   private setPlacement(op: Extract<ChangeSet['ops'][number], { op: 'setPlacement' }>): Outcome {
     const targets = this.placementTargets(op)
     if ('kind' in targets) return targets
     const { item, section } = targets
+    if (op.onlyIfUnplaced === true) {
+      const menus = this.state.menusPlacedBefore.get(item.id)
+      if (menus?.has(this.rootOf(section))) return SKIPPED
+    }
     const inSection = this.state.placementsOf(section.id)
     const current = inSection.get(item.id)
     let sortKey: string
@@ -1120,6 +1226,8 @@ class Run {
       externalId: op.link.externalId,
       nodeId: node.id,
       state: 'active',
+      lastSeenAt: new Date(this.set.observedAt),
+      lastHash: null,
     }
     this.state.addLink(link)
     this.state.dirtyLinks.add(linkKey(link))
@@ -1134,6 +1242,62 @@ class Run {
       source: `${this.state.integrations.get(link.integrationId)?.kind}:${link.integrationId}`,
       external_type: link.externalType,
     }
+  }
+
+  /**
+   * Moves a link through the Link lifecycle, and records when its source last saw the object.
+   * Only the link's own source may do this. The state follows `LINK_TRANSITIONS`; the same state
+   * again is a no-op without an event; every move writes one structural event and stamps
+   * `state_changed_at`. `seenAt` / `hash` move `last_seen_at` / `last_hash` forward only: an
+   * observation older than the stored one changes neither. Field values, overrides and
+   * placements are never touched (the enrichment is kept, rule 6): the resolver hides a node
+   * whose link is missing or deleted.
+   */
+  private setLinkState(op: SetLinkState): Outcome {
+    const integration = this.state.integrations.get(op.link.integration)
+    if (!integration) {
+      return refused('unknown_integration', `this tenant has no integration ${op.link.integration}`)
+    }
+    const own = `${integration.kind}:${op.link.integration}`
+    if (this.set.source !== own) {
+      return refused('source_not_allowed', `only ${own} sets the state of its own links`)
+    }
+    const key = refKey(op.link)
+    const link = this.state.links.get(key)
+    if (!link) return refused('unknown_link', `${describeLink(op.link)} is not linked to a node`)
+
+    let next = link
+    const moves = op.state !== link.state
+    if (moves) {
+      if (!LINK_TRANSITIONS[link.state].includes(op.state)) {
+        return refused('invalid_transition', `a ${link.state} link cannot become ${op.state}`)
+      }
+      next = { ...next, state: op.state }
+    }
+    if (op.seenAt !== undefined) {
+      const seenAt = new Date(op.seenAt)
+      const stored = link.lastSeenAt?.getTime() ?? Number.NEGATIVE_INFINITY
+      if (seenAt.getTime() >= stored) {
+        if (seenAt.getTime() !== stored) next = { ...next, lastSeenAt: seenAt }
+        if (op.hash !== undefined && op.hash !== link.lastHash)
+          next = { ...next, lastHash: op.hash }
+      }
+    }
+    if (next === link) return UNCHANGED
+
+    this.state.links.set(key, next)
+    this.state.dirtyLinkStates.add(key)
+    if (!moves) return UNCHANGED
+    this.state.linkStateMoved.add(key)
+    this.structuralEvent(
+      'setLinkState',
+      link.nodeId,
+      'link',
+      { ...this.linkEventValue(link), state: link.state },
+      { ...this.linkEventValue(link), state: op.state },
+    )
+    this.touch(link.nodeId)
+    return APPLIED
   }
 
   /**
@@ -1303,9 +1467,43 @@ async function flush(
         nodeId: link.nodeId,
         state: link.state,
         firstSeenAt: seenAt,
-        lastSeenAt: seenAt,
+        lastSeenAt: link.lastSeenAt ?? seenAt,
+        lastHash: link.lastHash,
       })),
     )
+  }
+
+  // The lifecycle of links that existed before this change set (setLinkState): state, last seen,
+  // last hash; `state_changed_at` becomes the transaction time when the state moved. A link
+  // created or removed above already carries its final values.
+  const lifecycle: (LinkState & { moved: boolean })[] = []
+  for (const key of state.dirtyLinkStates) {
+    const before = state.originalLinks.get(key)
+    const after = state.links.get(key)
+    if (!before || !after || before.nodeId !== after.nodeId) continue
+    lifecycle.push({ ...after, moved: state.linkStateMoved.has(key) })
+  }
+  for (const batch of batches(lifecycle)) {
+    const column = <T>(pick: (link: LinkState & { moved: boolean }) => T) =>
+      sql.param(batch.map(pick))
+    await tx.execute(sql`
+      update restro.source_links l
+      set state = u.state,
+          state_changed_at = case when u.moved then now() else l.state_changed_at end,
+          last_seen_at = coalesce(u.last_seen_at, l.last_seen_at),
+          last_hash = u.last_hash
+      from unnest(
+        ${column((link) => link.integrationId)}::text[],
+        ${column((link) => link.externalType)}::text[],
+        ${column((link) => link.externalId)}::text[],
+        ${column((link) => link.state)}::text[],
+        ${column((link) => link.moved)}::boolean[],
+        ${column((link) => link.lastSeenAt?.toISOString() ?? null)}::timestamptz[],
+        ${column((link) => link.lastHash)}::text[]
+      ) as u(integration_id, external_type, external_id, state, moved, last_seen_at, last_hash)
+      where l.integration_id = u.integration_id
+        and l.external_type = u.external_type
+        and l.external_id = u.external_id`)
   }
 
   // Placements.

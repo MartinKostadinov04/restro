@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./apply": "./src/apply/index.ts"
+    "./apply": "./src/apply/index.ts",
+    "./seal": "./src/seal/index.ts",
+    "./seal-open": "./src/seal/open/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
