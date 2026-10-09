@@ -1,0 +1,23 @@
+# Brief S2-06a: composer — structure (tree, drag and drop, sections)
+
+- **Model:** Sonnet 5.5 · **Branch:** your worktree branch from `s2/composer`
+- **Read first:** `CLAUDE.md`; `docs/platform-reference.md` (Composer, Workspace tabs, Field rows); `docs/tracker.md` → D20, D29, D47, D55 and the Stage 2 engineering notes; `packages/core` (`apply/*`, `resolve/*`, `document/types.ts`, change sets, sort keys); `apps/web` (workspace tabs, field registry, `src/server/*`, seed script). Platform files to study (read-only, code reuse allowed): `C:\Platform\resources\js\Pages\Ontology\Show.jsx` (builder: tree + Sheet + `@hello-pangea/dnd` 951-1049), `Pages\Ontology\RenderGraph.jsx` (Sheet 538-611).
+
+## Goal
+The **Composer** tab becomes the place where a manager shapes the menu: a section tree on the left (pre-mapped from barsy categories later; seeded demo data for now), the items of the selected section on the right in order, drag and drop to reorder items, move them between sections and reorder sections, create a curated section, hide or show sections and items, and an "Unsorted" list for items not placed anywhere. Clicking an item opens the item sheet — built in parallel by S2-06b; you render `<ItemSheet itemId=… />` from `apps/web/src/composer/item-sheet.tsx`, and **create that file as a stub** (a Sheet showing the item name) if it does not exist yet.
+
+## Do
+1. **Data flow (U4):** the Composer tab is a server component: `loadMenuDocument` (via `@restro/core/apply`, read side) → `resolve(VENUE_MENU_TEMPLATE, doc, ctx)` → a serialisable view model for a client component. Every write is a **server action** that builds a change set (source `manual`, actor = user id, job = a fresh `jb_` id) and calls `apply()`; then `revalidatePath`. Never write SQL in the web app.
+2. **Missing write ops — add them in `packages/core/src/apply` with tests (integration, real DB):** `moveNode {node, parent, sortKey | 'end'}` for sections (reparent within max depth 3 + reorder) and for modifier groups/options among siblings; structural **events** (add an `op` column to `events`, migration + `table-access` unchanged privileges) so placement moves, status changes, link changes and node creation appear in history; `setLinkState {node, state}` is S2-03's — do not add it.
+3. **Unsorted items:** a read helper `loadUnplacedItems(pool, tenantId, menuId)` in `core/apply` (read side) for items with no placement under the menu.
+4. **Composer UI** (`apps/web/src/composer/*`): section tree (expand/collapse, drag to reorder/reparent, max depth 3 enforced in UI and by `canNest`), item list (drag within a section and onto another section in the tree, one `setPlacement` per move — fractional keys via `sortKeyBetween`), "New section" (curated, owned here), hide/show toggles (writes `visible=false` / clears it — rule 5: the builder can hide but never un-hide a barsy-hidden item; the UI must reflect `locked` states from the resolver), per-row badges (From barsy / Owned here / Hidden by barsy / Issues count), empty states. Optimistic UI with rollback on server error. Keyboard accessible drag (the library provides it). All strings BG + EN.
+5. **Dev seed:** extend `pnpm db:seed:dev` to provision the demo venue's menu (`provisionMenu`) and apply a realistic demo menu **through `apply()`** with barsy-layer values and `article`/`category` links (fake external ids, a fake source record + mapping version): ~4 sections (Коктейли, Бира, Безалкохолни, Храна), ~20 items with BG names (EN for half), prices, a few with allergens text, one barsy-hidden item, one item with a manual description; plus 2 unplaced items.
+
+## Done when
+`pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass with DB tests (`CI=true`); Playwright e2e on a local build: open the Composer tab → move an item to another section and reorder one → reload, order kept; create a section; hide an item; the barsy-hidden item cannot be shown. Save screenshots (BG light, EN dark, mobile) to `E:\Restro\.local\screenshots\s2\`.
+
+## Allowed dependencies
+`@hello-pangea/dnd` (exact version; if nested-tree dragging fights it, stop and ask before switching to `@dnd-kit/*`). Nothing else without asking.
+
+## Never / scope
+Do not build the item sheet's content (S2-06b), the Integration tab (S2-05) or any barsy call. Do not read `E:\Restro\.env.local`. Local DB: `pnpm db:local` (port 54329; if busy, reuse with your own database `restro_s2_06a`, stop only yours, leave nothing running). Commit as you go (`Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`); never push. Report as in `docs/agent-briefs/_template.md` incl. the Platform port table.
