@@ -87,7 +87,7 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
   })
 
   it('every barsy-layer write carries its source record and the mapping version; every cited record exists', () => {
-    const recordIds = new Set(result.sourceRecords.map((record) => record.id))
+    const recordIds = new Set<string>(result.sourceRecords.map((record) => record.id))
     const writes = opsOf(result).filter((op) => op.op === 'setField')
     expect(writes.length).toBeGreaterThan(150)
     for (const op of writes) {
@@ -670,7 +670,7 @@ describe('determinism', () => {
     fc.assert(
       fc.property(
         fc.shuffledSubarray(all, { minLength: all.length, maxLength: all.length }),
-        fc.shuffledSubarray(input().languages, { minLength: 11, maxLength: 11 }),
+        fc.shuffledSubarray([...input().languages], { minLength: 11, maxLength: 11 }),
         (shuffledArticles, shuffledLanguages) => {
           const again = mapCatalogue(
             input({
