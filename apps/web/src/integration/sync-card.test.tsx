@@ -57,6 +57,24 @@ describe('the Sync card', () => {
     expect(screen.getByTestId('sync-last').textContent).toBe('Not synced yet.')
   })
 
+  it('drops the "queued" notice once the pull it was about has finished', async () => {
+    const user = userEvent.setup()
+    actions.syncNowAction.mockResolvedValue({ ok: true })
+    const { rerender } = renderWithIntl(<SyncCard venueId={VENUE_ID} view={integrationView()} />)
+    await user.click(screen.getByRole('button', { name: 'Sync now' }))
+    expect(await screen.findByText('The sync is queued.')).toBeTruthy()
+    // The page catches up: a pull is waiting, then it is done.
+    rerender(
+      <SyncCard
+        venueId={VENUE_ID}
+        view={integrationView({ activeJob: 'pull', gate: { enabled: false, reason: 'busy' } })}
+      />,
+    )
+    expect(screen.getByText('The sync is queued.')).toBeTruthy()
+    rerender(<SyncCard venueId={VENUE_ID} view={integrationView()} />)
+    expect(screen.queryByText('The sync is queued.')).toBeNull()
+  })
+
   it('shows why the press was refused', async () => {
     const user = userEvent.setup()
     actions.syncNowAction.mockResolvedValue({ ok: false, error: 'already_running' })
