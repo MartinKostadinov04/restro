@@ -108,6 +108,23 @@ export function minorToDecimal(minor: number, scale = 2): string {
   return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`
 }
 
+/**
+ * Adds two amounts of integer minor units (rule 8): `addMinor(1250, 150)` → `1400`. Throws
+ * `MoneyError` unless both are non-negative safe integers (prices, deltas and totals are never
+ * negative, check V2) and the sum is a safe integer too, so a total can never turn into a float
+ * or lose precision silently.
+ */
+export function addMinor(a: number, b: number): number {
+  for (const amount of [a, b]) {
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      throw new MoneyError(`minor units must be a non-negative safe integer, got ${amount}`)
+    }
+  }
+  const sum = a + b
+  if (!Number.isSafeInteger(sum)) throw new MoneyError(`sum too large: ${a} + ${b}`)
+  return sum
+}
+
 const formatters = new Map<string, Intl.NumberFormat>()
 
 /**

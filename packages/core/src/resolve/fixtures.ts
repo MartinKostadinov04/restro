@@ -68,14 +68,36 @@ export class DocBuilder {
     this.set(ROOT, 'title', 'manual', { bg_BG: 'Бар', en_US: 'Bar' })
   }
 
-  node(id: NodeId, type: NodeType, parentId: NodeId | null, status: NodeStatus = 'active'): this {
-    this.nodes.push({ id, type, parentId, status, revision: 1 })
+  /**
+   * A node. A node with a parent gets the sibling sort key `sortKey` (default `a0` for all, so
+   * siblings fall back to id order unless a test sets keys); a root or an item gets none.
+   */
+  node(
+    id: NodeId,
+    type: NodeType,
+    parentId: NodeId | null,
+    status: NodeStatus = 'active',
+    sortKey = 'a0',
+  ): this {
+    this.nodes.push({
+      id,
+      type,
+      parentId,
+      status,
+      revision: 1,
+      sortKey: parentId === null ? null : sortKey,
+    })
     return this
   }
 
   /** A section with a BG + EN title in the manual layer. */
-  section(id: NodeId, parentId: NodeId = ROOT, status: NodeStatus = 'active'): this {
-    this.node(id, 'section', parentId, status)
+  section(
+    id: NodeId,
+    parentId: NodeId = ROOT,
+    status: NodeStatus = 'active',
+    sortKey = 'a0',
+  ): this {
+    this.node(id, 'section', parentId, status, sortKey)
     return this.set(id, 'title', 'manual', { bg_BG: `Раздел ${id}`, en_US: `Section ${id}` })
   }
 

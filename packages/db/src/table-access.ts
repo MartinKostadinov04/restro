@@ -54,6 +54,30 @@ export const TABLE_ACCESS = {
   // Upserted by the worker through withSystem().
   worker_heartbeats: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
 
+  // The menu document and its sources (brief S2-01). Every one is tenant-scoped with FORCE RLS
+  // (migration 0004). Nothing here is ever deleted by the app except the rows whose removal is
+  // the action itself: a placement (take an item out of a section), a field value (clearField,
+  // unlink) and a source link (unlink).
+  // Status and last check change; credentials are replaced; never deleted (disable instead).
+  integrations: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // Renamed, mapped to one of our venues, catalogue root chosen.
+  barsy_venues: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // A menu pins its venue, template and root node once (template migrations come later).
+  menus: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
+  // Status and revision change; nodes are archived, never deleted.
+  nodes: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  placements: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+  field_values: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+  // Tier 1 is append-only: a changed object is a new row.
+  source_records: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
+  // The link lifecycle (active / missing / deleted, last seen) updates rows; unlink deletes one.
+  source_links: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+  // Append-only changelog (rule 2).
+  events: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
+  job_runs: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  places: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  assets: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes
