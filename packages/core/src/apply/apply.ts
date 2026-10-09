@@ -42,6 +42,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import {
   type ChangeSet,
+  type ChangeSetOp,
   type ChangeSetOpName,
   type ClearField,
   type FieldWrite,
@@ -123,6 +124,13 @@ export interface ApplyRejection {
   readonly opIndex: number
   readonly code: ApplyRejectionCode
   readonly reason: string
+  /**
+   * Our id (`nd_…`) of the node the op was about, when it names one that exists: by id, or by a
+   * source link that resolves. Never a barsy id (rule 3). The sync copies it into `job_runs`.
+   */
+  readonly nodeRef?: string
+  /** The field the op was about (`setField`, `clearField`). */
+  readonly fieldKey?: string
 }
 
 /**
@@ -710,7 +718,12 @@ class Run {
           break
       }
       if (outcome.kind === 'rejected') {
-        this.rejected.push({ opIndex, code: outcome.code, reason: outcome.reason })
+        this.rejected.push({
+          opIndex,
+          code: outcome.code,
+          reason: outcome.reason,
+          ...this.rejectionTarget(op),
+        })
       } else if (outcome.kind === 'applied') {
         this.applied += 1
       } else if (outcome.kind === 'skipped') {
@@ -730,6 +743,22 @@ class Run {
       createdNodeIds: this.state.createdNodes.map((node) => node.id),
       eventsWritten: this.state.events.length,
     }
+  }
+
+  /** What a refused op was about, for the run's record: our node id and the field, if it has one. */
+  private rejectionTarget(op: ChangeSetOp): { nodeRef?: NodeId; fieldKey?: string } {
+    const target: { nodeRef?: NodeId; fieldKey?: string } = {}
+    // A createNode names its parent first, which is not what it is about.
+    const ref = op.op === 'createNode' ? undefined : nodeRefsOf(op)[0]
+    if (ref !== undefined) {
+      const nodeId =
+        'id' in ref
+          ? (this.state.aliases.get(ref.id) ?? ref.id)
+          : this.state.links.get(refKey(ref.link))?.nodeId
+      if (nodeId !== undefined && this.state.nodes.has(nodeId)) target.nodeRef = nodeId
+    }
+    if (op.op === 'setField' || op.op === 'clearField') target.fieldKey = op.fieldKey
+    return target
   }
 
   private node(ref: NodeRef): NodeState | Outcome {

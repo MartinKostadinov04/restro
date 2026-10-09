@@ -13,6 +13,19 @@ export const ServerEnvSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32),
   /** The public address of this app, e.g. http://localhost:3000. Cookies and CSRF use it. */
   BETTER_AUTH_URL: z.url().optional(),
+  /**
+   * The worker's sealing PUBLIC key (base64url DER, `pnpm keys:seal`). With it the Integration tab
+   * seals the barsy credentials a manager types; without it the tab explains that the operator
+   * has to set up the sync keys. Empty counts as missing. Whether it is a valid key is checked
+   * where it is used, so a bad value never takes the whole app down.
+   */
+  SEAL_PUBLIC_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
 })
 
 /** The settings the server needs. */

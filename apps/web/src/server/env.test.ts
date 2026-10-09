@@ -34,6 +34,18 @@ describe('the web app and the sealing private key', () => {
     expect(Object.keys(parsed)).not.toContain(PRIVATE_KEY_VARIABLE)
   })
 
+  it('declares the public key, and treats an empty one as missing', () => {
+    const base = {
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      BETTER_AUTH_SECRET: 'x'.repeat(32),
+    }
+    expect(ServerEnvSchema.parse(base).SEAL_PUBLIC_KEY).toBeUndefined()
+    expect(ServerEnvSchema.parse({ ...base, SEAL_PUBLIC_KEY: '' }).SEAL_PUBLIC_KEY).toBeUndefined()
+    expect(ServerEnvSchema.parse({ ...base, SEAL_PUBLIC_KEY: '  MCow  ' }).SEAL_PUBLIC_KEY).toBe(
+      'MCow',
+    )
+  })
+
   it('no file of the web app names it', () => {
     const files = sourceFiles(WEB_ROOT)
     expect(files.length).toBeGreaterThan(20)

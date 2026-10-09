@@ -329,12 +329,22 @@
   },
   "language": {
     "label": "Language",
-    "short": { "bg": "BG", "en": "EN" },
-    "name": { "bg": "Български", "en": "English" }
+    "short": {
+      "bg": "BG",
+      "en": "EN"
+    },
+    "name": {
+      "bg": "Български",
+      "en": "English"
+    }
   },
   "user": {
     "theme": "Theme",
-    "themes": { "system": "System", "light": "Light", "dark": "Dark" },
+    "themes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
     "signOut": "Sign out"
   },
   "nav": {
@@ -499,10 +509,6 @@
       "title": "Publishing",
       "description": "Publish the menu to guests' phones and see what is live."
     },
-    "integration": {
-      "title": "barsy integration",
-      "description": "Connect the venue to barsy and follow the sync."
-    },
     "settings": {
       "title": "Venue settings",
       "description": "How this venue keeps time, which languages and which currency it uses.",
@@ -514,6 +520,203 @@
       "defaultLanguage": "default",
       "currency": "Currency",
       "readOnly": "These settings are read-only for now. Editing them arrives with the composer."
+    }
+  },
+  "integration": {
+    "readOnly": "Only owners and admins can change the connection and the settings or start a sync. You can see the status and the history.",
+    "connect": {
+      "title": "Connection",
+      "description": "The barsy address and the API user this venue's menu is read with. The password is sealed on the server: it cannot be read back, not even here.",
+      "host": "barsy address",
+      "hostHelp": "The https address of the installation, for example https://club.barsyonline.com.",
+      "hostPlaceholder": "https://club.barsyonline.com",
+      "user": "API user",
+      "password": "Password",
+      "save": "Save and check",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "saved": "Credentials saved",
+      "savedHost": "Address: {host}",
+      "change": "Change credentials",
+      "changeHelp": "Enter the API user and the password again. They are sealed for the address above, so a new address needs both too.",
+      "none": "No credentials yet.",
+      "queued": "The connection check is queued.",
+      "notQueued": "The credentials are saved, but the connection check could not be queued. Use \"Check again\".",
+      "keysMissing": {
+        "title": "The sync keys are not set up",
+        "description": "Before credentials can be saved, the operator has to set up the sync keys of the web app and the worker. Ask the Restro team."
+      }
+    },
+    "status": {
+      "title": "Status",
+      "description": "Whether Restro can reach barsy with the saved credentials.",
+      "state": {
+        "new": "Not checked yet",
+        "connected": "Connected",
+        "error": "Connection problem"
+      },
+      "address": "Address",
+      "lastChecked": "Last checked",
+      "never": "Never",
+      "noIntegration": "Not connected to barsy yet.",
+      "activeConnect": "Checking the connection…",
+      "activePull": "A sync is queued or running…",
+      "checkAgain": "Check again",
+      "checkQueued": "The connection check is queued.",
+      "detail": {
+        "wrongCredentials": "Wrong user or password"
+      }
+    },
+    "barsyVenue": {
+      "title": "barsy venue",
+      "description": "One barsy installation can hold several venues. Choose the one that is this venue.",
+      "legend": "barsy venues",
+      "empty": {
+        "title": "No barsy venues yet",
+        "description": "They appear after the connection check succeeds."
+      },
+      "usedBy": "Used by {venue}",
+      "switchHint": "Choosing another barsy venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist."
+    },
+    "catalogue": {
+      "title": "Menu catalogue",
+      "description": "One barsy installation can hold several menus in one category tree. Choose the category whose sub-categories make up this venue's menu.",
+      "legend": "Categories",
+      "needVenue": "Choose the barsy venue first.",
+      "empty": {
+        "title": "No categories yet",
+        "description": "The category tree is read when the connection is checked."
+      },
+      "children": "{count, plural, =0 {no sub-categories} one {# sub-category} other {# sub-categories}}",
+      "expand": "Show the sub-categories of {name}",
+      "collapse": "Hide the sub-categories of {name}",
+      "readAt": "Read {when}",
+      "unknownRoot": "The chosen category is no longer in the tree."
+    },
+    "mapping": {
+      "title": "Mapping settings",
+      "description": "How barsy's data becomes menu fields. A change applies from the next sync.",
+      "price": {
+        "legend": "Price shown",
+        "default": "default",
+        "actual": "Base price",
+        "actualHelp": "barsy's regular price of the article.",
+        "current": "Current price",
+        "currentHelp": "The price barsy charges right now; it can change during the day."
+      },
+      "allergen": {
+        "label": "Allergen characteristic",
+        "auto": "Detect automatically",
+        "autoFound": "Detect automatically ({name})",
+        "autoNone": "Detect automatically (none found yet)",
+        "help": "The barsy characteristic that lists the allergens of an article. Automatic detection looks for \"Алергени\" or \"Allergens\".",
+        "noOptions": "The list of characteristics is read when the connection is checked."
+      },
+      "locale": {
+        "label": "Default language",
+        "help": "The language that barsy text without a language tag is stored in."
+      },
+      "save": "Save settings",
+      "saving": "Saving…",
+      "saved": "Settings saved. They apply from the next sync."
+    },
+    "sync": {
+      "title": "Sync",
+      "description": "Reads the menu from barsy now. Once the venue is set up, a sync also runs by itself every few minutes.",
+      "button": "Sync now",
+      "starting": "Starting…",
+      "queued": "The sync is queued.",
+      "lastSynced": "Last synced {when}",
+      "neverSynced": "Not synced yet.",
+      "blocked": {
+        "not_manager": "Only owners and admins can start a sync.",
+        "no_credentials": "Save the barsy credentials first.",
+        "checking": "The connection is being checked. Wait until it finishes.",
+        "not_connected": "The connection to barsy has to work first. See the status above.",
+        "no_barsy_venue": "Choose the barsy venue first.",
+        "no_root": "Choose the menu catalogue first.",
+        "busy": "A sync is already queued or running."
+      }
+    },
+    "history": {
+      "title": "Sync history",
+      "description": "The latest 20 runs of this integration, newest first.",
+      "empty": {
+        "title": "No sync yet",
+        "description": "Runs appear here after the first connection check or sync."
+      },
+      "columns": {
+        "run": "Run",
+        "started": "Started",
+        "duration": "Duration",
+        "status": "Status"
+      },
+      "kind": {
+        "barsy_connect": "Connection check",
+        "barsy_full_pull": "Full sync",
+        "barsy_incremental": "Quick sync",
+        "other": "Other"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed"
+      },
+      "duration": {
+        "seconds": "{seconds} s",
+        "minutes": "{minutes} min {seconds} s",
+        "none": "—"
+      },
+      "counters": {
+        "articles_seen": "Articles seen",
+        "categories_seen": "Categories seen",
+        "created": "Created",
+        "updated": "Updated",
+        "unchanged": "Unchanged",
+        "missing": "Missing",
+        "deleted": "Deleted",
+        "reactivated": "Reactivated",
+        "failed_pages": "Failed pages",
+        "refused_writes": "Refused writes",
+        "venues": "barsy venues",
+        "languages": "Languages"
+      },
+      "deletionSkipped": "Deletion check skipped",
+      "details": {
+        "show": "Show the details of the run from {when}",
+        "hide": "Hide the details of the run from {when}",
+        "notes": "What happened",
+        "nothing": "Nothing else to report.",
+        "refused": "Refused writes",
+        "field": "Field",
+        "reason": "Reason",
+        "noField": "(structure)",
+        "refusedFallback": "Refused"
+      },
+      "refusedCodes": {
+        "less_cautious": "Would make the menu less cautious than the till",
+        "layer_not_allowed": "This source may not write this field",
+        "unknown_field": "Unknown field",
+        "not_linked": "Not linked to barsy",
+        "unknown_node": "Unknown item",
+        "unknown_link": "Unknown link",
+        "link_taken": "The barsy object is linked to another item",
+        "already_linked": "The item already has a barsy link"
+      }
+    },
+    "errors": {
+      "not_allowed": "Only owners and admins can do this.",
+      "not_found": "The venue or the barsy venue could not be found.",
+      "invalid": "That input is not valid.",
+      "invalid_host": "Enter the https address of the barsy installation, without a port or a path.",
+      "sync_keys_missing": "The sync keys are not set up. Ask the Restro team.",
+      "host_in_use": "Another connection of this organisation already uses that address.",
+      "barsy_venue_taken": "That barsy venue already belongs to another venue.",
+      "not_ready": "Not ready yet: finish the earlier steps first.",
+      "already_running": "A sync is already queued or running.",
+      "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
+      "failed": "Something went wrong. Try again."
     }
   }
 }

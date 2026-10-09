@@ -818,6 +818,14 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
       [5, 'already_linked'],
     ])
     expect(fromBarsy.applied).toBe(1)
+    // A refusal says which of our nodes and which field it was about (never a barsy id): by id,
+    // through a source link that resolves, and not at all for a node that does not exist.
+    expect(fromBarsy.rejected[1]).toMatchObject({ opIndex: 1, nodeRef: item, fieldKey: 'price' })
+    expect(fromBarsy.rejected[2]).toMatchObject({ opIndex: 2, nodeRef: group, fieldKey: 'name' })
+    expect(fromBarsy.rejected[3]).toMatchObject({ opIndex: 3, nodeRef: item })
+    expect(fromBarsy.rejected[3]?.fieldKey).toBeUndefined()
+    expect(result.rejected[0]).toMatchObject({ opIndex: 0, code: 'unknown_node' })
+    expect(result.rejected[0]?.nodeRef).toBeUndefined()
   })
 
   it('refuses a whole change set that does not parse or names an unknown integration', async () => {

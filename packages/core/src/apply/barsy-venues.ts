@@ -4,13 +4,14 @@
 //
 // barsy ids (`bid`, `place_id`) stay in these tables (rule 3).
 
-import { type BarsyVenue, barsyVenues, type DbPool, places } from '@restro/db'
+import { type BarsyVenue, barsyVenues, type DbPool, places, venues } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { and, eq, sql } from 'drizzle-orm'
 
 import type { LinkStateName } from '../change-set'
 import { isId, newId } from '../ids'
 import { concludeFullPull } from '../sync/conclude-full-pull'
+import { lockTenantDocument } from './lock'
 import { ProvisionError } from './provision'
 
 function checked(tenantId: string, integrationId: string): void {
@@ -61,6 +62,118 @@ export async function upsertBarsyVenues(
       })
       .returning(),
   )
+}
+
+/** Why a venue mapping or a catalogue-root choice was refused. */
+export type BarsyVenueChoiceError =
+  /** The integration has no barsy venue with this `bid` (or it belongs to another tenant). */
+  | 'barsy_venue_missing'
+  /** The tenant has no venue with this id. */
+  | 'venue_missing'
+  /** The barsy venue is mapped to another venue of ours already. */
+  | 'barsy_venue_taken'
+
+/** What `mapBarsyVenue` and `setCatalogueRoot` answer. */
+export type BarsyVenueChoice =
+  | { readonly ok: true; readonly row: BarsyVenue }
+  | { readonly ok: false; readonly error: BarsyVenueChoiceError }
+
+/**
+ * Maps one barsy venue of an integration to one of our venues (the Integration tab's picker).
+ * One barsy venue per venue and one venue per barsy venue: a barsy venue that serves another
+ * venue of ours is refused (`barsy_venue_taken`); a venue that was mapped to a different barsy
+ * venue is moved to this one (that one is freed). Mapping the same pair again changes nothing.
+ * The catalogue root of the barsy venue is kept.
+ */
+export async function mapBarsyVenue(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  venueId: string,
+): Promise<BarsyVenueChoice> {
+  checked(tenantId, integrationId)
+  if (!Number.isSafeInteger(bid) || bid < 0) {
+    throw new ProvisionError('invalid_input', 'bid must be a non-negative integer')
+  }
+  if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const [row] = await tx
+      .select()
+      .from(barsyVenues)
+      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.bid, bid)))
+    if (!row) return { ok: false, error: 'barsy_venue_missing' } as const
+    const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
+    if (!venue) return { ok: false, error: 'venue_missing' } as const
+    if (row.venueId !== null && row.venueId !== venueId) {
+      return { ok: false, error: 'barsy_venue_taken' } as const
+    }
+    if (row.venueId === venueId) return { ok: true, row } as const
+    // The venue may serve another barsy venue now (unique on venue_id): free that one first.
+    await tx
+      .update(barsyVenues)
+      .set({ venueId: null, updatedAt: new Date() })
+      .where(eq(barsyVenues.venueId, venueId))
+    const [updated] = await tx
+      .update(barsyVenues)
+      .set({ venueId, updatedAt: new Date() })
+      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.bid, bid)))
+      .returning()
+    if (!updated) return { ok: false, error: 'barsy_venue_missing' } as const
+    return { ok: true, row: updated } as const
+  })
+}
+
+/**
+ * Records which category of the barsy venue's public tree is the root of this menu (D56), or
+ * clears the choice with `null`. Whether the category exists in the cached tree is the caller's
+ * check (the tree lives in the integration's config).
+ */
+export async function setCatalogueRoot(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  catId: number | null,
+): Promise<BarsyVenueChoice> {
+  checked(tenantId, integrationId)
+  if (!Number.isSafeInteger(bid) || bid < 0) {
+    throw new ProvisionError('invalid_input', 'bid must be a non-negative integer')
+  }
+  if (catId !== null && (!Number.isSafeInteger(catId) || catId < 0)) {
+    throw new ProvisionError('invalid_input', 'catId must be a non-negative integer')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const [row] = await tx
+      .update(barsyVenues)
+      .set({ catalogueRootCatId: catId, updatedAt: new Date() })
+      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.bid, bid)))
+      .returning()
+    return row
+      ? ({ ok: true, row } as const)
+      : ({ ok: false, error: 'barsy_venue_missing' } as const)
+  })
+}
+
+/**
+ * Forgets what the manager chose for every barsy venue of an integration (our venue and the
+ * catalogue root). A new host is a different installation: the old choices mean nothing there.
+ */
+export async function clearBarsyVenueChoices(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+): Promise<number> {
+  checked(tenantId, integrationId)
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(barsyVenues)
+      .set({ venueId: null, catalogueRootCatId: null, updatedAt: new Date() })
+      .where(eq(barsyVenues.integrationId, integrationId))
+      .returning({ bid: barsyVenues.bid })
+    return rows.length
+  })
 }
 
 /** A place (table) as the mapping describes it. */

@@ -4,9 +4,11 @@
 // What a run records: status, counters, and a short text for people (`error_summary`): why it
 // failed, or what a completed run skipped ("deletion check skipped: 1 page failed") and which
 // writes apply() refused. The text is scrubbed here, whoever calls: URLs (their query strings
-// hold keys and ids) are removed, and it is cut to a fixed length.
+// hold keys and ids) are removed, and it is cut to a fixed length. A run also gets structured
+// `details` (its notes, one per line, and the refused writes as node / field / code) that the
+// Integration tab reads; the text stays for runs recorded before `details` existed.
 
-import { type DbPool, type JobRun, jobRuns } from '@restro/db'
+import { type DbPool, type JobRun, type JobRunDetails, jobRuns } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { and, eq } from 'drizzle-orm'
 
@@ -17,6 +19,8 @@ import { ProvisionError } from './provision'
 const KIND_PATTERN = /^[a-z][a-z0-9_]{0,63}$/
 const MAX_SUMMARY_LENGTH = 2000
 const MAX_REFUSED_REASONS = 5
+/** At most this many notes and this many refused writes are kept in `details`. */
+export const MAX_DETAIL_ENTRIES = 200
 
 /** What `startJobRun` needs. */
 export interface StartJobRunInput {
@@ -62,8 +66,13 @@ export interface FinishJobRunInput {
   readonly status: 'completed' | 'failed'
   /** Whole numbers only (categories seen, created, updated, unchanged, missing, …). */
   readonly counters?: Readonly<Record<string, number>>
-  /** Why it failed, or what it skipped. Scrubbed and cut to 2000 characters. */
+  /**
+   * Why it failed, or what it skipped. Scrubbed and cut to 2000 characters; each line also
+   * becomes a note in `details`.
+   */
   readonly summary?: string
+  /** More lines for `details.notes` (the summary's lines come first). */
+  readonly notes?: readonly string[]
   /** The writes apply() refused, copied from its results (`ApplyResult.rejected`). */
   readonly refused?: readonly ApplyRejection[]
   readonly finishedAt?: Date
@@ -93,10 +102,30 @@ export function describeRefused(refused: readonly ApplyRejection[]): string | nu
   return `${refused.length} write${refused.length === 1 ? '' : 's'} refused (${codes}). ${reasons}`
 }
 
+/** The structured record of a run: notes (one per line of text) and the refused writes. */
+export function buildJobRunDetails(
+  lines: readonly string[],
+  refused: readonly ApplyRejection[],
+): JobRunDetails {
+  const notes = lines
+    .flatMap((line) => line.split('\n'))
+    .map((line) => scrubSummary(line).trim())
+    .filter((line) => line !== '')
+    .slice(0, MAX_DETAIL_ENTRIES)
+  return {
+    notes,
+    refused: refused.slice(0, MAX_DETAIL_ENTRIES).map((rejection) => ({
+      nodeRef: rejection.nodeRef ?? null,
+      ...(rejection.fieldKey !== undefined ? { fieldKey: rejection.fieldKey } : {}),
+      code: rejection.code,
+    })),
+  }
+}
+
 /**
- * Closes a run: status, counters and the text for people. Refused writes add `refused_writes`
- * and `refused_<code>` counters and a line to the text. Returns the row, or null when the tenant
- * has no such run.
+ * Closes a run: status, counters, the text for people and the structured `details`. Refused
+ * writes add `refused_writes` and `refused_<code>` counters and a line to the text. Returns the
+ * row, or null when the tenant has no such run.
  */
 export async function finishJobRun(
   pool: DbPool,
@@ -125,6 +154,11 @@ export async function finishJobRun(
     (line): line is string => line !== undefined && line !== null && line !== '',
   )
   const summary = lines.length === 0 ? null : scrubSummary(lines.join('\n'))
+  // The refused-writes line is in `details.refused` already; the notes are the rest.
+  const details = buildJobRunDetails(
+    [...(input.summary ? [input.summary] : []), ...(input.notes ?? [])],
+    refused,
+  )
   return withTenantWrite(pool, tenantId, async (tx) => {
     const [row] = await tx
       .update(jobRuns)
@@ -132,6 +166,7 @@ export async function finishJobRun(
         status: input.status,
         counters,
         errorSummary: summary,
+        details,
         finishedAt: input.finishedAt ?? new Date(),
       })
       .where(and(eq(jobRuns.id, jobRunId), eq(jobRuns.status, 'running')))

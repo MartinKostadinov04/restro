@@ -1,4 +1,4 @@
-import { PlugIcon, QrCodeIcon, RocketIcon } from 'lucide-react'
+import { QrCodeIcon, RocketIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
@@ -10,6 +10,8 @@ import { DEFAULT_WORKSPACE_TAB, isWorkspaceTab } from '@/components/admin/worksp
 import { WorkspaceTabs } from '@/components/admin/workspace-tabs'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
+import { IntegrationSkeleton } from '@/integration/integration-skeleton'
+import { IntegrationTab } from '@/integration/integration-tab'
 import { requireTenant } from '@/server/session'
 import { getVenue } from '@/server/venues'
 
@@ -32,8 +34,9 @@ export default async function VenueWorkspacePage({
   // The composer reads the whole menu: only read it while its tab is the open one (the tab bar
   // shows the skeleton at once when someone switches to it, and the page streams the rest in).
   const requestedTab = (await searchParams).tab
-  const composerOpen =
-    (isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB) === 'composer'
+  const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
+  const composerOpen = openTab === 'composer'
+  const integrationOpen = openTab === 'integration'
 
   const t = await getTranslations('workspace')
   const tNav = await getTranslations('nav')
@@ -74,13 +77,12 @@ export default async function VenueWorkspacePage({
                 stageLabel={stage(3)}
               />
             ),
-            integration: (
-              <StagePlaceholder
-                icon={PlugIcon}
-                title={t('integration.title')}
-                description={t('integration.description')}
-                stageLabel={stage(2)}
-              />
+            integration: integrationOpen ? (
+              <Suspense fallback={<IntegrationSkeleton />}>
+                <IntegrationTab tenantId={organization.id} role={organization.role} venue={venue} />
+              </Suspense>
+            ) : (
+              <IntegrationSkeleton />
             ),
             settings: <VenueSettings venue={venue} />,
           }}
