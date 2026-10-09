@@ -104,6 +104,13 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - The item sheet routes saves: builder-owned field → `manual`; barsy-owned overridable field → `override` with `basis`; a language barsy lacks → per-locale `manual` (D24); a linked item's price is refused ("Change this in barsy").
   - Photos: asset store local or R2 (`ASSET_STORE`), magic-byte checks, ≤ 10 MB, fields hold asset ids only; admin sees signed or presigned links.
   - Staging needs migration 0005 too.
+- Sync jobs (from S2-03b, merged 10-09):
+  - Jobs `barsy-connect`, `barsy-full-pull`, `barsy-incremental` and `asset-fetch`, plus pg-boss schedules: the incremental tick every 5 min and the full pull daily at 12:00, Europe/Sofia. Queues are exclusive per integration; payloads carry `tenantId` for RLS.
+  - The cursor and tree hash live in the integration's `config.sync.<bid>`, and the cached trees in `config.catalogue_trees.<bid>`. The cursor is the previous complete run's start in venue time − 65 min.
+  - Without SEAL keys the worker runs the heartbeat only. The web enqueues through `enqueueJob` (producer only).
+  - Refused writes are in `job_runs` counters and `error_summary` text; S2-05 adds structured details.
+  - **Demo catalogue:** the categories under root 1091 have no public titles, so the resolver blocks those sections. Use root **1171** for the acceptance run.
+  - The ticks list tenants from `auth_organization` (organisation id = tenant id).
 - Staging migrations: run by the deploy pipeline (Railway pre-deploy) once Railway exists; the one-off bootstrap of Supabase `restro-staging` runs from the lead's machine only with Martin's explicit OK (`RESTRO_DB_ALLOW_REMOTE=1`, runbook `docs/runbooks/supabase-setup.md`).
 - **Doc fixes to apply in one pass at the end of Stage 1:** specials sit under the menu only (series never under many); Section hints are two fields `hint_color`/`hint_icon`; trace 4 writes `for_sale = false` (no `sold_out` field); price = `locked` + `never_when_orderable`; mapping-only fields (`slug`, Option `description`) to add to the template; scopes use our `vn_` ids, never a barsy `bid`; `value_hash` is SHA-256; refresh `docs/architecture/` mirrors from the live doc.
 
@@ -300,7 +307,10 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - [ ] T54. Drag a section *into* another section (today: "Move to…" menu; drag only reorders siblings — `@hello-pangea/dnd` cannot drop into nested lists). Needs `@dnd-kit` if wanted — Martin to decide after trying the composer
 - [ ] T55. `next dev` evaluates workspace packages more than once (module singletons such as the DB pool broke; two fixed with `globalThis`); `next dev` font loading fails inside agent worktrees — watch for more — Claude
 - [x] T56. (done 10-09: the photo row no longer prints the asset id; the thumbnail uses the sheet's signed link; why the e2e screenshot showed a blank square is not yet confirmed — recheck during Stage 2 acceptance) Item sheet polish: the Details tab's photo row shows a blank thumbnail and the raw asset id (`as_…`) instead of the photo; show the thumbnail (signed link, as the Media tab does) and never an internal id — Claude (Haiku task)
-- [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins — Claude
+- [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins. Same for the job queue key (per integration: a second venue's pull is dropped while the first is queued) and the absence check (runs only with exactly one mapped venue) — Claude
+- [ ] T57. Photos hosted outside the barsy host (demo: 3 of 53 on `imagedelivery.net`) are refused today. Lead's recommendation: a `BARSY_PHOTO_HOSTS` allowlist, fetched **anonymously only** (credentials only ever go to the integration's own origin) — Claude, after checking real venue data
+- [ ] T58. Worker housekeeping: README "The worker" env table (BARSY_*, ASSET_STORE, R2_*, `.env.worker.local`); a start-up sweep that fails job runs stuck in `running`; `places.state_changed_at` (today `updated_at` stands in); decide whether the worker declares the AWS SDK instead of tsup bundling it; date-fns/@date-fns/tz vs the `Intl` code the sync uses (CLAUDE.md says date-fns) — Claude (Haiku/Sonnet tasks)
+- [ ] T59. Verify on the real demo during Stage 2 acceptance: whether `files_get` photos need Basic auth (the job tries anonymous first), multi-method requests with two calls of the same method (supplements go one call each today), `order_by` `cat_weight_deep` — Claude
 - [ ] T40. Doc updates: "Core rules" section; QR-phone-only scope; polling; Supabase; trace 4 manager-only; barsy corrections; new "Stage plan" tab — Claude
 - [x] T37. Supabase organisation "Restro" + project `restro-staging` (created in West EU/Ireland, D54) — Martin, 10-09; Data API toggle not found in his dashboard: not critical (no API role can reach our schemas, verified)
 - [x] T38. barsy demo credentials received — Martin, 10-09 (in `.env.local`)

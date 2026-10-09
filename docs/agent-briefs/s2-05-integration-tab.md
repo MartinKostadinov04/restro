@@ -14,6 +14,12 @@
 ## Goal
 The venue's **Integration** tab replaces today's placeholder. A manager connects the venue to barsy, picks the barsy venue and catalogue root, presses "Sync now", and follows the runs. This is acceptance criteria 1–2 of Stage 2.
 
+## From S2-03b (merged)
+- **Writers:** `createIntegration`, `updateIntegration`, `upsertBarsyVenues`, `updateSyncState`, `storeCachedTree`, `startJobRun` and `finishJobRun` exist in `packages/core/src/apply/`. Job names, payloads (they include `tenantId`) and `prepareJob` are in `packages/core/src/jobs.ts`.
+- **Cached data:** trees are in `integrations.config.catalogue_trees.<bid>`, and sync state (cursor, tree hash, last full pull, last incremental) in `config.sync.<bid>`. Show "last synced" from there.
+- **Job-run details:** `job_runs` has no structured details yet; refused writes are counters (`refused_writes`, `refused_<code>`) plus `error_summary` text, and skipped steps are text too. **Add `details jsonb`** to `job_runs` (migration + `table-access` unchanged privileges). Have `finishJobRun` fill it with `{ notes: string[], refused: {nodeRef, fieldKey?, code}[] }` (no barsy ids beyond what the counters already imply; cap at 200 entries) and keep the text for old rows. The history UI reads `details` when present.
+- **Demo:** use catalogue root **1171** (per S2-03b, its categories carry public titles). The sections under 1091 have no public titles and are blocked by the resolver.
+
 ## Do
 1. **Connect card** (form: host, API user, password).
    - Host: an `https:` URL. The web checks the format only; the worker enforces the allowed hosts.
