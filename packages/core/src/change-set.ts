@@ -153,9 +153,21 @@ export const FieldWriteSchema = z
 export type FieldWrite = z.output<typeof FieldWriteSchema>
 
 /**
+ * Where a placement or a new sibling goes: a fractional sort key (the composer computes it
+ * between two neighbours), or the position hint `'end'`, which `apply()` turns into a key after
+ * the current last one. `'end'` never moves an item that is already in the section. Adapters
+ * (barsy, import) only ever send `'end'`: they never compute sort keys themselves.
+ */
+export const PlacementPositionSchema = z.union([SortKeySchema, z.literal('end')])
+
+/** A sort key or the hint `'end'`. */
+export type PlacementPosition = z.output<typeof PlacementPositionSchema>
+
+/**
  * Creates a node with a pre-generated id, so later ops in the same set can name it. Menus and
- * items have no parent (items appear in sections through placements); every other type has one.
- * `apply()` checks the parent's type and depth with `canNest`.
+ * items have no parent (items appear in sections through placements); every other type has one,
+ * and a place among its siblings: `sortKey`, a fractional key or `'end'` (the default: after the
+ * current last sibling). `apply()` checks the parent's type and depth with `canNest`.
  */
 export const CreateNodeSchema = z
   .strictObject({
@@ -164,6 +176,7 @@ export const CreateNodeSchema = z
     nodeType: NodeTypeSchema,
     parent: NodeRefSchema.nullable(),
     status: z.enum(['active', 'hidden']),
+    sortKey: PlacementPositionSchema.optional(),
   })
   .superRefine((op, ctx) => {
     const rootless: readonly NodeType[] = ['menu', 'item']
@@ -173,18 +186,14 @@ export const CreateNodeSchema = z
     if (!rootless.includes(op.nodeType) && op.parent === null) {
       ctx.addIssue({ code: 'custom', message: `a ${op.nodeType} needs a parent`, path: ['parent'] })
     }
+    if (rootless.includes(op.nodeType) && op.sortKey !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `a ${op.nodeType} has no siblings to sort among (items sort by placement)`,
+        path: ['sortKey'],
+      })
+    }
   })
-
-/**
- * Where a placement goes: a fractional sort key (the composer computes it between two
- * neighbours), or the position hint `'end'`, which `apply()` turns into a key after the section's
- * current last item. `'end'` never moves an item that is already in the section. Adapters (barsy,
- * import) only ever send `'end'`: they never compute sort keys themselves.
- */
-export const PlacementPositionSchema = z.union([SortKeySchema, z.literal('end')])
-
-/** A sort key or the hint `'end'`. */
-export type PlacementPosition = z.output<typeof PlacementPositionSchema>
 
 /** Places an item in a section at a sort position (one row; moving rewrites only this row). */
 export const SetPlacementSchema = z.strictObject({
@@ -327,8 +336,12 @@ export const ChangeSetSchema = z
       if (op.op === 'clearField' && !layerAllowedForSource(set.source, op.layer)) {
         issue(`a ${set.source} change set cannot clear the ${op.layer} layer`)
       }
-      if (op.op === 'setPlacement' && set.source !== 'manual' && op.sortKey !== 'end') {
-        issue(`a ${set.source} change set places items with 'end', never with its own sort key`)
+      const ownSortKey =
+        (op.op === 'setPlacement' || op.op === 'createNode') &&
+        op.sortKey !== undefined &&
+        op.sortKey !== 'end'
+      if (ownSortKey && set.source !== 'manual') {
+        issue(`a ${set.source} change set places nodes with 'end', never with its own sort key`)
       }
       for (const ref of nodeRefsOf(op)) {
         if (!('link' in ref)) continue

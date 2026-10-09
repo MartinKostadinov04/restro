@@ -148,6 +148,7 @@ CREATE TABLE "restro"."nodes" (
 	"tenant_id" text NOT NULL,
 	"node_type" text NOT NULL,
 	"parent_id" text,
+	"sort_key" text COLLATE "C",
 	"status" text DEFAULT 'active' NOT NULL,
 	"revision" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -158,7 +159,9 @@ CREATE TABLE "restro"."nodes" (
 	CONSTRAINT "nodes_status" CHECK ("restro"."nodes"."status" in ('active', 'hidden', 'archived')),
 	CONSTRAINT "nodes_revision_positive" CHECK ("restro"."nodes"."revision" >= 1),
 	CONSTRAINT "nodes_parent_by_type" CHECK (("restro"."nodes"."node_type" in ('menu', 'item')) = ("restro"."nodes"."parent_id" is null)),
-	CONSTRAINT "nodes_not_own_parent" CHECK ("restro"."nodes"."parent_id" <> "restro"."nodes"."id")
+	CONSTRAINT "nodes_not_own_parent" CHECK ("restro"."nodes"."parent_id" <> "restro"."nodes"."id"),
+	CONSTRAINT "nodes_sort_key_with_parent" CHECK (("restro"."nodes"."parent_id" is null) = ("restro"."nodes"."sort_key" is null)),
+	CONSTRAINT "nodes_sort_key_format" CHECK ("restro"."nodes"."sort_key" ~ '^[A-Za-z][0-9A-Za-z]*$')
 );
 --> statement-breakpoint
 CREATE TABLE "restro"."placements" (

@@ -29,7 +29,14 @@ interface DocumentRow {
     template_version: number
     root_node_id: string
   } | null
-  nodes: { id: string; type: string; parentId: string | null; status: string; revision: number }[]
+  nodes: {
+    id: string
+    type: string
+    parentId: string | null
+    status: string
+    revision: number
+    sortKey: string | null
+  }[]
   placements: { itemId: string; sectionId: string; sortKey: string }[]
   values: {
     nodeId: string
@@ -80,7 +87,7 @@ export async function loadMenuDocument(
         coalesce((
           select json_agg(json_build_object(
               'id', n.id, 'type', n.node_type, 'parentId', n.parent_id,
-              'status', n.status, 'revision', n.revision)
+              'status', n.status, 'revision', n.revision, 'sortKey', n.sort_key)
             order by n.id collate "C")
           from restro.nodes n where n.id in (select id from reach)
         ), '[]'::json) as nodes,
@@ -130,6 +137,7 @@ export async function loadMenuDocument(
       parentId: node.parentId as NodeId | null,
       status: node.status as NodeStatus,
       revision: node.revision,
+      sortKey: node.sortKey,
     })),
     placements: row.placements.map((placement) => ({
       itemId: placement.itemId as NodeId,

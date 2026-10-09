@@ -237,11 +237,34 @@ describe('ChangeSetSchema', () => {
       actor: 'integration:int_club',
     })
     expect(parseChangeSet(fromBarsy('end')).ok).toBe(true)
-    expect(issuesOf(fromBarsy('a0'))).toContain("places items with 'end'")
+    expect(issuesOf(fromBarsy('a0'))).toContain("places nodes with 'end'")
     const manual = { op: 'setPlacement', item: { id: itemId }, section: { id: sectionId } }
     expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'end' }])).ok).toBe(true)
     expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'a0' }])).ok).toBe(true)
     expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'start' }])).ok).toBe(false)
+  })
+
+  it('gives a new section, group or option a sibling position, and a menu or item none', () => {
+    const create = (nodeType: string, parent: unknown, sortKey?: string) => ({
+      op: 'createNode',
+      id: newId('nd'),
+      nodeType,
+      parent,
+      status: 'active',
+      ...(sortKey === undefined ? {} : { sortKey }),
+    })
+    const parent = { id: sectionId }
+    expect(parseChangeSet(manualSet([create('section', parent)])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([create('section', parent, 'end')])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([create('option', parent, 'a3')])).ok).toBe(true)
+    expect(parseChangeSet(manualSet([create('section', parent, 'oops')])).ok).toBe(false)
+    expect(issuesOf(manualSet([create('item', null, 'a0')]))).toContain('no siblings')
+    const fromBarsy = {
+      ...manualSet([create('section', barsyPrice.node, 'a0')]),
+      source: 'barsy:int_club',
+      actor: 'integration:int_club',
+    }
+    expect(issuesOf(fromBarsy)).toContain("places nodes with 'end'")
   })
 
   it('types a parsed write', () => {

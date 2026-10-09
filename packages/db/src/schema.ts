@@ -358,6 +358,11 @@ export const nodes = restro.table(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     nodeType: text('node_type').notNull(),
     parentId: text('parent_id'),
+    /**
+     * Order among siblings (sections, modifier groups, options): a fractional key compared by
+     * byte order. Exactly the nodes with a parent have one.
+     */
+    sortKey: byteOrderText('sort_key'),
     status: text('status').notNull().default('active'),
     /** Goes up by one with each change set that changes the node's values, status or links. */
     revision: integer('revision').notNull().default(1),
@@ -384,6 +389,8 @@ export const nodes = restro.table(
       sql`(${t.nodeType} in ('menu', 'item')) = (${t.parentId} is null)`,
     ),
     check('nodes_not_own_parent', sql`${t.parentId} <> ${t.id}`),
+    check('nodes_sort_key_with_parent', sql`(${t.parentId} is null) = (${t.sortKey} is null)`),
+    check('nodes_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
   ],
 )
 

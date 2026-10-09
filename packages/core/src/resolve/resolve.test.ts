@@ -554,6 +554,34 @@ describe('structure', () => {
     expect(item(hidden).visible).toBe(false)
   })
 
+  it('orders sections, modifier groups and options by their sibling sort key, not their id', () => {
+    const [zeta, alpha, mid] = [nd('zeta'), nd('alpha'), nd('mid')]
+    const [sub2, sub1] = [nd('sub2'), nd('sub1')]
+    const [groupB, groupA] = [nd('groupb'), nd('groupa')]
+    const [optionZ, optionA] = [nd('optz'), nd('opta')]
+    const builder = new DocBuilder()
+      // Keys in code-unit order: 'Zz' < 'a0' < 'a1' (upper case sorts first, as in COLLATE "C").
+      .section(alpha, ROOT, 'active', 'a1')
+      .section(zeta, ROOT, 'active', 'Zz')
+      .section(mid, ROOT, 'active', 'a0')
+      .section(sub2, mid, 'active', 'a0')
+      .section(sub1, mid, 'active', 'a1')
+      .barsyItem(ITEM)
+      .place(ITEM, sub1)
+      .place(ITEM, sub2)
+      .place(ITEM, zeta)
+      .place(ITEM, alpha)
+      .node(groupA, 'modifier_group', ITEM, 'active', 'a1')
+      .node(groupB, 'modifier_group', ITEM, 'active', 'a0')
+      .node(optionA, 'option', groupA, 'active', 'b00')
+      .node(optionZ, 'option', groupA, 'active', 'a0')
+    const menu = run(builder)
+    expect(menu.sections.map((section) => section.id)).toEqual([zeta, mid, alpha])
+    expect(menu.sections[1]?.children.map((section) => section.id)).toEqual([sub2, sub1])
+    expect(item(menu).modifierGroupIds).toEqual([groupB, groupA])
+    expect(menu.modifierGroups[groupA]?.optionIds).toEqual([optionZ, optionA])
+  })
+
   it('reports nodes whose parent is missing', () => {
     const builder = oneItemMenu().node(nd('lost'), 'section', nd('nowhere'))
     expect(run(builder).issues).toContainEqual({

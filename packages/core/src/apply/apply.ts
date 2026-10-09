@@ -78,8 +78,22 @@ export type ApplyRejectionCode =
   | 'link_taken'
   /** The node already has a link from this integration (one link per source per node). */
   | 'already_linked'
+  /** A barsy link whose external type does not fit the node type (`BARSY_LINK_TYPES`). */
+  | 'invalid_link_type'
   /** This source may not do this (unlink from an adapter, create a menu, link another source). */
   | 'source_not_allowed'
+
+/**
+ * The barsy external types each node type may be linked to (doc "Barsy to canonical mapping"):
+ * an item mirrors an article, a section a category, an option a modificator or a supplement
+ * article. The resolver counts only an active `article` link towards `orderable`. Other node
+ * types (the menu, modifier groups, specials) take no barsy link.
+ */
+export const BARSY_LINK_TYPES: { readonly [K in NodeType]?: readonly string[] } = {
+  item: ['article'],
+  section: ['category'],
+  option: ['modificator', 'supplement'],
+}
 
 /** One refused op: its index in `changeSet.ops`, a code and a reason for people. */
 export interface ApplyRejection {
@@ -136,6 +150,7 @@ interface NodeState {
   readonly id: NodeId
   readonly type: NodeType
   readonly parentId: NodeId | null
+  readonly sortKey: string | null
   status: NodeStatus
 }
 
@@ -229,6 +244,8 @@ class DocumentState {
   readonly valuesOfNode = new Map<NodeId, Set<string>>()
   readonly placements = new Map<NodeId, Map<NodeId, string>>()
   readonly originalPlacements = new Map<string, string>()
+  /** The greatest sibling sort key under each parent a createNode names (read, then kept up). */
+  readonly lastChildKey = new Map<NodeId, string>()
 
   readonly createdNodes: NodeState[] = []
   readonly statusChanged = new Set<NodeId>()
@@ -365,21 +382,23 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
       id: string
       node_type: string
       parent_id: string | null
+      sort_key: string | null
       status: string
     }>(sql`
       with recursive up as (
-        select id, node_type, parent_id, status from restro.nodes
+        select id, node_type, parent_id, sort_key, status from restro.nodes
         where id = any(${sql.param([...idRefs])}::text[])
         union
-        select n.id, n.node_type, n.parent_id, n.status
+        select n.id, n.node_type, n.parent_id, n.sort_key, n.status
         from restro.nodes n join up on n.id = up.parent_id
       )
-      select id, node_type, parent_id, status from up`)
+      select id, node_type, parent_id, sort_key, status from up`)
     for (const row of found.rows) {
       state.nodes.set(row.id as NodeId, {
         id: row.id as NodeId,
         type: row.node_type as NodeType,
         parentId: row.parent_id as NodeId | null,
+        sortKey: row.sort_key,
         status: row.status as NodeStatus,
       })
     }
@@ -427,6 +446,27 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
       const existing = state.links.get(refKey(link))
       const target = existing && state.nodes.get(existing.nodeId)
       if (target && target.type === op.nodeType) state.aliases.set(op.id, target.id)
+    }
+  }
+
+  // The last sibling key under every parent a createNode names (so 'end' sees the current last).
+  const parentIds = new Set<NodeId>()
+  for (const op of set.ops) {
+    if (op.op !== 'createNode' || op.parent === null) continue
+    const ref = op.parent
+    const id =
+      'id' in ref
+        ? (state.aliases.get(ref.id) ?? ref.id)
+        : state.links.get(refKey(ref.link))?.nodeId
+    if (id !== undefined && state.nodes.has(id)) parentIds.add(id)
+  }
+  if (parentIds.size > 0) {
+    const found = await tx.execute<{ parent_id: string; last_key: string | null }>(sql`
+      select parent_id, max(sort_key) as last_key from restro.nodes
+      where parent_id = any(${sql.param([...parentIds])}::text[])
+      group by parent_id`)
+    for (const row of found.rows) {
+      if (row.last_key !== null) state.lastChildKey.set(row.parent_id as NodeId, row.last_key)
     }
   }
 
@@ -698,6 +738,7 @@ class Run {
     if (this.template.nodeTypes[op.nodeType] === undefined) {
       return refused('unknown_node_type', `the template has no ${op.nodeType} node type`)
     }
+    let sortKey: string | null = null
     if (parent !== null) {
       const depth = this.depthOf(parent) + 1
       if (!canNest(parent.type, op.nodeType, depth)) {
@@ -706,11 +747,17 @@ class Run {
           `a ${op.nodeType} cannot sit under a ${parent.type} at depth ${depth}`,
         )
       }
+      // A place among the siblings: the key given, or after the current last one ('end').
+      const last = this.state.lastChildKey.get(parent.id) ?? null
+      sortKey =
+        op.sortKey === undefined || op.sortKey === 'end' ? sortKeyBetween(last, null) : op.sortKey
+      if (last === null || sortKey > last) this.state.lastChildKey.set(parent.id, sortKey)
     }
     const node: NodeState = {
       id: op.id,
       type: op.nodeType,
       parentId: parent?.id ?? null,
+      sortKey,
       status: op.status,
     }
     this.state.nodes.set(node.id, node)
@@ -809,6 +856,17 @@ class Run {
     if (problem) return problem
     const node = this.node(op.node)
     if (isOutcome(node)) return node
+    if (this.state.integrations.get(op.link.integration)?.kind === 'barsy') {
+      const allowed = BARSY_LINK_TYPES[node.type] ?? []
+      if (!allowed.includes(op.link.externalType)) {
+        return refused(
+          'invalid_link_type',
+          allowed.length === 0
+            ? `a ${node.type} takes no barsy link`
+            : `a ${node.type} links to a barsy ${allowed.join(' or ')}, not a ${op.link.externalType}`,
+        )
+      }
+    }
     const existing = this.state.links.get(refKey(op.link))
     if (existing) {
       return existing.nodeId === node.id
@@ -928,6 +986,7 @@ async function flush(
         tenantId,
         nodeType: node.type,
         parentId: node.parentId,
+        sortKey: node.sortKey,
         status: node.status,
       })),
     )

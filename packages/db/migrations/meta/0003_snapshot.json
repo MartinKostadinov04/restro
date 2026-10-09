@@ -1,5 +1,5 @@
 {
-  "id": "ff047c2b-ed84-4d03-8df0-752d376e0035",
+  "id": "c9221b85-2763-40b0-a1e2-bfcda24fe6b6",
   "prevId": "ccc36128-5d4c-4153-b23e-80e5a8711793",
   "version": "7",
   "dialect": "postgresql",
@@ -1616,6 +1616,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "sort_key": {
+          "name": "sort_key",
+          "type": "text COLLATE \"C\"",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -1717,6 +1723,14 @@
         "nodes_not_own_parent": {
           "name": "nodes_not_own_parent",
           "value": "\"restro\".\"nodes\".\"parent_id\" <> \"restro\".\"nodes\".\"id\""
+        },
+        "nodes_sort_key_with_parent": {
+          "name": "nodes_sort_key_with_parent",
+          "value": "(\"restro\".\"nodes\".\"parent_id\" is null) = (\"restro\".\"nodes\".\"sort_key\" is null)"
+        },
+        "nodes_sort_key_format": {
+          "name": "nodes_sort_key_format",
+          "value": "\"restro\".\"nodes\".\"sort_key\" ~ '^[A-Za-z][0-9A-Za-z]*$'"
         }
       },
       "isRLSEnabled": false

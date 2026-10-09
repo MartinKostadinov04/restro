@@ -9,7 +9,7 @@ import type { FieldDefinition } from '../field-definition'
 import { canonicalJson } from '../hash'
 import type { NodeId } from '../ids'
 import { isLocale, type Locale, type LocalizedText } from '../locales'
-import type { Money } from '../money'
+import { addMinor, type Money, MoneyError } from '../money'
 import type { NodeType } from '../node-types'
 import { compareSortKeys } from '../sort-keys'
 import type { Template } from '../template'
@@ -197,6 +197,19 @@ function byId<T extends { readonly id: NodeId }>(a: T, b: T): number {
 }
 
 /**
+ * Sibling order (sections, modifier groups, options): by sort key in code-unit order, a node
+ * without a key after those with one, then by id so equal keys still give one order.
+ */
+function bySiblingOrder(a: DocNode, b: DocNode): number {
+  if (a.sortKey !== b.sortKey) {
+    if (a.sortKey === null) return 1
+    if (b.sortKey === null) return -1
+    return compareSortKeys(a.sortKey, b.sortKey)
+  }
+  return byId(a, b)
+}
+
+/**
  * Resolves a menu document for one venue and edition: one value per field per node with its
  * provenance, the computed item fields, visibility and the issues of checks V3–V7, V9, V10 and
  * V12 (V8 needs asset sizes; V11 compares two resolutions: `compareVisibility`).
@@ -243,8 +256,9 @@ export function resolve(
     const current = nodes.get(node.id)
     nodes.set(node.id, current === undefined ? node : preferNode(current, node))
   }
+  // Children of each node in sibling order (sort key, then id).
   const children = new Map<NodeId, DocNode[]>()
-  for (const node of [...nodes.values()].sort(byId)) {
+  for (const node of [...nodes.values()].sort(bySiblingOrder)) {
     if (node.parentId === null || node.status === 'archived') continue
     const siblings = children.get(node.parentId) ?? []
     siblings.push(node)
@@ -648,8 +662,14 @@ function cheapestTotal(price: Money, groups: readonly RequiredGroup[]): number |
   for (const group of groups) {
     const deltas = choosableDeltas(group, price.currency)
     if (deltas.length < group.min) return null
-    for (const amount of deltas.slice(0, group.min)) total += amount
-    if (!Number.isSafeInteger(total)) return null
+    for (const amount of deltas.slice(0, group.min)) {
+      try {
+        total = addMinor(total, amount)
+      } catch (error) {
+        if (error instanceof MoneyError) return null
+        throw error
+      }
+    }
   }
   return total
 }

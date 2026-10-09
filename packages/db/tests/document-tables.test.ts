@@ -88,7 +88,7 @@ async function writeSample(tx: WriteTx, s: Sample): Promise<void> {
     .values({ tenantId: t, integrationId: s.integration, bid: 1, name: 'Main', venueId: s.venue })
   await tx.insert(nodes).values([
     { id: s.menu, tenantId: t, nodeType: 'menu', parentId: null },
-    { id: s.section, tenantId: t, nodeType: 'section', parentId: s.menu },
+    { id: s.section, tenantId: t, nodeType: 'section', parentId: s.menu, sortKey: 'a0' },
     { id: s.item, tenantId: t, nodeType: 'item', parentId: null },
   ])
   await tx.insert(menus).values({
@@ -315,9 +315,13 @@ describe.skipIf(!hasDatabase)('document tables', () => {
     const own = sampleIds()
     const attempts: Record<string, (tx: WriteTx) => Promise<unknown>> = {
       'a section under A’s menu': (tx) =>
-        tx
-          .insert(nodes)
-          .values({ id: own.section, tenantId: b.tenant, nodeType: 'section', parentId: a.menu }),
+        tx.insert(nodes).values({
+          id: own.section,
+          tenantId: b.tenant,
+          nodeType: 'section',
+          parentId: a.menu,
+          sortKey: 'a0',
+        }),
       'a menu for A’s venue': (tx) =>
         tx
           .insert(nodes)
@@ -527,6 +531,7 @@ describe.skipIf(!hasDatabase)('document tables', () => {
             tenantId: a.tenant,
             nodeType: 'item',
             parentId: a.section,
+            sortKey: 'a0',
           }),
         ),
       ),
@@ -538,5 +543,35 @@ describe.skipIf(!hasDatabase)('document tables', () => {
         ),
       ),
     ).toMatch(/nodes_parent_by_type/)
+  })
+
+  it('gives exactly the nodes with a parent a sibling sort key, compared by byte order', async () => {
+    expect(
+      await databaseError(
+        withTenantWrite(app, a.tenant, (tx) =>
+          tx.insert(nodes).values({
+            id: testId('nd'),
+            tenantId: a.tenant,
+            nodeType: 'section',
+            parentId: a.menu,
+          }),
+        ),
+      ),
+    ).toMatch(/nodes_sort_key_with_parent/)
+    expect(
+      await databaseError(
+        withTenantWrite(app, a.tenant, (tx) =>
+          tx
+            .insert(nodes)
+            .values({ id: testId('nd'), tenantId: a.tenant, nodeType: 'item', sortKey: 'a0' }),
+        ),
+      ),
+    ).toMatch(/nodes_sort_key_with_parent/)
+    const { rows } = await owner.query<{ collation: string }>(
+      `select c.collname as collation from pg_attribute a
+       join pg_collation c on c.oid = a.attcollation
+       where a.attrelid = 'restro.nodes'::regclass and a.attname = 'sort_key'`,
+    )
+    expect(rows).toEqual([{ collation: 'C' }])
   })
 })
