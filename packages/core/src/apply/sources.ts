@@ -156,10 +156,21 @@ export async function updateIntegration(
   if (patch.statusDetail !== undefined) set.statusDetail = checkedDetail(patch.statusDetail)
   if (patch.lastCheckedAt !== undefined) set.lastCheckedAt = patch.lastCheckedAt
   if (patch.config !== undefined) {
-    // jsonb concatenation replaces whole top-level keys; null values are stripped afterwards so
-    // that `{ key: null }` removes the key. One statement, so concurrent patches do not lose
-    // each other's keys.
-    set.config = sql`jsonb_strip_nulls(${integrations.config} || ${JSON.stringify(patch.config)}::jsonb)`
+    // jsonb concatenation replaces whole top-level keys; a key set to null is then removed. Only
+    // the keys the caller named: `jsonb_strip_nulls` would also drop the nulls INSIDE other keys
+    // (a cached category's `parent_id: null`), which breaks their schema. One statement, so
+    // concurrent patches do not lose each other's keys.
+    const entries = Object.entries(patch.config)
+    const replaced = Object.fromEntries(entries.filter(([, value]) => value !== null))
+    const removed = entries.filter(([, value]) => value === null).map(([key]) => key)
+    const merged = sql`(${integrations.config} || ${JSON.stringify(replaced)}::jsonb)`
+    set.config =
+      removed.length === 0
+        ? merged
+        : sql`(${merged} - ARRAY[${sql.join(
+            removed.map((key) => sql`${key}`),
+            sql`, `,
+          )}]::text[])`
   }
   if (Object.keys(set).length === 0) {
     throw new ProvisionError('invalid_input', 'there is nothing to change')

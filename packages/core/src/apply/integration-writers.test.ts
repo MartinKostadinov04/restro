@@ -23,7 +23,8 @@ import {
 } from './barsy-venues'
 import { buildJobRunDetails, finishJobRun, MAX_DETAIL_ENTRIES, startJobRun } from './job-runs'
 import { provisionTenant, provisionVenue } from './provision'
-import { createIntegration } from './sources'
+import { createIntegration, updateIntegration } from './sources'
+import { readCachedTree, storeCachedTree } from './sync-config'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
 
 describe('buildJobRunDetails', () => {
@@ -202,6 +203,33 @@ describe.skipIf(!hasDatabase)('the Integration tab’s writers (as the restro_ap
       await mapBarsyVenue(app, tenant, integrationId, 1, venueA)
       expect(await clearBarsyVenueChoices(app, otherTenant, integrationId)).toBe(0)
       expect((await rowOf(1))?.venueId).toBe(venueA)
+    })
+  })
+
+  describe('updateIntegration config patches', () => {
+    it('remove only the named keys and leave the nulls inside other keys alone', async () => {
+      await storeCachedTree(app, tenant, integrationId, 1, {
+        fetched_at: '2026-10-09T10:00:00.000Z',
+        categories: [
+          { cat_id: 1, parent_id: null, name: 'Root' },
+          { cat_id: 2, parent_id: 1, name: 'Child' },
+        ],
+      })
+      await updateIntegration(app, tenant, integrationId, {
+        config: { price_source: 'current_price', allergen_detail_key: 'k1', stale: 1 },
+      })
+      const updated = await updateIntegration(app, tenant, integrationId, {
+        config: { allergen_detail_key: null, stale: null, price_source: 'actual_price' },
+      })
+      expect(updated?.config).toMatchObject({ price_source: 'actual_price' })
+      expect(updated?.config).not.toHaveProperty('allergen_detail_key')
+      expect(updated?.config).not.toHaveProperty('stale')
+      // The cached tree still reads: its root keeps `parent_id: null`.
+      expect(readCachedTree(updated?.config, 1)?.categories[0]).toEqual({
+        cat_id: 1,
+        parent_id: null,
+        name: 'Root',
+      })
     })
   })
 
