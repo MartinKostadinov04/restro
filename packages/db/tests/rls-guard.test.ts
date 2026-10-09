@@ -66,7 +66,25 @@ describe.skipIf(!hasDatabase)('row-level security guard', () => {
 
   it('finds the tables of this stage (the guard is looking at a migrated database)', () => {
     expect(tables.map((table) => table.name)).toEqual(
-      expect.arrayContaining(['tenants', 'venues', 'templates', 'worker_heartbeats']),
+      expect.arrayContaining([
+        'tenants',
+        'venues',
+        'templates',
+        'worker_heartbeats',
+        // Stage 2 document tables (brief S2-01).
+        'integrations',
+        'barsy_venues',
+        'menus',
+        'nodes',
+        'placements',
+        'field_values',
+        'source_records',
+        'source_links',
+        'events',
+        'job_runs',
+        'places',
+        'assets',
+      ]),
     )
   })
 
