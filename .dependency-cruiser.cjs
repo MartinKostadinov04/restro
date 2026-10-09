@@ -37,7 +37,7 @@ module.exports = {
       name: 'pure-layers-no-data-or-apps',
       severity: 'error',
       comment:
-        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy or anything under apps/.',
+        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy, @restro/assets or anything under apps/.',
       from: { path: ['^packages/shell/', '^packages/faces/'] },
       to: {
         path: [
@@ -45,6 +45,8 @@ module.exports = {
           '^@restro/db(/|$)',
           '^packages/barsy/',
           '^@restro/barsy(/|$)',
+          '^packages/assets/',
+          '^@restro/assets(/|$)',
           '^apps/',
           '^@restro/(web|worker)(/|$)',
         ],
@@ -117,6 +119,23 @@ module.exports = {
       comment: 'Nothing under packages/ may import from apps/.',
       from: { path: '^packages/' },
       to: { path: ['^apps/', '^@restro/(web|worker)(/|$)'] },
+    },
+    {
+      name: 'assets-no-database-or-barsy',
+      severity: 'error',
+      comment:
+        'packages/assets (the asset store, shared by apps/web and apps/worker) must not import @restro/db, @restro/barsy or anything under apps/. The stores hold bytes and sign links; the apps own the database rows.',
+      from: { path: '^packages/assets/' },
+      to: {
+        path: [
+          '^packages/db/',
+          '^@restro/db(/|$)',
+          '^packages/barsy/',
+          '^@restro/barsy(/|$)',
+          '^apps/',
+          '^@restro/(web|worker)(/|$)',
+        ],
+      },
     },
 
     // 6. No cycles, including type-only imports (tsPreCompilationDeps below).

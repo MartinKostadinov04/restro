@@ -4,13 +4,10 @@
 // item is a separate change set (the item sheet's `image` field), so an upload that is never
 // attached leaves an unused asset, not a half-edited item.
 import { createHash } from 'node:crypto'
+import { type AssetStore, assetStorageKey, type ImageRefusal, inspectImage } from '@restro/assets'
 import { type AssetImageType, newId } from '@restro/core'
 import { createAsset } from '@restro/core/apply'
 import type { DbPool } from '@restro/db'
-
-import { type ImageRefusal, inspectImage } from './inspect-image'
-import { assetStorageKey } from './keys'
-import type { AssetStore } from './types'
 
 /** An upload that was refused; `code` says why (see `ImageRefusal`). */
 export class UploadError extends Error {

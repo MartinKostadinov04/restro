@@ -1,9 +1,11 @@
 import path from 'node:path'
+import {
+  AssetStoreConfigError,
+  assetStoreConfig,
+  createAssetStore,
+  LocalAssetStore,
+} from '@restro/assets'
 import { describe, expect, it } from 'vitest'
-
-import { AssetStoreConfigError, assetStoreConfig } from './config'
-import { createAssetStore } from './index'
-import { LocalAssetStore } from './local-store'
 
 const R2 = {
   ASSET_STORE: 'r2',

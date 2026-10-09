@@ -346,6 +346,27 @@ describe('rule 6: no circular dependencies', () => {
   })
 })
 
+describe('packages/assets: storage only, no database or barsy', () => {
+  it('rejects @restro/db, @restro/barsy and a relative path into packages/db', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/assets/src/db.ts': "import '@restro/db'",
+        'packages/assets/src/barsy.ts': "import '@restro/barsy'",
+        'packages/assets/src/relative-db.ts': "import '../../db/src/index'",
+      },
+      ['assets-no-database-or-barsy', 'barsy-only-from-worker'],
+    )
+  })
+
+  it('rejects a path into apps/', async () => {
+    await expectRules(
+      { ...base, 'packages/assets/src/app.ts': "import '../../../apps/web/app/page'" },
+      ['assets-no-database-or-barsy', 'packages-never-import-apps'],
+    )
+  })
+})
+
 describe('coverage of the rule set', () => {
   it('has a case above for every forbidden rule in the config', () => {
     const configured = (config.forbidden ?? []).map((rule) => rule.name).sort()
