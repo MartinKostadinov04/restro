@@ -9,6 +9,8 @@ export type RejectionCode =
   | 'unknown_field'
   | 'layer_not_allowed'
   | 'less_cautious'
+  /** A barsy value or an override aimed at a node that has no barsy link. */
+  | 'not_linked'
   | 'invalid_template'
   | 'invalid_change_set'
 

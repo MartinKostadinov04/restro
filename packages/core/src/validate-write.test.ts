@@ -1,3 +1,4 @@
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import type { FieldWrite, Layer } from './change-set'
@@ -156,6 +157,120 @@ describe('validateWrite', () => {
   })
 })
 
+describe('validateWrite with node context (linked to barsy or hand-made)', () => {
+  const linked = { linkedToBarsy: true }
+  const handMade = { linkedToBarsy: false }
+
+  it('allows a manual or import price only on a node without a barsy link', () => {
+    for (const layer of ['manual', 'import'] as const) {
+      expect(validateWrite(template, 'item', write('price', layer, price(900)), handMade)).toEqual({
+        ok: true,
+      })
+      expectRejected(
+        validateWrite(template, 'item', write('price', layer, price(900)), linked),
+        'layer_not_allowed',
+      )
+    }
+    expect(
+      validateWrite(template, 'option', write('price_delta', 'manual', price(150)), handMade),
+    ).toEqual({ ok: true })
+  })
+
+  it('treats a missing context as linked to barsy (the stricter reading)', () => {
+    expectRejected(
+      validateWrite(template, 'item', write('price', 'manual', price(900))),
+      'layer_not_allowed',
+    )
+  })
+
+  it('never takes an override or edition price, linked or not', () => {
+    for (const context of [linked, handMade]) {
+      expect(
+        validateWrite(
+          template,
+          'item',
+          write('price', 'override', price(900), { basis: price(1000) }),
+          context,
+        ).ok,
+      ).toBe(false)
+      expect(
+        validateWrite(template, 'item', write('price', 'edition:venue-1', price(900)), context).ok,
+      ).toBe(false)
+    }
+  })
+
+  it('refuses barsy values and overrides on a hand-made node', () => {
+    expectRejected(
+      validateWrite(template, 'item', write('price', 'barsy', price(900)), handMade),
+      'not_linked',
+    )
+    expectRejected(
+      validateWrite(
+        template,
+        'item',
+        write('name', 'override', { en_US: 'x' }, { basis: { en_US: 'y' } }),
+        handMade,
+      ),
+      'not_linked',
+    )
+    expect(
+      validateWrite(template, 'item', write('name', 'manual', { en_US: 'House wine' }), handMade),
+    ).toEqual({ ok: true })
+  })
+
+  it('still refuses un-hiding on a hand-made node (rule 5 does not depend on the link)', () => {
+    expectRejected(
+      validateWrite(template, 'item', write('visible', 'manual', true), handMade),
+      'less_cautious',
+    )
+  })
+})
+
+describe('rule 5 (property): builder layers only ever make the menu more cautious', () => {
+  const builderLayer = fc.constantFrom<Layer>(
+    'manual',
+    'import',
+    'override',
+    'edition:venue-1',
+    'edition:service-2026-10-08',
+  )
+  const anyValue = fc.oneof(
+    fc.boolean(),
+    fc.constant(price(1250)),
+    fc.record({
+      amount_minor: fc.integer({ min: -10, max: 10_000 }),
+      currency: fc.constant('EUR'),
+    }),
+    fc.jsonValue(),
+  )
+
+  it('never accepts visible or for_sale = true, nor any price on a linked item', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('visible', 'for_sale', 'price'),
+        builderLayer,
+        anyValue,
+        anyValue,
+        fc.boolean(),
+        (fieldKey, layer, value, basis, linkedToBarsy) => {
+          const extra = layer === 'override' ? { basis: basis as FieldWrite['value'] } : {}
+          const verdict = validateWrite(template, 'item', write(fieldKey, layer, value, extra), {
+            linkedToBarsy,
+          })
+          if (fieldKey === 'price') {
+            if (linkedToBarsy) expect(verdict.ok).toBe(false)
+            // On a hand-made item only manual and import may carry a price.
+            if (verdict.ok) expect(['manual', 'import']).toContain(layer)
+          } else if (verdict.ok) {
+            expect(value).toBe(false)
+          }
+        },
+      ),
+      { numRuns: 2000 },
+    )
+  })
+})
+
 describe('layerAllowed', () => {
   const field = (key: string) => {
     const definition = findField(template, 'item', key)
@@ -168,6 +283,15 @@ describe('layerAllowed', () => {
     for (const layer of ['import', 'manual', 'override', 'edition:x'] as const) {
       expect(layerAllowed(field('price'), layer).ok, layer).toBe(false)
     }
+  })
+
+  it('opens the manual and import layers of a locked field on a hand-made node only', () => {
+    const handMade = { linkedToBarsy: false }
+    expect(layerAllowed(field('price'), 'manual', handMade).ok).toBe(true)
+    expect(layerAllowed(field('price'), 'import', handMade).ok).toBe(true)
+    expect(layerAllowed(field('price'), 'barsy', handMade).ok).toBe(false)
+    expect(layerAllowed(field('price'), 'override', handMade).ok).toBe(false)
+    expect(layerAllowed(field('price'), 'edition:x', handMade).ok).toBe(false)
   })
 
   it('lets builder layers write builder-owned and overridable fields', () => {
