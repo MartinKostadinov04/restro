@@ -25,6 +25,9 @@
 - **Source records are content-addressed.** The id hashes the content, so insert with `on conflict do nothing`. **Recency** comes from `source_links.last_hash` (set via `setLinkState` `hash`/`seenAt`), never from `source_records`: an A → B → A change reuses record A.
 - **`mapCatalogue` input** needs `menuId` (the menu root node id).
 - **`linkStates`** lists every mapped link as `active` (the "seen" set for `concludeFullPull`) plus `deleted` for `delete_flag`.
+- **Reuse S2-06a's writers:** `provisionIntegration` and `recordSource` exist in `packages/core/src/apply/sources.ts`. Extend or rename them; never add a second pair.
+- **barsy state lives in link state only.** The sync never writes a section's or item's `status`; that belongs to the manager (hide/show in the composer).
+- **No TypeScript parameter properties** in code the dev seed or scripts load: Node's type stripping cannot run them.
 - **`ARTICLES_ORDER_BY`** uses the object form `{cat_weight_deep: 'asc', article_id: 'asc'}`. The lead confirms it on the next recording.
 
 ## Do
