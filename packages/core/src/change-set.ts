@@ -195,12 +195,23 @@ export const CreateNodeSchema = z
     }
   })
 
-/** Places an item in a section at a sort position (one row; moving rewrites only this row). */
+/**
+ * Places an item in a section at a sort position (one row; moving rewrites only this row).
+ *
+ * `onlyIfUnplaced` (default false) is for adapters that mirror a source's categories (barsy,
+ * mirror mode): the placement is applied only when the item had no placement in any section
+ * before this change set, so a re-sync never re-adds an item the manager moved or removed and
+ * never reorders their arrangement (D20: a new item lands at the end of its section). All the
+ * set's placements for an item that was unplaced still apply, so a new item reaches every section
+ * its source category maps to. How `apply()` honours the flag is the applier's business; this
+ * schema only carries it.
+ */
 export const SetPlacementSchema = z.strictObject({
   op: z.literal('setPlacement'),
   item: NodeRefSchema,
   section: NodeRefSchema,
   sortKey: PlacementPositionSchema,
+  onlyIfUnplaced: z.boolean().optional(),
 })
 
 /** Removes an item's placement from a section (the item itself stays). */
