@@ -44,8 +44,8 @@ export class PhotoRefused extends Error {
 }
 
 export interface PhotoResult {
-  /** `reused` when identical bytes were already stored. */
-  readonly asset: 'created' | 'reused'
+  /** `reused` when identical bytes were already stored; `none` when nothing was downloaded. */
+  readonly asset: 'created' | 'reused' | 'none'
   readonly rejected: readonly ApplyRejection[]
   /** False when the item no longer exists or is no longer linked (the apply refused). */
   readonly applied: boolean
@@ -53,11 +53,16 @@ export interface PhotoResult {
 
 const sameOrigin = (a: URL, b: URL) => a.origin === b.origin
 
+/** Drops a response's body without waiting for the connection to wind down. */
+function discard(response: Response): void {
+  void response.body?.cancel().catch(() => undefined)
+}
+
 /** Reads at most `MAX_IMAGE_BYTES`; a longer body is refused, not truncated. */
 async function readCapped(response: Response): Promise<Uint8Array> {
   const declared = Number(response.headers.get('content-length'))
   if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES) {
-    await response.body?.cancel()
+    discard(response)
     throw new PhotoRefused('too_large', 'The picture is larger than 10 MB.')
   }
   const reader = response.body?.getReader()
@@ -69,7 +74,7 @@ async function readCapped(response: Response): Promise<Uint8Array> {
     if (done) break
     size += value.byteLength
     if (size > MAX_IMAGE_BYTES) {
-      await reader.cancel()
+      void reader.cancel().catch(() => undefined)
       throw new PhotoRefused('too_large', 'The picture is larger than 10 MB.')
     }
     parts.push(value)
@@ -114,23 +119,23 @@ export async function downloadPhoto(
     })
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location')
-      await response.body?.cancel()
+      discard(response)
       if (!location) throw new PhotoRefused('bad_status', 'A redirect without a target.')
       current = new URL(location, current)
       continue
     }
     if ((response.status === 401 || response.status === 403) && !withCredentials) {
-      await response.body?.cancel()
+      discard(response)
       withCredentials = true
       hop -= 1 // asking again with credentials is not a redirect
       continue
     }
     if (response.status >= 500) {
-      await response.body?.cancel()
+      discard(response)
       throw new Error(`the picture server answered HTTP ${response.status}`)
     }
     if (response.status !== 200) {
-      await response.body?.cancel()
+      discard(response)
       throw new PhotoRefused('bad_status', `The picture server answered HTTP ${response.status}.`)
     }
     return readCapped(response)
@@ -192,6 +197,9 @@ export async function fetchPhoto(
 ): Promise<PhotoResult> {
   const tenantId = session.tenantId
   const integrationId = session.integration.id
+  // An article that is gone or was unlinked has nothing to show a photo: download nothing.
+  const recordId = await articleRecordId(env, tenantId, integrationId, request.articleExternalId)
+  if (recordId === null) return { asset: 'none', rejected: [], applied: false }
   const bytes = await downloadPhoto(env, session, request.url)
   const inspected = inspectImage(bytes)
   if (!inspected.ok) {
@@ -233,11 +241,6 @@ export async function fetchPhoto(
     assetId = created.id
   }
 
-  const recordId = await articleRecordId(env, tenantId, integrationId, request.articleExternalId)
-  if (recordId === null) {
-    // The article is gone or was unlinked meanwhile: the asset stays (it may serve another item).
-    return { asset: reused ? 'reused' : 'created', rejected: [], applied: false }
-  }
   const result = await apply(env.pool, tenantId, {
     id: newId('cs'),
     source: `barsy:${integrationId}`,

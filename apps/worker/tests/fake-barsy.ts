@@ -50,7 +50,9 @@ export interface FakeBarsy {
   articleFault: ((offset: number, length: number) => PageFault | undefined) | undefined
   /** Called for every `Articlesupplements_get`; return true to fail it. */
   supplementFault: ((articleId: string) => boolean) | undefined
-  /** Photos by URL path+query; default: a small PNG for every picture of the demo. */
+  /** True: a photo request without the right credentials gets 401. */
+  photosNeedAuth: boolean
+  /** Photos by URL path+query (the tests register what they serve). */
   photos: Map<string, { status: number; body: Uint8Array; headers?: Record<string, string> }>
   readonly calls: FakeCall[]
   /** The calls to one method, in order. */
@@ -91,6 +93,7 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
     articleFault: undefined,
     supplementFault: undefined,
     photos: new Map(),
+    photosNeedAuth: false,
     calls,
     photoRequests,
     server: undefined as unknown as SetupServer,
@@ -106,6 +109,7 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
       fake.articleFault = undefined
       fake.supplementFault = undefined
       fake.photos.clear()
+      fake.photosNeedAuth = false
       fake.server.resetHandlers()
     },
   }
@@ -181,6 +185,7 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
       const url = new URL(request.url)
       const authorization = request.headers.get('authorization')
       photoRequests.push({ url: `${url.pathname}${url.search}`, authorization })
+      if (fake.photosNeedAuth && authorization !== fake.basic()) return unauthorised()
       const entry = fake.photos.get(`${url.pathname}${url.search}`)
       if (!entry) return new HttpResponse('no such picture', { status: 404 })
       return new HttpResponse(entry.body as never, {
