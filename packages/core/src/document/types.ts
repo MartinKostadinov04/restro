@@ -16,6 +16,11 @@ export interface MenuDocument {
     parentId: NodeId | null
     status: NodeStatus
     revision: number
+    /**
+     * Order among siblings (sections, modifier groups, options): a fractional key compared by
+     * code unit (`compareSortKeys`). Null for nodes without a parent (the menu, items).
+     */
+    sortKey: string | null
   }>
   placements: ReadonlyArray<{ itemId: NodeId; sectionId: NodeId; sortKey: string }>
   values: ReadonlyArray<{

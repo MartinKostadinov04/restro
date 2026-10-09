@@ -71,8 +71,17 @@ function id(client: Client, name: string): string {
   return client.escapeIdentifier(name)
 }
 
-/** Creates the role, or brings an existing one back to the required attributes. */
-async function upsertRole(client: Client, password: string): Promise<'created' | 'updated'> {
+/**
+ * Creates the role, or brings an existing one back to the required attributes. An existing
+ * role keeps its password unless `rotatePassword` is set: every ALTER ROLE … PASSWORD stores a
+ * new SCRAM salt, and Supabase's pooler (Supavisor) keeps the old verifier cached, so re-setting
+ * even the same password breaks pooled logins until its cache refreshes (seen on restro-staging).
+ */
+async function upsertRole(
+  client: Client,
+  password: string,
+  rotatePassword: boolean,
+): Promise<'created' | 'updated'> {
   const role = id(client, APP_ROLE)
   const verifier = client.escapeLiteral(scramSha256Verifier(password))
   const { rows } = await client.query<RoleRow>(
@@ -98,7 +107,8 @@ async function upsertRole(client: Client, password: string): Promise<'created' |
   if (current.rolcreatedb) fixes.push('nocreatedb')
   if (current.rolinherit) fixes.push('noinherit')
   if (!current.rolcanlogin) fixes.push('login')
-  await client.query(`alter role ${role} with ${[...fixes, `password ${verifier}`].join(' ')}`)
+  const changes = rotatePassword ? [...fixes, `password ${verifier}`] : fixes
+  if (changes.length > 0) await client.query(`alter role ${role} with ${changes.join(' ')}`)
   return 'updated'
 }
 
@@ -324,6 +334,8 @@ async function main(): Promise<void> {
     `It is the password ${APP_ROLE} gets; DATABASE_URL must carry the same one.`,
   )
   assertUsablePassword(password)
+  // Explicit opt-in: only then does an existing role get its password re-set (see upsertRole).
+  const rotatePassword = process.env.DATABASE_APP_PASSWORD_ROTATE === '1'
   assertSafeTarget(url, 'db:roles')
 
   const client = new pg.Client({ connectionString: url, application_name: 'restro-db-roles' })
@@ -339,7 +351,7 @@ async function main(): Promise<void> {
       throw new Error(`DATABASE_URL_OWNER logs in as ${APP_ROLE}; it must be the migration owner.`)
     }
 
-    const outcome = await upsertRole(client, password)
+    const outcome = await upsertRole(client, password, rotatePassword)
     await applyRoleSettings(client)
     await client.query(
       `revoke all on database ${id(client, database)} from ${id(client, APP_ROLE)}`,
@@ -352,7 +364,9 @@ async function main(): Promise<void> {
     await verify(client)
     await client.query('commit')
     console.log(
-      `db:roles: ${APP_ROLE} ${outcome} on ${describeTarget(url)}; privileges match ` +
+      `db:roles: ${APP_ROLE} ${outcome}` +
+        `${outcome === 'updated' ? (rotatePassword ? ' (password rotated)' : ' (password kept)') : ''}` +
+        ` on ${describeTarget(url)}; privileges match ` +
         `src/table-access.ts (${Object.keys(tableAccess).length} tables); ` +
         `${Object.entries(ROLE_SETTINGS)
           .map(([name, value]) => `${name} = ${value}`)
