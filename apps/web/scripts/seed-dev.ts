@@ -89,8 +89,12 @@ async function main(): Promise<void> {
     ? venue.id
     : (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug })).id
 
-  // 5. The demo menu.
-  const menu = await seedDemoMenu(pool, organizationId, venueId, userId)
+  // 5. The demo menu (made-up items), unless SEED_DEMO_MENU=0: then the venue starts empty and
+  // its menu comes from a real barsy sync (the Stage 2 acceptance run).
+  const menu =
+    process.env.SEED_DEMO_MENU === '0'
+      ? null
+      : await seedDemoMenu(pool, organizationId, venueId, userId)
 
   console.log(
     JSON.stringify({
