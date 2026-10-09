@@ -64,21 +64,39 @@ function compareText(a: string, b: string): number {
 /** Issues, deduplicated and kept in one stable order (menu-level first, then by node). */
 class IssueBook {
   private readonly issues = new Map<string, Issue>()
+  private readonly blocked = new Set<NodeId>()
+  private byNode: Map<NodeId, Issue[]> | null = null
 
   add(issue: Issue): void {
     this.issues.set(IssueBook.keyOf(issue), issue)
+    if (issue.nodeId !== undefined && issue.severity === 'block_node') {
+      this.blocked.add(issue.nodeId)
+    }
+    this.byNode = null
   }
 
   /** Every issue of one node. */
   of(nodeId: NodeId): Issue[] {
-    return this.all().filter((issue) => issue.nodeId === nodeId)
+    if (this.byNode === null) {
+      this.byNode = new Map()
+      for (const issue of this.all()) {
+        if (issue.nodeId === undefined) continue
+        const list = this.byNode.get(issue.nodeId) ?? []
+        list.push(issue)
+        this.byNode.set(issue.nodeId, list)
+      }
+    }
+    return [...(this.byNode.get(nodeId) ?? [])]
   }
 
   /** True if the node has an issue that leaves it out of the snapshot. */
   blocks(nodeId: NodeId): boolean {
-    for (const issue of this.issues.values()) {
-      if (issue.nodeId === nodeId && issue.severity === 'block_node') return true
-    }
+    return this.blocked.has(nodeId)
+  }
+
+  /** True if some issue has this code. */
+  has(code: IssueCode): boolean {
+    for (const issue of this.issues.values()) if (issue.code === code) return true
     return false
   }
 
@@ -379,9 +397,7 @@ export function resolve(
     )
   }
   if (![...itemVisible.values()].some(Boolean)) menuIssue('V10')
-  if (book.all().some((issue) => issue.code === 'stale_override')) {
-    book.add({ code: 'V12', severity: 'warning' })
-  }
+  if (book.has('stale_override')) book.add({ code: 'V12', severity: 'warning' })
 
   // Assembly, after every issue is known.
   const buildSection = (section: DocNode): ResolvedSection => ({
@@ -577,10 +593,13 @@ function checkNode(
   }
 }
 
-/** The number of choices a modifier group requires (0 when optional or unknown). */
+/** The number of choices a modifier group requires (0 when optional, infinite when unknown). */
 function requiredMin({ fields }: NodeFields): number {
   const min = fields[KEYS.min]?.value
-  return typeof min === 'number' && Number.isSafeInteger(min) && min > 0 ? min : 0
+  if (typeof min === 'number' && Number.isSafeInteger(min) && min >= 0) return min
+  // Unknown (missing or invalid): the guest may have to choose, and nobody can say how many,
+  // so the group counts as required and unsatisfiable (its item is never orderable).
+  return Number.POSITIVE_INFINITY
 }
 
 interface RequiredGroup {

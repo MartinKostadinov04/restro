@@ -165,7 +165,7 @@ export interface ResolvedModifierGroup {
   readonly id: NodeId
   readonly itemId: NodeId
   readonly fields: ResolvedFields
-  /** True if `min` is at least 1: the guest must choose. */
+  /** True if `min` is at least 1 (or unknown): the guest must choose. */
   readonly required: boolean
   /** Its options (ordered by id: the document carries no order for them yet). */
   readonly optionIds: readonly NodeId[]

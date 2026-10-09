@@ -406,6 +406,19 @@ describe('computed priceFrom (required modifier groups)', () => {
     expect(codes(item(menu).issues)).toContain('required_group_unsatisfiable')
   })
 
+  it('a group whose minimum is unknown counts as required and unsatisfiable', () => {
+    const builder = withGroups(0, [300]).unset(group, 'min')
+    const menu = run(builder)
+    expect(menu.modifierGroups[group]).toMatchObject({ required: true })
+    expect(menu.modifierGroups[group]?.issues).toContainEqual({
+      code: 'required_missing',
+      severity: 'block_node',
+      nodeId: group,
+      fieldKey: 'min',
+    })
+    expect(item(menu).computed).toMatchObject({ orderable: false, priceFrom: null })
+  })
+
   it('a group with min above max is blocked, and its item cannot be ordered', () => {
     const builder = withGroups(2, [300, 150, 500])
     builder.unset(group, 'max')
