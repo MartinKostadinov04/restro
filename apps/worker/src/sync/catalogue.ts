@@ -35,6 +35,7 @@ import {
   canonicalJson,
   concludeFullPull,
   type IntegrationId,
+  isLocale,
   JOB_NAMES,
   type NodeId,
   prepareJob,
@@ -143,6 +144,7 @@ function mappingConfig(ctx: PullContext): MappingConfig {
     actor: `integration:${session.integration.id}`,
     observedAt: ctx.start.toISOString(),
     ...(config.allergen_detail_key ? { allergenDetailKey: config.allergen_detail_key } : {}),
+    ...(isLocale(config.default_locale) ? { defaultLocale: config.default_locale } : {}),
   }
 }
 
