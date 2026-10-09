@@ -35,6 +35,9 @@ const DB_SCRIPTS = fileURLToPath(new URL('../../../packages/db/scripts/', import
 
 const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
 
+/** Advisory lock key that serialises test-database set-up across processes. */
+const ROLES_LOCK = 7_311_020_926
+
 /** True when the integration test can run. */
 export const hasDatabase = ownerUrl !== ''
 
@@ -116,11 +119,23 @@ export async function createTestDatabase(): Promise<TestDatabase> {
       DATABASE_URL_OWNER: newOwnerUrl,
       ...(password ? { DATABASE_APP_PASSWORD: password } : {}),
     }
-    for (const script of ['migrate.ts', 'roles.ts']) {
-      await run(process.execPath, ['--disable-warning=ExperimentalWarning', DB_SCRIPTS + script], {
-        env,
-      })
-    }
+    // `db:roles` alters the cluster-wide role restro_app, and two test files setting up a
+    // database at the same moment make Postgres fail with "tuple concurrently updated". An
+    // advisory lock on the owner's maintenance connection (any process, same server) lines them up.
+    await withOwnerClient(ownerUrl, async (lock) => {
+      await lock.query('select pg_advisory_lock($1)', [ROLES_LOCK])
+      try {
+        for (const script of ['migrate.ts', 'roles.ts']) {
+          await run(
+            process.execPath,
+            ['--disable-warning=ExperimentalWarning', DB_SCRIPTS + script],
+            { env },
+          )
+        }
+      } finally {
+        await lock.query('select pg_advisory_unlock($1)', [ROLES_LOCK])
+      }
+    })
   } catch (error) {
     await drop().catch(() => undefined)
     throw error
