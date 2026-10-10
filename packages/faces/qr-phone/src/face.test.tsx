@@ -156,12 +156,15 @@ describe('what the face draws', () => {
   it('paints from the theme variables only, for a light and a dark screen', () => {
     const view = viewOf('no-images')
     const vars = themeVariables(view.theme)
-    expect(vars['--rq-bg']).toBe(view.theme.colors.background)
+    expect(vars['--rq-l-bg']).toBe(view.theme.colors.background)
     expect(vars['--rq-d-bg']).toBe(view.theme.colorsDark.background)
     expect(vars['--rq-radius']).toBe(`${view.theme.radius}px`)
     expect(vars['--rq-font']).toContain(view.theme.font)
     const html = render(view)
-    expect(html).toContain(`--rq-accent:${view.theme.colors.accent}`)
+    // An inline `--rq-bg` would beat the stylesheet's dark-scheme rule: the root carries only the
+    // light (`l-`) and dark (`d-`) sets, and the stylesheet picks between them.
+    expect(withoutStyle(html)).not.toMatch(/--rq-(?:bg|text|accent|surface):/)
+    expect(html).toContain(`--rq-l-accent:${view.theme.colors.accent}`)
     expect(renderToStaticMarkup(<QrPhoneFace view={view} scheme="dark" />)).toContain(
       'data-scheme="dark"',
     )

@@ -121,7 +121,7 @@ export function themeVariables(
   })
   const shadow = SHADOWS[Math.min(Math.max(Math.trunc(theme.shadow), 0), SHADOWS.length - 1)]
   return {
-    ...colours('', theme.colors),
+    ...colours('l-', theme.colors),
     ...colours('d-', theme.colorsDark),
     '--rq-font': fontStacks[theme.font] ?? `"${theme.font}", ${SYSTEM_FONTS}`,
     '--rq-radius': `${theme.radius}px`,

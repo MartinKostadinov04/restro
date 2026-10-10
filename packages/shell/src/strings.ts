@@ -12,6 +12,8 @@ import type { Allergen, DietaryLabel, Locale, MeasurementUnit } from '@restro/co
 export interface GuestStrings {
   /** The banner for a known table: "Table 12". A label that is not a plain number is shown as it is. */
   readonly table: (label: string) => string
+  /** The page's heading for a screen reader when the menu has no title of its own. */
+  readonly menu: string
   readonly language: string
   readonly sections: string
   readonly filters: string
@@ -102,6 +104,7 @@ const EN: Strings = {
   },
   guest: {
     table: (label) => (/^\d+[A-Za-z]?$/.test(label) ? `Table ${label}` : label),
+    menu: 'Menu',
     language: 'Language',
     sections: 'Menu sections',
     filters: 'Filter the menu',
@@ -170,6 +173,7 @@ const BG: Strings = {
   },
   guest: {
     table: (label) => (/^\d+[A-Za-z]?$/.test(label) ? `Маса ${label}` : label),
+    menu: 'Меню',
     language: 'Език',
     sections: 'Раздели на менюто',
     filters: 'Филтриране на менюто',

@@ -7,20 +7,20 @@
 // Tap targets are 44 px or more; text is never cut except the description, which has a "More"
 // button; motion is off for guests who ask for less of it.
 
-/** The variables of the dark scheme, mapped onto the ones the rules read. */
-const DARK = `
-  --rq-bg: var(--rq-d-bg);
-  --rq-surface: var(--rq-d-surface);
-  --rq-accent: var(--rq-d-accent);
-  --rq-on-accent: var(--rq-d-on-accent);
-  --rq-text: var(--rq-d-text);
-  --rq-muted: var(--rq-d-muted);
-  --rq-accent-text: var(--rq-d-accent-text);
-  --rq-border: var(--rq-d-border);
+/** The variables of one scheme (`l` light, `d` dark), mapped onto the ones the rules read. */
+const scheme = (prefix: 'l' | 'd') => `
+  --rq-bg: var(--rq-${prefix}-bg);
+  --rq-surface: var(--rq-${prefix}-surface);
+  --rq-accent: var(--rq-${prefix}-accent);
+  --rq-on-accent: var(--rq-${prefix}-on-accent);
+  --rq-text: var(--rq-${prefix}-text);
+  --rq-muted: var(--rq-${prefix}-muted);
+  --rq-accent-text: var(--rq-${prefix}-accent-text);
+  --rq-border: var(--rq-${prefix}-border);
 `
 
 export const FACE_CSS = `
-.rq-root {
+.rq-root {${scheme('l')}
   color-scheme: light dark;
   min-height: 100dvh;
   background: var(--rq-bg, Canvas);
@@ -31,9 +31,9 @@ export const FACE_CSS = `
   -webkit-text-size-adjust: 100%;
 }
 @media (prefers-color-scheme: dark) {
-  .rq-root:not([data-scheme="light"]) {${DARK}}
+  .rq-root:not([data-scheme="light"]) {${scheme('d')}}
 }
-.rq-root[data-scheme="dark"] {${DARK}}
+.rq-root[data-scheme="dark"] {${scheme('d')}}
 .rq-root[data-scheme="light"] { color-scheme: light; }
 .rq-root[data-scheme="dark"] { color-scheme: dark; }
 .rq-root *, .rq-root *::before, .rq-root *::after { box-sizing: border-box; }
@@ -43,6 +43,7 @@ export const FACE_CSS = `
 .rq-root ul { padding: 0; list-style: none; }
 .rq-root :where(fieldset) { min-width: 0; margin: 0; padding: 0; border: 0; }
 
+.rq-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .rq-page { max-width: 40rem; margin: 0 auto; padding: 0 16px 48px; }
 
 .rq-header { padding-top: 20px; }
@@ -53,7 +54,7 @@ export const FACE_CSS = `
 .rq-banner { display: inline-flex; align-items: center; min-height: 36px; margin-top: 12px; padding: 4px 14px; border-radius: 999px; background: var(--rq-accent, Highlight); color: var(--rq-on-accent, HighlightText); font-weight: 600; }
 .rq-menu-schedule { margin-top: 12px; color: var(--rq-accent-text, LinkText); font-weight: 600; }
 
-.rq-lang { display: flex; flex: none; overflow: hidden; border: 1px solid var(--rq-border, GrayText); border-radius: 999px; background: var(--rq-surface, Canvas); }
+.rq-lang { display: flex; flex: none; margin-inline-start: auto; overflow: hidden; border: 1px solid var(--rq-border, GrayText); border-radius: 999px; background: var(--rq-surface, Canvas); }
 .rq-lang button { min-width: 44px; min-height: 44px; padding: 0 12px; border: 0; background: transparent; font-weight: 500; }
 .rq-lang button[aria-pressed="true"] { background: var(--rq-accent, Highlight); color: var(--rq-on-accent, HighlightText); }
 

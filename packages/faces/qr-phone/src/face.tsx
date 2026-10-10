@@ -337,7 +337,10 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
             {title !== null ? (
               <Text text={title} locale={locale} as="h1" className="rq-title" slot="menu.title" />
             ) : (
-              <span />
+              // A page needs a heading; a menu without a title gets one for screen readers only.
+              <h1 className="rq-sr-only" lang={bcp47(locale)}>
+                {strings.menu}
+              </h1>
             )}
             {languages.length > 1 ? (
               <fieldset className="rq-lang" aria-label={strings.language}>
