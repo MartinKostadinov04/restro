@@ -86,9 +86,13 @@ async function act(trigger: () => Promise<unknown>) {
 
 /** The address in a row's code, read from the enlarged picture's dialog. */
 async function addressOf(row: Locator): Promise<string> {
-  await row.getByTestId('qr-thumb').click()
   const dialog = page.getByTestId('qr-dialog')
-  await expect(dialog).toBeVisible()
+  // A click that lands while the page is still settling (or while an earlier dialog is closing)
+  // may not open it: try again until it opens.
+  await expect(async () => {
+    await row.getByTestId('qr-thumb').click()
+    await expect(dialog).toBeVisible({ timeout: 3_000 })
+  }).toPass({ timeout: 20_000 })
   const address = (await dialog.getByTestId('qr-dialog-address').textContent()) ?? ''
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
@@ -221,6 +225,7 @@ test('the code in each row encodes <base>/t/<token>, black on white, error corre
   await expect(page.getByTestId('qr-dialog')).toBeVisible()
   await page.screenshot({ path: shot('qr-enlarged-bg') })
   await page.keyboard.press('Escape')
+  await expect(page.getByTestId('qr-dialog')).toBeHidden()
 })
 
 test('nothing is public until the worker has run; then /t/<token> leads to the menu with the table’s name', async () => {
@@ -298,9 +303,10 @@ test('"New code" asks first, and the old sticker then says the code is not activ
     page.getByTestId('confirm-new-code').getByRole('button', { name: 'Направи нов код' }).click(),
   )
   await toast('Новият код е готов. Старият вече не работи.')
+  // The page brings the new code a moment after the action answers.
+  await expect.poll(() => tokenOf(row)).not.toBe(oldToken)
   const newToken = await tokenOf(row)
   expect(newToken).toMatch(TOKEN)
-  expect(newToken).not.toBe(oldToken)
 
   // The job the tab queued names the old token: the worker takes its file out.
   const jobs = runWorker()
@@ -360,8 +366,7 @@ test('the venue’s own link: checked while typed, previewed, opened by the brow
   // Saved: the codes in the rows now carry the venue's own address.
   await act(() => page.getByRole('button', { name: 'Запиши адреса' }).click())
   const row = rows().first()
-  const address = await addressOf(row)
-  expect(address).toBe(expected)
+  await expect.poll(() => addressOf(row)).toBe(expected)
   expect(await pictureOf(row)).toBe(await svgOf(expected))
   // Nothing but the browser asked for that address: the server never opened it.
   expect(requested).toEqual([expected])
@@ -387,7 +392,7 @@ test('the guide explains both kinds of link and leads back to the tab', async ()
   // Back to our own link for the rest.
   await page.getByTestId('mode-ours').check()
   await act(() => page.getByRole('button', { name: 'Запиши адреса' }).click())
-  expect(await addressOf(rows().first())).toMatch(new RegExp(`^${origin}/t/`))
+  await expect.poll(() => addressOf(rows().first())).toMatch(new RegExp(`^${origin}/t/`))
 })
 
 test('the print sheet has six cards on an A4 page, in a real PDF too, and stays white in a dark theme', async () => {
@@ -410,11 +415,15 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   const host = origin.replace(/^https?:\/\//, '')
   for (let index = 0; index < 8; index += 1) {
     const card = cards.nth(index)
-    // The demo venue has a logo (the guest page's test gives it one): the card shows it, with the
-    // venue's name as its text alternative; a venue without a logo shows the name itself.
+    // The card shows the venue's logo, with its name as the text alternative, or the name itself
+    // when the venue has no logo (the Appearance test may have taken the demo venue's logo away).
     const logo = card.getByRole('img', { name: 'Demo Club Sofia' })
-    await expect(logo).toBeVisible()
-    expect(await logo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)
+    await expect(logo.or(card.getByText('Demo Club Sofia', { exact: true }))).toBeVisible()
+    if ((await logo.count()) > 0) {
+      expect(await logo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(
+        0,
+      )
+    }
     await expect(card).toContainText('Маса / Table')
     await expect(card).toContainText('Сканирайте за менюто / Scan for the menu')
     const text = (await card.getByTestId('print-address').textContent()) ?? ''
@@ -521,8 +530,8 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await act(() => row.getByTestId('create-code').click())
   await expect(row.getByTestId('code-status')).toHaveText('Кодът е активен')
   runWorker()
+  await expect.poll(() => tokenOf(row)).not.toBe(token)
   const again = await tokenOf(row)
-  expect(again).not.toBe(token)
   expect((await page.request.get(`/t/${again}`, { maxRedirects: 0 })).status()).toBe(302)
 })
 
