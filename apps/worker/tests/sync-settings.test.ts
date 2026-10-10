@@ -320,11 +320,13 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
     it('hides every item the pull created: manual layer, source manual, actor system', async () => {
       await settings({}, { new_items: 'hold' })
       await fullPull()
-      const items = await itemIds()
+      // Compared in one order (JavaScript's): SQL `order by` follows the database collation, which
+      // differs between the CI Postgres (en_US) and the local one (C) for mixed-case ids.
+      const items = (await itemIds()).sort()
       expect(items.length).toBeGreaterThan(5)
 
       const hides = await manualHides()
-      expect(hides.map((row) => row.node_id)).toEqual(items)
+      expect(hides.map((row) => row.node_id).sort()).toEqual(items)
       for (const row of hides) {
         expect(row).toMatchObject({
           value: false,
