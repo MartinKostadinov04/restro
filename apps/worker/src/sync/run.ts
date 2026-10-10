@@ -1,8 +1,8 @@
 // One tracked run of a sync job: a `job_runs` row from start to finish, and what a failure means.
 //
-//   - credentials barsy refuses (401/403): the integration goes to `error` with "Wrong user or
-//     password"; the run fails and the job is NOT retried (retrying a wrong password only risks
-//     locking the API user);
+//   - credentials barsy refuses (401/403): the integration goes to `error` with the status code
+//     `wrong_credentials`; the run fails and the job is NOT retried (retrying a wrong password only
+//     risks locking the API user);
 //   - a host this worker may not use, credentials that do not open, an integration without
 //     credentials: the run fails with that reason and the job is not retried; the first two also
 //     put the integration in `error`;
@@ -35,15 +35,16 @@ export interface RunReport {
   readonly status?: 'completed' | 'failed'
 }
 
-/** The wording the Integration tab shows. */
-export const WRONG_CREDENTIALS = 'Wrong user or password'
+/** The status code the Integration tab translates (the web app owns the wording). */
+export const WRONG_CREDENTIALS = 'wrong_credentials'
 
-/** Why a run ended with a `SyncError`, in words for the Integration tab. */
+/** Why a run ended with a `SyncError`, as a status code for the Integration tab. */
 function statusDetailFor(error: SyncError): string | null {
   switch (error.code) {
     case 'host_refused':
+      return 'host_refused'
     case 'credentials_unreadable':
-      return error.message
+      return 'credentials_unreadable'
     default:
       return null
   }

@@ -544,7 +544,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       'select status, status_detail from restro.integrations where id = $1',
       [world.integrationId],
     )
-    expect(row).toMatchObject({ status: 'error', status_detail: 'Wrong user or password' })
+    expect(row).toMatchObject({ status: 'error', status_detail: 'wrong_credentials' })
   })
 
   it('a venue that is not mapped fails the run without calling barsy', async () => {

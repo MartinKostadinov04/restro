@@ -567,6 +567,11 @@
         "wrongCredentials": "Wrong user or password"
       }
     },
+    "statusDetail": {
+      "wrong_credentials": "Wrong user or password.",
+      "host_refused": "This barsy address is not allowed.",
+      "credentials_unreadable": "The saved credentials cannot be read. Enter them again."
+    },
     "barsyVenue": {
       "title": "barsy venue",
       "description": "One barsy installation can hold several venues. Choose the one that is this venue.",
