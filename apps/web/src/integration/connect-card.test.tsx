@@ -89,6 +89,20 @@ describe('the Connection card', () => {
     expect(document.body.innerHTML).not.toContain(PASSWORD)
   })
 
+  it('says why a new address was refused while the connection holds a menu (host_change_blocked)', async () => {
+    const user = userEvent.setup()
+    actions.saveConnectionAction.mockResolvedValue({ ok: false, error: 'host_change_blocked' })
+    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={integrationView()} />)
+    await user.click(screen.getByRole('button', { name: 'Change credentials' }))
+    await fill(user, 'https://other.barsyonline.com')
+    await user.click(screen.getByRole('button', { name: 'Save and check' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe(
+      'This connection already holds a menu from another barsy installation. Changing the address would mix the two menus.',
+    )
+    expect(document.body.innerHTML).not.toContain(PASSWORD)
+  })
+
   it('shows saved credentials as a fact, with a way to change them that asks for both again', async () => {
     const user = userEvent.setup()
     renderWithIntl(<ConnectCard venueId={VENUE_ID} view={integrationView()} />)

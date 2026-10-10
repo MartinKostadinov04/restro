@@ -1018,6 +1018,7 @@
       "invalid_host": "Enter the https address of the barsy installation, without a port or a path.",
       "sync_keys_missing": "The sync keys are not set up. Ask the Restro team.",
       "host_in_use": "Another connection of this organisation already uses that address.",
+      "host_change_blocked": "This connection already holds a menu from another barsy installation. Changing the address would mix the two menus.",
       "barsy_venue_taken": "That barsy venue already belongs to another venue.",
       "not_ready": "Not ready yet: finish the earlier steps first.",
       "already_running": "A sync is already queued or running.",

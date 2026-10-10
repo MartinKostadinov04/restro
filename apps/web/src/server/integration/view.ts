@@ -155,6 +155,8 @@ export type IntegrationErrorCode =
   | 'invalid_host'
   | 'sync_keys_missing'
   | 'host_in_use'
+  /** The connection already holds a menu: another installation's ids would land on its items. */
+  | 'host_change_blocked'
   | 'barsy_venue_taken'
   | 'not_ready'
   | 'already_running'

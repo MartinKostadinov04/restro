@@ -46,6 +46,7 @@ import {
   integrations,
   type JobRun,
   jobRuns,
+  sourceLinks,
   sourceRecords,
   venues,
   withTenant,
@@ -423,7 +424,9 @@ async function queueConnect(
  *
  * Changing the host asks for the credentials again by construction (every save carries them) and
  * is a different installation: its status goes back to `new`, and the cached trees, the sync
- * state and the barsy-venue choices of the old host are forgotten.
+ * state and the barsy-venue choices of the old host are forgotten. It is refused
+ * (`host_change_blocked`) while the connection holds a menu, since the ids of another
+ * installation would land on the old items.
  */
 export async function saveConnection(
   scope: IntegrationScope,
@@ -473,6 +476,8 @@ export async function saveConnection(
 
   const hostChanged = existing.host !== host
   if (hostChanged) {
+    // Refused before anything is written. The same host with new credentials is not a change.
+    if (await integrationHasLinks(scope, existing.id)) return fail('host_change_blocked')
     const [taken] = await withTenant(scope.pool, scope.tenantId, (tx) =>
       tx
         .select({ id: integrations.id })
@@ -483,6 +488,22 @@ export async function saveConnection(
     if (taken && taken.id !== existing.id) return fail('host_in_use')
   }
   return replaceCredentials(scope, services, existing.id, host, sealFor, hostChanged)
+}
+
+/**
+ * Whether the integration already holds any menu: a link from one of its barsy objects to an item,
+ * section or option of ours, in any state. barsy ids are unique only per installation, so another
+ * installation's article 11 would land on our old item 11 and keep its photo and copy (B1-F14).
+ */
+async function integrationHasLinks(scope: IntegrationScope, integrationId: string) {
+  const [row] = await withTenant(scope.pool, scope.tenantId, (tx) =>
+    tx
+      .select({ integrationId: sourceLinks.integrationId })
+      .from(sourceLinks)
+      .where(eq(sourceLinks.integrationId, integrationId))
+      .limit(1),
+  )
+  return row !== undefined
 }
 
 type Sealed = { readonly sealed: string } | { readonly error: IntegrationErrorCode }
