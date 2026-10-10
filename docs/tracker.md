@@ -424,17 +424,31 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - different catalogues hold different items (catalogue 72 = ids 7403…, no overlap with catalogue 1), and an unfiltered list returns the same items with the same prices whichever venue asks;
   - every item carries a per-venue "for sale" map (`is_for_sale_barsys`), e.g. `{"1":"1","10":"1","70":"1","102":"1"}` on catalogue-72 items. That is barsy's own "item → venues" structure, and our mapping already reads it correctly (`catalogue.ts:307`).
 
-  Still to confirm (docs / Lukanet, T39):
-  - can two venues share one catalogue;
-  - are prices per venue;
-  - what the map means for venues on another catalogue.
+  **Verified in the official docs, 10-11** (Martin signed in; the lead read the pages):
+  - [Търговски обект](https://docs.lukanet.com/barsy.help/210-dictionary/barsy.html): a venue's catalogue is "a shared or individual set of articles". Example given: a restaurant and a bar with their own tills and stores that "may share one catalogue". **So two venues can share a catalogue.**
+  - [Articles_getlist](https://docs.lukanet.com/barsy.api/methods/articles/getlist.html):
+    - `menu_id` is "the catalogue the article belongs to";
+    - `article_name` is unique within a catalogue;
+    - `is_for_sale_barsys` = "exceptions per venue from the base `is_for_sale` flag (0 cannot be sold, 1 can)". Our reading "the venue exception wins" (`catalogue.ts:307`) is right; B1-F7 is closed;
+    - `actual_price` = base price from the catalogue, with no discounts or promotions;
+    - `current_price` = price after price rules, "in the context of a specific till/client" (filters `pos_id`, `client_id`, `client_group_id`, `delivery_type_id`, `currency_id`);
+    - `delete_flag` is a filter (default 0), so deleted articles *can* be listed with `delete_flag: 1` (B1-F8/L5);
+    - `order_by: cat_weight_deep` = the article's weight in its category, limited to the `cat_id_deep` subtree (B1-L8).
+  - [Ценово правило](https://docs.lukanet.com/barsy.help/210-dictionary/pricelist.html): a rule applies by what (article, category, whole catalogue), when (dates, weekdays, hours), **where (venue)** and for whom (client, client group, country, delivery type); the more specific rule wins. **So prices can differ per venue and by time of day.**
 
   Proposal: follow barsy:
   - one Restro item per barsy item;
   - per-venue sale state and price stored per venue (the till layer already does this);
   - read and "deleted" checks per catalogue, not per venue (fixes A2's rule-6 concern).
 
-  Decides the sync unit in CF-05/CF-07 — Martin + Claude
+  Refined after the docs:
+  - article links are installation-wide, because article ids are unique per installation;
+  - each venue's pull reads prices and for-sale in that venue's context and writes them venue-scoped (as today);
+  - absence is concluded per catalogue (`menu_id`) from a complete read of it;
+  - open design point for CF-05/CF-07 (Opus): venues sharing a catalogue may pick different category roots, so the "complete read" unit must be the catalogue, not the chosen root;
+  - `current_price` depends on the till (`pos_id`) and the time. Which till context we read in, and how time-based rules ("happy hour") reach the menu, is part of the architecture doc's "Prices that change by time" — re-check it in CF-07.
+
+  Martin's direction 10-11: follow barsy's own structure. Decides the sync unit in CF-05/CF-07 — Claude
 - [ ] T69. **Mistral Software (mistral.bg, Zamboo) as a second till** (Martin asked 10-11). Desk research 10-11: no integration hub found that covers barsy or Mistral (Deliverect, HubRise, GetOrder, Bitebell list neither); barsy has public API docs, Mistral has none online (its integrations page is "under construction"); TabL.bg (Bulgarian QR menu) integrates "where the POS provides an API" but names no tills; Digital Box groups barsy, Mistral, Microinvest and TabL as members, with no shared integration layer found. Next: ask Mistral (office@mistral.bg) for API documentation, a test installation and terms, as with barsy (T39) — Martin
 - [ ] T63. Tags follow-ups: the shell passes a tag's colour and the venue's tag order to the face (snapshot tag entry gets an optional `order`; `ViewTag` gets `color`); make the colour required at `menu-snapshot/2` — Claude (small task)
 - [x] T64. (10-10: keyboard and mouse drags wait for the save response; web component tests get 15 s and Testing Library waits 5 s; the tables e2e works beside the real worker; `worker.integration` db:roles race still seen once — reopen if it recurs) Test flakes: `worker.integration.test.ts` fails now and then in the full run (concurrent `db:roles`, "tuple concurrently updated"); keyboard drags in `composer.spec.ts` now wait for the save response (fixed 10-10) — Claude
@@ -447,7 +461,15 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - non-public places (`is_public` 0) are listed and coded too → no code unless public;
   - all 5 demo venues have halls (recorded 10-11: `fixtures/demo/places-bid{10,102,70,1,40}.json`); every hall of every venue has exactly one `--` place 0, so it looks automatic;
   - sort halls by barsy's `salon_weight` if the docs confirm it is the hall order.
-  — Martin to confirm the defaults, then Claude (Sonnet)
+
+  **Docs, read 10-11:**
+  - [Places_getlist](https://docs.lukanet.com/barsy.api/methods/places/getlist.html): places are "tables, bar stools, rooms, courts, billiard tables, booths — any physical object that can be occupied or reserved"; `length` defaults to 10000 (effectively unpaged); there are filters `salon_id`, `place_type`, `is_public` and `salon_delete_flag` (deleted halls exist).
+  - [Настройки на места](https://docs.lukanet.com/barsy.help/110-admin/180-settings/places/scheme_editor.html):
+    - a hall's **weight is the hall order** (`salon_weight`, confirmed);
+    - **every hall gets one default place automatically**, editable. That is the `--` place 0, so hide it by default;
+    - **place types are defined by each venue** (example "Сепаре" = booth, with seats). So "which types get codes" must be chosen per venue from that venue's own type list, not a fixed list. Defaults: types named like table or bar stool pre-selected, everything else off.
+
+  — Claude (Sonnet), in CF-10
 - [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins. Same for the job queue key (per integration: a second venue's pull is dropped while the first is queued) and the absence check (runs only with exactly one mapped venue) — Claude
 - [ ] T57. Photos hosted outside the barsy host (demo: 3 of 53 on `imagedelivery.net`) are refused today. Lead's recommendation: a `BARSY_PHOTO_HOSTS` allowlist, fetched **anonymously only** (credentials only ever go to the integration's own origin) — Claude, after checking real venue data
 - [ ] T58. Worker housekeeping: README "The worker" env table (BARSY_*, ASSET_STORE, R2_*, `.env.worker.local`); a start-up sweep that fails job runs stuck in `running`; `places.state_changed_at` (today `updated_at` stands in); decide whether the worker declares the AWS SDK instead of tsup bundling it; date-fns/@date-fns/tz vs the `Intl` code the sync uses (CLAUDE.md says date-fns) — Claude (Haiku/Sonnet tasks)
