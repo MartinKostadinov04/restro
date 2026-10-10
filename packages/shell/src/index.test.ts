@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
-import { PACKAGE_NAME } from './index'
+import * as shell from './index'
 
-describe('@restro/shell', () => {
-  it('is wired into the workspace', () => {
-    expect(PACKAGE_NAME).toBe('@restro/shell')
+describe('@restro/shell public surface', () => {
+  it('exports the entry points of brief S3-02', () => {
+    for (const name of [
+      'buildViewModel',
+      'validateManifest',
+      'FaceManifestSchema',
+      'generatePalette',
+      'contrastRatio',
+      'semanticColours',
+      'parseContext',
+    ]) {
+      expect(Object.keys(shell), name).toContain(name)
+    }
   })
 })
