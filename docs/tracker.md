@@ -192,6 +192,16 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - **6. A barsy price change arrives within ~6 min:** the automatic incremental check ran on its own at 02:45 (tree unchanged, 0 changed articles). The price change itself needs Martin's demo admin login.
 - **7–8. Deletion rule, tenant isolation, rule 5:** covered by tests (1,589 passing).
 
+## Stage 3 acceptance run (local, real barsy demo, 10-10 ~18:15; Martin chose local now, staging at first deploy)
+- **Setup:** acceptance database with the real demo menu (Публично меню, 51 visible items, photos in R2 with webp variants in the local publish folder); worker and production web build on the latest `s3/guest`.
+- **Tags (pass):** created "Сезонно / Seasonal" and bulk-assigned it to the 8 "Летни предложения" items.
+- **Sold out tonight (pass):** marked the eggplant dish from its row menu; no new version was made.
+- **Publish (pass):** the Publish tab showed 9 waiting changes, and Publish made version 2 live in a few seconds.
+- **Guest page on a phone viewport (pass):** sections in barsy order, the language from the browser (EN), € prices, photos, the "Seasonal" filter chip, the "Sold out" item greyed out, and "New" badges.
+- **QR codes (pass):** created codes for all 92 barsy demo tables; `/t/<code>` redirected to the menu with the "Table 0" banner. The base address is this PC's network address (`http://192.168.50.113:3000`), so a phone on the same Wi-Fi can scan (the Windows firewall may need to allow port 3000).
+- **Covered by automated tests only:** settings (interval, daily time, auto/manual publish, hold new items), rollback and pause, V10/V11 gates, the 07:00 rollover, rule 5 properties. 2,593 unit/integration tests and 83 browser tests pass.
+- **Seen:** `/t/<code>` does not pass `?lang=` through to the menu (the browser language decides) — minor, T65.
+
 ## Conflicts between the Menu Engine doc and earlier decisions
 - **C1. Build order vs D4/D2** — **resolved by D39.**
 - **C2. Open-account rounds vs D5** — resolved on the product side (D5). barsy side open (Q21, Q47); recommendation P41.
@@ -394,6 +404,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   — Claude, before the pilot
 - [ ] T63. Tags follow-ups: the shell passes a tag's colour and the venue's tag order to the face (snapshot tag entry gets an optional `order`; `ViewTag` gets `color`); make the colour required at `menu-snapshot/2` — Claude (small task)
 - [x] T64. (10-10: keyboard and mouse drags wait for the save response; web component tests get 15 s and Testing Library waits 5 s; the tables e2e works beside the real worker; `worker.integration` db:roles race still seen once — reopen if it recurs) Test flakes: `worker.integration.test.ts` fails now and then in the full run (concurrent `db:roles`, "tuple concurrently updated"); keyboard drags in `composer.spec.ts` now wait for the save response (fixed 10-10) — Claude
+- [ ] T65. `/t/<token>` keeps an optional `lang` (and any future guest parameter) when it redirects to `/m/<slug>` — Claude (Haiku)
 - [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins. Same for the job queue key (per integration: a second venue's pull is dropped while the first is queued) and the absence check (runs only with exactly one mapped venue) — Claude
 - [ ] T57. Photos hosted outside the barsy host (demo: 3 of 53 on `imagedelivery.net`) are refused today. Lead's recommendation: a `BARSY_PHOTO_HOSTS` allowlist, fetched **anonymously only** (credentials only ever go to the integration's own origin) — Claude, after checking real venue data
 - [ ] T58. Worker housekeeping: README "The worker" env table (BARSY_*, ASSET_STORE, R2_*, `.env.worker.local`); a start-up sweep that fails job runs stuck in `running`; `places.state_changed_at` (today `updated_at` stands in); decide whether the worker declares the AWS SDK instead of tsup bundling it; date-fns/@date-fns/tz vs the `Intl` code the sync uses (CLAUDE.md says date-fns) — Claude (Haiku/Sonnet tasks)
