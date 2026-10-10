@@ -115,6 +115,10 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - Refused writes are in `job_runs` counters and `error_summary` text; S2-05 adds structured details.
   - **Demo catalogue:** the categories under root 1091 have no public titles, so the resolver blocks those sections. Use root **1171** for the acceptance run.
   - The ticks list tenants from `auth_organization` (organisation id = tenant id).
+- **Staging (10-10, Martin's OK):**
+  - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
+  - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
+- Dependencies approved by Martin 10-10: `sharp` (worker, photo variants), `qrcode` (QR images); the palette function is written in-house instead of `chroma-js`.
 - Staging migrations: run by the deploy pipeline (Railway pre-deploy) once Railway exists; the one-off bootstrap of Supabase `restro-staging` runs from the lead's machine only with Martin's explicit OK (`RESTRO_DB_ALLOW_REMOTE=1`, runbook `docs/runbooks/supabase-setup.md`).
 - **Doc fixes to apply in one pass at the end of Stage 1:** specials sit under the menu only (series never under many); Section hints are two fields `hint_color`/`hint_icon`; trace 4 writes `for_sale = false` (no `sold_out` field); price = `locked` + `never_when_orderable`; mapping-only fields (`slug`, Option `description`) to add to the template; scopes use our `vn_` ids, never a barsy `bid`; `value_hash` is SHA-256; refresh `docs/architecture/` mirrors from the live doc.
 
