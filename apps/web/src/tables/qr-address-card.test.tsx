@@ -33,7 +33,7 @@ describe('the address card, "our link"', () => {
   })
 
   it('previews the typed base address and saves it, leaving the own pattern as it was', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<QrAddressCard view={view()} />)
     await user.type(screen.getByTestId('base-url'), 'http://192.168.1.20:3000/')
     expect(screen.getByTestId('qr-preview').textContent).toBe(
@@ -52,7 +52,7 @@ describe('the address card, "our link"', () => {
   })
 
   it('names what is wrong with a base address while it is typed, and keeps Save off', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<QrAddressCard view={view()} />)
     await user.type(screen.getByTestId('base-url'), 'club.bg')
     expect((await screen.findByRole('alert')).textContent).toBe(
@@ -66,7 +66,7 @@ describe('the address card, "our link"', () => {
   })
 
   it('goes back to the default with one click', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(
       <QrAddressCard
         view={view({
@@ -118,7 +118,7 @@ describe('the address card, "the venue\'s own link"', () => {
   }
 
   it('checks the pattern as it is typed with the same rules as the server', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await openOwn(user)
     const field = screen.getByTestId('own-pattern')
     expect(save().disabled).toBe(true)
@@ -144,7 +144,7 @@ describe('the address card, "the venue\'s own link"', () => {
 
   it('previews the final address with a real table’s code and opens it in a new tab, fetching nothing', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await openOwn(user)
     await user.type(screen.getByTestId('own-pattern'), 'https://menu.club.bg/t/{{token}')
     expect(screen.getByTestId('qr-preview').textContent).toBe(`https://menu.club.bg/t/${TOKEN_A}`)
@@ -158,7 +158,7 @@ describe('the address card, "the venue\'s own link"', () => {
   })
 
   it('has no test link until a table has a code, and says why', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await openOwn(user, view({ sample: null, coded: 0 }))
     await user.type(screen.getByTestId('own-pattern'), 'https://menu.club.bg/t/{{token}')
     expect(screen.getByText('Example of an address (no table has a code yet)')).toBeTruthy()
@@ -172,7 +172,7 @@ describe('the address card, "the venue\'s own link"', () => {
   })
 
   it('saves the pattern with the saved base address untouched', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await openOwn(user)
     await user.type(screen.getByTestId('own-pattern'), 'https://menu.club.bg/t/{{token}')
     await user.click(save())
@@ -193,7 +193,7 @@ describe('the address card, "the venue\'s own link"', () => {
       field: 'ownPattern',
       problem: 'not_https',
     })
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await openOwn(user)
     await user.type(screen.getByTestId('own-pattern'), 'https://menu.club.bg/t/{{token}')
     await user.click(save())
@@ -201,7 +201,7 @@ describe('the address card, "the venue\'s own link"', () => {
   })
 
   it('links to the guide, with the venue so that "back" returns to the tab', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     await openOwn(user)
     const link = screen.getByTestId('guide-link')
     expect(link.textContent).toBe('How do I use my own link?')
@@ -209,7 +209,7 @@ describe('the address card, "the venue\'s own link"', () => {
   })
 
   it('reads in Bulgarian', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<QrAddressCard view={view()} />, { locale: 'bg' })
     await user.click(screen.getByTestId('mode-own'))
     expect(screen.getByText('Адрес в кодовете')).toBeTruthy()

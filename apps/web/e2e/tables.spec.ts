@@ -64,7 +64,9 @@ let origin: string
 const rows = () => page.getByTestId('table-row')
 const rowOf = (number: string): Locator =>
   rows().filter({
-    has: page.getByTestId('table-number').filter({ hasText: new RegExp(`^номер в barsy: ${number}$`) }),
+    has: page
+      .getByTestId('table-number')
+      .filter({ hasText: new RegExp(`^номер в barsy: ${number}$`) }),
   })
 
 /**

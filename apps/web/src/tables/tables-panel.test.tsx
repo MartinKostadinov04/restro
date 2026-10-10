@@ -96,7 +96,7 @@ describe('the Tables & QR tab', () => {
   })
 
   it('opens the code large with its address, and offers PNG and SVG downloads', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     const coded = rowOf(CODED)
     const png = within(coded).getByTestId('download-png') as HTMLAnchorElement
@@ -120,7 +120,7 @@ describe('the Tables & QR tab', () => {
       issued: 4,
       skippedNoLabel: 1,
     })
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     await user.click(screen.getByTestId('create-all'))
     await waitFor(() => expect(createAllCodesAction).toHaveBeenCalledWith({ venueId: VENUE_ID }))
@@ -137,7 +137,7 @@ describe('the Tables & QR tab', () => {
       issued: 0,
       skippedNoLabel: 0,
     })
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     await user.click(screen.getByTestId('create-all'))
     await waitFor(() =>
@@ -149,7 +149,7 @@ describe('the Tables & QR tab', () => {
   })
 
   it('creates one code', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     await user.click(within(rowOf(PLAIN)).getByTestId('create-code'))
     await waitFor(() => expect(issueCodeAction).toHaveBeenCalledWith({ tableId: PLAIN }))
@@ -157,7 +157,7 @@ describe('the Tables & QR tab', () => {
   })
 
   it('asks before a new code: the printed sticker stops working; Cancel changes nothing', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     await user.click(within(rowOf(CODED)).getByTestId('new-code'))
     const dialog = await screen.findByTestId('confirm-new-code')
@@ -179,7 +179,7 @@ describe('the Tables & QR tab', () => {
   })
 
   it('asks before turning a code off', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     await user.click(within(rowOf(CODED)).getByTestId('turn-off-code'))
     await user.click(
@@ -192,7 +192,7 @@ describe('the Tables & QR tab', () => {
   })
 
   it('renames a table when the name box is left, and clears the name with an empty box', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     const box = within(rowOf(PLAIN)).getByTestId('table-name') as HTMLInputElement
     expect(box.placeholder).toBe('10')
@@ -212,7 +212,7 @@ describe('the Tables & QR tab', () => {
 
   it('shows why an action failed, and puts the old name back', async () => {
     vi.mocked(renameTableAction).mockResolvedValue({ ok: false, error: 'no_label' })
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     const box = within(rowOf(NAMELESS)).getByTestId('table-name') as HTMLInputElement
     await user.type(box, 'x')
