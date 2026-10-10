@@ -30,7 +30,9 @@ function projectExtras(dir: string) {
   if (dir !== 'apps/web') return {}
   return {
     resolve: { alias: { '@': toPath('apps/web/src') } },
-    test: { setupFiles: [toPath('apps/web/vitest.setup.ts')] },
+    // Component tests with user-event run several seconds under a full parallel run on this PC;
+    // 15 s keeps them from timing out without hiding a real hang.
+    test: { setupFiles: [toPath('apps/web/vitest.setup.ts')], testTimeout: 15_000 },
   }
 }
 

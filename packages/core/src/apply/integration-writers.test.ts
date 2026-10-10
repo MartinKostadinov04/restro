@@ -25,7 +25,7 @@ import { buildJobRunDetails, finishJobRun, MAX_DETAIL_ENTRIES, startJobRun } fro
 import { provisionTenant, provisionVenue } from './provision'
 import { createIntegration, updateIntegration } from './sources'
 import { readCachedTree, storeCachedTree } from './sync-config'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe('buildJobRunDetails', () => {
   const rejection = (over: Partial<ApplyRejection> = {}): ApplyRejection => ({
@@ -83,9 +83,11 @@ describe.skipIf(!hasDatabase)('the Integration tab’s writers (as the restro_ap
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-integration-writer-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Integration tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueA = (await provisionVenue(app, tenant, { name: 'Venue A', slug: 'venue-a' })).id
-    venueB = (await provisionVenue(app, tenant, { name: 'Venue B', slug: 'venue-b' })).id
-    otherTenantVenue = (await provisionVenue(app, otherTenant, { name: 'Elsewhere', slug: 'e' })).id
+    venueA = (await provisionVenue(app, tenant, { name: 'Venue A', slug: testSlug('venue-a') })).id
+    venueB = (await provisionVenue(app, tenant, { name: 'Venue B', slug: testSlug('venue-b') })).id
+    otherTenantVenue = (
+      await provisionVenue(app, otherTenant, { name: 'Elsewhere', slug: testSlug('e') })
+    ).id
     integrationId = (await createIntegration(app, tenant, { kind: 'barsy', host: 'tab.test' })).id
     await upsertBarsyVenues(app, tenant, integrationId, [
       { bid: 1, name: 'First' },
@@ -263,6 +265,25 @@ describe.skipIf(!hasDatabase)('the Integration tab’s writers (as the restro_ap
       // The text is still written, for readers of older rows.
       expect(stored?.errorSummary).toContain('deletion check skipped')
       expect(stored?.errorSummary).toContain('1 write refused')
+    })
+
+    it('writes deletionCheckSkipped into details when given, and leaves it out otherwise', async () => {
+      const skipped = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+      await finishJobRun(app, tenant, skipped.id, {
+        status: 'completed',
+        deletionCheckSkipped: true,
+      })
+      const [storedSkipped] = await withTenant(app, tenant, (tx) =>
+        tx.select().from(jobRuns).where(eq(jobRuns.id, skipped.id)),
+      )
+      expect(storedSkipped?.details as JobRunDetails).toMatchObject({ deletionCheckSkipped: true })
+
+      const complete = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+      await finishJobRun(app, tenant, complete.id, { status: 'completed' })
+      const [storedComplete] = await withTenant(app, tenant, (tx) =>
+        tx.select().from(jobRuns).where(eq(jobRuns.id, complete.id)),
+      )
+      expect(storedComplete?.details).toEqual({ notes: [], refused: [] })
     })
 
     it('a run that finishes with nothing to say still has empty details', async () => {

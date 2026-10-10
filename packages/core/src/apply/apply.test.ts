@@ -27,7 +27,7 @@ import { type ApplyResult, apply, BARSY_LINK_TYPES } from './apply'
 import * as applyEntry from './index'
 import { loadMenuDocument } from './load-document'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 // Distinctive external ids, so a leak into the read model would be found by a text search.
 const ARTICLE = '918273645'
@@ -206,9 +206,13 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-apply-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Apply test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id
-    secondVenueId = (await provisionVenue(app, tenant, { name: 'Second', slug: 'second' })).id
-    otherVenueId = (await provisionVenue(app, otherTenant, { name: 'Other', slug: 'main' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') })).id
+    secondVenueId = (
+      await provisionVenue(app, tenant, { name: 'Second', slug: testSlug('second') })
+    ).id
+    otherVenueId = (
+      await provisionVenue(app, otherTenant, { name: 'Other', slug: testSlug('main') })
+    ).id
     await withTenantWrite(app, tenant, (tx) =>
       tx.execute(sql`
         insert into restro.integrations (id, tenant_id, kind, host)

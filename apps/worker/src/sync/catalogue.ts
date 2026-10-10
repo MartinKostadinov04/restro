@@ -34,9 +34,11 @@ import {
   type ChangeSetOp,
   canonicalJson,
   concludeFullPull,
+  holdsNewItems,
   type IntegrationId,
   isLocale,
   JOB_NAMES,
+  MAX_RETIRED_TOKENS,
   type NodeId,
   prepareJob,
   sha256Hex,
@@ -75,6 +77,8 @@ export interface PullOutcome {
   readonly counters: Record<string, number>
   /** Lines for the job run's text: what was skipped and why. */
   readonly notes: string[]
+  /** True when the full pull did not conclude absence (a failed page, or several venues). */
+  readonly deletionCheckSkipped: boolean
   readonly refused: ApplyRejection[]
   /** True when every page was read (the cursor may advance). */
   readonly complete: boolean
@@ -341,6 +345,7 @@ async function syncFetched(
 ): Promise<{
   counters: Record<string, number>
   notes: string[]
+  deletionCheckSkipped: boolean
   totals: AppliedTotals
   complete: boolean
 }> {
@@ -349,6 +354,7 @@ async function syncFetched(
   const integrationId = session.integration.id as IntegrationId
   const startIso = start.toISOString()
   const notes: string[] = []
+  let deletionCheckSkipped = false
   const counters: Record<string, number> = {}
 
   const menu = await provisionMenu(env.pool, tenantId, target.venueId)
@@ -389,7 +395,15 @@ async function syncFetched(
   counters.records_new = appended.filter((record) => record.created).length
 
   const totals = emptyTotals()
-  await applyMapped(env, tenantId, mapping.changeSet, totals)
+  // `publish.new_items = hold`: the items this run creates are hidden for a manager to review.
+  const holding = holdsNewItems(session.integration.config)
+  await applyMapped(
+    env,
+    tenantId,
+    mapping.changeSet,
+    totals,
+    holding ? { runId: ctx.runId, observedAt: startIso } : undefined,
+  )
 
   // Mark what this run saw. Only links that exist can be marked (a `delete_flag` article that
   // was never linked has none).
@@ -441,10 +455,12 @@ async function syncFetched(
   const complete = fetched.pagesOk.every((ok) => ok)
   if (mode === 'full') {
     if (target.mappedVenues !== 1) {
+      deletionCheckSkipped = true
       notes.push(
         `deletion check skipped: ${target.mappedVenues} venues of this integration have a catalogue root (one venue for now)`,
       )
     } else if (!complete) {
+      deletionCheckSkipped = true
       const failed = fetched.pagesOk.filter((ok) => !ok).length
       notes.push(`deletion check skipped: ${failed} of ${fetched.pagesOk.length} pages failed`)
     } else {
@@ -510,6 +526,7 @@ async function syncFetched(
   counters.reactivated = reactivated
   counters.failed_pages = fetched.pagesOk.filter((ok) => !ok).length
   counters.nodes_created = totals.createdNodes
+  if (holding) counters.items_held = totals.held
   counters.ops_applied = totals.applied
   counters.ops_unchanged = totals.unchanged
   counters.ops_skipped = totals.skipped
@@ -517,7 +534,7 @@ async function syncFetched(
   const photos = await queuePhotos(ctx, mapping, before, hashes)
   counters.photos_queued = photos.queued
   counters.photos_elsewhere = photos.elsewhere
-  return { counters, notes, totals, complete }
+  return { counters, notes, deletionCheckSkipped, totals, complete }
 }
 
 // --- the two runs ----------------------------------------------------------------------------
@@ -561,6 +578,28 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
     result.counters.places_seen = described.length
     result.counters.places_created = stored.created
     result.counters.places_missing = stored.missing
+    result.counters.places_deleted = stored.deleted
+    // A table's code file says its name (barsy's number unless the manager chose one), and a table
+    // barsy deleted lost its code: bring the venue's `t/<token>.json` files in line (S3-07). The
+    // job is idempotent and writes only what differs, so queuing it for any change is cheap.
+    if (stored.updated > 0 || stored.reactivated > 0 || stored.retiredTokens.length > 0) {
+      try {
+        const tokens = prepareJob(JOB_NAMES.publishTableTokens, {
+          tenantId: session.tenantId,
+          venueId: target.venueId,
+          retired: stored.retiredTokens.slice(0, MAX_RETIRED_TOKENS),
+        })
+        await env.enqueue(JOB_NAMES.publishTableTokens, tokens.data, {
+          singletonKey: tokens.singletonKey,
+        })
+      } catch (error) {
+        // The places are stored; only the files are late. Say so, apart from a places failure.
+        notes.push(
+          'the table code files could not be updated; they follow the next change to a table',
+        )
+        env.log.error({ err: error }, 'the table token job could not be queued')
+      }
+    }
   } catch (error) {
     if (error instanceof BarsyAuthError) throw error
     notes.push('places could not be read; they were left as they were')
@@ -577,6 +616,7 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
   return {
     counters: result.counters,
     notes,
+    deletionCheckSkipped: result.deletionCheckSkipped,
     refused: result.totals.rejected,
     complete: result.complete,
     treeHash: treeHashOf(tree),
@@ -594,6 +634,7 @@ export async function runIncremental(
   return {
     counters: result.counters,
     notes: result.notes,
+    deletionCheckSkipped: result.deletionCheckSkipped,
     refused: result.totals.rejected,
     complete: result.complete,
     treeHash: treeHashOf(tree),

@@ -26,6 +26,7 @@ import {
   openOwnerPool,
   ownerDatabaseUrl,
   testId,
+  testSlug,
 } from './database'
 
 /** Postgres's message when a row fails a policy's WITH CHECK. */
@@ -54,7 +55,7 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     ] as const) {
       await withTenantWrite(app, tenantId, async (tx) => {
         await tx.insert(tenants).values({ id: tenantId, name })
-        await tx.insert(venues).values({ id: venueId, tenantId, name, slug: 'main' })
+        await tx.insert(venues).values({ id: venueId, tenantId, name, slug: testSlug('main') })
       })
     }
     await withTenantWrite(app, tenantA, (tx) =>
@@ -118,10 +119,27 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
         withTenantWrite(app, tenantA, (tx) =>
           tx
             .insert(venues)
-            .values({ id: testId('vn'), tenantId: tenantB, name: 'Intruder', slug: 'x' }),
+            .values({ id: testId('vn'), tenantId: tenantB, name: 'Intruder', slug: testSlug('x') }),
         ),
       ),
     ).toMatch(RLS_VIOLATION)
+  })
+
+  it('2. a venue slug is a public address: the database refuses it for a second tenant too', async () => {
+    // Row-level security hides tenant A's venues from tenant B, so only a global unique index can
+    // refuse a slug A holds; the error names the index core/apply maps to `slug_taken`.
+    const [held] = await withTenant(app, tenantA, (tx) =>
+      tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, venueA)),
+    )
+    const slug = held?.slug ?? ''
+    expect(slug).not.toBe('')
+    expect(
+      await databaseError(
+        withTenantWrite(app, tenantB, (tx) =>
+          tx.insert(venues).values({ id: testId('vn'), tenantId: tenantB, name: 'Second', slug }),
+        ),
+      ),
+    ).toMatch(/venues_slug_unique/)
   })
 
   it('2. moving a venue to another tenant, or writing to another tenant, fails or does nothing', async () => {
@@ -178,7 +196,9 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     expect(
       await databaseError(
         withSystem(app, (tx) =>
-          tx.insert(venues).values({ id: testId('vn'), tenantId: tenantA, name: 'X', slug: 'y' }),
+          tx
+            .insert(venues)
+            .values({ id: testId('vn'), tenantId: tenantA, name: 'X', slug: testSlug('y') }),
         ),
       ),
     ).toMatch(RLS_VIOLATION)
@@ -316,7 +336,7 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
       withTenantWrite(app, tenantA, async (tx) => {
         await tx
           .insert(venues)
-          .values({ id: venueId, tenantId: tenantA, name: 'Ghost', slug: 'ghost' })
+          .values({ id: venueId, tenantId: tenantA, name: 'Ghost', slug: testSlug('ghost') })
         throw new Error('boom')
       }),
     ).rejects.toThrow('boom')

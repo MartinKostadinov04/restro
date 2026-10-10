@@ -122,13 +122,13 @@ describe.skipIf(!hasDatabase)('barsy-connect', () => {
     expect(await runs('barsy_connect')).toHaveLength(2)
   })
 
-  it('a wrong password sets status error with "Wrong user or password" and is not retried', async () => {
+  it('a wrong password sets status error with the code wrong_credentials and is not retried', async () => {
     fake.password = 'changed-in-barsy'
     // The handler does not throw: retrying a wrong password only risks locking the API user.
     await expect(world.run(JOB_NAMES.barsyConnect, payload())).resolves.toBeUndefined()
     expect(await integration()).toMatchObject({
       status: 'error',
-      status_detail: 'Wrong user or password',
+      status_detail: 'wrong_credentials',
     })
     const [run] = await runs('barsy_connect')
     expect(run?.status).toBe('failed')
@@ -165,7 +165,7 @@ describe.skipIf(!hasDatabase)('barsy-connect', () => {
     await world.run(JOB_NAMES.barsyConnect, payload())
     expect(await integration()).toMatchObject({
       status: 'error',
-      status_detail: 'This barsy host is not allowed for this worker.',
+      status_detail: 'host_refused',
     })
     expect(fake.calls).toEqual([])
   })
@@ -177,7 +177,7 @@ describe.skipIf(!hasDatabase)('barsy-connect', () => {
     await world.run(JOB_NAMES.barsyConnect, payload())
     expect(await integration()).toMatchObject({
       status: 'error',
-      status_detail: 'This is a production barsy host; this environment may not use it.',
+      status_detail: 'host_refused',
     })
     expect(fake.calls).toEqual([])
   })
@@ -199,7 +199,7 @@ describe.skipIf(!hasDatabase)('barsy-connect', () => {
     await world.run(JOB_NAMES.barsyConnect, payload())
     const row = await integration()
     expect(row?.status).toBe('error')
-    expect(row?.status_detail).toContain('does not open')
+    expect(row?.status_detail).toBe('credentials_unreadable')
     expect(fake.calls).toEqual([])
   })
 

@@ -11,9 +11,10 @@ import type { ComponentType } from 'react'
 
 import { ComingSoonEditor } from './coming-soon'
 import type { DisplayProps, EditorProps, FieldRegistry, FieldUi } from './types'
-import { boolean, enumSet, enumType, tags } from './types/choices'
+import { boolean, enumSet, enumType } from './types/choices'
 import { file, image, reference } from './types/media'
 import { measurement, money, number, RangeDisplay } from './types/numbers'
+import { tags } from './types/tags'
 import { localizedText, longText, shortText } from './types/text'
 import { availability, date, datetime } from './types/time'
 

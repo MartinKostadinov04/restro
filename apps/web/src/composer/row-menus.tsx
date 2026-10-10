@@ -4,7 +4,7 @@
 // cannot reach everywhere: move to another section (also from a phone, or by keyboard), take an
 // item out of its section, hide a section, move a section under another or to the top.
 import { MAX_SECTION_DEPTH, type NodeId } from '@restro/core'
-import { EyeIcon, EyeOffIcon, MoreHorizontalIcon } from 'lucide-react'
+import { BanIcon, EyeIcon, EyeOffIcon, MoreHorizontalIcon, Undo2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -32,9 +32,18 @@ function Indent({ depth, children }: { depth: number; children: React.ReactNode 
 /** Actions of one item row. `sectionId` is the section whose list the row is in (`null` = Unsorted). */
 export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: NodeId | null }) {
   const t = useTranslations('composer')
-  const { view, openItem, moveItemToSection } = useComposer()
+  const { view, openItem, moveItemToSection, canMarkSoldOut, setSoldOut } = useComposer()
   const name = itemName(view, itemId, t('unnamedItem'))
   const targets = flattenSections(view).filter(({ id }) => id !== sectionId)
+  const item = view.items[itemId]
+  // Sold out tonight (D46): managers mark and unmark; an item barsy has off sale has no control,
+  // since ours can only add caution (rule 5) and "back on sale" would be a lie.
+  const soldOutControl =
+    canMarkSoldOut && item !== undefined && item.offSale === null
+      ? item.soldOutTonight
+        ? 'unmark'
+        : 'mark'
+      : null
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -53,6 +62,15 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
         <DropdownMenuItem onSelect={() => openItem(itemId)}>
           {t('actions.open', { name })}
         </DropdownMenuItem>
+        {soldOutControl !== null ? (
+          <DropdownMenuItem
+            data-testid={soldOutControl === 'mark' ? 'item-mark-sold-out' : 'item-unmark-sold-out'}
+            onSelect={() => setSoldOut([itemId], soldOutControl === 'mark')}
+          >
+            {soldOutControl === 'mark' ? <BanIcon aria-hidden /> : <Undo2Icon aria-hidden />}
+            {soldOutControl === 'mark' ? t('soldOut.mark') : t('soldOut.unmark')}
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSub>
           <DropdownMenuSubTrigger disabled={targets.length === 0}>
             {t('actions.moveTo')}

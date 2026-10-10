@@ -10,7 +10,7 @@
 // sealed, and goes no further. It is never logged (errors are logged through `logError`, which
 // prints an error's class and message, and nothing here puts input in a message), never
 // returned, and never stored in the clear.
-import { idSchema } from '@restro/core'
+import { idSchema, SyncSettingsInputSchema } from '@restro/core'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -29,6 +29,7 @@ import {
   type IntegrationServices,
   saveConnection,
   saveMappingSettings,
+  saveSyncSettings,
   syncNow,
 } from './service'
 import type { IntegrationActionResult } from './view'
@@ -49,6 +50,12 @@ const MappingSettings = z.strictObject({
   priceSource: z.enum(['actual_price', 'current_price']),
   allergenKey: z.string().min(1).max(128).nullable(),
   defaultLocale: z.string().min(1).max(16),
+})
+
+const SyncSettings = z.strictObject({
+  venueId,
+  schedule: SyncSettingsInputSchema.shape.schedule,
+  publish: SyncSettingsInputSchema.shape.publish,
 })
 
 const INVALID: IntegrationActionResult = { ok: false, error: 'invalid' }
@@ -121,6 +128,14 @@ export async function saveMappingSettingsAction(input: unknown): Promise<Integra
   if (!parsed.success) return INVALID
   const { venueId: venue, ...settings } = parsed.data
   return perform(venue, (scope) => saveMappingSettings(scope, settings))
+}
+
+/** Saves the sync settings: the schedule of the change check and the full pull, and the publish policy. */
+export async function saveSyncSettingsAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = SyncSettings.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { venueId: venue, ...settings } = parsed.data
+  return perform(venue, (scope) => saveSyncSettings(scope, settings))
 }
 
 /** Queues a full pull of this venue. */

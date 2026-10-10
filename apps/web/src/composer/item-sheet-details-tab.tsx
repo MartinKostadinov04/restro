@@ -20,6 +20,7 @@ import { FieldValueView } from '@/fields/registry'
 import type { ItemSheetData, SheetField } from '@/server/item-sheet/types'
 
 import { ItemSheetIssues } from './item-sheet-issues'
+import { ItemSheetSale } from './item-sheet-sale'
 import { badgeProvenance } from './item-sheet-support'
 
 export interface ItemSheetDetailsTabProps {
@@ -34,6 +35,8 @@ export interface ItemSheetDetailsTabProps {
   onKeep: (fieldKey: string) => Promise<boolean>
   /** The image is edited on the Media tab. */
   onOpenMedia: () => void
+  /** Marks the item sold out tonight (`true`) or takes our mark off (`false`, D46). */
+  onSoldOut: (soldOut: boolean) => Promise<boolean>
 }
 
 /** Languages whose text comes from different places: shown one by one under the badge. */
@@ -126,6 +129,7 @@ export function ItemSheetDetailsTab({
   onRevert,
   onKeep,
   onOpenMedia,
+  onSoldOut,
 }: ItemSheetDetailsTabProps) {
   const t = useTranslations('itemSheet.details')
   const [editing, setEditing] = useState<string | null>(null)
@@ -135,6 +139,7 @@ export function ItemSheetDetailsTab({
   return (
     <div className="grid gap-4" data-testid="item-sheet-details">
       <ItemSheetIssues data={data} />
+      <ItemSheetSale sale={data.sale} busy={busy} onChange={onSoldOut} />
       {/* One <dl> per group, with the group label outside it, so every dl holds only row
           wrappers around dt/dd pairs. */}
       <div className="rounded-lg border bg-card py-2">

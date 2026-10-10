@@ -19,11 +19,18 @@ const DEV_PORT = PORT + 1
 const DEV_ORIGIN = `http://127.0.0.1:${DEV_PORT}`
 // Where the item sheet's test stores the photos it uploads (git ignores `.local`).
 const E2E_ASSET_DIR = fileURLToPath(new URL('../../.local/assets-e2e', import.meta.url))
+// Where the guest page's test publishes its menus (seed-guest-e2e.ts writes, `/cdn` serves).
+const E2E_PUBLISH_DIR = fileURLToPath(new URL('../../.local/cdn-e2e', import.meta.url))
+// The setup scripts run in this process and read the same stores as the servers below.
+process.env.ASSET_STORE = 'local'
+process.env.LOCAL_ASSET_DIR = E2E_ASSET_DIR
+process.env.PUBLISH_STORE = 'local'
+process.env.LOCAL_PUBLISH_DIR = E2E_PUBLISH_DIR
 
 // A throwaway key pair for the Integration tab's test, made here because the web servers start
 // before the global setup runs. Only the public half (base64url DER, what `pnpm keys:seal` prints)
-// goes to the servers; the other half is dropped at once, since the worker does not run in this
-// test and nothing needs to open what the tab seals. Without `SEAL_PUBLIC_KEY` the tab would show
+// goes to the servers; the other half is dropped at once, since the worker that runs beside them
+// (below) holds no sealing keys and nothing needs to open what the tab seals. Without `SEAL_PUBLIC_KEY` the tab would show
 // the 'sync keys are not set up' message instead of the form.
 const SEAL_PUBLIC_KEY = generateKeyPairSync('x25519')
   .publicKey.export({ type: 'spki', format: 'der' })
@@ -38,8 +45,32 @@ const serverEnvironment = (origin: string) => ({
   // Photos go to disk, in a folder of their own.
   ASSET_STORE: 'local',
   LOCAL_ASSET_DIR: E2E_ASSET_DIR,
+  PUBLISH_STORE: 'local',
+  LOCAL_PUBLISH_DIR: E2E_PUBLISH_DIR,
   SEAL_PUBLIC_KEY,
 })
+
+// The REAL worker runs beside the web servers, for the Publish tab (brief S3-05): "Publish" only
+// queues a job, and the worker publishes it. It holds no sealing keys (a public key without the
+// private half would stop it), so it runs the publish jobs and the heartbeat and syncs no barsy.
+// Its health port moves with E2E_PORT.
+const WORKER_PORT = PORT + 2
+const workerEnvironment = Object.fromEntries(
+  Object.entries({
+    ...serverEnvironment(ORIGIN),
+    WORKER_ID: 'e2e-worker',
+    WORKER_HEALTH_PORT: String(WORKER_PORT),
+    LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
+  })
+    .filter(([name]) => !name.startsWith('SEAL_'))
+    // Blank, not absent: Playwright merges this over the runner's own environment, which may hold
+    // a developer's sealing keys from the root .env.local. Blank counts as unset for the worker.
+    .concat(
+      Object.keys(process.env)
+        .filter((name) => name.startsWith('SEAL_'))
+        .map((name) => [name, '']),
+    ),
+)
 
 export default defineConfig({
   testDir: './e2e',
@@ -84,6 +115,13 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180_000,
       env: { ...serverEnvironment(DEV_ORIGIN), NODE_ENV: 'development' },
+    },
+    {
+      command: 'pnpm --filter @restro/worker exec tsx src/index.ts',
+      url: `http://127.0.0.1:${WORKER_PORT}/health`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: workerEnvironment,
     },
   ],
 })

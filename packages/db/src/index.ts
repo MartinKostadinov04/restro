@@ -9,13 +9,17 @@ import type {
   events,
   fieldValues,
   integrations,
+  itemFirstPublished,
   jobRuns,
   menus,
   nodes,
   placements,
   places,
+  publishPointers,
+  snapshots,
   sourceLinks,
   sourceRecords,
+  tags,
   templates,
   tenants,
   venues,
@@ -96,3 +100,11 @@ export type JobRun = typeof jobRuns.$inferSelect
 export type Place = typeof places.$inferSelect
 /** A row of restro.assets. */
 export type Asset = typeof assets.$inferSelect
+/** A row of restro.snapshots. */
+export type SnapshotRow = typeof snapshots.$inferSelect
+/** A row of restro.publish_pointers. */
+export type PublishPointer = typeof publishPointers.$inferSelect
+/** A row of restro.item_first_published. */
+export type ItemFirstPublishedRow = typeof itemFirstPublished.$inferSelect
+/** A row of restro.tags. */
+export type TagRow = typeof tags.$inferSelect

@@ -1,8 +1,12 @@
 // Set-up for the web app's Vitest project (vitest.config.ts at the repo root). Tests that render
 // components opt into jsdom with `// @vitest-environment jsdom`; everything here is a no-op in
 // the Node environment.
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
+
+// `findBy…` and `waitFor` give up after 1 s by default; a full parallel run on this PC can take
+// longer to render, so allow 5 s (a real failure still fails, only later).
+configure({ asyncUtilTimeout: 5_000 })
 
 afterEach(() => {
   // Testing Library only cleans up by itself when test globals are on; they are off here.

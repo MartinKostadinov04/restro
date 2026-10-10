@@ -21,6 +21,7 @@ import {
   hasDatabase,
   SETUP_TIMEOUT_MS,
   type TestDatabase,
+  testSlug,
 } from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, DEMO_BID, DEMO_ROOT_CAT, type World } from './world'
@@ -72,10 +73,11 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     status: string
     counters: Record<string, number>
     error_summary: string | null
+    details: { deletionCheckSkipped?: boolean } | null
   }
   const fullPulls = () =>
     world.query<RunRow>(
-      `select status, counters, error_summary from restro.job_runs
+      `select status, counters, error_summary, details from restro.job_runs
        where integration_id = $1 and kind = 'barsy_full_pull' order by created_at`,
       [world.integrationId],
     )
@@ -281,6 +283,8 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       expect(run.counters.failed_pages).toBe(1)
       expect(run.counters.articles_seen).toBe(35)
       expect(run.error_summary).toMatch(/deletion check skipped: 1 of \d+ pages failed/)
+      // The structured flag reaches the run's details too (the Integration tab reads it).
+      expect(run.details).toMatchObject({ deletionCheckSkipped: true })
       // The other pages were applied; the cursor did not move.
       expect(await count('nodes', "node_type = 'item'")).toBeGreaterThan(0)
       expect((await syncState()).cursor).toBeUndefined()
@@ -443,7 +447,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       await pull()
       const second = await provisionVenue(world.pool, world.tenantId, {
         name: 'Second club',
-        slug: 'second-club',
+        slug: testSlug('second-club'),
       })
       await upsertBarsyVenues(world.pool, world.tenantId, world.integrationId, [
         { bid: 11, name: 'Second' },
@@ -544,7 +548,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       'select status, status_detail from restro.integrations where id = $1',
       [world.integrationId],
     )
-    expect(row).toMatchObject({ status: 'error', status_detail: 'Wrong user or password' })
+    expect(row).toMatchObject({ status: 'error', status_detail: 'wrong_credentials' })
   })
 
   it('a venue that is not mapped fails the run without calling barsy', async () => {

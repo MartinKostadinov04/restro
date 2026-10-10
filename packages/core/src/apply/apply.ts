@@ -34,6 +34,7 @@ import {
   placements,
   sourceLinks,
   sourceRecords,
+  tags,
   venues,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
@@ -104,6 +105,12 @@ export type ApplyRejectionCode =
   | 'unknown_link'
   /** setLinkState asks for a move the Link lifecycle has no row for (`deleted` → `missing`). */
   | 'invalid_transition'
+  /**
+   * A `tags` value names a tag id that is not a tag of the venue the item belongs to, or is
+   * archived. An id the stored value already holds may stay (restoring an archived tag brings
+   * its assignments back); only an id the write adds is checked.
+   */
+  | 'unknown_tag'
 
 /**
  * The barsy external types each node type may be linked to (doc "Barsy to canonical mapping"):
@@ -312,6 +319,10 @@ class DocumentState {
   readonly originalPlacements = new Map<string, string>()
   /** The greatest sibling sort key under each parent a createNode names (read, then kept up). */
   readonly lastChildKey = new Map<NodeId, string>()
+  /** The tags a `tags` write names: the venue each belongs to and whether it is archived. */
+  readonly tagRows = new Map<string, { venueId: string; archived: boolean }>()
+  /** For each item such a write targets: the venues of the menus it is placed in (maybe none). */
+  readonly itemVenues = new Map<NodeId, Set<string>>()
 
   readonly createdNodes: NodeState[] = []
   /** Where each moved node stood before this change set (the first move records it). */
@@ -392,8 +403,18 @@ class DocumentState {
   }
 }
 
+/** The keys of the template's fields of type `tags` (their values are ids of the venue's tags). */
+function tagFieldKeys(template: Template): ReadonlySet<string> {
+  const keys = new Set<string>()
+  for (const spec of Object.values(template.nodeTypes)) {
+    for (const definition of spec?.fields ?? [])
+      if (definition.type === 'tags') keys.add(definition.key)
+  }
+  return keys
+}
+
 /** Reads what the change set refers to (step 1). */
-async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
+async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promise<DocumentState> {
   const state = new DocumentState()
   const idRefs = new Set<NodeId>()
   const linkRefs = new Map<string, SourceLink>()
@@ -655,7 +676,61 @@ async function loadState(tx: WriteTx, set: ChangeSet): Promise<DocumentState> {
       state.menusPlacedBefore.set(row.item_id as NodeId, menus)
     }
   }
+
+  await loadTagContext(tx, set, state, tagFieldKeys(template))
   return state
+}
+
+/**
+ * What the `tags` check of `Run.setField` needs: for every tag id a non-barsy write to a `tags`
+ * field names, the tag's venue and whether it is archived; and for every item such a write
+ * targets, the venues of the menus the item is placed in (walked up from its sections).
+ */
+async function loadTagContext(
+  tx: WriteTx,
+  set: ChangeSet,
+  state: DocumentState,
+  keys: ReadonlySet<string>,
+): Promise<void> {
+  if (keys.size === 0) return
+  const tagIds = new Set<string>()
+  const targets = new Set<NodeId>()
+  for (const op of set.ops) {
+    if (op.op !== 'setField' || op.layer === 'barsy' || !keys.has(op.fieldKey)) continue
+    if (!Array.isArray(op.value)) continue
+    for (const id of op.value) if (typeof id === 'string') tagIds.add(id)
+    const ref = op.node
+    const nodeId =
+      'id' in ref
+        ? (state.aliases.get(ref.id) ?? ref.id)
+        : state.links.get(refKey(ref.link))?.nodeId
+    if (nodeId !== undefined && state.nodes.has(nodeId)) targets.add(nodeId)
+  }
+  if (tagIds.size > 0) {
+    const rows = await tx
+      .select({ id: tags.id, venueId: tags.venueId, archivedAt: tags.archivedAt })
+      .from(tags)
+      .where(anyOf(tags.id, [...tagIds]))
+    for (const row of rows) {
+      state.tagRows.set(row.id, { venueId: row.venueId, archived: row.archivedAt !== null })
+    }
+  }
+  if (targets.size > 0) {
+    for (const id of targets) state.itemVenues.set(id, new Set())
+    const found = await tx.execute<{ item_id: string; venue_id: string }>(sql`
+      with recursive up as (
+        select p.item_id, n.id, n.parent_id
+        from restro.placements p join restro.nodes n on n.id = p.section_id
+        where p.item_id = any(${sql.param([...targets])}::text[])
+        union
+        select up.item_id, n.id, n.parent_id
+        from up join restro.nodes n on n.id = up.parent_id
+      )
+      select distinct up.item_id, m.venue_id
+      from up join restro.menus m on m.id = up.id
+      where up.parent_id is null`)
+    for (const row of found.rows) state.itemVenues.get(row.item_id as NodeId)?.add(row.venue_id)
+  }
 }
 
 /** Decides every op of the change set in order (step 2). */
@@ -875,6 +950,10 @@ class Run {
     // validateWrite found the definition, so it exists.
     const definition = findField(this.template, node.type, write.fieldKey)
     if (!definition) return refused('unknown_field', `${node.type} has no field ${write.fieldKey}`)
+    if (definition.type === 'tags' && write.layer !== 'barsy') {
+      const problem = this.tagProblem(node, write, current)
+      if (problem) return problem
+    }
     const spec = FIELD_TYPES[definition.type] as FieldTypeSpec
     const hash = spec.hash(write.value as never)
     const sameBasis =
@@ -899,6 +978,35 @@ class Run {
     )
     this.touch(node.id)
     return APPLIED
+  }
+
+  /**
+   * The check behind `unknown_tag`: every tag id a builder-layer write adds must be an active tag
+   * of a venue the item belongs to (the venues of the menus it is placed in; any venue of the
+   * tenant while it is placed nowhere). Builder layers are always master scope. An id the slot
+   * already holds may stay: restoring an archived tag then brings its items back, and a save from
+   * one venue's composer does not drop the tags of another venue the item also sits in.
+   */
+  private tagProblem(
+    node: NodeState,
+    write: FieldWrite,
+    current: ValueRow | undefined,
+  ): Outcome | null {
+    const held = new Set<unknown>(
+      current?.valid && Array.isArray(current.value) ? current.value : [],
+    )
+    const venues = this.state.itemVenues.get(node.id)
+    for (const id of write.value as readonly string[]) {
+      if (held.has(id)) continue
+      const tag = this.state.tagRows.get(id)
+      if (!tag || tag.archived) {
+        return refused('unknown_tag', `${id} is not an active tag of this venue`)
+      }
+      if (venues !== undefined && venues.size > 0 && !venues.has(tag.venueId)) {
+        return refused('unknown_tag', `${id} is a tag of another venue`)
+      }
+    }
+    return null
   }
 
   private clearField(clear: ClearField): Outcome {
@@ -1634,33 +1742,49 @@ export async function apply(
   changeSet: ChangeSet,
   options: ApplyOptions = {},
 ): Promise<ApplyResult> {
+  return withTenantWrite(pool, tenantId, (tx) =>
+    applyInTransaction(tx, tenantId, changeSet, options),
+  )
+}
+
+/**
+ * `apply()` inside a transaction the caller opened: for a writer in this folder that has to read
+ * the document and write the result as one step (a bulk change that adds to what each item holds
+ * must not race another change set). Same checks, same one write path; the caller's transaction
+ * commits or rolls back with it. Takes the tenant's document lock, which a caller that took it
+ * already holds again without waiting.
+ */
+export async function applyInTransaction(
+  tx: WriteTx,
+  tenantId: string,
+  changeSet: ChangeSet,
+  options: ApplyOptions = {},
+): Promise<ApplyResult> {
   const parsed = parseChangeSet(changeSet)
   if (!parsed.ok) throw new ApplyError('invalid_change_set', parsed.reason)
   const set = parsed.value
   const template = options.template ?? VENUE_MENU_TEMPLATE
-  return withTenantWrite(pool, tenantId, async (tx) => {
-    await lockTenantDocument(tx, tenantId)
-    const state = await loadState(tx, set)
-    if (set.source.startsWith('barsy:')) {
-      const integration = set.source.slice('barsy:'.length)
-      if (state.integrations.get(integration)?.kind !== 'barsy') {
-        throw new ApplyError(
-          'unknown_integration',
-          `this tenant has no barsy integration ${integration}`,
-        )
-      }
-    }
-    const run = new Run(set, template, state)
-    run.processAll()
-    if (options.atomic === true && run.rejected.length > 0) {
-      const first = run.rejected[0]
+  await lockTenantDocument(tx, tenantId)
+  const state = await loadState(tx, set, template)
+  if (set.source.startsWith('barsy:')) {
+    const integration = set.source.slice('barsy:'.length)
+    if (state.integrations.get(integration)?.kind !== 'barsy') {
       throw new ApplyError(
-        'change_set_rejected',
-        `${run.rejected.length} op(s) were refused and nothing was written; the first: ${first?.code} (${first?.reason})`,
-        run.rejected,
+        'unknown_integration',
+        `this tenant has no barsy integration ${integration}`,
       )
     }
-    await flush(tx, tenantId, set, state)
-    return run.result()
-  })
+  }
+  const run = new Run(set, template, state)
+  run.processAll()
+  if (options.atomic === true && run.rejected.length > 0) {
+    const first = run.rejected[0]
+    throw new ApplyError(
+      'change_set_rejected',
+      `${run.rejected.length} op(s) were refused and nothing was written; the first: ${first?.code} (${first?.reason})`,
+      run.rejected,
+    )
+  }
+  await flush(tx, tenantId, set, state)
+  return run.result()
 }

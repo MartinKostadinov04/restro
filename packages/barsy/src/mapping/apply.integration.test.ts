@@ -22,6 +22,7 @@ import {
   cleanUp,
   hasDatabase,
   openOwnerPool,
+  testSlug,
 } from '../../../core/src/apply/test-database.ts'
 import { createPool, type DbPool } from '../../../db/src/index.ts'
 import { mapCatalogue } from './catalogue.ts'
@@ -41,7 +42,7 @@ describe.skipIf(!hasDatabase)('mapCatalogue → apply(): the demo catalogue and 
     owner = openOwnerPool()
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-barsy-apply-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Mapping acceptance club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Demo', slug: 'demo' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Demo', slug: testSlug('demo') })).id
     menu = await provisionMenu(app, tenant, venueId)
     await owner.query(
       `insert into restro.integrations (id, tenant_id, kind, host)

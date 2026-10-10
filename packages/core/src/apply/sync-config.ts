@@ -12,6 +12,7 @@ import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { isId } from '../ids'
+import { type SyncSettingsInput, SyncSettingsInputSchema } from '../sync-settings'
 import { ProvisionError } from './provision'
 
 const IsoInstant = z.iso.datetime({ offset: true })
@@ -25,6 +26,12 @@ export const SyncStateSchema = z.object({
   tree_hash: Sha256.optional(),
   last_full_pull_at: IsoInstant.optional(),
   last_incremental_at: IsoInstant.optional(),
+  // The minute tick's own marks (S3-04). Without them a change check that failed, or a full pull
+  // that was not complete, would count as "never ran" and be queued again every minute.
+  /** When the tick last queued a change check. */
+  last_incremental_queued_at: IsoInstant.optional(),
+  /** The full-pull slot (an instant) the tick last queued a full pull for. */
+  last_full_pull_slot: IsoInstant.optional(),
 })
 export type SyncState = z.output<typeof SyncStateSchema>
 
@@ -119,6 +126,89 @@ export async function storeCachedTree(
         config: sql`${integrations.config} || jsonb_build_object('catalogue_trees',
           coalesce(${integrations.config} -> 'catalogue_trees', '{}'::jsonb) ||
             jsonb_build_object(${key}::text, ${value}::jsonb))`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}
+
+/**
+ * The stored `config.publish` as an object. A `publish` that is not an object (a hand-edited
+ * config) counts as empty, so it is replaced rather than extended.
+ */
+const storedPublish =
+  () => sql`case when jsonb_typeof(${integrations.config} -> 'publish') = 'object'
+  then ${integrations.config} -> 'publish' else '{}'::jsonb end`
+
+/**
+ * Saves the sync settings form (D59, Integration tab): `config.schedule` is replaced with the form's
+ * schedule and the form's two publish settings (`after_sync`, `new_items`) are merged into
+ * `config.publish`. The flat key `publish_after_sync` of S3-01b is removed (`publish.after_sync`
+ * says it now). Returns whether the integration exists.
+ *
+ * One atomic `UPDATE`, merged inside Postgres: `publish.auto_paused`, which the Publish tab sets
+ * after a rollback and a manual publish clears, is never read or written here, so a pause set or
+ * cleared while the form was open (or between this call's read and write, if it had one) is
+ * neither lost nor revived. The same goes for every other key of the config.
+ */
+export async function saveSyncSettingsConfig(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  settings: SyncSettingsInput,
+): Promise<boolean> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  const parsed = SyncSettingsInputSchema.safeParse(settings)
+  if (!parsed.success) throw new ProvisionError('invalid_input', z.prettifyError(parsed.error))
+  const schedule = JSON.stringify(parsed.data.schedule)
+  const publishPatch = JSON.stringify(parsed.data.publish)
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: sql`(${integrations.config} || jsonb_build_object(
+            'schedule', ${schedule}::jsonb,
+            'publish', ${storedPublish()} || ${publishPatch}::jsonb)) - 'publish_after_sync'`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}
+
+/**
+ * Pauses (`true`) or resumes (`false`) automatic publishing of an integration (brief S3-05): sets
+ * or removes `config.publish.auto_paused`, leaving the other publish settings alone. One `UPDATE`,
+ * merged inside Postgres, so it never loses a concurrent change to another key. Returns whether
+ * the integration exists. The worker skips automatic publishes while the flag is set
+ * (`autoPublishPaused`); a manual publish clears it.
+ */
+export async function setAutoPublishPaused(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  paused: boolean,
+): Promise<boolean> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  const publish = storedPublish()
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: paused
+          ? sql`${integrations.config} || jsonb_build_object('publish',
+              ${publish} || '{"auto_paused": true}'::jsonb)`
+          : sql`case when ${integrations.config} #> '{publish,auto_paused}' is null
+              then ${integrations.config}
+              else ${integrations.config} || jsonb_build_object('publish',
+                ${publish} - 'auto_paused') end`,
       })
       .where(eq(integrations.id, integrationId))
       .returning({ id: integrations.id })

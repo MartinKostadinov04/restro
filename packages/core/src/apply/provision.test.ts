@@ -5,7 +5,7 @@ import { newId } from '../ids'
 import * as core from '../index'
 import * as applyEntry from './index'
 import { ProvisionError, provisionTenant, provisionVenue } from './provision'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 /** A pool that is never used: the input checks run before any query. */
 const unusedPool = {} as DbPool
@@ -68,6 +68,9 @@ describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app 
   const tenantA = newId('tn')
   const tenantB = newId('tn')
   const tenantWithoutRow = newId('tn')
+  // Venue slugs are globally unique, so each run (and each parallel test file) uses its own.
+  const slugA = testSlug('demo-club')
+  const slugB = testSlug('main')
   let app: DbPool
   let owner: pg.Pool
 
@@ -103,13 +106,13 @@ describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app 
   it('provisionVenue creates a venue with the documented defaults and a fresh vn_ id', async () => {
     const venue = await provisionVenue(app, tenantA, {
       name: ' Demo Club Sofia ',
-      slug: 'demo-club',
+      slug: slugA,
     })
     expect(venue.id).toMatch(/^vn_[0-9A-Za-z]{22}$/)
     expect(venue).toMatchObject({
       tenantId: tenantA,
       name: 'Demo Club Sofia',
-      slug: 'demo-club',
+      slug: slugA,
       timezone: 'Europe/Sofia',
       serviceDayEndsAt: '07:00:00',
       currency: 'EUR',
@@ -119,17 +122,17 @@ describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app 
   })
 
   it('a venue is visible to its tenant only (row-level security does the isolation)', async () => {
-    await provisionVenue(app, tenantB, { name: 'Club B main', slug: 'main' })
+    await provisionVenue(app, tenantB, { name: 'Club B main', slug: slugB })
     const seenByA = await withTenant(app, tenantA, (tx) => tx.select().from(venues))
     const seenByB = await withTenant(app, tenantB, (tx) => tx.select().from(venues))
-    expect(seenByA.map((venue) => venue.slug)).toEqual(['demo-club'])
-    expect(seenByB.map((venue) => venue.slug)).toEqual(['main'])
+    expect(seenByA.map((venue) => venue.slug)).toEqual([slugA])
+    expect(seenByB.map((venue) => venue.slug)).toEqual([slugB])
   })
 
   it('provisionVenue accepts the venue settings it is given', async () => {
     const venue = await provisionVenue(app, tenantB, {
       name: 'Second',
-      slug: 'second',
+      slug: testSlug('second'),
       timezone: 'Europe/Vienna',
       serviceDayEndsAt: '06:30',
       defaultLocale: 'en_US',
@@ -143,19 +146,31 @@ describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app 
     })
   })
 
-  it('provisionVenue reports a slug the tenant already uses', async () => {
+  it('provisionVenue reports a slug the tenant already uses as slug_taken', async () => {
     await expect(
-      provisionVenue(app, tenantA, { name: 'Another', slug: 'demo-club' }),
+      provisionVenue(app, tenantA, { name: 'Another', slug: slugA }),
     ).rejects.toMatchObject({ name: 'ProvisionError', code: 'slug_taken' })
-    // The same slug is fine in another tenant.
-    await expect(
-      provisionVenue(app, tenantB, { name: 'Another', slug: 'demo-club' }),
-    ).resolves.toMatchObject({ slug: 'demo-club', tenantId: tenantB })
+  })
+
+  it('a slug is a global public address: another tenant cannot take it either (slug_taken, not a raw database error)', async () => {
+    // tenantA holds slugA; tenantB cannot even see tenantA's venues (row-level security), so only
+    // the global unique index can tell it, and the error must still be the typed one.
+    const refusal = await provisionVenue(app, tenantB, { name: 'Intruder', slug: slugA }).then(
+      () => null,
+      (error: unknown) => error,
+    )
+    expect(refusal).toBeInstanceOf(ProvisionError)
+    expect(refusal).toMatchObject({ name: 'ProvisionError', code: 'slug_taken' })
+    // Nothing was created for tenantB under that slug, and tenantA still has its venue.
+    const seenByB = await withTenant(app, tenantB, (tx) => tx.select().from(venues))
+    expect(seenByB.map((venue) => venue.slug)).not.toContain(slugA)
+    const seenByA = await withTenant(app, tenantA, (tx) => tx.select().from(venues))
+    expect(seenByA.map((venue) => venue.slug)).toEqual([slugA])
   })
 
   it('provisionVenue reports a tenant that has no row yet', async () => {
     await expect(
-      provisionVenue(app, tenantWithoutRow, { name: 'Orphan', slug: 'orphan' }),
+      provisionVenue(app, tenantWithoutRow, { name: 'Orphan', slug: testSlug('orphan') }),
     ).rejects.toMatchObject({ name: 'ProvisionError', code: 'tenant_missing' })
   })
 })

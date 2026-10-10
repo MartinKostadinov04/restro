@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 
-import type { ComposerIssue, ComposerOrigin, ItemHiddenBy } from './view-model'
+import type { ComposerIssue, ComposerOrigin, ItemHiddenBy, ItemOffSale } from './view-model'
 
 /** From barsy (mirrors a barsy article or category) or Owned here (made in the composer). */
 export function OriginBadge({ origin }: { origin: ComposerOrigin }) {
@@ -34,9 +34,44 @@ export function HiddenBadge({ hiddenBy }: { hiddenBy: ItemHiddenBy | 'section' }
       </Badge>
     )
   }
+  if (hiddenBy === 'new_from_barsy') {
+    return (
+      <Badge variant="warning" data-testid="hidden-badge" data-hidden-by="new_from_barsy">
+        {t('newFromBarsy')}
+      </Badge>
+    )
+  }
   return (
     <Badge variant="secondary" data-testid="hidden-badge" data-hidden-by={hiddenBy}>
       {hiddenBy === 'other' ? t('hiddenOther') : t('hidden')}
+    </Badge>
+  )
+}
+
+/**
+ * Where an item stands on sale (brief S3-08, D46): "Sold out tonight" for a manager's mark, "Not
+ * on sale in barsy" when the till has it off sale (ours cannot undo that, rule 5). Renders
+ * nothing for an item that is on sale.
+ */
+export function SaleBadge({
+  soldOutTonight,
+  offSale,
+}: {
+  soldOutTonight: boolean
+  offSale: ItemOffSale | null
+}) {
+  const t = useTranslations('composer.badges')
+  if (offSale !== null) {
+    return (
+      <Badge variant="warning" data-testid="off-sale-badge" data-off-sale={offSale}>
+        {offSale === 'barsy' ? t('offSaleBarsy') : t('offSaleOther')}
+      </Badge>
+    )
+  }
+  if (!soldOutTonight) return null
+  return (
+    <Badge variant="danger" data-testid="sold-out-badge">
+      {t('soldOutTonight')}
     </Badge>
   )
 }

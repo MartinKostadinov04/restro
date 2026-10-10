@@ -67,6 +67,11 @@ export class LocalAssetStore implements AssetStore {
     return `${LOCAL_ASSET_ROUTE}/${key}?exp=${exp}&sig=${sig}`
   }
 
+  /** The bytes of a stored file, or null when there is none (the `AssetStore` contract). */
+  get(key: string): Promise<Uint8Array | null> {
+    return this.read(key)
+  }
+
   /** The bytes of a stored file, or null when there is none (for the serving route). */
   async read(key: string): Promise<Uint8Array | null> {
     const file = this.pathOf(key)

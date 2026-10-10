@@ -10,6 +10,7 @@ import { type DbPool, menus, nodes, tenants, type Venue, venues } from '@restro/
 import { withTenantWrite } from '@restro/db/write'
 import { eq } from 'drizzle-orm'
 
+import { isVenueSlug } from '../guest-files'
 import { isId, type NodeId, newId } from '../ids'
 import { LOCALES, type Locale } from '../locales'
 import { CURRENCIES, type Currency } from '../money'
@@ -21,7 +22,7 @@ export type ProvisionErrorCode =
   | 'invalid_input'
   /** The venue's tenant has no `tenants` row yet (provision the tenant first). */
   | 'tenant_missing'
-  /** The tenant already has a venue with this slug. */
+  /** Some venue (of this or any other tenant) already has this slug: public addresses are global. */
   | 'slug_taken'
   /** The tenant has no venue with this id (`provisionMenu`). */
   | 'venue_missing'
@@ -37,9 +38,6 @@ export class ProvisionError extends Error {
   }
 }
 
-/** Venue slugs: lower-case kebab-case, 1 to 63 characters (`demo-club`). */
-export const VENUE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const MAX_SLUG_LENGTH = 63
 const MAX_NAME_LENGTH = 200
 const CLOCK_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 
@@ -114,7 +112,7 @@ export async function provisionTenant(
 /** What `provisionVenue` needs; everything but `name` and `slug` has the database's default. */
 export interface ProvisionVenueInput {
   readonly name: string
-  /** Unique per tenant; lower-case kebab-case. */
+  /** Globally unique (it is the public address `/m/<slug>`); lower-case kebab-case. */
   readonly slug: string
   /** IANA time zone; default `Europe/Sofia`. */
   readonly timezone?: string
@@ -143,6 +141,11 @@ function pgErrorOf(error: unknown): { code?: string; constraint?: string } {
  * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id, and returns the row.
  * Refuses a malformed name, slug, time zone, currency or locale list before touching the
  * database; a taken slug and a missing tenant row come back as `ProvisionError`s.
+ *
+ * A slug is the venue's public address, so it is unique across all tenants. Row-level security
+ * hides other tenants' venues, so no query could tell whether it is free: the unique index decides
+ * (`venues_slug_unique`, plus the older per-tenant constraint) and its violation becomes
+ * `slug_taken`.
  */
 export async function provisionVenue(
   pool: DbPool,
@@ -153,11 +156,7 @@ export async function provisionVenue(
     throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
   }
   const name = checkedName(input.name, 'the venue name')
-  if (
-    typeof input.slug !== 'string' ||
-    input.slug.length > MAX_SLUG_LENGTH ||
-    !VENUE_SLUG_PATTERN.test(input.slug)
-  ) {
+  if (!isVenueSlug(input.slug)) {
     throw new ProvisionError('invalid_input', 'the venue slug must be lower-case kebab-case')
   }
   const timezone = input.timezone ?? 'Europe/Sofia'
@@ -218,8 +217,11 @@ export async function provisionVenue(
   } catch (error) {
     if (error instanceof ProvisionError) throw error
     const { code, constraint } = pgErrorOf(error)
-    if (code === '23505' && constraint === 'venues_tenant_id_slug_unique') {
-      throw new ProvisionError('slug_taken', `this tenant already has a venue "${input.slug}"`, {
+    if (
+      code === '23505' &&
+      (constraint === 'venues_slug_unique' || constraint === 'venues_tenant_id_slug_unique')
+    ) {
+      throw new ProvisionError('slug_taken', `the venue address "${input.slug}" is already taken`, {
         cause: error,
       })
     }

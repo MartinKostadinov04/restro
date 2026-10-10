@@ -15,8 +15,8 @@ export type ReadOnlyReason =
   | 'barsy_decides'
   /** Shown or hidden from the composer's list, not from here. */
   | 'composer_toggle'
-  /** Sold-out marking arrives in Stage 3 (D55). */
-  | 'sold_out_later'
+  /** Sold out tonight is marked with the control at the top of this tab (S3-08, D46). */
+  | 'sold_out_control'
 
 /** How a field is edited from the sheet. */
 export type FieldAccess =
@@ -93,6 +93,22 @@ export interface SheetImage {
   readonly canRemove: boolean
 }
 
+/** Where the item stands on sale (brief S3-08, D46), for the control on the Details tab. */
+export interface SheetSale {
+  /**
+   * A manager marked it sold out tonight and nothing else takes it off sale. The mark lapses by
+   * itself when the service day ends.
+   */
+  readonly soldOutTonight: boolean
+  /**
+   * Off sale for another reason: `barsy` (the till's flag) or `other` (another layer). Ours can
+   * only add caution (rule 5), so there is no "Back on sale" for it.
+   */
+  readonly offSale: 'barsy' | 'other' | null
+  /** The person may mark and unmark (owner or admin). */
+  readonly canMark: boolean
+}
+
 /** Everything the item sheet needs to draw its four tabs. */
 export interface ItemSheetData {
   readonly itemId: string
@@ -110,6 +126,8 @@ export interface ItemSheetData {
   readonly timezone: string
   /** The item shows on the guest menu (placed, shown, no blocking issue). */
   readonly visible: boolean
+  /** Sold out tonight, or off sale (S3-08). */
+  readonly sale: SheetSale
   readonly fields: readonly SheetField[]
   readonly issues: readonly SheetIssue[]
   readonly translations: readonly TranslationRow[]
@@ -162,6 +180,8 @@ export type SheetErrorCode =
   | 'no_basis'
   | 'invalid_value'
   | 'asset_not_found'
+  /** Marking sold out is for owners and admins. */
+  | 'not_allowed'
   /** `apply()` refused the write (its own code is in `detail`). */
   | 'refused'
   | 'failed'

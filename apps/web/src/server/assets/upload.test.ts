@@ -7,7 +7,7 @@ import { provisionTenant } from '@restro/core/apply'
 import { assets, createPool, type DbPool, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import type pg from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { jpegHeader, makePng, pngHeader } from '../../../../../packages/assets/src/test-images'
 import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
 import { checksumOf, storeImage, UploadError } from './upload'
@@ -20,6 +20,9 @@ class MemoryStore implements AssetStore {
   }
   async getUrl(key: string) {
     return `memory://${key}`
+  }
+  async get(key: string) {
+    return this.objects.get(key)?.bytes ?? null
   }
 }
 
@@ -150,6 +153,44 @@ describe.skipIf(!hasDatabase)('uploading an image (as the restro_app role)', () 
   })
 
   describe('the route logic', () => {
+    it('queues the photo variants of a new upload, and a queue failure does not fail the upload', async () => {
+      store = new MemoryStore()
+      const queued: [string, string][] = []
+      const request = () =>
+        uploadRequest(jpegHeader(200, 100), { name: 'x.jpg', type: 'image/jpeg' })
+      const ok = await handleUpload(request(), {
+        ...deps(tenant),
+        queueVariants: async (tenantId, assetId) => {
+          queued.push([tenantId, assetId])
+        },
+      })
+      expect(ok.status).toBe(201)
+      const body = (await ok.json()) as { assetId: string }
+      expect(queued).toEqual([[tenant, body.assetId]])
+
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const down = await handleUpload(request(), {
+        ...deps(tenant),
+        queueVariants: async () => {
+          throw new Error('queue down')
+        },
+      })
+      expect(down.status).toBe(201)
+      expect(logged).toHaveBeenCalled()
+      logged.mockRestore()
+
+      // A refused file queues nothing.
+      queued.length = 0
+      const refused = await handleUpload(uploadRequest(new Uint8Array([1, 2, 3])), {
+        ...deps(tenant),
+        queueVariants: async (tenantId, assetId) => {
+          queued.push([tenantId, assetId])
+        },
+      })
+      expect(refused.status).toBeGreaterThanOrEqual(400)
+      expect(queued).toEqual([])
+    })
+
     it('answers 201 with the new asset for a signed-in person', async () => {
       store = new MemoryStore()
       const response = await handleUpload(

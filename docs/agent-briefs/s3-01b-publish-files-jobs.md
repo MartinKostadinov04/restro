@@ -12,6 +12,13 @@
   - `packages/core/src/jobs.ts`;
   - `apps/web/src/server/jobs.ts`, `apps/web/src/server/assets/*`.
 
+## From S3-01a (merged, binding)
+- **Photo variants:** `publishMenu` takes an `assetVariants` hook. Feed it from the new `assets.variants` column (asset id → available widths). Until variants exist, snapshots carry no image for that asset.
+- **Snapshot files:** write `snap/<id>.json` from the **stored body** (`loadSnapshot`). Postgres reorders keys inside jsonb; order lives in arrays and the hash is canonical, so never depend on key order.
+- **Holds:** `approveHold` takes the held `sn_` id and fails `held_outdated` if the document changed. When a publish succeeds, mark older `held` rows of the same menu + venue as `rejected`, with `decided_by: system` and a `superseded` note, through a small writer in `apply/publish.ts`, so stale holds don't pile up.
+- **Editions:** the resolver gets `['venue:<vn>', 'service:<YYYY-MM-DD>']` (core `serviceDate`, D45).
+- **Theme:** `DEFAULT_THEME` until S3-03 adds venue theme settings.
+
 ## Goal
 Published menus become files a guest page can read, served locally the way a CDN will serve them later. The worker publishes on its own after a sync (when the venue allows it) and on request. Every photo gets small webp variants for phones.
 

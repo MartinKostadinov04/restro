@@ -64,15 +64,15 @@ describe('the Status card', () => {
     expect(screen.getByText('Never')).toBeTruthy()
   })
 
-  it('shows the detail, translating the worker’s wording for rejected credentials', () => {
+  it('shows the detail, translating the worker’s status code for rejected credentials', () => {
     const { unmount } = renderWithIntl(
       <StatusCard
         venueId={VENUE_ID}
-        view={withIntegration({ status: 'error', statusDetail: 'Wrong user or password' })}
+        view={withIntegration({ status: 'error', statusDetail: 'wrong_credentials' })}
       />,
       { locale: 'bg' },
     )
-    expect(screen.getByTestId('status-detail').textContent).toBe('Грешен потребител или парола')
+    expect(screen.getByTestId('status-detail').textContent).toBe('Грешен потребител или парола.')
     unmount()
     renderWithIntl(
       <StatusCard
@@ -81,6 +81,20 @@ describe('the Status card', () => {
       />,
     )
     expect(screen.getByTestId('status-detail').textContent).toBe('This barsy host is not allowed.')
+  })
+
+  it.each([
+    ['wrong_credentials', 'Wrong user or password.'],
+    ['host_refused', 'This barsy address is not allowed.'],
+    ['credentials_unreadable', 'The saved credentials cannot be read. Enter them again.'],
+  ])('translates the status code %s', (code, text) => {
+    renderWithIntl(
+      <StatusCard
+        venueId={VENUE_ID}
+        view={withIntegration({ status: 'error', statusDetail: code })}
+      />,
+    )
+    expect(screen.getByTestId('status-detail').textContent).toBe(text)
   })
 
   it('says when there is nothing to connect yet', () => {

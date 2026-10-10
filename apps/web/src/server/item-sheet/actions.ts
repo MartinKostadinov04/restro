@@ -4,7 +4,7 @@
 // in, take the tenant from their organisation (never from the request), check every argument
 // with Zod, and call the service. Every write is a change set through `apply()` (U4); after one,
 // the venue page is revalidated so the composer behind the sheet shows the new values.
-import { FIELD_KEY_PATTERN, isId, LOCALES, LocalizedTextSchema } from '@restro/core'
+import { FIELD_KEY_PATTERN, isId, LOCALES, LocalizedTextSchema, type VenueId } from '@restro/core'
 import { authMember, authUser } from '@restro/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -12,8 +12,11 @@ import { z } from 'zod'
 
 import { getAssetStore } from '../assets'
 import { getAuthDb, getPool } from '../db'
+import { enqueueJob } from '../jobs'
 import { logError } from '../log'
+import { canMarkSoldOut } from '../roles'
 import { requireTenant } from '../session'
+import { setItemsSoldOut } from '../sold-out/service'
 import {
   keepOverride,
   loadHistory,
@@ -27,7 +30,7 @@ import {
   saveTranslation,
   setImage,
 } from './service'
-import type { HistoryPage, ItemSheetData, SheetResult } from './types'
+import type { HistoryPage, ItemSheetData, SheetErrorCode, SheetResult } from './types'
 
 const Ids = z.object({
   venueId: z.string().refine((id) => isId('vn', id), 'expected a venue id'),
@@ -64,7 +67,12 @@ async function userNames(
 async function session(ids: z.infer<typeof Ids>): Promise<Session> {
   const { user, organization } = await requireTenant()
   return {
-    scope: { pool: getPool(), tenantId: organization.id, ...ids },
+    scope: {
+      pool: getPool(),
+      tenantId: organization.id,
+      ...ids,
+      canMarkSoldOut: canMarkSoldOut(organization.role),
+    },
     services: {
       store: await getAssetStore(),
       userNames: (userIds) => userNames(organization.id, userIds),
@@ -198,6 +206,45 @@ export async function setItemImageAction(
   return save(ids.data, ({ scope, services, actor }) =>
     setImage(scope, services, actor, { assetId: asset.data, alt: altText.data, focal: point.data }),
   )
+}
+
+/**
+ * Marks the item sold out tonight (`soldOut`), or takes OUR mark off (owner or admin, D46). There
+ * is no way to put an item back on sale that barsy has off sale: "back on sale" removes the mark
+ * and nothing else (rule 5). The sheet comes back refreshed.
+ */
+export async function setItemSoldOutAction(
+  venueId: string,
+  itemId: string,
+  soldOut: boolean,
+): Promise<SheetResult> {
+  const ids = Ids.safeParse({ venueId, itemId })
+  const flag = z.boolean().safeParse(soldOut)
+  if (!ids.success || !flag.success) return BAD_REQUEST
+  return save(ids.data, async ({ scope, services, actor }) => {
+    const outcome = await setItemsSoldOut(
+      {
+        pool: scope.pool,
+        tenantId: scope.tenantId,
+        venueId: scope.venueId as VenueId,
+        actor: `user:${actor.userId}`,
+        canMark: scope.canMarkSoldOut === true,
+      },
+      { enqueue: enqueueJob },
+      { itemIds: [scope.itemId], soldOut: flag.data },
+    )
+    if (!outcome.ok) {
+      const error: SheetErrorCode =
+        outcome.error === 'not_allowed' || outcome.error === 'not_found'
+          ? outcome.error
+          : outcome.error === 'rejected'
+            ? 'refused'
+            : 'failed'
+      return { ok: false, error }
+    }
+    const data = await loadItemSheet(scope, services)
+    return data ? { ok: true, data } : { ok: false, error: 'not_found' }
+  })
 }
 
 /** Takes our own picture off the item. */

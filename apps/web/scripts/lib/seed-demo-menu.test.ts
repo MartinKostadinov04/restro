@@ -22,7 +22,12 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildComposerView } from '../../src/composer/view-model'
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../../src/server/test-database'
+import {
+  appDatabaseUrl,
+  hasDatabase,
+  openOwnerPool,
+  testSlug,
+} from '../../src/server/test-database'
 import { DEMO_ITEMS } from './demo-menu'
 import { seedDemoMenu } from './seed-demo-menu'
 
@@ -53,7 +58,7 @@ describe.skipIf(!hasDatabase)('the demo menu against Postgres (as the restro_app
     owner = openOwnerPool()
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-demo-menu-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Demo menu test club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Demo', slug: 'demo' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Demo', slug: testSlug('demo') })).id
   })
 
   afterAll(async () => {

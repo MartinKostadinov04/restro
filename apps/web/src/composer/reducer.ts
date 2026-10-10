@@ -7,10 +7,16 @@
 // The reducer never decides what is allowed: the UI only offers legal moves (./tree.ts) and
 // `apply()` refuses the rest. It only has to show a legal move correctly.
 
-import type { NodeId } from '@restro/core'
+import type { NodeId, TagId } from '@restro/core'
 
 import type { KeyedId } from './plan'
-import type { ComposerItem, ComposerPlacement, ComposerSection, ComposerView } from './view-model'
+import type {
+  ComposerItem,
+  ComposerPlacement,
+  ComposerSection,
+  ComposerTag,
+  ComposerView,
+} from './view-model'
 
 /** One change someone just made in the composer. */
 export type ComposerOp =
@@ -36,6 +42,23 @@ export type ComposerOp =
   | { readonly type: 'setItemHidden'; readonly itemId: NodeId; readonly hidden: boolean }
   | { readonly type: 'setSectionHidden'; readonly sectionId: NodeId; readonly hidden: boolean }
   | { readonly type: 'addSection'; readonly section: ComposerSection }
+  /** Tags added to and removed from a selection of items (the bulk bar and the item sheet). */
+  | {
+      readonly type: 'setItemTags'
+      readonly itemIds: readonly NodeId[]
+      readonly add: readonly TagId[]
+      readonly remove: readonly TagId[]
+    }
+  /** A tag is created (appended to the list) or changed (name, colour, archived) in place. */
+  | { readonly type: 'upsertTag'; readonly tag: ComposerTag }
+  /** A tag moves before another tag (`null` = to the end). */
+  | { readonly type: 'moveTag'; readonly tagId: TagId; readonly beforeId: TagId | null }
+  /** Items are marked sold out tonight, or the mark is taken off (D46). */
+  | {
+      readonly type: 'setSoldOut'
+      readonly itemIds: readonly NodeId[]
+      readonly soldOut: boolean
+    }
 
 const byKeyThenId = (a: { sortKey: string; id: string }, b: { sortKey: string; id: string }) =>
   a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
@@ -165,9 +188,56 @@ function addSection(view: ComposerView, op: Extract<ComposerOp, { type: 'addSect
   return { ...view, sections, rootIds, placements: { ...view.placements, [section.id]: [] } }
 }
 
+function setItemTags(view: ComposerView, op: Extract<ComposerOp, { type: 'setItemTags' }>) {
+  const removed = new Set<TagId>(op.remove)
+  const items: Record<NodeId, ComposerItem> = { ...view.items }
+  for (const id of op.itemIds) {
+    const item = items[id]
+    if (!item) continue
+    const next = [...new Set([...item.tags.filter((tag) => !removed.has(tag)), ...op.add])]
+    items[id] = { ...item, tags: next }
+  }
+  return { ...view, items }
+}
+
+function upsertTag(view: ComposerView, op: Extract<ComposerOp, { type: 'upsertTag' }>) {
+  const known = view.tags[op.tag.id] !== undefined
+  return {
+    ...view,
+    tagIds: known ? view.tagIds : [...view.tagIds, op.tag.id],
+    tags: { ...view.tags, [op.tag.id]: op.tag },
+  }
+}
+
+function moveTag(view: ComposerView, op: Extract<ComposerOp, { type: 'moveTag' }>) {
+  const rest = view.tagIds.filter((id) => id !== op.tagId)
+  const at = op.beforeId === null ? -1 : rest.indexOf(op.beforeId)
+  const tagIds = at < 0 ? [...rest, op.tagId] : [...rest.slice(0, at), op.tagId, ...rest.slice(at)]
+  return { ...view, tagIds }
+}
+
+function setSoldOut(view: ComposerView, op: Extract<ComposerOp, { type: 'setSoldOut' }>) {
+  const items: Record<NodeId, ComposerItem> = { ...view.items }
+  for (const id of op.itemIds) {
+    const item = items[id]
+    // An item barsy (or another layer) has off sale is not ours to change: the base view keeps it.
+    if (!item || item.offSale !== null) continue
+    items[id] = { ...item, soldOutTonight: op.soldOut }
+  }
+  return { ...view, items }
+}
+
 /** The view after one change. */
 export function reduceView(view: ComposerView, op: ComposerOp): ComposerView {
   switch (op.type) {
+    case 'setSoldOut':
+      return setSoldOut(view, op)
+    case 'setItemTags':
+      return setItemTags(view, op)
+    case 'upsertTag':
+      return upsertTag(view, op)
+    case 'moveTag':
+      return moveTag(view, op)
     case 'placeItem':
       return placeItem(view, op)
     case 'moveSection':
