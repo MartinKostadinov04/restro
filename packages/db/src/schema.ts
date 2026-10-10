@@ -412,6 +412,8 @@ export const menus = restro.table(
   },
   (t) => [
     unique('menus_venue_id_unique').on(t.venueId),
+    // Target of the composite foreign keys (tenant_id, menu_id) of the publish tables.
+    unique('menus_tenant_id_id_unique').on(t.tenantId, t.id),
     foreignKey({
       name: 'menus_venue_fk',
       columns: [t.tenantId, t.venueId],
@@ -816,5 +818,189 @@ export const assets = restro.table(
       'assets_stored_is_complete',
       sql`${t.status} <> 'stored' or (${t.checksum} is not null and ${t.storageKey} is not null and ${t.contentType} is not null)`,
     ),
+  ],
+)
+
+// --- What was published (brief S3-01a) ----------------------------------------------------------
+// Tenant-scoped like the document tables (FORCE row-level security, composite foreign keys).
+// Only `@restro/core/apply` writes them (rule 1). A snapshot body never changes: a trigger
+// (migration 0008) lets an update move `status` from `held` to `published` or `rejected` and
+// record who decided, nothing else; the app role cannot delete a snapshot.
+
+/** A snapshot's state: live history (`published`), waiting for a person (`held`), or turned down. */
+export const SNAPSHOT_STATUSES = ['published', 'held', 'rejected'] as const
+
+/** Why a snapshot row exists: a person pressed Publish, a sync published, or a rollback. */
+export const SNAPSHOT_REASONS = ['manual', 'auto_sync', 'rollback'] as const
+
+/**
+ * Why an automatic publish was held (`snapshots.held_reason`): V11, with the counts the publish
+ * dialog shows and the items (our `nd_` ids) the publish would hide.
+ */
+export interface SnapshotHeldReason {
+  code: 'V11'
+  hidden: number
+  previously_visible: number
+  hidden_item_ids: string[]
+}
+
+/**
+ * One version of a menu for one venue: the `menu-snapshot/1` JSON (`body`) and how it came to
+ * be. `version` counts up per menu + venue across every row (held, rejected and rollback rows
+ * included), so it never repeats. A `rollback` row has no body of its own: it records that the
+ * pointer moved back to `restores_snapshot_id`.
+ */
+export const snapshots = restro.table(
+  'snapshots',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    menuId: text('menu_id').notNull(),
+    venueId: text('venue_id').notNull(),
+    version: integer('version').notNull(),
+    /** SHA-256 of the body without its `snapshot` header (a rollback row: its target's hash). */
+    hash: text('hash').notNull(),
+    body: jsonb('body').$type<Record<string, unknown>>(),
+    status: text('status').notNull(),
+    reason: text('reason').notNull(),
+    /** Who published: `system`, `user:<id>` or `integration:<id>` (never personal data). */
+    actor: text('actor').notNull(),
+    heldReason: jsonb('held_reason').$type<SnapshotHeldReason>(),
+    /** A rollback row: the earlier snapshot the pointer moved back to. */
+    restoresSnapshotId: text('restores_snapshot_id'),
+    /** A held row: who approved or rejected it, and when. */
+    decidedBy: text('decided_by'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (t) => [
+    // Target of the pointer's and the rollback rows' foreign keys: a snapshot of this menu + venue.
+    unique('snapshots_tenant_id_menu_id_venue_id_id_unique').on(
+      t.tenantId,
+      t.menuId,
+      t.venueId,
+      t.id,
+    ),
+    unique('snapshots_menu_id_venue_id_version_unique').on(t.menuId, t.venueId, t.version),
+    foreignKey({
+      name: 'snapshots_menu_fk',
+      columns: [t.tenantId, t.menuId],
+      foreignColumns: [menus.tenantId, menus.id],
+    }),
+    foreignKey({
+      name: 'snapshots_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    foreignKey({
+      name: 'snapshots_restores_fk',
+      columns: [t.tenantId, t.menuId, t.venueId, t.restoresSnapshotId],
+      foreignColumns: [t.tenantId, t.menuId, t.venueId, t.id],
+    }),
+    check('snapshots_id_format', sql`${t.id} ~ '^sn_[0-9A-Za-z]+$'`),
+    check('snapshots_version_positive', sql`${t.version} >= 1`),
+    check('snapshots_hash', sql`${t.hash} ~ ${SHA256_PATTERN}`),
+    check('snapshots_status', sql`${t.status} in ('published', 'held', 'rejected')`),
+    check('snapshots_reason', sql`${t.reason} in ('manual', 'auto_sync', 'rollback')`),
+    check('snapshots_actor', sql`${t.actor} = 'system' or ${t.actor} ~ ${ACTOR_PATTERN}`),
+    check(
+      'snapshots_decided_by',
+      sql`${t.decidedBy} is null or ${t.decidedBy} = 'system' or ${t.decidedBy} ~ ${ACTOR_PATTERN}`,
+    ),
+    // Exactly the rollback rows have no body and name what they restore.
+    check('snapshots_body_unless_rollback', sql`(${t.reason} = 'rollback') = (${t.body} is null)`),
+    check(
+      'snapshots_restores_on_rollback',
+      sql`(${t.reason} = 'rollback') = (${t.restoresSnapshotId} is not null)`,
+    ),
+    check('snapshots_body_object', sql`${t.body} is null or jsonb_typeof(${t.body}) = 'object'`),
+    check(
+      'snapshots_rollback_published',
+      sql`${t.reason} <> 'rollback' or ${t.status} = 'published'`,
+    ),
+    check(
+      'snapshots_published_at',
+      sql`(${t.status} = 'published') = (${t.publishedAt} is not null)`,
+    ),
+    // Only an automatic publish is ever held (V11), and a held or rejected row says why.
+    check(
+      'snapshots_held_reason',
+      sql`(${t.heldReason} is null or (${t.reason} = 'auto_sync' and jsonb_typeof(${t.heldReason}) = 'object')) and (${t.status} = 'published' or ${t.heldReason} is not null)`,
+    ),
+    check('snapshots_decision', sql`(${t.decidedBy} is null) = (${t.decidedAt} is null)`),
+  ],
+)
+
+/** The snapshot a menu + venue shows now (`current.json`). One row per menu + venue. */
+export const publishPointers = restro.table(
+  'publish_pointers',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    menuId: text('menu_id').notNull(),
+    venueId: text('venue_id').notNull(),
+    currentSnapshotId: text('current_snapshot_id').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'publish_pointers_pkey', columns: [t.menuId, t.venueId] }),
+    foreignKey({
+      name: 'publish_pointers_menu_fk',
+      columns: [t.tenantId, t.menuId],
+      foreignColumns: [menus.tenantId, menus.id],
+    }),
+    foreignKey({
+      name: 'publish_pointers_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    // The pointer can only name a snapshot of the same menu + venue.
+    foreignKey({
+      name: 'publish_pointers_snapshot_fk',
+      columns: [t.tenantId, t.menuId, t.venueId, t.currentSnapshotId],
+      foreignColumns: [snapshots.tenantId, snapshots.menuId, snapshots.venueId, snapshots.id],
+    }),
+  ],
+)
+
+/**
+ * When an item first appeared on a published menu for a venue: feeds the resolver's
+ * `firstPublishedAt` (the "new" badge). Written once per item, never changed.
+ */
+export const itemFirstPublished = restro.table(
+  'item_first_published',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    nodeId: text('node_id').notNull(),
+    menuId: text('menu_id').notNull(),
+    venueId: text('venue_id').notNull(),
+    firstPublishedAt: timestamp('first_published_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'item_first_published_pkey',
+      columns: [t.menuId, t.venueId, t.nodeId],
+    }),
+    foreignKey({
+      name: 'item_first_published_node_fk',
+      columns: [t.tenantId, t.nodeId],
+      foreignColumns: [nodes.tenantId, nodes.id],
+    }),
+    foreignKey({
+      name: 'item_first_published_menu_fk',
+      columns: [t.tenantId, t.menuId],
+      foreignColumns: [menus.tenantId, menus.id],
+    }),
+    foreignKey({
+      name: 'item_first_published_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
   ],
 )

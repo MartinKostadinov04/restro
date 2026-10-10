@@ -84,6 +84,10 @@ describe.skipIf(!hasDatabase)('row-level security guard', () => {
         'job_runs',
         'places',
         'assets',
+        // Publish records (brief S3-01a).
+        'snapshots',
+        'publish_pointers',
+        'item_first_published',
       ]),
     )
   })

@@ -60,6 +60,9 @@ export function openOwnerPool(): pg.Pool {
 
 /** Tenant tables emptied by `cleanUp`, children before parents (foreign keys). */
 const TABLES_CHILDREN_FIRST = [
+  'item_first_published',
+  'publish_pointers',
+  'snapshots',
   'events',
   'field_values',
   'placements',
