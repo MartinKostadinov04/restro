@@ -14,7 +14,7 @@ import { apply } from './apply'
 import { loadMenuDocument } from './load-document'
 import { ItemNotFoundError, loadItemDocument } from './load-item-document'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe('input checks (no database needed)', () => {
   it('refuses an item id that is not an nd_ id before any query', async () => {
@@ -65,7 +65,7 @@ describe.skipIf(!hasDatabase)('loadItemDocument against Postgres', () => {
     owner = openOwnerPool()
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-load-item-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Load item test club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') })).id
     await withTenantWrite(app, tenant, (tx) =>
       tx.execute(sql`
         insert into restro.integrations (id, tenant_id, kind, host)

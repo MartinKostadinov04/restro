@@ -23,7 +23,7 @@ import {
   publishMenu,
 } from './publish'
 import { MAX_SOLD_OUT_ITEMS, SoldOutError, setSoldOutTonight } from './sold-out'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe('input checks (no database needed)', () => {
   const unusedPool = {} as DbPool
@@ -135,7 +135,7 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-sold-out-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Sold out test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
     menu = await provisionMenu(app, tenant, venueId)
     await withTenantWrite(app, tenant, (tx) =>

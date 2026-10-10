@@ -26,7 +26,7 @@ import { PgBoss } from 'pg-boss'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { enqueueJob } from '../jobs'
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import {
   checkConnection,
   chooseBarsyVenue,
@@ -106,7 +106,7 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
     await provisionTenant(app, { tenantId: tenant, name: 'Integration tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
     const make = async (id: string, name: string, slug: string) => {
-      const venue = await provisionVenue(app, id, { name, slug })
+      const venue = await provisionVenue(app, id, { name, slug: testSlug(slug) })
       return { id: venue.id, name: venue.name, timezone: venue.timezone }
     }
     venueA = await make(tenant, 'Venue A', 'venue-a')
@@ -613,6 +613,29 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
         await setAutoPublishPaused(app, tenant, integrationId, false)
         expect(await saveSyncSettings(scopeFor(venueA), DEFAULTS)).toEqual({ ok: true })
         expect(autoPublishPaused(await configOf())).toBe(false)
+      })
+
+      it('a pause set after the form was loaded is still set after the save (S3-10)', async () => {
+        await setAutoPublishPaused(app, tenant, integrationId, false)
+        await loadIntegrationView(scopeFor(venueA), services(), NOW) // the form is open ...
+        await setAutoPublishPaused(app, tenant, integrationId, true) // ... a return to an older version lands
+        const input = {
+          schedule: { ...DEFAULTS.schedule, incremental_minutes: 10 },
+          publish: { after_sync: 'manual', new_items: 'hold' },
+        } as const
+        expect(await saveSyncSettings(scopeFor(venueA), input)).toEqual({ ok: true })
+        expect(autoPublishPaused(await configOf())).toBe(true)
+        expect(parseSyncSettings(await configOf())).toEqual(input)
+        await setAutoPublishPaused(app, tenant, integrationId, false)
+      })
+
+      it('a pause cleared after the form was loaded is still cleared after the save (S3-10)', async () => {
+        await setAutoPublishPaused(app, tenant, integrationId, true)
+        await loadIntegrationView(scopeFor(venueA), services(), NOW) // the form is open ...
+        await setAutoPublishPaused(app, tenant, integrationId, false) // ... a manual publish resumes
+        expect(await saveSyncSettings(scopeFor(venueA), DEFAULTS)).toEqual({ ok: true })
+        expect(autoPublishPaused(await configOf())).toBe(false)
+        expect((await configOf())?.publish).toEqual(DEFAULTS.publish)
       })
 
       it('puts the defaults back when they are saved again', async () => {

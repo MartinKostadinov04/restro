@@ -7,6 +7,8 @@ import { buildContext, chooseLocale, langParam, readTableToken } from './context
 import {
   files,
   GuestLoadError,
+  LIVE_REFETCH_ATTEMPTS,
+  LIVE_REFETCH_DELAY_MS,
   type LoadDeps,
   loadLive,
   loadMenu,
@@ -14,6 +16,7 @@ import {
   loadSnapshot,
   loadTableLabel,
   loadVenueIndex,
+  refetchLiveForSnapshot,
 } from './load'
 
 const BASE = '/cdn'
@@ -137,6 +140,105 @@ describe('the guest loader follows the published files (rule 4)', () => {
   it('loads the pointer again for a refresh', async () => {
     const f = publishedFiles()
     expect(await loadPointer(f.deps(), f.index)).toEqual(f.pointer)
+  })
+})
+
+describe('an overlay made for another snapshot version (S3-10)', () => {
+  const instant = () => {
+    const slept: number[] = []
+    return { slept, sleep: async (ms: number) => void slept.push(ms) }
+  }
+  const firstItem = (f: ReturnType<typeof publishedFiles>) => Object.keys(f.snapshot.items)[0] ?? ''
+  const overlayFor = (version: number, soldOut: string[] = []) => ({
+    version,
+    items: Object.fromEntries(soldOut.map((id) => [id, { sold_out: true }])),
+  })
+
+  it('addresses live.json with ?v=<snapshot version>, and a try number from the second try on', () => {
+    const f = publishedFiles()
+    const bust = (attempt: number) => files.live(BASE, f.index, { version: 7, attempt })
+    expect(files.live(BASE, f.index)).toBe(
+      `${BASE}/m/${f.index.menu_id}/${f.index.venue_id}/live.json`,
+    )
+    expect(bust(1)).toBe(`${files.live(BASE, f.index)}?v=7`)
+    expect(bust(2)).toBe(`${files.live(BASE, f.index)}?v=7&r=2`)
+    expect(bust(3)).toBe(`${files.live(BASE, f.index)}?v=7&r=3`)
+  })
+
+  it('asks again at once with ?v= and returns the overlay of the snapshot version', async () => {
+    const f = publishedFiles()
+    const version = f.snapshot.snapshot.version
+    const fresh = overlayFor(version, [firstItem(f)])
+    const overrides = new Map<string, unknown>([
+      [files.live(BASE, f.index), overlayFor(version + 1)],
+      [files.live(BASE, f.index, { version, attempt: 1 }), fresh],
+    ])
+    const waits = instant()
+    const result = await refetchLiveForSnapshot(f.deps(overrides), f.index, version, waits)
+    expect(result).toEqual(fresh)
+    expect(f.asked).toEqual([files.live(BASE, f.index, { version, attempt: 1 })])
+    expect(f.asked[0]).toContain('/live.json?v=')
+    // The first ask is immediate.
+    expect(waits.slept).toEqual([])
+  })
+
+  it('tries up to three times, two seconds apart, then leaves it to the normal polling', async () => {
+    const f = publishedFiles()
+    const version = f.snapshot.snapshot.version
+    const stale = overlayFor(version + 1)
+    const overrides = new Map<string, unknown>(
+      [1, 2, 3].map((attempt) => [files.live(BASE, f.index, { version, attempt }), stale]),
+    )
+    const waits = instant()
+    expect(await refetchLiveForSnapshot(f.deps(overrides), f.index, version, waits)).toBeNull()
+    expect(f.asked).toEqual([
+      `${files.live(BASE, f.index)}?v=${version}`,
+      `${files.live(BASE, f.index)}?v=${version}&r=2`,
+      `${files.live(BASE, f.index)}?v=${version}&r=3`,
+    ])
+    expect(waits.slept).toEqual([LIVE_REFETCH_DELAY_MS, LIVE_REFETCH_DELAY_MS])
+    expect([LIVE_REFETCH_ATTEMPTS, LIVE_REFETCH_DELAY_MS]).toEqual([3, 2000])
+  })
+
+  it('stops at the first overlay that fits, and counts a failed fetch as a try', async () => {
+    const f = publishedFiles()
+    const version = f.snapshot.snapshot.version
+    const fresh = overlayFor(version, [firstItem(f)])
+    const overrides = new Map<string, unknown>([
+      [files.live(BASE, f.index, { version, attempt: 1 }), new Response(null, { status: 503 })],
+      [files.live(BASE, f.index, { version, attempt: 2 }), fresh],
+    ])
+    const waits = instant()
+    expect(await refetchLiveForSnapshot(f.deps(overrides), f.index, version, waits)).toEqual(fresh)
+    expect(f.asked).toHaveLength(2)
+    expect(waits.slept).toEqual([LIVE_REFETCH_DELAY_MS])
+
+    const offline: LoadDeps = {
+      base: BASE,
+      fetch: async () => {
+        throw new TypeError('network down')
+      },
+    }
+    expect(await refetchLiveForSnapshot(offline, f.index, version, instant())).toBeNull()
+  })
+
+  it('stops asking when nobody wants the answer any more', async () => {
+    const f = publishedFiles()
+    const version = f.snapshot.snapshot.version
+    let asks = 0
+    const deps: LoadDeps = {
+      base: BASE,
+      fetch: async () => {
+        asks += 1
+        return Response.json(overlayFor(version + 1))
+      },
+    }
+    const result = await refetchLiveForSnapshot(deps, f.index, version, {
+      sleep: async () => {},
+      cancelled: () => asks >= 1,
+    })
+    expect(result).toBeNull()
+    expect(asks).toBe(1)
   })
 })
 

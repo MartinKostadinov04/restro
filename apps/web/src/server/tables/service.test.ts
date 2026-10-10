@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { buildQrDownload, fileNamePart, parseFormat } from './download'
 import {
   createAllCodes,
@@ -77,7 +77,10 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-tables-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Tables tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venue = await provisionVenue(app, tenant, { name: 'Tables tab venue', slug: 'tables-tab' })
+    venue = await provisionVenue(app, tenant, {
+      name: 'Tables tab venue',
+      slug: testSlug('tables-tab'),
+    })
     integrationId = (await createIntegration(app, tenant, { kind: 'barsy', host: 'tt.test' })).id
     await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 5, name: 'Barsy five' }])
     await mapBarsyVenue(app, tenant, integrationId, 5, venue.id)

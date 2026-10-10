@@ -51,6 +51,7 @@ import type { WorkerConfig } from '../src/config'
 import { createPublishJobs } from '../src/jobs/publish'
 import type { JobDefinition } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
+import { VenueAddressTakenError } from '../src/publish/files'
 import { type LiveAsks, queueLiveRollovers, REASSERT_AFTER_MS } from '../src/publish/rollover'
 import { assetsWithoutVariants, renderVariant, runAssetVariants } from '../src/publish/variants'
 import { backfillVariants } from '../src/variants/backfill'
@@ -61,6 +62,7 @@ import {
   hasDatabase,
   SETUP_TIMEOUT_MS,
   type TestDatabase,
+  testSlug,
 } from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, type World } from './world'
@@ -68,9 +70,6 @@ import { createWorld, type World } from './world'
 allowSlowSetup()
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/** The slug of the venue `createWorld` provisions. */
-const slug = 'demo-club'
 
 /** A real image of the given size (sharp makes it: never a photo from barsy). */
 async function makeImage(
@@ -106,6 +105,8 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
   const fake = createFakeBarsy()
   let db: TestDatabase
   let world: World
+  /** The slug of the venue `createWorld` provisions (random: venue slugs are globally unique). */
+  let slug: string
   let root: string
   let store: CountingStore
   let jobs: Map<string, JobDefinition>
@@ -208,6 +209,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
     root = await mkdtemp(path.join(tmpdir(), 'restro-worker-publish-'))
     store = new CountingStore(new LocalPublishStore({ rootDir: root }))
     world = await createWorld(fake, { database: db })
+    slug = world.venueSlug
     section = newId('nd')
     items = Array.from({ length: 5 }, () => newId('nd'))
     jobs = new Map(
@@ -345,7 +347,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
     it('a refused publish (V10) is recorded as failed and is not retried', async () => {
       const venue = await provisionVenue(world.pool, world.tenantId, {
         name: 'Empty',
-        slug: 'empty-venue',
+        slug: testSlug('empty-venue'),
       })
       const menu = await provisionMenu(world.pool, world.tenantId, venue.id)
       await runJob(JOB_NAMES.publishMenu, {
@@ -444,7 +446,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       })
     })
 
-    it('never overwrites the slug index of another venue, and says so in the run', async () => {
+    it('fails loudly, and never overwrites, when v/<slug>.json names another venue', async () => {
       const other = { venue_id: newId('vn'), menu_id: newId('nd') }
       await store.inner.put(
         venueIndexPath(slug),
@@ -452,12 +454,29 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         publishPutOptionsFor(venueIndexPath(slug)),
       )
       store.puts.length = 0
-      await runJob(JOB_NAMES.publishMenu, publishPayload())
-      // The menu is published and its files are out, but the address stays with the first venue.
+      // The job throws a typed error (pg-boss marks it failed) ...
+      await expect(runJob(JOB_NAMES.publishMenu, publishPayload())).rejects.toBeInstanceOf(
+        VenueAddressTakenError,
+      )
+      // ... the file of the other venue is untouched ...
       expect(store.puts).not.toContain(venueIndexPath(slug))
       expect(await readVenueIndex(store, slug)).toEqual(other)
+      // ... the run is recorded as failed, with the reason ...
       const run = await lastRun('publish_menu')
-      expect(run.details?.notes.join(' ')).toContain(`/m/${slug} belongs to another venue`)
+      expect(run.status).toBe('failed')
+      expect(run.error_summary).toContain(`/m/${slug} belongs to another venue`)
+      // ... and the pointer had moved already: the database index (not this guard) is what keeps
+      // the case from happening, so the guard fails the job instead of undoing the publish.
+      expect(await loadCurrentSnapshot(world.pool, world.tenantId, scope())).toMatchObject({
+        version: 1,
+      })
+
+      // The repair job fails the same way until the file is fixed.
+      await expect(runJob(JOB_NAMES.publishFiles, scopePayload())).rejects.toBeInstanceOf(
+        VenueAddressTakenError,
+      )
+      expect((await lastRun('publish_files')).status).toBe('failed')
+      expect(await readVenueIndex(store, slug)).toEqual(other)
     })
 
     it('replaces a slug index file that cannot be read', async () => {

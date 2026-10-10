@@ -22,7 +22,7 @@ import {
   setTableLabel,
   setVenueQrSettings,
 } from './tables'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 import { setVenueTheme } from './venue-theme'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -42,9 +42,12 @@ describe.skipIf(!hasDatabase)('tables and QR codes (as the restro_app role)', ()
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-tables-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Tables club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Other tables club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Tables Club', slug: 'tables-club' })).id
-    otherVenueId = (await provisionVenue(app, otherTenant, { name: 'Other', slug: 'other-club' }))
-      .id
+    venueId = (
+      await provisionVenue(app, tenant, { name: 'Tables Club', slug: testSlug('tables-club') })
+    ).id
+    otherVenueId = (
+      await provisionVenue(app, otherTenant, { name: 'Other', slug: testSlug('other-club') })
+    ).id
     integrationId = (await createIntegration(app, tenant, { kind: 'barsy', host: 't.test' })).id
   })
 
@@ -73,7 +76,10 @@ describe.skipIf(!hasDatabase)('tables and QR codes (as the restro_app role)', ()
   ): Promise<{ venue: string; bid: number }> {
     bid += 1
     const venue = (
-      await provisionVenue(app, tenant, { name: `Venue ${bid}`, slug: `tables-venue-${bid}` })
+      await provisionVenue(app, tenant, {
+        name: `Venue ${bid}`,
+        slug: testSlug(`tables-venue-${bid}`),
+      })
     ).id
     await upsertBarsyVenues(app, tenant, integrationId, [{ bid, name: `Barsy ${bid}` }])
     expect(await mapBarsyVenue(app, tenant, integrationId, bid, venue)).toMatchObject({ ok: true })
@@ -268,7 +274,7 @@ describe.skipIf(!hasDatabase)('tables and QR codes (as the restro_app role)', ()
       await setTableLabel(app, tenant, eight.id, 'VIP 3')
 
       const files = await loadTokenFiles(app, tenant, venue)
-      expect(files?.venueSlug).toMatch(/^tables-venue-\d+$/)
+      expect(files?.venueSlug).toMatch(/^tables-venue-\d+-[0-9a-f]{8}$/)
       expect(files?.files.map((file) => file.tableLabel).sort()).toEqual(['7', 'VIP 3'])
       const seven = await byNum(venue, '7')
       expect(files?.files.find((file) => file.token === seven.token)?.tableLabel).toBe('7')

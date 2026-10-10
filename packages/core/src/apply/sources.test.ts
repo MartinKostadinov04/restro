@@ -10,7 +10,7 @@ import { newId } from '../ids'
 import { apply } from './apply'
 import { provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { appendSourceRecords, createIntegration, updateIntegration } from './sources'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe.skipIf(!hasDatabase)('integrations and source records (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -264,7 +264,7 @@ describe.skipIf(!hasDatabase)('integrations and source records (as the restro_ap
   })
 
   it('a barsy change set can cite the record it recorded', async () => {
-    const venue = await provisionVenue(app, tenant, { name: 'Seeded', slug: 'seeded' })
+    const venue = await provisionVenue(app, tenant, { name: 'Seeded', slug: testSlug('seeded') })
     const menu = await provisionMenu(app, tenant, venue.id)
     const integration = await createIntegration(app, tenant, {
       kind: 'barsy',

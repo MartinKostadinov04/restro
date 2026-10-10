@@ -78,7 +78,17 @@ function has(record: object, key: string): boolean {
   return Object.hasOwn(record, key)
 }
 
-/** R5: sold out by the overlay (the overlay can only ever say sold out). */
+/**
+ * R5: sold out by the overlay (the overlay can only ever say sold out).
+ *
+ * The overlay's `version` is deliberately NOT compared with the snapshot's: a mismatched overlay
+ * still applies; it can only add caution. Sold-out marks belong to the service day, not to a menu
+ * version, so ignoring an overlay that was made for another version would briefly show sold-out
+ * items as available, the less cautious error. A mark for an item this snapshot does not have is
+ * never looked at (only the snapshot's own items are asked), and an overlay never adds an item or
+ * makes one more available. The guest loader fetches the matching overlay again meanwhile
+ * (apps/web/src/guest/load.ts).
+ */
 function overlaySoldOut(overlay: LiveOverlay | null, id: string): boolean {
   return (
     overlay !== null && has(overlay.items, id) && overlay.items[id as NodeId]?.sold_out === true
@@ -381,6 +391,7 @@ export function buildViewModel(
   const now = new Date(context.now)
   const env: Env = {
     snapshot,
+    // Used whatever its `version` (see `overlaySoldOut`): a mismatched overlay can only add caution.
     overlay,
     context,
     locale,

@@ -20,7 +20,7 @@ import { apply } from './apply'
 import { createAsset, setAssetVariants } from './create-asset'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { loadCurrentSnapshot, publishMenu } from './publish'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 import { setVenueTheme, VenueThemeError } from './venue-theme'
 
 describe('the venue theme setting (pure)', () => {
@@ -96,7 +96,7 @@ describe.skipIf(!hasDatabase)('the venue theme against Postgres (as the restro_a
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-venue-theme-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Theme test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
     menu = await provisionMenu(app, tenant, venueId)
     const section = newId('nd')

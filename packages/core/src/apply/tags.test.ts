@@ -16,7 +16,7 @@ import * as applyEntry from './index'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { loadCurrentSnapshot, publishMenu } from './publish'
 import { listTags, setItemTags } from './tags'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 /** A pool that is never used: the input checks run before any query. */
 const unusedPool = {} as DbPool
@@ -139,12 +139,14 @@ describe.skipIf(!hasDatabase)('tags against Postgres (as the restro_app role)', 
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-tags-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Tags test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
-    secondVenueId = (await provisionVenue(app, tenant, { name: 'Second', slug: 'second' }))
-      .id as `vn_${string}`
-    otherTenantVenueId = (await provisionVenue(app, otherTenant, { name: 'Other', slug: 'other' }))
-      .id as `vn_${string}`
+    secondVenueId = (
+      await provisionVenue(app, tenant, { name: 'Second', slug: testSlug('second') })
+    ).id as `vn_${string}`
+    otherTenantVenueId = (
+      await provisionVenue(app, otherTenant, { name: 'Other', slug: testSlug('other') })
+    ).id as `vn_${string}`
     menu = await provisionMenu(app, tenant, venueId)
     secondMenu = await provisionMenu(app, tenant, secondVenueId)
     const result = await apply(

@@ -271,6 +271,39 @@ describe('R5 state', () => {
     ])
   })
 
+  it('still applies an overlay made for another snapshot version: it can only add caution (S3-10)', () => {
+    const f = fixture('sold-out')
+    const matched = buildViewModel(f.snapshot, f.overlay, f.context)
+    const version = f.snapshot.snapshot.version
+    for (const other of [version + 1, version + 7, Math.max(1, version - 1)]) {
+      const overlay = { ...(f.overlay ?? { items: {} }), version: other }
+      // Sold-out marks belong to the service day, not to a version: the same marks apply.
+      const view = buildViewModel(f.snapshot, overlay, f.context)
+      expect(items(view).map((item) => item.state.code)).toEqual(
+        items(matched).map((item) => item.state.code),
+      )
+      expect(items(view).map((item) => item.state.code)).toEqual([
+        'sold_out',
+        'sold_out',
+        'sold_out',
+      ])
+    }
+
+    // A mismatched overlay that has no marks does not put the snapshot's sold-out item back on
+    // sale, and one that names an item the snapshot lacks adds nothing to the menu.
+    const unrelated = {
+      version: version + 3,
+      items: { [fixtureId('nd', 9999)]: { sold_out: true as const } },
+    }
+    const view = buildViewModel(f.snapshot, unrelated, f.context)
+    expect(items(view).map((item) => item.state.code)).toEqual([
+      'available',
+      'sold_out',
+      'available',
+    ])
+    expect(items(view)).toHaveLength(items(buildViewModel(f.snapshot, null, f.context)).length)
+  })
+
   it('ignores overlay entries for items that are not in the snapshot', () => {
     const f = fixture('sold-out')
     const overlay = { version: 1, items: { [fixtureId('nd', 9999)]: { sold_out: true as const } } }

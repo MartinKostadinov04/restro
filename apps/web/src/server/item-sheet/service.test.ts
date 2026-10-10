@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { makePng } from '../../../../../packages/assets/src/test-images'
 import { storeImage } from '../assets/upload'
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import {
   keepOverride,
   loadHistory,
@@ -139,8 +139,10 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-item-sheet-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Item sheet test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id
-    otherVenueId = (await provisionVenue(app, otherTenant, { name: 'Other', slug: 'main' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') })).id
+    otherVenueId = (
+      await provisionVenue(app, otherTenant, { name: 'Other', slug: testSlug('main') })
+    ).id
     await owner.query(
       `insert into restro.integrations (id, tenant_id, kind, host) values ($1, $2, 'barsy', 'demo.example')`,
       [integration, tenant],

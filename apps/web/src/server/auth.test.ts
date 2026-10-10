@@ -9,7 +9,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createAuth } from './auth'
 import { assertAuthRoleIsSafe, getAuthDb, getPool } from './db'
 import { authModelId } from './ids'
-import { cleanUp, hasDatabase, openOwnerPool, useTestServerEnvironment } from './test-database'
+import {
+  cleanUp,
+  hasDatabase,
+  openOwnerPool,
+  testSlug,
+  useTestServerEnvironment,
+} from './test-database'
 import { getVenue, listVenues } from './venues'
 
 const PASSWORD = 'a-test-password-1'
@@ -87,8 +93,14 @@ describe.skipIf(!hasDatabase)('organisation = tenant (Better Auth over the app r
   })
 
   it('shows each organisation only its own venues (listVenues and getVenue)', async () => {
-    const venueA = await provisionVenue(getPool(), orgA, { name: 'Venue A', slug: 'main' })
-    const venueB = await provisionVenue(getPool(), orgB, { name: 'Venue B', slug: 'main' })
+    const venueA = await provisionVenue(getPool(), orgA, {
+      name: 'Venue A',
+      slug: testSlug('main'),
+    })
+    const venueB = await provisionVenue(getPool(), orgB, {
+      name: 'Venue B',
+      slug: testSlug('main'),
+    })
     expect((await listVenues(orgA)).map((venue) => venue.id)).toEqual([venueA.id])
     expect((await listVenues(orgB)).map((venue) => venue.id)).toEqual([venueB.id])
     expect((await getVenue(orgA, venueA.id))?.name).toBe('Venue A')

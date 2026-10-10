@@ -33,7 +33,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { saveSyncSettings } from '../integration/service'
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { loadHistoryPage, loadPublishView, type ViewDeps, type ViewScope } from './load'
 import {
   approveHeld,
@@ -136,7 +136,8 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-publish-tab-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Publish tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id as VenueId
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
+      .id as VenueId
     menu = await provisionMenu(app, tenant, venueId)
     integrationId = (await createIntegration(app, tenant, { kind: 'barsy', host: 'tab.test' })).id
     await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 10, name: 'Demo' }])
@@ -212,7 +213,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
     })
 
     it('says "no menu" for a venue without one', async () => {
-      const bare = (await provisionVenue(app, tenant, { name: 'Bare', slug: 'bare' })).id
+      const bare = (await provisionVenue(app, tenant, { name: 'Bare', slug: testSlug('bare') })).id
       const result = await view({ venue: { id: bare, slug: 'bare', timezone: 'Europe/Sofia' } })
       expect(result).toMatchObject({ menu: 'none', live: null, held: null })
     })
@@ -397,7 +398,8 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
     })
 
     it('pauses nothing for a venue with no barsy integration', async () => {
-      const lone = (await provisionVenue(app, tenant, { name: 'Lone', slug: 'lone' })).id as VenueId
+      const lone = (await provisionVenue(app, tenant, { name: 'Lone', slug: testSlug('lone') }))
+        .id as VenueId
       const loneMenu = await provisionMenu(app, tenant, lone)
       const section2 = newId('nd')
       const item = newId('nd')
@@ -575,15 +577,17 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
 
     it('says why there is nothing to show, and works for any member', async () => {
       expect(await previewDraft({ ...scope({ canPublish: false }) })).toMatchObject({ ok: true })
-      const empty = (await provisionVenue(app, tenant, { name: 'Empty', slug: 'empty' })).id
+      const empty = (await provisionVenue(app, tenant, { name: 'Empty', slug: testSlug('empty') }))
+        .id
       expect(
         await previewDraft({ pool: app, tenantId: tenant, venueId: empty as VenueId }),
       ).toEqual({
         ok: false,
         error: 'no_menu',
       })
-      const noItems = (await provisionVenue(app, tenant, { name: 'No items', slug: 'noitems' }))
-        .id as VenueId
+      const noItems = (
+        await provisionVenue(app, tenant, { name: 'No items', slug: testSlug('noitems') })
+      ).id as VenueId
       await provisionMenu(app, tenant, noItems)
       expect(await previewDraft({ pool: app, tenantId: tenant, venueId: noItems })).toEqual({
         ok: false,
@@ -592,8 +596,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
     })
 
     it('shows "nothing visible" in the view when every item is hidden', async () => {
-      const noItems = (await provisionVenue(app, tenant, { name: 'None here', slug: 'nonehere' }))
-        .id as VenueId
+      const noItems = (
+        await provisionVenue(app, tenant, { name: 'None here', slug: testSlug('nonehere') })
+      ).id as VenueId
       await provisionMenu(app, tenant, noItems)
       const result = await view({
         venue: { id: noItems, slug: 'nonehere', timezone: 'Europe/Sofia' },
@@ -652,7 +657,8 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
 
   describe('the history pages', () => {
     it('lists 20 to a page and continues from the oldest version shown', async () => {
-      const many = (await provisionVenue(app, tenant, { name: 'Many', slug: 'many' })).id as VenueId
+      const many = (await provisionVenue(app, tenant, { name: 'Many', slug: testSlug('many') }))
+        .id as VenueId
       const manyMenu = await provisionMenu(app, tenant, many)
       const sec = newId('nd')
       const item = newId('nd')
@@ -702,7 +708,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
     })
 
     it('compares a version after a return with the version the menu was returned to', async () => {
-      const lone = (await provisionVenue(app, tenant, { name: 'Return', slug: 'return' }))
+      const lone = (await provisionVenue(app, tenant, { name: 'Return', slug: testSlug('return') }))
         .id as VenueId
       const loneMenu = await provisionMenu(app, tenant, lone)
       const sec = newId('nd')

@@ -22,7 +22,7 @@ import { createPool, type DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { type PublishScope, type PublishServices, publishNow, rollback } from './service'
 
 describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)', () => {
@@ -86,10 +86,12 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-publish-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Publish action club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id as VenueId
-    menu = await provisionMenu(app, tenant, venueId)
-    emptyVenueId = (await provisionVenue(app, tenant, { name: 'No menu', slug: 'no-menu' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as VenueId
+    menu = await provisionMenu(app, tenant, venueId)
+    emptyVenueId = (
+      await provisionVenue(app, tenant, { name: 'No menu', slug: testSlug('no-menu') })
+    ).id as VenueId
     const section = newId('nd')
     const item = newId('nd')
     const result = await apply(
@@ -243,8 +245,9 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
     })
 
     it('says so when nothing was ever published, or the venue has no menu', async () => {
-      const unpublished = (await provisionVenue(app, tenant, { name: 'Fresh', slug: 'fresh' }))
-        .id as VenueId
+      const unpublished = (
+        await provisionVenue(app, tenant, { name: 'Fresh', slug: testSlug('fresh') })
+      ).id as VenueId
       await provisionMenu(app, tenant, unpublished)
       expect(await rollback(scope({ venueId: unpublished }), services, v1)).toEqual({
         ok: false,
