@@ -213,6 +213,20 @@ describe('buildSnapshot', () => {
     expect(withTags.tags).toEqual(vocabulary)
   })
 
+  it('writes the colour token of a tag into the vocabulary, and only a known token', () => {
+    const builder = barMenu()
+    const colored = {
+      [SIGNATURE]: { label: { en_US: 'Signature' }, color: 'accent_text' as const },
+    }
+    const snapshot = snapshotOf(builder, context({ tagVocabulary: colored }), CONTEXT)
+    expect(snapshot.tags).toEqual({
+      [SIGNATURE]: { label: { en_US: 'Signature' }, color: 'accent_text' },
+    })
+    // A raw colour is not a token: the snapshot would not pass its own schema.
+    const raw = { [SIGNATURE]: { label: { en_US: 'Signature' }, color: '#ff0000' as never } }
+    expect(() => snapshotOf(builder, context({ tagVocabulary: raw }), CONTEXT)).toThrow()
+  })
+
   it('hashes the content without the header', () => {
     const one = snapshotOf(barMenu())
     const other = snapshotOf(

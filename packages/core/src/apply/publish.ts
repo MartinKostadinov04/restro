@@ -48,6 +48,7 @@ import { buildLiveOverlay } from '../snapshot/overlay'
 import type { LiveOverlay, MenuSnapshot } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { readMenuDocument } from './load-document'
+import { loadTagVocabulary } from './tags'
 
 /** Why a publish happens: a person pressed Publish, or a sync published on its own. */
 export const PUBLISH_REASONS = ['manual', 'auto_sync'] as const
@@ -496,7 +497,8 @@ async function prepareSnapshot(
         ).map((row) => row.externalId)
 
   const theme = DEFAULT_THEME
-  const tagVocabulary = {}
+  // The venue's non-archived tags, in order (D60); items carry only ids that are in it.
+  const tagVocabulary = await loadTagVocabulary(tx, venueId)
   const built = buildSnapshot(resolved, {
     template: TEMPLATE,
     snapshotId,
