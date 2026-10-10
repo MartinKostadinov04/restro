@@ -4,7 +4,12 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "allowJs": true,
-    "checkJs": true
+    "checkJs": true,
+    // vitest.config.ts and the Node-run scripts (pnpm vendor-words:baseline) import their helpers
+    // with explicit ".ts" extensions: Vite's native config loader and Node's built-in TypeScript
+    // support both need them, and only erasable syntax works under Node.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
   "include": ["vitest.config.ts", "scripts"]
 }
