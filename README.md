@@ -79,6 +79,9 @@ The worker's `dev` script loads the root `.env.local` and then `.env.worker.loca
 | `R2_SECRET_ACCESS_KEY` | Secret of that R2 API token. Required with `ASSET_STORE=r2` | none |
 | `R2_BUCKET` | Name of the private R2 bucket. Required with `ASSET_STORE=r2` | none |
 | `R2_ENDPOINT` | S3 endpoint of the bucket. Set it for EU jurisdiction (`https://<id>.eu.r2.cloudflarestorage.com`); used only with `ASSET_STORE=r2` | `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `PUBLISH_STORE` | `local` or `r2`: where published menus and photo variants go (the worker writes; the web app serves `local` at `/cdn/…`) | `local` in development; an error in production when unset |
+| `LOCAL_PUBLISH_DIR` | Folder of the `local` publish store. Used only with `PUBLISH_STORE=local` | `.local/cdn` in the repository |
+| `R2_PUBLIC_BUCKET` | Name of the public R2 bucket behind the CDN. Required with `PUBLISH_STORE=r2` (with the `R2_*` account settings above) | none |
 
 `GET /health` answers `200 {"status":"ok","lastBeatAt":"…","pgboss":"started"}` while pg-boss is started and the last heartbeat is under three minutes old, and `503` with a `reason` otherwise (starting, stopping, no heartbeat yet, stale heartbeat). The answer comes from memory; a probe never touches the database. Run one worker replica for now: each heartbeat job is taken by one replica, so with two the other would look stale.
 
