@@ -307,9 +307,7 @@ export async function upsertPlaces(
     // TODO(T62 preview): a person releases a hold from the switch preview; the override plugs in here.
     const activeBefore = stored.filter((row) => row.state === 'active').length
     const wouldGoMissing = conclusion.changes.filter((change) => change.to === 'missing').length
-    const verdict = conclusion.complete
-      ? absenceHold({ activeBefore, seen: seen.size, wouldGoMissing })
-      : ({ hold: false } as const)
+    const verdict = absenceHold({ activeBefore, seen: seen.size, wouldGoMissing })
     const held: AbsenceHeld | null = verdict.hold
       ? { reason: verdict.reason, wouldHide: wouldGoMissing, active: activeBefore }
       : null

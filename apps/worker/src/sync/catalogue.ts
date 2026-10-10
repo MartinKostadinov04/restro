@@ -453,7 +453,7 @@ function heldNote(held: LinkHold): string {
 }
 
 /** The run note for a held conclusion about the tables. */
-export function heldPlacesNote(held: AbsenceHeld): string {
+function heldPlacesNote(held: AbsenceHeld): string {
   if (held.reason === 'empty_read') {
     return `table check held: the read found no tables but ${held.active} are stored; none was marked missing or deleted`
   }
