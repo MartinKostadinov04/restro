@@ -141,7 +141,9 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
            from pgboss.job where name = $1 order by created_on`,
           [JOB_NAMES.barsyFullPull],
         )
-        return rows.length === 2 ? rows : undefined
+        // The handler queues the copy and only then completes: wait for both, or a busy machine
+        // reads the first job while it is still active.
+        return rows.length === 2 && rows[0]?.state === 'completed' ? rows : undefined
       })
       expect(jobs[0]).toMatchObject({ state: 'completed', singleton_key: job.singletonKey })
       expect(jobs[1]?.state).toBe('created')
