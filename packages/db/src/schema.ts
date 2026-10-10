@@ -736,6 +736,16 @@ export interface JobRunDetails {
   refused: { nodeRef: string | null; fieldKey?: string; code: string }[]
   /** True when a full pull did not conclude absence. Absent on runs recorded before it existed. */
   deletionCheckSkipped?: boolean
+  /**
+   * Set when a complete full pull found nothing, or far fewer items than the menu holds, so its
+   * absence conclusion was held and nothing was hidden (T62): why, how many items it would have
+   * hidden and how many were on the menu. Absent when nothing was held.
+   */
+  absence_held?: {
+    reason: 'empty_read' | 'too_many_missing'
+    would_hide: number
+    active: number
+  }
 }
 
 /** One run of a job (full pull, incremental pull, photo fetch, …) with its counters. */

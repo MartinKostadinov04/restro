@@ -151,6 +151,123 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
       expect((await stateOf('3'))?.state).toBe('deleted')
     })
 
+    describe('a read that lists nothing, or far less than is stored, is held (T62)', () => {
+      const BID = 13
+      const day = 24 * 60 * 60 * 1000
+      const ids = Array.from({ length: 10 }, (_, i) => String(300 + i))
+      const stateCounts = async () => {
+        const rows = await withTenant(app, tenant, (tx) =>
+          tx
+            .select()
+            .from(places)
+            .where(and(eq(places.integrationId, integrationId), eq(places.bid, BID))),
+        )
+        return rows.reduce<Record<string, number>>((counts, row) => {
+          counts[row.state] = (counts[row.state] ?? 0) + 1
+          return counts
+        }, {})
+      }
+
+      const stateOfBid = async (placeId: string) =>
+        (
+          await withTenant(app, tenant, (tx) =>
+            tx
+              .select()
+              .from(places)
+              .where(
+                and(
+                  eq(places.integrationId, integrationId),
+                  eq(places.bid, BID),
+                  eq(places.placeId, placeId),
+                ),
+              ),
+          )
+        )[0]
+
+      it('an empty complete list over active places changes nothing and retires no token', async () => {
+        await upsertBarsyVenues(app, tenant, integrationId, [{ bid: BID, name: 'Held venue' }])
+        const created = await upsertPlaces(
+          app,
+          tenant,
+          integrationId,
+          BID,
+          ids.map((id) => place(id)),
+          {
+            pagesOk: [true],
+          },
+        )
+        expect(created).toMatchObject({ created: 10, held: null })
+        await owner.query(
+          `update restro.places set qr_token = 'T' || lpad(place_id, 21, '0') where integration_id = $1 and bid = $2`,
+          [integrationId, BID],
+        )
+
+        const empty = await upsertPlaces(app, tenant, integrationId, BID, [], { pagesOk: [true] })
+        expect(empty).toMatchObject({
+          missing: 0,
+          deleted: 0,
+          retiredTokens: [],
+          complete: true,
+          held: { reason: 'empty_read', wouldHide: 10, active: 10 },
+        })
+        expect(await stateCounts()).toEqual({ active: 10 })
+
+        // Past the grace period, still empty: still nothing happens.
+        const later = await upsertPlaces(app, tenant, integrationId, BID, [], {
+          pagesOk: [true],
+          now: new Date(Date.now() + 8 * day),
+        })
+        expect(later).toMatchObject({
+          deleted: 0,
+          retiredTokens: [],
+          held: { reason: 'empty_read' },
+        })
+        expect(await stateCounts()).toEqual({ active: 10 })
+        const coded = await owner.query(
+          'select count(*)::int as n from restro.places where integration_id = $1 and bid = $2 and qr_token is not null',
+          [integrationId, BID],
+        )
+        expect(coded.rows[0]?.n).toBe(10)
+      })
+
+      it('a list that would mark more than 30% (and at least 5) missing is held; listed places are still stored', async () => {
+        const held = await upsertPlaces(
+          app,
+          tenant,
+          integrationId,
+          BID,
+          [place('300', 'renamed'), place('301')],
+          { pagesOk: [true] },
+        )
+        expect(held).toMatchObject({
+          updated: 1,
+          unchanged: 1,
+          missing: 0,
+          held: { reason: 'too_many_missing', wouldHide: 8, active: 10 },
+        })
+        expect(await stateCounts()).toEqual({ active: 10 })
+        expect((await stateOfBid('300'))?.placeNum).toBe('renamed')
+      })
+
+      it('a small drop is concluded as before, and an incomplete read is never "held" (it concludes nothing)', async () => {
+        const incomplete = await upsertPlaces(app, tenant, integrationId, BID, [], {
+          pagesOk: [true, false],
+        })
+        expect(incomplete).toMatchObject({ complete: false, missing: 0, held: null })
+
+        const small = await upsertPlaces(
+          app,
+          tenant,
+          integrationId,
+          BID,
+          ids.slice(0, 8).map((id) => place(id)),
+          { pagesOk: [true] },
+        )
+        expect(small).toMatchObject({ missing: 2, deleted: 0, held: null })
+        expect(await stateCounts()).toEqual({ active: 8, missing: 2 })
+      })
+    })
+
     it('refuses a bid that was never recorded (foreign key) and bad ids', async () => {
       await expect(
         upsertPlaces(app, tenant, integrationId, 999, [place('1')], { pagesOk: [true] }),
@@ -207,6 +324,29 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
       expect(await finishJobRun(app, tenant, run.id, { status: 'failed' })).toBeNull()
     })
 
+    it('a held absence conclusion is recorded in details as absence_held, and only when given', async () => {
+      const held = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+      const finished = await finishJobRun(app, tenant, held.id, {
+        status: 'completed',
+        summary:
+          'deletion check held: the read would hide 61 of 65 items (94%); nothing was hidden',
+        deletionCheckSkipped: true,
+        absenceHeld: { reason: 'too_many_missing', wouldHide: 61, active: 65 },
+      })
+      expect(finished?.details).toEqual({
+        notes: [
+          'deletion check held: the read would hide 61 of 65 items (94%); nothing was hidden',
+        ],
+        refused: [],
+        deletionCheckSkipped: true,
+        absence_held: { reason: 'too_many_missing', would_hide: 61, active: 65 },
+      })
+
+      const plain = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+      const done = await finishJobRun(app, tenant, plain.id, { status: 'completed' })
+      expect(done?.details).not.toHaveProperty('absence_held')
+    })
+
     it('a failed run keeps its summary, without URLs or their query strings', async () => {
       const run = await startJobRun(app, tenant, { kind: 'barsy_connect', integrationId })
       const finished = await finishJobRun(app, tenant, run.id, {
@@ -258,6 +398,21 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
       expect(readSyncState(config, 10)).toEqual({ cursor, tree_hash: hash })
       expect(readSyncState(config, 11)).toEqual({ cursor: '2026-10-09T11:00:00Z' })
       expect(readSyncState(config, 12)).toEqual({})
+    })
+
+    it('stores the scope hash of the last complete full pull beside the cursor (B1-Q2)', async () => {
+      const scope = 'c'.repeat(64)
+      expect(await updateSyncState(app, tenant, integrationId, 14, { scope_hash: scope })).toBe(
+        true,
+      )
+      await updateSyncState(app, tenant, integrationId, 14, { cursor: '2026-10-09T10:00:00Z' })
+      expect(readSyncState(await configOf(), 14)).toEqual({
+        scope_hash: scope,
+        cursor: '2026-10-09T10:00:00Z',
+      })
+      await expect(
+        updateSyncState(app, tenant, integrationId, 14, { scope_hash: 'not a hash' }),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
     })
 
     it('keeps the tick’s marks (S3-04) beside the settings, and a settings write keeps the marks', async () => {

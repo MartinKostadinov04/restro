@@ -24,6 +24,13 @@ export const SyncStateSchema = z.object({
   cursor: IsoInstant.optional(),
   /** SHA-256 of the last public category tree a successful run saw. */
   tree_hash: Sha256.optional(),
+  /**
+   * SHA-256 of the scope the last successful complete full pull read: the barsy venue, the menu
+   * category and the mapping settings it used (B1-Q2). The incremental compares it with the
+   * scope as configured now: a difference queues a full pull instead of a partial one against
+   * the new scope. Absent on state written before it existed, which counts as changed.
+   */
+  scope_hash: Sha256.optional(),
   last_full_pull_at: IsoInstant.optional(),
   last_incremental_at: IsoInstant.optional(),
   // The minute tick's own marks (S3-04). Without them a change check that failed, or a full pull
