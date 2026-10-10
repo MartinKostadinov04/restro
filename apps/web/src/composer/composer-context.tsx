@@ -31,6 +31,8 @@ export interface ComposerActions {
   /** Moves a section to the end of a parent (`null` = top level). */
   readonly moveSectionTo: (sectionId: NodeId, parentId: NodeId | null) => void
   readonly newSection: (parentId?: NodeId | null) => void
+  /** Opens "New item" for a section (`null` = Unsorted). */
+  readonly newItem: (sectionId: NodeId | null) => void
 
   // --- tags (D60) ---------------------------------------------------------------------------
   /** Adds a tag to the venue's list under the id the caller made; true when it was saved. */
@@ -80,6 +82,13 @@ export interface ComposerState extends ComposerActions {
   readonly tagFilter: ReadonlySet<TagId>
   /** The person may mark items sold out tonight and take the mark off (owner or admin). */
   readonly canMarkSoldOut: boolean
+  /**
+   * The person may create items by hand here: an owner or admin, in a venue without a till
+   * (CF-01, D66).
+   */
+  readonly canCreateItem: boolean
+  /** The venue has a till: its items come from the till (the empty states say so). */
+  readonly hasTill: boolean
 }
 
 const Context = createContext<ComposerState | null>(null)

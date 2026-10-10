@@ -4,7 +4,13 @@
 // An intent with more than one op ("move an item": place it there, take it out of here) is sent
 // atomically (ApplyOptions.atomic): all of it happens, or none of it.
 
-import type { ChangeSetOp, LocalizedText, NodeId } from '@restro/core'
+import {
+  type ChangeSetOp,
+  type LocalizedText,
+  type Money,
+  MoneySchema,
+  type NodeId,
+} from '@restro/core'
 
 import type { KeyedId } from './plan'
 
@@ -78,6 +84,48 @@ export function createSectionOps(input: {
       value: title,
     },
   ]
+}
+
+/**
+ * A new item made by hand: the node, its name (and price, when one was given) in the manual
+ * layer, and its place in a section (when it was made inside one; otherwise it starts in Unsorted).
+ * An item has no parent: membership is a placement. It has no till link, so it is display-only
+ * and cannot be ordered (rule 5). The price is checked as core's `Money` (integer minor units,
+ * rule 8); the caller converts typed text with core's money module, never with `x * 100`.
+ */
+export function createItemOps(input: {
+  id: NodeId
+  sectionId: NodeId | null
+  name: LocalizedText
+  price: Money | null
+  sortKey: string
+}): ChangeSetOp[] {
+  const { id, sectionId, name, price, sortKey } = input
+  const ops: ChangeSetOp[] = [
+    { op: 'createNode', id, nodeType: 'item', parent: null, status: 'active' },
+    {
+      op: 'setField',
+      node: { id },
+      fieldKey: 'name',
+      layer: 'manual',
+      scope: 'master',
+      value: name,
+    },
+  ]
+  if (price !== null) {
+    ops.push({
+      op: 'setField',
+      node: { id },
+      fieldKey: 'price',
+      layer: 'manual',
+      scope: 'master',
+      value: MoneySchema.parse(price),
+    })
+  }
+  if (sectionId !== null) {
+    ops.push({ op: 'setPlacement', item: { id }, section: { id: sectionId }, sortKey })
+  }
+  return ops
 }
 
 /**

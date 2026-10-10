@@ -2,6 +2,7 @@ import { type ChangeSetOp, newId, parseChangeSet } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
 import {
+  createItemOps,
   createSectionOps,
   moveSectionOps,
   placeItemOps,
@@ -148,6 +149,99 @@ describe('createSectionOps', () => {
         value: { bg_BG: 'Коктейли на вечерта', en_US: 'Tonight’s cocktails' },
       },
     ])
+  })
+})
+
+describe('createItemOps', () => {
+  const name = { bg_BG: 'Мохито', en_US: 'Mojito' }
+
+  it('creates the item with no parent, names and prices it in the manual layer and places it', () => {
+    const ops = asManualSet(
+      createItemOps({
+        id: item,
+        sectionId: a,
+        name,
+        price: { amount_minor: 450, currency: 'EUR' },
+        sortKey: 'a2',
+      }),
+    )
+    expect(ops).toEqual([
+      { op: 'createNode', id: item, nodeType: 'item', parent: null, status: 'active' },
+      {
+        op: 'setField',
+        node: { id: item },
+        fieldKey: 'name',
+        layer: 'manual',
+        scope: 'master',
+        value: name,
+      },
+      {
+        op: 'setField',
+        node: { id: item },
+        fieldKey: 'price',
+        layer: 'manual',
+        scope: 'master',
+        value: { amount_minor: 450, currency: 'EUR' },
+      },
+      { op: 'setPlacement', item: { id: item }, section: { id: a }, sortKey: 'a2' },
+    ])
+  })
+
+  it('writes no price when none was given', () => {
+    const ops = asManualSet(
+      createItemOps({ id: item, sectionId: a, name, price: null, sortKey: 'a0' }),
+    )
+    expect(ops.map((op) => op.op)).toEqual(['createNode', 'setField', 'setPlacement'])
+    expect(ops.some((op) => op.op === 'setField' && op.fieldKey === 'price')).toBe(false)
+  })
+
+  it('writes no placement for an item made in Unsorted', () => {
+    const ops = asManualSet(
+      createItemOps({
+        id: item,
+        sectionId: null,
+        name,
+        price: { amount_minor: 0, currency: 'EUR' },
+        sortKey: 'a0',
+      }),
+    )
+    expect(ops.map((op) => op.op)).toEqual(['createNode', 'setField', 'setField'])
+    // A price of 0 is a price (a free item), not "no price".
+    expect(ops[2]).toMatchObject({ fieldKey: 'price', value: { amount_minor: 0 } })
+  })
+
+  it('never writes the till layers or the sale flags (rule 5)', () => {
+    const ops = createItemOps({
+      id: item,
+      sectionId: a,
+      name,
+      price: { amount_minor: 450, currency: 'EUR' },
+      sortKey: 'a0',
+    })
+    const fields = ops.flatMap((op) => (op.op === 'setField' ? [op] : []))
+    expect(fields.every((op) => op.layer === 'manual' && op.scope === 'master')).toBe(true)
+    expect(fields.map((op) => op.fieldKey)).toEqual(['name', 'price'])
+  })
+
+  it('refuses a price that is not core money', () => {
+    expect(() =>
+      createItemOps({
+        id: item,
+        sectionId: null,
+        name,
+        price: { amount_minor: 4.5, currency: 'EUR' },
+        sortKey: 'a0',
+      }),
+    ).toThrow()
+    expect(() =>
+      createItemOps({
+        id: item,
+        sectionId: null,
+        name,
+        price: { amount_minor: 450, currency: 'USD' } as never,
+        sortKey: 'a0',
+      }),
+    ).toThrow()
   })
 })
 
