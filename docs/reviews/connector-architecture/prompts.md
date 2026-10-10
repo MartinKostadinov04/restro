@@ -10,7 +10,10 @@ Used on 10-11 for the read-only review (plan approved by Martin 10-11). Each age
 | A2 | Data layer | Sonnet | 2 |
 | A4 | Admin app | Sonnet | 2 |
 | A5 | Guest side and outbound | Sonnet | 2 |
-| A6 | Guardrails, tests, docs | Sonnet | 3 |
+| B1 | The barsy connector itself (added at Martin's request) | Sonnet | first free slot |
+| A6 | Guardrails, tests, docs | Sonnet | last |
+
+Scheduling: rolling slots, never more than 3 agents at once; after wave 1: B1, A2, A4, A5, then A6.
 
 ## Shared preamble (prepended to every prompt)
 > You are reviewing **Restro** (`E:\Restro`), a QR-to-phone menu platform for nightclubs. Today it reads one till system, barsy; it must grow to more sources: another till such as Mistral (no docs yet), spreadsheet import, and venues with **no till** (D64).
@@ -179,6 +182,55 @@ Used on 10-11 for the read-only review (plan approved by Martin 10-11). Each age
 > 3. **Snapshot and shell changes** needed to support that, e.g. an "orderable" reason per channel.
 >
 > **Limits:** design no barsy calls; barsy writes are forbidden (rule 7).
+
+**B1: The barsy connector itself (Sonnet; gets A3's summary if ready).**
+> **Not A3's job again:** A3 separates the generic sync engine from barsy code. You review **the barsy connector's own quality**: is it correct, complete, robust and ready to become connector #1?
+>
+> **Scope:**
+> - `packages/barsy/src`: `read` (client, reader, schemas, method allowlist), `mapping`, `record`, `testing`, `write`;
+> - `packages/barsy/fixtures/demo/*` (incl. the table lists of all 5 demo venues);
+> - in `apps/worker/src/sync/`: `catalogue.ts`, `photos.ts`, `paging.ts`, `host-policy.ts`, `limiter.ts`, `cursor.ts`, `context.ts`, `data.ts`;
+> - the connect and discover parts of `apps/worker/src/jobs/barsy.ts`;
+> - the barsy-facing settings in `apps/web/src/server/integration/service.ts` and `apps/web/src/integration`;
+> - the architecture doc: collection paths C, D and E, "Barsy to canonical mapping", "Tables";
+> - the tracker: "Research facts → barsy API verified 10-08", D41, D45, D46, D55, D56, Q73, T39, T47–T53, T57, T59, T60, T62, T66, T67.
+>
+> **Official docs:** docs.lukanet.com needs a sign-in. Don't try to open it. Use the doc URLs in code comments, the tracker's verified facts and the fixtures. Mark anything that needs checking against the official docs as **"verify in docs"**; the lead checks it.
+>
+> **Questions:**
+> 1. **Fidelity:** does the mapping match the recorded fixtures and the verified facts? Cover:
+>    - money (lossless parse, round half-up);
+>    - per-venue price and for-sale (`limits_by_barsys`, `is_for_sale_barsys`);
+>    - public flags (`only_public`);
+>    - categories → sections under the catalogue root (D56);
+>    - articles → items;
+>    - modifiers, supplements and combos;
+>    - languages;
+>    - allergens via the details tree;
+>    - photos (`files_get`, other hosts T57);
+>    - places, halls and place types (T66).
+> 2. **Coverage gaps:** barsy data we receive but drop or don't read. Examples:
+>    - `salon_id`, `place_type`/`type_name`, `persons_opt`, `salon_weight`;
+>    - the `Barsys_getlist` public fields: `public_cat_id` (could suggest the catalogue root), address, phones, work time;
+>    - modificators.
+>
+>    Say which ones matter for the product.
+> 3. **Robustness and safety:**
+>    - paging completeness (rule 6) and incremental cursor semantics;
+>    - error mapping, auth failures, host policy, rate limits and timeouts;
+>    - deleted and recreated articles (T47);
+>    - catalogue-root and venue-switch safety (T62, T67), several barsy venues per installation (T50), and photo-job staleness.
+> 4. **barsy as connector #1:**
+>    - its capability declaration (menu, per-venue prices, tables, availability; orders not yet, since the write allowlist is empty; webhooks exist per path D but are unused, D41);
+>    - discovery output (barsy venues = locations, halls = areas, places = tables);
+>    - which settings become barsy's own settings schema (price source, allergen key, catalogue root, default language).
+> 5. **Tests:** fixture and MSW coverage, plus the missing cases (several venues, an empty public tree, a removed picture, a failed page).
+>
+> **Walk-throughs (instead of a/b):**
+> - **(a)** onboarding a real club end to end: connect → pick the barsy venue → catalogue root → first pull → tables and QR codes. Where can it go wrong?
+> - **(b)** the club switches its barsy venue or catalogue root.
+>
+> **Proposals:** split them into quick wins and larger changes.
 
 **A6: Guardrails, tests and docs (Sonnet; gets all report summaries).**
 > **Scope:**
