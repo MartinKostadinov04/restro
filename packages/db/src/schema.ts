@@ -67,6 +67,12 @@ export const venues = restro.table(
   },
   (t) => [
     unique('venues_tenant_id_slug_unique').on(t.tenantId, t.slug),
+    // A venue's slug is its public address (`/m/<slug>`, `v/<slug>.json`, the table QR links), which
+    // is global, so it is unique across all tenants (T61). Slugs are lower-case by construction
+    // (`provisionVenue` accepts only the `isVenueSlug` pattern and nothing else sets the column), so
+    // a plain index on `slug` is enough; row-level security hides other tenants' rows, which is why
+    // only the index can tell a tenant that its slug is taken.
+    uniqueIndex('venues_slug_unique').on(t.slug),
     check('venues_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
     // Target of the composite foreign keys (tenant_id, venue_id) of the document tables.
     unique('venues_tenant_id_id_unique').on(t.tenantId, t.id),

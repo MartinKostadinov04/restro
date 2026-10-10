@@ -15,6 +15,7 @@ import {
   hasDatabase,
   SETUP_TIMEOUT_MS,
   type TestDatabase,
+  testSlug,
 } from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, type World } from './world'
@@ -215,7 +216,10 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
     const env = () => ({ pool: world.pool, log: world.env.log, enqueue: world.env.enqueue })
 
     it('notes a venue without a menu instead of failing', async () => {
-      const bare = await provisionVenue(world.pool, world.tenantId, { name: 'Bare', slug: 'bare' })
+      const bare = await provisionVenue(world.pool, world.tenantId, {
+        name: 'Bare',
+        slug: testSlug('bare'),
+      })
       const note = await queuePublishAfterSync(env(), { ...target(), venueId: bare.id }, 3)
       expect(note).toBe('this venue has no menu yet: nothing was queued to publish')
       expect(publishes()).toEqual([])

@@ -25,7 +25,7 @@ import { buildJobRunDetails, finishJobRun, MAX_DETAIL_ENTRIES, startJobRun } fro
 import { provisionTenant, provisionVenue } from './provision'
 import { createIntegration, updateIntegration } from './sources'
 import { readCachedTree, storeCachedTree } from './sync-config'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe('buildJobRunDetails', () => {
   const rejection = (over: Partial<ApplyRejection> = {}): ApplyRejection => ({
@@ -83,9 +83,11 @@ describe.skipIf(!hasDatabase)('the Integration tab’s writers (as the restro_ap
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-integration-writer-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Integration tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueA = (await provisionVenue(app, tenant, { name: 'Venue A', slug: 'venue-a' })).id
-    venueB = (await provisionVenue(app, tenant, { name: 'Venue B', slug: 'venue-b' })).id
-    otherTenantVenue = (await provisionVenue(app, otherTenant, { name: 'Elsewhere', slug: 'e' })).id
+    venueA = (await provisionVenue(app, tenant, { name: 'Venue A', slug: testSlug('venue-a') })).id
+    venueB = (await provisionVenue(app, tenant, { name: 'Venue B', slug: testSlug('venue-b') })).id
+    otherTenantVenue = (
+      await provisionVenue(app, otherTenant, { name: 'Elsewhere', slug: testSlug('e') })
+    ).id
     integrationId = (await createIntegration(app, tenant, { kind: 'barsy', host: 'tab.test' })).id
     await upsertBarsyVenues(app, tenant, integrationId, [
       { bid: 1, name: 'First' },

@@ -24,7 +24,7 @@ import type { JobDefinition, WorkerContext } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
 import type { SyncEnvironment } from '../src/sync/context'
 import { LimiterRegistry } from '../src/sync/limiter'
-import { createTestDatabase, type TestDatabase, withOwnerClient } from './database'
+import { createTestDatabase, type TestDatabase, testSlug, withOwnerClient } from './database'
 import type { FakeBarsy } from './fake-barsy'
 
 export interface EnqueuedJob {
@@ -39,6 +39,8 @@ export interface World {
   readonly pool: DbPool
   readonly tenantId: string
   readonly venueId: string
+  /** The venue's slug: `demo-club-` and a random suffix, since slugs are globally unique. */
+  readonly venueSlug: string
   readonly menuId: string
   readonly integrationId: string
   readonly keys: SealKeys
@@ -100,7 +102,9 @@ export async function createWorld(
 
   const tenantId = newId('tn')
   await provisionTenant(pool, { tenantId, name: 'Sync test club' })
-  const venue = await provisionVenue(pool, tenantId, { name: 'Demo club', slug: 'demo-club' })
+  // Venue slugs are globally unique (brief S3-10) and a file's worlds share one database.
+  const slug = testSlug('demo-club')
+  const venue = await provisionVenue(pool, tenantId, { name: 'Demo club', slug })
   const menu = await provisionMenu(pool, tenantId, venue.id)
 
   const integrationId = newId('in')
@@ -200,6 +204,7 @@ export async function createWorld(
     pool,
     tenantId,
     venueId: venue.id,
+    venueSlug: slug,
     menuId: menu.id,
     integrationId,
     keys,

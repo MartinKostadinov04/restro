@@ -63,6 +63,14 @@ export function appDatabaseUrl(): string {
   return url.toString()
 }
 
+/**
+ * A venue slug no other test created: `base` and a random suffix. Venue slugs are globally unique
+ * (brief S3-10) and the test files share one database, so a literal slug would collide.
+ */
+export function testSlug(base: string): string {
+  return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`
+}
+
 /** A fresh id of a kind (`tn`, `vn`, `tp`): unique per test run, valid for the id checks. */
 export function testId(kind: string): string {
   return `${kind}_test${randomUUID().replaceAll('-', '')}`

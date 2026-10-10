@@ -26,7 +26,7 @@ import { PgBoss } from 'pg-boss'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { enqueueJob } from '../jobs'
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import {
   checkConnection,
   chooseBarsyVenue,
@@ -106,7 +106,7 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
     await provisionTenant(app, { tenantId: tenant, name: 'Integration tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
     const make = async (id: string, name: string, slug: string) => {
-      const venue = await provisionVenue(app, id, { name, slug })
+      const venue = await provisionVenue(app, id, { name, slug: testSlug(slug) })
       return { id: venue.id, name: venue.name, timezone: venue.timezone }
     }
     venueA = await make(tenant, 'Venue A', 'venue-a')

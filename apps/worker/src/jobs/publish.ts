@@ -30,12 +30,7 @@ import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
 import { autoPublishIsPaused, queuePublishForAsset, resumeAutoPublish } from '../publish/after-sync'
-import {
-  type PublishFilesDeps,
-  type PublishFilesResult,
-  writeLiveOverlay,
-  writePublishFiles,
-} from '../publish/files'
+import { type PublishFilesDeps, writeLiveOverlay, writePublishFiles } from '../publish/files'
 import { type LiveAsks, queueLiveRollovers } from '../publish/rollover'
 import { writeTableTokenFiles } from '../publish/table-tokens'
 import { runAssetVariants } from '../publish/variants'
@@ -63,15 +58,6 @@ function refusal(error: PublishError): RunReport {
     notes: [`publish refused: ${error.code}${issues}`],
     counters: { refused: 1 },
   }
-}
-
-/** A slug that another venue already holds is said in the run, since the menu is not served there. */
-function slugNotes(files: PublishFilesResult): string[] {
-  return files.status === 'checked' && files.slugIndex === 'taken'
-    ? [
-        `the address /m/${files.slug} belongs to another venue: choose another venue slug (the menu is published but not served there)`,
-      ]
-    : []
 }
 
 export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
@@ -199,7 +185,6 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
                   ? `published version ${result.snapshot.version}`
                   : `nothing to publish: the menu is as version ${result.snapshot.version}`,
                 ...resumeNotes,
-                ...slugNotes(files),
               ],
             }
           },
@@ -237,7 +222,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
             await refreshLive(context, payload)
             return {
               counters: { snapshot_version: result.version, files_written: result.written.length },
-              notes: [`files of version ${result.version} are in place`, ...slugNotes(result)],
+              notes: [`files of version ${result.version} are in place`],
             }
           },
         )

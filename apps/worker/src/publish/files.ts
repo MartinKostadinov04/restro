@@ -36,13 +36,26 @@ export interface PublishScope {
   readonly venueId: VenueId
 }
 
+/** What happened to the slug index `v/<slug>.json`. */
+export type SlugIndexStatus = 'written' | 'unchanged'
+
 /**
- * What happened to the slug index `v/<slug>.json`: `written` or `unchanged`, or `taken` when the
- * file names another venue (slugs are unique per organisation only, so two organisations may
- * both call a venue "main"; the first to publish keeps the address, the second is not served
- * there and a person has to choose another slug).
+ * `v/<slug>.json` names another venue, so this venue's address `/m/<slug>` is not its own. The
+ * database keeps venue slugs globally unique (`venues_slug_unique`), so this means the store holds
+ * a foreign or stale file; it is never overwritten, and the job fails so that someone looks.
  */
-export type SlugIndexStatus = 'written' | 'unchanged' | 'taken'
+export class VenueAddressTakenError extends Error {
+  override name = 'VenueAddressTakenError'
+  readonly slug: string
+
+  constructor(slug: string) {
+    super(
+      `the address /m/${slug} belongs to another venue (v/${slug}.json names a different venue): ` +
+        'the menu is not served there until the venue slug or the file is fixed',
+    )
+    this.slug = slug
+  }
+}
 
 export type PublishFilesResult =
   /** Nothing was ever published for this menu + venue: there is nothing to write. */
@@ -88,7 +101,14 @@ async function slugOf(deps: PublishFilesDeps, scope: PublishScope): Promise<stri
 
 /**
  * Writes `v/<slug>.json` = {venue_id, menu_id} unless it is there already. A file that names
- * another venue is never overwritten (`taken`); a file that cannot be read is replaced.
+ * another venue is never overwritten and fails the job (`VenueAddressTakenError`); a file that
+ * cannot be read is replaced.
+ *
+ * Defence in depth: since slugs became globally unique in the database, no two venues can hold
+ * the same slug, so this only fires for a stale or foreign file in the store. By the time it
+ * fires, `publishMenu` has already moved the pointer; that is acceptable, because the database
+ * index prevents the case and the failure is loud (the run is recorded as failed and the job
+ * fails, instead of the menu quietly not being served at its address).
  */
 async function writeSlugIndex(
   deps: PublishFilesDeps,
@@ -96,7 +116,9 @@ async function writeSlugIndex(
   slug: string,
 ): Promise<SlugIndexStatus> {
   const existing = await readVenueIndex(deps.store, slug)
-  if (existing !== null && existing.venue_id !== scope.venueId) return 'taken'
+  if (existing !== null && existing.venue_id !== scope.venueId) {
+    throw new VenueAddressTakenError(slug)
+  }
   const file = venueIndexPath(slug)
   const bytes = venueIndexBytes({ venue_id: scope.venueId, menu_id: scope.menuId })
   if (sameBytes(await deps.store.get(file), bytes)) return 'unchanged'

@@ -14,7 +14,7 @@ import { diffSnapshots } from '../snapshot/diff'
 import { apply } from './apply'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { loadCurrentSnapshot, loadDraft, publishMenu } from './publish'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -84,7 +84,7 @@ describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', ()
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-draft-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Draft test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
     menu = await provisionMenu(app, tenant, venueId)
     await withTenantWrite(app, tenant, (tx) =>
@@ -216,7 +216,7 @@ describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', ()
   })
 
   it('refuses the way a publish does: no visible item, an unknown menu, another tenant', async () => {
-    const empty = await provisionVenue(app, tenant, { name: 'Empty', slug: 'empty' })
+    const empty = await provisionVenue(app, tenant, { name: 'Empty', slug: testSlug('empty') })
     const emptyMenu = await provisionMenu(app, tenant, empty.id)
     await expect(
       loadDraft(app, tenant, { menuId: emptyMenu.id, venueId: empty.id }),

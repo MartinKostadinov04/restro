@@ -2,6 +2,8 @@
 // as packages/db/tests/database.ts: the tests run when DATABASE_URL_OWNER is set (after
 // `pnpm db:migrate && pnpm db:roles`), are skipped with a message otherwise, and fail instead of
 // skipping when CI is set. They never read .env files and refuse a database that is not local.
+import { randomUUID } from 'node:crypto'
+
 import pg from 'pg'
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
@@ -32,6 +34,15 @@ function assertLocal(url: string, name: string): void {
       `${name} points at ${host}; the integration tests only run on a local database.`,
     )
   }
+}
+
+/**
+ * A venue slug no other test created: `base` and a random suffix. Venue slugs are globally unique
+ * (brief S3-10) and the test files of a run share one database and run in parallel, so a literal
+ * slug such as `main` would make them collide.
+ */
+export function testSlug(base: string): string {
+  return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`
 }
 
 /** restro_app connection string: DATABASE_URL, or the owner URL with restro_app's password. */

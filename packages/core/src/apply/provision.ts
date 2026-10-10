@@ -22,7 +22,7 @@ export type ProvisionErrorCode =
   | 'invalid_input'
   /** The venue's tenant has no `tenants` row yet (provision the tenant first). */
   | 'tenant_missing'
-  /** The tenant already has a venue with this slug. */
+  /** Some venue (of this or any other tenant) already has this slug: public addresses are global. */
   | 'slug_taken'
   /** The tenant has no venue with this id (`provisionMenu`). */
   | 'venue_missing'
@@ -112,7 +112,7 @@ export async function provisionTenant(
 /** What `provisionVenue` needs; everything but `name` and `slug` has the database's default. */
 export interface ProvisionVenueInput {
   readonly name: string
-  /** Unique per tenant; lower-case kebab-case. */
+  /** Globally unique (it is the public address `/m/<slug>`); lower-case kebab-case. */
   readonly slug: string
   /** IANA time zone; default `Europe/Sofia`. */
   readonly timezone?: string
@@ -141,6 +141,11 @@ function pgErrorOf(error: unknown): { code?: string; constraint?: string } {
  * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id, and returns the row.
  * Refuses a malformed name, slug, time zone, currency or locale list before touching the
  * database; a taken slug and a missing tenant row come back as `ProvisionError`s.
+ *
+ * A slug is the venue's public address, so it is unique across all tenants. Row-level security
+ * hides other tenants' venues, so no query could tell whether it is free: the unique index decides
+ * (`venues_slug_unique`, plus the older per-tenant constraint) and its violation becomes
+ * `slug_taken`.
  */
 export async function provisionVenue(
   pool: DbPool,
@@ -212,8 +217,11 @@ export async function provisionVenue(
   } catch (error) {
     if (error instanceof ProvisionError) throw error
     const { code, constraint } = pgErrorOf(error)
-    if (code === '23505' && constraint === 'venues_tenant_id_slug_unique') {
-      throw new ProvisionError('slug_taken', `this tenant already has a venue "${input.slug}"`, {
+    if (
+      code === '23505' &&
+      (constraint === 'venues_slug_unique' || constraint === 'venues_tenant_id_slug_unique')
+    ) {
+      throw new ProvisionError('slug_taken', `the venue address "${input.slug}" is already taken`, {
         cause: error,
       })
     }

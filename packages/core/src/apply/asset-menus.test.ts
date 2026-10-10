@@ -10,7 +10,7 @@ import { apply } from './apply'
 import { loadMenusUsingAsset } from './asset-menus'
 import { HELD_NEW_ACTOR, heldNewItemOps, loadHeldNewItemIds } from './held-items'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 const unusedPool = {} as DbPool
 
@@ -108,7 +108,7 @@ describe.skipIf(!hasDatabase)('the readers against Postgres (as the restro_app r
       ['One', 'one'],
       ['Two', 'two'],
     ] as const) {
-      const venue = await provisionVenue(app, tenant, { name, slug })
+      const venue = await provisionVenue(app, tenant, { name, slug: testSlug(slug) })
       venues.push({ id: venue.id, menu: await provisionMenu(app, tenant, venue.id) })
     }
   })

@@ -21,6 +21,7 @@ import {
   hasDatabase,
   SETUP_TIMEOUT_MS,
   type TestDatabase,
+  testSlug,
 } from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, DEMO_BID, DEMO_ROOT_CAT, type World } from './world'
@@ -446,7 +447,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       await pull()
       const second = await provisionVenue(world.pool, world.tenantId, {
         name: 'Second club',
-        slug: 'second-club',
+        slug: testSlug('second-club'),
       })
       await upsertBarsyVenues(world.pool, world.tenantId, world.integrationId, [
         { bid: 11, name: 'Second' },

@@ -26,7 +26,7 @@ import {
   rejectHeld,
   rollbackTo,
 } from './publish'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 /** A pool that is never used: the input checks run before any query. */
 const unusedPool = {} as DbPool
@@ -150,7 +150,7 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-publish-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Publish test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
     menu = await provisionMenu(app, tenant, venueId)
     await withTenantWrite(app, tenant, (tx) =>
@@ -544,7 +544,10 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     )
 
     // Before the first publish there is nothing to overlay; other tenants see nothing.
-    const secondVenue = await provisionVenue(app, tenant, { name: 'Unpublished', slug: 'unpub' })
+    const secondVenue = await provisionVenue(app, tenant, {
+      name: 'Unpublished',
+      slug: testSlug('unpub'),
+    })
     const fresh = await provisionMenu(app, tenant, secondVenue.id)
     expect(
       await loadLiveOverlay(app, tenant, { menuId: fresh.id, venueId: secondVenue.id }),
@@ -553,7 +556,10 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
   })
 
   it('V10: refuses to publish a menu with no visible item, writing nothing', async () => {
-    const secondVenue = await provisionVenue(app, tenant, { name: 'Empty', slug: 'empty' })
+    const secondVenue = await provisionVenue(app, tenant, {
+      name: 'Empty',
+      slug: testSlug('empty'),
+    })
     const empty = await provisionMenu(app, tenant, secondVenue.id)
     await expect(
       publishMenu(app, tenant, {

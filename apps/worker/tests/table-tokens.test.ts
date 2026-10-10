@@ -140,7 +140,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     expect(store.puts).toHaveLength(coded.length)
     for (const table of coded) {
       expect(await readTableTokenFile(store, table.token as string)).toEqual({
-        venue_slug: 'demo-club',
+        venue_slug: world.venueSlug,
         table_label: table.placeNum,
       })
     }
@@ -186,7 +186,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     expect(await readTableTokenFile(store, a.token as string)).toBeNull()
     expect(await readTableTokenFile(store, b.token as string)).toBeNull()
     expect(await readTableTokenFile(store, renewed.table.token as string)).toMatchObject({
-      venue_slug: 'demo-club',
+      venue_slug: world.venueSlug,
     })
     expect(store.deletes.sort()).toEqual([`t/${a.token}.json`, `t/${b.token}.json`].sort())
     // Again: the files are gone already, and nothing fails.

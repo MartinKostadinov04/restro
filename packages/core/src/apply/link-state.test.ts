@@ -25,7 +25,7 @@ import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { type ApplyResult, apply } from './apply'
 import { loadMenuDocument } from './load-document'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 const eur = (amountMinor: number) => ({ amount_minor: amountMinor, currency: 'EUR' })
 
@@ -176,8 +176,10 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
     owner = openOwnerPool()
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-link-state-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Link state test club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id
-    secondVenueId = (await provisionVenue(app, tenant, { name: 'Second', slug: 'second' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') })).id
+    secondVenueId = (
+      await provisionVenue(app, tenant, { name: 'Second', slug: testSlug('second') })
+    ).id
     await withTenantWrite(app, tenant, (tx) =>
       tx.execute(sql`
         insert into restro.integrations (id, tenant_id, kind, host)

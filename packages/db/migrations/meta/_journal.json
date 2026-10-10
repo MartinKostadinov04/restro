@@ -92,6 +92,13 @@
       "when": 1791636310090,
       "tag": "0012_tables_qr",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791647218798,
+      "tag": "0013_venues_global_slug",
+      "breakpoints": true
     }
   ]
 }

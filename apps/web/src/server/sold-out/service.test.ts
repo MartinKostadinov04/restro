@@ -17,7 +17,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { loadItemSheet, type SheetScope, type SheetServices } from '../item-sheet/service'
-import { appDatabaseUrl, hasDatabase, openOwnerPool } from '../test-database'
+import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { type SoldOutScope, type SoldOutServices, setItemsSoldOut } from './service'
 
 describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () => {
@@ -78,10 +78,12 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-sold-out-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Sold out action club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id as VenueId
-    menu = await provisionMenu(app, tenant, venueId)
-    emptyVenueId = (await provisionVenue(app, tenant, { name: 'No menu', slug: 'no-menu' }))
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as VenueId
+    menu = await provisionMenu(app, tenant, venueId)
+    emptyVenueId = (
+      await provisionVenue(app, tenant, { name: 'No menu', slug: testSlug('no-menu') })
+    ).id as VenueId
     const section = newId('nd')
     const result = await apply(
       app,
