@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { FieldEnvironmentProvider } from '@/fields/environment'
+import { type EnvironmentTag, FieldEnvironmentProvider, type TagDraft } from '@/fields/environment'
 import {
   keepItemOverrideAction,
   loadItemSheetAction,
@@ -40,6 +40,7 @@ import {
   saveItemFieldAction,
   saveItemTranslationAction,
   setItemImageAction,
+  setItemSoldOutAction,
 } from '@/server/item-sheet/actions'
 import type { ItemSheetData, SheetResult } from '@/server/item-sheet/types'
 
@@ -56,6 +57,10 @@ export interface ItemSheetProps {
   /** Open or closed; open when omitted. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** The venue's active tags, for the tags editor (the composer passes them). */
+  tags?: readonly EnvironmentTag[]
+  /** Creates a tag in the venue's list and resolves with it once saved; null if it was not. */
+  onCreateTag?: (draft: TagDraft) => Promise<EnvironmentTag | null>
 }
 
 type Loaded =
@@ -76,6 +81,8 @@ export function ItemSheet({
   venueId: venueIdProp,
   open = true,
   onOpenChange,
+  tags,
+  onCreateTag,
 }: ItemSheetProps) {
   const t = useTranslations('itemSheet')
   const params = useParams<{ venueId?: string }>()
@@ -154,6 +161,13 @@ export function ItemSheet({
     venueId
       ? run(keepItemOverrideAction(venueId, itemId, fieldKey), t('kept'))
       : Promise.resolve(false)
+  const setSoldOut = (soldOut: boolean) =>
+    venueId
+      ? run(
+          setItemSoldOutAction(venueId, itemId, soldOut),
+          t(soldOut ? 'soldOutSaved' : 'backOnSale'),
+        )
+      : Promise.resolve(false)
   const saveTranslation = (fieldKey: string, locale: Locale, text: string | null) =>
     venueId
       ? run(saveItemTranslationAction(venueId, itemId, fieldKey, locale, text), t('saved'))
@@ -228,6 +242,9 @@ export function ItemSheet({
             currency={data.currency as 'EUR'}
             timezone={data.timezone}
             assetUrls={assetUrls}
+            defaultLocale={data.defaultLocale}
+            tags={tags}
+            createTag={onCreateTag}
           >
             <Tabs
               value={tab}
@@ -258,6 +275,7 @@ export function ItemSheet({
                       onRevert={revertField}
                       onKeep={keepField}
                       onOpenMedia={() => setTab('media')}
+                      onSoldOut={setSoldOut}
                     />
                   </div>
                 </TabsContent>

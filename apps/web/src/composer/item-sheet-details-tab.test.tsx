@@ -19,6 +19,7 @@ function setup(
     onRevert: vi.fn(async () => true),
     onKeep: vi.fn(async () => true),
     onOpenMedia: vi.fn(),
+    onSoldOut: vi.fn(async () => true),
   }
   renderWithIntl(<ItemSheetDetailsTab data={data} busy={false} {...handlers} {...props} />, {
     locale,
@@ -125,14 +126,16 @@ describe('the Details tab', () => {
           for_sale: {
             value: true,
             provenance: 'barsy',
-            access: { kind: 'readonly', reason: 'sold_out_later' },
+            access: { kind: 'readonly', reason: 'sold_out_control' },
           },
           image: { access: { kind: 'media' } },
         },
       }),
     )
     expect(within(row('visible')).getByTestId('read-only-note').textContent).toMatch(/composer/)
-    expect(within(row('for_sale')).getByTestId('read-only-note').textContent).toMatch(/Stage 3/)
+    expect(within(row('for_sale')).getByTestId('read-only-note').textContent).toMatch(
+      /sold out tonight/i,
+    )
     expect(within(row('visible')).queryByRole('button', { name: /edit/i })).toBeNull()
     await userEvent.click(within(row('image')).getByRole('button', { name: /^(edit|set) image/i }))
     expect(onOpenMedia).toHaveBeenCalledTimes(1)

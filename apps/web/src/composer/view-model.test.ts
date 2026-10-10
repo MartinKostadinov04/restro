@@ -6,6 +6,7 @@ import {
   newId,
   resolve,
   type Scope,
+  type Tag,
   VENUE_MENU_TEMPLATE,
 } from '@restro/core'
 import { describe, expect, it } from 'vitest'
@@ -123,13 +124,13 @@ const document: MenuDocument = {
   ],
 }
 
-function build(displayLocale: 'bg_BG' | 'en_US' = 'bg_BG') {
+function build(displayLocale: 'bg_BG' | 'en_US' = 'bg_BG', heldNewIds: NodeId[] = []) {
   const resolved = resolve(VENUE_MENU_TEMPLATE, document, {
     venueScope: `venue:${venueId}`,
     locales: ['bg_BG', 'en_US'],
     now: '2026-10-09T12:00:00+03:00',
   })
-  return buildComposerView({ doc: document, resolved, displayLocale })
+  return buildComposerView({ doc: document, resolved, displayLocale, heldNewIds })
 }
 
 describe('buildComposerView', () => {
@@ -177,6 +178,18 @@ describe('buildComposerView', () => {
     expect(items[ids.barsyHidden]).toMatchObject({ hiddenBy: 'barsy', shown: false })
     expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'builder', shown: false })
     expect(items[ids.held]).toMatchObject({ hiddenBy: 'status', shown: false })
+  })
+
+  it('marks a builder hide the sync wrote as "new from barsy", and only that one (S3-04)', () => {
+    const { items } = build('bg_BG', [ids.builderHidden])
+    expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'new_from_barsy', shown: false })
+    // The marker means nothing for an item that is not hidden by the manual layer.
+    const unhidden = build('bg_BG', [ids.normal, ids.barsyHidden, ids.held]).items
+    expect(unhidden[ids.normal]?.hiddenBy).toBeNull()
+    expect(unhidden[ids.barsyHidden]?.hiddenBy).toBe('barsy')
+    expect(unhidden[ids.held]?.hiddenBy).toBe('status')
+    // Without the list, the same item is the builder's own hide.
+    expect(build().items[ids.builderHidden]?.hiddenBy).toBe('builder')
   })
 
   it('keeps the barsy hide when the builder also hid the item (barsy decides first)', () => {
@@ -243,5 +256,75 @@ describe('buildComposerView', () => {
     expect(json).not.toContain(integration)
     expect(json).not.toContain('externalId')
     expect(json).not.toContain('barsy:')
+  })
+
+  describe('tags and dietary labels (S3-06)', () => {
+    const signature = newId('tg')
+    const spicy = newId('tg')
+    const old = newId('tg')
+    const venueTags: Tag[] = [
+      {
+        id: signature,
+        venueId,
+        label: { bg_BG: 'Фирмено', en_US: 'Signature' },
+        color: 'accent',
+        sortKey: 'a0',
+        archived: false,
+      },
+      {
+        id: spicy,
+        venueId,
+        label: { bg_BG: 'Люто' },
+        color: 'text',
+        sortKey: 'a1',
+        archived: false,
+      },
+      { id: old, venueId, label: { en_US: 'Old' }, color: 'border', sortKey: 'a2', archived: true },
+    ]
+    const withTags: MenuDocument = {
+      ...document,
+      values: [
+        ...document.values,
+        row(ids.normal, 'tags', 'manual', [spicy, signature, 'signature', old]),
+        row(ids.normal, 'dietary', 'manual', ['vegan', 'gluten_free']),
+      ],
+    }
+
+    function buildWithTags(displayLocale: 'bg_BG' | 'en_US' = 'bg_BG') {
+      const resolved = resolve(VENUE_MENU_TEMPLATE, withTags, {
+        venueScope: `venue:${venueId}`,
+        locales: ['bg_BG', 'en_US'],
+        now: '2026-10-09T12:00:00+03:00',
+      })
+      return buildComposerView({ doc: withTags, resolved, displayLocale, tags: venueTags })
+    }
+
+    it('lists the venue’s tags in order, archived ones flagged, names in the interface language', () => {
+      const view = buildWithTags('en_US')
+      expect(view.tagIds).toEqual([signature, spicy, old])
+      expect(view.tags[signature]).toMatchObject({
+        name: 'Signature',
+        color: 'accent',
+        archived: false,
+      })
+      // A tag named in Bulgarian only falls back to it in English.
+      expect(view.tags[spicy]?.name).toBe('Люто')
+      expect(view.tags[old]).toMatchObject({ name: 'Old', archived: true })
+      expect(buildWithTags('bg_BG').tags[signature]?.name).toBe('Фирмено')
+      expect(view.tags[signature]?.label).toEqual({ bg_BG: 'Фирмено', en_US: 'Signature' })
+    })
+
+    it('gives each item its tag ids (only tg_ ids) and dietary codes', () => {
+      const { items } = buildWithTags()
+      expect([...(items[ids.normal]?.tags ?? [])].sort()).toEqual([old, signature, spicy].sort())
+      expect([...(items[ids.normal]?.dietary ?? [])].sort()).toEqual(['gluten_free', 'vegan'])
+      expect(items[ids.barsyHidden]).toMatchObject({ tags: [], dietary: [] })
+    })
+
+    it('has no tags when none are passed', () => {
+      const view = build()
+      expect(view.tagIds).toEqual([])
+      expect(view.tags).toEqual({})
+    })
   })
 })

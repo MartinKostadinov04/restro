@@ -19,11 +19,14 @@ import {
   LOCALES,
   type Locale,
   type LocalizedText,
+  liveEditions,
   newId,
   type ResolvedField,
   type ResolvedItem,
   readsLayer,
   resolve,
+  saleStateOf,
+  serviceDate,
   VENUE_MENU_TEMPLATE,
 } from '@restro/core'
 import { apply, ItemNotFoundError, loadItemDocument } from '@restro/core/apply'
@@ -61,6 +64,8 @@ export interface SheetScope {
   readonly tenantId: string
   readonly venueId: string
   readonly itemId: string
+  /** The person may mark the item sold out tonight (owner or admin, D46); default: no. */
+  readonly canMarkSoldOut?: boolean
 }
 
 /** What the sheet needs besides the database. */
@@ -121,10 +126,13 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
   }
   const venueScope = `venue:${venue.id}` as const
   const locales = venueLocales(venue)
+  const now = new Date()
   const resolved = resolve(VENUE_MENU_TEMPLATE, doc, {
     venueScope,
+    // Tonight's sold-out marks count, and no earlier evening's (D46): the editions of the live menu.
+    edition: liveEditions(venue.id, serviceDate(now, venue.timezone, venue.serviceDayEndsAt)),
     locales,
-    now: new Date().toISOString(),
+    now: now.toISOString(),
   })
   const item = resolved.items[itemId as keyof typeof resolved.items]
   if (!item) return null
@@ -308,6 +316,7 @@ export async function loadItemSheet(
     currency: state.venue.currency,
     timezone: state.venue.timezone,
     visible: state.item.visible,
+    sale: { ...saleStateOf(state.item.fields.for_sale), canMark: scope.canMarkSoldOut === true },
     fields,
     issues: state.item.issues.map((issue) => ({
       code: issue.code,

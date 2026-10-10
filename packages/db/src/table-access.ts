@@ -78,6 +78,18 @@ export const TABLE_ACCESS = {
   places: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
   assets: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
 
+  // What was published (brief S3-01a; migration 0008). Snapshot bodies never change: UPDATE is
+  // only for a held row's decision, and a trigger refuses any other change. Never deleted.
+  snapshots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // One row per menu + venue, moved by every publish and rollback.
+  publish_pointers: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // Written once per item, never changed.
+  item_first_published: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
+
+  // A venue's tag list (brief S3-06; migration 0010). Renamed, recoloured, reordered and archived
+  // (`archived_at`), never deleted: items and old snapshots still name a tag by its id.
+  tags: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes

@@ -75,6 +75,8 @@ export interface FinishJobRunInput {
   readonly notes?: readonly string[]
   /** The writes apply() refused, copied from its results (`ApplyResult.rejected`). */
   readonly refused?: readonly ApplyRejection[]
+  /** True when a full pull did not conclude absence; written into `details` when given. */
+  readonly deletionCheckSkipped?: boolean
   readonly finishedAt?: Date
 }
 
@@ -155,10 +157,15 @@ export async function finishJobRun(
   )
   const summary = lines.length === 0 ? null : scrubSummary(lines.join('\n'))
   // The refused-writes line is in `details.refused` already; the notes are the rest.
-  const details = buildJobRunDetails(
-    [...(input.summary ? [input.summary] : []), ...(input.notes ?? [])],
-    refused,
-  )
+  const details: JobRunDetails = {
+    ...buildJobRunDetails(
+      [...(input.summary ? [input.summary] : []), ...(input.notes ?? [])],
+      refused,
+    ),
+    ...(input.deletionCheckSkipped !== undefined
+      ? { deletionCheckSkipped: input.deletionCheckSkipped }
+      : {}),
+  }
   return withTenantWrite(pool, tenantId, async (tx) => {
     const [row] = await tx
       .update(jobRuns)

@@ -1,19 +1,22 @@
-import { QrCodeIcon, RocketIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
-
+import { AppearanceSection } from '@/appearance/appearance-section'
 import { AdminHeader } from '@/components/admin/admin-header'
-import { StagePlaceholder } from '@/components/admin/stage-placeholder'
 import { VenueSettings } from '@/components/admin/venue-settings'
 import { DEFAULT_WORKSPACE_TAB, isWorkspaceTab } from '@/components/admin/workspace-tab-defs'
 import { WorkspaceTabs } from '@/components/admin/workspace-tabs'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
 import { IntegrationSkeleton } from '@/integration/integration-skeleton'
 import { IntegrationTab } from '@/integration/integration-tab'
+import { PublishSkeleton } from '@/publish/publish-skeleton'
+import { PublishTab } from '@/publish/publish-tab'
 import { requireTenant } from '@/server/session'
 import { getVenue } from '@/server/venues'
+import { TablesSkeleton } from '@/tables/tables-skeleton'
+import { TablesTab } from '@/tables/tables-tab'
 
 export async function generateMetadata({ params }: PageProps<'/venues/[venueId]'>) {
   const { organization } = await requireTenant()
@@ -36,11 +39,12 @@ export default async function VenueWorkspacePage({
   const requestedTab = (await searchParams).tab
   const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
   const composerOpen = openTab === 'composer'
+  const publishingOpen = openTab === 'publishing'
   const integrationOpen = openTab === 'integration'
+  const tablesOpen = openTab === 'tables'
+  const settingsOpen = openTab === 'settings'
 
-  const t = await getTranslations('workspace')
   const tNav = await getTranslations('nav')
-  const stage = (n: number) => t('comingInStage', { stage: n })
 
   return (
     <>
@@ -61,21 +65,19 @@ export default async function VenueWorkspacePage({
             ) : (
               <ComposerSkeleton />
             ),
-            tables: (
-              <StagePlaceholder
-                icon={QrCodeIcon}
-                title={t('tables.title')}
-                description={t('tables.description')}
-                stageLabel={stage(3)}
-              />
+            tables: tablesOpen ? (
+              <Suspense fallback={<TablesSkeleton />}>
+                <TablesTab tenantId={organization.id} role={organization.role} venue={venue} />
+              </Suspense>
+            ) : (
+              <TablesSkeleton />
             ),
-            publishing: (
-              <StagePlaceholder
-                icon={RocketIcon}
-                title={t('publishing.title')}
-                description={t('publishing.description')}
-                stageLabel={stage(3)}
-              />
+            publishing: publishingOpen ? (
+              <Suspense fallback={<PublishSkeleton />}>
+                <PublishTab tenantId={organization.id} role={organization.role} venue={venue} />
+              </Suspense>
+            ) : (
+              <PublishSkeleton />
             ),
             integration: integrationOpen ? (
               <Suspense fallback={<IntegrationSkeleton />}>
@@ -84,7 +86,20 @@ export default async function VenueWorkspacePage({
             ) : (
               <IntegrationSkeleton />
             ),
-            settings: <VenueSettings venue={venue} />,
+            settings: (
+              <div className="space-y-8">
+                <VenueSettings venue={venue} />
+                {settingsOpen ? (
+                  <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+                    <AppearanceSection
+                      tenantId={organization.id}
+                      role={organization.role}
+                      venue={venue}
+                    />
+                  </Suspense>
+                ) : null}
+              </div>
+            ),
           }}
         />
       </div>

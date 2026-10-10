@@ -21,8 +21,13 @@ import { ErrorNote, Notice } from './error-note'
 import { useClearWhenIdle } from './use-clear-when-idle'
 import { useMoment } from './use-moment'
 
-/** The worker's own wording for rejected credentials (apps/worker/src/sync/run.ts), which we translate. */
-const WRONG_CREDENTIALS = 'Wrong user or password'
+/** The status codes the worker writes into `status_detail` (apps/worker/src/sync/run.ts). */
+const STATUS_DETAIL_CODES = ['wrong_credentials', 'host_refused', 'credentials_unreadable'] as const
+type StatusDetailCode = (typeof STATUS_DETAIL_CODES)[number]
+
+function isStatusDetailCode(value: string): value is StatusDetailCode {
+  return (STATUS_DETAIL_CODES as readonly string[]).includes(value)
+}
 
 const STATUS_BADGE: Record<
   IntegrationStatus,
@@ -64,8 +69,8 @@ export function StatusCard({ venueId, view }: { venueId: string; view: Integrati
   const badge = info ? STATUS_BADGE[info.status] : null
   const Icon = badge?.icon
   const detail =
-    info?.statusDetail === WRONG_CREDENTIALS
-      ? t('status.detail.wrongCredentials')
+    info?.statusDetail && isStatusDetailCode(info.statusDetail)
+      ? t(`statusDetail.${info.statusDetail}`)
       : info?.statusDetail
 
   return (

@@ -150,6 +150,29 @@ module.exports = {
       },
     },
 
+    // The guest page (rule 4): it reads published files and nothing else. Its code (app/m and
+    // src/guest) never imports the database, apply(), the asset and publish stores, or the
+    // server-only helpers of the web app; it calls no server action either.
+    {
+      name: 'guest-page-reads-published-files-only',
+      severity: 'error',
+      comment:
+        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
+      from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
+      to: {
+        path: [
+          '^packages/db/',
+          '^@restro/db(/|$)',
+          '^packages/core/src/apply/',
+          '^@restro/core/apply(/|$)',
+          '^packages/assets/',
+          '^@restro/assets(/|$)',
+          '^apps/web/src/server/',
+          ...IO_PACKAGES,
+        ],
+      },
+    },
+
     // 6. No cycles, including type-only imports (tsPreCompilationDeps below).
     {
       name: 'no-circular',

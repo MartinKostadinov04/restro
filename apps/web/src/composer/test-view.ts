@@ -6,9 +6,9 @@
 //   Beer (a1)                      Lager, Stout
 //   Unsorted:                      Water
 
-import { type NodeId, newId } from '@restro/core'
+import { type NodeId, newId, type TagColor, type TagId } from '@restro/core'
 
-import type { ComposerItem, ComposerSection, ComposerView } from './view-model'
+import type { ComposerItem, ComposerSection, ComposerTag, ComposerView } from './view-model'
 
 const section = (
   id: NodeId,
@@ -37,7 +37,19 @@ const item = (id: NodeId, name: string, extra: Partial<ComposerItem> = {}): Comp
   hiddenBy: null,
   shown: true,
   issues: [],
+  tags: [],
+  dietary: [],
+  soldOutTonight: false,
+  offSale: null,
   ...extra,
+})
+
+const tag = (id: TagId, name: string, color: TagColor, archived = false): ComposerTag => ({
+  id,
+  name,
+  label: { bg_BG: name },
+  color,
+  archived,
 })
 
 export interface TestView {
@@ -54,6 +66,11 @@ export interface TestView {
     readonly lager: NodeId
     readonly stout: NodeId
     readonly water: NodeId
+    /** The venue's tags: Signature, Spicy, Local and an archived one. */
+    readonly signature: TagId
+    readonly spicy: TagId
+    readonly local: TagId
+    readonly old: TagId
   }
 }
 
@@ -71,6 +88,10 @@ export function makeTestView(): TestView {
     lager: newId('nd'),
     stout: newId('nd'),
     water: newId('nd'),
+    signature: newId('tg'),
+    spicy: newId('tg'),
+    local: newId('tg'),
+    old: newId('tg'),
   }
   const view: ComposerView = {
     menuId: ids.menu,
@@ -82,8 +103,11 @@ export function makeTestView(): TestView {
       [ids.beer]: section(ids.beer, null, 'a1'),
     },
     items: {
-      [ids.negroni]: item(ids.negroni, 'Negroni'),
-      [ids.spritz]: item(ids.spritz, 'Spritz'),
+      [ids.negroni]: item(ids.negroni, 'Negroni', {
+        tags: [ids.signature, ids.spicy, ids.old],
+        dietary: ['vegan'],
+      }),
+      [ids.spritz]: item(ids.spritz, 'Spritz', { tags: [ids.local] }),
       [ids.daiquiri]: item(ids.daiquiri, 'Daiquiri'),
       [ids.lager]: item(ids.lager, 'Lager'),
       [ids.stout]: item(ids.stout, 'Stout'),
@@ -102,6 +126,13 @@ export function makeTestView(): TestView {
       ],
     },
     unsortedIds: [ids.water],
+    tagIds: [ids.signature, ids.spicy, ids.local, ids.old],
+    tags: {
+      [ids.signature]: tag(ids.signature, 'Signature', 'accent'),
+      [ids.spicy]: tag(ids.spicy, 'Spicy', 'text'),
+      [ids.local]: tag(ids.local, 'Local', 'muted'),
+      [ids.old]: tag(ids.old, 'Old', 'border', true),
+    },
   }
   return { view, ids }
 }

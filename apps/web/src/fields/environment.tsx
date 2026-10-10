@@ -1,6 +1,12 @@
 'use client'
 
-import { type Currency, type Locale, localeToBcp47 } from '@restro/core'
+import {
+  type Currency,
+  type Locale,
+  type LocalizedText,
+  localeToBcp47,
+  type TagColor,
+} from '@restro/core'
 import { useLocale } from 'next-intl'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
 
@@ -20,6 +26,32 @@ export interface FieldEnvironment {
    * (the item sheet does). A value holds the id only; without a link an image shows a placeholder.
    */
   readonly assetUrls: Readonly<Record<string, string>>
+  /** The venue's language the menu is written in first (a new tag needs a name in it). */
+  readonly defaultLocale: Locale
+  /**
+   * The venue's active tags in order, when the screen knows them (the composer does): a `tags`
+   * value holds ids from this list. Without it a tags value shows nothing to pick from.
+   */
+  readonly tags: readonly EnvironmentTag[] | undefined
+  /**
+   * Creates a tag in the venue's list and resolves with it once it is saved (null when it was
+   * not); absent where tags cannot be made (the tags editor then offers only the existing ones).
+   */
+  readonly createTag: ((draft: TagDraft) => Promise<EnvironmentTag | null>) | undefined
+}
+
+/** A venue tag as a field's Display and Editor see it. */
+export interface EnvironmentTag {
+  readonly id: string
+  /** The name in the interface language. */
+  readonly name: string
+  readonly color: TagColor
+}
+
+/** A new tag: its name per language and its colour. */
+export interface TagDraft {
+  readonly label: LocalizedText
+  readonly color: TagColor
 }
 
 export type FieldEnvironmentOverrides = Partial<Omit<FieldEnvironment, 'locale'>>
@@ -33,10 +65,11 @@ export function FieldEnvironmentProvider({
   children,
   ...environment
 }: FieldEnvironmentOverrides & { children: ReactNode }) {
-  const { enabledLocales, currency, timezone, assetUrls } = environment
+  const { enabledLocales, defaultLocale, currency, timezone, assetUrls, tags, createTag } =
+    environment
   const value = useMemo(
-    () => ({ enabledLocales, currency, timezone, assetUrls }),
-    [enabledLocales, currency, timezone, assetUrls],
+    () => ({ enabledLocales, defaultLocale, currency, timezone, assetUrls, tags, createTag }),
+    [enabledLocales, defaultLocale, currency, timezone, assetUrls, tags, createTag],
   )
   return <Context.Provider value={value}>{children}</Context.Provider>
 }
@@ -52,6 +85,9 @@ export function useFieldEnvironment(): FieldEnvironment {
       currency: overrides?.currency ?? 'EUR',
       timezone: overrides?.timezone ?? 'Europe/Sofia',
       assetUrls: overrides?.assetUrls ?? NO_ASSET_URLS,
+      defaultLocale: overrides?.defaultLocale ?? overrides?.enabledLocales?.[0] ?? 'bg_BG',
+      tags: overrides?.tags,
+      createTag: overrides?.createTag,
     }),
     [uiLocale, overrides],
   )

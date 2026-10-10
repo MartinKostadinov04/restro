@@ -7,7 +7,7 @@
 //   barsy-full-pull       path C for one venue; the only job that concludes absence
 //   barsy-incremental     path E: the tree check and the changed articles
 //   asset-fetch           one barsy photo into the asset store
-//   barsy-incremental-tick / barsy-full-pull-tick   the schedules that queue the two pulls
+//   barsy-sync-tick       the one schedule (every minute): queues the pulls that are due (S3-04)
 //
 // The queues use pg-boss's `exclusive` policy and the integration id as singleton key, so a second
 // full pull of one integration is never queued while one is queued or running, whoever sends it
@@ -25,7 +25,9 @@ import {
   BarsyPullJobSchema,
   canonicalJson,
   deferredSingletonKey,
+  dueSyncs,
   JOB_NAMES,
+  parseSyncSettings,
   prepareJob,
 } from '@restro/core'
 import {
@@ -33,14 +35,23 @@ import {
   readSyncState,
   storeCachedTree,
   updateIntegration,
+  updateSyncState,
   upsertBarsyVenues,
 } from '@restro/core/apply'
-import { authOrganization, barsyVenues, integrations, withSystem, withTenant } from '@restro/db'
+import {
+  authOrganization,
+  barsyVenues,
+  integrations,
+  venues,
+  withSystem,
+  withTenant,
+} from '@restro/db'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
 import type { BarsyPolicy, SealKeys } from '../config'
+import { queuePublishAfterSync } from '../publish/after-sync'
 import {
   cachedTreeOf,
   recordSuccess,
@@ -48,7 +59,12 @@ import {
   runIncremental,
   treeHashOf,
 } from '../sync/catalogue'
-import { type PhotoStore, type SyncEnvironment, withIntegration } from '../sync/context'
+import {
+  type IntegrationSession,
+  type PhotoStore,
+  type SyncEnvironment,
+  withIntegration,
+} from '../sync/context'
 import { lastUpdateFilter } from '../sync/cursor'
 import { fullPullStartedWithin, loadVenueTarget } from '../sync/data'
 import { LimiterRegistry } from '../sync/limiter'
@@ -93,6 +109,19 @@ function parsePayload<S extends z.ZodType>(schema: S, job: Job<object>, name: st
   const parsed = schema.safeParse(job.data)
   if (!parsed.success) throw new Error(`the ${name} job has an invalid payload`)
   return parsed.data
+}
+
+/** Who the publish after a pull is queued for: the venue the pull read, with the integration's settings. */
+function afterSyncTarget(
+  payload: BarsyPullJob,
+  session: IntegrationSession,
+): Parameters<typeof queuePublishAfterSync>[1] {
+  return {
+    tenantId: payload.tenantId,
+    integrationId: payload.integrationId,
+    venueId: payload.venueId,
+    config: session.integration.config,
+  }
 }
 
 function isFlagSet(value: unknown): boolean {
@@ -145,7 +174,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
         await trackedRun(env, { ...payload, kind: 'barsy_connect' }, async () =>
           withIntegration(env, payload, async (session) => {
             const { client, reader } = session
-            // Both pings return 1 (the official docs). A 401 here is "Wrong user or password".
+            // Both pings return 1 (the official docs). A 401 here stores the code wrong_credentials.
             await client.ping()
             await client.pingUser()
             const venues = (await reader.getVenues()).data
@@ -264,9 +293,15 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   statusDetail: null,
                   lastCheckedAt: env.now(),
                 })
+                await queuePublishAfterSync(
+                  env,
+                  afterSyncTarget(payload, session),
+                  outcome.counters.ops_applied ?? 0,
+                )
                 return {
                   counters: outcome.counters,
                   notes: outcome.notes,
+                  deletionCheckSkipped: outcome.deletionCheckSkipped,
                   refused: outcome.refused,
                 }
               }),
@@ -303,7 +338,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
     options: {
       policy: 'exclusive',
       queue: {
-        // The next tick is five minutes away; a retry adds nothing.
+        // The next change check comes at the next interval; a retry adds nothing.
         retryLimit: 0,
         expireInSeconds: 10 * 60,
         retentionSeconds: 30 * 60,
@@ -317,7 +352,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
         const env = environment(context, job)
         await trackedRun(env, { ...payload, kind: 'barsy_incremental' }, async (run) => {
           // Another pull in progress (a full pull reads everything anyway): do not wait, the next
-          // tick is five minutes away. Held for the whole run otherwise.
+          // check is due again after the interval. Held for the whole run otherwise.
           const locked = await withPullLock(
             env,
             payload.integrationId,
@@ -362,6 +397,11 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   lastUpdateFilter(new Date(state.cursor), target.timezone),
                 )
                 await recordSuccess(ctx, outcome, 'incremental')
+                await queuePublishAfterSync(
+                  env,
+                  afterSyncTarget(payload, session),
+                  outcome.counters.ops_applied ?? 0,
+                )
                 return {
                   counters: outcome.counters,
                   notes: outcome.notes,
@@ -399,6 +439,17 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
           withIntegration(env, payload, async (session) => {
             try {
               const result = await fetchPhoto(env, session, payload, run.id)
+              // A new asset gets its phone-sized webp variants (idempotent; the backfill command
+              // catches any that this misses).
+              if (result.asset === 'created' && result.assetId !== undefined) {
+                const variants = prepareJob(JOB_NAMES.assetVariants, {
+                  tenantId: payload.tenantId,
+                  assetId: result.assetId,
+                })
+                await env.enqueue(JOB_NAMES.assetVariants, variants.data, {
+                  singletonKey: variants.singletonKey,
+                })
+              }
               const counters = {
                 assets_created: result.asset === 'created' ? 1 : 0,
                 assets_reused: result.asset === 'reused' ? 1 : 0,
@@ -430,21 +481,36 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
 
   /**
    * Connected integrations that have a venue with a catalogue root, as (tenant, integration,
-   * venue). Tenants are listed from the organisation table (a system table: the app role can read
-   * it without a tenant scope; the organisation id is the tenant id), then each tenant's rows are
-   * read inside its own scope.
+   * venue), with what the schedule needs: the integration's config (settings and sync state),
+   * the barsy venue's `bid` and the venue's time zone. Tenants are listed from the organisation
+   * table (a system table: the app role can read it without a tenant scope; the organisation id
+   * is the tenant id), then each tenant's rows are read inside its own scope.
    */
-  async function pullTargets(context: WorkerContext) {
+  async function syncTargets(context: WorkerContext) {
     const organisations = await withSystem(context.pool, (tx) =>
       tx.select({ id: authOrganization.id }).from(authOrganization),
     )
-    const targets: { tenantId: string; integrationId: string; venueId: string }[] = []
+    const targets: {
+      tenantId: string
+      integrationId: string
+      venueId: string
+      bid: number
+      timezone: string
+      config: unknown
+    }[] = []
     for (const organisation of organisations) {
       const rows = await withTenant(context.pool, organisation.id, (tx) =>
         tx
-          .select({ integrationId: integrations.id, venueId: barsyVenues.venueId })
+          .select({
+            integrationId: integrations.id,
+            venueId: barsyVenues.venueId,
+            bid: barsyVenues.bid,
+            timezone: venues.timezone,
+            config: integrations.config,
+          })
           .from(integrations)
           .innerJoin(barsyVenues, eq(barsyVenues.integrationId, integrations.id))
+          .innerJoin(venues, eq(venues.id, barsyVenues.venueId))
           .where(
             and(
               eq(integrations.kind, 'barsy'),
@@ -460,6 +526,9 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             tenantId: organisation.id,
             integrationId: row.integrationId,
             venueId: row.venueId,
+            bid: row.bid,
+            timezone: row.timezone,
+            config: row.config,
           })
         }
       }
@@ -467,45 +536,86 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
     return targets
   }
 
-  function ticker(
-    name: string,
-    queueName: typeof JOB_NAMES.barsyFullPull | typeof JOB_NAMES.barsyIncremental,
-    cron: string,
-  ) {
-    return defineJob({
-      name,
-      schedule: { cron, tz: 'Europe/Sofia' },
-      options: {
-        // The next tick comes soon enough; a missed one is not retried.
-        queue: {
-          retryLimit: 0,
-          expireInSeconds: 120,
-          retentionSeconds: 10 * 60,
-          deleteAfterSeconds: 60 * 60,
-        },
+  /**
+   * The one schedule of the sync (S3-04, D59): every minute, in the venue's clock, it asks
+   * `dueSyncs` of each connected venue whether a change check or a full pull is due under the
+   * integration's settings, and queues what is. The queued time (a change check) or slot (a full
+   * pull) is written to the sync state, so the interval is counted from the last attempt, and a
+   * pull that failed is not asked for again every minute. With the settings at their defaults
+   * this is what the two fixed schedules did: a change check every 5 minutes and a full pull
+   * daily at 12:00 (D41, D50/P31).
+   */
+  const syncTick = defineJob({
+    name: JOB_NAMES.barsySyncTick,
+    schedule: { cron: '* * * * *', tz: 'Europe/Sofia' },
+    options: {
+      // The next tick comes soon enough; a missed one is not retried.
+      queue: {
+        retryLimit: 0,
+        expireInSeconds: 120,
+        retentionSeconds: 10 * 60,
+        deleteAfterSeconds: 60 * 60,
       },
-      async handler(_jobs, context) {
-        const targets = await pullTargets(context)
-        let queued = 0
-        for (const target of targets) {
-          const job = prepareJob(queueName, target)
-          const id = await context.queue.send(queueName, job.data, {
-            singletonKey: job.singletonKey,
-          })
-          if (id !== null) queued += 1
+    },
+    async handler(_jobs, context) {
+      const now = context.now()
+      const targets = await syncTargets(context)
+      let incrementals = 0
+      let fullPulls = 0
+      let failed = 0
+      for (const target of targets) {
+        // One venue's trouble (an unreadable setting, a database hiccup) never stops the others.
+        try {
+          const settings = parseSyncSettings(target.config)
+          const state = readSyncState(target.config, target.bid)
+          const due = dueSyncs(now, target.timezone, settings.schedule, state)
+          const payload = {
+            tenantId: target.tenantId,
+            integrationId: target.integrationId,
+            venueId: target.venueId,
+          }
+          if (due.incremental) {
+            const job = prepareJob(JOB_NAMES.barsyIncremental, payload)
+            const id = await context.queue.send(JOB_NAMES.barsyIncremental, job.data, {
+              singletonKey: job.singletonKey,
+            })
+            if (id !== null) {
+              incrementals += 1
+              await updateSyncState(
+                context.pool,
+                target.tenantId,
+                target.integrationId,
+                target.bid,
+                { last_incremental_queued_at: now.toISOString() },
+              )
+            }
+          }
+          if (due.fullPull && due.fullPullSlot !== null) {
+            const job = prepareJob(JOB_NAMES.barsyFullPull, payload)
+            const id = await context.queue.send(JOB_NAMES.barsyFullPull, job.data, {
+              singletonKey: job.singletonKey,
+            })
+            if (id !== null) {
+              fullPulls += 1
+              await updateSyncState(
+                context.pool,
+                target.tenantId,
+                target.integrationId,
+                target.bid,
+                { last_full_pull_slot: due.fullPullSlot.toISOString() },
+              )
+            }
+          }
+        } catch (error) {
+          failed += 1
+          context.log.warn({ err: error }, 'the syncs of a venue could not be scheduled')
         }
-        context.log.info({ queue: queueName, targets: targets.length, queued }, 'tick')
-      },
-    })
-  }
+      }
+      // Every minute: say so only when something was queued or went wrong.
+      const level = incrementals + fullPulls + failed > 0 ? 'info' : 'debug'
+      context.log[level]({ targets: targets.length, incrementals, fullPulls, failed }, 'sync tick')
+    },
+  })
 
-  return [
-    connect,
-    fullPull,
-    incremental,
-    assetFetch,
-    // Every five minutes (D41), and the full pull daily at 12:00 venue time (D50/P31).
-    ticker(JOB_NAMES.barsyIncrementalTick, JOB_NAMES.barsyIncremental, '*/5 * * * *'),
-    ticker(JOB_NAMES.barsyFullPullTick, JOB_NAMES.barsyFullPull, '0 12 * * *'),
-  ] as JobDefinition[]
+  return [connect, fullPull, incremental, assetFetch, syncTick] as JobDefinition[]
 }

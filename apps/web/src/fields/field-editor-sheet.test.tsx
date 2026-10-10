@@ -124,14 +124,6 @@ describe('FieldEditorSheet', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(['gluten']))
   })
 
-  it('adds and removes tags', async () => {
-    const { onSave } = open(definitionOf('tags'), ['signature'])
-    await userEvent.type(screen.getByPlaceholderText('Type a tag and press Enter'), 'new{Enter}')
-    await userEvent.click(screen.getByRole('button', { name: 'Remove tag signature' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(['new']))
-  })
-
   it.each(['date', 'datetime', 'range', 'file', 'reference'])(
     'shows a disabled "Coming in Stage 2" notice for %s and can only be cancelled',
     async (type) => {

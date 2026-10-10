@@ -7,17 +7,23 @@
 // Pure: no I/O, no clock. The server builds it (./composer-tab.tsx); tests build it from small
 // hand-made documents.
 
-import type {
-  IssueCode,
-  IssueSeverity,
-  Locale,
-  LocalizedText,
-  MenuDocument,
-  Money,
-  NodeId,
-  ResolvedField,
-  ResolvedMenu,
-  ResolvedSection,
+import {
+  type IssueCode,
+  type IssueSeverity,
+  isId,
+  type Locale,
+  type LocalizedText,
+  type MenuDocument,
+  type Money,
+  type NodeId,
+  type OffSaleBy,
+  type ResolvedField,
+  type ResolvedMenu,
+  type ResolvedSection,
+  saleStateOf,
+  type Tag,
+  type TagColor,
+  type TagId,
 } from '@restro/core'
 
 import { pickLocalized } from '@/fields/localized'
@@ -57,10 +63,19 @@ export type ItemHiddenBy =
   | 'barsy'
   /** The builder's hide flag (`visible = false` in the manual layer): showing clears it. */
   | 'builder'
+  /** The sync hid a new barsy item for review (setting `publish.new_items = hold`): showing clears it. */
+  | 'new_from_barsy'
   /** The item's status is `hidden` (held back): showing makes it active. */
   | 'status'
   /** Another layer or setting hides it (an edition, the ordering mode): not changed here. */
   | 'other'
+
+/**
+ * Why an item is off sale, when something other than a manager's "sold out tonight" mark says so
+ * (core's `OffSaleBy`): `barsy` is the till's own flag, `other` another layer or edition. The
+ * composer cannot put either back on sale (rule 5).
+ */
+export type ItemOffSale = OffSaleBy
 
 /** An item as the composer shows it. */
 export interface ComposerItem {
@@ -73,6 +88,29 @@ export interface ComposerItem {
   /** Guests would see it (resolver: shown, and placed in a shown section). */
   readonly shown: boolean
   readonly issues: readonly ComposerIssue[]
+  /** The tag ids the item holds (the union of its layers); resolve them with `ComposerView.tags`. */
+  readonly tags: readonly TagId[]
+  /** The dietary label codes of the fixed list (`vegan`, `gluten_free`, …). */
+  readonly dietary: readonly string[]
+  /**
+   * A manager marked it sold out tonight (`for_sale = false` in the current service edition,
+   * D46) and nothing else takes it off sale. It lapses by itself when the service day ends.
+   */
+  readonly soldOutTonight: boolean
+  /** Off sale for another reason (see `ItemOffSale`): ours can only add caution, never undo it. */
+  readonly offSale: ItemOffSale | null
+}
+
+/** A venue tag as the composer shows and edits it (D60). */
+export interface ComposerTag {
+  readonly id: TagId
+  /** The name in the interface language ('' never: falls back to any language there is). */
+  readonly name: string
+  /** The name per language, for the edit form. */
+  readonly label: LocalizedText
+  readonly color: TagColor
+  /** Archived tags are hidden from pickers; the Tags panel lists them to restore. */
+  readonly archived: boolean
 }
 
 /** An item's place in a section. */
@@ -92,6 +130,9 @@ export interface ComposerView {
   readonly placements: Readonly<Record<NodeId, readonly ComposerPlacement[]>>
   /** Items that sit in no section, by name. */
   readonly unsortedIds: readonly NodeId[]
+  /** The venue's tag ids in order, archived ones included. */
+  readonly tagIds: readonly TagId[]
+  readonly tags: Readonly<Record<TagId, ComposerTag>>
 }
 
 function textOf(field: ResolvedField | undefined, locale: Locale): string {
@@ -115,10 +156,11 @@ function hiddenByOf(
   status: string,
   visible: ResolvedField | undefined,
   orderMode: ResolvedField | undefined,
+  held: boolean,
 ): ItemHiddenBy | null {
   if (visible?.value === false) {
     if (visible.layer === 'barsy') return 'barsy'
-    if (visible.layer === 'manual') return 'builder'
+    if (visible.layer === 'manual') return held ? 'new_from_barsy' : 'builder'
     return 'other'
   }
   if (status === 'hidden') return 'status'
@@ -140,12 +182,36 @@ const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 export interface BuildViewInput {
   readonly doc: MenuDocument
   readonly resolved: ResolvedMenu
-  /** The interface language as a document language: names and titles are shown in it. */
+  /**
+   * The interface language as a document language: names and titles are shown in it. The caller
+   * resolved `resolved` with the live editions (`liveEditions`), so sold-out marks are tonight's.
+   */
   readonly displayLocale: Locale
+  /**
+   * Items the sync hid for review (`loadHeldNewItemIds`): their manual hide was written by the
+   * sync, not by a person. Default: none.
+   */
+  readonly heldNewIds?: readonly NodeId[]
+  /** The venue's tags in order, archived ones included (`listTags`). Default: none. */
+  readonly tags?: readonly Tag[]
+}
+
+/** The string entries of a resolved list value (`tags`, `dietary`); nothing else. */
+function listOf(field: ResolvedField | undefined): string[] {
+  return Array.isArray(field?.value)
+    ? (field.value as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+    : []
 }
 
 /** Builds the view model of a resolved menu. */
-export function buildComposerView({ doc, resolved, displayLocale }: BuildViewInput): ComposerView {
+export function buildComposerView({
+  doc,
+  resolved,
+  displayLocale,
+  heldNewIds = [],
+  tags: venueTags = [],
+}: BuildViewInput): ComposerView {
+  const heldNew = new Set<NodeId>(heldNewIds)
   const nodes = new Map(doc.nodes.map((node) => [node.id, node]))
   const barsyLinked = new Set(
     doc.links.filter((link) => link.source.startsWith('barsy:')).map((link) => link.nodeId),
@@ -205,9 +271,24 @@ export function buildComposerView({ doc, resolved, displayLocale }: BuildViewInp
         nodes.get(id)?.status ?? 'active',
         item.fields.visible,
         item.fields.order_mode,
+        heldNew.has(id),
       ),
       shown: item.visible,
       issues: issuesOf(item.issues),
+      tags: listOf(item.fields.tags).filter((tag): tag is TagId => isId('tg', tag)),
+      dietary: listOf(item.fields.dietary),
+      ...saleStateOf(item.fields.for_sale),
+    }
+  }
+
+  const tagRecords: Record<TagId, ComposerTag> = {}
+  for (const tag of venueTags) {
+    tagRecords[tag.id] = {
+      id: tag.id,
+      name: pickLocalized(tag.label, displayLocale) ?? '',
+      label: tag.label,
+      color: tag.color,
+      archived: tag.archived,
     }
   }
 
@@ -226,5 +307,7 @@ export function buildComposerView({ doc, resolved, displayLocale }: BuildViewInp
     items,
     placements,
     unsortedIds,
+    tagIds: venueTags.map((tag) => tag.id),
+    tags: tagRecords,
   }
 }

@@ -57,6 +57,41 @@
       "when": 1791575249882,
       "tag": "0007_job_runs_details",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791593528187,
+      "tag": "0008_publish_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791595447496,
+      "tag": "0009_asset_variants_decision_note",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791618854508,
+      "tag": "0010_venue_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791632355224,
+      "tag": "0011_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791636310090,
+      "tag": "0012_tables_qr",
+      "breakpoints": true
     }
   ]
 }

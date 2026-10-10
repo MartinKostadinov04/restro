@@ -14,6 +14,18 @@ export const ServerEnvSchema = z.object({
   /** The public address of this app, e.g. http://localhost:3000. Cookies and CSRF use it. */
   BETTER_AUTH_URL: z.url().optional(),
   /**
+   * The address the table QR codes are printed with by default (`<this>/t/<token>`, brief S3-07),
+   * when a venue has not saved a base address of its own: `http://localhost:3000` while we build,
+   * the permanent domain later (P53). Falls back to BETTER_AUTH_URL. Empty counts as missing.
+   */
+  PUBLIC_BASE_URL: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
    * The worker's sealing PUBLIC key (base64url DER, `pnpm keys:seal`). With it the Integration tab
    * seals the barsy credentials a manager types; without it the tab explains that the operator
    * has to set up the sync keys. Empty counts as missing. Whether it is a valid key is checked
@@ -45,4 +57,15 @@ export function serverEnv(): ServerEnv {
   }
   cached = parsed.data
   return cached
+}
+
+/**
+ * The address table QR codes use when a venue has saved none: `PUBLIC_BASE_URL`, else
+ * `BETTER_AUTH_URL`, else null (a venue then has to type one). Whether it is usable is checked
+ * where it is read (`readVenueQr`).
+ */
+export function defaultQrBaseUrl(
+  env: Pick<ServerEnv, 'PUBLIC_BASE_URL' | 'BETTER_AUTH_URL'> = serverEnv(),
+): string | null {
+  return env.PUBLIC_BASE_URL ?? env.BETTER_AUTH_URL ?? null
 }

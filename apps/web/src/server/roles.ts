@@ -13,3 +13,19 @@ export function canManageIntegration(role: string | null | undefined): boolean {
     .map((part) => part.trim().toLowerCase())
     .some((part) => INTEGRATION_MANAGERS.has(part))
 }
+
+/**
+ * True for the roles that may publish a menu, or roll it back to an earlier version (brief
+ * S3-01b): an owner or admin, like the integration.
+ */
+export function canPublishMenu(role: string | null | undefined): boolean {
+  return canManageIntegration(role)
+}
+
+/**
+ * True for the roles that may mark items sold out tonight, or take the mark off (brief S3-08,
+ * D46): an owner or admin. Waiters do not use our admin.
+ */
+export function canMarkSoldOut(role: string | null | undefined): boolean {
+  return canManageIntegration(role)
+}

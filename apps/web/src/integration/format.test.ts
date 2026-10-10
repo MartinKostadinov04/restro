@@ -57,6 +57,25 @@ describe('deletionCheckSkipped', () => {
     )
   })
 
+  it('reads the flag of a run whose details have it, whatever the notes say', () => {
+    expect(
+      deletionCheckSkipped({
+        details: { notes: [], refused: [], deletionCheckSkipped: true },
+        errorSummary: null,
+      }),
+    ).toBe(true)
+    expect(
+      deletionCheckSkipped({
+        details: {
+          notes: ['deletion check skipped: 1 of 3 pages failed'],
+          refused: [],
+          deletionCheckSkipped: false,
+        },
+        errorSummary: null,
+      }),
+    ).toBe(false)
+  })
+
   it('reads the text of a run recorded before details existed', () => {
     expect(
       deletionCheckSkipped({

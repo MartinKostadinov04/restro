@@ -14,12 +14,17 @@
 // mapped, the organisation's first barsy integration; none if it has none. (One installation per
 // organisation is all the proof of concept needs; D39.)
 import {
+  autoPublishPaused,
   type IntegrationId,
   isLocale,
   JOB_NAMES,
   type JobPayload,
   newId,
+  nextSyncRuns,
   type ProducedJobName,
+  parseSyncSettings,
+  type SyncSettingsInput,
+  SyncSettingsInputSchema,
   type TenantId,
   type VenueId,
 } from '@restro/core'
@@ -61,6 +66,7 @@ import type {
   IntegrationView,
   PriceSource,
   RunView,
+  SyncSettingsView,
 } from './view'
 
 /** Who is asking, for which venue. `canManage` comes from the organisation role, never the request. */
@@ -249,6 +255,9 @@ function toRunView(run: JobRun): RunView {
               fieldKey: entry.fieldKey ?? null,
               code: entry.code,
             })),
+            ...(details.deletionCheckSkipped !== undefined
+              ? { deletionCheckSkipped: details.deletionCheckSkipped }
+              : {}),
           },
   }
 }
@@ -257,10 +266,58 @@ function priceSourceOf(value: unknown): PriceSource {
   return value === 'current_price' ? 'current_price' : 'actual_price'
 }
 
+/**
+ * The sync settings and when the next syncs are planned. Scheduled syncs run for a connected
+ * integration whose barsy venue is mapped to this venue and has a catalogue root (the worker's
+ * tick lists exactly those); for any other the card names no times.
+ */
+function syncSettingsViewOf(
+  integration: Integration | null,
+  mapped: BarsyVenue | null,
+  timeZone: string,
+  now: Date,
+): SyncSettingsView {
+  const settings = parseSyncSettings(integration?.config)
+  const scheduleActive =
+    integration !== null &&
+    integration.status === 'connected' &&
+    mapped !== null &&
+    mapped.catalogueRootCatId !== null
+  let nextIncrementalAt: string | null = null
+  let nextFullPullAt: string | null = null
+  if (scheduleActive) {
+    try {
+      const next = nextSyncRuns(
+        now,
+        timeZone,
+        settings.schedule,
+        readSyncState(integration.config, mapped.bid),
+      )
+      nextIncrementalAt = next.incremental?.toISOString() ?? null
+      nextFullPullAt = next.fullPull?.toISOString() ?? null
+    } catch (error) {
+      // A time zone the runtime does not know: the card shows the settings and no times.
+      logError('integration_next_runs_failed', error)
+    }
+  }
+  return {
+    incrementalEnabled: settings.schedule.incremental_enabled,
+    incrementalMinutes: settings.schedule.incremental_minutes,
+    fullPullEnabled: settings.schedule.full_pull_enabled,
+    fullPullTime: settings.schedule.full_pull_time,
+    afterSync: settings.publish.after_sync,
+    newItems: settings.publish.new_items,
+    scheduleActive,
+    nextIncrementalAt,
+    nextFullPullAt,
+  }
+}
+
 /** Everything the tab shows, in one read. */
 export async function loadIntegrationView(
   scope: IntegrationScope,
   services: Pick<IntegrationServices, 'sealPublicKey'>,
+  now: Date = new Date(),
 ): Promise<IntegrationView> {
   const state = await loadState(scope)
   const { integration, mapped } = state
@@ -320,6 +377,7 @@ export async function loadIntegrationView(
       allergenOptions: detailOptions,
       defaultLocale: isLocale(config.default_locale) ? config.default_locale : DEFAULT_LOCALE,
     },
+    syncSettings: syncSettingsViewOf(integration, mapped, scope.venue.timezone, now),
     lastSyncedAt,
     gate: syncGate({
       canManage: scope.canManage,
@@ -536,6 +594,37 @@ export async function saveMappingSettings(
       // null removes the key: the sync detects the characteristic by its name again.
       allergen_detail_key: input.allergenKey,
       default_locale: input.defaultLocale,
+    },
+  })
+  return updated ? { ok: true } : fail('not_found')
+}
+
+/**
+ * Saves the sync settings (D59): when barsy is read and whether a sync goes live by itself. They
+ * are stored whole in the integration's config (`schedule` and `publish`), and the worker's next
+ * tick follows them. The flat key `publish_after_sync` of S3-01b is removed: `publish.after_sync`
+ * says it now.
+ */
+export async function saveSyncSettings(
+  scope: IntegrationScope,
+  input: SyncSettingsInput,
+): Promise<IntegrationActionResult> {
+  if (!scope.canManage) return fail('not_allowed')
+  const parsed = SyncSettingsInputSchema.safeParse(input)
+  if (!parsed.success) return fail('invalid')
+  const state = await loadState(scope)
+  if (state.integration === null) return fail('not_found')
+  const updated = await updateIntegration(scope.pool, scope.tenantId, state.integration.id, {
+    config: {
+      schedule: parsed.data.schedule,
+      // `publish` is replaced whole, and holds one thing the form does not: the pause that a
+      // return to an older version sets (Publish tab, S3-05). Keep it, or saving the form would
+      // let the next sync undo the return.
+      publish: {
+        ...parsed.data.publish,
+        ...(autoPublishPaused(state.integration.config) ? { auto_paused: true } : {}),
+      },
+      publish_after_sync: null,
     },
   })
   return updated ? { ok: true } : fail('not_found')

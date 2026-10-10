@@ -90,7 +90,11 @@ async function keyboardDrag(handleName: string, key: 'ArrowUp' | 'ArrowDown', ti
     await page.keyboard.press(key)
     await page.waitForTimeout(250)
   }
+  // Every keyboard drag here moves something, so a save always follows the drop; wait for its
+  // answer (network-idle alone can pass before the drop animation starts the save).
+  const saved = page.waitForResponse(isServerAction)
   await page.keyboard.press('Space')
+  await saved
   await settle()
 }
 

@@ -48,15 +48,17 @@ pnpm dev                            # http://localhost:3000 → sign in with DEV
 Before a pull request: `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build`. The database tests run when `DATABASE_URL_OWNER` is set (CI sets it and then fails instead of skipping). `pnpm test:e2e` builds the web app and runs the Playwright tests against it (`pnpm --filter @restro/web exec playwright install chromium` once); it needs the migrated local database and seeds the demo owner itself.
 
 ## The worker
-`apps/worker` is the always-on process every background job runs in: pg-boss 12 on our own Postgres, started as the app role `restro_app`. On start it checks the database role (it refuses a superuser or the table owner), lets pg-boss install its tables in schema `pgboss` (the migration owner creates the schema; the app role may only use and create in it), registers the jobs, and serves `GET /health`. Today the only job is `worker-heartbeat`: every minute it upserts this process's row in `restro.worker_heartbeats`.
+`apps/worker` is the always-on process every background job runs in: pg-boss 12 on our own Postgres, started as the app role `restro_app`. On start it checks the database role (it refuses a superuser or the table owner), lets pg-boss install its tables in schema `pgboss` (the migration owner creates the schema; the app role may only use and create in it), registers the jobs, and serves `GET /health`. Besides the heartbeat job `worker-heartbeat` (every minute it upserts this process's row in `restro.worker_heartbeats`), it runs the barsy sync jobs: the connection check (`barsy-connect`), the full and incremental menu pulls (`barsy-full-pull`, `barsy-incremental`) and the photo fetch (`asset-fetch`). The sync jobs register only when the worker holds both sealing keys.
 
-Run it against the local database (once: `pnpm db:local` in one terminal, then `pnpm db:migrate && pnpm db:roles` with the owner variables from `.env.example` exported; the worker never reads `.env` files itself):
+Run it against the local database (once: `pnpm db:local` in one terminal, then `pnpm db:migrate && pnpm db:roles` with the owner variables from `.env.example` exported; outside its `dev` script the worker never reads `.env` files itself):
 
 ```
 export DATABASE_URL=postgres://restro_app:local-only-not-a-secret@localhost:54329/restro   # PowerShell: $env:DATABASE_URL='...'
 pnpm --filter @restro/worker dev        # watch mode; `start` runs the built bundle
 curl http://localhost:8081/health
 ```
+
+The worker's `dev` script loads the root `.env.local` and then `.env.worker.local` (worker-only, holds `SEAL_PRIVATE_KEY`).
 
 | Variable | Meaning | Default |
 |---|---|---|
@@ -65,6 +67,21 @@ curl http://localhost:8081/health
 | `WORKER_HEALTH_PORT` | Port of `GET /health` | `8081` |
 | `LOG_LEVEL` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent` | `info` |
 | `NODE_ENV` | `production` writes JSON logs (one object per line); anything else, readable lines | unset |
+| `BARSY_ENV` | `development`, `test`, `staging` or `production`. The host rules below depend on it | `development` |
+| `BARSY_ALLOWED_HOST_SUFFIXES` | Comma-separated. An integration's barsy host must end with one of them (each starts with a dot) | `.barsyonline.com` |
+| `BARSY_PRODUCTION_HOSTS` | Comma-separated hosts of live venues. Every environment but `production` refuses them | none |
+| `SEAL_PUBLIC_KEY` | Base64url DER (SPKI) X25519 public key, for the web app and the worker. Set it with `SEAL_PRIVATE_KEY`; `pnpm keys:seal` makes a pair | unset |
+| `SEAL_PRIVATE_KEY` | Base64url DER (PKCS8) X25519 private key. Worker only: the web app never declares it | unset |
+| `ASSET_STORE` | `local` or `r2`: where barsy photos go. The worker only writes there | `local` in development; an error in production when unset |
+| `LOCAL_ASSET_DIR` | Folder of the `local` store. Used only with `ASSET_STORE=local` | `.local/assets` in the repository |
+| `R2_ACCOUNT_ID` | Cloudflare account ID. Required with `ASSET_STORE=r2` | none |
+| `R2_ACCESS_KEY_ID` | Access key of the R2 API token. Required with `ASSET_STORE=r2` | none |
+| `R2_SECRET_ACCESS_KEY` | Secret of that R2 API token. Required with `ASSET_STORE=r2` | none |
+| `R2_BUCKET` | Name of the private R2 bucket. Required with `ASSET_STORE=r2` | none |
+| `R2_ENDPOINT` | S3 endpoint of the bucket. Set it for EU jurisdiction (`https://<id>.eu.r2.cloudflarestorage.com`); used only with `ASSET_STORE=r2` | `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `PUBLISH_STORE` | `local` or `r2`: where published menus and photo variants go (the worker writes; the web app serves `local` at `/cdn/…`) | `local` in development; an error in production when unset |
+| `LOCAL_PUBLISH_DIR` | Folder of the `local` publish store. Used only with `PUBLISH_STORE=local` | `.local/cdn` in the repository |
+| `R2_PUBLIC_BUCKET` | Name of the public R2 bucket behind the CDN. Required with `PUBLISH_STORE=r2` (with the `R2_*` account settings above) | none |
 
 `GET /health` answers `200 {"status":"ok","lastBeatAt":"…","pgboss":"started"}` while pg-boss is started and the last heartbeat is under three minutes old, and `503` with a `reason` otherwise (starting, stopping, no heartbeat yet, stale heartbeat). The answer comes from memory; a probe never touches the database. Run one worker replica for now: each heartbeat job is taken by one replica, so with two the other would look stale.
 

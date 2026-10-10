@@ -265,6 +265,25 @@ describe.skipIf(!hasDatabase)('the Integration tab’s writers (as the restro_ap
       expect(stored?.errorSummary).toContain('1 write refused')
     })
 
+    it('writes deletionCheckSkipped into details when given, and leaves it out otherwise', async () => {
+      const skipped = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+      await finishJobRun(app, tenant, skipped.id, {
+        status: 'completed',
+        deletionCheckSkipped: true,
+      })
+      const [storedSkipped] = await withTenant(app, tenant, (tx) =>
+        tx.select().from(jobRuns).where(eq(jobRuns.id, skipped.id)),
+      )
+      expect(storedSkipped?.details as JobRunDetails).toMatchObject({ deletionCheckSkipped: true })
+
+      const complete = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+      await finishJobRun(app, tenant, complete.id, { status: 'completed' })
+      const [storedComplete] = await withTenant(app, tenant, (tx) =>
+        tx.select().from(jobRuns).where(eq(jobRuns.id, complete.id)),
+      )
+      expect(storedComplete?.details).toEqual({ notes: [], refused: [] })
+    })
+
     it('a run that finishes with nothing to say still has empty details', async () => {
       const run = await startJobRun(app, tenant, { kind: 'barsy_incremental', integrationId })
       await finishJobRun(app, tenant, run.id, { status: 'completed' })

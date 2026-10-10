@@ -57,6 +57,18 @@ export class R2AssetStore implements AssetStore {
     )
   }
 
+  async get(key: string): Promise<Uint8Array | null> {
+    try {
+      const response = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      )
+      return (await response.Body?.transformToByteArray()) ?? null
+    } catch (error) {
+      if ((error as { name?: string }).name === 'NoSuchKey') return null
+      throw error
+    }
+  }
+
   async getUrl(key: string, ttlSeconds: number): Promise<string> {
     const expiresIn = Math.min(MAX_TTL_SECONDS, Math.max(1, Math.floor(ttlSeconds)))
     return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {

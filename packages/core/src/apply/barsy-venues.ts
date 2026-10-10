@@ -198,6 +198,11 @@ export interface UpsertPlacesResult {
   readonly reactivated: number
   /** False when a page failed: no place was concluded missing or deleted (rule 6). */
   readonly complete: boolean
+  /**
+   * The QR tokens of the places concluded `deleted` by this run, taken off those places (S3-07).
+   * The caller queues the token job so their files `t/<token>.json` are removed too.
+   */
+  readonly retiredTokens: readonly string[]
 }
 
 /**
@@ -205,7 +210,8 @@ export interface UpsertPlacesResult {
  * number, salon and public flag. Absence follows rule 6 like every other link: places the pull
  * did not list become `missing` only when `pagesOk` says the pull was complete, and `deleted`
  * after the usual grace period (`concludeFullPull`); a place that is listed again is `active`.
- * A place's own `qr_token` is never touched.
+ * A place's own `qr_token` and `label` are never touched, except that a place concluded `deleted`
+ * loses its token (returned in `retiredTokens`; S3-07), since its sticker must stop working.
  *
  * `places` has no `state_changed_at`; a row is written only when something about it changes, so
  * `updated_at` of a missing place is when it went missing.
@@ -290,13 +296,24 @@ export async function upsertPlaces(
     })
     let missing = 0
     let deleted = 0
+    const retiredTokens: string[] = []
     for (const change of conclusion.changes) {
       if (change.to === 'active') continue // listed again: handled above
       const row = byPlaceId.get(change.key)
       if (!row) continue
+      if (change.to === 'deleted') {
+        // A table barsy deleted no longer exists: its sticker must stop leading anywhere (S3-07).
+        // A merely `missing` table keeps its code, since it may be listed again.
+        await tx
+          .update(places)
+          .set({ state: 'deleted', qrToken: null, updatedAt: now })
+          .where(eq(places.id, row.id))
+        if (row.qrToken !== null) retiredTokens.push(row.qrToken)
+        deleted += 1
+        continue
+      }
       await tx.update(places).set({ state: change.to, updatedAt: now }).where(eq(places.id, row.id))
-      if (change.to === 'missing') missing += 1
-      else deleted += 1
+      missing += 1
     }
     return {
       created,
@@ -306,6 +323,7 @@ export async function upsertPlaces(
       deleted,
       reactivated,
       complete: conclusion.complete,
+      retiredTokens,
     }
   })
 }

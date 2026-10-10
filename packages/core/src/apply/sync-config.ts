@@ -25,6 +25,12 @@ export const SyncStateSchema = z.object({
   tree_hash: Sha256.optional(),
   last_full_pull_at: IsoInstant.optional(),
   last_incremental_at: IsoInstant.optional(),
+  // The minute tick's own marks (S3-04). Without them a change check that failed, or a full pull
+  // that was not complete, would count as "never ran" and be queued again every minute.
+  /** When the tick last queued a change check. */
+  last_incremental_queued_at: IsoInstant.optional(),
+  /** The full-pull slot (an instant) the tick last queued a full pull for. */
+  last_full_pull_slot: IsoInstant.optional(),
 })
 export type SyncState = z.output<typeof SyncStateSchema>
 
@@ -119,6 +125,44 @@ export async function storeCachedTree(
         config: sql`${integrations.config} || jsonb_build_object('catalogue_trees',
           coalesce(${integrations.config} -> 'catalogue_trees', '{}'::jsonb) ||
             jsonb_build_object(${key}::text, ${value}::jsonb))`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}
+
+/**
+ * Pauses (`true`) or resumes (`false`) automatic publishing of an integration (brief S3-05): sets
+ * or removes `config.publish.auto_paused`, leaving the other publish settings alone. One `UPDATE`,
+ * merged inside Postgres, so it never loses a concurrent change to another key. Returns whether
+ * the integration exists. The worker skips automatic publishes while the flag is set
+ * (`autoPublishPaused`); a manual publish clears it.
+ */
+export async function setAutoPublishPaused(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  paused: boolean,
+): Promise<boolean> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  // A `publish` that is not an object (a hand-edited config) is replaced rather than extended.
+  const publish = sql`case when jsonb_typeof(${integrations.config} -> 'publish') = 'object'
+    then ${integrations.config} -> 'publish' else '{}'::jsonb end`
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: paused
+          ? sql`${integrations.config} || jsonb_build_object('publish',
+              ${publish} || '{"auto_paused": true}'::jsonb)`
+          : sql`case when ${integrations.config} #> '{publish,auto_paused}' is null
+              then ${integrations.config}
+              else ${integrations.config} || jsonb_build_object('publish',
+                ${publish} - 'auto_paused') end`,
       })
       .where(eq(integrations.id, integrationId))
       .returning({ id: integrations.id })

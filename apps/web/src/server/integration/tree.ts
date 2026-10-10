@@ -1,6 +1,8 @@
 // Two small readers of what the connection check cached (brief S2-05): the public category tree
 // for the catalogue-root picker, and the characteristics barsy offers (to pick the allergen one).
 // Pure, and forgiving: a cache that does not look as expected is an empty list, never an error.
+import { isAllergenDetailName } from '@restro/core'
+
 import type { AllergenOption, CategoryNode } from './view'
 
 /** A category as the cache keeps it (`integrations.config.catalogue_trees.<bid>.categories`). */
@@ -61,16 +63,13 @@ export function readDetailOptions(payload: unknown): AllergenOption[] {
   return [...found].map(([key, name]) => ({ key, name })).sort((a, b) => a.key.localeCompare(b.key))
 }
 
-/** The names that mean "allergens" (the sync's own detection uses the same two). */
-const ALLERGEN_NAMES: ReadonlySet<string> = new Set(['алергени', 'allergens'])
-
 /**
  * The characteristic the sync picks for allergens when none is configured: the one named
  * "Алергени" or "Allergens" in any case, the lowest key if several (as the sync does).
  */
 export function detectAllergenOption(options: readonly AllergenOption[]): AllergenOption | null {
   const matching = options
-    .filter((option) => ALLERGEN_NAMES.has(option.name.trim().toLowerCase()))
+    .filter((option) => isAllergenDetailName(option.name))
     .map((option) => option.key)
     .sort()
   const key = matching[0]
