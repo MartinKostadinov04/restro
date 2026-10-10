@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
-import { expect, type Locator, type Page, type Response, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
@@ -56,11 +56,6 @@ test.afterAll(async () => {
 const itemRow = (name: string): Locator =>
   page.getByTestId('item-row').filter({ has: page.getByRole('button', { name, exact: true }) })
 const itemNames = (target: Page = page) => target.getByTestId('item-open').allTextContents()
-
-function isServerAction(response: Response): boolean {
-  const request = response.request()
-  return request.method() === 'POST' && request.headers()['next-action'] !== undefined
-}
 
 /** Waits until the pending server action has answered, so that a reload shows what was saved. */
 async function settle(target: Page = page) {
