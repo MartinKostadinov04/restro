@@ -228,15 +228,15 @@ test('the code in each row encodes <base>/t/<token>, black on white, error corre
   await expect(page.getByTestId('qr-dialog')).toBeHidden()
 })
 
-test('nothing is public until the worker has run; then /t/<token> leads to the menu with the table’s name', async () => {
+test('the worker publishes the codes; then /t/<token> leads to the menu with the table’s name', async () => {
   const token = await tokenOf(rowOf('1'))
-  // The web app only queued the job: it never writes the publish store.
-  expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
-
+  // The web app only queues the job (it never writes the publish store); the real worker that runs
+  // beside the e2e servers writes the files.
   const jobs = runWorker()
-  expect(jobs).toHaveLength(1)
-  expect(jobs[0]?.result.status).toBe('done')
-  expect(jobs[0]?.result.written).toBe(8)
+  // The real worker may take quick edits as one job or several: check what the last one left.
+  expect(jobs.length).toBeGreaterThanOrEqual(1)
+  expect(jobs.at(-1)?.result.status).toBe('done')
+  expect(jobs.at(-1)?.result.written).toBe(8)
 
   const redirect = await page.request.get(`/t/${token}`, { maxRedirects: 0 })
   expect(redirect.status()).toBe(302)
@@ -263,8 +263,8 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   const token = await tokenOf(row)
 
   const jobs = runWorker()
-  expect(jobs).toHaveLength(1)
-  expect(jobs[0]?.retired).toEqual([])
+  expect(jobs.length).toBeGreaterThanOrEqual(1)
+  expect(jobs.every((job) => job.retired.length === 0)).toBe(true)
   const file = await page.request.get(`/cdn/t/${token}.json`)
   expect(await file.json()).toEqual({ venue_slug: GUEST_SLUG, table_label: 'Тераса Е5' })
 
@@ -310,9 +310,9 @@ test('"New code" asks first, and the old sticker then says the code is not activ
 
   // The job the tab queued names the old token: the worker takes its file out.
   const jobs = runWorker()
-  expect(jobs).toHaveLength(1)
-  expect(jobs[0]?.retired).toEqual([oldToken])
-  expect(jobs[0]?.result.removed).toBe(1)
+  const retiring = jobs.find((job) => job.retired.includes(oldToken))
+  expect(retiring?.retired).toEqual([oldToken])
+  expect(retiring?.result.removed).toBe(1)
   expect((await page.request.get(`/cdn/t/${oldToken}.json`)).status()).toBe(404)
   expect((await page.request.get(`/t/${oldToken}`, { maxRedirects: 0 })).status()).toBe(404)
   expect((await page.request.get(`/t/${newToken}`, { maxRedirects: 0 })).status()).toBe(302)
@@ -522,8 +522,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
 
   const jobs = runWorker()
-  expect(jobs).toHaveLength(1)
-  expect(jobs[0]?.retired).toEqual([token])
+  expect(jobs.find((job) => job.retired.includes(token))?.retired).toEqual([token])
   expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
 
   // And a code can be made again, a different one.

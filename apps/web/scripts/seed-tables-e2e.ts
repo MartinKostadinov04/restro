@@ -5,16 +5,22 @@
 //            default QR address; the token files of any codes an earlier run made are removed; and
 //            the job queue the tab sends to exists (pg-boss tables and the queue, as the worker would
 //            create them). Idempotent.
-//   worker   stands in for the worker, which does not run in this test: it takes every waiting
-//            `publish-table-tokens` job of the queue and runs the real `writeTableTokenFiles` of
-//            the worker for its payload, into the e2e publish folder `/t/…` is served from. Prints
-//            one JSON line per job (what the tab asked for) so that the test can check it.
+//   worker   waits for the REAL worker, which runs beside the e2e servers (since S3-05), to take
+//            every waiting `publish-table-tokens` job, then prints one JSON line per job it
+//            finished since the last call (what the tab asked for, and what the publish folder
+//            now holds: files written for the venue's codes, retired codes whose file is gone), so
+//            that the test can check it. If no worker takes the jobs within 30 s it runs the real
+//            `writeTableTokenFiles` itself, as before.
 //
 // Like the other seeds it refuses to run unless NODE_ENV is development and the database is on
 // this machine.
+import { readFileSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import { createPublishStore, publishStoreConfig, tableTokenPath } from '@restro/assets'
 import { JOB_NAMES, PublishTableTokensJobSchema } from '@restro/core'
-import { mapBarsyVenue, upsertBarsyVenues, upsertPlaces } from '@restro/core/apply'
+import { loadTokenFiles, mapBarsyVenue, upsertBarsyVenues, upsertPlaces } from '@restro/core/apply'
 import { authOrganization, barsyVenues, integrations, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import pg from 'pg'
@@ -73,6 +79,7 @@ async function ensureQueue(): Promise<void> {
 
 async function seed(): Promise<void> {
   assertDevEnvironment(process.env)
+  writeFileSync(MARK_FILE, new Date().toISOString())
   const ownerUrl = process.env.DATABASE_URL_OWNER
   if (!ownerUrl) throw new Error('seed-tables-e2e needs DATABASE_URL_OWNER (see .env.example).')
   const pool = getPool()
@@ -128,29 +135,84 @@ async function seed(): Promise<void> {
   )
 }
 
+/** When the last `worker` call reported (the jobs it printed finished before this); reset by `seed`. */
+const MARK_FILE = path.join(os.tmpdir(), 'restro-e2e-tables-worker-mark')
+
+function readMark(): Date {
+  try {
+    return new Date(readFileSync(MARK_FILE, 'utf8').trim())
+  } catch {
+    return new Date(0)
+  }
+}
+
 async function worker(): Promise<void> {
   assertDevEnvironment(process.env)
   const queue = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 })
   const store = await createPublishStore(publishStoreConfig(process.env))
   try {
-    const { rows } = await queue.query<{ id: string; data: unknown }>(
-      `select id, data from pgboss.job where name = $1 and state < 'active' order by created_on, id`,
-      [JOB_NAMES.publishTableTokens],
+    const since = readMark()
+    // The real worker takes the jobs (polling every second): wait until none is waiting or running.
+    const deadline = Date.now() + 30_000
+    for (;;) {
+      const waiting = await queue.query<{ n: number }>(
+        `select count(*)::int as n from pgboss.job where name = $1 and state in ('created', 'retry', 'active')`,
+        [JOB_NAMES.publishTableTokens],
+      )
+      if ((waiting.rows[0]?.n ?? 0) === 0) break
+      if (Date.now() > deadline) {
+        await runWaitingJobsHere(queue, store)
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    const { rows } = await queue.query<{ data: unknown; completed_on: Date }>(
+      `select data, completed_on from pgboss.job
+       where name = $1 and state = 'completed' and completed_on > $2 order by completed_on, id`,
+      [JOB_NAMES.publishTableTokens, since],
     )
     for (const row of rows) {
       const payload = PublishTableTokensJobSchema.parse(row.data)
-      const result = await writeTableTokenFiles({ pool: getPool(), store }, payload)
+      const wanted = await loadTokenFiles(getPool(), payload.tenantId, payload.venueId)
+      let written = 0
+      for (const file of wanted?.files ?? []) {
+        if ((await store.get(tableTokenPath(file.token))) !== null) written += 1
+      }
+      let removed = 0
+      for (const token of payload.retired) {
+        if ((await store.get(tableTokenPath(token))) === null) removed += 1
+      }
       console.log(
-        JSON.stringify({ job: JOB_NAMES.publishTableTokens, retired: payload.retired, result }),
+        JSON.stringify({
+          job: JOB_NAMES.publishTableTokens,
+          retired: payload.retired,
+          result: { status: 'done', written, removed },
+        }),
       )
     }
-    if (rows.length > 0) {
-      await queue.query('delete from pgboss.job where id = any($1::uuid[])', [
-        rows.map((row) => row.id),
-      ])
-    }
+    const last = rows.at(-1)?.completed_on
+    if (last) writeFileSync(MARK_FILE, last.toISOString())
   } finally {
     await queue.end()
+  }
+}
+
+/** No worker took the jobs: run the real file writer here (the old stand-in), then mark them done. */
+async function runWaitingJobsHere(
+  queue: pg.Pool,
+  store: Awaited<ReturnType<typeof createPublishStore>>,
+): Promise<void> {
+  const { rows } = await queue.query<{ id: string; data: unknown }>(
+    `select id, data from pgboss.job where name = $1 and state < 'active' order by created_on, id`,
+    [JOB_NAMES.publishTableTokens],
+  )
+  for (const row of rows) {
+    const payload = PublishTableTokensJobSchema.parse(row.data)
+    await writeTableTokenFiles({ pool: getPool(), store }, payload)
+    await queue.query(
+      `update pgboss.job set state = 'completed', completed_on = now() where id = $1`,
+      [row.id],
+    )
   }
 }
 

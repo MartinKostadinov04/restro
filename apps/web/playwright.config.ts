@@ -64,11 +64,12 @@ const workerEnvironment = Object.fromEntries(
   })
     .filter(([name]) => !name.startsWith('SEAL_'))
     // Blank, not absent: Playwright merges this over the runner's own environment, which may hold
-    // a developer's SEAL_* keys from the root .env.local. Blank counts as unset for the worker.
-    .concat([
-      ['SEAL_PUBLIC_KEY', ''],
-      ['SEAL_PRIVATE_KEY', ''],
-    ]),
+    // a developer's sealing keys from the root .env.local. Blank counts as unset for the worker.
+    .concat(
+      Object.keys(process.env)
+        .filter((name) => name.startsWith('SEAL_'))
+        .map((name) => [name, '']),
+    ),
 )
 
 export default defineConfig({
