@@ -162,6 +162,16 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Rollover:** a mark lapses by itself (its layer is out of the resolver's edition list once the service day changes; the row stays as history). A new job `publish-live-tick` (every minute, Europe/Sofia, registered without sealing keys) remakes `live.json` for each published menu whose venue's service date changed since the tick last asked (memory per process: `last_live_service_date`; empty after a restart, so a restart asks once for every menu). It also asks every 10 minutes as a repair (a lost or failed `publish-live`). The barsy sync tick is not used because it only exists with the sealing keys. Marks need at most about a minute after 07:00 to leave `live.json`.
   - **Admin:** the composer and the item sheet now resolve with the live editions (tonight's marks count, earlier evenings' do not). Rows show "Изчерпано тази вечер" or "Не се продава в barsy"; the row menu, the "Изчерпани (N)" chip list and the sheet's sale card mark and unmark; an item barsy has off sale has no control anywhere.
   - **Open (small):** old `edition:service:<date>` rows are never deleted (one per marked item per evening; they are inert). A cleanup job can come later.
+- Tables and QR (S3-07, merged 10-10):
+  - **Codes:** opaque table codes (22 chars, never derived from barsy ids) and an optional label (migration 0012). Token files `t/<token>.json` have one writer, the worker job `publish-table-tokens`; `PublishStore.delete` was added.
+  - **QR address:** our link (`PUBLIC_BASE_URL`, editable per venue) or the venue's own pattern with `{token}`, tested in the browser only.
+  - **Printing:** an A4 print sheet (2×3, browser PDF); `qrcode` 1.5.4.
+  - **Guide:** `docs/guides/qr-links.md`, also shown in the app.
+- Sold out tonight (S3-08, merged 10-10):
+  - **Marking:** `setSoldOutTonight` writes `for_sale = false` in `edition:service:<service date>` (never `true`; unmark = `clearField`) and queues `publish-live`.
+  - **Snapshots** resolve with the venue edition only, so marks live only in `live.json`. A `publish-live-tick` (every minute, runs without seal keys) remakes `live.json` after the 07:00 rollover and repairs every 10 min.
+  - **barsy off-sale items** get no "back on sale" anywhere.
+  - **Doc fix to make:** the snapshot header example no longer lists `service:<date>`.
 - **Staging (10-10, Martin's OK):**
   - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
   - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
@@ -383,7 +393,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - a pull that would mark more than 30% missing holds the conclusion for a person (like V11).
   — Claude, before the pilot
 - [ ] T63. Tags follow-ups: the shell passes a tag's colour and the venue's tag order to the face (snapshot tag entry gets an optional `order`; `ViewTag` gets `color`); make the colour required at `menu-snapshot/2` — Claude (small task)
-- [ ] T64. Test flakes: `worker.integration.test.ts` fails now and then in the full run (concurrent `db:roles`, "tuple concurrently updated"); keyboard drags in `composer.spec.ts` now wait for the save response (fixed 10-10) — Claude
+- [x] T64. (10-10: keyboard and mouse drags wait for the save response; web component tests get 15 s and Testing Library waits 5 s; the tables e2e works beside the real worker; `worker.integration` db:roles race still seen once — reopen if it recurs) Test flakes: `worker.integration.test.ts` fails now and then in the full run (concurrent `db:roles`, "tuple concurrently updated"); keyboard drags in `composer.spec.ts` now wait for the save response (fixed 10-10) — Claude
 - [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins. Same for the job queue key (per integration: a second venue's pull is dropped while the first is queued) and the absence check (runs only with exactly one mapped venue) — Claude
 - [ ] T57. Photos hosted outside the barsy host (demo: 3 of 53 on `imagedelivery.net`) are refused today. Lead's recommendation: a `BARSY_PHOTO_HOSTS` allowlist, fetched **anonymously only** (credentials only ever go to the integration's own origin) — Claude, after checking real venue data
 - [ ] T58. Worker housekeeping: README "The worker" env table (BARSY_*, ASSET_STORE, R2_*, `.env.worker.local`); a start-up sweep that fails job runs stuck in `running`; `places.state_changed_at` (today `updated_at` stands in); decide whether the worker declares the AWS SDK instead of tsup bundling it; date-fns/@date-fns/tz vs the `Intl` code the sync uses (CLAUDE.md says date-fns) — Claude (Haiku/Sonnet tasks)
