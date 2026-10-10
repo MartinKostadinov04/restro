@@ -61,7 +61,14 @@ const workerEnvironment = Object.fromEntries(
     WORKER_ID: 'e2e-worker',
     WORKER_HEALTH_PORT: String(WORKER_PORT),
     LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
-  }).filter(([name]) => !name.startsWith('SEAL_')),
+  })
+    .filter(([name]) => !name.startsWith('SEAL_'))
+    // Blank, not absent: Playwright merges this over the runner's own environment, which may hold
+    // a developer's SEAL_* keys from the root .env.local. Blank counts as unset for the worker.
+    .concat([
+      ['SEAL_PUBLIC_KEY', ''],
+      ['SEAL_PRIVATE_KEY', ''],
+    ]),
 )
 
 export default defineConfig({
