@@ -915,8 +915,14 @@ export const snapshots = restro.table(
       sql`(${t.reason} = 'rollback') = (${t.restoresSnapshotId} is not null)`,
     ),
     check('snapshots_body_object', sql`${t.body} is null or jsonb_typeof(${t.body}) = 'object'`),
-    check('snapshots_rollback_published', sql`${t.reason} <> 'rollback' or ${t.status} = 'published'`),
-    check('snapshots_published_at', sql`(${t.status} = 'published') = (${t.publishedAt} is not null)`),
+    check(
+      'snapshots_rollback_published',
+      sql`${t.reason} <> 'rollback' or ${t.status} = 'published'`,
+    ),
+    check(
+      'snapshots_published_at',
+      sql`(${t.status} = 'published') = (${t.publishedAt} is not null)`,
+    ),
     // Only an automatic publish is ever held (V11), and a held or rejected row says why.
     check(
       'snapshots_held_reason',

@@ -6,7 +6,7 @@ import { z } from 'zod'
 /**
  * Id kinds: `nd` node, `as` asset, `sn` snapshot, `tb` table, `tn` tenant, `vn` venue,
  * `tp` template, `cs` change set, `ev` event, `jb` job run, `in` integration, `us` user,
- * `sr` source record.
+ * `sr` source record, `tg` tag (a venue-defined tag of the guest menu, D60).
  */
 export const ID_KINDS = [
   'nd',
@@ -22,6 +22,7 @@ export const ID_KINDS = [
   'in',
   'us',
   'sr',
+  'tg',
 ] as const
 
 /** One of the id kind prefixes. */
@@ -56,6 +57,8 @@ export type IntegrationId = Id<'in'>
 export type UserId = Id<'us'>
 /** Id of a source record (one raw object exactly as a source returned it). */
 export type SourceRecordId = Id<'sr'>
+/** Id of a venue-defined tag (D60); the snapshot's `tags` vocabulary is keyed by it. */
+export type TagId = Id<'tg'>
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const RANDOM_BYTES = 16
