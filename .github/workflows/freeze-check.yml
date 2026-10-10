@@ -1,0 +1,51 @@
+# Production deploy freeze: no deploys Thu-Sun 18:00 to 08:00 Europe/Sofia
+# (CLAUDE.md "Git"; docs/architecture/stack.md "Environments and delivery", step 6).
+# The rule itself, with its tests, is scripts/freeze-window.mjs.
+#
+# A pull request into `production` fails inside the window unless it carries the label
+# `freeze-override` (Martin adds it for an approved fix). The check re-runs when a label is
+# added or removed.
+#
+# Known limit: this check is evaluated on PR activity, so a PR that went green before Thursday
+# 18:00 can still be merged inside the window. The production deploy pipeline (added with
+# Railway in Stage 3, tracker T45) must run `scripts/freeze-window.mjs` again at deploy time and
+# refuse to deploy inside the window; this PR check is only the early warning.
+name: Production freeze check
+
+on:
+  pull_request:
+    branches:
+      - production
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+      - unlabeled
+
+permissions:
+  contents: read
+
+jobs:
+  freeze-window:
+    name: Not inside a deploy freeze (or overridden)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The script has no dependencies, so only the scripts folder is needed.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+
+      - name: Check the freeze window
+        env:
+          # Passed as an environment variable (a JSON list), never pasted into the script text.
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: node scripts/freeze-window.mjs

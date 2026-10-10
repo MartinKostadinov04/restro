@@ -1,0 +1,36 @@
+{
+  "name": "restro",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=24.21.0 <25"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --if-present run dev",
+    "build": "pnpm -r --if-present run build",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @restro/web run test:e2e",
+    "deps:check": "depcruise apps packages --config .dependency-cruiser.cjs",
+    "db:local": "node scripts/local-db.mjs start",
+    "db:local:stop": "node scripts/local-db.mjs stop",
+    "db:local:reset": "node scripts/local-db.mjs reset",
+    "db:generate": "pnpm --filter @restro/db run db:generate",
+    "db:migrate": "pnpm --filter @restro/db run db:migrate",
+    "db:roles": "pnpm --filter @restro/db run db:roles",
+    "barsy:record": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local packages/barsy/src/record/cli.ts",
+    "db:seed:dev": "pnpm --filter @restro/web run db:seed:dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "24.19.0",
+    "dependency-cruiser": "18.5.0",
+    "embedded-postgres": "17.10.0-beta.17",
+    "fast-check": "4.10.2",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  }
+}

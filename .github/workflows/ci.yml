@@ -1,0 +1,108 @@
+# Continuous integration. Required to be green before anything merges.
+# Third-party actions are pinned to a full commit SHA (the comment names the release).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 's1/**'
+
+permissions:
+  contents: read
+  # gitleaks-action lists the commits of a pull request.
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, import rules, secrets, tests, build, e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # Postgres for the packages/db integration tests (required in CI). CI never uses
+    # docker-compose.yml or `pnpm db:local`; this container is the CI database.
+    services:
+      postgres:
+        image: postgres:17.10
+        env:
+          POSTGRES_DB: restro
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d restro"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    # CI-only values for the throwaway service container above; they are not secrets.
+    env:
+      # The app connects as restro_app (created by `pnpm db:roles`), never as the owner.
+      DATABASE_URL: postgres://restro_app:ci-only-not-a-secret@localhost:5432/restro
+      # Migration owner: used by db:migrate, db:roles and the integration tests' set-up only.
+      DATABASE_URL_OWNER: postgres://postgres:postgres@localhost:5432/restro
+      DATABASE_APP_PASSWORD: ci-only-not-a-secret
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      # Full history, because gitleaks scans every commit of the push or pull request.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Reads the pnpm version from "packageManager" in package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # Must come after pnpm is installed: `cache: pnpm` asks pnpm for its store path.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Import rules
+        run: pnpm deps:check
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The job log and the failed check are enough; no pull request comments.
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+
+      # Schema, row-level security and the app role must exist before the integration tests,
+      # which fail (instead of skipping) when CI is set.
+      - name: Database migrations and app role
+        run: pnpm db:migrate && pnpm db:roles
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @restro/web exec playwright install --with-deps chromium
+
+      # The build step above already ran `next build`, so run Playwright directly instead of
+      # `pnpm test:e2e` (which builds again). Playwright starts `next start` itself.
+      - name: End-to-end tests
+        run: pnpm --filter @restro/web exec playwright test

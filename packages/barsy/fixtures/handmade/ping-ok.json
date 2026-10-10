@@ -1,0 +1,11 @@
+{
+  "method": "Misc_ping",
+  "params": {},
+  "bid": null,
+  "recordedAt": null,
+  "status": 200,
+  "requestId": null,
+  "body": "1",
+  "handmade": true,
+  "note": "HANDMADE, not a recording. Written from the official docs (Misc_ping returns 1; https://docs.lukanet.com/barsy.api/methods/misc/ping.html). Replace with a real one: pnpm barsy:record -- --method Misc_ping"
+}

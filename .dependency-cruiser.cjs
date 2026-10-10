@@ -1,0 +1,147 @@
+// Import rules for the monorepo (CLAUDE.md "Import boundaries"; docs/architecture/stack.md,
+// "Repository and boundaries"). Run with `pnpm deps:check`; CI fails on any error.
+//
+// Paths are relative to the repository root. Workspace packages export TypeScript source, so
+// an import of '@restro/db' resolves to a file under packages/db/. A package that is not
+// declared as a dependency cannot be resolved, and then dependency-cruiser reports the
+// import as written ('@restro/db'). Every rule therefore matches both forms.
+//
+// scripts/depcruise-rules.test.ts proves that each rule below fires on a forbidden import.
+// Keep the two in step: a new rule needs a new case there.
+
+/** Node built-ins that touch the outside world. Matches 'fs', 'node:fs' and 'fs/promises'. */
+const NODE_IO_BUILTINS = [
+  'child_process',
+  'cluster',
+  'dgram',
+  'dns',
+  'fs',
+  'http',
+  'http2',
+  'https',
+  'net',
+  'tls',
+].map((name) => `^(node:)?${name}(/|$)`)
+
+/** Database drivers and job queues: I/O that shell and faces must never reach. */
+const IO_PACKAGES = ['pg', 'pg-boss', 'postgres'].flatMap((name) => [
+  `^${name}(/|$)`,
+  `(^|/)node_modules/${name}/`,
+])
+
+/** @type {import('dependency-cruiser').IConfiguration} */
+module.exports = {
+  forbidden: [
+    // 1. Shell and faces are pure: they read a snapshot and render it (rule 4).
+    {
+      name: 'pure-layers-no-data-or-apps',
+      severity: 'error',
+      comment:
+        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy or anything under apps/.',
+      from: { path: ['^packages/shell/', '^packages/faces/'] },
+      to: {
+        path: [
+          '^packages/db/',
+          '^@restro/db(/|$)',
+          '^packages/barsy/',
+          '^@restro/barsy(/|$)',
+          '^apps/',
+          '^@restro/(web|worker)(/|$)',
+        ],
+      },
+    },
+    {
+      name: 'pure-layers-no-io-builtins',
+      severity: 'error',
+      comment:
+        'packages/shell and packages/faces/* must not use Node built-ins that do I/O (fs, net, http, child_process, ...).',
+      from: { path: ['^packages/shell/', '^packages/faces/'] },
+      to: { path: NODE_IO_BUILTINS },
+    },
+    {
+      name: 'pure-layers-no-database-drivers',
+      severity: 'error',
+      comment: 'packages/shell and packages/faces/* must not import pg, pg-boss or postgres.',
+      from: { path: ['^packages/shell/', '^packages/faces/'] },
+      to: { path: IO_PACKAGES },
+    },
+
+    // 2. One write path (rule 1): only apply() may use the write side of the db package, and
+    //    the package has exactly two doors.
+    {
+      name: 'db-write-only-from-core-apply',
+      severity: 'error',
+      comment: 'Only files under packages/core/src/apply/ may import @restro/db/write.',
+      from: { pathNot: ['^packages/core/src/apply/', '^packages/db/'] },
+      to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
+    },
+    {
+      name: 'db-entry-points-only',
+      severity: 'error',
+      comment:
+        'Outside packages/db, import the database package only through its two entry points, @restro/db and @restro/db/write (packages/db/src/index.ts and packages/db/src/write/index.ts). Anything else under packages/db/src, such as the connection pool, would let code run queries outside a tenant-scoped transaction.',
+      from: { pathNot: '^packages/db/' },
+      to: {
+        path: ['^packages/db/src/(?!(index|write/index)\\.ts$)', '^@restro/db/src(/|$)'],
+      },
+    },
+    {
+      name: 'db-read-side-no-write',
+      severity: 'error',
+      comment:
+        'Inside packages/db/src, only files under packages/db/src/write/ may import packages/db/src/write: the read side (the @restro/db entry, the pool, the schema) must never reach the write side, or the read-only entry point could end up exposing a write transaction.',
+      from: { path: '^packages/db/src/', pathNot: '^packages/db/src/write/' },
+      to: { path: '^packages/db/src/write(/|\\.|$)' },
+    },
+
+    // 3 and 4. barsy is read by the worker only (CLAUDE.md "Never": web never calls barsy).
+    {
+      name: 'barsy-only-from-worker',
+      severity: 'error',
+      comment: 'Only apps/worker may import @restro/barsy (packages/barsy may import itself).',
+      from: { pathNot: ['^apps/worker/', '^packages/barsy/'] },
+      to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
+    },
+    {
+      name: 'web-no-barsy',
+      severity: 'error',
+      comment: 'apps/web must not import @restro/barsy. It reads barsy state from Postgres.',
+      from: { path: '^apps/web/' },
+      to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
+    },
+
+    // 5. Dependencies point one way: apps use packages, never the other way round.
+    {
+      name: 'packages-never-import-apps',
+      severity: 'error',
+      comment: 'Nothing under packages/ may import from apps/.',
+      from: { path: '^packages/' },
+      to: { path: ['^apps/', '^@restro/(web|worker)(/|$)'] },
+    },
+
+    // 6. No cycles, including type-only imports (tsPreCompilationDeps below).
+    {
+      name: 'no-circular',
+      severity: 'error',
+      comment: 'No circular dependencies.',
+      from: {},
+      to: { circular: true },
+    },
+  ],
+  options: {
+    // Look at our own code only; do not walk into installed dependencies.
+    doNotFollow: { path: 'node_modules' },
+    exclude: { path: '(^|/)(\\.next|dist|coverage|playwright-report|test-results)(/|$)' },
+    // Count `import type` too, so a type-only import of a forbidden module is still caught.
+    tsPreCompilationDeps: true,
+    // Resolve workspace packages through their package.json "exports" to the TypeScript source.
+    enhancedResolveOptions: {
+      exportsFields: ['exports'],
+      conditionNames: ['import', 'require', 'node', 'default', 'types'],
+      mainFields: ['module', 'main', 'types', 'typings'],
+    },
+    reporterOptions: {
+      text: { highlightFocused: true },
+    },
+  },
+}
