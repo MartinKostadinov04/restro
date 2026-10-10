@@ -277,28 +277,15 @@ describe.skipIf(!hasDatabase)('barsy-incremental', () => {
     })
   })
 
-  it('is skipped while a full pull is running', async () => {
+  // Whether another pull is running is decided by the integration's advisory lock (see
+  // sync-lock.test.ts), not by a "running" row: a run that crashed leaves its row behind, and the
+  // lock goes with its connection.
+  it('a full pull run that crashed and stayed "running" does not block the incremental runs', async () => {
     await fullPull()
     await world.query(
       `insert into restro.job_runs (id, tenant_id, integration_id, kind, status, started_at)
        values ($1, $2, $3, 'barsy_full_pull', 'running', now())`,
       [`jb_${'R'.repeat(22)}`, world.tenantId, world.integrationId],
-    )
-    const calls = fake.calls.length
-    advance(5)
-    await incremental()
-    expect(fake.calls).toHaveLength(calls)
-    expect((await lastRun('barsy_incremental')).error_summary).toContain(
-      'skipped: a full pull is running',
-    )
-  })
-
-  it('a full pull that crashed long ago does not block the incremental runs for ever', async () => {
-    await fullPull()
-    await world.query(
-      `insert into restro.job_runs (id, tenant_id, integration_id, kind, status, started_at)
-       values ($1, $2, $3, 'barsy_full_pull', 'running', now() - interval '3 hours')`,
-      [`jb_${'S'.repeat(22)}`, world.tenantId, world.integrationId],
     )
     advance(5)
     await incremental()

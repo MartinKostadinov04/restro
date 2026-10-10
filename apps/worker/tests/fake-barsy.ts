@@ -50,6 +50,10 @@ export interface FakeBarsy {
   articleFault: ((offset: number, length: number) => PageFault | undefined) | undefined
   /** Called for every `Articlesupplements_get`; return true to fail it. */
   supplementFault: ((articleId: string) => boolean) | undefined
+  /** Called for every API request, after it is recorded and before it is answered: make it slow. */
+  onCall: ((method: string, params: Json) => Promise<void> | void) | undefined
+  /** Called for every photo request, before it is answered. */
+  onPhotoRequest: ((path: string) => Promise<void> | void) | undefined
   /** True: a photo request without the right credentials gets 401. */
   photosNeedAuth: boolean
   /** Photos by URL path+query (the tests register what they serve). */
@@ -92,6 +96,8 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
     password: 'demo-password',
     articleFault: undefined,
     supplementFault: undefined,
+    onCall: undefined,
+    onPhotoRequest: undefined,
     photos: new Map(),
     photosNeedAuth: false,
     calls,
@@ -108,6 +114,8 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
       fake.password = 'demo-password'
       fake.articleFault = undefined
       fake.supplementFault = undefined
+      fake.onCall = undefined
+      fake.onPhotoRequest = undefined
       fake.photos.clear()
       fake.photosNeedAuth = false
       fake.server.resetHandlers()
@@ -133,6 +141,7 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
         params: body,
         authorization,
       })
+      await fake.onCall?.(method, body)
       if (method === 'Misc_ping') return json(1)
       if (authorization !== fake.basic()) return unauthorised()
 
@@ -181,10 +190,11 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
       }
     }),
 
-    http.get(`https://${host}/endpoints/res/files_get`, ({ request }) => {
+    http.get(`https://${host}/endpoints/res/files_get`, async ({ request }) => {
       const url = new URL(request.url)
       const authorization = request.headers.get('authorization')
       photoRequests.push({ url: `${url.pathname}${url.search}`, authorization })
+      await fake.onPhotoRequest?.(`${url.pathname}${url.search}`)
       if (fake.photosNeedAuth && authorization !== fake.basic()) return unauthorised()
       const entry = fake.photos.get(`${url.pathname}${url.search}`)
       if (!entry) return new HttpResponse('no such picture', { status: 404 })

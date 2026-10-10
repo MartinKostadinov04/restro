@@ -4,8 +4,9 @@
 //
 // The id is content-addressed. The same object with the same content is the same record (a
 // repeated pull inserts nothing), and a changed object is a new version with a new id. If an
-// object returns to an earlier content its id is the old one: S2-03 should treat "newest" by
-// fetch time, not by id, and insert with `on conflict do nothing`.
+// object returns to an earlier content its id is the old one, and its row keeps its old fetch
+// time: the current record of an object is the one its source link names (`last_hash`), never the
+// newest by fetch time. Insert with `on conflict do nothing`.
 
 import { canonicalJson, type IntegrationId, type Scope, sha256Hex } from '@restro/core'
 

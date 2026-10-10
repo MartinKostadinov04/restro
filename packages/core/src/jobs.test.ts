@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { newId } from './ids'
 import {
+  deferredSingletonKey,
   EXCLUSIVE_JOBS,
   isProducedJob,
   JOB_NAMES,
@@ -30,12 +31,20 @@ describe('job names and payloads', () => {
     for (const name of names) expect(name).toMatch(/^[a-z0-9-]+$/)
   })
 
-  it('a pull is keyed by its integration, so two pulls of one integration never overlap', () => {
+  it('a pull is keyed by its integration, so a queue holds one pull of it at a time', () => {
     const full = prepareJob(JOB_NAMES.barsyFullPull, { tenantId, integrationId, venueId })
     const incremental = prepareJob(JOB_NAMES.barsyIncremental, { tenantId, integrationId, venueId })
     expect(full.singletonKey).toBe(integrationId)
     expect(incremental.singletonKey).toBe(integrationId)
     expect(jobSingletonKey(JOB_NAMES.barsyConnect, { tenantId, integrationId })).toBe(integrationId)
+  })
+
+  it('a pull sent again for later has a key of its own, different each second', () => {
+    const at = new Date('2026-10-10T12:00:00.900Z')
+    const key = deferredSingletonKey(integrationId, at)
+    expect(key).toBe(`${integrationId}:later:${Math.floor(at.getTime() / 1000)}`)
+    expect(key).not.toBe(integrationId)
+    expect(deferredSingletonKey(integrationId, new Date(at.getTime() + 60_000))).not.toBe(key)
   })
 
   it('a picture is keyed by integration and article', () => {

@@ -9,9 +9,11 @@
 //   asset-fetch           one barsy photo into the asset store
 //   barsy-incremental-tick / barsy-full-pull-tick   the schedules that queue the two pulls
 //
-// The queues use pg-boss's `exclusive` policy and the integration id as singleton key, so two
-// pulls of one integration are never queued or running at once, whoever sends them (the web app's
-// "Sync now", the ticks, an incremental run that notices the tree changed).
+// The queues use pg-boss's `exclusive` policy and the integration id as singleton key, so a second
+// full pull of one integration is never queued while one is queued or running, whoever sends it
+// (the web app's "Sync now", the ticks, an incremental run that notices the tree changed). The
+// policy is per queue, so it does not keep a full pull and an incremental run apart: both run
+// inside the integration's Postgres advisory lock (../sync/pull-lock.ts), held for the whole pull.
 
 import { BarsyAuthError } from '@restro/barsy'
 import {
@@ -22,6 +24,7 @@ import {
   type BarsyPullJob,
   BarsyPullJobSchema,
   canonicalJson,
+  deferredSingletonKey,
   JOB_NAMES,
   prepareJob,
 } from '@restro/core'
@@ -47,9 +50,10 @@ import {
 } from '../sync/catalogue'
 import { type PhotoStore, type SyncEnvironment, withIntegration } from '../sync/context'
 import { lastUpdateFilter } from '../sync/cursor'
-import { fullPullIsRunning, fullPullStartedWithin, loadVenueTarget } from '../sync/data'
+import { fullPullStartedWithin, loadVenueTarget } from '../sync/data'
 import { LimiterRegistry } from '../sync/limiter'
-import { fetchPhoto, PhotoRefused } from '../sync/photos'
+import { fetchPhoto, type ObsoleteReason, PhotoRefused } from '../sync/photos'
+import { PULL_LOCK_POLL_MS, PULL_LOCK_WAIT_MS, withPullLock } from '../sync/pull-lock'
 import { trackedRun } from '../sync/run'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
 
@@ -62,12 +66,28 @@ export interface BarsyJobDeps {
   readonly limiters?: LimiterRegistry
   /** `fetch` for photo downloads; tests replace it. */
   readonly fetch?: typeof fetch
+  /** How long a full pull waits for a running pull before it is queued again. Tests shorten it. */
+  readonly pullLockWaitMs?: number
+  /** How often a waiting full pull asks for the lock again. Tests shorten it. */
+  readonly pullLockPollMs?: number
+  /** Pull locks the process may hold at once (default: the app pool's size minus one). */
+  readonly pullLocksMax?: number
 }
 
 const MINUTE = 60_000
 
 /** A full pull that started this recently is not asked for again by an incremental run. */
 const FULL_PULL_COOLDOWN_MS = 15 * MINUTE
+
+/** What a photo job's run says when the article's current record no longer matches the job. */
+const OBSOLETE_TEXT: Record<ObsoleteReason, string> = {
+  unlinked: 'the article is no longer linked',
+  picture_removed: 'the article no longer has a picture',
+  picture_changed: 'the article’s picture changed since this job was queued',
+}
+
+/** A full pull that found another pull running starts again this many seconds later. */
+const FULL_PULL_DEFER_SECONDS = 60
 
 function parsePayload<S extends z.ZodType>(schema: S, job: Job<object>, name: string): z.output<S> {
   const parsed = schema.safeParse(job.data)
@@ -81,6 +101,14 @@ function isFlagSet(value: unknown): boolean {
 
 export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
   const limiters = deps.limiters ?? new LimiterRegistry()
+  const maxHeld = deps.pullLocksMax
+  // A full pull waits for a running pull; an incremental run does not (the next tick is near).
+  const fullPullLock = {
+    waitMs: deps.pullLockWaitMs ?? PULL_LOCK_WAIT_MS,
+    pollMs: deps.pullLockPollMs ?? PULL_LOCK_POLL_MS,
+    maxHeld,
+  }
+  const incrementalLock = { waitMs: 0, maxHeld }
 
   const environment = (context: WorkerContext, job?: Job<object>): SyncEnvironment => ({
     pool: context.pool,
@@ -214,25 +242,56 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(BarsyPullJobSchema, job, JOB_NAMES.barsyFullPull)
         const env = environment(context, job)
-        await trackedRun(env, { ...payload, kind: 'barsy_full_pull' }, async (run) =>
-          withIntegration(env, payload, async (session) => {
-            const target = await loadVenueTarget(
-              env,
-              payload.tenantId,
-              payload.integrationId,
-              payload.venueId,
-            )
-            const ctx = { env, session, target, runId: run.id, start: env.now() }
-            const outcome = await runFullPull(ctx)
-            await recordSuccess(ctx, outcome, 'full')
-            await updateIntegration(env.pool, payload.tenantId, payload.integrationId, {
-              status: 'connected',
-              statusDetail: null,
-              lastCheckedAt: env.now(),
-            })
-            return { counters: outcome.counters, notes: outcome.notes, refused: outcome.refused }
-          }),
-        )
+        await trackedRun(env, { ...payload, kind: 'barsy_full_pull' }, async (run) => {
+          // Held for the whole pull. Another pull of this integration (an incremental run, or a
+          // full pull of a retried job) is waited for, up to a minute.
+          const locked = await withPullLock(
+            env,
+            payload.integrationId,
+            () =>
+              withIntegration(env, payload, async (session) => {
+                const target = await loadVenueTarget(
+                  env,
+                  payload.tenantId,
+                  payload.integrationId,
+                  payload.venueId,
+                )
+                const ctx = { env, session, target, runId: run.id, start: env.now() }
+                const outcome = await runFullPull(ctx)
+                await recordSuccess(ctx, outcome, 'full')
+                await updateIntegration(env.pool, payload.tenantId, payload.integrationId, {
+                  status: 'connected',
+                  statusDetail: null,
+                  lastCheckedAt: env.now(),
+                })
+                return {
+                  counters: outcome.counters,
+                  notes: outcome.notes,
+                  refused: outcome.refused,
+                }
+              }),
+            fullPullLock,
+          )
+          if (locked.acquired) return locked.value
+
+          // Still busy after the wait: send this pull again, to start in a minute, so that a
+          // "Sync now" is never lost. This job is still active under the integration id, and the
+          // queue's exclusive policy would drop a second job with that key (`send` returns null),
+          // so the copy carries a key of its own.
+          const later = await env.enqueue(JOB_NAMES.barsyFullPull, payload, {
+            singletonKey: deferredSingletonKey(payload.integrationId, env.now()),
+            startAfter: FULL_PULL_DEFER_SECONDS,
+          })
+          if (later === null) {
+            // Throwing makes pg-boss retry this job, which is better than losing the request.
+            throw new Error('a full pull could not be queued again while another pull was running')
+          }
+          return {
+            notes: [
+              `another pull is running; this full pull was queued again to start in ${FULL_PULL_DEFER_SECONDS} s`,
+            ],
+          }
+        })
       }
     },
   })
@@ -256,54 +315,63 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(BarsyPullJobSchema, job, JOB_NAMES.barsyIncremental)
         const env = environment(context, job)
-        await trackedRun(env, { ...payload, kind: 'barsy_incremental' }, async (run) =>
-          withIntegration(env, payload, async (session) => {
-            const target = await loadVenueTarget(
-              env,
-              payload.tenantId,
-              payload.integrationId,
-              payload.venueId,
-            )
-            // A full pull in progress reads everything anyway.
-            if (await fullPullIsRunning(env, payload.tenantId, payload.integrationId)) {
-              return { notes: ['skipped: a full pull is running'] }
-            }
-            const start = env.now()
-            const tree = (await session.reader.getCategoryTree(target.bid)).data
-            const state = readSyncState(session.integration.config, target.bid)
-            if (state.cursor === undefined || state.tree_hash !== treeHashOf(tree)) {
-              if (
-                await fullPullStartedWithin(
+        await trackedRun(env, { ...payload, kind: 'barsy_incremental' }, async (run) => {
+          // Another pull in progress (a full pull reads everything anyway): do not wait, the next
+          // tick is five minutes away. Held for the whole run otherwise.
+          const locked = await withPullLock(
+            env,
+            payload.integrationId,
+            () =>
+              withIntegration(env, payload, async (session) => {
+                const target = await loadVenueTarget(
                   env,
                   payload.tenantId,
                   payload.integrationId,
-                  FULL_PULL_COOLDOWN_MS,
+                  payload.venueId,
                 )
-              ) {
-                return { notes: ['the category tree changed; a full pull ran a moment ago'] }
-              }
-              const full = prepareJob(JOB_NAMES.barsyFullPull, payload)
-              const id = await env.enqueue(JOB_NAMES.barsyFullPull, full.data, {
-                singletonKey: full.singletonKey,
-              })
-              return {
-                notes: [
-                  id === null
-                    ? 'the category tree changed; a full pull is already queued'
-                    : 'the category tree changed: a full pull was queued',
-                ],
-              }
-            }
-            const ctx = { env, session, target, runId: run.id, start }
-            const outcome = await runIncremental(
-              ctx,
-              tree,
-              lastUpdateFilter(new Date(state.cursor), target.timezone),
-            )
-            await recordSuccess(ctx, outcome, 'incremental')
-            return { counters: outcome.counters, notes: outcome.notes, refused: outcome.refused }
-          }),
-        )
+                const start = env.now()
+                const tree = (await session.reader.getCategoryTree(target.bid)).data
+                const state = readSyncState(session.integration.config, target.bid)
+                if (state.cursor === undefined || state.tree_hash !== treeHashOf(tree)) {
+                  if (
+                    await fullPullStartedWithin(
+                      env,
+                      payload.tenantId,
+                      payload.integrationId,
+                      FULL_PULL_COOLDOWN_MS,
+                    )
+                  ) {
+                    return { notes: ['the category tree changed; a full pull ran a moment ago'] }
+                  }
+                  const full = prepareJob(JOB_NAMES.barsyFullPull, payload)
+                  const id = await env.enqueue(JOB_NAMES.barsyFullPull, full.data, {
+                    singletonKey: full.singletonKey,
+                  })
+                  return {
+                    notes: [
+                      id === null
+                        ? 'the category tree changed; a full pull is already queued'
+                        : 'the category tree changed: a full pull was queued',
+                    ],
+                  }
+                }
+                const ctx = { env, session, target, runId: run.id, start }
+                const outcome = await runIncremental(
+                  ctx,
+                  tree,
+                  lastUpdateFilter(new Date(state.cursor), target.timezone),
+                )
+                await recordSuccess(ctx, outcome, 'incremental')
+                return {
+                  counters: outcome.counters,
+                  notes: outcome.notes,
+                  refused: outcome.refused,
+                }
+              }),
+            incrementalLock,
+          )
+          return locked.acquired ? locked.value : { notes: ['skipped: another pull is running'] }
+        })
       }
     },
   })
@@ -331,17 +399,20 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
           withIntegration(env, payload, async (session) => {
             try {
               const result = await fetchPhoto(env, session, payload, run.id)
+              const counters = {
+                assets_created: result.asset === 'created' ? 1 : 0,
+                assets_reused: result.asset === 'reused' ? 1 : 0,
+              }
+              if (result.status === 'obsolete') {
+                // Not an error: the article moved on while this job waited (or downloaded).
+                return {
+                  counters: { ...counters, image_set: 0, obsolete: 1 },
+                  notes: [`obsolete: ${OBSOLETE_TEXT[result.reason]}`],
+                }
+              }
               return {
-                counters: {
-                  assets_created: result.asset === 'created' ? 1 : 0,
-                  assets_reused: result.asset === 'reused' ? 1 : 0,
-                  image_set: result.applied ? 1 : 0,
-                },
+                counters: { ...counters, image_set: result.applied ? 1 : 0, obsolete: 0 },
                 refused: result.rejected,
-                notes:
-                  result.applied || result.rejected.length > 0
-                    ? []
-                    : ['the article is no longer linked'],
               }
             } catch (error) {
               if (error instanceof PhotoRefused) {

@@ -79,17 +79,40 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
     fake.photos.set(picture.key, { status, body: bytes })
     return picture
   }
-  const fetchJob = (articleId: number, overrides: Record<string, unknown> = {}) => {
+  /** The job a pull would queue for the article's picture as barsy shows it right now. */
+  const jobPayload = (articleId: number) => {
     const picture = picturePath(articleId)
-    return world.run(JOB_NAMES.assetFetch, {
+    return {
       tenantId: world.tenantId,
       integrationId: world.integrationId,
       articleExternalId: String(articleId),
       pictureName: picture.name,
       url: picture.url,
-      ...overrides,
-    })
+    }
   }
+  const fetchJob = (articleId: number, overrides: Record<string, unknown> = {}) =>
+    world.run(JOB_NAMES.assetFetch, { ...jobPayload(articleId), ...overrides })
+  const articleOf = (articleId: number) => {
+    const article = fake.articles.find((a) => a.article_id === articleId)
+    if (!article) throw new Error(`no article ${articleId}`)
+    return article
+  }
+  const pull = () =>
+    world.run(JOB_NAMES.barsyFullPull, {
+      tenantId: world.tenantId,
+      integrationId: world.integrationId,
+      venueId: world.venueId,
+    })
+  /** barsy now says this about the article's picture; a pull records it (the link follows it). */
+  const barsyNowSays = async (articleId: number, picture: string | null, pictureUrl: string) => {
+    const article = articleOf(articleId)
+    article.picture = picture
+    article.picture_url = pictureUrl
+    await pull()
+  }
+  /** The article's picture file is renamed in barsy (`1.png` → `2.png`), address and all. */
+  const renamePicture = (articleId: number, from: string, to: string) =>
+    barsyNowSays(articleId, to, String(articleOf(articleId).picture_url).replace(from, to))
   const lastRun = async () => {
     const rows = await world.query<{
       status: string
@@ -175,14 +198,18 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
   })
 
   it('refuses a picture on another host: nothing is requested, nothing stored', async () => {
-    for (const url of [
+    for (const address of [
       'https://evil.example.com/x.png',
       'https://demo.barsyonline.com.evil.example.com/x.png',
       'https://demo.barsyonline.com@evil.example.com/x.png',
       'https://demo.barsyonline.com:8443/endpoints/res/files_get?file=1.png',
     ]) {
+      // The job only gets as far as the guard for an address the article itself has (a stale job
+      // is obsolete first), so barsy names the foreign address and a pull records it.
+      const url = new URL(address).href
+      await barsyNowSays(11, '1.png', url)
       // MSW fails the test on any request to a host it does not know (onUnhandledRequest: error).
-      await fetchJob(11, { url })
+      await fetchJob(11)
       const run = await lastRun()
       expect(run.status, url).toBe('failed')
       expect(run.error_summary, url).toContain('picture refused: foreign_origin')
@@ -366,14 +393,214 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
     expect((await imageOf(String(OTHER)))?.asset_id).toBe(barsyAsset)
   })
 
+  describe('a job that is no longer current', () => {
+    const jobRunCounters = async () => (await lastRun()).counters
+
+    it('unchanged: stored and written as always, and not counted as obsolete', async () => {
+      serve(11, makePng(4, 4))
+      await fetchJob(11)
+      expect(await jobRunCounters()).toMatchObject({ image_set: 1, obsolete: 0 })
+      expect(await imageOf('11')).toBeDefined()
+    })
+
+    it('the picture changed in barsy between queueing and running: no download, the image unchanged', async () => {
+      serve(11, makePng(4, 4))
+      await fetchJob(11)
+      const shown = (await imageOf('11'))?.asset_id
+
+      const queued = jobPayload(11) // what the queue holds while barsy changes the picture
+      await renamePicture(11, '1.png', '2.png')
+      fake.photoRequests.length = 0
+      await world.run(JOB_NAMES.assetFetch, queued)
+
+      const run = await lastRun()
+      expect(run.status).toBe('completed')
+      expect(run.counters).toMatchObject({ obsolete: 1, image_set: 0, assets_created: 0 })
+      expect(run.error_summary).toContain('obsolete')
+      expect(run.error_summary).toContain('changed')
+      expect(fake.photoRequests).toEqual([])
+      expect((await imageOf('11'))?.asset_id).toBe(shown)
+      expect(await assetRows()).toHaveLength(1)
+
+      // The job for the new picture is current and goes through.
+      serve(11, makePng(5, 5))
+      await fetchJob(11)
+      expect((await lastRun()).counters).toMatchObject({ image_set: 1, obsolete: 0 })
+      expect((await imageOf('11'))?.asset_id).not.toBe(shown)
+    })
+
+    it('the same file at another address is a different picture: obsolete too', async () => {
+      const queued = jobPayload(11)
+      const article = articleOf(11)
+      await barsyNowSays(11, String(article.picture), `${String(article.picture_url)}&moved=1`)
+      fake.photoRequests.length = 0
+      await world.run(JOB_NAMES.assetFetch, queued)
+      expect((await lastRun()).counters).toMatchObject({ obsolete: 1 })
+      expect(fake.photoRequests).toEqual([])
+      expect(await imageOf('11')).toBeUndefined()
+    })
+
+    it('the picture was removed in barsy: obsolete, nothing downloaded, nothing written', async () => {
+      serve(11, makePng(4, 4))
+      await fetchJob(11)
+      const queued = jobPayload(11)
+      await barsyNowSays(11, null, '')
+      // The pull already cleared the barsy image (a removed picture does not stay in the menu).
+      expect(await imageOf('11')).toBeUndefined()
+
+      fake.photoRequests.length = 0
+      await world.run(JOB_NAMES.assetFetch, queued)
+      const run = await lastRun()
+      expect(run.status).toBe('completed')
+      expect(run.counters).toMatchObject({ obsolete: 1, image_set: 0 })
+      expect(run.error_summary).toContain('no longer has a picture')
+      expect(fake.photoRequests).toEqual([])
+      // The stale job did not bring the removed photo back.
+      expect(await imageOf('11')).toBeUndefined()
+    })
+
+    it('the article is judged by the record its link names, not by the newest record', async () => {
+      // 1.png → 2.png → 1.png: the record of the first state is OLDER than the second, but the
+      // link names it again. A job for 1.png is current; a job for 2.png is the stale one.
+      const first = jobPayload(11)
+      await renamePicture(11, '1.png', '2.png')
+      const second = jobPayload(11)
+      await renamePicture(11, '2.png', '1.png')
+
+      serve(11, makePng(4, 4))
+      fake.photoRequests.length = 0
+      await world.run(JOB_NAMES.assetFetch, second)
+      expect((await lastRun()).counters).toMatchObject({ obsolete: 1 })
+      expect(fake.photoRequests).toEqual([])
+
+      await world.run(JOB_NAMES.assetFetch, first)
+      expect((await lastRun()).counters).toMatchObject({ obsolete: 0, image_set: 1 })
+      expect(await imageOf('11')).toBeDefined()
+    })
+
+    it('changed between the download and the write: the image is not written', async () => {
+      const picture = serve(11, makePng(4, 4))
+      fake.onPhotoRequest = async (path) => {
+        if (path !== picture.key) return
+        // While the photo is on its way, barsy renames it and a pull records that.
+        fake.onPhotoRequest = undefined
+        await renamePicture(11, '1.png', '2.png')
+      }
+      await fetchJob(11)
+
+      expect(fake.photoRequests).toHaveLength(1)
+      const run = await lastRun()
+      expect(run.status).toBe('completed')
+      // The bytes were stored (an unused asset is cleaned up later, T53); the field was not.
+      expect(run.counters).toMatchObject({ assets_created: 1, image_set: 0, obsolete: 1 })
+      expect(await assetRows()).toHaveLength(1)
+      expect(await imageOf('11')).toBeUndefined()
+    })
+  })
+
+  describe('a picture removed in barsy', () => {
+    const resolvedImage = async (articleId: number) => {
+      const [link] = await world.query<{ node_id: string }>(
+        `select node_id from restro.source_links
+         where integration_id = $1 and external_type = 'article' and external_id = $2`,
+        [world.integrationId, String(articleId)],
+      )
+      const doc = await loadMenuDocument(world.pool, world.tenantId, world.menuId as NodeId)
+      const resolved = resolve(VENUE_MENU_TEMPLATE, doc, {
+        venueScope: `venue:${world.venueId}`,
+        locales: ['bg_BG', 'en_US'],
+        now: world.clock.toISOString(),
+      })
+      return resolved.items[link?.node_id as NodeId]?.fields.image
+    }
+
+    it.each([
+      ['null', null],
+      ['an empty string', ''],
+    ])(
+      '(picture is %s) the next full pull takes the barsy photo off; a manual photo set meanwhile still shows',
+      async (_name, removed) => {
+        // Two items with a barsy photo; the manager gives one of them a photo of their own.
+        serve(11, makePng(4, 4))
+        serve(OTHER, makePng(6, 6))
+        await fetchJob(11)
+        await fetchJob(OTHER)
+        expect(await imageOf('11')).toBeDefined()
+        expect((await resolvedImage(11))?.layer).toBe('barsy')
+
+        const manualAsset = newId('as')
+        await createAsset(world.pool, world.tenantId, {
+          id: manualAsset,
+          origin: 'upload',
+          contentType: 'image/png',
+          checksum: 'c'.repeat(64),
+          width: 9,
+          height: 9,
+          storageKey: `tenants/${world.tenantId}/assets/${manualAsset}/original.png`,
+        })
+        const [link] = await world.query<{ node_id: string }>(
+          `select node_id from restro.source_links where integration_id = $1
+         and external_type = 'article' and external_id = '${OTHER}'`,
+          [world.integrationId],
+        )
+        const change: ChangeSet = {
+          id: newId('cs'),
+          source: 'manual',
+          jobId: newId('jb'),
+          actor: 'system',
+          observedAt: new Date().toISOString(),
+          ops: [
+            {
+              op: 'setField',
+              node: { id: link?.node_id as NodeId },
+              fieldKey: 'image',
+              layer: 'manual',
+              scope: 'master',
+              value: { asset_id: manualAsset, alt: {}, focal: null },
+            },
+          ],
+        }
+        expect((await apply(world.pool, world.tenantId, change)).rejected).toEqual([])
+
+        // barsy removes both pictures; the next full pull runs.
+        for (const id of [11, OTHER]) {
+          const article = articleOf(id)
+          article.picture = removed
+          article.picture_url = ''
+        }
+        await pull()
+
+        // No barsy image is left on either item.
+        expect(await imageOf('11')).toBeUndefined()
+        expect(await imageOf(String(OTHER))).toBeUndefined()
+        const plain = await resolvedImage(11)
+        expect(plain?.layer).not.toBe('barsy')
+        expect(plain?.value ?? null).toBeNull()
+        // The manual photo is still what the guest sees.
+        const manual = await resolvedImage(OTHER)
+        expect(manual?.layer).toBe('manual')
+        expect((manual?.value as { asset_id: string } | null)?.asset_id).toBe(manualAsset)
+        // The pull asks for no photo of either.
+        const asked = world.enqueued
+          .filter((job) => job.name === JOB_NAMES.assetFetch)
+          .map((job) => job.data.articleExternalId)
+        expect(asked).not.toContain('11')
+        expect(asked).not.toContain(String(OTHER))
+      },
+    )
+
+    it('a response that does not carry the picture leaves the barsy photo alone', async () => {
+      serve(11, makePng(4, 4))
+      await fetchJob(11)
+      delete articleOf(11).picture
+      delete articleOf(11).picture_url
+      await pull()
+      expect(await imageOf('11')).toBeDefined()
+    })
+  })
+
   describe('which pictures a pull queues', () => {
     const photoJobs = () => world.enqueued.filter((job) => job.name === JOB_NAMES.assetFetch)
-    const pull = () =>
-      world.run(JOB_NAMES.barsyFullPull, {
-        tenantId: world.tenantId,
-        integrationId: world.integrationId,
-        venueId: world.venueId,
-      })
 
     it('an unchanged article with its photo is left alone; one without a photo is queued again', async () => {
       serve(11, makePng(4, 4))

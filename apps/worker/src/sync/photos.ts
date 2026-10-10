@@ -13,11 +13,11 @@
 import { createHash } from 'node:crypto'
 
 import { assetStorageKey, inspectImage } from '@restro/assets'
-import { BARSY_MAPPING_VERSION } from '@restro/barsy'
+import { BARSY_MAPPING_VERSION, readArticlePicture } from '@restro/barsy'
 import { type AssetFetchJob, type AssetImageType, MAX_IMAGE_BYTES, newId } from '@restro/core'
 import { type ApplyRejection, apply, createAsset } from '@restro/core/apply'
 import { assets, sourceLinks, sourceRecords, withTenant } from '@restro/db'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import type { IntegrationSession, SyncEnvironment } from './context'
 
@@ -43,13 +43,31 @@ export class PhotoRefused extends Error {
   }
 }
 
-export interface PhotoResult {
-  /** `reused` when identical bytes were already stored; `none` when nothing was downloaded. */
-  readonly asset: 'created' | 'reused' | 'none'
-  readonly rejected: readonly ApplyRejection[]
-  /** False when the item no longer exists or is no longer linked (the apply refused). */
-  readonly applied: boolean
-}
+/** Why a photo job has nothing left to do. */
+export type ObsoleteReason =
+  /** The article is not linked (any more), or its link has no current record. */
+  | 'unlinked'
+  /** The article's current record has no picture. */
+  | 'picture_removed'
+  /** The article's current record names another picture, or another address, than the job. */
+  | 'picture_changed'
+
+export type PhotoResult =
+  /** The job no longer describes the article's picture: nothing was written. */
+  | {
+      readonly status: 'obsolete'
+      readonly reason: ObsoleteReason
+      /** `none` when it was caught before the download; else what the download left in the store. */
+      readonly asset: 'created' | 'reused' | 'none'
+    }
+  | {
+      readonly status: 'stored'
+      /** `reused` when identical bytes were already stored. */
+      readonly asset: 'created' | 'reused'
+      readonly rejected: readonly ApplyRejection[]
+      /** False when the item no longer exists or is no longer linked (the apply refused). */
+      readonly applied: boolean
+    }
 
 const sameOrigin = (a: URL, b: URL) => a.origin === b.origin
 
@@ -143,13 +161,30 @@ export async function downloadPhoto(
   throw new PhotoRefused('too_many_redirects', 'Too many redirects.')
 }
 
-/** The article record the link last saw (its hash), else the newest one; null if unlinked. */
-async function articleRecordId(
+/** `picture` and `picture_url` of a stored article record's payload (jsonb: anything may be in it). */
+function pictureFieldsOf(payload: unknown) {
+  const object =
+    typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {}
+  const text = (value: unknown) => (typeof value === 'string' || value === null ? value : undefined)
+  return { picture: text(object.picture), picture_url: text(object.picture_url) }
+}
+
+/**
+ * Whether this job still describes the article's picture, judged on the article's CURRENT source
+ * record: the one its link last saw (`source_links.last_hash` → the record with that hash), never
+ * "the newest by fetch time" (an article that returns to an earlier content has the old record
+ * again, and the link is what says which one is current: the S2-02 decision). The job is current
+ * when that record still names `request.pictureName` and its address, built the way the mapper
+ * builds it, is `request.url`. Unlinked, no record, no picture, another picture or another address:
+ * the job is obsolete and must neither download nor write.
+ */
+async function currentRecord(
   env: SyncEnvironment,
   tenantId: string,
   integrationId: string,
-  articleId: string,
-): Promise<string | null> {
+  request: AssetFetchJob,
+): Promise<{ readonly recordId: string } | { readonly obsolete: ObsoleteReason }> {
+  const articleId = request.articleExternalId
   return withTenant(env.pool, tenantId, async (tx) => {
     const [link] = await tx
       .select({ hash: sourceLinks.lastHash })
@@ -161,33 +196,44 @@ async function articleRecordId(
           eq(sourceLinks.externalId, articleId),
         ),
       )
-    if (!link) return null
-    const ofArticle = and(
-      eq(sourceRecords.integrationId, integrationId),
-      eq(sourceRecords.externalType, 'article'),
-      eq(sourceRecords.externalId, articleId),
-    )
-    if (link.hash) {
-      const [exact] = await tx
-        .select({ id: sourceRecords.id })
-        .from(sourceRecords)
-        .where(and(ofArticle, eq(sourceRecords.contentHash, link.hash)))
-        .limit(1)
-      if (exact) return exact.id
-    }
-    const [newest] = await tx
-      .select({ id: sourceRecords.id })
+    if (!link?.hash) return { obsolete: 'unlinked' } as const
+    const [record] = await tx
+      .select({ id: sourceRecords.id, payload: sourceRecords.payload })
       .from(sourceRecords)
-      .where(ofArticle)
-      .orderBy(desc(sourceRecords.fetchedAt))
+      .where(
+        and(
+          eq(sourceRecords.integrationId, integrationId),
+          eq(sourceRecords.externalType, 'article'),
+          eq(sourceRecords.externalId, articleId),
+          eq(sourceRecords.contentHash, link.hash),
+        ),
+      )
       .limit(1)
-    return newest?.id ?? null
+    if (!record) return { obsolete: 'unlinked' } as const
+    const picture = readArticlePicture(pictureFieldsOf(record.payload))
+    if (picture.kind === 'absent' || picture.kind === 'none') {
+      return { obsolete: 'picture_removed' } as const
+    }
+    if (
+      picture.kind === 'invalid' ||
+      picture.pictureName !== request.pictureName ||
+      picture.url !== request.url
+    ) {
+      return { obsolete: 'picture_changed' } as const
+    }
+    return { recordId: record.id }
   })
 }
 
 /**
- * The whole job: guard, download, check, dedupe by checksum, store, write the item's `image`
- * field in the barsy layer. `runId` is the job run (it goes into the change set).
+ * The whole job: check the job is current, download, check the bytes, dedupe by checksum, store,
+ * check again, write the item's `image` field in the barsy layer. `runId` is the job run (it goes
+ * into the change set).
+ *
+ * The job is checked against the article's current record twice: before the download (so an
+ * obsolete job asks the picture server for nothing) and again just before the write (the
+ * download takes a while, and the pull may have changed or removed the picture meanwhile). In the
+ * second case the stored asset stays; unused assets are cleaned up later (tracker T53).
  */
 export async function fetchPhoto(
   env: SyncEnvironment,
@@ -197,9 +243,8 @@ export async function fetchPhoto(
 ): Promise<PhotoResult> {
   const tenantId = session.tenantId
   const integrationId = session.integration.id
-  // An article that is gone or was unlinked has nothing to show a photo: download nothing.
-  const recordId = await articleRecordId(env, tenantId, integrationId, request.articleExternalId)
-  if (recordId === null) return { asset: 'none', rejected: [], applied: false }
+  const before = await currentRecord(env, tenantId, integrationId, request)
+  if ('obsolete' in before) return { status: 'obsolete', reason: before.obsolete, asset: 'none' }
   // The picture server is the installation: its two-requests-at-a-time limit covers it too.
   const bytes = await env.limiters
     .forHost(session.host)
@@ -243,6 +288,11 @@ export async function fetchPhoto(
     })
     assetId = created.id
   }
+  const asset = reused ? 'reused' : 'created'
+
+  // The picture may have changed or been removed while this one was downloading.
+  const now = await currentRecord(env, tenantId, integrationId, request)
+  if ('obsolete' in now) return { status: 'obsolete', reason: now.obsolete, asset }
 
   const result = await apply(env.pool, tenantId, {
     id: newId('cs'),
@@ -264,13 +314,14 @@ export async function fetchPhoto(
         layer: 'barsy',
         scope: 'master',
         value: { asset_id: assetId, alt: {}, focal: null },
-        sourceRecordId: recordId,
+        sourceRecordId: now.recordId,
         mappingVersion: BARSY_MAPPING_VERSION,
       },
     ],
   })
   return {
-    asset: reused ? 'reused' : 'created',
+    status: 'stored',
+    asset,
     rejected: result.rejected,
     applied: result.rejected.length === 0,
   }

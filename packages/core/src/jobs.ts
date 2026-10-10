@@ -87,9 +87,12 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
 ])
 
 /**
- * The pg-boss singleton key of a job: two pulls of one integration never overlap (one key per
- * integration for connect and the two pulls), and one picture is fetched once at a time.
- * Venue-level keys come with a second venue per integration (tracker T50).
+ * The pg-boss singleton key of a job: one key per integration for connect and the two pulls, and
+ * one picture is fetched once at a time. The `exclusive` policy applies per queue AND key, so it
+ * only keeps two jobs of the SAME queue apart: a full pull and an incremental run of one
+ * integration can both be active. What keeps pulls from overlapping is the worker's Postgres
+ * advisory lock (apps/worker/src/sync/pull-lock.ts). Venue-level keys come with a second venue
+ * per integration (tracker T50).
  */
 export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPayload<N>): string {
   if (name === JOB_NAMES.assetFetch) {
@@ -97,6 +100,16 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
     return `${fetch.integrationId}:${fetch.articleExternalId}`
   }
   return (data as { integrationId: string }).integrationId
+}
+
+/**
+ * The key for a pull that a running pull sends again for later (its integration was busy). The
+ * running job still holds the plain key, and the `exclusive` policy would drop a second job with
+ * it (`send` returns null), so the later copy carries a key of its own. The second makes it unique
+ * per deferral: a copy that is busy again can send its own successor.
+ */
+export function deferredSingletonKey(integrationId: string, at: Date): string {
+  return `${integrationId}:later:${Math.floor(at.getTime() / 1000)}`
 }
 
 /** Validates a payload for `name` and returns it with the options `send` needs. */

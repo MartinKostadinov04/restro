@@ -28,6 +28,8 @@ export {
   InvalidTenantIdError,
   isTenantId,
   type PoolOptions,
+  type SessionLock,
+  tryAdvisoryLock,
   UnsafeDatabaseRoleError,
 } from './internal/pool'
 export * from './schema'
