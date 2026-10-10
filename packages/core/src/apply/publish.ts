@@ -30,7 +30,7 @@ import { z } from 'zod'
 import { parseAssetVariants } from '../asset-variants'
 import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
-import { isLocale, type Locale } from '../locales'
+import { isLocale, type Locale, type LocalizedText, LocalizedTextSchema } from '../locales'
 import { CURRENCIES, type Currency } from '../money'
 import { compareVisibility, V11_MAX_HIDDEN_SHARE } from '../resolve/compare-visibility'
 import { resolve } from '../resolve/resolve'
@@ -281,7 +281,7 @@ async function currentRow(
   return row?.snapshot
 }
 
-async function nextVersion(tx: WriteTx, menuId: string, venueId: string): Promise<number> {
+async function nextVersion(tx: ReadTx, menuId: string, venueId: string): Promise<number> {
   const [row] = await tx
     .select({ last: sql<number | null>`max(${snapshots.version})` })
     .from(snapshots)
@@ -446,7 +446,7 @@ async function resolveForVenue(
  * builds the snapshot under `snapshotId` / `version` and runs the leak guard and V10.
  */
 async function prepareSnapshot(
-  tx: WriteTx,
+  tx: ReadTx,
   scope: { readonly menuId: NodeId; readonly venueId: VenueId },
   snapshotId: SnapshotId,
   version: number,
@@ -830,6 +830,71 @@ export async function loadLiveOverlay(
     if (snapshot.body === null) return null
     const { resolved } = await resolveForVenue(tx, { menuId, venueId }, now)
     return { snapshotId: snapshot.id, overlay: buildLiveOverlay(resolved, snapshot.body) }
+  })
+}
+
+/** A field with an override that barsy's value has outgrown, waiting for a person (V12). */
+export interface StaleOverride {
+  readonly nodeId: NodeId
+  readonly fieldKey: string | null
+  /** The node's name in the document (items), for the warning; null when it has none. */
+  readonly name: LocalizedText | null
+  /** True for an item, which the composer can open. */
+  readonly isItem: boolean
+}
+
+/** What the next publish would contain, built in memory. */
+export interface Draft {
+  /**
+   * The snapshot a publish right now would write, after the schema and the leak guard. Its id is
+   * a fresh one that nothing stores and its version is the next free one: it is for showing and
+   * comparing, never for writing.
+   */
+  readonly snapshot: MenuSnapshot
+  /** The sold-out marks of today's service edition for that snapshot. */
+  readonly overlay: LiveOverlay
+  /** V12: stale overrides on fields whose policy is `review`. */
+  readonly staleOverrides: readonly StaleOverride[]
+}
+
+/**
+ * The draft of a menu + venue: the document resolved and built exactly as `publishMenu` would,
+ * without writing anything (the Publish tab's preview and its "changes waiting"). Throws the same
+ * `PublishError`s a publish would (`menu_not_found`, `menu_blocked`, `no_visible_items`,
+ * `unsafe_snapshot`); V11 is not checked, it only concerns automatic publishes.
+ */
+export async function loadDraft(
+  pool: DbPool,
+  tenantId: string,
+  scope: { readonly menuId: string; readonly venueId: string },
+  options: PublishOptions = {},
+): Promise<Draft> {
+  const { menuId, venueId } = parsed(ScopeSchema, scope)
+  const now = options.now ?? new Date()
+  return withTenant(pool, tenantId, async (tx) => {
+    const version = await nextVersion(tx, menuId, venueId)
+    const { snapshot, resolved } = await prepareSnapshot(
+      tx,
+      { menuId, venueId },
+      newId('sn'),
+      version,
+      now,
+      options,
+    )
+    const staleOverrides = resolved.issues
+      .filter((issue) => issue.code === 'stale_override' && issue.nodeId !== undefined)
+      .map((issue): StaleOverride => {
+        const nodeId = issue.nodeId as NodeId
+        const item = Object.hasOwn(resolved.items, nodeId) ? resolved.items[nodeId] : undefined
+        const name = LocalizedTextSchema.safeParse(item?.fields.name?.value)
+        return {
+          nodeId,
+          fieldKey: issue.fieldKey ?? null,
+          name: name.success ? name.data : null,
+          isItem: item !== undefined,
+        }
+      })
+    return { snapshot, overlay: buildLiveOverlay(resolved, snapshot), staleOverrides }
   })
 }
 

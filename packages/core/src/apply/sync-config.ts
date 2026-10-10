@@ -131,3 +131,41 @@ export async function storeCachedTree(
     return rows.length > 0
   })
 }
+
+/**
+ * Pauses (`true`) or resumes (`false`) automatic publishing of an integration (brief S3-05): sets
+ * or removes `config.publish.auto_paused`, leaving the other publish settings alone. One `UPDATE`,
+ * merged inside Postgres, so it never loses a concurrent change to another key. Returns whether
+ * the integration exists. The worker skips automatic publishes while the flag is set
+ * (`autoPublishPaused`); a manual publish clears it.
+ */
+export async function setAutoPublishPaused(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  paused: boolean,
+): Promise<boolean> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  // A `publish` that is not an object (a hand-edited config) is replaced rather than extended.
+  const publish = sql`case when jsonb_typeof(${integrations.config} -> 'publish') = 'object'
+    then ${integrations.config} -> 'publish' else '{}'::jsonb end`
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: paused
+          ? sql`${integrations.config} || jsonb_build_object('publish',
+              ${publish} || '{"auto_paused": true}'::jsonb)`
+          : sql`case when ${integrations.config} #> '{publish,auto_paused}' is null
+              then ${integrations.config}
+              else ${integrations.config} || jsonb_build_object('publish',
+                ${publish} - 'auto_paused') end`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}

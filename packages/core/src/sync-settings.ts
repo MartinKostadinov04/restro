@@ -151,3 +151,13 @@ export function publishesAfterSync(config: unknown): boolean {
 export function holdsNewItems(config: unknown): boolean {
   return parseSyncSettings(config).publish.new_items === 'hold'
 }
+
+/**
+ * Whether automatic publishing is paused (brief S3-05): `config.publish.auto_paused` is `true`
+ * after someone returned the menu to an older version, and until a person publishes again. It is
+ * not a setting of the form (the sync settings form never writes it, and keeps it when it saves);
+ * the Publish tab sets it and a manual publish clears it. Anything but `true` means not paused.
+ */
+export function autoPublishPaused(config: unknown): boolean {
+  return record(record(config).publish).auto_paused === true
+}
