@@ -4,7 +4,7 @@
 // public R2 bucket behind the CDN for staging and production (`R2PublishStore`).
 //
 // Everything in it is public by design: snapshots, pointers, the live overlay and webp variants.
-// Paths are the four shapes of ./publish-paths.ts only, so an original photo or anything private
+// Paths are the shapes of ./publish-paths.ts only, so an original photo or anything private
 // cannot be put here by mistake: such a path is refused.
 import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -17,7 +17,7 @@ export interface PublishStore {
   /**
    * Stores `bytes` at `path`, replacing anything there. `options` come from `publishPutOptions`:
    * the store keeps them with the file (R2) or derives the same from the path when serving (local).
-   * Throws `InvalidPublishPathError` for a path that is not one of the four shapes.
+   * Throws `InvalidPublishPathError` for a path that is not one of the shapes.
    */
   put(path: string, bytes: Uint8Array, options: PublishPutOptions): Promise<void>
   /** The bytes at `path`, or null when there is none. */
@@ -37,7 +37,7 @@ export class LocalPublishStore implements PublishStore {
     this.root = path.resolve(options.rootDir)
   }
 
-  /** The file a path lives in; the four shapes only, and never outside the root folder. */
+  /** The file a path lives in; the allowed shapes only, and never outside the root folder. */
   private fileOf(publishPath: string): string {
     assertPublishPath(publishPath)
     const file = path.resolve(this.root, ...publishPath.split('/'))

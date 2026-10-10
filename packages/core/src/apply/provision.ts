@@ -10,6 +10,7 @@ import { type DbPool, menus, nodes, tenants, type Venue, venues } from '@restro/
 import { withTenantWrite } from '@restro/db/write'
 import { eq } from 'drizzle-orm'
 
+import { isVenueSlug } from '../guest-files'
 import { isId, type NodeId, newId } from '../ids'
 import { LOCALES, type Locale } from '../locales'
 import { CURRENCIES, type Currency } from '../money'
@@ -37,9 +38,6 @@ export class ProvisionError extends Error {
   }
 }
 
-/** Venue slugs: lower-case kebab-case, 1 to 63 characters (`demo-club`). */
-export const VENUE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const MAX_SLUG_LENGTH = 63
 const MAX_NAME_LENGTH = 200
 const CLOCK_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 
@@ -153,11 +151,7 @@ export async function provisionVenue(
     throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
   }
   const name = checkedName(input.name, 'the venue name')
-  if (
-    typeof input.slug !== 'string' ||
-    input.slug.length > MAX_SLUG_LENGTH ||
-    !VENUE_SLUG_PATTERN.test(input.slug)
-  ) {
+  if (!isVenueSlug(input.slug)) {
     throw new ProvisionError('invalid_input', 'the venue slug must be lower-case kebab-case')
   }
   const timezone = input.timezone ?? 'Europe/Sofia'

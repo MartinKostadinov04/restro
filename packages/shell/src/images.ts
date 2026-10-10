@@ -15,6 +15,11 @@ export interface ViewImage {
   readonly variant: ImageVariant
   /** Pixel width of the chosen file. */
   readonly width: number
+  /**
+   * Every distinct file the asset has, narrowest first, for a face that lets the browser choose
+   * (`srcset` with width descriptors). `src` stays the shell's own pick for the slot and density.
+   */
+  readonly variants: readonly { readonly src: string; readonly width: number }[]
   /** The original's proportions, for the crop and for reserving space. */
   readonly sourceWidth: number
   readonly sourceHeight: number
@@ -36,6 +41,20 @@ export function pickVariant(request: ImageRequest): ImageVariant {
   return IMAGE_VARIANTS[index] ?? request.variant
 }
 
+/** The pixel width a variant path names (`/a/as_x/w640.webp` is 640), 0 when it names none. */
+function fileWidth(src: string): number {
+  return Number(/w(\d+)\.webp$/.exec(src)?.[1] ?? 0)
+}
+
+/** The asset's files without repeats (a small original has one file for several variants), narrowest first. */
+function distinctFiles(variants: Readonly<Record<ImageVariant, string>>): ViewImage['variants'] {
+  const files = [...new Set(IMAGE_VARIANTS.map((name) => variants[name]))].map((src) => ({
+    src,
+    width: fileWidth(src),
+  }))
+  return files.sort((a, b) => a.width - b.width)
+}
+
 /** The image for an asset id, or null when there is none (or the asset is missing). */
 export function viewImage(
   assetId: string | null,
@@ -55,7 +74,8 @@ export function viewImage(
     id: assetId as AssetId,
     src,
     variant,
-    width: Number(/w(\d+)\.webp$/.exec(src)?.[1] ?? 0),
+    width: fileWidth(src),
+    variants: distinctFiles(asset.variants),
     sourceWidth: asset.w,
     sourceHeight: asset.h,
     focal: focal === null ? null : { x: focal.x, y: focal.y },

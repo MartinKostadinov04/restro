@@ -24,7 +24,14 @@ import {
 import { formatField, type SnapshotFieldType } from './fields'
 import { viewImage } from './images'
 import { viewDelta, viewPrice } from './money'
-import { PALETTE_STEPS, type Palette, resolvePalette, semanticColours, textOn } from './palette'
+import {
+  PALETTE_STEPS,
+  type Palette,
+  resolvePalette,
+  semanticColours,
+  semanticColoursDark,
+  textOn,
+} from './palette'
 import {
   describeOpening,
   type NextOpening,
@@ -321,6 +328,7 @@ function viewTheme(env: Env, menuTitle: ViewText | null): ViewTheme {
   return {
     palette: steps as ViewTheme['palette'],
     colors: semanticColours(palette),
+    colorsDark: semanticColoursDark(palette),
     font: snapshot.theme.font,
     radius: snapshot.theme.radius,
     shadow: snapshot.theme.shadow,

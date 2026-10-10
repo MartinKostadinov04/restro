@@ -1,21 +1,26 @@
 // Writing what a publish decided into the publish store (brief S3-01b). `publishMenu` (core/apply)
 // only moves rows in the database; these functions turn the current pointer into the files a guest
-// page reads: `snap/<sn>.json`, `m/<menu>/<venue>/current.json` and `m/<menu>/<venue>/live.json`.
+// page reads: `snap/<sn>.json`, `m/<menu>/<venue>/current.json` and `m/<menu>/<venue>/live.json`,
+// and (S3-03) the slug index `v/<venue slug>.json` that `/m/<slug>` starts from.
 //
 // Both are idempotent and safe to repeat, which is what makes `publish-files` a repair: they
 // compare with what is in the store and write only what is missing or different. The snapshot
 // file always goes first, so a reader that finds `current.json` never finds a pointer to a
-// snapshot that is not there yet.
+// snapshot that is not there yet, and the slug index goes last, so a reader that finds it finds a
+// menu that is published.
 import {
   currentPath,
   livePath,
   type PublishStore,
   publishPutOptions,
+  readVenueIndex,
   snapshotPath,
+  venueIndexBytes,
+  venueIndexPath,
 } from '@restro/assets'
 import type { NodeId, VenueId } from '@restro/core'
 import { loadCurrentSnapshot, loadLiveOverlay } from '@restro/core/apply'
-import { type DbPool, publishPointers, withTenant } from '@restro/db'
+import { type DbPool, publishPointers, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
 export interface PublishFilesDeps {
@@ -31,6 +36,14 @@ export interface PublishScope {
   readonly venueId: VenueId
 }
 
+/**
+ * What happened to the slug index `v/<slug>.json`: `written` or `unchanged`, or `taken` when the
+ * file names another venue (slugs are unique per organisation only, so two organisations may
+ * both call a venue "main"; the first to publish keeps the address, the second is not served
+ * there and a person has to choose another slug).
+ */
+export type SlugIndexStatus = 'written' | 'unchanged' | 'taken'
+
 export type PublishFilesResult =
   /** Nothing was ever published for this menu + venue: there is nothing to write. */
   | { readonly status: 'nothing_published' }
@@ -40,6 +53,9 @@ export type PublishFilesResult =
       readonly version: number
       /** The paths put to the store (empty when everything was there already). */
       readonly written: readonly string[]
+      readonly slugIndex: SlugIndexStatus
+      /** The slug the index is under. */
+      readonly slug: string
     }
 
 const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
@@ -59,6 +75,33 @@ async function pointerId(deps: PublishFilesDeps, scope: PublishScope): Promise<s
       ),
   )
   return row?.id ?? null
+}
+
+/** The slug of the venue (the address `/m/<slug>` lives under). */
+async function slugOf(deps: PublishFilesDeps, scope: PublishScope): Promise<string> {
+  const [row] = await withTenant(deps.pool, scope.tenantId, (tx) =>
+    tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, scope.venueId)),
+  )
+  if (row === undefined) throw new Error(`there is no venue ${scope.venueId} to publish`)
+  return row.slug
+}
+
+/**
+ * Writes `v/<slug>.json` = {venue_id, menu_id} unless it is there already. A file that names
+ * another venue is never overwritten (`taken`); a file that cannot be read is replaced.
+ */
+async function writeSlugIndex(
+  deps: PublishFilesDeps,
+  scope: PublishScope,
+  slug: string,
+): Promise<SlugIndexStatus> {
+  const existing = await readVenueIndex(deps.store, slug)
+  if (existing !== null && existing.venue_id !== scope.venueId) return 'taken'
+  const file = venueIndexPath(slug)
+  const bytes = venueIndexBytes({ venue_id: scope.venueId, menu_id: scope.menuId })
+  if (sameBytes(await deps.store.get(file), bytes)) return 'unchanged'
+  await deps.store.put(file, bytes, publishPutOptions(file))
+  return 'written'
 }
 
 /** How often the pointer is read again when it moved while the files were written. */
@@ -108,8 +151,19 @@ export async function writePublishFiles(
       written.push(pointerFile)
     }
 
+    const slug = await slugOf(deps, scope)
+    const slugIndex = await writeSlugIndex(deps, scope, slug)
+    if (slugIndex === 'written') written.push(venueIndexPath(slug))
+
     if ((await pointerId(deps, scope)) === current.id) {
-      return { status: 'checked', snapshotId: current.id, version: current.version, written }
+      return {
+        status: 'checked',
+        snapshotId: current.id,
+        version: current.version,
+        written,
+        slugIndex,
+        slug,
+      }
     }
   }
   throw new Error(`the pointer of ${scope.menuId} kept moving while its files were written`)

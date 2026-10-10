@@ -404,6 +404,42 @@ describe('packages/assets: storage only, no database or barsy', () => {
   })
 })
 
+describe('the guest page reads published files only (rule 4)', () => {
+  const guestBase: Files = {
+    ...base,
+    'packages/assets/src/index.ts': 'export const assets = 1',
+    'packages/core/src/apply/index.ts': 'export const apply = 1',
+    'apps/web/src/server/db.ts': 'export const pool = 1',
+  }
+
+  it('rejects the database, apply(), the stores and the server helpers from the guest code', async () => {
+    await expectRules(
+      {
+        ...guestBase,
+        'apps/web/src/guest/db.ts': "import '@restro/db'",
+        'apps/web/src/guest/apply.ts': "import '@restro/core/apply'",
+        'apps/web/src/guest/assets.ts': "import '@restro/assets'",
+        'apps/web/src/guest/server.ts': "import '../server/db'",
+        'apps/web/app/m/[venue]/page.ts': "import '../../../src/server/db'",
+        'apps/web/src/guest/pg.ts': "import 'pg'",
+      },
+      ['guest-page-reads-published-files-only'],
+    )
+  })
+
+  it('allows the shell, the face and core types in the guest code', async () => {
+    await expectRules(
+      {
+        ...guestBase,
+        'apps/web/src/guest/menu.ts':
+          "import '@restro/shell'\nimport '@restro/qr-phone'\nimport '@restro/core'",
+        'apps/web/src/server/token.ts': "import '@restro/assets'",
+      },
+      [],
+    )
+  })
+})
+
 describe('coverage of the rule set', () => {
   it('has a case above for every forbidden rule in the config', () => {
     const configured = (config.forbidden ?? []).map((rule) => rule.name).sort()

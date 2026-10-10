@@ -11,3 +11,11 @@ export const ITEM_SHEET_ITEM = 'Негрони (e2e)'
 export const INTEGRATION_OWNER_EMAIL = 'integration-owner@demo-club.test'
 export const INTEGRATION_MEMBER_EMAIL = 'integration-member@demo-club.test'
 export const INTEGRATION_VENUE_NAME = 'Integration Club Sofia'
+
+// The guest page's test (scripts/seed-guest-e2e.ts publishes these): the demo venue's menu at
+// /m/demo-club in the brand colour below, a table code, and a second, tagged menu at /m/tag-fixture.
+export const GUEST_SLUG = 'demo-club'
+export const GUEST_BRAND = '#2563eb'
+export const GUEST_TABLE_TOKEN = 'tb_e2eGuestTable000001'
+export const GUEST_TABLE_LABEL = '12'
+export const TAG_SLUG = 'tag-fixture'

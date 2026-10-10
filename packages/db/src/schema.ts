@@ -52,12 +52,22 @@ export const venues = restro.table(
     currency: text('currency').notNull().default('EUR'),
     defaultLocale: text('default_locale').notNull().default('bg_BG'),
     enabledLocales: text('enabled_locales').array().notNull().default(sql`'{bg_BG,en_US}'::text[]`),
+    /**
+     * Venue settings that are not columns of their own (S3-03). `theme` is the look of the guest
+     * menu: `{brand: '#rrggbb', logo_asset_id: 'as_…' | null}`. core/apply validates and writes
+     * it (`setVenueTheme`); the publisher turns it into the snapshot's theme.
+     */
+    settings: jsonb('settings')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Kept current by the `venues_touch_updated_at` trigger, whatever writes the row. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique('venues_tenant_id_slug_unique').on(t.tenantId, t.slug),
+    check('venues_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
     // Target of the composite foreign keys (tenant_id, venue_id) of the document tables.
     unique('venues_tenant_id_id_unique').on(t.tenantId, t.id),
     check('venues_id_format', sql`${t.id} ~ '^vn_[0-9A-Za-z]+$'`),

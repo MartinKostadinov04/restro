@@ -19,6 +19,13 @@ const DEV_PORT = PORT + 1
 const DEV_ORIGIN = `http://127.0.0.1:${DEV_PORT}`
 // Where the item sheet's test stores the photos it uploads (git ignores `.local`).
 const E2E_ASSET_DIR = fileURLToPath(new URL('../../.local/assets-e2e', import.meta.url))
+// Where the guest page's test publishes its menus (seed-guest-e2e.ts writes, `/cdn` serves).
+const E2E_PUBLISH_DIR = fileURLToPath(new URL('../../.local/cdn-e2e', import.meta.url))
+// The setup scripts run in this process and read the same stores as the servers below.
+process.env.ASSET_STORE = 'local'
+process.env.LOCAL_ASSET_DIR = E2E_ASSET_DIR
+process.env.PUBLISH_STORE = 'local'
+process.env.LOCAL_PUBLISH_DIR = E2E_PUBLISH_DIR
 
 // A throwaway key pair for the Integration tab's test, made here because the web servers start
 // before the global setup runs. Only the public half (base64url DER, what `pnpm keys:seal` prints)
@@ -38,6 +45,8 @@ const serverEnvironment = (origin: string) => ({
   // Photos go to disk, in a folder of their own.
   ASSET_STORE: 'local',
   LOCAL_ASSET_DIR: E2E_ASSET_DIR,
+  PUBLISH_STORE: 'local',
+  LOCAL_PUBLISH_DIR: E2E_PUBLISH_DIR,
   SEAL_PUBLIC_KEY,
 })
 
