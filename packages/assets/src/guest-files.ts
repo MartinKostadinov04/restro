@@ -1,5 +1,6 @@
-// The two small files that lead a guest to a menu (brief S3-03), and the code that reads and
-// writes them. Both are public by design and hold nothing internal:
+// Reading and writing the two small files that lead a guest to a menu (brief S3-03). Their shapes
+// are in @restro/core (the guest page, which runs in the browser, reads them with the same
+// schemas); this is the store side:
 //
 //   v/<venue slug>.json      {venue_id, menu_id}        which menu `/m/<slug>` shows
 //   t/<table token>.json     {venue_slug, table_label}  what the QR code of a table means
@@ -7,32 +8,16 @@
 // The worker writes the first with every publish (apps/worker, writePublishFiles). The second is
 // written when a table gets a code and removed when it is retired (S3-07); until then only tests
 // write it (`writeTableTokenFile`). The web app reads both, never the database (rule 4).
-import { idSchema } from '@restro/core'
-import { z } from 'zod'
 import {
-  PUBLISH_SLUG_PATTERN,
-  publishPutOptions,
-  tableTokenPath,
-  venueIndexPath,
-} from './publish-paths'
+  type TableTokenFile,
+  TableTokenFileSchema,
+  type VenueIndex,
+  VenueIndexSchema,
+} from '@restro/core'
+import type { z } from 'zod'
+
+import { publishPutOptions, tableTokenPath, venueIndexPath } from './publish-paths'
 import type { PublishStore } from './publish-store'
-
-/** `v/<slug>.json`: the venue and the menu a slug shows. */
-export const VenueIndexSchema = z.strictObject({
-  venue_id: idSchema('vn'),
-  menu_id: idSchema('nd'),
-})
-/** The content of `v/<slug>.json`. */
-export type VenueIndex = z.output<typeof VenueIndexSchema>
-
-/** `t/<token>.json`: the venue a table code belongs to and how its table is called. */
-export const TableTokenFileSchema = z.strictObject({
-  venue_slug: z.string().max(63).regex(PUBLISH_SLUG_PATTERN),
-  /** Shown in the guest page's banner: "12", "VIP 3". */
-  table_label: z.string().trim().min(1).max(40),
-})
-/** The content of `t/<token>.json`. */
-export type TableTokenFile = z.output<typeof TableTokenFileSchema>
 
 const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
 

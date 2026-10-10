@@ -12,7 +12,15 @@
 //   t/<table token>.json               {venue_slug, table_label}: what a table's QR code means (S3-03)
 //
 // Pure: no I/O.
-import { type AssetId, isId, type NodeId, type SnapshotId, type VenueId } from '@restro/core'
+import {
+  type AssetId,
+  isId,
+  isVenueSlug,
+  type NodeId,
+  type SnapshotId,
+  TABLE_TOKEN_PATTERN,
+  type VenueId,
+} from '@restro/core'
 
 /** The kinds of file the publish store holds. */
 export type PublishPathKind =
@@ -42,17 +50,6 @@ export class InvalidPublishPathError extends Error {
 
 const MAX_PATH_LENGTH = 200
 
-/**
- * A venue slug as the database keeps it: lower-case kebab-case, 1 to 63 characters. The same rule
- * as `VENUE_SLUG_PATTERN` in core/apply/provision.ts, which this package cannot import (it would
- * pull in the database).
- */
-export const PUBLISH_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const MAX_SLUG_LENGTH = 63
-
-/** A table token: opaque, URL-safe, 8 to 128 characters (S3-07 decides how it is made). */
-export const TABLE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
-
 /** Reads a path; null for anything that is not one of the shapes. */
 export function parsePublishPath(path: string): ParsedPublishPath | null {
   if (typeof path !== 'string' || path.length === 0 || path.length > MAX_PATH_LENGTH) return null
@@ -64,9 +61,7 @@ export function parsePublishPath(path: string): ParsedPublishPath | null {
   }
   if (parts.length === 2 && parts[0] === 'v') {
     const slug = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
-    if (slug !== undefined && slug.length <= MAX_SLUG_LENGTH && PUBLISH_SLUG_PATTERN.test(slug)) {
-      return { kind: 'venue_index', slug }
-    }
+    if (isVenueSlug(slug)) return { kind: 'venue_index', slug }
     return null
   }
   if (parts.length === 2 && parts[0] === 't') {

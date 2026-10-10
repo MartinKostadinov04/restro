@@ -1,15 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { newId } from '@restro/core'
+import { newId, TableTokenFileSchema, VenueIndexSchema } from '@restro/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   parseGuestFile,
   readTableTokenFile,
   readVenueIndex,
-  TableTokenFileSchema,
-  VenueIndexSchema,
   venueIndexBytes,
   writeTableTokenFile,
 } from './guest-files'
