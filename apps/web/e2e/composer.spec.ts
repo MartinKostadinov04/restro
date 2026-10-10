@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
-import { expect, type Locator, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, type Response, test } from '@playwright/test'
 
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
 
@@ -68,6 +68,12 @@ const topSections = () =>
     .getByTestId('section-select')
     .allTextContents()
 
+/** True for a Next.js server action call (a POST carrying the `Next-Action` header). */
+function isServerAction(response: Response): boolean {
+  const request = response.request()
+  return request.method() === 'POST' && request.headers()['next-action'] !== undefined
+}
+
 /** Waits until the pending server action has answered, so that a reload shows what was saved. */
 async function settle() {
   await page.waitForLoadState('networkidle')
@@ -102,7 +108,11 @@ async function mouseDragItemToSection(itemName: string, sectionName: string) {
   await page.mouse.move(startX + 12, startY + 12, { steps: 4 })
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 30 })
   await page.waitForTimeout(400)
+  // The drop animation runs before the save starts, so network-idle alone can come too early:
+  // wait for the server action's own answer before anyone reloads.
+  const saved = page.waitForResponse(isServerAction)
   await page.mouse.up()
+  await saved
   await settle()
 }
 
