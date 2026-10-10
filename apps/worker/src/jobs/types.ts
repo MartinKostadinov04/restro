@@ -16,7 +16,7 @@
 //   - for a job with a `schedule`, upserts the schedule; a schedule whose job was removed from
 //     the list or lost its `schedule` is removed.
 import type { DbPool } from '@restro/db'
-import type { Job, QueueOptions, WorkOptions } from 'pg-boss'
+import type { Job, QueueOptions, QueuePolicy, WorkOptions } from 'pg-boss'
 import type { WorkerStatus } from '../health'
 import type { Logger } from '../logger'
 
@@ -33,6 +33,18 @@ export interface WorkerContext {
   readonly now: () => Date
   /** What GET /health reports. Only the heartbeat job writes to it. */
   readonly status: WorkerStatus
+  /** Puts a job in the queue (pg-boss `send`). Returns null when the queue's policy drops it. */
+  readonly queue: JobQueue
+}
+
+/** The one thing a job needs from pg-boss besides being run: sending another job. */
+export interface JobQueue {
+  send(
+    name: string,
+    data: object,
+    /** `startAfter`: seconds to wait before the job may start. */
+    options?: { singletonKey?: string; startAfter?: number | undefined },
+  ): Promise<string | null>
 }
 
 /** A recurring run. `cron` is a cron expression (five fields) or an RFC 5545 RRULE. */
@@ -49,6 +61,11 @@ export interface JobOptions {
    * `retentionSeconds`). `deadLetter` is set by the registry.
    */
   readonly queue: Omit<QueueOptions, 'deadLetter'>
+  /**
+   * pg-boss's queue policy, fixed when the queue is created (it cannot be changed later). The
+   * barsy jobs use `exclusive`: one queued-or-running job per queue and singleton key.
+   */
+  readonly policy?: QueuePolicy
   /** How the worker fetches: `batchSize`, `localConcurrency`, `pollingIntervalSeconds`. */
   readonly work?: WorkOptions
 }

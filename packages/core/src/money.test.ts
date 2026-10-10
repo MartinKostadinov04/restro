@@ -2,6 +2,7 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import {
+  addMinor,
   CURRENCY_SCALE,
   decimalToMinor,
   formatMoney,
@@ -28,6 +29,41 @@ const decimalArbitrary = fc
     const digits = units.toString().padStart(places + 1, '0')
     return places === 0 ? digits : `${digits.slice(0, -places)}.${digits.slice(-places)}`
   })
+
+describe('addMinor', () => {
+  it('adds integer minor units', () => {
+    expect(addMinor(1250, 150)).toBe(1400)
+    expect(addMinor(0, 0)).toBe(0)
+    expect(addMinor(Number.MAX_SAFE_INTEGER - 1, 1)).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it('refuses floats, negatives, unsafe integers and an unsafe sum (rule 8)', () => {
+    for (const [a, b] of [
+      [12.5, 1],
+      [1, 0.1],
+      [-1, 5],
+      [Number.NaN, 1],
+      [Number.POSITIVE_INFINITY, 1],
+      [Number.MAX_SAFE_INTEGER + 1, 0],
+      [Number.MAX_SAFE_INTEGER, 1],
+    ] as const) {
+      expect(() => addMinor(a, b), `${a} + ${b}`).toThrow(MoneyError)
+    }
+  })
+
+  it('agrees with BigInt addition on every safe pair (property)', () => {
+    fc.assert(
+      fc.property(fc.maxSafeNat(), fc.maxSafeNat(), (a, b) => {
+        const exact = BigInt(a) + BigInt(b)
+        if (exact > BigInt(Number.MAX_SAFE_INTEGER)) {
+          expect(() => addMinor(a, b)).toThrow(MoneyError)
+        } else {
+          expect(BigInt(addMinor(a, b))).toBe(exact)
+        }
+      }),
+    )
+  })
+})
 
 describe('decimalToMinor', () => {
   it('converts the brief examples, rounding half-up', () => {

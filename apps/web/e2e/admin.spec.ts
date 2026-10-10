@@ -52,12 +52,12 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   await cards.first().getByRole('link', { name: 'Отвори' }).click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   await expect(page.getByRole('heading', { name: VENUE_NAME, level: 1 })).toBeVisible()
-  // The first tab is open by default and says what arrives when.
+  // The first tab is open by default and shows the composer (its own spec tests it in depth).
   await expect(page.getByRole('tab', { name: 'Композитор' })).toHaveAttribute(
     'aria-selected',
     'true',
   )
-  await expect(page.getByTestId('stage-placeholder')).toContainText('Идва в Етап 2')
+  await expect(page.getByTestId('composer')).toBeVisible()
 
   // --- tabs live in the URL ------------------------------------------------------------------
   await page.getByRole('tab', { name: 'Публикуване' }).click()

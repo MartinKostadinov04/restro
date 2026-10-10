@@ -58,8 +58,27 @@ export function openOwnerPool(): pg.Pool {
   return new pg.Pool({ connectionString: ownerUrl, max: 2 })
 }
 
-/** Deletes the venues and tenants a test created. */
+/** Tenant tables emptied by `cleanUp`, children before parents (foreign keys). */
+const TABLES_CHILDREN_FIRST = [
+  'events',
+  'field_values',
+  'placements',
+  'source_links',
+  'menus',
+  'nodes',
+  'source_records',
+  'job_runs',
+  'places',
+  'barsy_venues',
+  'assets',
+  'integrations',
+  'venues',
+] as const
+
+/** Deletes everything the tests created for these tenants, then the tenants. */
 export async function cleanUp(owner: pg.Pool, tenantIds: readonly string[]): Promise<void> {
-  await owner.query('delete from restro.venues where tenant_id = any($1)', [tenantIds])
+  for (const table of TABLES_CHILDREN_FIRST) {
+    await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenantIds])
+  }
   await owner.query('delete from restro.tenants where id = any($1)', [tenantIds])
 }

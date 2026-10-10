@@ -308,6 +308,43 @@ describe('rules 3 and 4: only the worker imports barsy', () => {
   })
 })
 
+describe('sealed credentials: only the worker opens them (D55)', () => {
+  const seal: Files = {
+    'packages/core/src/seal/index.ts': 'export const seal = 1',
+    'packages/core/src/seal/open/index.ts': "import '../index'\nexport const open = 1",
+  }
+
+  it('rejects the opening half from the web app (by package name and by path), core and barsy', async () => {
+    const lines = await expectRules(
+      {
+        ...base,
+        ...seal,
+        'apps/web/app/connect.ts': "import '@restro/core/seal-open'",
+        'apps/web/app/relative.ts': "import '../../../packages/core/src/seal/open/index'",
+        'packages/core/src/seal/credentials.ts': "import './open/index'",
+        'packages/barsy/src/sync.ts': "import '@restro/core/seal-open'",
+      },
+      ['seal-open-only-from-worker'],
+    )
+    expect(lines).toHaveLength(4)
+    expect(lines.filter((line) => line.includes('apps/web/'))).toHaveLength(2)
+  })
+
+  it('allows the worker, the opening half itself, and the sealing half anywhere', async () => {
+    await expectRules(
+      {
+        ...base,
+        ...seal,
+        'apps/worker/src/credentials.ts': "import '@restro/core/seal-open'",
+        'apps/worker/src/relative.ts': "import '../../../packages/core/src/seal/open/index'",
+        'packages/core/src/seal/open/open.test.ts': "import './index'",
+        'apps/web/app/seal.ts': "import '../../../packages/core/src/seal/index'",
+      },
+      [],
+    )
+  })
+})
+
 describe('rule 5: packages never import apps', () => {
   it('rejects apps/ by path and by package name', async () => {
     await expectRules(
@@ -342,6 +379,27 @@ describe('rule 6: no circular dependencies', () => {
         'packages/core/src/b.ts': "import type { A } from './a'\nexport type B = { a: A }",
       },
       ['no-circular'],
+    )
+  })
+})
+
+describe('packages/assets: storage only, no database or barsy', () => {
+  it('rejects @restro/db, @restro/barsy and a relative path into packages/db', async () => {
+    await expectRules(
+      {
+        ...base,
+        'packages/assets/src/db.ts': "import '@restro/db'",
+        'packages/assets/src/barsy.ts': "import '@restro/barsy'",
+        'packages/assets/src/relative-db.ts': "import '../../db/src/index'",
+      },
+      ['assets-no-database-or-barsy', 'barsy-only-from-worker'],
+    )
+  })
+
+  it('rejects a path into apps/', async () => {
+    await expectRules(
+      { ...base, 'packages/assets/src/app.ts': "import '../../../apps/web/app/page'" },
+      ['assets-no-database-or-barsy', 'packages-never-import-apps'],
     )
   })
 })

@@ -37,7 +37,7 @@ module.exports = {
       name: 'pure-layers-no-data-or-apps',
       severity: 'error',
       comment:
-        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy or anything under apps/.',
+        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy, @restro/assets or anything under apps/.',
       from: { path: ['^packages/shell/', '^packages/faces/'] },
       to: {
         path: [
@@ -45,6 +45,8 @@ module.exports = {
           '^@restro/db(/|$)',
           '^packages/barsy/',
           '^@restro/barsy(/|$)',
+          '^packages/assets/',
+          '^@restro/assets(/|$)',
           '^apps/',
           '^@restro/(web|worker)(/|$)',
         ],
@@ -110,6 +112,18 @@ module.exports = {
       to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
     },
 
+    // Sealed credentials (D55): the web seals with the worker's public key; only the worker
+    // opens. The opening half (packages/core/src/seal/open/, `@restro/core/seal-open`) holds
+    // every use of the private key, so nothing else may import it, the web app least of all.
+    {
+      name: 'seal-open-only-from-worker',
+      severity: 'error',
+      comment:
+        'Only apps/worker may import @restro/core/seal-open (packages/core/src/seal/open/): opening sealed credentials needs the private key, which only the worker holds.',
+      from: { pathNot: ['^apps/worker/', '^packages/core/src/seal/open/'] },
+      to: { path: ['^packages/core/src/seal/open/', '^@restro/core/seal-open(/|$)'] },
+    },
+
     // 5. Dependencies point one way: apps use packages, never the other way round.
     {
       name: 'packages-never-import-apps',
@@ -117,6 +131,23 @@ module.exports = {
       comment: 'Nothing under packages/ may import from apps/.',
       from: { path: '^packages/' },
       to: { path: ['^apps/', '^@restro/(web|worker)(/|$)'] },
+    },
+    {
+      name: 'assets-no-database-or-barsy',
+      severity: 'error',
+      comment:
+        'packages/assets (the asset store, shared by apps/web and apps/worker) must not import @restro/db, @restro/barsy or anything under apps/. The stores hold bytes and sign links; the apps own the database rows.',
+      from: { path: '^packages/assets/' },
+      to: {
+        path: [
+          '^packages/db/',
+          '^@restro/db(/|$)',
+          '^packages/barsy/',
+          '^@restro/barsy(/|$)',
+          '^apps/',
+          '^@restro/(web|worker)(/|$)',
+        ],
+      },
     },
 
     // 6. No cycles, including type-only imports (tsPreCompilationDeps below).

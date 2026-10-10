@@ -23,10 +23,10 @@ import { createPool, type DbPool, withSystem } from '@restro/db'
 import { PgBoss } from 'pg-boss'
 
 import type { WorkerConfig } from './config'
-import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA, withSessionTimeouts } from './connection'
+import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
 import { WorkerStatus } from './health'
 import { type HealthServer, startHealthServer } from './health-server'
-import { jobs as defaultJobs } from './jobs'
+import { buildJobs } from './jobs'
 import type { JobDefinition, WorkerContext } from './jobs/types'
 import { WORKER_HEARTBEAT_JOB } from './jobs/worker-heartbeat'
 import type { Logger } from './logger'
@@ -69,11 +69,9 @@ export async function startWorker(
   options: StartWorkerOptions,
 ): Promise<Worker> {
   const log = options.logger.child({ workerId: config.workerId })
-  const jobs = options.jobs ?? defaultJobs
   const now = options.now ?? (() => new Date())
   const version = options.version ?? WORKER_VERSION
   const status = new WorkerStatus()
-  const databaseUrl = withSessionTimeouts(config.databaseUrl)
 
   let health: HealthServer | undefined
   let pool: DbPool | undefined
@@ -101,9 +99,11 @@ export async function startWorker(
   }
 
   try {
+    // Before anything is opened: a bad asset store setting stops the start here.
+    const jobs = options.jobs ?? (await buildJobs(config, log))
     health = await startHealthServer(config.healthPort, () => status.report(now()))
 
-    pool = createPool(databaseUrl, {
+    pool = createPool(config.databaseUrl, {
       max: APP_POOL_MAX,
       applicationName: 'restro-worker',
       onIdleError: (error) => log.error({ err: error }, 'idle database connection failed'),
@@ -111,7 +111,7 @@ export async function startWorker(
     await withSystem(pool, async () => undefined)
 
     boss = new PgBoss({
-      connectionString: databaseUrl,
+      connectionString: config.databaseUrl,
       schema: QUEUE_SCHEMA,
       createSchema: false,
       migrate: true,
@@ -133,6 +133,7 @@ export async function startWorker(
       version,
       now,
       status,
+      queue: boss,
     }
     await registerJobs(boss, jobs, context)
     if (jobs.some((job) => job.name === WORKER_HEARTBEAT_JOB)) {

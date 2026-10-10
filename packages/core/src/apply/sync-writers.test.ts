@@ -1,0 +1,297 @@
+// Integration tests of the sync's side-table writers: barsy venues, places (rule 6 for absence),
+// job runs (refused writes are recorded, summaries are scrubbed) and the per-venue sync state in
+// the integration's config. As the restro_app role, on a real Postgres.
+import { barsyVenues, createPool, type DbPool, jobRuns, places, withTenant } from '@restro/db'
+import { and, eq } from 'drizzle-orm'
+import type pg from 'pg'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { newId } from '../ids'
+import type { ApplyRejection } from './apply'
+import { upsertBarsyVenues, upsertPlaces } from './barsy-venues'
+import { describeRefused, finishJobRun, scrubSummary, startJobRun } from './job-runs'
+import { provisionTenant } from './provision'
+import { createIntegration } from './sources'
+import { readCachedTree, readSyncState, storeCachedTree, updateSyncState } from './sync-config'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+
+describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
+  const tenant = newId('tn')
+  const otherTenant = newId('tn')
+  let app: DbPool
+  let owner: pg.Pool
+  let integrationId: string
+
+  beforeAll(async () => {
+    owner = openOwnerPool()
+    app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-sync-writer-tests' })
+    await provisionTenant(app, { tenantId: tenant, name: 'Sync writers club' })
+    await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
+    integrationId = (await createIntegration(app, tenant, { kind: 'barsy', host: 'w.test' })).id
+  })
+
+  afterAll(async () => {
+    await app?.end()
+    if (owner) {
+      await cleanUp(owner, [tenant, otherTenant])
+      await owner.end()
+    }
+  })
+
+  describe('upsertBarsyVenues', () => {
+    it('adds venues, follows renames and leaves the manager’s choices alone', async () => {
+      const first = await upsertBarsyVenues(app, tenant, integrationId, [
+        { bid: 10, name: 'Demo' },
+        { bid: 11, name: 'Second' },
+      ])
+      expect(first.map((row) => [row.bid, row.name])).toEqual([
+        [10, 'Demo'],
+        [11, 'Second'],
+      ])
+      // The manager picks a catalogue root (S2-05 does this through its own writer; here, owner).
+      await owner.query(
+        'update restro.barsy_venues set catalogue_root_cat_id = 1091 where integration_id = $1 and bid = 10',
+        [integrationId],
+      )
+      await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 10, name: 'Demo renamed' }])
+      const rows = await withTenant(app, tenant, (tx) =>
+        tx.select().from(barsyVenues).where(eq(barsyVenues.integrationId, integrationId)),
+      )
+      expect(rows.find((row) => row.bid === 10)).toMatchObject({
+        name: 'Demo renamed',
+        catalogueRootCatId: 1091,
+      })
+      expect(rows).toHaveLength(2)
+    })
+
+    it('refuses nonsense and writes nothing for an empty list', async () => {
+      expect(await upsertBarsyVenues(app, tenant, integrationId, [])).toEqual([])
+      await expect(
+        upsertBarsyVenues(app, tenant, integrationId, [{ bid: -1, name: 'x' }]),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+      await expect(
+        upsertBarsyVenues(app, tenant, integrationId, [{ bid: 1, name: '  ' }]),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+    })
+  })
+
+  describe('upsertPlaces', () => {
+    const place = (id: string, num: string | null = id) => ({
+      placeId: id,
+      placeNum: num,
+      salonName: 'Hall',
+      isPublic: true,
+    })
+    const stateOf = async (placeId: string) =>
+      (
+        await withTenant(app, tenant, (tx) =>
+          tx
+            .select()
+            .from(places)
+            .where(and(eq(places.integrationId, integrationId), eq(places.placeId, placeId))),
+        )
+      )[0]
+
+    it('creates, updates, and leaves unchanged places untouched', async () => {
+      const t0 = new Date('2026-10-01T10:00:00Z')
+      const first = await upsertPlaces(app, tenant, integrationId, 10, [place('1'), place('2')], {
+        pagesOk: [true],
+        now: t0,
+      })
+      expect(first).toMatchObject({ created: 2, updated: 0, unchanged: 0, missing: 0 })
+      const token = await stateOf('1')
+      expect(token?.id).toMatch(/^tb_/)
+      expect(token?.qrToken).toBeNull()
+
+      const second = await upsertPlaces(
+        app,
+        tenant,
+        integrationId,
+        10,
+        [place('1', 'VIP'), place('2')],
+        { pagesOk: [true], now: t0 },
+      )
+      expect(second).toMatchObject({ created: 0, updated: 1, unchanged: 1 })
+      expect((await stateOf('1'))?.placeNum).toBe('VIP')
+    })
+
+    it('absence: missing only after a complete pull; deleted after seven days; listed again is active', async () => {
+      // `places.updated_at` (a trigger) stands in for "when it entered its state", so the clock
+      // the writer is given is compared with the real one: the grace period is tested by asking
+      // eight days into the future.
+      const day = 24 * 60 * 60 * 1000
+      await upsertPlaces(app, tenant, integrationId, 10, [place('1'), place('2'), place('3')], {
+        pagesOk: [true],
+      })
+
+      // A pull with a failed page concludes nothing about absence.
+      const failed = await upsertPlaces(app, tenant, integrationId, 10, [place('1')], {
+        pagesOk: [true, false],
+      })
+      expect(failed).toMatchObject({ missing: 0, deleted: 0, complete: false })
+      expect((await stateOf('2'))?.state).toBe('active')
+
+      // A complete pull that lacks 2 and 3 makes them missing.
+      const complete = await upsertPlaces(app, tenant, integrationId, 10, [place('1')], {
+        pagesOk: [true],
+      })
+      expect(complete).toMatchObject({ missing: 2, deleted: 0, complete: true })
+      expect((await stateOf('2'))?.state).toBe('missing')
+
+      // Listed again: active. Still absent after the grace period: deleted.
+      await upsertPlaces(app, tenant, integrationId, 10, [place('1'), place('2')], {
+        pagesOk: [true],
+      })
+      expect((await stateOf('2'))?.state).toBe('active')
+      const late = await upsertPlaces(app, tenant, integrationId, 10, [place('1'), place('2')], {
+        pagesOk: [true],
+        now: new Date(Date.now() + 8 * day),
+      })
+      expect(late.deleted).toBe(1)
+      expect((await stateOf('3'))?.state).toBe('deleted')
+    })
+
+    it('refuses a bid that was never recorded (foreign key) and bad ids', async () => {
+      await expect(
+        upsertPlaces(app, tenant, integrationId, 999, [place('1')], { pagesOk: [true] }),
+      ).rejects.toThrow()
+      await expect(
+        upsertPlaces(app, tenant, 'in_nope', 10, [], { pagesOk: [true] }),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+    })
+  })
+
+  describe('job runs', () => {
+    const rejection = (code: string, reason: string): ApplyRejection => ({
+      opIndex: 0,
+      code: code as ApplyRejection['code'],
+      reason,
+    })
+
+    it('start and finish: status, counters and the refused writes', async () => {
+      const run = await startJobRun(app, tenant, {
+        kind: 'barsy_full_pull',
+        integrationId,
+        startedAt: new Date('2026-10-09T10:00:00Z'),
+      })
+      expect(run.id).toMatch(/^jb_[0-9A-Za-z]{22}$/)
+      expect(run).toMatchObject({ status: 'running', kind: 'barsy_full_pull', integrationId })
+
+      const finished = await finishJobRun(app, tenant, run.id, {
+        status: 'completed',
+        counters: { articles_seen: 58, created: 58 },
+        summary: 'deletion check skipped: 1 page failed',
+        refused: [
+          rejection('unknown_link', 'article 5 is not linked to a node'),
+          rejection('unknown_link', 'article 6 is not linked to a node'),
+          rejection('layer_not_allowed', 'price is locked'),
+        ],
+      })
+      expect(finished).toMatchObject({
+        status: 'completed',
+        counters: {
+          articles_seen: 58,
+          created: 58,
+          refused_writes: 3,
+          refused_unknown_link: 2,
+          refused_layer_not_allowed: 1,
+        },
+      })
+      expect(finished?.finishedAt).toBeInstanceOf(Date)
+      expect(finished?.errorSummary).toContain('deletion check skipped: 1 page failed')
+      expect(finished?.errorSummary).toContain('3 writes refused')
+      expect(finished?.errorSummary).toContain('unknown_link x2')
+      expect(finished?.errorSummary).toContain('price is locked')
+
+      // A finished run stays finished.
+      expect(await finishJobRun(app, tenant, run.id, { status: 'failed' })).toBeNull()
+    })
+
+    it('a failed run keeps its summary, without URLs or their query strings', async () => {
+      const run = await startJobRun(app, tenant, { kind: 'barsy_connect', integrationId })
+      const finished = await finishJobRun(app, tenant, run.id, {
+        status: 'failed',
+        summary: 'fetch https://demo.barsyonline.com/endpoints/res/files_get?key=SECRET failed',
+      })
+      expect(finished?.errorSummary).toBe('fetch [url] failed')
+      expect(finished?.errorSummary).not.toContain('SECRET')
+    })
+
+    it('scrubs and cuts text, describes refusals, refuses bad input', async () => {
+      expect(scrubSummary(`a\u0000b http://x.test/p?q=1 ${'z'.repeat(3000)}`)).toHaveLength(2000)
+      expect(describeRefused([])).toBeNull()
+      expect(describeRefused([rejection('unknown_node', 'gone')])).toBe(
+        '1 write refused (unknown_node x1). unknown_node: gone',
+      )
+      await expect(startJobRun(app, tenant, { kind: 'Bad Kind' })).rejects.toMatchObject({
+        code: 'invalid_input',
+      })
+      const run = await startJobRun(app, tenant, { kind: 'asset_fetch', integrationId })
+      await expect(
+        finishJobRun(app, tenant, run.id, { status: 'completed', counters: { a: 1.5 } }),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+      await finishJobRun(app, tenant, run.id, { status: 'completed' })
+      const stored = await withTenant(app, tenant, (tx) =>
+        tx.select().from(jobRuns).where(eq(jobRuns.id, run.id)),
+      )
+      expect(stored[0]).toMatchObject({ counters: {}, errorSummary: null })
+    })
+
+    it('another tenant cannot finish this tenant’s run', async () => {
+      const run = await startJobRun(app, tenant, { kind: 'asset_fetch', integrationId })
+      expect(await finishJobRun(app, otherTenant, run.id, { status: 'failed' })).toBeNull()
+    })
+  })
+
+  describe('sync state in the integration config', () => {
+    const configOf = async () =>
+      (await owner.query('select config from restro.integrations where id = $1', [integrationId]))
+        .rows[0]?.config as unknown
+
+    it('merges the cursor and hashes per venue without touching other keys', async () => {
+      const cursor = '2026-10-09T10:00:00+03:00'
+      const hash = 'a'.repeat(64)
+      expect(await updateSyncState(app, tenant, integrationId, 10, { cursor })).toBe(true)
+      expect(await updateSyncState(app, tenant, integrationId, 10, { tree_hash: hash })).toBe(true)
+      await updateSyncState(app, tenant, integrationId, 11, { cursor: '2026-10-09T11:00:00Z' })
+      const config = await configOf()
+      expect(readSyncState(config, 10)).toEqual({ cursor, tree_hash: hash })
+      expect(readSyncState(config, 11)).toEqual({ cursor: '2026-10-09T11:00:00Z' })
+      expect(readSyncState(config, 12)).toEqual({})
+    })
+
+    it('stores the cached tree per venue; unknown integrations and bad values are refused', async () => {
+      const tree = {
+        fetched_at: '2026-10-09T10:00:00Z',
+        categories: [
+          { cat_id: 1, parent_id: null, name: 'Drinks' },
+          { cat_id: 2, parent_id: 1, name: 'Beer' },
+        ],
+      }
+      expect(await storeCachedTree(app, tenant, integrationId, 10, tree)).toBe(true)
+      expect(readCachedTree(await configOf(), 10)).toEqual(tree)
+      expect(readCachedTree(await configOf(), 11)).toBeNull()
+      // The sync state written before is still there.
+      expect(readSyncState(await configOf(), 10).cursor).toBeDefined()
+
+      expect(await updateSyncState(app, tenant, newId('in'), 10, { cursor: tree.fetched_at })).toBe(
+        false,
+      )
+      expect(
+        await updateSyncState(app, otherTenant, integrationId, 10, { cursor: tree.fetched_at }),
+      ).toBe(false)
+      await expect(
+        updateSyncState(app, tenant, integrationId, 10, { cursor: 'yesterday' }),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+      await expect(
+        updateSyncState(app, tenant, integrationId, 10, { surprise: 1 } as never),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+    })
+
+    it('reads nothing sensible from a config it cannot read', () => {
+      expect(readSyncState(null, 10)).toEqual({})
+      expect(readSyncState({ sync: 'x' }, 10)).toEqual({})
+      expect(readCachedTree({ catalogue_trees: { '10': { nope: 1 } } }, 10)).toBeNull()
+    })
+  })
+})

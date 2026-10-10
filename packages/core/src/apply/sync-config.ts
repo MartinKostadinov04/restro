@@ -1,0 +1,127 @@
+// What the barsy sync keeps in `integrations.config`, per barsy venue (`bid`): the incremental
+// cursor, the hash of the last public category tree, and the cached tree for the catalogue-root
+// picker (S2-05). Config, not a column, so no migration: the keys are written atomically (one
+// `UPDATE` per key, merged inside Postgres), so two venues' runs never overwrite each other.
+//
+// Stored values are snake_case (convention). The cursor is an instant (ISO 8601 with an offset);
+// the worker turns it into the venue-local text barsy's `last_update` filter expects.
+
+import { type DbPool, integrations } from '@restro/db'
+import { withTenantWrite } from '@restro/db/write'
+import { eq, sql } from 'drizzle-orm'
+import { z } from 'zod'
+
+import { isId } from '../ids'
+import { ProvisionError } from './provision'
+
+const IsoInstant = z.iso.datetime({ offset: true })
+const Sha256 = z.string().regex(/^[0-9a-f]{64}$/)
+
+/** The sync bookkeeping of one barsy venue. */
+export const SyncStateSchema = z.object({
+  /** Start of the last successful run (full or incremental). Advances only after success. */
+  cursor: IsoInstant.optional(),
+  /** SHA-256 of the last public category tree a successful run saw. */
+  tree_hash: Sha256.optional(),
+  last_full_pull_at: IsoInstant.optional(),
+  last_incremental_at: IsoInstant.optional(),
+})
+export type SyncState = z.output<typeof SyncStateSchema>
+
+/** The public category tree of one barsy venue, reduced to what the root picker needs. */
+export const CachedTreeSchema = z.object({
+  fetched_at: IsoInstant,
+  categories: z.array(
+    z.object({
+      cat_id: z.int(),
+      parent_id: z.int().nullable(),
+      /** The public name when there is one, else the internal one. */
+      name: z.string(),
+    }),
+  ),
+})
+export type CachedTree = z.output<typeof CachedTreeSchema>
+
+const SyncConfigSchema = z.object({
+  sync: z.record(z.string(), SyncStateSchema).optional(),
+  catalogue_trees: z.record(z.string(), CachedTreeSchema).optional(),
+})
+
+/** The sync state of `bid` in an integration's `config` (empty when there is none or it is unreadable). */
+export function readSyncState(config: unknown, bid: number | string): SyncState {
+  const parsed = SyncConfigSchema.safeParse(config)
+  return parsed.success ? (parsed.data.sync?.[String(bid)] ?? {}) : {}
+}
+
+/** The cached category tree of `bid`, or null. */
+export function readCachedTree(config: unknown, bid: number | string): CachedTree | null {
+  const parsed = SyncConfigSchema.safeParse(config)
+  return parsed.success ? (parsed.data.catalogue_trees?.[String(bid)] ?? null) : null
+}
+
+function check(tenantId: string, integrationId: string, bid: number): void {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  if (!Number.isSafeInteger(bid) || bid < 0) {
+    throw new ProvisionError('invalid_input', 'bid must be a non-negative integer')
+  }
+}
+
+/**
+ * Merges `patch` into the sync state of one barsy venue and returns whether the integration
+ * exists. Atomic: `config.sync.<bid>` is merged inside one `UPDATE`.
+ */
+export async function updateSyncState(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  patch: SyncState,
+): Promise<boolean> {
+  check(tenantId, integrationId, bid)
+  const parsed = SyncStateSchema.strict().safeParse(patch)
+  if (!parsed.success) throw new ProvisionError('invalid_input', z.prettifyError(parsed.error))
+  const key = String(bid)
+  const merged = JSON.stringify({ [key]: parsed.data })
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: sql`${integrations.config} || jsonb_build_object('sync',
+          coalesce(${integrations.config} -> 'sync', '{}'::jsonb) || jsonb_build_object(${key}::text,
+            coalesce(${integrations.config} -> 'sync' -> ${key}::text, '{}'::jsonb) || (${merged}::jsonb -> ${key}::text)))`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}
+
+/** Replaces the cached category tree of one barsy venue. Returns whether the integration exists. */
+export async function storeCachedTree(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  tree: CachedTree,
+): Promise<boolean> {
+  check(tenantId, integrationId, bid)
+  const parsed = CachedTreeSchema.safeParse(tree)
+  if (!parsed.success) throw new ProvisionError('invalid_input', z.prettifyError(parsed.error))
+  const key = String(bid)
+  const value = JSON.stringify(parsed.data)
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: sql`${integrations.config} || jsonb_build_object('catalogue_trees',
+          coalesce(${integrations.config} -> 'catalogue_trees', '{}'::jsonb) ||
+            jsonb_build_object(${key}::text, ${value}::jsonb))`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}

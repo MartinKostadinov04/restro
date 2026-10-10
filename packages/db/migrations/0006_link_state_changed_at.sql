@@ -1,0 +1,3 @@
+ALTER TABLE "restro"."events" DROP CONSTRAINT "events_op";--> statement-breakpoint
+ALTER TABLE "restro"."source_links" ADD COLUMN "state_changed_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "restro"."events" ADD CONSTRAINT "events_op" CHECK ("restro"."events"."op" in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState'));

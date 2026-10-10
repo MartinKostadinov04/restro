@@ -1,0 +1,149 @@
+'use client'
+
+// The right-hand side: the open section (or Unsorted) with its items in order. The items are a
+// Droppable list: drag the handle (or use the keyboard) to reorder; drop on a row of the tree to
+// move to another section.
+import { Droppable } from '@hello-pangea/dnd'
+import type { NodeId } from '@restro/core'
+import { InboxIcon, LayoutListIcon, ListChecksIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
+import { Badge } from '@/components/ui/badge'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
+
+import { HiddenBadge, IssuesBadge, OriginBadge } from './badges'
+import { useComposer } from './composer-context'
+import { UNSORTED_KEY } from './dnd'
+import { ItemRow } from './item-row'
+import { sectionTitle } from './labels'
+import { SectionMenu } from './row-menus'
+
+function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly NodeId[] }) {
+  const t = useTranslations('composer')
+  const empty = sectionId === null ? 'noUnsorted' : 'noItems'
+  return (
+    <Droppable droppableId={`items:${sectionId ?? UNSORTED_KEY}`} type="ITEM">
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.droppableProps}
+          data-testid="item-list"
+          className={cn('min-h-40 rounded-lg', snapshot.isDraggingOver && 'bg-accent/40')}
+        >
+          {ids.length > 0 ? (
+            <ul>
+              {ids.map((id, index) => (
+                <ItemRow key={id} itemId={id} sectionId={sectionId} index={index} />
+              ))}
+            </ul>
+          ) : (
+            <Empty className="min-h-40" data-testid="item-list-empty">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  {sectionId === null ? <ListChecksIcon aria-hidden /> : <InboxIcon aria-hidden />}
+                </EmptyMedia>
+                <EmptyTitle>{t(`empty.${empty}.title`)}</EmptyTitle>
+                <EmptyDescription>{t(`empty.${empty}.description`)}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+          {provided.placeholder}
+        </div>
+      )}
+    </Droppable>
+  )
+}
+
+function SectionHeader({ sectionId }: { sectionId: NodeId }) {
+  const t = useTranslations('composer')
+  const { view, toggleSectionHidden } = useComposer()
+  const section = view.sections[sectionId]
+  if (!section) return null
+  const title = sectionTitle(view, sectionId, t('untitledSection'))
+  const count = view.placements[sectionId]?.length ?? 0
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div className="grid min-w-0 gap-1.5">
+        <h2 className="truncate text-lg font-semibold tracking-tight" data-testid="pane-title">
+          {title}
+        </h2>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <OriginBadge origin={section.origin} />
+          {section.hidden ? <HiddenBadge hiddenBy="status" /> : null}
+          <IssuesBadge issues={section.issues} />
+          <span className="text-sm text-muted-foreground">{t('itemCount', { count })}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Switch
+            checked={!section.hidden}
+            onCheckedChange={() => toggleSectionHidden(sectionId)}
+            aria-label={t('visibility.toggleSection')}
+            data-testid="section-visible"
+          />
+          <span className="hidden sm:inline">{t('visibility.toggleSection')}</span>
+        </div>
+        <SectionMenu sectionId={sectionId} />
+      </div>
+    </header>
+  )
+}
+
+export function ItemPane() {
+  const t = useTranslations('composer')
+  const { view, selection } = useComposer()
+
+  if (selection === null || (selection !== UNSORTED_KEY && !view.sections[selection])) {
+    return (
+      <Empty className="min-h-72" data-testid="pane-empty">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <LayoutListIcon aria-hidden />
+          </EmptyMedia>
+          <EmptyTitle>{t('empty.noSelection.title')}</EmptyTitle>
+          <EmptyDescription>{t('empty.noSelection.description')}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  if (selection === UNSORTED_KEY) {
+    return (
+      <section
+        className="grid gap-4"
+        aria-label={t('listLabel', { section: t('unsorted') })}
+        data-testid="item-pane"
+        data-pane="unsorted"
+      >
+        <header className="grid gap-1.5">
+          <h2 className="text-lg font-semibold tracking-tight" data-testid="pane-title">
+            {t('unsorted')}
+          </h2>
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <Badge variant="secondary">{t('itemCount', { count: view.unsortedIds.length })}</Badge>
+            {t('unsortedHint')}
+          </p>
+        </header>
+        <ItemList sectionId={null} ids={view.unsortedIds} />
+      </section>
+    )
+  }
+
+  return (
+    <section
+      className="grid gap-4"
+      aria-label={t('listLabel', { section: sectionTitle(view, selection, t('untitledSection')) })}
+      data-testid="item-pane"
+      data-pane={selection}
+    >
+      <SectionHeader sectionId={selection} />
+      <ItemList
+        sectionId={selection}
+        ids={(view.placements[selection] ?? []).map((p) => p.itemId)}
+      />
+    </section>
+  )
+}

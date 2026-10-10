@@ -44,6 +44,10 @@ export interface FieldEditorSheetProps {
   onOpenChange: (open: boolean) => void
   /** Called with the new value (`undefined` = cleared) once it is valid. */
   onSave: (value: unknown) => void
+  /** What the sheet says about saving; the default is the Stage 1 preview's "saved locally". */
+  description?: string
+  /** True while a save is under way: the buttons wait, so a value is not saved twice. */
+  saving?: boolean
 }
 
 interface EditorFormProps {
@@ -51,10 +55,11 @@ interface EditorFormProps {
   value: unknown
   onSave: (value: unknown) => void
   onCancel: () => void
+  saving: boolean
 }
 
 /** The form inside the sheet. It exists only while the sheet is open, so every opening starts from the stored value. */
-function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
+function EditorForm({ definition, value, onSave, onCancel, saving }: EditorFormProps) {
   const t = useTranslations('fields.editor')
   const label = useFieldLabel(definition)
   const inputId = useId()
@@ -71,7 +76,7 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
   // barsy value as overridden.
   const editable = isFieldEditable(definition.type)
   const save = handleSubmit((data) => {
-    if (editable) onSave(data.value)
+    if (editable && !saving) onSave(data.value)
   })
   const issue = errors.value?.message as EditorIssue | undefined
 
@@ -117,6 +122,7 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
               type="button"
               variant="ghost"
               className="mr-auto"
+              disabled={saving}
               onClick={() => onSave(undefined)}
             >
               {t('clear')}
@@ -125,7 +131,11 @@ function EditorForm({ definition, value, onSave, onCancel }: EditorFormProps) {
           <Button type="button" variant="outline" onClick={onCancel}>
             {t('cancel')}
           </Button>
-          {editable ? <Button type="submit">{t('save')}</Button> : null}
+          {editable ? (
+            <Button type="submit" disabled={saving}>
+              {t('save')}
+            </Button>
+          ) : null}
         </div>
       </div>
     </form>
@@ -138,6 +148,8 @@ export function FieldEditorSheet({
   open,
   onOpenChange,
   onSave,
+  description,
+  saving = false,
 }: FieldEditorSheetProps) {
   const t = useTranslations('fields.editor')
   const label = useFieldLabel(definition)
@@ -148,6 +160,7 @@ export function FieldEditorSheet({
       value={value}
       onSave={onSave}
       onCancel={() => onOpenChange(false)}
+      saving={saving}
     />
   )
 
@@ -157,7 +170,7 @@ export function FieldEditorSheet({
         <DrawerContent className="max-h-[85svh]">
           <DrawerHeader className="text-left">
             <DrawerTitle>{t('title', { field: label })}</DrawerTitle>
-            <DrawerDescription>{t('description')}</DrawerDescription>
+            <DrawerDescription>{description ?? t('description')}</DrawerDescription>
           </DrawerHeader>
           {form}
         </DrawerContent>
@@ -173,7 +186,7 @@ export function FieldEditorSheet({
       >
         <SheetHeader>
           <SheetTitle>{t('title', { field: label })}</SheetTitle>
-          <SheetDescription>{t('description')}</SheetDescription>
+          <SheetDescription>{description ?? t('description')}</SheetDescription>
         </SheetHeader>
         {form}
       </SheetContent>

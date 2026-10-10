@@ -1,4 +1,14 @@
-// @restro/core/apply: everything in core that writes to the database. A separate entry point so
+// @restro/core/apply: everything in core that touches the database. A separate entry point so
 // that `@restro/core` stays free of I/O (the shell, the faces and the browser import that one).
 // Rule 1: only files in this folder may import `@restro/db/write`.
+export * from './apply'
+export * from './barsy-venues'
+export * from './create-asset'
+export * from './job-runs'
+export * from './load-document'
+export * from './load-item-document'
 export * from './provision'
+export * from './sources'
+export * from './sync-config'
+export * from './unlink'
+export * from './unplaced'
