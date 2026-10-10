@@ -46,6 +46,8 @@ describe('proxy (the optimistic sign-in gate)', () => {
       '/api/health',
       '/_next/static/chunks/a.js',
       '/dev/fields',
+      '/cdn/m/nd_x/vn_x/current.json',
+      '/cdn/anything-without-an-extension',
       '/favicon.ico',
       '/logo.png',
     ]) {

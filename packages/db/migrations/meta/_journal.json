@@ -64,6 +64,13 @@
       "when": 1791593528187,
       "tag": "0008_publish_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791595447496,
+      "tag": "0009_asset_variants_decision_note",
+      "breakpoints": true
     }
   ]
 }

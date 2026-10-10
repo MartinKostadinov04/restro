@@ -41,6 +41,7 @@ import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
 import type { BarsyPolicy, SealKeys } from '../config'
+import { queuePublishAfterSync } from '../publish/after-sync'
 import {
   cachedTreeOf,
   recordSuccess,
@@ -48,7 +49,12 @@ import {
   runIncremental,
   treeHashOf,
 } from '../sync/catalogue'
-import { type PhotoStore, type SyncEnvironment, withIntegration } from '../sync/context'
+import {
+  type IntegrationSession,
+  type PhotoStore,
+  type SyncEnvironment,
+  withIntegration,
+} from '../sync/context'
 import { lastUpdateFilter } from '../sync/cursor'
 import { fullPullStartedWithin, loadVenueTarget } from '../sync/data'
 import { LimiterRegistry } from '../sync/limiter'
@@ -93,6 +99,19 @@ function parsePayload<S extends z.ZodType>(schema: S, job: Job<object>, name: st
   const parsed = schema.safeParse(job.data)
   if (!parsed.success) throw new Error(`the ${name} job has an invalid payload`)
   return parsed.data
+}
+
+/** Who the publish after a pull is queued for: the venue the pull read, with the integration's settings. */
+function afterSyncTarget(
+  payload: BarsyPullJob,
+  session: IntegrationSession,
+): Parameters<typeof queuePublishAfterSync>[1] {
+  return {
+    tenantId: payload.tenantId,
+    integrationId: payload.integrationId,
+    venueId: payload.venueId,
+    config: session.integration.config,
+  }
 }
 
 function isFlagSet(value: unknown): boolean {
@@ -264,6 +283,11 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   statusDetail: null,
                   lastCheckedAt: env.now(),
                 })
+                await queuePublishAfterSync(
+                  env,
+                  afterSyncTarget(payload, session),
+                  outcome.counters.ops_applied ?? 0,
+                )
                 return {
                   counters: outcome.counters,
                   notes: outcome.notes,
@@ -363,6 +387,11 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   lastUpdateFilter(new Date(state.cursor), target.timezone),
                 )
                 await recordSuccess(ctx, outcome, 'incremental')
+                await queuePublishAfterSync(
+                  env,
+                  afterSyncTarget(payload, session),
+                  outcome.counters.ops_applied ?? 0,
+                )
                 return {
                   counters: outcome.counters,
                   notes: outcome.notes,
@@ -400,6 +429,17 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
           withIntegration(env, payload, async (session) => {
             try {
               const result = await fetchPhoto(env, session, payload, run.id)
+              // A new asset gets its phone-sized webp variants (idempotent; the backfill command
+              // catches any that this misses).
+              if (result.asset === 'created' && result.assetId !== undefined) {
+                const variants = prepareJob(JOB_NAMES.assetVariants, {
+                  tenantId: payload.tenantId,
+                  assetId: result.assetId,
+                })
+                await env.enqueue(JOB_NAMES.assetVariants, variants.data, {
+                  singletonKey: variants.singletonKey,
+                })
+              }
               const counters = {
                 assets_created: result.asset === 'created' ? 1 : 0,
                 assets_reused: result.asset === 'reused' ? 1 : 0,

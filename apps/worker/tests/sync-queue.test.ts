@@ -63,6 +63,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       seal: world.keys,
       barsy: policy as WorkerConfig['barsy'],
       assets: { kind: 'local', dir: tmpdir() },
+      publish: { kind: 'local', dir: tmpdir() },
     }
     worker = await startWorker(config, {
       logger,
@@ -282,21 +283,28 @@ describe('buildJobs', () => {
     seal: null,
     barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
     assets: { kind: 'local', dir: tmpdir() },
+    publish: { kind: 'local', dir: tmpdir() },
   } as unknown as WorkerConfig
 
-  it('without the sealing keys it registers the heartbeat only and warns once', async () => {
+  it('without the sealing keys it registers the heartbeat and the publish jobs, and warns once', async () => {
     const warnings: string[] = []
     const log = {
       warn: (message: string) => warnings.push(message),
     } as unknown as Parameters<typeof buildJobs>[1]
     const jobs = await buildJobs(configWithoutKeys, log)
-    expect(jobs.map((job) => job.name)).toEqual(['worker-heartbeat'])
+    expect(jobs.map((job) => job.name)).toEqual([
+      'worker-heartbeat',
+      JOB_NAMES.publishMenu,
+      JOB_NAMES.publishFiles,
+      JOB_NAMES.publishLive,
+      JOB_NAMES.assetVariants,
+    ])
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('SEAL_PUBLIC_KEY')
     expect(warnings[0]).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
-  it('with the keys it adds the four jobs and the two ticks', async () => {
+  it('with the keys it adds the four sync jobs and the two ticks to the publish jobs', async () => {
     const world = await import('../src/config').then(async ({ loadConfig }) => {
       const { generateSealKeyPair } = await import('@restro/core/seal-open')
       const pair = generateSealKeyPair()
@@ -315,6 +323,10 @@ describe('buildJobs', () => {
       JOB_NAMES.assetFetch,
       JOB_NAMES.barsyIncrementalTick,
       JOB_NAMES.barsyFullPullTick,
+      JOB_NAMES.publishMenu,
+      JOB_NAMES.publishFiles,
+      JOB_NAMES.publishLive,
+      JOB_NAMES.assetVariants,
     ])
   })
 })

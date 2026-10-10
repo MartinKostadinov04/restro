@@ -1,6 +1,6 @@
 // The R2 store against a mocked S3 client: no network and no real keys. Presigning is local
 // (it signs with the credentials), so a real client with made-up credentials proves the URL.
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { type GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { describe, expect, it, vi } from 'vitest'
 
 import { R2AssetStore } from './r2-store'
@@ -33,6 +33,20 @@ describe('R2AssetStore', () => {
       Body: bytes,
       ContentType: 'image/webp',
     })
+  })
+
+  it('gets the bytes of a key, null when the key is missing, and lets other failures through', async () => {
+    const { store, send } = makeStore()
+    send.mockImplementationOnce(
+      async () => ({ Body: { transformToByteArray: async () => Uint8Array.of(4, 5) } }) as never,
+    )
+    expect(Array.from((await store.get(KEY)) ?? [])).toEqual([4, 5])
+    const command = send.mock.calls[0]?.[0] as GetObjectCommand
+    expect(command.input).toMatchObject({ Bucket: BUCKET, Key: KEY })
+    send.mockRejectedValueOnce(Object.assign(new Error('gone'), { name: 'NoSuchKey' }))
+    expect(await store.get(KEY)).toBeNull()
+    send.mockRejectedValueOnce(new Error('AccessDenied'))
+    await expect(store.get(KEY)).rejects.toThrow('AccessDenied')
   })
 
   it('lets a failure of the bucket through, so the upload fails', async () => {

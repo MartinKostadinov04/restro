@@ -13,11 +13,13 @@ import { sha256Hex } from '../hash'
 import { type NodeId, newId, type SnapshotId } from '../ids'
 import * as core from '../index'
 import { apply } from './apply'
+import { createAsset, setAssetVariants } from './create-asset'
 import * as applyEntry from './index'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import {
   listSnapshots,
   loadCurrentSnapshot,
+  loadLiveOverlay,
   loadSnapshot,
   PublishError,
   publishMenu,
@@ -392,6 +394,162 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     const dates = await firstPublished()
     expect(dates[added]).toBe(at(50).toISOString())
     expect(dates[handMade[0]]).toBe(at(0).toISOString())
+  })
+
+  describe('held snapshots and a later successful publish', () => {
+    // Ten fresh items, so the menu is big enough to hide a third of it step by step. A manual
+    // layer can only hide (rule 5), so the tests hide and never un-hide.
+    const extra = Array.from({ length: 10 }, () => newId('nd'))
+    const hide = (ids: readonly string[]) => run(ids.map((id) => manual(id, 'visible', false)))
+
+    it('turns down every older held snapshot as superseded, by the system', async () => {
+      await run(
+        extra.flatMap((id, index) => [
+          { op: 'createNode', id, nodeType: 'item', parent: null, status: 'active' },
+          manual(id, 'name', { bg_BG: `Допълнителна ${index}`, en_US: `Extra ${index}` }),
+          manual(id, 'price', eur(900 + index)),
+          manual(id, 'allergens', []),
+          { op: 'setPlacement', item: { id }, section: { id: section }, sortKey: 'end' },
+        ]),
+      )
+      expect((await publish('manual', 52)).status).toBe('published')
+
+      // Two different automatic publishes, each hiding more than 30% of the items: two held rows.
+      await hide(extra.slice(0, 5))
+      const first = await publish('auto_sync', 53)
+      await hide(extra.slice(5, 6))
+      const second = await publish('auto_sync', 54)
+      expect([first.status, second.status]).toEqual(['held', 'held'])
+      expect(second.snapshot.id).not.toBe(first.snapshot.id)
+
+      const manualPublish = await publish('manual', 55)
+      expect(manualPublish.status).toBe('published')
+      for (const held of [first, second]) {
+        const row = await loadSnapshot(app, tenant, held.snapshot.id)
+        expect(row).toMatchObject({
+          status: 'rejected',
+          decidedBy: 'system',
+          decisionNote: 'superseded',
+        })
+        expect(row?.decidedAt).toBe(at(55).toISOString())
+        // What was held stays on record, and the pointer is the new publish.
+        expect(row?.heldReason?.code).toBe('V11')
+      }
+      expect((await loadCurrentSnapshot(app, tenant, scope()))?.id).toBe(manualPublish.snapshot.id)
+      // The publish itself carries no decision.
+      expect(manualPublish.snapshot.decisionNote).toBeNull()
+      // And a person can no longer approve the superseded one.
+      await expect(publish('manual', 56, { approveHold: first.snapshot.id })).rejects.toMatchObject(
+        { code: 'held_not_found' },
+      )
+    })
+
+    it('approving one held snapshot also turns down the others', async () => {
+      const visibleNow = Object.keys(
+        (await loadCurrentSnapshot(app, tenant, scope()))?.body?.items ?? {},
+      ).length
+      expect(visibleNow).toBe(7)
+      await hide(extra.slice(6, 9))
+      const heldA = await publish('auto_sync', 57)
+      await hide(extra.slice(9, 10))
+      const heldB = await publish('auto_sync', 58)
+      expect([heldA.status, heldB.status]).toEqual(['held', 'held'])
+
+      const approved = await publish('manual', 59, { approveHold: heldB.snapshot.id })
+      expect(approved).toMatchObject({
+        status: 'published',
+        snapshot: { id: heldB.snapshot.id, decidedBy: 'user:us_test', decisionNote: null },
+      })
+      expect(await loadSnapshot(app, tenant, heldA.snapshot.id)).toMatchObject({
+        status: 'rejected',
+        decidedBy: 'system',
+        decisionNote: 'superseded',
+      })
+    })
+  })
+
+  it('shows a stored image only once its variants exist (assets.variants), never a broken link', async () => {
+    const asset = await createAsset(app, tenant, {
+      origin: 'upload',
+      contentType: 'image/png',
+      checksum: sha256Hex('publish-test-image'),
+      width: 800,
+      height: 600,
+      storageKey: `tenants/${tenant}/assets/publish-test/original.png`,
+    })
+    const item = handMade[0]
+    await run([manual(item, 'image', { asset_id: asset.id, alt: {}, focal: null })])
+    // No variants yet: the image is left out, so the content is the current snapshot's.
+    const without = await publish('manual', 80)
+    expect(without.status).toBe('unchanged')
+    expect(without.snapshot.body?.assets).toEqual({})
+    expect(without.snapshot.body?.items[item]?.image).toBeNull()
+
+    expect(
+      await setAssetVariants(app, tenant, asset.id, { thumb: 320, card: 640, full: 800 }),
+    ).toBe(true)
+    const withVariants = await publish('manual', 81)
+    expect(withVariants.status).toBe('published')
+    expect(withVariants.snapshot.body?.items[item]?.image).toBe(asset.id)
+    expect(withVariants.snapshot.body?.assets[asset.id]).toMatchObject({
+      w: 800,
+      h: 600,
+      variants: {
+        thumb: `/a/${asset.id}/w320.webp`,
+        card: `/a/${asset.id}/w640.webp`,
+        full: `/a/${asset.id}/w800.webp`,
+      },
+    })
+    expect(JSON.stringify(withVariants.snapshot.body)).not.toContain('original.png')
+
+    // A malformed record counts as no variants; an explicit hook overrides the stored record.
+    await withTenantWrite(app, tenant, (tx) =>
+      tx.execute(
+        sql`update restro.assets set variants = '{"thumb":1}'::jsonb where id = ${asset.id}`,
+      ),
+    )
+    const broken = await publish('manual', 82)
+    expect(broken.snapshot.body?.items[item]?.image).toBeNull()
+    const hooked = await publishMenu(
+      app,
+      tenant,
+      { menuId: menu.id, venueId, reason: 'manual', actor: 'system' },
+      { now: at(83), assetVariants: () => ({ thumb: 100, card: 200, full: 300 }) },
+    )
+    expect(hooked.snapshot.body?.assets[asset.id]?.variants.card).toBe(`/a/${asset.id}/w200.webp`)
+
+    // Unknown asset, wrong tenant, malformed widths: nothing is recorded.
+    expect(await setAssetVariants(app, otherTenant, asset.id, { thumb: 1, card: 2, full: 3 })).toBe(
+      false,
+    )
+    await expect(
+      setAssetVariants(app, tenant, asset.id, { thumb: 640, card: 320, full: 1280 }),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+  })
+
+  it('the live overlay marks what the document puts off sale, for the current snapshot', async () => {
+    const before = await loadLiveOverlay(app, tenant, scope(), { now: at(70) })
+    const published = await loadCurrentSnapshot(app, tenant, scope())
+    expect(before?.snapshotId).toBe(published?.id)
+    expect(before?.overlay).toEqual({ version: published?.version, items: {} })
+
+    await run([barsy('for_sale', false, `venue:${venueId}`)], `barsy:${integration}`)
+    const soldOut = await loadLiveOverlay(app, tenant, scope(), { now: at(71) })
+    expect(soldOut?.overlay.items).toEqual({ [barsyItem]: { sold_out: true } })
+    // Nothing was published: the snapshot is the same, and the overlay is only a file to write.
+    expect((await loadCurrentSnapshot(app, tenant, scope()))?.id).toBe(published?.id)
+    await run([barsy('for_sale', true, `venue:${venueId}`)], `barsy:${integration}`)
+    expect((await loadLiveOverlay(app, tenant, scope(), { now: at(72) }))?.overlay.items).toEqual(
+      {},
+    )
+
+    // Before the first publish there is nothing to overlay; other tenants see nothing.
+    const secondVenue = await provisionVenue(app, tenant, { name: 'Unpublished', slug: 'unpub' })
+    const fresh = await provisionMenu(app, tenant, secondVenue.id)
+    expect(
+      await loadLiveOverlay(app, tenant, { menuId: fresh.id, venueId: secondVenue.id }),
+    ).toBeNull()
+    expect(await loadLiveOverlay(app, otherTenant, scope())).toBeNull()
   })
 
   it('V10: refuses to publish a menu with no visible item, writing nothing', async () => {

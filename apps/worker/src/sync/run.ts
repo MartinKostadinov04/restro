@@ -53,14 +53,19 @@ function statusDetailFor(error: SyncError): string | null {
 }
 
 export async function trackedRun(
-  env: SyncEnvironment,
-  target: { readonly tenantId: string; readonly integrationId: string; readonly kind: string },
+  env: Pick<SyncEnvironment, 'pool' | 'log' | 'now'>,
+  target: {
+    readonly tenantId: string
+    /** Absent for a run that belongs to no integration (the publish jobs). */
+    readonly integrationId?: string
+    readonly kind: string
+  },
   body: (run: JobRun) => Promise<RunReport | undefined>,
 ): Promise<void> {
   const { tenantId, integrationId } = target
   const run = await startJobRun(env.pool, tenantId, {
     kind: target.kind,
-    integrationId,
+    ...(integrationId === undefined ? {} : { integrationId }),
     startedAt: env.now(),
   })
   const finish = async (status: 'completed' | 'failed', report: RunReport, summary?: string) => {
@@ -81,6 +86,7 @@ export async function trackedRun(
     }
   }
   const markIntegration = async (detail: string) => {
+    if (integrationId === undefined) return
     try {
       await updateIntegration(env.pool, tenantId, integrationId, {
         status: 'error',

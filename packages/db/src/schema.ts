@@ -275,6 +275,11 @@ export interface IntegrationConfig {
   default_locale?: string
   /** The mapping version barsy writes record (doc "Barsy to canonical mapping"). */
   mapping_version?: number
+  /**
+   * Whether a sync that changed something publishes the menu on its own (doc "Publish policy").
+   * Absent means true. S3-04 turns this into a setting of the Integration tab.
+   */
+  publish_after_sync?: boolean
 }
 
 /**
@@ -788,6 +793,17 @@ export const places = restro.table(
   ],
 )
 
+/**
+ * The photo variants made for one asset (brief S3-01b): the width in pixels of the webp file each
+ * variant name uses, `a/<as_ id>/w<width>.webp` in the publish store. Never wider than the
+ * original, so two names can share one file (a 300 px original has 300, 300, 300).
+ */
+export interface AssetVariants {
+  thumb: number
+  card: number
+  full: number
+}
+
 /** An image or file in the asset store; values point to it by its `as_` id, never by URL. */
 export const assets = restro.table(
   'assets',
@@ -805,11 +821,17 @@ export const assets = restro.table(
     height: integer('height'),
     storageKey: text('storage_key'),
     status: text('status').notNull().default('pending'),
+    /** The webp variants made for the publish store; null until the `asset-variants` job ran. */
+    variants: jsonb('variants').$type<AssetVariants>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check('assets_id_format', sql`${t.id} ~ '^as_[0-9A-Za-z]+$'`),
+    check(
+      'assets_variants_object',
+      sql`${t.variants} is null or jsonb_typeof(${t.variants}) = 'object'`,
+    ),
     check('assets_origin', sql`${t.origin} in ('upload', 'barsy')`),
     check('assets_status', sql`${t.status} in ('pending', 'stored', 'failed')`),
     check('assets_checksum', sql`${t.checksum} ~ ${SHA256_PATTERN}`),
@@ -873,6 +895,8 @@ export const snapshots = restro.table(
     /** A held row: who approved or rejected it, and when. */
     decidedBy: text('decided_by'),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
+    /** A short code for the decision: `superseded` for a held row a later publish replaced. */
+    decisionNote: text('decision_note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     publishedAt: timestamp('published_at', { withTimezone: true }),
   },
@@ -931,6 +955,10 @@ export const snapshots = restro.table(
       sql`(${t.heldReason} is null or (${t.reason} = 'auto_sync' and jsonb_typeof(${t.heldReason}) = 'object')) and (${t.status} = 'published' or ${t.heldReason} is not null)`,
     ),
     check('snapshots_decision', sql`(${t.decidedBy} is null) = (${t.decidedAt} is null)`),
+    check(
+      'snapshots_decision_note',
+      sql`${t.decisionNote} is null or (${t.decidedBy} is not null and ${t.decisionNote} ~ '^[a-z][a-z0-9_]{0,63}$')`,
+    ),
   ],
 )
 

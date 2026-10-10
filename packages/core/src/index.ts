@@ -4,6 +4,7 @@
 
 export * from './allergen-key'
 export * from './allergens'
+export * from './asset-variants'
 export * from './assets'
 export * from './change-set'
 export * from './document/merge'

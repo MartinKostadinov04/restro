@@ -71,6 +71,12 @@ describe('LocalAssetStore', () => {
 
   it('reads null for a key that holds nothing', async () => {
     expect(await store.read(KEY)).toBeNull()
+    expect(await store.get(KEY)).toBeNull()
+  })
+
+  it('gives the bytes back through the AssetStore contract (get)', async () => {
+    await store.put(KEY, BYTES, 'image/png')
+    expect(Array.from((await store.get(KEY)) ?? [])).toEqual(Array.from(BYTES))
   })
 
   it('returns a signed link to the serving route', async () => {
