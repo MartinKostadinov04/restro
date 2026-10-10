@@ -292,11 +292,9 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       dietary,
       tags,
       portion: valueAs('measurement', read('item', fields, 'portion')),
-      badges: [
-        ...(item.computed.badges.includes(NEW_BADGE) ? [NEW_BADGE] : []),
-        ...dietary,
-        ...tags,
-      ],
+      // Only "new": dietary labels and tags have their own slots, so a face never shows them
+      // twice (lead's decision 10-10, doc example `"badges": ["new"]`).
+      badges: item.computed.badges.includes(NEW_BADGE) ? [NEW_BADGE] : [],
       availability: {
         state: soldOut ? 'sold_out' : 'available',
         schedule: valueAs('availability', read('item', fields, 'availability')),

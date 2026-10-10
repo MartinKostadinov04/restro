@@ -190,7 +190,7 @@ describe('buildSnapshot', () => {
     })
   })
 
-  it('keeps only tags of the vocabulary, as tag ids, and derives the badges', () => {
+  it('keeps only tags of the vocabulary, as tag ids, and keeps only "new" as a badge', () => {
     const builder = barMenu()
     builder.set(NEGRONI, 'tags', 'manual', ['signature', SIGNATURE, 'tg_nope'])
     builder.set(NEGRONI, 'dietary', 'manual', ['vegetarian', 'vegan'])
@@ -200,7 +200,7 @@ describe('buildSnapshot', () => {
     expect(without.items[NEGRONI]).toMatchObject({
       tags: [],
       dietary: ['vegan', 'vegetarian'],
-      badges: ['new', 'vegan', 'vegetarian'],
+      badges: ['new'],
     })
     expect(without.tags).toEqual({})
 
@@ -208,7 +208,7 @@ describe('buildSnapshot', () => {
     const withTags = snapshotOf(builder, context({ tagVocabulary: vocabulary }), resolveContext)
     expect(withTags.items[NEGRONI]).toMatchObject({
       tags: [SIGNATURE],
-      badges: ['new', 'vegan', 'vegetarian', SIGNATURE],
+      badges: ['new'],
     })
     expect(withTags.tags).toEqual(vocabulary)
   })
