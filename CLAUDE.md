@@ -1,6 +1,6 @@
 # Restro — rules for coding agents
 
-Restro is a QR-to-phone menu and ordering web app for Bulgarian nightclubs on the barsy POS. Martin Kostadinov is the product owner; he does not read code. AI agents write all code. The lead agent writes briefs, reviews every diff and reports to Martin.
+Restro is a QR-to-phone menu and ordering web app for Bulgarian nightclubs on the barsy POS. Martin Kostadinov is the product owner; he does not read code. AI agents write all code. The lead agent writes briefs, reviews every diff and reports to Martin. Model per task (D58): Haiku for simple, precisely specified tasks; Sonnet by default; Opus only for complex work.
 
 ## Read before any task
 1. This file.
@@ -32,6 +32,11 @@ QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up t
 | `pnpm barsy:record` | Record barsy read responses as fixtures (credentials from `.env.local`) |
 
 A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass.
+
+**Database tests** run only with `CI=true` and `DATABASE_URL`, `DATABASE_URL_OWNER` and `DATABASE_APP_PASSWORD` set; the local values are in `.env.example`.
+- **If a local Postgres is already running on 54329,** reuse it with your own database name: create it, then `pnpm db:migrate` and `pnpm db:roles` against it.
+- **Never stop an instance you did not start.**
+- **Always go through `pnpm`**, never bare `node`: `use-node-version` pins Node 24.21.0.
 
 ## Repository layout
 ```

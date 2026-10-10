@@ -59,6 +59,8 @@ export interface BarsyCallOptions<T> {
 
 export interface BarsyResult<T> {
   readonly data: T
+  /** The response body as text, byte for byte (what `data` was parsed from). */
+  readonly raw: string
   readonly status: number
   /** BARSY_REQUEST_ID of the response; Lukanet support asks for it. */
   readonly requestId: string | null
@@ -247,7 +249,13 @@ export function createBarsyClient(
       const data = callOptions.schema
         ? validate(callOptions.schema, parsed, context)
         : (parsed as T)
-      return { data, status: raw.status, requestId: raw.requestId, durationMs: context.durationMs }
+      return {
+        data,
+        raw: raw.body,
+        status: raw.status,
+        requestId: raw.requestId,
+        durationMs: context.durationMs,
+      }
     })
   }
 
@@ -302,6 +310,7 @@ export function createBarsyClient(
       }
       return {
         data: data as BarsyManyData<C>,
+        raw: raw.body,
         status: raw.status,
         requestId: raw.requestId,
         durationMs: context.durationMs,

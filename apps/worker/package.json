@@ -4,19 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env.worker.local src/index.ts",
     "build": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/pg": "8.23.1",
+    "msw": "2.15.0",
     "pino-pretty": "13.1.3",
     "tsup": "8.5.1",
     "tsx": "4.23.15"
   },
   "dependencies": {
+    "@restro/assets": "workspace:*",
+    "@restro/barsy": "workspace:*",
+    "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0",
     "pg-boss": "12.35.1",
-    "pino": "10.4.0"
+    "pino": "10.4.0",
+    "zod": "4.6.5"
   }
 }

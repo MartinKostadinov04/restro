@@ -5,9 +5,24 @@ import { z } from 'zod'
 
 /**
  * Id kinds: `nd` node, `as` asset, `sn` snapshot, `tb` table, `tn` tenant, `vn` venue,
- * `tp` template, `cs` change set, `ev` event.
+ * `tp` template, `cs` change set, `ev` event, `jb` job run, `in` integration, `us` user,
+ * `sr` source record.
  */
-export const ID_KINDS = ['nd', 'as', 'sn', 'tb', 'tn', 'vn', 'tp', 'cs', 'ev'] as const
+export const ID_KINDS = [
+  'nd',
+  'as',
+  'sn',
+  'tb',
+  'tn',
+  'vn',
+  'tp',
+  'cs',
+  'ev',
+  'jb',
+  'in',
+  'us',
+  'sr',
+] as const
 
 /** One of the id kind prefixes. */
 export type IdKind = (typeof ID_KINDS)[number]
@@ -33,6 +48,14 @@ export type TemplateId = Id<'tp'>
 export type ChangeSetId = Id<'cs'>
 /** Id of an event row. */
 export type EventId = Id<'ev'>
+/** Id of a job run (a barsy pull, an import, a publish). */
+export type JobId = Id<'jb'>
+/** Id of an integration (one configured barsy installation). */
+export type IntegrationId = Id<'in'>
+/** Id of a user who can sign in to the admin. */
+export type UserId = Id<'us'>
+/** Id of a source record (one raw object exactly as a source returned it). */
+export type SourceRecordId = Id<'sr'>
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const RANDOM_BYTES = 16

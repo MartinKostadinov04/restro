@@ -3,9 +3,9 @@
 // single, reviewable act that lets it be sent. Each entry carries the official doc URL it was
 // checked against ("barsy calls" in CLAUDE.md).
 //
-// Later entries: the read methods of Collection path C in docs/architecture/data-architecture.md
-// (Barsys_getlist, Languages_getlist, Currencies_getlist, Categories_getalltree, Articles_getlist,
-// ...). None of them is added until it has its own task, doc check and typed wrapper.
+// The Stage 2 read methods (Collection path C) were checked against their doc pages by the lead
+// on 2026-10-09 and recorded from the demo installation (fixtures/demo/). Typed wrappers and
+// response schemas arrive with brief S2-02.
 
 export const BARSY_READ_METHODS = {
   // https://docs.lukanet.com/barsy.api/methods/misc/ping.html
@@ -14,6 +14,33 @@ export const BARSY_READ_METHODS = {
   // https://docs.lukanet.com/barsy.api/methods/misc/ping_user.html
   // Checks that the API is reachable and the user's credentials are valid.
   Misc_ping_user: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/barsys/getlist.html
+  // Venues of the installation; `mode` 'restrict' (default) = only those the user may access.
+  Barsys_getlist: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/languages/getlist.html
+  // [{lang_id, lang_name}]; the demo returns `sr_RS@latin` (normalise to sr_RS).
+  Languages_getlist: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/currencies/getlist.html
+  Currencies_getlist: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/categories/getalltree.html
+  // Always `only_public: 1`: with 0 the demo demands a registered till (a write we never do, D56).
+  Categories_getalltree: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/articles/getlist.html
+  // `filters` is required (send {} at least); page with `order_by: {article_id: 'asc'}`;
+  // `limits_by_barsys` for per-venue for-sale exceptions; `delete_flag` filter defaults to 0.
+  Articles_getlist: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/articlesupplements/get.html
+  // Option groups of one combo article (required, min/max, options with current price).
+  Articlesupplements_get: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/modificators/getlist.html
+  // Default `length` 50 (page it); `delete_flag` filter defaults to 0.
+  Modificators_getlist: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/articledetails/gettree.html
+  // Characteristic keys (e.g. "Алергени"), used to map allergens.
+  Articledetails_gettree: { auth: 'basic' },
+  // https://docs.lukanet.com/barsy.api/methods/places/getlist.html
+  // Tables/places; `place_num` documented as int but the demo returns text — store as text.
+  Places_getlist: { auth: 'basic' },
 } as const satisfies Record<string, { auth: 'none' | 'basic' }>
 
 export type BarsyReadMethod = keyof typeof BARSY_READ_METHODS

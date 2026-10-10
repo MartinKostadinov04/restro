@@ -23,7 +23,13 @@ const nextConfig: NextConfig = {
   // Workspace packages export TypeScript source (see README, "Workspace packages"),
   // so Next has to compile them. @restro/barsy is deliberately absent: the web app
   // never imports it (CLAUDE.md, import boundaries).
-  transpilePackages: ['@restro/core', '@restro/db', '@restro/shell', '@restro/qr-phone'],
+  transpilePackages: [
+    '@restro/assets',
+    '@restro/core',
+    '@restro/db',
+    '@restro/shell',
+    '@restro/qr-phone',
+  ],
   turbopack: {
     resolveAlias: { 'next-intl/config': requestConfig },
   },

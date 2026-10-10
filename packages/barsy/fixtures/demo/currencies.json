@@ -1,0 +1,9 @@
+{
+  "method": "Currencies_getlist",
+  "params": {},
+  "bid": null,
+  "recordedAt": "2026-10-09T08:26:26.875Z",
+  "status": 200,
+  "requestId": null,
+  "body": "[{\"currency_id\":1,\"currency_name\":\"\\u0415\\u0432\\u0440\\u043e\",\"currency_code\":\"EUR\",\"currency_rate\":1,\"currency_code_num\":978,\"currency_suffix\":\"\\u20ac\",\"currency_suffix_display\":\"\\u20ac\",\"currency_prefix\":\"\",\"delete_flag\":0,\"weight\":1,\"rounding_strategy\":null,\"is_secondary\":0,\"currency_settings\":{\"lists_show\":1,\"lists_add_cols\":1,\"order_prices_cdx\":1},\"is_current\":1}]"
+}

@@ -1,7 +1,9 @@
 'use client'
 
-// image, file and reference: shown here, edited in Stage 2. There is no asset store yet, so an
-// image shows a placeholder with its alt text and asset id (a value never holds a URL).
+// image, file and reference: shown here. An image is edited on the item sheet's Media tab (upload
+// and alt text), not in the generic editor; file and reference arrive later. An image shows its
+// alt text and asset id, with a thumbnail when the screen has a link to the file (a value never
+// holds a URL).
 import { FileIcon, ImageIcon, LinkIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 
@@ -14,15 +16,21 @@ function ImageDisplay({ value }: DisplayProps<'image'>) {
   const t = useTranslations('fields.media')
   const environment = useFieldEnvironment()
   const alt = pickLocalized(value.alt, environment.locale)
+  // The value holds the asset id only; a screen that has a link to the file (the item sheet)
+  // passes it through the environment, otherwise the placeholder stays.
+  const url = environment.assetUrls[value.asset_id]
   return (
     <div className="flex items-center gap-3">
-      <div className="flex size-14 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
-        <ImageIcon className="size-6" aria-hidden />
+      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted text-muted-foreground">
+        {url ? (
+          // biome-ignore lint/performance/noImgElement: plain <img> by decision U7 (no Next.js image optimizer)
+          <img src={url} alt="" className="size-full object-cover" />
+        ) : (
+          <ImageIcon className="size-6" aria-hidden />
+        )}
       </div>
-      <div className="grid min-w-0 gap-0.5">
-        <span className="truncate text-foreground">{alt ?? t('noAlt')}</span>
-        <code className="truncate font-mono text-xs text-muted-foreground">{value.asset_id}</code>
-      </div>
+      {/* Never the asset id: internal ids stay off the screen. */}
+      <span className="min-w-0 truncate text-foreground">{alt ?? t('noAlt')}</span>
     </div>
   )
 }

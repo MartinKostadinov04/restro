@@ -53,6 +53,19 @@ describe('@restro/core public surface', () => {
     for (const name of expected) expect(exported, name).toContain(name)
   })
 
+  it('exports the rule-6 conclusion, and no sealing: that needs node:crypto (@restro/core/seal)', () => {
+    const exported = Object.keys(core)
+    expect(exported).toEqual(expect.arrayContaining(['concludeFullPull', 'LINK_TRANSITIONS']))
+    for (const name of [
+      'sealSecret',
+      'openSecret',
+      'sealBarsyCredentials',
+      'openBarsyCredentials',
+    ]) {
+      expect(exported, name).not.toContain(name)
+    }
+  })
+
   it('lists the 11 barsy locales, the 14 EU allergens and the 17 field types', () => {
     expect(core.LOCALES).toEqual([
       'bg_BG',

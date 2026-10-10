@@ -22,6 +22,14 @@ describe('newId', () => {
     expect(chars.size).toBe(62)
   })
 
+  it('knows the Stage 2 kinds: job run, integration, user, source record', () => {
+    for (const kind of ['jb', 'in', 'us', 'sr'] as const) {
+      expect(ID_KINDS).toContain(kind)
+      expect(isId(kind, newId(kind))).toBe(true)
+    }
+    expect(new Set(ID_KINDS).size).toBe(ID_KINDS.length)
+  })
+
   it('refuses an unknown kind', () => {
     expect(() => newId('xx' as IdKind)).toThrow(TypeError)
   })

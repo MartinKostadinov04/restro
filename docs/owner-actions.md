@@ -57,3 +57,33 @@ Send this email from your usual address to **helpme@lukanet.com**. Edit the sign
 > Поздрави,
 > Мартин Костадинов
 > Restro
+
+---
+
+# Martin's actions for Stage 2
+
+## 4. Cloudflare R2: storage for menu photos (~15 min)
+1. Go to https://dash.cloudflare.com/sign-up and create a free account (or sign in if you have one).
+2. In the left menu open **R2 Object Storage** → **Purchase R2 Plan** / **Get started**. Cloudflare asks for a payment card even for the free plan; the free tier (10 GB, 1M writes, 10M reads a month, free egress) costs nothing at our size.
+3. **Create bucket**:
+   - Name: `restro-assets-staging`
+   - Location: **Specify jurisdiction → European Union (EU)**
+   - Default storage class: Standard
+   - Keep it **private** (do not enable public access or an r2.dev URL).
+4. Back on the R2 overview page: **Manage API tokens** (also called "API" → "Manage R2 API Tokens") → **Create API token** (account token):
+   - Name: `restro-staging`
+   - Permissions: **Object Read & Write**
+   - Specify bucket(s): **Apply to specific buckets only** → `restro-assets-staging`
+   - TTL: Forever → **Create API Token**
+5. The next page shows the values **only once**. Copy them straight into `E:\Restro\.env.local` (never into chat):
+   ```
+   R2_ACCOUNT_ID=<Account ID shown on the R2 overview page>
+   R2_ACCESS_KEY_ID=<Access Key ID>
+   R2_SECRET_ACCESS_KEY=<Secret Access Key>
+   R2_BUCKET=restro-assets-staging
+   R2_ENDPOINT=<the "EU" S3 endpoint shown, like https://<account id>.eu.r2.cloudflarestorage.com>
+   ```
+6. Tell the lead agent "R2 is in .env.local".
+
+## 5. Lukanet docs sign-in (when the lead agent asks)
+Press Ctrl+Shift+B to show the browser panel, sign in on the Lukanet page that is open, and say "signed in". The lead agent then checks every barsy call against the official docs (about 10 minutes); sessions expire after a while, so do it when asked.

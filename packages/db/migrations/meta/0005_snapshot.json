@@ -1,0 +1,2568 @@
+{
+  "id": "683a78bf-558d-4b0f-a501-1e34a4c98fc6",
+  "prevId": "992d34d1-1c4c-4a45-8f17-34fbaa6d22c7",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "restro.assets": {
+      "name": "assets",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin_ref": {
+          "name": "origin_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "assets_tenant_id_tenants_id_fk": {
+          "name": "assets_tenant_id_tenants_id_fk",
+          "tableFrom": "assets",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "assets_id_format": {
+          "name": "assets_id_format",
+          "value": "\"restro\".\"assets\".\"id\" ~ '^as_[0-9A-Za-z]+$'"
+        },
+        "assets_origin": {
+          "name": "assets_origin",
+          "value": "\"restro\".\"assets\".\"origin\" in ('upload', 'barsy')"
+        },
+        "assets_status": {
+          "name": "assets_status",
+          "value": "\"restro\".\"assets\".\"status\" in ('pending', 'stored', 'failed')"
+        },
+        "assets_checksum": {
+          "name": "assets_checksum",
+          "value": "\"restro\".\"assets\".\"checksum\" ~ '^[0-9a-f]{64}$'"
+        },
+        "assets_dimensions_positive": {
+          "name": "assets_dimensions_positive",
+          "value": "\"restro\".\"assets\".\"width\" > 0 and \"restro\".\"assets\".\"height\" > 0"
+        },
+        "assets_stored_is_complete": {
+          "name": "assets_stored_is_complete",
+          "value": "\"restro\".\"assets\".\"status\" <> 'stored' or (\"restro\".\"assets\".\"checksum\" is not null and \"restro\".\"assets\".\"storage_key\" is not null and \"restro\".\"assets\".\"content_type\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.auth_account": {
+      "name": "auth_account",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_account_user_id_idx": {
+          "name": "auth_account_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auth_account_user_id_auth_user_id_fk": {
+          "name": "auth_account_user_id_auth_user_id_fk",
+          "tableFrom": "auth_account",
+          "tableTo": "auth_user",
+          "schemaTo": "restro",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.auth_invitation": {
+      "name": "auth_invitation",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "inviter_id": {
+          "name": "inviter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "auth_invitation_organization_id_idx": {
+          "name": "auth_invitation_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "auth_invitation_email_idx": {
+          "name": "auth_invitation_email_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auth_invitation_organization_id_auth_organization_id_fk": {
+          "name": "auth_invitation_organization_id_auth_organization_id_fk",
+          "tableFrom": "auth_invitation",
+          "tableTo": "auth_organization",
+          "schemaTo": "restro",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "auth_invitation_inviter_id_auth_user_id_fk": {
+          "name": "auth_invitation_inviter_id_auth_user_id_fk",
+          "tableFrom": "auth_invitation",
+          "tableTo": "auth_user",
+          "schemaTo": "restro",
+          "columnsFrom": ["inviter_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.auth_member": {
+      "name": "auth_member",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_member_organization_id_idx": {
+          "name": "auth_member_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "auth_member_user_id_idx": {
+          "name": "auth_member_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auth_member_organization_id_auth_organization_id_fk": {
+          "name": "auth_member_organization_id_auth_organization_id_fk",
+          "tableFrom": "auth_member",
+          "tableTo": "auth_organization",
+          "schemaTo": "restro",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "auth_member_user_id_auth_user_id_fk": {
+          "name": "auth_member_user_id_auth_user_id_fk",
+          "tableFrom": "auth_member",
+          "tableTo": "auth_user",
+          "schemaTo": "restro",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "auth_member_organization_id_user_id_unique": {
+          "name": "auth_member_organization_id_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["organization_id", "user_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.auth_organization": {
+      "name": "auth_organization",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "logo": {
+          "name": "logo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "auth_organization_slug_unique": {
+          "name": "auth_organization_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": ["slug"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "auth_organization_id_is_tenant_id": {
+          "name": "auth_organization_id_is_tenant_id",
+          "value": "\"restro\".\"auth_organization\".\"id\" ~ '^tn_[0-9A-Za-z]+$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.auth_session": {
+      "name": "auth_session",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active_organization_id": {
+          "name": "active_organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "auth_session_user_id_idx": {
+          "name": "auth_session_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "auth_session_user_id_auth_user_id_fk": {
+          "name": "auth_session_user_id_auth_user_id_fk",
+          "tableFrom": "auth_session",
+          "tableTo": "auth_user",
+          "schemaTo": "restro",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "auth_session_token_unique": {
+          "name": "auth_session_token_unique",
+          "nullsNotDistinct": false,
+          "columns": ["token"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.auth_user": {
+      "name": "auth_user",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "auth_user_email_unique": {
+          "name": "auth_user_email_unique",
+          "nullsNotDistinct": false,
+          "columns": ["email"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.auth_verification": {
+      "name": "auth_verification",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "auth_verification_identifier_idx": {
+          "name": "auth_verification_identifier_idx",
+          "columns": [
+            {
+              "expression": "identifier",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.barsy_venues": {
+      "name": "barsy_venues",
+      "schema": "restro",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "integration_id": {
+          "name": "integration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bid": {
+          "name": "bid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "catalogue_root_cat_id": {
+          "name": "catalogue_root_cat_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "barsy_venues_tenant_id_tenants_id_fk": {
+          "name": "barsy_venues_tenant_id_tenants_id_fk",
+          "tableFrom": "barsy_venues",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "barsy_venues_integration_fk": {
+          "name": "barsy_venues_integration_fk",
+          "tableFrom": "barsy_venues",
+          "tableTo": "integrations",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "barsy_venues_venue_fk": {
+          "name": "barsy_venues_venue_fk",
+          "tableFrom": "barsy_venues",
+          "tableTo": "venues",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "barsy_venues_pkey": {
+          "name": "barsy_venues_pkey",
+          "columns": ["integration_id", "bid"]
+        }
+      },
+      "uniqueConstraints": {
+        "barsy_venues_tenant_id_integration_id_bid_unique": {
+          "name": "barsy_venues_tenant_id_integration_id_bid_unique",
+          "nullsNotDistinct": false,
+          "columns": ["tenant_id", "integration_id", "bid"]
+        },
+        "barsy_venues_venue_id_unique": {
+          "name": "barsy_venues_venue_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["venue_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "restro.events": {
+      "name": "events",
+      "schema": "restro",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "events_seq_seq",
+            "schema": "restro",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "op": {
+          "name": "op",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'setField'"
+        },
+        "field_key": {
+          "name": "field_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "layer": {
+          "name": "layer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "old_value": {
+          "name": "old_value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_value": {
+          "name": "new_value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "change_set_id": {
+          "name": "change_set_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "events_node_id_seq_idx": {
+          "name": "events_node_id_seq_idx",
+          "columns": [
+            {
+              "expression": "node_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "events_tenant_id_tenants_id_fk": {
+          "name": "events_tenant_id_tenants_id_fk",
+          "tableFrom": "events",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "events_node_fk": {
+          "name": "events_node_fk",
+          "tableFrom": "events",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "events_op": {
+          "name": "events_op",
+          "value": "\"restro\".\"events\".\"op\" in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource')"
+        },
+        "events_field_key": {
+          "name": "events_field_key",
+          "value": "\"restro\".\"events\".\"field_key\" ~ '^[a-z][a-z0-9_]{0,63}$'"
+        },
+        "events_layer": {
+          "name": "events_layer",
+          "value": "\"restro\".\"events\".\"layer\" in ('barsy', 'import', 'manual', 'override') or \"restro\".\"events\".\"layer\" ~ '^edition:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "events_scope": {
+          "name": "events_scope",
+          "value": "\"restro\".\"events\".\"scope\" = 'master' or \"restro\".\"events\".\"scope\" ~ '^venue:vn_[0-9A-Za-z]+$'"
+        },
+        "events_source": {
+          "name": "events_source",
+          "value": "\"restro\".\"events\".\"source\" = 'manual' or \"restro\".\"events\".\"source\" ~ '^(import|barsy):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "events_actor": {
+          "name": "events_actor",
+          "value": "\"restro\".\"events\".\"actor\" = 'system' or \"restro\".\"events\".\"actor\" ~ '^(user|integration):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "events_job_id": {
+          "name": "events_job_id",
+          "value": "length(\"restro\".\"events\".\"job_id\") between 1 and 128"
+        },
+        "events_change_set_id": {
+          "name": "events_change_set_id",
+          "value": "\"restro\".\"events\".\"change_set_id\" ~ '^cs_[0-9A-Za-z]+$'"
+        },
+        "events_is_a_change": {
+          "name": "events_is_a_change",
+          "value": "\"restro\".\"events\".\"old_value\" is not null or \"restro\".\"events\".\"new_value\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.field_values": {
+      "name": "field_values",
+      "schema": "restro",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_key": {
+          "name": "field_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "layer": {
+          "name": "layer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value_hash": {
+          "name": "value_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_record_id": {
+          "name": "source_record_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mapping_version": {
+          "name": "mapping_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "basis": {
+          "name": "basis",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid": {
+          "name": "valid",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "reject_reason": {
+          "name": "reject_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "field_values_tenant_id_tenants_id_fk": {
+          "name": "field_values_tenant_id_tenants_id_fk",
+          "tableFrom": "field_values",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "field_values_node_fk": {
+          "name": "field_values_node_fk",
+          "tableFrom": "field_values",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "field_values_source_record_fk": {
+          "name": "field_values_source_record_fk",
+          "tableFrom": "field_values",
+          "tableTo": "source_records",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "source_record_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "field_values_pkey": {
+          "name": "field_values_pkey",
+          "columns": ["node_id", "field_key", "layer", "scope"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "field_values_field_key": {
+          "name": "field_values_field_key",
+          "value": "\"restro\".\"field_values\".\"field_key\" ~ '^[a-z][a-z0-9_]{0,63}$'"
+        },
+        "field_values_layer": {
+          "name": "field_values_layer",
+          "value": "\"restro\".\"field_values\".\"layer\" in ('barsy', 'import', 'manual', 'override') or \"restro\".\"field_values\".\"layer\" ~ '^edition:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "field_values_scope": {
+          "name": "field_values_scope",
+          "value": "\"restro\".\"field_values\".\"scope\" = 'master' or \"restro\".\"field_values\".\"scope\" ~ '^venue:vn_[0-9A-Za-z]+$'"
+        },
+        "field_values_source": {
+          "name": "field_values_source",
+          "value": "\"restro\".\"field_values\".\"source\" = 'manual' or \"restro\".\"field_values\".\"source\" ~ '^(import|barsy):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "field_values_actor": {
+          "name": "field_values_actor",
+          "value": "\"restro\".\"field_values\".\"actor\" = 'system' or \"restro\".\"field_values\".\"actor\" ~ '^(user|integration):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "field_values_job_id": {
+          "name": "field_values_job_id",
+          "value": "length(\"restro\".\"field_values\".\"job_id\") between 1 and 128"
+        },
+        "field_values_value_hash": {
+          "name": "field_values_value_hash",
+          "value": "\"restro\".\"field_values\".\"value_hash\" ~ '^[0-9a-f]{64}$'"
+        },
+        "field_values_layer_matches_source": {
+          "name": "field_values_layer_matches_source",
+          "value": "(\"restro\".\"field_values\".\"layer\" = 'barsy') = (\"restro\".\"field_values\".\"source\" like 'barsy:%') and (\"restro\".\"field_values\".\"layer\" = 'import') = (\"restro\".\"field_values\".\"source\" like 'import:%')"
+        },
+        "field_values_venue_scope_barsy_only": {
+          "name": "field_values_venue_scope_barsy_only",
+          "value": "\"restro\".\"field_values\".\"scope\" = 'master' or \"restro\".\"field_values\".\"layer\" = 'barsy'"
+        },
+        "field_values_basis_on_overrides": {
+          "name": "field_values_basis_on_overrides",
+          "value": "(\"restro\".\"field_values\".\"layer\" = 'override') = (\"restro\".\"field_values\".\"basis\" is not null)"
+        },
+        "field_values_barsy_provenance": {
+          "name": "field_values_barsy_provenance",
+          "value": "\"restro\".\"field_values\".\"layer\" <> 'barsy' or (\"restro\".\"field_values\".\"source_record_id\" is not null and \"restro\".\"field_values\".\"mapping_version\" is not null)"
+        },
+        "field_values_mapping_version_positive": {
+          "name": "field_values_mapping_version_positive",
+          "value": "\"restro\".\"field_values\".\"mapping_version\" >= 1"
+        },
+        "field_values_reject_reason": {
+          "name": "field_values_reject_reason",
+          "value": "\"restro\".\"field_values\".\"valid\" = (\"restro\".\"field_values\".\"reject_reason\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.integrations": {
+      "name": "integrations",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "host": {
+          "name": "host",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credentials_sealed": {
+          "name": "credentials_sealed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'new'"
+        },
+        "status_detail": {
+          "name": "status_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "config": {
+          "name": "config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "integrations_tenant_id_tenants_id_fk": {
+          "name": "integrations_tenant_id_tenants_id_fk",
+          "tableFrom": "integrations",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "integrations_tenant_id_id_unique": {
+          "name": "integrations_tenant_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["tenant_id", "id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "integrations_id_format": {
+          "name": "integrations_id_format",
+          "value": "\"restro\".\"integrations\".\"id\" ~ '^in_[0-9A-Za-z]+$'"
+        },
+        "integrations_kind": {
+          "name": "integrations_kind",
+          "value": "\"restro\".\"integrations\".\"kind\" in ('barsy')"
+        },
+        "integrations_status": {
+          "name": "integrations_status",
+          "value": "\"restro\".\"integrations\".\"status\" in ('new', 'connected', 'error')"
+        },
+        "integrations_config_object": {
+          "name": "integrations_config_object",
+          "value": "jsonb_typeof(\"restro\".\"integrations\".\"config\") = 'object'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.job_runs": {
+      "name": "job_runs",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "integration_id": {
+          "name": "integration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "counters": {
+          "name": "counters",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "error_summary": {
+          "name": "error_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "job_runs_tenant_id_tenants_id_fk": {
+          "name": "job_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "job_runs",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "job_runs_integration_fk": {
+          "name": "job_runs_integration_fk",
+          "tableFrom": "job_runs",
+          "tableTo": "integrations",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "job_runs_id_format": {
+          "name": "job_runs_id_format",
+          "value": "\"restro\".\"job_runs\".\"id\" ~ '^jb_[0-9A-Za-z]+$'"
+        },
+        "job_runs_kind": {
+          "name": "job_runs_kind",
+          "value": "\"restro\".\"job_runs\".\"kind\" ~ '^[a-z][a-z0-9_]{0,63}$'"
+        },
+        "job_runs_status": {
+          "name": "job_runs_status",
+          "value": "\"restro\".\"job_runs\".\"status\" in ('queued', 'running', 'completed', 'failed')"
+        },
+        "job_runs_counters_object": {
+          "name": "job_runs_counters_object",
+          "value": "jsonb_typeof(\"restro\".\"job_runs\".\"counters\") = 'object'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.menus": {
+      "name": "menus",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_key": {
+          "name": "template_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_version": {
+          "name": "template_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_node_id": {
+          "name": "root_node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "menus_tenant_id_tenants_id_fk": {
+          "name": "menus_tenant_id_tenants_id_fk",
+          "tableFrom": "menus",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "menus_venue_fk": {
+          "name": "menus_venue_fk",
+          "tableFrom": "menus",
+          "tableTo": "venues",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "menus_root_node_fk": {
+          "name": "menus_root_node_fk",
+          "tableFrom": "menus",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "root_node_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "menus_venue_id_unique": {
+          "name": "menus_venue_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["venue_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "menus_id_is_root_node": {
+          "name": "menus_id_is_root_node",
+          "value": "\"restro\".\"menus\".\"id\" = \"restro\".\"menus\".\"root_node_id\""
+        },
+        "menus_template_version_positive": {
+          "name": "menus_template_version_positive",
+          "value": "\"restro\".\"menus\".\"template_version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.nodes": {
+      "name": "nodes",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_type": {
+          "name": "node_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort_key": {
+          "name": "sort_key",
+          "type": "text COLLATE \"C\"",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "nodes_parent_id_idx": {
+          "name": "nodes_parent_id_idx",
+          "columns": [
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "nodes_tenant_id_tenants_id_fk": {
+          "name": "nodes_tenant_id_tenants_id_fk",
+          "tableFrom": "nodes",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "nodes_parent_fk": {
+          "name": "nodes_parent_fk",
+          "tableFrom": "nodes",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "parent_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "nodes_tenant_id_id_unique": {
+          "name": "nodes_tenant_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["tenant_id", "id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "nodes_id_format": {
+          "name": "nodes_id_format",
+          "value": "\"restro\".\"nodes\".\"id\" ~ '^nd_[0-9A-Za-z]+$'"
+        },
+        "nodes_node_type": {
+          "name": "nodes_node_type",
+          "value": "\"restro\".\"nodes\".\"node_type\" in ('menu', 'section', 'item', 'modifier_group', 'option', 'special')"
+        },
+        "nodes_status": {
+          "name": "nodes_status",
+          "value": "\"restro\".\"nodes\".\"status\" in ('active', 'hidden', 'archived')"
+        },
+        "nodes_revision_positive": {
+          "name": "nodes_revision_positive",
+          "value": "\"restro\".\"nodes\".\"revision\" >= 1"
+        },
+        "nodes_parent_by_type": {
+          "name": "nodes_parent_by_type",
+          "value": "(\"restro\".\"nodes\".\"node_type\" in ('menu', 'item')) = (\"restro\".\"nodes\".\"parent_id\" is null)"
+        },
+        "nodes_not_own_parent": {
+          "name": "nodes_not_own_parent",
+          "value": "\"restro\".\"nodes\".\"parent_id\" <> \"restro\".\"nodes\".\"id\""
+        },
+        "nodes_sort_key_with_parent": {
+          "name": "nodes_sort_key_with_parent",
+          "value": "(\"restro\".\"nodes\".\"parent_id\" is null) = (\"restro\".\"nodes\".\"sort_key\" is null)"
+        },
+        "nodes_sort_key_format": {
+          "name": "nodes_sort_key_format",
+          "value": "\"restro\".\"nodes\".\"sort_key\" ~ '^[A-Za-z][0-9A-Za-z]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.placements": {
+      "name": "placements",
+      "schema": "restro",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "section_id": {
+          "name": "section_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_key": {
+          "name": "sort_key",
+          "type": "text COLLATE \"C\"",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "placements_item_id_idx": {
+          "name": "placements_item_id_idx",
+          "columns": [
+            {
+              "expression": "item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "placements_tenant_id_tenants_id_fk": {
+          "name": "placements_tenant_id_tenants_id_fk",
+          "tableFrom": "placements",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "placements_item_fk": {
+          "name": "placements_item_fk",
+          "tableFrom": "placements",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "item_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "placements_section_fk": {
+          "name": "placements_section_fk",
+          "tableFrom": "placements",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "section_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "placements_pkey": {
+          "name": "placements_pkey",
+          "columns": ["section_id", "item_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "placements_sort_key_format": {
+          "name": "placements_sort_key_format",
+          "value": "\"restro\".\"placements\".\"sort_key\" ~ '^[A-Za-z][0-9A-Za-z]*$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.places": {
+      "name": "places",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "integration_id": {
+          "name": "integration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bid": {
+          "name": "bid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place_id": {
+          "name": "place_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place_num": {
+          "name": "place_num",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salon_name": {
+          "name": "salon_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_public": {
+          "name": "is_public",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "qr_token": {
+          "name": "qr_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "places_tenant_id_tenants_id_fk": {
+          "name": "places_tenant_id_tenants_id_fk",
+          "tableFrom": "places",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "places_barsy_venue_fk": {
+          "name": "places_barsy_venue_fk",
+          "tableFrom": "places",
+          "tableTo": "barsy_venues",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "integration_id", "bid"],
+          "columnsTo": ["tenant_id", "integration_id", "bid"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "places_integration_id_bid_place_id_unique": {
+          "name": "places_integration_id_bid_place_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["integration_id", "bid", "place_id"]
+        },
+        "places_qr_token_unique": {
+          "name": "places_qr_token_unique",
+          "nullsNotDistinct": false,
+          "columns": ["qr_token"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "places_id_format": {
+          "name": "places_id_format",
+          "value": "\"restro\".\"places\".\"id\" ~ '^tb_[0-9A-Za-z]+$'"
+        },
+        "places_state": {
+          "name": "places_state",
+          "value": "\"restro\".\"places\".\"state\" in ('active', 'missing', 'deleted')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.source_links": {
+      "name": "source_links",
+      "schema": "restro",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "integration_id": {
+          "name": "integration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_type": {
+          "name": "external_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_hash": {
+          "name": "last_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "source_links_tenant_id_tenants_id_fk": {
+          "name": "source_links_tenant_id_tenants_id_fk",
+          "tableFrom": "source_links",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "source_links_integration_fk": {
+          "name": "source_links_integration_fk",
+          "tableFrom": "source_links",
+          "tableTo": "integrations",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "source_links_node_fk": {
+          "name": "source_links_node_fk",
+          "tableFrom": "source_links",
+          "tableTo": "nodes",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "source_links_pkey": {
+          "name": "source_links_pkey",
+          "columns": ["integration_id", "external_type", "external_id"]
+        }
+      },
+      "uniqueConstraints": {
+        "source_links_node_id_integration_id_unique": {
+          "name": "source_links_node_id_integration_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["node_id", "integration_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "source_links_state": {
+          "name": "source_links_state",
+          "value": "\"restro\".\"source_links\".\"state\" in ('active', 'missing', 'deleted')"
+        },
+        "source_links_external_type": {
+          "name": "source_links_external_type",
+          "value": "\"restro\".\"source_links\".\"external_type\" ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "source_links_external_id": {
+          "name": "source_links_external_id",
+          "value": "length(\"restro\".\"source_links\".\"external_id\") between 1 and 128"
+        },
+        "source_links_last_hash": {
+          "name": "source_links_last_hash",
+          "value": "\"restro\".\"source_links\".\"last_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.source_records": {
+      "name": "source_records",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "integration_id": {
+          "name": "integration_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_type": {
+          "name": "external_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raw": {
+          "name": "raw",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "source_records_external_idx": {
+          "name": "source_records_external_idx",
+          "columns": [
+            {
+              "expression": "integration_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fetched_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "source_records_tenant_id_tenants_id_fk": {
+          "name": "source_records_tenant_id_tenants_id_fk",
+          "tableFrom": "source_records",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "source_records_integration_fk": {
+          "name": "source_records_integration_fk",
+          "tableFrom": "source_records",
+          "tableTo": "integrations",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "source_records_tenant_id_id_unique": {
+          "name": "source_records_tenant_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["tenant_id", "id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "source_records_id_format": {
+          "name": "source_records_id_format",
+          "value": "\"restro\".\"source_records\".\"id\" ~ '^sr_[0-9A-Za-z]+$'"
+        },
+        "source_records_external_type": {
+          "name": "source_records_external_type",
+          "value": "\"restro\".\"source_records\".\"external_type\" ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "source_records_scope": {
+          "name": "source_records_scope",
+          "value": "\"restro\".\"source_records\".\"scope\" = 'master' or \"restro\".\"source_records\".\"scope\" ~ '^venue:vn_[0-9A-Za-z]+$'"
+        },
+        "source_records_content_hash": {
+          "name": "source_records_content_hash",
+          "value": "\"restro\".\"source_records\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.templates": {
+      "name": "templates",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "definition": {
+          "name": "definition",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "templates_owner_key_version_unique": {
+          "name": "templates_owner_key_version_unique",
+          "columns": [
+            {
+              "expression": "coalesce(\"tenant_id\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "templates_tenant_id_tenants_id_fk": {
+          "name": "templates_tenant_id_tenants_id_fk",
+          "tableFrom": "templates",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "templates_id_format": {
+          "name": "templates_id_format",
+          "value": "\"restro\".\"templates\".\"id\" ~ '^tp_[0-9A-Za-z]+$'"
+        },
+        "templates_version_positive": {
+          "name": "templates_version_positive",
+          "value": "\"restro\".\"templates\".\"version\" >= 1"
+        },
+        "templates_definition_object": {
+          "name": "templates_definition_object",
+          "value": "jsonb_typeof(\"restro\".\"templates\".\"definition\") = 'object'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.tenants": {
+      "name": "tenants",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tenants_id_format": {
+          "name": "tenants_id_format",
+          "value": "\"restro\".\"tenants\".\"id\" ~ '^tn_[0-9A-Za-z]+$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.venues": {
+      "name": "venues",
+      "schema": "restro",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Europe/Sofia'"
+        },
+        "service_day_ends_at": {
+          "name": "service_day_ends_at",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'07:00'"
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'EUR'"
+        },
+        "default_locale": {
+          "name": "default_locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'bg_BG'"
+        },
+        "enabled_locales": {
+          "name": "enabled_locales",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{bg_BG,en_US}'::text[]"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "venues_tenant_id_tenants_id_fk": {
+          "name": "venues_tenant_id_tenants_id_fk",
+          "tableFrom": "venues",
+          "tableTo": "tenants",
+          "schemaTo": "restro",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "venues_tenant_id_slug_unique": {
+          "name": "venues_tenant_id_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": ["tenant_id", "slug"]
+        },
+        "venues_tenant_id_id_unique": {
+          "name": "venues_tenant_id_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["tenant_id", "id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "venues_id_format": {
+          "name": "venues_id_format",
+          "value": "\"restro\".\"venues\".\"id\" ~ '^vn_[0-9A-Za-z]+$'"
+        },
+        "venues_default_locale_enabled": {
+          "name": "venues_default_locale_enabled",
+          "value": "\"restro\".\"venues\".\"default_locale\" = any(\"restro\".\"venues\".\"enabled_locales\")"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.worker_heartbeats": {
+      "name": "worker_heartbeats",
+      "schema": "restro",
+      "columns": {
+        "worker_id": {
+          "name": "worker_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_beat_at": {
+          "name": "last_beat_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "restro": "restro"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

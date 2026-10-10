@@ -9,30 +9,18 @@
 // that is not on this machine.
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-const run = promisify(execFile)
+import pg from 'pg'
+import { vi } from 'vitest'
 
-// `pg` is not a dependency of the worker (only pg-boss and @restro/db bring it), so this helper
-// loads the copy pg-boss uses and types the few calls it needs. Declaring pg (and @types/pg) as a
-// devDependency of the worker would make this a plain import.
-interface PgClient {
-  connect(): Promise<void>
-  query<Row>(text: string, values?: unknown[]): Promise<{ rows: Row[] }>
-  end(): Promise<void>
-  escapeIdentifier(value: string): string
-}
-interface PgModule {
-  Client: new (config: { connectionString: string }) => PgClient
-}
-const pg = createRequire(createRequire(import.meta.url).resolve('pg-boss'))('pg') as PgModule
+const run = promisify(execFile)
 
 /** A short-lived owner connection, for set-up and for inspecting what the worker did. */
 export async function withOwnerClient<T>(
   url: string,
-  fn: (client: PgClient) => Promise<T>,
+  fn: (client: pg.Client) => Promise<T>,
 ): Promise<T> {
   const client = new pg.Client({ connectionString: url })
   await client.connect()
@@ -47,6 +35,24 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const DB_SCRIPTS = fileURLToPath(new URL('../../../packages/db/scripts/', import.meta.url))
 
 const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
+
+/**
+ * How long a test file may take to set its database up. Files queue on the lock below while the
+ * whole suite runs in parallel, and each set-up runs the migrations and `db:roles`.
+ */
+export const SETUP_TIMEOUT_MS = 180_000
+
+/**
+ * Gives the calling test file generous hook and test timeouts. With the whole suite running at
+ * once the machine is busy, and a hook that waits for the lock or drops a database can take a
+ * while; a timeout there is a false failure.
+ */
+export function allowSlowSetup(): void {
+  vi.setConfig({ hookTimeout: SETUP_TIMEOUT_MS, testTimeout: 120_000 })
+}
+
+/** Advisory lock key that serialises test-database set-up across processes. */
+const ROLES_LOCK = 7_311_020_926
 
 /** True when the integration test can run. */
 export const hasDatabase = ownerUrl !== ''
@@ -129,11 +135,23 @@ export async function createTestDatabase(): Promise<TestDatabase> {
       DATABASE_URL_OWNER: newOwnerUrl,
       ...(password ? { DATABASE_APP_PASSWORD: password } : {}),
     }
-    for (const script of ['migrate.ts', 'roles.ts']) {
-      await run(process.execPath, ['--disable-warning=ExperimentalWarning', DB_SCRIPTS + script], {
-        env,
-      })
-    }
+    // `db:roles` alters the cluster-wide role restro_app, and two test files setting up a
+    // database at the same moment make Postgres fail with "tuple concurrently updated". An
+    // advisory lock on the owner's maintenance connection (any process, same server) lines them up.
+    await withOwnerClient(ownerUrl, async (lock) => {
+      await lock.query('select pg_advisory_lock($1)', [ROLES_LOCK])
+      try {
+        for (const script of ['migrate.ts', 'roles.ts']) {
+          await run(
+            process.execPath,
+            ['--disable-warning=ExperimentalWarning', DB_SCRIPTS + script],
+            { env },
+          )
+        }
+      } finally {
+        await lock.query('select pg_advisory_unlock($1)', [ROLES_LOCK])
+      }
+    })
   } catch (error) {
     await drop().catch(() => undefined)
     throw error
