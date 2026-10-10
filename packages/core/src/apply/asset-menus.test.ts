@@ -50,7 +50,7 @@ describe.skipIf(!hasDatabase)('the readers against Postgres (as the restro_app r
   const otherTenant = newId('tn')
   let app: DbPool
   let owner: pg.Pool
-  const venues: { id: `vn_${string}`; menu: ProvisionedMenu }[] = []
+  const venues: { id: string; menu: ProvisionedMenu }[] = []
 
   const asset = newId('as')
   const otherAsset = newId('as')

@@ -188,6 +188,74 @@ test('the mapping settings are saved and shown back', async () => {
   ).toBeVisible()
 })
 
+test('the sync settings (D59) are saved, kept after a reload, and put back to the defaults', async () => {
+  const saveButton = page.getByRole('button', { name: 'Запази автоматичната синхронизация' })
+  const incremental = page.getByRole('switch', { name: 'Проверявай за промени автоматично' })
+  const fullPull = page.getByRole('switch', { name: 'Чети целия каталог веднъж дневно' })
+  const interval = page.getByRole('combobox', { name: 'Проверявай на всеки' })
+  const time = page.getByLabel('Час от деня')
+  const saved = page.getByText('Запазено. Важи от следващата минута.')
+
+  // What runs today is what the card starts with.
+  await expect(incremental).toBeChecked()
+  await expect(fullPull).toBeChecked()
+  await expect(interval).toContainText('5 минути')
+  await expect(time).toHaveValue('12:00')
+  await expect(page.getByRole('radio', { name: /Публикувай автоматично/ })).toBeChecked()
+  await expect(page.getByRole('radio', { name: /Показвай ги в менюто/ })).toBeChecked()
+  await expect(saveButton).toBeDisabled()
+  // The next runs are named in the venue's clock.
+  await expect(page.getByTestId('sync-next')).toContainText('Следваща проверка за промени около')
+  await snapshot('s3-04-sync-settings-bg-light-desktop.png')
+
+  await interval.click()
+  await page.getByRole('option', { name: '15 минути' }).click()
+  await time.fill('04:30')
+  await page.getByRole('radio', { name: /Изчакай да натисна/ }).click()
+  await page.getByRole('radio', { name: /Дръж ги скрити/ }).click()
+  await expect(saveButton).toBeEnabled()
+  await saveButton.click()
+  await expect(saved).toBeVisible()
+
+  await page.reload()
+  await expect(interval).toContainText('15 минути')
+  await expect(time).toHaveValue('04:30')
+  await expect(incremental).toBeChecked()
+  await expect(fullPull).toBeChecked()
+  await expect(page.getByRole('radio', { name: /Изчакай да натисна/ })).toBeChecked()
+  await expect(page.getByRole('radio', { name: /Дръж ги скрити/ })).toBeChecked()
+  await expect(saveButton).toBeDisabled()
+  await expect(page.getByTestId('sync-next')).toContainText('Следващо пълно четене')
+
+  // Both loops off: the card says so.
+  await incremental.click()
+  await fullPull.click()
+  await expect(interval).toBeDisabled()
+  await expect(time).toBeDisabled()
+  await saveButton.click()
+  await expect(saved).toBeVisible()
+  await page.reload()
+  await expect(incremental).not.toBeChecked()
+  await expect(fullPull).not.toBeChecked()
+  await expect(page.getByTestId('sync-next')).toHaveText('Автоматичната синхронизация е изключена.')
+
+  // Back to the defaults, so the test can run again.
+  await incremental.click()
+  await fullPull.click()
+  await interval.click()
+  await page.getByRole('option', { name: '5 минути' }).click()
+  await time.fill('12:00')
+  await page.getByRole('radio', { name: /Публикувай автоматично/ }).click()
+  await page.getByRole('radio', { name: /Показвай ги в менюто/ }).click()
+  await saveButton.click()
+  await expect(saved).toBeVisible()
+  await page.reload()
+  await expect(interval).toContainText('5 минути')
+  await expect(time).toHaveValue('12:00')
+  await expect(page.getByRole('radio', { name: /Публикувай автоматично/ })).toBeChecked()
+  await expect(page.getByRole('radio', { name: /Показвай ги в менюто/ })).toBeChecked()
+})
+
 test('"Sync now" queues a full pull of this venue, and closes while it waits', async () => {
   await syncButton(page).click()
   await expect(page.getByTestId('integration-notice').filter({ hasText: 'опашка' })).toBeVisible()
@@ -270,6 +338,15 @@ test('a plain member sees the status and the history and can change nothing', as
     await expect(member.getByRole('button', { name: 'Смени данните за достъп' })).toHaveCount(0)
     await expect(member.getByRole('button', { name: 'Провери отново' })).toHaveCount(0)
     await expect(member.getByRole('button', { name: 'Запази настройките' })).toHaveCount(0)
+    // The sync settings are shown, and cannot be changed.
+    await expect(
+      member.getByRole('button', { name: 'Запази автоматичната синхронизация' }),
+    ).toHaveCount(0)
+    await expect(
+      member.getByRole('switch', { name: 'Проверявай за промени автоматично' }),
+    ).toBeDisabled()
+    await expect(member.getByLabel('Час от деня')).toBeDisabled()
+    await expect(member.getByRole('radio', { name: /Публикувай автоматично/ })).toBeDisabled()
     await expect(member.getByRole('radio', { name: 'Roof terrace' })).toBeDisabled()
     await expect(syncButton(member)).toBeDisabled()
     await expect(member.getByTestId('sync-blocked')).toHaveText(
