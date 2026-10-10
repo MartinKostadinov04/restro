@@ -830,6 +830,129 @@
       "failed": "Something went wrong. Try again."
     }
   },
+  "tables": {
+    "title": "Tables & QR codes",
+    "intro": "Each table from barsy can have a QR code. A guest who scans it opens this venue's menu with the table's name at the top.",
+    "summary": "{total, plural, one {# table} other {# tables}}, {coded} with a code",
+    "readOnly": "Only owners and admins can create, change or turn off codes and change the address. You can look at the codes and print them.",
+    "empty": {
+      "title": "No tables yet",
+      "description": "Tables come from barsy. Connect barsy and choose this venue's barsy venue in the Integration tab. The tables appear after the next full sync.",
+      "action": "Go to Integration"
+    },
+    "createAll": "Create codes for all tables",
+    "createAllWorking": "Creating codes…",
+    "created": "{count, plural, one {# code created.} other {# codes created.}}",
+    "createdNone": "Every table already has a code.",
+    "skipped": "{count, plural, one {# table was left out: it has no number from barsy and no name.} other {# tables were left out: they have no number from barsy and no name.}}",
+    "printSheet": "Print sheet",
+    "printNone": "Create a code first, then print.",
+    "queuedLate": "Saved, but the public page of the code could not be refreshed yet. If a scanned code says it is not active, wait a minute or ask your administrator.",
+    "halls": {
+      "none": "No hall",
+      "count": "{count, plural, one {# table} other {# tables}}"
+    },
+    "row": {
+      "nameLabel": "Name of table {number} on the guest menu",
+      "namePlaceholder": "Name (optional)",
+      "number": "barsy number: {number}",
+      "noNumber": "no number",
+      "public": "Public",
+      "hidden": "Hidden",
+      "missing": "Not in barsy's last list",
+      "codeActive": "Code active",
+      "codeNone": "No code",
+      "createCode": "Create code",
+      "newCode": "New code",
+      "turnOff": "Turn off code",
+      "downloadPng": "Download PNG",
+      "downloadSvg": "Download SVG",
+      "enlarge": "Enlarge the QR code of table {table}",
+      "qrAlt": "QR code of table {table}",
+      "nameSaved": "Name saved.",
+      "codeCreated": "Code created.",
+      "codeRenewed": "New code made. The old one stopped working.",
+      "codeOff": "Code turned off."
+    },
+    "confirmNew": {
+      "title": "Make a new code for table {table}?",
+      "description": "The new code replaces the old one. Stickers already printed with the old code stop working: they will say the code is not active.",
+      "confirm": "Make new code"
+    },
+    "confirmOff": {
+      "title": "Turn off the code of table {table}?",
+      "description": "A guest who scans the printed sticker will be told the code is not active. You can create a new code later.",
+      "confirm": "Turn off"
+    },
+    "cancel": "Cancel",
+    "qrDialog": {
+      "title": "QR code of table {table}",
+      "description": "A guest who scans this code opens the menu with the table's name at the top.",
+      "address": "Address in the code"
+    },
+    "address": {
+      "title": "Address in the codes",
+      "description": "Where a code leads when someone scans it. Stickers you have already printed keep the address they were printed with, so set this before you print.",
+      "mode": "Which address do the codes carry?",
+      "ours": "Our link",
+      "oursHelp": "Nothing to set up: the code opens this app's table link.",
+      "own": "The venue's own link",
+      "ownHelp": "A link on your own website address that forwards to ours. If our address ever changes, your stickers keep working.",
+      "baseUrl": "Base address",
+      "baseUrlHelp": "The address of this app. To scan from a phone on the same Wi-Fi while we build, use this PC's network address, for example http://192.168.1.20:3000.",
+      "baseUrlDefault": "Using the default address of this installation.",
+      "baseUrlMissing": "This installation has no default address. Type the address of this app.",
+      "useDefault": "Use the default ({address})",
+      "pattern": "Link pattern",
+      "patternHelp": "Your address with {placeholder} where the table's code goes, for example https://menu.example.com/t/{placeholder}. It must forward to our table link.",
+      "guide": "How do I use my own link?",
+      "preview": "Address in the code of table {table}",
+      "previewExample": "Example of an address (no table has a code yet)",
+      "testLink": "Open test link",
+      "testLinkHint": "Opens this address in a new browser tab. If the menu opens there, the link works.",
+      "testLinkNone": "Create a code for a table first, then test the link.",
+      "unsaved": "Not saved yet. The codes below change when you save.",
+      "save": "Save address",
+      "saving": "Saving…",
+      "saved": "Address saved. The codes below use it now."
+    },
+    "problems": {
+      "empty": "Type an address.",
+      "too_long": "This address is too long.",
+      "whitespace": "The address must not contain spaces.",
+      "not_a_url": "This is not an address. Start it with https://",
+      "not_https": "Use https://. Plain http:// works only for this PC and the local network.",
+      "credentials": "Leave out any user name and password.",
+      "query_or_fragment": "Leave out the part after # (and, in the base address, after ?).",
+      "missing_token": "The pattern needs {placeholder} where the table's code goes.",
+      "token_in_host": "{placeholder} must come after the domain name, not inside it.",
+      "unknown_placeholder": "Only {placeholder} can be written in curly brackets."
+    },
+    "errors": {
+      "invalid": "That did not work: check what you typed.",
+      "forbidden": "Only owners and admins can do this.",
+      "not_found": "This table or venue is not there any more. Reload the page.",
+      "no_label": "This table has no number from barsy. Give it a name first.",
+      "failed": "Something went wrong. Try again."
+    },
+    "print": {
+      "title": "Print sheet: tables of {venue}",
+      "intro": "Six codes on each A4 page. Click Print / Save as PDF, choose A4 and switch headers and footers off.",
+      "button": "Print / Save as PDF",
+      "back": "Back to Tables & QR",
+      "empty": "No table has a code yet. Create the codes in the Tables & QR tab first.",
+      "pages": "{cards, plural, one {# code} other {# codes}} on {pages, plural, one {# page} other {# pages}}"
+    },
+    "card": {
+      "table": "Table",
+      "scan": "Scan for the menu"
+    },
+    "guide": {
+      "title": "How do I use my own link?",
+      "back": "Back to Tables & QR",
+      "missing": "The guide is not available on this server. It is the file docs/guides/qr-links.md of the project."
+    }
+  },
   "tablePage": {
     "title": "This table code is not active.",
     "text": "Ask the staff."

@@ -1,4 +1,4 @@
-import { QrCodeIcon, RocketIcon } from 'lucide-react'
+import { RocketIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
@@ -15,6 +15,8 @@ import { IntegrationSkeleton } from '@/integration/integration-skeleton'
 import { IntegrationTab } from '@/integration/integration-tab'
 import { requireTenant } from '@/server/session'
 import { getVenue } from '@/server/venues'
+import { TablesSkeleton } from '@/tables/tables-skeleton'
+import { TablesTab } from '@/tables/tables-tab'
 
 export async function generateMetadata({ params }: PageProps<'/venues/[venueId]'>) {
   const { organization } = await requireTenant()
@@ -38,6 +40,7 @@ export default async function VenueWorkspacePage({
   const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
   const composerOpen = openTab === 'composer'
   const integrationOpen = openTab === 'integration'
+  const tablesOpen = openTab === 'tables'
   const settingsOpen = openTab === 'settings'
 
   const t = await getTranslations('workspace')
@@ -63,13 +66,12 @@ export default async function VenueWorkspacePage({
             ) : (
               <ComposerSkeleton />
             ),
-            tables: (
-              <StagePlaceholder
-                icon={QrCodeIcon}
-                title={t('tables.title')}
-                description={t('tables.description')}
-                stageLabel={stage(3)}
-              />
+            tables: tablesOpen ? (
+              <Suspense fallback={<TablesSkeleton />}>
+                <TablesTab tenantId={organization.id} role={organization.role} venue={venue} />
+              </Suspense>
+            ) : (
+              <TablesSkeleton />
             ),
             publishing: (
               <StagePlaceholder

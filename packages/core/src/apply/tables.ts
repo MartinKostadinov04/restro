@@ -132,6 +132,31 @@ export async function listVenueTables(
   return rows.map((row) => toTable(row.place))
 }
 
+/** One table with the venue it belongs to, or null (also for a table of another tenant). */
+export async function findVenueTable(
+  pool: DbPool,
+  tenantId: string,
+  tableId: string,
+): Promise<{ readonly venueId: VenueId; readonly table: VenueTable } | null> {
+  if (!isId('tb', tableId)) return null
+  const [row] = await withTenant(pool, tenantId, (tx) =>
+    tx
+      .select({ place: places, venueId: barsyVenues.venueId })
+      .from(places)
+      .innerJoin(
+        barsyVenues,
+        and(
+          eq(places.tenantId, barsyVenues.tenantId),
+          eq(places.integrationId, barsyVenues.integrationId),
+          eq(places.bid, barsyVenues.bid),
+        ),
+      )
+      .where(eq(places.id, tableId)),
+  )
+  if (row === undefined || row.venueId === null || row.place.state === 'deleted') return null
+  return { venueId: row.venueId as VenueId, table: toTable(row.place) }
+}
+
 /** What the token job writes for a venue: its slug and, per active code, the table's name. */
 export interface TokenFiles {
   readonly venueSlug: string
