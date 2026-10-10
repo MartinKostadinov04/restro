@@ -220,7 +220,7 @@ Translations (decided 2026-10-08): a language Barsy lacks is added by hand in th
 
 ### Creating structure by hand
 
-People can add Sections, Items, Modifier groups and Options with no Barsy counterpart: a curated "Signature cocktails" section, an event banner, a wine list Barsy doesn't hold. These nodes have no source link and are display-only: `orderable` is false until the Item is linked to a Barsy article.
+People can add Sections with no Barsy counterpart, such as a curated "Signature cocktails" section; sections are layout. Items, Modifier groups and Options are made by hand only in a venue without a till (D64). In a venue with a till, the till is the only source of items, because nothing made here can reach the POS (D66); the venue enriches those items with photos, descriptions and tags. Hand-made nodes have no source link and are display-only: `orderable` is false. Display-only items in a till venue may come back later as an explicit setting.
 
 ### Linking and unlinking
 

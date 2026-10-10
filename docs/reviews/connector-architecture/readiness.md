@@ -107,7 +107,7 @@ All three are being fixed now (CF-01, CF-02).
 
 1. **Several venues on one barsy account:** each venue keeps its own copy of the items in v1. A photo added for venue A is not shared with venue B even when it is the same barsy item. **Recommend yes:** simplest and safe. It only matters for groups.
 2. **A venue's public address `/m/<slug>` is fixed once created.** QR codes don't use it; links people share do. **Recommend fixed for now**, with an editor later if needed.
-3. **Hand-made items on a venue with a till** (display-only, not orderable): **recommend allowed.**
+3. ~~Hand-made items on a venue with a till~~: **decided 10-11 (D66).** In a till venue the till is the only source of items, because nothing made here can reach the POS. Hand-made items exist only in venues without a till; sections and enrichment stay ours. Keep it one gate for future use cases.
 4. **Staging database:** allow a wipe and re-sync for the location-wide link change (test data only). **Recommend yes**; asked again at deploy.
 5. **Recording session with barsy admin rights** (demo admin login, or the read-only user from Lukanet, T39/Q73). Needed to confirm:
    - the shape of per-venue "not for sale";
