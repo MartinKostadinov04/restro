@@ -88,6 +88,8 @@ describe.skipIf(!hasDatabase)('row-level security guard', () => {
         'snapshots',
         'publish_pointers',
         'item_first_published',
+        // The venue's tag list (brief S3-06).
+        'tags',
       ]),
     )
   })

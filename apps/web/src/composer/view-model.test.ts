@@ -6,6 +6,7 @@ import {
   newId,
   resolve,
   type Scope,
+  type Tag,
   VENUE_MENU_TEMPLATE,
 } from '@restro/core'
 import { describe, expect, it } from 'vitest'
@@ -255,5 +256,75 @@ describe('buildComposerView', () => {
     expect(json).not.toContain(integration)
     expect(json).not.toContain('externalId')
     expect(json).not.toContain('barsy:')
+  })
+
+  describe('tags and dietary labels (S3-06)', () => {
+    const signature = newId('tg')
+    const spicy = newId('tg')
+    const old = newId('tg')
+    const venueTags: Tag[] = [
+      {
+        id: signature,
+        venueId,
+        label: { bg_BG: 'Фирмено', en_US: 'Signature' },
+        color: 'accent',
+        sortKey: 'a0',
+        archived: false,
+      },
+      {
+        id: spicy,
+        venueId,
+        label: { bg_BG: 'Люто' },
+        color: 'text',
+        sortKey: 'a1',
+        archived: false,
+      },
+      { id: old, venueId, label: { en_US: 'Old' }, color: 'border', sortKey: 'a2', archived: true },
+    ]
+    const withTags: MenuDocument = {
+      ...document,
+      values: [
+        ...document.values,
+        row(ids.normal, 'tags', 'manual', [spicy, signature, 'signature', old]),
+        row(ids.normal, 'dietary', 'manual', ['vegan', 'gluten_free']),
+      ],
+    }
+
+    function buildWithTags(displayLocale: 'bg_BG' | 'en_US' = 'bg_BG') {
+      const resolved = resolve(VENUE_MENU_TEMPLATE, withTags, {
+        venueScope: `venue:${venueId}`,
+        locales: ['bg_BG', 'en_US'],
+        now: '2026-10-09T12:00:00+03:00',
+      })
+      return buildComposerView({ doc: withTags, resolved, displayLocale, tags: venueTags })
+    }
+
+    it('lists the venue’s tags in order, archived ones flagged, names in the interface language', () => {
+      const view = buildWithTags('en_US')
+      expect(view.tagIds).toEqual([signature, spicy, old])
+      expect(view.tags[signature]).toMatchObject({
+        name: 'Signature',
+        color: 'accent',
+        archived: false,
+      })
+      // A tag named in Bulgarian only falls back to it in English.
+      expect(view.tags[spicy]?.name).toBe('Люто')
+      expect(view.tags[old]).toMatchObject({ name: 'Old', archived: true })
+      expect(buildWithTags('bg_BG').tags[signature]?.name).toBe('Фирмено')
+      expect(view.tags[signature]?.label).toEqual({ bg_BG: 'Фирмено', en_US: 'Signature' })
+    })
+
+    it('gives each item its tag ids (only tg_ ids) and dietary codes', () => {
+      const { items } = buildWithTags()
+      expect([...(items[ids.normal]?.tags ?? [])].sort()).toEqual([old, signature, spicy].sort())
+      expect([...(items[ids.normal]?.dietary ?? [])].sort()).toEqual(['gluten_free', 'vegan'])
+      expect(items[ids.barsyHidden]).toMatchObject({ tags: [], dietary: [] })
+    })
+
+    it('has no tags when none are passed', () => {
+      const view = build()
+      expect(view.tagIds).toEqual([])
+      expect(view.tags).toEqual({})
+    })
   })
 })

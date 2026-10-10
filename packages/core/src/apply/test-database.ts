@@ -75,6 +75,7 @@ const TABLES_CHILDREN_FIRST = [
   'barsy_venues',
   'assets',
   'integrations',
+  'tags',
   'venues',
 ] as const
 

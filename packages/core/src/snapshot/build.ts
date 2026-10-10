@@ -30,6 +30,7 @@ import type {
   ResolvedOption,
   ResolvedSection,
 } from '../resolve/types'
+import type { TagColor } from '../tags'
 import type { Template } from '../template'
 import { parseSnapshot } from './errors'
 import {
@@ -58,9 +59,11 @@ export interface SnapshotAssetInput {
   readonly variants: AssetVariantWidths
 }
 
-/** One entry of the venue's tag vocabulary (D60; empty until S3-06). */
+/** One entry of the venue's tag vocabulary (D60): the venue's non-archived tags, from S3-06. */
 export interface TagVocabularyEntry {
   readonly label: LocalizedText
+  /** The colour token the face resolves against the theme; left out of the snapshot when absent. */
+  readonly color?: TagColor
 }
 
 /** Everything `buildSnapshot` needs beside the resolved menu. */
@@ -361,7 +364,12 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
   const tags: MenuSnapshot['tags'] = {}
   for (const id of [...tagIds].sort(compareText)) {
     const entry = ctx.tagVocabulary[id as TagId]
-    if (entry !== undefined) tags[id] = { label: entry.label }
+    if (entry !== undefined) {
+      tags[id] =
+        entry.color === undefined
+          ? { label: entry.label }
+          : { label: entry.label, color: entry.color }
+    }
   }
 
   const content: Omit<MenuSnapshot, 'snapshot'> = {

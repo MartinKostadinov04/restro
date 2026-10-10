@@ -16,8 +16,8 @@ import {
   type DropResult,
   type ResponderProvided,
 } from '@hello-pangea/dnd'
-import { isId, type Locale, type LocalizedText, type NodeId, newId } from '@restro/core'
-import { PlusIcon } from 'lucide-react'
+import { isId, type Locale, type LocalizedText, type NodeId, newId, type TagId } from '@restro/core'
+import { PlusIcon, TagsIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { pickLocalized } from '@/fields/localized'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import type { ActionResult } from './action-result'
 import {
@@ -40,7 +41,12 @@ import {
   setItemHiddenAction,
   setSectionHiddenAction,
 } from './actions'
-import { type ComposerActions, ComposerProvider, type Selection } from './composer-context'
+import {
+  type ComposerActions,
+  ComposerProvider,
+  type Selection,
+  type TagDraft,
+} from './composer-context'
 import {
   DROP_TARGET_ATTR,
   parseDraggable,
@@ -64,8 +70,17 @@ import { NewSectionDialog } from './new-section-dialog'
 import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
 import { SectionTree } from './section-tree'
+import { SelectionBar } from './selection-bar'
+import {
+  createTagAction,
+  moveTagAction,
+  setItemTagsAction,
+  setTagArchivedAction,
+  updateTagAction,
+} from './tag-actions'
+import { TagsPanel } from './tags-panel'
 import { childIdsOf, flattenSections } from './tree'
-import type { ComposerSection, ComposerView } from './view-model'
+import type { ComposerSection, ComposerTag, ComposerView } from './view-model'
 
 interface ComposerProps {
   readonly venueId: string
@@ -116,23 +131,56 @@ export function Composer({
     [view.sections, collapsed],
   )
 
-  /** Applies a change on screen now and writes it in the background; a refusal rolls it back. */
-  function mutate(op: ComposerOp, write: () => Promise<ActionResult>) {
-    startTransition(async () => {
-      applyOptimistic(op)
-      let result: ActionResult
-      try {
-        result = await write()
-      } catch {
-        result = { ok: false, error: 'failed' }
-      }
-      if (!result.ok) toast.error(t(`errors.${result.error}`))
+  // Ticked items (bulk tags) and the tag filter belong to the screen, not to the document.
+  const [ticked, setTicked] = useState<ReadonlySet<NodeId>>(new Set())
+  const [filterIds, setFilterIds] = useState<ReadonlySet<TagId>>(new Set())
+  const [tagsOpen, setTagsOpen] = useState(false)
+  // Only items and tags that still exist and are active count.
+  const selected = useMemo(
+    () => new Set([...ticked].filter((id) => view.items[id] !== undefined)),
+    [ticked, view.items],
+  )
+  const tagFilter = useMemo(
+    () => new Set([...filterIds].filter((id) => view.tags[id]?.archived === false)),
+    [filterIds, view.tags],
+  )
+
+  /**
+   * Applies a change on screen now and writes it in the background; a refusal rolls it back.
+   * Resolves true when the write was saved (callers that must wait for it, such as a new tag the
+   * item sheet is about to use, await it).
+   */
+  function mutate(op: ComposerOp, write: () => Promise<ActionResult>): Promise<boolean> {
+    return new Promise((resolve) => {
+      startTransition(async () => {
+        applyOptimistic(op)
+        let result: ActionResult
+        try {
+          result = await write()
+        } catch {
+          result = { ok: false, error: 'failed' }
+        }
+        if (!result.ok) toast.error(t(`errors.${result.error}`))
+        resolve(result.ok)
+      })
     })
   }
 
   const select = (next: Selection) => {
     setRequested(next)
+    setTicked(new Set())
     replaceSearchParams({ [SECTION_PARAM]: next })
+  }
+
+  /** A tag as the view shows it, from what the form or the sheet gave. */
+  function tagOf(id: TagId, draft: TagDraft, archived: boolean): ComposerTag {
+    return {
+      id,
+      name: pickLocalized(draft.label, locale) ?? '',
+      label: draft.label,
+      color: draft.color,
+      archived,
+    }
   }
 
   /** Keys that put `itemId` at `index` of a section's list (the end if no index). */
@@ -238,6 +286,77 @@ export function Composer({
       placeItem(itemId, fromSectionId, toSectionId),
     moveSectionTo: (sectionId, parentId) => moveSection(sectionId, parentId),
     newSection: (parentId = null) => setDialog({ open: true, parentId }),
+
+    createTag: (id, draft) =>
+      mutate({ type: 'upsertTag', tag: tagOf(id, draft, false) }, () =>
+        createTagAction({ venueId, id, label: draft.label, color: draft.color }),
+      ),
+    updateTag: (id, draft) => {
+      const current = view.tags[id]
+      if (!current) return Promise.resolve(false)
+      const next = tagOf(
+        id,
+        { label: draft.label ?? current.label, color: draft.color ?? current.color },
+        current.archived,
+      )
+      return mutate({ type: 'upsertTag', tag: next }, () =>
+        updateTagAction({ venueId, id, ...draft }),
+      )
+    },
+    moveTag: (id, beforeId) => {
+      void mutate({ type: 'moveTag', tagId: id, beforeId }, () =>
+        moveTagAction({ venueId, id, beforeId }),
+      )
+    },
+    setTagArchived: (id, archived) => {
+      const current = view.tags[id]
+      if (!current) return
+      void mutate({ type: 'upsertTag', tag: { ...current, archived } }, () =>
+        setTagArchivedAction({ venueId, id, archived }),
+      )
+    },
+    setItemTags: (itemIds, add, remove) => {
+      void mutate({ type: 'setItemTags', itemIds, add, remove }, () =>
+        setItemTagsAction({ venueId, itemIds: [...itemIds], add: [...add], remove: [...remove] }),
+      )
+    },
+    openTagsPanel: () => setTagsOpen(true),
+
+    toggleSelected: (itemId) =>
+      setTicked((current) => {
+        const next = new Set(current)
+        if (!next.delete(itemId)) next.add(itemId)
+        return next
+      }),
+    selectItems: (itemIds, on) =>
+      setTicked((current) => {
+        const next = new Set(current)
+        for (const id of itemIds) {
+          if (on) next.add(id)
+          else next.delete(id)
+        }
+        return next
+      }),
+    clearSelection: () => setTicked(new Set()),
+    toggleTagFilter: (tagId) =>
+      setFilterIds((current) => {
+        const next = new Set(current)
+        if (!next.delete(tagId)) next.add(tagId)
+        return next
+      }),
+    clearTagFilter: () => setFilterIds(new Set()),
+  }
+
+  /** The venue's active tags, for the tags editor of the item sheet. */
+  const sheetTags = view.tagIds.flatMap((id) => {
+    const tag = view.tags[id]
+    return tag && !tag.archived ? [{ id: tag.id, name: tag.name, color: tag.color }] : []
+  })
+  /** A new tag from the item sheet: saved first, so the item save that follows can use it. */
+  async function createSheetTag(draft: TagDraft) {
+    const id = newId('tg')
+    const saved = await actions.createTag(id, draft)
+    return saved ? { id, name: pickLocalized(draft.label, locale) ?? '', color: draft.color } : null
   }
 
   // --- drag and drop ---------------------------------------------------------------------------
@@ -392,7 +511,9 @@ export function Composer({
   const sectionOptions = flattenSections(view)
 
   return (
-    <ComposerProvider value={{ ...actions, view, selection, expanded, locale, overTarget }}>
+    <ComposerProvider
+      value={{ ...actions, view, selection, expanded, locale, overTarget, selected, tagFilter }}
+    >
       <DragDropContext
         onDragStart={onDragStart}
         onDragUpdate={onDragUpdate}
@@ -414,6 +535,21 @@ export function Composer({
                 {t('newSection')}
               </Button>
             </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="justify-start"
+              onClick={() => setTagsOpen(true)}
+              data-testid="open-tags"
+            >
+              <TagsIcon aria-hidden />
+              {t('tags.open')}
+              <span className="ml-auto text-muted-foreground" data-testid="tag-count">
+                {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
+              </span>
+            </Button>
 
             {/* Small screens: a picker instead of the tree (its drops need room). */}
             <div className="lg:hidden">
@@ -448,10 +584,21 @@ export function Composer({
         </div>
       </DragDropContext>
 
+      <SelectionBar />
+      {/* Outside the drag-and-drop context above: the panel has a list of its own to reorder. */}
+      <TagsPanel
+        open={tagsOpen}
+        onOpenChange={setTagsOpen}
+        defaultLocale={defaultLocale}
+        enabledLocales={enabledLocales}
+      />
+
       {openItemId ? (
         <ItemSheet
           key={openItemId}
           itemId={openItemId}
+          tags={sheetTags}
+          onCreateTag={createSheetTag}
           onOpenChange={(open) => {
             if (open) return
             clearOpenItem()

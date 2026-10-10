@@ -1042,3 +1042,51 @@ export const itemFirstPublished = restro.table(
     }),
   ],
 )
+
+// --- Tags (brief S3-06, D60) --------------------------------------------------------------------
+// A venue's own list of tags ("Signature", "Spicy", "Local"). Items hold tag ids in their `tags`
+// field (a manual-layer value written through apply()); this table is the vocabulary those ids
+// point into, so it is a side table like `places`, not part of the menu document. Tenant-scoped
+// like every table here (FORCE row-level security, composite foreign keys). Only
+// `@restro/core/apply` writes it. A tag is archived, never deleted: old snapshots and the items
+// that hold its id stay readable.
+
+/** A venue-defined tag: names in the venue's languages and a colour token (never a raw colour). */
+export const tags = restro.table(
+  'tags',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** `LocalizedText`: the name per language (core validates the languages). */
+    label: jsonb('label').$type<Record<string, string>>().notNull(),
+    /** One of the theme's accent token names (core's `TAG_COLORS`); the database checks the shape. */
+    color: text('color').notNull(),
+    /** Order among the venue's tags: a fractional key compared by byte order. */
+    sortKey: byteOrderText('sort_key').notNull(),
+    /** Set while the tag is archived: hidden from pickers and left out of new snapshots. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `tags_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Target of composite foreign keys that may point at a tag later.
+    unique('tags_tenant_id_id_unique').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'tags_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    index('tags_venue_id_idx').on(t.venueId, t.sortKey),
+    check('tags_id_format', sql`${t.id} ~ '^tg_[0-9A-Za-z]+$'`),
+    check(
+      'tags_label_object',
+      sql`jsonb_typeof(${t.label}) = 'object' and ${t.label} <> '{}'::jsonb`,
+    ),
+    check('tags_color_format', sql`${t.color} ~ '^[a-z][a-z0-9_]{0,31}$'`),
+    check('tags_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+  ],
+)

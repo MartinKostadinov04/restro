@@ -15,6 +15,7 @@ import { MAX_IMAGE_SIDE } from '../assets'
 import { FIELD_TYPE_NAMES, FIELD_VALUE_SCHEMAS, type FieldType } from '../field-types/catalog'
 import { LocaleSchema, LocalizedTextSchema } from '../locales'
 import { CurrencySchema, MoneySchema } from '../money'
+import { TagColorSchema } from '../tags'
 
 /** The value of a snapshot's `schema` key. */
 export const SNAPSHOT_SCHEMA = 'menu-snapshot/1'
@@ -192,7 +193,12 @@ const OptionSchema = z.strictObject({
   price_delta: MoneySchema.nullable(),
 })
 
-const TagSchema = z.strictObject({ label: NamedTextSchema })
+/**
+ * A tag of the venue's vocabulary (D60): its name per language and, since S3-06, the colour token
+ * the face resolves against the theme. Optional so a snapshot published before tags had colours
+ * still passes; the publisher always writes it.
+ */
+const TagSchema = z.strictObject({ label: NamedTextSchema, color: TagColorSchema.optional() })
 
 const SnapshotShape = z.strictObject({
   schema: z.literal(SNAPSHOT_SCHEMA),

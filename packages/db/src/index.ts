@@ -19,6 +19,7 @@ import type {
   snapshots,
   sourceLinks,
   sourceRecords,
+  tags,
   templates,
   tenants,
   venues,
@@ -105,3 +106,5 @@ export type SnapshotRow = typeof snapshots.$inferSelect
 export type PublishPointer = typeof publishPointers.$inferSelect
 /** A row of restro.item_first_published. */
 export type ItemFirstPublishedRow = typeof itemFirstPublished.$inferSelect
+/** A row of restro.tags. */
+export type TagRow = typeof tags.$inferSelect
