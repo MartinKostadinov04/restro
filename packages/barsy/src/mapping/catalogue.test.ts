@@ -681,15 +681,48 @@ describe('combos: the burger (article 7183)', () => {
     expect(create).toMatchObject({ parent: { link: { externalType: 'supplement_group' } } })
   })
 
-  it("the option name is the option article's public name; none known → unset and flagged", () => {
+  it("the option name is the option article's public name; none in the list → left alone and flagged", () => {
     expect(writtenValue(writeOf(result, 'supplement', '7183:191:7095', 'name'))).toStrictEqual({
       bg_BG: 'Сос BBQ',
       en_US: 'BBQ sauce',
     })
-    // The option's own (internal) name in the combo response is never used.
-    expect(writeOf(result, 'supplement', '7183:191:7096', 'name')?.op).toBe('clearField')
+    // The option's own (internal) name in the combo response is never used. An option whose
+    // article is not in this run's list is neither written nor cleared (B1-F6): a stored name stays.
+    expect(writeOf(result, 'supplement', '7183:191:7096', 'name')).toBeUndefined()
     expect(warningCodes(result).filter((code) => code === 'option_name_missing')).toHaveLength(13)
     expect(JSON.stringify(opsOf(result))).not.toContain('СОС ПЕСТО')
+  })
+
+  it('a batch that holds only the combo (an incremental run) never clears an option name', () => {
+    const alone = mapCatalogue(
+      input({ tree, articles: [burger], supplementsByArticle: { '7183': demoBurgerSupplements } }),
+      cfg,
+    )
+    const nameOps = opsOf(alone).filter(
+      (op) =>
+        (op.op === 'setField' || op.op === 'clearField') &&
+        'link' in op.node &&
+        op.node.link.externalType === 'supplement' &&
+        op.fieldKey === 'name',
+    )
+    expect(nameOps).toEqual([])
+    expect(alone.counts).toMatchObject({ modifierGroups: 4, options: 14 })
+    // The options themselves are still seen, so they are not concluded missing.
+    expect(alone.linkStates.filter((state) => state.linkType === 'supplement')).toHaveLength(14)
+    expect(warningCodes(alone).filter((code) => code === 'option_name_missing')).toHaveLength(14)
+  })
+
+  it('an option article that is in the list but has no public name still clears the name', () => {
+    const unnamed = article(7095, { categories: ['110'], article_name_public: null })
+    const named = mapCatalogue(
+      input({
+        tree,
+        articles: [burger, unnamed],
+        supplementsByArticle: { '7183': demoBurgerSupplements },
+      }),
+      cfg,
+    )
+    expect(writeOf(named, 'supplement', '7183:191:7095', 'name')?.op).toBe('clearField')
   })
 
   it('is valid for core and validates against the template; supplement records are venue-scoped', () => {

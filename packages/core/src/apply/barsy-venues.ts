@@ -10,6 +10,7 @@ import { and, eq, sql } from 'drizzle-orm'
 
 import type { LinkStateName } from '../change-set'
 import { isId, newId } from '../ids'
+import { type AbsenceHeld, absenceHold } from '../sync/absence-hold'
 import { concludeFullPull } from '../sync/conclude-full-pull'
 import { lockTenantDocument } from './lock'
 import { ProvisionError } from './provision'
@@ -203,6 +204,11 @@ export interface UpsertPlacesResult {
    * The caller queues the token job so their files `t/<token>.json` are removed too.
    */
   readonly retiredTokens: readonly string[]
+  /**
+   * Set when the pull was complete but its absence conclusion was held back because the list was
+   * empty or far smaller than what is stored: nothing was concluded (T62). Null otherwise.
+   */
+  readonly held: AbsenceHeld | null
 }
 
 /**
@@ -210,6 +216,9 @@ export interface UpsertPlacesResult {
  * number, salon and public flag. Absence follows rule 6 like every other link: places the pull
  * did not list become `missing` only when `pagesOk` says the pull was complete, and `deleted`
  * after the usual grace period (`concludeFullPull`); a place that is listed again is `active`.
+ * Even then a read that lists no place, or would mark more than 30% (and at least 5) of the
+ * active ones missing, is held (`absenceHold`): no place goes `missing` or `deleted`, no token is
+ * retired, and `held` says why. Listed places are still stored and brought back to `active`.
  * A place's own `qr_token` and `label` are never touched, except that a place concluded `deleted`
  * loses its token (returned in `retiredTokens`; S3-07), since its sticker must stop working.
  *
@@ -294,11 +303,21 @@ export async function upsertPlaces(
       })),
       now,
     })
+    // A complete read that lists nothing, or far less than we hold, concludes nothing (T62).
+    // TODO(T62 preview): a person releases a hold from the switch preview; the override plugs in here.
+    const activeBefore = stored.filter((row) => row.state === 'active').length
+    const wouldGoMissing = conclusion.changes.filter((change) => change.to === 'missing').length
+    const verdict = absenceHold({ activeBefore, seen: seen.size, wouldGoMissing })
+    const held: AbsenceHeld | null = verdict.hold
+      ? { reason: verdict.reason, wouldHide: wouldGoMissing, active: activeBefore }
+      : null
+
     let missing = 0
     let deleted = 0
     const retiredTokens: string[] = []
     for (const change of conclusion.changes) {
       if (change.to === 'active') continue // listed again: handled above
+      if (held !== null) continue // held: nothing goes missing or deleted, no token is retired
       const row = byPlaceId.get(change.key)
       if (!row) continue
       if (change.to === 'deleted') {
@@ -324,6 +343,7 @@ export async function upsertPlaces(
       reactivated,
       complete: conclusion.complete,
       retiredTokens,
+      held,
     }
   })
 }

@@ -68,6 +68,7 @@ export type {
 export {
   BARSY_MAPPING_VERSION,
   BarsyMappingError,
+  DEFAULT_MAPPING_LOCALE,
   mapCatalogue,
   mapModificators,
   mapPlaces,

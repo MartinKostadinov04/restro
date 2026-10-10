@@ -12,6 +12,7 @@
 //   option    name (master), price_delta                          (venue)
 // A field barsy has no value for is cleared in the barsy layer (so the layers below show through
 // and a value removed in barsy does not linger), except where the source is silent (see each).
+// An option's name is silent when its option article is not in this run's article list.
 //
 // Nodes are named by source link everywhere after their creation, so the change set can be split
 // into chunks. Node ids are derived (./ids.ts), so a repeated pull creates nothing new.
@@ -388,8 +389,16 @@ function mapCombo(
       optionCount += 1
 
       // The option's own name in the response is internal. The public name is the option article's.
+      // A name is written only from the option article of this run's article list. An option
+      // article that is not in the list (an incremental run holds only the changed articles, and a
+      // supplement may sit outside the catalogue root) says nothing about the name: it is neither
+      // written nor cleared, so a price change on a combo never wipes its option names (B1-F6).
+      // The warning stays: this run could not name the option.
       const known = publicNames.get(option.article_id)
-      if (known === undefined || isEmptyText(known.name)) {
+      if (known === undefined) {
+        warn(run, 'option_name_missing', 'supplement', optionExternalId)
+      } else if (isEmptyText(known.name)) {
+        // The article is here and has no public name: barsy's value is gone, so ours goes too.
         clear(run, optionLink, 'name', 'master')
         warn(run, 'option_name_missing', 'supplement', optionExternalId)
       } else {

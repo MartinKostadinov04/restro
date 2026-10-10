@@ -13,6 +13,7 @@ import { withTenantWrite } from '@restro/db/write'
 import { and, eq } from 'drizzle-orm'
 
 import { isId, newId } from '../ids'
+import type { AbsenceHeld } from '../sync/absence-hold'
 import type { ApplyRejection } from './apply'
 import { ProvisionError } from './provision'
 
@@ -77,6 +78,11 @@ export interface FinishJobRunInput {
   readonly refused?: readonly ApplyRejection[]
   /** True when a full pull did not conclude absence; written into `details` when given. */
   readonly deletionCheckSkipped?: boolean
+  /**
+   * Set when a complete full pull held its absence conclusion back (empty or sharply smaller read,
+   * T62); written into `details.absence_held` as `{ reason, would_hide, active }`.
+   */
+  readonly absenceHeld?: AbsenceHeld
   readonly finishedAt?: Date
 }
 
@@ -164,6 +170,15 @@ export async function finishJobRun(
     ),
     ...(input.deletionCheckSkipped !== undefined
       ? { deletionCheckSkipped: input.deletionCheckSkipped }
+      : {}),
+    ...(input.absenceHeld !== undefined
+      ? {
+          absence_held: {
+            reason: input.absenceHeld.reason,
+            would_hide: input.absenceHeld.wouldHide,
+            active: input.absenceHeld.active,
+          },
+        }
       : {}),
   }
   return withTenantWrite(pool, tenantId, async (tx) => {

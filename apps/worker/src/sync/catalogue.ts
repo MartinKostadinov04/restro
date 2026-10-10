@@ -6,7 +6,9 @@
 //           hiding lives in link state and barsy-layer values (the mapper), the manager's in
 //           the other layers;
 //   rule 6  absence concludes only here, only after a complete full pull, through core's
-//           `concludeFullPull`, and only when the integration has a single mapped venue;
+//           `concludeFullPull`, and only when the integration has a single mapped venue. Even
+//           then a read that found nothing, or would hide most of the menu, concludes nothing
+//           (`absenceHold`, T62): the pull says so and a person looks;
 //   rule 7  everything read from barsy goes through the read-only client.
 //
 // A pull is: fetch → map → store the source records → apply the change set in chunks → mark every
@@ -21,6 +23,7 @@ import {
   BarsyAuthError,
   type CatalogueMapping,
   type CategoryTreeNode,
+  DEFAULT_MAPPING_LOCALE,
   type Language,
   type MappingConfig,
   type Modificator,
@@ -31,6 +34,8 @@ import {
   type SupplementGroup,
 } from '@restro/barsy'
 import {
+  type AbsenceHeld,
+  absenceHold,
   type ChangeSetOp,
   canonicalJson,
   concludeFullPull,
@@ -77,8 +82,10 @@ export interface PullOutcome {
   readonly counters: Record<string, number>
   /** Lines for the job run's text: what was skipped and why. */
   readonly notes: string[]
-  /** True when the full pull did not conclude absence (a failed page, or several venues). */
+  /** True when the full pull did not conclude absence (a failed page, several venues, or a hold). */
   readonly deletionCheckSkipped: boolean
+  /** Set when a complete read was held back from concluding absence (T62): why, and how much. */
+  readonly absenceHeld?: AbsenceHeld
   readonly refused: ApplyRejection[]
   /** True when every page was read (the cursor may advance). */
   readonly complete: boolean
@@ -135,8 +142,11 @@ export function cachedTreeOf(tree: CategoryTreeNode, fetchedAt: Date) {
   return { fetched_at: fetchedAt.toISOString(), categories }
 }
 
-function mappingConfig(ctx: PullContext): MappingConfig {
-  const { session, target } = ctx
+/** What the mapping is configured with by the integration and the venue, not by the run. */
+function mappingSettings(
+  session: IntegrationSession,
+  target: VenueTarget,
+): Omit<MappingConfig, 'jobId' | 'actor' | 'observedAt'> {
   const config = session.integration.config
   return {
     integrationId: session.integration.id as IntegrationId,
@@ -144,12 +154,41 @@ function mappingConfig(ctx: PullContext): MappingConfig {
     priceSource: config.price_source === 'current_price' ? 'current_price' : 'actual_price',
     mappingVersion: BARSY_MAPPING_VERSION,
     includeServices: false,
-    jobId: ctx.runId,
-    actor: `integration:${session.integration.id}`,
-    observedAt: ctx.start.toISOString(),
     ...(config.allergen_detail_key ? { allergenDetailKey: config.allergen_detail_key } : {}),
     ...(isLocale(config.default_locale) ? { defaultLocale: config.default_locale } : {}),
   }
+}
+
+function mappingConfig(ctx: PullContext): MappingConfig {
+  return {
+    ...mappingSettings(ctx.session, ctx.target),
+    jobId: ctx.runId,
+    actor: `integration:${ctx.session.integration.id}`,
+    observedAt: ctx.start.toISOString(),
+  }
+}
+
+/**
+ * SHA-256 of the scope a full pull reads: the barsy venue, the menu category and every setting
+ * that changes what the mapping writes (B1-Q2). It is stored with the cursor after a successful
+ * complete full pull, and the incremental compares it with the scope as configured now: a
+ * difference means the cursor belongs to another scope, so a full pull runs instead of a partial
+ * one. Built from the same settings the pull maps with (`mappingSettings`), with the mapping's
+ * default language applied, so an unset language and an explicit default hash alike.
+ */
+export function scopeHashOf(session: IntegrationSession, target: VenueTarget): string {
+  const settings = mappingSettings(session, target)
+  return sha256Hex(
+    canonicalJson({
+      bid: target.bid,
+      catalogueRootCatId: settings.catalogueRootCatId,
+      priceSource: settings.priceSource,
+      allergenKey: settings.allergenDetailKey ?? null,
+      defaultLocale: settings.defaultLocale ?? DEFAULT_MAPPING_LOCALE,
+      includeServices: settings.includeServices,
+      mappingVersion: settings.mappingVersion,
+    }),
+  )
 }
 
 // --- fetching --------------------------------------------------------------------------------
@@ -336,6 +375,92 @@ async function queuePhotos(
   return { queued, elsewhere }
 }
 
+// --- holding a suspicious conclusion (T62) ----------------------------------------------------
+
+/** What a hold is about: the menu's items, or its sections. */
+interface LinkHold extends AbsenceHeld {
+  readonly what: 'items' | 'sections'
+}
+
+/**
+ * Whether the absence conclusion of a complete full pull must be held back, and why.
+ *
+ * Only article links count for the share: an option group or an option going missing with its
+ * combo is not a menu emptying. Category links hold only for an empty read (the read saw no
+ * section while sections are active). `before` is the links as stored before the run,
+ * `candidates` the moves the pull would make (after the race guard).
+ */
+function heldBy(
+  mapping: CatalogueMapping,
+  before: ReadonlyMap<string, StoredLink>,
+  candidates: readonly { stored: StoredLink; to: 'missing' | 'deleted' }[],
+): LinkHold | null {
+  const countsFor = (linkType: 'article' | 'category') => {
+    let activeBefore = 0
+    for (const stored of before.values()) {
+      if (stored.externalType === linkType && stored.state === 'active') activeBefore += 1
+    }
+    const seen = mapping.linkStates.filter(
+      (intent) => intent.linkType === linkType && intent.state === 'active',
+    ).length
+    const wouldHide = candidates.filter(
+      (candidate) => candidate.to === 'missing' && candidate.stored.externalType === linkType,
+    ).length
+    return { activeBefore, seen, wouldHide }
+  }
+  const items = countsFor('article')
+  const itemsVerdict = absenceHold({
+    activeBefore: items.activeBefore,
+    seen: items.seen,
+    wouldGoMissing: items.wouldHide,
+  })
+  if (itemsVerdict.hold) {
+    return {
+      what: 'items',
+      reason: itemsVerdict.reason,
+      wouldHide: items.wouldHide,
+      active: items.activeBefore,
+    }
+  }
+  const sections = countsFor('category')
+  const sectionsVerdict = absenceHold({
+    activeBefore: sections.activeBefore,
+    seen: sections.seen,
+    wouldGoMissing: sections.wouldHide,
+  })
+  if (sectionsVerdict.hold && sectionsVerdict.reason === 'empty_read') {
+    return {
+      what: 'sections',
+      reason: 'empty_read',
+      wouldHide: sections.wouldHide,
+      active: sections.activeBefore,
+    }
+  }
+  return null
+}
+
+const percentOf = (part: number, whole: number) =>
+  whole === 0 ? 100 : Math.round((100 * part) / whole)
+
+/** The run note for a held conclusion about the menu (read in the Integration tab's run history). */
+function heldNote(held: LinkHold): string {
+  const thing = held.what === 'items' ? 'items' : 'menu sections'
+  if (held.reason === 'empty_read') {
+    return `deletion check held: the read found no ${thing} but ${held.active} are on the menu; nothing was hidden`
+  }
+  const share = percentOf(held.wouldHide, held.active)
+  return `deletion check held: the read would hide ${held.wouldHide} of ${held.active} ${thing} (${share}%); nothing was hidden`
+}
+
+/** The run note for a held conclusion about the tables. */
+function heldPlacesNote(held: AbsenceHeld): string {
+  if (held.reason === 'empty_read') {
+    return `table check held: the read found no tables but ${held.active} are stored; none was marked missing or deleted`
+  }
+  const share = percentOf(held.wouldHide, held.active)
+  return `table check held: the read would mark ${held.wouldHide} of ${held.active} tables missing (${share}%); none was marked missing or deleted`
+}
+
 // --- the shared middle: map, record, apply, mark, conclude ----------------------------------
 
 async function syncFetched(
@@ -346,6 +471,7 @@ async function syncFetched(
   counters: Record<string, number>
   notes: string[]
   deletionCheckSkipped: boolean
+  absenceHeld: AbsenceHeld | undefined
   totals: AppliedTotals
   complete: boolean
 }> {
@@ -355,6 +481,7 @@ async function syncFetched(
   const startIso = start.toISOString()
   const notes: string[] = []
   let deletionCheckSkipped = false
+  let absenceHeld: AbsenceHeld | undefined
   const counters: Record<string, number> = {}
 
   const menu = await provisionMenu(env.pool, tenantId, target.venueId)
@@ -448,7 +575,8 @@ async function syncFetched(
     else updated += 1
   }
 
-  // Rule 6: absence concludes only after a complete full pull, only for one venue.
+  // Rule 6: absence concludes only after a complete full pull, only for one venue, and not when
+  // the read found nothing or sharply less than the menu holds (T62).
   const moves: ChangeSetOp[] = []
   let missing = 0
   let deleted = 0
@@ -482,6 +610,7 @@ async function syncFetched(
         })),
         now: env.now(),
       })
+      const candidates: { stored: StoredLink; to: 'missing' | 'deleted' }[] = []
       let raced = 0
       for (const change of conclusion.changes) {
         // Revivals ride on the seen ops above.
@@ -493,16 +622,32 @@ async function syncFetched(
           raced += 1
           continue
         }
-        moves.push({
-          op: 'setLinkState',
-          link: link(stored.externalType, stored.externalId),
-          state: change.to,
-        })
-        if (change.to === 'missing') missing += 1
-        else deleted += 1
+        candidates.push({ stored, to: change.to })
       }
-      if (raced > 0) {
-        notes.push(`${raced} link(s) seen by an incremental run meanwhile were left alone`)
+
+      // TODO(T62 preview): a person releases a hold from the switch preview; the override plugs in
+      // here (skip `heldBy` for a hold that was released).
+      const held = heldBy(mapping, before, candidates)
+      if (held !== null) {
+        // A complete read that found nothing, or would hide most of the menu, is far more likely
+        // a changed scope than a menu deleted at the till. No move is made: the links the read
+        // did see were marked above, and nothing is hidden.
+        deletionCheckSkipped = true
+        absenceHeld = { reason: held.reason, wouldHide: held.wouldHide, active: held.active }
+        notes.push(heldNote(held))
+      } else {
+        for (const { stored, to } of candidates) {
+          moves.push({
+            op: 'setLinkState',
+            link: link(stored.externalType, stored.externalId),
+            state: to,
+          })
+          if (to === 'missing') missing += 1
+          else deleted += 1
+        }
+        if (raced > 0) {
+          notes.push(`${raced} link(s) seen by an incremental run meanwhile were left alone`)
+        }
       }
     }
   }
@@ -534,7 +679,7 @@ async function syncFetched(
   const photos = await queuePhotos(ctx, mapping, before, hashes)
   counters.photos_queued = photos.queued
   counters.photos_elsewhere = photos.elsewhere
-  return { counters, notes, deletionCheckSkipped, totals, complete }
+  return { counters, notes, deletionCheckSkipped, absenceHeld, totals, complete }
 }
 
 // --- the two runs ----------------------------------------------------------------------------
@@ -547,9 +692,14 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
   const result = await syncFetched(ctx, fetched, 'full')
   const notes = [...result.notes]
 
-  // Places (tables): one call. A failure here is noted and does not touch the catalogue.
+  // Places (tables): one call. A failure here is noted and does not touch the catalogue. The
+  // evidence of the read is what the call really did: `Places_getlist` is not paged, so it is one
+  // entry, true once the list came back valid. An empty or sharply smaller list is held inside
+  // `upsertPlaces` (T62): no table goes missing or deleted and no code is retired.
+  const placesPagesOk: boolean[] = []
   try {
     const places = await session.reader.getPlaces(target.bid)
+    placesPagesOk.push(true)
     const described = mapPlaces(places.data, {
       integrationId: session.integration.id as IntegrationId,
       venueId: target.venueId as VenueId,
@@ -573,8 +723,9 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
       session.integration.id,
       target.bid,
       described,
-      { pagesOk: [true], now: env.now() },
+      { pagesOk: placesPagesOk, now: env.now() },
     )
+    if (stored.held !== null) notes.push(heldPlacesNote(stored.held))
     result.counters.places_seen = described.length
     result.counters.places_created = stored.created
     result.counters.places_missing = stored.missing
@@ -617,6 +768,7 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
     counters: result.counters,
     notes,
     deletionCheckSkipped: result.deletionCheckSkipped,
+    ...(result.absenceHeld !== undefined ? { absenceHeld: result.absenceHeld } : {}),
     refused: result.totals.rejected,
     complete: result.complete,
     treeHash: treeHashOf(tree),
@@ -654,6 +806,11 @@ export async function recordSuccess(
     // The cursor moves only when every page was read: otherwise the next run looks further back.
     ...(outcome.complete ? { cursor: iso } : {}),
     ...(kind === 'full' && outcome.complete ? { last_full_pull_at: iso } : {}),
+    // The scope this complete full pull read (venue, menu category, mapping settings): the
+    // incremental queues a full pull when the scope as configured now is another one (B1-Q2).
+    ...(kind === 'full' && outcome.complete
+      ? { scope_hash: scopeHashOf(ctx.session, ctx.target) }
+      : {}),
     ...(kind === 'incremental' ? { last_incremental_at: iso } : {}),
   })
 }

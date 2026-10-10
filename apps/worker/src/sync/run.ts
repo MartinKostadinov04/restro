@@ -13,6 +13,7 @@
 // from `summarizeError` (no query parameters) and `finishJobRun` scrubs URLs again.
 
 import { BarsyAuthError } from '@restro/barsy'
+import type { AbsenceHeld } from '@restro/core'
 import {
   type ApplyRejection,
   finishJobRun,
@@ -32,6 +33,8 @@ export interface RunReport {
   readonly notes?: readonly string[]
   /** True when a full pull did not conclude absence; the Integration tab reads it from the run. */
   readonly deletionCheckSkipped?: boolean
+  /** Set when a complete full pull held its absence conclusion back (T62): why, and how much. */
+  readonly absenceHeld?: AbsenceHeld
   readonly refused?: readonly ApplyRejection[]
   /** `failed` for a run that ended without doing its work but is not an error to retry. */
   readonly status?: 'completed' | 'failed'
@@ -76,6 +79,7 @@ export async function trackedRun(
         ...(report.deletionCheckSkipped !== undefined
           ? { deletionCheckSkipped: report.deletionCheckSkipped }
           : {}),
+        ...(report.absenceHeld !== undefined ? { absenceHeld: report.absenceHeld } : {}),
         summary: [summary, ...(report.notes ?? [])].filter(Boolean).join('\n'),
         refused: report.refused ?? [],
         finishedAt: env.now(),

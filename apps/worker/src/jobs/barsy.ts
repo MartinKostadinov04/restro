@@ -57,6 +57,7 @@ import {
   recordSuccess,
   runFullPull,
   runIncremental,
+  scopeHashOf,
   treeHashOf,
 } from '../sync/catalogue'
 import {
@@ -302,6 +303,9 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   counters: outcome.counters,
                   notes: outcome.notes,
                   deletionCheckSkipped: outcome.deletionCheckSkipped,
+                  ...(outcome.absenceHeld !== undefined
+                    ? { absenceHeld: outcome.absenceHeld }
+                    : {}),
                   refused: outcome.refused,
                 }
               }),
@@ -367,7 +371,16 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                 const start = env.now()
                 const tree = (await session.reader.getCategoryTree(target.bid)).data
                 const state = readSyncState(session.integration.config, target.bid)
-                if (state.cursor === undefined || state.tree_hash !== treeHashOf(tree)) {
+                // A cursor that never ran, or one that belongs to another tree, menu category,
+                // barsy venue or mapping setting, is not a base for a partial pull: the changed
+                // articles of the new scope are not the whole of it. Read everything instead.
+                const cursor = state.cursor
+                const treeChanged = cursor === undefined || state.tree_hash !== treeHashOf(tree)
+                const scopeChanged = state.scope_hash !== scopeHashOf(session, target)
+                if (treeChanged || scopeChanged) {
+                  const what = treeChanged
+                    ? 'the category tree changed'
+                    : 'the menu category or sync settings changed'
                   if (
                     await fullPullStartedWithin(
                       env,
@@ -376,7 +389,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                       FULL_PULL_COOLDOWN_MS,
                     )
                   ) {
-                    return { notes: ['the category tree changed; a full pull ran a moment ago'] }
+                    return { notes: [`${what}; a full pull ran a moment ago`] }
                   }
                   const full = prepareJob(JOB_NAMES.barsyFullPull, payload)
                   const id = await env.enqueue(JOB_NAMES.barsyFullPull, full.data, {
@@ -385,8 +398,8 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   return {
                     notes: [
                       id === null
-                        ? 'the category tree changed; a full pull is already queued'
-                        : 'the category tree changed: a full pull was queued',
+                        ? `${what}; a full pull is already queued`
+                        : `${what}: a full pull was queued`,
                     ],
                   }
                 }
@@ -394,7 +407,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                 const outcome = await runIncremental(
                   ctx,
                   tree,
-                  lastUpdateFilter(new Date(state.cursor), target.timezone),
+                  lastUpdateFilter(new Date(cursor), target.timezone),
                 )
                 await recordSuccess(ctx, outcome, 'incremental')
                 await queuePublishAfterSync(
