@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { reduceView } from './reducer'
 import { makeTestView } from './test-view'
-import type { ComposerSection } from './view-model'
+import type { ComposerItem, ComposerSection } from './view-model'
 
 const itemIdsIn = (view: ReturnType<typeof makeTestView>['view'], sectionId: string): string[] =>
   (view.placements[sectionId as keyof typeof view.placements] ?? []).map((p) => p.itemId)
@@ -221,6 +221,84 @@ describe('reduceView: hiding and creating', () => {
       section: { ...section, parentId: null, sortKey: 'a2' },
     })
     expect(top.rootIds).toEqual([ids.cocktails, ids.beer, section.id])
+  })
+})
+
+describe('reduceView: a new item made by hand', () => {
+  const newItem = (name: string, extra: Partial<ComposerItem> = {}): ComposerItem => ({
+    id: newId('nd'),
+    name,
+    price: { amount_minor: 450, currency: 'EUR' },
+    origin: 'owned',
+    hiddenBy: null,
+    shown: false,
+    issues: [{ code: 'V4', severity: 'warning', fieldKey: 'allergens' }],
+    tags: [],
+    dietary: [],
+    soldOutTonight: false,
+    offSale: null,
+    ...extra,
+  })
+
+  it('goes to the end of the open section, with the key the action writes', () => {
+    const { view, ids } = makeTestView()
+    const item = newItem('Mojito')
+    const next = reduceView(view, {
+      type: 'addItem',
+      item,
+      sectionId: ids.beer,
+      sortKey: 'a5',
+      locale: 'en_US',
+    })
+    expect(next.items[item.id]).toBe(item)
+    expect(itemIdsIn(next, ids.beer)).toEqual([ids.lager, ids.stout, item.id])
+    expect(next.placements[ids.beer]?.at(-1)).toEqual({ itemId: item.id, sortKey: 'a5' })
+    // It is placed, so it is not unsorted; the other lists are untouched.
+    expect(next.unsortedIds).toEqual(view.unsortedIds)
+    expect(next.placements[ids.cocktails]).toBe(view.placements[ids.cocktails])
+    // The base view is untouched: that is what a rollback shows.
+    expect(view.items[item.id]).toBeUndefined()
+    expect(itemIdsIn(view, ids.beer)).toEqual([ids.lager, ids.stout])
+  })
+
+  it('starts in Unsorted, by name, when it is made there', () => {
+    const { view, ids } = makeTestView()
+    const item = newItem('Absinthe')
+    const next = reduceView(view, {
+      type: 'addItem',
+      item,
+      sectionId: null,
+      sortKey: 'a0',
+      locale: 'en_US',
+    })
+    expect(next.unsortedIds).toEqual([item.id, ids.water])
+    expect(
+      Object.values(next.placements)
+        .flat()
+        .map((p) => p.itemId),
+    ).not.toContain(item.id)
+  })
+
+  it('keeps an item whose section vanished in Unsorted, and ignores a repeat', () => {
+    const { view, ids } = makeTestView()
+    const item = newItem('Zebra')
+    const lost = reduceView(view, {
+      type: 'addItem',
+      item,
+      sectionId: newId('nd'),
+      sortKey: 'a0',
+      locale: 'bg_BG',
+    })
+    expect(lost.unsortedIds).toEqual([ids.water, item.id])
+    const op = {
+      type: 'addItem',
+      item,
+      sectionId: ids.beer,
+      sortKey: 'a9',
+      locale: 'bg_BG',
+    } as const
+    const once = reduceView(view, op)
+    expect(reduceView(once, op)).toBe(once)
   })
 })
 

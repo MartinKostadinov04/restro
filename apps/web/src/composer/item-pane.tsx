@@ -5,12 +5,19 @@
 // move to another section.
 import { Droppable } from '@hello-pangea/dnd'
 import type { NodeId } from '@restro/core'
-import { FilterXIcon, InboxIcon, LayoutListIcon, ListChecksIcon } from 'lucide-react'
+import { FilterXIcon, InboxIcon, LayoutListIcon, ListChecksIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
@@ -24,10 +31,46 @@ import { SectionMenu } from './row-menus'
 import { SoldOutChip } from './sold-out-chip'
 import { filterByTags } from './tag-filter'
 
+/** "New item" for a section (`null` = Unsorted); nothing for a person who may not create items. */
+function NewItemButton({
+  sectionId,
+  testId,
+  variant = 'outline',
+}: {
+  sectionId: NodeId | null
+  testId: string
+  variant?: 'outline' | 'default'
+}) {
+  const t = useTranslations('composer')
+  const { newItem, canCreateItem } = useComposer()
+  if (!canCreateItem) return null
+  return (
+    <Button
+      type="button"
+      variant={variant}
+      size="sm"
+      onClick={() => newItem(sectionId)}
+      data-testid={testId}
+    >
+      <PlusIcon aria-hidden />
+      {t('newItem.button')}
+    </Button>
+  )
+}
+
 function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly NodeId[] }) {
   const t = useTranslations('composer')
-  const { view, tagFilter, clearTagFilter } = useComposer()
+  const { view, tagFilter, clearTagFilter, canCreateItem, hasTill } = useComposer()
   const empty = sectionId === null ? 'noUnsorted' : 'noItems'
+  // What an empty section says depends on where its items come from: the till, or this screen.
+  const emptyDescription =
+    sectionId === null
+      ? 'empty.noUnsorted.description'
+      : hasTill
+        ? 'empty.noItems.descriptionTill'
+        : canCreateItem
+          ? 'empty.noItems.description'
+          : 'empty.noItems.descriptionReadOnly'
   // The tag filter shows only some of the items; the order is the list's.
   const visible = filterByTags(view, ids, tagFilter)
   return (
@@ -71,8 +114,13 @@ function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly 
                     )}
                   </EmptyMedia>
                   <EmptyTitle>{t(`empty.${empty}.title`)}</EmptyTitle>
-                  <EmptyDescription>{t(`empty.${empty}.description`)}</EmptyDescription>
+                  <EmptyDescription>{t(emptyDescription)}</EmptyDescription>
                 </EmptyHeader>
+                {canCreateItem ? (
+                  <EmptyContent>
+                    <NewItemButton sectionId={sectionId} testId="new-item-empty" />
+                  </EmptyContent>
+                ) : null}
               </Empty>
             )}
             {provided.placeholder}
@@ -104,6 +152,7 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <NewItemButton sectionId={sectionId} testId="new-item" />
         <SoldOutChip />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Switch
@@ -122,9 +171,28 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
 
 export function ItemPane() {
   const t = useTranslations('composer')
-  const { view, selection } = useComposer()
+  const { view, selection, newSection } = useComposer()
 
   if (selection === null || (selection !== UNSORTED_KEY && !view.sections[selection])) {
+    // A menu with no section at all (a venue just made): offer the first one.
+    if (view.rootIds.length === 0) {
+      return (
+        <Empty className="min-h-72" data-testid="pane-no-sections">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <LayoutListIcon aria-hidden />
+            </EmptyMedia>
+            <EmptyTitle>{t('empty.noSections.title')}</EmptyTitle>
+            <EmptyDescription>{t('empty.noSections.description')}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button type="button" onClick={() => newSection(null)} data-testid="new-section-empty">
+              {t('empty.noSections.action')}
+            </Button>
+          </EmptyContent>
+        </Empty>
+      )
+    }
     return (
       <Empty className="min-h-72" data-testid="pane-empty">
         <EmptyHeader>
@@ -158,7 +226,10 @@ export function ItemPane() {
               {t('unsortedHint')}
             </p>
           </div>
-          <SoldOutChip />
+          <div className="flex flex-wrap items-center gap-2">
+            <NewItemButton sectionId={null} testId="new-item" />
+            <SoldOutChip />
+          </div>
         </header>
         <ItemList sectionId={null} ids={view.unsortedIds} />
       </section>

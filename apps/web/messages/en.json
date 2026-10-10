@@ -401,7 +401,32 @@
     "open": "Open",
     "empty": {
       "title": "No venues yet",
-      "description": "Your first venue is set up together with the Restro team."
+      "description": "Create your first venue with the New venue button.",
+      "descriptionReadOnly": "An owner or admin of the organisation can create the first venue."
+    },
+    "new": {
+      "button": "New venue",
+      "title": "New venue",
+      "description": "A venue has its own menu, languages and public address.",
+      "name": "Name",
+      "nameRequired": "Enter a name.",
+      "slug": "Public address",
+      "slugHelp": "The readable part of the menu’s web address. A short unique code is added to it automatically.",
+      "slugInvalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
+      "slugTaken": "This address is already taken. Choose another one.",
+      "languages": "Languages",
+      "languagesHelp": "The languages the menu can be written in. Each item can be translated later.",
+      "defaultLanguage": "Main language",
+      "defaultLanguageHelp": "Every item and section needs a name in this language.",
+      "defaults": "Time zone: {timeZone} · Currency: {currency}",
+      "create": "Create venue",
+      "creating": "Creating…",
+      "cancel": "Cancel",
+      "errors": {
+        "not_allowed": "Only an owner or admin can create a venue.",
+        "invalid": "Check the name, the address and the languages, then try again.",
+        "failed": "Something went wrong. The venue was not created, try again."
+      }
     }
   },
   "composer": {
@@ -420,16 +445,19 @@
       "noMenu": {
         "title": "This venue has no menu yet",
         "description": "Create it to start arranging sections and items.",
+        "descriptionReadOnly": "An owner or admin can create it.",
         "action": "Create the menu"
       },
       "noSections": {
         "title": "No sections yet",
-        "description": "The menu from barsy arrives here already sorted once the connection is set up. Until then you can create a section of your own.",
+        "description": "Create a section, or connect a till in the Integration tab.",
         "action": "Create a section"
       },
       "noItems": {
         "title": "No items in this section",
-        "description": "Drag items here from another section or from Unsorted."
+        "description": "Create an item with New item, or drag items here from another section or from Unsorted.",
+        "descriptionTill": "Items come from the till. Drag them here from Unsorted or another section; photos, descriptions and tags are added here.",
+        "descriptionReadOnly": "Drag items here from another section or from Unsorted."
       },
       "noUnsorted": {
         "title": "Every item has a section",
@@ -508,13 +536,28 @@
       "creating": "Creating…",
       "cancel": "Cancel"
     },
+    "newItem": {
+      "button": "New item",
+      "title": "New item",
+      "description": "It is added to “{section}”. Next you can fill in its allergens, description and photo.",
+      "names": "Item name",
+      "name": "Name ({language})",
+      "optional": "optional",
+      "nameRequired": "Enter a name in the main language.",
+      "price": "Price ({currency})",
+      "priceHelp": "For example 4.50. You can add or change it later.",
+      "priceInvalid": "Enter a price like 4.50, with at most two decimals.",
+      "create": "Create item",
+      "cancel": "Cancel"
+    },
     "itemSheet": {
       "stub": "Details, translations, photos and history arrive with the item sheet."
     },
     "errors": {
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
-      "not_allowed": "Only an owner or admin can mark items sold out.",
+      "not_allowed": "Only an owner or admin can do this.",
+      "till_venue": "This venue gets its items from the till, so items cannot be created here.",
       "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
       "failed": "Something went wrong. The change was not saved, try again."
     },

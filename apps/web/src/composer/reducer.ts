@@ -7,7 +7,7 @@
 // The reducer never decides what is allowed: the UI only offers legal moves (./tree.ts) and
 // `apply()` refuses the rest. It only has to show a legal move correctly.
 
-import type { NodeId, TagId } from '@restro/core'
+import type { Locale, NodeId, TagId } from '@restro/core'
 
 import type { KeyedId } from './plan'
 import type {
@@ -42,6 +42,17 @@ export type ComposerOp =
   | { readonly type: 'setItemHidden'; readonly itemId: NodeId; readonly hidden: boolean }
   | { readonly type: 'setSectionHidden'; readonly sectionId: NodeId; readonly hidden: boolean }
   | { readonly type: 'addSection'; readonly section: ComposerSection }
+  /**
+   * A new item made by hand. In a section (`sectionId`) it goes at its end, with the sort key the
+   * action writes; with `null` it starts in Unsorted, which lists items by name in `locale`.
+   */
+  | {
+      readonly type: 'addItem'
+      readonly item: ComposerItem
+      readonly sectionId: NodeId | null
+      readonly sortKey: string
+      readonly locale: Locale
+    }
   /** Tags added to and removed from a selection of items (the bulk bar and the item sheet). */
   | {
       readonly type: 'setItemTags'
@@ -188,6 +199,34 @@ function addSection(view: ComposerView, op: Extract<ComposerOp, { type: 'addSect
   return { ...view, sections, rootIds, placements: { ...view.placements, [section.id]: [] } }
 }
 
+function addItem(view: ComposerView, op: Extract<ComposerOp, { type: 'addItem' }>) {
+  const { item, sectionId, sortKey } = op
+  if (view.items[item.id]) return view
+  const items: Record<NodeId, ComposerItem> = { ...view.items, [item.id]: item }
+  if (sectionId !== null) {
+    const section = view.sections[sectionId]
+    // The section vanished meanwhile: the item would be in no list. Keep it in Unsorted.
+    if (section) {
+      const placements = {
+        ...view.placements,
+        [sectionId]: [...(view.placements[sectionId] ?? []), { itemId: item.id, sortKey }].sort(
+          (a, b) =>
+            byKeyThenId({ sortKey: a.sortKey, id: a.itemId }, { sortKey: b.sortKey, id: b.itemId }),
+        ),
+      }
+      return { ...view, items, placements }
+    }
+  }
+  // Unsorted lists items by name in the interface language, then by id (as the server does).
+  const tag = op.locale.replace('_', '-')
+  const unsortedIds = [...view.unsortedIds, item.id].sort((a, b) => {
+    const left = items[a]?.name ?? ''
+    const right = items[b]?.name ?? ''
+    return left.localeCompare(right, tag) || (a < b ? -1 : a > b ? 1 : 0)
+  })
+  return { ...view, items, unsortedIds }
+}
+
 function setItemTags(view: ComposerView, op: Extract<ComposerOp, { type: 'setItemTags' }>) {
   const removed = new Set<TagId>(op.remove)
   const items: Record<NodeId, ComposerItem> = { ...view.items }
@@ -248,5 +287,7 @@ export function reduceView(view: ComposerView, op: ComposerOp): ComposerView {
       return setSectionHidden(view, op)
     case 'addSection':
       return addSection(view, op)
+    case 'addItem':
+      return addItem(view, op)
   }
 }

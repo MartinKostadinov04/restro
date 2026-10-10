@@ -16,7 +16,15 @@ import {
   type DropResult,
   type ResponderProvided,
 } from '@hello-pangea/dnd'
-import { isId, type Locale, type LocalizedText, type NodeId, newId, type TagId } from '@restro/core'
+import {
+  type Currency,
+  isId,
+  type Locale,
+  type LocalizedText,
+  type NodeId,
+  newId,
+  type TagId,
+} from '@restro/core'
 import { PlusIcon, TagsIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -32,9 +40,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { pickLocalized } from '@/fields/localized'
+import { parseMoneyInput } from '@/fields/money-input'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import type { ActionResult } from './action-result'
 import {
+  createItemAction,
   createSectionAction,
   moveSectionAction,
   placeItemAction,
@@ -66,6 +76,7 @@ import {
 } from './item-param'
 import { ItemSheet } from './item-sheet'
 import { itemName, sectionTitle } from './labels'
+import { NewItemDialog } from './new-item-dialog'
 import { NewSectionDialog } from './new-section-dialog'
 import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
@@ -81,15 +92,27 @@ import {
 } from './tag-actions'
 import { TagsPanel } from './tags-panel'
 import { childIdsOf, flattenSections } from './tree'
-import type { ComposerSection, ComposerTag, ComposerView } from './view-model'
+import type {
+  ComposerIssue,
+  ComposerItem,
+  ComposerSection,
+  ComposerTag,
+  ComposerView,
+} from './view-model'
 
 interface ComposerProps {
   readonly venueId: string
   readonly view: ComposerView
   readonly defaultLocale: Locale
   readonly enabledLocales: readonly Locale[]
+  /** The venue's currency: the price of a new item is in it. */
+  readonly currency: Currency
   /** The person may mark items sold out tonight (owner or admin, D46). */
   readonly canMarkSoldOut: boolean
+  /** The person may create items by hand (owner or admin, CF-01). */
+  readonly canCreateItem: boolean
+  /** The venue has a till: its items come from the till only, none are made by hand (D66). */
+  readonly hasTill: boolean
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -104,7 +127,10 @@ export function Composer({
   view: serverView,
   defaultLocale,
   enabledLocales,
+  currency,
   canMarkSoldOut,
+  canCreateItem,
+  hasTill,
 }: ComposerProps) {
   const t = useTranslations('composer')
   const uiLocale = useLocale()
@@ -121,6 +147,10 @@ export function Composer({
   const [dialog, setDialog] = useState<{ open: boolean; parentId: NodeId | null }>({
     open: false,
     parentId: null,
+  })
+  const [itemDialog, setItemDialog] = useState<{ open: boolean; sectionId: NodeId | null }>({
+    open: false,
+    sectionId: null,
   })
 
   // A section that vanished (or a first visit) falls back to the first one.
@@ -261,6 +291,67 @@ export function Composer({
     }
   }
 
+  // Items made by hand are for venues without a till, and for owners and admins.
+  const mayCreateItem = canCreateItem && !hasTill
+
+  /**
+   * Creates an item by hand at the end of a section (or in Unsorted), then opens its sheet so the
+   * person can fill in allergens, description and photo. The price goes to the server as typed;
+   * the screen shows it at once, converted by the same rule (core's money module).
+   */
+  function createItem(sectionId: NodeId | null, name: LocalizedText, price: string) {
+    const id = newId('nd')
+    const others: KeyedId<NodeId>[] =
+      sectionId === null
+        ? []
+        : (view.placements[sectionId] ?? []).map((placement) => ({
+            id: placement.itemId,
+            key: placement.sortKey,
+          }))
+    const sortKey = keyAtEnd(others)
+    const money = parseMoneyInput(price, currency)
+    // What the resolver will say about a new item: no allergens yet (V4), and a missing name in
+    // each enabled language that has none (V7). Shown at once so the badge does not flash in.
+    const issues: ComposerIssue[] = [
+      { code: 'V4', severity: 'warning', fieldKey: 'allergens' },
+      ...enabledLocales
+        .filter((language) => !name[language])
+        .map(
+          (language): ComposerIssue => ({
+            code: 'V7',
+            severity: 'warning',
+            fieldKey: 'name',
+            locale: language,
+          }),
+        ),
+    ]
+    const item: ComposerItem = {
+      id,
+      name: name[locale] ?? name[defaultLocale] ?? Object.values(name)[0] ?? '',
+      price: money === undefined || money === 'invalid' ? null : money,
+      origin: 'owned',
+      hiddenBy: null,
+      shown: false,
+      issues,
+      tags: [],
+      dietary: [],
+      soldOutTonight: false,
+      offSale: null,
+    }
+    void mutate({ type: 'addItem', item, sectionId, sortKey, locale }, () =>
+      createItemAction({
+        venueId,
+        id,
+        sectionId,
+        name,
+        ...(price === '' ? {} : { price }),
+        sortKey,
+      }),
+    ).then((saved) => {
+      if (saved) replaceSearchParams({ [ITEM_PARAM]: id })
+    })
+  }
+
   const actions: ComposerActions = {
     select,
     openItem: (itemId) => replaceSearchParams({ [ITEM_PARAM]: itemId }),
@@ -291,6 +382,9 @@ export function Composer({
       placeItem(itemId, fromSectionId, toSectionId),
     moveSectionTo: (sectionId, parentId) => moveSection(sectionId, parentId),
     newSection: (parentId = null) => setDialog({ open: true, parentId }),
+    newItem: (sectionId) => {
+      if (mayCreateItem) setItemDialog({ open: true, sectionId })
+    },
 
     createTag: (id, draft) =>
       mutate({ type: 'upsertTag', tag: tagOf(id, draft, false) }, () =>
@@ -539,6 +633,8 @@ export function Composer({
         selected,
         tagFilter,
         canMarkSoldOut,
+        canCreateItem: mayCreateItem,
+        hasTill,
       }}
     >
       <DragDropContext
@@ -635,6 +731,20 @@ export function Composer({
           }}
         />
       ) : null}
+
+      <NewItemDialog
+        open={itemDialog.open}
+        onOpenChange={(open) => setItemDialog((current) => ({ ...current, open }))}
+        defaultLocale={defaultLocale}
+        enabledLocales={enabledLocales}
+        currency={currency}
+        sectionLabel={
+          itemDialog.sectionId === null
+            ? t('unsorted')
+            : sectionTitle(view, itemDialog.sectionId, t('untitledSection'))
+        }
+        onCreate={({ name, price }) => createItem(itemDialog.sectionId, name, price)}
+      />
 
       <NewSectionDialog
         open={dialog.open}

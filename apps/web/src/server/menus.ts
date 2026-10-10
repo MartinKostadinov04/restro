@@ -31,3 +31,33 @@ export async function getNodeBasics(
   )
   return rows[0] ?? null
 }
+
+/** How many parent steps up from a section to its menu we follow (sections nest three deep). */
+const MAX_PARENT_STEPS = 8
+
+/**
+ * True when the node sits in this menu: the menu itself, or a node whose chain of parents ends at
+ * the menu's root. Items have no parent (they belong to a menu through a placement), so this
+ * answers for sections. False for another tenant's node or another menu's (row-level security
+ * hides what is not the tenant's), and for a node that does not exist.
+ */
+export async function isNodeInMenu(
+  tenantId: string,
+  menuId: string,
+  nodeId: string,
+): Promise<boolean> {
+  if (!isId('nd', menuId) || !isId('nd', nodeId)) return false
+  return withTenant(getPool(), tenantId, async (tx) => {
+    let current: string | null = nodeId
+    for (let step = 0; step <= MAX_PARENT_STEPS && current !== null; step += 1) {
+      if (current === menuId) return true
+      const rows: { parentId: string | null }[] = await tx
+        .select({ parentId: nodes.parentId })
+        .from(nodes)
+        .where(eq(nodes.id, current))
+        .limit(1)
+      current = rows[0]?.parentId ?? null
+    }
+    return false
+  })
+}
