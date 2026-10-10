@@ -145,7 +145,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
         await trackedRun(env, { ...payload, kind: 'barsy_connect' }, async () =>
           withIntegration(env, payload, async (session) => {
             const { client, reader } = session
-            // Both pings return 1 (the official docs). A 401 here is "Wrong user or password".
+            // Both pings return 1 (the official docs). A 401 here stores the code wrong_credentials.
             await client.ping()
             await client.pingUser()
             const venues = (await reader.getVenues()).data

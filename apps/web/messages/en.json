@@ -562,10 +562,7 @@
       "activeConnect": "Checking the connection…",
       "activePull": "A sync is queued or running…",
       "checkAgain": "Check again",
-      "checkQueued": "The connection check is queued.",
-      "detail": {
-        "wrongCredentials": "Wrong user or password"
-      }
+      "checkQueued": "The connection check is queued."
     },
     "statusDetail": {
       "wrong_credentials": "Wrong user or password.",
