@@ -17,8 +17,12 @@ import {
   livePath,
   type PublishPutOptions,
   type PublishStore,
+  publishPutOptions as publishPutOptionsFor,
+  readVenueIndex,
   snapshotPath,
   variantPath,
+  venueIndexBytes,
+  venueIndexPath,
 } from '@restro/assets'
 import {
   type AssetId,
@@ -62,6 +66,9 @@ import { createWorld, type World } from './world'
 allowSlowSetup()
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** The slug of the venue `createWorld` provisions. */
+const slug = 'demo-club'
 
 /** A real image of the given size (sharp makes it: never a photo from barsy). */
 async function makeImage(
@@ -255,6 +262,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
           snapshotFile,
           currentPath(scope().menuId, scope().venueId),
           livePath(scope().menuId, scope().venueId),
+          venueIndexPath(slug),
         ].sort(),
       )
 
@@ -265,7 +273,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         error_summary: 'published version 1',
         integration_id: null,
       })
-      expect(run.counters).toMatchObject({ snapshot_version: 1, published: 1, files_written: 2 })
+      expect(run.counters).toMatchObject({ snapshot_version: 1, published: 1, files_written: 3 })
       expect(run.details?.notes).toEqual(['published version 1'])
     })
 
@@ -407,6 +415,56 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       )
       expect(await readJson(currentPath(scope().menuId, scope().venueId))).toMatchObject({
         snapshot_id: current?.id,
+      })
+    })
+
+    it('writes the slug index {venue_id, menu_id} with the first publish, and repairs it', async () => {
+      expect(await readVenueIndex(store, slug)).toBeNull()
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      expect(await readJson(venueIndexPath(slug))).toEqual({
+        venue_id: world.venueId,
+        menu_id: world.menuId,
+      })
+
+      store.puts.length = 0
+      await runJob(JOB_NAMES.publishFiles, scopePayload())
+      expect(store.puts).toEqual([])
+
+      await unlink(path.join(root, ...venueIndexPath(slug).split('/')))
+      await runJob(JOB_NAMES.publishFiles, scopePayload())
+      expect(store.puts).toEqual([venueIndexPath(slug)])
+      expect(await readVenueIndex(store, slug)).toEqual({
+        venue_id: world.venueId,
+        menu_id: world.menuId,
+      })
+    })
+
+    it('never overwrites the slug index of another venue, and says so in the run', async () => {
+      const other = { venue_id: newId('vn'), menu_id: newId('nd') }
+      await store.inner.put(
+        venueIndexPath(slug),
+        venueIndexBytes(other),
+        publishPutOptionsFor(venueIndexPath(slug)),
+      )
+      store.puts.length = 0
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      // The menu is published and its files are out, but the address stays with the first venue.
+      expect(store.puts).not.toContain(venueIndexPath(slug))
+      expect(await readVenueIndex(store, slug)).toEqual(other)
+      const run = await lastRun('publish_menu')
+      expect(run.details?.notes.join(' ')).toContain(`/m/${slug} belongs to another venue`)
+    })
+
+    it('replaces a slug index file that cannot be read', async () => {
+      await store.inner.put(
+        venueIndexPath(slug),
+        new TextEncoder().encode('{broken'),
+        publishPutOptionsFor(venueIndexPath(slug)),
+      )
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      expect(await readVenueIndex(store, slug)).toEqual({
+        venue_id: world.venueId,
+        menu_id: world.menuId,
       })
     })
 

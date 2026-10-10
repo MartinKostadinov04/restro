@@ -761,5 +761,57 @@
       "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
       "failed": "Something went wrong. Try again."
     }
+  },
+  "tablePage": {
+    "title": "This table code is not active.",
+    "text": "Ask the staff."
+  },
+  "appearance": {
+    "title": "Appearance",
+    "description": "How your guest menu looks: one brand colour and your logo. The other colours are worked out from it, so text always stays easy to read.",
+    "readOnly": "Only owners and admins can change the appearance.",
+    "brand": "Brand colour",
+    "brandHelp": "Pick a colour, choose one of the suggestions or type it as #rrggbb.",
+    "brandPicker": "Colour picker",
+    "brandInvalid": "Enter a colour like #3366cc.",
+    "swatches": "Suggested colours",
+    "clearBrand": "Use the default grey",
+    "logo": "Logo",
+    "logoHelp": "JPEG, PNG or WebP, up to 10 MB. A wide logo on a transparent background works best.",
+    "logoUpload": "Upload a logo",
+    "logoReplace": "Replace logo",
+    "logoRemove": "Remove logo",
+    "logoUploading": "Uploading…",
+    "logoCurrent": "Current logo",
+    "logoPending": "The new logo shows in the preview after you save.",
+    "previewTitle": "Preview",
+    "previewHint": "The colours a guest sees, worked out from the brand colour.",
+    "previewLight": "Light screen",
+    "previewDark": "Dark screen",
+    "sampleSection": "Cocktails",
+    "sampleName": "Sample item",
+    "sampleText": "A line of description under the name.",
+    "samplePrice": "12,50 €",
+    "sampleChip": "Selected",
+    "pairs": {
+      "page": "Page",
+      "card": "Card",
+      "accent": "Accent",
+      "onAccent": "Text on accent",
+      "text": "Text",
+      "muted": "Secondary text",
+      "accentText": "Accent as text",
+      "ratio": "{ratio}:1"
+    },
+    "save": "Save appearance",
+    "saving": "Saving…",
+    "saved": "Appearance saved. Guests see it after the next publish.",
+    "errors": {
+      "invalid": "Check the colour and try again.",
+      "forbidden": "Only owners and admins can change the appearance.",
+      "not_found": "This venue could not be found.",
+      "logo_not_usable": "That logo could not be used. Upload it again.",
+      "failed": "Something went wrong. Try again."
+    }
   }
 }

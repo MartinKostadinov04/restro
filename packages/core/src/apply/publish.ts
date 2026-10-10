@@ -45,8 +45,9 @@ import {
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
 import { assertSnapshotSafe, collectForbiddenValues } from '../snapshot/leak-guard'
 import { buildLiveOverlay } from '../snapshot/overlay'
-import type { LiveOverlay, MenuSnapshot } from '../snapshot/schema'
+import type { LiveOverlay, MenuSnapshot, SnapshotTheme } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
+import { readVenueTheme, snapshotPalette, type VenueTheme } from '../theme'
 import { readMenuDocument } from './load-document'
 import { loadTagVocabulary } from './tags'
 
@@ -337,6 +338,25 @@ async function supersedeHeld(tx: WriteTx, menuId: string, venueId: string, at: D
     .where(and(inScope(menuId, venueId), eq(snapshots.status, 'held')))
 }
 
+/**
+ * The snapshot's theme (R13): the default until the venue chooses a brand colour, then the palette
+ * derived from that colour and the venue's logo. A logo that is not stored yet, or has no variant
+ * files yet (the `asset-variants` job is still to run), is left out rather than shown broken; the
+ * next publish picks it up.
+ */
+function snapshotThemeOf(
+  theme: VenueTheme | null,
+  snapshotAssets: Readonly<Record<AssetId, SnapshotAssetInput>>,
+): SnapshotTheme {
+  if (theme === null) return DEFAULT_THEME
+  const logo = theme.logo_asset_id
+  return {
+    ...DEFAULT_THEME,
+    palette: snapshotPalette(theme.brand),
+    logo: logo !== null && Object.hasOwn(snapshotAssets, logo) ? logo : null,
+  }
+}
+
 /** The template a menu is resolved with. Only `venue-menu@1` exists so far. */
 const TEMPLATE = VENUE_MENU_TEMPLATE
 
@@ -354,6 +374,8 @@ interface Resolution {
   readonly currency: Currency
   readonly day: string
   readonly nowIso: string
+  /** The look the venue chose (`venues.settings.theme`), or null: the default theme applies. */
+  readonly theme: VenueTheme | null
 }
 
 /**
@@ -408,7 +430,16 @@ async function resolveForVenue(
     now: nowIso,
     firstPublishedAt,
   })
-  return { doc, resolved, defaultLocale, locales, currency, day, nowIso }
+  return {
+    doc,
+    resolved,
+    defaultLocale,
+    locales,
+    currency,
+    day,
+    nowIso,
+    theme: readVenueTheme(venue.settings),
+  }
 }
 
 /**
@@ -424,11 +455,16 @@ async function prepareSnapshot(
   options: PublishOptions,
 ): Promise<Prepared> {
   const { menuId, venueId } = scope
-  const { doc, resolved, defaultLocale, locales, currency, day, nowIso } = await resolveForVenue(
-    tx,
-    scope,
-    now,
-  )
+  const {
+    doc,
+    resolved,
+    defaultLocale,
+    locales,
+    currency,
+    day,
+    nowIso,
+    theme: venueTheme,
+  } = await resolveForVenue(tx, scope, now)
   const blocking = [
     ...new Set(
       resolved.issues.filter((issue) => issue.severity === 'block_menu').map((i) => i.code),
@@ -459,6 +495,8 @@ async function prepareSnapshot(
     const image = FIELD_VALUE_SCHEMAS.image.safeParse(row.value)
     if (image.success) assetIds.add(image.data.asset_id)
   }
+  // The venue's logo is an asset like any other: stored, with its variant files, or left out.
+  if (venueTheme?.logo_asset_id) assetIds.add(venueTheme.logo_asset_id)
   const assetRows =
     assetIds.size === 0
       ? []
@@ -496,7 +534,7 @@ async function prepareSnapshot(
             .where(inArray(sourceLinks.nodeId, nodeIds))
         ).map((row) => row.externalId)
 
-  const theme = DEFAULT_THEME
+  const theme = snapshotThemeOf(venueTheme, snapshotAssets)
   // The venue's non-archived tags, in order (D60); items carry only ids that are in it.
   const tagVocabulary = await loadTagVocabulary(tx, venueId)
   const built = buildSnapshot(resolved, {

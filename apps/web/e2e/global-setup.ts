@@ -45,4 +45,6 @@ export default function globalSetup() {
   runScript('./scripts/seed-dev.ts')
   runScript('./scripts/seed-item-sheet.ts')
   runScript('./scripts/seed-integration-e2e.ts', 'seed')
+  // Last: it publishes the demo menu as it is after the seeds above (photos, labels, a brand colour).
+  runScript('./scripts/seed-guest-e2e.ts')
 }

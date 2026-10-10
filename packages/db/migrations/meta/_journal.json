@@ -71,6 +71,13 @@
       "when": 1791595447496,
       "tag": "0009_asset_variants_decision_note",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791618854508,
+      "tag": "0010_venue_settings",
+      "breakpoints": true
     }
   ]
 }

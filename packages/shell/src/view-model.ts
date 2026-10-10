@@ -160,6 +160,8 @@ export interface ViewTheme {
   readonly palette: { readonly [S in `${keyof Palette}`]: string }
   /** Token `color.<name>`: the semantic colours. */
   readonly colors: SemanticColours
+  /** The same colours for a dark screen; a face that follows the guest's colour scheme uses them. */
+  readonly colorsDark: SemanticColours
   readonly font: string
   readonly radius: number
   readonly shadow: number

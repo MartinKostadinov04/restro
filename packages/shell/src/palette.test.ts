@@ -11,8 +11,10 @@ import {
   MIN_TEXT_CONTRAST,
   PALETTE_STEPS,
   readableOn,
+  relativeLuminance,
   resolvePalette,
   semanticColours,
+  semanticColoursDark,
   textOn,
 } from './palette'
 
@@ -83,6 +85,26 @@ describe('palette helper (R13)', () => {
         ok(c.accentText, c.background)
         ok(c.accentText, c.surface)
         ok(c.onAccent, c.accent)
+      }),
+      { numRuns: 500 },
+    )
+  })
+
+  it('gives every brand colour readable pairs on a dark screen too (property)', () => {
+    fc.assert(
+      fc.property(hexColour, (brand) => {
+        const c = semanticColoursDark(generatePalette(brand))
+        const ok = (a: string, b: string) =>
+          expect(contrastRatio(a, b)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+        ok(c.text, c.background)
+        ok(c.text, c.surface)
+        ok(c.muted, c.background)
+        ok(c.muted, c.surface)
+        ok(c.accentText, c.background)
+        ok(c.accentText, c.surface)
+        ok(c.onAccent, c.accent)
+        // The dark page is darker than the light one.
+        expect(relativeLuminance(c.background)).toBeLessThan(relativeLuminance(c.text))
       }),
       { numRuns: 500 },
     )

@@ -25,7 +25,12 @@ import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
 import { queuePublishForAsset } from '../publish/after-sync'
-import { type PublishFilesDeps, writeLiveOverlay, writePublishFiles } from '../publish/files'
+import {
+  type PublishFilesDeps,
+  type PublishFilesResult,
+  writeLiveOverlay,
+  writePublishFiles,
+} from '../publish/files'
 import { runAssetVariants } from '../publish/variants'
 import { type RunReport, trackedRun } from '../sync/run'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
@@ -51,6 +56,15 @@ function refusal(error: PublishError): RunReport {
     notes: [`publish refused: ${error.code}${issues}`],
     counters: { refused: 1 },
   }
+}
+
+/** A slug that another venue already holds is said in the run, since the menu is not served there. */
+function slugNotes(files: PublishFilesResult): string[] {
+  return files.status === 'checked' && files.slugIndex === 'taken'
+    ? [
+        `the address /m/${files.slug} belongs to another venue: choose another venue slug (the menu is published but not served there)`,
+      ]
+    : []
 }
 
 export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
@@ -149,6 +163,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
                 result.status === 'published'
                   ? `published version ${result.snapshot.version}`
                   : `nothing to publish: the menu is as version ${result.snapshot.version}`,
+                ...slugNotes(files),
               ],
             }
           },
@@ -186,7 +201,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
             await refreshLive(context, payload)
             return {
               counters: { snapshot_version: result.version, files_written: result.written.length },
-              notes: [`files of version ${result.version} are in place`],
+              notes: [`files of version ${result.version} are in place`, ...slugNotes(result)],
             }
           },
         )

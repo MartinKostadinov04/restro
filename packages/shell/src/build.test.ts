@@ -429,6 +429,18 @@ describe('R10 images', () => {
     expect(focal?.image).toMatchObject({ focal: { x: 0.3, y: 0.75 }, objectPosition: '30% 75%' })
   })
 
+  it('lists the distinct files of the asset, narrowest first, for a srcset', () => {
+    const [plain] = items(build('with-images'))
+    const files = plain?.image?.variants ?? []
+    expect(files.length).toBeGreaterThan(0)
+    expect(files.map((file) => file.width)).toEqual(
+      [...files.map((file) => file.width)].sort((a, b) => a - b),
+    )
+    expect(new Set(files.map((file) => file.src)).size).toBe(files.length)
+    expect(files.map((file) => file.src)).toContain(plain?.image?.src)
+    for (const file of files) expect(file.src).toMatch(/^\/a\/as_[0-9A-Za-z]+\/w\d+\.webp$/)
+  })
+
   it('describes the picture with its own text, else the item name', () => {
     const [negroni, margarita] = items(build('with-images', { locale: 'en_US' }))
     expect(negroni?.image?.alt).toEqual({ text: 'Negroni on ice', lang: 'en_US' })
@@ -515,6 +527,19 @@ describe('R13 theme', () => {
       expect(contrastRatio(text, on)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
     }
     expect(theme).toMatchObject({ font: 'Inter', radius: 8, shadow: 1, logo: null })
+  })
+
+  it('carries the same colours for a dark screen, readable too', () => {
+    const { colorsDark } = build('no-images').theme
+    for (const [text, on] of [
+      [colorsDark.text, colorsDark.background],
+      [colorsDark.text, colorsDark.surface],
+      [colorsDark.muted, colorsDark.surface],
+      [colorsDark.accentText, colorsDark.surface],
+      [colorsDark.onAccent, colorsDark.accent],
+    ] as const) {
+      expect(contrastRatio(text, on)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+    }
   })
 
   it('gives a section colour hint a readable text colour', () => {
