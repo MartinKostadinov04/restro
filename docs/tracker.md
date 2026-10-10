@@ -144,6 +144,11 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Table links:** `/t/<token>` redirects through `t/<token>.json` (no database) or shows "code not active".
   - **Venue theme:** brand colour + logo in Settings → Appearance (`venues.settings`, migration 0010). The palette is derived at publish time (`core/theme.ts`, no chroma-js) and reaches guests with the next publish.
   - **Open:** slugs are unique per tenant but `v/<slug>.json` is global (first venue keeps the address; T61). The snapshot carries no time zone or `sold_out_display` yet (shell defaults). `NEXT_PUBLIC_CDN_BASE_URL` must be absolute on staging.
+- Tags (S3-06, merged 10-10):
+  - **Tag list:** a venue table `tags` (`tg_`, BG/EN label, colour token from `accent|accent_text|muted|text|border`, fractional order, archive not delete), migration 0011.
+  - **In the composer:** a Tags panel with drag reorder, chips in the item sheet, multi-select bulk add/remove (one atomic change set), and a filter ("any of").
+  - **Validation:** `apply()` refuses newly added unknown or archived tag ids (`unknown_tag`); ids already on an item are kept.
+  - **Publishing:** the snapshot carries the vocabulary `{label, color?}`.
 - **Staging (10-10, Martin's OK):**
   - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
   - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
@@ -364,6 +369,8 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - the absence conclusion is skipped when a pull sees 0 categories under the root;
   - a pull that would mark more than 30% missing holds the conclusion for a person (like V11).
   — Claude, before the pilot
+- [ ] T63. Tags follow-ups: the shell passes a tag's colour and the venue's tag order to the face (snapshot tag entry gets an optional `order`; `ViewTag` gets `color`); make the colour required at `menu-snapshot/2` — Claude (small task)
+- [ ] T64. Test flakes: `worker.integration.test.ts` fails now and then in the full run (concurrent `db:roles`, "tuple concurrently updated"); keyboard drags in `composer.spec.ts` now wait for the save response (fixed 10-10) — Claude
 - [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins. Same for the job queue key (per integration: a second venue's pull is dropped while the first is queued) and the absence check (runs only with exactly one mapped venue) — Claude
 - [ ] T57. Photos hosted outside the barsy host (demo: 3 of 53 on `imagedelivery.net`) are refused today. Lead's recommendation: a `BARSY_PHOTO_HOSTS` allowlist, fetched **anonymously only** (credentials only ever go to the integration's own origin) — Claude, after checking real venue data
 - [ ] T58. Worker housekeeping: README "The worker" env table (BARSY_*, ASSET_STORE, R2_*, `.env.worker.local`); a start-up sweep that fails job runs stuck in `running`; `places.state_changed_at` (today `updated_at` stands in); decide whether the worker declares the AWS SDK instead of tsup bundling it; date-fns/@date-fns/tz vs the `Intl` code the sync uses (CLAUDE.md says date-fns) — Claude (Haiku/Sonnet tasks)
