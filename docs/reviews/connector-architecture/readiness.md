@@ -84,6 +84,7 @@ All three are being fixed now (CF-01, CF-02).
 | **CF-11** | **Switch preview:** dry-run "plan" stage, then a confirm dialog with exact hide counts for venue or root changes; releases a CF-02 hold | A4-P8, B1-Q7, A3 plan stage | M | Sonnet | n | CF-07, CF-09 |
 | **CF-12** | **Small hardening:** live overlay parsed loosely (parser first), `Referrer-Policy: no-referrer` on `/m` and `/t`, picker hints (`public_cat_id`, article counts), EUR check at connect, role check cleanups | A5-P1, P3; B1-Q6, Q10; A4-P16 | S | Haiku/Sonnet | n | any time |
 | **CF-13** | **Docs:** neutral "Outbound" command contract (barsy as appendix), stack.md registration state, hand-off guide wording, CLAUDE.md neutral rules (A6 draft) | A5-P14, A6 | S | Sonnet, lead reviews | n | CF-08 |
+| **CF-14** | **Public menu address** `/m/<slug>-<code>` (D68): random permanent code per venue, slug editable and no longer unique, files keyed by code, the page corrects stale links | D68 | M | Sonnet | y (0015) | CF-01 |
 | — | **Then:** the connector guide `docs/guides/connectors.md` + CLAUDE.md section + brief template (A6 outline) | A6 | M | Sonnet, lead reviews | n | CF-01…13 |
 
 **Later, not blocking Stage 4:**
@@ -106,7 +107,7 @@ All three are being fixed now (CF-01, CF-02).
 ## Decisions for Martin
 
 1. **Several venues on one barsy account:** *on hold (T71).* Martin: follow barsy's own structure. The demo data shows barsy keeps items in catalogues, with a per-venue "for sale" map on each item. New proposal: one Restro item per barsy item, with per-venue sale state and price, checked per catalogue. Confirm with barsy's docs first.
-2. **A venue's public address `/m/<slug>` is fixed once created.** QR codes don't use it; links people share do. **Recommend fixed for now**, with an editor later if needed.
+2. ~~A venue's public address is fixed once created~~: **decided 10-11 (D68).** The address is `/m/<slug>-<code>`, with a random permanent code (the pattern of Claude artifacts and Notion). The slug is editable and old links keep working. Brief CF-14.
 3. ~~Hand-made items on a venue with a till~~: **decided 10-11 (D66).** In a till venue the till is the only source of items, because nothing made here can reach the POS. Hand-made items exist only in venues without a till; sections and enrichment stay ours. Keep it one gate for future use cases.
 4. **Staging database:** allow a wipe and re-sync for the location-wide link change (test data only). **Recommend yes**; asked again at deploy.
 5. **Recording session with barsy admin rights** (demo admin login, or the read-only user from Lukanet, T39/Q73). Needed to confirm:
