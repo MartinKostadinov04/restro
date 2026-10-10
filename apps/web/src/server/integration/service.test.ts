@@ -5,7 +5,7 @@
 // invisible. The queue is a fake except in the last block, which uses a real pg-boss.
 import { generateKeyPairSync } from 'node:crypto'
 
-import { JOB_NAMES, newId } from '@restro/core'
+import { JOB_NAMES, newId, parseSyncSettings } from '@restro/core'
 import {
   appendSourceRecords,
   finishJobRun,
@@ -37,6 +37,7 @@ import {
   readActiveJob,
   saveConnection,
   saveMappingSettings,
+  saveSyncSettings,
   syncNow,
 } from './service'
 
@@ -151,6 +152,18 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
         runs: [],
         gate: { enabled: false, reason: 'no_credentials' },
         settings: { priceSource: 'actual_price', defaultLocale: 'bg_BG' },
+        // The defaults are what ran before the settings existed; nothing is scheduled yet.
+        syncSettings: {
+          incrementalEnabled: true,
+          incrementalMinutes: 5,
+          fullPullEnabled: true,
+          fullPullTime: '12:00',
+          afterSync: 'auto',
+          newItems: 'show',
+          scheduleActive: false,
+          nextIncrementalAt: null,
+          nextFullPullAt: null,
+        },
       })
       const without = await loadIntegrationView(scopeFor(venueA), {
         sealPublicKey: undefined,
@@ -482,6 +495,154 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
       )
     })
 
+    describe('the sync settings (D59)', () => {
+      const DEFAULTS = {
+        schedule: {
+          incremental_enabled: true,
+          incremental_minutes: 5,
+          full_pull_enabled: true,
+          full_pull_time: '12:00',
+        },
+        publish: { after_sync: 'auto', new_items: 'show' },
+      } as const
+      // 12:07:20 in Sofia (summer time).
+      const NOW = new Date('2026-10-10T09:07:20Z')
+      const configOf = async () => (await integrationRows())[0]?.config ?? {}
+
+      afterEach(async () => {
+        // Back to a clean slate for the next test: no settings, no planned-run marks.
+        await owner.query(
+          `update restro.integrations set config = config - 'schedule' - 'publish' - 'publish_after_sync'
+           where tenant_id = $1`,
+          [tenant],
+        )
+        await owner.query(
+          `update restro.integrations set config = jsonb_set(config, '{sync,1}', (config #> '{sync,1}')
+             - 'last_incremental_queued_at' - 'last_full_pull_slot')
+           where tenant_id = $1 and config #> '{sync,1}' is not null`,
+          [tenant],
+        )
+      })
+
+      it('shows the defaults and when the next syncs are planned, in the venue’s clock', async () => {
+        const view = await loadIntegrationView(scopeFor(venueA), services(), NOW)
+        expect(view.syncSettings).toMatchObject({
+          incrementalEnabled: true,
+          incrementalMinutes: 5,
+          fullPullEnabled: true,
+          fullPullTime: '12:00',
+          afterSync: 'auto',
+          newItems: 'show',
+          scheduleActive: true,
+        })
+        // Both are overdue (the last runs are from yesterday): they start at the next tick.
+        expect(view.syncSettings.nextIncrementalAt).toBe('2026-10-10T09:08:00.000Z')
+        expect(view.syncSettings.nextFullPullAt).toBe('2026-10-10T09:08:00.000Z')
+
+        // After the tick queued them: five minutes on, and tomorrow's noon (09:00 UTC).
+        await updateSyncState(app, tenant, integrationId, 1, {
+          last_incremental_queued_at: '2026-10-10T09:05:00.200Z',
+          last_full_pull_slot: '2026-10-10T09:00:00.000Z',
+        })
+        const planned = (await loadIntegrationView(scopeFor(venueA), services(), NOW)).syncSettings
+        expect(planned.nextIncrementalAt).toBe('2026-10-10T09:10:00.000Z')
+        expect(planned.nextFullPullAt).toBe('2026-10-11T09:00:00.000Z')
+      })
+
+      it('names no times for what is switched off, or while nothing is scheduled', async () => {
+        await saveSyncSettings(scopeFor(venueA), {
+          ...DEFAULTS,
+          schedule: { ...DEFAULTS.schedule, incremental_enabled: false, full_pull_enabled: false },
+        })
+        const off = (await loadIntegrationView(scopeFor(venueA), services(), NOW)).syncSettings
+        expect(off).toMatchObject({
+          incrementalEnabled: false,
+          fullPullEnabled: false,
+          scheduleActive: true,
+          nextIncrementalAt: null,
+          nextFullPullAt: null,
+        })
+        // Venue B has no barsy venue: the worker's tick would skip it, so the card names no times.
+        const idle = (await loadIntegrationView(scopeFor(venueB), services(), NOW)).syncSettings
+        expect(idle).toMatchObject({
+          scheduleActive: false,
+          nextIncrementalAt: null,
+          nextFullPullAt: null,
+        })
+      })
+
+      it('saves them whole, shows them back, and the worker reads what the card saved', async () => {
+        await updateIntegration(app, tenant, integrationId, {
+          config: { publish_after_sync: false },
+        })
+        const input = {
+          schedule: {
+            incremental_enabled: false,
+            incremental_minutes: 15,
+            full_pull_enabled: true,
+            full_pull_time: '03:30',
+          },
+          publish: { after_sync: 'manual', new_items: 'hold' },
+        } as const
+        expect(await saveSyncSettings(scopeFor(venueA), input)).toEqual({ ok: true })
+
+        const view = await loadIntegrationView(scopeFor(venueA), services(), NOW)
+        expect(view.syncSettings).toMatchObject({
+          incrementalEnabled: false,
+          incrementalMinutes: 15,
+          fullPullEnabled: true,
+          fullPullTime: '03:30',
+          afterSync: 'manual',
+          newItems: 'hold',
+        })
+        const config = await configOf()
+        expect(config).toMatchObject(input)
+        // The old flat key is gone (publish.after_sync says it now); other keys are untouched.
+        expect(config).not.toHaveProperty('publish_after_sync')
+        expect(config).toHaveProperty('catalogue_trees')
+        expect(config).toHaveProperty('sync')
+        expect(parseSyncSettings(config)).toEqual(input)
+      })
+
+      it('puts the defaults back when they are saved again', async () => {
+        await saveSyncSettings(scopeFor(venueA), {
+          schedule: { ...DEFAULTS.schedule, incremental_minutes: 30 },
+          publish: { after_sync: 'manual', new_items: 'hold' },
+        })
+        expect(await saveSyncSettings(scopeFor(venueA), DEFAULTS)).toEqual({ ok: true })
+        expect(parseSyncSettings(await configOf())).toEqual(DEFAULTS)
+      })
+
+      it('is for owners and admins only, and refuses anything outside the lists', async () => {
+        expect(await saveSyncSettings(scopeFor(venueA, { canManage: false }), DEFAULTS)).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        const invalid = (patch: Record<string, unknown>) =>
+          saveSyncSettings(scopeFor(venueA), { ...DEFAULTS, ...patch } as never)
+        for (const patch of [
+          { schedule: { ...DEFAULTS.schedule, incremental_minutes: 7 } },
+          { schedule: { ...DEFAULTS.schedule, incremental_minutes: '5' } },
+          { schedule: { ...DEFAULTS.schedule, full_pull_time: '24:00' } },
+          { schedule: { ...DEFAULTS.schedule, full_pull_time: '9:00' } },
+          { schedule: { ...DEFAULTS.schedule, incremental_enabled: 'yes' } },
+          { schedule: { incremental_minutes: 5 } },
+          { publish: { ...DEFAULTS.publish, after_sync: 'later' } },
+          { publish: { ...DEFAULTS.publish, new_items: 'hide' } },
+          { publish: { after_sync: 'auto' } },
+          { extra: true },
+        ]) {
+          expect(await invalid(patch), JSON.stringify(patch)).toEqual({
+            ok: false,
+            error: 'invalid',
+          })
+        }
+        // Nothing was written by any of them.
+        expect(await configOf()).not.toHaveProperty('schedule')
+        expect(await configOf()).not.toHaveProperty('publish')
+      })
+    })
+
     it('"Sync now" queues a full pull of this venue only when the gate is open', async () => {
       expect(await syncNow(scopeFor(venueA, { canManage: false }), services())).toEqual({
         ok: false,
@@ -560,6 +721,17 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
           priceSource: 'current_price',
           allergenKey: null,
           defaultLocale: 'bg_BG',
+        }),
+      ).toEqual({ ok: false, error: 'not_found' })
+      expect(
+        await saveSyncSettings(foreign, {
+          schedule: {
+            incremental_enabled: true,
+            incremental_minutes: 5,
+            full_pull_enabled: true,
+            full_pull_time: '12:00',
+          },
+          publish: { after_sync: 'auto', new_items: 'show' },
         }),
       ).toEqual({ ok: false, error: 'not_found' })
       // Their own save creates their own integration; ours is untouched.

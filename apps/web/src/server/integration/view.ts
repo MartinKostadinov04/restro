@@ -3,6 +3,8 @@
 // (only whether there are some), not a password. Times are ISO strings; the components format
 // them in the venue's time zone.
 
+import type { AfterSyncMode, IncrementalMinutes, NewItemsMode } from '@restro/core'
+
 /** `integrations.status`. */
 export type IntegrationStatus = 'new' | 'connected' | 'error'
 
@@ -60,6 +62,30 @@ export interface MappingSettings {
   readonly defaultLocale: string
 }
 
+/**
+ * The sync settings (D59) as the Synchronisation card shows them: `config.schedule` and
+ * `config.publish` with the defaults filled in (core/sync-settings), and when the next syncs are
+ * planned (core/sync-schedule).
+ */
+export interface SyncSettingsView {
+  readonly incrementalEnabled: boolean
+  readonly incrementalMinutes: IncrementalMinutes
+  readonly fullPullEnabled: boolean
+  /** `HH:mm` in the venue's time zone. */
+  readonly fullPullTime: string
+  readonly afterSync: AfterSyncMode
+  readonly newItems: NewItemsMode
+  /**
+   * Scheduled syncs run only for a connected integration whose barsy venue and catalogue are
+   * chosen. Until then the card says so instead of naming times.
+   */
+  readonly scheduleActive: boolean
+  /** About when the next change check starts (ISO); null when they are off or nothing is scheduled. */
+  readonly nextIncrementalAt: string | null
+  /** When the next full pull starts (ISO); null when it is off or nothing is scheduled. */
+  readonly nextFullPullAt: string | null
+}
+
 /** One refused write of a run: the field (our key) and why. */
 export interface RefusedWrite {
   readonly fieldKey: string | null
@@ -114,6 +140,7 @@ export interface IntegrationView {
   readonly treeFetchedAt: string | null
   readonly rootCatId: number | null
   readonly settings: MappingSettings
+  readonly syncSettings: SyncSettingsView
   /** The latest of the last full and the last incremental pull, from the sync state. */
   readonly lastSyncedAt: string | null
   readonly gate: SyncGate

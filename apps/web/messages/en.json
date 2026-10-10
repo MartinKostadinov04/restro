@@ -411,6 +411,7 @@
       "hiddenByBarsy": "Hidden by barsy",
       "hidden": "Hidden",
       "hiddenOther": "Hidden (setting)",
+      "newFromBarsy": "New from barsy, hidden until you show it",
       "issues": "{count, plural, one {# issue} other {# issues}}"
     },
     "visibility": {
@@ -624,7 +625,7 @@
     },
     "sync": {
       "title": "Sync",
-      "description": "Reads the menu from barsy now. Once the venue is set up, a sync also runs by itself every few minutes.",
+      "description": "Reads the menu from barsy now. Below you choose when it also runs by itself and whether a sync goes live on its own.",
       "button": "Sync now",
       "starting": "Starting…",
       "queued": "The sync is queued.",
@@ -638,6 +639,45 @@
         "no_barsy_venue": "Choose the barsy venue first.",
         "no_root": "Choose the menu catalogue first.",
         "busy": "A sync is already queued or running."
+      },
+      "settings": {
+        "heading": "Automatic syncing",
+        "incremental": {
+          "label": "Check for changes automatically",
+          "help": "Reads only what changed in barsy since the last check.",
+          "every": "Check every",
+          "minutes": "{minutes, plural, one {# minute} other {# minutes}}"
+        },
+        "fullPull": {
+          "label": "Read the whole catalogue once a day",
+          "help": "Also notices what was deleted in barsy. Best at a quiet hour.",
+          "time": "Time of day",
+          "timeHelp": "Venue time ({zone})."
+        },
+        "afterSync": {
+          "legend": "After a sync",
+          "auto": "Publish automatically",
+          "autoHelp": "Guests see changes from barsy within about a minute.",
+          "manual": "Wait until I press Publish",
+          "manualHelp": "Changes from barsy wait until you publish them in the Publishing tab."
+        },
+        "newItems": {
+          "legend": "New items from barsy",
+          "show": "Show them on the menu",
+          "showHelp": "A new item is on the menu with the next publish.",
+          "hold": "Keep them hidden until I review them",
+          "holdHelp": "New items stay hidden in the composer until you show them."
+        },
+        "next": {
+          "both": "Next change check about {incremental}. Next full read {fullPull}.",
+          "incremental": "Next change check about {incremental}.",
+          "fullPull": "Next full read {fullPull}.",
+          "none": "Automatic syncing is switched off.",
+          "inactive": "Automatic syncing starts once the connection works and the catalogue is chosen."
+        },
+        "save": "Save automatic sync",
+        "saving": "Saving…",
+        "saved": "Saved. It applies from the next minute."
       }
     },
     "history": {
