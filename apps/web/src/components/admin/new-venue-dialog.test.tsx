@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// The New venue dialog (CF-01): the address follows the name until it is edited, the public
-// address line, the validation, the languages, and what happens with the server's answers.
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+// The New venue dialog (CF-01, D68): the address follows the name until it is edited, the line that
+// explains it, the validation, the languages, and what happens with the server's answers.
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,16 +14,11 @@ vi.mock('@/server/venues-actions', () => ({ createVenueAction: vi.fn() }))
 // The button needs the router; the dialog itself does not.
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 
-function dialog(publicBaseUrl: string | null = 'http://localhost:3000', locale?: 'bg') {
+function dialog(locale?: 'bg') {
   const onOpenChange = vi.fn()
   const onCreated = vi.fn()
   renderWithIntl(
-    <NewVenueDialog
-      open
-      onOpenChange={onOpenChange}
-      publicBaseUrl={publicBaseUrl}
-      onCreated={onCreated}
-    />,
+    <NewVenueDialog open onOpenChange={onOpenChange} onCreated={onCreated} />,
     locale ? { locale } : {},
   )
   return { onOpenChange, onCreated, user: userEvent.setup({ delay: null }) }
@@ -46,24 +41,21 @@ describe('the public address', () => {
     expect(slug().value).toBe('demo-klub-sofia')
   })
 
-  it('says what it is and that it cannot be changed, with the public base address', async () => {
+  it('explains that it is the readable part of the web address, with a code added to it', async () => {
     const { user } = dialog()
     await user.type(name(), 'Sea Bar')
     const line = screen.getByTestId('new-venue-address')
     expect(line.textContent).toBe(
-      'This is the menu’s public address: http://localhost:3000/m/sea-bar. It can’t be changed later.',
+      'The readable part of the menu’s web address. A short unique code is added to it automatically.',
     )
-    expect(within(line).getByText('http://localhost:3000/m/sea-bar').tagName).toBe('CODE')
-  })
-
-  it('shows only /m/<address> when there is no base address', async () => {
-    const { user } = dialog(null)
-    await user.type(name(), 'Sea Bar')
-    expect(within(screen.getByTestId('new-venue-address')).getByText('/m/sea-bar')).toBeTruthy()
+    // No full example address (the code is not known yet), and no promise that it is fixed.
+    expect(line.textContent).not.toMatch(/http|\/m\//)
+    expect(line.textContent).not.toMatch(/can.t be changed/i)
+    expect(slug().value).toBe('sea-bar')
   })
 
   it('stops following the name once the person edits it', async () => {
-    const { user } = dialog('http://club.test/')
+    const { user } = dialog()
     await user.type(name(), 'Sea Bar')
     await user.clear(slug())
     await user.type(slug(), 'My Own')
@@ -71,9 +63,6 @@ describe('the public address', () => {
     expect(slug().value).toBe('my-own')
     await user.type(name(), ' Two')
     expect(slug().value).toBe('my-own')
-    expect(screen.getByTestId('new-venue-address').textContent).toContain(
-      'http://club.test/m/my-own.',
-    )
   })
 
   it('names what is wrong with it, and does not call the server', async () => {
@@ -153,8 +142,11 @@ describe('the form', () => {
   })
 
   it('is in Bulgarian when the interface is', () => {
-    dialog('http://localhost:3000', 'bg')
+    dialog('bg')
     expect(screen.getByText('Публичен адрес')).toBeTruthy()
+    expect(screen.getByTestId('new-venue-address').textContent).toBe(
+      'Четимата част от уеб адреса на менюто. Към нея автоматично се добавя кратък уникален код.',
+    )
     expect(screen.getByTestId('new-venue-defaults').textContent).toBe(
       'Часова зона: Europe/Sofia · Валута: EUR',
     )

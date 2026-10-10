@@ -12,7 +12,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { defaultQrBaseUrl } from '@/server/env'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { listVenues } from '@/server/venues'
@@ -29,7 +28,6 @@ export default async function VenuesPage() {
   const t = await getTranslations('venues')
   // Owners and admins add venues (the action checks the role again).
   const canCreate = canManageIntegration(organization.role)
-  const publicBaseUrl = defaultQrBaseUrl()
 
   return (
     <>
@@ -42,7 +40,7 @@ export default async function VenuesPage() {
               {t('description', { organization: organization.name })}
             </p>
           </div>
-          {canCreate ? <NewVenueButton publicBaseUrl={publicBaseUrl} testId="new-venue" /> : null}
+          {canCreate ? <NewVenueButton testId="new-venue" /> : null}
         </div>
         {venues.length === 0 ? (
           <Empty data-testid="venues-empty">
@@ -57,7 +55,7 @@ export default async function VenuesPage() {
             </EmptyHeader>
             {canCreate ? (
               <EmptyContent>
-                <NewVenueButton publicBaseUrl={publicBaseUrl} testId="new-venue-empty" />
+                <NewVenueButton testId="new-venue-empty" />
               </EmptyContent>
             ) : null}
           </Empty>

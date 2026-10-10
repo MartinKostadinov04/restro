@@ -2,9 +2,10 @@
 
 // "New venue" (CF-01, D64): a venue with its own menu, languages and public address, made by an
 // owner or admin without anyone running a script. Modelled on the composer's "New section"
-// dialog. Asked: a name, the public address (suggested from the name, `/m/<address>`, fixed once
-// created) and the languages the menu can be written in. The time zone and the currency are not
-// asked: every new venue gets the same ones (Europe/Sofia, EUR), shown as one read-only line.
+// dialog. Asked: a name, the readable part of the menu's web address (suggested from the name; a
+// short unique code is added to it automatically, D68) and the languages the menu can be written
+// in. The time zone and the currency are not asked: every new venue gets the same ones
+// (Europe/Sofia, EUR), shown as one read-only line.
 // The dialog only collects and shows; the rules are the server action's (`createVenueAction`).
 import { isVenueSlug, LOCALES, type Locale } from '@restro/core'
 import { PlusIcon } from 'lucide-react'
@@ -44,17 +45,9 @@ const DEFAULT_LOCALE: Locale = 'bg_BG'
 /** The languages a new venue starts with: the pilot venues are Bulgarian clubs with English guests. */
 const STARTING_LOCALES: readonly Locale[] = ['bg_BG', 'en_US']
 
-/** `<base>/m/<slug>` (just `/m/<slug>` where there is no base address). */
-export function publicAddress(baseUrl: string | null, slug: string): string {
-  const base = (baseUrl ?? '').trim().replace(/\/+$/, '')
-  return `${base}/m/${slug === '' ? '…' : slug}`
-}
-
 interface NewVenueDialogProps {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** The address the menu's public link starts with (`defaultQrBaseUrl`); null shows `/m/<address>` only. */
-  readonly publicBaseUrl: string | null
   /** Called with the new venue's id once it is saved; the caller opens it. */
   readonly onCreated: (venueId: string) => void
 }
@@ -68,7 +61,7 @@ export function NewVenueDialog(props: NewVenueDialogProps) {
   )
 }
 
-function NewVenueForm({ onOpenChange, publicBaseUrl, onCreated }: NewVenueDialogProps) {
+function NewVenueForm({ onOpenChange, onCreated }: NewVenueDialogProps) {
   const t = useTranslations('venues.new')
   const uiLocale = useLocale()
   const formId = useId()
@@ -188,10 +181,7 @@ function NewVenueForm({ onOpenChange, publicBaseUrl, onCreated }: NewVenueDialog
             className="text-xs text-muted-foreground"
             data-testid="new-venue-address"
           >
-            {t.rich('slugHelp', {
-              address: publicAddress(publicBaseUrl, slug),
-              code: (chunks) => <code className="break-all text-foreground">{chunks}</code>,
-            })}
+            {t('slugHelp')}
           </p>
         </div>
 
@@ -268,13 +258,7 @@ function NewVenueForm({ onOpenChange, publicBaseUrl, onCreated }: NewVenueDialog
 }
 
 /** The "New venue" button with its dialog; opens the new venue once it is saved. */
-export function NewVenueButton({
-  publicBaseUrl,
-  testId = 'new-venue',
-}: {
-  readonly publicBaseUrl: string | null
-  readonly testId?: string
-}) {
+export function NewVenueButton({ testId = 'new-venue' }: { readonly testId?: string }) {
   const t = useTranslations('venues.new')
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -287,7 +271,6 @@ export function NewVenueButton({
       <NewVenueDialog
         open={open}
         onOpenChange={setOpen}
-        publicBaseUrl={publicBaseUrl}
         onCreated={(venueId) => router.push(`/venues/${venueId}`)}
       />
     </>

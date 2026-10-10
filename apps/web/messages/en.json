@@ -411,7 +411,7 @@
       "name": "Name",
       "nameRequired": "Enter a name.",
       "slug": "Public address",
-      "slugHelp": "This is the menu’s public address: <code>{address}</code>. It can’t be changed later.",
+      "slugHelp": "The readable part of the menu’s web address. A short unique code is added to it automatically.",
       "slugInvalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
       "slugTaken": "This address is already taken. Choose another one.",
       "languages": "Languages",
