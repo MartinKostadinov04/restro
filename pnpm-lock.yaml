@@ -254,7 +254,24 @@ importers:
         specifier: 0.29.6
         version: 0.29.6
 
-  packages/faces/qr-phone: {}
+  packages/faces/qr-phone:
+    dependencies:
+      '@restro/shell':
+        specifier: workspace:*
+        version: link:../../shell
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+    devDependencies:
+      '@types/react':
+        specifier: 19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.0)
 
   packages/shell:
     dependencies:

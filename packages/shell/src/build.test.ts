@@ -429,6 +429,18 @@ describe('R10 images', () => {
     expect(focal?.image).toMatchObject({ focal: { x: 0.3, y: 0.75 }, objectPosition: '30% 75%' })
   })
 
+  it('lists the distinct files of the asset, narrowest first, for a srcset', () => {
+    const [plain] = items(build('with-images'))
+    const files = plain?.image?.variants ?? []
+    expect(files.length).toBeGreaterThan(0)
+    expect(files.map((file) => file.width)).toEqual(
+      [...files.map((file) => file.width)].sort((a, b) => a - b),
+    )
+    expect(new Set(files.map((file) => file.src)).size).toBe(files.length)
+    expect(files.map((file) => file.src)).toContain(plain?.image?.src)
+    for (const file of files) expect(file.src).toMatch(/^\/a\/as_[0-9A-Za-z]+\/w\d+\.webp$/)
+  })
+
   it('describes the picture with its own text, else the item name', () => {
     const [negroni, margarita] = items(build('with-images', { locale: 'en_US' }))
     expect(negroni?.image?.alt).toEqual({ text: 'Negroni on ice', lang: 'en_US' })

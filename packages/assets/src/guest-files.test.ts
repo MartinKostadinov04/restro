@@ -63,7 +63,9 @@ describe('guest files (slug index and table tokens)', () => {
         bytes({ venue_slug: 'demo-club', table_label: '12', barsy_id: 55 }),
       ),
     ).toBeNull()
-    expect(parseGuestFile(VenueIndexSchema, bytes({ venue_id: 'vn_x', menu_id: 'nd_x' }))).toBeNull()
+    expect(
+      parseGuestFile(VenueIndexSchema, bytes({ venue_id: 'vn_x', menu_id: 'nd_x' })),
+    ).toBeNull()
   })
 
   it('refuses to write a token file with a bad label or slug', async () => {

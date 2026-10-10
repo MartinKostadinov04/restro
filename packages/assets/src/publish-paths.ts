@@ -71,7 +71,8 @@ export function parsePublishPath(path: string): ParsedPublishPath | null {
   }
   if (parts.length === 2 && parts[0] === 't') {
     const token = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
-    if (token !== undefined && TABLE_TOKEN_PATTERN.test(token)) return { kind: 'table_token', token }
+    if (token !== undefined && TABLE_TOKEN_PATTERN.test(token))
+      return { kind: 'table_token', token }
     return null
   }
   if (parts.length === 4 && parts[0] === 'm') {

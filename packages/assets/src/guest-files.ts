@@ -9,14 +9,13 @@
 // write it (`writeTableTokenFile`). The web app reads both, never the database (rule 4).
 import { idSchema } from '@restro/core'
 import { z } from 'zod'
-
-import type { PublishStore } from './publish-store'
 import {
   PUBLISH_SLUG_PATTERN,
   publishPutOptions,
   tableTokenPath,
   venueIndexPath,
 } from './publish-paths'
+import type { PublishStore } from './publish-store'
 
 /** `v/<slug>.json`: the venue and the menu a slug shows. */
 export const VenueIndexSchema = z.strictObject({
