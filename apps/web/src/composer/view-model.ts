@@ -57,6 +57,8 @@ export type ItemHiddenBy =
   | 'barsy'
   /** The builder's hide flag (`visible = false` in the manual layer): showing clears it. */
   | 'builder'
+  /** The sync hid a new barsy item for review (setting `publish.new_items = hold`): showing clears it. */
+  | 'new_from_barsy'
   /** The item's status is `hidden` (held back): showing makes it active. */
   | 'status'
   /** Another layer or setting hides it (an edition, the ordering mode): not changed here. */
@@ -115,10 +117,11 @@ function hiddenByOf(
   status: string,
   visible: ResolvedField | undefined,
   orderMode: ResolvedField | undefined,
+  held: boolean,
 ): ItemHiddenBy | null {
   if (visible?.value === false) {
     if (visible.layer === 'barsy') return 'barsy'
-    if (visible.layer === 'manual') return 'builder'
+    if (visible.layer === 'manual') return held ? 'new_from_barsy' : 'builder'
     return 'other'
   }
   if (status === 'hidden') return 'status'
@@ -142,10 +145,21 @@ export interface BuildViewInput {
   readonly resolved: ResolvedMenu
   /** The interface language as a document language: names and titles are shown in it. */
   readonly displayLocale: Locale
+  /**
+   * Items the sync hid for review (`loadHeldNewItemIds`): their manual hide was written by the
+   * sync, not by a person. Default: none.
+   */
+  readonly heldNewIds?: readonly NodeId[]
 }
 
 /** Builds the view model of a resolved menu. */
-export function buildComposerView({ doc, resolved, displayLocale }: BuildViewInput): ComposerView {
+export function buildComposerView({
+  doc,
+  resolved,
+  displayLocale,
+  heldNewIds = [],
+}: BuildViewInput): ComposerView {
+  const heldNew = new Set<NodeId>(heldNewIds)
   const nodes = new Map(doc.nodes.map((node) => [node.id, node]))
   const barsyLinked = new Set(
     doc.links.filter((link) => link.source.startsWith('barsy:')).map((link) => link.nodeId),
@@ -205,6 +219,7 @@ export function buildComposerView({ doc, resolved, displayLocale }: BuildViewInp
         nodes.get(id)?.status ?? 'active',
         item.fields.visible,
         item.fields.order_mode,
+        heldNew.has(id),
       ),
       shown: item.visible,
       issues: issuesOf(item.issues),

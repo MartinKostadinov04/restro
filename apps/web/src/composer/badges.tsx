@@ -34,6 +34,13 @@ export function HiddenBadge({ hiddenBy }: { hiddenBy: ItemHiddenBy | 'section' }
       </Badge>
     )
   }
+  if (hiddenBy === 'new_from_barsy') {
+    return (
+      <Badge variant="warning" data-testid="hidden-badge" data-hidden-by="new_from_barsy">
+        {t('newFromBarsy')}
+      </Badge>
+    )
+  }
   return (
     <Badge variant="secondary" data-testid="hidden-badge" data-hidden-by={hiddenBy}>
       {hiddenBy === 'other' ? t('hiddenOther') : t('hidden')}
