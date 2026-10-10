@@ -57,6 +57,13 @@
       "when": 1791575249882,
       "tag": "0007_job_runs_details",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791593528187,
+      "tag": "0008_publish_tables",
+      "breakpoints": true
     }
   ]
 }
