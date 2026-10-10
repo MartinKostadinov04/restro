@@ -1,5 +1,7 @@
 # Connector-architecture review — agent prompts
 
+> **Scope change after wave 1 (10-11, D65):** spreadsheet import was dropped. The prompts below still mention it as they were sent to R0, A1 and A3; the reviewers still running (B1, A2, A4) were told to ignore it, and A5/A6 were briefed without it.
+
 Used on 10-11 for the read-only review (plan approved by Martin 10-11). Each agent got the shared preamble, then its own section; wave-2 agents also got the lead's summary of wave 1, and A6 the summaries of all reports.
 
 | # | Area | Model | Wave |
