@@ -5,7 +5,9 @@
 // It refuses to run unless NODE_ENV is "development" and the database is on this machine
 // (scripts/lib/guard.ts). It goes through the real paths: the organisation is created with Better
 // Auth's `createOrganization` (whose hook creates the tenant row), the venue with core's
-// `provisionVenue`. It connects as the app role (DATABASE_URL), like the web app.
+// `provisionVenue`, and the venue's menu with core's `provisionMenu` and `apply()` (a made-up
+// barsy integration and pull: see lib/demo-menu.ts). It connects as the app role (DATABASE_URL),
+// like the web app.
 import { provisionTenant, provisionVenue } from '@restro/core/apply'
 import { authMember, authOrganization, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
@@ -14,6 +16,7 @@ import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
 import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
+import { seedDemoMenu } from './lib/seed-demo-menu'
 
 const ORGANIZATION = { name: 'Demo Club', slug: 'demo-club' }
 const VENUE = { name: 'Demo Club Sofia', slug: 'demo-club' }
@@ -86,10 +89,18 @@ async function main(): Promise<void> {
     ? venue.id
     : (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug })).id
 
+  // 5. The demo menu (made-up items), unless SEED_DEMO_MENU=0: then the venue starts empty and
+  // its menu comes from a real barsy sync (the Stage 2 acceptance run).
+  const menu =
+    process.env.SEED_DEMO_MENU === '0'
+      ? null
+      : await seedDemoMenu(pool, organizationId, venueId, userId)
+
   console.log(
     JSON.stringify({
       level: 'info',
       event: 'seed_dev_done',
+      menu,
       organization: ORGANIZATION.name,
       organizationId,
       venue: VENUE.name,

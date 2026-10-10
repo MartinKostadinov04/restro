@@ -47,6 +47,80 @@ export {
 } from './hosts.ts'
 export type { DecimalString } from './json.ts'
 export { asDecimalString, hasJsonSourceAccess, isDecimalText, parseBarsyJson } from './json.ts'
+export type {
+  ArticlePicture,
+  AssetRequest,
+  BarsyMappingErrorCode,
+  CatalogueCounts,
+  CatalogueInput,
+  CatalogueMapping,
+  LinkStateIntent,
+  LinkType,
+  MappingConfig,
+  MappingWarning,
+  MappingWarningCode,
+  PlaceDescriptor,
+  PlacesContext,
+  PriceSource,
+  SourceExternalType,
+  SourceRecordDescriptor,
+} from './mapping/index.ts'
+export {
+  BARSY_MAPPING_VERSION,
+  BarsyMappingError,
+  mapCatalogue,
+  mapModificators,
+  mapPlaces,
+  parseAllergenText,
+  readArticlePicture,
+} from './mapping/index.ts'
+export type {
+  BarsyArticlesPage,
+  BarsyCaller,
+  BarsyPage,
+  BarsyReader,
+  BarsyReadResult,
+} from './read/reader.ts'
+export {
+  ARTICLE_EXTRA_PROPERTIES,
+  ARTICLES_ORDER_BY,
+  createBarsyReader,
+} from './read/reader.ts'
+export type {
+  Article,
+  ArticleDetailsGroup,
+  BarsyNumber,
+  Category,
+  CategoryTreeNode,
+  Currency,
+  Language,
+  Modificator,
+  Place,
+  SupplementGroup,
+  SupplementOption,
+  Venue,
+} from './read/schemas.ts'
+export {
+  articleDetailsTreeSchema,
+  articleSchema,
+  articlesSchema,
+  barsyNumberSchema,
+  categorySchema,
+  categoryTreeNodeSchema,
+  currenciesSchema,
+  currencySchema,
+  languageSchema,
+  languagesSchema,
+  modificatorSchema,
+  modificatorsSchema,
+  placeSchema,
+  placesSchema,
+  supplementGroupSchema,
+  supplementOptionSchema,
+  supplementsSchema,
+  venueSchema,
+  venuesSchema,
+} from './read/schemas.ts'
 export type { BarsyReadMethod } from './read-methods.ts'
 export {
   BARSY_READ_METHOD_NAMES,

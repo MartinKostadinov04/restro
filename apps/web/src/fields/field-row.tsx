@@ -8,6 +8,7 @@ import type { FieldDefinition } from '@restro/core'
 // divider pill is its own component (FieldGroupDivider).
 import { InfoIcon, PencilIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { cn } from '@/lib/utils'
@@ -26,6 +27,8 @@ interface FieldRowProps {
   provenance?: Provenance
   /** Called by the edit button; without it the row is read-only (no button). */
   onEdit?: () => void
+  /** Anything that belongs under the value and badge: a note, Revert, "keep / take barsy's". */
+  footer?: ReactNode
   className?: string
 }
 
@@ -35,7 +38,14 @@ export function useFieldLabel(definition: FieldDefinition): string {
   return pickLocalized(definition.label, environment.locale) ?? definition.key
 }
 
-export function FieldRow({ definition, value, provenance, onEdit, className }: FieldRowProps) {
+export function FieldRow({
+  definition,
+  value,
+  provenance,
+  onEdit,
+  footer,
+  className,
+}: FieldRowProps) {
   const t = useTranslations('fields')
   const label = useFieldLabel(definition)
   const hasValue = value !== undefined
@@ -79,6 +89,7 @@ export function FieldRow({ definition, value, provenance, onEdit, className }: F
             <span className="text-muted-foreground italic">{t('noValue')}</span>
           )}
           {provenance ? <ProvenanceBadge provenance={provenance} /> : null}
+          {footer}
         </div>
         {onEdit ? (
           <Button

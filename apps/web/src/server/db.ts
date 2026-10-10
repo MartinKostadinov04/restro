@@ -38,7 +38,14 @@ export const authSchema = {
 export type AuthDb = NodePgDatabase<typeof authSchema>
 
 interface Connections {
-  pool?: DbPool
+  /**
+   * The tenant-scoped pool of each instance of the `@restro/db` module, keyed by that instance's
+   * `createPool`. A pool is known only to the module instance that made it, and `next dev` may
+   * evaluate the module more than once (hot reload, one bundle per route): a pool kept across
+   * instances would fail with "Not a pool created by createPool()". In production there is one
+   * instance and so one pool.
+   */
+  pools?: Map<unknown, DbPool>
   authDb?: AuthDb
   authPg?: pg.Pool
   roleCheck?: Promise<void>
@@ -50,12 +57,18 @@ const connections: Connections = globals.__restroConnections
 
 /** The tenant-scoped database client. */
 export function getPool(): DbPool {
-  connections.pool ??= createPool(serverEnv().DATABASE_URL, {
-    max: 5,
-    applicationName: 'restro-web',
-    onIdleError: (error) => logError('db_idle_connection_error', error),
-  })
-  return connections.pool
+  connections.pools ??= new Map()
+  const pools = connections.pools
+  let pool = pools.get(createPool)
+  if (!pool) {
+    pool = createPool(serverEnv().DATABASE_URL, {
+      max: 5,
+      applicationName: 'restro-web',
+      onIdleError: (error) => logError('db_idle_connection_error', error),
+    })
+    pools.set(createPool, pool)
+  }
+  return pool
 }
 
 function authPool(): pg.Pool {

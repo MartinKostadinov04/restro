@@ -99,12 +99,34 @@ export async function databaseError(work: Promise<unknown>): Promise<string> {
   throw new Error('Expected the database to reject the statement, but it succeeded.')
 }
 
+/**
+ * The tenant tables a clean-up empties for the test tenants, children before parents (foreign
+ * keys). Venues, templates and tenants follow in `cleanUp`.
+ */
+export const DOCUMENT_TABLES_CHILDREN_FIRST = [
+  'events',
+  'field_values',
+  'placements',
+  'source_links',
+  'menus',
+  'nodes',
+  'source_records',
+  'job_runs',
+  'places',
+  'barsy_venues',
+  'assets',
+  'integrations',
+] as const
+
 /** Deletes everything the tests created for these tenants, templates and workers. */
 export async function cleanUp(
   owner: pg.Pool,
   ids: { tenants?: string[]; templates?: string[]; workers?: string[] },
 ): Promise<void> {
   const tenants = ids.tenants ?? []
+  for (const table of DOCUMENT_TABLES_CHILDREN_FIRST) {
+    await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
+  }
   await owner.query('delete from restro.venues where tenant_id = any($1)', [tenants])
   await owner.query('delete from restro.templates where tenant_id = any($1) or id = any($2)', [
     tenants,

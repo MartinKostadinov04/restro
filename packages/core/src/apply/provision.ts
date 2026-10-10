@@ -6,12 +6,15 @@
 // This module is exported as `@restro/core/apply`, never from `@restro/core` itself: it pulls in
 // the database driver, and pure consumers (the shell, the faces, client components) must not.
 
-import { type DbPool, tenants, type Venue, venues } from '@restro/db'
+import { type DbPool, menus, nodes, tenants, type Venue, venues } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
+import { eq } from 'drizzle-orm'
 
-import { isId, newId } from '../ids'
+import { isId, type NodeId, newId } from '../ids'
 import { LOCALES, type Locale } from '../locales'
 import { CURRENCIES, type Currency } from '../money'
+import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
+import { lockTenantDocument } from './lock'
 
 /** Why a provisioning call was refused. */
 export type ProvisionErrorCode =
@@ -20,6 +23,8 @@ export type ProvisionErrorCode =
   | 'tenant_missing'
   /** The tenant already has a venue with this slug. */
   | 'slug_taken'
+  /** The tenant has no venue with this id (`provisionMenu`). */
+  | 'venue_missing'
 
 /** Thrown by `provisionTenant` and `provisionVenue` for input or state they refuse. */
 export class ProvisionError extends Error {
@@ -225,4 +230,57 @@ export async function provisionVenue(
     }
     throw error
   }
+}
+
+/** A venue's menu after `provisionMenu`; `created` is false when it already existed. */
+export interface ProvisionedMenu {
+  /** The menu's id, which is its root node's id. */
+  readonly id: NodeId
+  readonly venueId: string
+  readonly templateKey: string
+  readonly templateVersion: number
+  readonly rootNodeId: NodeId
+  readonly created: boolean
+}
+
+/**
+ * Creates the venue's menu (one per venue, P47): a root node of type `menu` and the `menus` row
+ * pinning `VENUE_MENU_TEMPLATE` (`venue-menu@1`). Idempotent: for a venue that has its menu it
+ * changes nothing and returns that menu with `created: false`. Refuses a venue the tenant does
+ * not have (`venue_missing`). The menu starts empty: sections and values come through `apply()`.
+ */
+export async function provisionMenu(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<ProvisionedMenu> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
+    if (!venue) throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
+    const [existing] = await tx.select().from(menus).where(eq(menus.venueId, venueId))
+    if (existing) {
+      return {
+        id: existing.id as NodeId,
+        venueId: existing.venueId,
+        templateKey: existing.templateKey,
+        templateVersion: existing.templateVersion,
+        rootNodeId: existing.rootNodeId as NodeId,
+        created: false,
+      }
+    }
+    const rootNodeId = newId('nd')
+    await tx.insert(nodes).values({ id: rootNodeId, tenantId, nodeType: 'menu', parentId: null })
+    const menu = {
+      id: rootNodeId,
+      venueId,
+      templateKey: VENUE_MENU_TEMPLATE.key,
+      templateVersion: VENUE_MENU_TEMPLATE.version,
+      rootNodeId,
+    }
+    await tx.insert(menus).values({ ...menu, tenantId })
+    return { ...menu, created: true }
+  })
 }

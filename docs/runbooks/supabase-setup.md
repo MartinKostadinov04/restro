@@ -143,7 +143,7 @@ If (7) shows `rolbypassrls = false`, then `postgres` too sees no tenant rows (FO
 
 ## 8. Rotating the app password
 
-Generate a new one (step 5), update `STAGING_DATABASE_APP_PASSWORD` and `STAGING_DATABASE_URL`, rerun the workflow (`db:roles` resets the password), then update `DATABASE_URL` wherever the apps run and restart them.
+Generate a new one (step 5), update `STAGING_DATABASE_APP_PASSWORD` and `STAGING_DATABASE_URL`, rerun the workflow with `DATABASE_APP_PASSWORD_ROTATE=1` (only then does `db:roles` re-set the password of an existing role; routine runs keep it, because Supavisor caches the old SCRAM verifier and every re-set — even to the same password — breaks pooled logins until its cache refreshes), then update `DATABASE_URL` wherever the apps run and restart them.
 
 ## 9. Troubleshooting
 

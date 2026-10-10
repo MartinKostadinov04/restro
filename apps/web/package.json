@@ -12,7 +12,9 @@
     "db:seed:dev": "node --disable-warning=ExperimentalWarning --env-file-if-exists=../../.env.local --env-file=./scripts/dev.env --import ./scripts/register-ts.mjs ./scripts/seed-dev.ts"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "18.0.1",
     "@hookform/resolvers": "5.9.1",
+    "@restro/assets": "workspace:*",
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
     "better-auth": "1.7.7",
@@ -23,6 +25,7 @@
     "next": "16.4.0",
     "next-intl": "4.14.8",
     "pg": "8.23.0",
+    "pg-boss": "12.35.1",
     "radix-ui": "1.6.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",

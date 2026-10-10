@@ -3,7 +3,24 @@
 // `@restro/db/write`, which only core/apply may import (dependency-cruiser enforces it).
 // This file must never import from ./write.
 import { type DbPool, runForTenant, runScoped, type Transaction } from './internal/pool'
-import type { templates, tenants, venues, workerHeartbeats } from './schema'
+import type {
+  assets,
+  barsyVenues,
+  events,
+  fieldValues,
+  integrations,
+  jobRuns,
+  menus,
+  nodes,
+  placements,
+  places,
+  sourceLinks,
+  sourceRecords,
+  templates,
+  tenants,
+  venues,
+  workerHeartbeats,
+} from './schema'
 
 export {
   createPool,
@@ -11,6 +28,8 @@ export {
   InvalidTenantIdError,
   isTenantId,
   type PoolOptions,
+  type SessionLock,
+  tryAdvisoryLock,
   UnsafeDatabaseRoleError,
 } from './internal/pool'
 export * from './schema'
@@ -53,3 +72,27 @@ export type Venue = typeof venues.$inferSelect
 export type Template = typeof templates.$inferSelect
 /** A row of restro.worker_heartbeats. */
 export type WorkerHeartbeat = typeof workerHeartbeats.$inferSelect
+/** A row of restro.integrations. */
+export type Integration = typeof integrations.$inferSelect
+/** A row of restro.barsy_venues. */
+export type BarsyVenue = typeof barsyVenues.$inferSelect
+/** A row of restro.menus. */
+export type Menu = typeof menus.$inferSelect
+/** A row of restro.nodes. */
+export type NodeRow = typeof nodes.$inferSelect
+/** A row of restro.placements. */
+export type Placement = typeof placements.$inferSelect
+/** A row of restro.field_values. */
+export type FieldValueRow = typeof fieldValues.$inferSelect
+/** A row of restro.source_records. */
+export type SourceRecord = typeof sourceRecords.$inferSelect
+/** A row of restro.source_links. */
+export type SourceLinkRow = typeof sourceLinks.$inferSelect
+/** A row of restro.events. */
+export type EventRow = typeof events.$inferSelect
+/** A row of restro.job_runs. */
+export type JobRun = typeof jobRuns.$inferSelect
+/** A row of restro.places. */
+export type Place = typeof places.$inferSelect
+/** A row of restro.assets. */
+export type Asset = typeof assets.$inferSelect

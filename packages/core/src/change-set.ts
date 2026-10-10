@@ -106,7 +106,10 @@ export const NodeRefSchema = z.union([NodeIdRefSchema, z.strictObject({ link: So
 /** A reference to a node by id or by source link. */
 export type NodeRef = z.output<typeof NodeRefSchema>
 
-/** Job ids come from the jobs table; the id kind for jobs is not fixed yet, so any safe name. */
+/**
+ * The job a change set belongs to: a pull or import names its `jb_` job run; a manual save, which
+ * has no job run, names its own job (any safe name). Kept loose until the composer settles it.
+ */
 const JobIdSchema = z.string().regex(NAME_PATTERN, 'expected a job id')
 
 /**
@@ -150,9 +153,21 @@ export const FieldWriteSchema = z
 export type FieldWrite = z.output<typeof FieldWriteSchema>
 
 /**
+ * Where a placement or a new sibling goes: a fractional sort key (the composer computes it
+ * between two neighbours), or the position hint `'end'`, which `apply()` turns into a key after
+ * the current last one. `'end'` never moves an item that is already in the section. Adapters
+ * (barsy, import) only ever send `'end'`: they never compute sort keys themselves.
+ */
+export const PlacementPositionSchema = z.union([SortKeySchema, z.literal('end')])
+
+/** A sort key or the hint `'end'`. */
+export type PlacementPosition = z.output<typeof PlacementPositionSchema>
+
+/**
  * Creates a node with a pre-generated id, so later ops in the same set can name it. Menus and
- * items have no parent (items appear in sections through placements); every other type has one.
- * `apply()` checks the parent's type and depth with `canNest`.
+ * items have no parent (items appear in sections through placements); every other type has one,
+ * and a place among its siblings: `sortKey`, a fractional key or `'end'` (the default: after the
+ * current last sibling). `apply()` checks the parent's type and depth with `canNest`.
  */
 export const CreateNodeSchema = z
   .strictObject({
@@ -161,6 +176,7 @@ export const CreateNodeSchema = z
     nodeType: NodeTypeSchema,
     parent: NodeRefSchema.nullable(),
     status: z.enum(['active', 'hidden']),
+    sortKey: PlacementPositionSchema.optional(),
   })
   .superRefine((op, ctx) => {
     const rootless: readonly NodeType[] = ['menu', 'item']
@@ -170,14 +186,32 @@ export const CreateNodeSchema = z
     if (!rootless.includes(op.nodeType) && op.parent === null) {
       ctx.addIssue({ code: 'custom', message: `a ${op.nodeType} needs a parent`, path: ['parent'] })
     }
+    if (rootless.includes(op.nodeType) && op.sortKey !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `a ${op.nodeType} has no siblings to sort among (items sort by placement)`,
+        path: ['sortKey'],
+      })
+    }
   })
 
-/** Places an item in a section at a sort position (one row; moving rewrites only this row). */
+/**
+ * Places an item in a section at a sort position (one row; moving rewrites only this row).
+ *
+ * `onlyIfUnplaced` (default false) is for adapters that mirror a source's categories (barsy,
+ * mirror mode): the placement is skipped (counted as `skipped`) when the item already had a
+ * placement in a section of the same menu before this change set started, so a re-sync never
+ * re-adds an item the manager moved and never reorders their arrangement (D20: a new item lands
+ * at the end of its section). Placements made earlier in the same change set do not count, so a
+ * new item still reaches every section its source categories map to. Known edge: an item the
+ * manager took out of every section counts as unplaced, so the next sync places it again.
+ */
 export const SetPlacementSchema = z.strictObject({
   op: z.literal('setPlacement'),
   item: NodeRefSchema,
   section: NodeRefSchema,
-  sortKey: SortKeySchema,
+  sortKey: PlacementPositionSchema,
+  onlyIfUnplaced: z.boolean().optional(),
 })
 
 /** Removes an item's placement from a section (the item itself stays). */
@@ -185,6 +219,21 @@ export const RemovePlacementSchema = z.strictObject({
   op: z.literal('removePlacement'),
   item: NodeRefSchema,
   section: NodeRefSchema,
+})
+
+/**
+ * Moves a node among its siblings, or under another parent: a section may change parent (the menu
+ * or another section; `apply()` keeps sections at most 3 deep and out of their own subtree) and
+ * position; a modifier group or option only changes position among its siblings. `sortKey` is a
+ * fractional key between two neighbours or the hint `'end'` (after the current last sibling; a
+ * node already under that parent stays put). Only a person moves nodes: adapters create nodes
+ * and never reorder the builder's composition.
+ */
+export const MoveNodeSchema = z.strictObject({
+  op: z.literal('moveNode'),
+  node: NodeRefSchema,
+  parent: NodeRefSchema,
+  sortKey: PlacementPositionSchema,
 })
 
 /** Sets a node's lifecycle status. */
@@ -208,32 +257,132 @@ export const UnlinkSourceSchema = z.strictObject({
   link: SourceLinkSchema,
 })
 
-/** Any structural op: node creation, placements, status, source links. */
+/** The states of a source link (doc "Link lifecycle"). */
+export const LINK_STATES = ['active', 'missing', 'deleted'] as const
+
+/** `active`, `missing` (absent from a complete full pull) or `deleted` (gone in the source). */
+export type LinkStateName = (typeof LINK_STATES)[number]
+
+/**
+ * The Link lifecycle (doc "Link lifecycle"): the states each state may move to. Staying in the
+ * same state is not a move. `deleted` → `missing` has no row: a deleted object stays deleted
+ * until it is seen again.
+ */
+export const LINK_TRANSITIONS: { readonly [From in LinkStateName]: readonly LinkStateName[] } = {
+  active: ['missing', 'deleted'],
+  missing: ['deleted', 'active'],
+  deleted: ['active'],
+}
+
+/**
+ * Moves a source link through its lifecycle (doc "Link lifecycle"): `active` → `missing` when a
+ * complete full pull no longer has the object, `active`/`missing` → `deleted` (barsy's
+ * `delete_flag`, or missing for 7 days), `missing`/`deleted` → `active` when it is seen again.
+ * Only the link's own source sends it. A state change never touches field values, overrides or
+ * placements (the enrichment is kept, rule 6); hiding is the resolver's job.
+ *
+ * `seenAt` (with an optional content `hash`) records that this pull saw the object: `apply()`
+ * moves `last_seen_at` / `last_hash` forward, never back, so a sync marks "seen" through the one
+ * write path and an older observation never overwrites a newer one.
+ */
+export const SetLinkStateSchema = z
+  .strictObject({
+    op: z.literal('setLinkState'),
+    link: SourceLinkSchema,
+    state: z.enum(LINK_STATES),
+    seenAt: z.iso.datetime({ offset: true }).optional(),
+    hash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/, 'a content hash is SHA-256 in lower-case hex')
+      .optional(),
+  })
+  .superRefine((op, ctx) => {
+    if (op.hash !== undefined && op.seenAt === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'a content hash comes with the time it was seen (seenAt)',
+        path: ['hash'],
+      })
+    }
+  })
+
+/** A link-state change. */
+export type SetLinkState = z.output<typeof SetLinkStateSchema>
+
+/**
+ * Removes the value of one field in one layer and scope, so the layers below show through:
+ * revert an override, take barsy's value instead of ours, undo a builder hide. Same layer and
+ * scope rules as a write; clearing a slot that holds nothing changes nothing.
+ */
+export const ClearFieldSchema = z
+  .strictObject({
+    op: z.literal('clearField'),
+    node: NodeRefSchema,
+    fieldKey: z.string().regex(FIELD_KEY_PATTERN, 'field keys are snake_case'),
+    layer: LayerSchema,
+    scope: ScopeSchema,
+  })
+  .superRefine((clear, ctx) => {
+    if (clear.scope !== 'master' && clear.layer !== 'barsy') {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'only barsy values are venue-scoped; editions use edition layers',
+        path: ['scope'],
+      })
+    }
+  })
+
+/** A field clear. */
+export type ClearField = z.output<typeof ClearFieldSchema>
+
+/** Any structural op: node creation, placements, status, source links and their state. */
 export const StructuralOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
   SetPlacementSchema,
   RemovePlacementSchema,
+  MoveNodeSchema,
   SetNodeStatusSchema,
   LinkSourceSchema,
   UnlinkSourceSchema,
+  SetLinkStateSchema,
 ])
 
 /** A structural op. */
 export type StructuralOp = z.output<typeof StructuralOpSchema>
 
-/** Any op in a change set: a field write or a structural op. */
+/** Any op in a change set: a field write, a field clear or a structural op. */
 export const ChangeSetOpSchema = z.discriminatedUnion('op', [
   FieldWriteSchema,
+  ClearFieldSchema,
   CreateNodeSchema,
   SetPlacementSchema,
   RemovePlacementSchema,
+  MoveNodeSchema,
   SetNodeStatusSchema,
   LinkSourceSchema,
   UnlinkSourceSchema,
+  SetLinkStateSchema,
 ])
 
 /** One op of a change set. */
 export type ChangeSetOp = z.output<typeof ChangeSetOpSchema>
+
+/** The name of an op kind (`setField`, `moveNode`, ...); `events.op` holds one of them. */
+export type ChangeSetOpName = ChangeSetOp['op']
+
+/** Every op name: the values `events.op` may hold (a database check mirrors this list). */
+export const CHANGE_SET_OP_NAMES = [
+  'setField',
+  'clearField',
+  'createNode',
+  'setPlacement',
+  'removePlacement',
+  'moveNode',
+  'setNodeStatus',
+  'linkSource',
+  'unlinkSource',
+  'setLinkState',
+] as const satisfies readonly ChangeSetOpName[]
 
 /** The layers each kind of source may write: barsy в†’ barsy, import в†’ import, manual в†’ the rest. */
 export function layerAllowedForSource(source: Source, layer: Layer): boolean {
@@ -242,9 +391,11 @@ export function layerAllowedForSource(source: Source, layer: Layer): boolean {
   return layer === 'manual' || layer === 'override' || isEditionLayer(layer)
 }
 
-function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
+/** Every node reference in one op (the node it acts on, a parent, an item and its section). */
+export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
   switch (op.op) {
     case 'setField':
+    case 'clearField':
     case 'setNodeStatus':
     case 'linkSource':
     case 'unlinkSource':
@@ -254,13 +405,19 @@ function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
     case 'setPlacement':
     case 'removePlacement':
       return [op.item, op.section]
+    case 'moveNode':
+      return [op.node, op.parent]
+    case 'setLinkState':
+      // Names a link, not a node: apply() finds the node through the link.
+      return []
   }
 }
 
 /**
  * The change set: id, source, job, actor, when the source observed the data, and its ops, applied
- * atomically. Cross-checks: each write's layer matches the source; manual sets name nodes by id;
- * a barsy set only touches links of its own integration; created ids are unique.
+ * atomically. Cross-checks: each write's and clear's layer matches the source; manual sets name
+ * nodes by id; a barsy set only touches links of its own integration; adapters place items only
+ * with `'end'`; created ids are unique.
  */
 export const ChangeSetSchema = z
   .strictObject({
@@ -280,6 +437,16 @@ export const ChangeSetSchema = z
       if (op.op === 'setField' && !layerAllowedForSource(set.source, op.layer)) {
         issue(`a ${set.source} change set cannot write the ${op.layer} layer`)
       }
+      if (op.op === 'clearField' && !layerAllowedForSource(set.source, op.layer)) {
+        issue(`a ${set.source} change set cannot clear the ${op.layer} layer`)
+      }
+      const ownSortKey =
+        (op.op === 'setPlacement' || op.op === 'createNode' || op.op === 'moveNode') &&
+        op.sortKey !== undefined &&
+        op.sortKey !== 'end'
+      if (ownSortKey && set.source !== 'manual') {
+        issue(`a ${set.source} change set places nodes with 'end', never with its own sort key`)
+      }
       for (const ref of nodeRefsOf(op)) {
         if (!('link' in ref)) continue
         if (set.source === 'manual') issue('manual change sets name nodes by id')
@@ -288,7 +455,7 @@ export const ChangeSetSchema = z
         }
       }
       if (
-        (op.op === 'linkSource' || op.op === 'unlinkSource') &&
+        (op.op === 'linkSource' || op.op === 'unlinkSource' || op.op === 'setLinkState') &&
         barsyIntegration !== null &&
         op.link.integration !== barsyIntegration
       ) {

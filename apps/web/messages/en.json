@@ -38,7 +38,8 @@
       "barsy": "From barsy",
       "owned": "Owned here",
       "overridden": "Overridden",
-      "stale": "Stale"
+      "stale": "Stale",
+      "locked": "Locked"
     },
     "editor": {
       "title": "Edit {field}",
@@ -141,6 +142,165 @@
       "internal": "Internal"
     }
   },
+  "itemSheet": {
+    "loadingTitle": "Loading item…",
+    "untitled": "Untitled item",
+    "description": "Details, translations, photo and history of this item.",
+    "linked": "From barsy",
+    "createdHere": "Created here",
+    "linkState": {
+      "missing": "barsy no longer lists it",
+      "deleted": "Deleted in barsy"
+    },
+    "issueCount": "{count, plural, =0 {Nothing to check} one {# thing to check} other {# things to check}}",
+    "missing": "This item could not be found in this venue.",
+    "loadError": "The item could not be loaded. Close the sheet and try again.",
+    "saved": "Saved",
+    "reverted": "Back to barsy's value",
+    "kept": "Your value is kept",
+    "imageSaved": "Photo saved",
+    "imageRemoved": "Photo removed",
+    "errors": {
+      "not_found": "This item or field could not be found.",
+      "read_only": "This value cannot be changed here.",
+      "locked": "barsy owns this value. Change it in barsy.",
+      "nothing_to_revert": "There is nothing to revert.",
+      "no_basis": "barsy no longer holds a value for this, so there is nothing to keep yours against. Revert it instead.",
+      "invalid_value": "That value is not valid for this field.",
+      "asset_not_found": "The uploaded photo could not be found. Upload it again.",
+      "refused": "The change was refused and nothing was saved.",
+      "failed": "Saving failed. Try again."
+    },
+    "tabs": {
+      "details": "Details",
+      "translations": "Translations",
+      "media": "Media",
+      "history": "History"
+    },
+    "issues": {
+      "title": "Things to check",
+      "blocking": "Keeps the item off the menu",
+      "showMore": "Show {count} more",
+      "showLess": "Show fewer",
+      "unknown": "Finding {code}.",
+      "V3": "The name is missing in the default language, so the item stays off the guest menu.",
+      "V4": "Allergens are not filled in.",
+      "V5": "barsy and this venue disagree about {field}. Choose the right value.",
+      "V6": "There is no price, so the item stays off the guest menu.",
+      "V7": "{field} has no text in {language}.",
+      "stale_override": "barsy changed {field} after you replaced it here.",
+      "link_missing": "barsy no longer lists this item, so guests do not see it.",
+      "link_deleted": "This item was deleted in barsy, so guests do not see it.",
+      "invalid_value": "A stored value for {field} is not valid and is ignored.",
+      "ignored_value": "A stored value for {field} sits in a layer that does not apply to it and is ignored.",
+      "required_missing": "{field} is required.",
+      "translation_review": "barsy's {field} changed after the {language} translation was written. Check it.",
+      "price_not_venue_scoped": "barsy's price is not stored for this venue yet.",
+      "unplaced_item": "This item is in no section, so guests do not see it.",
+      "required_group_unsatisfiable": "A required choice has too few options, so the item cannot be ordered."
+    },
+    "details": {
+      "groups": {
+        "content": "Content",
+        "pricing": "Price and portion",
+        "attributes": "Attributes",
+        "ordering": "Ordering and availability",
+        "internal": "Internal"
+      },
+      "editorDescription": "The change is saved to the menu at once. The History tab keeps who changed what.",
+      "readOnly": {
+        "locked_to_barsy": "Change this in barsy.",
+        "barsy_decides": "barsy has hidden this or taken it off sale. Change it in barsy.",
+        "composer_toggle": "Show or hide the item from the list in the composer.",
+        "sold_out_later": "Marking items sold out comes in Stage 3."
+      },
+      "conflict": "barsy and this venue disagree. Choose the right value.",
+      "staleHint": "barsy changed this after you replaced it. barsy now says:",
+      "barsyValueHint": "barsy's value:",
+      "keep": "Keep mine",
+      "keepFor": "Keep my value for {field}",
+      "takeBarsy": "Take barsy's",
+      "takeBarsyFor": "Take barsy's value for {field}",
+      "revert": "Revert",
+      "revertFor": "Revert {field} to barsy's value"
+    },
+    "translations": {
+      "intro": "Every language of this venue. Languages barsy already holds are read-only; the ones you add are saved as your own translations.",
+      "missing": "Missing",
+      "review": "Review",
+      "reviewHint": "barsy's text changed after this translation was written. It stays live; edit it to clear this flag.",
+      "placeholder": "No text yet",
+      "save": "Save",
+      "heldByBarsy": "Held by barsy"
+    },
+    "media": {
+      "title": "Photo",
+      "noPreview": "The photo cannot be shown",
+      "dimensions": "Size",
+      "type": "Type",
+      "openFull": "Open full size",
+      "fromBarsyHint": "This photo comes from barsy. Uploading yours replaces it here.",
+      "none": "No photo yet",
+      "upload": "Upload a photo or drop one here",
+      "replace": "Replace the photo or drop a new one here",
+      "limits": "JPEG, PNG or WebP, up to 10 MB",
+      "uploading": "Uploading…",
+      "saving": "Saving…",
+      "remove": "Remove photo",
+      "detailsTitle": "Description and focus",
+      "altHint": "Alt text describes the photo for people who cannot see it. Write it in each language.",
+      "altFor": "Alt text, {language}",
+      "noAlt": "Photo without a description",
+      "focalSet": "Set focal point",
+      "focalDone": "Done",
+      "focalClear": "Clear focal point",
+      "focalHint": "Click the part of the photo that must stay in frame.",
+      "focalPicker": "Photo: click to set the focal point, or use the arrow keys",
+      "saveDetails": "Save",
+      "errors": {
+        "unauthorized": "Sign in again and try once more.",
+        "bad_origin": "The request was refused. Reload the page.",
+        "no_file": "No file was chosen.",
+        "empty": "The file is empty.",
+        "too_large": "The file is larger than 10 MB.",
+        "unsupported_type": "Only JPEG, PNG and WebP photos are accepted.",
+        "corrupt": "The file looks damaged.",
+        "dimensions": "The photo's size is not allowed (at most 16,383 pixels a side and 100 megapixels).",
+        "server_error": "The upload failed. Try again.",
+        "network": "The connection dropped. Try again."
+      }
+    },
+    "history": {
+      "someone": "Someone",
+      "barsySync": "The barsy sync",
+      "system": "The system",
+      "set": "{who} set {field} to {value}",
+      "changed": "{who} changed {field} from {from} to {to}",
+      "cleared": "{who} removed {field} (it was {value})",
+      "structure": {
+        "createNode": "{who} created the item",
+        "setPlacement": "{who} placed the item in a section",
+        "removePlacement": "{who} took the item out of a section",
+        "moveNode": "{who} moved the item",
+        "setNodeStatus": "{who} changed whether the item is shown",
+        "linkSource": "{who} linked the item to barsy",
+        "unlinkSource": "{who} unlinked the item from barsy",
+        "setLinkState": "{who} updated the item's barsy status",
+        "other": "{who} changed the item's place in the menu"
+      },
+      "empty": "No changes yet.",
+      "error": "The history could not be loaded.",
+      "loadMore": "Show older"
+    }
+  },
+  "devItemSheet": {
+    "title": "Item sheet (development only)",
+    "description": "Open the item sheet for an item of the first venue, without the composer. Saves here are real: they go through apply().",
+    "noMenu": "This tenant has no venue with a menu yet. Run the seed.",
+    "noItems": "The menu has no items yet.",
+    "open": "Open {name}",
+    "unnamed": "Unnamed item"
+  },
   "ui": {
     "close": "Close",
     "sidebar": "Sidebar",
@@ -169,12 +329,22 @@
   },
   "language": {
     "label": "Language",
-    "short": { "bg": "BG", "en": "EN" },
-    "name": { "bg": "Български", "en": "English" }
+    "short": {
+      "bg": "BG",
+      "en": "EN"
+    },
+    "name": {
+      "bg": "Български",
+      "en": "English"
+    }
   },
   "user": {
     "theme": "Theme",
-    "themes": { "system": "System", "light": "Light", "dark": "Dark" },
+    "themes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
     "signOut": "Sign out"
   },
   "nav": {
@@ -199,6 +369,124 @@
       "description": "Your first venue is set up together with the Restro team."
     }
   },
+  "composer": {
+    "sections": "Sections",
+    "newSection": "New section",
+    "unsorted": "Unsorted",
+    "unsortedHint": "Items that are in no section yet. Drag one onto a section, or use “Move to…”.",
+    "itemCount": "{count, plural, one {# item} other {# items}}",
+    "chooseSection": "Choose a section",
+    "untitledSection": "Section without a title",
+    "unnamedItem": "Item without a name",
+    "noPrice": "No price",
+    "treeLabel": "Sections of the menu",
+    "listLabel": "Items in {section}",
+    "empty": {
+      "noMenu": {
+        "title": "This venue has no menu yet",
+        "description": "Create it to start arranging sections and items.",
+        "action": "Create the menu"
+      },
+      "noSections": {
+        "title": "No sections yet",
+        "description": "The menu from barsy arrives here already sorted once the connection is set up. Until then you can create a section of your own.",
+        "action": "Create a section"
+      },
+      "noItems": {
+        "title": "No items in this section",
+        "description": "Drag items here from another section or from Unsorted."
+      },
+      "noUnsorted": {
+        "title": "Every item has a section",
+        "description": "Items that are in no section show up here."
+      },
+      "noSelection": {
+        "title": "Choose a section",
+        "description": "Pick a section on the left to see and arrange its items."
+      }
+    },
+    "badges": {
+      "barsy": "From barsy",
+      "owned": "Owned here",
+      "hiddenByBarsy": "Hidden by barsy",
+      "hidden": "Hidden",
+      "hiddenOther": "Hidden (setting)",
+      "issues": "{count, plural, one {# issue} other {# issues}}"
+    },
+    "visibility": {
+      "toggleItem": "Shown to guests: {name}",
+      "toggleSection": "Section shown to guests",
+      "lockedByBarsy": "Hidden in barsy. Show it there.",
+      "lockedOther": "Hidden by another setting. Change it in the item.",
+      "sectionHidden": "This section is hidden from guests.",
+      "hideSection": "Hide section",
+      "showSection": "Show section"
+    },
+    "actions": {
+      "open": "Open {name}",
+      "more": "More actions for {name}",
+      "moveTo": "Move to…",
+      "newInside": "New section inside",
+      "topLevel": "Top level",
+      "expand": "Expand {name}",
+      "collapse": "Collapse {name}",
+      "dragItem": "Drag {name}",
+      "dragSection": "Drag {name}",
+      "removeFromSection": "Move to Unsorted"
+    },
+    "dnd": {
+      "instructions": "Press space to pick up, the arrow keys to move, space to drop, escape to cancel.",
+      "lifted": "Picked up {name}. Position {position} of {total}.",
+      "moved": "{name}: position {position} of {total}.",
+      "overSection": "{name} is over the section {section}.",
+      "dropped": "{name} dropped at position {position} of {total}.",
+      "droppedInSection": "{name} moved to {section}.",
+      "cancelled": "Move cancelled. {name} is back where it was."
+    },
+    "new": {
+      "title": "New section",
+      "description": "Create a section of your own that does not come from barsy, for example “Tonight’s cocktails”.",
+      "parent": "Where",
+      "topLevel": "Top level",
+      "names": "Section name",
+      "name": "Name ({language})",
+      "optional": "optional",
+      "nameRequired": "Enter a name in the main language.",
+      "create": "Create",
+      "creating": "Creating…",
+      "cancel": "Cancel"
+    },
+    "itemSheet": {
+      "stub": "Details, translations, photos and history arrive with the item sheet."
+    },
+    "errors": {
+      "not_found": "This venue or its menu was not found. Reload the page.",
+      "invalid": "This action is not allowed.",
+      "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most.",
+      "failed": "Something went wrong. The change was not saved, try again."
+    },
+    "issues": {
+      "fallback": "Needs attention.",
+      "V3": "Missing name in the main language.",
+      "V4": "Allergens are not filled in.",
+      "V5": "The sources disagree about a value.",
+      "V6": "Missing price.",
+      "V7": "Not translated into {language}.",
+      "V9": "This section has nothing to show yet.",
+      "stale_override": "barsy’s value changed since you overrode it.",
+      "link_missing": "Not found in barsy any more.",
+      "link_deleted": "Deleted in barsy.",
+      "invalid_value": "A stored value is not valid.",
+      "ignored_value": "A value is ignored because barsy owns that field.",
+      "required_missing": "A required field is empty.",
+      "group_min_max": "The minimum of a choice group is above its maximum.",
+      "required_group_unsatisfiable": "A required choice has too few options.",
+      "translation_review": "barsy’s text changed. Check the {language} translation.",
+      "price_not_venue_scoped": "The price is not set for this venue.",
+      "unplaced_item": "Not in any section.",
+      "orphan_node": "Not attached to the menu."
+    }
+  },
   "workspace": {
     "switchTab": "Switch tab",
     "comingInStage": "Coming in Stage {stage}",
@@ -221,10 +509,6 @@
       "title": "Publishing",
       "description": "Publish the menu to guests' phones and see what is live."
     },
-    "integration": {
-      "title": "barsy integration",
-      "description": "Connect the venue to barsy and follow the sync."
-    },
     "settings": {
       "title": "Venue settings",
       "description": "How this venue keeps time, which languages and which currency it uses.",
@@ -236,6 +520,203 @@
       "defaultLanguage": "default",
       "currency": "Currency",
       "readOnly": "These settings are read-only for now. Editing them arrives with the composer."
+    }
+  },
+  "integration": {
+    "readOnly": "Only owners and admins can change the connection and the settings or start a sync. You can see the status and the history.",
+    "connect": {
+      "title": "Connection",
+      "description": "The barsy address and the API user this venue's menu is read with. The password is sealed on the server: it cannot be read back, not even here.",
+      "host": "barsy address",
+      "hostHelp": "The https address of the installation, for example https://club.barsyonline.com.",
+      "hostPlaceholder": "https://club.barsyonline.com",
+      "user": "API user",
+      "password": "Password",
+      "save": "Save and check",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "saved": "Credentials saved",
+      "savedHost": "Address: {host}",
+      "change": "Change credentials",
+      "changeHelp": "Enter the API user and the password again. They are sealed for the address above, so a new address needs both too.",
+      "none": "No credentials yet.",
+      "queued": "The connection check is queued.",
+      "notQueued": "The credentials are saved, but the connection check could not be queued. Use \"Check again\".",
+      "keysMissing": {
+        "title": "The sync keys are not set up",
+        "description": "Before credentials can be saved, the operator has to set up the sync keys of the web app and the worker. Ask the Restro team."
+      }
+    },
+    "status": {
+      "title": "Status",
+      "description": "Whether Restro can reach barsy with the saved credentials.",
+      "state": {
+        "new": "Not checked yet",
+        "connected": "Connected",
+        "error": "Connection problem"
+      },
+      "address": "Address",
+      "lastChecked": "Last checked",
+      "never": "Never",
+      "noIntegration": "Not connected to barsy yet.",
+      "activeConnect": "Checking the connection…",
+      "activePull": "A sync is queued or running…",
+      "checkAgain": "Check again",
+      "checkQueued": "The connection check is queued.",
+      "detail": {
+        "wrongCredentials": "Wrong user or password"
+      }
+    },
+    "barsyVenue": {
+      "title": "barsy venue",
+      "description": "One barsy installation can hold several venues. Choose the one that is this venue.",
+      "legend": "barsy venues",
+      "empty": {
+        "title": "No barsy venues yet",
+        "description": "They appear after the connection check succeeds."
+      },
+      "usedBy": "Used by {venue}",
+      "switchHint": "Choosing another barsy venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist."
+    },
+    "catalogue": {
+      "title": "Menu catalogue",
+      "description": "One barsy installation can hold several menus in one category tree. Choose the category whose sub-categories make up this venue's menu.",
+      "legend": "Categories",
+      "needVenue": "Choose the barsy venue first.",
+      "empty": {
+        "title": "No categories yet",
+        "description": "The category tree is read when the connection is checked."
+      },
+      "children": "{count, plural, =0 {no sub-categories} one {# sub-category} other {# sub-categories}}",
+      "expand": "Show the sub-categories of {name}",
+      "collapse": "Hide the sub-categories of {name}",
+      "readAt": "Read {when}",
+      "unknownRoot": "The chosen category is no longer in the tree."
+    },
+    "mapping": {
+      "title": "Mapping settings",
+      "description": "How barsy's data becomes menu fields. A change applies from the next sync.",
+      "price": {
+        "legend": "Price shown",
+        "default": "default",
+        "actual": "Base price",
+        "actualHelp": "barsy's regular price of the article.",
+        "current": "Current price",
+        "currentHelp": "The price barsy charges right now; it can change during the day."
+      },
+      "allergen": {
+        "label": "Allergen characteristic",
+        "auto": "Detect automatically",
+        "autoFound": "Detect automatically ({name})",
+        "autoNone": "Detect automatically (none found yet)",
+        "help": "The barsy characteristic that lists the allergens of an article. Automatic detection looks for \"Алергени\" or \"Allergens\".",
+        "noOptions": "The list of characteristics is read when the connection is checked."
+      },
+      "locale": {
+        "label": "Default language",
+        "help": "The language that barsy text without a language tag is stored in."
+      },
+      "save": "Save settings",
+      "saving": "Saving…",
+      "saved": "Settings saved. They apply from the next sync."
+    },
+    "sync": {
+      "title": "Sync",
+      "description": "Reads the menu from barsy now. Once the venue is set up, a sync also runs by itself every few minutes.",
+      "button": "Sync now",
+      "starting": "Starting…",
+      "queued": "The sync is queued.",
+      "lastSynced": "Last synced {when}",
+      "neverSynced": "Not synced yet.",
+      "blocked": {
+        "not_manager": "Only owners and admins can start a sync.",
+        "no_credentials": "Save the barsy credentials first.",
+        "checking": "The connection is being checked. Wait until it finishes.",
+        "not_connected": "The connection to barsy has to work first. See the status above.",
+        "no_barsy_venue": "Choose the barsy venue first.",
+        "no_root": "Choose the menu catalogue first.",
+        "busy": "A sync is already queued or running."
+      }
+    },
+    "history": {
+      "title": "Sync history",
+      "description": "The latest 20 runs of this integration, newest first.",
+      "empty": {
+        "title": "No sync yet",
+        "description": "Runs appear here after the first connection check or sync."
+      },
+      "columns": {
+        "run": "Run",
+        "started": "Started",
+        "duration": "Duration",
+        "status": "Status"
+      },
+      "kind": {
+        "barsy_connect": "Connection check",
+        "barsy_full_pull": "Full sync",
+        "barsy_incremental": "Quick sync",
+        "other": "Other"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed"
+      },
+      "duration": {
+        "seconds": "{seconds} s",
+        "minutes": "{minutes} min {seconds} s",
+        "none": "—"
+      },
+      "counters": {
+        "articles_seen": "Articles seen",
+        "categories_seen": "Categories seen",
+        "created": "Created",
+        "updated": "Updated",
+        "unchanged": "Unchanged",
+        "missing": "Missing",
+        "deleted": "Deleted",
+        "reactivated": "Reactivated",
+        "failed_pages": "Failed pages",
+        "refused_writes": "Refused writes",
+        "venues": "barsy venues",
+        "languages": "Languages"
+      },
+      "deletionSkipped": "Deletion check skipped",
+      "details": {
+        "show": "Show the details of the run from {when}",
+        "hide": "Hide the details of the run from {when}",
+        "notes": "What happened",
+        "nothing": "Nothing else to report.",
+        "refused": "Refused writes",
+        "field": "Field",
+        "reason": "Reason",
+        "noField": "(structure)",
+        "refusedFallback": "Refused"
+      },
+      "refusedCodes": {
+        "less_cautious": "Would make the menu less cautious than the till",
+        "layer_not_allowed": "This source may not write this field",
+        "unknown_field": "Unknown field",
+        "not_linked": "Not linked to barsy",
+        "unknown_node": "Unknown item",
+        "unknown_link": "Unknown link",
+        "link_taken": "The barsy object is linked to another item",
+        "already_linked": "The item already has a barsy link"
+      }
+    },
+    "errors": {
+      "not_allowed": "Only owners and admins can do this.",
+      "not_found": "The venue or the barsy venue could not be found.",
+      "invalid": "That input is not valid.",
+      "invalid_host": "Enter the https address of the barsy installation, without a port or a path.",
+      "sync_keys_missing": "The sync keys are not set up. Ask the Restro team.",
+      "host_in_use": "Another connection of this organisation already uses that address.",
+      "barsy_venue_taken": "That barsy venue already belongs to another venue.",
+      "not_ready": "Not ready yet: finish the earlier steps first.",
+      "already_running": "A sync is already queued or running.",
+      "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
+      "failed": "Something went wrong. Try again."
     }
   }
 }

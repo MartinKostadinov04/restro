@@ -1,0 +1,2 @@
+ALTER TABLE "restro"."job_runs" ADD COLUMN "details" jsonb;--> statement-breakpoint
+ALTER TABLE "restro"."job_runs" ADD CONSTRAINT "job_runs_details_object" CHECK ("restro"."job_runs"."details" is null or jsonb_typeof("restro"."job_runs"."details") = 'object');
