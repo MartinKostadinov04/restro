@@ -377,7 +377,8 @@ test("the mark lapses with the service day: the real worker's tick remakes live.
   browser,
 }) => {
   // Moving the end of the service day to 23:59 puts "now" in the PREVIOUS service day, which is
-  // what 07:00 does to last night. (From 23:00 on that would not be true; skip then.)
+  // what 07:00 does to last night. Only true between 07:00 and 23:00 Sofia time: before 07:00 both
+  // ends give the previous day (no rollover can happen), and from 23:00 on neither moves it. Skip.
   const localHour = Number(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Europe/Sofia',
@@ -385,7 +386,10 @@ test("the mark lapses with the service day: the real worker's tick remakes live.
       hourCycle: 'h23',
     }).format(new Date()),
   )
-  test.skip(localHour >= 23, 'the service day cannot be moved forward this late in the evening')
+  test.skip(
+    localHour >= 23 || localHour < 7,
+    'the service day end can only be moved past "now" between 07:00 and 23:00 Sofia time',
+  )
 
   await openComposer()
   await markFromRowMenu(page, 'Негрони')

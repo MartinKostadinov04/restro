@@ -4,7 +4,8 @@
 // A server action in the shape of the composer's (../composer/actions.ts): Zod first, then
 // `requireTenant()` (the tenant is the person's organisation, never the request's), then the
 // role (owners and admins), then core's writers `provisionVenue` and `provisionMenu` (rule 1:
-// no SQL here). The venue's slug is its public address `/m/<slug>` and cannot change later.
+// no SQL here). The slug is the readable part of the public menu address; a permanent random
+// code is added to it (D68, brief CF-14).
 import { isVenueSlug, LOCALES, LocaleSchema } from '@restro/core'
 import { ProvisionError, provisionMenu, provisionVenue } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'

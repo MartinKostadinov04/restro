@@ -1,6 +1,6 @@
 {
-  "apps/web/messages/bg.json": 122,
-  "apps/web/messages/en.json": 121,
+  "apps/web/messages/bg.json": 121,
+  "apps/web/messages/en.json": 120,
   "apps/web/src/composer/badges.tsx": 11,
   "apps/web/src/composer/composer.tsx": 1,
   "apps/web/src/composer/item-row.tsx": 3,
@@ -34,6 +34,7 @@
   "apps/web/src/server/item-sheet/types.ts": 6,
   "apps/web/src/server/publish/load.ts": 4,
   "apps/web/src/server/publish/service.ts": 4,
+  "apps/web/src/server/venues.ts": 4,
   "apps/worker/src/config.ts": 27,
   "apps/worker/src/jobs/barsy.ts": 54,
   "apps/worker/src/jobs/index.ts": 5,
