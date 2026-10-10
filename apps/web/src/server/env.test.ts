@@ -12,7 +12,16 @@ import { ServerEnvSchema } from './env'
 // Built from two halves so that this file does not match its own search.
 const PRIVATE_KEY_VARIABLE = ['SEAL', 'PRIVATE', 'KEY'].join('_')
 const WEB_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const SKIPPED = new Set(['node_modules', '.next', 'test-results', 'playwright-report'])
+// `playwright.config.ts` builds the REAL worker's environment for the e2e run and sets this
+// variable blank there (so a developer's keys from .env.local never reach the worker): it is test
+// infrastructure that starts the worker, not code of the web app.
+const SKIPPED = new Set([
+  'node_modules',
+  '.next',
+  'test-results',
+  'playwright-report',
+  'playwright.config.ts',
+])
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
