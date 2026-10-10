@@ -2,11 +2,11 @@
 
 Oct 8, 2026 · @Martin
 
-Every menu value enters through one of five collection paths (manual editor, spreadsheet import, Barsy full pull, Barsy webhook, Barsy reconciliation). Each lands as a typed, sourced value in its own layer of one internal data source. It reaches a screen only through a deterministic resolver and an immutable snapshot, which every face renders under the same population rules. Faces differ in look only.
+Every menu value enters through one of four collection paths (manual editor, Barsy full pull, Barsy webhook, Barsy reconciliation). Each lands as a typed, sourced value in its own layer of one internal data source. It reaches a screen only through a deterministic resolver and an immutable snapshot, which every face renders under the same population rules. Faces differ in look only.
 
 ## At a glance
 
-&#91;embedded content: data pipeline · 5 collection paths, 1 write path, 5 faces\]
+&#91;embedded content: data pipeline · 4 collection paths, 1 write path, 5 faces\]
 
 Every source, the manual editor included, enters through `apply()`. Only the publisher writes what a shell reads, and orders leave through the outbox back to Barsy.
 
@@ -25,8 +25,8 @@ Every later section uses these terms in exactly this sense.
 | Placement | The fact that an Item appears inside a Section at a sort position. One Item can have several placements |
 | Field definition | A typed slot on a node type: key, type, required, constraints, owner |
 | Field value | A typed value for one field on one node, in one layer, with provenance |
-| Source | Where a value came from: `manual`, `import:<profile>`, `barsy:<integration>` |
-| Source record | The raw object exactly as a source returned it (a Barsy article JSON, a spreadsheet row), hashed and kept |
+| Source | Where a value came from: `manual`, `barsy:<integration>` |
+| Source record | The raw object exactly as a source returned it (a Barsy article JSON), hashed and kept |
 | Source link | The mapping from an internal node id to an external id (`barsy article 102751`) |
 | Layer | One stack of field values for a node: source layers, manual, override, edition layers |
 | Override | An explicit, recorded replacement of a source-owned value, carrying the source value it replaced |
@@ -146,7 +146,7 @@ The internal data source has four tiers, and data only ever moves down them: raw
 | `overrides` | id | Explicit replacements of source-owned values: value, the source value at the time (basis), author, reason, state |
 | `assets` | id | Images and files: origin (upload or Barsy), origin reference, checksum, CDN variants |
 | `tables` | id | Barsy places synced per venue: `place_id`, `place_num`, salon, zone, opaque QR token |
-| `jobs` | id | Every import, pull and reconciliation run: type, status, counters, error log |
+| `jobs` | id | Every pull and reconciliation run: type, status, counters, error log |
 | `webhook_inbox` | `X-Webhook-ID` | Every webhook received: payload, signature check result, processing state |
 | `events` | sequence | Append-only changelog: node, field, layer, old → new, source, actor, job |
 | `review_queue` | id | Proposed changes waiting for a person: new Barsy items, stale overrides, conflicts |
@@ -173,7 +173,7 @@ One row in `field_values` looks like this:
 
 `scope` is `master` for values shared by every venue, or `venue:<id>` for Barsy values that differ per venue (price, for sale).
 
-Layer names: `barsy`, `import`, `manual`, `override`, and `edition:<edition_id>` for venue and service-period editions.
+Layer names: `barsy`, `manual`, `override`, and `edition:<edition_id>` for venue and service-period editions.
 
 ### One write path
 
@@ -235,45 +235,6 @@ People can add Sections, Items, Modifier groups and Options with no Barsy counte
 - Multi-select edits ("mark these 12 items vegan") are one change set, applied atomically.
 - Saves land in the layers immediately but reach guests only on publish. The preview renders the draft resolved document through any face.
 - Every save writes `events` rows with the user as actor.
-
-## Collection path B: spreadsheet import
-
-Spreadsheet import writes to the `import` layer under a named mapping profile, and a re-import never overwrites hand edits.
-
-### Steps
-
-1. **Upload.** The CSV, XLSX or ODS file is stored as an asset.
-2. **Discover.** Read the header row and the first 50 rows. Guess each column's type: money (currency symbol, comma or dot decimals), boolean, list (`;` or `,` separated), date (`DD.MM.YYYY` or ISO), plain text.
-3. **Map.** The person assigns each column one role: a field key, the identity key, the parent section path (`Bar > Cocktails`), a Barsy article id, or ignore. They pick the target node type (Item, Section or Option). The mapping is saved as a reusable profile; the source name is `import:<profile>`.
-4. **Dry run.** Build the full change set without applying it. The preview shows how many rows will create, update, stay unchanged or be rejected, with the reason for each rejection. Nothing is written yet.
-5. **Commit.** Create a job. A coordinator streams the file and hands chunks of 200 rows to workers. Each chunk becomes one change set through `apply()`.
-6. **Finish.** The job is complete only when processed + rejected equals total. It is never marked complete just because every chunk was handed out.
-
-### Identity
-
-Rows are matched by the identity column (an item code, say) through a source link of type `import:<profile>/row`. Re-importing the same file updates the same nodes.
-
-If a Barsy article id column is mapped, rows attach to the Barsy-linked node instead and may write only builder-owned fields. Use this to bulk-load photos, marketing descriptions or dietary labels onto Barsy items.
-
-### Conversion rules
-
-| Input | Becomes | Otherwise |
-| --- | --- | --- |
-| `4,50` / `4.50` / `4.50 €` in a money column | `{"amount_minor": 450, "currency": "EUR"}` (currency from the profile when the cell has none) | Rejected: "not a price" |
-| `да`, `yes`, `1`, `true`, `x` | `true` | `не`, `no`, `0`, `false`, empty → `false` |
-| `глутен, мляко` / `gluten; milk` | `["gluten", "milk"]` via a synonym table in each language | An unknown allergen rejects the row. Allergens are never guessed |
-| `31.12.2026` | `"2026-12-31"` | Rejected |
-| `250 ml` | `{"value": 250, "unit": "ml"}` | Rejected if the unit is not in the list |
-| An image URL or a filename from an uploaded ZIP | Downloaded and stored as an asset | Row accepted, image field left empty, warning recorded |
-| An empty cell in a required field | Row rejected | — |
-
-### Precedence against hand edits
-
-The `manual` layer beats `import`. If someone edited a field by hand after the last import, the next import's value for that field is ignored. The dry run lists these fields ("14 fields differ from hand edits and will be skipped") and offers to apply the import to them anyway, which clears the hand value.
-
-### Deletions
-
-A row missing from a re-import deletes nothing. A profile can opt into mirror mode: after a complete, successful import, nodes linked to that profile but absent from the file are hidden, never deleted.
 
 ## Collection path C: Barsy onboarding and the full pull
 
@@ -431,31 +392,30 @@ The mapping is versioned configuration per integration, not code paths scattered
 
 ## Identity and linking
 
-Our own ids are the only ids the model, the snapshots and the shell use. External ids live in `source_links` and never leave the backend, so a Barsy re-numbering, a second POS or a spreadsheet can each be linked without touching anything downstream.
+Our own ids are the only ids the model, the snapshots and the shell use. External ids live in `source_links` and never leave the backend, so a Barsy re-numbering or a second POS can each be linked without touching anything downstream.
 
 ### Rules
 
 - **Internal ids** are opaque and prefixed by kind: `nd_` node, `as_` asset, `sn_` snapshot, `tb_` table.
 - **Items belong to the tenant's catalog, not to a menu.** Menus and Sections hold placements that point to catalog Items. The same Barsy article on the Dinner menu and the Bar menu is one Item with one set of photos and copy, placed twice.
 - **Link key** = (integration, external type, external id). Barsy ids are unique per installation, and all venues on that installation share the catalog. So one article = one Item; what differs per venue (price, for sale) is stored per venue: those barsy-layer rows carry scope venue:\<id> instead of master.
-- **One link per source per node.** A node may have one Barsy link and one import link at the same time (photos loaded by spreadsheet onto a Barsy item).
+- **One link per source per node.** A node has at most one Barsy link.
 
 ### Link lifecycle
 
 | From | Event | To | Node effect |
 | --- | --- | --- | --- |
-| — | First seen in a pull, webhook or import | `active` | Created (hidden or in review, per publish policy) |
+| — | First seen in a pull or webhook | `active` | Created (hidden or in review, per publish policy) |
 | `active` | Absent from a complete full pull | `missing` | Hidden |
 | `active` or `missing` | `D` webhook, `delete_flag`, or missing for 7 days | `deleted` | Hidden; enrichment kept |
 | `missing` or `deleted` | Seen again with the same external id | `active` | Shown again with its enrichment |
 
 ### Matching existing nodes to Barsy
 
-When Barsy is connected to a menu that was already built by hand or by spreadsheet, each Barsy article is scored against the existing Items.
+When Barsy is connected to a menu that was already built by hand, each Barsy article is scored against the existing Items.
 
 | Evidence | Strength | Action |
 | --- | --- | --- |
-| Same `code` or `barcode` as a stored import value | Strong | Pre-ticked in the bulk confirm screen |
 | Same name after normalising case, accents and Cyrillic–Latin transliteration, and same price | Medium | Suggested, not ticked |
 | Name similarity of 0.85 or more | Weak | Shown as a possible match only |
 | Anything else | — | New Item |
@@ -476,14 +436,14 @@ The resolver is a pure function: `resolve(template, layers, rules, venue, editio
 
 ### The layer stack
 
-From lowest to highest: schema default → `barsy` → `import` → `manual` → `override` → `edition:<venue>` → `edition:<service period>`. Higher does not automatically win; the combinator decides.
+From lowest to highest: schema default → `barsy` → `manual` → `override` → `edition:<venue>` → `edition:<service period>`. Higher does not automatically win; the combinator decides.
 
 ### Combinators
 
 | Combinator | Rule | Used for |
 | --- | --- | --- |
-| `source_first` | override → barsy → manual → import → default (first non-empty) | Barsy-owned fields: name, portion, translations |
-| `builder_first` | manual → import → barsy → default | Builder-owned fields: description, image, sort order |
+| `source_first` | override → barsy → manual → default (first non-empty) | Barsy-owned fields: name, portion, translations |
+| `builder_first` | manual → barsy → default | Builder-owned fields: description, image, sort order |
 | `locked` | barsy only; overrides refused | Price on an orderable Item |
 | `all_true` | every layer that has a value must say true | Visibility, for sale |
 | `union` | the set of all values | Tags, dietary labels |
@@ -533,7 +493,7 @@ add computed fields; drop fields with visibility = internal from the public view
 
 ## Validation and quality gates
 
-Validation runs at three points, and each failure has one fixed consequence: a bad write is rejected, a bad node is left out of the snapshot, a bad menu is not published. One validator library serves the editor, the import, the Barsy adapters and the publisher, so no path can be looser than another.
+Validation runs at three points, and each failure has one fixed consequence: a bad write is rejected, a bad node is left out of the snapshot, a bad menu is not published. One validator library serves the editor, the Barsy adapters and the publisher, so no path can be looser than another.
 
 | ID | Check | Runs at | Failure means |
 | --- | --- | --- | --- |
@@ -566,7 +526,6 @@ The shell never reads the database. It reads one immutable snapshot per menu and
 | Barsy deletes an Item | Hide and publish automatically |
 | New Item from Barsy | Publish automatically (decided 2026-10-08; hold for review or publish hidden stay configurable) |
 | Hand edit in the editor | Published when someone presses Publish |
-| Spreadsheet import | Reviewed in the dry run, then published on Publish |
 | Any change set that trips V11 | Hold for review whatever its type |
 
 Automatic publishes within a 30-second window are merged into one snapshot.
@@ -794,9 +753,8 @@ The full stack design, costs, environments and how CI enforces the nine rules ar
 1. **Core.** Template, canonical store, `apply()`, manual editor, resolver, publisher, snapshot, QR face. Done when a hand-built menu publishes and renders on a phone.
 2. **Barsy read.** Onboarding, full pull, mapping configuration, tier 1 replay, the matching screen. Done when a Barsy catalog becomes a published menu with photos.
 3. **Barsy live.** Webhook receiver and processor, reconciliation loops, subscription health. Done when a Barsy edit reaches a phone in under 3 minutes and a deliberately dropped webhook is caught within 10.
-4. **Import.** Spreadsheet profiles, dry run, upsert.
-5. **More faces.** Print and TV faces, the contract-test fixtures, the live sold-out overlay.
-6. **Ordering.** Outbox, POS registration, table sessions, payment, only after Lukanet confirms the fiscal flow.
+4. **More faces.** Print and TV faces, the contract-test fixtures, the live sold-out overlay.
+5. **Ordering.** Outbox, POS registration, table sessions, payment, only after Lukanet confirms the fiscal flow.
 
 ### Decisions for the owner
 

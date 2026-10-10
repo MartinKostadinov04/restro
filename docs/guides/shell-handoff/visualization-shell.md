@@ -36,7 +36,7 @@ The one real difference: in your DPP viewers the view engine decided *and* drew.
 ```mermaid
 flowchart TD
   POS["barsy POS<br/>(read-only API)"]
-  ED["Venue admin<br/>(manual edits, spreadsheet import)"]
+  ED["Venue admin<br/>(manual edits)"]
   STAFF["Bar staff<br/>(mark items sold out)"]
 
   subgraph BACKEND ["Backend (private, never reaches a guest)"]
@@ -76,7 +76,7 @@ flowchart TD
 | barsy POS | The venue's till system; Restro only reads from it and never writes back. |
 | Sync worker | A background job that pulls articles, categories and modifiers from barsy on a schedule. |
 | Raw source records | Each barsy object stored exactly as received, so any later step can be re-run. |
-| Venue admin | Where a manager adds photos, descriptions, tags and layout by hand, or imports a spreadsheet. |
+| Venue admin | Where a manager adds photos, descriptions, tags and layout by hand. |
 | `apply()` | The single function every change from every source goes through; nothing else writes menu data. |
 | Layered field values | Every value is stored per layer (barsy, import, manual, override, edition) with who said it and when. |
 | Resolver | A pure function that picks one value per field per node from the layers, following fixed ownership rules. |
@@ -98,7 +98,7 @@ The shell and the face run in the guest's browser (or are rendered on the server
 
 | Principle | What it means | The DPP parallel |
 |---|---|---|
-| **One write path** | Every change from every source (barsy sync, manual edit, spreadsheet) goes through `apply(changeSet)`. It validates, records the change and who made it, and is the only code allowed to write. | Like a passport API where every edit, whether from a form or a bulk import, runs through the same validation and audit trail. |
+| **One write path** | Every change from every source (barsy sync, manual edit) goes through `apply(changeSet)`. It validates, records the change and who made it, and is the only code allowed to write. | Like a passport API where every edit, whether from a form or a bulk import, runs through the same validation and audit trail. |
 | **Layers and provenance** | A price from barsy and a description typed by hand live in different layers; each stored value remembers its layer, source and job. A resolver decides which layer wins per field. Rules are asymmetric: our layers may only make the menu *more cautious* than the till (hide an item, mark it sold out), never un-hide it or change the price of something orderable. | Like a passport field that records who supplied it (manufacturer, supplier, auditor) and refuses edits from the wrong party. |
 | **The snapshot is the only thing guests read** | Publishing freezes the resolved menu into one immutable JSON file on a CDN. Fast, cacheable for a year, and by construction free of private data, because the publisher's output schema has no place to put it. | Like the published passport JSON that a QR code resolves to, as opposed to querying the live database per scan. |
 | **All decisions live in the shell** | Language fallback, money formatting, item state, schedules, ordering, image variant, readable colours: all computed once, by tested pure code. Every face therefore shows the same truth. | Like moving "which fields are visible to which audience" out of every viewer and into one place. |
