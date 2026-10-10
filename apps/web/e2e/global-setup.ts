@@ -3,8 +3,11 @@ import { fileURLToPath } from 'node:url'
 
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
 
-/** Runs one of the dev scripts the way `pnpm db:seed:dev` does (same flags, same refusals). */
-export function runScript(script: string, ...args: string[]) {
+/**
+ * Runs one of the dev scripts the way `pnpm db:seed:dev` does (same flags, same refusals) and
+ * returns what it printed.
+ */
+export function runScript(script: string, ...args: string[]): string {
   const webDir = fileURLToPath(new URL('..', import.meta.url))
   const result = spawnSync(
     process.execPath,
@@ -35,6 +38,7 @@ export function runScript(script: string, ...args: string[]) {
   if (result.status !== 0) {
     throw new Error(`${script} failed:\n${result.stdout}\n${result.stderr}`)
   }
+  return result.stdout
 }
 
 // Before the tests: put the demo organisation, its venue and the demo owner into the local
