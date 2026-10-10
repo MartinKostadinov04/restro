@@ -80,7 +80,10 @@ export async function writePublishFiles(
 ): Promise<PublishFilesResult> {
   const written: string[] = []
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const current = await loadCurrentSnapshot(deps.pool, scope.tenantId, scope)
+    const current = await loadCurrentSnapshot(deps.pool, scope.tenantId, {
+      menuId: scope.menuId,
+      venueId: scope.venueId,
+    })
     if (current === null) return { status: 'nothing_published' }
     if (current.body === null) {
       throw new Error(`the pointer of ${scope.menuId} names a snapshot without a body`)
@@ -115,7 +118,8 @@ export async function writePublishFiles(
 export type LiveFilesResult =
   | { readonly status: 'nothing_published' }
   | {
-      readonly status: 'written'
+      /** `unchanged`: the file in the store was the same, so nothing was put. */
+      readonly status: 'written' | 'unchanged'
       /** The snapshot version the overlay was made for. */
       readonly version: number
       readonly soldOut: number
@@ -123,18 +127,25 @@ export type LiveFilesResult =
 
 /**
  * Writes `live.json`: the sold-out marks of the current snapshot's items, resolved with today's
- * service edition. Always written (it is small, and the service day may have changed).
+ * service edition. Written only when it differs from the file in the store.
  */
 export async function writeLiveOverlay(
   deps: PublishFilesDeps,
   scope: PublishScope,
 ): Promise<LiveFilesResult> {
-  const live = await loadLiveOverlay(deps.pool, scope.tenantId, scope, { now: deps.now() })
+  const live = await loadLiveOverlay(
+    deps.pool,
+    scope.tenantId,
+    { menuId: scope.menuId, venueId: scope.venueId },
+    { now: deps.now() },
+  )
   if (live === null) return { status: 'nothing_published' }
   const file = livePath(scope.menuId, scope.venueId)
-  await deps.store.put(file, encode(live.overlay), publishPutOptions(file))
+  const bytes = encode(live.overlay)
+  const unchanged = sameBytes(await deps.store.get(file), bytes)
+  if (!unchanged) await deps.store.put(file, bytes, publishPutOptions(file))
   return {
-    status: 'written',
+    status: unchanged ? 'unchanged' : 'written',
     version: live.overlay.version,
     soldOut: Object.keys(live.overlay.items).length,
   }

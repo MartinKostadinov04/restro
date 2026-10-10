@@ -139,6 +139,7 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
       storage_key: string
       status: string
     }>('select * from restro.assets where tenant_id = $1 order by created_at', [world.tenantId])
+  const variantJobs = () => world.enqueued.filter((job) => job.name === JOB_NAMES.assetVariants)
   const imageOf = async (articleId: string, layer = 'barsy') =>
     (
       await world.query<{ value: { asset_id: string; alt: unknown; focal: unknown } }>(
@@ -172,6 +173,15 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
     expect(world.stored.get(asset?.storage_key ?? '')).toEqual(png)
 
     expect(await imageOf('11')).toEqual({ asset_id: asset?.id, alt: {}, focal: null })
+    // A new asset gets its phone-sized webp variants, queued under the asset’s own key.
+    expect(variantJobs()).toEqual([
+      {
+        name: JOB_NAMES.assetVariants,
+        data: { tenantId: world.tenantId, assetId: asset?.id },
+        singletonKey: asset?.id,
+        startAfter: undefined,
+      },
+    ])
     // The field was written by this run, with its provenance.
     const [row] = await world.query<{ source: string; job_id: string; mapping_version: number }>(
       `select fv.source, fv.job_id, fv.mapping_version from restro.field_values fv
@@ -292,6 +302,15 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
     expect(run.counters).toMatchObject({ assets_created: 0, assets_reused: 1, image_set: 1 })
     expect((await imageOf('11'))?.asset_id).toBe(assets[0]?.id)
     expect((await imageOf(String(OTHER)))?.asset_id).toBe(assets[0]?.id)
+    // Only the first fetch stored a new asset, so only it queued the photo variants.
+    expect(variantJobs()).toEqual([
+      {
+        name: JOB_NAMES.assetVariants,
+        data: { tenantId: world.tenantId, assetId: assets[0]?.id },
+        singletonKey: assets[0]?.id,
+        startAfter: undefined,
+      },
+    ])
   })
 
   it('fetching the same picture again changes nothing', async () => {
