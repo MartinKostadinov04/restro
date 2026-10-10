@@ -418,6 +418,16 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - [ ] T70. **Connector foundation (CF)**, the fixes from the 10-11 review (`docs/reviews/connector-architecture/`; Martin 10-11: "review them and launch fixer agents"). Branch `cf/foundation` (from `s3/guest` + review docs). Started 10-11:
   - CF-01 New venue + New item in the admin (A4-F1/F2; brief `cf-01-new-venue-and-item.md`) — Sonnet;
   - CF-02 barsy sync safety: no absence from an empty or >30% read, scope fingerprint forces a full read, option names never cleared by an incremental, host change refused while links exist (B1-Q1/Q2/Q3/Q5, T62; brief `cf-02-barsy-sync-safety.md`) — Sonnet.
+  **Status 10-11 (late):**
+  - **Merged into `cf/foundation`:**
+    - CF-01, with D66 and D68 applied;
+    - CF-02: on a hold, every link move is dropped, `scope_hash` is still written, and only article links count toward the share;
+    - CF-08a: workspace guard, vendor-word test (baseline 915 words, wall on the published surface), PR template;
+    - lead fixes: sold-out rollover e2e skips before 07:00; baseline raised twice, approved and noted in the commits.
+  - **Known limit until CF-11:** a deliberate switch to another barsy venue on a venue that has a menu is always held (100% of the old items would go). The old menu stays until a person releases the hold, so for now a switch needs the lead.
+  - **Running:** CF-03 neutral till role (Opus); CF-12 small hardening (Sonnet).
+  - **Queued:** CF-14 public address (after CF-03, because both add migrations).
+
   Next, after A5/A6 and the synthesis (`readiness.md`): neutral till layer + drop the `import` layer (D65) in one migration (Opus), connector manifest + kit + engine extraction, neutral locations/areas/tables (T66/T67), Settings → Integrations, publish policy on the venue — Claude
 - [ ] T72. **Hand-made items need a venue** (found by CF-01, 10-11): items belong to the organisation, and "Unsorted" lists items placed in none of *this* menu's sections, so a hand-made item of venue A appears in venue B's Unsorted and can be dragged there. Invisible with one venue; real now that venues can be created. Fix with the neutral-tables work (CF-05): a hand-made item records its menu (or Unsorted = placed nowhere in the tenant), plus a test — Claude
 - [ ] T73. Composer role gates are uneven: creating items and menus is owner/admin only (CF-01), creating sections and other composer writes are not gated. Decide one rule (recommend: all composer writes owner/admin, like publishing) — Claude, with CF-09
