@@ -78,6 +78,13 @@
       "when": 1791618854508,
       "tag": "0010_venue_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791632355224,
+      "tag": "0011_tags",
+      "breakpoints": true
     }
   ]
 }

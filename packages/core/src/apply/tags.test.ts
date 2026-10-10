@@ -58,7 +58,13 @@ describe('input checks (no database needed)', () => {
 
   it('refuses a bulk change with nothing to do, too many items, or an actor with personal data', async () => {
     const item = newId('nd')
-    const base = { venueId, itemIds: [item], add: [newId('tg')], remove: [], actor: 'system' }
+    const base = {
+      venueId,
+      itemIds: [item],
+      add: [newId('tg')],
+      remove: [],
+      actor: 'system' as const,
+    }
     await expect(setItemTags(unusedPool, newId('tn'), { ...base, add: [] })).rejects.toMatchObject({
       name: 'SetItemTagsError',
     })
@@ -87,7 +93,7 @@ describe.skipIf(!hasDatabase)('tags against Postgres (as the restro_app role)', 
   const items = [newId('nd'), newId('nd'), newId('nd'), newId('nd'), newId('nd')] as const
   /** A tag of the second venue and the items placed there. */
   const secondVenueItem = newId('nd')
-  const ids: Record<string, TagId> = {}
+  const ids = {} as Record<'signature' | 'spicy' | 'local' | 'first' | 'vegan' | 'foreign', TagId>
 
   const changeSet = (ops: unknown[]): ChangeSet =>
     ({
