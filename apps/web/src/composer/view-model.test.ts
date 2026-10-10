@@ -123,13 +123,13 @@ const document: MenuDocument = {
   ],
 }
 
-function build(displayLocale: 'bg_BG' | 'en_US' = 'bg_BG') {
+function build(displayLocale: 'bg_BG' | 'en_US' = 'bg_BG', heldNewIds: NodeId[] = []) {
   const resolved = resolve(VENUE_MENU_TEMPLATE, document, {
     venueScope: `venue:${venueId}`,
     locales: ['bg_BG', 'en_US'],
     now: '2026-10-09T12:00:00+03:00',
   })
-  return buildComposerView({ doc: document, resolved, displayLocale })
+  return buildComposerView({ doc: document, resolved, displayLocale, heldNewIds })
 }
 
 describe('buildComposerView', () => {
@@ -177,6 +177,18 @@ describe('buildComposerView', () => {
     expect(items[ids.barsyHidden]).toMatchObject({ hiddenBy: 'barsy', shown: false })
     expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'builder', shown: false })
     expect(items[ids.held]).toMatchObject({ hiddenBy: 'status', shown: false })
+  })
+
+  it('marks a builder hide the sync wrote as "new from barsy", and only that one (S3-04)', () => {
+    const { items } = build('bg_BG', [ids.builderHidden])
+    expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'new_from_barsy', shown: false })
+    // The marker means nothing for an item that is not hidden by the manual layer.
+    const unhidden = build('bg_BG', [ids.normal, ids.barsyHidden, ids.held]).items
+    expect(unhidden[ids.normal]?.hiddenBy).toBeNull()
+    expect(unhidden[ids.barsyHidden]?.hiddenBy).toBe('barsy')
+    expect(unhidden[ids.held]?.hiddenBy).toBe('status')
+    // Without the list, the same item is the builder's own hide.
+    expect(build().items[ids.builderHidden]?.hiddenBy).toBe('builder')
   })
 
   it('keeps the barsy hide when the builder also hid the item (barsy decides first)', () => {

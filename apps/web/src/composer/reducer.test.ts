@@ -145,6 +145,26 @@ describe('reduceView: hiding and creating', () => {
     expect(shown.items[ids.negroni]).toMatchObject({ hiddenBy: null, shown: true })
   })
 
+  it('shows a new item the sync held for review: the badge goes with the hide (S3-04)', () => {
+    const { view, ids } = makeTestView()
+    const held = {
+      ...view,
+      items: {
+        ...view.items,
+        [ids.stout]: {
+          ...(view.items[ids.stout] as object),
+          hiddenBy: 'new_from_barsy' as const,
+          shown: false,
+        },
+      },
+    } as typeof view
+    const shown = reduceView(held, { type: 'setItemHidden', itemId: ids.stout, hidden: false })
+    expect(shown.items[ids.stout]).toMatchObject({ hiddenBy: null, shown: true })
+    // Hidden again by the person: that hide is theirs, not "new from barsy".
+    const again = reduceView(shown, { type: 'setItemHidden', itemId: ids.stout, hidden: true })
+    expect(again.items[ids.stout]?.hiddenBy).toBe('builder')
+  })
+
   it('never shows an item barsy hides (rule 5)', () => {
     const { view, ids } = makeTestView()
     const barsyHidden = {

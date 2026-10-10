@@ -1,6 +1,7 @@
 'use client'
 
-// "Sync now": queues a full pull of this venue. The button is off, with the reason written next
+// The Synchronisation card: "Sync now" queues a full pull of this venue (the sync settings form is
+// below it). The button is off, with the reason written next
 // to it, until the integration is connected and both pickers are set, and while a pull is
 // queued or running (the queue is exclusive per integration, so a second press would do
 // nothing). The server checks the same rule again; this only explains it.
@@ -14,6 +15,7 @@ import { syncNowAction } from '@/server/integration/actions'
 import type { IntegrationErrorCode, IntegrationView } from '@/server/integration/view'
 
 import { ErrorNote, Notice } from './error-note'
+import { SyncSettingsForm } from './sync-settings-form'
 import { useClearWhenIdle } from './use-clear-when-idle'
 import { useMoment } from './use-moment'
 
@@ -55,6 +57,7 @@ export function SyncCard({ venueId, view }: { venueId: string; view: Integration
       </p>
       {queued ? <Notice>{t('queued')}</Notice> : null}
       <ErrorNote code={error} />
+      <SyncSettingsForm venueId={venueId} view={view} />
     </FormSection>
   )
 }

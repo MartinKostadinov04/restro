@@ -25,6 +25,12 @@ export const SyncStateSchema = z.object({
   tree_hash: Sha256.optional(),
   last_full_pull_at: IsoInstant.optional(),
   last_incremental_at: IsoInstant.optional(),
+  // The minute tick's own marks (S3-04). Without them a change check that failed, or a full pull
+  // that was not complete, would count as "never ran" and be queued again every minute.
+  /** When the tick last queued a change check. */
+  last_incremental_queued_at: IsoInstant.optional(),
+  /** The full-pull slot (an instant) the tick last queued a full pull for. */
+  last_full_pull_slot: IsoInstant.optional(),
 })
 export type SyncState = z.output<typeof SyncStateSchema>
 

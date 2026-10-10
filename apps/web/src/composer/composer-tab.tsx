@@ -2,7 +2,7 @@
 // no section (core/apply, read side), resolves it for this venue and hands the client component a
 // plain view. Nothing here writes: the writes are the server actions in ./actions.ts.
 import { type Locale, mergeDocumentParts, resolve, VENUE_MENU_TEMPLATE } from '@restro/core'
-import { loadMenuDocument, loadUnplacedItems } from '@restro/core/apply'
+import { loadHeldNewItemIds, loadMenuDocument, loadUnplacedItems } from '@restro/core/apply'
 import type { Venue } from '@restro/db'
 import { getLocale } from 'next-intl/server'
 
@@ -19,9 +19,11 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
   if (!menuId) return <NoMenu venueId={venue.id} />
 
   const pool = getPool()
-  const [document, unplaced] = await Promise.all([
+  const [document, unplaced, heldNewIds] = await Promise.all([
     loadMenuDocument(pool, tenantId, menuId),
     loadUnplacedItems(pool, tenantId, menuId),
+    // New items the sync hid for review (publish.new_items = hold): they get a badge.
+    loadHeldNewItemIds(pool, tenantId),
   ])
   const merged = mergeDocumentParts(document, unplaced)
 
@@ -39,6 +41,7 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
     doc: merged,
     resolved,
     displayLocale: toDataLocale(isAdminLocale(uiLocale) ? uiLocale : 'bg'),
+    heldNewIds,
   })
 
   return (

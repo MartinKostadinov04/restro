@@ -1,14 +1,17 @@
 // The sync jobs on the real queue (pg-boss on Postgres, as restro_app): queues created with the
-// `exclusive` policy and a dead-letter queue, the two schedules (tz Europe/Sofia), one pull at a
-// time per integration however many senders there are, a job travelling the queue end to end, and
-// the ticks that decide which venues get a pull. MSW answers for barsy; nothing leaves the machine.
+// `exclusive` policy and a dead-letter queue, the one-minute schedule (tz Europe/Sofia) that
+// replaced the two fixed ones, one pull at a time per integration however many senders there are,
+// a job travelling the queue end to end, and the tick that decides which venues get a pull. MSW
+// answers for barsy; nothing leaves the machine.
 import { tmpdir } from 'node:os'
 
 import { JOB_NAMES, prepareJob } from '@restro/core'
 import { tryAdvisoryLock } from '@restro/db'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { PgBoss } from 'pg-boss'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import type { WorkerConfig } from '../src/config'
+import { QUEUE_SCHEMA } from '../src/connection'
 import { buildJobs } from '../src/jobs'
 import { createBarsyJobs } from '../src/jobs/barsy'
 import { createLogger } from '../src/logger'
@@ -47,6 +50,23 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
   beforeAll(async () => {
     db = await createTestDatabase()
     fake.listen()
+    // A database that an earlier version of the worker ran on: its two fixed schedules are in
+    // pg-boss, and the new worker must remove them when it starts.
+    const earlier = new PgBoss({
+      connectionString: db.appUrl,
+      schema: QUEUE_SCHEMA,
+      createSchema: false,
+      migrate: true,
+    })
+    await earlier.start()
+    for (const [name, cron] of [
+      ['barsy-incremental-tick', '*/5 * * * *'],
+      ['barsy-full-pull-tick', '0 12 * * *'],
+    ] as const) {
+      await earlier.createQueue(name)
+      await earlier.schedule(name, cron, null, { tz: 'Europe/Sofia' })
+    }
+    await earlier.stop({ graceful: true, timeout: 5_000 })
     world = await createWorld(fake, { database: db })
     const logger = await createLogger({
       level: 'silent',
@@ -97,23 +117,21 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       expect(queue, name).toMatchObject({ policy: 'exclusive', deadLetter: `${name}.dead` })
       expect(await worker.boss.getQueue(`${name}.dead`)).not.toBeNull()
     }
-    // The ticks are plain queues.
-    expect(await worker.boss.getQueue(JOB_NAMES.barsyIncrementalTick)).toMatchObject({
+    // The tick is a plain queue.
+    expect(await worker.boss.getQueue(JOB_NAMES.barsySyncTick)).toMatchObject({
       policy: 'standard',
     })
   })
 
-  it('schedules the incremental tick every 5 minutes and the full pull daily at 12:00, Europe/Sofia', async () => {
-    const schedules = await worker.boss.getSchedules()
-    const byName = new Map(schedules.map((schedule) => [schedule.name, schedule]))
-    expect(byName.get(JOB_NAMES.barsyIncrementalTick)).toMatchObject({
-      cron: '*/5 * * * *',
-      timezone: 'Europe/Sofia',
-    })
-    expect(byName.get(JOB_NAMES.barsyFullPullTick)).toMatchObject({
-      cron: '0 12 * * *',
-      timezone: 'Europe/Sofia',
-    })
+  it('has one schedule, a tick every minute in Europe/Sofia, and removed the two old ones at start', async () => {
+    const schedules = (await worker.boss.getSchedules()).filter(
+      (schedule) => schedule.name.startsWith('barsy-') && schedule.name.endsWith('-tick'),
+    )
+    expect(schedules.map((schedule) => schedule.name)).toEqual([JOB_NAMES.barsySyncTick])
+    expect(schedules[0]).toMatchObject({ cron: '* * * * *', timezone: 'Europe/Sofia' })
+    const names = (await worker.boss.getSchedules()).map((schedule) => schedule.name)
+    expect(names).not.toContain('barsy-incremental-tick')
+    expect(names).not.toContain('barsy-full-pull-tick')
   })
 
   it('a full pull that finds another pull running is queued again, and the real queue takes it', async () => {
@@ -221,34 +239,46 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     expect(run?.status).toBe('completed')
   })
 
-  describe('the ticks', () => {
-    const tick = async (name: string) => {
+  describe('the tick', () => {
+    const tick = async () => {
       world.enqueued.length = 0
-      await world.run(name, {})
+      await world.run(JOB_NAMES.barsySyncTick, {})
       return world.enqueued
     }
 
-    it('queue a pull for every connected integration with a mapped venue and a catalogue root', async () => {
-      const queued = await tick(JOB_NAMES.barsyIncrementalTick)
-      expect(queued).toHaveLength(1)
-      expect(queued[0]).toMatchObject({
-        name: JOB_NAMES.barsyIncremental,
-        data: {
-          tenantId: world.tenantId,
-          integrationId: world.integrationId,
-          venueId: world.venueId,
-        },
-        singletonKey: world.integrationId,
-      })
-      const full = await tick(JOB_NAMES.barsyFullPullTick)
-      expect(full.map((job) => job.name)).toEqual([JOB_NAMES.barsyFullPull])
+    beforeEach(async () => {
+      // 12:07 in Sofia, after the daily time, with nothing recorded yet: both pulls are due.
+      world.clock = new Date('2026-10-10T09:07:20Z')
+      await world.query(
+        `update restro.integrations set config = config - 'sync' - 'schedule' - 'publish'
+         where id = $1`,
+        [world.integrationId],
+      )
     })
 
-    it('skip an integration that is not connected, or whose venue has no catalogue root', async () => {
+    it('queues the due pulls for every connected integration with a mapped venue and a catalogue root', async () => {
+      const queued = await tick()
+      expect(queued.map((job) => job.name)).toEqual([
+        JOB_NAMES.barsyIncremental,
+        JOB_NAMES.barsyFullPull,
+      ])
+      for (const job of queued) {
+        expect(job).toMatchObject({
+          data: {
+            tenantId: world.tenantId,
+            integrationId: world.integrationId,
+            venueId: world.venueId,
+          },
+          singletonKey: world.integrationId,
+        })
+      }
+    })
+
+    it('skips an integration that is not connected, or whose venue has no catalogue root', async () => {
       await world.query(`update restro.integrations set status = 'error' where id = $1`, [
         world.integrationId,
       ])
-      expect(await tick(JOB_NAMES.barsyIncrementalTick)).toEqual([])
+      expect(await tick()).toEqual([])
       await world.query(`update restro.integrations set status = 'connected' where id = $1`, [
         world.integrationId,
       ])
@@ -256,24 +286,24 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
         'update restro.barsy_venues set catalogue_root_cat_id = null where integration_id = $1',
         [world.integrationId],
       )
-      expect(await tick(JOB_NAMES.barsyIncrementalTick)).toEqual([])
+      expect(await tick()).toEqual([])
       await world.query(
         'update restro.barsy_venues set catalogue_root_cat_id = 1091 where integration_id = $1',
         [world.integrationId],
       )
-      expect(await tick(JOB_NAMES.barsyIncrementalTick)).toHaveLength(1)
+      expect(await tick()).toHaveLength(2)
     })
 
-    it('read the integrations through tenant scopes only (no owner role): each tenant on its own', async () => {
+    it('reads the integrations through tenant scopes only (no owner role): each tenant on its own', async () => {
       // A tenant with no organisation row is invisible to the tick: tenants are listed from the
       // organisation table, then each tenant's rows are read inside its own scope.
       await world.query(`delete from restro.auth_organization where id = $1`, [world.tenantId])
-      expect(await tick(JOB_NAMES.barsyIncrementalTick)).toEqual([])
+      expect(await tick()).toEqual([])
       await world.query(
         `insert into restro.auth_organization (id, name, slug) values ($1, 'Sync test club', 'sync-queue-test')`,
         [world.tenantId],
       )
-      expect(await tick(JOB_NAMES.barsyIncrementalTick)).toHaveLength(1)
+      expect(await tick()).toHaveLength(2)
     })
   })
 })
@@ -304,7 +334,7 @@ describe('buildJobs', () => {
     expect(warnings[0]).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
-  it('with the keys it adds the four sync jobs and the two ticks to the publish jobs', async () => {
+  it('with the keys it adds the four sync jobs and the one tick to the publish jobs', async () => {
     const world = await import('../src/config').then(async ({ loadConfig }) => {
       const { generateSealKeyPair } = await import('@restro/core/seal-open')
       const pair = generateSealKeyPair()
@@ -321,8 +351,7 @@ describe('buildJobs', () => {
       JOB_NAMES.barsyFullPull,
       JOB_NAMES.barsyIncremental,
       JOB_NAMES.assetFetch,
-      JOB_NAMES.barsyIncrementalTick,
-      JOB_NAMES.barsyFullPullTick,
+      JOB_NAMES.barsySyncTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,

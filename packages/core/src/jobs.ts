@@ -30,10 +30,13 @@ export const JOB_NAMES = {
   barsyIncremental: 'barsy-incremental',
   /** Download one barsy picture into the asset store. */
   assetFetch: 'asset-fetch',
-  /** Scheduled, every 5 minutes: queues an incremental run per connected venue. */
-  barsyIncrementalTick: 'barsy-incremental-tick',
-  /** Scheduled, daily: queues a full pull per connected venue. */
-  barsyFullPullTick: 'barsy-full-pull-tick',
+  /**
+   * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
+   * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
+   * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`
+   * (daily at 12:00).
+   */
+  barsySyncTick: 'barsy-sync-tick',
 } as const
 
 /** One of the queue names. */

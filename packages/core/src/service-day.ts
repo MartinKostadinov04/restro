@@ -5,7 +5,8 @@
 /** `HH:MM` or `HH:MM:SS` (Postgres returns `time` columns with seconds). */
 const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/
 
-interface WallClock {
+/** The wall-clock reading of an instant in a time zone. */
+export interface WallClock {
   readonly year: number
   readonly month: number
   readonly day: number
@@ -37,7 +38,8 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
   return formatter
 }
 
-function wallClock(at: Date, timeZone: string): WallClock {
+/** What the clocks on the wall of `timeZone` read at the instant `at`, with the zone's UTC offset then. */
+export function wallClock(at: Date, timeZone: string): WallClock {
   if (!Number.isFinite(at.getTime())) throw new RangeError('expected a valid date')
   const parts = new Map(
     formatterFor(timeZone)

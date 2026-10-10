@@ -24,7 +24,7 @@ describe('job names and payloads', () => {
       expect(isProducedJob(name)).toBe(true)
       expect(Number(EXCLUSIVE_JOBS.has(name)) + Number(STATELY_JOBS.has(name)), name).toBe(1)
     }
-    expect(isProducedJob(JOB_NAMES.barsyIncrementalTick)).toBe(false)
+    expect(isProducedJob(JOB_NAMES.barsySyncTick)).toBe(false)
     expect(isProducedJob('constructor')).toBe(false)
   })
 
