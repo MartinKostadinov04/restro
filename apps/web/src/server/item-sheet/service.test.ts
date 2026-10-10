@@ -6,6 +6,8 @@ import type { AssetStore } from '@restro/assets'
 import { type ChangeSet, newId } from '@restro/core'
 import {
   apply,
+  archiveTag,
+  createTag,
   type ProvisionedMenu,
   provisionMenu,
   provisionTenant,
@@ -195,6 +197,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         'source_records',
         'assets',
         'integrations',
+        'tags',
         'venues',
       ]) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
@@ -323,6 +326,43 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       const row = await storedRow(linked, 'description', 'manual')
       expect(row).toMatchObject({ source: 'manual', actor: `user:${userId}`, valid: true })
       expect(row?.jobId).toMatch(/^jb_/)
+    })
+
+    it('saves tags as ids of the venue’s tags in the manual layer, and refuses any other (S3-06)', async () => {
+      const made = await createTag(app, tenant, { venueId, label: { bg_BG: 'Фирмено' } })
+      const archived = await createTag(app, tenant, { venueId, label: { bg_BG: 'Старо' } })
+      if (!made.ok || !archived.ok) throw new Error('the tags were not created')
+      await archiveTag(app, tenant, { venueId, id: archived.tag.id })
+
+      const data = okData(
+        await saveField(scopeOf(handMade), services, actor, {
+          fieldKey: 'tags',
+          value: [made.tag.id],
+        }),
+      )
+      expect(field(data, 'tags')).toMatchObject({
+        provenance: 'owned',
+        layer: 'manual',
+        value: [made.tag.id],
+      })
+      expect((await storedRow(handMade, 'tags', 'manual'))?.value).toEqual([made.tag.id])
+
+      // Free text, an unknown id and an archived tag are refused by apply(): nothing is saved.
+      for (const value of [['signature'], [newId('tg')], [made.tag.id, archived.tag.id]]) {
+        const result = await saveField(scopeOf(handMade), services, actor, {
+          fieldKey: 'tags',
+          value,
+        })
+        expect(result).toMatchObject({ ok: false, error: 'refused', detail: 'unknown_tag' })
+      }
+      expect((await storedRow(handMade, 'tags', 'manual'))?.value).toEqual([made.tag.id])
+
+      // Taking the last tag off clears the value.
+      const cleared = okData(
+        await saveField(scopeOf(handMade), services, actor, { fieldKey: 'tags', value: null }),
+      )
+      expect(field(cleared, 'tags')).toMatchObject({ provenance: 'none', value: null })
+      expect(await storedRow(handMade, 'tags', 'manual')).toBeUndefined()
     })
 
     it("an override of a barsy-owned field keeps barsy's value as its basis; revert removes it", async () => {

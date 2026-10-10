@@ -31,6 +31,7 @@ import { TagForm } from '@/fields/tag-form'
 import { cn } from '@/lib/utils'
 
 import { useComposer } from './composer-context'
+import { beforeIdForDrop } from './tag-order'
 import type { ComposerTag } from './view-model'
 
 /** How many items hold a tag, for the panel's rows. */
@@ -67,9 +68,14 @@ export function TagsPanel({
     if (!destination || destination.index === source.index) return
     const moved = active.find((tag) => tag.id === draggableId)
     if (!moved) return
-    // The tag goes before whichever tag sits at the drop place once it has left its own.
-    const rest = active.filter((tag) => tag.id !== moved.id)
-    moveTag(moved.id, rest[destination.index]?.id ?? null)
+    moveTag(
+      moved.id,
+      beforeIdForDrop(
+        active.map((tag) => tag.id),
+        moved.id,
+        destination.index,
+      ),
+    )
   }
 
   async function save(

@@ -223,3 +223,54 @@ describe('reduceView: hiding and creating', () => {
     expect(top.rootIds).toEqual([ids.cocktails, ids.beer, section.id])
   })
 })
+
+describe('reduceView: tags (S3-06)', () => {
+  it('adds and removes tags on a selection of items, keeping what each holds', () => {
+    const { view, ids } = makeTestView()
+    const next = reduceView(view, {
+      type: 'setItemTags',
+      itemIds: [ids.negroni, ids.spritz, ids.lager],
+      add: [ids.local],
+      remove: [ids.spicy],
+    })
+    expect([...(next.items[ids.negroni]?.tags ?? [])].sort()).toEqual(
+      [ids.signature, ids.old, ids.local].sort(),
+    )
+    // Spritz held Local already: no repeat.
+    expect(next.items[ids.spritz]?.tags).toEqual([ids.local])
+    expect(next.items[ids.lager]?.tags).toEqual([ids.local])
+    // Items outside the selection and the base view are untouched.
+    expect(next.items[ids.stout]).toBe(view.items[ids.stout])
+    expect(view.items[ids.lager]?.tags).toEqual([])
+  })
+
+  it('creates a tag at the end and changes one in place', () => {
+    const { view, ids } = makeTestView()
+    const created = {
+      id: newId('tg'),
+      name: 'New',
+      label: { bg_BG: 'New' },
+      color: 'accent' as const,
+      archived: false,
+    }
+    const added = reduceView(view, { type: 'upsertTag', tag: created })
+    expect(added.tagIds).toEqual([...view.tagIds, created.id])
+    expect(added.tags[created.id]).toEqual(created)
+
+    const spicy = view.tags[ids.spicy]
+    if (!spicy) throw new Error('the test view has the Spicy tag')
+    const archived = reduceView(added, { type: 'upsertTag', tag: { ...spicy, archived: true } })
+    expect(archived.tagIds).toEqual(added.tagIds)
+    expect(archived.tags[ids.spicy]?.archived).toBe(true)
+    expect(view.tags[ids.spicy]?.archived).toBe(false)
+  })
+
+  it('moves a tag before another, or to the end', () => {
+    const { view, ids } = makeTestView()
+    const before = reduceView(view, { type: 'moveTag', tagId: ids.local, beforeId: ids.signature })
+    expect(before.tagIds).toEqual([ids.local, ids.signature, ids.spicy, ids.old])
+    const end = reduceView(view, { type: 'moveTag', tagId: ids.signature, beforeId: null })
+    expect(end.tagIds).toEqual([ids.spicy, ids.local, ids.old, ids.signature])
+    expect(view.tagIds).toEqual([ids.signature, ids.spicy, ids.local, ids.old])
+  })
+})
