@@ -14,6 +14,7 @@
 // mapped, the organisation's first barsy integration; none if it has none. (One installation per
 // organisation is all the proof of concept needs; D39.)
 import {
+  autoPublishPaused,
   type IntegrationId,
   isLocale,
   JOB_NAMES,
@@ -616,7 +617,13 @@ export async function saveSyncSettings(
   const updated = await updateIntegration(scope.pool, scope.tenantId, state.integration.id, {
     config: {
       schedule: parsed.data.schedule,
-      publish: parsed.data.publish,
+      // `publish` is replaced whole, and holds one thing the form does not: the pause that a
+      // return to an older version sets (Publish tab, S3-05). Keep it, or saving the form would
+      // let the next sync undo the return.
+      publish: {
+        ...parsed.data.publish,
+        ...(autoPublishPaused(state.integration.config) ? { auto_paused: true } : {}),
+      },
       publish_after_sync: null,
     },
   })
