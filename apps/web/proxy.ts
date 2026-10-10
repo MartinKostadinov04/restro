@@ -19,6 +19,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Everything except: the sign-in page, Better Auth's own API and the health check, Next.js
   // internals and static files, the development-only field preview (it 404s in production) and
-  // `/cdn/`, the published menus and photos, which are public by design (src/server/publish/cdn.ts).
-  matcher: ['/((?!login|api/|_next/|dev/|cdn/|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)'],
+  // `/cdn/`, the published menus and photos, which are public by design (src/server/publish/cdn.ts),
+  // and the guest's own pages: `/m/<venue>` (the menu) and `/t/<token>` (a table's QR code).
+  matcher: ['/((?!login|api/|_next/|dev/|cdn/|m/|t/|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)'],
 }

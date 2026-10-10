@@ -4,8 +4,8 @@
 // until the snapshot carries a time zone. Ordering is off in Stage 3.
 
 import { type Locale, TABLE_TOKEN_PATTERN } from '@restro/core'
-import { imageSlotsFor, type ShellContextInput } from '@restro/shell'
 import { QR_PHONE_MANIFEST } from '@restro/qr-phone'
+import { imageSlotsFor, type ShellContextInput } from '@restro/shell'
 
 /** The language of the page before the menu says otherwise: the pilot venues are Bulgarian. */
 export const FALLBACK_LOCALE: Locale = 'bg_BG'

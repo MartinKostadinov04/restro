@@ -47,6 +47,8 @@ describe('proxy (the optimistic sign-in gate)', () => {
       '/_next/static/chunks/a.js',
       '/dev/fields',
       '/cdn/m/nd_x/vn_x/current.json',
+      '/m/demo-club',
+      '/t/tb_0123456789ABCDEFGHIJKL',
       '/cdn/anything-without-an-extension',
       '/favicon.ico',
       '/logo.png',

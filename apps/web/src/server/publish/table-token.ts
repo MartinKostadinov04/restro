@@ -42,8 +42,7 @@ export async function getTokenSource(
   return base && /^https?:\/\//.test(base) ? cdnSource(base) : null
 }
 
-const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
 
 /** The "not active" page: both languages, system colours, no venue data, nothing for a search engine. */
 export function inactivePageHtml(): string {
@@ -91,7 +90,10 @@ export async function tableTokenResponse(
 ): Promise<Response> {
   if (!TABLE_TOKEN_PATTERN.test(token)) return inactivePage()
   if (source === null) {
-    logError('table_token_source_missing', new Error('no publish store and no absolute CDN address'))
+    logError(
+      'table_token_source_missing',
+      new Error('no publish store and no absolute CDN address'),
+    )
     return inactivePage(503)
   }
   let file: Awaited<ReturnType<typeof readTableTokenFile>>

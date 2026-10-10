@@ -6,8 +6,8 @@
 // overlay every 15 seconds. States: a loading skeleton, and a friendly notice for an unknown
 // venue, a menu that is not published yet, or a failed load.
 
-import { type Locale, type LiveOverlay } from '@restro/core'
-import { QrPhoneFace, QrPhoneNotice, QrPhoneSkeleton, bcp47 } from '@restro/qr-phone'
+import type { LiveOverlay, Locale } from '@restro/core'
+import { bcp47, QrPhoneFace, QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -133,7 +133,9 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
           if (pointer.snapshot_id === currentSnapshotId) return
           const snapshot = await loadSnapshot(deps, pointer)
           setPhase((current) =>
-            current.kind === 'ready' ? { kind: 'ready', menu: { ...current.menu, pointer, snapshot } } : current,
+            current.kind === 'ready'
+              ? { kind: 'ready', menu: { ...current.menu, pointer, snapshot } }
+              : current,
           )
         })
         // What is on the screen stays; the next tick tries again.
@@ -170,7 +172,9 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
   })
   const view = useMemo(
     () =>
-      snapshot === null ? null : buildViewModel(snapshot, live, buildContext({ locale, now, tableToken })),
+      snapshot === null
+        ? null
+        : buildViewModel(snapshot, live, buildContext({ locale, now, tableToken })),
     [snapshot, live, locale, now, tableToken],
   )
 

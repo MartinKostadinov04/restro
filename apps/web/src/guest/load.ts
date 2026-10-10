@@ -59,7 +59,8 @@ export const files = {
     join(base, `m/${index.menu_id}/${index.venue_id}/current.json`),
   live: (base: string, index: VenueIndex) =>
     join(base, `m/${index.menu_id}/${index.venue_id}/live.json`),
-  snapshot: (base: string, pointer: CurrentPointer) => join(base, `snap/${pointer.snapshot_id}.json`),
+  snapshot: (base: string, pointer: CurrentPointer) =>
+    join(base, `snap/${pointer.snapshot_id}.json`),
   table: (base: string, token: string) => join(base, `t/${token}.json`),
 }
 
@@ -148,7 +149,12 @@ export async function loadTableLabel(
 ): Promise<string | null> {
   if (!TABLE_TOKEN_PATTERN.test(token)) return null
   try {
-    const file = await getFile(deps, files.table(deps.base, token), TableTokenFileSchema, 'unknown_venue')
+    const file = await getFile(
+      deps,
+      files.table(deps.base, token),
+      TableTokenFileSchema,
+      'unknown_venue',
+    )
     return file.venue_slug === slug ? file.table_label : null
   } catch {
     return null
