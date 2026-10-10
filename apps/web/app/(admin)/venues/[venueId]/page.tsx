@@ -1,4 +1,4 @@
-import { QrCodeIcon, RocketIcon } from 'lucide-react'
+import { QrCodeIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
@@ -13,6 +13,8 @@ import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
 import { IntegrationSkeleton } from '@/integration/integration-skeleton'
 import { IntegrationTab } from '@/integration/integration-tab'
+import { PublishSkeleton } from '@/publish/publish-skeleton'
+import { PublishTab } from '@/publish/publish-tab'
 import { requireTenant } from '@/server/session'
 import { getVenue } from '@/server/venues'
 
@@ -37,6 +39,7 @@ export default async function VenueWorkspacePage({
   const requestedTab = (await searchParams).tab
   const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
   const composerOpen = openTab === 'composer'
+  const publishingOpen = openTab === 'publishing'
   const integrationOpen = openTab === 'integration'
   const settingsOpen = openTab === 'settings'
 
@@ -71,13 +74,12 @@ export default async function VenueWorkspacePage({
                 stageLabel={stage(3)}
               />
             ),
-            publishing: (
-              <StagePlaceholder
-                icon={RocketIcon}
-                title={t('publishing.title')}
-                description={t('publishing.description')}
-                stageLabel={stage(3)}
-              />
+            publishing: publishingOpen ? (
+              <Suspense fallback={<PublishSkeleton />}>
+                <PublishTab tenantId={organization.id} role={organization.role} venue={venue} />
+              </Suspense>
+            ) : (
+              <PublishSkeleton />
             ),
             integration: integrationOpen ? (
               <Suspense fallback={<IntegrationSkeleton />}>

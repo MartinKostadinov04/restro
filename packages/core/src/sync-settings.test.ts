@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  autoPublishPaused,
   holdsNewItems,
   INCREMENTAL_MINUTES,
   parseSyncSettings,
@@ -114,6 +115,21 @@ describe('parseSyncSettings', () => {
         false,
       )
     })
+  })
+
+  it('knows when automatic publishing is paused (only a literal true pauses)', () => {
+    expect(autoPublishPaused({})).toBe(false)
+    expect(autoPublishPaused(null)).toBe(false)
+    expect(autoPublishPaused({ publish: { after_sync: 'auto' } })).toBe(false)
+    expect(autoPublishPaused({ publish: { auto_paused: true } })).toBe(true)
+    expect(autoPublishPaused({ publish: { after_sync: 'manual', auto_paused: true } })).toBe(true)
+    for (const value of [false, 'true', 1, null]) {
+      expect(autoPublishPaused({ publish: { auto_paused: value } })).toBe(false)
+    }
+    expect(autoPublishPaused({ auto_paused: true })).toBe(false)
+    expect(autoPublishPaused({ publish: 'paused' })).toBe(false)
+    // It is not a setting: the parsed settings do not carry it.
+    expect(parseSyncSettings({ publish: { auto_paused: true } })).toEqual(parseSyncSettings({}))
   })
 
   it('answers the two questions the worker asks', () => {

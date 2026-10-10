@@ -5,12 +5,13 @@
 // invisible. The queue is a fake except in the last block, which uses a real pg-boss.
 import { generateKeyPairSync } from 'node:crypto'
 
-import { JOB_NAMES, newId, parseSyncSettings } from '@restro/core'
+import { autoPublishPaused, JOB_NAMES, newId, parseSyncSettings } from '@restro/core'
 import {
   appendSourceRecords,
   finishJobRun,
   provisionTenant,
   provisionVenue,
+  setAutoPublishPaused,
   startJobRun,
   storeCachedTree,
   updateIntegration,
@@ -602,6 +603,16 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
         expect(config).toHaveProperty('catalogue_trees')
         expect(config).toHaveProperty('sync')
         expect(parseSyncSettings(config)).toEqual(input)
+      })
+
+      it('keeps the pause a return to an older version set (the form does not own it)', async () => {
+        await setAutoPublishPaused(app, tenant, integrationId, true)
+        expect(await saveSyncSettings(scopeFor(venueA), DEFAULTS)).toEqual({ ok: true })
+        expect(autoPublishPaused(await configOf())).toBe(true)
+        expect(parseSyncSettings(await configOf())).toEqual(DEFAULTS)
+        await setAutoPublishPaused(app, tenant, integrationId, false)
+        expect(await saveSyncSettings(scopeFor(venueA), DEFAULTS)).toEqual({ ok: true })
+        expect(autoPublishPaused(await configOf())).toBe(false)
       })
 
       it('puts the defaults back when they are saved again', async () => {

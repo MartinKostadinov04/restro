@@ -24,7 +24,7 @@ import { PublishError, publishMenu } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
-import { queuePublishForAsset } from '../publish/after-sync'
+import { autoPublishIsPaused, queuePublishForAsset, resumeAutoPublish } from '../publish/after-sync'
 import {
   type PublishFilesDeps,
   type PublishFilesResult,
@@ -106,6 +106,20 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(PublishMenuJobSchema, job, JOB_NAMES.publishMenu)
         const { tenantId, menuId, venueId } = payload
+        // A rollback pauses automatic publishing (S3-05). Every automatic publish, a sync's or a
+        // photo's, is `auto_sync`, so this stops exactly those; the pause is read now, not when
+        // the job was queued, so a job that was waiting out its delay cannot undo a rollback. No
+        // run is recorded: nothing was published or refused, and the log says so.
+        if (
+          payload.reason === 'auto_sync' &&
+          (await autoPublishIsPaused(context, { tenantId, venueId }))
+        ) {
+          context.log.info(
+            { menuId, venueId },
+            'automatic publish skipped: publishing is paused after a rollback',
+          )
+          continue
+        }
         await trackedRun(
           { pool: context.pool, log: context.log, now: context.now },
           { tenantId, kind: 'publish_menu' },
@@ -133,6 +147,20 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
               throw error
             }
             const counters = { snapshot_version: result.snapshot.version }
+
+            // A person's publish (or approval) is the word to resume automatic publishing after a
+            // rollback. The publish stands whatever happens here; a failure is said in the run.
+            const resumeNotes: string[] = []
+            if (payload.reason === 'manual') {
+              try {
+                if (await resumeAutoPublish(context, { tenantId, venueId })) {
+                  resumeNotes.push('automatic publishing is on again')
+                }
+              } catch (error) {
+                context.log.warn({ err: error }, 'automatic publishing could not be resumed')
+                resumeNotes.push('automatic publishing could not be resumed: publish again')
+              }
+            }
 
             if (result.status === 'held') {
               // V11: the pointer did not move, so there is nothing to write.
@@ -163,6 +191,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
                 result.status === 'published'
                   ? `published version ${result.snapshot.version}`
                   : `nothing to publish: the menu is as version ${result.snapshot.version}`,
+                ...resumeNotes,
                 ...slugNotes(files),
               ],
             }

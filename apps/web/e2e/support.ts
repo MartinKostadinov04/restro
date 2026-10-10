@@ -12,6 +12,12 @@ export const INTEGRATION_OWNER_EMAIL = 'integration-owner@demo-club.test'
 export const INTEGRATION_MEMBER_EMAIL = 'integration-member@demo-club.test'
 export const INTEGRATION_VENUE_NAME = 'Integration Club Sofia'
 
+// The Publish tab's test (scripts/seed-publish-e2e.ts): its own organisation and venue, an owner and
+// a plain member with the demo password, and the real worker running beside the web server.
+export const PUBLISH_OWNER_EMAIL = 'publish-owner@demo-club.test'
+export const PUBLISH_MEMBER_EMAIL = 'publish-member@demo-club.test'
+export const PUBLISH_SLUG = 'publish-club'
+
 // The guest page's test (scripts/seed-guest-e2e.ts publishes these): the demo venue's menu at
 // /m/demo-club in the brand colour below, a table code, and a second, tagged menu at /m/tag-fixture.
 export const GUEST_SLUG = 'demo-club'
