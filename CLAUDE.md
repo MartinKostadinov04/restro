@@ -37,6 +37,7 @@ A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm
 - **If a local Postgres is already running on 54329,** reuse it with your own database name: create it, then `pnpm db:migrate` and `pnpm db:roles` against it.
 - **Never stop an instance you did not start.**
 - **Always go through `pnpm`**, never bare `node`: `use-node-version` pins Node 24.21.0.
+- **Never compare a SQL `order by` result with a JavaScript `.sort()` result** (or assume either order for mixed-case ids): CI's Postgres sorts with an `en_US` collation, the local one with `C`. Sort both sides the same way in the test.
 
 ## Repository layout
 ```
