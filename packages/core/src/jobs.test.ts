@@ -113,6 +113,59 @@ describe('job names and payloads', () => {
     })
   })
 
+  describe('the table token job (S3-07)', () => {
+    const a = 'Ab3dEfGh1jKlMnOpQrStUv'
+    const b = 'Zz9yXwVuTsRqPoNmLkJiHg'
+
+    it('is keyed by venue, and by the set of tokens it must remove', () => {
+      const refresh = prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: [] })
+      expect(refresh.singletonKey).toBe(venueId)
+      expect(refresh).not.toHaveProperty('startAfter')
+
+      const removeA = prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: [a] })
+      const removeB = prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: [b] })
+      // Different work never shares a key, so a waiting job is never replaced by one that
+      // removes a different token; the same work, in any order, does.
+      expect(new Set([refresh.singletonKey, removeA.singletonKey, removeB.singletonKey]).size).toBe(
+        3,
+      )
+      const both = prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: [a, b] })
+      const reversed = prepareJob(JOB_NAMES.publishTableTokens, {
+        tenantId,
+        venueId,
+        retired: [b, a],
+      })
+      expect(both.singletonKey).toBe(reversed.singletonKey)
+      expect(both.singletonKey).toMatch(new RegExp(`^${venueId}:[0-9a-f]{16}$`))
+      // Another venue is another key.
+      const other = prepareJob(JOB_NAMES.publishTableTokens, {
+        tenantId,
+        venueId: newId('vn'),
+        retired: [a],
+      })
+      expect(other.singletonKey).not.toBe(removeA.singletonKey)
+    })
+
+    it('refuses a token that is not a token and a list that is too long', () => {
+      expect(() =>
+        prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: ['short'] }),
+      ).toThrow(/invalid payload/)
+      expect(() =>
+        prepareJob(JOB_NAMES.publishTableTokens, {
+          tenantId,
+          venueId,
+          retired: Array.from(
+            { length: 501 },
+            (_, index) => `Token${String(index).padStart(6, '0')}`,
+          ),
+        }),
+      ).toThrow(/invalid payload/)
+      expect(() => prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId })).toThrow(
+        /invalid payload/,
+      )
+    })
+  })
+
   it('refuses a payload with a wrong id, a missing tenant or an unknown key', () => {
     expect(() => prepareJob(JOB_NAMES.barsyConnect, { integrationId })).toThrow(/invalid payload/)
     expect(() =>

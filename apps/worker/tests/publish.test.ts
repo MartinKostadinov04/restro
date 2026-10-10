@@ -95,6 +95,9 @@ class CountingStore implements PublishStore {
   get(file: string) {
     return this.inner.get(file)
   }
+  delete(file: string) {
+    return this.inner.delete(file)
+  }
 }
 
 describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {

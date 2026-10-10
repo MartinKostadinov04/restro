@@ -6,6 +6,8 @@
 //   publish-live     live.json, the sold-out overlay (S3-08 triggers it)
 //   asset-variants   the webp variants of one photo (jobs/barsy.ts and the web app queue it); for a
 //                    barsy photo it then queues the automatic publish of the menus that use it
+//   publish-table-tokens  the t/<token>.json files of a venue's table QR codes: writes the active
+//                    ones, removes the retired ones (S3-07; the only writer of those files)
 //
 // The three publish queues use pg-boss's `stately` policy with a singleton key per menu + venue
 // (core/jobs.ts): one job waits and one runs. An automatic publish is sent with a 30 s delay, so
@@ -19,6 +21,8 @@ import {
   PublishMenuJobSchema,
   type PublishScopeJob,
   PublishScopeJobSchema,
+  type PublishTableTokensJob,
+  PublishTableTokensJobSchema,
 } from '@restro/core'
 import { PublishError, publishMenu } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
@@ -31,6 +35,7 @@ import {
   writeLiveOverlay,
   writePublishFiles,
 } from '../publish/files'
+import { writeTableTokenFiles } from '../publish/table-tokens'
 import { runAssetVariants } from '../publish/variants'
 import { type RunReport, trackedRun } from '../sync/run'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
@@ -303,5 +308,39 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     },
   })
 
-  return [publish, files, live, variants] as JobDefinition[]
+  // --- publish-table-tokens --------------------------------------------------------------
+
+  const tableTokens = defineJob<PublishTableTokensJob>({
+    name: JOB_NAMES.publishTableTokens,
+    options: {
+      // One job waits and one runs per venue + set of retired tokens (core/jobs.ts), so two jobs
+      // that must remove different tokens are both kept.
+      policy: 'stately',
+      queue: {
+        retryLimit: 3,
+        retryDelay: 10,
+        retryBackoff: true,
+        expireInSeconds: 2 * 60,
+        retentionSeconds: 10 * 60,
+        deleteAfterSeconds: 60 * 60,
+      },
+      work: { pollingIntervalSeconds: 1 },
+    },
+    async handler(jobs, context) {
+      for (const job of jobs) {
+        const payload = parsePayload(PublishTableTokensJobSchema, job, JOB_NAMES.publishTableTokens)
+        // A manager edits a table at a time, all night: no job run each time, only the log.
+        const result = await writeTableTokenFiles(
+          { pool: context.pool, store: deps.publishStore },
+          payload,
+        )
+        context.log.info(
+          { venueId: payload.venueId, retired: payload.retired.length, ...result },
+          'table token files',
+        )
+      }
+    },
+  })
+
+  return [publish, files, live, variants, tableTokens] as JobDefinition[]
 }

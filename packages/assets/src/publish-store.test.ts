@@ -154,6 +154,18 @@ describe('LocalPublishStore', () => {
     expect(await store.get(variantPath(as, 320))).toBeNull()
   })
 
+  it('deletes a file, leaves its neighbours, and deleting what is not there is a no-op', async () => {
+    const one = tableTokenPath('Ab3dEfGh1jKlMnOpQrStUv')
+    const two = tableTokenPath('Zz9yXwVuTsRqPoNmLkJiHg')
+    await store.put(one, BYTES, publishPutOptions(one))
+    await store.put(two, BYTES, publishPutOptions(two))
+    await store.delete(one)
+    expect(await store.get(one)).toBeNull()
+    expect(Array.from((await store.get(two)) ?? [])).toEqual([1, 2, 3])
+    await store.delete(one)
+    await store.delete(venueIndexPath('never-written'))
+  })
+
   it.each([
     '../outside.json',
     `snap/../../outside/${sn}.json`,
@@ -166,5 +178,6 @@ describe('LocalPublishStore', () => {
     const options = { contentType: 'application/json', cacheControl: 'public, max-age=30' }
     await expect(store.put(value, BYTES, options)).rejects.toBeInstanceOf(InvalidPublishPathError)
     await expect(store.get(value)).rejects.toBeInstanceOf(InvalidPublishPathError)
+    await expect(store.delete(value)).rejects.toBeInstanceOf(InvalidPublishPathError)
   })
 })

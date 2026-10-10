@@ -70,9 +70,8 @@ function isIdKind(value: unknown): value is IdKind {
   return typeof value === 'string' && (ID_KINDS as readonly string[]).includes(value)
 }
 
-/** Creates a new id: `kind_` + 22 base62 characters from 16 bytes of `crypto.getRandomValues`. */
-export function newId<K extends IdKind>(kind: K): Id<K> {
-  if (!isIdKind(kind)) throw new TypeError(`unknown id kind: ${String(kind)}`)
+/** 22 base62 characters from 16 bytes of `crypto.getRandomValues` (128 random bits). */
+function randomBase62Body(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(RANDOM_BYTES))
   let value = 0n
   for (const byte of bytes) value = (value << 8n) | BigInt(byte)
@@ -81,7 +80,22 @@ export function newId<K extends IdKind>(kind: K): Id<K> {
     body = BASE62[Number(value % 62n)] + body
     value /= 62n
   }
-  return `${kind}_${body}`
+  return body
+}
+
+/** Creates a new id: `kind_` + 22 base62 characters from 16 bytes of `crypto.getRandomValues`. */
+export function newId<K extends IdKind>(kind: K): Id<K> {
+  if (!isIdKind(kind)) throw new TypeError(`unknown id kind: ${String(kind)}`)
+  return `${kind}_${randomBase62Body()}`
+}
+
+/**
+ * A new table QR token (brief S3-07): 22 base62 characters, 128 random bits, no prefix. It takes
+ * no input on purpose: a token is never derived from a barsy id, a table id or anything else
+ * (rule 3), so it can only be guessed by trying all 2^128 of them.
+ */
+export function newTableToken(): string {
+  return randomBase62Body()
 }
 
 /** True if `value` is an id of `kind`: the prefix, an underscore and exactly 22 base62 chars. */

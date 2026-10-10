@@ -38,6 +38,7 @@ import {
   type IntegrationId,
   isLocale,
   JOB_NAMES,
+  MAX_RETIRED_TOKENS,
   type NodeId,
   prepareJob,
   sha256Hex,
@@ -577,6 +578,28 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
     result.counters.places_seen = described.length
     result.counters.places_created = stored.created
     result.counters.places_missing = stored.missing
+    result.counters.places_deleted = stored.deleted
+    // A table's code file says its name (barsy's number unless the manager chose one), and a table
+    // barsy deleted lost its code: bring the venue's `t/<token>.json` files in line (S3-07). The
+    // job is idempotent and writes only what differs, so queuing it for any change is cheap.
+    if (stored.updated > 0 || stored.reactivated > 0 || stored.retiredTokens.length > 0) {
+      try {
+        const tokens = prepareJob(JOB_NAMES.publishTableTokens, {
+          tenantId: session.tenantId,
+          venueId: target.venueId,
+          retired: stored.retiredTokens.slice(0, MAX_RETIRED_TOKENS),
+        })
+        await env.enqueue(JOB_NAMES.publishTableTokens, tokens.data, {
+          singletonKey: tokens.singletonKey,
+        })
+      } catch (error) {
+        // The places are stored; only the files are late. Say so, apart from a places failure.
+        notes.push(
+          'the table code files could not be updated; they follow the next change to a table',
+        )
+        env.log.error({ err: error }, 'the table token job could not be queued')
+      }
+    }
   } catch (error) {
     if (error instanceof BarsyAuthError) throw error
     notes.push('places could not be read; they were left as they were')

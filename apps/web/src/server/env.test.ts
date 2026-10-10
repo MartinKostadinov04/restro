@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { ServerEnvSchema } from './env'
+import { defaultQrBaseUrl, ServerEnvSchema } from './env'
 
 // Built from two halves so that this file does not match its own search.
 const PRIVATE_KEY_VARIABLE = ['SEAL', 'PRIVATE', 'KEY'].join('_')
@@ -44,6 +44,30 @@ describe('the web app and the sealing private key', () => {
     expect(ServerEnvSchema.parse({ ...base, SEAL_PUBLIC_KEY: '  MCow  ' }).SEAL_PUBLIC_KEY).toBe(
       'MCow',
     )
+  })
+
+  it('knows the address QR codes are printed with by default (PUBLIC_BASE_URL, else BETTER_AUTH_URL)', () => {
+    const base = {
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      BETTER_AUTH_SECRET: 'x'.repeat(32),
+    }
+    const parse = (extra: Record<string, string>) => ServerEnvSchema.parse({ ...base, ...extra })
+    expect(defaultQrBaseUrl(parse({}))).toBeNull()
+    expect(defaultQrBaseUrl(parse({ BETTER_AUTH_URL: 'http://localhost:3000' }))).toBe(
+      'http://localhost:3000',
+    )
+    expect(
+      defaultQrBaseUrl(
+        parse({
+          BETTER_AUTH_URL: 'http://localhost:3000',
+          PUBLIC_BASE_URL: 'https://menu.example',
+        }),
+      ),
+    ).toBe('https://menu.example')
+    // Empty counts as missing.
+    expect(
+      defaultQrBaseUrl(parse({ BETTER_AUTH_URL: 'http://localhost:3000', PUBLIC_BASE_URL: '  ' })),
+    ).toBe('http://localhost:3000')
   })
 
   it('no file of the web app names it', () => {

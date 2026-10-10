@@ -328,6 +328,7 @@ describe('buildJobs', () => {
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
       JOB_NAMES.assetVariants,
+      JOB_NAMES.publishTableTokens,
     ])
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('SEAL_PUBLIC_KEY')
@@ -356,6 +357,7 @@ describe('buildJobs', () => {
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
       JOB_NAMES.assetVariants,
+      JOB_NAMES.publishTableTokens,
     ])
   })
 })
