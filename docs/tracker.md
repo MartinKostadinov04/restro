@@ -120,6 +120,13 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Pool cap:** a worker process holds at most `APP_POOL_MAX − 1` pull locks (1 today), so with two integrations an incremental of one skips while the other runs a full pull. Raise the connection budget when several integrations sync.
   - **Hung pull:** it keeps its lock until the process restarts (pg-boss expiry doesn't abort a handler). Watch it with the start-up sweep (T58).
   - **Photos:** a photo job re-checks the article's current record (via `source_links.last_hash`) before download and before write (else `obsolete`). A picture removed in barsy clears the barsy `image`.
+- Publish core (S3-01a, merged 10-10):
+  - **Snapshot schema:** strict `menu-snapshot/1` with cross-reference checks; tables `snapshots` (bodies immutable; only held → published/rejected), `publish_pointers` and `item_first_published`.
+  - **Leak guard:** external ids and asset storage keys are always refused. An internal value or override basis is refused unless the same string is public anyway (e.g. allergen codes), which keeps real publishes possible.
+  - **Badges** carry only `new` (lead, 10-10); dietary labels and tags have their own slots.
+  - **Tags** are `tg_` ids from the venue vocabulary (S3-06).
+  - **Sold out:** the service edition is `edition:service:<YYYY-MM-DD>` (S3-08 writes there). The live overlay marks every item whose resolved `for_sale` is false.
+  - **Rollback** lasts until the next publish whose content differs: S3-05 pauses automatic publishing after a rollback.
 - **Staging (10-10, Martin's OK):**
   - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
   - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
