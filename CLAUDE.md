@@ -30,6 +30,7 @@ QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up t
 | `pnpm build` | Build all |
 | `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:roles` | Drizzle migrations and the `restro_app` role (owner URL; local / CI only — remote needs `RESTRO_DB_ALLOW_REMOTE=1` and Martin's OK) |
 | `pnpm barsy:record` | Record barsy read responses as fixtures (credentials from `.env.local`) |
+| `pnpm vendor-words:baseline` | Lower the vendor-word baseline after removing vendor words (it refuses to raise one; raising is the lead's call, D67) |
 
 A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass.
 
@@ -37,6 +38,8 @@ A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm
 - **If a local Postgres is already running on 54329,** reuse it with your own database name: create it, then `pnpm db:migrate` and `pnpm db:roles` against it.
 - **Never stop an instance you did not start.**
 - **Always go through `pnpm`**, never bare `node`: `use-node-version` pins Node 24.21.0.
+- **Guardrails only tighten (D67).** Never weaken, delete or skip a guardrail test, dependency rule or the vendor-word baseline (`scripts/vendor-words.baseline.json`) to pass a task: stop and ask. Vendor names (barsy, Mistral…) belong only in a connector's own package or `packages/core/src/connectors/`.
+- **Line endings:** files are LF. Editing from Python on Windows, open files with `newline=''` (text mode writes CRLF and Biome fails).
 - **Never compare a SQL `order by` result with a JavaScript `.sort()` result** (or assume either order for mixed-case ids): CI's Postgres sorts with an `en_US` collation, the local one with `C`. Sort both sides the same way in the test.
 
 ## Repository layout
