@@ -7,17 +7,21 @@
 // Pure: no I/O, no clock. The server builds it (./composer-tab.tsx); tests build it from small
 // hand-made documents.
 
-import type {
-  IssueCode,
-  IssueSeverity,
-  Locale,
-  LocalizedText,
-  MenuDocument,
-  Money,
-  NodeId,
-  ResolvedField,
-  ResolvedMenu,
-  ResolvedSection,
+import {
+  type IssueCode,
+  type IssueSeverity,
+  isId,
+  type Locale,
+  type LocalizedText,
+  type MenuDocument,
+  type Money,
+  type NodeId,
+  type ResolvedField,
+  type ResolvedMenu,
+  type ResolvedSection,
+  type Tag,
+  type TagColor,
+  type TagId,
 } from '@restro/core'
 
 import { pickLocalized } from '@/fields/localized'
@@ -75,6 +79,22 @@ export interface ComposerItem {
   /** Guests would see it (resolver: shown, and placed in a shown section). */
   readonly shown: boolean
   readonly issues: readonly ComposerIssue[]
+  /** The tag ids the item holds (the union of its layers); resolve them with `ComposerView.tags`. */
+  readonly tags: readonly TagId[]
+  /** The dietary label codes of the fixed list (`vegan`, `gluten_free`, …). */
+  readonly dietary: readonly string[]
+}
+
+/** A venue tag as the composer shows and edits it (D60). */
+export interface ComposerTag {
+  readonly id: TagId
+  /** The name in the interface language ('' never: falls back to any language there is). */
+  readonly name: string
+  /** The name per language, for the edit form. */
+  readonly label: LocalizedText
+  readonly color: TagColor
+  /** Archived tags are hidden from pickers; the Tags panel lists them to restore. */
+  readonly archived: boolean
 }
 
 /** An item's place in a section. */
@@ -94,6 +114,9 @@ export interface ComposerView {
   readonly placements: Readonly<Record<NodeId, readonly ComposerPlacement[]>>
   /** Items that sit in no section, by name. */
   readonly unsortedIds: readonly NodeId[]
+  /** The venue's tag ids in order, archived ones included. */
+  readonly tagIds: readonly TagId[]
+  readonly tags: Readonly<Record<TagId, ComposerTag>>
 }
 
 function textOf(field: ResolvedField | undefined, locale: Locale): string {
@@ -150,6 +173,15 @@ export interface BuildViewInput {
    * sync, not by a person. Default: none.
    */
   readonly heldNewIds?: readonly NodeId[]
+  /** The venue's tags in order, archived ones included (`listTags`). Default: none. */
+  readonly tags?: readonly Tag[]
+}
+
+/** The string entries of a resolved list value (`tags`, `dietary`); nothing else. */
+function listOf(field: ResolvedField | undefined): string[] {
+  return Array.isArray(field?.value)
+    ? (field.value as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+    : []
 }
 
 /** Builds the view model of a resolved menu. */
@@ -158,6 +190,7 @@ export function buildComposerView({
   resolved,
   displayLocale,
   heldNewIds = [],
+  tags: venueTags = [],
 }: BuildViewInput): ComposerView {
   const heldNew = new Set<NodeId>(heldNewIds)
   const nodes = new Map(doc.nodes.map((node) => [node.id, node]))
@@ -223,6 +256,19 @@ export function buildComposerView({
       ),
       shown: item.visible,
       issues: issuesOf(item.issues),
+      tags: listOf(item.fields.tags).filter((tag): tag is TagId => isId('tg', tag)),
+      dietary: listOf(item.fields.dietary),
+    }
+  }
+
+  const tagRecords: Record<TagId, ComposerTag> = {}
+  for (const tag of venueTags) {
+    tagRecords[tag.id] = {
+      id: tag.id,
+      name: pickLocalized(tag.label, displayLocale) ?? '',
+      label: tag.label,
+      color: tag.color,
+      archived: tag.archived,
     }
   }
 
@@ -241,5 +287,7 @@ export function buildComposerView({
     items,
     placements,
     unsortedIds,
+    tagIds: venueTags.map((tag) => tag.id),
+    tags: tagRecords,
   }
 }

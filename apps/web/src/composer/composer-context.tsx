@@ -3,13 +3,17 @@
 // What the composer's parts share: the view, which section is open, and what each row can do.
 // One context instead of a dozen props through the tree and its rows. The stub of the item sheet
 // reads the item's name from here; the real sheet (S2-06b) loads its own data from the id.
-import type { Locale, NodeId } from '@restro/core'
+import type { Locale, NodeId, TagId } from '@restro/core'
 import { createContext, type ReactNode, useContext } from 'react'
+
+import type { TagDraft } from '@/fields/environment'
 
 import type { ComposerView } from './view-model'
 
 /** The open section: a section id, or `'unsorted'`. */
 export type Selection = NodeId | 'unsorted'
+
+export type { TagDraft }
 
 /** What a row or a menu in the composer may do. */
 export interface ComposerActions {
@@ -27,6 +31,30 @@ export interface ComposerActions {
   /** Moves a section to the end of a parent (`null` = top level). */
   readonly moveSectionTo: (sectionId: NodeId, parentId: NodeId | null) => void
   readonly newSection: (parentId?: NodeId | null) => void
+
+  // --- tags (D60) ---------------------------------------------------------------------------
+  /** Adds a tag to the venue's list under the id the caller made; true when it was saved. */
+  readonly createTag: (id: TagId, draft: TagDraft) => Promise<boolean>
+  /** Renames and/or recolours a tag; true when it was saved. */
+  readonly updateTag: (id: TagId, draft: Partial<TagDraft>) => Promise<boolean>
+  /** Moves a tag before another tag (`null` = to the end). */
+  readonly moveTag: (id: TagId, beforeId: TagId | null) => void
+  readonly setTagArchived: (id: TagId, archived: boolean) => void
+  /** Adds and removes tags on a selection of items in one atomic change. */
+  readonly setItemTags: (
+    itemIds: readonly NodeId[],
+    add: readonly TagId[],
+    remove: readonly TagId[],
+  ) => void
+  readonly openTagsPanel: () => void
+
+  // --- selecting items and filtering by tag ---------------------------------------------------
+  readonly toggleSelected: (itemId: NodeId) => void
+  /** Selects (or unselects) these items, the ones the list shows right now. */
+  readonly selectItems: (itemIds: readonly NodeId[], selected: boolean) => void
+  readonly clearSelection: () => void
+  readonly toggleTagFilter: (tagId: TagId) => void
+  readonly clearTagFilter: () => void
 }
 
 /** The composer's shared state. */
@@ -38,6 +66,10 @@ export interface ComposerState extends ComposerActions {
   readonly locale: Locale
   /** While an item is dragged: the tree row (a section id or `unsorted`) the pointer is over. */
   readonly overTarget: string | null
+  /** The items ticked for a bulk change. */
+  readonly selected: ReadonlySet<NodeId>
+  /** The tags the list is filtered by (an item with any of them shows); empty = no filter. */
+  readonly tagFilter: ReadonlySet<TagId>
 }
 
 const Context = createContext<ComposerState | null>(null)

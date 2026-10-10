@@ -77,8 +77,26 @@
       "pcs": "pcs"
     },
     "tags": {
-      "placeholder": "Type a tag and press Enter",
-      "remove": "Remove tag {tag}"
+      "pick": "Tags of this item",
+      "empty": "The venue has no tags yet. Create the first one below.",
+      "emptyElsewhere": "The venue’s tags are not available here.",
+      "kept": "{count, plural, one {# archived tag stays on this item.} other {# archived or other tags stay on this item.}}",
+      "new": "New tag",
+      "create": "Create and add",
+      "createFailed": "The tag could not be created. Try again.",
+      "nameIn": "Name ({language})",
+      "optional": "optional",
+      "nameRequired": "Enter a name in {language}.",
+      "colour": "Colour",
+      "colours": {
+        "accent": "Brand colour",
+        "accent_text": "Brand colour, soft",
+        "muted": "Grey",
+        "text": "Dark",
+        "border": "Outline"
+      },
+      "preview": "Preview",
+      "cancel": "Cancel"
     },
     "availability": {
       "always": "Always available",
@@ -403,6 +421,10 @@
       "noSelection": {
         "title": "Choose a section",
         "description": "Pick a section on the left to see and arrange its items."
+      },
+      "noMatches": {
+        "title": "No items with these tags",
+        "description": "None of the items in this list has one of the chosen tags."
       }
     },
     "badges": {
@@ -463,7 +485,7 @@
     "errors": {
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
-      "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most.",
+      "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
       "failed": "Something went wrong. The change was not saved, try again."
     },
     "issues": {
@@ -486,6 +508,52 @@
       "price_not_venue_scoped": "The price is not set for this venue.",
       "unplaced_item": "Not in any section.",
       "orphan_node": "Not attached to the menu."
+    },
+    "tags": {
+      "open": "Tags",
+      "title": "Tags",
+      "description": "The venue’s own labels, for example “Signature”, “Spicy”, “Local”. Guests see them as small labels on the menu and can filter by them.",
+      "new": "New tag",
+      "create": "Create tag",
+      "save": "Save",
+      "empty": {
+        "title": "No tags yet",
+        "description": "Create the first tag, then add it to items one by one or to several at once."
+      },
+      "dragHint": "Press space to pick up a tag, the arrow keys to move it, space to drop, escape to cancel.",
+      "listLabel": "Tags of this venue",
+      "drag": "Drag {name}",
+      "usedBy": "{count, plural, one {# item} other {# items}}",
+      "edit": "Edit {name}",
+      "archive": "Archive {name}",
+      "archivedTitle": "Archived",
+      "archivedHint": "Hidden from the pickers and from new menus. Items keep them: restore a tag and everything comes back.",
+      "restore": "Restore {name}",
+      "restoreShort": "Restore"
+    },
+    "toolbar": {
+      "selectAll": "Select all in this section",
+      "filter": "Filter by tag",
+      "filterBy": "Show items with any of these tags",
+      "noTags": "No tags yet. Create some.",
+      "clearFilter": "Clear filter",
+      "removeFilter": "Stop filtering by {tag}",
+      "showing": "Showing {shown} of {total}"
+    },
+    "selection": {
+      "select": "Select {name}",
+      "label": "Selected items",
+      "count": "{count, plural, one {# item selected} other {# items selected}}",
+      "addTag": "Add tag…",
+      "addTagTitle": "Add to {count, plural, one {# item} other {# items}}",
+      "noTags": "No tags yet. Create some.",
+      "removeTag": "Remove tag…",
+      "removeTagTitle": "Remove from the selected items",
+      "clear": "Clear selection"
+    },
+    "chips": {
+      "moreTags": "More tags: {names}",
+      "moreDietary": "More dietary labels: {names}"
     }
   },
   "workspace": {

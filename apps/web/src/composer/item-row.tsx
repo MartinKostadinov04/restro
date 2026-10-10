@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 
 import { HiddenBadge, IssuesBadge, OriginBadge } from './badges'
 import { useComposer } from './composer-context'
+import { ItemChips } from './item-chips'
 import { itemName } from './labels'
 import { ItemMenu } from './row-menus'
 import type { ComposerItem } from './view-model'
@@ -35,15 +36,19 @@ export function ItemRow({
   index: number
 }) {
   const t = useTranslations('composer')
-  const { view, locale, openItem, toggleItemHidden } = useComposer()
+  const { view, locale, openItem, toggleItemHidden, selected, toggleSelected, tagFilter } =
+    useComposer()
   const item = view.items[itemId]
   if (!item) return null
   const name = itemName(view, itemId, t('unnamedItem'))
   const locked = lockedReason(item)
   const hidden = item.hiddenBy !== null
+  const isSelected = selected.has(itemId)
+  const selecting = selected.size > 0
 
   return (
-    <Draggable draggableId={`item:${itemId}`} index={index}>
+    // Reordering a filtered list would compute its places from a partial list: off while filtered.
+    <Draggable draggableId={`item:${itemId}`} index={index} isDragDisabled={tagFilter.size > 0}>
       {(drag, snapshot) => (
         <li
           ref={drag.innerRef}
@@ -51,11 +56,27 @@ export function ItemRow({
           data-testid="item-row"
           data-item-id={itemId}
           data-hidden-by={item.hiddenBy ?? undefined}
+          data-selected={isSelected ? 'true' : undefined}
           className={cn(
-            'mb-2 flex items-center gap-2 rounded-lg border bg-card px-2 py-2 text-card-foreground shadow-xs sm:gap-3 sm:px-3',
+            'group mb-2 flex items-center gap-2 rounded-lg border bg-card px-2 py-2 text-card-foreground shadow-xs sm:gap-3 sm:px-3',
+            isSelected && 'border-primary bg-primary/5',
             snapshot.isDragging && 'shadow-lg ring-2 ring-ring',
           )}
         >
+          {/* Shown on hover and focus (always on a touch screen, and once something is ticked). */}
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggleSelected(itemId)}
+            aria-label={t('selection.select', { name })}
+            data-testid="item-select"
+            className={cn(
+              'size-4 shrink-0 accent-primary focus-visible:opacity-100',
+              !isSelected &&
+                !selecting &&
+                'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+            )}
+          />
           {/* A div, not a button: the library does not start a drag from an interactive element. */}
           {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
           <div
@@ -80,6 +101,7 @@ export function ItemRow({
               {item.hiddenBy !== null ? <HiddenBadge hiddenBy={item.hiddenBy} /> : null}
               <IssuesBadge issues={item.issues} />
             </div>
+            <ItemChips item={item} />
           </div>
 
           <span className="hidden shrink-0 text-sm tabular-nums text-muted-foreground sm:block">
