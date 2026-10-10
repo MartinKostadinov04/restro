@@ -14,7 +14,6 @@
 // mapped, the organisation's first barsy integration; none if it has none. (One installation per
 // organisation is all the proof of concept needs; D39.)
 import {
-  autoPublishPaused,
   type IntegrationId,
   isLocale,
   JOB_NAMES,
@@ -34,6 +33,7 @@ import {
   mapBarsyVenue,
   readCachedTree,
   readSyncState,
+  saveSyncSettingsConfig,
   setCatalogueRoot,
   updateIntegration,
 } from '@restro/core/apply'
@@ -601,9 +601,13 @@ export async function saveMappingSettings(
 
 /**
  * Saves the sync settings (D59): when barsy is read and whether a sync goes live by itself. They
- * are stored whole in the integration's config (`schedule` and `publish`), and the worker's next
- * tick follows them. The flat key `publish_after_sync` of S3-01b is removed: `publish.after_sync`
- * says it now.
+ * are stored in the integration's config (`schedule` and `publish`), and the worker's next tick
+ * follows them. The flat key `publish_after_sync` of S3-01b is removed: `publish.after_sync` says
+ * it now.
+ *
+ * One atomic write (`saveSyncSettingsConfig`) that never reads or writes `publish.auto_paused`:
+ * that flag is the pause a return to an older version sets (Publish tab, S3-05) and a manual
+ * publish clears, and a rollback or publish that lands while the form is being saved must win.
  */
 export async function saveSyncSettings(
   scope: IntegrationScope,
@@ -614,19 +618,12 @@ export async function saveSyncSettings(
   if (!parsed.success) return fail('invalid')
   const state = await loadState(scope)
   if (state.integration === null) return fail('not_found')
-  const updated = await updateIntegration(scope.pool, scope.tenantId, state.integration.id, {
-    config: {
-      schedule: parsed.data.schedule,
-      // `publish` is replaced whole, and holds one thing the form does not: the pause that a
-      // return to an older version sets (Publish tab, S3-05). Keep it, or saving the form would
-      // let the next sync undo the return.
-      publish: {
-        ...parsed.data.publish,
-        ...(autoPublishPaused(state.integration.config) ? { auto_paused: true } : {}),
-      },
-      publish_after_sync: null,
-    },
-  })
+  const updated = await saveSyncSettingsConfig(
+    scope.pool,
+    scope.tenantId,
+    state.integration.id,
+    parsed.data,
+  )
   return updated ? { ok: true } : fail('not_found')
 }
 
