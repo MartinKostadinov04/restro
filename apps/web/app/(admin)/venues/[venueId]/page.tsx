@@ -2,12 +2,13 @@ import { QrCodeIcon, RocketIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
-
+import { AppearanceSection } from '@/appearance/appearance-section'
 import { AdminHeader } from '@/components/admin/admin-header'
 import { StagePlaceholder } from '@/components/admin/stage-placeholder'
 import { VenueSettings } from '@/components/admin/venue-settings'
 import { DEFAULT_WORKSPACE_TAB, isWorkspaceTab } from '@/components/admin/workspace-tab-defs'
 import { WorkspaceTabs } from '@/components/admin/workspace-tabs'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
 import { IntegrationSkeleton } from '@/integration/integration-skeleton'
@@ -37,6 +38,7 @@ export default async function VenueWorkspacePage({
   const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
   const composerOpen = openTab === 'composer'
   const integrationOpen = openTab === 'integration'
+  const settingsOpen = openTab === 'settings'
 
   const t = await getTranslations('workspace')
   const tNav = await getTranslations('nav')
@@ -84,7 +86,20 @@ export default async function VenueWorkspacePage({
             ) : (
               <IntegrationSkeleton />
             ),
-            settings: <VenueSettings venue={venue} />,
+            settings: (
+              <div className="space-y-8">
+                <VenueSettings venue={venue} />
+                {settingsOpen ? (
+                  <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+                    <AppearanceSection
+                      tenantId={organization.id}
+                      role={organization.role}
+                      venue={venue}
+                    />
+                  </Suspense>
+                ) : null}
+              </div>
+            ),
           }}
         />
       </div>

@@ -52,15 +52,18 @@ export class GuestLoadError extends Error {
 
 const join = (base: string, path: string) => `${base.replace(/\/+$/, '')}/${path}`
 
+/** The ids that make up an address (the files hold them as `vn_` / `nd_` / `sn_` ids). */
+type IndexRef = { readonly venue_id: string; readonly menu_id: string }
+type PointerRef = { readonly snapshot_id: string }
+
 /** The address of each published file. */
 export const files = {
   index: (base: string, slug: string) => join(base, `v/${slug}.json`),
-  current: (base: string, index: VenueIndex) =>
+  current: (base: string, index: IndexRef) =>
     join(base, `m/${index.menu_id}/${index.venue_id}/current.json`),
-  live: (base: string, index: VenueIndex) =>
+  live: (base: string, index: IndexRef) =>
     join(base, `m/${index.menu_id}/${index.venue_id}/live.json`),
-  snapshot: (base: string, pointer: CurrentPointer) =>
-    join(base, `snap/${pointer.snapshot_id}.json`),
+  snapshot: (base: string, pointer: PointerRef) => join(base, `snap/${pointer.snapshot_id}.json`),
   table: (base: string, token: string) => join(base, `t/${token}.json`),
 }
 

@@ -1,3 +1,4 @@
+import { CurrentPointerSchema, VenueIndexSchema } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
@@ -20,12 +21,15 @@ const BASE = '/cdn'
 /** The published files of a fixture, by URL; anything else is a 404. */
 function publishedFiles(name = 'tags-dietary', slug = 'demo-club') {
   const { snapshot, overlay } = fixture(name)
-  const index = { venue_id: snapshot.snapshot.venue_id, menu_id: snapshot.snapshot.menu_id }
-  const pointer = {
+  const index = VenueIndexSchema.parse({
+    venue_id: snapshot.snapshot.venue_id,
+    menu_id: snapshot.snapshot.menu_id,
+  })
+  const pointer = CurrentPointerSchema.parse({
     snapshot_id: snapshot.snapshot.id,
     version: snapshot.snapshot.version,
     hash: snapshot.snapshot.hash,
-  }
+  })
   const table = { venue_slug: slug, table_label: '12' }
   const bodies = new Map<string, unknown>([
     [files.index(BASE, slug), index],
