@@ -11,7 +11,7 @@
 // crustaceans and molluscs, a word that only hints at traces ("следи от мляко") still counts as
 // the allergen it names.
 
-import { ALLERGENS, type Allergen } from '@restro/core'
+import { ALLERGENS, type Allergen, isAllergenDetailName } from '@restro/core'
 
 import type { ArticleDetailsGroup } from '../read/schemas.ts'
 
@@ -289,9 +289,6 @@ export function parseAllergenText(text: string): ParsedAllergens {
   return { allergens: ALLERGENS.filter((allergen) => found.has(allergen)), unknown }
 }
 
-/** Names the characteristic that holds allergens: "Алергени" or "Allergens", any case. */
-const ALLERGEN_DETAIL_NAMES: ReadonlySet<string> = new Set(['алергени', 'allergens'])
-
 export interface AllergenKey {
   /** The characteristic key (`k102`), or null when the installation has none for allergens. */
   readonly key: string | null
@@ -314,7 +311,7 @@ export function findAllergenKey(
   const found = new Set<string>()
   for (const group of detailsTree) {
     for (const [key, detail] of Object.entries(group.details)) {
-      if (ALLERGEN_DETAIL_NAMES.has(detail.detail_name.trim().toLowerCase())) found.add(key)
+      if (isAllergenDetailName(detail.detail_name)) found.add(key)
     }
   }
   const candidates = [...found].sort()
