@@ -4,10 +4,16 @@
 // document inside that transaction, so two publishes of one menu can never interleave or reuse
 // a version. No files here: S3-01b writes `snap/<id>.json` and `current.json` from these rows.
 //
-// publishMenu: load → resolve with today's service edition → build → leak guard → V10 → same
-// hash as the current snapshot = no-op → V11 (automatic publishes only: hiding more than 30% of
-// the visible items holds the snapshot for a person) → insert, move the pointer, record the
+// publishMenu: load → resolve with the venue edition → build → leak guard → V10 → same hash as
+// the current snapshot = no-op → V11 (automatic publishes only: hiding more than 30% of the
+// visible items holds the snapshot for a person) → insert, move the pointer, record the
 // first-published date of every newly published item.
+//
+// Sold out tonight (D46, S3-08): a snapshot is resolved WITHOUT the service edition, so the
+// manager's marks of one evening are never baked into a file that outlives it. Only `live.json`
+// (the overlay: `loadLiveOverlay` / `loadDraft`) is resolved with today's service edition, and it
+// is rebuilt as the day changes. Barsy's own off-sale flag is a base layer and stays in the
+// snapshot.
 
 import {
   assets,
@@ -35,7 +41,7 @@ import { CURRENCIES, type Currency } from '../money'
 import { compareVisibility, V11_MAX_HIDDEN_SHARE } from '../resolve/compare-visibility'
 import { resolve } from '../resolve/resolve'
 import type { IssueCode, ResolvedMenu } from '../resolve/types'
-import { isoInTimeZone, serviceDate } from '../service-day'
+import { isoInTimeZone, liveEditions, serviceDate, snapshotEditions } from '../service-day'
 import {
   type AssetVariantWidths,
   buildSnapshot,
@@ -363,12 +369,21 @@ const TEMPLATE = VENUE_MENU_TEMPLATE
 interface Prepared {
   readonly snapshot: MenuSnapshot
   readonly resolved: ResolvedMenu
+  /** The same document resolved with today's service edition too (the overlay's input). */
+  readonly resolveTonight: () => ResolvedMenu
 }
 
-/** A menu loaded and resolved for one venue with the service edition of a moment. */
+/** A menu loaded and resolved for one venue at one moment. */
 interface Resolution {
   readonly doc: Awaited<ReturnType<typeof readMenuDocument>>
+  /** Resolved with the venue edition only: what a snapshot is built from. */
   readonly resolved: ResolvedMenu
+  /**
+   * Resolved with the venue edition and the service edition of `day`: what the live overlay is
+   * built from (the sold-out marks of the evening). Resolved on demand, since a publish needs
+   * only `resolved`.
+   */
+  readonly resolveTonight: () => ResolvedMenu
   readonly defaultLocale: Locale
   readonly locales: Locale[]
   readonly currency: Currency
@@ -380,9 +395,10 @@ interface Resolution {
 
 /**
  * Loads the document and the venue's context (languages, currency, service day, time zone) and
- * resolves the menu with the edition `venue:<vn>` + `service:<day>` as of `now`. Shared by the
- * publisher and the live overlay, so both see the same edition. Throws `menu_not_found` and
- * `menu_blocked` (an unknown locale or currency); resolver issues are for the caller to judge.
+ * resolves the menu as of `now` with the edition `venue:<vn>` (a snapshot) and, on demand, with
+ * `venue:<vn>` + `service:<day>` (the live overlay). Shared by the publisher, the draft and the
+ * live overlay, so all three see the same document. Throws `menu_not_found` and `menu_blocked`
+ * (an unknown locale or currency); resolver issues are for the caller to judge.
  */
 async function resolveForVenue(
   tx: ReadTx,
@@ -423,16 +439,18 @@ async function resolveForVenue(
   for (const node of doc.nodes) if (node.type === 'item') firstPublishedAt[node.id] = nowIso
   for (const row of recorded) firstPublishedAt[row.nodeId as NodeId] = row.at.toISOString()
 
-  const resolved = resolve(TEMPLATE, doc, {
-    venueScope: `venue:${venueId}`,
-    edition: [`venue:${venueId}`, `service:${day}`],
-    locales,
-    now: nowIso,
-    firstPublishedAt,
-  })
+  const resolveWith = (edition: readonly string[]) =>
+    resolve(TEMPLATE, doc, {
+      venueScope: `venue:${venueId}`,
+      edition,
+      locales,
+      now: nowIso,
+      firstPublishedAt,
+    })
   return {
     doc,
-    resolved,
+    resolved: resolveWith(snapshotEditions(venueId)),
+    resolveTonight: () => resolveWith(liveEditions(venueId, day)),
     defaultLocale,
     locales,
     currency,
@@ -443,8 +461,9 @@ async function resolveForVenue(
 }
 
 /**
- * Loads the document and everything around it, resolves it with today's service edition,
- * builds the snapshot under `snapshotId` / `version` and runs the leak guard and V10.
+ * Loads the document and everything around it, resolves it with the venue edition (not the
+ * service edition: see the file header), builds the snapshot under `snapshotId` / `version` and
+ * runs the leak guard and V10.
  */
 async function prepareSnapshot(
   tx: ReadTx,
@@ -458,10 +477,10 @@ async function prepareSnapshot(
   const {
     doc,
     resolved,
+    resolveTonight,
     defaultLocale,
     locales,
     currency,
-    day,
     nowIso,
     theme: venueTheme,
   } = await resolveForVenue(tx, scope, now)
@@ -544,7 +563,7 @@ async function prepareSnapshot(
     publishedAt: nowIso,
     menuId,
     venueId,
-    edition: ['master', `venue:${venueId}`, `service:${day}`],
+    edition: ['master', ...snapshotEditions(venueId)],
     locales: { default: defaultLocale, available: locales },
     currency,
     theme,
@@ -573,7 +592,7 @@ async function prepareSnapshot(
       issues: ['V10'],
     })
   }
-  return { snapshot, resolved }
+  return { snapshot, resolved, resolveTonight }
 }
 
 /**
@@ -815,7 +834,9 @@ export interface LiveOverlayResult {
 /**
  * The sold-out marks of the current snapshot's items, resolved with the service edition of
  * `options.now` (default: now), or null before the first publish. Read only: the overlay is a
- * file derived from the document, never a stored row (S3-01b writes `live.json` from it).
+ * file derived from the document, never a stored row (S3-01b writes `live.json` from it). It is
+ * the only place a manager's "sold out tonight" mark (S3-08) reaches guests, so the same call
+ * with a later `now` gives the overlay without yesterday's marks.
  */
 export async function loadLiveOverlay(
   pool: DbPool,
@@ -830,9 +851,48 @@ export async function loadLiveOverlay(
     if (current === undefined) return null
     const snapshot = withBody(current)
     if (snapshot.body === null) return null
-    const { resolved } = await resolveForVenue(tx, { menuId, venueId }, now)
-    return { snapshotId: snapshot.id, overlay: buildLiveOverlay(resolved, snapshot.body) }
+    const { resolveTonight } = await resolveForVenue(tx, { menuId, venueId }, now)
+    return { snapshotId: snapshot.id, overlay: buildLiveOverlay(resolveTonight(), snapshot.body) }
   })
+}
+
+/** A menu + venue that has a published snapshot, with the clock its service day runs by. */
+export interface PublishedScope {
+  readonly menuId: NodeId
+  readonly venueId: VenueId
+  /** The venue's IANA time zone. */
+  readonly timezone: string
+  /** When the venue's service day ends, `HH:MM` or `HH:MM:SS` (D45). */
+  readonly dayEndsAt: string
+}
+
+/**
+ * Every menu + venue of the tenant that has been published, with the venue's time zone and the end
+ * of its service day: what a scheduler needs to notice that a service day changed and `live.json`
+ * has to be remade without yesterday's sold-out marks (S3-08). Read only.
+ */
+export async function listPublishedScopes(
+  pool: DbPool,
+  tenantId: string,
+): Promise<PublishedScope[]> {
+  const rows = await withTenant(pool, tenantId, (tx) =>
+    tx
+      .select({
+        menuId: publishPointers.menuId,
+        venueId: publishPointers.venueId,
+        timezone: venues.timezone,
+        dayEndsAt: venues.serviceDayEndsAt,
+      })
+      .from(publishPointers)
+      .innerJoin(venues, eq(venues.id, publishPointers.venueId))
+      .orderBy(publishPointers.menuId, publishPointers.venueId),
+  )
+  return rows.map((row) => ({
+    menuId: row.menuId as NodeId,
+    venueId: row.venueId as VenueId,
+    timezone: row.timezone,
+    dayEndsAt: row.dayEndsAt,
+  }))
 }
 
 /** A field with an override that barsy's value has outgrown, waiting for a person (V12). */
@@ -875,7 +935,7 @@ export async function loadDraft(
   const now = options.now ?? new Date()
   return withTenant(pool, tenantId, async (tx) => {
     const version = await nextVersion(tx, menuId, venueId)
-    const { snapshot, resolved } = await prepareSnapshot(
+    const { snapshot, resolved, resolveTonight } = await prepareSnapshot(
       tx,
       { menuId, venueId },
       newId('sn'),
@@ -896,7 +956,7 @@ export async function loadDraft(
           isItem: item !== undefined,
         }
       })
-    return { snapshot, overlay: buildLiveOverlay(resolved, snapshot), staleOverrides }
+    return { snapshot, overlay: buildLiveOverlay(resolveTonight(), snapshot), staleOverrides }
   })
 }
 

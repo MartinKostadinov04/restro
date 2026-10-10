@@ -40,6 +40,7 @@ import {
   saveItemFieldAction,
   saveItemTranslationAction,
   setItemImageAction,
+  setItemSoldOutAction,
 } from '@/server/item-sheet/actions'
 import type { ItemSheetData, SheetResult } from '@/server/item-sheet/types'
 
@@ -160,6 +161,13 @@ export function ItemSheet({
     venueId
       ? run(keepItemOverrideAction(venueId, itemId, fieldKey), t('kept'))
       : Promise.resolve(false)
+  const setSoldOut = (soldOut: boolean) =>
+    venueId
+      ? run(
+          setItemSoldOutAction(venueId, itemId, soldOut),
+          t(soldOut ? 'soldOutSaved' : 'backOnSale'),
+        )
+      : Promise.resolve(false)
   const saveTranslation = (fieldKey: string, locale: Locale, text: string | null) =>
     venueId
       ? run(saveItemTranslationAction(venueId, itemId, fieldKey, locale, text), t('saved'))
@@ -267,6 +275,7 @@ export function ItemSheet({
                       onRevert={revertField}
                       onKeep={keepField}
                       onOpenMedia={() => setTab('media')}
+                      onSoldOut={setSoldOut}
                     />
                   </div>
                 </TabsContent>

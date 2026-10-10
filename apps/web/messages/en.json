@@ -178,8 +178,11 @@
     "kept": "Your value is kept",
     "imageSaved": "Photo saved",
     "imageRemoved": "Photo removed",
+    "soldOutSaved": "Marked sold out tonight",
+    "backOnSale": "Back on sale",
     "errors": {
       "not_found": "This item or field could not be found.",
+      "not_allowed": "Only an owner or admin can mark items sold out.",
       "read_only": "This value cannot be changed here.",
       "locked": "barsy owns this value. Change it in barsy.",
       "nothing_to_revert": "There is nothing to revert.",
@@ -230,7 +233,21 @@
         "locked_to_barsy": "Change this in barsy.",
         "barsy_decides": "barsy has hidden this or taken it off sale. Change it in barsy.",
         "composer_toggle": "Show or hide the item from the list in the composer.",
-        "sold_out_later": "Marking items sold out comes in Stage 3."
+        "sold_out_control": "Mark an item sold out tonight with the control at the top of this tab."
+      },
+      "sale": {
+        "title": "Sale tonight",
+        "onSale": "On sale",
+        "soldOutTonight": "Sold out tonight",
+        "offSaleBarsy": "Not on sale in barsy",
+        "offSaleOther": "Not on sale",
+        "mark": "Mark sold out tonight",
+        "unmark": "Back on sale",
+        "markNote": "Guests see it as sold out within about 15 seconds. The mark ends by itself when the service day ends.",
+        "lapsesNote": "Guests see it as sold out. The mark ends by itself when the service day ends.",
+        "offSaleBarsyNote": "barsy has taken this off sale. Put it back on sale in barsy: this page can only add to what barsy says.",
+        "offSaleOtherNote": "Another setting has taken this off sale. This page cannot put it back on sale.",
+        "managersOnly": "Only an owner or admin can mark an item sold out."
       },
       "conflict": "barsy and this venue disagree. Choose the right value.",
       "staleHint": "barsy changed this after you replaced it. barsy now says:",
@@ -434,7 +451,19 @@
       "hidden": "Hidden",
       "hiddenOther": "Hidden (setting)",
       "newFromBarsy": "New from barsy, hidden until you show it",
+      "soldOutTonight": "Sold out tonight",
+      "offSaleBarsy": "Not on sale in barsy",
+      "offSaleOther": "Not on sale",
       "issues": "{count, plural, one {# issue} other {# issues}}"
+    },
+    "soldOut": {
+      "mark": "Sold out tonight",
+      "unmark": "Back on sale",
+      "unmarkFor": "Back on sale: {name}",
+      "chip": "Sold out ({count})",
+      "listTitle": "Sold out tonight",
+      "listDescription": "Guests see these as sold out. Each mark ends by itself when the service day ends, or put an item back on sale here.",
+      "liveLater": "Saved. The guest menu may take a few minutes to follow."
     },
     "visibility": {
       "toggleItem": "Shown to guests: {name}",
@@ -485,6 +514,7 @@
     "errors": {
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
+      "not_allowed": "Only an owner or admin can mark items sold out.",
       "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
       "failed": "Something went wrong. The change was not saved, try again."
     },

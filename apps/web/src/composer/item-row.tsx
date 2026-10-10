@@ -11,7 +11,7 @@ import { useTranslations } from 'next-intl'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
-import { HiddenBadge, IssuesBadge, OriginBadge } from './badges'
+import { HiddenBadge, IssuesBadge, OriginBadge, SaleBadge } from './badges'
 import { useComposer } from './composer-context'
 import { ItemChips } from './item-chips'
 import { itemName } from './labels'
@@ -99,6 +99,7 @@ export function ItemRow({
             <div className="flex flex-wrap items-center gap-1.5">
               <OriginBadge origin={item.origin} />
               {item.hiddenBy !== null ? <HiddenBadge hiddenBy={item.hiddenBy} /> : null}
+              <SaleBadge soldOutTonight={item.soldOutTonight} offSale={item.offSale} />
               <IssuesBadge issues={item.issues} />
             </div>
             <ItemChips item={item} />

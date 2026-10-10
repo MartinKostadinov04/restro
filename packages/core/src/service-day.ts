@@ -87,6 +87,45 @@ export function serviceDate(at: Date, timeZone: string, dayEndsAt: string): stri
   return isoDate(previous.getUTCFullYear(), previous.getUTCMonth() + 1, previous.getUTCDate())
 }
 
+const SERVICE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * The edition id of a service day (`service:2026-10-09`): what the resolver's `edition` list and a
+ * snapshot's header name it. Throws `RangeError` for anything that is not `YYYY-MM-DD`.
+ */
+export function serviceEditionId(day: string): `service:${string}` {
+  if (!SERVICE_DATE_PATTERN.test(day)) throw new RangeError('a service day is YYYY-MM-DD')
+  return `service:${day}`
+}
+
+/**
+ * The layer a service day's sold-out marks are stored in (`edition:service:2026-10-09`, D46).
+ * Marks are written there with `for_sale = false`, in the master scope, and nowhere else: the
+ * layer only counts while its day is the venue's current service day, so a mark lapses on its own
+ * when the day ends (no job removes it, no publish is needed).
+ */
+export function serviceEditionLayer(day: string): `edition:service:${string}` {
+  return `edition:${serviceEditionId(day)}`
+}
+
+/**
+ * The editions a snapshot is resolved with: the venue's own, never a service day's (D46). The
+ * resolver's `edition` list is the whole story: a row in `edition:service:<day>` is out of
+ * context unless the list names `service:<day>`.
+ */
+export function snapshotEditions(venueId: string): string[] {
+  return [`venue:${venueId}`]
+}
+
+/**
+ * The editions the live menu is resolved with on service day `day`: the snapshot's, plus that
+ * day's. The live overlay is built from this resolution, and so is what a manager sees in the
+ * composer: both show tonight's sold-out marks and none of an earlier day's.
+ */
+export function liveEditions(venueId: string, day: string): string[] {
+  return [...snapshotEditions(venueId), serviceEditionId(day)]
+}
+
 /**
  * `at` as ISO 8601 in the venue's local time with its UTC offset, to the second:
  * `2026-10-08T21:04:12+03:00`. Throws `RangeError` for an unknown time zone.

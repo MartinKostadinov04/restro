@@ -253,7 +253,10 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
     it('does not edit the flags from here, and points the image at the Media tab', async () => {
       const data = await sheet(linked)
       expect(field(data, 'visible').access).toEqual({ kind: 'readonly', reason: 'composer_toggle' })
-      expect(field(data, 'for_sale').access).toEqual({ kind: 'readonly', reason: 'sold_out_later' })
+      expect(field(data, 'for_sale').access).toEqual({
+        kind: 'readonly',
+        reason: 'sold_out_control',
+      })
       expect(field(data, 'image').access).toEqual({ kind: 'media' })
     })
 

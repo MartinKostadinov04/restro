@@ -1,7 +1,14 @@
 // The Composer tab, a server component (U4): it reads the menu document and the items that sit in
 // no section (core/apply, read side), resolves it for this venue and hands the client component a
 // plain view. Nothing here writes: the writes are the server actions in ./actions.ts.
-import { type Locale, mergeDocumentParts, resolve, VENUE_MENU_TEMPLATE } from '@restro/core'
+import {
+  type Locale,
+  liveEditions,
+  mergeDocumentParts,
+  resolve,
+  serviceDate,
+  VENUE_MENU_TEMPLATE,
+} from '@restro/core'
 import {
   listTags,
   loadHeldNewItemIds,
@@ -14,6 +21,8 @@ import { getLocale } from 'next-intl/server'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import { getPool } from '@/server/db'
 import { getVenueMenuId } from '@/server/menus'
+import { canMarkSoldOut } from '@/server/roles'
+import { requireTenant } from '@/server/session'
 
 import { Composer } from './composer'
 import { NoMenu } from './no-menu'
@@ -36,12 +45,17 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
 
   const defaultLocale = venue.defaultLocale as Locale
   const enabledLocales = venue.enabledLocales as Locale[]
+  const now = new Date()
   const resolved = resolve(VENUE_MENU_TEMPLATE, merged, {
     venueScope: `venue:${venue.id}`,
+    // Tonight's sold-out marks count, and no earlier evening's (D46): the editions of the live menu.
+    edition: liveEditions(venue.id, serviceDate(now, venue.timezone, venue.serviceDayEndsAt)),
     // The first language is the default one (check V3).
     locales: [defaultLocale, ...enabledLocales.filter((locale) => locale !== defaultLocale)],
-    now: new Date().toISOString(),
+    now: now.toISOString(),
   })
+  // The page is only reached signed in; the role decides who sees the sold-out controls (D46).
+  const { organization } = await requireTenant()
 
   const uiLocale = await getLocale()
   const view = buildComposerView({
@@ -58,6 +72,7 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
       view={view}
       defaultLocale={defaultLocale}
       enabledLocales={enabledLocales}
+      canMarkSoldOut={canMarkSoldOut(organization.role)}
     />
   )
 }

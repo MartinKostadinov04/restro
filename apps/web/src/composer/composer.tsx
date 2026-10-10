@@ -71,6 +71,7 @@ import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
 import { SectionTree } from './section-tree'
 import { SelectionBar } from './selection-bar'
+import { setItemsSoldOutAction } from './sold-out-actions'
 import {
   createTagAction,
   moveTagAction,
@@ -87,6 +88,8 @@ interface ComposerProps {
   readonly view: ComposerView
   readonly defaultLocale: Locale
   readonly enabledLocales: readonly Locale[]
+  /** The person may mark items sold out tonight (owner or admin, D46). */
+  readonly canMarkSoldOut: boolean
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -101,6 +104,7 @@ export function Composer({
   view: serverView,
   defaultLocale,
   enabledLocales,
+  canMarkSoldOut,
 }: ComposerProps) {
   const t = useTranslations('composer')
   const uiLocale = useLocale()
@@ -161,6 +165,7 @@ export function Composer({
           result = { ok: false, error: 'failed' }
         }
         if (!result.ok) toast.error(t(`errors.${result.error}`))
+        else if (result.warning === 'live_not_queued') toast.warning(t('soldOut.liveLater'))
         resolve(result.ok)
       })
     })
@@ -321,6 +326,18 @@ export function Composer({
       )
     },
     openTagsPanel: () => setTagsOpen(true),
+
+    setSoldOut: (itemIds, soldOut) => {
+      if (!canMarkSoldOut) return
+      // An item barsy has off sale is not ours to touch (rule 5): there is nothing to mark or clear.
+      const ids = itemIds.filter(
+        (id) => view.items[id] !== undefined && view.items[id]?.offSale === null,
+      )
+      if (ids.length === 0) return
+      void mutate({ type: 'setSoldOut', itemIds: ids, soldOut }, () =>
+        setItemsSoldOutAction({ venueId, itemIds: ids, soldOut }),
+      )
+    },
 
     toggleSelected: (itemId) =>
       setTicked((current) => {
@@ -512,7 +529,17 @@ export function Composer({
 
   return (
     <ComposerProvider
-      value={{ ...actions, view, selection, expanded, locale, overTarget, selected, tagFilter }}
+      value={{
+        ...actions,
+        view,
+        selection,
+        expanded,
+        locale,
+        overTarget,
+        selected,
+        tagFilter,
+        canMarkSoldOut,
+      }}
     >
       <DragDropContext
         onDragStart={onDragStart}

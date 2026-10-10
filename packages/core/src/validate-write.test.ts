@@ -226,6 +226,40 @@ describe('validateWrite with node context (linked to barsy or hand-made)', () =>
   })
 })
 
+describe('sold out tonight (S3-08, D46): the service edition can only say false', () => {
+  // The layer a manager's mark is written to: `edition:service:<date>` (core/service-day.ts).
+  const layer = 'edition:service:2026-10-09' as const
+
+  it('accepts for_sale = false and refuses true, on a linked and on a hand-made item', () => {
+    for (const linkedToBarsy of [true, false]) {
+      expect(
+        validateWrite(template, 'item', write('for_sale', layer, false), { linkedToBarsy }),
+      ).toEqual({ ok: true })
+      expectRejected(
+        validateWrite(template, 'item', write('for_sale', layer, true), { linkedToBarsy }),
+        'less_cautious',
+      )
+    }
+  })
+
+  it('refuses anything that is not a boolean, and every field but the flags', () => {
+    for (const value of [null, 'false', 0, {}, []]) {
+      expect(
+        validateWrite(template, 'item', write('for_sale', layer, value)).ok,
+        String(value),
+      ).toBe(false)
+    }
+    expectRejected(
+      validateWrite(template, 'item', write('name', layer, { en_US: 'x' })),
+      'layer_not_allowed',
+    )
+    expectRejected(
+      validateWrite(template, 'item', write('price', layer, price(1))),
+      'layer_not_allowed',
+    )
+  })
+})
+
 describe('rule 5 (property): builder layers only ever make the menu more cautious', () => {
   const builderLayer = fc.constantFrom<Layer>(
     'manual',

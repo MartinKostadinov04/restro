@@ -20,6 +20,12 @@ export const JOB_NAMES = {
   publishFiles: 'publish-files',
   /** Write the live overlay (`live.json`) of a menu + venue. */
   publishLive: 'publish-live',
+  /**
+   * Scheduled, every minute (S3-08): queues `publish-live` for each published menu whose service
+   * day changed since it last did (the 07:00 rollover drops yesterday's sold-out marks from
+   * `live.json`), and now and then for all of them as a repair. Not sent by anyone else.
+   */
+  publishLiveTick: 'publish-live-tick',
   /** Make the webp variants of one photo for the publish store. */
   assetVariants: 'asset-variants',
   /** Test the credentials and read what the installation holds (venues, languages, tree). */

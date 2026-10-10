@@ -16,9 +16,11 @@ import {
   type MenuDocument,
   type Money,
   type NodeId,
+  type OffSaleBy,
   type ResolvedField,
   type ResolvedMenu,
   type ResolvedSection,
+  saleStateOf,
   type Tag,
   type TagColor,
   type TagId,
@@ -68,6 +70,13 @@ export type ItemHiddenBy =
   /** Another layer or setting hides it (an edition, the ordering mode): not changed here. */
   | 'other'
 
+/**
+ * Why an item is off sale, when something other than a manager's "sold out tonight" mark says so
+ * (core's `OffSaleBy`): `barsy` is the till's own flag, `other` another layer or edition. The
+ * composer cannot put either back on sale (rule 5).
+ */
+export type ItemOffSale = OffSaleBy
+
 /** An item as the composer shows it. */
 export interface ComposerItem {
   readonly id: NodeId
@@ -83,6 +92,13 @@ export interface ComposerItem {
   readonly tags: readonly TagId[]
   /** The dietary label codes of the fixed list (`vegan`, `gluten_free`, …). */
   readonly dietary: readonly string[]
+  /**
+   * A manager marked it sold out tonight (`for_sale = false` in the current service edition,
+   * D46) and nothing else takes it off sale. It lapses by itself when the service day ends.
+   */
+  readonly soldOutTonight: boolean
+  /** Off sale for another reason (see `ItemOffSale`): ours can only add caution, never undo it. */
+  readonly offSale: ItemOffSale | null
 }
 
 /** A venue tag as the composer shows and edits it (D60). */
@@ -166,7 +182,10 @@ const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 export interface BuildViewInput {
   readonly doc: MenuDocument
   readonly resolved: ResolvedMenu
-  /** The interface language as a document language: names and titles are shown in it. */
+  /**
+   * The interface language as a document language: names and titles are shown in it. The caller
+   * resolved `resolved` with the live editions (`liveEditions`), so sold-out marks are tonight's.
+   */
   readonly displayLocale: Locale
   /**
    * Items the sync hid for review (`loadHeldNewItemIds`): their manual hide was written by the
@@ -258,6 +277,7 @@ export function buildComposerView({
       issues: issuesOf(item.issues),
       tags: listOf(item.fields.tags).filter((tag): tag is TagId => isId('tg', tag)),
       dietary: listOf(item.fields.dietary),
+      ...saleStateOf(item.fields.for_sale),
     }
   }
 

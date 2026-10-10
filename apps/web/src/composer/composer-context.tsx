@@ -48,6 +48,14 @@ export interface ComposerActions {
   ) => void
   readonly openTagsPanel: () => void
 
+  // --- sold out tonight (D46) --------------------------------------------------------------------
+  /**
+   * Marks items sold out tonight (`true`) or takes OUR mark off (`false`: "back on sale" only
+   * removes the mark, so an item barsy has off sale stays off sale, rule 5). Only owners and
+   * admins; items barsy has off sale are left out.
+   */
+  readonly setSoldOut: (itemIds: readonly NodeId[], soldOut: boolean) => void
+
   // --- selecting items and filtering by tag ---------------------------------------------------
   readonly toggleSelected: (itemId: NodeId) => void
   /** Selects (or unselects) these items, the ones the list shows right now. */
@@ -70,6 +78,8 @@ export interface ComposerState extends ComposerActions {
   readonly selected: ReadonlySet<NodeId>
   /** The tags the list is filtered by (an item with any of them shows); empty = no filter. */
   readonly tagFilter: ReadonlySet<TagId>
+  /** The person may mark items sold out tonight and take the mark off (owner or admin). */
+  readonly canMarkSoldOut: boolean
 }
 
 const Context = createContext<ComposerState | null>(null)

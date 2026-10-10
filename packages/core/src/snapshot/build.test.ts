@@ -39,7 +39,7 @@ function context(overrides: Partial<SnapshotContext> = {}): SnapshotContext {
     publishedAt: '2026-10-09T21:00:00+03:00',
     menuId: ROOT,
     venueId: VENUE_ID,
-    edition: ['master', `venue:${VENUE_ID}`, 'service:2026-10-09'],
+    edition: ['master', `venue:${VENUE_ID}`],
     locales: { default: 'bg_BG', available: ['bg_BG', 'en_US'] },
     currency: 'EUR',
     assets: {},
@@ -149,9 +149,12 @@ describe('buildSnapshot', () => {
     })
   })
 
-  it('marks an item that is off sale as sold out and never orderable', () => {
+  it('marks an item that barsy has off sale as sold out and never orderable', () => {
+    // Barsy's own flag. A service-edition mark does not belong here any more (S3-08): the
+    // publisher resolves a snapshot without the service edition, so tonight's marks reach guests
+    // only through the live overlay (see "buildLiveOverlay" below and the publisher's tests).
     const builder = barMenu()
-    builder.set(NEGRONI, 'for_sale', 'edition:service:2026-10-09', false)
+    builder.set(NEGRONI, 'for_sale', 'barsy', false, { scope: VENUE })
     const snapshot = snapshotOf(builder)
     expect(snapshot.items[NEGRONI]).toMatchObject({
       orderable: false,
