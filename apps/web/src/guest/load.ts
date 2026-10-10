@@ -56,13 +56,29 @@ const join = (base: string, path: string) => `${base.replace(/\/+$/, '')}/${path
 type IndexRef = { readonly venue_id: string; readonly menu_id: string }
 type PointerRef = { readonly snapshot_id: string }
 
+/**
+ * A cache-busting query for `live.json`: the version of the snapshot the page shows (`?v=<version>`),
+ * and, from the second try on, the try's number (`&r=<n>`). The CDN keys its cache by the full
+ * address, so an address it has not seen makes it ask the origin. Later tries get an address of
+ * their own because the answer to `?v=<version>` may itself have been cached while the origin still
+ * held the old overlay.
+ */
+export interface LiveCacheBust {
+  readonly version: number
+  /** 1 for the first fetch with the query, 2 for the next, ... */
+  readonly attempt: number
+}
+
 /** The address of each published file. */
 export const files = {
   index: (base: string, slug: string) => join(base, `v/${slug}.json`),
   current: (base: string, index: IndexRef) =>
     join(base, `m/${index.menu_id}/${index.venue_id}/current.json`),
-  live: (base: string, index: IndexRef) =>
-    join(base, `m/${index.menu_id}/${index.venue_id}/live.json`),
+  live: (base: string, index: IndexRef, bust?: LiveCacheBust) => {
+    const url = join(base, `m/${index.menu_id}/${index.venue_id}/live.json`)
+    if (bust === undefined) return url
+    return `${url}?v=${bust.version}${bust.attempt > 1 ? `&r=${bust.attempt}` : ''}`
+  },
   snapshot: (base: string, pointer: PointerRef) => join(base, `snap/${pointer.snapshot_id}.json`),
   table: (base: string, token: string) => join(base, `t/${token}.json`),
 }
@@ -109,14 +125,74 @@ export function loadSnapshot(deps: LoadDeps, pointer: CurrentPointer): Promise<M
   return getFile(deps, files.snapshot(deps.base, pointer), MenuSnapshotSchema, 'failed')
 }
 
-/** `live.json`; null when there is none (nothing marked sold out yet). */
-export async function loadLive(deps: LoadDeps, index: VenueIndex): Promise<LiveOverlay | null> {
+/**
+ * `live.json`; null when there is none (nothing marked sold out yet). `bust` adds the
+ * cache-busting query (see `LiveCacheBust`).
+ */
+export async function loadLive(
+  deps: LoadDeps,
+  index: VenueIndex,
+  bust?: LiveCacheBust,
+): Promise<LiveOverlay | null> {
   try {
-    return await getFile(deps, files.live(deps.base, index), LiveOverlaySchema, 'not_published')
+    return await getFile(
+      deps,
+      files.live(deps.base, index, bust),
+      LiveOverlaySchema,
+      'not_published',
+    )
   } catch (error) {
     if (error instanceof GuestLoadError && error.reason === 'not_published') return null
     throw error
   }
+}
+
+/** How many times the loader asks again for an overlay of another version, and how far apart. */
+export const LIVE_REFETCH_ATTEMPTS = 3
+export const LIVE_REFETCH_DELAY_MS = 2_000
+
+export interface LiveRefetchOptions {
+  readonly attempts?: number
+  readonly delayMs?: number
+  /** Resolves after `ms`; tests pass an instant one. */
+  readonly sleep?: (ms: number) => Promise<void>
+  /** True when nobody wants the answer any more (the page moved on); stops the asking. */
+  readonly cancelled?: () => boolean
+}
+
+/**
+ * The overlay for the snapshot `version` the page shows, after the one it loaded was made for
+ * another version (the CDN still held the old `live.json`, or the publish had not written the new
+ * one yet). Asks again at once, with the cache-busting query `?v=<version>`, then up to
+ * `attempts` times in all, `delayMs` apart (each later address differs, see `LiveCacheBust`).
+ * Returns the first overlay whose version is the snapshot's, or null when none came: the caller
+ * keeps what it has and the normal polling takes over. A failed fetch counts as a try and is never
+ * thrown.
+ */
+export async function refetchLiveForSnapshot(
+  deps: LoadDeps,
+  index: VenueIndex,
+  version: number,
+  options: LiveRefetchOptions = {},
+): Promise<LiveOverlay | null> {
+  const attempts = options.attempts ?? LIVE_REFETCH_ATTEMPTS
+  const delayMs = options.delayMs ?? LIVE_REFETCH_DELAY_MS
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)))
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (options.cancelled?.()) return null
+    // The first ask is immediate; the others wait.
+    if (attempt > 1) {
+      await sleep(delayMs)
+      if (options.cancelled?.()) return null
+    }
+    try {
+      const live = await loadLive(deps, index, { version, attempt })
+      if (live !== null && live.version === version) return live
+    } catch {
+      // The next try, or the normal polling, asks again.
+    }
+  }
+  return null
 }
 
 /** What a loaded menu consists of. */

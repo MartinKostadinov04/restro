@@ -115,6 +115,58 @@ describe('the guest menu page', () => {
     expect(await screen.findByText('Менюто още не е публикувано')).toBeTruthy()
   })
 
+  describe('an overlay made for another snapshot version (S3-10)', () => {
+    const { snapshot } = fixture('tags-dietary')
+    const version = snapshot.snapshot.version
+    const [negroni = '', hummus = ''] = Object.keys(snapshot.items)
+    const index = { venue_id: snapshot.snapshot.venue_id, menu_id: snapshot.snapshot.menu_id }
+    const plain = files.live('/cdn', index)
+    const bust = (attempt: number) => files.live('/cdn', index, { version, attempt })
+    const marks = (...ids: string[]) =>
+      Object.fromEntries(ids.map((id) => [id, { sold_out: true as const }]))
+    const bustedRequests = () => requested.filter((url) => url.includes('?v='))
+
+    it('applies the mismatched overlay at once, then asks again with ?v= and shows the matching one', async () => {
+      const bodies = published()
+      bodies.set(plain, { version: version + 1, items: marks(hummus) })
+      bodies.set(bust(1), { version, items: marks(negroni, hummus) })
+      serve(bodies)
+      visit('', ['en-GB'])
+      render(<GuestMenu slug="demo-club" />)
+
+      expect(await screen.findByText('Hummus')).toBeTruthy()
+      // The overlay of the other version marks Hummus: it applies, it is not ignored.
+      // The overlay fetched again with ?v= adds Negroni.
+      await waitFor(() => expect(screen.getAllByText('Sold out')).toHaveLength(2))
+      expect(bustedRequests()).toEqual([bust(1)])
+    })
+
+    it('keeps applying the mismatched overlay when no matching one comes, trying at most three times', async () => {
+      const bodies = published()
+      bodies.set(plain, { version: version + 1, items: marks(hummus) })
+      serve(bodies)
+      visit('', ['en-GB'])
+      render(<GuestMenu slug="demo-club" />)
+
+      expect(await screen.findByText('Hummus')).toBeTruthy()
+      await waitFor(() => expect(bustedRequests()).toEqual([bust(1)]))
+      // Nothing matching arrived: what was on the screen stays.
+      expect(screen.getAllByText('Sold out')).toHaveLength(1)
+      expect(bustedRequests().length).toBeLessThanOrEqual(3)
+    })
+
+    it('does not ask again when the overlay is for the snapshot on the screen', async () => {
+      serve(published())
+      visit('', ['en-GB'])
+      render(<GuestMenu slug="demo-club" />)
+      expect(await screen.findByText('Hummus')).toBeTruthy()
+      // Give an unwanted refetch time to show up.
+      await new Promise((done) => setTimeout(done, 100))
+      expect(bustedRequests()).toEqual([])
+      expect(requested.filter((url) => url.includes('live.json'))).toEqual([plain])
+    })
+  })
+
   it('offers a retry when the load fails, and loads the menu when it works again', async () => {
     const bodies = published()
     let broken = true

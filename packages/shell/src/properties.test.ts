@@ -181,18 +181,21 @@ describe('properties of buildViewModel', () => {
     )
   })
 
-  it('an overlay can only make items less available (R5)', () => {
+  it('an overlay can only make items less available, whatever version it is for (R5)', () => {
     const overlayed = snapshot.chain((snap) =>
       fc.record({
         snap: fc.constant(snap),
         marked: fc.subarray(Object.keys(snap.items)),
+        // 0 = the overlay was made for this snapshot; anything else = a mismatched version, which
+        // still applies and can only add caution (S3-10).
+        skew: fc.integer({ min: -3, max: 3 }),
         ctx: context,
       }),
     )
     fc.assert(
-      fc.property(overlayed, ({ snap, marked, ctx }) => {
+      fc.property(overlayed, ({ snap, marked, skew, ctx }) => {
         const overlay = {
-          version: snap.snapshot.version,
+          version: Math.max(1, snap.snapshot.version + skew),
           items: Object.fromEntries(marked.map((id) => [id, { sold_out: true as const }])),
         }
         // Everything stays on the menu so the two views can be compared item by item.

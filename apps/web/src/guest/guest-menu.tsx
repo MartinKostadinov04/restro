@@ -3,8 +3,10 @@
 // The guest phone page: loads the published files (never the database, rule 4), builds the shell's
 // view model for the guest's language and draws it with the QR phone face. It keeps itself fresh
 // while visible: the pointer every 30 seconds (a new publish swaps the snapshot) and the sold-out
-// overlay every 15 seconds. States: a loading skeleton, and a friendly notice for an unknown
-// venue, a menu that is not published yet, or a failed load.
+// overlay every 15 seconds. An overlay made for another snapshot version still applies (marks belong
+// to the service day) and is fetched again at once with a cache-busting query. States: a loading
+// skeleton, and a friendly notice for an unknown venue, a menu that is not published yet, or a
+// failed load.
 
 import type { LiveOverlay, Locale } from '@restro/core'
 import { bcp47, QrPhoneFace, QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
@@ -23,6 +25,7 @@ import {
   loadPointer,
   loadSnapshot,
   loadTableLabel,
+  refetchLiveForSnapshot,
 } from './load'
 
 type Phase =
@@ -87,10 +90,13 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
 
   // --- loading ----------------------------------------------------------------------------
   const [attempt, setAttempt] = useState(0)
+  // The snapshot version the overlay was last asked for again (see "the overlay of another version").
+  const refetchedFor = useRef<number | null>(null)
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` only restarts the load
   useEffect(() => {
     let cancelled = false
     setPhase({ kind: 'loading' })
+    refetchedFor.current = null
     loadMenu(deps, slug).then(
       (menu) => {
         if (!cancelled) setPhase({ kind: 'ready', menu })
@@ -160,6 +166,37 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
   )
   // Schedules ("from 18:00") follow the clock.
   useVisibleInterval(() => setNow(new Date()), CLOCK_EVERY_MS, ready)
+
+  // The overlay on the screen was made for another snapshot version than the one shown (the CDN
+  // still held the old live.json, or the publish had not written the new one yet). It stays
+  // applied, since marks belong to the service day and hiding them would show sold-out items as
+  // available, and a fresher one is asked for at once with a cache-busting query: up to three
+  // tries, two seconds apart (`refetchLiveForSnapshot`). Once per snapshot version; after that the
+  // 15-second poll above is all that runs.
+  const snapshotVersion = phase.kind === 'ready' ? phase.menu.snapshot.snapshot.version : null
+  const liveVersion = phase.kind === 'ready' ? (phase.menu.live?.version ?? null) : null
+  const liveForAnotherVersion =
+    snapshotVersion !== null && liveVersion !== null && liveVersion !== snapshotVersion
+  useEffect(() => {
+    if (!liveForAnotherVersion || index === null || snapshotVersion === null) return
+    if (refetchedFor.current === snapshotVersion) return
+    let cancelled = false
+    refetchLiveForSnapshot(deps, index, snapshotVersion, { cancelled: () => cancelled }).then(
+      (fresh) => {
+        if (cancelled) return
+        refetchedFor.current = snapshotVersion
+        if (fresh === null) return
+        setPhase((current) =>
+          current.kind === 'ready' && current.menu.snapshot.snapshot.version === snapshotVersion
+            ? { kind: 'ready', menu: { ...current.menu, live: fresh } }
+            : current,
+        )
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [deps, index, snapshotVersion, liveForAnotherVersion])
 
   // --- what the guest sees ----------------------------------------------------------------
   const snapshot = phase.kind === 'ready' ? phase.menu.snapshot : null

@@ -273,6 +273,26 @@ test.describe('what the page asks for (rule 4)', () => {
       expect(text, url).not.toMatch(/internal_note|cost_price|storage_key|original\./i)
     }
   })
+
+  test('/cdn ignores the cache-busting query of live.json when it looks the file up (S3-10)', async ({
+    request,
+  }) => {
+    const index = (await (await request.get(`/cdn/v/${GUEST_SLUG}.json`)).json()) as {
+      venue_id: string
+      menu_id: string
+    }
+    const live = `/cdn/m/${index.menu_id}/${index.venue_id}/live.json`
+    const plain = await request.get(live)
+    expect(plain.status()).toBe(200)
+    // What the guest page asks for after an overlay of another version: ?v=<version>, and later
+    // tries add &r=<n>. The file is the same; only the cache key (a CDN's) differs.
+    for (const query of ['?v=1', '?v=1&r=2', '?v=1&r=3']) {
+      const busted = await request.get(`${live}${query}`)
+      expect(busted.status(), query).toBe(200)
+      expect(await busted.json(), query).toEqual(await plain.json())
+      expect(busted.headers()['cache-control'], query).toBe('public, max-age=15')
+    }
+  })
 })
 
 test.describe('screenshots (BG and EN, light and dark)', () => {
