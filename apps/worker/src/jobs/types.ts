@@ -39,7 +39,12 @@ export interface WorkerContext {
 
 /** The one thing a job needs from pg-boss besides being run: sending another job. */
 export interface JobQueue {
-  send(name: string, data: object, options?: { singletonKey?: string }): Promise<string | null>
+  send(
+    name: string,
+    data: object,
+    /** `startAfter`: seconds to wait before the job may start. */
+    options?: { singletonKey?: string; startAfter?: number | undefined },
+  ): Promise<string | null>
 }
 
 /** A recurring run. `cron` is a cron expression (five fields) or an RFC 5545 RRULE. */

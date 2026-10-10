@@ -35,7 +35,7 @@ import type { LimiterRegistry } from './limiter'
 export type Enqueue = (
   name: string,
   data: object,
-  options: { singletonKey: string },
+  options: { singletonKey: string; startAfter?: number | undefined },
 ) => Promise<string | null>
 
 /** The photo store as the worker uses it: put only. */

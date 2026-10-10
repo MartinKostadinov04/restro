@@ -164,33 +164,6 @@ export async function articlesWithPhoto(
   return new Set(rows.map((row) => row.externalId))
 }
 
-/** How long a "running" job run is believed: a crashed worker leaves it behind. */
-const RUNNING_RUN_MAX_AGE_MS = 60 * 60 * 1000
-
-/** True while a full pull of this integration is running (started within the last hour). */
-export async function fullPullIsRunning(
-  env: SyncEnvironment,
-  tenantId: string,
-  integrationId: string,
-): Promise<boolean> {
-  const since = new Date(env.now().getTime() - RUNNING_RUN_MAX_AGE_MS)
-  const rows = await withTenant(env.pool, tenantId, (tx) =>
-    tx
-      .select({ id: jobRuns.id })
-      .from(jobRuns)
-      .where(
-        and(
-          eq(jobRuns.integrationId, integrationId),
-          eq(jobRuns.kind, 'barsy_full_pull'),
-          eq(jobRuns.status, 'running'),
-          gte(jobRuns.startedAt, since),
-        ),
-      )
-      .limit(1),
-  )
-  return rows.length > 0
-}
-
 /** True if a full pull of this integration started within `withinMs` (whatever its outcome). */
 export async function fullPullStartedWithin(
   env: SyncEnvironment,

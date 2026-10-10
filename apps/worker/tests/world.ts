@@ -17,6 +17,7 @@ import { generateSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open
 import { createPool, type DbPool } from '@restro/db'
 import type { Job } from 'pg-boss'
 import type { BarsyPolicy, SealKeys } from '../src/config'
+import { APP_POOL_MAX } from '../src/connection'
 import { WorkerStatus } from '../src/health'
 import { createBarsyJobs } from '../src/jobs/barsy'
 import type { JobDefinition, WorkerContext } from '../src/jobs/types'
@@ -30,6 +31,7 @@ export interface EnqueuedJob {
   readonly name: string
   readonly data: Record<string, unknown>
   readonly singletonKey: string | undefined
+  readonly startAfter: number | undefined
 }
 
 export interface World {
@@ -71,10 +73,25 @@ const POLICY: BarsyPolicy = {
 
 export async function createWorld(
   fake: FakeBarsy,
-  options: { readonly mapVenue?: boolean; readonly database?: TestDatabase } = {},
+  options: {
+    readonly mapVenue?: boolean
+    readonly database?: TestDatabase
+    /** Connections of the app pool (default: the real worker's APP_POOL_MAX). */
+    readonly poolMax?: number
+    /** Pull locks the process may hold at once (default: the pool's size minus one). */
+    readonly pullLocksMax?: number
+    /** How long a full pull waits for a running pull before it is queued again (default 60 s). */
+    readonly pullLockWaitMs?: number
+    /** How often a waiting full pull asks again (default 2 s). */
+    readonly pullLockPollMs?: number
+  } = {},
 ): Promise<World> {
   const db = options.database ?? (await createTestDatabase())
-  const pool = createPool(db.appUrl, { applicationName: 'restro-worker-sync-tests', max: 4 })
+  const poolMax = options.poolMax ?? APP_POOL_MAX
+  const pool = createPool(db.appUrl, {
+    applicationName: 'restro-worker-sync-tests',
+    max: poolMax,
+  })
   const pair = generateSealKeyPair()
   const keys: SealKeys = {
     publicKey: parseSealPublicKey(pair.publicKey),
@@ -128,11 +145,16 @@ export async function createWorld(
   // Real time at the start: the database stamps `state_changed_at` with its own clock, and the
   // grace-period tests move this clock forward from there.
   const world = { clock: new Date() } as { clock: Date }
-  const send = async (name: string, data: object, options?: { singletonKey?: string }) => {
+  const send = async (
+    name: string,
+    data: object,
+    options?: { singletonKey?: string; startAfter?: number | undefined },
+  ) => {
     enqueued.push({
       name,
       data: data as Record<string, unknown>,
       singletonKey: options?.singletonKey,
+      startAfter: options?.startAfter,
     })
     return `queued-${enqueued.length}`
   }
@@ -167,6 +189,9 @@ export async function createWorld(
       store: env.store,
       limiters: env.limiters,
       fetch: env.fetch,
+      pullLocksMax: options.pullLocksMax ?? poolMax - 1,
+      ...(options.pullLockWaitMs !== undefined ? { pullLockWaitMs: options.pullLockWaitMs } : {}),
+      ...(options.pullLockPollMs !== undefined ? { pullLockPollMs: options.pullLockPollMs } : {}),
     }).map((job) => [job.name, job]),
   )
 

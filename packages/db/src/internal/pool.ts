@@ -139,3 +139,72 @@ export function runForTenant<T>(
   if (!isTenantId(tenantId)) return Promise.reject(new InvalidTenantIdError())
   return runScoped(handle, tenantId, accessMode, fn)
 }
+
+/** A Postgres session-level advisory lock, held on a connection of its own. */
+export interface SessionLock {
+  /**
+   * Unlocks and gives the connection back. Safe to call twice. A connection that cannot be
+   * unlocked is closed instead, and closing it releases the lock.
+   */
+  release(): Promise<void>
+}
+
+/**
+ * Tries once to take the session-level advisory lock named `name` (Postgres hashes the text with
+ * `hashtextextended(name, 0)`), on a connection taken from the pool and kept until `release()`.
+ * Returns null when someone else holds it. If the process dies, its connections close and
+ * Postgres drops the lock.
+ *
+ * Session locks live on a connection, so the connection must stay the same one for as long as the
+ * lock is wanted: this works through a direct connection or a session-mode pooler (Supabase port
+ * 5432), not a transaction-mode pooler. Takes no tenant and reads no table; for coordination
+ * between workers only. `onError` hears of a connection that drops while the lock is held (the
+ * lock is then gone with it).
+ */
+export async function tryAdvisoryLock(
+  handle: DbPool,
+  name: string,
+  onError?: (error: Error) => void,
+): Promise<SessionLock | null> {
+  const { pool } = internalsOf(handle)
+  const client = await pool.connect()
+  // A broken connection emits 'error' on a checked-out client; without a listener Node would crash.
+  const listener = (error: Error) => onError?.(error)
+  client.on('error', listener)
+  let held = false
+  try {
+    const result = await client.query<{ locked: boolean }>(
+      'select pg_try_advisory_lock(hashtextextended($1, 0)) as locked',
+      [name],
+    )
+    held = result.rows[0]?.locked === true
+  } catch (error) {
+    client.removeListener('error', listener)
+    client.release(error instanceof Error ? error : true)
+    throw error
+  }
+  if (!held) {
+    client.removeListener('error', listener)
+    client.release()
+    return null
+  }
+  let released = false
+  return {
+    async release() {
+      if (released) return
+      released = true
+      try {
+        const result = await client.query<{ unlocked: boolean }>(
+          'select pg_advisory_unlock(hashtextextended($1, 0)) as unlocked',
+          [name],
+        )
+        client.removeListener('error', listener)
+        // Not unlocked (it was not held any more): do not put the connection back.
+        client.release(result.rows[0]?.unlocked === true ? undefined : true)
+      } catch (error) {
+        client.removeListener('error', listener)
+        client.release(error instanceof Error ? error : true)
+      }
+    },
+  }
+}
