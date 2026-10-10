@@ -52,7 +52,7 @@ import { type PhotoStore, type SyncEnvironment, withIntegration } from '../sync/
 import { lastUpdateFilter } from '../sync/cursor'
 import { fullPullStartedWithin, loadVenueTarget } from '../sync/data'
 import { LimiterRegistry } from '../sync/limiter'
-import { fetchPhoto, PhotoRefused } from '../sync/photos'
+import { fetchPhoto, type ObsoleteReason, PhotoRefused } from '../sync/photos'
 import { PULL_LOCK_POLL_MS, PULL_LOCK_WAIT_MS, withPullLock } from '../sync/pull-lock'
 import { trackedRun } from '../sync/run'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
@@ -78,6 +78,13 @@ const MINUTE = 60_000
 
 /** A full pull that started this recently is not asked for again by an incremental run. */
 const FULL_PULL_COOLDOWN_MS = 15 * MINUTE
+
+/** What a photo job's run says when the article's current record no longer matches the job. */
+const OBSOLETE_TEXT: Record<ObsoleteReason, string> = {
+  unlinked: 'the article is no longer linked',
+  picture_removed: 'the article no longer has a picture',
+  picture_changed: 'the article’s picture changed since this job was queued',
+}
 
 /** A full pull that found another pull running starts again this many seconds later. */
 const FULL_PULL_DEFER_SECONDS = 60
@@ -392,17 +399,20 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
           withIntegration(env, payload, async (session) => {
             try {
               const result = await fetchPhoto(env, session, payload, run.id)
+              const counters = {
+                assets_created: result.asset === 'created' ? 1 : 0,
+                assets_reused: result.asset === 'reused' ? 1 : 0,
+              }
+              if (result.status === 'obsolete') {
+                // Not an error: the article moved on while this job waited (or downloaded).
+                return {
+                  counters: { ...counters, image_set: 0, obsolete: 1 },
+                  notes: [`obsolete: ${OBSOLETE_TEXT[result.reason]}`],
+                }
+              }
               return {
-                counters: {
-                  assets_created: result.asset === 'created' ? 1 : 0,
-                  assets_reused: result.asset === 'reused' ? 1 : 0,
-                  image_set: result.applied ? 1 : 0,
-                },
+                counters: { ...counters, image_set: result.applied ? 1 : 0, obsolete: 0 },
                 refused: result.rejected,
-                notes:
-                  result.applied || result.rejected.length > 0
-                    ? []
-                    : ['the article is no longer linked'],
               }
             } catch (error) {
               if (error instanceof PhotoRefused) {
