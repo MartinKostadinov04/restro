@@ -517,6 +517,19 @@ describe('R13 theme', () => {
     expect(theme).toMatchObject({ font: 'Inter', radius: 8, shadow: 1, logo: null })
   })
 
+  it('carries the same colours for a dark screen, readable too', () => {
+    const { colorsDark } = build('no-images').theme
+    for (const [text, on] of [
+      [colorsDark.text, colorsDark.background],
+      [colorsDark.text, colorsDark.surface],
+      [colorsDark.muted, colorsDark.surface],
+      [colorsDark.accentText, colorsDark.surface],
+      [colorsDark.onAccent, colorsDark.accent],
+    ] as const) {
+      expect(contrastRatio(text, on)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST)
+    }
+  })
+
   it('gives a section colour hint a readable text colour', () => {
     const snapshot = tiny({
       sections: [

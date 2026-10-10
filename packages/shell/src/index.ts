@@ -57,9 +57,10 @@ export {
   resolvePalette,
   type SemanticColours,
   semanticColours,
+  semanticColoursDark,
 } from './palette'
 export { type ScheduleStatus, scheduleStatus } from './schedule'
-export { type Strings, stringsFor } from './strings'
+export { type GuestStrings, type Strings, stringsFor } from './strings'
 export { fallbackChain, pickText } from './text'
 export {
   ITEM_STATES,

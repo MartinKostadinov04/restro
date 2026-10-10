@@ -210,6 +210,36 @@ export function semanticColours(palette: Palette): SemanticColours {
   }
 }
 
+/**
+ * The same colours for a dark screen (S3-03: the phone page follows the guest's colour scheme).
+ * Built from the dark end of the palette and checked pair by pair like `semanticColours`: the
+ * page is the 950 step, cards the 900 step, and text and the brand-as-text colour come from the
+ * light end and are nudged along the palette (then to white) until they read.
+ */
+export function semanticColoursDark(palette: Palette): SemanticColours {
+  const background = palette[950]
+  const surface = palette[900]
+  const both = [background, surface]
+  const accent = palette[500]
+  return {
+    background,
+    surface,
+    accent,
+    onAccent: readableOn([accent], [WHITE, palette[50], palette[950], BLACK]),
+    text: readableOn(both, [palette[50], palette[100], WHITE]),
+    muted: readableOn(both, [palette[300], palette[200], palette[100], palette[50], WHITE]),
+    accentText: readableOn(both, [
+      palette[400],
+      palette[300],
+      palette[200],
+      palette[100],
+      palette[50],
+      WHITE,
+    ]),
+    border: palette[800],
+  }
+}
+
 /** A readable text colour for any colour a venue picks (a section's colour hint). */
 export function textOn(colour: string, palette: Palette): string {
   return readableOn([colour], [WHITE, palette[950], BLACK])
