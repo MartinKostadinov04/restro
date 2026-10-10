@@ -283,14 +283,14 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   statusDetail: null,
                   lastCheckedAt: env.now(),
                 })
-                const published = await queuePublishAfterSync(
+                await queuePublishAfterSync(
                   env,
                   afterSyncTarget(payload, session),
                   outcome.counters.ops_applied ?? 0,
                 )
                 return {
                   counters: outcome.counters,
-                  notes: published === null ? outcome.notes : [...outcome.notes, published],
+                  notes: outcome.notes,
                   deletionCheckSkipped: outcome.deletionCheckSkipped,
                   refused: outcome.refused,
                 }
@@ -387,14 +387,14 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   lastUpdateFilter(new Date(state.cursor), target.timezone),
                 )
                 await recordSuccess(ctx, outcome, 'incremental')
-                const published = await queuePublishAfterSync(
+                await queuePublishAfterSync(
                   env,
                   afterSyncTarget(payload, session),
                   outcome.counters.ops_applied ?? 0,
                 )
                 return {
                   counters: outcome.counters,
-                  notes: published === null ? outcome.notes : [...outcome.notes, published],
+                  notes: outcome.notes,
                   refused: outcome.refused,
                 }
               }),

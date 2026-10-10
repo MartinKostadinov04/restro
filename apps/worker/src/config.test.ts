@@ -31,6 +31,8 @@ describe('loadConfig', () => {
       barsy: { env: 'development', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
       // Local files under the repository's .local/assets unless told otherwise.
       assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
+      // And the publish store under .local/cdn.
+      publish: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]cdn$/) },
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })

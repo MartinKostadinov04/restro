@@ -29,11 +29,23 @@ export interface AfterSyncTarget {
 
 /**
  * Queues the automatic publish when `appliedOps` is above zero and the integration allows it.
- * Returns a line for the pull's run text (what happened, or why nothing did), or null when the
- * pull changed nothing. Never throws: the pull has already been applied and recorded, and a
- * failure to queue is logged and noted; the next sync that changes something publishes.
+ * Returns a line saying what happened (or why nothing did), or null when the pull changed
+ * nothing; the line is logged, and deliberately not added to the pull's run text, which the
+ * Integration tab shows as news about the pull. Never throws: the pull has already been
+ * applied and recorded, and a failure to queue is logged; the next sync that changes something
+ * publishes.
  */
 export async function queuePublishAfterSync(
+  env: Pick<SyncEnvironment, 'pool' | 'log' | 'enqueue'>,
+  target: AfterSyncTarget,
+  appliedOps: number,
+): Promise<string | null> {
+  const note = await decide(env, target, appliedOps)
+  if (note !== null) env.log.info({ venueId: target.venueId }, note)
+  return note
+}
+
+async function decide(
   env: Pick<SyncEnvironment, 'pool' | 'log' | 'enqueue'>,
   target: AfterSyncTarget,
   appliedOps: number,

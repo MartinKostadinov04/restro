@@ -86,9 +86,10 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-publish-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Publish action club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
-    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id
+    venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: 'main' })).id as VenueId
     menu = await provisionMenu(app, tenant, venueId)
-    emptyVenueId = (await provisionVenue(app, tenant, { name: 'No menu', slug: 'no-menu' })).id
+    emptyVenueId = (await provisionVenue(app, tenant, { name: 'No menu', slug: 'no-menu' }))
+      .id as VenueId
     const section = newId('nd')
     const item = newId('nd')
     const result = await apply(
@@ -242,7 +243,8 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
     })
 
     it('says so when nothing was ever published, or the venue has no menu', async () => {
-      const unpublished = (await provisionVenue(app, tenant, { name: 'Fresh', slug: 'fresh' })).id
+      const unpublished = (await provisionVenue(app, tenant, { name: 'Fresh', slug: 'fresh' }))
+        .id as VenueId
       await provisionMenu(app, tenant, unpublished)
       expect(await rollback(scope({ venueId: unpublished }), services, v1)).toEqual({
         ok: false,

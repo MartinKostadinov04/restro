@@ -53,6 +53,7 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
   const advance = (minutes: number) => {
     world.clock = new Date(world.clock.getTime() + minutes * MINUTE)
   }
+  const logged = () => world.logLines.join('\n')
   const publishes = () => world.enqueued.filter((job) => job.name === JOB_NAMES.publishMenu)
   const setConfig = (patch: Record<string, unknown>) =>
     world.query('update restro.integrations set config = config || $2::jsonb where id = $1', [
@@ -102,9 +103,11 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
         startAfter: 30,
       },
     ])
+    // The queue is logged, not added to the pull's run text.
     const run = await lastRun('barsy_full_pull')
     expect(run.status).toBe('completed')
-    expect(run.details?.notes).toContain('publish queued to run in 30 s')
+    expect(run.details?.notes).toEqual([])
+    expect(logged()).toContain('publish queued to run in 30 s')
   })
 
   it('a pull that applied nothing queues no publish', async () => {
@@ -139,9 +142,7 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
     await fullPull()
     expect((await lastRun('barsy_full_pull')).counters.ops_applied).toBeGreaterThan(0)
     expect(publishes()).toEqual([])
-    expect((await lastRun('barsy_full_pull')).details?.notes).toContain(
-      'publish after sync is off for this integration: nothing was queued',
-    )
+    expect(logged()).toContain('publish after sync is off for this integration: nothing was queued')
 
     advance(5)
     changePrice(1.5)
