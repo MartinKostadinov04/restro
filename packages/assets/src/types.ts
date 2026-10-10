@@ -15,6 +15,12 @@ export interface AssetStore {
    * authenticated route. Never stored in a field value or a snapshot.
    */
   getUrl(key: string, ttlSeconds: number): Promise<string>
+
+  /**
+   * The bytes stored under `key`, or null when there are none. For the worker, which makes the
+   * photo variants from the original (S3-01b); the web app shows originals through `getUrl`.
+   */
+  get(key: string): Promise<Uint8Array | null>
 }
 
 /** How long the admin's image links stay valid: an hour covers a long editing session. */

@@ -37,7 +37,7 @@ const R2Schema = z.object({
 })
 
 /** The repository root (the folder with pnpm-workspace.yaml) above `from`, else `from` itself. */
-function repositoryRoot(from: string): string {
+export function repositoryRoot(from: string): string {
   for (let current = path.resolve(from); ; current = path.dirname(current)) {
     if (existsSync(path.join(current, 'pnpm-workspace.yaml'))) return current
     if (path.dirname(current) === current) return path.resolve(from)

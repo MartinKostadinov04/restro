@@ -468,7 +468,6 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     })
   })
 
-
   it('shows a stored image only once its variants exist (assets.variants), never a broken link', async () => {
     const asset = await createAsset(app, tenant, {
       origin: 'upload',
@@ -486,9 +485,9 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     expect(without.snapshot.body?.assets).toEqual({})
     expect(without.snapshot.body?.items[item]?.image).toBeNull()
 
-    expect(await setAssetVariants(app, tenant, asset.id, { thumb: 320, card: 640, full: 800 })).toBe(
-      true,
-    )
+    expect(
+      await setAssetVariants(app, tenant, asset.id, { thumb: 320, card: 640, full: 800 }),
+    ).toBe(true)
     const withVariants = await publish('manual', 81)
     expect(withVariants.status).toBe('published')
     expect(withVariants.snapshot.body?.items[item]?.image).toBe(asset.id)
@@ -505,7 +504,9 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
 
     // A malformed record counts as no variants; an explicit hook overrides the stored record.
     await withTenantWrite(app, tenant, (tx) =>
-      tx.execute(sql`update restro.assets set variants = '{"thumb":1}'::jsonb where id = ${asset.id}`),
+      tx.execute(
+        sql`update restro.assets set variants = '{"thumb":1}'::jsonb where id = ${asset.id}`,
+      ),
     )
     const broken = await publish('manual', 82)
     expect(broken.snapshot.body?.items[item]?.image).toBeNull()
@@ -518,9 +519,9 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     expect(hooked.snapshot.body?.assets[asset.id]?.variants.card).toBe(`/a/${asset.id}/w200.webp`)
 
     // Unknown asset, wrong tenant, malformed widths: nothing is recorded.
-    expect(
-      await setAssetVariants(app, otherTenant, asset.id, { thumb: 1, card: 2, full: 3 }),
-    ).toBe(false)
+    expect(await setAssetVariants(app, otherTenant, asset.id, { thumb: 1, card: 2, full: 3 })).toBe(
+      false,
+    )
     await expect(
       setAssetVariants(app, tenant, asset.id, { thumb: 640, card: 320, full: 1280 }),
     ).rejects.toMatchObject({ code: 'invalid_input' })

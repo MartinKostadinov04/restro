@@ -129,7 +129,10 @@ export async function setAssetVariants(
   const id = idSchema('as').safeParse(assetId)
   const stored = parseAssetVariants(variants)
   if (!id.success || stored === null) {
-    throw new CreateAssetError('invalid_input', 'expected an as_ id and growing thumb/card/full widths')
+    throw new CreateAssetError(
+      'invalid_input',
+      'expected an as_ id and growing thumb/card/full widths',
+    )
   }
   return withTenantWrite(pool, tenantId, async (tx) => {
     const rows = await tx
