@@ -63,6 +63,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       seal: world.keys,
       barsy: policy as WorkerConfig['barsy'],
       assets: { kind: 'local', dir: tmpdir() },
+      publish: { kind: 'local', dir: tmpdir() },
     }
     worker = await startWorker(config, {
       logger,
@@ -282,6 +283,7 @@ describe('buildJobs', () => {
     seal: null,
     barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
     assets: { kind: 'local', dir: tmpdir() },
+    publish: { kind: 'local', dir: tmpdir() },
   } as unknown as WorkerConfig
 
   it('without the sealing keys it registers the heartbeat only and warns once', async () => {

@@ -45,6 +45,8 @@ describe('loadConfig', () => {
         NODE_ENV: 'production',
         ASSET_STORE: 'local',
         LOCAL_ASSET_DIR: '/data/assets',
+        PUBLISH_STORE: 'local',
+        LOCAL_PUBLISH_DIR: '/data/cdn',
         BARSY_ENV: ' Staging ',
         BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
@@ -62,6 +64,7 @@ describe('loadConfig', () => {
         productionHosts: ['club.barsyonline.com', 'other.barsyonline.com'],
       },
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
+      publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
     })
   })
 
@@ -91,6 +94,22 @@ describe('loadConfig', () => {
     expect(r2[0]).not.toContain('bucket-secret-name')
   })
 
+  it('production needs a publish store too, and R2 needs its public bucket', () => {
+    expect(problemsOf({ DATABASE_URL: URL, NODE_ENV: 'production', ASSET_STORE: 'local' })).toEqual(
+      ['PUBLISH_STORE must be set to "local" or "r2" in production.'],
+    )
+    const r2 = problemsOf({
+      DATABASE_URL: URL,
+      PUBLISH_STORE: 'r2',
+      R2_ACCOUNT_ID: '0123456789abcdef',
+      R2_ACCESS_KEY_ID: 'AKIAFAKEFAKEFAKE',
+      R2_SECRET_ACCESS_KEY: 'not-a-real-secret-key',
+    })
+    expect(r2).toHaveLength(1)
+    expect(r2[0]).toContain('R2_PUBLIC_BUCKET')
+    expect(r2[0]).not.toContain('AKIAFAKEFAKEFAKE')
+  })
+
   it('accepts postgresql:// too', () => {
     expect(() => loadConfig({ DATABASE_URL: 'postgresql://u:p@h/db' })).not.toThrow()
   })
@@ -109,9 +128,14 @@ describe('loadConfig', () => {
     expect(loadConfig(base).prettyLogs).toBe(true)
     expect(loadConfig({ ...base, NODE_ENV: 'development' }).prettyLogs).toBe(true)
     expect(loadConfig({ ...base, NODE_ENV: 'test' }).prettyLogs).toBe(true)
-    expect(loadConfig({ ...base, NODE_ENV: 'production', ASSET_STORE: 'local' }).prettyLogs).toBe(
-      false,
-    )
+    expect(
+      loadConfig({
+        ...base,
+        NODE_ENV: 'production',
+        ASSET_STORE: 'local',
+        PUBLISH_STORE: 'local',
+      }).prettyLogs,
+    ).toBe(false)
   })
 
   it('names every problem and never repeats the connection string', () => {

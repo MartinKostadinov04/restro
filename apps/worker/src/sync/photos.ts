@@ -59,11 +59,14 @@ export type PhotoResult =
       readonly reason: ObsoleteReason
       /** `none` when it was caught before the download; else what the download left in the store. */
       readonly asset: 'created' | 'reused' | 'none'
+      /** The `as_` id of the asset the download left in the store; absent when `asset` is `none`. */
+      readonly assetId?: string
     }
   | {
       readonly status: 'stored'
       /** `reused` when identical bytes were already stored. */
       readonly asset: 'created' | 'reused'
+      readonly assetId: string
       readonly rejected: readonly ApplyRejection[]
       /** False when the item no longer exists or is no longer linked (the apply refused). */
       readonly applied: boolean
@@ -292,7 +295,9 @@ export async function fetchPhoto(
 
   // The picture may have changed or been removed while this one was downloading.
   const now = await currentRecord(env, tenantId, integrationId, request)
-  if ('obsolete' in now) return { status: 'obsolete', reason: now.obsolete, asset }
+  if ('obsolete' in now) {
+    return { status: 'obsolete', reason: now.obsolete, asset, assetId }
+  }
 
   const result = await apply(env.pool, tenantId, {
     id: newId('cs'),
@@ -322,6 +327,7 @@ export async function fetchPhoto(
   return {
     status: 'stored',
     asset,
+    assetId,
     rejected: result.rejected,
     applied: result.rejected.length === 0,
   }

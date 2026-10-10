@@ -6,7 +6,14 @@
 import type { KeyObject } from 'node:crypto'
 import { hostname } from 'node:os'
 
-import { type AssetStoreConfig, AssetStoreConfigError, assetStoreConfig } from '@restro/assets'
+import {
+  type AssetStoreConfig,
+  AssetStoreConfigError,
+  assetStoreConfig,
+  type PublishStoreConfig,
+  PublishStoreConfigError,
+  publishStoreConfig,
+} from '@restro/assets'
 import { BARSY_ENVS, type BarsyEnv, parseAllowedHosts } from '@restro/barsy'
 import { parseSealPublicKey } from '@restro/core/seal'
 import { isSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open'
@@ -41,6 +48,8 @@ export interface WorkerConfig {
   readonly barsy: BarsyPolicy
   /** Where barsy photos are stored: the same store the web app reads (`@restro/assets`). */
   readonly assets: AssetStoreConfig
+  /** Where published menus and photo variants go: the store the `/cdn` route (later the CDN) serves. */
+  readonly publish: PublishStoreConfig
 }
 
 /**
@@ -194,6 +203,10 @@ function environmentSchema(defaultWorkerId: () => string) {
       R2_SECRET_ACCESS_KEY: z.string().optional(),
       R2_BUCKET: z.string().optional(),
       R2_ENDPOINT: z.string().optional(),
+      // Passed on to @restro/assets (publishStoreConfig); R2_* above are shared with the asset store.
+      PUBLISH_STORE: z.string().optional(),
+      LOCAL_PUBLISH_DIR: z.string().optional(),
+      R2_PUBLIC_BUCKET: z.string().optional(),
       SEAL_PUBLIC_KEY: sealKeySchema(parseSealPublicKey, BAD_SEAL_PUBLIC_KEY),
       SEAL_PRIVATE_KEY: sealKeySchema(parseSealPrivateKey, BAD_SEAL_PRIVATE_KEY),
     })
@@ -241,6 +254,26 @@ function environmentSchema(defaultWorkerId: () => string) {
         ctx.addIssue({ code: 'custom', path: ['ASSET_STORE'], message })
         return z.NEVER
       }
+      let publish: PublishStoreConfig
+      try {
+        publish = publishStoreConfig({
+          NODE_ENV: env.NODE_ENV,
+          PUBLISH_STORE: env.PUBLISH_STORE,
+          LOCAL_PUBLISH_DIR: env.LOCAL_PUBLISH_DIR,
+          R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+          R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+          R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+          R2_PUBLIC_BUCKET: env.R2_PUBLIC_BUCKET,
+          R2_ENDPOINT: env.R2_ENDPOINT,
+        })
+      } catch (error) {
+        const message =
+          error instanceof PublishStoreConfigError
+            ? error.message.replace(/^PUBLISH_STORE /, '')
+            : 'is not usable.'
+        ctx.addIssue({ code: 'custom', path: ['PUBLISH_STORE'], message })
+        return z.NEVER
+      }
       return {
         databaseUrl: env.DATABASE_URL,
         workerId: env.WORKER_ID,
@@ -257,6 +290,7 @@ function environmentSchema(defaultWorkerId: () => string) {
           productionHosts: parseAllowedHosts(env.BARSY_PRODUCTION_HOSTS),
         },
         assets,
+        publish,
       }
     })
 }
