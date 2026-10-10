@@ -115,6 +115,11 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - Refused writes are in `job_runs` counters and `error_summary` text; S2-05 adds structured details.
   - **Demo catalogue:** the categories under root 1091 have no public titles, so the resolver blocks those sections. Use root **1171** for the acceptance run.
   - The ticks list tenants from `auth_organization` (organisation id = tenant id).
+- Copilot review fixes (S2-08, merged 10-10):
+  - **Pull lock:** a full pull and an incremental of one integration never overlap. A Postgres advisory lock per integration (`tryAdvisoryLock` in `@restro/db`, session pooler only) is held for the whole pull. A busy incremental is skipped; a busy full pull waits 60 s, then re-queues under a deferred key (pg-boss drops a same-key send from inside the running job).
+  - **Pool cap:** a worker process holds at most `APP_POOL_MAX − 1` pull locks (1 today), so with two integrations an incremental of one skips while the other runs a full pull. Raise the connection budget when several integrations sync.
+  - **Hung pull:** it keeps its lock until the process restarts (pg-boss expiry doesn't abort a handler). Watch it with the start-up sweep (T58).
+  - **Photos:** a photo job re-checks the article's current record (via `source_links.last_hash`) before download and before write (else `obsolete`). A picture removed in barsy clears the barsy `image`.
 - **Staging (10-10, Martin's OK):**
   - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
   - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
