@@ -27,6 +27,7 @@ import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, desc, eq, getTableColumns, inArray, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { parseAssetVariants } from '../asset-variants'
 import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
 import { isLocale, type Locale } from '../locales'
@@ -43,7 +44,8 @@ import {
 } from '../snapshot/build'
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
 import { assertSnapshotSafe, collectForbiddenValues } from '../snapshot/leak-guard'
-import type { MenuSnapshot } from '../snapshot/schema'
+import { buildLiveOverlay } from '../snapshot/overlay'
+import type { LiveOverlay, MenuSnapshot } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { readMenuDocument } from './load-document'
 
@@ -97,14 +99,16 @@ export interface PublishOptions {
   /** The publish time (default: now). Decides the service day and the "new" badges. */
   readonly now?: Date
   /**
-   * Which variant files a stored image has. Default: none, so snapshots carry no image until
-   * S3-01b makes variants and passes them here (from `assets.variants`); an image without
-   * variants is shown as no image rather than as a broken link.
+   * Which variant files a stored image has. Default: the ones recorded in `assets.variants`
+   * (`asset.variants`, null until the `asset-variants` job ran); an image without variants is
+   * shown as no image rather than as a broken link. Tests pass their own.
    */
   readonly assetVariants?: (asset: {
     readonly id: AssetId
     readonly width: number
     readonly height: number
+    /** The record in `assets.variants`, or null when there is none (or it is malformed). */
+    readonly variants: AssetVariantWidths | null
   }) => AssetVariantWidths | null
 }
 
@@ -167,6 +171,8 @@ export interface SnapshotRecord {
   readonly restoresSnapshotId: SnapshotId | null
   readonly decidedBy: string | null
   readonly decidedAt: string | null
+  /** A short code for the decision: `superseded` for a held row a later publish replaced. */
+  readonly decisionNote: string | null
   readonly createdAt: string
   readonly publishedAt: string | null
 }
@@ -228,6 +234,7 @@ function recordOf(row: Omit<SnapshotRow, 'body'>): SnapshotRecord {
     restoresSnapshotId: (row.restoresSnapshotId ?? null) as SnapshotId | null,
     decidedBy: row.decidedBy ?? null,
     decidedAt: iso(row.decidedAt),
+    decisionNote: row.decisionNote ?? null,
     createdAt: row.createdAt.toISOString(),
     publishedAt: iso(row.publishedAt),
   }
@@ -315,6 +322,20 @@ async function recordFirstPublished(tx: WriteTx, tenantId: string, body: MenuSna
     .onConflictDoNothing()
 }
 
+/**
+ * Turns down the snapshots still held for a menu + venue because a publish just succeeded: each
+ * is `rejected`, decided by `system`, with the note `superseded`. They describe a state the menu
+ * has moved past (approving one would fail with `held_outdated` anyway), so they must not pile up
+ * in the review list. Runs inside the publish's own transaction, after the new row is written;
+ * every held row is older than it (versions are allocated under the same lock).
+ */
+async function supersedeHeld(tx: WriteTx, menuId: string, venueId: string, at: Date) {
+  await tx
+    .update(snapshots)
+    .set({ status: 'rejected', decidedBy: 'system', decidedAt: at, decisionNote: 'superseded' })
+    .where(and(inScope(menuId, venueId), eq(snapshots.status, 'held')))
+}
+
 /** The template a menu is resolved with. Only `venue-menu@1` exists so far. */
 const TEMPLATE = VENUE_MENU_TEMPLATE
 
@@ -323,18 +344,28 @@ interface Prepared {
   readonly resolved: ResolvedMenu
 }
 
+/** A menu loaded and resolved for one venue with the service edition of a moment. */
+interface Resolution {
+  readonly doc: Awaited<ReturnType<typeof readMenuDocument>>
+  readonly resolved: ResolvedMenu
+  readonly defaultLocale: Locale
+  readonly locales: Locale[]
+  readonly currency: Currency
+  readonly day: string
+  readonly nowIso: string
+}
+
 /**
- * Loads the document and everything around it, resolves it with today's service edition,
- * builds the snapshot under `snapshotId` / `version` and runs the leak guard and V10.
+ * Loads the document and the venue's context (languages, currency, service day, time zone) and
+ * resolves the menu with the edition `venue:<vn>` + `service:<day>` as of `now`. Shared by the
+ * publisher and the live overlay, so both see the same edition. Throws `menu_not_found` and
+ * `menu_blocked` (an unknown locale or currency); resolver issues are for the caller to judge.
  */
-async function prepareSnapshot(
-  tx: WriteTx,
+async function resolveForVenue(
+  tx: ReadTx,
   scope: { readonly menuId: NodeId; readonly venueId: VenueId },
-  snapshotId: SnapshotId,
-  version: number,
   now: Date,
-  options: PublishOptions,
-): Promise<Prepared> {
+): Promise<Resolution> {
   const { menuId, venueId } = scope
   const [menu] = await tx.select().from(menus).where(eq(menus.id, menuId))
   if (menu === undefined || menu.venueId !== venueId) {
@@ -376,6 +407,27 @@ async function prepareSnapshot(
     now: nowIso,
     firstPublishedAt,
   })
+  return { doc, resolved, defaultLocale, locales, currency, day, nowIso }
+}
+
+/**
+ * Loads the document and everything around it, resolves it with today's service edition,
+ * builds the snapshot under `snapshotId` / `version` and runs the leak guard and V10.
+ */
+async function prepareSnapshot(
+  tx: WriteTx,
+  scope: { readonly menuId: NodeId; readonly venueId: VenueId },
+  snapshotId: SnapshotId,
+  version: number,
+  now: Date,
+  options: PublishOptions,
+): Promise<Prepared> {
+  const { menuId, venueId } = scope
+  const { doc, resolved, defaultLocale, locales, currency, day, nowIso } = await resolveForVenue(
+    tx,
+    scope,
+    now,
+  )
   const blocking = [
     ...new Set(
       resolved.issues.filter((issue) => issue.severity === 'block_menu').map((i) => i.code),
@@ -419,11 +471,15 @@ async function prepareSnapshot(
     if (row.storageKey !== null) backendOnly.push(row.storageKey)
     if (row.originRef !== null) backendOnly.push(row.originRef)
     if (row.status !== 'stored' || row.width === null || row.height === null) continue
-    const variants = options.assetVariants?.({
-      id: row.id as AssetId,
-      width: row.width,
-      height: row.height,
-    })
+    const stored = parseAssetVariants(row.variants)
+    const variants = options.assetVariants
+      ? options.assetVariants({
+          id: row.id as AssetId,
+          width: row.width,
+          height: row.height,
+          variants: stored,
+        })
+      : stored
     if (variants) snapshotAssets[row.id as AssetId] = { w: row.width, h: row.height, variants }
   }
 
@@ -531,6 +587,7 @@ export async function publishMenu(
       const result = withBody(approved)
       await movePointer(tx, tenantId, menuId, venueId, approved.id)
       if (result.body !== null) await recordFirstPublished(tx, tenantId, result.body, now)
+      await supersedeHeld(tx, menuId, venueId, now)
       return { status: 'published', snapshot: result, previous }
     }
 
@@ -583,6 +640,7 @@ export async function publishMenu(
     if (row === undefined) throw new Error('the snapshot was not written')
     await movePointer(tx, tenantId, menuId, venueId, row.id)
     await recordFirstPublished(tx, tenantId, snapshot, now)
+    await supersedeHeld(tx, menuId, venueId, now)
     return { status: 'published', snapshot: withBody(row), previous }
   })
 }
@@ -705,6 +763,36 @@ export async function loadSnapshot(
     tx.select().from(snapshots).where(eq(snapshots.id, id)),
   )
   return row === undefined ? null : withBody(row)
+}
+
+/** The live overlay of the snapshot a menu + venue shows now. */
+export interface LiveOverlayResult {
+  /** The current snapshot the overlay was made for. */
+  readonly snapshotId: SnapshotId
+  readonly overlay: LiveOverlay
+}
+
+/**
+ * The sold-out marks of the current snapshot's items, resolved with the service edition of
+ * `options.now` (default: now), or null before the first publish. Read only: the overlay is a
+ * file derived from the document, never a stored row (S3-01b writes `live.json` from it).
+ */
+export async function loadLiveOverlay(
+  pool: DbPool,
+  tenantId: string,
+  scope: { readonly menuId: string; readonly venueId: string },
+  options: Pick<PublishOptions, 'now'> = {},
+): Promise<LiveOverlayResult | null> {
+  const { menuId, venueId } = parsed(ScopeSchema, scope)
+  const now = options.now ?? new Date()
+  return withTenant(pool, tenantId, async (tx) => {
+    const current = await currentRow(tx, menuId, venueId)
+    if (current === undefined) return null
+    const snapshot = withBody(current)
+    if (snapshot.body === null) return null
+    const { resolved } = await resolveForVenue(tx, { menuId, venueId }, now)
+    return { snapshotId: snapshot.id, overlay: buildLiveOverlay(resolved, snapshot.body) }
+  })
 }
 
 const ListInputSchema = ScopeSchema.extend({

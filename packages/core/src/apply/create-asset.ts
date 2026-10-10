@@ -11,11 +11,13 @@
 
 import { type Asset, assets, type DbPool } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { parseAssetVariants } from '../asset-variants'
 import { ASSET_IMAGE_TYPES, ASSET_ORIGINS, MAX_IMAGE_SIDE } from '../assets'
 import { type AssetId, idSchema, newId } from '../ids'
+import type { AssetVariantWidths } from '../snapshot/build'
 
 /**
  * Storage keys: path-like, ASCII, no `..` or empty segment, at most 255 characters. The asset
@@ -110,5 +112,31 @@ export async function createAsset(
       return { ...existing, created: false }
     }
     throw new CreateAssetError('id_conflict', `asset ${id} exists with different content`)
+  })
+}
+
+/**
+ * Records which webp variants of a stored asset exist in the publish store (brief S3-01b): call
+ * it AFTER the files are written, because a published snapshot names these files. Returns
+ * whether the tenant has such a stored asset. Idempotent: the same record changes nothing.
+ */
+export async function setAssetVariants(
+  pool: DbPool,
+  tenantId: string,
+  assetId: string,
+  variants: AssetVariantWidths,
+): Promise<boolean> {
+  const id = idSchema('as').safeParse(assetId)
+  const stored = parseAssetVariants(variants)
+  if (!id.success || stored === null) {
+    throw new CreateAssetError('invalid_input', 'expected an as_ id and growing thumb/card/full widths')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(assets)
+      .set({ variants: stored })
+      .where(and(eq(assets.id, id.data), eq(assets.status, 'stored')))
+      .returning({ id: assets.id })
+    return rows.length > 0
   })
 }

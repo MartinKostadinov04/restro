@@ -3,6 +3,7 @@
 // No I/O and no UI: this package runs in the worker, the web server and the browser.
 
 export * from './allergen-key'
+export * from './asset-variants'
 export * from './allergens'
 export * from './assets'
 export * from './change-set'
