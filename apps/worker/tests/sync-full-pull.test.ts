@@ -72,10 +72,11 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     status: string
     counters: Record<string, number>
     error_summary: string | null
+    details: { deletionCheckSkipped?: boolean } | null
   }
   const fullPulls = () =>
     world.query<RunRow>(
-      `select status, counters, error_summary from restro.job_runs
+      `select status, counters, error_summary, details from restro.job_runs
        where integration_id = $1 and kind = 'barsy_full_pull' order by created_at`,
       [world.integrationId],
     )
@@ -281,6 +282,8 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       expect(run.counters.failed_pages).toBe(1)
       expect(run.counters.articles_seen).toBe(35)
       expect(run.error_summary).toMatch(/deletion check skipped: 1 of \d+ pages failed/)
+      // The structured flag reaches the run's details too (the Integration tab reads it).
+      expect(run.details).toMatchObject({ deletionCheckSkipped: true })
       // The other pages were applied; the cursor did not move.
       expect(await count('nodes', "node_type = 'item'")).toBeGreaterThan(0)
       expect((await syncState()).cursor).toBeUndefined()

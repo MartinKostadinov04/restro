@@ -267,6 +267,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                 return {
                   counters: outcome.counters,
                   notes: outcome.notes,
+                  deletionCheckSkipped: outcome.deletionCheckSkipped,
                   refused: outcome.refused,
                 }
               }),

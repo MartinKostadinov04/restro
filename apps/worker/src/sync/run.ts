@@ -30,6 +30,8 @@ export interface RunReport {
   readonly counters?: Record<string, number>
   /** Lines for the run's text (what was skipped, and why). */
   readonly notes?: readonly string[]
+  /** True when a full pull did not conclude absence; the Integration tab reads it from the run. */
+  readonly deletionCheckSkipped?: boolean
   readonly refused?: readonly ApplyRejection[]
   /** `failed` for a run that ended without doing its work but is not an error to retry. */
   readonly status?: 'completed' | 'failed'
@@ -66,6 +68,9 @@ export async function trackedRun(
       await finishJobRun(env.pool, tenantId, run.id, {
         status,
         ...(report.counters ? { counters: report.counters } : {}),
+        ...(report.deletionCheckSkipped !== undefined
+          ? { deletionCheckSkipped: report.deletionCheckSkipped }
+          : {}),
         summary: [summary, ...(report.notes ?? [])].filter(Boolean).join('\n'),
         refused: report.refused ?? [],
         finishedAt: env.now(),
