@@ -721,6 +721,7 @@
         "reactivated": "Reactivated",
         "failed_pages": "Failed pages",
         "refused_writes": "Refused writes",
+        "items_held": "Held for review",
         "venues": "barsy venues",
         "languages": "Languages"
       },

@@ -411,6 +411,7 @@
       "hiddenByBarsy": "Скрито от barsy",
       "hidden": "Скрито",
       "hiddenOther": "Скрито (настройка)",
+      "newFromBarsy": "Нов от barsy, скрит, докато не го покажете",
       "issues": "{count, plural, one {# проблем} other {# проблема}}"
     },
     "visibility": {
@@ -720,6 +721,7 @@
         "reactivated": "Върнати",
         "failed_pages": "Неуспешни страници",
         "refused_writes": "Отказани записи",
+        "items_held": "Задържани за преглед",
         "venues": "Заведения в barsy",
         "languages": "Езици"
       },

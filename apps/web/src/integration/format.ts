@@ -14,6 +14,7 @@ export const COUNTER_KEYS = [
   'reactivated',
   'failed_pages',
   'refused_writes',
+  'items_held',
   'venues',
   'languages',
 ] as const
