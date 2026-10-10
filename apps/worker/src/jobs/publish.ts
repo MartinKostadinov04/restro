@@ -4,7 +4,8 @@
 //   publish-menu     publishMenu (core/apply), then the files; records a job run
 //   publish-files    only the files of the current publish (after a rollback; a repair)
 //   publish-live     live.json, the sold-out overlay (S3-08 triggers it)
-//   asset-variants   the webp variants of one photo (jobs/barsy.ts and the web app queue it)
+//   asset-variants   the webp variants of one photo (jobs/barsy.ts and the web app queue it); for a
+//                    barsy photo it then queues the automatic publish of the menus that use it
 //
 // The three publish queues use pg-boss's `stately` policy with a singleton key per menu + venue
 // (core/jobs.ts): one job waits and one runs. An automatic publish is sent with a 30 s delay, so
@@ -23,6 +24,7 @@ import { PublishError, publishMenu } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
+import { queuePublishForAsset } from '../publish/after-sync'
 import { type PublishFilesDeps, writeLiveOverlay, writePublishFiles } from '../publish/files'
 import { runAssetVariants } from '../publish/variants'
 import { type RunReport, trackedRun } from '../sync/run'
@@ -240,6 +242,19 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
           payload,
         )
         context.log.info({ status: result.status }, 'photo variants')
+        // The publish that followed the pull usually ran before this picture was ready: a barsy
+        // picture whose variants were just made publishes the menus that use it (S3-04).
+        if (result.status === 'made') {
+          const notes = await queuePublishForAsset(
+            {
+              pool: context.pool,
+              log: context.log,
+              enqueue: (name, data, options) => context.queue.send(name, data, options),
+            },
+            payload,
+          )
+          for (const note of notes) context.log.info({ assetId: payload.assetId }, note)
+        }
       }
     },
   })

@@ -34,6 +34,7 @@ import {
   type ChangeSetOp,
   canonicalJson,
   concludeFullPull,
+  holdsNewItems,
   type IntegrationId,
   isLocale,
   JOB_NAMES,
@@ -393,7 +394,15 @@ async function syncFetched(
   counters.records_new = appended.filter((record) => record.created).length
 
   const totals = emptyTotals()
-  await applyMapped(env, tenantId, mapping.changeSet, totals)
+  // `publish.new_items = hold`: the items this run creates are hidden for a manager to review.
+  const holding = holdsNewItems(session.integration.config)
+  await applyMapped(
+    env,
+    tenantId,
+    mapping.changeSet,
+    totals,
+    holding ? { runId: ctx.runId, observedAt: startIso } : undefined,
+  )
 
   // Mark what this run saw. Only links that exist can be marked (a `delete_flag` article that
   // was never linked has none).
@@ -516,6 +525,7 @@ async function syncFetched(
   counters.reactivated = reactivated
   counters.failed_pages = fetched.pagesOk.filter((ok) => !ok).length
   counters.nodes_created = totals.createdNodes
+  if (holding) counters.items_held = totals.held
   counters.ops_applied = totals.applied
   counters.ops_unchanged = totals.unchanged
   counters.ops_skipped = totals.skipped

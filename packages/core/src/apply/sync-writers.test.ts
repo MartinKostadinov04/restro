@@ -11,7 +11,7 @@ import type { ApplyRejection } from './apply'
 import { upsertBarsyVenues, upsertPlaces } from './barsy-venues'
 import { describeRefused, finishJobRun, scrubSummary, startJobRun } from './job-runs'
 import { provisionTenant } from './provision'
-import { createIntegration } from './sources'
+import { createIntegration, updateIntegration } from './sources'
 import { readCachedTree, readSyncState, storeCachedTree, updateSyncState } from './sync-config'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
 
@@ -258,6 +258,35 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
       expect(readSyncState(config, 10)).toEqual({ cursor, tree_hash: hash })
       expect(readSyncState(config, 11)).toEqual({ cursor: '2026-10-09T11:00:00Z' })
       expect(readSyncState(config, 12)).toEqual({})
+    })
+
+    it('keeps the tick’s marks (S3-04) beside the settings, and a settings write keeps the marks', async () => {
+      const queuedAt = '2026-10-10T09:00:00.200Z'
+      const slot = '2026-10-10T09:00:00.000Z'
+      expect(
+        await updateSyncState(app, tenant, integrationId, 12, {
+          last_incremental_queued_at: queuedAt,
+        }),
+      ).toBe(true)
+      await updateSyncState(app, tenant, integrationId, 12, { last_full_pull_slot: slot })
+      // The settings live in other top-level keys of the same config.
+      await updateIntegration(app, tenant, integrationId, {
+        config: { schedule: { incremental_minutes: 10 }, publish: { after_sync: 'manual' } },
+      })
+      await updateSyncState(app, tenant, integrationId, 12, { last_incremental_at: queuedAt })
+      const config = await configOf()
+      expect(readSyncState(config, 12)).toEqual({
+        last_incremental_queued_at: queuedAt,
+        last_full_pull_slot: slot,
+        last_incremental_at: queuedAt,
+      })
+      expect(config).toMatchObject({
+        schedule: { incremental_minutes: 10 },
+        publish: { after_sync: 'manual' },
+      })
+      await expect(
+        updateSyncState(app, tenant, integrationId, 12, { last_full_pull_slot: 'noon' }),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
     })
 
     it('stores the cached tree per venue; unknown integrations and bad values are refused', async () => {

@@ -1,6 +1,7 @@
 // The publish after a sync (brief S3-01b, doc "Publish policy"): a pull that applied at least one
 // op queues an automatic publish of the venue's menu (30 s delay, one key per menu + venue), unless
-// the integration says `publish_after_sync = false`. Against the in-memory barsy installation,
+// the integration says `publish.after_sync = manual` (or the older flat key `publish_after_sync =
+// false`). Against the in-memory barsy installation,
 // through the pull jobs' real handlers.
 import { JOB_NAMES } from '@restro/core'
 import { provisionVenue } from '@restro/core/apply'
@@ -155,6 +156,48 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
     changePrice(1.75)
     await incremental()
     expect(publishes()).toHaveLength(1)
+  })
+
+  it('publish.after_sync = manual (D59): nothing is queued, until the setting is auto again', async () => {
+    await setConfig({ publish: { after_sync: 'manual', new_items: 'show' } })
+    await fullPull()
+    expect((await lastRun('barsy_full_pull')).counters.ops_applied).toBeGreaterThan(0)
+    expect(publishes()).toEqual([])
+    expect(logged()).toContain('publish after sync is off for this integration: nothing was queued')
+
+    advance(5)
+    changePrice(1.5)
+    await incremental()
+    expect(publishes()).toEqual([])
+
+    await setConfig({ publish: { after_sync: 'auto', new_items: 'show' } })
+    advance(5)
+    changePrice(1.75)
+    await incremental()
+    expect(publishes()).toHaveLength(1)
+    expect(publishes()[0]).toMatchObject({ data: { reason: 'auto_sync' }, startAfter: 30 })
+  })
+
+  it('publish.after_sync wins over the flat key of S3-01b, and the flat key still works alone', async () => {
+    // New key says auto, the old one says false: auto.
+    await setConfig({ publish_after_sync: false, publish: { after_sync: 'auto' } })
+    await fullPull()
+    expect(publishes()).toHaveLength(1)
+
+    // New key says manual, the old one says nothing: manual.
+    world.enqueued.length = 0
+    await setConfig({ publish_after_sync: true, publish: { after_sync: 'manual' } })
+    advance(5)
+    changePrice(2.25)
+    await incremental()
+    expect(publishes()).toEqual([])
+
+    // An unknown new value falls back to the old key.
+    await setConfig({ publish_after_sync: false, publish: { after_sync: 'later' } })
+    advance(5)
+    changePrice(2.5)
+    await incremental()
+    expect(publishes()).toEqual([])
   })
 
   it('a missing setting means publish (the default of the doc’s publish policy)', async () => {
