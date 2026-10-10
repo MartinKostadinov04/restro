@@ -392,4 +392,31 @@ describe('buildLiveOverlay', () => {
     })
     expect(LiveOverlaySchema.safeParse(overlay).success).toBe(true)
   })
+
+  it('is read by a parser that has not heard of newer top-level keys (A5-P1), and stays strict inside', () => {
+    const marks = { [NEGRONI]: { sold_out: true } }
+    const newer = LiveOverlaySchema.safeParse({
+      version: 3,
+      items: marks,
+      ordering: { state: 'on' },
+    })
+    expect(newer.success).toBe(true)
+    expect(newer.data?.items).toEqual(marks)
+    expect(newer.data?.version).toBe(3)
+    // `version` and `items` and each mark stay strict.
+    expect(LiveOverlaySchema.safeParse({ items: marks }).success).toBe(false)
+    expect(LiveOverlaySchema.safeParse({ version: 0, items: marks }).success).toBe(false)
+    expect(LiveOverlaySchema.safeParse({ version: 1, items: [] }).success).toBe(false)
+    expect(
+      LiveOverlaySchema.safeParse({ version: 1, items: { [NEGRONI]: { sold_out: false } } })
+        .success,
+    ).toBe(false)
+    expect(
+      LiveOverlaySchema.safeParse({ version: 1, items: { [NEGRONI]: { sold_out: true, x: 1 } } })
+        .success,
+    ).toBe(false)
+    // The snapshot is not loosened.
+    const base = snapshotOf(barMenu())
+    expect(MenuSnapshotSchema.safeParse({ ...base, extra: 1 }).success).toBe(false)
+  })
 })

@@ -376,8 +376,20 @@ export type MenuSnapshot = z.output<typeof MenuSnapshotSchema>
 /** One item of a snapshot. */
 export type SnapshotItem = MenuSnapshot['items'][string]
 
-/** The live overlay (`live.json`): sold-out marks of the service edition, nothing else. */
-export const LiveOverlaySchema = z.strictObject({
+/**
+ * The live overlay (`live.json`): sold-out marks of the service edition.
+ *
+ * Published files change parser-first: loosen the reader, deploy it, then let the producer emit
+ * the new field. Inside `menu-snapshot/1` and `live.json` v1, new fields are optional forever.
+ *
+ * So the top level ignores keys it does not know (a phone that has not been updated still reads
+ * a newer file; without this, one new key would fail the parse, the loader would take that for "no
+ * overlay" and every sold-out mark would vanish: the less cautious error, A5-F2). `version` and
+ * `items` stay strict, and so does each mark: a mark we cannot read is a failed parse, never a
+ * guess. The snapshot keeps its strict schema (`MenuSnapshotSchema`): it is immutable and
+ * versioned by its `schema` literal, not extended in place.
+ */
+export const LiveOverlaySchema = z.looseObject({
   version: z.int().positive(),
   items: z.record(NodeIdSchema, z.strictObject({ sold_out: z.literal(true) })),
 })

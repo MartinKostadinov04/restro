@@ -106,6 +106,27 @@ describe('the guest loader follows the published files (rule 4)', () => {
     await expect(loadLive(f.deps(broken), f.index)).rejects.toMatchObject({ reason: 'failed' })
   })
 
+  it('reads an overlay that has keys this loader does not know, and keeps its marks (A5-F2)', async () => {
+    const f = publishedFiles()
+    const [first = ''] = Object.keys(f.snapshot.items)
+    const newer = {
+      version: f.pointer.version,
+      items: { [first]: { sold_out: true } },
+      ordering: { state: 'on' },
+    }
+    const overrides = new Map<string, unknown>([[files.live(BASE, f.index), newer]])
+    const live = await loadLive(f.deps(overrides), f.index)
+    expect(live?.items).toEqual({ [first]: { sold_out: true } })
+    expect((await loadMenu(f.deps(overrides), 'demo-club')).live?.items).toEqual({
+      [first]: { sold_out: true },
+    })
+    // Inside `items` nothing is guessed: a mark of another shape is still a failed parse.
+    const odd = new Map<string, unknown>([
+      [files.live(BASE, f.index), { version: 1, items: { [first]: { sold_out: true, hint: 1 } } }],
+    ])
+    await expect(loadLive(f.deps(odd), f.index)).rejects.toMatchObject({ reason: 'failed' })
+  })
+
   it('fails (to be retried) on a server error, bad JSON or a file of the wrong shape', async () => {
     const f = publishedFiles()
     const cases: [string, Response | object][] = [

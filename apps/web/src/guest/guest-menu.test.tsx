@@ -167,6 +167,26 @@ describe('the guest menu page', () => {
     })
   })
 
+  it('applies the sold-out marks of an overlay file that has a key this page does not know (A5-F2)', async () => {
+    const { snapshot } = fixture('tags-dietary')
+    const index = { venue_id: snapshot.snapshot.venue_id, menu_id: snapshot.snapshot.menu_id }
+    const [, hummus = ''] = Object.keys(snapshot.items)
+    const bodies = published()
+    // A producer that is ahead of this page: a new top-level block next to `version` and `items`.
+    bodies.set(files.live('/cdn', index), {
+      version: snapshot.snapshot.version,
+      items: { [hummus]: { sold_out: true } },
+      ordering: { state: 'on' },
+    })
+    serve(bodies)
+    visit('', ['en-GB'])
+    render(<GuestMenu slug="demo-club" />)
+
+    expect(await screen.findByText('Hummus')).toBeTruthy()
+    // The file is not taken for "no overlay": the mark shows.
+    await waitFor(() => expect(screen.getAllByText('Sold out')).toHaveLength(1))
+  })
+
   it('offers a retry when the load fails, and loads the menu when it works again', async () => {
     const bodies = published()
     let broken = true
