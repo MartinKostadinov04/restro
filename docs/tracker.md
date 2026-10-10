@@ -127,6 +127,12 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Tags** are `tg_` ids from the venue vocabulary (S3-06).
   - **Sold out:** the service edition is `edition:service:<YYYY-MM-DD>` (S3-08 writes there). The live overlay marks every item whose resolved `for_sale` is false.
   - **Rollback** lasts until the next publish whose content differs: S3-05 pauses automatic publishing after a rollback.
+- Publish files and jobs (S3-01b, merged 10-10):
+  - **Store:** a publish store (local `.local/cdn` / R2 public bucket later) accepts only four path shapes. `/cdn/...` serves it with cache rules (immutable `snap/` and `a/`, 30 s `current.json`, 15 s `live.json`).
+  - **Jobs:** `publish-menu` (auto publishes merged within 30 s; manual and auto on separate keys), `publish-files`, `publish-live` and `asset-variants`. The publish jobs are registered even without seal keys.
+  - **Variants:** `sharp` 0.35.4 webp, named by real width (`w320`/`w640`/`w1280`, or the photo's own width when smaller).
+  - **Holds:** older held publishes are superseded on success.
+  - **Deploy:** `PUBLISH_STORE` is required in production, and the worker image needs sharp's platform binary.
 - **Staging (10-10, Martin's OK):**
   - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
   - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
@@ -340,6 +346,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - [ ] T54. Drag a section *into* another section (today: "Move to…" menu; drag only reorders siblings — `@hello-pangea/dnd` cannot drop into nested lists). Needs `@dnd-kit` if wanted — Martin to decide after trying the composer
 - [ ] T55. `next dev` evaluates workspace packages more than once (module singletons such as the DB pool broke; two fixed with `globalThis`); `next dev` font loading fails inside agent worktrees — watch for more — Claude
 - [x] T56. (done 10-09: the photo row no longer prints the asset id; the thumbnail uses the sheet's signed link; why the e2e screenshot showed a blank square is not yet confirmed — recheck during Stage 2 acceptance) Item sheet polish: the Details tab's photo row shows a blank thumbnail and the raw asset id (`as_…`) instead of the photo; show the thumbnail (signed link, as the Media tab does) and never an internal id — Claude (Haiku task)
+- [ ] T60. Photo variants: store EXIF-oriented width/height in `assets` (portrait phone photos would get a swapped aspect box); `variants:backfill --force` to rebuild variant files after a wiped publish folder; CORS headers when `/cdn` moves to the real CDN — Claude
 - [ ] T50. One section per barsy category per integration: two of our venues on the same catalogue root would share sections — revisit when a second venue joins. Same for the job queue key (per integration: a second venue's pull is dropped while the first is queued) and the absence check (runs only with exactly one mapped venue) — Claude
 - [ ] T57. Photos hosted outside the barsy host (demo: 3 of 53 on `imagedelivery.net`) are refused today. Lead's recommendation: a `BARSY_PHOTO_HOSTS` allowlist, fetched **anonymously only** (credentials only ever go to the integration's own origin) — Claude, after checking real venue data
 - [ ] T58. Worker housekeeping: README "The worker" env table (BARSY_*, ASSET_STORE, R2_*, `.env.worker.local`); a start-up sweep that fails job runs stuck in `running`; `places.state_changed_at` (today `updated_at` stands in); decide whether the worker declares the AWS SDK instead of tsup bundling it; date-fns/@date-fns/tz vs the `Intl` code the sync uses (CLAUDE.md says date-fns) — Claude (Haiku/Sonnet tasks)

@@ -17,6 +17,12 @@ The venue's **Публикуване / Publish** tab, replacing the placeholder,
 - what changed since;
 - the controls to publish, approve a held publish, preview, and roll back.
 
+## From S3-01b (merged)
+- Publish runs are `job_runs` with kinds `publish_menu` / `publish_files` and **no integration**, so read them by kind.
+- `rollbackAction` = `rollbackTo` + a queued `publish-files`.
+- Manual and auto publishes use different singleton keys, so a manual Publish is never swallowed.
+- `live.json` is refreshed after every publish.
+
 ## Do
 1. **Live card:** the current version (number, when, by whom or "barsy sync", reason) and an "Open guest page" link to `/m/<venue>`. When nothing has been published yet: "Nothing published yet", plus the Publish button.
 2. **Changes waiting:**

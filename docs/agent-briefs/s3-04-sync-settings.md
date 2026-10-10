@@ -35,11 +35,16 @@ Zod schemas for them live in `packages/core` (config parsing), shared by web and
      - a full pull is due when enabled and today's `full_pull_time` (venue local) has passed with no full pull since that moment.
    - It enqueues what is due (existing jobs, existing singleton keys); the pull lock still prevents overlap.
    - Test DST days (the last Sundays of March and October) and midnight edges.
-2. **Publish policy:** S3-01b's after-sync trigger reads `publish.after_sync` (`auto` sends `publish-menu` reason `auto_sync`; `manual` sends nothing). The Publish tab (S3-05) shows "changes waiting to be published".
+2. **Publish policy:** S3-01b's after-sync trigger reads `publish.after_sync`. It currently reads the flat key `publish_after_sync`; migrate the reads to `publish.after_sync`, keeping the old key as a fallback (`auto` sends `publish-menu` reason `auto_sync`; `manual` sends nothing). The Publish tab (S3-05) shows "changes waiting to be published".
 3. **New items held:**
    - When `publish.new_items = hold`, after a pull applies, every item node **created by this run** gets `visible = false` in the **manual** layer, through `apply()` with actor `system` and source `manual`. This is only more cautious, so rule 5 holds. Use the node ids that `apply()` reports as created; if it doesn't report them, add that to `ApplyResult` (small additive change) and say so in the report.
    - The composer shows those items with a "New from barsy, hidden until you show it" badge (one string, BG/EN). Showing one clears the manual value, as hide/show does today.
-4. **UI** (Integration tab, owner/admin only; others read-only):
+4. **Publish when photos arrive** (gap found by S3-01b). The sync's publish runs about 30 s after a pull, usually before the photos and their webp variants are ready, so the first snapshot has no images.
+   - When `asset-variants` stores variants, queue `publish-menu` (reason `auto_sync`) for every menu + venue of the tenant whose document references that asset id (an `image` field value in any layer). This respects `publish.after_sync` (`manual` → nothing) and the rollback pause (S3-05).
+   - The 30 s merge window keeps a burst of photos to one publish.
+   - Put the asset → menus lookup in a small core reader.
+   - Test: pull → publish without images → variants land → one more publish with images.
+5. **UI** (Integration tab, owner/admin only; others read-only):
    - The existing "Synchronisation" card gains:
      - the change check on/off + interval;
      - the daily full pull on/off + time picker (venue time);
