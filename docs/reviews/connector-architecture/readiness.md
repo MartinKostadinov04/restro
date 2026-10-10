@@ -105,7 +105,7 @@ All three are being fixed now (CF-01, CF-02).
 
 ## Decisions for Martin
 
-1. **Several venues on one barsy account:** each venue keeps its own copy of the items in v1. A photo added for venue A is not shared with venue B even when it is the same barsy item. **Recommend yes:** simplest and safe. It only matters for groups.
+1. **Several venues on one barsy account:** *on hold (T71).* Martin: follow barsy's own structure. The demo data shows barsy keeps items in catalogues, with a per-venue "for sale" map on each item. New proposal: one Restro item per barsy item, with per-venue sale state and price, checked per catalogue. Confirm with barsy's docs first.
 2. **A venue's public address `/m/<slug>` is fixed once created.** QR codes don't use it; links people share do. **Recommend fixed for now**, with an editor later if needed.
 3. ~~Hand-made items on a venue with a till~~: **decided 10-11 (D66).** In a till venue the till is the only source of items, because nothing made here can reach the POS. Hand-made items exist only in venues without a till; sections and enrichment stay ours. Keep it one gate for future use cases.
 4. **Staging database:** allow a wipe and re-sync for the location-wide link change (test data only). **Recommend yes**; asked again at deploy.
@@ -116,6 +116,55 @@ All three are being fixed now (CF-01, CF-02).
    - the time zone of `last_update`.
 6. **Later, with the shell discussion (D63):** whether a non-orderable item shows "Ask your waiter" while ordering is on.
 
-## Guardrails (A6)
+## Guardrails (A6) and the changed order
 
-A6's proposals (conformance kit, dependency rules, fixture standard, one vendor-word test, neutral CLAUDE.md wording) and the guide outline are merged here when A6 reports. CF-08 and CF-13 take their briefs from it.
+**A6's verdict.** Today the repo would stop an agent writing connector #2 only by accident:
+- the `kind in ('barsy')` check and the barsy-only layer rule refuse it outright;
+- the easy way out would be to relabel it "barsy" (false provenance).
+
+**Barsy-only guardrails that would not cover connector #2:**
+- the dependency rules (`barsy-only-from-worker`, `web-no-barsy`);
+- the write allowlist test;
+- the recorder and replay harness.
+
+**A real hole:** a package at `packages/connectors/<kind>` would not be a workspace member or a Vitest project, so its tests would never run.
+
+**Adopted (D67):** guardrails are pinned by tests and only tighten.
+
+**Plan changes:**
+- **CF-08 splits.** The cheap, independent part runs now as **CF-08a**:
+  - a workspace guard test (every package is a workspace member, a Vitest project and typechecked);
+  - root Biome exclusion for `fixtures/`;
+  - **one vendor-word test** (`scripts/vendor-words.test.ts`, TypeScript tokenizer, comments exempt), with zones:
+    - the published surface is a wall (0 today);
+    - core, web, worker and db are ratchets that may only shrink;
+  - a PR template with a "guardrails touched?" list.
+
+  It replaces the bespoke core test in CF-03 and A1-P2, A4-P15 and A5-P13.
+- **The conformance kit** (`@restro/connector-kit/testing`):
+  - modelled on the face contract;
+  - checks K1–K16 (pure, no DB) and E1–E6 (engine, DB);
+  - an in-memory reference connector, with ten mutants that must each fail.
+
+  It goes into **CF-06**. Barsy adopts the suite *before* CF-07 moves it, so the move is checked by the suite the next connector will face.
+- **Dependency rules** replace the barsy-named ones with CF-06/CF-07: `connectors-only-from-worker`, `connector-kit-only-above-core`, `connectors-isolated`, `connectors-not-each-other`, `connectors-no-io-builtins`, `connector-entry-points-only`. Each is pinned in `scripts/depcruise-rules.test.ts`.
+- **Fixture standard** (redaction before write, consent label, facts-to-verify list, a generic recorder that records the request production actually sends) comes with G7. It needs Martin's recording session.
+- **The CLAUDE.md rewrite** (A6 §5.5 draft) and the connector guide outline (A6 §8) feed CF-13 and the guide.
+
+## barsy's own item structure (T71, recorded 10-11)
+
+Martin asked that the venue/item question follow barsy's own architecture. The demo data shows:
+- items live in **catalogues** (`menu_id`), and each barsy venue points at one catalogue;
+- different catalogues hold different items;
+- every item carries a per-venue "for sale" map (`is_for_sale_barsys`, e.g. venues 1, 10, 70, 102). That is barsy's "item → venues" shape, and our mapping already reads it correctly.
+
+**Proposal:** follow barsy.
+- One Restro item per barsy item, with sale state and price kept per venue (the till layer already does this).
+- Read and "deleted" checks run per **catalogue**, not per venue. This removes A2's rule-6 concern without duplicating items.
+
+**Still to confirm with barsy's docs or Lukanet before CF-05/CF-07 fix the sync unit:**
+- whether two venues can share a catalogue;
+- whether prices differ per venue;
+- what the map means for venues on another catalogue.
+
+Decision 1 below is therefore on hold until then.

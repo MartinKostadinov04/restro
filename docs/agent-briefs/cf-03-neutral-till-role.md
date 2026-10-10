@@ -128,7 +128,10 @@ Notes:
   - a node already linked to one till refuses a link from another;
   - `till` provenance is enforced by the database check;
   - an `import` layer or source is refused by Zod and by the database.
-- **Vendor test (core):** add a unit test failing on the literal `'barsy'` in `packages/core/src` code outside `TILL_LINK_TYPES`, `CONNECTOR_LABELS` and comments. Allow-list exactly those.
+- **Vendor words:**
+  - Don't write your own test. CF-08a adds the repo's single vendor-word test (`scripts/vendor-words.test.ts`, zones plus a shrink-only baseline, D67) before you start.
+  - After the rename, regenerate the baseline with the command CF-08a provides and **lower** the `core`, `db/src`, `web` and `worker` entries. They must only go down.
+  - Put `TILL_LINK_TYPES` and `CONNECTOR_LABELS` in `packages/core/src/connectors/`, the zone's allowed folder.
 
 ## Done when
 
