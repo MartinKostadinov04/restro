@@ -249,6 +249,7 @@ test('the chip opens the list, and "Върни в продажба" puts the dri
   const list = page.getByTestId('sold-out-list')
   await expect(list.getByTestId('sold-out-entry')).toHaveCount(1)
   await expect(list.getByTestId('sold-out-entry')).toContainText('Негрони')
+  await page.waitForTimeout(400)
   await page.screenshot({ path: shotPath('bg-light-desktop-list') })
 
   await list.getByTestId('sold-out-entry-unmark').click()
@@ -287,6 +288,7 @@ test('an item barsy has off sale says so and has no control, in the row and in t
   await expect(card.getByTestId('sale-state')).toHaveText('Не се продава в barsy')
   await expect(card.getByRole('button')).toHaveCount(0)
   await expect(page.getByText('Върни в продажба')).toHaveCount(0)
+  await page.waitForTimeout(600)
   await page.screenshot({ path: shotPath('bg-light-desktop-sheet-barsy-off') })
   await page.keyboard.press('Escape')
 })
@@ -301,6 +303,7 @@ test('the item sheet marks and unmarks too', async ({ browser }) => {
   await expect(card).toHaveAttribute('data-state', 'tonight')
   await expect(card.getByTestId('sale-state')).toHaveText('Изчерпано тази вечер')
   await expect(card.getByTestId('sale-mark')).toHaveCount(0)
+  await page.waitForTimeout(600)
   await page.screenshot({ path: shotPath('bg-light-desktop-sheet-marked') })
   await expect
     .poll(async () => (await guestState(browser, 'Мохито')).state, GUEST_WAIT)
@@ -337,6 +340,7 @@ test('a plain member sees the marks and the chip, and can change nothing', async
     await rowOf(member, 'Мохито').getByTestId('item-open').click()
     await expect(member.getByTestId('item-sheet-sale').getByRole('button')).toHaveCount(0)
     await expect(member.getByTestId('sale-note')).toContainText('собственик или администратор')
+    await member.waitForTimeout(600)
     await member.screenshot({ path: shotPath('bg-light-desktop-member-sheet') })
   } finally {
     await context.close()
@@ -357,6 +361,8 @@ test('on a phone: the row menu marks, the chip and its list fit the screen', asy
       await expect(target.getByTestId('sold-out-chip')).toBeVisible()
       await target.getByTestId('sold-out-chip').click()
       await expect(target.getByTestId('sold-out-list')).toBeVisible()
+      // The dialog fades in: shoot it once it is there.
+      await target.waitForTimeout(600)
     },
   })
   await shoot(browser, 'bg-dark-desktop-marked', { scheme: 'dark' })

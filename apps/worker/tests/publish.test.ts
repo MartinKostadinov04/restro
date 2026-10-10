@@ -496,7 +496,12 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       setSoldOutTonight(
         world.pool,
         world.tenantId,
-        { venueId: world.venueId as VenueId, itemIds: itemIds as NodeId[], soldOut, actor: 'user:us_manager' },
+        {
+          venueId: world.venueId as VenueId,
+          itemIds: itemIds as NodeId[],
+          soldOut,
+          actor: 'user:us_manager',
+        },
         { now: world.clock },
       )
     // Friday 23:00 in Sofia, and the next morning: two service days.
@@ -525,12 +530,14 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       expect(await readJson(livePathOfMenu())).toEqual({ version: 1, items: {} })
     })
 
-    it('drops yesterday\'s marks after 07:00 without a publish, and a publish then is a no-op', async () => {
+    it("drops yesterday's marks after 07:00 without a publish, and a publish then is a no-op", async () => {
       world.clock = friday
       await runJob(JOB_NAMES.publishMenu, publishPayload())
       await mark([items[1] as string, items[2] as string], true)
       await runJob(JOB_NAMES.publishLive, scopePayload())
-      expect(Object.keys(((await readJson(livePathOfMenu())) as { items: object }).items)).toHaveLength(2)
+      expect(
+        Object.keys(((await readJson(livePathOfMenu())) as { items: object }).items),
+      ).toHaveLength(2)
 
       world.clock = saturdayMorning
       await runJob(JOB_NAMES.publishLive, scopePayload())
@@ -558,7 +565,12 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         await runJob(JOB_NAMES.publishMenu, publishPayload())
         const asks: LiveAsks = new Map()
 
-        expect(await tick(asks)).toMatchObject({ checked: 1, rolledOver: 1, reasserted: 0, failed: 0 })
+        expect(await tick(asks)).toMatchObject({
+          checked: 1,
+          rolledOver: 1,
+          reasserted: 0,
+          failed: 0,
+        })
         expect(liveJobs()).toHaveLength(1)
         expect(liveJobs()[0]).toMatchObject({
           data: scopePayload(),
@@ -642,7 +654,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         expect(liveJobs()).toHaveLength(1)
       })
 
-      it('remakes live.json after 07:00 when the tick\'s ask is run', async () => {
+      it("remakes live.json after 07:00 when the tick's ask is run", async () => {
         world.clock = friday
         await runJob(JOB_NAMES.publishMenu, publishPayload())
         await mark([items[3] as string], true)

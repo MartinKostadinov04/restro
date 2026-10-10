@@ -327,6 +327,8 @@ describe('buildJobs', () => {
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
+      // The 07:00 rollover of live.json (S3-08) needs no sealing keys either.
+      JOB_NAMES.publishLiveTick,
       JOB_NAMES.assetVariants,
     ])
     expect(warnings).toHaveLength(1)
@@ -355,6 +357,7 @@ describe('buildJobs', () => {
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
+      JOB_NAMES.publishLiveTick,
       JOB_NAMES.assetVariants,
     ])
   })
