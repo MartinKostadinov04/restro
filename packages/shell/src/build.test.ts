@@ -91,6 +91,32 @@ describe('R1 visibility', () => {
     expect(items(view).every((item) => item.state.code === 'scheduled')).toBe(true)
   })
 
+  it('leaves a closed item out on print and tv even when it is also sold out', () => {
+    const snapshot = tiny({
+      sections: [
+        {
+          title: bgen('Нощно', 'Late'),
+          items: [
+            {
+              name: bgen('Шот', 'Shot'),
+              soldOut: true,
+              schedule: {
+                timezone: 'Europe/Sofia',
+                rules: [{ days: [5], from: '22:00', to: '23:00' }],
+              },
+            },
+            { name: bgen('Вода', 'Water') },
+          ],
+        },
+      ],
+    })
+    const context = { locale: 'en_US', now: WEDNESDAY, soldOutDisplay: 'show' } as const
+    const qr = buildViewModel(snapshot, null, { ...context, channel: 'qr' })
+    expect(items(qr).map((item) => item.state.code)).toEqual(['sold_out', 'available'])
+    const print = buildViewModel(snapshot, null, { ...context, channel: 'print' })
+    expect(items(print).map((item) => item.name.text)).toEqual(['Water'])
+  })
+
   it('does not put anything outside the snapshot on the menu', () => {
     const f = fixture('sold-out')
     const view = buildViewModel(f.snapshot, f.overlay, f.context)

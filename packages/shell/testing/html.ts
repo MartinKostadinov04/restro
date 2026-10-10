@@ -58,6 +58,22 @@ function parseAttributes(source: string): Record<string, string> {
   return attrs
 }
 
+/** The index of the `>` that closes the tag opened at `open`, skipping quoted attribute values. */
+function findTagEnd(html: string, open: number): number {
+  let quote: string | null = null
+  for (let i = open + 1; i < html.length; i++) {
+    const char = html[i]
+    if (quote !== null) {
+      if (char === quote) quote = null
+    } else if (char === '"' || char === "'") {
+      quote = char
+    } else if (char === '>') {
+      return i
+    }
+  }
+  return -1
+}
+
 /** Parses markup into a root element holding the top-level nodes. */
 export function parseHtml(html: string): HtmlElement {
   const root: HtmlElement = { tag: '#root', attrs: {}, children: [], parent: null }
@@ -76,7 +92,7 @@ export function parseHtml(html: string): HtmlElement {
       position = end === -1 ? html.length : end + 3
       continue
     }
-    const close = html.indexOf('>', open)
+    const close = findTagEnd(html, open)
     if (close === -1) {
       current.children.push(decodeEntities(html.slice(open)))
       break

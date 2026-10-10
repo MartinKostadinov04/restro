@@ -85,6 +85,12 @@ function laterOpening(a: NextOpening | null, b: NextOpening | null): NextOpening
   return a.order >= b.order ? a : b
 }
 
+/** R1: when the item opens if its own schedule or the menu's keeps it closed now, else null. */
+function closedUntil(env: Env, item: MenuSnapshot['items'][string]): NextOpening | null {
+  const own = scheduleStatus(item.availability.schedule, env.now)
+  return laterOpening(own.open ? null : own.next, env.menuStatus.open ? null : env.menuStatus.next)
+}
+
 /**
  * R5 (with R1): the item's state, and when it can be had if it is scheduled. Precedence, most
  * cautious first: unavailable, sold out (snapshot or overlay), scheduled, available. An overlay
@@ -107,11 +113,7 @@ function itemState(env: Env, id: string, item: MenuSnapshot['items'][string]): V
       schedule: null,
     }
   }
-  const own = scheduleStatus(item.availability.schedule, env.now)
-  const closed = laterOpening(
-    own.open ? null : own.next,
-    env.menuStatus.open ? null : env.menuStatus.next,
-  )
+  const closed = closedUntil(env, item)
   if (closed !== null) {
     const schedule = describeOpening(closed, strings)
     return { code: 'scheduled', label: schedule.text, schedule }
@@ -121,7 +123,6 @@ function itemState(env: Env, id: string, item: MenuSnapshot['items'][string]): V
 
 /** R1/R5: does this state appear on this channel and setting? */
 function shown(env: Env, code: ItemState): boolean {
-  if (code === 'scheduled') return env.interactive
   if (code === 'sold_out') return env.context.soldOutDisplay === 'show'
   return true
 }
@@ -238,6 +239,8 @@ function viewItem(env: Env, id: string): ViewItem | null {
   const name = item === undefined ? null : pickText(item.name, env.chain)
   if (item === undefined || name === null) return null
 
+  // R1 first: outside its schedule an item is left out on print and tv whatever its state.
+  if (!env.interactive && closedUntil(env, item) !== null) return null
   const state = itemState(env, id, item)
   if (!shown(env, state.code)) return null
 
