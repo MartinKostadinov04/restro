@@ -1,0 +1,9 @@
+{
+  "method": "Places_getlist",
+  "params": {},
+  "bid": "1",
+  "recordedAt": "2026-10-10T21:26:00.065Z",
+  "status": 200,
+  "requestId": "1:1162853",
+  "body": "[{\"place_id\":1,\"place_type\":1,\"place_num\":\"0\",\"pos\":null,\"type_name\":\"--\",\"salon_id\":1,\"salon_name\":\"\\u041e\\u0441\\u043d\\u043e\\u0432\\u0435\\u043d\",\"is_public\":0,\"picture\":null,\"description\":null,\"place_article_id\":null,\"persons_opt\":4,\"salon_weight\":null,\"place_name_full\":\"\\u041e\\u0441\\u043d\\u043e\\u0432\\u0435\\u043d - -- 0\"},{\"place_id\":2,\"place_type\":2,\"place_num\":\"1\",\"pos\":\"20,20,40,40\",\"type_name\":\"\\u041c\\u0430\\u0441\\u0430\",\"salon_id\":1,\"salon_name\":\"\\u041e\\u0441\\u043d\\u043e\\u0432\\u0435\\u043d\",\"is_public\":1,\"picture\":null,\"description\":null,\"place_article_id\":null,\"persons_opt\":4,\"salon_weight\":null,\"place_name_full\":\"\\u041e\\u0441\\u043d\\u043e\\u0432\\u0435\\u043d - \\u041c\\u0430\\u0441\\u0430 1\"},{\"place_id\":1397,\"place_type\":1,\"place_num\":\"0\",\"pos\":null,\"type_name\":\"--\",\"salon_id\":145,\"salon_name\":\"\\u041d\\u043e\\u0432 \\u0441\\u0430\\u043b\\u043e\\u043d\",\"is_public\":1,\"picture\":null,\"description\":null,\"place_article_id\":null,\"persons_opt\":4,\"salon_weight\":2,\"place_name_full\":\"\\u041d\\u043e\\u0432 \\u0441\\u0430\\u043b\\u043e\\u043d - -- 0\"}]"
+}
