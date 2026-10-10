@@ -2,7 +2,7 @@
 // change set for apply(). No database, no jobs, no network.
 
 export { parseAllergenText } from './allergens.ts'
-export { mapCatalogue } from './catalogue.ts'
+export { type ArticlePicture, mapCatalogue, readArticlePicture } from './catalogue.ts'
 export { BarsyMappingError, type BarsyMappingErrorCode } from './errors.ts'
 export { mapModificators, mapPlaces, type PlacesContext } from './places.ts'
 export {

@@ -6,6 +6,7 @@
 // What it writes, all in the `barsy` layer with the source record and the mapping version:
 //   section   title, description                                  (master)
 //   item      name, description, visible, allergens               (master)
+//             image: cleared when barsy has no picture; set by the photo job, never here
 //             price, for_sale                                      (venue:<our vn_ id>)
 //   group     name, min, max                                      (master)
 //   option    name (master), price_delta                          (venue)
@@ -209,22 +210,65 @@ function provided(...values: unknown[]): boolean {
   return values.some((value) => value !== undefined)
 }
 
-function pictureRequest(run: Run, article: Article, externalId: string): void {
-  const picture = article.picture?.trim() ?? ''
-  if (picture === '') return
+/** What an article says about its picture. */
+export type ArticlePicture =
+  /** The response did not carry `picture` at all (not asked for): it says nothing. */
+  | { readonly kind: 'absent' }
+  /** `picture` is null or blank: the article has none. */
+  | { readonly kind: 'none' }
+  /** There is a picture, but its address is not a usable https URL. */
+  | { readonly kind: 'invalid'; readonly pictureName: string }
+  | { readonly kind: 'picture'; readonly pictureName: string; readonly url: string }
+
+/**
+ * Reads the picture of an article (or of a stored article record): the file name is `picture`, the
+ * address is `picture_url`, or `picture` itself when that is a full URL. The mapper and the photo
+ * job both call this, so the job can tell whether the address it was queued with is still the
+ * article's current one.
+ */
+export function readArticlePicture(article: {
+  readonly picture?: string | null | undefined
+  readonly picture_url?: string | null | undefined
+}): ArticlePicture {
+  if (!provided(article.picture)) return { kind: 'absent' }
+  const pictureName = article.picture?.trim() ?? ''
+  if (pictureName === '') return { kind: 'none' }
   const candidate =
-    (article.picture_url?.trim() ?? '') !== '' ? (article.picture_url ?? '').trim() : picture
+    (article.picture_url?.trim() ?? '') !== '' ? (article.picture_url ?? '').trim() : pictureName
   let url: URL | null = null
   try {
     url = new URL(candidate)
   } catch {
     url = null
   }
-  if (url === null || url.protocol !== 'https:') {
-    warn(run, 'picture_url_invalid', 'article', externalId)
-    return
+  if (url === null || url.protocol !== 'https:') return { kind: 'invalid', pictureName }
+  return { kind: 'picture', pictureName, url: url.href }
+}
+
+/**
+ * A picture barsy holds is asked for (the fetch job downloads it); a picture barsy no longer holds
+ * clears the item's barsy image, so a removed picture does not stay in the menu. A manual photo
+ * still wins by the field's combinator, which this does not touch. A response without `picture`
+ * says nothing.
+ */
+function pictureRequest(run: Run, link: SourceLink, article: Article, externalId: string): void {
+  const picture = readArticlePicture(article)
+  switch (picture.kind) {
+    case 'absent':
+      return
+    case 'none':
+      clear(run, link, 'image', 'master')
+      return
+    case 'invalid':
+      warn(run, 'picture_url_invalid', 'article', externalId)
+      return
+    case 'picture':
+      run.assetRequests.push({
+        articleExternalId: externalId,
+        pictureName: picture.pictureName,
+        url: picture.url,
+      })
   }
-  run.assetRequests.push({ articleExternalId: externalId, pictureName: picture, url: url.href })
 }
 
 function mapItemFields(run: Run, item: ItemPlan, allergenKey: string | null): void {
@@ -464,7 +508,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
   for (const item of items) {
     createAndLink(run, 'item', item.link, null, ['article', item.externalId])
     mapItemFields(run, item, allergenKey.key)
-    pictureRequest(run, item.article, item.externalId)
+    pictureRequest(run, item.link, item.article, item.externalId)
   }
 
   // Placements: sections in tree order, items by id within a section ("barsy's own order": the

@@ -48,6 +48,7 @@ export {
 export type { DecimalString } from './json.ts'
 export { asDecimalString, hasJsonSourceAccess, isDecimalText, parseBarsyJson } from './json.ts'
 export type {
+  ArticlePicture,
   AssetRequest,
   BarsyMappingErrorCode,
   CatalogueCounts,
@@ -71,6 +72,7 @@ export {
   mapModificators,
   mapPlaces,
   parseAllergenText,
+  readArticlePicture,
 } from './mapping/index.ts'
 export type {
   BarsyArticlesPage,

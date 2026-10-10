@@ -9,7 +9,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import type { Article } from '../read/schemas.ts'
-import { mapCatalogue } from './catalogue.ts'
+import { mapCatalogue, readArticlePicture } from './catalogue.ts'
 import { BarsyMappingError } from './errors.ts'
 import {
   article,
@@ -260,6 +260,9 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
       'https://imagedelivery.net/MJtvjX9fb_fA1fd2F8b4_A/8d4a03c5-1097-4ab7-b6d0-cbdf4bf1b500/public',
     )
     expect(requests.has('40')).toBe(false) // no picture
+    // Article 40 has none, so its barsy image is cleared; an article with a picture is not.
+    expect(writeOf(result, 'article', '40', 'image')?.op).toBe('clearField')
+    expect(writeOf(result, 'article', '11', 'image')).toBeUndefined()
     // A picture URL is never written into a field.
     expect(JSON.stringify(opsOf(result))).not.toContain('files_get')
   })
@@ -472,6 +475,89 @@ describe('articles', () => {
     )
     expect(result.assetRequests).toHaveLength(0)
     expect(warningCodes(result)).toContain('picture_url_invalid')
+  })
+
+  describe('the picture of an article', () => {
+    const mapPicture = (overrides: Partial<Article>) =>
+      mapCatalogue(input({ tree, articles: [article(1, overrides)] }), cfg)
+    const imageOp = (result: CatalogueMapping) => writeOf(result, 'article', '1', 'image')
+
+    it.each([
+      ['null', null],
+      ['an empty string', ''],
+      ['blank', '   '],
+    ])(
+      'removed in barsy (picture is %s): clears the barsy image, requests nothing',
+      (_name, picture) => {
+        const result = mapPicture({ picture, picture_url: '' })
+        expect(imageOp(result)).toStrictEqual({
+          op: 'clearField',
+          node: { link: { integration: INTEGRATION_ID, externalType: 'article', externalId: '1' } },
+          fieldKey: 'image',
+          layer: 'barsy',
+          scope: 'master',
+        })
+        expect(result.assetRequests).toHaveLength(0)
+        // The clear comes after the node is created and linked.
+        const ops = opsOf(result)
+        expect(
+          ops.findIndex((op) => op.op === 'clearField' && op.fieldKey === 'image'),
+        ).toBeGreaterThan(ops.findIndex((op) => op.op === 'linkSource'))
+      },
+    )
+
+    it('not part of the response (the property was not asked for): writes nothing for the image', () => {
+      const result = mapPicture({ picture: undefined, picture_url: undefined })
+      expect(imageOp(result)).toBeUndefined()
+      expect(result.assetRequests).toHaveLength(0)
+    })
+
+    it('still there: asks for the photo as before and does not clear the image', () => {
+      const result = mapPicture({
+        picture: 'a.png',
+        picture_url: 'https://club.example/files?file=a.png',
+      })
+      expect(imageOp(result)).toBeUndefined()
+      expect(result.assetRequests).toStrictEqual([
+        {
+          articleExternalId: '1',
+          pictureName: 'a.png',
+          url: 'https://club.example/files?file=a.png',
+        },
+      ])
+    })
+
+    it('an address that cannot be used is a warning, not a removal: the image stays', () => {
+      const result = mapPicture({ picture: 'a.png', picture_url: 'http://insecure.example/a.png' })
+      expect(imageOp(result)).toBeUndefined()
+      expect(warningCodes(result)).toContain('picture_url_invalid')
+    })
+  })
+})
+
+describe('readArticlePicture', () => {
+  it('reads the file name and the address the way the mapper does', () => {
+    expect(
+      readArticlePicture({ picture: ' a.png ', picture_url: ' https://x.example/a.png ' }),
+    ).toStrictEqual({
+      kind: 'picture',
+      pictureName: 'a.png',
+      url: 'https://x.example/a.png',
+    })
+    // `picture` alone, when it is a full address.
+    expect(
+      readArticlePicture({ picture: 'https://x.example/b.png', picture_url: null }),
+    ).toMatchObject({
+      kind: 'picture',
+      url: 'https://x.example/b.png',
+    })
+    expect(readArticlePicture({ picture: 'b.png', picture_url: '' })).toStrictEqual({
+      kind: 'invalid',
+      pictureName: 'b.png',
+    })
+    expect(readArticlePicture({ picture: null })).toStrictEqual({ kind: 'none' })
+    expect(readArticlePicture({ picture: '  ' })).toStrictEqual({ kind: 'none' })
+    expect(readArticlePicture({})).toStrictEqual({ kind: 'absent' })
   })
 })
 
