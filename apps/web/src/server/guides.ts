@@ -21,9 +21,15 @@ export async function loadGuide(
   cwd: string = process.cwd(),
 ): Promise<string | null> {
   const file = GUIDES[name]
-  for (const base of [path.resolve(cwd, '../../docs/guides'), path.resolve(cwd, 'docs/guides')]) {
+  // The folder is looked for at run time, next to where the server runs; the bundler must not try
+  // to trace it into the build (`turbopackIgnore`).
+  const folders = [
+    path.resolve(/*turbopackIgnore: true*/ cwd, '../../docs/guides'),
+    path.resolve(/*turbopackIgnore: true*/ cwd, 'docs/guides'),
+  ]
+  for (const base of folders) {
     try {
-      return await readFile(path.join(base, file), 'utf8')
+      return await readFile(path.join(/*turbopackIgnore: true*/ base, file), 'utf8')
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
