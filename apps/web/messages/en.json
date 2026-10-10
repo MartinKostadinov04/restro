@@ -506,10 +506,6 @@
       "title": "Tables & QR codes",
       "description": "Every table from barsy gets its own QR code here, ready to print."
     },
-    "publishing": {
-      "title": "Publishing",
-      "description": "Publish the menu to guests' phones and see what is live."
-    },
     "settings": {
       "title": "Venue settings",
       "description": "How this venue keeps time, which languages and which currency it uses.",
@@ -521,6 +517,175 @@
       "defaultLanguage": "default",
       "currency": "Currency",
       "readOnly": "These settings are read-only for now. Editing them arrives with the composer."
+    }
+  },
+  "publish": {
+    "readOnly": "You can see what is published. Only an owner or admin can publish, approve a held publish or return to an earlier version.",
+    "noMenu": {
+      "title": "No menu to publish yet",
+      "description": "Add items in the composer, or connect barsy, and the menu can be published from here."
+    },
+    "actor": {
+      "sync": "barsy sync",
+      "system": "the system",
+      "person": "a team member"
+    },
+    "live": {
+      "title": "On guests' phones now",
+      "description": "What guests see when they scan a table code or open the menu link.",
+      "version": "Version {version}",
+      "badge": "Live",
+      "reason": {
+        "manual": "Published by hand",
+        "auto_sync": "Published automatically after a sync"
+      },
+      "meta": "{reason}, {when}, by {who}",
+      "returned": "Returned to this version on {when} by {who}.",
+      "open": "Open the guest page",
+      "nothingTitle": "Nothing published yet",
+      "nothingText": "Guests see nothing until you publish. {count, plural, one {# item is ready.} other {# items are ready.}}",
+      "nothingTextPlain": "Guests see nothing until you publish."
+    },
+    "changes": {
+      "title": "Changes waiting",
+      "description": "What would change on guests' phones if you published now.",
+      "upToDate": "Up to date",
+      "upToDateText": "The live menu is the same as the draft.",
+      "allNew": "Everything is new: {count, plural, one {# item} other {# items}} will go live with the first publish.",
+      "waiting": "{count, plural, one {# change waiting} other {# changes waiting}}",
+      "minor": "Small changes waiting",
+      "minorText": "The live menu differs from the draft in small details.",
+      "show": "Show the changes",
+      "hide": "Hide the changes",
+      "summary": {
+        "added": "{count} added",
+        "hidden": "{count} hidden or removed",
+        "prices": "{count} with a new price",
+        "renamed": "{count} renamed",
+        "other": "{count} changed in other ways",
+        "areas": "{count, plural, one {# change outside the items} other {# changes outside the items}}"
+      },
+      "lists": {
+        "added": "Added to the menu",
+        "hidden": "Hidden or removed from the menu",
+        "prices": "New prices",
+        "renamed": "New names",
+        "other": "Other changes (text, photo, allergens, choices)",
+        "areas": "Outside the items"
+      },
+      "areas": {
+        "look": "The look of the menu (colours, logo)",
+        "sections": "Sections and their order",
+        "menu": "The menu's title or introduction",
+        "languages": "Languages or currency",
+        "tags": "Tags"
+      },
+      "arrow": "{from} → {to}",
+      "noPrice": "no price",
+      "unnamed": "(no name)",
+      "blocked": {
+        "title": "The menu cannot be published yet",
+        "text": "Something blocks the whole menu, such as a missing language. Check the composer."
+      },
+      "nothingVisible": {
+        "title": "Nothing visible to publish",
+        "text": "Every item is hidden. Show at least one item in the composer, then publish."
+      },
+      "unavailable": {
+        "title": "The draft could not be prepared",
+        "text": "Reload the page to try again."
+      }
+    },
+    "stale": {
+      "title": "Overrides to review",
+      "text": "These items have your own value over barsy's, and barsy has changed since. Check them before you publish.",
+      "open": "Open {name}"
+    },
+    "publish": "Publish",
+    "publishing": "Publishing…",
+    "preview": "Preview",
+    "dismiss": "Dismiss",
+    "updatingFiles": "Updating what guests see…",
+    "nothingToPublish": "Nothing to publish",
+    "outcome": {
+      "published": "Version {version} is live",
+      "publishedText": "Guests see it now.",
+      "unchanged": "Nothing new to publish: the menu is already version {version}.",
+      "no_visible_items": "Nothing visible to publish",
+      "menu_blocked": "The menu cannot be published yet. Check the composer.",
+      "held_outdated": "The menu has changed since this publish was held, so it cannot be approved any more. Publish the menu as it is now instead.",
+      "held_not_found": "This held publish was already decided.",
+      "unsafe_snapshot": "The draft was refused by the safety check. Nothing was published.",
+      "other": "The publish was refused. Nothing was published.",
+      "failed": "The publish did not work. Nothing was published; try again.",
+      "slow": "The publisher has not answered yet. It may be busy; this page updates by itself."
+    },
+    "errors": {
+      "invalid": "That request was not understood. Reload the page and try again.",
+      "not_found": "This venue was not found.",
+      "not_allowed": "Only an owner or admin can do that.",
+      "no_menu": "This venue has no menu yet.",
+      "nothing_published": "Nothing has been published yet.",
+      "not_restorable": "That version cannot be returned to.",
+      "held_not_found": "This held publish was already decided. The page is up to date.",
+      "queue_unavailable": "The publisher is not reachable right now. Nothing was published; try again in a moment.",
+      "failed": "That did not work. Nothing was changed; try again."
+    },
+    "held": {
+      "title": "An automatic publish was held: it would hide {hidden} of {total} items ({percent}%)",
+      "text": "A sync wanted to take more than 30% of the menu off guests' phones, which is above the safety limit. Check that this is right before you approve it.",
+      "names": "Would be hidden",
+      "more": "and {count} more",
+      "approve": "Approve and publish",
+      "reject": "Reject",
+      "outdatedText": "The menu has changed since this publish was held, so it can no longer be approved. Reject it, or publish the menu as it is now.",
+      "publishNow": "Publish the menu as it is now"
+    },
+    "paused": {
+      "title": "Automatic publishing is paused because you returned to an older version. Publish to resume.",
+      "text": "Until then, changes from barsy wait in the draft and guests keep seeing the version above."
+    },
+    "history": {
+      "title": "Versions",
+      "description": "Every publish and every return to an earlier version, newest first.",
+      "empty": "Nothing has been published yet.",
+      "version": "Version {version}",
+      "live": "Live",
+      "held": "Held",
+      "rejected": "Rejected",
+      "superseded": "Replaced by a later publish",
+      "first": "First version",
+      "noChange": "No visible change",
+      "heldText": "Would have hidden {hidden} of {total} items",
+      "returnedTo": "Returned to version {version}",
+      "returnedToUnknown": "Returned to an earlier version",
+      "return": "Return to this version",
+      "more": "Show older versions",
+      "loading": "Loading…",
+      "loadFailed": "Older versions could not be loaded. Try again.",
+      "listLabel": "Version history"
+    },
+    "confirm": {
+      "title": "Return to version {version}?",
+      "description": "Guests will see version {version} again. Changes made since then stay in the composer but are not published. Automatic publishing is paused until you publish.",
+      "cancel": "Cancel",
+      "confirm": "Return to version {version}",
+      "working": "Returning…"
+    },
+    "returned": "Returned to version {version}.",
+    "previewDialog": {
+      "title": "Preview of the draft",
+      "description": "How the menu would look on a guest's phone if you published now. Nothing is published.",
+      "loading": "Building the preview…",
+      "failed": "The preview could not be built. Try again.",
+      "retry": "Try again",
+      "nothing_visible": "Nothing visible to publish, so there is nothing to preview.",
+      "blocked": "The menu cannot be published yet, so there is nothing to preview.",
+      "no_menu": "This venue has no menu yet.",
+      "scheme": "Screen colours",
+      "light": "Light",
+      "dark": "Dark",
+      "frame": "Phone preview of the draft"
     }
   },
   "integration": {

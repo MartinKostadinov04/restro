@@ -43,6 +43,7 @@ import {
   rejectHeldPublish,
   rollback,
 } from './service'
+import { isLiveEntry, isReturnable } from './view'
 
 describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -240,15 +241,11 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       if (after.draft.state !== 'ready') throw new Error('the draft should be ready')
       expect(after.draft.changes).toMatchObject({ total: 0, identical: true, added: [] })
       expect(after.history.entries).toMatchObject([
-        {
-          version: 1,
-          live: true,
-          first: true,
-          counts: null,
-          restorable: false,
-          status: 'published',
-        },
+        { version: 1, first: true, counts: null, status: 'published' },
       ])
+      const [only] = after.history.entries
+      expect(only && isLiveEntry(only, after.live?.version ?? null)).toBe(true)
+      expect(only && isReturnable(only, after.live?.version ?? null)).toBe(false)
     })
 
     it('counts a price change as one change waiting, and a publish clears it', async () => {
@@ -269,8 +266,13 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         reason: 'auto_sync',
         actor: { kind: 'sync' },
       })
+      const liveVersion = done.live?.version ?? null
       expect(
-        done.history.entries.map((entry) => [entry.version, entry.live, entry.restorable]),
+        done.history.entries.map((entry) => [
+          entry.version,
+          isLiveEntry(entry, liveVersion),
+          isReturnable(entry, liveVersion),
+        ]),
       ).toEqual([
         [2, true, false],
         [1, false, true],
@@ -282,6 +284,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         priceChanged: 1,
         renamed: 0,
         otherChanged: 0,
+        areas: 0,
       })
     })
   })
@@ -309,12 +312,13 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       // The draft is still the newer menu: the price change waits.
       if (after.draft.state !== 'ready') throw new Error('the draft should be ready')
       expect(after.draft.changes.total).toBe(1)
+      const liveVersion = after.live?.version ?? null
       expect(
         after.history.entries.map((entry) => [
           entry.version,
           entry.reason,
-          entry.live,
-          entry.restorable,
+          isLiveEntry(entry, liveVersion),
+          isReturnable(entry, liveVersion),
         ]),
       ).toEqual([
         [3, 'rollback', false, false],
@@ -460,8 +464,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(result.history.entries[0]).toMatchObject({
         status: 'held',
         held: { hidden: 3, previouslyVisible: 5 },
-        restorable: false,
       })
+      const [heldEntry] = result.history.entries
+      expect(heldEntry && isReturnable(heldEntry, result.live?.version ?? null)).toBe(false)
     })
 
     it('goes out of date when the menu moves on', async () => {
@@ -677,22 +682,16 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         })
       }
       const scopeMany = viewScope({ venue: { id: many, slug: 'many', timezone: 'Europe/Sofia' } })
-      const live = await loadCurrentSnapshot(app, tenant, { menuId: manyMenu.id, venueId: many })
-      const first = await loadHistoryPage(
-        scopeMany,
-        manyMenu.id,
-        { liveId: live?.id ?? null },
-        deps,
-      )
+      const first = await loadHistoryPage(scopeMany, manyMenu.id, {}, deps)
       expect(first.entries).toHaveLength(20)
       expect(first.entries[0]?.version).toBe(23)
-      expect(first.entries[0]).toMatchObject({ live: true, counts: { total: 1, priceChanged: 1 } })
+      expect(first.entries[0]).toMatchObject({ counts: { total: 1, priceChanged: 1 } })
       expect(first.nextBeforeVersion).toBe(4)
 
       const second = await loadHistoryPage(
         scopeMany,
         manyMenu.id,
-        { liveId: live?.id ?? null, beforeVersion: first.nextBeforeVersion ?? 0 },
+        { beforeVersion: first.nextBeforeVersion ?? 0 },
         deps,
       )
       expect(second.entries.map((entry) => entry.version)).toEqual([3, 2, 1])

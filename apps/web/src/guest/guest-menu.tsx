@@ -36,7 +36,7 @@ const LIVE_EVERY_MS = 15_000
 const CLOCK_EVERY_MS = 60_000
 
 /** The font stacks of fonts this app serves itself (next/font in the root layout). */
-const FONT_STACKS = { Inter: 'var(--font-inter), "Inter", system-ui, sans-serif' } as const
+export const FONT_STACKS = { Inter: 'var(--font-inter), "Inter", system-ui, sans-serif' } as const
 
 /** Runs `callback` every `ms` while the page is visible, and once when it becomes visible again. */
 function useVisibleInterval(callback: () => void, ms: number, enabled: boolean): void {

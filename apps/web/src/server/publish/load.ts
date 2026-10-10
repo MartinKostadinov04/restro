@@ -251,6 +251,7 @@ const countsOf = (before: MenuSnapshot, after: MenuSnapshot): VersionCounts => {
     priceChanged: diff.priceChanged.length,
     renamed: diff.renamed.length,
     otherChanged: diff.otherChanged.length,
+    areas: diff.areas.length,
   }
 }
 
@@ -265,7 +266,7 @@ const hasBody = (row: { status: string; reason: string }) =>
 export async function loadHistoryPage(
   scope: ViewScope,
   menuId: NodeId,
-  options: { readonly liveId: string | null; readonly beforeVersion?: number },
+  options: { readonly beforeVersion?: number } = {},
   deps: ViewDeps = {},
 ): Promise<HistoryPage> {
   const target = { menuId, venueId: scope.venue.id }
@@ -353,7 +354,6 @@ export async function loadHistoryPage(
       if (previousId === undefined) first = true
       else if (body !== undefined && previous !== undefined) counts = countsOf(previous, body)
     }
-    const live = record.id === options.liveId
     const held = record.heldReason
     return {
       id: record.id,
@@ -369,8 +369,6 @@ export async function loadHistoryPage(
       held: held ? { hidden: held.hidden, previouslyVisible: held.previously_visible } : null,
       counts,
       first,
-      live,
-      restorable: hasBody(record) && !live,
     }
   })
   return { entries, nextBeforeVersion: page.nextBeforeVersion }
@@ -514,7 +512,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
   const [outcome, heldRows, history, paused, busy, lastRun, live] = await Promise.all([
     buildDraft(scope, menuId, deps),
     loadHeldRows(scope.pool, scope.tenantId, target),
-    loadHistoryPage(scope, menuId, { liveId: current?.id ?? null }, deps),
+    loadHistoryPage(scope, menuId, {}, deps),
     readPaused(scope.pool, scope.tenantId, scope.venue.id),
     readBusy(scope.pool, scope.tenantId, menuId),
     readLastRun(scope.pool, scope.tenantId),

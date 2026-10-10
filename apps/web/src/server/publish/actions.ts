@@ -5,7 +5,6 @@
 // organisation, never the request's), that the venue is theirs and that their role may publish,
 // validates the input with Zod, and calls the service. The Publish tab is built on them.
 import { idSchema } from '@restro/core'
-import { loadCurrentSnapshot } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -141,19 +140,7 @@ export async function loadHistoryPageAction(
         venue: { id: scope.venueId, slug, timezone },
         canPublish: scope.canPublish,
       }
-      // The live version is the one the tab already shows; older pages never contain it unless
-      // it is old, and then the marker is on the right row.
-      const current = await loadCurrentSnapshot(scope.pool, scope.tenantId, {
-        menuId,
-        venueId: scope.venueId,
-      })
-      return {
-        ok: true,
-        page: await loadHistoryPage(view, menuId, {
-          liveId: current?.id ?? null,
-          beforeVersion: before.data,
-        }),
-      }
+      return { ok: true, page: await loadHistoryPage(view, menuId, { beforeVersion: before.data }) }
     },
     (): HistoryPageResult => ({ ok: false }),
   )

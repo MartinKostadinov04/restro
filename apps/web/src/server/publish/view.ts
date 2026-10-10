@@ -99,6 +99,8 @@ export interface VersionCounts {
   readonly priceChanged: number
   readonly renamed: number
   readonly otherChanged: number
+  /** Parts outside the items that changed (the look, the sections, the texts). */
+  readonly areas: number
 }
 
 export interface VersionEntry {
@@ -118,10 +120,22 @@ export interface VersionEntry {
   readonly counts: VersionCounts | null
   /** The first version has nothing before it to compare with. */
   readonly first: boolean
-  /** It is the version on guests' phones. */
-  readonly live: boolean
-  /** "Return to this version" is offered. */
-  readonly restorable: boolean
+}
+
+/**
+ * Whether this entry is the version on guests' phones. The pointer never names a return row, and
+ * version numbers are unique, so the number says it. Worked out from the live version (not stored
+ * in the entry) so that older pages, loaded earlier, follow a return made since.
+ */
+export function isLiveEntry(entry: VersionEntry, liveVersion: number | null): boolean {
+  return liveVersion !== null && entry.reason !== 'rollback' && entry.version === liveVersion
+}
+
+/** "Return to this version" is offered for a published version with a body that is not live. */
+export function isReturnable(entry: VersionEntry, liveVersion: number | null): boolean {
+  return (
+    entry.status === 'published' && entry.reason !== 'rollback' && !isLiveEntry(entry, liveVersion)
+  )
 }
 
 export interface HistoryPage {
