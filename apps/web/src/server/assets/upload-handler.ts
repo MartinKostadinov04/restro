@@ -86,6 +86,11 @@ export interface UploadDependencies {
   readonly tenantId: () => Promise<string | null>
   readonly pool: DbPool
   readonly store: () => Promise<AssetStore>
+  /**
+   * Queues the `asset-variants` job for a new photo (brief S3-01b). A failure is logged and does
+   * not fail the upload: the backfill command makes variants for any photo that has none.
+   */
+  readonly queueVariants?: (tenantId: string, assetId: string) => Promise<unknown>
 }
 
 /** Handles `POST` of a multipart form with one image in the field `file`. */
@@ -118,6 +123,11 @@ export async function handleUpload(request: Request, deps: UploadDependencies): 
       store: await deps.store(),
       bytes: new Uint8Array(await file.arrayBuffer()),
     })
+    try {
+      await deps.queueVariants?.(tenantId, stored.assetId)
+    } catch (error) {
+      logError('asset_variants_not_queued', error)
+    }
     return Response.json(stored, { status: 201 })
   } catch (error) {
     if (error instanceof UploadError) return failure(error.code)

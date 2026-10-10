@@ -23,7 +23,11 @@ const QUEUE_SCHEMA = 'pgboss'
 
 /** The one method of pg-boss the producer uses; tests pass a fake. */
 export interface JobSender {
-  send(name: string, data: object, options: { singletonKey: string }): Promise<string | null>
+  send(
+    name: string,
+    data: object,
+    options: { singletonKey: string; startAfter?: number },
+  ): Promise<string | null>
 }
 
 interface Producer {
@@ -73,7 +77,11 @@ export async function enqueueJob<N extends ProducedJobName>(
 ): Promise<string | null> {
   const prepared = prepareJob(name, data)
   const target: JobSender = sender ?? (await startedBoss())
-  return target.send(name, prepared.data, { singletonKey: prepared.singletonKey })
+  return target.send(name, prepared.data, {
+    singletonKey: prepared.singletonKey,
+    // An automatic publish waits out its merge window (core/jobs.ts); every other job starts at once.
+    ...(prepared.startAfter === undefined ? {} : { startAfter: prepared.startAfter }),
+  })
 }
 
 /** Closes the producer's connection (tests and shutdown hooks). */

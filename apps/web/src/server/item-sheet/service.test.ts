@@ -41,6 +41,9 @@ class MemoryStore implements AssetStore {
   async getUrl(key: string, ttl: number) {
     return `memory://${key}?ttl=${ttl}`
   }
+  async get(key: string) {
+    return this.objects.get(key) ?? null
+  }
 }
 
 const eur = (amountMinor: number) => ({ amount_minor: amountMinor, currency: 'EUR' })

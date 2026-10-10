@@ -36,6 +36,18 @@ describe('enqueueJob', () => {
     ])
   })
 
+  it('sends an automatic publish with its merge delay and its own key, a manual one at once', async () => {
+    const { sent, sender } = recorder()
+    const menuId = newId('nd')
+    const payload = { tenantId, menuId, venueId, actor: 'system' } as const
+    await enqueueJob(JOB_NAMES.publishMenu, { ...payload, reason: 'auto_sync' }, sender)
+    await enqueueJob(JOB_NAMES.publishMenu, { ...payload, reason: 'manual' }, sender)
+    expect(sent.map((call) => call.options)).toEqual([
+      { singletonKey: `${menuId}:${venueId}:auto`, startAfter: 30 },
+      { singletonKey: `${menuId}:${venueId}:manual:new` },
+    ])
+  })
+
   it('reports a job that is already queued or running as null', async () => {
     const { sender } = recorder(null)
     expect(await enqueueJob(JOB_NAMES.barsyConnect, { tenantId, integrationId }, sender)).toBeNull()
