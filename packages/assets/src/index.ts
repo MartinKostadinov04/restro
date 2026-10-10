@@ -6,6 +6,7 @@
 export * from './config'
 export * from './create-publish-store'
 export * from './create-store'
+export * from './guest-files'
 export * from './inspect-image'
 export * from './keys'
 export { LocalAssetStore } from './local-store'

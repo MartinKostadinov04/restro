@@ -14,7 +14,9 @@ import {
   publishContentType,
   publishPutOptions,
   snapshotPath,
+  tableTokenPath,
   variantPath,
+  venueIndexPath,
 } from './publish-paths'
 import { LocalPublishStore } from './publish-store'
 
@@ -25,7 +27,45 @@ const as = newId('as')
 const BYTES = Uint8Array.from([1, 2, 3])
 
 describe('publish paths', () => {
-  it('knows the four shapes and nothing else', () => {
+  it('knows the slug index and the table token shapes (S3-03)', () => {
+    expect(parsePublishPath(venueIndexPath('demo-club'))).toEqual({
+      kind: 'venue_index',
+      slug: 'demo-club',
+    })
+    expect(parsePublishPath(tableTokenPath('tb_0123456789ABCDEFGHIJKL'))).toEqual({
+      kind: 'table_token',
+      token: 'tb_0123456789ABCDEFGHIJKL',
+    })
+    expect(publishCacheControl(venueIndexPath('demo-club'))).toBe('public, max-age=30')
+    expect(publishCacheControl(tableTokenPath('abcdefgh'))).toBe('public, max-age=30')
+    expect(publishContentType(venueIndexPath('demo-club'))).toBe('application/json')
+  })
+
+  it.each([
+    'v/.json',
+    'v/Demo-Club.json',
+    'v/demo_club.json',
+    'v/-demo.json',
+    'v/demo-.json',
+    'v/demo--club.json',
+    `v/${'a'.repeat(64)}.json`,
+    'v/demo-club.json/x',
+    'v/demo-club.JSON',
+    'v/demo/club.json',
+    'v/../snap.json',
+    't/short.json',
+    't/with.dot12345.json',
+    't/with space 12345.json',
+    `t/${'a'.repeat(129)}.json`,
+    't/abcdefgh.json.tmp',
+    't/../abcdefgh.json',
+    't/abcdefgh',
+    'x/demo-club.json',
+  ])('refuses the index or token path %j', (value) => {
+    expect(parsePublishPath(value)).toBeNull()
+  })
+
+  it('knows the four original shapes and nothing else', () => {
     expect(parsePublishPath(snapshotPath(sn))).toEqual({ kind: 'snapshot', snapshotId: sn })
     expect(parsePublishPath(currentPath(nd, vn))).toEqual({
       kind: 'current',
