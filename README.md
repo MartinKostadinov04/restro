@@ -50,7 +50,7 @@ Before a pull request: `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm t
 ## The worker
 `apps/worker` is the always-on process every background job runs in: pg-boss 12 on our own Postgres, started as the app role `restro_app`. On start it checks the database role (it refuses a superuser or the table owner), lets pg-boss install its tables in schema `pgboss` (the migration owner creates the schema; the app role may only use and create in it), registers the jobs, and serves `GET /health`. Besides the heartbeat job `worker-heartbeat` (every minute it upserts this process's row in `restro.worker_heartbeats`), it runs the barsy sync jobs: the connection check (`barsy-connect`), the full and incremental menu pulls (`barsy-full-pull`, `barsy-incremental`) and the photo fetch (`asset-fetch`). The sync jobs register only when the worker holds both sealing keys.
 
-Run it against the local database (once: `pnpm db:local` in one terminal, then `pnpm db:migrate && pnpm db:roles` with the owner variables from `.env.example` exported; the worker never reads `.env` files itself):
+Run it against the local database (once: `pnpm db:local` in one terminal, then `pnpm db:migrate && pnpm db:roles` with the owner variables from `.env.example` exported; outside its `dev` script the worker never reads `.env` files itself):
 
 ```
 export DATABASE_URL=postgres://restro_app:local-only-not-a-secret@localhost:54329/restro   # PowerShell: $env:DATABASE_URL='...'
