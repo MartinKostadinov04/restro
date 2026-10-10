@@ -12,7 +12,7 @@
 // One SQL statement, so the whole document comes from one snapshot of the database even while a
 // change set commits.
 
-import { type DbPool, withTenant } from '@restro/db'
+import { type DbPool, type ReadTx, withTenant } from '@restro/db'
 import { sql } from 'drizzle-orm'
 
 import type { MenuDocument } from '../document/types'
@@ -43,8 +43,18 @@ export async function loadMenuDocument(
   if (!isId('nd', menuId)) {
     throw new ApplyError('menu_not_found', 'a menu id is the nd_ id of its root node')
   }
-  const result = await withTenant(pool, tenantId, (tx) =>
-    tx.execute<Record<keyof DocumentRow, unknown>>(sql`
+  return withTenant(pool, tenantId, (tx) => readMenuDocument(tx, menuId))
+}
+
+/**
+ * `loadMenuDocument` inside a transaction the caller holds (the publisher reads the document in
+ * its own write transaction, under its lock). Same errors.
+ */
+export async function readMenuDocument(tx: ReadTx, menuId: string): Promise<MenuDocument> {
+  if (!isId('nd', menuId)) {
+    throw new ApplyError('menu_not_found', 'a menu id is the nd_ id of its root node')
+  }
+  const result = await tx.execute<Record<keyof DocumentRow, unknown>>(sql`
       with recursive
       menu as (
         select id, venue_id, template_key, template_version, root_node_id
@@ -96,8 +106,7 @@ export async function loadMenuDocument(
           from restro.source_links l
           join restro.integrations i on i.id = l.integration_id
           where l.node_id in (select id from reach)
-        ), '[]'::json) as links`),
-  )
+        ), '[]'::json) as links`)
   const row = result.rows[0] as DocumentRow | undefined
   if (!row?.menu) throw new ApplyError('menu_not_found', `this tenant has no menu ${menuId}`)
   const { menu } = row
