@@ -1,0 +1,2378 @@
+{
+  "schema": "menu-snapshot/1",
+  "snapshot": {
+    "id": "sn_0EFCv5fl8asTI26Fw6OesL",
+    "version": 1,
+    "hash": "4b140605319a873514f271166b0aad0bd16e9f0dfa33af212f28c594448f548a",
+    "published_at": "2026-10-10T14:54:23+03:00",
+    "menu_id": "nd_1xPsqv2Ze4m2BosZHaBkxS",
+    "venue_id": "vn_6mGcMAe3Sx33yAZhuoUwFs",
+    "edition": [
+      "master",
+      "venue:vn_6mGcMAe3Sx33yAZhuoUwFs",
+      "service:2026-10-10"
+    ]
+  },
+  "locales": {
+    "default": "bg_BG",
+    "available": [
+      "bg_BG",
+      "en_US"
+    ]
+  },
+  "currency": "EUR",
+  "theme": {
+    "palette": [
+      "#f8f8f9",
+      "#efeff1",
+      "#dcdce0",
+      "#bdbdc4",
+      "#9a9aa3",
+      "#7c7c86",
+      "#63636c",
+      "#505058",
+      "#3f3f46",
+      "#27272a",
+      "#18181b"
+    ],
+    "font": "Inter",
+    "radius": 8,
+    "shadow": 1,
+    "logo": null
+  },
+  "assets": {
+    "as_05SCyIIS43byD7Lw3bAZKu": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_05SCyIIS43byD7Lw3bAZKu/w320.webp",
+        "card": "/a/as_05SCyIIS43byD7Lw3bAZKu/w640.webp",
+        "full": "/a/as_05SCyIIS43byD7Lw3bAZKu/w1280.webp"
+      }
+    },
+    "as_05qEshwOIvDhZn0RpvFvMb": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_05qEshwOIvDhZn0RpvFvMb/w320.webp",
+        "card": "/a/as_05qEshwOIvDhZn0RpvFvMb/w640.webp",
+        "full": "/a/as_05qEshwOIvDhZn0RpvFvMb/w1280.webp"
+      }
+    },
+    "as_0GK93xARwdLk9q4DMwyQxj": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_0GK93xARwdLk9q4DMwyQxj/w320.webp",
+        "card": "/a/as_0GK93xARwdLk9q4DMwyQxj/w640.webp",
+        "full": "/a/as_0GK93xARwdLk9q4DMwyQxj/w1280.webp"
+      }
+    },
+    "as_0JYkJRwEkMIui7vOtipseA": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_0JYkJRwEkMIui7vOtipseA/w320.webp",
+        "card": "/a/as_0JYkJRwEkMIui7vOtipseA/w640.webp",
+        "full": "/a/as_0JYkJRwEkMIui7vOtipseA/w1280.webp"
+      }
+    },
+    "as_0Onx93fLIrPN8GuH2G7FZT": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w320.webp",
+        "card": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w640.webp",
+        "full": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w1280.webp"
+      }
+    },
+    "as_0Pf5BNaz178Cs7UQnEpIGs": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w320.webp",
+        "card": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w640.webp",
+        "full": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w1280.webp"
+      }
+    },
+    "as_0qScJlOwKC4xyTyCpAiPwO": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w320.webp",
+        "card": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w640.webp",
+        "full": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w1280.webp"
+      }
+    },
+    "as_0u8RzqBQUSngtarePp0TjV": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_0u8RzqBQUSngtarePp0TjV/w320.webp",
+        "card": "/a/as_0u8RzqBQUSngtarePp0TjV/w640.webp",
+        "full": "/a/as_0u8RzqBQUSngtarePp0TjV/w1280.webp"
+      }
+    },
+    "as_14O3BgZBikZj1OCJ6fSyZp": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w320.webp",
+        "card": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w640.webp",
+        "full": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w1280.webp"
+      }
+    },
+    "as_1CHTyYP6TLRixWSjVIEzB2": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w320.webp",
+        "card": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w640.webp",
+        "full": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w1280.webp"
+      }
+    },
+    "as_1OROMbFIsuIRobsa6YKiDe": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1OROMbFIsuIRobsa6YKiDe/w320.webp",
+        "card": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+        "full": "/a/as_1OROMbFIsuIRobsa6YKiDe/w1280.webp"
+      }
+    },
+    "as_1RYCibntdFwrtOo3KZuWgX": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1RYCibntdFwrtOo3KZuWgX/w320.webp",
+        "card": "/a/as_1RYCibntdFwrtOo3KZuWgX/w640.webp",
+        "full": "/a/as_1RYCibntdFwrtOo3KZuWgX/w1280.webp"
+      }
+    },
+    "as_1dJPYcLDIigPXmP9f2VrPv": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w320.webp",
+        "card": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w640.webp",
+        "full": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w1280.webp"
+      }
+    },
+    "as_1i4F9A8qBbadbYnF0gSASN": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1i4F9A8qBbadbYnF0gSASN/w320.webp",
+        "card": "/a/as_1i4F9A8qBbadbYnF0gSASN/w640.webp",
+        "full": "/a/as_1i4F9A8qBbadbYnF0gSASN/w1280.webp"
+      }
+    },
+    "as_1iD3kku11d5OJ5sYUSOQ2U": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w320.webp",
+        "card": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w640.webp",
+        "full": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w1280.webp"
+      }
+    },
+    "as_1wyepSWuXuoMfxmMn8hELh": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_1wyepSWuXuoMfxmMn8hELh/w320.webp",
+        "card": "/a/as_1wyepSWuXuoMfxmMn8hELh/w640.webp",
+        "full": "/a/as_1wyepSWuXuoMfxmMn8hELh/w1280.webp"
+      }
+    },
+    "as_2XtWqkA4rLaGuYZBSjo99X": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w320.webp",
+        "card": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w640.webp",
+        "full": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w1280.webp"
+      }
+    },
+    "as_2bngoniFfGvUSHpnMrFSMi": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_2bngoniFfGvUSHpnMrFSMi/w320.webp",
+        "card": "/a/as_2bngoniFfGvUSHpnMrFSMi/w640.webp",
+        "full": "/a/as_2bngoniFfGvUSHpnMrFSMi/w1280.webp"
+      }
+    },
+    "as_2jMbqvAoQ5vioR54r8D5Fa": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w320.webp",
+        "card": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w640.webp",
+        "full": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w1280.webp"
+      }
+    },
+    "as_2tPGjnS4meuwPvRnAL2oZ5": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w320.webp",
+        "card": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+        "full": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w1280.webp"
+      }
+    },
+    "as_3SYT526bwF5DiJurAHo7BR": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3SYT526bwF5DiJurAHo7BR/w320.webp",
+        "card": "/a/as_3SYT526bwF5DiJurAHo7BR/w640.webp",
+        "full": "/a/as_3SYT526bwF5DiJurAHo7BR/w1280.webp"
+      }
+    },
+    "as_3VPHK49yhVYT90EWOQgKKL": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3VPHK49yhVYT90EWOQgKKL/w320.webp",
+        "card": "/a/as_3VPHK49yhVYT90EWOQgKKL/w640.webp",
+        "full": "/a/as_3VPHK49yhVYT90EWOQgKKL/w1280.webp"
+      }
+    },
+    "as_3Wt5nwEgjlzw4KKcA1sWLF": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w320.webp",
+        "card": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w640.webp",
+        "full": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w1280.webp"
+      }
+    },
+    "as_3gOh7APYJg2YuhmpQohF3s": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3gOh7APYJg2YuhmpQohF3s/w320.webp",
+        "card": "/a/as_3gOh7APYJg2YuhmpQohF3s/w640.webp",
+        "full": "/a/as_3gOh7APYJg2YuhmpQohF3s/w1280.webp"
+      }
+    },
+    "as_3gloWIFqy1Z3K6fqix2qmR": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w320.webp",
+        "card": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w640.webp",
+        "full": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w1280.webp"
+      }
+    },
+    "as_3jq0wAiYSXvfdUk6M7yww3": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w320.webp",
+        "card": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w640.webp",
+        "full": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w1280.webp"
+      }
+    },
+    "as_3mDZBbaGAAhXdRyMdkgtJ2": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w320.webp",
+        "card": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w640.webp",
+        "full": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w1280.webp"
+      }
+    },
+    "as_3pMMINW045qA2bALvCCL7t": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3pMMINW045qA2bALvCCL7t/w320.webp",
+        "card": "/a/as_3pMMINW045qA2bALvCCL7t/w640.webp",
+        "full": "/a/as_3pMMINW045qA2bALvCCL7t/w1280.webp"
+      }
+    },
+    "as_3rpIdmg2wEGSS4eFd8YOgS": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w320.webp",
+        "card": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w640.webp",
+        "full": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w1280.webp"
+      }
+    },
+    "as_455vUtGF7WdQqdNrRN6V3K": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_455vUtGF7WdQqdNrRN6V3K/w320.webp",
+        "card": "/a/as_455vUtGF7WdQqdNrRN6V3K/w640.webp",
+        "full": "/a/as_455vUtGF7WdQqdNrRN6V3K/w1280.webp"
+      }
+    },
+    "as_4injXrnWFODimBqbwsfin0": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_4injXrnWFODimBqbwsfin0/w320.webp",
+        "card": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+        "full": "/a/as_4injXrnWFODimBqbwsfin0/w1280.webp"
+      }
+    },
+    "as_56W097Ba8fUG234h9ci056": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_56W097Ba8fUG234h9ci056/w320.webp",
+        "card": "/a/as_56W097Ba8fUG234h9ci056/w640.webp",
+        "full": "/a/as_56W097Ba8fUG234h9ci056/w1280.webp"
+      }
+    },
+    "as_5AuiFDPJ9LQo9amVJFGVl3": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w320.webp",
+        "card": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w640.webp",
+        "full": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w1280.webp"
+      }
+    },
+    "as_5XkD5c42BSbX41wf9Kvb74": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5XkD5c42BSbX41wf9Kvb74/w320.webp",
+        "card": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+        "full": "/a/as_5XkD5c42BSbX41wf9Kvb74/w1280.webp"
+      }
+    },
+    "as_5ce4atSslFwtfLSL59YdZ1": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5ce4atSslFwtfLSL59YdZ1/w320.webp",
+        "card": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+        "full": "/a/as_5ce4atSslFwtfLSL59YdZ1/w1280.webp"
+      }
+    },
+    "as_5ljMESk7lWYyn2c7X6mnW0": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w320.webp",
+        "card": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w640.webp",
+        "full": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w1280.webp"
+      }
+    },
+    "as_5lkiIrCedy9PMRFqi20n3f": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5lkiIrCedy9PMRFqi20n3f/w320.webp",
+        "card": "/a/as_5lkiIrCedy9PMRFqi20n3f/w640.webp",
+        "full": "/a/as_5lkiIrCedy9PMRFqi20n3f/w1280.webp"
+      }
+    },
+    "as_5qyqUoKwCv1L4IDeJRiPt8": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w320.webp",
+        "card": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w640.webp",
+        "full": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w1280.webp"
+      }
+    },
+    "as_5t6AZJ0b1nXEfImC9AeCaj": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w320.webp",
+        "card": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+        "full": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w1280.webp"
+      }
+    },
+    "as_6VFI3zfIFwp1BpFYTTEf4u": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w320.webp",
+        "card": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w640.webp",
+        "full": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w1280.webp"
+      }
+    },
+    "as_6gstq3FvCAMWDUaSC8gnKq": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w320.webp",
+        "card": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w640.webp",
+        "full": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w1280.webp"
+      }
+    },
+    "as_6hsPca9InngpWrGSiScnPD": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_6hsPca9InngpWrGSiScnPD/w320.webp",
+        "card": "/a/as_6hsPca9InngpWrGSiScnPD/w640.webp",
+        "full": "/a/as_6hsPca9InngpWrGSiScnPD/w1280.webp"
+      }
+    },
+    "as_6jSlY3pqOEZCOLKCsjcAwN": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w320.webp",
+        "card": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w640.webp",
+        "full": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w1280.webp"
+      }
+    },
+    "as_6nvhtC4JGkqMnmdoF2khVx": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w320.webp",
+        "card": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w640.webp",
+        "full": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w1280.webp"
+      }
+    },
+    "as_6z1Y3H3hGICVTiKfSPhn6t": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w320.webp",
+        "card": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w640.webp",
+        "full": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w1280.webp"
+      }
+    },
+    "as_73ho0owcu6DszlAdN0kctS": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_73ho0owcu6DszlAdN0kctS/w320.webp",
+        "card": "/a/as_73ho0owcu6DszlAdN0kctS/w640.webp",
+        "full": "/a/as_73ho0owcu6DszlAdN0kctS/w1280.webp"
+      }
+    },
+    "as_76sm72aBp9EbuPbAs7hT2E": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_76sm72aBp9EbuPbAs7hT2E/w320.webp",
+        "card": "/a/as_76sm72aBp9EbuPbAs7hT2E/w640.webp",
+        "full": "/a/as_76sm72aBp9EbuPbAs7hT2E/w1280.webp"
+      }
+    },
+    "as_7A73Cgf4faOF39GWYxCeQ0": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w320.webp",
+        "card": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w640.webp",
+        "full": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w1280.webp"
+      }
+    },
+    "as_7lOdbixj9lkpt5y97PHh9P": {
+      "w": 2000,
+      "h": 1333,
+      "focal": null,
+      "alt": {},
+      "variants": {
+        "thumb": "/a/as_7lOdbixj9lkpt5y97PHh9P/w320.webp",
+        "card": "/a/as_7lOdbixj9lkpt5y97PHh9P/w640.webp",
+        "full": "/a/as_7lOdbixj9lkpt5y97PHh9P/w1280.webp"
+      }
+    }
+  },
+  "field_types": {
+    "abv": {
+      "type": "number",
+      "label": {
+        "bg_BG": "Алкохолно съдържание",
+        "en_US": "ABV"
+      },
+      "unit": "%"
+    }
+  },
+  "menu": {
+    "id": "nd_1xPsqv2Ze4m2BosZHaBkxS",
+    "title": {},
+    "intro": {},
+    "availability": null,
+    "sections": [
+      "nd_7BgwzLkft6GtB9C5EWQIYx",
+      "nd_3b6tz85SDCtaYc7DKBtVo9",
+      "nd_6GTFeYK6LHhLYAqnEEW9jL",
+      "nd_2p61BmwY9JzvlkI36bwC1k",
+      "nd_3WJze9faA4kD6JPlIyOp1i",
+      "nd_5QKmfqImYMq1Kpyr76hDB1",
+      "nd_1wbnhAqrFAVxA1mFOpCaSa",
+      "nd_5Zop0Qy4kfpVNSQW8EA5JC"
+    ]
+  },
+  "sections": {
+    "nd_1wbnhAqrFAVxA1mFOpCaSa": {
+      "title": {
+        "bg_BG": "Десерти",
+        "en_US": "Desserts"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_0d8tO4geFKE02mlWg851MV",
+        "nd_5pWev0UWnlppfoVFwFpX18",
+        "nd_31ejJ4GGy4lyZrVXdDjKCw",
+        "nd_6tuCwFMI46iGaMEU1VZp1L",
+        "nd_4HLFGbQsMip23a9uSRcKkL",
+        "nd_7Q91egFteUN7CCrwT13W0I",
+        "nd_1FMkJznDTgZC0z0976g3nE",
+        "nd_4pAPAF7G3WQCVpHl3VRJtp",
+        "nd_2M7I3ojMIPac9y4tMEGB73"
+      ]
+    },
+    "nd_2p61BmwY9JzvlkI36bwC1k": {
+      "title": {
+        "bg_BG": "Основни ястия",
+        "en_US": "Main dishes"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_0GAahHxC0IgnWQoAO9xbI2",
+        "nd_2mb3vcX9C7ufRex4lfaroy",
+        "nd_0mjFEeTnlYq4hx6IXsDFgU",
+        "nd_5AQQBshi7Irh6ZOEeRk0NX",
+        "nd_2tCrzsm5nR7i7uVUS80Uly",
+        "nd_4sXGAFKsyHlghXkpFjrIs9",
+        "nd_3jzWPUdjFcDwVAC9cYxGwH",
+        "nd_2iQrcTv9MUwjinrDRm77dr",
+        "nd_17pk4SPb1tHkPV3famDLqN",
+        "nd_28wopA2KVURIPdFrIbebJe",
+        "nd_5iKzxn5iK4YzjnUK7JwfZ3"
+      ]
+    },
+    "nd_3WJze9faA4kD6JPlIyOp1i": {
+      "title": {
+        "bg_BG": "Предястия",
+        "en_US": "Starters"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_0mjFEeTnlYq4hx6IXsDFgU",
+        "nd_5SHAnapNW0fAmteWg3pYtr",
+        "nd_27smk36TabkpllOcMAF6Tz",
+        "nd_67Dy0BiCasMceoMlisx69q",
+        "nd_4zFebSgIKbdg7diOgviQp2",
+        "nd_3VZY52xZJfzPUMyjBq5LvK",
+        "nd_3YU3w3FG4QomRi3NuuE8Fb",
+        "nd_77GnBESSD5z5QigHNxTthc"
+      ]
+    },
+    "nd_3b6tz85SDCtaYc7DKBtVo9": {
+      "title": {
+        "bg_BG": "Обедно меню",
+        "en_US": "Daily menu"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_2ACEHLGLQzrZTKUFkCkXbr",
+        "nd_0GAahHxC0IgnWQoAO9xbI2",
+        "nd_2mb3vcX9C7ufRex4lfaroy",
+        "nd_0d8tO4geFKE02mlWg851MV",
+        "nd_0mjFEeTnlYq4hx6IXsDFgU",
+        "nd_5SHAnapNW0fAmteWg3pYtr",
+        "nd_27smk36TabkpllOcMAF6Tz",
+        "nd_4fK5cVrntYn4W51rK58tg9",
+        "nd_57zVg8BBY4xHv7K6es6kBg",
+        "nd_5AQQBshi7Irh6ZOEeRk0NX",
+        "nd_67Dy0BiCasMceoMlisx69q",
+        "nd_1TlHJ7nN4igndz2qeXKj7j"
+      ]
+    },
+    "nd_5QKmfqImYMq1Kpyr76hDB1": {
+      "title": {
+        "bg_BG": "Бургери",
+        "en_US": "Burgers"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_3UpxzKFONT6OMtckvejRV6",
+        "nd_5ZTCTOZJfiLttBz9VXpfMj",
+        "nd_6sKjdLN6hLfOi5umy8PoDV",
+        "nd_3d7clA8EecJGHK9UDaAb5j",
+        "nd_5nGeItMtv87xamF8Pf7zrf",
+        "nd_0FQCgYQd0Wate8NY87jvvw"
+      ]
+    },
+    "nd_5Zop0Qy4kfpVNSQW8EA5JC": {
+      "title": {
+        "bg_BG": "Напитки",
+        "en_US": "Drinks"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_79SO2BafCl00lX7HbR9GF8",
+        "nd_7irIooLvbGiQx4XjM2D2eM",
+        "nd_7juVdQBZYZ4tl41Bd81CuQ",
+        "nd_4yIi3WGUlBi4eQTi69K1gj",
+        "nd_00I10urh7zxhn1RPQwx9hC",
+        "nd_6AlzmF2c8iLrmBfJPQ10Qw",
+        "nd_4x6fCWFSlZ6hMdg8ZG22Rw"
+      ]
+    },
+    "nd_6GTFeYK6LHhLYAqnEEW9jL": {
+      "title": {
+        "bg_BG": "Салати",
+        "en_US": "Salads"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_4fK5cVrntYn4W51rK58tg9",
+        "nd_57zVg8BBY4xHv7K6es6kBg",
+        "nd_7bWmIh8ma1I2d0ieaLaHKo",
+        "nd_4fWU5FVaNlnlAPCUATLvwp",
+        "nd_7FyuRgumGJezXHpVkMfRsQ",
+        "nd_4FWgJ0UqxL2gyoajBasE7P",
+        "nd_7eSXOsxWxBPCrzURhvDI2Z",
+        "nd_3dZ4viXYMbSsltrlFbKCAf",
+        "nd_1b3M1zjqhDI8ZzUXMwuuVX"
+      ]
+    },
+    "nd_7BgwzLkft6GtB9C5EWQIYx": {
+      "title": {
+        "bg_BG": "Летни предложения",
+        "en_US": "Summer Offers"
+      },
+      "description": {},
+      "image": null,
+      "hints": {
+        "color": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        "nd_2ACEHLGLQzrZTKUFkCkXbr",
+        "nd_0GAahHxC0IgnWQoAO9xbI2",
+        "nd_79SO2BafCl00lX7HbR9GF8",
+        "nd_2mb3vcX9C7ufRex4lfaroy",
+        "nd_0d8tO4geFKE02mlWg851MV",
+        "nd_0mjFEeTnlYq4hx6IXsDFgU",
+        "nd_5SHAnapNW0fAmteWg3pYtr",
+        "nd_27smk36TabkpllOcMAF6Tz"
+      ]
+    }
+  },
+  "items": {
+    "nd_00I10urh7zxhn1RPQwx9hC": {
+      "name": {
+        "bg_BG": "Студен чай праскова и лавандула",
+        "en_US": "Iced tea peach and lavender"
+      },
+      "description": {
+        "bg_BG": "Черен чай с праскова, мед и капка лавандулов сироп.",
+        "en_US": "Black tea with peach, honey, and a touch of lavender syrup."
+      },
+      "price": {
+        "amount_minor": 230,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3gOh7APYJg2YuhmpQohF3s",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_0FQCgYQd0Wate8NY87jvvw": {
+      "name": {
+        "bg_BG": "Marrakesh Chicken Бургер",
+        "en_US": "Marrakesh Chicken Burger"
+      },
+      "description": {
+        "bg_BG": "Пилешко бутче, мариновано в хариса и кориандър, печен патладжан, кисело мляко с чесън и кориандър, сусамено хлебче.",
+        "en_US": "Harissa- and coriander-marinated chicken thigh, roasted eggplant, garlic-coriander yogurt, served in a sesame bun."
+      },
+      "price": {
+        "amount_minor": 859,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1CHTyYP6TLRixWSjVIEzB2",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_0GAahHxC0IgnWQoAO9xbI2": {
+      "name": {
+        "bg_BG": "Пилешки шишчета с лимон и билки",
+        "en_US": "Chicken Skewers with Lemon and Herbs"
+      },
+      "description": {
+        "bg_BG": "Мариновано пилешко филе, лимонов сок, мащерка, розмарин.",
+        "en_US": "Marinated chicken fillet, lemon juice, thyme, rosemary."
+      },
+      "price": {
+        "amount_minor": 557,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5t6AZJ0b1nXEfImC9AeCaj",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_0d8tO4geFKE02mlWg851MV": {
+      "name": {
+        "bg_BG": "Плодова купа с диня, пъпеш и грозде",
+        "en_US": "Fruit Bowl with Watermelon, Melon, and Grapes"
+      },
+      "description": {
+        "bg_BG": "Свежи летни плодове, поднесени охладени.",
+        "en_US": "Chilled summer fruits served fresh."
+      },
+      "price": {
+        "amount_minor": 399,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5XkD5c42BSbX41wf9Kvb74",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_0mjFEeTnlYq4hx6IXsDFgU": {
+      "name": {
+        "bg_BG": "Калмари на скара с лимонов дресинг",
+        "en_US": "Grilled Calamari with Lemon Dressing"
+      },
+      "description": {
+        "bg_BG": "Сочни калмари, овкусени с лимонов сок, зехтин и чесън.",
+        "en_US": "Tender grilled calamari with lemon juice, olive oil, and garlic."
+      },
+      "price": {
+        "amount_minor": 966,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5ce4atSslFwtfLSL59YdZ1",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_17pk4SPb1tHkPV3famDLqN": {
+      "name": {
+        "bg_BG": "Свински врат с мед и горчица",
+        "en_US": "Pork with Honey and Mustard"
+      },
+      "description": {
+        "bg_BG": "Свински врат, запечен с мед и горчица, гарниран със задушени картофи и зелена салата.",
+        "en_US": "Roasted pork glazed with honey and mustard, served with stewed potatoes and green salad."
+      },
+      "price": {
+        "amount_minor": 966,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_6hsPca9InngpWrGSiScnPD",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_1FMkJznDTgZC0z0976g3nE": {
+      "name": {
+        "bg_BG": "Печен шоколадов мус с еспресо",
+        "en_US": "Baked Chocolate Espresso Mousse"
+      },
+      "description": {
+        "bg_BG": "Плътен мус с белгийски шоколад и еспресо, поднесен с крем фреш и лешников крокан.",
+        "en_US": "Dense Belgian chocolate and espresso mousse, served with crème fraîche and hazelnut brittle."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3jq0wAiYSXvfdUk6M7yww3",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_1TlHJ7nN4igndz2qeXKj7j": {
+      "name": {
+        "bg_BG": "Печен кашкавал с чери домати",
+        "en_US": "Baked Cheese with Cherry Tomatoes"
+      },
+      "description": {
+        "bg_BG": "Печен кашкавал с подправки и чери домати, гарниран с пресни листа от рукола.",
+        "en_US": "Baked cheese with herbs and cherry tomatoes, garnished with fresh arugula."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5ljMESk7lWYyn2c7X6mnW0",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_1b3M1zjqhDI8ZzUXMwuuVX": {
+      "name": {
+        "bg_BG": "Салата с бурата и череши",
+        "en_US": "Burrata and Cherry Salad"
+      },
+      "description": {
+        "bg_BG": "Свежа салата с бурата, череши, рукола, домати и балсамов дресинг.",
+        "en_US": "Fresh salad with burrata, cherries, arugula, tomatoes, and balsamic dressing."
+      },
+      "price": {
+        "amount_minor": 787,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_14O3BgZBikZj1OCJ6fSyZp",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_27smk36TabkpllOcMAF6Tz": {
+      "name": {
+        "bg_BG": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР"
+      },
+      "description": {
+        "bg_BG": "Тънко нарязани тиквички, изпържени до златисто, поднесени с класически гръцки сос.",
+        "en_US": "Thinly sliced zucchini, fried until golden, served with classic Greek tzatziki sauce."
+      },
+      "price": {
+        "amount_minor": 500,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_2tPGjnS4meuwPvRnAL2oZ5",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_28wopA2KVURIPdFrIbebJe": {
+      "name": {
+        "bg_BG": "Кюфтета от агнешко месо с доматен сос",
+        "en_US": "Lamb Meatballs with Tomato Sauce"
+      },
+      "description": {
+        "bg_BG": "Ароматни агнешки кюфтета, поднесени с домашен доматен сос и ориз.",
+        "en_US": "Flavorful lamb meatballs served with homemade tomato sauce and rice."
+      },
+      "price": {
+        "amount_minor": 915,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_7A73Cgf4faOF39GWYxCeQ0",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_2ACEHLGLQzrZTKUFkCkXbr": {
+      "name": {
+        "bg_BG": "Печен патладжан с доматен сос и кашкавал",
+        "en_US": "Baked Eggplant with Tomato Sauce and Cheese"
+      },
+      "description": {
+        "bg_BG": "Запечен патладжан с доматен сос, подправки и кашкавал.",
+        "en_US": "Baked eggplant with tomato sauce, herbs and yellow cheese."
+      },
+      "price": {
+        "amount_minor": 404,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_05SCyIIS43byD7Lw3bAZKu",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_2M7I3ojMIPac9y4tMEGB73": {
+      "name": {
+        "bg_BG": "Панакота с шамфъстък и малина",
+        "en_US": "Pistachio Panna Cotta with Raspberry Coulis"
+      },
+      "description": {
+        "bg_BG": "Кадифена панакота с шамфъстъкова паста, гарнирана с кисело-сладък малинов сос и препечен шамфъстък.",
+        "en_US": "Creamy pistachio panna cotta topped with tangy raspberry coulis and toasted pistachios."
+      },
+      "price": {
+        "amount_minor": 537,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_6VFI3zfIFwp1BpFYTTEf4u",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_2iQrcTv9MUwjinrDRm77dr": {
+      "name": {
+        "bg_BG": "Рибно филе със сос от лимон и маслини",
+        "en_US": "Fish Fillet with Lemon and Olive Sauce"
+      },
+      "description": {
+        "bg_BG": "Прясно рибно филе, запечено със сос от лимон и маслини, поднесено с гарнитура от зеленчуци.",
+        "en_US": "Fresh fish fillet baked with a lemon and olive sauce, served with a vegetable side dish."
+      },
+      "price": {
+        "amount_minor": 910,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_56W097Ba8fUG234h9ci056",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_2mb3vcX9C7ufRex4lfaroy": {
+      "name": {
+        "bg_BG": "Паста с пресни домати и босилек",
+        "en_US": "Pasta with Fresh Tomatoes and Basil"
+      },
+      "description": {
+        "bg_BG": "Семпла паста с доматен сос, чесън и пресен босилек.",
+        "en_US": "Simple pasta with tomato sauce, garlic, and fresh basil."
+      },
+      "price": {
+        "amount_minor": 660,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_4injXrnWFODimBqbwsfin0",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_2tCrzsm5nR7i7uVUS80Uly": {
+      "name": {
+        "bg_BG": "Мини пилешки бургерчета с авокадо",
+        "en_US": "Mini Chicken Burgers with Avocado"
+      },
+      "description": {
+        "bg_BG": "Малки пилешки бургери с авокадо и свежи зеленчуци, поднесени с чеснов сос.",
+        "en_US": "Mini chicken burgers with avocado and fresh vegetables, served with garlic sauce."
+      },
+      "price": {
+        "amount_minor": 629,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3gloWIFqy1Z3K6fqix2qmR",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_31ejJ4GGy4lyZrVXdDjKCw": {
+      "name": {
+        "bg_BG": "Шоколадов тарт с морска сол",
+        "en_US": "Chocolate Sea Salt Tart"
+      },
+      "description": {
+        "bg_BG": "Интензивен тъмен шоколадов ганаш върху бадемов блат, с фино поръсена морска сол и капка зехтин.",
+        "en_US": "Rich dark chocolate ganache on almond crust, lightly sprinkled with sea salt and a touch of olive oil."
+      },
+      "price": {
+        "amount_minor": 455,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3Wt5nwEgjlzw4KKcA1sWLF",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_3UpxzKFONT6OMtckvejRV6": {
+      "name": {
+        "bg_BG": "Класически бургер",
+        "en_US": "Classic Burger"
+      },
+      "description": {
+        "bg_BG": "Телешко месо, айсберг, домат, сос.",
+        "en_US": "Beef patty, iceberg lettuce, tomato, sauce."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_2bngoniFfGvUSHpnMrFSMi",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_3VZY52xZJfzPUMyjBq5LvK": {
+      "name": {
+        "bg_BG": "Меки сиренца с мед и орехи",
+        "en_US": "Soft Cheeses with Honey and Walnuts"
+      },
+      "description": {
+        "bg_BG": "Меки сиренца, поднесени с мед и запечени орехи за по-сладък вкус.",
+        "en_US": "Soft cheeses served with honey and roasted walnuts for a sweeter flavor."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3rpIdmg2wEGSS4eFd8YOgS",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_3YU3w3FG4QomRi3NuuE8Fb": {
+      "name": {
+        "bg_BG": "Картофени крокети с чеснов сос",
+        "en_US": "Potato Croquettes with Sauce"
+      },
+      "description": {
+        "bg_BG": "Картофени крокети с хрупкава коричка, сервират се с кисел сос по избор.",
+        "en_US": "Potato croquettes with a crispy crust, served with your choice of tangy sauce."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1wyepSWuXuoMfxmMn8hELh",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_3d7clA8EecJGHK9UDaAb5j": {
+      "name": {
+        "bg_BG": "Бургер Smokehouse"
+      },
+      "description": {
+        "bg_BG": "Сухо отлежало телешко месо, чедър, пушен бекон, карамелизиран лук, дижонска горчица и чипотле айоли в маслено бриош хлебче.",
+        "en_US": "Dry-aged beef patty, mature cheddar, smoked bacon, caramelized onion, Dijon mustard, and chipotle aioli on a buttery brioche bun."
+      },
+      "price": {
+        "amount_minor": 813,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_2jMbqvAoQ5vioR54r8D5Fa",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_3dZ4viXYMbSsltrlFbKCAf": {
+      "name": {
+        "bg_BG": "Салата с моцарела, рукола и пармезан",
+        "en_US": "Mozzarella, Arugula, and Parmesan Salad"
+      },
+      "description": {
+        "bg_BG": "Свежа салата с моцарела, рукола, пармезан, чери домати и дресинг от зехтин и лимон.",
+        "en_US": "Fresh salad with mozzarella, arugula, parmesan, cherry tomatoes, and olive oil-lemon dressing."
+      },
+      "price": {
+        "amount_minor": 808,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1iD3kku11d5OJ5sYUSOQ2U",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_3jzWPUdjFcDwVAC9cYxGwH": {
+      "name": {
+        "bg_BG": "Пилешко филе с лимон и каперси",
+        "en_US": "Chicken Fillet with Lemon and Capers"
+      },
+      "description": {
+        "bg_BG": "Пилешко филе, запечено с лимон и каперси, поднесено с картофено пюре и гарнитура от зеленчуци.",
+        "en_US": "Chicken fillet baked with lemon and capers, served with mashed potatoes and vegetable garnish."
+      },
+      "price": {
+        "amount_minor": 915,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1i4F9A8qBbadbYnF0gSASN",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4FWgJ0UqxL2gyoajBasE7P": {
+      "name": {
+        "bg_BG": "Салата с риба тон",
+        "en_US": "Tuna Salad"
+      },
+      "description": {
+        "bg_BG": "Салата с риба тон, варени яйца, домати, червен лук, маслини и зехтин.",
+        "en_US": "Salad with tuna, boiled eggs, tomatoes, red onion, olives, and olive oil."
+      },
+      "price": {
+        "amount_minor": 455,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_05qEshwOIvDhZn0RpvFvMb",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4HLFGbQsMip23a9uSRcKkL": {
+      "name": {
+        "bg_BG": "Медена торта с орехи",
+        "en_US": "Honey Walnut Layer Cake"
+      },
+      "description": {
+        "bg_BG": "Класическа медена торта с крем от заквасена сметана, орехови ядки и аромат на карамел.",
+        "en_US": "Traditional honey layer cake with sour cream filling, walnuts, and a hint of caramel."
+      },
+      "price": {
+        "amount_minor": 522,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_6z1Y3H3hGICVTiKfSPhn6t",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4fK5cVrntYn4W51rK58tg9": {
+      "name": {
+        "bg_BG": "Цезар салата в чаша",
+        "en_US": "Caesar Salad in a Glass"
+      },
+      "description": {
+        "bg_BG": "Традиционна Цезар салата с пармезан, крутони и домашен дресинг, поднесена в чаша.",
+        "en_US": "Classic Caesar salad with parmesan, croutons, and homemade dressing, served in a glass."
+      },
+      "price": {
+        "amount_minor": 660,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3mDZBbaGAAhXdRyMdkgtJ2",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4fWU5FVaNlnlAPCUATLvwp": {
+      "name": {
+        "bg_BG": "Гръцка салата",
+        "en_US": "Greek Salad"
+      },
+      "description": {
+        "bg_BG": "Класическа гръцка салата с домати, краставици, червен лук, маслини, сирене фета и зехтин.",
+        "en_US": "Classic Greek salad with tomatoes, cucumbers, red onion, olives, feta cheese, and olive oil."
+      },
+      "price": {
+        "amount_minor": 496,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_76sm72aBp9EbuPbAs7hT2E",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4pAPAF7G3WQCVpHl3VRJtp": {
+      "name": {
+        "bg_BG": "Панакота с лавандула и боровинки"
+      },
+      "description": {
+        "bg_BG": "Италианска пана кота с лек аромат на лавандула, свежи боровинки и сироп от бъз.",
+        "en_US": "Italian panna cotta infused with lavender, fresh blueberries and elderflower syrup."
+      },
+      "price": {
+        "amount_minor": 455,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_6jSlY3pqOEZCOLKCsjcAwN",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4sXGAFKsyHlghXkpFjrIs9": {
+      "name": {
+        "bg_BG": "Пилешко със сос терияки",
+        "en_US": "Chicken with Teriyaki Sauce"
+      },
+      "description": {
+        "bg_BG": "Пилешко, запечено в сладко-кисел терияки сос, поднесено с пресни зеленчуци.",
+        "en_US": "Chicken glazed with sweet and sour teriyaki sauce, served with fresh vegetables."
+      },
+      "price": {
+        "amount_minor": 813,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5AuiFDPJ9LQo9amVJFGVl3",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4x6fCWFSlZ6hMdg8ZG22Rw": {
+      "name": {
+        "bg_BG": "Бира Heineken",
+        "en_US": "Heineken"
+      },
+      "description": {},
+      "price": {
+        "amount_minor": 281,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_0Onx93fLIrPN8GuH2G7FZT",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4yIi3WGUlBi4eQTi69K1gj": {
+      "name": {
+        "bg_BG": "Класически газирани напитки",
+        "en_US": "Classic Soft Drinks"
+      },
+      "description": {
+        "bg_BG": "Coca-Cola, Fanta, Sprite, Schweppes, Cappy.",
+        "en_US": "Coca-Cola, Fanta, Sprite, Schweppes, Cappy."
+      },
+      "price": {
+        "amount_minor": 194,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_0JYkJRwEkMIui7vOtipseA",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_4zFebSgIKbdg7diOgviQp2": {
+      "name": {
+        "bg_BG": "Печени картофи с чесън и розмарин",
+        "en_US": "Roasted Potatoes with Garlic and Rosemary"
+      },
+      "description": {
+        "bg_BG": "Картофи, печени до златисто, с чесън и ароматен розмарин.",
+        "en_US": "Golden roasted potatoes with garlic and aromatic rosemary."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3SYT526bwF5DiJurAHo7BR",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_57zVg8BBY4xHv7K6es6kBg": {
+      "name": {
+        "bg_BG": "Салата с авокадо и киноа",
+        "en_US": "Avocado and Quinoa Salad"
+      },
+      "description": {
+        "bg_BG": "Свежа салата с авокадо, киноа, домати, червен лук и лимонов дресинг.",
+        "en_US": "Fresh salad with avocado, quinoa, tomatoes, red onion, and lemon dressing."
+      },
+      "price": {
+        "amount_minor": 660,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_0Pf5BNaz178Cs7UQnEpIGs",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_5AQQBshi7Irh6ZOEeRk0NX": {
+      "name": {
+        "bg_BG": "Ризото с гъби и пармезан",
+        "en_US": "Mushroom Risotto with Parmesan"
+      },
+      "description": {
+        "bg_BG": "Кремообразно ризото с гъби и пармезан, гарнирано с пресни билки.",
+        "en_US": "Creamy mushroom risotto with parmesan, garnished with fresh herbs."
+      },
+      "price": {
+        "amount_minor": 813,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3pMMINW045qA2bALvCCL7t",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_5SHAnapNW0fAmteWg3pYtr": {
+      "name": {
+        "bg_BG": "Брускети със сьомга и крема сирене",
+        "en_US": "Bruschetta with Salmon and Cream Cheese"
+      },
+      "description": {
+        "bg_BG": "Препечен хляб с крема сирене, пушена сьомга и копър.",
+        "en_US": "Toasted bread with cream cheese, smoked salmon, and dill."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1OROMbFIsuIRobsa6YKiDe",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_5ZTCTOZJfiLttBz9VXpfMj": {
+      "name": {
+        "bg_BG": "Бургер с бекон и яйце",
+        "en_US": "Bacon & Egg Burger"
+      },
+      "description": {
+        "bg_BG": "Телешко месо, бекон, яйце на очи, чедър.",
+        "en_US": "Beef patty, bacon, fried egg, cheddar."
+      },
+      "price": {
+        "amount_minor": 629,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_2jMbqvAoQ5vioR54r8D5Fa",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_5iKzxn5iK4YzjnUK7JwfZ3": {
+      "name": {
+        "bg_BG": "Вегетарианска лазаня",
+        "en_US": "Vegetarian Lasagna"
+      },
+      "description": {
+        "bg_BG": "Лазаня със слой от прясно приготвени зеленчуци, доматен сос и топено сирене.",
+        "en_US": "Lasagna with layers of freshly prepared vegetables, tomato sauce, and melted cheese."
+      },
+      "price": {
+        "amount_minor": 726,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_0qScJlOwKC4xyTyCpAiPwO",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_5nGeItMtv87xamF8Pf7zrf": {
+      "name": {
+        "bg_BG": "Бургер Alpine",
+        "en_US": "Alpine Burger"
+      },
+      "description": {
+        "bg_BG": "Телешко месо, разтопено швейцарско сирене, сотирани гъби в масло и мащерка, чеснов майонезен сос, маруля и ръжен хляб.",
+        "en_US": "Beef patty, melted Swiss cheese, butter-thyme sautéed mushrooms, garlic mayo, lettuce, served in rustic rye bread."
+      },
+      "price": {
+        "amount_minor": 690,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_0u8RzqBQUSngtarePp0TjV",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_5pWev0UWnlppfoVFwFpX18": {
+      "name": {
+        "bg_BG": "Чийзкейк с горски плодове",
+        "en_US": "Berry Cheesecake"
+      },
+      "description": {
+        "bg_BG": "Сметанов чийзкейк с горски плодове.",
+        "en_US": "Creamy cheesecake with forest berries."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_73ho0owcu6DszlAdN0kctS",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_67Dy0BiCasMceoMlisx69q": {
+      "name": {
+        "bg_BG": "Тост с авокадо и яйце",
+        "en_US": "Avocado Toast with Egg"
+      },
+      "description": {
+        "bg_BG": "Тост с кремаво авокадо и яйце по избор (пържено или варено).",
+        "en_US": "Toast with creamy avocado and an egg of your choice (fried or boiled)."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_7lOdbixj9lkpt5y97PHh9P",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_6AlzmF2c8iLrmBfJPQ10Qw": {
+      "name": {
+        "bg_BG": "Капучино с канела",
+        "en_US": "Cinnamon Cappuccino"
+      },
+      "description": {
+        "bg_BG": "Класическо капучино с лека канела и какао.",
+        "en_US": "Classic cappuccino with a hint of cinnamon and cocoa."
+      },
+      "price": {
+        "amount_minor": 281,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_6gstq3FvCAMWDUaSC8gnKq",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_6sKjdLN6hLfOi5umy8PoDV": {
+      "name": {
+        "bg_BG": "Веган бургер"
+      },
+      "description": {
+        "bg_BG": "Зеленчуков патеш, хумус, домат.",
+        "en_US": "Veggie patty, hummus, tomato."
+      },
+      "price": {
+        "amount_minor": 522,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1dJPYcLDIigPXmP9f2VrPv",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_6tuCwFMI46iGaMEU1VZp1L": {
+      "name": {
+        "bg_BG": "Крем с шамфъстък и бял шоколад",
+        "en_US": "Pistachio & White Chocolate Cream"
+      },
+      "description": {
+        "bg_BG": "Кадифен мус от бял шоколад, смлян шамфъстък и хрупкав чипс от филирани ядки.",
+        "en_US": "Velvety white chocolate mousse with ground pistachios and crisp almond flakes."
+      },
+      "price": {
+        "amount_minor": 511,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_455vUtGF7WdQqdNrRN6V3K",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_77GnBESSD5z5QigHNxTthc": {
+      "name": {
+        "bg_BG": "Пилешки хапки с панирана коричка",
+        "en_US": "Crispy Chicken Bites"
+      },
+      "description": {
+        "bg_BG": "Панирани пилешки хапки, сервират се с домашен чеснов сос или барбекю сос.",
+        "en_US": "Crispy chicken bites served with homemade garlic sauce or barbecue sauce."
+      },
+      "price": {
+        "amount_minor": 660,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_2XtWqkA4rLaGuYZBSjo99X",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_79SO2BafCl00lX7HbR9GF8": {
+      "name": {
+        "bg_BG": "Домашна лимонада с лимон и мента",
+        "en_US": "Homemade Lemonade with Mint"
+      },
+      "description": {
+        "bg_BG": "Прясно изцеден лимонов сок, мента, мед или захар.",
+        "en_US": "Freshly squeezed lemon juice, mint, honey or sugar."
+      },
+      "price": {
+        "amount_minor": 251,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5qyqUoKwCv1L4IDeJRiPt8",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_7FyuRgumGJezXHpVkMfRsQ": {
+      "name": {
+        "bg_BG": "Салата с авокадо и киноа",
+        "en_US": "Avocado and Quinoa Salad"
+      },
+      "description": {
+        "bg_BG": "Свежа салата с авокадо, киноа, домати, червен лук и лимонов дресинг.",
+        "en_US": "Fresh salad with avocado, quinoa, tomatoes, red onion, and lemon dressing."
+      },
+      "price": {
+        "amount_minor": 511,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1RYCibntdFwrtOo3KZuWgX",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_7Q91egFteUN7CCrwT13W0I": {
+      "name": {
+        "bg_BG": "Малиново парфе с розова вода",
+        "en_US": "Raspberry Rose Parfait"
+      },
+      "description": {
+        "bg_BG": "Лек десерт с мус от малина, нотка розова вода и бисквитена основа с масло от кашу.",
+        "en_US": "Light raspberry mousse dessert with a hint of rose water and cashew butter biscuit base."
+      },
+      "price": {
+        "amount_minor": 557,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_0GK93xARwdLk9q4DMwyQxj",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_7bWmIh8ma1I2d0ieaLaHKo": {
+      "name": {
+        "bg_BG": "Салата от домати и моцарела",
+        "en_US": "Tomato and Mozzarella Salad"
+      },
+      "description": {
+        "bg_BG": "Пресни домати, моцарела, базиликови листа и зехтин с балсамико.",
+        "en_US": "Fresh tomatoes, mozzarella, basil leaves, and olive oil with balsamic vinegar."
+      },
+      "price": {
+        "amount_minor": 506,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_3VPHK49yhVYT90EWOQgKKL",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_7eSXOsxWxBPCrzURhvDI2Z": {
+      "name": {
+        "bg_BG": "Салата с бурата и авокадо",
+        "en_US": "Burrata and Avocado Salad"
+      },
+      "description": {
+        "bg_BG": "Салата с бурата, авокадо, чери домати, зехтин и балсамов оцет.",
+        "en_US": "Salad with burrata, avocado, cherry tomatoes, olive oil, and balsamic vinegar."
+      },
+      "price": {
+        "amount_minor": 711,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_1RYCibntdFwrtOo3KZuWgX",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_7irIooLvbGiQx4XjM2D2eM": {
+      "name": {
+        "bg_BG": "Минерална вода 0.500",
+        "en_US": "Mineral Water 0.500"
+      },
+      "description": {},
+      "price": {
+        "amount_minor": 102,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_5lkiIrCedy9PMRFqi20n3f",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    },
+    "nd_7juVdQBZYZ4tl41Bd81CuQ": {
+      "name": {
+        "bg_BG": "Прясно изцеден портокалов сок",
+        "en_US": "Fresh Orange Juice"
+      },
+      "description": {
+        "bg_BG": "Натурален сок от пресни портокали.",
+        "en_US": "Natural juice from fresh oranges."
+      },
+      "price": {
+        "amount_minor": 297,
+        "currency": "EUR"
+      },
+      "price_from": null,
+      "image": "as_6nvhtC4JGkqMnmdoF2khVx",
+      "allergens": [],
+      "dietary": [],
+      "tags": [],
+      "portion": null,
+      "badges": [
+        "new"
+      ],
+      "availability": {
+        "state": "available",
+        "schedule": null
+      },
+      "order_mode": "orderable",
+      "orderable": true,
+      "modifier_groups": [],
+      "fields": {}
+    }
+  },
+  "modifier_groups": {},
+  "options": {},
+  "tags": {}
+}
