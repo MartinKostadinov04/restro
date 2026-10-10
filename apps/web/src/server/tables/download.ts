@@ -4,9 +4,9 @@
 // tenant is never taken from the request. Nothing is fetched.
 import { qrAddress, readVenueQr } from '@restro/core'
 import { findVenueTable } from '@restro/core/apply'
-import type { DbPool } from '@restro/db'
+import { type DbPool, venues, withTenant } from '@restro/db'
+import { eq } from 'drizzle-orm'
 
-import { getVenue } from '../venues'
 import { qrPng, qrSvgFile } from './qr-image'
 
 /** The two file kinds. */
@@ -47,7 +47,9 @@ export async function buildQrDownload(
 ): Promise<QrDownload> {
   const found = await findVenueTable(deps.pool, tenantId, tableId)
   if (found === null || found.table.token === null) return { ok: false }
-  const venue = await getVenue(tenantId, found.venueId)
+  const [venue] = await withTenant(deps.pool, tenantId, (tx) =>
+    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, found.venueId)),
+  )
   if (!venue) return { ok: false }
   const address = qrAddress(readVenueQr(venue.settings, deps.defaultBaseUrl), found.table.token)
   if (address === null) return { ok: false }

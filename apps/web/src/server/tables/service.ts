@@ -99,9 +99,13 @@ function sortedHalls(rows: readonly Row[]): { name: string | null; tables: Row[]
     })
     .map(([name, tables]) => ({
       name,
-      tables: tables.sort(
-        (a, b) => collator.compare(a.shownAs ?? '', b.shownAs ?? '') || a.id.localeCompare(b.id),
-      ),
+      // A table with neither a number nor a name is last in its hall.
+      tables: tables.sort((a, b) => {
+        if (a.shownAs === null || b.shownAs === null) {
+          return Number(a.shownAs === null) - Number(b.shownAs === null) || a.id.localeCompare(b.id)
+        }
+        return collator.compare(a.shownAs, b.shownAs) || a.id.localeCompare(b.id)
+      }),
     }))
 }
 
