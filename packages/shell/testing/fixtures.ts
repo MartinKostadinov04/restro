@@ -271,7 +271,7 @@ function longNames(): Fixture {
               name: { bg_BG: sixty('Негрони'), en_US: sixtyEn('Negroni') },
               allergens: ['sulphites'],
             },
-            { name: { bg_BG: sixty('Мохито') }, price: 1250, allergens: ['milk', 'eggs'] },
+            { name: { bg_BG: sixty('Мохито') }, price: 1250, allergens: ['eggs', 'milk'] },
             { name: { en_US: sixtyEn('Espresso Martini') }, price: null, allergens: ['nuts'] },
           ],
         },
