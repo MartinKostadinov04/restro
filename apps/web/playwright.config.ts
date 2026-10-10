@@ -29,8 +29,8 @@ process.env.LOCAL_PUBLISH_DIR = E2E_PUBLISH_DIR
 
 // A throwaway key pair for the Integration tab's test, made here because the web servers start
 // before the global setup runs. Only the public half (base64url DER, what `pnpm keys:seal` prints)
-// goes to the servers; the other half is dropped at once, since the worker does not run in this
-// test and nothing needs to open what the tab seals. Without `SEAL_PUBLIC_KEY` the tab would show
+// goes to the servers; the other half is dropped at once, since the worker that runs beside them
+// (below) holds no sealing keys and nothing needs to open what the tab seals. Without `SEAL_PUBLIC_KEY` the tab would show
 // the 'sync keys are not set up' message instead of the form.
 const SEAL_PUBLIC_KEY = generateKeyPairSync('x25519')
   .publicKey.export({ type: 'spki', format: 'der' })
@@ -55,14 +55,14 @@ const serverEnvironment = (origin: string) => ({
 // private half would stop it), so it runs the publish jobs and the heartbeat and syncs no barsy.
 // Its health port moves with E2E_PORT.
 const WORKER_PORT = PORT + 2
-const workerEnvironment = {
-  ...serverEnvironment(ORIGIN),
-  SEAL_PUBLIC_KEY: '',
-  SEAL_PRIVATE_KEY: '',
-  WORKER_ID: 'e2e-worker',
-  WORKER_HEALTH_PORT: String(WORKER_PORT),
-  LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
-}
+const workerEnvironment = Object.fromEntries(
+  Object.entries({
+    ...serverEnvironment(ORIGIN),
+    WORKER_ID: 'e2e-worker',
+    WORKER_HEALTH_PORT: String(WORKER_PORT),
+    LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
+  }).filter(([name]) => !name.startsWith('SEAL_')),
+)
 
 export default defineConfig({
   testDir: './e2e',
