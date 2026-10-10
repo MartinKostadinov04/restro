@@ -98,17 +98,29 @@ function tagsView(snapshot: MenuSnapshot, common: ReadonlySet<string>) {
 }
 
 /**
- * The sections without the items one of the two menus lacks, so that adding or hiding an item
- * does not also read as "the sections changed"; a rename, a reorder or a move still does.
+ * The sections both menus have, without the items one of the two lacks, so that adding or hiding
+ * an item does not also read as "the sections changed" (a section appears or disappears with its
+ * items: the snapshot leaves out a section with nothing to show). A rename, a reorder or a move
+ * between sections still does.
  */
-function sectionsView(snapshot: MenuSnapshot, common: ReadonlySet<string>) {
+function sectionsView(
+  snapshot: MenuSnapshot,
+  items: ReadonlySet<string>,
+  sections: ReadonlySet<string>,
+) {
   return {
-    menu: snapshot.menu.sections,
+    menu: snapshot.menu.sections.filter((id) => sections.has(id)),
     sections: Object.fromEntries(
-      Object.entries(snapshot.sections).map(([id, section]) => [
-        id,
-        { ...section, items: section.items.filter((item) => common.has(item)) },
-      ]),
+      Object.entries(snapshot.sections)
+        .filter(([id]) => sections.has(id))
+        .map(([id, section]) => [
+          id,
+          {
+            ...section,
+            sections: section.sections.filter((child) => sections.has(child)),
+            items: section.items.filter((item) => items.has(item)),
+          },
+        ]),
     ),
   }
 }
@@ -133,6 +145,9 @@ export function diffSnapshots(live: MenuSnapshot | null, next: MenuSnapshot): Sn
   const liveIds = Object.keys(live.items) as NodeId[]
   const nextIds = Object.keys(next.items) as NodeId[]
   const common = new Set(liveIds.filter((id) => Object.hasOwn(next.items, id)))
+  const commonSections = new Set(
+    Object.keys(live.sections).filter((id) => Object.hasOwn(next.sections, id)),
+  )
 
   const visibility = compareVisibility(
     { items: Object.fromEntries(liveIds.map((id) => [id, { visible: true }])) },
@@ -167,7 +182,8 @@ export function diffSnapshots(live: MenuSnapshot | null, next: MenuSnapshot): Sn
 
   const differs: Record<DiffArea, () => boolean> = {
     look: () => !same(live.theme, next.theme),
-    sections: () => !same(sectionsView(live, common), sectionsView(next, common)),
+    sections: () =>
+      !same(sectionsView(live, common, commonSections), sectionsView(next, common, commonSections)),
     menu: () =>
       !same(
         [live.menu.title, live.menu.intro, live.menu.availability],

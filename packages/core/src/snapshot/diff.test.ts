@@ -146,6 +146,21 @@ describe('diffSnapshots', () => {
     expect(diff.total).toBe(1)
   })
 
+  it('a section that appears or disappears with its items is not a change of its own', () => {
+    // Hiding the only wine leaves the Wines section with nothing to show, so it leaves the menu too.
+    const next = snapshotOf(bar((b) => b.set(MERLOT, 'visible', 'manual', false)))
+    expect(Object.keys(next.sections)).toEqual([COCKTAILS])
+    const gone = diffSnapshots(live(), next)
+    expect(gone.hidden.map((item) => item.id)).toEqual([MERLOT])
+    expect(gone.areas).toEqual([])
+    expect(gone.total).toBe(1)
+    // And back: the section returns with its item.
+    const back = diffSnapshots(next, live())
+    expect(back.added.map((item) => item.id)).toEqual([MERLOT])
+    expect(back.areas).toEqual([])
+    expect(back.total).toBe(1)
+  })
+
   it('a description or photo change is "changed in another way"', () => {
     const next = snapshotOf(
       bar((b) => b.set(MERLOT, 'description', 'manual', { en_US: 'A red wine' })),

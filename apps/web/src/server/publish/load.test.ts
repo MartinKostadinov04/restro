@@ -700,5 +700,57 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(first.entries.at(-1)).toMatchObject({ version: 4, counts: { priceChanged: 1 } })
       expect(second.entries.at(-1)).toMatchObject({ version: 1, first: true, counts: null })
     })
+
+    it('compares a version after a return with the version the menu was returned to', async () => {
+      const lone = (await provisionVenue(app, tenant, { name: 'Return', slug: 'return' }))
+        .id as VenueId
+      const loneMenu = await provisionMenu(app, tenant, lone)
+      const sec = newId('nd')
+      const item = newId('nd')
+      await change([
+        {
+          op: 'createNode',
+          id: sec,
+          nodeType: 'section',
+          parent: { id: loneMenu.id },
+          status: 'active',
+          sortKey: 'end',
+        },
+        manual(sec, 'title', { bg_BG: 'Вино', en_US: 'Wine' }),
+        { op: 'createNode', id: item, nodeType: 'item', parent: null, status: 'active' },
+        manual(item, 'name', { bg_BG: 'Мерло', en_US: 'Merlot' }),
+        manual(item, 'price', eur(1000)),
+        manual(item, 'allergens', []),
+        { op: 'setPlacement', item: { id: item }, section: { id: sec }, sortKey: 'end' },
+      ])
+      const publishLone = () =>
+        publishMenu(app, tenant, {
+          menuId: loneMenu.id,
+          venueId: lone,
+          reason: 'manual',
+          actor: 'user:us_maria',
+        })
+      const one = await publishLone()
+      await change([manual(item, 'price', eur(1200))])
+      await publishLone() // version 2
+      const back = await rollback(scope({ venueId: lone }), services, one.snapshot.id as string)
+      expect(back).toMatchObject({ ok: true })
+      // The price stays at 12,00: this publish is version 4, with version 2's content. Guests had
+      // version 1 (10,00), so it changed a price, even though version 2 is the number before it.
+      const four = await publishLone()
+      expect(four.snapshot.version).toBe(4)
+
+      const scopeLone = viewScope({ venue: { id: lone, slug: 'return', timezone: 'Europe/Sofia' } })
+      const page = await loadHistoryPage(scopeLone, loneMenu.id, {}, deps)
+      expect(page.entries.map((entry) => entry.version)).toEqual([4, 3, 2, 1])
+      expect(page.entries[0]).toMatchObject({ counts: { total: 1, priceChanged: 1 } })
+      expect(page.entries[1]).toMatchObject({
+        reason: 'rollback',
+        restoresVersion: 1,
+        counts: null,
+      })
+      expect(page.entries[2]).toMatchObject({ counts: { total: 1, priceChanged: 1 } })
+      expect(page.entries[3]).toMatchObject({ first: true, counts: null })
+    })
   })
 })

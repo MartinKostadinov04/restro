@@ -33,7 +33,11 @@ export function HeldBanner({
   const t = useTranslations('publish.held')
   const locale = useAdminLocale()
   const unnamed = useTranslations('publish.changes')('unnamed')
-  const shown = held.items.slice(0, HELD_NAMES_SHOWN)
+  // By name in the interface language (the view lists them by id, which means nothing to a person).
+  const names = held.items
+    .map((item) => menuName(item.name, locale, unnamed))
+    .sort((a, b) => a.localeCompare(b, locale, { numeric: true }))
+  const shown = names.slice(0, HELD_NAMES_SHOWN)
   // The count is the whole of what would be hidden, even when fewer names are known.
   const more = held.hidden - shown.length
   const can = view.canPublish && !busy
@@ -63,7 +67,7 @@ export function HeldBanner({
         <div className="text-sm" data-testid="held-items">
           <p className="font-medium">{t('names')}</p>
           <p className="text-muted-foreground">
-            {shown.map((item) => menuName(item.name, locale, unnamed)).join(', ')}
+            {shown.join(', ')}
             {more > 0 ? ` ${t('more', { count: more })}` : ''}
           </p>
         </div>

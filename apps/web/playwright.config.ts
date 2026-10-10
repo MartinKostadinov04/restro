@@ -50,6 +50,20 @@ const serverEnvironment = (origin: string) => ({
   SEAL_PUBLIC_KEY,
 })
 
+// The REAL worker runs beside the web servers, for the Publish tab (brief S3-05): "Publish" only
+// queues a job, and the worker publishes it. It holds no sealing keys (a public key without the
+// private half would stop it), so it runs the publish jobs and the heartbeat and syncs no barsy.
+// Its health port moves with E2E_PORT.
+const WORKER_PORT = PORT + 2
+const workerEnvironment = {
+  ...serverEnvironment(ORIGIN),
+  SEAL_PUBLIC_KEY: '',
+  SEAL_PRIVATE_KEY: '',
+  WORKER_ID: 'e2e-worker',
+  WORKER_HEALTH_PORT: String(WORKER_PORT),
+  LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
+}
+
 export default defineConfig({
   testDir: './e2e',
   globalSetup: './e2e/global-setup.ts',
@@ -93,6 +107,13 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 180_000,
       env: { ...serverEnvironment(DEV_ORIGIN), NODE_ENV: 'development' },
+    },
+    {
+      command: 'pnpm --filter @restro/worker exec tsx src/index.ts',
+      url: `http://127.0.0.1:${WORKER_PORT}/health`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: workerEnvironment,
     },
   ],
 })

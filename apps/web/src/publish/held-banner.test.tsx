@@ -44,7 +44,7 @@ describe('the held-publish banner (V11)', () => {
       screen.getByText('An automatic publish was held: it would hide 3 of 5 items (60%)'),
     ).toBeTruthy()
     expect(screen.getByTestId('held-items').textContent).toBe(
-      'Would be hiddenMojito, Spritz, Negroni',
+      'Would be hiddenMojito, Negroni, Spritz',
     )
 
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))

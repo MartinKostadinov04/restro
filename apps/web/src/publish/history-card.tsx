@@ -84,11 +84,11 @@ function EntryRow({
 
   return (
     <li
-      className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
+      className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4"
       data-testid="history-row"
       data-version={entry.version}
     >
-      <div className="grid min-w-0 flex-1 gap-0.5">
+      <div className="grid min-w-0 gap-0.5 sm:flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{t('version', { version: entry.version })}</span>
           {live ? <Badge variant="success">{t('live')}</Badge> : null}
@@ -119,6 +119,7 @@ function EntryRow({
           type="button"
           variant="outline"
           size="sm"
+          className="w-fit"
           disabled={busy}
           onClick={() => onReturn(entry)}
           data-testid="history-return"

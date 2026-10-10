@@ -261,7 +261,8 @@ const hasBody = (row: { status: string; reason: string }) =>
 
 /**
  * One page of the history, newest first: every version with who and why, and for the published
- * ones what they changed compared with the published version before them.
+ * ones what they changed compared with what guests had just before (a version after a return is
+ * compared with the version the menu was returned to).
  */
 export async function loadHistoryPage(
   scope: ViewScope,
@@ -276,33 +277,46 @@ export async function loadHistoryPage(
     ...(options.beforeVersion === undefined ? {} : { beforeVersion: options.beforeVersion }),
   })
   const records = page.snapshots
-  const withBodies = records.filter(hasBody)
 
-  // The version before the oldest one on the page that has a body, to compare it with.
-  const oldest = withBodies.at(-1)
-  const [before] =
+  // What guests had just before each version: the snapshot the pointer named. A published version
+  // moves the pointer to itself, a return moves it to the version it went back to, and a held or
+  // rejected one does not move it. So a version after a return is compared with the version the
+  // menu had been returned to, not with the one that merely has the number before it.
+  const oldest = records.at(-1)
+  const [earlier] =
     oldest === undefined
       ? []
       : await withTenant(scope.pool, scope.tenantId, (tx) =>
           tx
-            .select({ id: snapshots.id })
+            .select({ id: snapshots.id, restores: snapshots.restoresSnapshotId })
             .from(snapshots)
             .where(
               and(
                 eq(snapshots.menuId, menuId),
                 eq(snapshots.venueId, scope.venue.id),
                 eq(snapshots.status, 'published'),
-                inArray(snapshots.reason, ['manual', 'auto_sync']),
                 lt(snapshots.version, oldest.version),
               ),
             )
             .orderBy(desc(snapshots.version))
             .limit(1),
         )
+  let liveBefore: string | null = earlier ? (earlier.restores ?? earlier.id) : null
+  const previousOf = new Map<string, string | null>()
+  for (const record of [...records].reverse()) {
+    previousOf.set(record.id, liveBefore)
+    if (record.status === 'published') liveBefore = record.restoresSnapshotId ?? record.id
+  }
 
+  const withBodies = records.filter(hasBody)
   const bodyIds = [
-    ...withBodies.map((record) => record.id as string),
-    ...(before ? [before.id] : []),
+    ...new Set([
+      ...withBodies.map((record) => record.id as string),
+      ...withBodies.flatMap((record) => {
+        const previous = previousOf.get(record.id)
+        return previous ? [previous] : []
+      }),
+    ]),
   ]
   const bodies = new Map<string, MenuSnapshot>()
   if (bodyIds.length > 0) {
@@ -344,14 +358,13 @@ export async function loadHistoryPage(
     records.map((record) => record.actor),
   )
   const entries = records.map((record): VersionEntry => {
-    const index = withBodies.findIndex((candidate) => candidate.id === record.id)
     let counts: VersionCounts | null = null
     let first = false
-    if (index >= 0) {
+    if (hasBody(record)) {
       const body = bodies.get(record.id)
-      const previousId = withBodies[index + 1]?.id ?? before?.id
-      const previous = previousId === undefined ? undefined : bodies.get(previousId)
-      if (previousId === undefined) first = true
+      const previousId = previousOf.get(record.id) ?? null
+      const previous = previousId === null ? undefined : bodies.get(previousId)
+      if (previousId === null) first = true
       else if (body !== undefined && previous !== undefined) counts = countsOf(previous, body)
     }
     const held = record.heldReason
