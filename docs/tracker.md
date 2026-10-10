@@ -133,6 +133,12 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Variants:** `sharp` 0.35.4 webp, named by real width (`w320`/`w640`/`w1280`, or the photo's own width when smaller).
   - **Holds:** older held publishes are superseded on success.
   - **Deploy:** `PUBLISH_STORE` is required in production, and the worker image needs sharp's platform binary.
+- Sync settings (S3-04, merged 10-10):
+  - **Tick:** one `barsy-sync-tick` every minute with a pure, DST-safe `dueSyncs`. The tick also records queued marks, so failed runs are not re-queued every minute.
+  - **Settings:** `config.schedule` and `config.publish` (the old flat `publish_after_sync` is a fallback). "Hold new items" hides only items created by that run (manual `visible = false`, actor `system`, badge "Нов от barsy").
+  - **Photos:** photos that arrive re-publish automatically **only for barsy photos** (a manager's upload waits for "Publish", per the publish policy).
+  - **Missed daily pull:** the daily full pull is today's slot only; a pull missed while the worker was down is not caught up.
+  - No date-fns in the repo: scheduling uses `Intl` like the rest of core.
 - **Staging (10-10, Martin's OK):**
   - Stage 2 migrations applied to Supabase `restro-staging` (8 migrations, 23 tables, forced RLS on all 15 tenant tables; `anon`/`authenticated` have no access to `restro`) and `restro_app` privileges synced.
   - Supabase's security advisor flags only its own `public.rls_auto_enable()` (an event-trigger function from the project's auto-RLS option, not ours; event-trigger functions cannot be called through the API). Hardening option: revoke `EXECUTE` from `anon`/`authenticated`.
