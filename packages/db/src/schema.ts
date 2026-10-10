@@ -711,6 +711,8 @@ export const events = restro.table(
 export interface JobRunDetails {
   notes: string[]
   refused: { nodeRef: string | null; fieldKey?: string; code: string }[]
+  /** True when a full pull did not conclude absence. Absent on runs recorded before it existed. */
+  deletionCheckSkipped?: boolean
 }
 
 /** One run of a job (full pull, incremental pull, photo fetch, …) with its counters. */

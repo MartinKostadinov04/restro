@@ -249,6 +249,9 @@ function toRunView(run: JobRun): RunView {
               fieldKey: entry.fieldKey ?? null,
               code: entry.code,
             })),
+            ...(details.deletionCheckSkipped !== undefined
+              ? { deletionCheckSkipped: details.deletionCheckSkipped }
+              : {}),
           },
   }
 }

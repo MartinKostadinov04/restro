@@ -75,6 +75,8 @@ export interface PullOutcome {
   readonly counters: Record<string, number>
   /** Lines for the job run's text: what was skipped and why. */
   readonly notes: string[]
+  /** True when the full pull did not conclude absence (a failed page, or several venues). */
+  readonly deletionCheckSkipped: boolean
   readonly refused: ApplyRejection[]
   /** True when every page was read (the cursor may advance). */
   readonly complete: boolean
@@ -341,6 +343,7 @@ async function syncFetched(
 ): Promise<{
   counters: Record<string, number>
   notes: string[]
+  deletionCheckSkipped: boolean
   totals: AppliedTotals
   complete: boolean
 }> {
@@ -349,6 +352,7 @@ async function syncFetched(
   const integrationId = session.integration.id as IntegrationId
   const startIso = start.toISOString()
   const notes: string[] = []
+  let deletionCheckSkipped = false
   const counters: Record<string, number> = {}
 
   const menu = await provisionMenu(env.pool, tenantId, target.venueId)
@@ -441,10 +445,12 @@ async function syncFetched(
   const complete = fetched.pagesOk.every((ok) => ok)
   if (mode === 'full') {
     if (target.mappedVenues !== 1) {
+      deletionCheckSkipped = true
       notes.push(
         `deletion check skipped: ${target.mappedVenues} venues of this integration have a catalogue root (one venue for now)`,
       )
     } else if (!complete) {
+      deletionCheckSkipped = true
       const failed = fetched.pagesOk.filter((ok) => !ok).length
       notes.push(`deletion check skipped: ${failed} of ${fetched.pagesOk.length} pages failed`)
     } else {
@@ -517,7 +523,7 @@ async function syncFetched(
   const photos = await queuePhotos(ctx, mapping, before, hashes)
   counters.photos_queued = photos.queued
   counters.photos_elsewhere = photos.elsewhere
-  return { counters, notes, totals, complete }
+  return { counters, notes, deletionCheckSkipped, totals, complete }
 }
 
 // --- the two runs ----------------------------------------------------------------------------
@@ -577,6 +583,7 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
   return {
     counters: result.counters,
     notes,
+    deletionCheckSkipped: result.deletionCheckSkipped,
     refused: result.totals.rejected,
     complete: result.complete,
     treeHash: treeHashOf(tree),
@@ -594,6 +601,7 @@ export async function runIncremental(
   return {
     counters: result.counters,
     notes: result.notes,
+    deletionCheckSkipped: result.deletionCheckSkipped,
     refused: result.totals.rejected,
     complete: result.complete,
     treeHash: treeHashOf(tree),

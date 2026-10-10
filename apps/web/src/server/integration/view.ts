@@ -80,6 +80,8 @@ export interface RunView {
   readonly details: {
     readonly notes: readonly string[]
     readonly refused: readonly RefusedWrite[]
+    /** Set on runs recorded since the flag existed; absent on older runs. */
+    readonly deletionCheckSkipped?: boolean
   } | null
 }
 

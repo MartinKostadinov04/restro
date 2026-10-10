@@ -121,7 +121,7 @@ export interface UpdateIntegrationInput {
    */
   readonly config?: Readonly<Record<string, unknown>>
   readonly status?: IntegrationStatus
-  /** Why the status is what it is, for people ("Wrong user or password"); null clears it. */
+  /** Why the status is what it is: a code the web translates ("wrong_credentials"), or older text; null clears it. */
   readonly statusDetail?: string | null
   readonly lastCheckedAt?: Date
 }

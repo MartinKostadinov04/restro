@@ -44,13 +44,18 @@ export function splitDuration(ms: number): { minutes: number; seconds: number } 
 }
 
 /**
- * The sync writes "deletion check skipped: …" as a note when it did not conclude absence (rule
- * 6: a failed page, or several mapped venues). That text is the only record of it, so it is
- * matched here; a run of an older build is matched in its error summary.
+ * The sync records `deletionCheckSkipped` in the run's details when it did not conclude absence
+ * (rule 6: a failed page, or several mapped venues). Runs recorded before the flag are matched by
+ * the text "deletion check skipped: …": in the notes, or in the error summary of a run without
+ * details.
  */
 export function deletionCheckSkipped(run: Pick<RunView, 'details' | 'errorSummary'>): boolean {
+  const details = run.details
+  if (details !== null && details.deletionCheckSkipped !== undefined) {
+    return details.deletionCheckSkipped === true
+  }
   const pattern = /deletion check skipped/i
-  if (run.details !== null) return run.details.notes.some((note) => pattern.test(note))
+  if (details !== null) return details.notes.some((note) => pattern.test(note))
   return run.errorSummary !== null && pattern.test(run.errorSummary)
 }
 
