@@ -21,6 +21,7 @@ import { ItemRow } from './item-row'
 import { ItemToolbar } from './item-toolbar'
 import { sectionTitle } from './labels'
 import { SectionMenu } from './row-menus'
+import { SoldOutChip } from './sold-out-chip'
 import { filterByTags } from './tag-filter'
 
 function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly NodeId[] }) {
@@ -102,7 +103,8 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
           <span className="text-sm text-muted-foreground">{t('itemCount', { count })}</span>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <SoldOutChip />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Switch
             checked={!section.hidden}
@@ -144,14 +146,19 @@ export function ItemPane() {
         data-testid="item-pane"
         data-pane="unsorted"
       >
-        <header className="grid gap-1.5">
-          <h2 className="text-lg font-semibold tracking-tight" data-testid="pane-title">
-            {t('unsorted')}
-          </h2>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="secondary">{t('itemCount', { count: view.unsortedIds.length })}</Badge>
-            {t('unsortedHint')}
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="grid gap-1.5">
+            <h2 className="text-lg font-semibold tracking-tight" data-testid="pane-title">
+              {t('unsorted')}
+            </h2>
+            <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="secondary">
+                {t('itemCount', { count: view.unsortedIds.length })}
+              </Badge>
+              {t('unsortedHint')}
+            </p>
+          </div>
+          <SoldOutChip />
         </header>
         <ItemList sectionId={null} ids={view.unsortedIds} />
       </section>

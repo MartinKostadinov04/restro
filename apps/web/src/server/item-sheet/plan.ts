@@ -278,7 +278,7 @@ export function fieldAccess(
     }
     return {
       kind: 'readonly',
-      reason: definition.key === 'for_sale' ? 'sold_out_later' : 'composer_toggle',
+      reason: definition.key === 'for_sale' ? 'sold_out_control' : 'composer_toggle',
     }
   }
   if (refusalFor(context) === 'locked') return { kind: 'readonly', reason: 'locked_to_barsy' }

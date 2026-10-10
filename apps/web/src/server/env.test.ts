@@ -12,6 +12,7 @@ import { defaultQrBaseUrl, ServerEnvSchema } from './env'
 // Built from two halves so that this file does not match its own search.
 const PRIVATE_KEY_VARIABLE = ['SEAL', 'PRIVATE', 'KEY'].join('_')
 const WEB_ROOT = fileURLToPath(new URL('../../', import.meta.url))
+// No exemption for `playwright.config.ts`: it blanks every sealing key it finds without naming one.
 const SKIPPED = new Set(['node_modules', '.next', 'test-results', 'playwright-report'])
 
 function sourceFiles(dir: string): string[] {

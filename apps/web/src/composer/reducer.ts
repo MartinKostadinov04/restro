@@ -53,6 +53,12 @@ export type ComposerOp =
   | { readonly type: 'upsertTag'; readonly tag: ComposerTag }
   /** A tag moves before another tag (`null` = to the end). */
   | { readonly type: 'moveTag'; readonly tagId: TagId; readonly beforeId: TagId | null }
+  /** Items are marked sold out tonight, or the mark is taken off (D46). */
+  | {
+      readonly type: 'setSoldOut'
+      readonly itemIds: readonly NodeId[]
+      readonly soldOut: boolean
+    }
 
 const byKeyThenId = (a: { sortKey: string; id: string }, b: { sortKey: string; id: string }) =>
   a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
@@ -210,9 +216,22 @@ function moveTag(view: ComposerView, op: Extract<ComposerOp, { type: 'moveTag' }
   return { ...view, tagIds }
 }
 
+function setSoldOut(view: ComposerView, op: Extract<ComposerOp, { type: 'setSoldOut' }>) {
+  const items: Record<NodeId, ComposerItem> = { ...view.items }
+  for (const id of op.itemIds) {
+    const item = items[id]
+    // An item barsy (or another layer) has off sale is not ours to change: the base view keeps it.
+    if (!item || item.offSale !== null) continue
+    items[id] = { ...item, soldOutTonight: op.soldOut }
+  }
+  return { ...view, items }
+}
+
 /** The view after one change. */
 export function reduceView(view: ComposerView, op: ComposerOp): ComposerView {
   switch (op.type) {
+    case 'setSoldOut':
+      return setSoldOut(view, op)
     case 'setItemTags':
       return setItemTags(view, op)
     case 'upsertTag':

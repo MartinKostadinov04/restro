@@ -39,6 +39,8 @@ const item = (id: NodeId, name: string, extra: Partial<ComposerItem> = {}): Comp
   issues: [],
   tags: [],
   dietary: [],
+  soldOutTonight: false,
+  offSale: null,
   ...extra,
 })
 

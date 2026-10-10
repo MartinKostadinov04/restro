@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { canManageIntegration, canPublishMenu } from './roles'
+import { canManageIntegration, canMarkSoldOut, canPublishMenu } from './roles'
 
 describe('canManageIntegration', () => {
   it('allows owners and admins', () => {
@@ -29,6 +29,17 @@ describe('canPublishMenu', () => {
     }
     for (const role of ['member', 'administrator', '', null, undefined]) {
       expect(canPublishMenu(role), String(role)).toBe(false)
+    }
+  })
+})
+
+describe('canMarkSoldOut', () => {
+  it('is for owners and admins (managers) and nobody else', () => {
+    for (const role of ['owner', 'admin', 'member,admin']) {
+      expect(canMarkSoldOut(role), role).toBe(true)
+    }
+    for (const role of ['member', 'waiter', '', null, undefined]) {
+      expect(canMarkSoldOut(role), String(role)).toBe(false)
     }
   })
 })

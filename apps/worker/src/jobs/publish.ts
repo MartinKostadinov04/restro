@@ -4,6 +4,7 @@
 //   publish-menu     publishMenu (core/apply), then the files; records a job run
 //   publish-files    only the files of the current publish (after a rollback; a repair)
 //   publish-live     live.json, the sold-out overlay (S3-08 triggers it)
+//   publish-live-tick  every minute: remakes live.json when a venue's service day has changed
 //   asset-variants   the webp variants of one photo (jobs/barsy.ts and the web app queue it); for a
 //                    barsy photo it then queues the automatic publish of the menus that use it
 //   publish-table-tokens  the t/<token>.json files of a venue's table QR codes: writes the active
@@ -35,6 +36,7 @@ import {
   writeLiveOverlay,
   writePublishFiles,
 } from '../publish/files'
+import { type LiveAsks, queueLiveRollovers } from '../publish/rollover'
 import { writeTableTokenFiles } from '../publish/table-tokens'
 import { runAssetVariants } from '../publish/variants'
 import { type RunReport, trackedRun } from '../sync/run'
@@ -250,8 +252,10 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     options: {
       policy: 'stately',
       queue: {
-        retryLimit: 1,
+        // A mark the guests do not see is the thing this job exists to prevent: try a few times.
+        retryLimit: 3,
         retryDelay: 5,
+        retryBackoff: true,
         expireInSeconds: 2 * 60,
         retentionSeconds: 10 * 60,
         deleteAfterSeconds: 60 * 60,
@@ -265,6 +269,38 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         const result = await writeLiveOverlay(filesDeps(context), payload)
         context.log.info({ menuId: payload.menuId, ...result }, 'live overlay')
       }
+    },
+  })
+
+  // --- publish-live-tick -----------------------------------------------------------------
+
+  // The 07:00 rollover (S3-08, see ../publish/rollover.ts). It lives here, with the other publish
+  // jobs, and not in the barsy sync tick: those jobs exist only when the worker holds the sealing
+  // keys, and a venue's sold-out marks must lapse whether or not it syncs with barsy.
+  const liveAsks: LiveAsks = new Map()
+  const liveTick = defineJob({
+    name: JOB_NAMES.publishLiveTick,
+    schedule: { cron: '* * * * *', tz: 'Europe/Sofia' },
+    options: {
+      // The next tick comes soon enough; a missed one is not retried.
+      queue: {
+        retryLimit: 0,
+        expireInSeconds: 120,
+        retentionSeconds: 10 * 60,
+        deleteAfterSeconds: 60 * 60,
+      },
+    },
+    async handler(_jobs, context) {
+      const report = await queueLiveRollovers({
+        pool: context.pool,
+        log: context.log,
+        now: context.now,
+        enqueue: (name, data, options) => context.queue.send(name, data, options),
+        asks: liveAsks,
+      })
+      // Every minute: say so only when something was queued or went wrong.
+      const level = report.rolledOver + report.reasserted + report.failed > 0 ? 'info' : 'debug'
+      context.log[level](report, 'live rollover tick')
     },
   })
 
@@ -342,5 +378,5 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     },
   })
 
-  return [publish, files, live, variants, tableTokens] as JobDefinition[]
+  return [publish, files, live, liveTick, variants, tableTokens] as JobDefinition[]
 }

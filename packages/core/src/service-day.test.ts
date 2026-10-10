@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { isoInTimeZone, serviceDate } from './service-day'
+import {
+  isoInTimeZone,
+  liveEditions,
+  serviceDate,
+  serviceEditionId,
+  serviceEditionLayer,
+  snapshotEditions,
+} from './service-day'
 
 const SOFIA = 'Europe/Sofia'
 
@@ -33,5 +40,22 @@ describe('isoInTimeZone', () => {
     expect(isoInTimeZone(new Date('2026-12-08T18:04:12Z'), 'America/St_Johns')).toBe(
       '2026-12-08T14:34:12-03:30',
     )
+  })
+})
+
+describe('the editions of a service day (S3-08)', () => {
+  it("names the layer a day's sold-out marks live in", () => {
+    expect(serviceEditionId('2026-10-09')).toBe('service:2026-10-09')
+    expect(serviceEditionLayer('2026-10-09')).toBe('edition:service:2026-10-09')
+    for (const bad of ['', '2026-10-9', '09-10-2026', '2026-10-09T20:00', 'tonight']) {
+      expect(() => serviceEditionLayer(bad), bad).toThrow(RangeError)
+    }
+  })
+
+  it('resolves a snapshot with the venue edition only, and the live menu with the day too', () => {
+    expect(snapshotEditions('vn_x')).toEqual(['venue:vn_x'])
+    expect(liveEditions('vn_x', '2026-10-09')).toEqual(['venue:vn_x', 'service:2026-10-09'])
+    // A snapshot never names a service day, whatever the day is.
+    expect(snapshotEditions('vn_x').some((id) => id.startsWith('service:'))).toBe(false)
   })
 })

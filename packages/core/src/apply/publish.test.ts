@@ -225,7 +225,7 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
       published_at: '2026-10-09T21:00:00+03:00',
       menu_id: menu.id,
       venue_id: venueId,
-      edition: ['master', `venue:${venueId}`, 'service:2026-10-09'],
+      edition: ['master', `venue:${venueId}`],
     })
     expect(body?.sections[section]?.items).toEqual([...handMade, barsyItem])
     expect(body?.items[barsyItem]).toMatchObject({ orderable: true, price: eur(1250) })

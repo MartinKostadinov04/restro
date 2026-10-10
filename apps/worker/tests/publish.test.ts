@@ -41,6 +41,7 @@ import {
   provisionMenu,
   provisionVenue,
   rollbackTo,
+  setSoldOutTonight,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import sharp, { type WriteableMetadata } from 'sharp'
@@ -50,6 +51,7 @@ import type { WorkerConfig } from '../src/config'
 import { createPublishJobs } from '../src/jobs/publish'
 import type { JobDefinition } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
+import { type LiveAsks, queueLiveRollovers, REASSERT_AFTER_MS } from '../src/publish/rollover'
 import { assetsWithoutVariants, renderVariant, runAssetVariants } from '../src/publish/variants'
 import { backfillVariants } from '../src/variants/backfill'
 import { startWorker, type Worker } from '../src/worker'
@@ -488,6 +490,190 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       expect(await readJson(livePath(scope().menuId, scope().venueId))).toEqual({
         version: 1,
         items: {},
+      })
+    })
+
+    // --- sold out tonight (brief S3-08): the mark reaches guests through live.json alone -----
+    const livePathOfMenu = () => livePath(scope().menuId, scope().venueId)
+    const mark = (itemIds: string[], soldOut: boolean) =>
+      setSoldOutTonight(
+        world.pool,
+        world.tenantId,
+        {
+          venueId: world.venueId as VenueId,
+          itemIds: itemIds as NodeId[],
+          soldOut,
+          actor: 'user:us_manager',
+        },
+        { now: world.clock },
+      )
+    // Friday 23:00 in Sofia, and the next morning: two service days.
+    const friday = new Date('2026-10-09T20:00:00Z')
+    const saturdayMorning = new Date('2026-10-10T05:00:00Z')
+
+    it('lists a mark in live.json within the job, with no new snapshot and the pointer untouched', async () => {
+      world.clock = friday
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      const pointer = await readJson(currentPath(scope().menuId, scope().venueId))
+      store.puts.length = 0
+
+      await mark([items[1] as string], true)
+      await runJob(JOB_NAMES.publishLive, scopePayload())
+      expect(await readJson(livePathOfMenu())).toEqual({
+        version: 1,
+        items: { [items[1] as string]: { sold_out: true } },
+      })
+      expect(store.puts).toEqual([livePathOfMenu()])
+      expect(await snapshotRows()).toHaveLength(1)
+      expect(await readJson(currentPath(scope().menuId, scope().venueId))).toEqual(pointer)
+
+      // Unmarking takes it out again.
+      await mark([items[1] as string], false)
+      await runJob(JOB_NAMES.publishLive, scopePayload())
+      expect(await readJson(livePathOfMenu())).toEqual({ version: 1, items: {} })
+    })
+
+    it("drops yesterday's marks after 07:00 without a publish, and a publish then is a no-op", async () => {
+      world.clock = friday
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      await mark([items[1] as string, items[2] as string], true)
+      await runJob(JOB_NAMES.publishLive, scopePayload())
+      expect(
+        Object.keys(((await readJson(livePathOfMenu())) as { items: object }).items),
+      ).toHaveLength(2)
+
+      world.clock = saturdayMorning
+      await runJob(JOB_NAMES.publishLive, scopePayload())
+      expect(await readJson(livePathOfMenu())).toEqual({ version: 1, items: {} })
+
+      // The 08:00 snapshot has the same content as the 23:00 one: the marks were never in it.
+      await runJob(JOB_NAMES.publishMenu, publishPayload('auto_sync'))
+      expect((await lastRun('publish_menu')).counters).toMatchObject({ unchanged: 1 })
+      expect(await snapshotRows()).toHaveLength(1)
+    })
+
+    describe('the rollover tick', () => {
+      const tick = (asks: LiveAsks) =>
+        queueLiveRollovers({
+          pool: world.pool,
+          log: world.context.log,
+          now: world.context.now,
+          enqueue: world.context.queue.send,
+          asks,
+        })
+      const liveJobs = () => world.enqueued.filter((job) => job.name === JOB_NAMES.publishLive)
+
+      it('asks for live.json when a menu is first seen and when its service day changes, not otherwise', async () => {
+        world.clock = friday
+        await runJob(JOB_NAMES.publishMenu, publishPayload())
+        const asks: LiveAsks = new Map()
+
+        expect(await tick(asks)).toMatchObject({
+          checked: 1,
+          rolledOver: 1,
+          reasserted: 0,
+          failed: 0,
+        })
+        expect(liveJobs()).toHaveLength(1)
+        expect(liveJobs()[0]).toMatchObject({
+          data: scopePayload(),
+          singletonKey: `${world.menuId}:${world.venueId}`,
+        })
+        const ask = asks.get(`${world.menuId}:${world.venueId}`)
+        expect(ask?.lastLiveServiceDate).toBe('2026-10-09')
+
+        // A minute later: nothing.
+        world.clock = new Date(friday.getTime() + 60_000)
+        expect(await tick(asks)).toMatchObject({ rolledOver: 0, reasserted: 0 })
+        expect(liveJobs()).toHaveLength(1)
+
+        // 06:00 and 06:59:59 are still Friday's service day: no rollover (a long gap since the
+        // last ask is only the repair, below).
+        world.clock = new Date('2026-10-10T03:00:00Z')
+        expect(await tick(asks)).toMatchObject({ rolledOver: 0 })
+        world.clock = new Date('2026-10-10T03:59:59Z')
+        expect(await tick(asks)).toMatchObject({ rolledOver: 0 })
+        expect(asks.get(`${world.menuId}:${world.venueId}`)?.lastLiveServiceDate).toBe('2026-10-09')
+        const before = liveJobs().length
+
+        // 07:00:00 is Saturday's service day and asks.
+        world.clock = new Date('2026-10-10T04:00:00Z')
+        expect(await tick(asks)).toMatchObject({ rolledOver: 1 })
+        expect(liveJobs()).toHaveLength(before + 1)
+        expect(asks.get(`${world.menuId}:${world.venueId}`)?.lastLiveServiceDate).toBe('2026-10-10')
+        // And not again a minute later.
+        world.clock = new Date('2026-10-10T04:01:00Z')
+        expect(await tick(asks)).toMatchObject({ rolledOver: 0, reasserted: 0 })
+      })
+
+      it('asks again after a while on the same day, as a repair, and again after a restart', async () => {
+        world.clock = friday
+        await runJob(JOB_NAMES.publishMenu, publishPayload())
+        const asks: LiveAsks = new Map()
+        await tick(asks)
+        world.clock = new Date(friday.getTime() + REASSERT_AFTER_MS - 1000)
+        expect((await tick(asks)).reasserted).toBe(0)
+        world.clock = new Date(friday.getTime() + REASSERT_AFTER_MS)
+        expect(await tick(asks)).toMatchObject({ rolledOver: 0, reasserted: 1 })
+        expect(liveJobs()).toHaveLength(2)
+        // A restarted worker has no memory: it asks once for every published menu.
+        expect(await tick(new Map())).toMatchObject({ rolledOver: 1 })
+        expect(liveJobs()).toHaveLength(3)
+      })
+
+      it('does not count an ask that could not be queued, so the next tick tries again', async () => {
+        world.clock = friday
+        await runJob(JOB_NAMES.publishMenu, publishPayload())
+        const asks: LiveAsks = new Map()
+        const failing = await queueLiveRollovers({
+          pool: world.pool,
+          log: world.context.log,
+          now: world.context.now,
+          enqueue: async () => {
+            throw new Error('queue down')
+          },
+          asks,
+        })
+        expect(failing).toMatchObject({ rolledOver: 0, failed: 1 })
+        expect(asks.size).toBe(0)
+        expect(await tick(asks)).toMatchObject({ rolledOver: 1 })
+      })
+
+      it('asks for nothing before the first publish', async () => {
+        world.clock = friday
+        expect(await tick(new Map())).toMatchObject({ checked: 0, rolledOver: 0 })
+        expect(liveJobs()).toEqual([])
+      })
+
+      it('is a registered job that runs every minute in Europe/Sofia, and runs without sealing keys', async () => {
+        const definition = jobs.get(JOB_NAMES.publishLiveTick)
+        expect(definition?.schedule).toEqual({ cron: '* * * * *', tz: 'Europe/Sofia' })
+        world.clock = friday
+        await runJob(JOB_NAMES.publishMenu, publishPayload())
+        await runJob(JOB_NAMES.publishLiveTick, {})
+        expect(liveJobs()).toHaveLength(1)
+        // The same process remembers: the second tick of the same minute asks for nothing.
+        await runJob(JOB_NAMES.publishLiveTick, {})
+        expect(liveJobs()).toHaveLength(1)
+      })
+
+      it("remakes live.json after 07:00 when the tick's ask is run", async () => {
+        world.clock = friday
+        await runJob(JOB_NAMES.publishMenu, publishPayload())
+        await mark([items[3] as string], true)
+        await runJob(JOB_NAMES.publishLive, scopePayload())
+        expect(((await readJson(livePathOfMenu())) as { items: object }).items).toEqual({
+          [items[3] as string]: { sold_out: true },
+        })
+
+        const asks: LiveAsks = new Map()
+        await tick(asks)
+        world.clock = saturdayMorning
+        expect(await tick(asks)).toMatchObject({ rolledOver: 1 })
+        // The job the tick queued is the ordinary publish-live of the menu.
+        const queued = liveJobs().at(-1)
+        await runJob(JOB_NAMES.publishLive, queued?.data as object)
+        expect(await readJson(livePathOfMenu())).toEqual({ version: 1, items: {} })
       })
     })
   })

@@ -35,7 +35,7 @@ const CTX: SnapshotContext = {
   publishedAt: '2026-10-09T21:00:00+03:00',
   menuId: ROOT,
   venueId: VENUE_ID,
-  edition: ['master', `venue:${VENUE_ID}`, 'service:2026-10-09'],
+  edition: ['master', `venue:${VENUE_ID}`],
   locales: { default: 'bg_BG', available: ['bg_BG', 'en_US'] },
   currency: 'EUR',
   assets: { [PHOTO]: { w: 800, h: 600, variants: ASSET_VARIANT_WIDTHS } },
@@ -217,7 +217,7 @@ function buildDocument(spec: Spec): DocBuilder {
 function contextFor(spec: Spec): ResolveContext {
   return {
     ...CONTEXT,
-    edition: ['service:2026-10-09'],
+    edition: [`venue:${VENUE_ID}`],
     firstPublishedAt: Object.fromEntries(
       spec.firstPublished.map((id) => [id, '2026-10-05T12:00:00+03:00']),
     ),

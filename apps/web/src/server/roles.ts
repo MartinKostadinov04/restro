@@ -21,3 +21,11 @@ export function canManageIntegration(role: string | null | undefined): boolean {
 export function canPublishMenu(role: string | null | undefined): boolean {
   return canManageIntegration(role)
 }
+
+/**
+ * True for the roles that may mark items sold out tonight, or take the mark off (brief S3-08,
+ * D46): an owner or admin. Waiters do not use our admin.
+ */
+export function canMarkSoldOut(role: string | null | undefined): boolean {
+  return canManageIntegration(role)
+}
