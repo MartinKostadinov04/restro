@@ -3,6 +3,7 @@
 
 export { parseAllergenText } from './allergens.ts'
 export { type ArticlePicture, mapCatalogue, readArticlePicture } from './catalogue.ts'
+export { DEFAULT_MAPPING_LOCALE } from './config.ts'
 export { BarsyMappingError, type BarsyMappingErrorCode } from './errors.ts'
 export { mapModificators, mapPlaces, type PlacesContext } from './places.ts'
 export {

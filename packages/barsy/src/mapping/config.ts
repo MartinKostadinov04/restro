@@ -7,6 +7,9 @@ import { z } from 'zod'
 import { BarsyMappingError } from './errors.ts'
 import { BARSY_MAPPING_VERSION, type CatalogueInput, type MappingConfig } from './types.ts'
 
+/** The language a name without per-language text is stored under when the configuration names none. */
+export const DEFAULT_MAPPING_LOCALE: Locale = 'bg_BG'
+
 /** The change set's name pattern for job ids, profile names and integration ids. */
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 
@@ -47,7 +50,7 @@ export function parseMappingConfig(config: MappingConfig): ResolvedMappingConfig
       `invalid mapping configuration: ${describe(result.error)}`,
     )
   }
-  return { ...config, defaultLocale: result.data.defaultLocale ?? 'bg_BG' }
+  return { ...config, defaultLocale: result.data.defaultLocale ?? DEFAULT_MAPPING_LOCALE }
 }
 
 /** Validates the ids of the input (our venue, our menu root node, the barsy venue). */
