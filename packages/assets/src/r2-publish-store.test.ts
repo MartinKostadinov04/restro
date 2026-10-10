@@ -1,5 +1,10 @@
 // The R2 publish store against a mocked S3 client: no network and no real keys.
-import { type GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectCommand,
+  type GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3'
 import { newId } from '@restro/core'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -8,6 +13,7 @@ import {
   InvalidPublishPathError,
   publishPutOptions,
   snapshotPath,
+  tableTokenPath,
 } from './publish-paths'
 import { R2PublishStore } from './r2-publish-store'
 
@@ -58,6 +64,17 @@ describe('R2PublishStore', () => {
     )
     await expect(store.get('../x')).rejects.toThrow(InvalidPublishPathError)
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('deletes the key of a path, and refuses a path outside the shapes', async () => {
+    const { store, send } = makeStore()
+    const file = tableTokenPath('Ab3dEfGh1jKlMnOpQrStUv')
+    await store.delete(file)
+    const command = send.mock.calls[0]?.[0] as DeleteObjectCommand
+    expect(command).toBeInstanceOf(DeleteObjectCommand)
+    expect(command.input).toMatchObject({ Bucket: BUCKET, Key: file })
+    await expect(store.delete('tenants/x/original.png')).rejects.toThrow(InvalidPublishPathError)
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it('reads the bytes, null for a missing key, and lets other failures through', async () => {

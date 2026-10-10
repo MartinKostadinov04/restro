@@ -2,7 +2,12 @@
 // (`R2_PUBLIC_BUCKET`), spoken to through its S3-compatible API. Every object is put with the
 // `Cache-Control` and `Content-Type` of its path (./publish-paths.ts), which R2 and the CDN then
 // serve as they are. Loaded only when `PUBLISH_STORE=r2` (create-publish-store.ts).
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3'
 
 import { assertPublishPath, type PublishPutOptions } from './publish-paths'
 import type { PublishStore } from './publish-store'
@@ -54,5 +59,11 @@ export class R2PublishStore implements PublishStore {
       if ((error as { name?: string }).name === 'NoSuchKey') return null
       throw error
     }
+  }
+
+  async delete(path: string): Promise<void> {
+    assertPublishPath(path)
+    // S3 answers success for a key that is not there, so a repeated delete is a no-op.
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: path }))
   }
 }

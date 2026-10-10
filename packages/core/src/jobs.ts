@@ -10,6 +10,8 @@
 import { z } from 'zod'
 
 import { ActorSchema } from './change-set'
+import { TABLE_TOKEN_PATTERN } from './guest-files'
+import { sha256Hex } from './hash'
 import { idSchema } from './ids'
 
 /** Queue names. */
@@ -22,6 +24,8 @@ export const JOB_NAMES = {
   publishLive: 'publish-live',
   /** Make the webp variants of one photo for the publish store. */
   assetVariants: 'asset-variants',
+  /** Write the `t/<token>.json` files of a venue's table codes and remove the retired ones (S3-07). */
+  publishTableTokens: 'publish-table-tokens',
   /** Test the credentials and read what the installation holds (venues, languages, tree). */
   barsyConnect: 'barsy-connect',
   /** The full pull of one venue (collection path C). The only job that may conclude absence. */
@@ -104,6 +108,22 @@ export type PublishScopeJob = z.output<typeof PublishScopeJobSchema>
 export const AssetVariantsJobSchema = z.strictObject({ tenantId, assetId: idSchema('as') })
 export type AssetVariantsJob = z.output<typeof AssetVariantsJobSchema>
 
+/** The most tokens one `publish-table-tokens` job removes (a venue has far fewer tables). */
+export const MAX_RETIRED_TOKENS = 500
+
+/**
+ * `publish-table-tokens` (S3-07): the venue whose table files `t/<token>.json` are brought up to
+ * date, and the tokens that stopped working since (their files are removed). The job writes the
+ * file of EVERY active code of the venue, so what it writes does not depend on the payload; only
+ * `retired` does, which is why two jobs of one venue are merged only when `retired` is the same.
+ */
+export const PublishTableTokensJobSchema = z.strictObject({
+  tenantId,
+  venueId,
+  retired: z.array(z.string().regex(TABLE_TOKEN_PATTERN)).max(MAX_RETIRED_TOKENS),
+})
+export type PublishTableTokensJob = z.output<typeof PublishTableTokensJobSchema>
+
 /** The payload schema of each job that carries one. */
 export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyConnect]: BarsyConnectJobSchema,
@@ -114,6 +134,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
   [JOB_NAMES.assetVariants]: AssetVariantsJobSchema,
+  [JOB_NAMES.publishTableTokens]: PublishTableTokensJobSchema,
 } as const
 
 /** The jobs a producer may send (the ticks are only ever created by the scheduler). */
@@ -150,6 +171,7 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishMenu,
   JOB_NAMES.publishFiles,
   JOB_NAMES.publishLive,
+  JOB_NAMES.publishTableTokens,
 ])
 
 /**
@@ -173,6 +195,15 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
     }
     case JOB_NAMES.assetVariants:
       return (data as AssetVariantsJob).assetId
+    case JOB_NAMES.publishTableTokens: {
+      // The venue, plus a short hash of the tokens to remove: a waiting job is replaced only by an
+      // identical one, so a job that must remove a token is never dropped for another.
+      const tokens = data as PublishTableTokensJob
+      const retired = [...tokens.retired].sort().join(',')
+      return retired === ''
+        ? tokens.venueId
+        : `${tokens.venueId}:${sha256Hex(retired).slice(0, 16)}`
+    }
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
       const scope = data as PublishScopeJob

@@ -22,6 +22,13 @@ export interface PublishStore {
   put(path: string, bytes: Uint8Array, options: PublishPutOptions): Promise<void>
   /** The bytes at `path`, or null when there is none. */
   get(path: string): Promise<Uint8Array | null>
+  /**
+   * Removes the file at `path`. Removing a file that is not there is not an error (a repeated job
+   * finds the work done). Today only the worker's table-token job uses it (a retired QR code's
+   * `t/<token>.json`, S3-07); snapshots and photo variants are never removed.
+   * Throws `InvalidPublishPathError` for a path that is not one of the shapes.
+   */
+  delete(path: string): Promise<void>
 }
 
 export interface LocalPublishStoreOptions {
@@ -68,5 +75,10 @@ export class LocalPublishStore implements PublishStore {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
       throw error
     }
+  }
+
+  async delete(publishPath: string): Promise<void> {
+    // `force` makes a missing file a no-op.
+    await rm(this.fileOf(publishPath), { force: true })
   }
 }

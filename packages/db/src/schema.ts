@@ -785,8 +785,13 @@ export const places = restro.table(
     salonName: text('salon_name'),
     isPublic: boolean('is_public').notNull(),
     state: text('state').notNull().default('active'),
-    /** The QR code's random token (Stage 3). */
+    /**
+     * The QR code's random token (brief S3-07): 22 base62 characters from `crypto`, never derived
+     * from a barsy id; null = no code. `/t/<token>` leads to the menu with this table's name.
+     */
     qrToken: text('qr_token'),
+    /** What the guest page calls the table when a manager has chosen a name; else `place_num`. */
+    label: text('label'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -800,6 +805,16 @@ export const places = restro.table(
     }),
     check('places_id_format', sql`${t.id} ~ '^tb_[0-9A-Za-z]+$'`),
     check('places_state', sql`${t.state} in ('active', 'missing', 'deleted')`),
+    // The token file (`t/<token>.json`) holds a label of 1 to 40 characters.
+    check(
+      'places_label_length',
+      sql`${t.label} is null or (char_length(${t.label}) between 1 and 40 and ${t.label} = btrim(${t.label}))`,
+    ),
+    // A token is URL-safe and opaque: the same shape as `TABLE_TOKEN_PATTERN` in @restro/core.
+    check(
+      'places_qr_token_format',
+      sql`${t.qrToken} is null or ${t.qrToken} ~ '^[A-Za-z0-9_-]{8,128}$'`,
+    ),
   ],
 )
 

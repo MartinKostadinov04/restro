@@ -5,6 +5,7 @@ import { newId, TableTokenFileSchema, VenueIndexSchema } from '@restro/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  deleteTableTokenFile,
   parseGuestFile,
   readTableTokenFile,
   readVenueIndex,
@@ -49,6 +50,16 @@ describe('guest files (slug index and table tokens)', () => {
       table_label: '12',
     })
     expect(await readTableTokenFile(store, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')).toBeNull()
+  })
+
+  it('removes the file of a retired token, and removing it again is not an error', async () => {
+    const token = 'Ab3dEfGh1jKlMnOpQrStUv'
+    await writeTableTokenFile(store, token, { venue_slug: 'demo-club', table_label: '12' })
+    expect(await readTableTokenFile(store, token)).not.toBeNull()
+    await deleteTableTokenFile(store, token)
+    expect(await readTableTokenFile(store, token)).toBeNull()
+    await deleteTableTokenFile(store, token)
+    await deleteTableTokenFile(store, 'Zz9yXwVuTsRqPoNmLkJiHg')
   })
 
   it('treats a malformed file as no file', async () => {
