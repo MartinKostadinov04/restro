@@ -6,6 +6,7 @@ import {
   type HtmlElement,
   parseHtml,
   runFaceContract,
+  stubServices,
   textOf,
   withAttribute,
 } from '@restro/shell/testing'
@@ -16,9 +17,19 @@ import { EDITORIAL_CSS } from './css'
 import { EditorialMarketFace } from './face'
 import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import { bcp47 } from './model'
+import { SERVICES_CSS } from './services/services-css'
 import { itemsOf, richFixture, richView, viewOf } from './test-views'
 
-const render = (view: ViewModel) => renderToStaticMarkup(<EditorialMarketFace view={view} />)
+/** The browsing page: the host binds no services. */
+const renderBrowsing = (view: ViewModel) =>
+  renderToStaticMarkup(<EditorialMarketFace view={view} />)
+
+/**
+ * The face as the contract renders it (brief SH-06): with the empty services binding of the test
+ * harness, so the controls of a service the view model has on are drawn and the rest are not.
+ */
+const render = (view: ViewModel) =>
+  renderToStaticMarkup(<EditorialMarketFace view={view} services={stubServices()} />)
 
 /** Every host prop and option at once: the contract must hold however the host dresses the face. */
 const renderDressed = (view: ViewModel) =>
@@ -31,6 +42,7 @@ const renderDressed = (view: ViewModel) =>
       tableLabel="12"
       scheme="dark"
       options={{ layout: 'list', layoutSwitch: true, featureFirstSection: false }}
+      services={stubServices()}
     />,
   )
 
@@ -198,6 +210,82 @@ describe('language (R3)', () => {
   })
 })
 
+const SERVICE_SLOTS = ['menu.call_waiter', 'menu.bill', 'menu.bag', 'menu.pay']
+const slotsOf = (html: string) =>
+  new Set(withAttribute(parseHtml(html), 'data-slot').map((element) => element.attrs['data-slot']))
+
+describe('the service controls (R15, D71, D72)', () => {
+  it('are all drawn on the features-on fixture, each once, when the services are bound', () => {
+    const view = viewOf(fixture('features-on'))
+    const root = parseHtml(render(view))
+    for (const slot of ['menu.filters', ...SERVICE_SLOTS]) {
+      expect(withAttribute(root, 'data-slot', slot), slot).toHaveLength(1)
+    }
+  })
+
+  it('are not drawn on any fixture when the venue switched them off', () => {
+    const view = viewOf(fixture('features-off'))
+    const slots = slotsOf(render(view))
+    for (const slot of ['menu.filters', ...SERVICE_SLOTS]) expect(slots.has(slot), slot).toBe(false)
+    const html = render(view)
+    expect(html).not.toContain('class="ro-')
+    expect(html).not.toContain('data-services')
+  })
+
+  it('are not drawn without bound services, though the venue switched them on (a browsing page)', () => {
+    const view = viewOf(fixture('features-on'))
+    expect(view.features.bill).toBe(true)
+    const html = renderBrowsing(view)
+    const slots = slotsOf(html)
+    for (const slot of SERVICE_SLOTS) expect(slots.has(slot), slot).toBe(false)
+    expect(slots.has('menu.filters')).toBe(true) // filters are not a service
+    // No stylesheet, no marker and no room for the bar: an empty band under the menu would show.
+    expect(html).not.toContain('.ro-')
+    expect(html).not.toContain('class="ro-')
+    expect(html).not.toContain('data-services')
+  })
+
+  it('leave the contract failing for a face that declares a service and draws none', async () => {
+    // The harness catches a face whose render forgot to bind the services: only the four slots are missing.
+    const report = await runFaceContract(renderBrowsing, EDITORIAL_MARKET_MANIFEST)
+    expect(new Set(report.failures.map((failure) => failure.rule))).toEqual(new Set(['R15']))
+    expect(report.failures.every((failure) => failure.fixture === 'features-on')).toBe(true)
+    expect(report.failures).toHaveLength(SERVICE_SLOTS.length)
+  })
+
+  it('draw the stylesheet of the services, and the room for the bar, only with the bar', () => {
+    const on = viewOf(fixture('features-on'))
+    expect(withAttribute(parseHtml(render(on)), 'data-services', 'bar')).toHaveLength(1)
+    expect(render(on)).toContain('.ro-bagbar')
+    // A service that is not the bar (the bill alone) has the stylesheet and no bar.
+    const billOnly: ViewModel = {
+      ...on,
+      features: { ...on.features, callWaiter: null, ordering: false, pay: false },
+    }
+    const html = render(billOnly)
+    expect(html).toContain('.ro-pill')
+    expect(withAttribute(parseHtml(html), 'data-services')).toHaveLength(0)
+    expect(slotsOf(html).has('menu.bill')).toBe(true)
+    expect(slotsOf(html).has('menu.bag')).toBe(false)
+  })
+
+  it('draw no quick-add on an item without ordering controls, and one on each item with them', () => {
+    const view = viewOf(fixture('features-on'))
+    const html = render(view)
+    const root = parseHtml(html)
+    const cards = withAttribute(root, 'data-item')
+    const withControls = itemsOf(view).filter((item) => item.order.controls)
+    expect(withControls.length).toBeGreaterThan(0)
+    const quick = cards.filter((card) => withAttribute(card, 'class', 'ro-quick').length > 0)
+    expect(quick.map((card) => card.attrs['data-item'])).toEqual(
+      withControls.map((item) => item.id),
+    )
+    // And none at all when the venue has ordering off, whatever else is on.
+    const off: ViewModel = { ...view, features: { ...view.features, ordering: false } }
+    expect(withAttribute(parseHtml(render(off)), 'class', 'ro-quick')).toHaveLength(0)
+  })
+})
+
 describe('the allergen information footer', () => {
   it('lists the allergens of the menu, numbered, when there are any', () => {
     const view = richView()
@@ -267,9 +355,11 @@ describe('the first render is static', () => {
   })
 })
 
-// The tests every face has to pass (brief SH-03): manifest, contract on every fixture, theme-only CSS.
+// The tests every face has to pass (brief SH-03): manifest, contract on every fixture, theme-only CSS
+// (the face's whole stylesheet: the page's and the services').
 faceContractSuite('editorial-market', {
   manifest: EDITORIAL_MARKET_MANIFEST,
   render,
-  css: EDITORIAL_CSS,
+  css: `${EDITORIAL_CSS}
+${SERVICES_CSS}`,
 })

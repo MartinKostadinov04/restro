@@ -6,8 +6,13 @@
 // allergen sheet, and the filter button opens the filter sheet.
 //
 // Ported from the designer's delivery of 2026-10-11 (docs/design/faces/editorial-market): the same
-// design, classes and CSS, rewritten as readable, strict TypeScript. Browsing only; the ordering
-// screens of the delivery are not part of this face yet.
+// design, classes and CSS, rewritten as readable, strict TypeScript.
+//
+// The service screens (the bag, the table bill, calling a waiter, paying, the receipt) are in
+// services/. They are drawn only when the host binds `services` and the view model has the service
+// on (R15); the face then holds the guest's bag and shows what the host's state says, and nothing
+// else (D72). Without `services` the page is the browsing page, with no service control, no
+// stylesheet for them and no empty band under the menu.
 
 import type { FaceHostProps, ViewItem } from '@restro/shell'
 import { resolveOptions, stringsFor } from '@restro/shell'
@@ -37,6 +42,11 @@ import {
 } from './model'
 import type { PageContext } from './parts'
 import { SectionBlock } from './section'
+import { ServiceBar } from './services/bag-bar'
+import { HeaderTools } from './services/header-tools'
+import { ServicesProvider, serviceBarShown, servicesShown } from './services/provider'
+import { SERVICES_CSS } from './services/services-css'
+import { ServiceSheets } from './services/sheets'
 import { useDishRoute } from './use-dish-route'
 import { useLayout } from './use-layout'
 
@@ -59,6 +69,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     tableLabel = null,
     fontStacks,
     scheme = 'auto',
+    services,
   } = props
   const options = faceOptions(resolveOptions(EDITORIAL_MARKET_MANIFEST, props.options))
   const locale = view.locale
@@ -165,96 +176,106 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     : -1
   const nothingMatches = isFiltering(filters) && countVisible(view.sections, filters) === 0
 
+  // The stylesheet of the services comes only with a service to draw, and the room under the menu
+  // for the bar at the bottom only with that bar.
+  const css = servicesShown(view, services) ? EDITORIAL_CSS + SERVICES_CSS : EDITORIAL_CSS
+
   return (
     <div
       className="rm"
       data-face="editorial-market"
       data-layout={layout}
       data-scheme={scheme}
+      data-services={serviceBarShown(view, services) ? 'bar' : undefined}
       lang={bcp47(locale)}
       style={themeVariables(view.theme, fontStacks) as CSSProperties}
     >
-      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a constant stylesheet from css.ts, no user input; React would escape `>` and quotes in it */}
-      <style dangerouslySetInnerHTML={{ __html: EDITORIAL_CSS }} />
-      <Header
-        view={view}
-        ctx={ctx}
-        tableLabel={tableLabel}
-        languages={languages}
-        onLanguageChange={onLanguageChange}
-        hasFilters={filterControl}
-        onOpenFilters={openFilters}
-      />
-      {view.sections.length > 1 ? (
-        <CategoryRail
-          sections={view.sections}
-          filters={filters}
-          label={strings.sections}
-          page={locale}
+      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant stylesheets from css.ts and services/services-css.ts, no user input; React would escape `>` and quotes in them */}
+      <style dangerouslySetInnerHTML={{ __html: css }} />
+      <ServicesProvider view={view} services={services} openDish={dish.open} dishOpen={dish.isOpen}>
+        <Header
+          view={view}
+          ctx={ctx}
+          tableLabel={tableLabel}
+          languages={languages}
+          onLanguageChange={onLanguageChange}
+          hasFilters={filterControl}
+          onOpenFilters={openFilters}
+          tools={<HeaderTools />}
         />
-      ) : null}
-      <main>
-        {view.sections.map((section, index) => (
-          <SectionBlock
-            key={section.id}
-            section={section}
-            ctx={ctx}
+        {view.sections.length > 1 ? (
+          <CategoryRail
+            sections={view.sections}
             filters={filters}
-            feature={index === featureIndex}
-            tools={
-              index === switchIndex ? (
-                <LayoutSwitch layout={layout} onChange={chooseLayout} strings={strings} />
-              ) : undefined
-            }
+            label={strings.sections}
+            page={locale}
           />
-        ))}
-        {nothingMatches ? (
-          <div className="rm-empty" role="status">
-            <p>{strings.noMatches}</p>
-            <button type="button" className="rm-clear" onClick={clearFilters}>
-              {strings.clearFilters}
-            </button>
-          </div>
         ) : null}
-      </main>
-      {view.allergenLegend.length > 0 ? (
-        <footer className="rm-footer">
-          <h2>{strings.footerTitle}</h2>
-          <p>{strings.footerText}</p>
-          <div className="rm-legend" data-slot="menu.allergen_legend">
-            {view.allergenLegend.map((allergen) => (
-              <span key={allergen.code} lang={langOf(allergen.label, locale)}>
-                <b>{allergen.number}</b>
-                {allergen.label.text}
-              </span>
-            ))}
-          </div>
-        </footer>
-      ) : null}
-      {filtersOpen && filterControl ? (
-        <FilterSheet
-          dietary={view.filters.dietary.map((label) => ({ key: label.code, label: label.label }))}
-          tags={view.filters.tags.map((tag) => ({ key: tag.id, label: tag.label }))}
-          filters={filters}
-          onToggle={toggleFilter}
-          onClear={clearFilters}
-          onClose={closeFilters}
-          strings={strings}
-          page={locale}
-        />
-      ) : null}
-      {dishItem !== undefined ? (
-        <DishPage item={dishItem} ctx={ctx} leaving={dish.leaving} onClose={dish.close} />
-      ) : null}
-      {allergenItem !== undefined ? (
-        <AllergenSheet
-          item={allergenItem}
-          legend={view.allergenLegend}
-          strings={strings}
-          page={locale}
-          onClose={closeAllergens}
-        />
-      ) : null}
+        <main>
+          {view.sections.map((section, index) => (
+            <SectionBlock
+              key={section.id}
+              section={section}
+              ctx={ctx}
+              filters={filters}
+              feature={index === featureIndex}
+              tools={
+                index === switchIndex ? (
+                  <LayoutSwitch layout={layout} onChange={chooseLayout} strings={strings} />
+                ) : undefined
+              }
+            />
+          ))}
+          {nothingMatches ? (
+            <div className="rm-empty" role="status">
+              <p>{strings.noMatches}</p>
+              <button type="button" className="rm-clear" onClick={clearFilters}>
+                {strings.clearFilters}
+              </button>
+            </div>
+          ) : null}
+        </main>
+        {view.allergenLegend.length > 0 ? (
+          <footer className="rm-footer">
+            <h2>{strings.footerTitle}</h2>
+            <p>{strings.footerText}</p>
+            <div className="rm-legend" data-slot="menu.allergen_legend">
+              {view.allergenLegend.map((allergen) => (
+                <span key={allergen.code} lang={langOf(allergen.label, locale)}>
+                  <b>{allergen.number}</b>
+                  {allergen.label.text}
+                </span>
+              ))}
+            </div>
+          </footer>
+        ) : null}
+        {filtersOpen && filterControl ? (
+          <FilterSheet
+            dietary={view.filters.dietary.map((label) => ({ key: label.code, label: label.label }))}
+            tags={view.filters.tags.map((tag) => ({ key: tag.id, label: tag.label }))}
+            filters={filters}
+            onToggle={toggleFilter}
+            onClear={clearFilters}
+            onClose={closeFilters}
+            strings={strings}
+            page={locale}
+          />
+        ) : null}
+        {dishItem !== undefined ? (
+          <DishPage item={dishItem} ctx={ctx} leaving={dish.leaving} onClose={dish.close} />
+        ) : null}
+        {allergenItem !== undefined ? (
+          <AllergenSheet
+            item={allergenItem}
+            legend={view.allergenLegend}
+            strings={strings}
+            page={locale}
+            onClose={closeAllergens}
+          />
+        ) : null}
+        <ServiceBar />
+        <ServiceSheets />
+      </ServicesProvider>
     </div>
   )
 }

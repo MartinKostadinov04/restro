@@ -125,6 +125,70 @@ export function addMinor(a: number, b: number): number {
   return sum
 }
 
+/** Throws unless `amount` is a non-negative safe integer (prices, deltas and totals, check V2). */
+function assertMinor(amount: number, what: string): void {
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new MoneyError(`${what} must be a non-negative safe integer, got ${amount}`)
+  }
+}
+
+/**
+ * Subtracts integer minor units (rule 8): `subtractMinor(1400, 150)` → `1250`. Throws
+ * `MoneyError` unless both are non-negative safe integers and `b` is not more than `a` (an
+ * amount is never negative, check V2).
+ */
+export function subtractMinor(a: number, b: number): number {
+  assertMinor(a, 'minor units')
+  assertMinor(b, 'minor units')
+  if (b > a) throw new MoneyError(`difference would be negative: ${a} - ${b}`)
+  return a - b
+}
+
+/**
+ * Multiplies an amount by a whole factor (a quantity), exactly: `multiplyMinor(1250, 3)` →
+ * `3750`. Throws `MoneyError` unless both are non-negative safe integers and the product is a
+ * safe integer too. A product of two safe integers that fits is exact, and one that does not fit
+ * lands beyond the safe range whatever the rounding, so the check below cannot miss it.
+ */
+export function multiplyMinor(minor: number, factor: number): number {
+  assertMinor(minor, 'minor units')
+  assertMinor(factor, 'factor')
+  const product = minor * factor
+  if (!Number.isSafeInteger(product))
+    throw new MoneyError(`product too large: ${minor} × ${factor}`)
+  return product
+}
+
+/**
+ * `minor × numerator ÷ denominator`, rounded half-up, in BigInt: `ratioOfMinor(1000, 1, 3)` →
+ * `333`, `ratioOfMinor(2, 1, 4)` → `1` (0.5 rounds up). Throws `MoneyError` unless the three are
+ * integers with `minor` and `numerator` non-negative, `denominator` positive, and the result is
+ * a safe integer.
+ */
+export function ratioOfMinor(minor: number, numerator: number, denominator: number): number {
+  assertMinor(minor, 'minor units')
+  assertMinor(numerator, 'numerator')
+  if (!Number.isSafeInteger(denominator) || denominator <= 0) {
+    throw new MoneyError(`denominator must be a positive safe integer, got ${denominator}`)
+  }
+  const divisor = BigInt(denominator)
+  const rounded = (2n * BigInt(minor) * BigInt(numerator) + divisor) / (2n * divisor)
+  if (rounded > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new MoneyError(`result too large: ${minor} × ${numerator} ÷ ${denominator}`)
+  }
+  return Number(rounded)
+}
+
+/**
+ * A whole percent of an amount, rounded half-up like barsy: `percentOfMinor(2450, 10)` → `245`,
+ * `percentOfMinor(2450, 15)` → `368`. `percent` is a whole number (a tip or VAT rate: 10, 15,
+ * 20); anything else throws `MoneyError`. Only the preview adapter calls it; real tips, VAT and
+ * splits come from the platform's quote (D72).
+ */
+export function percentOfMinor(minor: number, percent: number): number {
+  return ratioOfMinor(minor, percent, 100)
+}
+
 const formatters = new Map<string, Intl.NumberFormat>()
 
 /**

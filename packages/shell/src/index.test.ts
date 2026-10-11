@@ -28,4 +28,37 @@ describe('@restro/shell public surface', () => {
       expect(Object.keys(shell), name).toContain(name)
     }
   })
+
+  it('exports the services contract and the bag of brief SH-06', () => {
+    for (const name of [
+      'GuestCommandSchema',
+      'EMPTY_SERVICE_STATE',
+      'PAY_SCOPES',
+      'PAY_METHODS',
+      'SERVICE_LIMITS',
+      'bagReducer',
+      'bagEstimate',
+      'resolveBag',
+      'orderLines',
+      'groupValid',
+      'selectionValid',
+      'toggleOption',
+      'needsChoices',
+    ]) {
+      expect(Object.keys(shell), name).toContain(name)
+    }
+  })
+
+  it('keeps money arithmetic out of the main entry: faces draw amounts, they do not add them up', () => {
+    for (const name of [
+      'addMinor',
+      'subtractMinor',
+      'multiplyMinor',
+      'percentOfMinor',
+      'ratioOfMinor',
+      'viewMinor',
+    ]) {
+      expect(Object.keys(shell), name).not.toContain(name)
+    }
+  })
 })

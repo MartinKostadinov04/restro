@@ -3,9 +3,9 @@
 // `faceContractSuite` runs for every registered face, so a face cannot be listed without passing.
 
 import { readFileSync } from 'node:fs'
-import { EDITORIAL_CSS } from '@restro/editorial-market'
+import { EDITORIAL_CSS, SERVICES_CSS } from '@restro/editorial-market'
 import { FACE_CSS } from '@restro/qr-phone'
-import { faceContractSuite } from '@restro/shell/testing'
+import { faceContractSuite, stubServices } from '@restro/shell/testing'
 
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -102,7 +102,7 @@ describe('faceEntry', () => {
  * registered without a line here fails the first test below.
  */
 const STYLESHEETS: Readonly<Record<string, string>> = {
-  'editorial-market': EDITORIAL_CSS,
+  'editorial-market': EDITORIAL_CSS + SERVICES_CSS,
   'qr-phone': FACE_CSS,
 }
 
@@ -139,6 +139,7 @@ describe.each(FACES.map((entry) => [entry.id, entry] as const))('the %s entry', 
           fontStacks: FONT_STACKS,
           scheme: view.theme.scheme,
           options: {},
+          services: stubServices(),
         }),
       )
     },

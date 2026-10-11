@@ -1,7 +1,9 @@
 // The stylesheet of the Editorial Market face, as one string injected in a <style> element (see
 // face.tsx). Ported from the designer's delivery of 2026-10-11 (docs/design/faces/editorial-market):
 // the same classes (`rm-…`) and rules, with the delivery's chains of overrides folded into their
-// final values and its ordering rules left out.
+// final values. The delivery's ordering rules (`ro-…`) are in services/services-css.ts, which the
+// face adds only when it draws a service; so the room the bottom bar needs under the page is
+// there too, and a browsing-only page has no empty band.
 //
 // It holds no colour of its own (R13): every colour, the font, the radius and the shadow are
 // variables that `themeVariables()` writes onto the root (`--rm-l-*` for a light screen, `--rm-d-*`
@@ -407,7 +409,7 @@ export const EDITORIAL_CSS = `
 /* The allergen information footer. */
 .rm-footer {
   margin-top: 78px;
-  padding: 42px 20px calc(120px + env(safe-area-inset-bottom));
+  padding: 42px 20px calc(42px + env(safe-area-inset-bottom));
   background: var(--rm-text);
   color: var(--rm-bg);
 }
@@ -1242,9 +1244,6 @@ export const EDITORIAL_CSS = `
 }
 .rm .rm-brandline > :first-child {
   min-width: 0;
-}
-.rm main {
-  padding-bottom: calc(110px + env(safe-area-inset-bottom));
 }
 @media (max-width: 350px) {
   .rm .rm-section.is-feature .rm-items {
