@@ -20,6 +20,13 @@ import { CURRENCIES } from '../money'
 import type { NodeType } from '../node-types'
 import type { Template } from '../template'
 import { ORDER_MODES } from '../templates/venue-menu'
+import {
+  CALL_WAITER_KINDS,
+  GuestFeaturesSchema,
+  type Presentation,
+  PresentationSchema,
+} from '../theme/presentation'
+import { ROLE_MODES, ROLE_NAMES, THEME_SCHEMES } from '../theme/roles'
 import { parseSnapshot, SnapshotError, type SnapshotProblem, snapshotPath } from './errors'
 import {
   type MenuSnapshot,
@@ -27,6 +34,7 @@ import {
   SNAPSHOT_ITEM_STATES,
   SNAPSHOT_ORDER_MODES,
   SNAPSHOT_SCHEMA,
+  type SnapshotTheme,
 } from './schema'
 
 /** What a forbidden value is, for the error (the value itself is never shown). */
@@ -49,7 +57,45 @@ const SNAPSHOT_VOCABULARY: readonly string[] = [
   ...CURRENCIES,
   ...MEASUREMENT_UNITS,
   ...FIELD_TYPE_NAMES,
+  // SH-01: the theme roles, the template and the guest services, keys and fixed values. The
+  // venue's own values (role colours, the face id, option keys and values) are public strings the
+  // publisher passes in (`ForbiddenSources.publicStrings`).
+  'roles',
+  'scheme',
+  'presentation',
+  'features',
+  ...ROLE_MODES,
+  ...ROLE_NAMES,
+  ...THEME_SCHEMES,
+  ...Object.keys(PresentationSchema.shape),
+  ...Object.keys(GuestFeaturesSchema.shape),
+  ...Object.keys(GuestFeaturesSchema.shape.call_waiter.shape),
+  ...CALL_WAITER_KINDS,
 ]
+
+/**
+ * The strings of a venue's look that are public by design (SH-01): the font family, the palette,
+ * every role colour, the face id and the option keys and values. The publisher passes them as
+ * `publicStrings`, so an internal note that happens to read "two" never blocks a template option
+ * `two`.
+ */
+export function lookPublicStrings(
+  theme: SnapshotTheme,
+  presentation: Presentation | null | undefined,
+): string[] {
+  const strings = [theme.font, ...theme.palette]
+  if (theme.roles !== undefined) {
+    strings.push(...Object.values(theme.roles.light), ...Object.values(theme.roles.dark))
+  }
+  if (presentation !== null && presentation !== undefined) {
+    strings.push(presentation.face)
+    for (const [key, value] of Object.entries(presentation.options)) {
+      strings.push(key)
+      if (typeof value === 'string') strings.push(value)
+    }
+  }
+  return strings
+}
 
 /** Every string inside a JSON value (object keys excluded: they are shapes, not data). */
 function stringLeaves(value: unknown, out: string[] = []): string[] {

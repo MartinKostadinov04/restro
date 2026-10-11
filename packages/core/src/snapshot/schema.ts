@@ -16,6 +16,8 @@ import { FIELD_TYPE_NAMES, FIELD_VALUE_SCHEMAS, type FieldType } from '../field-
 import { LocaleSchema, LocalizedTextSchema } from '../locales'
 import { CurrencySchema, MoneySchema } from '../money'
 import { TagColorSchema } from '../tags'
+import { GuestFeaturesSchema, PresentationSchema } from '../theme/presentation'
+import { THEME_SCHEMES, ThemeRolesSchema } from '../theme/roles'
 
 /** The value of a snapshot's `schema` key. */
 export const SNAPSHOT_SCHEMA = 'menu-snapshot/1'
@@ -112,6 +114,12 @@ export const SnapshotThemeSchema = z.strictObject({
   radius: z.int().min(0).max(32),
   shadow: z.int().min(0).max(5),
   logo: AssetIdSchema.nullable(),
+  // New fields inside `menu-snapshot/1` stay optional forever: a snapshot published before them
+  // still parses. After the first deploy, the readers change first (CF-12's parser-first rule).
+  /** The eight colour roles per scheme (D70, SH-01); the publisher always writes them. */
+  roles: z.strictObject({ light: ThemeRolesSchema, dark: ThemeRolesSchema }).optional(),
+  /** The venue's light/dark policy (D70); the publisher always writes it. */
+  scheme: z.enum(THEME_SCHEMES).optional(),
 })
 
 /** Theme tokens of a snapshot. */
@@ -214,6 +222,12 @@ const SnapshotShape = z.strictObject({
   modifier_groups: z.record(NodeIdSchema, ModifierGroupSchema),
   options: z.record(NodeIdSchema, OptionSchema),
   tags: z.record(TagIdSchema, TagSchema),
+  // New fields inside `menu-snapshot/1` stay optional forever: a snapshot published before them
+  // still parses. After the first deploy, the readers change first (CF-12's parser-first rule).
+  /** The venue's template and its options (D69); written only when the venue chose one. */
+  presentation: PresentationSchema.optional(),
+  /** The guest services the venue switched on (D71); the publisher always writes it. */
+  features: GuestFeaturesSchema.optional(),
 })
 
 type Shape = z.output<typeof SnapshotShape>
@@ -386,8 +400,13 @@ export type SnapshotItem = MenuSnapshot['items'][string]
  * a newer file; without this, one new key would fail the parse, the loader would take that for "no
  * overlay" and every sold-out mark would vanish: the less cautious error, A5-F2). `version` and
  * `items` stay strict, and so does each mark: a mark we cannot read is a failed parse, never a
- * guess. The snapshot keeps its strict schema (`MenuSnapshotSchema`): it is immutable and
- * versioned by its `schema` literal, not extended in place.
+ * guess.
+ *
+ * The snapshot (`MenuSnapshotSchema`) works differently. It stays strict for unknown keys, and it
+ * gains known, optional fields in place (`theme.roles`, `theme.scheme`, `presentation`,
+ * `features`: D69–D71). After the first deploy, a new field ships in the reader one deploy before
+ * the producer writes it. A phone still running an older reader keeps its current menu on screen
+ * until it reloads, because the pointer poll ignores a snapshot it cannot parse.
  */
 export const LiveOverlaySchema = z.looseObject({
   version: z.int().positive(),

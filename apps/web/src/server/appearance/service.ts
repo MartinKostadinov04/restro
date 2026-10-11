@@ -44,14 +44,16 @@ export async function loadAppearance(
 ): Promise<AppearanceView> {
   const theme = readVenueTheme(venue.settings)
   if (theme === null) return { brand: null, logo: null }
-  if (theme.logo_asset_id === null) return { brand: theme.brand, logo: null }
+  // Since SH-01 the brand colour is optional (a theme may hold three colours instead).
+  const brand = theme.brand ?? null
+  if (theme.logo_asset_id === null) return { brand, logo: null }
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx
       .select()
       .from(assets)
       .where(eq(assets.id, theme.logo_asset_id as string)),
   )
-  if (row === undefined || row.status !== 'stored') return { brand: theme.brand, logo: null }
+  if (row === undefined || row.status !== 'stored') return { brand, logo: null }
   let url: string | null = null
   try {
     url = row.storageKey ? await (await store()).getUrl(row.storageKey, LINK_SECONDS) : null
@@ -59,7 +61,7 @@ export async function loadAppearance(
     logError('appearance_logo_url_failed', error)
   }
   return {
-    brand: theme.brand,
+    brand,
     logo: { assetId: row.id, url, width: row.width ?? 0, height: row.height ?? 0 },
   }
 }

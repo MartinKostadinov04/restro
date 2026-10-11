@@ -32,6 +32,13 @@ import type {
 } from '../resolve/types'
 import type { TagColor } from '../tags'
 import type { Template } from '../template'
+import { DEFAULT_PALETTE, PALETTE_STEPS, paletteRoles } from '../theme/derive'
+import {
+  canonicalFeatures,
+  DEFAULT_GUEST_FEATURES,
+  type GuestFeatures,
+  type Presentation,
+} from '../theme/presentation'
 import { parseSnapshot } from './errors'
 import {
   type MenuSnapshot,
@@ -85,27 +92,30 @@ export interface SnapshotContext {
   /** Images whose variant files exist; an image not listed here counts as no image. */
   readonly assets: Readonly<Record<AssetId, SnapshotAssetInput>>
   readonly tagVocabulary: Readonly<Record<TagId, TagVocabularyEntry>>
+  /** The venue's template and its options (D69); null or absent = not written. */
+  readonly presentation?: Presentation | null
+  /** The venue's guest services (D71); null or absent = `DEFAULT_GUEST_FEATURES`. */
+  readonly features?: GuestFeatures | null
 }
 
-/** The theme a venue gets until it sets its own (S3-03 derives a palette from a brand colour). */
+const DEFAULT_ROLES = paletteRoles(DEFAULT_PALETTE)
+
+/**
+ * The theme a venue gets until it sets its own (S3-03 derives a palette from a brand colour): the
+ * neutral default palette, its roles through the v1 path (`semanticColours` /
+ * `semanticColoursDark`, exactly what the shell derives from that palette), and `auto` scheme.
+ */
 export const DEFAULT_THEME: SnapshotTheme = Object.freeze({
-  palette: Object.freeze([
-    '#f8f8f9',
-    '#efeff1',
-    '#dcdce0',
-    '#bdbdc4',
-    '#9a9aa3',
-    '#7c7c86',
-    '#63636c',
-    '#505058',
-    '#3f3f46',
-    '#27272a',
-    '#18181b',
-  ]) as string[],
+  palette: Object.freeze(PALETTE_STEPS.map((step) => DEFAULT_PALETTE[step])) as string[],
   font: 'Inter',
   radius: 8,
   shadow: 1,
   logo: null,
+  roles: Object.freeze({
+    light: Object.freeze(DEFAULT_ROLES.light),
+    dark: Object.freeze(DEFAULT_ROLES.dark),
+  }),
+  scheme: 'auto',
 })
 
 /**
@@ -372,6 +382,19 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     }
   }
 
+  // Presentation only when the venue chose a template; features always (the defaults: filters on,
+  // every service off), with the request kinds in vocabulary order.
+  const presentation =
+    ctx.presentation === undefined || ctx.presentation === null
+      ? {}
+      : {
+          presentation: {
+            face: ctx.presentation.face,
+            options: { ...ctx.presentation.options },
+          },
+        }
+  const features = canonicalFeatures(ctx.features ?? DEFAULT_GUEST_FEATURES)
+
   const content: Omit<MenuSnapshot, 'snapshot'> = {
     schema: SNAPSHOT_SCHEMA,
     locales: { default: ctx.locales.default, available: [...ctx.locales.available] },
@@ -382,6 +405,10 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       radius: theme.radius,
       shadow: theme.shadow,
       logo,
+      ...(theme.roles === undefined
+        ? {}
+        : { roles: { light: { ...theme.roles.light }, dark: { ...theme.roles.dark } } }),
+      ...(theme.scheme === undefined ? {} : { scheme: theme.scheme }),
     },
     assets,
     field_types: fieldTypes,
@@ -397,6 +424,17 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     modifier_groups: groups,
     options,
     tags,
+    ...presentation,
+    features: {
+      filters: features.filters,
+      call_waiter: {
+        enabled: features.call_waiter.enabled,
+        kinds: [...features.call_waiter.kinds],
+      },
+      bill: features.bill,
+      ordering: features.ordering,
+      pay: features.pay,
+    },
   }
 
   const { schema, ...rest } = content

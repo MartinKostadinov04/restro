@@ -49,11 +49,26 @@ import {
   type SnapshotAssetInput,
 } from '../snapshot/build'
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
-import { assertSnapshotSafe, collectForbiddenValues } from '../snapshot/leak-guard'
+import {
+  assertSnapshotSafe,
+  collectForbiddenValues,
+  lookPublicStrings,
+} from '../snapshot/leak-guard'
 import { buildLiveOverlay } from '../snapshot/overlay'
 import type { LiveOverlay, MenuSnapshot, SnapshotTheme } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
-import { readVenueTheme, snapshotPalette, type VenueTheme } from '../theme'
+import {
+  fontFamilyOf,
+  type GuestFeatures,
+  type Presentation,
+  paletteList,
+  readGuestFeatures,
+  readPresentation,
+  readVenueTheme,
+  themePaletteOf,
+  themeRolesOf,
+  type VenueTheme,
+} from '../theme'
 import { readMenuDocument } from './load-document'
 import { loadTagVocabulary } from './tags'
 
@@ -345,10 +360,13 @@ async function supersedeHeld(tx: WriteTx, menuId: string, venueId: string, at: D
 }
 
 /**
- * The snapshot's theme (R13): the default until the venue chooses a brand colour, then the palette
- * derived from that colour and the venue's logo. A logo that is not stored yet, or has no variant
- * files yet (the `asset-variants` job is still to run), is left out rather than shown broken; the
- * next publish picks it up.
+ * The snapshot's theme (R13): the default until the venue sets a theme; then the palette of its
+ * colours (`themePaletteOf`: the tertiary, else the brand colour), the eight roles per scheme
+ * (`themeRolesOf`, SH-01), its font family, corners, shadow and light/dark policy (each the
+ * default when unset), and the venue's logo. A v1 theme (`{brand, logo_asset_id}`) keeps exactly
+ * its palette and the default tokens, and gets the roles the shell derives from that palette.
+ * A logo that is not stored yet, or has no variant files yet (the `asset-variants` job is still
+ * to run), is left out rather than shown broken; the next publish picks it up.
  */
 function snapshotThemeOf(
   theme: VenueTheme | null,
@@ -357,9 +375,13 @@ function snapshotThemeOf(
   if (theme === null) return DEFAULT_THEME
   const logo = theme.logo_asset_id
   return {
-    ...DEFAULT_THEME,
-    palette: snapshotPalette(theme.brand),
+    palette: paletteList(themePaletteOf(theme)),
+    font: theme.font === undefined ? DEFAULT_THEME.font : fontFamilyOf(theme.font),
+    radius: theme.radius ?? DEFAULT_THEME.radius,
+    shadow: theme.shadow ?? DEFAULT_THEME.shadow,
     logo: logo !== null && Object.hasOwn(snapshotAssets, logo) ? logo : null,
+    roles: themeRolesOf(theme),
+    scheme: theme.scheme ?? 'auto',
   }
 }
 
@@ -391,6 +413,10 @@ interface Resolution {
   readonly nowIso: string
   /** The look the venue chose (`venues.settings.theme`), or null: the default theme applies. */
   readonly theme: VenueTheme | null
+  /** The template the venue chose (`venues.settings.presentation`), or null: none is written. */
+  readonly presentation: Presentation | null
+  /** The guest services (`venues.settings.guest_features`); the defaults when unset. */
+  readonly features: GuestFeatures
 }
 
 /**
@@ -457,6 +483,8 @@ async function resolveForVenue(
     day,
     nowIso,
     theme: readVenueTheme(venue.settings),
+    presentation: readPresentation(venue.settings),
+    features: readGuestFeatures(venue.settings),
   }
 }
 
@@ -483,6 +511,8 @@ async function prepareSnapshot(
     currency,
     nowIso,
     theme: venueTheme,
+    presentation,
+    features,
   } = await resolveForVenue(tx, scope, now)
   const blocking = [
     ...new Set(
@@ -569,13 +599,15 @@ async function prepareSnapshot(
     theme,
     assets: snapshotAssets,
     tagVocabulary,
+    presentation,
+    features,
   })
   const forbidden = collectForbiddenValues({
     template: TEMPLATE,
     doc,
     externalIds,
     backendOnly,
-    publicStrings: [theme.font, ...theme.palette],
+    publicStrings: lookPublicStrings(theme, presentation),
   })
   let snapshot: MenuSnapshot
   try {
