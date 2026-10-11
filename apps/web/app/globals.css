@@ -162,10 +162,17 @@
 
 /* The guest's menu page (/m/…): no sideways scroll and no scrollbar. The guest page marks <html>
    with data-guest-page (src/guest/guest-menu.tsx); templates never style the page around them, so
-   the same template sits unchanged inside the admin's previews. */
+   the same template sits unchanged inside the admin's previews.
+   `clip`, never `hidden` on both: `hidden` on <html> AND <body> makes <body> a scroll box of its
+   own that never scrolls, and a template's sticky bar (the Editorial Market's category rail) then
+   scrolls away with the page. Browsers without `clip` (Safari before 16) get `hidden` on <html>
+   alone, which goes to the window and keeps sticky bars working. */
+html[data-guest-page] {
+  overflow-x: hidden;
+}
 html[data-guest-page],
 html[data-guest-page] body {
-  overflow-x: hidden;
+  overflow-x: clip;
   scrollbar-width: none;
 }
 html[data-guest-page]::-webkit-scrollbar {

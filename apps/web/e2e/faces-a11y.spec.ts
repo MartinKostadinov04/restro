@@ -189,6 +189,25 @@ test.describe('the screen width', () => {
       expect(problems).toEqual([])
     })
   }
+
+  test('the section rail stays at the top of the screen while the guest scrolls the menu', async ({
+    page,
+  }) => {
+    // The page's own "no sideways scroll" rule once made <body> a scroll box of its own, and the
+    // sticky rail scrolled away with the menu (globals.css explains the rule now in place).
+    await openMenu(page)
+    const rail = page.locator(`${FACE} .rm-sections`)
+    const startTop = await rail.evaluate((element) => element.getBoundingClientRect().top)
+    await page.mouse.move(195, 400)
+    await page.mouse.wheel(0, startTop + 1200)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(startTop + 600)
+    await expect.poll(() => rail.evaluate((element) => element.getBoundingClientRect().top)).toBe(0)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true)
+  })
 })
 
 test.describe('the names', () => {
