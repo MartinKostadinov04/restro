@@ -16,6 +16,7 @@ import {
   servicesOn,
   signInAsOwner,
 } from './faces-preview'
+import { runScript } from './global-setup'
 import {
   LONG_NAME_BG,
   LONG_NAME_EN,
@@ -44,6 +45,8 @@ import {
 //            widths would look the same)
 test.skip(process.env.FACES_VISUAL !== '1', 'screenshots for people to review: set FACES_VISUAL=1')
 test.setTimeout(180_000)
+// A step that cannot be done fails in seconds, not in minutes: there are 110 of these tests.
+test.use({ actionTimeout: 20_000 })
 
 const OUT = fileURLToPath(new URL('../test-results/faces-visual/', import.meta.url))
 mkdirSync(OUT, { recursive: true })
@@ -104,6 +107,12 @@ async function shoot(page: Page, path: string, target?: Locator) {
 }
 
 test.describe('the guest menu', () => {
+  // The global setup of the guest page's test clears the venue and table files of the publish folder
+  // when it starts, so the five fixture menus are written (again) here.
+  test.beforeAll(() => {
+    runScript('./scripts/seed-visual-e2e.ts')
+  })
+
   for (const theme of VISUAL_THEMES) {
     for (const scheme of SCHEMES) {
       for (const lang of LANGS) {
