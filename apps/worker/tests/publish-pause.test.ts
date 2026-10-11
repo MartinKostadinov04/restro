@@ -273,7 +273,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       const assetId = newId('as')
       await createAsset(world.pool, world.tenantId, {
         id: assetId,
-        origin: 'barsy',
+        origin: 'connector',
         contentType: 'image/png',
         checksum: 'a'.repeat(64),
         width: 8,

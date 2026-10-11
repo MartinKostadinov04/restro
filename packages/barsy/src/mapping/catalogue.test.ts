@@ -67,7 +67,7 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
       parsed.success ? '' : JSON.stringify(parsed.error.issues.slice(0, 3)),
     ).toBe(true)
     expect(result.changeSet).toMatchObject({
-      source: `barsy:${INTEGRATION_ID}`,
+      source: `till:${INTEGRATION_ID}`,
       actor: `integration:${INTEGRATION_ID}`,
       observedAt: '2026-10-09T10:00:00+03:00',
     })
@@ -92,7 +92,7 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     expect(writes.length).toBeGreaterThan(150)
     for (const op of writes) {
       if (op.op !== 'setField') continue
-      expect(op.layer).toBe('barsy')
+      expect(op.layer).toBe('till')
       expect(op.mappingVersion).toBe(1)
       expect(recordIds.has(op.sourceRecordId ?? '')).toBe(true)
     }
@@ -494,7 +494,7 @@ describe('articles', () => {
           op: 'clearField',
           node: { link: { integration: INTEGRATION_ID, externalType: 'article', externalId: '1' } },
           fieldKey: 'image',
-          layer: 'barsy',
+          layer: 'till',
           scope: 'master',
         })
         expect(result.assetRequests).toHaveLength(0)

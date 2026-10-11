@@ -3,7 +3,7 @@
 //
 //   rule 1  every change reaches the document through core's apply(), in chunks (chunk.ts);
 //   rule 5  nothing here writes a node's status or a price of an orderable item: barsy's
-//           hiding lives in link state and barsy-layer values (the mapper), the manager's in
+//           hiding lives in link state and till-layer values (the mapper), the manager's in
 //           the other layers;
 //   rule 6  absence concludes only here, only after a complete full pull, through core's
 //           `concludeFullPull`, and only when the integration has a single mapped venue. Even
@@ -47,6 +47,7 @@ import {
   type NodeId,
   prepareJob,
   sha256Hex,
+  tillSource,
   type VenueId,
 } from '@restro/core'
 import {
@@ -653,7 +654,7 @@ async function syncFetched(
   }
 
   const base = {
-    source: `barsy:${integrationId}` as const,
+    source: tillSource(integrationId),
     jobId: ctx.runId,
     actor: `integration:${integrationId}` as const,
     observedAt: startIso,

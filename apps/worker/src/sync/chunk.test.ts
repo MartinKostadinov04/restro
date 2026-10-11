@@ -145,7 +145,7 @@ describe('sliceOps', () => {
     }))
     const sets = sliceOps(
       {
-        source: 'barsy:in_x',
+        source: 'till:in_x',
         jobId: 'jb_x',
         actor: 'integration:in_x',
         observedAt: '2026-10-09T10:00:00Z',

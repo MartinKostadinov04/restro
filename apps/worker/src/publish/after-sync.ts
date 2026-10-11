@@ -143,7 +143,7 @@ export async function queuePublishForAsset(
       tx.select({ origin: assets.origin }).from(assets).where(eq(assets.id, target.assetId)),
     )
     if (asset === undefined) return ['this picture is unknown: nothing was queued to publish']
-    if (asset.origin !== 'barsy') {
+    if (asset.origin !== 'connector') {
       return ['a person uploaded this picture: it is published when they press Publish']
     }
     const using = await loadMenusUsingAsset(env.pool, target.tenantId, target.assetId)

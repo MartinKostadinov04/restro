@@ -185,7 +185,7 @@ console.log('[drive] photos')
 console.table(
   await rows(
     `select (select count(*) from restro.assets where tenant_id = $1) as assets,
-            (select count(*) from restro.field_values where tenant_id = $1 and field_key = 'image' and layer = 'barsy') as items_with_barsy_photo`,
+            (select count(*) from restro.field_values where tenant_id = $1 and field_key = 'image' and layer = 'till') as items_with_till_photo`,
     [tenantId],
   ),
 )

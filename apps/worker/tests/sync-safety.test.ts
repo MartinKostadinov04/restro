@@ -586,7 +586,7 @@ describe.skipIf(!hasDatabase)('barsy sync safety (CF-02)', () => {
         `select sl.external_id, fv.value from restro.field_values fv
          join restro.source_links sl on sl.node_id = fv.node_id
          where sl.integration_id = $1 and sl.external_type = 'supplement'
-           and fv.field_key = 'name' and fv.layer = 'barsy'
+           and fv.field_key = 'name' and fv.layer = 'till'
          order by sl.external_id`,
         [world.integrationId],
       )

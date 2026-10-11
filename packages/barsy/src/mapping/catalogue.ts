@@ -3,14 +3,15 @@
 // needs. Pure and deterministic (no database, no network, no clock, no randomness): the same input
 // and configuration always give a deep-equal result, whatever the order of the article list.
 //
-// What it writes, all in the `barsy` layer with the source record and the mapping version:
+// What it writes, all in the `till` layer (source `till:<integration>`, brief CF-03) with the
+// source record and the mapping version:
 //   section   title, description                                  (master)
 //   item      name, description, visible, allergens               (master)
 //             image: cleared when barsy has no picture; set by the photo job, never here
 //             price, for_sale                                      (venue:<our vn_ id>)
 //   group     name, min, max                                      (master)
 //   option    name (master), price_delta                          (venue)
-// A field barsy has no value for is cleared in the barsy layer (so the layers below show through
+// A field barsy has no value for is cleared in the till layer (so the layers below show through
 // and a value removed in barsy does not linger), except where the source is silent (see each).
 // An option's name is silent when its option article is not in this run's article list.
 //
@@ -30,6 +31,7 @@ import {
   type Scope,
   type SourceLink,
   sha256Hex,
+  tillSource,
 } from '@restro/core'
 
 import type { Article, SupplementGroup } from '../read/schemas.ts'
@@ -104,7 +106,7 @@ function write(
     op: 'setField',
     node: { link },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value: value as FieldValue,
     sourceRecordId: record.id,
@@ -113,7 +115,7 @@ function write(
 }
 
 function clear(run: Run, link: SourceLink, fieldKey: string, scope: Scope): void {
-  run.ops.push({ op: 'clearField', node: { link }, fieldKey, layer: 'barsy', scope })
+  run.ops.push({ op: 'clearField', node: { link }, fieldKey, layer: 'till', scope })
 }
 
 /** Writes a localized text, or clears the field when barsy holds no text. Returns whether text was written. */
@@ -604,7 +606,7 @@ function buildChangeSet(run: Run): ChangeSet | null {
   const { cfg, input, ops } = run
   return {
     id: deriveId('cs', cfg.jobId, input.venueId, sha256Hex(canonicalJson(ops))),
-    source: `barsy:${cfg.integrationId}`,
+    source: tillSource(cfg.integrationId),
     jobId: cfg.jobId,
     actor: cfg.actor,
     observedAt: cfg.observedAt,
