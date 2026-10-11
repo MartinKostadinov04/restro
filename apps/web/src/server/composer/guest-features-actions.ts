@@ -15,14 +15,12 @@ import {
 } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-
+import { manifestOf } from '@/faces/manifests'
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { getVenue } from '@/server/venues'
-
-import { featureManifestOf } from './feature-face'
 
 const venueId = idSchema('vn')
 
@@ -80,7 +78,7 @@ export async function saveFeatureOptionsAction(input: unknown) {
     if (!venue) return INVALID
     const stored = readPresentation(venue.settings)
     // The face the guests get: the venue's, or the default one (also for a name it lacks).
-    const manifest = featureManifestOf(stored?.face)
+    const manifest = manifestOf(stored?.face)
     const face = manifest.face
 
     const kept: Record<string, string | boolean> = {}

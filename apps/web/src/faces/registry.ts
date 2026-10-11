@@ -6,65 +6,36 @@
 // components are NOT imported here: `load()` imports them when they are first needed, so a guest
 // downloads the one template its venue chose, not all of them. The manifests are imported through
 // each face's `./manifest` entry, which pulls in the manifest and nothing else.
+//
+// What is known about a template without loading it lives in `manifests.ts`; this file adds `load()`.
+// Only client code may import this file (see manifests.ts for why): server code reads
+// manifests.ts.
 
-import { EDITORIAL_MARKET_MANIFEST } from '@restro/editorial-market/manifest'
-import { QR_PHONE_MANIFEST } from '@restro/qr-phone/manifest'
-import type { FaceHostProps, FaceManifest } from '@restro/shell'
+import type { FaceHostProps } from '@restro/shell'
 import type { ComponentType } from 'react'
 
-/** A text in the two languages of the interface. */
-export interface FaceText {
-  readonly bg: string
-  readonly en: string
-}
+import { DEFAULT_FACE_ID, MANIFESTS, type ManifestEntry } from './manifests'
+
+export { DEFAULT_FACE_ID, type FaceText } from './manifests'
 
 /** One template the app can draw. */
-export interface FaceEntry {
-  /** The template's name in a snapshot's `presentation.face`; equals `manifest.face`. */
-  readonly id: string
-  readonly manifest: FaceManifest
+export interface FaceEntry extends ManifestEntry {
   /** Imports the face's components (once; the browser keeps the result). */
   readonly load: () => Promise<ComponentType<FaceHostProps>>
-  /** A hidden template is never offered to a venue (D69); one that already uses it still gets it. */
-  readonly hidden: boolean
-  readonly name: FaceText
-  readonly description: FaceText
-  /** A phone-width picture of the template, served by this app. */
-  readonly thumbnail: string
 }
 
-/** The template a venue gets until it chooses one (D69). */
-export const DEFAULT_FACE_ID = 'editorial-market'
+/** How each template's components are imported, by the template's name. */
+const LOADERS: Readonly<Record<string, FaceEntry['load']>> = {
+  'editorial-market': async () => (await import('@restro/editorial-market')).EditorialMarketFace,
+  'qr-phone': async () => (await import('@restro/qr-phone')).QrPhoneFace,
+}
 
-export const FACES: readonly FaceEntry[] = [
-  {
-    id: EDITORIAL_MARKET_MANIFEST.face,
-    manifest: EDITORIAL_MARKET_MANIFEST,
-    load: async () => (await import('@restro/editorial-market')).EditorialMarketFace,
-    hidden: false,
-    name: { bg: 'Редакционен пазар', en: 'Editorial Market' },
-    description: {
-      bg: 'Меню, водено от снимките, с лента с категории и три подредби.',
-      en: 'A photo-led, editorial menu with a category rail and three layouts.',
-    },
-    thumbnail: `/faces/${EDITORIAL_MARKET_MANIFEST.face}.png`,
-  },
-  {
-    // The reference face of the first stages. It stays in the registry so that the contract test
-    // keeps proving the host works with more than one face, and so a venue that already uses it
-    // keeps its menu; no venue is offered it.
-    id: QR_PHONE_MANIFEST.face,
-    manifest: QR_PHONE_MANIFEST,
-    load: async () => (await import('@restro/qr-phone')).QrPhoneFace,
-    hidden: true,
-    name: { bg: 'Просто (тестов еталон)', en: 'Simple (test reference)' },
-    description: {
-      bg: 'Тестовият еталон: един екран с превъртане, без украса.',
-      en: 'The test reference: one scrolling page, no frills.',
-    },
-    thumbnail: `/faces/${QR_PHONE_MANIFEST.face}.png`,
-  },
-]
+export const FACES: readonly FaceEntry[] = MANIFESTS.map((entry) => {
+  const load = LOADERS[entry.id]
+  if (load === undefined)
+    throw new Error(`the template "${entry.id}" has no loader in the registry`)
+  return { ...entry, load }
+})
 
 const byId = new Map(FACES.map((entry) => [entry.id, entry]))
 

@@ -8,10 +8,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-
-import { loadAppearance } from '@/server/appearance/service'
 import { getAssetStore } from '@/server/assets'
 import { getPool } from '@/server/db'
+import { loadVenueLogo } from '@/server/design/service'
 import { defaultQrBaseUrl } from '@/server/env'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
@@ -40,7 +39,7 @@ export default async function PrintTablesPage({
     },
     defaultQrBaseUrl(),
   )
-  const appearance = await loadAppearance(getPool(), organization.id, venue, getAssetStore)
+  const logo = await loadVenueLogo(getPool(), organization.id, venue, getAssetStore)
 
   const cards = view.halls
     .flatMap((hall) => hall.tables)
@@ -90,7 +89,7 @@ export default async function PrintTablesPage({
         </div>
       </header>
       {cards.length > 0 ? (
-        <PrintSheets venueName={venue.name} logoUrl={appearance.logo?.url ?? null} cards={cards} />
+        <PrintSheets venueName={venue.name} logoUrl={logo?.url ?? null} cards={cards} />
       ) : (
         <p style={{ padding: '16px', textAlign: 'center' }} data-testid="print-empty">
           {t('print.empty')}

@@ -670,6 +670,7 @@
       "composer": "Composer",
       "tables": "Tables & QR",
       "publishing": "Publishing",
+      "design": "Design",
       "integration": "Integration",
       "settings": "Settings"
     },
@@ -1256,52 +1257,196 @@
     "title": "This table code is not active.",
     "text": "Ask the staff."
   },
-  "appearance": {
-    "title": "Appearance",
-    "description": "How your guest menu looks: one brand colour and your logo. The other colours are worked out from it, so text always stays easy to read.",
-    "readOnly": "Only owners and admins can change the appearance.",
-    "brand": "Brand colour",
-    "brandHelp": "Pick a colour, choose one of the suggestions or type it as #rrggbb.",
-    "brandPicker": "Colour picker",
-    "brandInvalid": "Enter a colour like #3366cc.",
-    "swatches": "Suggested colours",
-    "clearBrand": "Use the default grey",
-    "logo": "Logo",
-    "logoHelp": "JPEG, PNG or WebP, up to 10 MB. A wide logo on a transparent background works best.",
-    "logoUpload": "Upload a logo",
-    "logoReplace": "Replace logo",
-    "logoRemove": "Remove logo",
-    "logoUploading": "Uploading…",
-    "logoCurrent": "Current logo",
-    "logoPending": "The new logo shows in the preview after you save.",
-    "previewTitle": "Preview",
-    "previewHint": "The colours a guest sees, worked out from the brand colour.",
-    "previewLight": "Light screen",
-    "previewDark": "Dark screen",
-    "sampleSection": "Cocktails",
-    "sampleName": "Sample item",
-    "sampleText": "A line of description under the name.",
-    "samplePrice": "12,50 €",
-    "sampleChip": "Selected",
-    "pairs": {
-      "page": "Page",
-      "card": "Card",
-      "accent": "Accent",
-      "onAccent": "Text on accent",
-      "text": "Text",
-      "muted": "Secondary text",
-      "accentText": "Accent as text",
-      "ratio": "{ratio}:1"
-    },
-    "save": "Save appearance",
+  "design": {
+    "readOnly": "Only owners and admins can change the design. You can see how it looks.",
+    "save": "Save look",
     "saving": "Saving…",
-    "saved": "Appearance saved. Guests see it after the next publish.",
+    "saved": "Saved. Guests see it after the next publish.",
+    "goPublishing": "Go to Publishing",
+    "status": {
+      "clean": "Nothing to save.",
+      "unsaved": "Unsaved changes. The preview already shows them.",
+      "invalid": "A colour is not complete yet. Enter it like #3366cc.",
+      "unreadable": "Some text would be hard to read. Fix the colours marked in red to save."
+    },
     "errors": {
-      "invalid": "Check the colour and try again.",
-      "forbidden": "Only owners and admins can change the appearance.",
+      "invalid": "Check the look and try again.",
+      "forbidden": "Only owners and admins can change the design.",
       "not_found": "This venue could not be found.",
+      "unknown_face": "That template is not available.",
       "logo_not_usable": "That logo could not be used. Upload it again.",
+      "unreadable": "The look was not saved: some text would be hard to read.",
       "failed": "Something went wrong. Try again."
+    },
+    "templates": {
+      "title": "Template",
+      "description": "The layout guests see when they scan a QR code. You can change it at any time; the menu itself stays the same.",
+      "inUse": "In use",
+      "use": "Use this template",
+      "useNamed": "Use this template: {name}",
+      "thumbnailAlt": "Picture of the {name} template",
+      "hiddenInUse": "This venue uses a technical test template that is not offered to venues. Choose a template below to switch."
+    },
+    "lookOptions": {
+      "title": "How this template looks",
+      "help": "Options of the chosen template. They are saved as soon as you change them.",
+      "values": {
+        "list": "List",
+        "one": "One column",
+        "two": "Two columns"
+      }
+    },
+    "colours": {
+      "title": "Colours",
+      "description": "Choose three colours. Every other colour is worked out from them, so text always stays easy to read.",
+      "startingPoint": "Starting point",
+      "startingPointHelp": "Begin from a ready-made look, from your brand colour or from your own three colours.",
+      "fromBrand": "From my brand colour",
+      "custom": "Custom",
+      "proportionLabel": "The three colours in proportion: 60% primary, 30% secondary, 10% tertiary",
+      "invalid": "Enter a colour like #3366cc.",
+      "primary": {
+        "name": "Primary",
+        "help": "The page: the background of the whole menu. About 60% of what guests see.",
+        "picker": "Pick the primary colour"
+      },
+      "secondary": {
+        "name": "Secondary",
+        "help": "The panels: behind photos and in the header. About 30%.",
+        "picker": "Pick the secondary colour"
+      },
+      "tertiary": {
+        "name": "Tertiary",
+        "help": "The highlights: badges, buttons and small accents. About 10%.",
+        "picker": "Pick the tertiary colour"
+      },
+      "brand": "Brand colour",
+      "brandPicker": "Pick the brand colour",
+      "brandHelp": "One colour for the highlights; the page, the panels and the text are worked out from it. Leave it empty for the neutral grey.",
+      "brandPlaceholder": "Neutral grey",
+      "clearBrand": "Use the neutral grey",
+      "swatches": "Suggested colours",
+      "suggest": "Suggest with colour theory",
+      "suggestHelp": "Works out the primary and secondary colours from the highlight (tertiary) colour, which stays as it is.",
+      "rules": {
+        "complementary": {
+          "name": "Complementary",
+          "help": "Opposite on the colour wheel: the page and panels lean towards the opposite of the highlight."
+        },
+        "analogous": {
+          "name": "Analogous",
+          "help": "Neighbours on the colour wheel: calm and harmonious."
+        },
+        "triadic": {
+          "name": "Triadic",
+          "help": "Three evenly spaced colours: lively but balanced."
+        },
+        "split_complementary": {
+          "name": "Split complementary",
+          "help": "The two neighbours of the opposite colour: contrast without harshness."
+        },
+        "monochrome": {
+          "name": "Monochrome",
+          "help": "One hue in different tints: the most restrained look."
+        }
+      }
+    },
+    "roles": {
+      "title": "The colours guests will see",
+      "help": "Worked out from your colours for a light and for a dark phone screen. Contrast is how well text reads on the colour it sits on; 4.5 or more is easy to read. You can adjust any colour.",
+      "screens": {
+        "light": "Light screen",
+        "dark": "Dark screen"
+      },
+      "background": {
+        "name": "Page",
+        "help": "The main background: the menu and the dish page."
+      },
+      "surface": {
+        "name": "Panels",
+        "help": "Behind photos and on selected options."
+      },
+      "accent": {
+        "name": "Highlights",
+        "help": "Badges, the main buttons and the order count."
+      },
+      "on_accent": {
+        "name": "Text on highlights",
+        "help": "Writing on badges and buttons."
+      },
+      "text": {
+        "name": "Text",
+        "help": "Names, prices and body text."
+      },
+      "muted": {
+        "name": "Secondary text",
+        "help": "Descriptions, portions and small details."
+      },
+      "accent_text": {
+        "name": "Highlight as text",
+        "help": "Emphasis, the underline of the category and focus outlines."
+      },
+      "border": {
+        "name": "Borders",
+        "help": "Separators and outlines."
+      },
+      "swatch": "{role}: {colour}",
+      "pairsLabel": "Contrast of {role}",
+      "pair": "{other} {ratio}:1",
+      "needs": "needs {min}:1",
+      "noPairs": "No reading requirement.",
+      "adjust": "Adjust",
+      "adjustAria": "Adjust {role}, {screen}",
+      "done": "Done",
+      "reset": "Reset to derived",
+      "resetAria": "Reset {role}, {screen}, to the derived colour",
+      "picker": "Pick a colour for {role}, {screen}",
+      "hex": "Colour code for {role}, {screen}",
+      "invalid": "Enter a colour like #3366cc.",
+      "adjusted": "Adjusted",
+      "fromPreset": "From the preset",
+      "derivedWas": "Derived colour: {colour}",
+      "unreadableTitle": "These colours are hard to read",
+      "unreadableItem": "{screen}: {fg} on {bg} reads at {ratio}:1, needs {min}:1."
+    },
+    "style": {
+      "title": "Font, corners and screen",
+      "description": "How the menu is lettered and shaped, and when it is light or dark.",
+      "font": "Font",
+      "fontHelp": "Six fonts with Bulgarian letters. One font is used for the whole menu.",
+      "sample": "Меню · Menu 12,50 €",
+      "kinds": {
+        "sans": "Sans-serif",
+        "serif": "Serif",
+        "display": "Display"
+      },
+      "radius": "Corners",
+      "radiusValue": "{value} px",
+      "radiusHelp": "How round photos, buttons and sheets are.",
+      "shadow": "Shadow",
+      "shadowHelp": "The shadow around the menu on wider screens. 0 is none.",
+      "scheme": "Light or dark",
+      "schemes": {
+        "auto": "Follow the guest's phone",
+        "light": "Always light",
+        "dark": "Always dark"
+      },
+      "schemeHelp": "Both versions are always prepared; this only decides which one guests get."
+    },
+    "logo": {
+      "title": "Logo",
+      "help": "JPEG, PNG or WebP, up to 10 MB. A wide logo on a transparent background works best.",
+      "upload": "Upload a logo",
+      "replace": "Replace logo",
+      "remove": "Remove logo",
+      "uploading": "Uploading…",
+      "current": "Current logo",
+      "pending": "The new logo shows in the preview after you save."
+    },
+    "preview": {
+      "title": "Live preview",
+      "hint": "The menu on a guest's phone with the changes you have not saved yet.",
+      "refresh": "Refresh"
     }
   }
 }
