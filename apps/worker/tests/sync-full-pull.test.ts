@@ -443,12 +443,16 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       expect((await linkOf('article', '11')).state).toBe('missing')
     })
 
-    it('one venue for now: with two mapped venues the deletion check is skipped (T50)', async () => {
+    it('two mapped venues on one catalogue: absence is concluded per catalogue, once (CF-16, T50)', async () => {
+      // Before CF-16 a second mapped venue switched the deletion check off for every venue. Now
+      // each full pull reads the whole catalogue and concludes for it.
       await pull()
       const second = await provisionVenue(world.pool, world.tenantId, {
         name: 'Second club',
         slug: testSlug('second-club'),
       })
+      const [first] = fake.venues
+      fake.venues = [...fake.venues, { ...first, barsy_id: 11, name: 'Second', menu_id: 1 }]
       await upsertBarsyVenues(world.pool, world.tenantId, world.integrationId, [
         { bid: 11, name: 'Second' },
       ])
@@ -458,11 +462,20 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
         [second.id, DEMO_ROOT_CAT, world.integrationId],
       )
       fake.articles = fake.articles.filter((article) => article.article_id !== 11)
+      world.clock = new Date(world.clock.getTime() + 10 * 60 * 1000)
       await pull()
-      const run = await lastPull()
-      expect(run.counters.missing).toBe(0)
-      expect(run.error_summary).toContain('deletion check skipped: 2 venues')
-      expect((await linkOf('article', '11')).state).toBe('active')
+      let run = await lastPull()
+      expect(run.counters.missing).toBe(1)
+      expect(run.error_summary).toBeNull()
+      expect((await linkOf('article', '11')).state).toBe('missing')
+
+      // The second venue reads the same catalogue: it agrees, and has nothing more to conclude.
+      world.clock = new Date(world.clock.getTime() + 10 * 60 * 1000)
+      await world.run(JOB_NAMES.barsyFullPull, { ...payload(), venueId: second.id })
+      run = await lastPull()
+      expect(run.status).toBe('completed')
+      expect(run.counters).toMatchObject({ missing: 0, deleted: 0, hidden_here: 0 })
+      expect((await linkOf('article', '11')).state).toBe('missing')
     })
   })
 

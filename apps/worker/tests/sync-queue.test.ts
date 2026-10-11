@@ -240,10 +240,11 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
   })
 
   describe('the tick', () => {
+    // The pulls the tick queues (its places reads, CF-16, are tested in sync-venues.test.ts).
     const tick = async () => {
       world.enqueued.length = 0
       await world.run(JOB_NAMES.barsySyncTick, {})
-      return world.enqueued
+      return world.enqueued.filter((job) => job.name !== JOB_NAMES.placesRead)
     }
 
     beforeEach(async () => {
@@ -269,7 +270,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
             integrationId: world.integrationId,
             venueId: world.venueId,
           },
-          singletonKey: world.integrationId,
+          singletonKey: `${world.integrationId}:${world.venueId}`,
         })
       }
     })

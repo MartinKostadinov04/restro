@@ -6,43 +6,47 @@
 //   barsy-connect         test the credentials, read the installation's venues and trees
 //   barsy-full-pull       path C for one venue; the only job that concludes absence
 //   barsy-incremental     path E: the tree check and the changed articles
+//   places-read           the tables of one mapped venue, root or not (CF-16, T67)
 //   asset-fetch           one barsy photo into the asset store
 //   barsy-sync-tick       the one schedule (every minute): queues the pulls that are due (S3-04)
 //
-// The queues use pg-boss's `exclusive` policy and the integration id as singleton key, so a second
-// full pull of one integration is never queued while one is queued or running, whoever sends it
-// (the web app's "Sync now", the ticks, an incremental run that notices the tree changed). The
-// policy is per queue, so it does not keep a full pull and an incremental run apart: both run
-// inside the integration's Postgres advisory lock (../sync/pull-lock.ts), held for the whole pull.
+// The queues use pg-boss's `exclusive` policy with the integration and the venue as singleton key
+// (CF-16), so a second full pull of one venue is never queued while one is queued or running,
+// whoever sends it (the web app's "Sync now", the ticks, an incremental run that notices the tree
+// changed), and one venue's pull never drops another's. The policy is per queue, so it does not
+// keep a full pull and an incremental run apart: every pull runs inside the integration's Postgres
+// advisory lock (../sync/pull-lock.ts), held for the whole pull: one pull at a time per
+// installation, because barsy allows two requests at a time per installation and one pull already
+// uses both, and because venues that share a catalogue then never conclude its absence at once.
 
-import { BarsyAuthError } from '@restro/barsy'
+import { BarsyAuthError as AuthRefused, type BarsyReader as Reader } from '@restro/barsy'
 import {
   type AssetFetchJob,
   AssetFetchJobSchema,
-  type BarsyConnectJob,
-  BarsyConnectJobSchema,
-  type BarsyPullJob,
-  BarsyPullJobSchema,
+  type BarsyConnectJob as ConnectJob,
+  BarsyConnectJobSchema as ConnectJobSchema,
   canonicalJson,
   deferredSingletonKey,
   dueSyncs,
   JOB_NAMES,
   parseSyncSettings,
   prepareJob,
+  syncTimeZone,
+  type VenueSyncJob,
+  VenueSyncJobSchema,
 } from '@restro/core'
 import {
   appendSourceRecords,
   readSyncState,
+  upsertBarsyVenues as recordTillVenues,
   storeCachedTree,
   updateIntegration,
   updateSyncState,
-  upsertBarsyVenues,
 } from '@restro/core/apply'
 import {
   authOrganization,
-  barsyVenues,
   integrations,
-  venues,
+  barsyVenues as venueLinks,
   withSystem,
   withTenant,
 } from '@restro/db'
@@ -58,6 +62,7 @@ import {
   runFullPull,
   runIncremental,
   scopeHashOf,
+  syncPlaces,
   treeHashOf,
 } from '../sync/catalogue'
 import {
@@ -67,7 +72,13 @@ import {
   withIntegration,
 } from '../sync/context'
 import { lastUpdateFilter } from '../sync/cursor'
-import { fullPullStartedWithin, loadVenueTarget } from '../sync/data'
+import {
+  fullPullStartedWithin,
+  loadMappedVenue,
+  loadVenueTarget,
+  type VenueTarget,
+  venuesOnCatalogue,
+} from '../sync/data'
 import { LimiterRegistry } from '../sync/limiter'
 import { fetchPhoto, type ObsoleteReason, PhotoRefused } from '../sync/photos'
 import { PULL_LOCK_POLL_MS, PULL_LOCK_WAIT_MS, withPullLock } from '../sync/pull-lock'
@@ -106,27 +117,107 @@ const OBSOLETE_TEXT: Record<ObsoleteReason, string> = {
 /** A full pull that found another pull running starts again this many seconds later. */
 const FULL_PULL_DEFER_SECONDS = 60
 
+/** A places read the tick queued that has not run is asked for again after this long. */
+const PLACES_RETRY_MS = 10 * MINUTE
+
 function parsePayload<S extends z.ZodType>(schema: S, job: Job<object>, name: string): z.output<S> {
   const parsed = schema.safeParse(job.data)
   if (!parsed.success) throw new Error(`the ${name} job has an invalid payload`)
   return parsed.data
 }
 
-/** Who the publish after a pull is queued for: the venue the pull read, with the integration's settings. */
-function afterSyncTarget(
-  payload: BarsyPullJob,
+/**
+ * Queues the automatic publish after a pull that changed something: of the venue the pull read,
+ * and of every other venue on the same catalogue (CF-16), since the items they share changed for
+ * them too. A menu that did not change publishes nothing.
+ */
+async function publishAfterPull(
+  env: SyncEnvironment,
+  payload: VenueSyncJob,
   session: IntegrationSession,
-): Parameters<typeof queuePublishAfterSync>[1] {
-  return {
-    tenantId: payload.tenantId,
-    integrationId: payload.integrationId,
-    venueId: payload.venueId,
-    config: session.integration.config,
+  target: VenueTarget,
+  appliedOps: number,
+): Promise<void> {
+  if (appliedOps <= 0) return
+  const venueIds = new Set<string>([payload.venueId])
+  if (target.catalogueId !== null) {
+    try {
+      const shared = await venuesOnCatalogue(
+        env,
+        payload.tenantId,
+        payload.integrationId,
+        target.catalogueId,
+      )
+      for (const venueId of shared) venueIds.add(venueId)
+    } catch (error) {
+      env.log.warn({ err: error }, 'the venues sharing a catalogue could not be listed')
+    }
+  }
+  for (const venueId of venueIds) {
+    await queuePublishAfterSync(
+      env,
+      {
+        tenantId: payload.tenantId,
+        integrationId: payload.integrationId,
+        venueId,
+        config: session.integration.config,
+      },
+      appliedOps,
+    )
   }
 }
 
 function isFlagSet(value: unknown): boolean {
   return value === 1 || value === true
+}
+
+/**
+ * Reads the installation's venue list and records every live venue with its name and catalogue
+ * (`menu_id`, CF-16). Returns the live venues.
+ */
+async function recordVenueList(
+  env: SyncEnvironment,
+  target: { readonly tenantId: string; readonly integrationId: string },
+  reader: Reader,
+) {
+  const venues = (await reader.getVenues()).data
+  const live = venues.filter((venue) => !isFlagSet(venue.delete_flag))
+  await recordTillVenues(
+    env.pool,
+    target.tenantId,
+    target.integrationId,
+    live.map((venue) => ({
+      bid: venue.barsy_id,
+      name: venue.name,
+      catalogueId: venue.menu_id ?? null,
+    })),
+  )
+  return { venues, live }
+}
+
+/**
+ * The catalogue the venue sells from, as the venue list says now (CF-16), and a note when the list
+ * could not be read (the stored one is used then). Wrong credentials are thrown.
+ */
+async function refreshCatalogue(
+  env: SyncEnvironment,
+  payload: VenueSyncJob,
+  session: IntegrationSession,
+  target: VenueTarget,
+): Promise<{ target: VenueTarget; notes: string[] }> {
+  try {
+    const { live } = await recordVenueList(env, payload, session.reader)
+    const own = live.find((venue) => venue.barsy_id === target.bid)
+    const catalogueId = own?.menu_id ?? target.catalogueId
+    return { target: { ...target, catalogueId }, notes: [] }
+  } catch (error) {
+    if (error instanceof AuthRefused) throw error
+    env.log.warn({ err: error }, 'the venue list could not be read')
+    return {
+      target,
+      notes: ['the venue list could not be read; the catalogue stored before was used'],
+    }
+  }
 }
 
 export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
@@ -155,7 +246,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
 
   // --- barsy-connect ---------------------------------------------------------------------
 
-  const connect = defineJob<BarsyConnectJob>({
+  const connect = defineJob<ConnectJob>({
     name: JOB_NAMES.barsyConnect,
     options: {
       policy: 'exclusive',
@@ -170,7 +261,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
     },
     async handler(jobs, context) {
       for (const job of jobs) {
-        const payload = parsePayload(BarsyConnectJobSchema, job, JOB_NAMES.barsyConnect)
+        const payload = parsePayload(ConnectJobSchema, job, JOB_NAMES.barsyConnect)
         const env = environment(context, job)
         await trackedRun(env, { ...payload, kind: 'barsy_connect' }, async () =>
           withIntegration(env, payload, async (session) => {
@@ -178,7 +269,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             // Both pings return 1 (the official docs). A 401 here stores the code wrong_credentials.
             await client.ping()
             await client.pingUser()
-            const venues = (await reader.getVenues()).data
+            const { venues, live } = await recordVenueList(env, payload, reader)
             const languages = (await reader.getLanguages()).data
             // OPEN (CF-12): which Currencies_getlist field marks the system currency? Not yet verified
             // in the official docs (https://docs.lukanet.com/barsy.api/methods/currencies/getlist.html),
@@ -186,13 +277,6 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             const currencies = (await reader.getCurrencies()).data
             const details = (await reader.getArticleDetailsTree()).data
 
-            const live = venues.filter((venue) => !isFlagSet(venue.delete_flag))
-            await upsertBarsyVenues(
-              env.pool,
-              payload.tenantId,
-              payload.integrationId,
-              live.map((venue) => ({ bid: venue.barsy_id, name: venue.name })),
-            )
             const notes: string[] = []
             let trees = 0
             for (const venue of live) {
@@ -207,7 +291,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                 )
                 trees += 1
               } catch (error) {
-                if (error instanceof BarsyAuthError) throw error
+                if (error instanceof AuthRefused) throw error
                 notes.push(
                   `the category tree of a venue could not be read (barsy id ${venue.barsy_id})`,
                 )
@@ -257,7 +341,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
 
   // --- barsy-full-pull -------------------------------------------------------------------
 
-  const fullPull = defineJob<BarsyPullJob>({
+  const fullPull = defineJob<VenueSyncJob>({
     name: JOB_NAMES.barsyFullPull,
     options: {
       policy: 'exclusive',
@@ -273,7 +357,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
     },
     async handler(jobs, context) {
       for (const job of jobs) {
-        const payload = parsePayload(BarsyPullJobSchema, job, JOB_NAMES.barsyFullPull)
+        const payload = parsePayload(VenueSyncJobSchema, job, JOB_NAMES.barsyFullPull)
         const env = environment(context, job)
         await trackedRun(env, { ...payload, kind: 'barsy_full_pull' }, async (run) => {
           // Held for the whole pull. Another pull of this integration (an incremental run, or a
@@ -283,13 +367,16 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             payload.integrationId,
             () =>
               withIntegration(env, payload, async (session) => {
-                const target = await loadVenueTarget(
+                const stored = await loadVenueTarget(
                   env,
                   payload.tenantId,
                   payload.integrationId,
                   payload.venueId,
                 )
-                const ctx = { env, session, target, runId: run.id, start: env.now() }
+                const start = env.now()
+                // The catalogue as barsy lists it now: the read and its absence check follow it.
+                const { target, notes } = await refreshCatalogue(env, payload, session, stored)
+                const ctx = { env, session, target, runId: run.id, start }
                 const outcome = await runFullPull(ctx)
                 await recordSuccess(ctx, outcome, 'full')
                 await updateIntegration(env.pool, payload.tenantId, payload.integrationId, {
@@ -297,14 +384,16 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   statusDetail: null,
                   lastCheckedAt: env.now(),
                 })
-                await queuePublishAfterSync(
+                await publishAfterPull(
                   env,
-                  afterSyncTarget(payload, session),
+                  payload,
+                  session,
+                  target,
                   outcome.counters.ops_applied ?? 0,
                 )
                 return {
                   counters: outcome.counters,
-                  notes: outcome.notes,
+                  notes: [...notes, ...outcome.notes],
                   deletionCheckSkipped: outcome.deletionCheckSkipped,
                   ...(outcome.absenceHeld !== undefined
                     ? { absenceHeld: outcome.absenceHeld }
@@ -317,11 +406,12 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
           if (locked.acquired) return locked.value
 
           // Still busy after the wait: send this pull again, to start in a minute, so that a
-          // "Sync now" is never lost. This job is still active under the integration id, and the
-          // queue's exclusive policy would drop a second job with that key (`send` returns null),
-          // so the copy carries a key of its own.
+          // "Sync now" is never lost. This job is still active under its own key (integration and
+          // venue), and the queue's exclusive policy would drop a second job with that key (`send`
+          // returns null), so the copy carries a key of its own.
+          const own = prepareJob(JOB_NAMES.barsyFullPull, payload).singletonKey
           const later = await env.enqueue(JOB_NAMES.barsyFullPull, payload, {
-            singletonKey: deferredSingletonKey(payload.integrationId, env.now()),
+            singletonKey: deferredSingletonKey(own, env.now()),
             startAfter: FULL_PULL_DEFER_SECONDS,
           })
           if (later === null) {
@@ -340,7 +430,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
 
   // --- barsy-incremental -----------------------------------------------------------------
 
-  const incremental = defineJob<BarsyPullJob>({
+  const incremental = defineJob<VenueSyncJob>({
     name: JOB_NAMES.barsyIncremental,
     options: {
       policy: 'exclusive',
@@ -355,7 +445,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
     },
     async handler(jobs, context) {
       for (const job of jobs) {
-        const payload = parsePayload(BarsyPullJobSchema, job, JOB_NAMES.barsyIncremental)
+        const payload = parsePayload(VenueSyncJobSchema, job, JOB_NAMES.barsyIncremental)
         const env = environment(context, job)
         await trackedRun(env, { ...payload, kind: 'barsy_incremental' }, async (run) => {
           // Another pull in progress (a full pull reads everything anyway): do not wait, the next
@@ -413,9 +503,11 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
                   lastUpdateFilter(new Date(cursor), target.timezone),
                 )
                 await recordSuccess(ctx, outcome, 'incremental')
-                await queuePublishAfterSync(
+                await publishAfterPull(
                   env,
-                  afterSyncTarget(payload, session),
+                  payload,
+                  session,
+                  target,
                   outcome.counters.ops_applied ?? 0,
                 )
                 return {
@@ -427,6 +519,59 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             incrementalLock,
           )
           return locked.acquired ? locked.value : { notes: ['skipped: another pull is running'] }
+        })
+      }
+    },
+  })
+
+  // --- places-read -----------------------------------------------------------------------
+
+  /**
+   * The tables of one mapped venue (CF-16, T67): they do not depend on the menu category, so they
+   * are read as soon as the venue is mapped. Inside the pull lock (the full pull reads them too);
+   * when another pull runs, the tick asks again later.
+   */
+  const placesRead = defineJob<VenueSyncJob>({
+    name: JOB_NAMES.placesRead,
+    options: {
+      policy: 'exclusive',
+      queue: {
+        retryLimit: 1,
+        retryDelay: 60,
+        expireInSeconds: 5 * 60,
+        retentionSeconds: 30 * 60,
+        deleteAfterSeconds: 24 * 60 * 60,
+      },
+      work: { pollingIntervalSeconds: 2 },
+    },
+    async handler(jobs, context) {
+      for (const job of jobs) {
+        const payload = parsePayload(VenueSyncJobSchema, job, JOB_NAMES.placesRead)
+        const env = environment(context, job)
+        await trackedRun(env, { ...payload, kind: 'places_read' }, async () => {
+          const locked = await withPullLock(
+            env,
+            payload.integrationId,
+            () =>
+              withIntegration(env, payload, async (session) => {
+                const venue = await loadMappedVenue(
+                  env,
+                  payload.tenantId,
+                  payload.integrationId,
+                  payload.venueId,
+                )
+                const result = await syncPlaces({ env, session, venue, now: env.now() })
+                return {
+                  counters: result.counters,
+                  notes: result.notes,
+                  ...(result.read ? {} : { status: 'failed' as const }),
+                }
+              }),
+            incrementalLock,
+          )
+          return locked.acquired
+            ? locked.value
+            : { notes: ['skipped: another pull is running; the tables are read a little later'] }
         })
       }
     },
@@ -496,11 +641,12 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
   // --- the schedules ---------------------------------------------------------------------
 
   /**
-   * Connected integrations that have a venue with a catalogue root, as (tenant, integration,
-   * venue), with what the schedule needs: the integration's config (settings and sync state),
-   * the barsy venue's `bid` and the venue's time zone. Tenants are listed from the organisation
-   * table (a system table: the app role can read it without a tenant scope; the organisation id
-   * is the tenant id), then each tenant's rows are read inside its own scope.
+   * The mapped venues of connected integrations, as (tenant, integration, venue), with what the
+   * schedule needs: the integration's config (settings, time zone and sync state), the barsy
+   * venue's `bid` and whether it has a catalogue root (only then are pulls due; its tables are
+   * read either way). Tenants are listed from the organisation table (a system table: the app role
+   * can read it without a tenant scope; the organisation id is the tenant id), then each tenant's
+   * rows are read inside its own scope.
    */
   async function syncTargets(context: WorkerContext) {
     const organisations = await withSystem(context.pool, (tx) =>
@@ -511,7 +657,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       integrationId: string
       venueId: string
       bid: number
-      timezone: string
+      hasRoot: boolean
       config: unknown
     }[] = []
     for (const organisation of organisations) {
@@ -519,20 +665,18 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
         tx
           .select({
             integrationId: integrations.id,
-            venueId: barsyVenues.venueId,
-            bid: barsyVenues.bid,
-            timezone: venues.timezone,
+            venueId: venueLinks.venueId,
+            bid: venueLinks.bid,
+            root: venueLinks.catalogueRootCatId,
             config: integrations.config,
           })
           .from(integrations)
-          .innerJoin(barsyVenues, eq(barsyVenues.integrationId, integrations.id))
-          .innerJoin(venues, eq(venues.id, barsyVenues.venueId))
+          .innerJoin(venueLinks, eq(venueLinks.integrationId, integrations.id))
           .where(
             and(
               eq(integrations.kind, 'barsy'),
               eq(integrations.status, 'connected'),
-              isNotNull(barsyVenues.venueId),
-              isNotNull(barsyVenues.catalogueRootCatId),
+              isNotNull(venueLinks.venueId),
             ),
           ),
       )
@@ -543,7 +687,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             integrationId: row.integrationId,
             venueId: row.venueId,
             bid: row.bid,
-            timezone: row.timezone,
+            hasRoot: row.root !== null,
             config: row.config,
           })
         }
@@ -553,13 +697,15 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
   }
 
   /**
-   * The one schedule of the sync (S3-04, D59): every minute, in the venue's clock, it asks
-   * `dueSyncs` of each connected venue whether a change check or a full pull is due under the
-   * integration's settings, and queues what is. The queued time (a change check) or slot (a full
-   * pull) is written to the sync state, so the interval is counted from the last attempt, and a
-   * pull that failed is not asked for again every minute. With the settings at their defaults
-   * this is what the two fixed schedules did: a change check every 5 minutes and a full pull
-   * daily at 12:00 (D41, D50/P31).
+   * The one schedule of the sync (S3-04, D59; one per integration, D73): every minute it asks
+   * `dueSyncs` of each mapped venue with a catalogue root whether a change check or a full pull is
+   * due under the integration's settings, in the integration's time zone (Europe/Sofia unless it
+   * says otherwise), and queues what is; a mapped venue whose tables were never read gets a
+   * places read (CF-16, T67). The queued time (a change check) or slot (a full pull) is written
+   * to the sync state, so the interval is counted from the last attempt, and a pull that failed
+   * is not asked for again every minute. With the settings at their defaults this is what the two
+   * fixed schedules did: a change check every 5 minutes and a full pull daily at 12:00 (D41,
+   * D50/P31).
    */
   const syncTick = defineJob({
     name: JOB_NAMES.barsySyncTick,
@@ -578,18 +724,35 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       const targets = await syncTargets(context)
       let incrementals = 0
       let fullPulls = 0
+      let placesReads = 0
       let failed = 0
       for (const target of targets) {
         // One venue's trouble (an unreadable setting, a database hiccup) never stops the others.
         try {
-          const settings = parseSyncSettings(target.config)
           const state = readSyncState(target.config, target.bid)
-          const due = dueSyncs(now, target.timezone, settings.schedule, state)
           const payload = {
             tenantId: target.tenantId,
             integrationId: target.integrationId,
             venueId: target.venueId,
           }
+          const record = (patch: Parameters<typeof updateSyncState>[4]) =>
+            updateSyncState(context.pool, target.tenantId, target.integrationId, target.bid, patch)
+          if (state.places_read_at === undefined) {
+            const asked = state.places_queued_at ? Date.parse(state.places_queued_at) : Number.NaN
+            if (Number.isNaN(asked) || now.getTime() - asked >= PLACES_RETRY_MS) {
+              const job = prepareJob(JOB_NAMES.placesRead, payload)
+              const id = await context.queue.send(JOB_NAMES.placesRead, job.data, {
+                singletonKey: job.singletonKey,
+              })
+              if (id !== null) {
+                placesReads += 1
+                await record({ places_queued_at: now.toISOString() })
+              }
+            }
+          }
+          if (!target.hasRoot) continue
+          const settings = parseSyncSettings(target.config)
+          const due = dueSyncs(now, syncTimeZone(target.config), settings.schedule, state)
           if (due.incremental) {
             const job = prepareJob(JOB_NAMES.barsyIncremental, payload)
             const id = await context.queue.send(JOB_NAMES.barsyIncremental, job.data, {
@@ -597,13 +760,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             })
             if (id !== null) {
               incrementals += 1
-              await updateSyncState(
-                context.pool,
-                target.tenantId,
-                target.integrationId,
-                target.bid,
-                { last_incremental_queued_at: now.toISOString() },
-              )
+              await record({ last_incremental_queued_at: now.toISOString() })
             }
           }
           if (due.fullPull && due.fullPullSlot !== null) {
@@ -613,13 +770,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             })
             if (id !== null) {
               fullPulls += 1
-              await updateSyncState(
-                context.pool,
-                target.tenantId,
-                target.integrationId,
-                target.bid,
-                { last_full_pull_slot: due.fullPullSlot.toISOString() },
-              )
+              await record({ last_full_pull_slot: due.fullPullSlot.toISOString() })
             }
           }
         } catch (error) {
@@ -628,10 +779,13 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
         }
       }
       // Every minute: say so only when something was queued or went wrong.
-      const level = incrementals + fullPulls + failed > 0 ? 'info' : 'debug'
-      context.log[level]({ targets: targets.length, incrementals, fullPulls, failed }, 'sync tick')
+      const level = incrementals + fullPulls + placesReads + failed > 0 ? 'info' : 'debug'
+      context.log[level](
+        { targets: targets.length, incrementals, fullPulls, placesReads, failed },
+        'sync tick',
+      )
     },
   })
 
-  return [connect, fullPull, incremental, assetFetch, syncTick] as JobDefinition[]
+  return [connect, fullPull, incremental, placesRead, assetFetch, syncTick] as JobDefinition[]
 }

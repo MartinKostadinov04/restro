@@ -6,39 +6,53 @@
 //           hiding lives in link state and till-layer values (the mapper), the manager's in
 //           the other layers;
 //   rule 6  absence concludes only here, only after a complete full pull, through core's
-//           `concludeFullPull`, and only when the integration has a single mapped venue. Even
-//           then a read that found nothing, or would hide most of the menu, concludes nothing
-//           (`absenceHold`, T62): the pull says so and a person looks;
+//           `concludeVenuePull` (brief CF-16): per catalogue for items (from a read of the WHOLE
+//           catalogue the venue sells from, so an item another venue's root holds is never
+//           concluded absent), per venue for its sections and for items its root no longer holds
+//           (hidden in that venue only). A read that found nothing, or would hide most of a
+//           catalogue or of a venue's menu, concludes nothing for it (`absenceHold`, T62): the
+//           pull says so and a person looks;
 //   rule 7  everything read from barsy goes through the read-only client.
 //
 // A pull is: fetch → map → store the source records → apply the change set in chunks → mark every
 // link the pull saw (`setLinkState` with `seenAt` and the record's hash) → (full pull only)
 // conclude what is absent → queue the photos. The incremental run is the same without the
 // conclusion and for the changed articles only.
+//
+// Several venues on one installation (CF-16): items are the installation's, one per article;
+// sections are each venue's own (`qualifiedSections`: a single venue keeps exactly its keys);
+// price and for-sale are written per venue, read in the venue's own context (`?bid=`).
 
 import {
   type Article,
   type ArticleDetailsGroup,
-  BARSY_MAPPING_VERSION,
-  BarsyAuthError,
+  BarsyAuthError as AuthRefused,
   type CatalogueMapping,
   type CategoryTreeNode,
   DEFAULT_MAPPING_LOCALE,
+  inMenuOf,
   type Language,
+  BARSY_MAPPING_VERSION as MAPPING_VERSION,
   type MappingConfig,
   type Modificator,
   mapCatalogue,
   mapModificators,
   mapPlaces,
+  parseSectionLinkId,
+  qualifiedSections,
   type SourceRecordDescriptor,
   type SupplementGroup,
+  sectionLinksOfMenu,
+  type VenueHide,
+  venueHideOps,
 } from '@restro/barsy'
 import {
   type AbsenceHeld,
-  absenceHold,
+  type CatalogueItemLink,
   type ChangeSetOp,
+  type ChildLink,
   canonicalJson,
-  concludeFullPull,
+  concludeVenuePull,
   holdsNewItems,
   type IntegrationId,
   isLocale,
@@ -46,6 +60,8 @@ import {
   MAX_RETIRED_TOKENS,
   type NodeId,
   prepareJob,
+  type ScopedHold,
+  type ScopedLink,
   sha256Hex,
   tillSource,
   type VenueId,
@@ -64,8 +80,14 @@ import type { IntegrationSession, SyncEnvironment } from './context'
 import {
   articlesWithPhoto,
   linkKeyOf,
+  type MappedVenue,
   picturesOfRecords,
+  readArticleCatalogues,
   readLinks,
+  readMenuArticles,
+  readSectionOwners,
+  readVenueHidden,
+  recordIdsOfLinks,
   type StoredLink,
   type VenueTarget,
 } from './data'
@@ -83,7 +105,7 @@ export interface PullOutcome {
   readonly counters: Record<string, number>
   /** Lines for the job run's text: what was skipped and why. */
   readonly notes: string[]
-  /** True when the full pull did not conclude absence (a failed page, several venues, or a hold). */
+  /** True when the full pull did not conclude absence fully (a failed page, no catalogue, or a hold). */
   readonly deletionCheckSkipped: boolean
   /** Set when a complete read was held back from concluding absence (T62): why, and how much. */
   readonly absenceHeld?: AbsenceHeld
@@ -113,9 +135,20 @@ interface Fetched {
   /** One entry per article page, supplement call and modificator page. */
   readonly pagesOk: boolean[]
   readonly articlePages: number
+  /** True when the articles are the venue's whole catalogue (`menu_id`), not only its root. */
+  readonly wholeCatalogue: boolean
 }
 
 const isFlagSet = (value: unknown) => value === 1 || value === true
+
+/** The till price a venue's menu shows: its own setting, else the integration's, else the base price. */
+export function priceSourceOf(
+  target: Pick<MappedVenue, 'priceSource'>,
+  config: { readonly price_source?: unknown },
+): 'actual_price' | 'current_price' {
+  const chosen = target.priceSource ?? config.price_source
+  return chosen === 'current_price' ? 'current_price' : 'actual_price'
+}
 
 /** SHA-256 of the public tree: a changed tree means a full pull. */
 export function treeHashOf(tree: CategoryTreeNode): string {
@@ -152,8 +185,8 @@ function mappingSettings(
   return {
     integrationId: session.integration.id as IntegrationId,
     catalogueRootCatId: target.catalogueRootCatId,
-    priceSource: config.price_source === 'current_price' ? 'current_price' : 'actual_price',
-    mappingVersion: BARSY_MAPPING_VERSION,
+    priceSource: priceSourceOf(target, config),
+    mappingVersion: MAPPING_VERSION,
     includeServices: false,
     ...(config.allergen_detail_key ? { allergenDetailKey: config.allergen_detail_key } : {}),
     ...(isLocale(config.default_locale) ? { defaultLocale: config.default_locale } : {}),
@@ -214,7 +247,7 @@ async function readSupplements(ctx: PullContext, articles: readonly Article[]) {
           byArticle[String(article.article_id)] = result.data
           pagesOk.push(true)
         } catch (error) {
-          if (error instanceof BarsyAuthError) throw error
+          if (error instanceof AuthRefused) throw error
           pagesOk.push(false)
           env.log.warn({ err: error }, 'the supplements of an article could not be read')
         }
@@ -234,6 +267,12 @@ async function fetchCatalogue(
 ): Promise<Fetched> {
   const { session, target, env } = ctx
   const bid = target.bid
+  // A full pull reads the whole catalogue the venue sells from (CF-16): only a complete read of
+  // it may conclude that an item is gone. Without a known catalogue it reads the venue's root.
+  const catalogueId = options.full ? target.catalogueId : null
+  const scope = catalogueId !== null ? { catalogueId } : { rootCatId: target.catalogueRootCatId }
+  // The menu test first: a root that is not in the tree fails before anything else is read.
+  const inMenu = inMenuOf(options.tree, target.catalogueRootCatId)
   const details = (await session.reader.getArticleDetailsTree()).data
   const languages = (await session.reader.getLanguages()).data
   const articleRead = await readPages({
@@ -245,14 +284,15 @@ async function fetchCatalogue(
     fetchPage: async (offset, length) =>
       (
         await session.reader.getArticlesPage(bid, {
-          rootCatId: target.catalogueRootCatId,
+          ...scope,
           offset,
           length,
           ...(options.lastUpdateAfter ? { lastUpdateAfter: options.lastUpdateAfter } : {}),
         })
       ).data,
   })
-  const supplements = await readSupplements(ctx, articleRead.items)
+  // Only the combos this venue maps: another venue's combos are read in its own context.
+  const supplements = await readSupplements(ctx, articleRead.items.filter(inMenu))
   const pagesOk = [...articleRead.pagesOk, ...supplements.pagesOk]
   let modificators: Modificator[] = []
   if (options.full) {
@@ -277,6 +317,7 @@ async function fetchCatalogue(
     modificators,
     pagesOk,
     articlePages: articleRead.pagesOk.length,
+    wholeCatalogue: catalogueId !== null,
   }
 }
 
@@ -293,10 +334,15 @@ function hashesByLink(mapping: CatalogueMapping): Map<string, string> {
   const hashes = new Map<string, string>()
   for (const intent of mapping.linkStates) {
     const isOption = intent.linkType === 'supplement_group' || intent.linkType === 'supplement'
-    // Option groups and options come from the combo article's supplements record.
+    // Option groups and options come from the combo article's supplements record; a venue's
+    // section from barsy's category record (shared by every venue that shows it, CF-16).
+    const category =
+      intent.linkType === 'category' ? parseSectionLinkId(intent.externalId)?.catId : undefined
     const recordKey = isOption
       ? `article_supplements:${intent.externalId.split(':')[0]}`
-      : `${intent.linkType}:${intent.externalId}`
+      : category !== undefined
+        ? `category:${category}`
+        : `${intent.linkType}:${intent.externalId}`
     const hash = byRecord.get(recordKey)
     if (hash !== undefined) hashes.set(`${intent.linkType}:${intent.externalId}`, hash)
   }
@@ -378,74 +424,20 @@ async function queuePhotos(
 
 // --- holding a suspicious conclusion (T62) ----------------------------------------------------
 
-/** What a hold is about: the menu's items, or its sections. */
-interface LinkHold extends AbsenceHeld {
-  readonly what: 'items' | 'sections'
-}
-
-/**
- * Whether the absence conclusion of a complete full pull must be held back, and why.
- *
- * Only article links count for the share: an option group or an option going missing with its
- * combo is not a menu emptying. Category links hold only for an empty read (the read saw no
- * section while sections are active). `before` is the links as stored before the run,
- * `candidates` the moves the pull would make (after the race guard).
- */
-function heldBy(
-  mapping: CatalogueMapping,
-  before: ReadonlyMap<string, StoredLink>,
-  candidates: readonly { stored: StoredLink; to: 'missing' | 'deleted' }[],
-): LinkHold | null {
-  const countsFor = (linkType: 'article' | 'category') => {
-    let activeBefore = 0
-    for (const stored of before.values()) {
-      if (stored.externalType === linkType && stored.state === 'active') activeBefore += 1
-    }
-    const seen = mapping.linkStates.filter(
-      (intent) => intent.linkType === linkType && intent.state === 'active',
-    ).length
-    const wouldHide = candidates.filter(
-      (candidate) => candidate.to === 'missing' && candidate.stored.externalType === linkType,
-    ).length
-    return { activeBefore, seen, wouldHide }
-  }
-  const items = countsFor('article')
-  const itemsVerdict = absenceHold({
-    activeBefore: items.activeBefore,
-    seen: items.seen,
-    wouldGoMissing: items.wouldHide,
-  })
-  if (itemsVerdict.hold) {
-    return {
-      what: 'items',
-      reason: itemsVerdict.reason,
-      wouldHide: items.wouldHide,
-      active: items.activeBefore,
-    }
-  }
-  const sections = countsFor('category')
-  const sectionsVerdict = absenceHold({
-    activeBefore: sections.activeBefore,
-    seen: sections.seen,
-    wouldGoMissing: sections.wouldHide,
-  })
-  if (sectionsVerdict.hold && sectionsVerdict.reason === 'empty_read') {
-    return {
-      what: 'sections',
-      reason: 'empty_read',
-      wouldHide: sections.wouldHide,
-      active: sections.activeBefore,
-    }
-  }
-  return null
-}
-
 const percentOf = (part: number, whole: number) =>
   whole === 0 ? 100 : Math.round((100 * part) / whole)
 
-/** The run note for a held conclusion about the menu (read in the Integration tab's run history). */
-function heldNote(held: LinkHold): string {
-  const thing = held.what === 'items' ? 'items' : 'menu sections'
+/**
+ * The run note for a held conclusion (read in the Integration tab's run history): the catalogue's
+ * items, the venue's sections, or the items of the venue's menu its root no longer holds.
+ */
+function heldNote(held: ScopedHold): string {
+  const thing =
+    held.what === 'sections'
+      ? 'menu sections'
+      : held.scope === 'venue'
+        ? 'items of this venue’s menu'
+        : 'items'
   if (held.reason === 'empty_read') {
     return `deletion check held: the read found no ${thing} but ${held.active} are on the menu; nothing was hidden`
   }
@@ -486,6 +478,15 @@ async function syncFetched(
   const counters: Record<string, number> = {}
 
   const menu = await provisionMenu(env.pool, tenantId, target.venueId)
+  const menuId = menu.rootNodeId as string
+  // Which section keys this venue uses, and which sections are its own (CF-16).
+  const owners = await readSectionOwners(env, tenantId, integrationId)
+  const qualified = qualifiedSections(target.venueId, menuId, owners)
+  const ownSections = sectionLinksOfMenu(menuId, owners)
+  // What the venue's menu showed before this run (for the absence of items in this venue).
+  const hidden = await readVenueHidden(env, tenantId, integrationId, target.venueId)
+  const onMenu =
+    mode === 'full' ? await readMenuArticles(env, tenantId, integrationId, menuId) : null
   const before = await readLinks(env, tenantId, integrationId)
 
   const mapping = mapCatalogue(
@@ -498,6 +499,8 @@ async function syncFetched(
       supplementsByArticle: fetched.supplements,
       detailsTree: fetched.details,
       languages: fetched.languages,
+      qualifiedSections: qualified,
+      venueHiddenArticles: hidden,
     },
     mappingConfig(ctx),
   )
@@ -536,6 +539,10 @@ async function syncFetched(
   // Mark what this run saw. Only links that exist can be marked (a `delete_flag` article that
   // was never linked has none).
   const hashes = hashesByLink(mapping)
+  const articleRecords = new Map<string, SourceRecordDescriptor>()
+  for (const record of mapping.sourceRecords) {
+    if (record.externalType === 'article') articleRecords.set(record.externalId, record)
+  }
   const after = await readLinks(env, tenantId, integrationId)
   const intents = mapping.linkStates.filter((intent) =>
     mode === 'full' ? true : intent.state === 'active' && intent.linkType !== 'category',
@@ -546,6 +553,7 @@ async function syncFetched(
     externalId: id,
   })
   const seenOps: ChangeSetOp[] = []
+  const marked = new Set<string>()
   let reactivated = 0
   for (const intent of intents) {
     const key = `${intent.linkType}:${intent.externalId}`
@@ -559,8 +567,31 @@ async function syncFetched(
       seenAt: startIso,
       ...(hash !== undefined ? { hash } : {}),
     })
+    marked.add(key)
     const was = before.get(key)
     if (was && was.state !== 'active' && intent.state === 'active') reactivated += 1
+  }
+
+  // The articles of the whole catalogue: one listed is there, whichever venue's root holds it.
+  const listed = new Set<string>()
+  const deletedListed = new Set<string>()
+  if (fetched.wholeCatalogue) {
+    for (const article of firstOfEachId(fetched.articles)) {
+      const key = `article:${article.article_id}`
+      ;(isFlagSet(article.delete_flag) ? deletedListed : listed).add(key)
+    }
+    for (const key of listed) {
+      const stored = after.get(key)
+      if (!stored || marked.has(key)) continue
+      const hash = articleRecords.get(stored.externalId)?.contentHash
+      seenOps.push({
+        op: 'setLinkState',
+        link: link('article', stored.externalId),
+        state: 'active',
+        seenAt: startIso,
+        ...(hash !== undefined ? { hash } : {}),
+      })
+    }
   }
 
   // Article counters: created, updated, unchanged (against the hash stored before this run).
@@ -576,80 +607,123 @@ async function syncFetched(
     else updated += 1
   }
 
-  // Rule 6: absence concludes only after a complete full pull, only for one venue, and not when
-  // the read found nothing or sharply less than the menu holds (T62).
+  // Rule 6: absence concludes only after a complete full pull: per catalogue for items, per
+  // venue for its sections and its menu (CF-16), each held when the read looks wrong (T62).
   const moves: ChangeSetOp[] = []
+  let hideOps: ChangeSetOp[] = []
   let missing = 0
   let deleted = 0
+  let hiddenHere = 0
   const complete = fetched.pagesOk.every((ok) => ok)
   if (mode === 'full') {
-    if (target.mappedVenues !== 1) {
-      deletionCheckSkipped = true
-      notes.push(
-        `deletion check skipped: ${target.mappedVenues} venues of this integration have a catalogue root (one venue for now)`,
-      )
-    } else if (!complete) {
+    if (!complete) {
       deletionCheckSkipped = true
       const failed = fetched.pagesOk.filter((ok) => !ok).length
       notes.push(`deletion check skipped: ${failed} of ${fetched.pagesOk.length} pages failed`)
     } else {
-      const seen = new Set<string>()
-      const deletedSeen = new Set<string>()
-      for (const intent of mapping.linkStates) {
-        ;(intent.state === 'active' ? seen : deletedSeen).add(
-          `${intent.linkType}:${intent.externalId}`,
+      const catalogueId = fetched.wholeCatalogue ? target.catalogueId : null
+      const catalogues =
+        catalogueId !== null ? await readArticleCatalogues(env, tenantId, integrationId) : null
+      const scoped = (key: string, stored: StoredLink): ScopedLink => ({
+        key,
+        state: stored.state,
+        stateChangedAt: stored.stateChangedAt,
+        lastSeenAt: stored.lastSeenAt,
+      })
+      const items: CatalogueItemLink[] = []
+      const children: ChildLink[] = []
+      const sections: ScopedLink[] = []
+      for (const [key, stored] of after) {
+        if (stored.externalType === 'article') {
+          items.push({
+            ...scoped(key, stored),
+            catalogueId: catalogues?.get(stored.externalId) ?? null,
+          })
+        } else if (
+          stored.externalType === 'supplement_group' ||
+          stored.externalType === 'supplement'
+        ) {
+          const parentKey = `article:${stored.externalId.split(':')[0]}`
+          children.push({ ...scoped(key, stored), parentKey })
+        } else if (stored.externalType === 'category' && ownSections.has(stored.externalId)) {
+          sections.push(scoped(key, stored))
+        }
+      }
+      const activeIntents = (types: readonly string[]) =>
+        new Set(
+          mapping.linkStates
+            .filter((intent) => intent.state === 'active' && types.includes(intent.linkType))
+            .map((intent) => `${intent.linkType}:${intent.externalId}`),
+        )
+      const shown = new Set(
+        [...(onMenu ?? [])]
+          .filter((id) => before.get(`article:${id}`)?.state === 'active' && !hidden.has(id))
+          .map((id) => `article:${id}`),
+      )
+      const conclusion = concludeVenuePull({
+        pagesOk: fetched.pagesOk,
+        now: env.now(),
+        start,
+        catalogue:
+          catalogueId === null
+            ? null
+            : { catalogueId, items, seen: listed, deletedSeen: deletedListed },
+        venue: {
+          sections,
+          sectionsSeen: activeIntents(['category']),
+          shown,
+          inRoot: activeIntents(['article']),
+        },
+        children,
+        childrenSeen: activeIntents(['supplement_group', 'supplement']),
+      })
+      if (catalogueId === null) {
+        deletionCheckSkipped = true
+        notes.push(
+          'deletion check skipped for items: the catalogue of this barsy venue is not known yet (the venue list could not be read)',
         )
       }
-      const conclusion = concludeFullPull({
-        pagesOk: fetched.pagesOk,
-        seen,
-        deletedSeen,
-        links: [...after].map(([key, stored]) => ({
-          key,
-          state: stored.state,
-          stateChangedAt: stored.stateChangedAt,
-        })),
-        now: env.now(),
-      })
-      const candidates: { stored: StoredLink; to: 'missing' | 'deleted' }[] = []
-      let raced = 0
-      for (const change of conclusion.changes) {
-        // Revivals ride on the seen ops above.
-        if (change.to === 'active') continue
-        const stored = after.get(change.key)
-        if (!stored) continue
-        // An incremental run saw this link after this pull began: it is not absent.
-        if (stored.lastSeenAt.getTime() > start.getTime()) {
-          raced += 1
-          continue
-        }
-        candidates.push({ stored, to: change.to })
-      }
-
-      // TODO(T62 preview): a person releases a hold from the switch preview; the override plugs in
-      // here (skip `heldBy` for a hold that was released).
-      const held = heldBy(mapping, before, candidates)
-      if (held !== null) {
-        // A complete read that found nothing, or would hide most of the menu, is far more likely
-        // a changed scope than a menu deleted at the till. No move is made: the links the read
-        // did see were marked above, and nothing is hidden.
+      for (const held of conclusion.held) notes.push(heldNote(held))
+      const first = conclusion.held[0]
+      if (first !== undefined) {
+        // A complete read that found nothing, or would hide most of a catalogue or a menu, is far
+        // more likely a changed scope than a menu deleted at the till. Nothing it held is moved:
+        // the links the read did see were marked above.
         deletionCheckSkipped = true
-        absenceHeld = { reason: held.reason, wouldHide: held.wouldHide, active: held.active }
-        notes.push(heldNote(held))
-      } else {
-        for (const { stored, to } of candidates) {
-          moves.push({
-            op: 'setLinkState',
-            link: link(stored.externalType, stored.externalId),
-            state: to,
-          })
-          if (to === 'missing') missing += 1
-          else deleted += 1
-        }
-        if (raced > 0) {
-          notes.push(`${raced} link(s) seen by an incremental run meanwhile were left alone`)
-        }
+        absenceHeld = { reason: first.reason, wouldHide: first.wouldHide, active: first.active }
       }
+      for (const move of conclusion.moves) {
+        const stored = after.get(move.key)
+        if (!stored || (move.to !== 'missing' && move.to !== 'deleted')) continue
+        moves.push({
+          op: 'setLinkState',
+          link: link(stored.externalType, stored.externalId),
+          state: move.to,
+        })
+        if (move.to === 'missing') missing += 1
+        else deleted += 1
+      }
+      if (conclusion.raced > 0) {
+        notes.push(
+          `${conclusion.raced} link(s) seen by an incremental run meanwhile were left alone`,
+        )
+      }
+      // Hidden in this venue only: its root no longer holds them, its catalogue (or another)
+      // still does. The write cites the article's record of this read, or its last one.
+      const hideIds = conclusion.venueHides.map((key) => key.slice('article:'.length))
+      const fromLinks = await recordIdsOfLinks(
+        env,
+        tenantId,
+        integrationId,
+        hideIds.filter((id) => !articleRecords.has(id)),
+      )
+      const hides: VenueHide[] = []
+      for (const id of hideIds) {
+        const recordId = articleRecords.get(id)?.id ?? fromLinks.get(id)
+        if (recordId !== undefined) hides.push({ articleExternalId: id, sourceRecordId: recordId })
+      }
+      hideOps = venueHideOps(integrationId, target.venueId, hides)
+      hiddenHere = hides.length
     }
   }
 
@@ -659,7 +733,7 @@ async function syncFetched(
     actor: `integration:${integrationId}` as const,
     observedAt: startIso,
   }
-  await applyOps(env, tenantId, base, [...seenOps, ...moves], totals)
+  await applyOps(env, tenantId, base, [...seenOps, ...moves, ...hideOps], totals)
 
   counters.categories_seen = mapping.counts.sections
   counters.articles_seen = fetched.articles.length
@@ -670,6 +744,7 @@ async function syncFetched(
   counters.missing = missing
   counters.deleted = deleted
   counters.reactivated = reactivated
+  if (mode === 'full') counters.hidden_here = hiddenHere
   counters.failed_pages = fetched.pagesOk.filter((ok) => !ok).length
   counters.nodes_created = totals.createdNodes
   if (holding) counters.items_held = totals.held
@@ -683,6 +758,18 @@ async function syncFetched(
   return { counters, notes, deletionCheckSkipped, absenceHeld, totals, complete }
 }
 
+/** The first article of each id, in id order (as the mapping reads a list). */
+function firstOfEachId(articles: readonly Article[]): Article[] {
+  const seen = new Set<number>()
+  const result: Article[] = []
+  for (const article of [...articles].sort((a, b) => a.article_id - b.article_id)) {
+    if (seen.has(article.article_id)) continue
+    seen.add(article.article_id)
+    result.push(article)
+  }
+  return result
+}
+
 // --- the two runs ----------------------------------------------------------------------------
 
 /** Path C, steps 2 to 9, for one venue. Throws for what retrying may fix; returns the outcome otherwise. */
@@ -693,17 +780,52 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
   const result = await syncFetched(ctx, fetched, 'full')
   const notes = [...result.notes]
 
-  // Places (tables): one call. A failure here is noted and does not touch the catalogue. The
-  // evidence of the read is what the call really did: `Places_getlist` is not paged, so it is one
-  // entry, true once the list came back valid. An empty or sharply smaller list is held inside
-  // `upsertPlaces` (T62): no table goes missing or deleted and no code is retired.
+  const places = await syncPlaces({ env, session, venue: target, now: ctx.start })
+  notes.push(...places.notes)
+  Object.assign(result.counters, places.counters)
+
+  await storeCachedTree(
+    env.pool,
+    session.tenantId,
+    session.integration.id,
+    target.bid,
+    cachedTreeOf(tree, ctx.start),
+  )
+  return {
+    counters: result.counters,
+    notes,
+    deletionCheckSkipped: result.deletionCheckSkipped,
+    ...(result.absenceHeld !== undefined ? { absenceHeld: result.absenceHeld } : {}),
+    refused: result.totals.rejected,
+    complete: result.complete,
+    treeHash: treeHashOf(tree),
+  }
+}
+
+/**
+ * Places (tables) of one venue: one call (brief CF-16, T67: read as soon as the venue is mapped,
+ * root or not; and with every full pull). A failure here is noted and touches nothing. The
+ * evidence of the read is what the call really did: `Places_getlist` is not paged, so it is one
+ * entry, true once the list came back valid. An empty or sharply smaller list is held inside
+ * `upsertPlaces` (T62): no table goes missing or deleted and no code is retired. A successful
+ * read is recorded in the venue's sync state (`places_read_at`).
+ */
+export async function syncPlaces(target: {
+  readonly env: SyncEnvironment
+  readonly session: IntegrationSession
+  readonly venue: Pick<MappedVenue, 'venueId' | 'bid'>
+  readonly now: Date
+}): Promise<{ counters: Record<string, number>; notes: string[]; read: boolean }> {
+  const { env, session, venue } = target
+  const counters: Record<string, number> = {}
+  const notes: string[] = []
   const placesPagesOk: boolean[] = []
   try {
-    const places = await session.reader.getPlaces(target.bid)
+    const places = await session.reader.getPlaces(venue.bid)
     placesPagesOk.push(true)
     const described = mapPlaces(places.data, {
       integrationId: session.integration.id as IntegrationId,
-      venueId: target.venueId as VenueId,
+      venueId: venue.venueId as VenueId,
     })
     await appendSourceRecords(
       env.pool,
@@ -722,15 +844,18 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
       env.pool,
       session.tenantId,
       session.integration.id,
-      target.bid,
+      venue.bid,
       described,
       { pagesOk: placesPagesOk, now: env.now() },
     )
     if (stored.held !== null) notes.push(heldPlacesNote(stored.held))
-    result.counters.places_seen = described.length
-    result.counters.places_created = stored.created
-    result.counters.places_missing = stored.missing
-    result.counters.places_deleted = stored.deleted
+    counters.places_seen = described.length
+    counters.places_created = stored.created
+    counters.places_missing = stored.missing
+    counters.places_deleted = stored.deleted
+    await updateSyncState(env.pool, session.tenantId, session.integration.id, venue.bid, {
+      places_read_at: target.now.toISOString(),
+    })
     // A table's code file says its name (barsy's number unless the manager chose one), and a table
     // barsy deleted lost its code: bring the venue's `t/<token>.json` files in line (S3-07). The
     // job is idempotent and writes only what differs, so queuing it for any change is cheap.
@@ -738,7 +863,7 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
       try {
         const tokens = prepareJob(JOB_NAMES.publishTableTokens, {
           tenantId: session.tenantId,
-          venueId: target.venueId,
+          venueId: venue.venueId,
           retired: stored.retiredTokens.slice(0, MAX_RETIRED_TOKENS),
         })
         await env.enqueue(JOB_NAMES.publishTableTokens, tokens.data, {
@@ -752,27 +877,12 @@ export async function runFullPull(ctx: PullContext): Promise<PullOutcome> {
         env.log.error({ err: error }, 'the table token job could not be queued')
       }
     }
+    return { counters, notes, read: true }
   } catch (error) {
-    if (error instanceof BarsyAuthError) throw error
+    if (error instanceof AuthRefused) throw error
     notes.push('places could not be read; they were left as they were')
     env.log.warn({ err: error }, 'the places could not be read')
-  }
-
-  await storeCachedTree(
-    env.pool,
-    session.tenantId,
-    session.integration.id,
-    target.bid,
-    cachedTreeOf(tree, ctx.start),
-  )
-  return {
-    counters: result.counters,
-    notes,
-    deletionCheckSkipped: result.deletionCheckSkipped,
-    ...(result.absenceHeld !== undefined ? { absenceHeld: result.absenceHeld } : {}),
-    refused: result.totals.rejected,
-    complete: result.complete,
-    treeHash: treeHashOf(tree),
+    return { counters, notes, read: false }
   }
 }
 

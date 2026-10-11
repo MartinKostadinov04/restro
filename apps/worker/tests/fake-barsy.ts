@@ -44,6 +44,11 @@ export interface FakeBarsy {
   modificators: Json[]
   places: Json[]
   venues: Json[]
+  /**
+   * Per barsy venue (`?bid=`), what it answers instead of the lists above (CF-16: two venues on
+   * one catalogue answer in their own context: their own prices and for-sale flags).
+   */
+  byBid: Map<string, { articles?: Json[]; tree?: Json; places?: Json[] }>
   /** The password the installation accepts (user `demo`). */
   password: string
   /** Called for every `Articles_getlist` page; return a fault to break it. */
@@ -79,6 +84,7 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
     modificators: fixtureJson('modificators-bid10.json') as Json[],
     places: fixtureJson('places-bid10.json') as Json[],
     venues: fixtureJson('barsys.json') as Json[],
+    byBid: new Map<string, { articles?: Json[]; tree?: Json; places?: Json[] }>(),
   })
   const languages = fixtureJson('languages.json')
   const currencies = fixtureJson('currencies.json')
@@ -135,12 +141,9 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
       const text = await request.text()
       const body = (text === '' ? {} : JSON.parse(text)) as Json
       const authorization = request.headers.get('authorization')
-      calls.push({
-        method,
-        bid: new URL(request.url).searchParams.get('bid'),
-        params: body,
-        authorization,
-      })
+      const bid = new URL(request.url).searchParams.get('bid')
+      calls.push({ method, bid, params: body, authorization })
+      const own = bid === null ? undefined : fake.byBid.get(bid)
       await fake.onCall?.(method, body)
       if (method === 'Misc_ping') return json(1)
       if (authorization !== fake.basic()) return unauthorised()
@@ -157,9 +160,9 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
         case 'Articledetails_gettree':
           return json(details)
         case 'Categories_getalltree':
-          return json(fake.tree)
+          return json(own?.tree ?? fake.tree)
         case 'Places_getlist':
-          return json(fake.places)
+          return json(own?.places ?? fake.places)
         case 'Modificators_getlist': {
           const offset = Number(body.offset ?? 0)
           return json(fake.modificators.slice(offset, offset + Number(body.length ?? 50)))
@@ -177,7 +180,12 @@ export function createFakeBarsy(host = 'demo.barsyonline.com'): FakeBarsy {
           if (fault === 'server_error') return new HttpResponse('too slow', { status: 504 })
           if (fault === 'bad_json') return new HttpResponse('<html>', { status: 200 })
           const filters = (body.filters ?? {}) as Json
-          let list = fake.articles
+          let list = own?.articles ?? fake.articles
+          // A whole-catalogue read (CF-16): the articles of that catalogue only. The subtree
+          // filter (`cat_id_deep`) is not applied: the mapping keeps to the root itself.
+          if (typeof filters.menu_id === 'string') {
+            list = list.filter((article) => String(article.menu_id) === filters.menu_id)
+          }
           if (typeof filters.last_update === 'string' && filters.last_update.startsWith('>')) {
             const after = filters.last_update.slice(1)
             list = list.filter((article) => String(article.last_update ?? '') > after)

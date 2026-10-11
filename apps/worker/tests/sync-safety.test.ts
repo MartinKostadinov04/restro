@@ -437,7 +437,7 @@ describe.skipIf(!hasDatabase)('barsy sync safety (CF-02)', () => {
       expect(fullPullJobs()).toHaveLength(1)
       expect(fullPullJobs()[0]).toMatchObject({
         data: payload(),
-        singletonKey: world.integrationId,
+        singletonKey: `${world.integrationId}:${world.venueId}`,
       })
       const run = await lastRun('barsy_incremental')
       expect(run.status).toBe('completed')
