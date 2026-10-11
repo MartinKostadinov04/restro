@@ -12,7 +12,9 @@ Restro is a QR-to-phone menu and ordering web app for Bulgarian nightclubs on th
 Fact precedence: official barsy docs > the architecture doc > the tracker. Never present an assumption as a fact; if something is unknown, stop and ask.
 
 ## Scope right now
-QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up the ground. No ordering, payment, webhook or barsy-write code until the tracker says so.
+QR → phone only (D38). Proof of concept on one venue (D39). Stage 1 = set up the ground. No ordering, payment, webhook or barsy-write **backend** code until the tracker says so.
+
+The guest template's service screens (bag, bill, call a waiter, pay, receipt) exist in the face now (D71). Guests see them only once the platform supports them, and they follow D72: no local success.
 
 ## Commands
 | Command | What |
@@ -49,7 +51,8 @@ apps/worker         Node 24 + pg-boss 12: barsy read sync, resolve, publish, ass
 packages/core       field types + canonical shapes (Zod), field-type registry contract, template-as-data,
                     change sets, apply(), resolver + combinators, validators V1–V12, snapshot builder, money
 packages/shell      population rules R1–R14 → view model (pure), face manifest schema, contract-test harness
-packages/faces/*    phone faces ("shells"); each = manifest + React components; first: qr-phone
+packages/faces/*    phone faces ("templates", D69); each = manifest + React components; default: editorial-market,
+                    qr-phone = hidden test reference
 packages/db         Drizzle schema, migrations, roles, RLS, tenant-scoped client (read / write split)
 packages/barsy      typed read client, mapping (versioned config), fixture recorder, MSW handlers; write/ is empty
 docs/               tracker, architecture mirrors, platform reference, agent briefs, runbooks, research
