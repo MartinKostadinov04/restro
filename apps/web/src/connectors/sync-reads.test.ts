@@ -145,15 +145,35 @@ describe('hasPublicName / usesOwnName (D75: the till has no public name, so its 
   })
 
   it('only an article or a category record can hold the stand-in, and only without a public name', () => {
-    expect(usesOwnName({ externalType: 'article', plain: null, perLanguage: { bg_BG: '' } })).toBe(
-      true,
-    )
-    expect(usesOwnName({ externalType: 'category', plain: '', perLanguage: null })).toBe(true)
-    expect(usesOwnName({ externalType: 'article', plain: 'Негрони', perLanguage: null })).toBe(
-      false,
-    )
+    const row = (externalType: string, plain: unknown, perLanguage: unknown, carries = true) => ({
+      externalType,
+      carriesPublicFields: carries,
+      plain,
+      perLanguage,
+    })
+    expect(usesOwnName(row('article', null, { bg_BG: '' }))).toBe(true)
+    expect(usesOwnName(row('category', '', null))).toBe(true)
+    expect(usesOwnName(row('article', 'Негрони', null))).toBe(false)
+    expect(usesOwnName(row('article_supplements', null, null))).toBe(false)
+  })
+
+  it('an article read without the public-name fields says nothing: the mapping used no stand-in for it', () => {
     expect(
-      usesOwnName({ externalType: 'article_supplements', plain: null, perLanguage: null }),
+      usesOwnName({
+        externalType: 'article',
+        carriesPublicFields: false,
+        plain: undefined,
+        perLanguage: undefined,
+      }),
     ).toBe(false)
+    // A category is always mapped, with or without the fields.
+    expect(
+      usesOwnName({
+        externalType: 'category',
+        carriesPublicFields: false,
+        plain: undefined,
+        perLanguage: undefined,
+      }),
+    ).toBe(true)
   })
 })

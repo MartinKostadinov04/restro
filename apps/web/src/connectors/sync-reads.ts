@@ -198,20 +198,26 @@ export function hasPublicName(plain: unknown, perLanguage: unknown): boolean {
 /** What the stored record a till name was mapped from says about its public name. */
 export interface PublicNameRow {
   readonly externalType: string
+  /**
+   * The record carries the public-name fields at all (whether or not they are filled). An article
+   * read without them says nothing about a public name, and the mapping then writes no name and
+   * falls back to none; a category is always mapped, so for it this is not asked.
+   */
+  readonly carriesPublicFields: boolean
   readonly plain: unknown
   readonly perLanguage: unknown
 }
 
 /**
  * True if the name stored for this node is the till's own name standing in for a public one: the
- * record it was mapped from holds no public name. Items and options come from an article record,
- * sections from a category record; any other record is not asked.
+ * record it was mapped from holds no public name. Items and options come from an article record
+ * (read with the public-name fields), sections from a category record; any other record is not
+ * asked.
  */
 export function usesOwnName(row: PublicNameRow): boolean {
-  return (
-    (row.externalType === 'article' || row.externalType === 'category') &&
-    !hasPublicName(row.plain, row.perLanguage)
-  )
+  if (hasPublicName(row.plain, row.perLanguage)) return false
+  if (row.externalType === 'category') return true
+  return row.externalType === 'article' && row.carriesPublicFields
 }
 
 /**
@@ -233,6 +239,7 @@ export async function readNameFallbackNodeIds(
     .select({
       nodeId: fieldValues.nodeId,
       externalType: sourceRecords.externalType,
+      articleAsked: sql<boolean>`(jsonb_exists(${sourceRecords.payload}, 'article_name_public') or jsonb_exists(${sourceRecords.payload}, 'article_name_public_ml'))`,
       articlePlain: sql<unknown>`${sourceRecords.payload} -> 'article_name_public'`,
       articleMl: sql<unknown>`${sourceRecords.payload} -> 'article_name_public_ml'`,
       categoryPlain: sql<unknown>`${sourceRecords.payload} -> 'cat_name_public'`,
@@ -261,9 +268,15 @@ export async function readNameFallbackNodeIds(
     .filter((row) =>
       usesOwnName(
         row.externalType === 'article'
-          ? { externalType: row.externalType, plain: row.articlePlain, perLanguage: row.articleMl }
+          ? {
+              externalType: row.externalType,
+              carriesPublicFields: row.articleAsked,
+              plain: row.articlePlain,
+              perLanguage: row.articleMl,
+            }
           : {
               externalType: row.externalType,
+              carriesPublicFields: true,
               plain: row.categoryPlain,
               perLanguage: row.categoryMl,
             },

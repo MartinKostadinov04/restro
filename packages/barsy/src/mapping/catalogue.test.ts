@@ -820,11 +820,12 @@ describe("barsy's own name stands in for a missing public name (D75)", () => {
   const nameOf = (result: CatalogueMapping) => writtenValue(writeOf(result, 'article', '1', 'name'))
 
   it('an item with no public name gets its own name under the default language, and one warning', () => {
-    for (const none of [
+    const nothing: Partial<Article>[] = [
       { article_name_public: null, article_name_public_ml: null },
       { article_name_public: '', article_name_public_ml: {} },
       { article_name_public: '  ', article_name_public_ml: { bg_BG: '', en_US: ' ', de_DE: null } },
-    ]) {
+    ]
+    for (const none of nothing) {
       const result = mapOne({ article_name: '  Own name  ', ...none })
       expect(nameOf(result)).toStrictEqual({ bg_BG: 'Own name' })
       expect(result.warnings.filter((w) => w.code === 'item_public_name_missing')).toStrictEqual([
