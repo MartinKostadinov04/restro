@@ -3,7 +3,7 @@ import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
 import { cdnBase } from './cdn'
-import { buildContext, chooseLocale, langParam, readTableToken } from './context'
+import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
 import {
   files,
   GuestLoadError,
@@ -325,6 +325,17 @@ describe('the guest context', () => {
     expect(readTableToken('?t=short')).toBeNull()
     expect(readTableToken('?t=../../x')).toBeNull()
     expect(readTableToken('')).toBeNull()
+  })
+
+  it('tells the shell about a table only when the lookup of that very code found one (A5-F5)', () => {
+    const token = 'tb_0123456789ABCDEFGHIJKL'
+    const found = { token, label: '12' }
+    expect(confirmedTable(token, found)).toEqual(found)
+    // No code asked for, no answer yet or an unknown code: no table.
+    expect(confirmedTable(null, found)).toBeNull()
+    expect(confirmedTable(token, null)).toBeNull()
+    // An answer left over from another code (the address changed) counts for nothing.
+    expect(confirmedTable('tb_ZZZZZZZZZZZZZZZZZZZZZZ', found)).toBeNull()
   })
 
   it('builds a qr context with ordering off', () => {

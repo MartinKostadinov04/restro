@@ -2,6 +2,7 @@
 // The guest page end to end in a page-like environment, with a fake `fetch` standing in for the
 // CDN: the loading skeleton, the menu, the table banner from ?t=, the language from ?lang=, and the
 // friendly notices. The page may only ask for files under /cdn (rule 4).
+import * as shell from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -9,6 +10,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { GuestMenu } from './guest-menu'
 import { files } from './load'
+
+// The real shell, watched: what the page tells it about the table is what these tests are about.
+vi.mock('@restro/shell', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@restro/shell')>()
+  return { ...actual, buildViewModel: vi.fn(actual.buildViewModel) }
+})
+
+/** The table codes the page has given the shell so far, one per view model it built. */
+const tableTokensGiven = () =>
+  vi.mocked(shell.buildViewModel).mock.calls.map(([, , context]) => context.tableToken)
 
 const TOKEN = 'tb_0123456789ABCDEFGHIJKL'
 
@@ -96,6 +107,68 @@ describe('the guest menu page', () => {
     render(<GuestMenu slug="demo-club" />)
     expect(await screen.findByText('Негрони')).toBeTruthy()
     expect(screen.queryByText(/Маса/)).toBeNull()
+  })
+
+  it('gives the shell a table code only once the published table file confirmed it (A5-F5)', async () => {
+    vi.mocked(shell.buildViewModel).mockClear()
+    const bodies = published()
+    const tableFile = files.table('/cdn', TOKEN)
+    // The table file's answer is held back until the menu is on the screen.
+    let release: () => void = () => {}
+    const gate = new Promise<void>((open) => {
+      release = open
+    })
+    requested = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        requested.push(url)
+        if (url === tableFile) await gate
+        const body = bodies.get(url)
+        return body === undefined ? new Response(null, { status: 404 }) : Response.json(body)
+      }),
+    )
+    visit(`?t=${TOKEN}`)
+    render(<GuestMenu slug="demo-club" />)
+
+    // The menu is drawn while the lookup is still out: the shell has not been given the code.
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    expect(tableTokensGiven().length).toBeGreaterThan(0)
+    expect(tableTokensGiven().every((token) => token === null)).toBe(true)
+
+    release()
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    expect(tableTokensGiven().at(-1)).toBe(TOKEN)
+  })
+
+  it('treats a well-formed but unknown table code like no code at all (A5-F5)', async () => {
+    vi.mocked(shell.buildViewModel).mockClear()
+    serve(published())
+    visit('?t=tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    render(<GuestMenu slug="demo-club" />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    // The lookup went out (the file is not there) ...
+    await waitFor(() =>
+      expect(requested).toContain(files.table('/cdn', 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')),
+    )
+    await new Promise((done) => setTimeout(done, 50))
+    // ... and the shell never heard of the code, before or after the answer.
+    expect(tableTokensGiven().length).toBeGreaterThan(0)
+    expect(tableTokensGiven().every((token) => token === null)).toBe(true)
+  })
+
+  it('does not accept a code that belongs to another venue (A5-F5)', async () => {
+    vi.mocked(shell.buildViewModel).mockClear()
+    const bodies = published()
+    bodies.set(files.table('/cdn', TOKEN), { venue_slug: 'other-club', table_label: '7' })
+    serve(bodies)
+    visit(`?t=${TOKEN}`)
+    render(<GuestMenu slug="demo-club" />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', TOKEN)))
+    await new Promise((done) => setTimeout(done, 50))
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    expect(tableTokensGiven().every((token) => token === null)).toBe(true)
   })
 
   it('says the venue is unknown (no retry button) when there is no slug index', async () => {
