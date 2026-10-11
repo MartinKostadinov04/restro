@@ -146,7 +146,7 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
         </h2>
         <div className="flex flex-wrap items-center gap-1.5">
           <OriginBadge origin={section.origin} />
-          {section.nameFromTill ? <NameFromTillBadge /> : null}
+          {section.nameFromTill ? <NameFromTillBadge target="section" /> : null}
           {section.hidden ? <HiddenBadge hiddenBy="status" /> : null}
           <IssuesBadge issues={section.issues} />
           <span className="text-sm text-muted-foreground">{t('itemCount', { count })}</span>

@@ -84,11 +84,19 @@ export function SaleBadge({
 }
 
 /**
+ * The way out of a name that is the till's own: fill in the public name in the till, or (an item)
+ * type a name here, in its sheet. A section cannot be renamed in the composer, so its line names
+ * the till only.
+ */
+const helpKey = (target: 'item' | 'section') =>
+  target === 'section' ? 'nameFromTillHelpSection' : 'nameFromTillHelp'
+
+/**
  * The name shown is the till's own, because the till has no public name for it (D75): "Menu name
  * missing in {source}: its own name is shown", with the way out as a help line on hover or focus.
  * A warning only; it never keeps anything off the menu.
  */
-export function NameFromTillBadge() {
+export function NameFromTillBadge({ target = 'item' }: { target?: 'item' | 'section' }) {
   const t = useTranslations('composer.badges')
   const source = useTillLabel()
   return (
@@ -103,7 +111,7 @@ export function NameFromTillBadge() {
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 text-sm">
-        <p data-testid="name-from-till-help">{t('nameFromTillHelp', { source })}</p>
+        <p data-testid="name-from-till-help">{t(helpKey(target), { source })}</p>
       </HoverCardContent>
     </HoverCard>
   )

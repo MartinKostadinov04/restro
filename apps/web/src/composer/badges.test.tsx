@@ -78,6 +78,15 @@ describe('the warning that the name shown is the till’s own (D75)', () => {
     )
   })
 
+  it('a section’s help line names the till only: the composer cannot rename a section', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<NameFromTillBadge target="section" />, { tillLabel: 'Kasa 2' })
+    await user.hover(screen.getByTestId('name-from-till-badge'))
+    expect((await screen.findByTestId('name-from-till-help')).textContent).toBe(
+      'Fill in the public name in Kasa 2.',
+    )
+  })
+
   it('the item sheet’s notice carries both lines without a hover, in both languages', () => {
     const { unmount } = renderWithIntl(<NameFromTillNotice />, { tillLabel: 'Kasa 2' })
     const notice = screen.getByTestId('name-from-till-notice')
