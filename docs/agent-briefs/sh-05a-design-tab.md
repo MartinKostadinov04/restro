@@ -104,6 +104,7 @@ Only one template exists today; the gallery must still read as a gallery.
   The preview always shows the current form.
 - Switches for light/dark and BG/EN (`DraftFace` already supports the language switch).
 - When the venue has no menu or nothing is visible, show the publish preview's message.
+- **Page-wide CSS:** the Editorial face's CSS has page-wide rules (`html:has(.rm)` hides the scrollbar and horizontal overflow). Check the admin page still scrolls normally with the preview open. If it does not, report it; SH-04 or the lead decides how to scope it.
 
 **Save:** "Save look" saves colours, font, corners, shadow, logo and policy. The toast reads "Saved. Guests see it after the next publish", with a link to the Publishing tab. Template and look options save when chosen, with the same toast.
 

@@ -55,6 +55,12 @@ Add them to the same spec, or to a second spec without the skip:
   - assert at least 4.5:1 for text and at least 3:1 for control borders the guest must see (inputs, choice boxes).
   - These are the `color-mix` and inverse compositions the colour rules alone do not cover.
 
+**Known from SH-02** (each needs a fix or an explained "not fixed"):
+- **Tap targets below 44 px:** the layout buttons (36×30) and the language buttons (34/30 px high). Add invisible hit areas without changing the look.
+- **Heading levels:** item names are `h3` under sub-sections too; the guide says `h4` there. The CSS targets `h3`, so adjust it with the markup.
+- **Image sizes:** item photos use full-width `sizes` even in the two-column layout. Make `sizes` follow the layout so phones pick smaller files.
+- **Allergen sheet:** it marks the dish's allergens only by weight and opacity. Add a non-visual cue as well, such as visually hidden text or `aria-current`.
+
 ### 3. Fixes
 
 - Fix every failure in the face's CSS and markup only (`css.ts`, `services/services-css.ts`, small markup changes such as `aria-*` or wrapping a target).

@@ -112,6 +112,11 @@ Port the look and the flows of `ui.tsx` into readable components:
 
 Keep the hash sheets (`#bag`, `#tab`, `#call`, `#pay`, `#receipt`) and the phone back button.
 
+**Where the CSS is** (SH-02 found this):
+- The delivery's `ORDER_CSS` (in `ordering/ui.tsx`) mixes browsing rules and ordering rules. SH-02 already moved the browsing rules (layouts, layout switch, language switch, header tools, overlay animation) into `css.ts`. Port only the `ro-*` rules into `SERVICES_CSS`.
+- The face keeps a 110–120 px bottom padding for the bag bar. Apply it only while a service bar is shown, so a browsing-only page has no empty band.
+- The page reuses `Overlay` (`overlay.tsx`) and the `use-dish-route.ts` hash handling. Extend them rather than writing a second dialog.
+
 **Show a control only when all of these hold:**
 - its `view.features.*` is on;
 - `services` is bound;

@@ -448,7 +448,16 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - SH-07 accessibility and visual audit with fixes, screenshots for Martin — Sonnet;
   - SH-08 docs and the designer guide v2 — Sonnet.
 
-  Order: SH-02 now; SH-01 after CF-03; then SH-03 + SH-04; then SH-05a + SH-05b + SH-06; then SH-07 + SH-08. At most 3 agents at once, one Opus — Claude
+  Order: SH-02 now; SH-01 after CF-03; then SH-03 + SH-04; then SH-05a + SH-05b + SH-06; then SH-07 + SH-08. At most 3 agents at once, one Opus.
+
+  **Status 10-11:** SH-02 merged into `sh/foundation`.
+  - **What it is:** `@restro/editorial-market`, browsing only. Zero contract failures on every fixture, no libraries, no literal colours, 90 tests.
+  - **Open points, handed on:**
+    - tap targets below 44 px on the layout and language buttons, and `h3`/`h4` heading levels → SH-07;
+    - Next's history patch for the `#item-` route, and the page-wide `html:has(.rm)` rule → SH-04 and SH-05a;
+    - the ordering CSS sits in the delivery's `ORDER_CSS` → SH-06.
+
+  — Claude
 - [ ] T72. **Hand-made items need a venue** (found by CF-01, 10-11): items belong to the organisation, and "Unsorted" lists items placed in none of *this* menu's sections, so a hand-made item of venue A appears in venue B's Unsorted and can be dragged there. Invisible with one venue; real now that venues can be created. Fix with the neutral-tables work (CF-05): a hand-made item records its menu (or Unsorted = placed nowhere in the tenant), plus a test — Claude
 - [ ] T73. Composer role gates are uneven: creating items and menus is owner/admin only (CF-01), creating sections and other composer writes are not gated. Decide one rule (recommend: all composer writes owner/admin, like publishing) — Claude, with CF-09
 - [ ] T71. **How barsy shares items between venues** (Martin 10-11: "has to be checked with the architecture that barsy builds by itself… if the structure is flipped (item{venues:2,3}) that's a different story"). Recorded 10-11 (`fixtures/demo/articles-bid102-page1.json`, `articles-bid102-menu72.json`, `articles-bid10-menu72.json`):

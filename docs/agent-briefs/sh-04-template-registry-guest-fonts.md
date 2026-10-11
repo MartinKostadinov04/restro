@@ -108,6 +108,13 @@ Add `apps/web/public/faces/editorial-market.png` and `qr-phone.png`, each at mos
   - a sold-out mark still appears within the 15-second refresh;
   - a forced `scheme` from a snapshot reaches the root's `data-scheme`, if it can be set through the existing seed. Otherwise use a component test.
 
+### 8. Findings from SH-02 to check on the real page
+
+- **History on the real page.** The face opens the dish page with `history.pushState({ rmItem }, '', '#item-<id>')` and closes it with `history.back()`. Next.js patches `history`. Prove in e2e that on `/m/...`:
+  - opening a dish and pressing the browser's Back closes it, without leaving the menu;
+  - a shared `#item-<id>` link opens that dish on load.
+- **Page-wide scroll rules.** The face's CSS sets `html:has(.rm) { overflow-x: hidden }` and hides the scrollbar while it is mounted. Check that it does not leak into the admin's Design preview (SH-05a renders the face inside the admin page). If it does, report it and the lead decides; do not edit the face's CSS.
+
 ## Done when
 
 - **Gate:** `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build && pnpm test:e2e` pass with DB tests on `restro_sh_04` (54329).
