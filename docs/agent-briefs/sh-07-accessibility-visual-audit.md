@@ -8,6 +8,8 @@
 
 ## Read first
 
+**Testing.** Follow CLAUDE.md's two tiers. Your own spec runs with `--reporter=line`; the full Playwright suite runs in CI after the lead pushes.
+
 1. `CLAUDE.md`.
 2. The designer guide `docs/guides/shell-handoff/visualization-shell.md` §7.5 (visual and accessibility rules).
 3. The handover `docs/design/faces/editorial-market/2026-10-11/handover.md`:

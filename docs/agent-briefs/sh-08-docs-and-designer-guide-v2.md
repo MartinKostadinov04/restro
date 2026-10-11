@@ -8,7 +8,7 @@
 
 ## Read first
 
-1. `CLAUDE.md`, and in `docs/tracker.md` the entries D38, D63, D67 and D69–D72, and T74.
+1. `CLAUDE.md` and `docs/decisions.md`. Look up only D38, D63, D67, D69–D72 and T74 in `docs/tracker.md` by number; do not read the tracker whole.
 2. **What was built (read the merged code, not the briefs):**
    - **core theme:** `packages/core/src/theme/**` and the snapshot additions in `snapshot/schema.ts`;
    - **shell:** `packages/shell/src/{build,features,manifest,services,bag,face-props}.ts`;

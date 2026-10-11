@@ -153,7 +153,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Face and route:** the `qr-phone` face (passes the face contract on all fixtures) and `/m/<venue slug>`, which reads only `/cdn` files (`v/<slug>.json` → `current.json` → snapshot → `live.json`); a dependency rule forbids the database there.
   - **Table links:** `/t/<token>` redirects through `t/<token>.json` (no database) or shows "code not active".
   - **Venue theme:** brand colour + logo in Settings → Appearance (`venues.settings`, migration 0010). The palette is derived at publish time (`core/theme.ts`, no chroma-js) and reaches guests with the next publish.
-  - **Slugs** are globally unique since S3-10 (T61 closed). The snapshot carries no time zone or `sold_out_display` yet (shell defaults). `NEXT_PUBLIC_CDN_BASE_URL` must be absolute on staging.
+  - **Slugs** were globally unique from S3-10 (T61) until CF-14. Since 10-11 the address is `/m/<slug>-<code>` (D68): the random code finds the venue, slugs are free and renamable. The snapshot carries no time zone or `sold_out_display` yet (shell defaults). `NEXT_PUBLIC_CDN_BASE_URL` must be absolute on staging.
 - Tables and QR (S3-07, D61):
   - **Tab:** barsy tables by hall, an editable name per table (else barsy's number, shown as "Маса N"), "Create codes for all tables" (active tables, hidden ones included; a table with neither number nor name is skipped), "Create code" / "New code" / "Turn off code" (the last two ask first), PNG and SVG downloads (`/api/tables/<tb_>/qr`), and an A4 print sheet (`/venues/<id>/tables/print`, 2x3 cards, the browser's "Save as PDF").
   - **Tokens:** 22 base62 characters from `crypto`, no input, unique in the database; `places.label` and two checks (migration 0012). A table barsy concludes `deleted` loses its token in `upsertPlaces` (`retiredTokens`); `missing` keeps it.
@@ -405,7 +405,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 - [ ] T55. `next dev` evaluates workspace packages more than once (module singletons such as the DB pool broke; two fixed with `globalThis`); `next dev` font loading fails inside agent worktrees — watch for more — Claude
 - [x] T56. (done 10-09: the photo row no longer prints the asset id; the thumbnail uses the sheet's signed link; why the e2e screenshot showed a blank square is not yet confirmed — recheck during Stage 2 acceptance) Item sheet polish: the Details tab's photo row shows a blank thumbnail and the raw asset id (`as_…`) instead of the photo; show the thumbnail (signed link, as the Media tab does) and never an internal id — Claude (Haiku task)
 - [ ] T60. Photo variants: store EXIF-oriented width/height in `assets` (portrait phone photos would get a swapped aspect box); `variants:backfill --force` to rebuild variant files after a wiped publish folder; CORS headers when `/cdn` moves to the real CDN — Claude
-- [x] T61. (done 10-10, S3-10: global unique index on `venues.slug`, typed `slug_taken`, the publish job fails on a `v/<slug>.json` clash) Globally unique public venue slugs (or a tenant-qualified path) before a second tenant goes live — `v/<slug>.json` is global today — Claude
+- [x] T61. (**replaced by D68 / CF-14 on 10-11**: the address carries a random code, slugs are no longer unique; done 10-10, S3-10: global unique index on `venues.slug`, typed `slug_taken`, the publish job fails on a `v/<slug>.json` clash) Globally unique public venue slugs (or a tenant-qualified path) before a second tenant goes live — `v/<slug>.json` is global today — Claude
 - [ ] T62. Catalogue-root safety (seen on the local acceptance setup 10-10: the root was switched to a sub-category, and the 12:00 full pull then marked 66 links missing, hiding the menu in the composer; V11 would have held the guest publish):
   - the Integration tab warns before changing the root or the barsy venue, and shows what the next full pull will hide;
   - the absence conclusion is skipped when a pull sees 0 categories under the root;
@@ -455,14 +455,31 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - **Open:**
       - applying 0014 to staging needs Martin's OK, with the worker stopped and the queue drained;
       - the architecture mirror still names the `barsy` and `import` layers (CF-13).
-  - **Running (launched after the CF-03 merge):** CF-14 public address (Sonnet, migration 0015).
-    - **Setback, 10-11:** while the lead planned T74 in plan mode, both agents were put into plan mode too. They stopped editing, and CF-03 was left with two uncommitted files.
-    - CF-03 was resumed with its context and runs again. Lesson saved: no plan mode while agents run.
-  - **Queued:**
-    - CF-14 public address (after CF-03, because both add migrations);
-    - SH-01 (Opus) waits for CF-03 (one Opus at a time; both change `packages/core`).
+  - **Merged 10-11 (later):** CF-14 public menu address.
+    - **Address:** `/m/<slug>-<12-character code>`.
+    - **The code:** `venues.public_id`, random with no bias, unique and permanent. Migration 0015 backfills existing venues and checks none was missed.
+    - **Files:** keyed by the code (`v/<code>.json`).
+    - **Slugs:** no longer unique, and renamable in Settings. A rename queues the file jobs; old links keep working, and the page corrects the address bar.
+    - **`/t/<token>`:** redirects to the canonical address.
+    - **Lead's approval (D67):** CF-14 changed `till-role-migration.test.ts` to migrate only through 0014. Every check stays, so it is not a weakening.
+  - **Open (CF-14):**
+    - **(a) Before the pilot venue goes live,** run `publish-files` and `publish-table-tokens` once for every venue. Older token files lack the code, and `v/<code>.json` appears only on a publish.
+    - **(b) A database trigger refusing changes to `venues.public_id`.** Today it is permanent only because no writer touches it.
+    - **(c) A database check on the slug format.** Today only code checks it.
+    - **(d) No reverse script for 0015.** Recommended: none.
+  - **Setback, 10-11:** while the lead planned T74 in plan mode, CF-03 and CF-12 were put into plan mode too and stopped editing. Both were resumed with their context and finished. Lesson saved: no plan mode while agents run.
+  - **Remaining roadmap** (`readiness.md`). Each runs in a free slot next to T74:
+    - CF-04 publish policy on the venue;
+    - CF-05 connections, locations, areas and tables data (waits for SH-04, which touches the guest table context);
+    - CF-06 connector contract, kit and conformance skeleton;
+    - CF-07 engine extraction;
+    - CF-08 the rest of the guardrails;
+    - CF-09 Settings → Integrations;
+    - CF-10 tables (T66/T67);
+    - CF-11 switch preview and hold release;
+    - CF-13 docs and the CLAUDE.md rewrite.
 
-  Next, after A5/A6 and the synthesis (`readiness.md`): neutral till layer + drop the `import` layer (D65) in one migration (Opus), connector manifest + kit + engine extraction, neutral locations/areas/tables (T66/T67), Settings → Integrations, publish policy on the venue — Claude
+  — Claude
 - [ ] T74. **First gallery template "Editorial Market"** (D69–D72). Martin's Lovable delivery of 10-11 is stored in `docs/design/faces/editorial-market/2026-10-11/`. Plan approved 10-11. Branch `sh/foundation` (from `cf/foundation`; the CF merges flow in). Briefs `docs/agent-briefs/sh-*.md`:
   - SH-01 theme engine and presentation contract in core: OKLCH roles from 3 colours, presets, fonts, settings v2, snapshot `theme.roles`/`scheme`/`presentation`/`features` — Opus, after CF-03;
   - SH-02 face port, browsing: `packages/faces/editorial-market` — Sonnet;
@@ -474,7 +491,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - SH-07 accessibility and visual audit with fixes, screenshots for Martin — Sonnet;
   - SH-08 docs and the designer guide v2 — Sonnet.
 
-  Order: SH-02 now; SH-01 after CF-03; then SH-03 + SH-04; then SH-05a + SH-05b + SH-06; then SH-07 + SH-08. At most 3 agents at once, one Opus.
+  Order: SH-02 now; SH-01 after CF-03; then SH-03 + SH-04; then SH-05a + SH-05b + SH-06; then SH-07 + SH-08. At most 2 agents at once since Martin approved the lean workflow on 10-11 (it was 3), one Opus.
 
   **Status 10-11:** SH-02 merged into `sh/foundation`.
   - **What it is:** `@restro/editorial-market`, browsing only. Zero contract failures on every fixture, no libraries, no literal colours, 90 tests.

@@ -8,6 +8,10 @@ on:
     branches:
       - main
       - 's1/**'
+      # The working branches the lead merges agents into (connector foundation, guest templates):
+      # the full gate runs here, on GitHub, instead of on the local PC (Martin 10-11).
+      - 'cf/**'
+      - 'sh/**'
 
 permissions:
   contents: read
