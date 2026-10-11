@@ -1,6 +1,7 @@
-// The tabs of a venue workspace, declared once. The tab bar (large screens), the select (small
-// screens) and the sidebar's venue sub-menu are all rendered from this list. The Platform
-// (PassportEdit.jsx) wrote the tab list twice and let it drift; here a new tab is one entry.
+// The tabs of a venue workspace, declared once. The tab bar (large screens) and the select (small
+// screens) are both rendered from this list; the sidebar lists venues, not their tabs (D74). The
+// Platform (PassportEdit.jsx) wrote the tab list twice and let it drift; here a new tab is one
+// entry.
 import {
   LayoutListIcon,
   type LucideIcon,
