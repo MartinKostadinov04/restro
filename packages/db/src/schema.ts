@@ -353,6 +353,16 @@ export const barsyVenues = restro.table(
     venueId: text('venue_id'),
     /** The catalogue root this venue's menu is read from (D56); null until chosen. */
     catalogueRootCatId: integer('catalogue_root_cat_id'),
+    /**
+     * The catalogue (item set) this venue sells from, as the till lists it; venues can share one
+     * (T71). Written whenever the venue list is read; null until then (brief CF-16).
+     */
+    catalogueId: integer('catalogue_id'),
+    /**
+     * Which till price this venue's menu shows (`actual_price` or `current_price`): per venue,
+     * because prices differ per venue (D73). Null: the integration's `config.price_source`.
+     */
+    priceSource: text('price_source'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -376,6 +386,12 @@ export const barsyVenues = restro.table(
       columns: [t.tenantId, t.venueId],
       foreignColumns: [venues.tenantId, venues.id],
     }),
+    // Named for the till role, not the vendor (D67: no new vendor words outside a connector).
+    check(
+      'till_venue_price_source',
+      sql`${t.priceSource} is null or ${t.priceSource} in ('actual_price', 'current_price')`,
+    ),
+    check('till_venue_catalogue_id', sql`${t.catalogueId} is null or ${t.catalogueId} >= 0`),
   ],
 )
 
