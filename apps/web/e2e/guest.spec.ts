@@ -151,7 +151,7 @@ test.describe('the menu of /m/demo-club-<code>', () => {
 
   test('keeps cards stable on a phone: no sideways scroll, photos with a reserved box', async ({
     page,
-  }, testInfo) => {
+  }) => {
     await open(page, `${GUEST.path}?lang=bg`)
     // No sideways scroll.
     expect(
@@ -182,27 +182,24 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     expect(photos.find((photo) => photo.item === 'Негрони')?.loading).toBe('eager')
     expect(photos.find((photo) => photo.item === 'Загорка 500 мл')?.loading).toBe('lazy')
 
-    // Controls and tap size. The reference template (qr-phone) holds every control to 44 px, and
-    // its test below keeps doing so. The Editorial Market was delivered with some smaller ones
-    // (the language and layout switches, the allergen codes); they are listed on the report of this
-    // run, and the accessibility audit (SH-07) decides what changes.
-    const small = await page.locator('button, nav a').evaluateAll((elements) =>
+    // Controls and tap size: every button and link of the Editorial Market is 44 x 44 px (SH-07; it
+    // was recorded here as an annotation, SH-04, while the template was delivered with smaller
+    // ones). The reference template (qr-phone) is held to the same by its test below.
+    const small = await page.locator('button, a[href], [role="radio"]').evaluateAll((elements) =>
       elements
         .map((element) => {
           const box = element.getBoundingClientRect()
           return {
             label: element.getAttribute('aria-label') ?? element.textContent?.trim(),
-            w: Math.round(box.width),
-            h: Math.round(box.height),
+            w: box.width,
+            h: box.height,
           }
         })
-        .filter((box) => box.w > 0 && (box.h < 44 || box.w < 30))
-        .map((box) => `${box.label}: ${box.w}x${box.h}`),
+        // Not drawn (a filtered-out item), or something of the host page's (the dev tools button).
+        .filter((box) => box.w > 0 && (box.h < 43.5 || box.w < 43.5))
+        .map((box) => `${box.label}: ${Math.round(box.w)}x${Math.round(box.h)}`),
     )
-    testInfo.annotations.push({
-      type: 'controls below 44 px high (SH-07)',
-      description: [...new Set(small)].join('; ') || 'none',
-    })
+    expect([...new Set(small)]).toEqual([])
   })
 
   test('shows a long description cut on the card and whole on the dish page', async ({ page }) => {

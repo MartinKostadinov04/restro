@@ -190,6 +190,50 @@ describe('the stylesheet of the services (R13)', () => {
   })
 })
 
+describe('the edges of inputs and choices (brief SH-07): 3:1 against what is around them', () => {
+  const borderOf = (selector: string, property: string) =>
+    services
+      .filter((rule) => rule.media === null && rule.selectors.includes(selector))
+      .map((rule) => rule.declarations.get(property))
+      .filter((value) => value !== undefined)
+      .at(-1)
+
+  it('draws the edge of a choice or an input on the page in the muted colour, not the border colour', () => {
+    // The border role is for separators (about 1.3:1); muted reads at 4.5:1 on the page.
+    for (const selector of ['.rm .ro-options button', '.rm .ro-note textarea']) {
+      expect(borderOf(selector, 'border'), selector).toBe('1px solid var(--rm-muted)')
+    }
+  })
+
+  it('draws the edge of a choice or an input on a sheet (inverse colours) at 54 % of its text', () => {
+    for (const selector of [
+      '.rm .ro-choicegrid button',
+      '.rm .ro-tips button',
+      '.rm .ro-scope button',
+      '.rm .ro-sheet .ro-note textarea',
+      '.rm .ro-sheet .ro-input input',
+      '.rm .ro-sheet .ro-promo input',
+    ]) {
+      expect(borderOf(selector, 'border-color'), selector).toBe(
+        'color-mix(in srgb, currentColor 54%, transparent)',
+      )
+    }
+  })
+
+  it('marks the chosen one by a ring in the sheet’s text colour as well as by the accent fill', () => {
+    const chosen = '.rm .ro-choicegrid [aria-checked="true"]'
+    expect(borderOf(chosen, 'border-color')).toBe('var(--rm-bg)')
+    expect(borderOf(chosen, 'box-shadow')).toBe('inset 0 0 0 1px var(--rm-bg)')
+  })
+
+  it('does not fade the status of a bill line (a faded small text reads at about 3.5:1)', () => {
+    const done = services.find((rule) =>
+      rule.selectors.includes('.rm .ro-status[data-status="served"]'),
+    )
+    expect(done?.declarations.has('opacity')).toBe(false)
+  })
+})
+
 describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet', () => {
   const tall = [
     '.rm .ro-stepper button',

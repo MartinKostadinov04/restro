@@ -18,9 +18,9 @@ import {
   publishPutOptions,
   publishStoreConfig,
   snapshotPath,
+  variantPath,
   venueIndexBytes,
   venueIndexPath,
-  variantPath,
   writeTableTokenFile,
 } from '@restro/assets'
 import {
@@ -72,7 +72,13 @@ const PHOTOS = [
   { n: 2, w: 1600, h: 1200, colours: ['#fbbf24', '#ea580c'], alt: bgen('Спритц', 'Spritz') },
   { n: 3, w: 1200, h: 1600, colours: ['#34d399', '#065f46'], alt: bgen('Мохито', 'Mojito') },
   { n: 4, w: 1600, h: 1200, colours: ['#fcd34d', '#92400e'], alt: bgen('Бира', 'Beer') },
-  { n: 5, w: 2000, h: 900, colours: ['#a78bfa', '#4c1d95'], alt: bgen('Бирена градина', 'Beer garden') },
+  {
+    n: 5,
+    w: 2000,
+    h: 900,
+    colours: ['#a78bfa', '#4c1d95'],
+    alt: bgen('Бирена градина', 'Beer garden'),
+  },
   { n: 6, w: 1600, h: 1200, colours: ['#38bdf8', '#1e3a8a'], alt: bgen('Шот', 'Shot') },
 ] as const
 const photo = (n: number) => fixtureId('as', n)
@@ -287,8 +293,7 @@ function snapshotOf(theme: VisualTheme, index: number): MenuSnapshot {
   const menuSections = base.menu.sections.filter((id) => id !== starters)
 
   const preset = THEME_PRESETS.find((entry) => entry.id === theme.id)
-  const roles =
-    preset !== undefined ? preset.overrides : deriveRoles(CUSTOM_COLOURS)
+  const roles = preset !== undefined ? preset.overrides : deriveRoles(CUSTOM_COLOURS)
   const tertiary = preset !== undefined ? preset.colours.tertiary : CUSTOM_COLOURS.tertiary
   const ids = {
     snapshot: `sn_${`E2eVisual${theme.id}`.padEnd(22, '0')}`,
@@ -332,7 +337,8 @@ function snapshotOf(theme: VisualTheme, index: number): MenuSnapshot {
 async function main(): Promise<void> {
   assertDevEnvironment(process.env)
   for (const text of [LONG_NAME_BG, LONG_NAME_EN, LONG_TEXT_NAME_BG, LONG_TEXT_NAME_EN]) {
-    if ([...text].length !== 60) throw new Error(`a long fixture name is not 60 characters: ${text}`)
+    if ([...text].length !== 60)
+      throw new Error(`a long fixture name is not 60 characters: ${text}`)
   }
   const config = publishStoreConfig(process.env)
   if (config.kind !== 'local') throw new Error('the e2e publish store must be local')
@@ -372,7 +378,9 @@ async function main(): Promise<void> {
       table_label: VISUAL_TABLE_LABEL,
     })
   }
-  console.log(JSON.stringify({ level: 'info', event: 'seed_visual_e2e_done', themes: VISUAL_THEMES.length }))
+  console.log(
+    JSON.stringify({ level: 'info', event: 'seed_visual_e2e_done', themes: VISUAL_THEMES.length }),
+  )
 }
 
 main()

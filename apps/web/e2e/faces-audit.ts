@@ -63,7 +63,10 @@ export function installAudit(): void {
   function parse(css: string): Colour {
     const rgb = /^rgba?\(([^)]+)\)$/.exec(css)
     if (rgb?.[1] !== undefined) {
-      const parts = rgb[1].split(/[\s,/]+/).filter(Boolean).map(Number)
+      const parts = rgb[1]
+        .split(/[\s,/]+/)
+        .filter(Boolean)
+        .map(Number)
       return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0, parts[3] ?? 1]
     }
     const srgb = /^color\(srgb ([^)]+)\)$/.exec(css)
@@ -83,8 +86,7 @@ export function installAudit(): void {
   function over(top: Colour, bottom: Colour): Colour {
     const alpha = top[3] + bottom[3] * (1 - top[3])
     if (alpha === 0) return [0, 0, 0, 0]
-    const mix = (i: 0 | 1 | 2) =>
-      (top[i] * top[3] + bottom[i] * bottom[3] * (1 - top[3])) / alpha
+    const mix = (i: 0 | 1 | 2) => (top[i] * top[3] + bottom[i] * bottom[3] * (1 - top[3])) / alpha
     return [mix(0), mix(1), mix(2), alpha]
   }
 
@@ -229,7 +231,12 @@ export function installAudit(): void {
         if (!visible(element)) continue
         const computed = getComputedStyle(element)
         if (Number.parseFloat(computed.borderTopWidth) === 0) {
-          found.push({ where: `${describe(element)} (no border)`, ratio: 0, border: '', outside: '' })
+          found.push({
+            where: `${describe(element)} (no border)`,
+            ratio: 0,
+            border: '',
+            outside: '',
+          })
           continue
         }
         const parent = element.parentElement
@@ -287,7 +294,7 @@ export const focusInDialog = (page: Page): Promise<boolean> =>
   page.evaluate(() => {
     const all = [...document.querySelectorAll('[role="dialog"]')]
     const top = all.at(-1)
-    return top !== undefined && top.contains(document.activeElement)
+    return top?.contains(document.activeElement) === true
   })
 
 /**
@@ -311,7 +318,9 @@ export async function exerciseDialog(
   if (within !== undefined) {
     await within()
     await expect(dialogs(page)).toHaveCount(before + 1)
-    await expect.poll(() => focusInDialog(page), { message: `focus inside "${name}" later` }).toBe(true)
+    await expect
+      .poll(() => focusInDialog(page), { message: `focus inside "${name}" later` })
+      .toBe(true)
   }
 
   const focusable = await dialogs(page)

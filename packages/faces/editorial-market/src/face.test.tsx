@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EditorialMarketFace, type EditorialMarketFaceProps } from './face'
+import { photoSizes } from './model'
 import { firstImage, itemsOf, richView, viewOf } from './test-views'
 
 // Rendering a whole menu in jsdom is slow when the whole suite runs in parallel on this PC: allow
@@ -683,5 +684,69 @@ describe('Bulgarian', () => {
         name: 'Обратно към менюто',
       }),
     ).toBeTruthy()
+  })
+})
+
+describe('the audit of the markup (SH-07)', () => {
+  it('sets the name of an item as its heading, with the button that opens the dish inside', () => {
+    const { container } = draw()
+    const card = container.querySelector('[data-item]')
+    const heading = card?.querySelector('[data-slot="item.name"] > h3')
+    expect(heading?.textContent).toBe('Hummus')
+    const open = heading?.querySelector('button.rm-item-open')
+    expect(open?.textContent).toBe('Hummus')
+    expect(open?.getAttribute('aria-haspopup')).toBe('dialog')
+    // A button holds text only: no heading, no block, no arrow element inside it.
+    expect(container.querySelectorAll('button :is(div, p, h1, h2, h3, h4, h5, h6)')).toHaveLength(0)
+    expect(container.querySelector('.rm-chevron')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Hummus' })).toBe(heading)
+  })
+
+  it('names the items of a sub-section with an h4, and those of a section with an h3', () => {
+    const [first, second, ...rest] = view.sections
+    if (first === undefined || second === undefined) throw new Error('the test menu is too small')
+    const nested = {
+      ...view,
+      sections: [{ ...first, sections: [{ ...second, sections: [] }] }, ...rest],
+    }
+    const { container } = draw({ view: nested })
+    expect(container.querySelectorAll('section.rm-section > .rm-items h3').length).toBeGreaterThan(
+      0,
+    )
+    const inSub = 'section.rm-section section.rm-section'
+    expect(container.querySelectorAll(`${inSub} .rm-items h4`)).toHaveLength(second.items.length)
+    // The sub-section's own title is an h3, and no item of it is an h3.
+    expect(container.querySelector(`${inSub} > .rm-section-head h3`)).not.toBeNull()
+    expect(container.querySelectorAll(`${inSub} .rm-items h3`)).toHaveLength(0)
+  })
+
+  it('marks the dish’s own allergens in the sheet with aria-current, and no other', () => {
+    draw()
+    fireEvent.click(screen.getByRole('button', { name: 'Allergens: Sesame' }))
+    const sheet = screen.getByRole('dialog', { name: 'Allergens' })
+    const marked = [...sheet.querySelectorAll('[aria-current="true"]')]
+    expect(marked.map((entry) => entry.textContent)).toEqual([expect.stringContaining('Sesame')])
+    expect(marked.every((entry) => entry.classList.contains('is-present'))).toBe(true)
+    // A list, with an entry for every allergen of the menu.
+    expect(sheet.querySelectorAll('ul.rm-allergen-sheet > li')).toHaveLength(
+      view.allergenLegend.length,
+    )
+  })
+
+  it('sizes the photos by the layout, so a phone takes the smaller file', () => {
+    const { container } = draw()
+    const sizesOf = () =>
+      [
+        ...container.querySelectorAll<HTMLImageElement>(
+          '.rm-section:not(.is-feature) .rm-photo img',
+        ),
+      ].map((image) => image.getAttribute('sizes'))
+    const strip = container.querySelector('.rm-section.is-feature .rm-photo img')
+    expect(strip?.getAttribute('sizes')).toBe(photoSizes('two', true))
+    const names = { two: '2 columns', one: '1 column', list: 'List' } as const
+    for (const layout of ['two', 'one', 'list'] as const) {
+      fireEvent.click(screen.getByRole('radio', { name: names[layout] }))
+      for (const sizes of sizesOf()) expect(sizes).toBe(photoSizes(layout, false))
+    }
   })
 })

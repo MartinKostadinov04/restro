@@ -152,12 +152,14 @@ test.describe('the screen width', () => {
             const width = document.documentElement.clientWidth
             const found: string[] = []
             const page = document.documentElement
-            if (page.scrollWidth > width) found.push(`${state}: the page scrolls (${page.scrollWidth})`)
+            if (page.scrollWidth > width)
+              found.push(`${state}: the page scrolls (${page.scrollWidth})`)
             for (const element of document.querySelectorAll(
               '[data-face="editorial-market"]:not([data-testid]) *',
             )) {
               // The photo strip and the section rail scroll sideways inside their own box.
-              if (element.closest('.rm-sections, .rm-section.is-feature .rm-items') !== null) continue
+              if (element.closest('.rm-sections, .rm-section.is-feature .rm-items') !== null)
+                continue
               const style = getComputedStyle(element)
               const box = element.getBoundingClientRect()
               if (box.width === 0 || style.visibility !== 'visible') continue
@@ -210,12 +212,17 @@ test.describe('the names', () => {
                   const style = getComputedStyle(element)
                   const clamp = (style as CSSStyleDeclaration & { webkitLineClamp: string })
                     .webkitLineClamp
-                  if (style.textOverflow === 'ellipsis') found.push(`${state}: ellipsis on "${text}"`)
-                  if (clamp !== 'none' && clamp !== '') found.push(`${state}: line clamp on "${text}"`)
+                  if (style.textOverflow === 'ellipsis')
+                    found.push(`${state}: ellipsis on "${text}"`)
+                  if (clamp !== 'none' && clamp !== '')
+                    found.push(`${state}: line clamp on "${text}"`)
                   if (element.scrollWidth > element.clientWidth + 1 && element.clientWidth > 0) {
                     found.push(`${state}: "${text}" runs past its box (${element.tagName})`)
                   }
-                  if (element.scrollHeight > element.clientHeight + 1 && style.overflowY !== 'visible') {
+                  if (
+                    element.scrollHeight > element.clientHeight + 1 &&
+                    style.overflowY !== 'visible'
+                  ) {
                     found.push(`${state}: "${text}" is clipped in height (${element.tagName})`)
                   }
                 }
@@ -255,9 +262,14 @@ test.describe('reduced motion', () => {
         )) {
           const style = getComputedStyle(element)
           const names = style.animationName.split(',').map((part) => part.trim())
-          const durations = style.animationDuration.split(',').map((part) => Number.parseFloat(part))
-          const running = names.some((name, index) => name !== 'none' && (durations[index] ?? 0) > 0)
-          if (running) found.push(`${state}: ${element.tagName}.${element.className} ${style.animationName}`)
+          const durations = style.animationDuration
+            .split(',')
+            .map((part) => Number.parseFloat(part))
+          const running = names.some(
+            (name, index) => name !== 'none' && (durations[index] ?? 0) > 0,
+          )
+          if (running)
+            found.push(`${state}: ${element.tagName}.${element.className} ${style.animationName}`)
         }
         const live = document
           .getAnimations()
@@ -345,7 +357,9 @@ test.describe('the markup', () => {
         h1: face.querySelectorAll('h1').length,
         sections: items('main > section > .rm-section-head > :is(h1,h2,h3,h4)'),
         subSections: items('main > section > section > .rm-section-head > :is(h1,h2,h3,h4)'),
-        topItems: items('main > section > .rm-items [data-slot="item.name"] :is(h1,h2,h3,h4,h5,h6)'),
+        topItems: items(
+          'main > section > .rm-items [data-slot="item.name"] :is(h1,h2,h3,h4,h5,h6)',
+        ),
         subItems: items(
           'main > section > section > .rm-items [data-slot="item.name"] :is(h1,h2,h3,h4,h5,h6)',
         ),
