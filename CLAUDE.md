@@ -3,10 +3,11 @@
 Restro is a QR-to-phone menu and ordering web app for Bulgarian nightclubs on the barsy POS. Martin Kostadinov is the product owner; he does not read code. AI agents write all code. The lead agent writes briefs, reviews every diff and reports to Martin. Model per task (D58): Haiku for simple, precisely specified tasks; Sonnet by default; Opus only for complex work.
 
 ## Read before any task
+Read only what your task needs. The big documents are for looking things up, not for reading whole (Martin 10-11: agents read too much).
 1. This file.
-2. `docs/tracker.md` — decisions (D1–D50), open questions, tasks. A decision there is binding.
-3. `docs/architecture/data-architecture.md` and `stack.md` — mirrors of the live doc (the doc wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a).
-4. Your brief in `docs/agent-briefs/`.
+2. `docs/decisions.md`: every decision in force, one line each. A decision is binding. For the full text of a decision or task your brief names, look it up in `docs/tracker.md` by its number (e.g. search `| D69 |` or `T74.`); never read the whole tracker.
+3. Your brief in `docs/agent-briefs/`.
+4. Only the sections of `docs/architecture/data-architecture.md` and `stack.md` your brief names. They mirror the live doc, and the live doc wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a.
 5. `docs/platform-reference.md` and the Platform files your brief names (read-only, `C:\Platform`).
 
 Fact precedence: official barsy docs > the architecture doc > the tracker. Never present an assumption as a fact; if something is unknown, stop and ask.
@@ -35,6 +36,20 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 | `pnpm vendor-words:baseline` | Lower the vendor-word baseline after removing vendor words (it refuses to raise one; raising is the lead's call, D67) |
 
 A task is not done until `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build` pass.
+
+**Testing in two tiers** (Martin 10-11: keep the work fast and lean):
+1. **While you work,** run only the tests of what you touched, with quiet output:
+   - `pnpm vitest run --project <package dir> <paths> --reporter=dot`
+   - `pnpm --filter @restro/web run test:e2e e2e/<spec>.spec.ts --reporter=line`, only for screens you changed. It builds first, then runs that spec.
+2. **Once, at the end:**
+   - the full gate above, with `pnpm test -- --reporter=dot`;
+   - the Playwright specs of the screens you changed.
+
+The full Playwright suite runs in CI, when the lead pushes the merged branch. Never paste long test output into your report; quote only failures.
+
+**Known slow tests:** `apps/worker/tests/worker.integration.test.ts`, `sync-queue.test.ts`, and the composer keyboard reorder e2e can time out when the machine is busy (T75).
+- If one fails, run it alone once.
+- If it passes alone, say so and move on; do not chase it.
 
 **Database tests** run only with `CI=true` and `DATABASE_URL`, `DATABASE_URL_OWNER` and `DATABASE_APP_PASSWORD` set; the local values are in `.env.example`.
 - **If a local Postgres is already running on 54329,** reuse it with your own database name: create it, then `pnpm db:migrate` and `pnpm db:roles` against it.
@@ -110,11 +125,19 @@ docs/               tracker, architecture mirrors, platform reference, agent bri
 Stop and put the question in your report (with your recommendation) instead of guessing when: a rule or doc section is ambiguous or conflicts; a barsy behaviour is undocumented; you need a new dependency or a schema change beyond your brief; a UX choice is unspecified; a test can only pass by weakening a rule.
 
 ## Report format (final message of every agent task)
-1. What changed (files, one line each)
-2. What was ported from the Platform and what was changed while porting
-3. Test results (commands + pass/fail)
-4. Open questions, each with a recommendation
-5. Out-of-scope observations worth a follow-up
+At most about one page (400 words). The diff shows the details; the report says what the lead cannot see in it.
+1. **Branch and final commit.**
+2. **What changed:** by area, one line each. List single files only where they matter (new files, migrations, guardrails, anything outside your brief).
+3. **Ported from the Platform:** what was ported and what changed while porting, if anything.
+4. **Test results:** the commands and pass/fail. Only failures in detail.
+5. **Open questions,** each with a recommendation.
+6. **Out-of-scope observations** worth a follow-up, one line each.
+
+## Lead workflow
+- At most two agents run at once (Martin 10-11): more load the one PC until tests time out.
+- **CI runs the full check.** The lead pushes `cf/**` and `sh/**` after merging; CI runs the full gate there. Locally the lead runs only typecheck and the tests of the merged areas.
+- **Briefs say which decisions and doc sections to read**, by number, so agents do not read the tracker or the architecture doc whole.
+- **Never enter plan mode while agents run.** It stops their edits too.
 
 ## Git
 - Branch per task: `<stage>/<slug>` (e.g. `s1/core-document-model`). Conventional commit messages.
