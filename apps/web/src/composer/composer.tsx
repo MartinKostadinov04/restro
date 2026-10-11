@@ -18,6 +18,7 @@ import {
 } from '@hello-pangea/dnd'
 import {
   type Currency,
+  type GuestFeatures,
   isId,
   type Locale,
   type LocalizedText,
@@ -25,7 +26,7 @@ import {
   newId,
   type TagId,
 } from '@restro/core'
-import { PlusIcon, TagsIcon } from 'lucide-react'
+import { PlusIcon, SlidersHorizontalIcon, TagsIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
@@ -67,6 +68,7 @@ import {
   resolvePointerDrop,
   UNSORTED_KEY,
 } from './dnd'
+import { GuestFeaturesPanel, type TemplateFeatureOptions } from './guest-features-panel'
 import { ItemPane } from './item-pane'
 import {
   clearOpenItem,
@@ -114,6 +116,12 @@ interface ComposerProps {
   readonly canCreateItem: boolean
   /** The venue has a till: its items come from the till only, none are made by hand (D66). */
   readonly hasTill: boolean
+  /** The guest services the venue switched on (the "Guest features" panel, D71). */
+  readonly guestFeatures: GuestFeatures
+  /** The template's own feature switches: what it declares, and the venue's values. */
+  readonly featureOptions: TemplateFeatureOptions
+  /** The person may change the guest features (owner or admin); otherwise the panel is read-only. */
+  readonly canEditFeatures: boolean
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -132,6 +140,9 @@ export function Composer({
   canMarkSoldOut,
   canCreateItem,
   hasTill,
+  guestFeatures,
+  featureOptions,
+  canEditFeatures,
 }: ComposerProps) {
   const t = useTranslations('composer')
   const uiLocale = useLocale()
@@ -170,6 +181,7 @@ export function Composer({
   const [ticked, setTicked] = useState<ReadonlySet<NodeId>>(new Set())
   const [filterIds, setFilterIds] = useState<ReadonlySet<TagId>>(new Set())
   const [tagsOpen, setTagsOpen] = useState(false)
+  const [featuresOpen, setFeaturesOpen] = useState(false)
   // Only items and tags that still exist and are active count.
   const selected = useMemo(
     () => new Set([...ticked].filter((id) => view.items[id] !== undefined)),
@@ -676,6 +688,18 @@ export function Composer({
                 </span>
               </Button>
 
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="justify-start"
+                onClick={() => setFeaturesOpen(true)}
+                data-testid="open-guest-features"
+              >
+                <SlidersHorizontalIcon aria-hidden />
+                {t('guestFeatures.open')}
+              </Button>
+
               {/* Small screens: a picker instead of the tree (its drops need room). */}
               <div className="lg:hidden">
                 <Select
@@ -719,6 +743,14 @@ export function Composer({
           onOpenChange={setTagsOpen}
           defaultLocale={defaultLocale}
           enabledLocales={enabledLocales}
+        />
+        <GuestFeaturesPanel
+          open={featuresOpen}
+          onOpenChange={setFeaturesOpen}
+          venueId={venueId}
+          features={guestFeatures}
+          options={featureOptions}
+          canEdit={canEditFeatures}
         />
 
         {openItemId ? (
