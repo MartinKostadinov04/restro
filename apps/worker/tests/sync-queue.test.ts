@@ -135,8 +135,9 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
   })
 
   it('a full pull that finds another pull running is queued again, and the real queue takes it', async () => {
-    // The running job holds the integration's plain singleton key, and the exclusive policy drops
-    // a second job with it (send returns null). The copy is accepted because its key is its own.
+    // The running job holds its own singleton key (integration and venue), and the exclusive
+    // policy drops a second job with it (send returns null). The copy is accepted because its key
+    // is its own.
     const job = prepareJob(JOB_NAMES.barsyFullPull, {
       tenantId: world.tenantId,
       integrationId: world.integrationId,
@@ -166,7 +167,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       })
       expect(jobs[0]).toMatchObject({ state: 'completed', singleton_key: job.singletonKey })
       expect(jobs[1]?.state).toBe('created')
-      expect(jobs[1]?.singleton_key).toMatch(new RegExp(`^${world.integrationId}:later:\\d+$`))
+      expect(jobs[1]?.singleton_key).toMatch(new RegExp(`^${job.singletonKey}:later:\\d+$`))
       expect(jobs[1]?.in_a_minute).toBe(true)
       const [run] = await world.query<{ status: string; error_summary: string }>(
         `select status, error_summary from restro.job_runs
@@ -185,7 +186,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     }
   })
 
-  it('two pulls of one integration are never queued at once; another integration is not blocked', async () => {
+  it('two pulls of one venue are never queued at once; another venue or integration is not dropped (CF-16)', async () => {
     await worker.boss.offWork(JOB_NAMES.barsyFullPull)
     const base = { tenantId: world.tenantId, venueId: world.venueId }
     const mine = prepareJob(JOB_NAMES.barsyFullPull, {
@@ -198,9 +199,18 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     const first = await send(mine)
     expect(first).toEqual(expect.any(String))
     // The web app's "Sync now", the daily tick, an incremental run that saw the tree change:
-    // whoever sends, a second pull of the same integration is dropped.
+    // whoever sends, a second pull of the same venue is dropped.
     expect(await send(mine)).toBeNull()
     expect(await send(mine)).toBeNull()
+
+    // Another venue of the same integration (T50): its pull is queued, never dropped for this one.
+    const secondVenue = prepareJob(JOB_NAMES.barsyFullPull, {
+      ...base,
+      integrationId: world.integrationId,
+      venueId: world.venueId.replace(/.$/, (c) => (c === 'a' ? 'b' : 'a')),
+    })
+    expect(await send(secondVenue)).toEqual(expect.any(String))
+    expect(await send(secondVenue)).toBeNull()
 
     const other = prepareJob(JOB_NAMES.barsyFullPull, {
       ...base,
@@ -211,7 +221,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       `select count(*) as n from pgboss.job where name = $1`,
       [JOB_NAMES.barsyFullPull],
     )
-    expect(Number(rows[0]?.n)).toBe(2)
+    expect(Number(rows[0]?.n)).toBe(3)
   })
 
   it('a job travels the queue end to end: barsy-connect connects the integration', async () => {

@@ -16,7 +16,8 @@ import { type SetupServer, setupServer } from 'msw/node'
 
 const DEMO = join(FIXTURES_ROOT, 'demo')
 
-function fixtureJson(file: string): unknown {
+/** The body of a demo recording (packages/barsy/fixtures/demo), parsed: a fresh copy each call. */
+export function fixtureJson(file: string): unknown {
   const fixture = JSON.parse(readFileSync(join(DEMO, file), 'utf8')) as { body: string }
   return JSON.parse(fixture.body)
 }
