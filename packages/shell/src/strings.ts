@@ -17,6 +17,8 @@ export interface GuestStrings {
   readonly language: string
   readonly sections: string
   readonly filters: string
+  /** The line under the title of the filter sheet. */
+  readonly filterIntro: string
   readonly filterAll: string
   readonly filterDiet: string
   readonly filterTags: string
@@ -30,6 +32,13 @@ export interface GuestStrings {
   readonly footerTitle: string
   readonly footerText: string
   readonly close: string
+  /** The close control of a dish page: it goes back to the menu. */
+  readonly back: string
+  /** The name of the control that switches how the menu is laid out. */
+  readonly layout: string
+  readonly layoutList: string
+  readonly layoutOne: string
+  readonly layoutTwo: string
   readonly loading: string
   /** "Menu from 18:00": the whole menu is outside its schedule. */
   readonly menuSchedule: (when: string) => string
@@ -108,6 +117,7 @@ const EN: Strings = {
     language: 'Language',
     sections: 'Menu sections',
     filters: 'Filter the menu',
+    filterIntro: 'Choose one or more labels.',
     filterAll: 'All',
     filterDiet: 'Diet',
     filterTags: 'Tags',
@@ -122,6 +132,11 @@ const EN: Strings = {
     footerText:
       'The codes on each item stand for the allergens it contains. Ask the staff if you have an allergy or any doubt.',
     close: 'Close',
+    back: 'Back to menu',
+    layout: 'Menu layout',
+    layoutList: 'List',
+    layoutOne: '1 column',
+    layoutTwo: '2 columns',
     loading: 'Loading the menu',
     menuSchedule: (when) => `Menu ${when}`,
     notFoundTitle: 'Menu not found',
@@ -177,6 +192,7 @@ const BG: Strings = {
     language: 'Език',
     sections: 'Раздели на менюто',
     filters: 'Филтриране на менюто',
+    filterIntro: 'Изберете един или повече етикети.',
     filterAll: 'Всички',
     filterDiet: 'Диета',
     filterTags: 'Етикети',
@@ -191,6 +207,11 @@ const BG: Strings = {
     footerText:
       'Кодовете при всяка позиция обозначават алергените в нея. Попитайте персонала, ако имате алергия или съмнение.',
     close: 'Затвори',
+    back: 'Обратно към менюто',
+    layout: 'Изглед на менюто',
+    layoutList: 'Списък',
+    layoutOne: '1 колона',
+    layoutTwo: '2 колони',
     loading: 'Менюто се зарежда',
     menuSchedule: (when) => `Менюто е ${when}`,
     notFoundTitle: 'Менюто не е намерено',

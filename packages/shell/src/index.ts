@@ -3,6 +3,7 @@
 // React, no database, no clock. Faces (packages/faces/*) draw the view model and nothing else.
 // The contract-test harness is in `@restro/shell/testing`.
 
+export type { Locale } from '@restro/core'
 export { buildViewModel } from './build'
 export {
   CHANNELS,
@@ -18,6 +19,7 @@ export {
   ShellContextSchema,
   SOLD_OUT_DISPLAYS,
 } from './context'
+export type { FaceHostProps } from './face-props'
 export {
   FIELD_FORMATTERS,
   type FieldFormatContext,

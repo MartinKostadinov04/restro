@@ -1,0 +1,148 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  assetUrl,
+  bcp47,
+  countVisible,
+  DEFAULT_OPTIONS,
+  hasVisibleItems,
+  isFiltering,
+  langOf,
+  languageLabel,
+  localeLang,
+  matchesFilters,
+  NO_FILTERS,
+  readOptions,
+  themeVariables,
+  toggled,
+} from './model'
+import { itemsOf, richView, SIGNATURE_TAG, SPICY_TAG } from './test-views'
+
+describe('language tags', () => {
+  it('writes the BCP 47 tag and sets lang only for a text that is not in the page language', () => {
+    expect(bcp47('bg_BG')).toBe('bg-BG')
+    expect(langOf({ text: 'x', lang: 'bg_BG' }, 'bg_BG')).toBeUndefined()
+    expect(langOf({ text: 'x', lang: 'en_US' }, 'bg_BG')).toBe('en-US')
+    expect(localeLang(null, 'bg_BG')).toBeUndefined()
+    expect(localeLang('bg_BG', 'bg_BG')).toBeUndefined()
+    expect(localeLang('de_DE', 'bg_BG')).toBe('de-DE')
+    expect(languageLabel('bg_BG')).toBe('BG')
+    expect(languageLabel('en_US')).toBe('EN')
+  })
+})
+
+describe('asset addresses', () => {
+  it('joins the base and the path with one slash', () => {
+    expect(assetUrl('/cdn', '/a/as_x/w640.webp')).toBe('/cdn/a/as_x/w640.webp')
+    expect(assetUrl('/cdn/', '/a/as_x/w640.webp')).toBe('/cdn/a/as_x/w640.webp')
+    expect(assetUrl('https://cdn.test', 'a/as_x/w640.webp')).toBe(
+      'https://cdn.test/a/as_x/w640.webp',
+    )
+  })
+})
+
+describe('the options', () => {
+  it('has the defaults of the brief', () => {
+    expect(DEFAULT_OPTIONS).toEqual({
+      layout: 'two',
+      layoutSwitch: true,
+      featureFirstSection: true,
+    })
+    expect(readOptions(undefined)).toEqual(DEFAULT_OPTIONS)
+    expect(readOptions({})).toEqual(DEFAULT_OPTIONS)
+  })
+
+  it('reads valid options', () => {
+    expect(
+      readOptions({ layout: 'list', layoutSwitch: false, featureFirstSection: false }),
+    ).toEqual({ layout: 'list', layoutSwitch: false, featureFirstSection: false })
+    expect(readOptions({ layout: 'one' }).layout).toBe('one')
+  })
+
+  it('falls back to the default for an unknown, missing or wrongly typed value', () => {
+    expect(
+      readOptions({ layout: 'grid', layoutSwitch: 'yes', featureFirstSection: 'false' }),
+    ).toEqual(DEFAULT_OPTIONS)
+    expect(readOptions({ layout: true, layoutSwitch: 'false' })).toEqual(DEFAULT_OPTIONS)
+    expect(readOptions({ colour: 'red' })).toEqual(DEFAULT_OPTIONS)
+  })
+})
+
+describe('the filters', () => {
+  const view = richView()
+  const all = itemsOf(view)
+  const names = (found: typeof all) => found.map((item) => item.name.text)
+
+  it('combines dietary labels with AND', () => {
+    const filters = { dietary: new Set(['vegan', 'gluten_free']), tags: new Set<string>() }
+    expect(names(all.filter((item) => matchesFilters(item, filters)))).toEqual(['Hummus', 'Olives'])
+    const none = { dietary: new Set(['vegan', 'vegetarian']), tags: new Set<string>() }
+    expect(all.some((item) => matchesFilters(item, none))).toBe(false)
+  })
+
+  it('combines tags with OR', () => {
+    const both = { dietary: new Set<string>(), tags: new Set([SIGNATURE_TAG, SPICY_TAG]) }
+    expect(names(all.filter((item) => matchesFilters(item, both)))).toEqual([
+      'Hummus',
+      'Olives',
+      'Halloumi',
+      'Burger',
+      'Steak',
+    ])
+    const one = { dietary: new Set<string>(), tags: new Set([SPICY_TAG]) }
+    expect(names(all.filter((item) => matchesFilters(item, one)))).toEqual(['Olives', 'Steak'])
+  })
+
+  it('lets everything through when nothing is switched on', () => {
+    expect(isFiltering(NO_FILTERS)).toBe(false)
+    expect(all.every((item) => matchesFilters(item, NO_FILTERS))).toBe(true)
+    expect(countVisible(view.sections, NO_FILTERS)).toBe(all.length)
+  })
+
+  it('knows which sections still have something to show', () => {
+    const signature = { dietary: new Set<string>(), tags: new Set([SIGNATURE_TAG]) }
+    expect(view.sections.map((section) => hasVisibleItems(section, signature))).toEqual([
+      true,
+      true,
+      false,
+    ])
+    expect(countVisible(view.sections, signature)).toBe(3)
+  })
+
+  it('toggles a key in a copy of the set', () => {
+    const start = new Set(['a'])
+    expect([...toggled(start, 'b')]).toEqual(['a', 'b'])
+    expect([...toggled(start, 'a')]).toEqual([])
+    expect([...start]).toEqual(['a'])
+  })
+})
+
+describe('the theme as CSS variables', () => {
+  const { theme } = richView()
+
+  it('writes the eight colours for a light and for a dark screen', () => {
+    const vars = themeVariables(theme)
+    expect(vars['--rm-l-background']).toBe(theme.colors.background)
+    expect(vars['--rm-l-onAccent']).toBe(theme.colors.onAccent)
+    expect(vars['--rm-l-accentText']).toBe(theme.colors.accentText)
+    expect(vars['--rm-d-background']).toBe(theme.colorsDark.background)
+    expect(vars['--rm-d-border']).toBe(theme.colorsDark.border)
+    expect(Object.keys(vars).filter((key) => key.startsWith('--rm-l-'))).toHaveLength(8)
+    expect(Object.keys(vars).filter((key) => key.startsWith('--rm-d-'))).toHaveLength(8)
+  })
+
+  it('writes the radius and the shadow level', () => {
+    expect(themeVariables(theme)['--rm-radius']).toBe(`${theme.radius}px`)
+    expect(themeVariables({ ...theme, shadow: 3 })['--rm-shadow']).toBe('3')
+    expect(themeVariables({ ...theme, shadow: 99 })['--rm-shadow']).toBe('5')
+    expect(themeVariables({ ...theme, shadow: -2 })['--rm-shadow']).toBe('0')
+    expect(themeVariables({ ...theme, shadow: Number.NaN })['--rm-shadow']).toBe('0')
+  })
+
+  it('uses the host font stack for a font it self-hosts, else the quoted name and system fonts', () => {
+    const own = themeVariables(theme, { [theme.font]: 'var(--font-inter), sans-serif' })
+    expect(own['--rm-font']).toBe('var(--font-inter), sans-serif')
+    const fallback = themeVariables({ ...theme, font: 'Playfair Display' })['--rm-font']
+    expect(fallback).toMatch(/^"Playfair Display", system-ui/)
+  })
+})

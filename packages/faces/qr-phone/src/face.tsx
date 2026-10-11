@@ -9,7 +9,7 @@
 // switch (the shell formats every field before it gets here), no hard-coded colours (theme tokens
 // only), and the order and the empty-slot rules come from the shell instead of being redone here.
 
-import { stringsFor, type ViewItem, type ViewModel, type ViewSection } from '@restro/shell'
+import { type FaceHostProps, stringsFor, type ViewItem, type ViewSection } from '@restro/shell'
 import { type CSSProperties, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AllergenSheet, type SheetState } from './allergen-sheet'
 import { FACE_CSS } from './css'
@@ -27,21 +27,11 @@ import {
   themeVariables,
 } from './model'
 
-/** What the host gives the face besides the view model. */
-export interface QrPhoneFaceProps {
-  readonly view: ViewModel
-  /** Where the published files live; the view model's `/a/…` photo paths are relative to it. */
-  readonly assetBase?: string
-  /** The languages the menu has, for the switch; fewer than two hides it. */
-  readonly languages?: readonly Locale[]
-  readonly onLanguageChange?: (locale: Locale) => void
-  /** How the guest's table is called ("12"), from the table's QR code; null when unknown. */
-  readonly tableLabel?: string | null
-  /** Self-hosted font stacks by the theme's font name; a font without one falls back to system fonts. */
-  readonly fontStacks?: Readonly<Record<string, string>>
-  /** Force a colour scheme (previews, screenshots); `auto` follows the guest's screen. */
-  readonly scheme?: 'auto' | 'light' | 'dark'
-}
+/**
+ * What the host gives the face besides the view model: the same props for every face. This face
+ * has no presentation options of its own and ignores `options`.
+ */
+export type QrPhoneFaceProps = FaceHostProps
 
 /** The distance from the top of the screen at which a section counts as the one being read. */
 const READING_LINE = 96
