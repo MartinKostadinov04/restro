@@ -24,6 +24,7 @@ import {
   parseSyncSettings,
   type SyncSettingsInput,
   SyncSettingsInputSchema,
+  syncTimeZone,
   type TenantId,
   type VenueId,
 } from '@restro/core'
@@ -35,6 +36,7 @@ import {
   readSyncState,
   saveSyncSettingsConfig,
   setCatalogueRoot,
+  setVenuePriceSource,
   updateIntegration,
 } from '@restro/core/apply'
 import { parseSealPublicKey, SealError, sealBarsyCredentials } from '@restro/core/seal'
@@ -296,9 +298,10 @@ function syncSettingsViewOf(
   let nextFullPullAt: string | null = null
   if (scheduleActive) {
     try {
+      // One schedule per integration (D73): the daily full read is in the integration's zone.
       const next = nextSyncRuns(
         now,
-        timeZone,
+        syncTimeZone(integration.config),
         settings.schedule,
         readSyncState(integration.config, mapped.bid),
       )
@@ -394,7 +397,8 @@ export async function loadIntegrationView(
     treeFetchedAt: cached?.fetched_at ?? null,
     rootCatId: mapped?.catalogueRootCatId ?? null,
     settings: {
-      priceSource: priceSourceOf(config.price_source),
+      // The price is per venue (D73, CF-16): the venue's own setting, else the integration's.
+      priceSource: priceSourceOf(mapped?.priceSource ?? config.price_source),
       allergenKey:
         typeof config.allergen_detail_key === 'string' ? config.allergen_detail_key : null,
       allergenDetected: detectAllergenOption(detailOptions),
@@ -616,7 +620,12 @@ export interface MappingSettingsInput {
   readonly defaultLocale: string
 }
 
-/** Saves the mapping settings into the integration's config; they apply from the next pull. */
+/**
+ * Saves the mapping settings; they apply from the next pull. The price is the setting of the
+ * venue this card is shown in (D73, CF-16: prices differ per venue), stored on its barsy venue;
+ * before a venue is mapped it is the integration's default. The allergen characteristic and the
+ * language go into the integration's config (CF-09b moves them to Settings → Integrations).
+ */
 export async function saveMappingSettings(
   scope: IntegrationScope,
   input: MappingSettingsInput,
@@ -633,9 +642,20 @@ export async function saveMappingSettings(
   ) {
     return fail('invalid')
   }
+  const { mapped } = state
+  if (mapped !== null) {
+    const stored = await setVenuePriceSource(
+      scope.pool,
+      scope.tenantId,
+      state.integration.id,
+      mapped.bid,
+      input.priceSource,
+    )
+    if (!stored) return fail('not_found')
+  }
   const updated = await updateIntegration(scope.pool, scope.tenantId, state.integration.id, {
     config: {
-      price_source: input.priceSource,
+      ...(mapped === null ? { price_source: input.priceSource } : {}),
       // null removes the key: the sync detects the characteristic by its name again.
       allergen_detail_key: input.allergenKey,
       default_locale: input.defaultLocale,
