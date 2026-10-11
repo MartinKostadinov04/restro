@@ -105,7 +105,8 @@ Only one template exists today; the gallery must still read as a gallery.
   The preview always shows the current form.
 - Switches for light/dark and BG/EN (`DraftFace` already supports the language switch).
 - When the venue has no menu or nothing is visible, show the publish preview's message.
-- **Page-wide CSS:** the Editorial face's CSS has page-wide rules (`html:has(.rm)` hides the scrollbar and horizontal overflow). Check the admin page still scrolls normally with the preview open. If it does not, report it; SH-04 or the lead decides how to scope it.
+- **Page-wide CSS: resolved by the lead in 937dc75.** Templates no longer style `html` or `body`; the guest page owns those rules (`html[data-guest-page]`). The admin page must keep its normal scrollbar with the preview open; add one assertion for it in `design.spec.ts`.
+- **`DraftFace`** (SH-04) takes `faceId` and renders through `ChosenFace` (`apps/web/src/faces/chosen-face.tsx`). The template list is `visibleFaces()` and `faceEntry()` in `apps/web/src/faces/registry.ts`. Thumbnails are in `apps/web/public/faces/`.
 
 **Save:** "Save look" saves colours, font, corners, shadow, logo and policy. The toast reads "Saved. Guests see it after the next publish", with a link to the Publishing tab. Template and look options save when chosen, with the same toast.
 
