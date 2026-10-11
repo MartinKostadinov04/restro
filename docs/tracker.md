@@ -517,6 +517,27 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - It was cut off by a session limit, after 5 commits (money helpers, services contract, screens, tests, a fix).
     - It was resumed to merge `sh/foundation` properly, bind the test stub in the registry test, and run the gate.
   - **Running:** SH-06 (finishing), SH-05a (Design tab), SH-05b (composer Guest features panel, Haiku).
+  - **SH-06 merged.**
+    - **What it built:**
+      - the bag, bill, call-a-waiter, pay and receipt screens in Editorial Market;
+      - the services contract in the shell (`GuestCommand`, `CommandResult`, `ServiceState`, `ServiceBinding`, strict Zod);
+      - the bag estimate through core money (new `multiplyMinor`, `percentOfMinor`, `subtractMinor`, `ratioOfMinor`, property-tested);
+      - the demo adapter `@restro/editorial-market/preview`, admin only;
+      - two dependency rules: guest pages never import `/preview`, and money arithmetic stays inside a face's `preview/`.
+    - **D72 holds:**
+      - the bag clears only on the host's acceptance;
+      - a rejection or timeout keeps it, and a retry reuses the same `actionId`;
+      - "on the way" and "paid" come from the host's state only.
+    - **Not done:** the visual check (→ SH-07).
+  - **Open from SH-06:**
+    - **UX, to decide with Martin at acceptance:**
+      - (a) the bag's place in the bottom bar stays empty until the bag has lines;
+      - (b) pay is a header icon.
+    - **Stage 4 design notes:**
+      - (c) a host that answers `pending` is reconciled by the bill round's `actionId` within 15 s, then a retry;
+      - (d) the host must issue a fresh receipt id per settlement;
+      - (e) `PayQuote` should list the allowed pay scopes;
+      - (f) keep the bag across a reload (`sessionStorage`).
   - **Open from SH-04, for SH-07:**
     - the Editorial language and layout buttons are under 44 px;
     - the table label is hidden at 350 px width or less;
