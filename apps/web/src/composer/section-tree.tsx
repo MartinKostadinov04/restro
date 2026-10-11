@@ -14,7 +14,7 @@
 //   of that section. Unsorted is such a target too (dropping there takes the item out).
 import { Draggable, Droppable } from '@hello-pangea/dnd'
 import type { NodeId } from '@restro/core'
-import { ChevronRightIcon, EyeOffIcon, GripVerticalIcon } from 'lucide-react'
+import { AlertTriangleIcon, ChevronRightIcon, EyeOffIcon, GripVerticalIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
@@ -107,6 +107,15 @@ function SectionNode({ id, index }: { id: NodeId; index: number }) {
                 >
                   {title}
                 </button>
+                {section.nameFromTill ? (
+                  // The title is the till's own name (D75): the badge in the section's header says so in full.
+                  <AlertTriangleIcon
+                    className="size-3.5 shrink-0 text-warning"
+                    role="img"
+                    aria-label={t('badges.nameFromTill', { source: view.tillLabel })}
+                    data-testid="section-name-from-till"
+                  />
+                ) : null}
                 {section.hidden ? (
                   <EyeOffIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 ) : null}

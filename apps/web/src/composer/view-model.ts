@@ -28,6 +28,7 @@ import {
 } from '@restro/core'
 
 import { pickLocalized } from '@/fields/localized'
+import { tillTextShown } from '@/fields/name-fallback'
 
 /** One finding of the resolver about a node, for the Issues badge and its list. */
 export interface ComposerIssue {
@@ -56,6 +57,8 @@ export interface ComposerSection {
   /** Child sections in order. */
   readonly childIds: readonly NodeId[]
   readonly issues: readonly ComposerIssue[]
+  /** The title shown is the till's own name: it has no public one (D75). Warns; never blocks. */
+  readonly nameFromTill: boolean
 }
 
 /** Why an item is not shown to guests, as far as the composer can tell and act on. */
@@ -100,6 +103,8 @@ export interface ComposerItem {
   readonly soldOutTonight: boolean
   /** Off sale for another reason (see `ItemOffSale`): ours can only add caution, never undo it. */
   readonly offSale: ItemOffSale | null
+  /** The name shown is the till's own name: it has no public one (D75). Warns; never blocks. */
+  readonly nameFromTill: boolean
 }
 
 /** A venue tag as the composer shows and edits it (D60). */
@@ -184,6 +189,19 @@ const issuesOf = (issues: readonly ComposerIssue[]): ComposerIssue[] =>
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
+/**
+ * True if guests are shown the till's own name for this node (D75): the stored name was mapped
+ * from a record with no public name (`fallbackIds`), and the resolved name still takes its text
+ * from the till (`tillTextShown`: a name typed here replaces it and takes the warning away).
+ */
+function ownNameShown(
+  id: NodeId,
+  fallbackIds: ReadonlySet<NodeId>,
+  field: ResolvedField | undefined,
+): boolean {
+  return fallbackIds.has(id) && tillTextShown(field)
+}
+
 /** What `buildComposerView` reads: the document (unplaced items merged in), its resolution. */
 export interface BuildViewInput {
   readonly doc: MenuDocument
@@ -202,6 +220,11 @@ export interface BuildViewInput {
   readonly tags?: readonly Tag[]
   /** The name of the till the menu's linked nodes come from (`tillLabelOf`). Default: ''. */
   readonly tillLabel?: string
+  /**
+   * The nodes whose till name is the till's own name, standing in for a missing public one (D75):
+   * the connector's `readNameFallbackNodeIds`. Default: none.
+   */
+  readonly nameFallbackIds?: readonly NodeId[]
 }
 
 /** The string entries of a resolved list value (`tags`, `dietary`); nothing else. */
@@ -219,8 +242,10 @@ export function buildComposerView({
   heldNewIds = [],
   tags: venueTags = [],
   tillLabel = '',
+  nameFallbackIds = [],
 }: BuildViewInput): ComposerView {
   const heldNew = new Set<NodeId>(heldNewIds)
+  const ownNames = new Set<NodeId>(nameFallbackIds)
   const nodes = new Map(doc.nodes.map((node) => [node.id, node]))
   // Linked to the till = a till link (`till:<integration>`), whichever connector feeds it.
   const tillLinked = new Set(
@@ -241,6 +266,7 @@ export function buildComposerView({
       sortKey: node?.sortKey ?? '',
       childIds: section.children.map((child) => child.id),
       issues: issuesOf(section.issues),
+      nameFromTill: ownNameShown(section.id, ownNames, section.fields.title),
     }
     for (const child of section.children) addSection(child, section.id)
   }
@@ -288,6 +314,7 @@ export function buildComposerView({
       tags: listOf(item.fields.tags).filter((tag): tag is TagId => isId('tg', tag)),
       dietary: listOf(item.fields.dietary),
       ...saleStateOf(item.fields.for_sale),
+      nameFromTill: ownNameShown(id, ownNames, item.fields.name),
     }
   }
 

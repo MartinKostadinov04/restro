@@ -28,6 +28,7 @@ const section = (
   sortKey,
   childIds,
   issues: [],
+  nameFromTill: false,
   ...extra,
 })
 
@@ -43,6 +44,7 @@ const item = (id: NodeId, name: string, extra: Partial<ComposerItem> = {}): Comp
   dietary: [],
   soldOutTonight: false,
   offSale: null,
+  nameFromTill: false,
   ...extra,
 })
 

@@ -130,6 +130,8 @@ export interface ItemSheetData {
   readonly visible: boolean
   /** Sold out tonight, or off sale (S3-08). */
   readonly sale: SheetSale
+  /** The name shown is the till's own, because the till has no public one (D75). Warns only. */
+  readonly nameFromTill: boolean
   readonly fields: readonly SheetField[]
   readonly issues: readonly SheetIssue[]
   readonly translations: readonly TranslationRow[]

@@ -18,9 +18,10 @@ import {
   loadMenuDocument,
   loadUnplacedItems,
 } from '@restro/core/apply'
-import type { Venue } from '@restro/db'
+import { type Venue, withTenant } from '@restro/db'
 import { resolveOptions } from '@restro/shell'
 import { getLocale } from 'next-intl/server'
+import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
 import { manifestOf } from '@/faces/manifests'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import { getPool } from '@/server/db'
@@ -43,18 +44,21 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
   }
 
   const pool = getPool()
-  const [document, unplaced, heldNewIds, tags, hasTill, tillLabels] = await Promise.all([
-    loadMenuDocument(pool, tenantId, menuId),
-    loadUnplacedItems(pool, tenantId, menuId),
-    // New items the sync hid for review (publish.new_items = hold): they get a badge.
-    loadHeldNewItemIds(pool, tenantId),
-    // The venue's tags in order, archived ones too (the Tags panel lists them to restore).
-    listTags(pool, tenantId, venue.id, { includeArchived: true }),
-    // A venue with a till gets its items from the till only (D66): no "New item" there.
-    venueHasTill(tenantId, venue.id),
-    // The name of the till, for "From {source}" and the like (brief CF-03).
-    loadTillLabels(pool, tenantId),
-  ])
+  const [document, unplaced, heldNewIds, tags, hasTill, tillLabels, nameFallbackIds] =
+    await Promise.all([
+      loadMenuDocument(pool, tenantId, menuId),
+      loadUnplacedItems(pool, tenantId, menuId),
+      // New items the sync hid for review (publish.new_items = hold): they get a badge.
+      loadHeldNewItemIds(pool, tenantId),
+      // The venue's tags in order, archived ones too (the Tags panel lists them to restore).
+      listTags(pool, tenantId, venue.id, { includeArchived: true }),
+      // A venue with a till gets its items from the till only (D66): no "New item" there.
+      venueHasTill(tenantId, venue.id),
+      // The name of the till, for "From {source}" and the like (brief CF-03).
+      loadTillLabels(pool, tenantId),
+      // Names that are the till's own, standing in for a missing public one: they get a warning (D75).
+      withTenant(pool, tenantId, (tx) => readNameFallbackNodeIds(tx)),
+    ])
   const merged = mergeDocumentParts(document, unplaced)
 
   const defaultLocale = venue.defaultLocale as Locale
@@ -105,6 +109,7 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
     heldNewIds,
     tags,
     tillLabel: tillLabelOf(merged.links, tillLabels),
+    nameFallbackIds,
   })
 
   return (
