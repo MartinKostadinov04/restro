@@ -10,7 +10,7 @@
 // screens of the delivery are not part of this face yet.
 
 import type { FaceHostProps, ViewItem } from '@restro/shell'
-import { stringsFor } from '@restro/shell'
+import { resolveOptions, stringsFor } from '@restro/shell'
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AllergenSheet } from './allergen-sheet'
@@ -20,17 +20,18 @@ import { DishPage } from './detail'
 import { type FilterKind, FilterSheet } from './filters'
 import { Header } from './header'
 import { LayoutSwitch } from './layout-switch'
+import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import {
   allItems,
   bcp47,
   countVisible,
   type Filters,
+  faceOptions,
   hasVisibleItems,
   isFiltering,
   langOf,
   matchesFilters,
   NO_FILTERS,
-  readOptions,
   themeVariables,
   toggled,
 } from './model'
@@ -59,21 +60,28 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     fontStacks,
     scheme = 'auto',
   } = props
-  const options = readOptions(props.options)
+  const options = faceOptions(resolveOptions(EDITORIAL_MARKET_MANIFEST, props.options))
   const locale = view.locale
   const strings = stringsFor(locale).guest
 
+  // The filter control is drawn only when the shell turned it on (R15: the venue offers filters
+  // and the menu has chips). The chip check is the shell's too; it is repeated here so a view
+  // model with its chips taken out never shows a button that opens an empty sheet.
+  const filterControl =
+    view.features.filters && (view.filters.dietary.length > 0 || view.filters.tags.length > 0)
   // The guest's filters. A chip that left the menu (a language or a refresh changed the lists)
-  // cannot stay switched on.
+  // cannot stay switched on, and neither can any chip once the filter control is gone: the guest
+  // could not switch it off again.
   const [chosen, setChosen] = useState<Filters>(NO_FILTERS)
   const filters = useMemo<Filters>(() => {
+    if (!filterControl) return NO_FILTERS
     const dietary = new Set<string>(view.filters.dietary.map((label) => label.code))
     const tags = new Set<string>(view.filters.tags.map((tag) => tag.id))
     return {
       dietary: new Set([...chosen.dietary].filter((code) => dietary.has(code))),
       tags: new Set([...chosen.tags].filter((id) => tags.has(id))),
     }
-  }, [chosen, view.filters])
+  }, [chosen, filterControl, view.filters])
 
   const [layout, chooseLayout] = useLayout(options.layout, options.layoutSwitch)
   const dish = useDishRoute()
@@ -166,7 +174,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
         tableLabel={tableLabel}
         languages={languages}
         onLanguageChange={onLanguageChange}
-        hasFilters={view.filters.dietary.length > 0 || view.filters.tags.length > 0}
+        hasFilters={filterControl}
         onOpenFilters={openFilters}
       />
       {view.sections.length > 1 ? (
@@ -215,7 +223,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
           </div>
         </footer>
       ) : null}
-      {filtersOpen ? (
+      {filtersOpen && filterControl ? (
         <FilterSheet
           dietary={view.filters.dietary.map((label) => ({ key: label.code, label: label.label }))}
           tags={view.filters.tags.map((tag) => ({ key: tag.id, label: tag.label }))}

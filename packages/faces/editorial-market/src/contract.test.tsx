@@ -1,5 +1,6 @@
 import type { ViewModel, ViewText } from '@restro/shell'
 import {
+  faceContractSuite,
   fixture,
   fixtures,
   type HtmlElement,
@@ -11,6 +12,7 @@ import {
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import { EDITORIAL_CSS } from './css'
 import { EditorialMarketFace } from './face'
 import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import { bcp47 } from './model'
@@ -263,4 +265,11 @@ describe('the first render is static', () => {
   it('draws every fixture of the harness without a window', () => {
     for (const f of fixtures()) expect(render(viewOf(f))).toContain('data-face="editorial-market"')
   })
+})
+
+// The tests every face has to pass (brief SH-03): manifest, contract on every fixture, theme-only CSS.
+faceContractSuite('editorial-market', {
+  manifest: EDITORIAL_MARKET_MANIFEST,
+  render,
+  css: EDITORIAL_CSS,
 })

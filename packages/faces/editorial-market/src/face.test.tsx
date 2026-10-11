@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
 import type { Locale, ViewModel } from '@restro/shell'
+import { fixture } from '@restro/shell/testing'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EditorialMarketFace, type EditorialMarketFaceProps } from './face'
-import { firstImage, itemsOf, richView } from './test-views'
+import { firstImage, itemsOf, richView, viewOf } from './test-views'
 
 // Rendering a whole menu in jsdom is slow when the whole suite runs in parallel on this PC: allow
 // 15 s per test (a real hang still fails, only later).
@@ -277,6 +278,47 @@ describe('the filters', () => {
     unmount()
     draw({ view: { ...view, filters: { dietary: [], tags: [] } } })
     expect(screen.queryByRole('button', { name: 'Filter the menu' })).toBeNull()
+  })
+
+  it('marks the filter button as the menu.filters slot', () => {
+    const { container } = draw()
+    const slots = container.querySelectorAll('[data-slot="menu.filters"]')
+    expect(slots).toHaveLength(1)
+    expect(slots[0]).toBe(screen.getByRole('button', { name: 'Filter the menu' }))
+  })
+
+  it('is not drawn when the venue switched filters off, though the menu has chips (R15)', () => {
+    const off = viewOf(fixture('features-off'))
+    expect(off.filters.tags.length + off.filters.dietary.length).toBeGreaterThan(0)
+    expect(off.features.filters).toBe(false)
+    const { container } = draw({ view: off })
+    expect(screen.queryByRole('button', { name: 'Filter the menu' })).toBeNull()
+    expect(container.querySelector('[data-slot="menu.filters"]')).toBeNull()
+    // The menu itself is all there.
+    expect(visibleNames(container)).toHaveLength(itemsOf(off).length)
+  })
+
+  it('is drawn when the venue left filters on and the menu has chips (R15)', () => {
+    const on = viewOf(fixture('features-on'))
+    expect(on.features.filters).toBe(true)
+    const { container } = draw({ view: on })
+    expect(container.querySelectorAll('[data-slot="menu.filters"]')).toHaveLength(1)
+  })
+
+  it('shows the whole menu again, and no stale sheet, when filters are switched off under a guest', () => {
+    const on = viewOf(fixture('features-on'))
+    const off: ViewModel = { ...on, features: { ...on.features, filters: false } }
+    const { container, rerender } = draw({ view: on })
+    const sheet = openFilterSheet()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Vegan' }))
+    expect(visibleNames(container).length).toBeLessThan(itemsOf(on).length)
+
+    // The venue changes the setting; the page redraws with the new view model.
+    rerender(<EditorialMarketFace view={off} />)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Filter the menu' })).toBeNull()
+    expect(visibleNames(container)).toHaveLength(itemsOf(off).length)
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('combines dietary labels with AND and hides a section it has emptied', () => {

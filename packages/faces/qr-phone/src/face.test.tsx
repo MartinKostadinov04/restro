@@ -1,5 +1,12 @@
 import { buildViewModel, imageSlotsFor, type ViewModel, validateManifest } from '@restro/shell'
-import { fixture, parseHtml, runFaceContract, textOf, withAttribute } from '@restro/shell/testing'
+import {
+  faceContractSuite,
+  fixture,
+  parseHtml,
+  runFaceContract,
+  textOf,
+  withAttribute,
+} from '@restro/shell/testing'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
@@ -125,6 +132,40 @@ describe('what the face draws', () => {
     expect(chips).toHaveLength(expected)
   })
 
+  it('draws the filter chips as one menu.filters slot when the shell turned filters on (R15)', () => {
+    for (const name of ['tags-dietary', 'features-on']) {
+      const view = viewOf(name)
+      expect(view.features.filters, name).toBe(true)
+      const slots = withAttribute(parseHtml(render(view)), 'data-slot', 'menu.filters')
+      expect(slots, name).toHaveLength(1)
+      // The chips are inside it, and nowhere else.
+      const chips = withAttribute(slots[0] as never, 'aria-pressed').filter(
+        (el) => el.attrs.class === 'rq-chip',
+      )
+      expect(chips.length, name).toBeGreaterThan(0)
+    }
+  })
+
+  it('draws no chips and no slot when the venue switched filters off, though the menu has chips (R15)', () => {
+    const view = viewOf('features-off')
+    expect(view.filters.tags.length + view.filters.dietary.length).toBeGreaterThan(0)
+    expect(view.features.filters).toBe(false)
+    const html = withoutStyle(render(view))
+    expect(withAttribute(parseHtml(html), 'data-slot', 'menu.filters')).toHaveLength(0)
+    expect(html).not.toContain('rq-filters')
+    expect(html).not.toContain('rq-chip')
+    // The menu itself is all there.
+    expect(withAttribute(parseHtml(html), 'data-item')).toHaveLength(
+      view.sections.flatMap((section) => section.items).length,
+    )
+  })
+
+  it('draws no slot for a menu without chips', () => {
+    const view = viewOf('no-images')
+    expect(view.features.filters).toBe(false)
+    expect(withAttribute(parseHtml(render(view)), 'data-slot', 'menu.filters')).toHaveLength(0)
+  })
+
   it('reserves the photo box, lazy loads it and gives a srcset', () => {
     const view = viewOf('with-images')
     const html = renderToStaticMarkup(<QrPhoneFace view={view} assetBase="/cdn" />)
@@ -174,6 +215,13 @@ describe('what the face draws', () => {
     const view = viewOf('no-images')
     const vars = themeVariables(view.theme, { [view.theme.font]: 'var(--font-inter), sans-serif' })
     expect(vars['--rq-font']).toBe('var(--font-inter), sans-serif')
+  })
+})
+
+describe('the manifest: guest features (R15)', () => {
+  it('has the filter chips as its only guest control, and no options', () => {
+    expect(QR_PHONE_MANIFEST.features).toEqual(['filters'])
+    expect(QR_PHONE_MANIFEST.options).toEqual({})
   })
 })
 
@@ -264,3 +312,6 @@ describe('model helpers', () => {
     expect(filterSections(view.sections, none)).toEqual([])
   })
 })
+
+// The tests every face has to pass (brief SH-03): manifest, contract on every fixture, theme-only CSS.
+faceContractSuite('qr-phone', { manifest: QR_PHONE_MANIFEST, render, css: FACE_CSS })

@@ -1,10 +1,12 @@
+import { resolveOptions } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
+import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import {
   assetUrl,
   bcp47,
   countVisible,
-  DEFAULT_OPTIONS,
+  faceOptions,
   hasVisibleItems,
   isFiltering,
   langOf,
@@ -12,7 +14,6 @@ import {
   localeLang,
   matchesFilters,
   NO_FILTERS,
-  readOptions,
   themeVariables,
   toggled,
 } from './model'
@@ -42,29 +43,36 @@ describe('asset addresses', () => {
 })
 
 describe('the options', () => {
-  it('has the defaults of the brief', () => {
-    expect(DEFAULT_OPTIONS).toEqual({
-      layout: 'two',
-      layoutSwitch: true,
-      featureFirstSection: true,
-    })
-    expect(readOptions(undefined)).toEqual(DEFAULT_OPTIONS)
-    expect(readOptions({})).toEqual(DEFAULT_OPTIONS)
+  // The face reads its options the way face.tsx does: the shell resolves them against the manifest.
+  const read = (raw: unknown) => faceOptions(resolveOptions(EDITORIAL_MARKET_MANIFEST, raw))
+  const DEFAULTS = { layout: 'two', layoutSwitch: true, featureFirstSection: true }
+
+  it('has the defaults of the brief, which the manifest declares', () => {
+    expect(read(undefined)).toEqual(DEFAULTS)
+    expect(read({})).toEqual(DEFAULTS)
   })
 
   it('reads valid options', () => {
-    expect(
-      readOptions({ layout: 'list', layoutSwitch: false, featureFirstSection: false }),
-    ).toEqual({ layout: 'list', layoutSwitch: false, featureFirstSection: false })
-    expect(readOptions({ layout: 'one' }).layout).toBe('one')
+    expect(read({ layout: 'list', layoutSwitch: false, featureFirstSection: false })).toEqual({
+      layout: 'list',
+      layoutSwitch: false,
+      featureFirstSection: false,
+    })
+    expect(read({ layout: 'one' }).layout).toBe('one')
   })
 
   it('falls back to the default for an unknown, missing or wrongly typed value', () => {
-    expect(
-      readOptions({ layout: 'grid', layoutSwitch: 'yes', featureFirstSection: 'false' }),
-    ).toEqual(DEFAULT_OPTIONS)
-    expect(readOptions({ layout: true, layoutSwitch: 'false' })).toEqual(DEFAULT_OPTIONS)
-    expect(readOptions({ colour: 'red' })).toEqual(DEFAULT_OPTIONS)
+    expect(read({ layout: 'grid', layoutSwitch: 'yes', featureFirstSection: 'false' })).toEqual(
+      DEFAULTS,
+    )
+    expect(read({ layout: true, layoutSwitch: 'false' })).toEqual(DEFAULTS)
+    expect(read({ colour: 'red' })).toEqual(DEFAULTS)
+  })
+
+  it('keeps a layout that is not on the list out, whatever the host passes', () => {
+    for (const layout of ['grid', 'Two', '', 'two ', 2, null, ['two']]) {
+      expect(read({ layout }).layout, String(layout)).toBe('two')
+    }
   })
 })
 
