@@ -1,20 +1,12 @@
 'use client'
 
-// The sync settings of the Synchronisation card (brief S3-04, decision D59): when barsy is read
-// (the change check and the daily full pull, each on or off, with its interval or time of day in
-// the venue's clock), whether a sync goes live by itself, and whether new items from barsy are
-// shown or kept hidden until a manager reviews them. Every control carries a one-line
-// explanation. They are saved together, whole, and the worker follows them from its next tick.
-// Owners and admins change them; everyone else sees them read-only.
-import {
-  AFTER_SYNC_MODES,
-  type AfterSyncMode,
-  CLOCK_TIME_PATTERN,
-  INCREMENTAL_MINUTES,
-  type IncrementalMinutes,
-  NEW_ITEMS_MODES,
-  type NewItemsMode,
-} from '@restro/core'
+// The schedule of the Automatic sync card (brief S3-04, decisions D59 and D73): when the till is
+// read (the change check and the daily full pull, each on or off, with its interval or time of
+// day), for the whole installation, in the integration's time zone ("Sofia time"). Every control
+// carries a one-line explanation. They are saved together, whole, and the worker follows them from
+// its next tick. Owners and admins change them; everyone else sees them read-only. The publishing
+// rules (publish after a sync, new items) are not here any more: each venue has its own.
+import { CLOCK_TIME_PATTERN, INCREMENTAL_MINUTES, type IncrementalMinutes } from '@restro/core'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, useId, useState, useTransition } from 'react'
 
@@ -34,44 +26,7 @@ import type { IntegrationErrorCode, IntegrationView } from '@/server/integration
 
 import { ErrorNote, Notice } from './error-note'
 
-/** The two choices of a radio group, each with a one-line help. */
-function Choice<T extends string>({
-  name,
-  value,
-  current,
-  onSelect,
-  label,
-  help,
-  disabled,
-}: {
-  name: string
-  value: T
-  current: T
-  onSelect: (value: T) => void
-  label: string
-  help: string
-  disabled: boolean
-}) {
-  return (
-    <label className="flex items-start gap-3 rounded-md border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent has-[:disabled]:opacity-70">
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        className="mt-0.5 size-4 accent-primary"
-        checked={current === value}
-        disabled={disabled}
-        onChange={() => onSelect(value)}
-      />
-      <span className="grid gap-0.5">
-        <span className="font-medium">{label}</span>
-        <span className="text-xs text-muted-foreground">{help}</span>
-      </span>
-    </label>
-  )
-}
-
-export function SyncSettingsForm({ venueId, view }: { venueId: string; view: IntegrationView }) {
+export function SyncSettingsForm({ view }: { view: IntegrationView }) {
   const t = useTranslations('integration.sync.settings')
   const format = useFormatter()
   const formId = useId()
@@ -82,8 +37,6 @@ export function SyncSettingsForm({ venueId, view }: { venueId: string; view: Int
   )
   const [fullPullEnabled, setFullPullEnabled] = useState(saved.fullPullEnabled)
   const [fullPullTime, setFullPullTime] = useState(saved.fullPullTime)
-  const [afterSync, setAfterSync] = useState<AfterSyncMode>(saved.afterSync)
-  const [newItems, setNewItems] = useState<NewItemsMode>(saved.newItems)
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [done, setDone] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -94,9 +47,7 @@ export function SyncSettingsForm({ venueId, view }: { venueId: string; view: Int
     incrementalEnabled !== saved.incrementalEnabled ||
     incrementalMinutes !== saved.incrementalMinutes ||
     fullPullEnabled !== saved.fullPullEnabled ||
-    fullPullTime !== saved.fullPullTime ||
-    afterSync !== saved.afterSync ||
-    newItems !== saved.newItems
+    fullPullTime !== saved.fullPullTime
 
   /** Any change takes the "saved" notice away. */
   function edited<T>(set: (value: T) => void) {
@@ -113,20 +64,20 @@ export function SyncSettingsForm({ venueId, view }: { venueId: string; view: Int
     setDone(false)
     startTransition(async () => {
       const result = await saveSyncSettingsAction({
-        venueId,
         schedule: {
           incremental_enabled: incrementalEnabled,
           incremental_minutes: incrementalMinutes,
           full_pull_enabled: fullPullEnabled,
           full_pull_time: fullPullTime,
         },
-        publish: { after_sync: afterSync, new_items: newItems },
       })
       if (result.ok) setDone(true)
       else setError(result.error)
     })
   }
 
+  // The integration's clock, named the way people say it ("Sofia time").
+  const zoneName = view.timeZone === 'Europe/Sofia' ? t('zoneSofia') : view.timeZone
   const clock = (iso: string) =>
     format.dateTime(new Date(iso), {
       hour: '2-digit',
@@ -235,41 +186,9 @@ export function SyncSettingsForm({ venueId, view }: { venueId: string; view: Int
             aria-describedby={`${formId}-time-help`}
           />
           <p id={`${formId}-time-help`} className="text-xs text-muted-foreground">
-            {t('fullPull.timeHelp', { zone: view.timeZone })}
+            {t('fullPull.timeHelp', { zone: zoneName })}
           </p>
         </div>
-      </fieldset>
-
-      <fieldset className="grid gap-2" disabled={!editable}>
-        <legend className="mb-1 text-sm font-medium">{t('afterSync.legend')}</legend>
-        {AFTER_SYNC_MODES.map((mode) => (
-          <Choice
-            key={mode}
-            name={`${formId}-after-sync`}
-            value={mode}
-            current={afterSync}
-            onSelect={edited(setAfterSync)}
-            label={t(`afterSync.${mode}`)}
-            help={t(`afterSync.${mode}Help`)}
-            disabled={!editable}
-          />
-        ))}
-      </fieldset>
-
-      <fieldset className="grid gap-2" disabled={!editable}>
-        <legend className="mb-1 text-sm font-medium">{t('newItems.legend')}</legend>
-        {NEW_ITEMS_MODES.map((mode) => (
-          <Choice
-            key={mode}
-            name={`${formId}-new-items`}
-            value={mode}
-            current={newItems}
-            onSelect={edited(setNewItems)}
-            label={t(`newItems.${mode}`)}
-            help={t(`newItems.${mode}Help`)}
-            disabled={!editable}
-          />
-        ))}
       </fieldset>
 
       <p className="text-sm text-muted-foreground" data-testid="sync-next">

@@ -4,7 +4,7 @@
 // of the Integration tab's. Each checks who is asking (`requireTenant`: the tenant is the person's
 // organisation, never the request's), that the venue is theirs and that their role may publish,
 // validates the input with Zod, and calls the service. The Publish tab is built on them.
-import { idSchema } from '@restro/core'
+import { AFTER_SYNC_MODES, idSchema, NEW_ITEMS_MODES } from '@restro/core'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -25,6 +25,7 @@ import {
   publishNow,
   rejectHeldPublish,
   rollback,
+  savePublishRules,
 } from './service'
 import type { HistoryPage } from './view'
 
@@ -101,6 +102,21 @@ export async function rollbackAction(
   snapshotId: string,
 ): Promise<PublishActionResult> {
   return perform(venueId, (scope, services) => rollback(scope, services, snapshotId))
+}
+
+const PublishRulesSchema = z.strictObject({
+  afterSync: z.enum(AFTER_SYNC_MODES),
+  newItems: z.enum(NEW_ITEMS_MODES),
+})
+
+/** Saves the venue's publishing rules (owner or admin): after a sync, and new items. */
+export async function savePublishRulesAction(
+  venueId: string,
+  rules: unknown,
+): Promise<PublishActionResult> {
+  const parsed = PublishRulesSchema.safeParse(rules)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  return perform(venueId, (scope) => savePublishRules(scope, parsed.data))
 }
 
 /** The draft snapshot for the preview (anyone in the organisation): built in memory, nothing written. */

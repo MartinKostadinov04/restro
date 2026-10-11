@@ -117,7 +117,7 @@ test('the sidebar lists the venues by name, then All venues, New venue and Setti
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
 
   // The venues' sections are the tabs of a venue's page: the sidebar lists none of them.
-  for (const section of ['Composer', 'Tables & QR', 'Publishing', 'Design', 'Integration']) {
+  for (const section of ['Composer', 'Tables & QR', 'Publishing', 'Design']) {
     await expect(page.locator('[data-sidebar="sidebar"]').getByText(section)).toHaveCount(0)
   }
   // One organisation: its name, nothing to switch; and no venue switcher in the footer.
@@ -168,7 +168,9 @@ test('Settings opens Integrations; the breadcrumb reads "Settings > Integrations
   await expect(page).toHaveURL(/\/settings\/integrations$/)
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Integrations', level: 2 })).toBeVisible()
-  await expect(page.getByTestId('settings-integrations-interim')).toContainText('Integration tab')
+  // The page holds the connection itself now (CF-09b): no note about a venue's Integration tab.
+  await expect(page.getByTestId('integration-panel')).toBeVisible()
+  await expect(page.getByTestId('settings-integrations-interim')).toHaveCount(0)
   // The sub-navigation lights its section; the sidebar lights Settings and no venue.
   await expect(page.getByTestId('settings-nav-integrations')).toHaveAttribute(
     'aria-current',

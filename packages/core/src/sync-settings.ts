@@ -1,16 +1,23 @@
-// The sync settings of an integration (brief S3-04, decision D59): when barsy is read and whether
-// a sync goes live by itself. They live in the integration's `config`, in two objects:
+// The sync settings (brief S3-04, decision D59): when barsy is read and whether a sync goes live by
+// itself. Since CF-09b (D73) they live in two places:
 //
-//   config.schedule  incremental_enabled, incremental_minutes, full_pull_enabled, full_pull_time,
-//                    time_zone (CF-16: the zone of the daily full read; default Europe/Sofia)
-//   config.publish   after_sync (auto | manual), new_items (show | hold)
+//   the integration's `config.schedule`, one schedule for the whole installation:
+//     incremental_enabled, incremental_minutes, full_pull_enabled, full_pull_time,
+//     time_zone (CF-16: the zone of the daily full read; default Europe/Sofia)
+//   the venue's `settings.publish`, the publishing rules of each venue:
+//     after_sync (auto | manual), new_items (show | hold)
 //
-// The web app writes them (Integration tab) and the worker reads them, both through this module,
-// so a value can never mean two things. Reading is forgiving, writing is strict: a missing or
-// unknown value in the stored config falls back to the default FOR THAT SETTING (an old or
-// hand-edited config never stops a sync), while the form's input (`SyncSettingsInputSchema`)
-// refuses anything outside the lists. The defaults are what ran before the settings existed:
-// a change check every 5 minutes, a full pull daily at 12:00, and every sync publishes.
+// A venue that has no value of its own reads the integration's `config.publish` of before CF-09b
+// (and, below that, the old flat key and the defaults), so nothing changes for a venue until
+// someone saves its rules; the integration's copy is never written any more.
+//
+// The web app writes them (Settings -> Integrations, the venue's Publishing tab) and the worker
+// reads them, both through this module, so a value can never mean two things. Reading is
+// forgiving, writing is strict: a missing or unknown value falls back to the default FOR THAT
+// SETTING (an old or hand-edited config never stops a sync), while the form's input
+// (`SyncSettingsInputSchema`, `VenuePublishRulesSchema`) refuses anything outside the lists. The
+// defaults are what ran before the settings existed: a change check every 5 minutes, a full pull
+// daily at 12:00, and every sync publishes.
 //
 // Pure: no I/O, no clock.
 
@@ -53,6 +60,7 @@ export interface ScheduleSettings {
   readonly full_pull_time: string
 }
 
+/** The publishing rules of a venue (or, from before CF-09b, of an integration). */
 export interface PublishSettings {
   readonly after_sync: AfterSyncMode
   readonly new_items: NewItemsMode
@@ -74,7 +82,11 @@ const ClockTimeSchema = z.string().regex(CLOCK_TIME_PATTERN)
 const AfterSyncSchema = z.enum(AFTER_SYNC_MODES)
 const NewItemsSchema = z.enum(NEW_ITEMS_MODES)
 
-/** What the settings form sends: every setting, each from its list. Unknown keys are refused. */
+/**
+ * What the automatic-sync form sends: the schedule, each setting from its list. Unknown keys are
+ * refused. The publishing rules are not part of it any more (CF-09b): they are per venue, see
+ * `VenuePublishRulesSchema`.
+ */
 export const SyncSettingsInputSchema = z.strictObject({
   schedule: z.strictObject({
     incremental_enabled: z.boolean(),
@@ -82,12 +94,15 @@ export const SyncSettingsInputSchema = z.strictObject({
     full_pull_enabled: z.boolean(),
     full_pull_time: ClockTimeSchema,
   }),
-  publish: z.strictObject({
-    after_sync: AfterSyncSchema,
-    new_items: NewItemsSchema,
-  }),
 })
 export type SyncSettingsInput = z.output<typeof SyncSettingsInputSchema>
+
+/** What the venue's Rules card sends: both rules, each from its list. Unknown keys are refused. */
+export const VenuePublishRulesSchema = z.strictObject({
+  after_sync: AfterSyncSchema,
+  new_items: NewItemsSchema,
+})
+export type VenuePublishRules = z.output<typeof VenuePublishRulesSchema>
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -105,6 +120,10 @@ function orDefault<S extends z.ZodType>(schema: S, value: unknown, fallback: z.o
  * The sync settings of an integration's `config`, with the default for every missing or unknown
  * value. Never throws. `config.publish_after_sync = false`, the flat key S3-01b read before these
  * settings existed, still means `manual` when `publish.after_sync` itself is not set.
+ *
+ * The `publish` part is the integration's OLD publishing rule (before CF-09b made it per venue):
+ * nothing writes it any more, and it is only what a venue without rules of its own inherits. Ask
+ * `venuePublishRules` what applies to a venue.
  */
 export function parseSyncSettings(config: unknown): SyncSettings {
   const root = record(config)
@@ -167,14 +186,51 @@ export function syncTimeZone(config: unknown): string {
   return isTimeZone(zone) ? zone : SYNC_TIME_ZONE_DEFAULT
 }
 
-/** Whether a sync that changed something publishes on its own. */
-export function publishesAfterSync(config: unknown): boolean {
-  return parseSyncSettings(config).publish.after_sync === 'auto'
+/**
+ * The publishing rules the venue has set itself (`venues.settings.publish`): each is null when the
+ * venue has no valid value of its own. Never throws.
+ */
+export function venueOwnPublishRules(venueSettings: unknown): {
+  readonly after_sync: AfterSyncMode | null
+  readonly new_items: NewItemsMode | null
+} {
+  const own = record(record(venueSettings).publish)
+  const afterSync = AfterSyncSchema.safeParse(own.after_sync)
+  const newItems = NewItemsSchema.safeParse(own.new_items)
+  return {
+    after_sync: afterSync.success ? afterSync.data : null,
+    new_items: newItems.success ? newItems.data : null,
+  }
 }
 
-/** Whether new items from barsy are hidden until a manager shows them. */
-export function holdsNewItems(config: unknown): boolean {
-  return parseSyncSettings(config).publish.new_items === 'hold'
+/**
+ * The publishing rules that apply to a venue (D73, CF-04): its own value for each rule, else the
+ * integration's current one (`config.publish`, then the S3-01b flat key, then the default). So a
+ * venue that never saved its rules behaves exactly as before CF-09b. Never throws.
+ */
+export function venuePublishRules(
+  venueSettings: unknown,
+  integrationConfig: unknown,
+): PublishSettings {
+  const own = venueOwnPublishRules(venueSettings)
+  const inherited = parseSyncSettings(integrationConfig).publish
+  return {
+    after_sync: own.after_sync ?? inherited.after_sync,
+    new_items: own.new_items ?? inherited.new_items,
+  }
+}
+
+/** Whether a sync that changed something publishes this venue's menu on its own. */
+export function venuePublishesAfterSync(
+  venueSettings: unknown,
+  integrationConfig: unknown,
+): boolean {
+  return venuePublishRules(venueSettings, integrationConfig).after_sync === 'auto'
+}
+
+/** Whether new items from the till are hidden in this venue until a manager shows them. */
+export function venueHoldsNewItems(venueSettings: unknown, integrationConfig: unknown): boolean {
+  return venuePublishRules(venueSettings, integrationConfig).new_items === 'hold'
 }
 
 /**

@@ -402,8 +402,7 @@
       "integrations": "Integrations"
     },
     "integrations": {
-      "description": "The connection to your till and how its data is read. It is set once for the whole organisation and used by every venue.",
-      "interim": "For now the connection is still set up in each venue’s Integration tab. It will move to this page."
+      "description": "The connection to your till and how its data is read. It is set once for the whole organisation and used by every venue."
     }
   },
   "venues": {
@@ -461,7 +460,7 @@
       },
       "noSections": {
         "title": "No sections yet",
-        "description": "Create a section, or connect a till in the Integration tab.",
+        "description": "Create a section, or connect a till in Settings → Integrations.",
         "action": "Create a section"
       },
       "noItems": {
@@ -684,7 +683,6 @@
       "tables": "Tables & QR",
       "publishing": "Publishing",
       "design": "Design",
-      "integration": "Integration",
       "settings": "Settings"
     },
     "composer": {
@@ -892,13 +890,35 @@
       "light": "Light",
       "dark": "Dark",
       "frame": "Phone preview of the draft"
+    },
+    "rules": {
+      "title": "Rules",
+      "description": "What happens when this venue's menu changes in the till. These rules are for this venue only and apply from its next sync.",
+      "afterSync": {
+        "legend": "After a sync",
+        "auto": "Publish automatically",
+        "autoHelp": "Guests see changes from the till within about a minute.",
+        "manual": "Wait until I press Publish",
+        "manualHelp": "Changes from the till wait until you publish them here."
+      },
+      "newItems": {
+        "legend": "New items from the till",
+        "show": "Show them on the menu",
+        "showHelp": "A new item is on the menu with the next publish.",
+        "hold": "Keep them hidden until I review them",
+        "holdHelp": "New items stay hidden in the composer until you show them."
+      },
+      "inherited": "These are the settings the connection had before the rules moved to the venue. Saving makes them this venue's own.",
+      "save": "Save rules",
+      "saving": "Saving…",
+      "saved": "Saved. The rules apply from the next sync of this venue."
     }
   },
   "integration": {
     "readOnly": "Only owners and admins can change the connection and the settings or start a sync. You can see the status and the history.",
     "connect": {
       "title": "Connection",
-      "description": "The barsy address and the API user this venue's menu is read with. The password is sealed on the server: it cannot be read back, not even here.",
+      "description": "The barsy address and the API user your till is read with. It is one connection for the whole organisation. The password is sealed on the server: it cannot be read back, not even here.",
       "host": "barsy address",
       "hostHelp": "The https address of the installation, for example https://club.barsyonline.com.",
       "hostPlaceholder": "https://club.barsyonline.com",
@@ -934,7 +954,13 @@
       "activeConnect": "Checking the connection…",
       "activePull": "A sync is queued or running…",
       "checkAgain": "Check again",
-      "checkQueued": "The connection check is queued."
+      "checkQueued": "The connection check is queued.",
+      "held": {
+        "title": "The last full sync of {venue} was held back",
+        "titleNoVenue": "The last full sync was held back",
+        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till.",
+        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till."
+      }
     },
     "statusDetail": {
       "wrong_credentials": "Wrong user or password.",
@@ -942,23 +968,42 @@
       "credentials_unreadable": "The saved credentials cannot be read. Enter them again.",
       "currency_not_eur": "The till's main currency is not EUR; Restro shows prices in EUR only."
     },
-    "barsyVenue": {
-      "title": "barsy venue",
-      "description": "One barsy installation can hold several venues. Choose the one that is this venue.",
-      "legend": "barsy venues",
+    "tillVenues": {
+      "title": "Venues in barsy",
+      "description": "The venues your barsy installation lists. Make each one a venue here, link it to a venue you already have, or set it aside.",
       "empty": {
-        "title": "No barsy venues yet",
+        "title": "No venues from barsy yet",
         "description": "They appear after the connection check succeeds."
       },
-      "usedBy": "Used by {venue}",
-      "switchHint": "Choosing another barsy venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist.",
-      "publicMenu": "Public menu set up in the till"
+      "todo": "{count, plural, one {# venue to set up} other {# venues to set up}}",
+      "allDone": "Nothing left to set up.",
+      "state": {
+        "linked": "Linked to «{venue}»",
+        "unlinked": "Not set up yet",
+        "not_used": "Not used"
+      },
+      "needsCategory": "Choose its menu category",
+      "publicMenu": "Public menu set up in the till",
+      "actions": {
+        "add": "Add as venue",
+        "link": "Link to an existing venue",
+        "notUsed": "Not used",
+        "useAgain": "Use again"
+      },
+      "linkDialog": {
+        "title": "Link “{name}” to an existing venue",
+        "description": "Choose a venue that is not linked to a venue in barsy yet.",
+        "legend": "Venues without a link",
+        "warning": "Linking reads that venue's menu from barsy. Items already in the menu stay; the next full sync decides which of them still exist.",
+        "cancel": "Cancel",
+        "confirm": "Link",
+        "linking": "Linking…"
+      }
     },
     "catalogue": {
-      "title": "Menu catalogue",
+      "title": "Menu category",
       "description": "One barsy installation can hold several menus in one category tree. Choose the category whose sub-categories make up this venue's menu.",
       "legend": "Categories",
-      "needVenue": "Choose the barsy venue first.",
       "empty": {
         "title": "No categories yet",
         "description": "The category tree is read when the connection is checked."
@@ -971,16 +1016,8 @@
       "suggested": "Suggested (the venue's public menu in the till)"
     },
     "mapping": {
-      "title": "Mapping settings",
-      "description": "How barsy's data becomes menu fields. A change applies from the next sync.",
-      "price": {
-        "legend": "Price shown",
-        "default": "default",
-        "actual": "Base price",
-        "actualHelp": "barsy's regular price of the article.",
-        "current": "Current price",
-        "currentHelp": "The price barsy charges right now; it can change during the day."
-      },
+      "title": "How barsy data is read",
+      "description": "Set once for the whole installation. A change applies from the next sync.",
       "allergen": {
         "label": "Allergen characteristic",
         "auto": "Detect automatically",
@@ -998,24 +1035,22 @@
       "saved": "Settings saved. They apply from the next sync."
     },
     "sync": {
-      "title": "Sync",
-      "description": "Reads the menu from barsy now. Below you choose when it also runs by itself and whether a sync goes live on its own.",
-      "button": "Sync now",
+      "title": "Automatic sync",
+      "description": "Reads the menu from the till by itself, as set below, and for every linked venue when you press the button. Whether a sync goes live on its own is a rule of each venue (its Publishing tab).",
+      "button": "Sync everything now",
       "starting": "Starting…",
-      "queued": "The sync is queued.",
-      "lastSynced": "Last synced {when}",
-      "neverSynced": "Not synced yet.",
+      "queued": "{count, plural, =0 {Nothing was queued.} one {# sync is queued.} other {# syncs are queued.}}",
       "blocked": {
         "not_manager": "Only owners and admins can start a sync.",
         "no_credentials": "Save the barsy credentials first.",
         "checking": "The connection is being checked. Wait until it finishes.",
         "not_connected": "The connection to barsy has to work first. See the status above.",
-        "no_barsy_venue": "Choose the barsy venue first.",
-        "no_root": "Choose the menu catalogue first.",
-        "busy": "A sync is already queued or running."
+        "no_root": "Choose a menu category in a linked venue first.",
+        "busy": "A sync is already queued or running.",
+        "no_till_venue": "Link a venue in barsy to a venue first."
       },
       "settings": {
-        "heading": "Automatic syncing",
+        "heading": "Schedule",
         "incremental": {
           "label": "Check for changes automatically",
           "help": "Reads only what changed in barsy since the last check.",
@@ -1026,42 +1061,24 @@
           "label": "Read the whole catalogue once a day",
           "help": "Also notices what was deleted in barsy. Best at a quiet hour.",
           "time": "Time of day",
-          "timeHelp": "Venue time ({zone})."
-        },
-        "afterSync": {
-          "legend": "After a sync",
-          "auto": "Publish automatically",
-          "autoHelp": "Guests see changes from barsy within about a minute.",
-          "manual": "Wait until I press Publish",
-          "manualHelp": "Changes from barsy wait until you publish them in the Publishing tab."
-        },
-        "newItems": {
-          "legend": "New items from barsy",
-          "show": "Show them on the menu",
-          "showHelp": "A new item is on the menu with the next publish.",
-          "hold": "Keep them hidden until I review them",
-          "holdHelp": "New items stay hidden in the composer until you show them."
+          "timeHelp": "Counted in {zone}."
         },
         "next": {
           "both": "Next change check about {incremental}. Next full read {fullPull}.",
           "incremental": "Next change check about {incremental}.",
           "fullPull": "Next full read {fullPull}.",
           "none": "Automatic syncing is switched off.",
-          "inactive": "Automatic syncing starts once the connection works and the catalogue is chosen."
+          "inactive": "Automatic syncing starts once the connection works and a linked venue has its menu category."
         },
         "save": "Save automatic sync",
         "saving": "Saving…",
-        "saved": "Saved. It applies from the next minute."
-      },
-      "held": {
-        "title": "The last full sync was held back",
-        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till.",
-        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till."
+        "saved": "Saved. It applies from the next minute.",
+        "zoneSofia": "Sofia time"
       }
     },
     "history": {
       "title": "Sync history",
-      "description": "The latest 20 runs of this integration, newest first.",
+      "description": "The latest 20 runs of every venue, newest first.",
       "empty": {
         "title": "No sync yet",
         "description": "Runs appear here after the first connection check or sync."
@@ -1070,13 +1087,15 @@
         "run": "Run",
         "started": "Started",
         "duration": "Duration",
-        "status": "Status"
+        "status": "Status",
+        "venue": "Venue"
       },
       "kind": {
         "barsy_connect": "Connection check",
         "barsy_full_pull": "Full sync",
         "barsy_incremental": "Quick sync",
-        "other": "Other"
+        "other": "Other",
+        "places_read": "Tables read"
       },
       "status": {
         "queued": "Queued",
@@ -1136,11 +1155,82 @@
       "sync_keys_missing": "The sync keys are not set up. Ask the Restro team.",
       "host_in_use": "Another connection of this organisation already uses that address.",
       "host_change_blocked": "This connection already holds a menu from another barsy installation. Changing the address would mix the two menus.",
-      "barsy_venue_taken": "That barsy venue already belongs to another venue.",
       "not_ready": "Not ready yet: finish the earlier steps first.",
       "already_running": "A sync is already queued or running.",
       "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
-      "failed": "Something went wrong. Try again."
+      "failed": "Something went wrong. Try again.",
+      "till_venue_taken": "That venue in the till already belongs to another venue.",
+      "venue_already_linked": "That venue is already linked to a venue in the till.",
+      "till_venue_linked": "A venue in the till that serves a venue cannot be set aside."
+    }
+  },
+  "menuSource": {
+    "title": "Menu source",
+    "description": "Where this venue's menu comes from: its venue in barsy, the category it is read from and the price it shows.",
+    "readOnly": "Only owners and admins can change the menu source or start a sync. You can see what is set.",
+    "none": {
+      "text": "This organisation is not connected to a till yet. Connect it in Settings, then link a venue of the till here.",
+      "link": "Open Settings → Integrations"
+    },
+    "unlinked": {
+      "text": "This venue is not linked to a venue in the till yet.",
+      "title": "Link a barsy venue",
+      "legend": "Venues in the till",
+      "none": "Every venue in the till is linked to a venue already.",
+      "warning": "Linking reads this venue's menu from the till. Items already in the menu stay; the next full sync decides which of them still exist.",
+      "button": "Link",
+      "linking": "Linking…"
+    },
+    "venue": {
+      "label": "Venue in barsy",
+      "change": "Change…"
+    },
+    "change": {
+      "title": "Change the venue in the till",
+      "description": "This venue's menu will be read from another venue in the till.",
+      "legend": "Venues in the till",
+      "warning": "Choosing another venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist. Then check its menu category.",
+      "cancel": "Cancel",
+      "confirm": "Change",
+      "changing": "Changing…"
+    },
+    "choice": {
+      "usedBy": "Used by {venue}",
+      "notUsed": "Marked as not used",
+      "publicMenu": "Public menu set up in the till"
+    },
+    "price": {
+      "legend": "Price shown",
+      "default": "default",
+      "actual": "Base price",
+      "actualHelp": "The article's regular price in the till.",
+      "current": "Current price",
+      "currentHelp": "The price the till charges right now; it can change during the day.",
+      "help": "Current price follows barsy's price rules for this venue.",
+      "save": "Save price",
+      "saving": "Saving…",
+      "saved": "Saved. It applies from the next sync."
+    },
+    "sync": {
+      "button": "Sync this venue",
+      "starting": "Starting…",
+      "queued": "The sync is queued.",
+      "lastSynced": "Last synced {when}",
+      "neverSynced": "Not synced yet.",
+      "blocked": {
+        "not_manager": "Only owners and admins can start a sync.",
+        "no_credentials": "Save the till credentials first.",
+        "checking": "The connection is being checked. Wait until it finishes.",
+        "not_connected": "The connection to the till has to work first. See Settings → Integrations.",
+        "no_till_venue": "Link a venue in the till first.",
+        "no_root": "Choose the menu category first.",
+        "busy": "A sync is already queued or running."
+      },
+      "held": {
+        "title": "The last full sync was held back",
+        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till.",
+        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till."
+      }
     }
   },
   "tables": {
@@ -1150,8 +1240,8 @@
     "readOnly": "Only owners and admins can create, change or turn off codes and change the address. You can look at the codes and print them.",
     "empty": {
       "title": "No tables yet",
-      "description": "Tables come from barsy. Connect barsy and choose this venue's barsy venue in the Integration tab. The tables appear after the next full sync.",
-      "action": "Go to Integration"
+      "description": "Tables come from barsy. Connect barsy in Settings → Integrations and choose this venue's barsy venue in the Menu source card of its Settings tab. The tables appear after the next full sync.",
+      "action": "Go to the Menu source"
     },
     "createAll": "Create codes for all tables",
     "createAllWorking": "Creating codes…",

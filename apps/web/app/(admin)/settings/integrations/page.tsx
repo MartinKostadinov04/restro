@@ -1,6 +1,10 @@
-import { InfoIcon } from 'lucide-react'
 import { getTranslations } from 'next-intl/server'
 
+import { IntegrationPanel } from '@/integration/integration-panel'
+import { getPool } from '@/server/db'
+import { serverEnv } from '@/server/env'
+import { loadIntegrationView } from '@/server/integration/service'
+import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 
 export async function generateMetadata() {
@@ -8,13 +12,21 @@ export async function generateMetadata() {
   return { title: t('sections.integrations') }
 }
 
-// Settings → Integrations (D73). For now the heading and a note: the connection is still set up in
-// each venue's Integration tab until CF-09b moves it here. A server component, so the screens that
-// follow can read their data on the server; everyone in the organisation may open it, and the
-// controls that change something will check the role themselves.
+// Settings -> Integrations (D73): the organisation's one connection to its till and everything set
+// once for it. A server component (U4): it reads the whole page in one go and hands the cards
+// plain data. Everyone in the organisation may open it; owners and admins change things, the
+// others see it read-only (the actions check the role again).
 export default async function SettingsIntegrationsPage() {
-  await requireTenant()
+  const { organization } = await requireTenant()
   const t = await getTranslations('settings')
+  const view = await loadIntegrationView(
+    {
+      pool: getPool(),
+      tenantId: organization.id,
+      canManage: canManageIntegration(organization.role),
+    },
+    { sealPublicKey: serverEnv().SEAL_PUBLIC_KEY },
+  )
 
   return (
     <section aria-labelledby="settings-integrations-heading" className="space-y-4">
@@ -24,13 +36,7 @@ export default async function SettingsIntegrationsPage() {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('integrations.description')}</p>
       </div>
-      <p
-        className="flex items-start gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
-        data-testid="settings-integrations-interim"
-      >
-        <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
-        <span>{t('integrations.interim')}</span>
-      </p>
+      <IntegrationPanel view={view} />
     </section>
   )
 }

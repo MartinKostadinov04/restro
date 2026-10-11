@@ -43,7 +43,6 @@ describe('WorkspaceTabs: tabs and the URL', () => {
       'Tables & QR',
       'Publishing',
       'Design',
-      'Integration',
       'Settings',
     ])
     // The select has one entry per declared tab, labelled from the same keys.
@@ -65,6 +64,14 @@ describe('WorkspaceTabs: tabs and the URL', () => {
       'true',
     )
     expect(screen.getByText('content of publishing')).toBeTruthy()
+  })
+
+  it('opens Settings for an old ?tab=integration link: the Integration tab is gone (CF-09b)', () => {
+    navigation.search = 'tab=integration'
+    renderTabs()
+    expect(screen.getByRole('tab', { name: 'Settings' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('content of settings')).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: 'Integration' })).toBeNull()
   })
 
   it('falls back to the first tab for an unknown ?tab=', () => {

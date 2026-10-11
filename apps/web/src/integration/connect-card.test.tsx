@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithIntl } from '@/test-utils'
 
 import { ConnectCard } from './connect-card'
-import { emptyView, integrationView, VENUE_ID } from './test-view'
+import { emptyView, integrationView } from './test-view'
 
 const actions = vi.hoisted(() => ({ saveConnectionAction: vi.fn() }))
 vi.mock('@/server/integration/actions', () => actions)
@@ -29,7 +29,7 @@ beforeEach(() => {
 
 describe('the Connection card', () => {
   it('asks for the address, the API user and the password', () => {
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={emptyView()} />)
+    renderWithIntl(<ConnectCard view={emptyView()} />)
     expect(screen.getByLabelText('barsy address')).toBeTruthy()
     expect(screen.getByLabelText('API user')).toBeTruthy()
     const password = screen.getByLabelText('Password') as HTMLInputElement
@@ -42,14 +42,13 @@ describe('the Connection card', () => {
     const user = userEvent.setup()
     let finish: (value: unknown) => void = () => undefined
     actions.saveConnectionAction.mockReturnValue(new Promise((resolve) => (finish = resolve)))
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={emptyView()} />)
+    renderWithIntl(<ConnectCard view={emptyView()} />)
 
     await fill(user)
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
 
     expect(actions.saveConnectionAction).toHaveBeenCalledTimes(1)
     expect(actions.saveConnectionAction).toHaveBeenCalledWith({
-      venueId: VENUE_ID,
       host: 'https://club.barsyonline.com',
       user: 'api-user',
       password: PASSWORD,
@@ -69,7 +68,7 @@ describe('the Connection card', () => {
   it('says when the credentials were saved but the check could not be queued', async () => {
     const user = userEvent.setup()
     actions.saveConnectionAction.mockResolvedValue({ ok: true, queued: false })
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={emptyView()} />)
+    renderWithIntl(<ConnectCard view={emptyView()} />)
     await fill(user)
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
     expect(await screen.findByText(/could not be queued/)).toBeTruthy()
@@ -78,7 +77,7 @@ describe('the Connection card', () => {
   it('shows the reason an address or a save was refused, and keeps the form', async () => {
     const user = userEvent.setup()
     actions.saveConnectionAction.mockResolvedValue({ ok: false, error: 'invalid_host' })
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={emptyView()} />)
+    renderWithIntl(<ConnectCard view={emptyView()} />)
     await fill(user, 'http://club.barsyonline.com')
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
     const alert = await screen.findByRole('alert')
@@ -92,7 +91,7 @@ describe('the Connection card', () => {
   it('says why a new address was refused while the connection holds a menu (host_change_blocked)', async () => {
     const user = userEvent.setup()
     actions.saveConnectionAction.mockResolvedValue({ ok: false, error: 'host_change_blocked' })
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={integrationView()} />)
+    renderWithIntl(<ConnectCard view={integrationView()} />)
     await user.click(screen.getByRole('button', { name: 'Change credentials' }))
     await fill(user, 'https://other.barsyonline.com')
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
@@ -105,7 +104,7 @@ describe('the Connection card', () => {
 
   it('shows saved credentials as a fact, with a way to change them that asks for both again', async () => {
     const user = userEvent.setup()
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={integrationView()} />)
+    renderWithIntl(<ConnectCard view={integrationView()} />)
     expect(screen.getByText('Credentials saved')).toBeTruthy()
     expect(screen.getByText('Address: demo.barsyonline.com')).toBeTruthy()
     expect(screen.queryByLabelText('Password')).toBeNull()
@@ -123,7 +122,7 @@ describe('the Connection card', () => {
   })
 
   it('explains that the operator has to set up the sync keys, without a form', () => {
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={emptyView({ sealReady: false })} />)
+    renderWithIntl(<ConnectCard view={emptyView({ sealReady: false })} />)
     const note = screen.getByTestId('seal-keys-missing')
     expect(note.textContent).toContain('The sync keys are not set up')
     expect(note.textContent).toContain('operator')
@@ -133,17 +132,17 @@ describe('the Connection card', () => {
   })
 
   it('is read-only for someone who cannot manage', () => {
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={integrationView({ canManage: false })} />)
+    renderWithIntl(<ConnectCard view={integrationView({ canManage: false })} />)
     expect(screen.getByText('Credentials saved')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Change credentials' })).toBeNull()
     expect(screen.queryByLabelText('Password')).toBeNull()
 
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={emptyView({ canManage: false })} />)
+    renderWithIntl(<ConnectCard view={emptyView({ canManage: false })} />)
     expect(screen.getByText('No credentials yet.')).toBeTruthy()
   })
 
   it('speaks Bulgarian', () => {
-    renderWithIntl(<ConnectCard venueId={VENUE_ID} view={integrationView()} />, { locale: 'bg' })
+    renderWithIntl(<ConnectCard view={integrationView()} />, { locale: 'bg' })
     expect(screen.getByText('Данните за достъп са запазени')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Смени данните за достъп' })).toBeTruthy()
   })

@@ -5,8 +5,11 @@
 //     it (`queuePublishForAsset`), because the publish that followed the pull usually ran before
 //     the picture was ready, and a snapshot has no image for a picture without variants.
 //
-// Both obey the integration's setting `publish.after_sync` (core/sync-settings.ts): `auto`
-// queues, `manual` queues nothing and waits for a person to press Publish. Every send carries
+// Both obey the VENUE's rule `settings.publish.after_sync` (core/sync-settings.ts, CF-09b, D73):
+// `auto` queues, `manual` queues nothing and waits for a person to press Publish. A venue that
+// has not saved a rule reads the integration's old one, so nothing changed when the rule moved to
+// the venue. Venues on one catalogue each follow their own rule, since each is asked separately.
+// Every send carries
 // reason `auto_sync`, a 30 s delay and a singleton key per menu + venue (core/jobs.ts), so syncs
 // and pictures that arrive close together are published once, with everything they changed.
 //
@@ -15,14 +18,14 @@
 // publish-menu job checks it again when an `auto_sync` job runs (`autoPublishIsPaused`), because
 // a job queued before the rollback, or by a sync that read its config before it, would otherwise
 // undo the rollback. A person's publish resumes automatic publishing (`resumeAutoPublish`).
-import { autoPublishPaused, JOB_NAMES, prepareJob, publishesAfterSync } from '@restro/core'
+import { autoPublishPaused, JOB_NAMES, prepareJob, venuePublishesAfterSync } from '@restro/core'
 import { loadMenusUsingAsset, setAutoPublishPaused } from '@restro/core/apply'
-import { assets, barsyVenues, integrations, menus, withTenant } from '@restro/db'
+import { assets, barsyVenues, integrations, menus, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
 import type { SyncEnvironment } from '../sync/context'
 
-export { publishesAfterSync }
+export { venuePublishesAfterSync }
 
 type PublishEnvironment = Pick<SyncEnvironment, 'pool' | 'log' | 'enqueue'>
 
@@ -61,8 +64,20 @@ async function enqueueAutoPublish(
     : `publish queued to run in ${job.startAfter ?? 0} s`
 }
 
+/** `venues.settings` of one venue (where its own publishing rules are); empty when it is not found. */
+async function venueSettingsOf(
+  env: Pick<PublishEnvironment, 'pool'>,
+  tenantId: string,
+  venueId: string,
+): Promise<unknown> {
+  const [row] = await withTenant(env.pool, tenantId, (tx) =>
+    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)),
+  )
+  return row?.settings ?? {}
+}
+
 /**
- * Queues the automatic publish when `appliedOps` is above zero and the integration allows it.
+ * Queues the automatic publish when `appliedOps` is above zero and the venue allows it.
  * Returns a line saying what happened (or why nothing did), or null when the pull changed
  * nothing; the line is logged, and deliberately not added to the pull's run text, which the
  * Integration tab shows as news about the pull. Never throws: the pull has already been
@@ -85,11 +100,13 @@ async function decide(
   appliedOps: number,
 ): Promise<string | null> {
   if (appliedOps <= 0) return null
-  if (!publishesAfterSync(target.config)) {
-    return 'publish after sync is off for this integration: nothing was queued'
-  }
-  if (autoPublishPaused(target.config)) return PAUSED_NOTE
   try {
+    // The venue's own rule (CF-09b); a venue with none reads the integration's.
+    const settings = await venueSettingsOf(env, target.tenantId, target.venueId)
+    if (!venuePublishesAfterSync(settings, target.config)) {
+      return 'publish after sync is off for this venue: nothing was queued'
+    }
+    if (autoPublishPaused(target.config)) return PAUSED_NOTE
     const [menu] = await withTenant(env.pool, target.tenantId, (tx) =>
       tx.select({ id: menus.id }).from(menus).where(eq(menus.venueId, target.venueId)),
     )
@@ -129,7 +146,7 @@ async function integrationOfVenue(
 
 /**
  * A barsy picture's variants were just made: queues the automatic publish of every menu that uses
- * it, unless that menu's integration says `publish.after_sync = manual`. Pictures a person
+ * it, unless that menu's venue says `publish.after_sync = manual` (CF-09b). Pictures a person
  * uploaded are left alone: a hand edit is published when someone presses Publish (doc "Publish
  * policy"), and an automatic publish would carry their unfinished edits live. Returns one line
  * per menu (or one line for why there is none); logged by the caller. Never throws.
@@ -153,8 +170,13 @@ export async function queuePublishForAsset(
       const integration = await integrationOfVenue(env, target.tenantId, venueId)
       if (integration === null) {
         notes.push('a menu that uses this picture has no barsy integration: nothing was queued')
-      } else if (!publishesAfterSync(integration.config)) {
-        notes.push('publish after sync is off for this integration: nothing was queued')
+      } else if (
+        !venuePublishesAfterSync(
+          await venueSettingsOf(env, target.tenantId, venueId),
+          integration.config,
+        )
+      ) {
+        notes.push('publish after sync is off for this venue: nothing was queued')
       } else if (autoPublishPaused(integration.config)) {
         notes.push(PAUSED_NOTE)
       } else {

@@ -61,7 +61,12 @@ export function deletionCheckSkipped(run: Pick<RunView, 'details' | 'errorSummar
 }
 
 /** The kinds the history labels; anything else is "Other". */
-export const KNOWN_RUN_KINDS = ['barsy_connect', 'barsy_full_pull', 'barsy_incremental'] as const
+export const KNOWN_RUN_KINDS = [
+  'barsy_connect',
+  'barsy_full_pull',
+  'barsy_incremental',
+  'places_read',
+] as const
 
 export function isKnownRunKind(kind: string): kind is (typeof KNOWN_RUN_KINDS)[number] {
   return (KNOWN_RUN_KINDS as readonly string[]).includes(kind)

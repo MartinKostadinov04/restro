@@ -1,11 +1,11 @@
 'use client'
 
-// The catalogue-root picker (D56): one barsy installation holds several menus in one category
-// tree ("Каса Kiosk", "English", "Showx", "Публично меню" in the demo), so each venue says which
-// category its menu starts from. The tree is the cached PUBLIC tree the connection check read;
-// nothing is fetched here. A category's own id is only handed back to the server action; it is
-// never drawn. The category the venue's record names as its public menu carries a "Suggested"
-// mark; it is a hint, nothing is chosen for the manager.
+// The menu category picker (D56) of a venue's Menu source card: one barsy installation holds
+// several menus in one category tree ("Каса Kiosk", "English", "Showx", "Публично меню" in the
+// demo), so each venue says which category its menu starts from. The tree is the cached PUBLIC
+// tree the connection check read; nothing is fetched here. A category's own id is only handed
+// back to the server action; it is never drawn. The category the venue's record names as its
+// public menu carries a "Suggested" mark; it is a hint, nothing is chosen for the manager.
 import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useId, useMemo, useOptimistic, useState, useTransition } from 'react'
@@ -13,9 +13,8 @@ import { useId, useMemo, useOptimistic, useState, useTransition } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import { FormSection } from '@/components/ui/form-section'
 import { chooseCatalogueRootAction } from '@/server/integration/actions'
-import type { CategoryNode, IntegrationErrorCode, IntegrationView } from '@/server/integration/view'
+import type { CategoryNode, IntegrationErrorCode } from '@/server/integration/view'
 
 import { ErrorNote } from './error-note'
 import { useMoment } from './use-moment'
@@ -125,25 +124,42 @@ function Tree({ nodes, chosen, open, groupName, disabled, onToggle, onChoose }: 
   )
 }
 
-export function CatalogueRootCard({ venueId, view }: { venueId: string; view: IntegrationView }) {
+interface CategoryPickerProps {
+  readonly venueId: string
+  /** The cached public category tree of the venue's till venue; null until a connection read it. */
+  readonly tree: readonly CategoryNode[] | null
+  readonly treeFetchedAt: string | null
+  readonly rootCatId: number | null
+  /** The venue's time zone, for "Read {when}". */
+  readonly timeZone: string
+  readonly canManage: boolean
+}
+
+export function CategoryPicker({
+  venueId,
+  tree,
+  treeFetchedAt,
+  rootCatId,
+  timeZone,
+  canManage,
+}: CategoryPickerProps) {
   const t = useTranslations('integration.catalogue')
-  const moment = useMoment(view.timeZone)
+  const moment = useMoment(timeZone)
   const groupName = useId()
-  const tree = view.tree
-  const [chosen, setChosen] = useOptimistic(view.rootCatId)
+  const [chosen, setChosen] = useOptimistic(rootCatId)
   const [open, setOpen] = useState<ReadonlySet<number>>(
     () =>
       new Set([
         ...(tree ?? []).map((node) => node.id),
-        ...ancestorsOf(tree ?? [], view.rootCatId),
+        ...ancestorsOf(tree ?? [], rootCatId),
         ...ancestorsOf(tree ?? [], suggestedId(tree ?? [])),
       ]),
   )
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [pending, startTransition] = useTransition()
   const rootGone = useMemo(
-    () => tree !== null && view.rootCatId !== null && !containsId(tree, view.rootCatId),
-    [tree, view.rootCatId],
+    () => tree !== null && rootCatId !== null && !containsId(tree, rootCatId),
+    [tree, rootCatId],
   )
 
   function toggle(id: number) {
@@ -165,15 +181,13 @@ export function CatalogueRootCard({ venueId, view }: { venueId: string; view: In
     })
   }
 
-  const readAt = moment(view.treeFetchedAt)
+  const readAt = moment(treeFetchedAt)
 
   return (
-    <FormSection title={t('title')} description={t('description')}>
-      {!view.venueMapped ? (
-        <p className="text-sm text-muted-foreground" data-testid="catalogue-need-venue">
-          {t('needVenue')}
-        </p>
-      ) : tree === null || tree.length === 0 ? (
+    <div className="grid gap-2" data-testid="category-picker">
+      <h4 className="text-sm font-medium">{t('title')}</h4>
+      <p className="text-sm text-muted-foreground">{t('description')}</p>
+      {tree === null || tree.length === 0 ? (
         <Empty className="min-h-40" data-testid="catalogue-empty">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -191,7 +205,7 @@ export function CatalogueRootCard({ venueId, view }: { venueId: string; view: In
             chosen={chosen}
             open={open}
             groupName={groupName}
-            disabled={!view.canManage || pending}
+            disabled={!canManage || pending}
             onToggle={toggle}
             onChoose={choose}
           />
@@ -206,6 +220,6 @@ export function CatalogueRootCard({ venueId, view }: { venueId: string; view: In
         </fieldset>
       )}
       <ErrorNote code={error} />
-    </FormSection>
+    </div>
   )
 }

@@ -30,6 +30,7 @@ import {
   loadCurrentSnapshot,
   loadHeldNewItemIds,
   loadMenuDocument,
+  setVenuePublishRules,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -603,6 +604,34 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
       await setConfig({ publish: {}, publish_after_sync: false })
       await runPublishJob(JOB_NAMES.assetVariants, await variantsJobData())
       expect(publishes()).toEqual([])
+    })
+
+    it('the venue’s own rule decides for a picture too (CF-09b): manual in the venue beats automatic in the integration', async () => {
+      await settings({}, { after_sync: 'auto' })
+      const job = servePicture()
+      await world.run(JOB_NAMES.barsyFullPull, payload())
+      await world.run(JOB_NAMES.assetFetch, job)
+      await setVenuePublishRules(world.pool, world.tenantId, {
+        venueId: world.venueId,
+        rules: { after_sync: 'manual', new_items: 'show' },
+      })
+      world.enqueued.length = 0
+      await runPublishJob(JOB_NAMES.assetVariants, await variantsJobData())
+      expect(publishes()).toEqual([])
+    })
+
+    it('...and automatic in the venue beats manual in the integration', async () => {
+      await settings({}, { after_sync: 'manual' })
+      const job = servePicture()
+      await world.run(JOB_NAMES.barsyFullPull, payload())
+      await world.run(JOB_NAMES.assetFetch, job)
+      await setVenuePublishRules(world.pool, world.tenantId, {
+        venueId: world.venueId,
+        rules: { after_sync: 'auto', new_items: 'show' },
+      })
+      world.enqueued.length = 0
+      await runPublishJob(JOB_NAMES.assetVariants, await variantsJobData())
+      expect(publishes()).toHaveLength(1)
     })
 
     it('a picture someone uploaded is published when they press Publish, not by itself', async () => {

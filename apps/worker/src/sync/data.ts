@@ -27,6 +27,11 @@ export interface MappedVenue {
   readonly priceSource: string | null
   /** IANA zone barsy's offset-less timestamps are read in (Q60). */
   readonly timezone: string
+  /**
+   * `venues.settings` of the venue: where its own publishing rules are (CF-09b), asked with
+   * `venueHoldsNewItems`. Opaque here, since only core's readers know its shape.
+   */
+  readonly venueSettings: unknown
 }
 
 /** A mapped venue with a catalogue root: what a pull reads. */
@@ -49,6 +54,7 @@ export async function loadMappedVenue(
         catalogueId: venueLinks.catalogueId,
         priceSource: venueLinks.priceSource,
         timezone: venues.timezone,
+        venueSettings: venues.settings,
       })
       .from(venueLinks)
       .innerJoin(venues, eq(venues.id, venueLinks.venueId))
@@ -64,6 +70,7 @@ export async function loadMappedVenue(
     catalogueId: row.catalogueId,
     priceSource: row.priceSource,
     timezone: row.timezone,
+    venueSettings: row.venueSettings,
   }
 }
 

@@ -16,6 +16,8 @@ import {
   type MenuSnapshot,
   type NodeId,
   parseSnapshot,
+  venueOwnPublishRules,
+  venuePublishRules,
 } from '@restro/core'
 import {
   type Draft,
@@ -34,6 +36,7 @@ import {
   menus,
   type SnapshotRow,
   snapshots,
+  venues,
   withTenant,
 } from '@restro/db'
 import { and, desc, eq, getTableColumns, inArray, lt, sql } from 'drizzle-orm'
@@ -48,6 +51,7 @@ import {
   type HistoryPage,
   type LiveView,
   type NamedItem,
+  type PublishRulesView,
   type PublishView,
   percentOf,
   toPublishRunView,
@@ -394,12 +398,12 @@ export async function loadHistoryPage(
 
 // --- the integration's pause, the queue, the last run --------------------------------------------
 
-/** The pause flag of the barsy integration this venue is mapped to; false when it has none. */
-export async function readPaused(
+/** The config of the integration this venue is mapped to; null when it has none. */
+async function integrationConfigOf(
   pool: DbPool,
   tenantId: string,
   venueId: string,
-): Promise<boolean> {
+): Promise<unknown> {
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx
       .select({ config: integrations.config })
@@ -408,7 +412,40 @@ export async function readPaused(
       .where(eq(barsyVenues.venueId, venueId))
       .limit(1),
   )
-  return row !== undefined && autoPublishPaused(row.config)
+  return row?.config ?? null
+}
+
+/** The pause flag of the integration this venue is mapped to; false when it has none. */
+export async function readPaused(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<boolean> {
+  const config = await integrationConfigOf(pool, tenantId, venueId)
+  return config !== null && autoPublishPaused(config)
+}
+
+/**
+ * The venue's publishing rules as they apply now (CF-09b): its own value for each, else the
+ * current setting of the integration it is linked to (what ran before the rules moved to the
+ * venue), else the defaults.
+ */
+export async function readPublishRules(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<PublishRulesView> {
+  const [venue] = await withTenant(pool, tenantId, (tx) =>
+    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)),
+  )
+  const settings = venue?.settings ?? {}
+  const rules = venuePublishRules(settings, await integrationConfigOf(pool, tenantId, venueId))
+  const own = venueOwnPublishRules(settings)
+  return {
+    afterSync: rules.after_sync,
+    newItems: rules.new_items,
+    inherited: own.after_sync === null || own.new_items === null,
+  }
 }
 
 function pgCode(error: unknown): string | undefined {
@@ -513,6 +550,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
     canPublish: scope.canPublish,
   }
   const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venue.id)
+  const rules = await readPublishRules(scope.pool, scope.tenantId, scope.venue.id)
   if (menuId === null) {
     return {
       ...base,
@@ -521,6 +559,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
       draft: { state: 'unavailable' },
       held: null,
       paused: false,
+      rules,
       history: { entries: [], nextBeforeVersion: null },
       busy: null,
       lastRun: null,
@@ -562,6 +601,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
     draft,
     held: newestHeld ? heldViewOf(newestHeld, current?.body ?? null, draftHash) : null,
     paused,
+    rules,
     history,
     busy,
     lastRun,

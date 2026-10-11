@@ -242,4 +242,25 @@ describe('the run history', () => {
     )
     expect(screen.getByTestId('run-held').textContent).toBe('Задържана')
   })
+
+  it('names the venue each run was for, and a dash for a connection check or an older run', () => {
+    renderWithIntl(
+      <RunHistoryCard
+        view={view([
+          run({ id: 'jb_a', venue: { id: 'vn_a', name: 'Main bar' } }),
+          run({ id: 'jb_b', venue: { id: 'vn_b', name: 'Roof' }, kind: 'barsy_incremental' }),
+          run({ id: 'jb_c', venue: null, kind: 'barsy_connect' }),
+        ])}
+      />,
+    )
+    const rows = screen.getAllByTestId('run-row')
+    expect(within(rows[0] as HTMLElement).getByTestId('run-venue').textContent).toBe('Main bar')
+    expect(within(rows[1] as HTMLElement).getByTestId('run-venue').textContent).toBe('Roof')
+    expect(within(rows[2] as HTMLElement).getByTestId('run-venue').textContent).toBe('—')
+  })
+
+  it('labels a tables read', () => {
+    renderWithIntl(<RunHistoryCard view={view([run({ kind: 'places_read' })])} />)
+    expect(screen.getByText('Tables read')).toBeTruthy()
+  })
 })

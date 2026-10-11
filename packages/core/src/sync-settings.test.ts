@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import {
   autoPublishPaused,
-  holdsNewItems,
   INCREMENTAL_MINUTES,
   parseSyncSettings,
-  publishesAfterSync,
   SYNC_DEFAULTS,
   SYNC_TIME_ZONE_DEFAULT,
   SyncSettingsInputSchema,
   syncTimeZone,
+  VenuePublishRulesSchema,
+  venueHoldsNewItems,
+  venueOwnPublishRules,
+  venuePublishesAfterSync,
+  venuePublishRules,
 } from './sync-settings'
 
 describe('parseSyncSettings', () => {
@@ -95,27 +98,23 @@ describe('parseSyncSettings', () => {
     }
   })
 
-  describe('the flat key of S3-01b, publish_after_sync', () => {
+  describe('the flat key of S3-01b, publish_after_sync (what a venue without rules inherits)', () => {
+    const afterSync = (config: unknown) => venuePublishesAfterSync({}, config)
+
     it('false still means manual when publish.after_sync is not set', () => {
-      expect(publishesAfterSync({ publish_after_sync: false })).toBe(false)
+      expect(afterSync({ publish_after_sync: false })).toBe(false)
       expect(parseSyncSettings({ publish_after_sync: false }).publish.after_sync).toBe('manual')
-      expect(publishesAfterSync({ publish_after_sync: true })).toBe(true)
-      expect(publishesAfterSync({ publish_after_sync: 'no' })).toBe(true)
+      expect(afterSync({ publish_after_sync: true })).toBe(true)
+      expect(afterSync({ publish_after_sync: 'no' })).toBe(true)
     })
 
     it('publish.after_sync wins over it, in both directions', () => {
-      expect(
-        publishesAfterSync({ publish_after_sync: false, publish: { after_sync: 'auto' } }),
-      ).toBe(true)
-      expect(
-        publishesAfterSync({ publish_after_sync: true, publish: { after_sync: 'manual' } }),
-      ).toBe(false)
+      expect(afterSync({ publish_after_sync: false, publish: { after_sync: 'auto' } })).toBe(true)
+      expect(afterSync({ publish_after_sync: true, publish: { after_sync: 'manual' } })).toBe(false)
     })
 
     it('an unknown publish.after_sync falls back to the flat key', () => {
-      expect(publishesAfterSync({ publish_after_sync: false, publish: { after_sync: 'x' } })).toBe(
-        false,
-      )
+      expect(afterSync({ publish_after_sync: false, publish: { after_sync: 'x' } })).toBe(false)
     })
   })
 
@@ -134,16 +133,98 @@ describe('parseSyncSettings', () => {
     expect(parseSyncSettings({ publish: { auto_paused: true } })).toEqual(parseSyncSettings({}))
   })
 
-  it('answers the two questions the worker asks', () => {
-    expect(publishesAfterSync({})).toBe(true)
-    expect(publishesAfterSync({ publish: { after_sync: 'manual' } })).toBe(false)
-    expect(holdsNewItems({})).toBe(false)
-    expect(holdsNewItems({ publish: { new_items: 'show' } })).toBe(false)
-    expect(holdsNewItems({ publish: { new_items: 'hold' } })).toBe(true)
+  it('answers the two questions the worker asks, for a venue with no rules of its own', () => {
+    expect(venuePublishesAfterSync({}, {})).toBe(true)
+    expect(venuePublishesAfterSync({}, { publish: { after_sync: 'manual' } })).toBe(false)
+    expect(venueHoldsNewItems({}, {})).toBe(false)
+    expect(venueHoldsNewItems({}, { publish: { new_items: 'show' } })).toBe(false)
+    expect(venueHoldsNewItems({}, { publish: { new_items: 'hold' } })).toBe(true)
   })
 })
 
-describe('SyncSettingsInputSchema (what the form sends)', () => {
+describe('the publishing rules of a venue (CF-09b, CF-04, D73)', () => {
+  const venue = (publish: unknown) => ({ theme: { logo_asset_id: null }, publish })
+
+  it('a venue with no rules of its own reads the integration’s, and the defaults below it', () => {
+    expect(venuePublishRules({}, {})).toEqual({ after_sync: 'auto', new_items: 'show' })
+    expect(venuePublishRules(undefined, undefined)).toEqual({
+      after_sync: 'auto',
+      new_items: 'show',
+    })
+    expect(venuePublishRules({}, { publish: { after_sync: 'manual', new_items: 'hold' } })).toEqual(
+      { after_sync: 'manual', new_items: 'hold' },
+    )
+    expect(venueOwnPublishRules({})).toEqual({ after_sync: null, new_items: null })
+  })
+
+  it('its own value wins over the integration’s, for each rule on its own', () => {
+    const integration = { publish: { after_sync: 'manual', new_items: 'hold' } }
+    expect(
+      venuePublishRules(venue({ after_sync: 'auto', new_items: 'show' }), integration),
+    ).toEqual({ after_sync: 'auto', new_items: 'show' })
+    // Only one rule saved: the other is still the integration’s.
+    expect(venuePublishRules(venue({ after_sync: 'auto' }), integration)).toEqual({
+      after_sync: 'auto',
+      new_items: 'hold',
+    })
+    expect(venuePublishRules(venue({ new_items: 'show' }), integration)).toEqual({
+      after_sync: 'manual',
+      new_items: 'show',
+    })
+    expect(venueOwnPublishRules(venue({ after_sync: 'manual', new_items: 'hold' }))).toEqual({
+      after_sync: 'manual',
+      new_items: 'hold',
+    })
+  })
+
+  it('answers the two questions the worker asks for the venue, not for the integration', () => {
+    const manualIntegration = { publish: { after_sync: 'manual', new_items: 'hold' } }
+    expect(venuePublishesAfterSync(venue({ after_sync: 'auto' }), manualIntegration)).toBe(true)
+    expect(venuePublishesAfterSync({}, manualIntegration)).toBe(false)
+    expect(venueHoldsNewItems(venue({ new_items: 'show' }), manualIntegration)).toBe(false)
+    expect(venueHoldsNewItems({}, manualIntegration)).toBe(true)
+    expect(venuePublishesAfterSync(venue({ after_sync: 'manual' }), {})).toBe(false)
+    expect(venueHoldsNewItems(venue({ new_items: 'hold' }), {})).toBe(true)
+  })
+
+  it('ignores an unknown or mistyped own value and never throws on junk', () => {
+    const integration = { publish: { after_sync: 'manual', new_items: 'hold' } }
+    const junkRules = [
+      { after_sync: 'later', new_items: 5 },
+      'text',
+      12,
+      null,
+      [],
+      { after_sync: null },
+    ]
+    for (const junk of junkRules) {
+      expect(venuePublishRules(venue(junk), integration), JSON.stringify(junk)).toEqual({
+        after_sync: 'manual',
+        new_items: 'hold',
+      })
+    }
+    for (const settings of [null, undefined, 'x', 7, [], { publish: 'x' }]) {
+      expect(venueOwnPublishRules(settings)).toEqual({ after_sync: null, new_items: null })
+    }
+  })
+
+  it('the Rules card sends both rules from their lists, nothing else', () => {
+    expect(VenuePublishRulesSchema.parse({ after_sync: 'manual', new_items: 'hold' })).toEqual({
+      after_sync: 'manual',
+      new_items: 'hold',
+    })
+    for (const bad of [
+      { after_sync: 'later', new_items: 'hold' },
+      { after_sync: 'auto' },
+      { after_sync: 'auto', new_items: 'show', auto_paused: true },
+      {},
+    ]) {
+      expect(VenuePublishRulesSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
+    }
+  })
+})
+
+describe('SyncSettingsInputSchema (what the automatic-sync form sends)', () => {
   const valid = {
     schedule: {
       incremental_enabled: true,
@@ -151,7 +232,6 @@ describe('SyncSettingsInputSchema (what the form sends)', () => {
       full_pull_enabled: true,
       full_pull_time: '04:30',
     },
-    publish: { after_sync: 'manual', new_items: 'hold' },
   }
 
   it('accepts a complete, well-formed input', () => {
@@ -167,10 +247,11 @@ describe('SyncSettingsInputSchema (what the form sends)', () => {
     expect(
       bad((input) => ({ ...input, schedule: { ...input.schedule, full_pull_time: '4:30' } })),
     ).toBe(false)
-    expect(bad((input) => ({ ...input, publish: { ...input.publish, after_sync: 'later' } }))).toBe(
+    // The publishing rules are per venue now: the schedule form refuses them.
+    expect(bad((input) => ({ ...input, publish: { after_sync: 'auto', new_items: 'show' } }))).toBe(
       false,
     )
-    expect(bad((input) => ({ ...input, publish: { after_sync: 'auto' } }))).toBe(false)
+    expect(bad(() => ({}))).toBe(false)
     expect(bad((input) => ({ ...input, extra: 1 }))).toBe(false)
     expect(bad((input) => ({ ...input, schedule: { ...input.schedule, other: 1 } }))).toBe(false)
   })

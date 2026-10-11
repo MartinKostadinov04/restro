@@ -4,14 +4,14 @@ import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
 import { AdminHeader } from '@/components/admin/admin-header'
 import { VenueSettings } from '@/components/admin/venue-settings'
-import { DEFAULT_WORKSPACE_TAB, isWorkspaceTab } from '@/components/admin/workspace-tab-defs'
+import { workspaceTabOf } from '@/components/admin/workspace-tab-defs'
 import { WorkspaceTabs } from '@/components/admin/workspace-tabs'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
 import { DesignSkeleton } from '@/design/design-skeleton'
 import { DesignTab } from '@/design/design-tab'
-import { IntegrationSkeleton } from '@/integration/integration-skeleton'
-import { IntegrationTab } from '@/integration/integration-tab'
+import { MenuSourceSkeleton } from '@/integration/menu-source-skeleton'
+import { MenuSourceTab } from '@/integration/menu-source-tab'
 import { PublishSkeleton } from '@/publish/publish-skeleton'
 import { PublishTab } from '@/publish/publish-tab'
 import { requireTenant } from '@/server/session'
@@ -37,11 +37,10 @@ export default async function VenueWorkspacePage({
 
   // The composer reads the whole menu: only read it while its tab is the open one (the tab bar
   // shows the skeleton at once when someone switches to it, and the page streams the rest in).
-  const requestedTab = (await searchParams).tab
-  const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
+  const openTab = workspaceTabOf((await searchParams).tab)
   const composerOpen = openTab === 'composer'
   const publishingOpen = openTab === 'publishing'
-  const integrationOpen = openTab === 'integration'
+  const settingsOpen = openTab === 'settings'
   const tablesOpen = openTab === 'tables'
   const designOpen = openTab === 'design'
 
@@ -90,14 +89,22 @@ export default async function VenueWorkspacePage({
             ) : (
               <DesignSkeleton />
             ),
-            integration: integrationOpen ? (
-              <Suspense fallback={<IntegrationSkeleton />}>
-                <IntegrationTab tenantId={organization.id} role={organization.role} venue={venue} />
-              </Suspense>
-            ) : (
-              <IntegrationSkeleton />
+            settings: (
+              <div className="grid gap-8">
+                <VenueSettings venue={venue} role={organization.role} />
+                {settingsOpen ? (
+                  <Suspense fallback={<MenuSourceSkeleton />}>
+                    <MenuSourceTab
+                      tenantId={organization.id}
+                      role={organization.role}
+                      venue={venue}
+                    />
+                  </Suspense>
+                ) : (
+                  <MenuSourceSkeleton />
+                )}
+              </div>
             ),
-            settings: <VenueSettings venue={venue} role={organization.role} />,
           }}
         />
       </div>

@@ -28,10 +28,12 @@ import {
 } from '@restro/core'
 import {
   loadDraft,
+  ProvisionError,
   PublishError,
   rejectHeld,
   rollbackTo,
   setAutoPublishPaused,
+  setVenuePublishRules,
 } from '@restro/core/apply'
 import { barsyVenues, type DbPool, integrations, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
@@ -298,5 +300,35 @@ export async function previewDraft(
     }
     logError('preview_failed', error)
     return { ok: false, error: 'failed' }
+  }
+}
+
+// --- the venue's publishing rules --------------------------------------------------------------
+
+/**
+ * Saves the venue's publishing rules (the Rules card, CF-09b, D73): after a sync, publish by
+ * itself or wait for a person; new items from the till, shown or kept hidden until a manager has
+ * looked. Both are written as the venue's own, so from then on the venue no longer follows the
+ * integration's old setting. Owners and admins, like publishing itself. It applies from the next
+ * sync of this venue; nothing is published or hidden by the save.
+ */
+export async function savePublishRules(
+  scope: PublishScope,
+  input: { readonly afterSync: string; readonly newItems: string },
+): Promise<PublishActionResult> {
+  if (!scope.canPublish) return fail('not_allowed')
+  try {
+    await setVenuePublishRules(scope.pool, scope.tenantId, {
+      venueId: scope.venueId,
+      rules: { after_sync: input.afterSync as 'auto', new_items: input.newItems as 'show' },
+    })
+    // Nothing is queued by a save of the rules; `queued: true` is only "nothing went wrong".
+    return { ok: true, queued: true }
+  } catch (error) {
+    if (error instanceof ProvisionError) {
+      return fail(error.code === 'venue_missing' ? 'not_found' : 'invalid')
+    }
+    logError('save_publish_rules_failed', error)
+    return fail('failed')
   }
 }

@@ -44,7 +44,9 @@ export function TablesPanel({ view }: { view: TablesView }) {
         </EmptyHeader>
         <EmptyContent>
           <Button asChild variant="outline">
-            <Link href={`/venues/${view.venueId}?tab=integration`}>{t('empty.action')}</Link>
+            <Link href={`/venues/${view.venueId}?tab=settings#menu-source`}>
+              {t('empty.action')}
+            </Link>
           </Button>
         </EmptyContent>
       </Empty>

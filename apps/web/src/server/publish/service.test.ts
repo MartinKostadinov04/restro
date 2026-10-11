@@ -23,7 +23,14 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
-import { type PublishScope, type PublishServices, publishNow, rollback } from './service'
+import { readPublishRules } from './load'
+import {
+  type PublishScope,
+  type PublishServices,
+  publishNow,
+  rollback,
+  savePublishRules,
+} from './service'
 
 describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -135,6 +142,8 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
         'placements',
         'menus',
         'nodes',
+        'barsy_venues',
+        'integrations',
         'venues',
       ]) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
@@ -268,6 +277,97 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
       }
       // The pointer did move: the repair is the same publish-files job, queued again later.
       expect((await loadCurrentSnapshot(app, tenant, { menuId: menu.id, venueId }))?.id).toBe(v2)
+    })
+  })
+
+  describe('the venue’s publishing rules (CF-09b)', () => {
+    const rules = (mode: string, newItems: string) => ({ afterSync: mode, newItems })
+
+    it('start as what the integration says, or the defaults when it says nothing', async () => {
+      expect(await readPublishRules(app, tenant, venueId)).toEqual({
+        afterSync: 'auto',
+        newItems: 'show',
+        inherited: true,
+      })
+      // A venue linked to an integration that has its own old rule follows it, and says so.
+      const integration = newId('in')
+      await owner.query(
+        `insert into restro.integrations (id, tenant_id, kind, host, config)
+         values ($1, $2, 'barsy', 'rules.test', '{"publish":{"after_sync":"manual","new_items":"hold"}}')`,
+        [integration, tenant],
+      )
+      await owner.query(
+        `insert into restro.barsy_venues (tenant_id, integration_id, bid, name, venue_id)
+         values ($1, $2, 1, 'Main bar', $3)`,
+        [tenant, integration, venueId],
+      )
+      expect(await readPublishRules(app, tenant, venueId)).toEqual({
+        afterSync: 'manual',
+        newItems: 'hold',
+        inherited: true,
+      })
+    })
+
+    it('saves both rules as the venue’s own, which then win over the integration’s', async () => {
+      expect(await savePublishRules(scope(), rules('auto', 'show'))).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await readPublishRules(app, tenant, venueId)).toEqual({
+        afterSync: 'auto',
+        newItems: 'show',
+        inherited: false,
+      })
+      // Only this venue: the other one still follows the (unlinked) defaults.
+      expect(await readPublishRules(app, tenant, emptyVenueId)).toMatchObject({ inherited: true })
+      // The integration's rule is not rewritten.
+      const { rows } = await owner.query(
+        `select config -> 'publish' as publish from restro.integrations where tenant_id = $1`,
+        [tenant],
+      )
+      expect(rows[0]?.publish).toEqual({ after_sync: 'manual', new_items: 'hold' })
+    })
+
+    it('queues nothing and publishes nothing by itself', async () => {
+      sent.length = 0
+      await savePublishRules(scope(), rules('manual', 'hold'))
+      expect(sent).toEqual([])
+      expect(await readPublishRules(app, tenant, venueId)).toMatchObject({
+        afterSync: 'manual',
+        newItems: 'hold',
+      })
+    })
+
+    it('is for owners and admins only, and writes nothing for anyone else', async () => {
+      await savePublishRules(scope(), rules('auto', 'show'))
+      expect(await savePublishRules(scope({ canPublish: false }), rules('manual', 'hold'))).toEqual(
+        {
+          ok: false,
+          error: 'not_allowed',
+        },
+      )
+      expect(await readPublishRules(app, tenant, venueId)).toMatchObject({
+        afterSync: 'auto',
+        newItems: 'show',
+      })
+    })
+
+    it('refuses a value outside the lists and a venue of another organisation', async () => {
+      expect(await savePublishRules(scope(), rules('later', 'hold'))).toEqual({
+        ok: false,
+        error: 'invalid',
+      })
+      expect(await savePublishRules(scope(), rules('auto', 'hide'))).toEqual({
+        ok: false,
+        error: 'invalid',
+      })
+      expect(
+        await savePublishRules(scope({ tenantId: otherTenant }), rules('manual', 'hold')),
+      ).toEqual({ ok: false, error: 'not_found' })
+      expect(await readPublishRules(app, tenant, venueId)).toMatchObject({
+        afterSync: 'auto',
+        newItems: 'show',
+      })
     })
   })
 })
