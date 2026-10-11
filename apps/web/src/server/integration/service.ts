@@ -285,7 +285,6 @@ function priceSourceOf(value: unknown): PriceSource {
 function syncSettingsViewOf(
   integration: Integration | null,
   mapped: BarsyVenue | null,
-  timeZone: string,
   now: Date,
 ): SyncSettingsView {
   const settings = parseSyncSettings(integration?.config)
@@ -405,7 +404,7 @@ export async function loadIntegrationView(
       allergenOptions: detailOptions,
       defaultLocale: isLocale(config.default_locale) ? config.default_locale : DEFAULT_LOCALE,
     },
-    syncSettings: syncSettingsViewOf(integration, mapped, scope.venue.timezone, now),
+    syncSettings: syncSettingsViewOf(integration, mapped, now),
     lastSyncedAt,
     heldSync,
     gate: syncGate({
