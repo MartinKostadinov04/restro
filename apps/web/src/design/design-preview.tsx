@@ -5,12 +5,24 @@
 // (`previewSnapshot`), so it always shows the current form. The draft is asked for once when the
 // tab opens, and again when "Refresh" is pressed (the menu may have changed in the composer). A
 // venue with no menu, or nothing visible, gets the publish preview's own message.
-import type { LiveOverlay, MenuSnapshot, VenueTheme } from '@restro/core'
+//
+// "Preview guest services" (D71) draws the service screens the venue switched on in the composer
+// with demo data (`DraftFace`'s `servicesPreview`), so the owner sees them before the platform
+// supports them. It is off when the tab opens.
+import {
+  DEFAULT_GUEST_FEATURES,
+  type GuestFeatures,
+  type LiveOverlay,
+  type MenuSnapshot,
+  type VenueTheme,
+} from '@restro/core'
 import { RefreshCwIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { DraftFace, type PreviewScheme } from '@/publish/draft-face'
 import { PhoneFrame } from '@/publish/phone-frame'
 import { previewDraftAction } from '@/server/publish/actions'
@@ -48,6 +60,8 @@ export function DesignPreview({
   const [draft, setDraft] = useState<Draft>({ state: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
+  const [services, setServices] = useState(false)
+  const servicesId = useId()
 
   // Dragging a slider or typing a colour must stay smooth: the face is redrawn a moment later.
   const lookNow = useDeferredValue({ theme, face, options })
@@ -120,12 +134,29 @@ export function DesignPreview({
               </Button>
             ))}
           </fieldset>
+          <div className="grid gap-1">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={servicesId}>{t('services')}</Label>
+              <Switch
+                id={servicesId}
+                checked={services}
+                onCheckedChange={setServices}
+                data-testid="design-preview-services"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {services && !anyServiceOn(snapshot.features)
+                ? t('servicesNoneOn')
+                : t('servicesHint')}
+            </p>
+          </div>
           <PhoneFrame label={tPublish('frame')}>
             <DraftFace
               snapshot={snapshot}
               overlay={draft.overlay}
               scheme={scheme}
               faceId={lookNow.face}
+              servicesPreview={services}
             />
           </PhoneFrame>
         </>
@@ -147,4 +178,10 @@ export function DesignPreview({
       ) : null}
     </div>
   )
+}
+
+/** True when the venue switched on at least one service at the table (the draft's switches). */
+function anyServiceOn(features: GuestFeatures | undefined): boolean {
+  const { call_waiter, bill, ordering, pay } = features ?? DEFAULT_GUEST_FEATURES
+  return call_waiter.enabled || bill || ordering || pay
 }

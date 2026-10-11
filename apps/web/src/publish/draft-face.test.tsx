@@ -93,6 +93,37 @@ describe('the draft face', () => {
     await faceRoot(container, 'editorial-market')
   })
 
+  it('draws the services the venue switched on only in the services preview, with the demo host', async () => {
+    const draft: MenuSnapshot = {
+      ...snapshotWith(undefined),
+      features: {
+        filters: true,
+        call_waiter: { enabled: false, kinds: [] },
+        bill: true,
+        ordering: false,
+        pay: false,
+      },
+    }
+    const SERVICE_SLOTS = ['menu.call_waiter', 'menu.bill', 'menu.bag', 'menu.pay']
+    const serviceSlots = (container: HTMLElement) =>
+      [...container.querySelectorAll('[data-slot]')]
+        .map((node) => node.getAttribute('data-slot'))
+        .filter((slot) => slot !== null && SERVICE_SLOTS.includes(slot))
+
+    // The plain preview is the guest page: no platform behind it, so no service at all (R15).
+    const plain = renderWithIntl(<DraftFace snapshot={draft} overlay={OVERLAY} scheme="light" />)
+    await faceRoot(plain.container, 'editorial-market')
+    expect(serviceSlots(plain.container)).toEqual([])
+    plain.unmount()
+
+    // The services preview: the venue's bill, and nothing it left off.
+    const preview = renderWithIntl(
+      <DraftFace snapshot={draft} overlay={OVERLAY} scheme="light" servicesPreview />,
+    )
+    await faceRoot(preview.container, 'editorial-market')
+    expect(serviceSlots(preview.container)).toEqual(['menu.bill'])
+  })
+
   it('forces the preview’s scheme on the template', async () => {
     const { container } = renderWithIntl(
       <DraftFace snapshot={snapshotWith(undefined)} overlay={OVERLAY} scheme="dark" />,

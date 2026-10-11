@@ -1446,7 +1446,10 @@
     "preview": {
       "title": "Live preview",
       "hint": "The menu on a guest's phone with the changes you have not saved yet.",
-      "refresh": "Refresh"
+      "refresh": "Refresh",
+      "services": "Preview guest services",
+      "servicesHint": "Shows the bag, the bill, calling a waiter and paying with made-up data, the way guests will see them once they are connected. Nothing is sent.",
+      "servicesNoneOn": "No service is switched on. Switch them on in the Composer, under Guest features, then press Refresh."
     }
   }
 }
