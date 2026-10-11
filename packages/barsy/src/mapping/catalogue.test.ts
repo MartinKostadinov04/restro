@@ -83,7 +83,8 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     })
     expect(result.counts.items).toBe(58)
     expect(result.counts.placements).toBe(58) // every demo article sits in exactly one mapped section
-    expect(warningCodes(result)).toContain('article_outside_catalogue')
+    // Outside the root is counted, not warned about: a whole-catalogue read holds many (CF-16).
+    expect(warningCodes(result)).not.toContain('article_outside_catalogue')
   })
 
   it('every barsy-layer write carries its source record and the mapping version; every cited record exists', () => {
@@ -391,6 +392,9 @@ describe('articles', () => {
     expect(forSale(article(3, { is_for_sale: 1, is_for_sale_barsys: { 99: 0 } }))).toBe(true)
     expect(forSale(article(4, { is_for_sale: 0, is_for_sale_barsys: {} }))).toBe(false)
     expect(forSale(article(5, { is_for_sale: 1, is_for_sale_barsys: { [BID]: null } }))).toBe(true)
+    // As the catalogue recordings send them: text flags (CF-16).
+    expect(forSale(article(6, { is_for_sale: 1, is_for_sale_barsys: { [BID]: '0' } }))).toBe(false)
+    expect(forSale(article(7, { is_for_sale: 0, is_for_sale_barsys: { [BID]: '1' } }))).toBe(true)
   })
 
   it('maps sr_RS@latin to sr_RS, drops unknown language keys, honours the installation languages', () => {

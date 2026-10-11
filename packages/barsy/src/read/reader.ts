@@ -49,9 +49,19 @@ export interface BarsyPage {
   readonly length: number
 }
 
-export interface BarsyArticlesPage extends BarsyPage {
-  /** The venue's catalogue root category (`filters.cat_id_deep`): the pull reads that subtree only. */
-  readonly rootCatId: number
+/**
+ * What a page of `Articles_getlist` reads: one venue's menu category (`rootCatId`, sent as
+ * `filters.cat_id_deep`: that subtree only), or a whole catalogue (`catalogueId`, sent as
+ * `filters.menu_id`: "the catalogue the article belongs to", a documented filter, doc check 10-08,
+ * recorded in fixtures/demo/articles-bid*-menu72.json). Exactly one of the two (brief CF-16).
+ */
+export type BarsyArticlesScope =
+  | { readonly rootCatId: number; readonly catalogueId?: undefined }
+  | { readonly catalogueId: number; readonly rootCatId?: undefined }
+
+export type BarsyArticlesPage = BarsyPage & BarsyArticlesScope & ArticlesPageOptions
+
+interface ArticlesPageOptions {
   /**
    * Only articles changed after this venue-local time (`YYYY-MM-DD HH:mm:ss`, no offset): sent as
    * `filters.last_update = ">" + time`, as the official guide's first example does
@@ -87,6 +97,13 @@ export const ARTICLE_EXTRA_PROPERTIES = {
  * recordings do not cover the first key: confirm it on the next recording.
  */
 export const ARTICLES_ORDER_BY = { cat_weight_deep: 'asc', article_id: 'asc' } as const
+
+/**
+ * The order of a whole-catalogue read: by article id, as the doc's full pull pages and as the
+ * catalogue recordings did. `cat_weight_deep` is limited to a `cat_id_deep` subtree (doc), which a
+ * catalogue read does not name; the mapping does not depend on the order.
+ */
+export const CATALOGUE_ORDER_BY = { article_id: 'asc' } as const
 
 /** The wrappers need only `call`; a test double can be as small as that. */
 export type BarsyCaller = Pick<BarsyClient, 'call'>
@@ -132,6 +149,12 @@ function assertCatId(id: number): void {
   }
 }
 
+function assertCatalogueId(id: number): void {
+  if (!Number.isSafeInteger(id) || id < 0) {
+    throw new BarsyConfigError('barsy catalogue id must be a non-negative integer')
+  }
+}
+
 function assertArticleId(id: number | string): string {
   const text = String(id)
   if (!/^[1-9]\d{0,14}$/.test(text)) {
@@ -173,18 +196,26 @@ export function createBarsyReader(client: BarsyCaller): BarsyReader {
     // `filters` is required. The subtree filter and the order are the brief's; offset and length
     // are strings like every number the recorder sent.
     getArticlesPage: async (bid, page) => {
-      assertCatId(page.rootCatId)
+      const byCatalogue = page.catalogueId !== undefined
+      if (byCatalogue === (page.rootCatId !== undefined)) {
+        throw new BarsyConfigError('a barsy article page reads a category or a catalogue, not both')
+      }
+      if (page.catalogueId !== undefined) assertCatalogueId(page.catalogueId)
+      if (page.rootCatId !== undefined) assertCatId(page.rootCatId)
       assertPage(page)
       if (page.lastUpdateAfter !== undefined && !LAST_UPDATE_PATTERN.test(page.lastUpdateAfter)) {
         throw new BarsyConfigError('barsy lastUpdateAfter must look like "YYYY-MM-DD HH:mm:ss"')
       }
-      const filters: Record<string, string> = { cat_id_deep: String(page.rootCatId) }
+      const filters: Record<string, string> =
+        page.catalogueId !== undefined
+          ? { menu_id: String(page.catalogueId) }
+          : { cat_id_deep: String(page.rootCatId) }
       if (page.lastUpdateAfter !== undefined) filters.last_update = `>${page.lastUpdateAfter}`
       return read(
         'Articles_getlist',
         {
           filters,
-          order_by: ARTICLES_ORDER_BY,
+          order_by: byCatalogue ? CATALOGUE_ORDER_BY : ARTICLES_ORDER_BY,
           extra_properties: ARTICLE_EXTRA_PROPERTIES,
           offset: String(page.offset),
           length: String(page.length),

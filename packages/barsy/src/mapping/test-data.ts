@@ -35,6 +35,9 @@ export const demoDetailsTree = articleDetailsTreeSchema.parse(demo('article-deta
 export const demoLanguages = languagesSchema.parse(demo('languages.json'))
 export const demoPlaces = placesSchema.parse(demo('places-bid10.json'))
 export const demoModificators = modificatorsSchema.parse(demo('modificators-bid10.json'))
+/** Catalogue 72 ("Burgers") read whole in two venues' contexts (bid 10 and bid 102; T71, CF-16). */
+export const catalogue72Bid10 = articlesSchema.parse(demo('articles-bid10-menu72.json'))
+export const catalogue72Bid102 = articlesSchema.parse(demo('articles-bid102-menu72.json'))
 
 export const INTEGRATION_ID = deriveId('in', 'test-integration')
 export const VENUE_ID = deriveId('vn', 'test-venue')
@@ -144,4 +147,45 @@ export function group(
     })),
     ...overrides,
   }
+}
+
+/** The root of the synthetic catalogue-72 tree (its whole menu), and its two halves. */
+export const C72_ROOT = 1130
+export const C72_FOOD = 1200
+export const C72_DRINKS = 1201
+
+/**
+ * A category tree for catalogue 72. Not recorded (only bid 10's catalogue-1 tree is): built from
+ * the categories the catalogue-72 recordings name, split into two halves so two venues can pick
+ * different roots. Every category has a public title.
+ */
+export function catalogue72Tree(): CategoryTreeNode {
+  const titled = (catId: number, children: CategoryTreeNode[] = []) =>
+    node(catId, children, {
+      cat_name_public: `Category ${catId}`,
+      cat_name_public_ml: { bg_BG: `Категория ${catId}`, en_US: `Category ${catId}` },
+    })
+  const food = titled(C72_FOOD, [
+    titled(1131),
+    titled(1133),
+    titled(1135),
+    titled(1137, [titled(1139)]),
+    titled(1145),
+    titled(1146),
+    titled(1148),
+    titled(1149, [titled(1150)]),
+    titled(1151),
+    titled(1152),
+    titled(1153),
+  ])
+  const drinks = titled(C72_DRINKS, [
+    titled(1140),
+    titled(1142),
+    titled(1143),
+    titled(1144),
+    titled(1154),
+    titled(1155),
+    titled(1156),
+  ])
+  return rootOf(titled(C72_ROOT, [food, drinks]))
 }
