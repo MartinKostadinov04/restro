@@ -7,19 +7,19 @@
 // downloads the one template its venue chose, not all of them. The manifests are imported through
 // each face's `./manifest` entry, which pulls in the manifest and nothing else.
 //
-// What is known about a template without loading it lives in `catalog.ts`; this file adds `load()`.
-// Only client code may import this file (see the catalogue for why): server code reads the
-// catalogue.
+// What is known about a template without loading it lives in `manifests.ts`; this file adds `load()`.
+// Only client code may import this file (see manifests.ts for why): server code reads
+// manifests.ts.
 
 import type { FaceHostProps } from '@restro/shell'
 import type { ComponentType } from 'react'
 
-import { CATALOG, type CatalogEntry, DEFAULT_FACE_ID } from './catalog'
+import { DEFAULT_FACE_ID, MANIFESTS, type ManifestEntry } from './manifests'
 
-export { DEFAULT_FACE_ID, type FaceText } from './catalog'
+export { DEFAULT_FACE_ID, type FaceText } from './manifests'
 
 /** One template the app can draw. */
-export interface FaceEntry extends CatalogEntry {
+export interface FaceEntry extends ManifestEntry {
   /** Imports the face's components (once; the browser keeps the result). */
   readonly load: () => Promise<ComponentType<FaceHostProps>>
 }
@@ -30,7 +30,7 @@ const LOADERS: Readonly<Record<string, FaceEntry['load']>> = {
   'qr-phone': async () => (await import('@restro/qr-phone')).QrPhoneFace,
 }
 
-export const FACES: readonly FaceEntry[] = CATALOG.map((entry) => {
+export const FACES: readonly FaceEntry[] = MANIFESTS.map((entry) => {
   const load = LOADERS[entry.id]
   if (load === undefined)
     throw new Error(`the template "${entry.id}" has no loader in the registry`)

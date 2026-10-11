@@ -21,9 +21,8 @@ import {
 import type { Venue } from '@restro/db'
 import { resolveOptions } from '@restro/shell'
 import { getLocale } from 'next-intl/server'
-
+import { manifestOf } from '@/faces/manifests'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
-import { featureManifestOf } from '@/server/composer/feature-face'
 import { getPool } from '@/server/db'
 import { getVenueMenuId } from '@/server/menus'
 import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
@@ -80,7 +79,7 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
   // face's defaults, for the options the face declares with group `feature` only.
   const guestFeatures = readGuestFeatures(venue.settings)
   const presentation = readPresentation(venue.settings)
-  const manifest = featureManifestOf(presentation?.face)
+  const manifest = manifestOf(presentation?.face)
   const featureValues = resolveOptions(manifest, presentation?.options)
   const declared = Object.entries(manifest.options).flatMap(([key, option]) => {
     if (option.group !== 'feature') return []

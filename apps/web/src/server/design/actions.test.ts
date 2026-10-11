@@ -6,6 +6,7 @@ import { provisionTenant, provisionVenue, setVenuePresentation } from '@restro/c
 import type pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { saveFeatureOptionsAction } from '../composer/guest-features-actions'
 import { getPool } from '../db'
 import { hasDatabase, openOwnerPool, testSlug, useTestServerEnvironment } from '../test-database'
 import { chooseTemplateAction, saveLookAction } from './actions'
@@ -311,6 +312,38 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       expect(result).toMatchObject({
         ok: true,
         presentation: { options: { layout: 'two', featureFirstSection: true } },
+      })
+    })
+
+    it('and the composer panel’s feature options never drop each other’s keys', async () => {
+      // Look first, then the composer panel's switch, then the look again: each write keeps the
+      // other's keys (SH-05b's saveFeatureOptionsAction is the mirror image of this action).
+      await chooseTemplateAction({ venueId, face: 'editorial-market', lookOptions: look })
+      expect(await saveFeatureOptionsAction({ venueId, options: { layoutSwitch: false } })).toEqual(
+        { ok: true },
+      )
+      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
+        layout: 'one',
+        featureFirstSection: false,
+        layoutSwitch: false,
+      })
+      await chooseTemplateAction({
+        venueId,
+        face: 'editorial-market',
+        lookOptions: { layout: 'list', featureFirstSection: true },
+      })
+      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
+        layout: 'list',
+        featureFirstSection: true,
+        layoutSwitch: false,
+      })
+      expect(await saveFeatureOptionsAction({ venueId, options: { layoutSwitch: true } })).toEqual({
+        ok: true,
+      })
+      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
+        layout: 'list',
+        featureFirstSection: true,
+        layoutSwitch: true,
       })
     })
 

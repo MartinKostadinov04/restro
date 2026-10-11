@@ -8,7 +8,7 @@
 import type { Presentation } from '@restro/core'
 import { type FaceManifest, resolveOptions } from '@restro/shell'
 
-import { type CatalogEntry, visibleCatalog } from '@/faces/catalog'
+import { type ManifestEntry, visibleManifests } from '@/faces/manifests'
 
 /** The values of a template's options. */
 export type OptionValues = Readonly<Record<string, string | boolean>>
@@ -67,6 +67,6 @@ export function mergeOptions(
 }
 
 /** The visible template with this name, or undefined (an unknown or hidden one is refused). */
-export function chooseableFace(face: string): CatalogEntry | undefined {
-  return visibleCatalog().find((entry) => entry.id === face)
+export function chooseableFace(face: string): ManifestEntry | undefined {
+  return visibleManifests().find((entry) => entry.id === face)
 }
