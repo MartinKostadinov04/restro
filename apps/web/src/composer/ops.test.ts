@@ -246,7 +246,7 @@ describe('createItemOps', () => {
 })
 
 describe('hiding and showing', () => {
-  it('hides an item with a manual-layer false, never in the barsy layer', () => {
+  it('hides an item with a manual-layer false, never in the till layer', () => {
     const ops = asManualSet(setItemHiddenOps({ itemId: item, hidden: true, status: 'active' }))
     expect(ops).toEqual([
       {
@@ -271,7 +271,7 @@ describe('hiding and showing', () => {
         scope: 'master',
       },
     ])
-    for (const op of ops) expect(JSON.stringify(op)).not.toContain('barsy')
+    for (const op of ops) expect(JSON.stringify(op)).not.toContain('till')
   })
 
   it('also makes a held-back item active when it is shown', () => {

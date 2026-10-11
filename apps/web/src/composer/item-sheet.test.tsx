@@ -120,14 +120,14 @@ describe('ItemSheet', () => {
             value: ['gluten', 'milk'],
             provenance: 'overridden',
             canRevert: true,
-            barsyValue: ['gluten'],
+            tillValue: ['gluten'],
           },
         },
       }),
     )
     A.revertItemFieldAction.mockResolvedValue({
       ok: true,
-      data: sheetData({ fields: { allergens: { value: ['gluten'], provenance: 'barsy' } } }),
+      data: sheetData({ fields: { allergens: { value: ['gluten'], provenance: 'till' } } }),
     })
     renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" />)
     await screen.findByTestId('item-sheet-title')

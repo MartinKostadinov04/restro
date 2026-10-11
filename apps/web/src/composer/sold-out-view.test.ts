@@ -38,7 +38,7 @@ const row = (
   scope,
   value,
   valueHash: HASH,
-  source: layer === 'barsy' ? `barsy:${integration}` : 'manual',
+  source: layer === 'till' ? `till:${integration}` : 'manual',
   observedAt: '2026-10-09T10:00:00.000Z',
   basis: null,
   valid: true,
@@ -64,11 +64,11 @@ const ITEM_IDS = [
 ]
 
 const barsyItem = (id: NodeId, forSale: boolean): Row[] => [
-  row(id, 'name', 'barsy', { bg_BG: 'Артикул', en_US: 'Item' }, 'master'),
-  row(id, 'price', 'barsy', { amount_minor: 900, currency: 'EUR' }, `venue:${venueId}`),
-  row(id, 'for_sale', 'barsy', forSale, `venue:${venueId}`),
-  row(id, 'visible', 'barsy', true, 'master'),
-  row(id, 'allergens', 'barsy', [], 'master'),
+  row(id, 'name', 'till', { bg_BG: 'Артикул', en_US: 'Item' }, 'master'),
+  row(id, 'price', 'till', { amount_minor: 900, currency: 'EUR' }, `venue:${venueId}`),
+  row(id, 'for_sale', 'till', forSale, `venue:${venueId}`),
+  row(id, 'visible', 'till', true, 'master'),
+  row(id, 'allergens', 'till', [], 'master'),
 ]
 
 const document: MenuDocument = {
@@ -119,7 +119,7 @@ const document: MenuDocument = {
   ],
   links: ITEM_IDS.filter((id) => id !== ids.manualOff).map((nodeId) => ({
     nodeId,
-    source: `barsy:${integration}` as const,
+    source: `till:${integration}` as const,
     externalType: 'article',
     state: 'active' as const,
   })),
@@ -155,8 +155,8 @@ describe('the sale state in the composer view', () => {
   })
 
   it("reads barsy's flag as barsy's, even with a mark of tonight under it", () => {
-    expect(sale(ids.barsyOff)).toEqual({ soldOutTonight: false, offSale: 'barsy' })
-    expect(sale(ids.barsyOffAndMarked)).toEqual({ soldOutTonight: false, offSale: 'barsy' })
+    expect(sale(ids.barsyOff)).toEqual({ soldOutTonight: false, offSale: 'till' })
+    expect(sale(ids.barsyOffAndMarked)).toEqual({ soldOutTonight: false, offSale: 'till' })
   })
 
   it('reads any other layer\'s flag as "other", which is not ours to undo either', () => {

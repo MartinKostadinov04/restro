@@ -13,7 +13,9 @@ import {
   ITEM_SAMPLE_PROVENANCE,
   ITEM_SAMPLE_VALUES,
   itemDefinitions,
+  SAMPLE_TILL_LABEL,
 } from './samples'
+import { TillLabelProvider } from './till-label'
 
 const ENABLED_LOCALES = ['bg_BG', 'en_US'] as const
 
@@ -28,56 +30,58 @@ export function ItemFieldsPreview() {
   const byKey = new Map(definitions.map((definition) => [definition.key, definition]))
 
   return (
-    <FieldEnvironmentProvider enabledLocales={ENABLED_LOCALES}>
-      <div className="mx-auto grid max-w-3xl gap-8">
-        <Card className="gap-0 py-0" data-testid="item-sheet-preview">
-          <CardHeader className="border-b py-4">
-            <CardTitle>{t('item.title')}</CardTitle>
-            <CardDescription>{t('item.description')}</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0 py-2">
-            {/* One <dl> per group, with the group label outside it, so every dl holds only
+    <TillLabelProvider label={SAMPLE_TILL_LABEL}>
+      <FieldEnvironmentProvider enabledLocales={ENABLED_LOCALES}>
+        <div className="mx-auto grid max-w-3xl gap-8">
+          <Card className="gap-0 py-0" data-testid="item-sheet-preview">
+            <CardHeader className="border-b py-4">
+              <CardTitle>{t('item.title')}</CardTitle>
+              <CardDescription>{t('item.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-0 py-2">
+              {/* One <dl> per group, with the group label outside it, so every dl holds only
                 row wrappers around dt/dd pairs (valid content model for assistive tech). */}
-            {ITEM_GROUPS.map((group) => (
-              <section key={group.id} aria-label={t(`groups.${group.id}`)}>
-                <FieldGroupDivider>{t(`groups.${group.id}`)}</FieldGroupDivider>
-                <dl>
-                  {group.keys.map((key) => {
-                    const definition = byKey.get(key)
-                    if (!definition) return null
-                    return (
-                      <EditableFieldRow
-                        key={key}
-                        definition={definition}
-                        initialValue={ITEM_SAMPLE_VALUES[key]}
-                        provenance={ITEM_SAMPLE_PROVENANCE[key]}
-                      />
-                    )
-                  })}
-                </dl>
-              </section>
-            ))}
-          </CardContent>
-        </Card>
-        <Card className="h-fit gap-0 py-0" data-testid="extra-types-preview">
-          <CardHeader className="border-b py-4">
-            <CardTitle>{t('extra.title')}</CardTitle>
-            <CardDescription>{t('extra.description')}</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0 py-2">
-            <dl>
-              {EXTRA_TYPE_SAMPLES.map(({ definition, value }) => (
-                <EditableFieldRow
-                  key={definition.key}
-                  definition={definition}
-                  initialValue={value}
-                  provenance="owned"
-                />
+              {ITEM_GROUPS.map((group) => (
+                <section key={group.id} aria-label={t(`groups.${group.id}`)}>
+                  <FieldGroupDivider>{t(`groups.${group.id}`)}</FieldGroupDivider>
+                  <dl>
+                    {group.keys.map((key) => {
+                      const definition = byKey.get(key)
+                      if (!definition) return null
+                      return (
+                        <EditableFieldRow
+                          key={key}
+                          definition={definition}
+                          initialValue={ITEM_SAMPLE_VALUES[key]}
+                          provenance={ITEM_SAMPLE_PROVENANCE[key]}
+                        />
+                      )
+                    })}
+                  </dl>
+                </section>
               ))}
-            </dl>
-          </CardContent>
-        </Card>
-      </div>
-    </FieldEnvironmentProvider>
+            </CardContent>
+          </Card>
+          <Card className="h-fit gap-0 py-0" data-testid="extra-types-preview">
+            <CardHeader className="border-b py-4">
+              <CardTitle>{t('extra.title')}</CardTitle>
+              <CardDescription>{t('extra.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="px-0 py-2">
+              <dl>
+                {EXTRA_TYPE_SAMPLES.map(({ definition, value }) => (
+                  <EditableFieldRow
+                    key={definition.key}
+                    definition={definition}
+                    initialValue={value}
+                    provenance="owned"
+                  />
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+        </div>
+      </FieldEnvironmentProvider>
+    </TillLabelProvider>
   )
 }

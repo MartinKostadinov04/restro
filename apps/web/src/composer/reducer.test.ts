@@ -153,7 +153,7 @@ describe('reduceView: hiding and creating', () => {
         ...view.items,
         [ids.stout]: {
           ...(view.items[ids.stout] as object),
-          hiddenBy: 'new_from_barsy' as const,
+          hiddenBy: 'new_from_till' as const,
           shown: false,
         },
       },
@@ -173,7 +173,7 @@ describe('reduceView: hiding and creating', () => {
         ...view.items,
         [ids.stout]: {
           ...(view.items[ids.stout] as object),
-          hiddenBy: 'barsy' as const,
+          hiddenBy: 'till' as const,
           shown: false,
         },
       },

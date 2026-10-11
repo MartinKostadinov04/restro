@@ -206,7 +206,7 @@ describe('the Media tab with a photo', () => {
   })
 
   it('says a barsy photo is replaced by an upload', () => {
-    setup({ ...image, provenance: 'barsy', canRemove: false })
+    setup({ ...image, provenance: 'till', canRemove: false })
     expect(screen.getByText(/comes from barsy/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Remove photo' })).toBeNull()
     expect(screen.getByText('Replace the photo or drop a new one here')).toBeTruthy()

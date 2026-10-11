@@ -38,10 +38,10 @@ export interface FieldUi<K extends FieldType> {
 export type FieldRegistry = { readonly [K in FieldType]: FieldUi<K> }
 
 /** Where a value came from, shown on every row (CLAUDE.md, Platform reference "provenance"). */
-export const PROVENANCES = ['barsy', 'owned', 'overridden', 'stale', 'locked'] as const
+export const PROVENANCES = ['till', 'owned', 'overridden', 'stale', 'locked'] as const
 
 /**
- * `barsy` = From barsy, `owned` = Owned here, `overridden` = Overridden, `stale` = Stale,
- * `locked` = barsy's value, not changeable here ("Change this in barsy").
+ * `till` = From {source} (the till's name), `owned` = Owned here, `overridden` = Overridden,
+ * `stale` = Stale, `locked` = the till's value, not changeable here ("Change this in {source}").
  */
 export type Provenance = (typeof PROVENANCES)[number]

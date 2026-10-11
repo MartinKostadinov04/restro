@@ -182,7 +182,7 @@ export async function moveSectionAction(input: unknown): Promise<ActionResult> {
   return perform(venueId, ({ menuId }) => moveSectionOps({ ...move, menuId }))
 }
 
-/** Creates a curated section (no barsy counterpart), titled in the venue's languages. */
+/** Creates a curated section (no till counterpart), titled in the venue's languages. */
 export async function createSectionAction(input: unknown): Promise<ActionResult> {
   const parsed = CreateSectionInput.safeParse(input)
   if (!parsed.success) return INVALID
@@ -249,7 +249,7 @@ export async function createItemAction(input: unknown): Promise<ActionResult> {
 }
 
 /**
- * Hides or shows an item. Showing clears the builder's own hide only: an item that barsy hides
+ * Hides or shows an item. Showing clears the builder's own hide only: an item that the till hides
  * stays hidden whatever is sent here (rule 5), so a forged request cannot un-hide it.
  */
 export async function setItemHiddenAction(input: unknown): Promise<ActionResult> {

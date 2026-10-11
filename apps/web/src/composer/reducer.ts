@@ -155,8 +155,8 @@ function moveSection(view: ComposerView, op: Extract<ComposerOp, { type: 'moveSe
 function setItemHidden(view: ComposerView, op: Extract<ComposerOp, { type: 'setItemHidden' }>) {
   const item = view.items[op.itemId]
   if (!item) return view
-  // barsy's hide is not ours to change (rule 5): the base view keeps it.
-  if (item.hiddenBy === 'barsy' || item.hiddenBy === 'other') return view
+  // The till's hide is not ours to change (rule 5): the base view keeps it.
+  if (item.hiddenBy === 'till' || item.hiddenBy === 'other') return view
   const next: ComposerItem = op.hidden
     ? { ...item, hiddenBy: 'builder', shown: false }
     : {
@@ -259,7 +259,7 @@ function setSoldOut(view: ComposerView, op: Extract<ComposerOp, { type: 'setSold
   const items: Record<NodeId, ComposerItem> = { ...view.items }
   for (const id of op.itemIds) {
     const item = items[id]
-    // An item barsy (or another layer) has off sale is not ours to change: the base view keeps it.
+    // An item the till (or another layer) has off sale is not ours to change: the base view keeps it.
     if (!item || item.offSale !== null) continue
     items[id] = { ...item, soldOutTonight: op.soldOut }
   }

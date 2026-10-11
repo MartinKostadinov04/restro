@@ -145,7 +145,7 @@ test('opens on the Composer tab with the demo menu: sections, items, badges', as
 test('the item barsy hides cannot be shown from the composer', async () => {
   await openSection('Бира')
   const row = itemRow('Гинес 440 мл')
-  await expect(row).toHaveAttribute('data-hidden-by', 'barsy')
+  await expect(row).toHaveAttribute('data-hidden-by', 'till')
   await expect(row.getByTestId('hidden-badge')).toHaveText('Скрито от barsy')
   await expect(row.getByTestId('item-visible')).toBeDisabled()
   await expect(row).toContainText('Скрито в barsy. Показвайте го там.')
@@ -153,7 +153,7 @@ test('the item barsy hides cannot be shown from the composer', async () => {
   await settle()
   await page.reload()
   await openSection('Бира')
-  await expect(itemRow('Гинес 440 мл')).toHaveAttribute('data-hidden-by', 'barsy')
+  await expect(itemRow('Гинес 440 мл')).toHaveAttribute('data-hidden-by', 'till')
 })
 
 test('hides an item and shows it again; the choice survives a reload', async () => {
