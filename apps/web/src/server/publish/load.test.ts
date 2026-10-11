@@ -218,6 +218,15 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(before.draft.staleOverrides).toEqual([])
     })
 
+    it('has nothing to serve yet, so the address is never "switched off" (D76)', async () => {
+      const unpublished = await loadPublishView(viewScope(), {
+        ...deps,
+        addressServed: async () => false,
+      })
+      expect(unpublished.live).toBeNull()
+      expect(unpublished.addressServed).toBe(true)
+    })
+
     it('says "no menu" for a venue without one', async () => {
       const bare = (await provisionVenue(app, tenant, { name: 'Bare', slug: testSlug('bare') })).id
       const result = await view({
@@ -255,6 +264,28 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       const [only] = after.history.entries
       expect(only && isLiveEntry(only, after.live?.version ?? null)).toBe(true)
       expect(only && isReturnable(only, after.live?.version ?? null)).toBe(false)
+    })
+
+    it('says the address is switched off when the venue index is not in the files (D76)', async () => {
+      const served = await loadPublishView(viewScope(), {
+        ...deps,
+        addressServed: async () => true,
+      })
+      expect(served.addressServed).toBe(true)
+      const off = await loadPublishView(viewScope(), { ...deps, addressServed: async () => false })
+      expect(off.addressServed).toBe(false)
+      // What the check is asked: this venue's id and public code.
+      const asked: unknown[] = []
+      await loadPublishView(viewScope(), {
+        ...deps,
+        addressServed: async (venue) => {
+          asked.push(venue)
+          return true
+        },
+      })
+      expect(asked).toEqual([
+        { id: venueId, slug: 'main', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      ])
     })
 
     it('counts a price change as one change waiting, and a publish clears it', async () => {

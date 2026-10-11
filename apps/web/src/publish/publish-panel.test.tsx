@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublishRunView } from '@/server/publish/view'
 import { renderWithIntl } from '@/test-utils'
 import { PublishPanel } from './publish-panel'
-import { publishView } from './test-view'
+import { NO_CHANGES, publishView, readyDraft } from './test-view'
 import { outcomeOfRun, SLOW_AFTER_MS } from './use-publisher'
 
 const actions = vi.hoisted(() => ({
@@ -297,8 +297,31 @@ describe('who sees what', () => {
     expect(screen.queryByTestId('publish-panel')).toBeNull()
   })
 
+  it('says the address is switched off, and keeps Publish on, for a venue that was deleted and restored (D76)', () => {
+    renderWithIntl(
+      <PublishPanel view={publishView({ addressServed: false, draft: readyDraft(NO_CHANGES) })} />,
+    )
+    expect(screen.getByTestId('address-off-banner').textContent).toContain(
+      'The menu address is switched off. Publish to switch it on.',
+    )
+    expect(screen.getByTestId('address-off-banner').textContent).toContain('not available')
+    for (const button of screen.getAllByRole('button', { name: 'Publish' })) {
+      expect((button as HTMLButtonElement).disabled).toBe(false)
+    }
+  })
+
+  it('shows no banner while the address is out', () => {
+    renderWithIntl(<PublishPanel view={publishView()} />)
+    expect(screen.queryByTestId('address-off-banner')).toBeNull()
+  })
+
   it('has the same words in Bulgarian', () => {
-    renderWithIntl(<PublishPanel view={publishView({ paused: true })} />, { locale: 'bg' })
+    renderWithIntl(<PublishPanel view={publishView({ paused: true, addressServed: false })} />, {
+      locale: 'bg',
+    })
+    expect(screen.getByTestId('address-off-banner').textContent).toContain(
+      'Адресът на менюто е изключен',
+    )
     expect(screen.getByRole('heading', { name: /Автоматичното публикуване е спряно/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Публикувай' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Преглед' })).toBeTruthy()

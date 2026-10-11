@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { screen, within } from '@testing-library/react'
+import { cleanup, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -144,6 +144,19 @@ describe('the Changes card', () => {
     expect((screen.getByRole('button', { name: 'Publish' }) as HTMLButtonElement).disabled).toBe(
       false,
     )
+  })
+
+  it('stays on when the menu is up to date but its address is switched off: a publish writes it again (D76)', () => {
+    render(publishView({ draft: readyDraft(NO_CHANGES), addressServed: false }))
+    expect((screen.getByRole('button', { name: 'Publish' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+    // And it is off as before while the address is out.
+    cleanup()
+    render(publishView({ draft: readyDraft(NO_CHANGES), addressServed: true }))
+    expect(
+      (screen.getByRole('button', { name: 'Nothing to publish' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 
   it('lists stale overrides (V12) with a link to the item in the composer', () => {

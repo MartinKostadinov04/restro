@@ -191,6 +191,14 @@ export interface PublishView {
   readonly held: HeldView | null
   /** Automatic publishing is paused after a return to an older version. */
   readonly paused: boolean
+  /**
+   * The guest address is out: the venue index `v/<code>.json` is in the published files and names
+   * this venue. False only when something is published and that file is missing, which is how a
+   * deleted and restored venue comes back (D76): its address is withdrawn until the owner
+   * publishes. Then Publish stays on even when the menu is the same as the live one. True when
+   * nothing is published yet, and when the files cannot be read (nothing then changes).
+   */
+  readonly addressServed: boolean
   /** The venue's publishing rules (the Rules card). */
   readonly rules: PublishRulesView
   readonly history: HistoryPage

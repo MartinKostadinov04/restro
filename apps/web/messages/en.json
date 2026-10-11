@@ -907,6 +907,10 @@
       "outdatedText": "The menu has changed since this publish was held, so it can no longer be approved. Reject it, or publish the menu as it is now.",
       "publishNow": "Publish the menu as it is now"
     },
+    "addressOff": {
+      "title": "The menu address is switched off. Publish to switch it on.",
+      "text": "Guests who open the menu or scan a table code see that the menu is not available. This is how a venue comes back after it was deleted and restored."
+    },
     "paused": {
       "title": "Automatic publishing is paused because you returned to an older version. Publish to resume.",
       "text": "Until then, changes from barsy wait in the draft and guests keep seeing the version above."

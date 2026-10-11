@@ -210,7 +210,7 @@ describe('the guest menu page', () => {
     serve(new Map())
     visit('', ['bg-BG'], `nowhere-${'0'.repeat(12)}`)
     render(<GuestMenu venue={`nowhere-${'0'.repeat(12)}`} />)
-    expect(await screen.findByText('Менюто не е намерено')).toBeTruthy()
+    expect(await screen.findByText('Това меню не е налично')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
@@ -219,7 +219,7 @@ describe('the guest menu page', () => {
     // The older address, a slug alone: no longer a way in.
     visit('', ['bg-BG'], SLUG)
     render(<GuestMenu venue={SLUG} />)
-    expect(await screen.findByText('Менюто не е намерено')).toBeTruthy()
+    expect(await screen.findByText('Това меню не е налично')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
     expect(requested).toEqual([])
   })
@@ -229,7 +229,7 @@ describe('the guest menu page', () => {
     const param = `${SLUG}-${CODE.toUpperCase()}`
     visit('', ['bg-BG'], param)
     render(<GuestMenu venue={param} />)
-    expect(await screen.findByText('Менюто не е намерено')).toBeTruthy()
+    expect(await screen.findByText('Това меню не е налично')).toBeTruthy()
     expect(requested).toEqual([])
   })
 
@@ -363,7 +363,7 @@ describe('the guest menu page', () => {
       const unknown = `old-name-${CODE}`
       visit('', ['bg-BG'], unknown)
       render(<GuestMenu venue={unknown} />)
-      expect(await screen.findByText('Менюто не е намерено')).toBeTruthy()
+      expect(await screen.findByText('Това меню не е налично')).toBeTruthy()
       expect(window.location.pathname).toBe(`/m/${unknown}`)
     })
   })
