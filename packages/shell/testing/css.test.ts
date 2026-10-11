@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { assertThemeOnlyCss, NAMED_COLOURS } from './css'
+import { assertFaceScopedCss, assertThemeOnlyCss, NAMED_COLOURS } from './css'
 
 describe('assertThemeOnlyCss: what it lets through', () => {
   it('accepts a stylesheet that takes every colour from variables', () => {
@@ -177,5 +177,36 @@ describe('the list of named colours', () => {
     for (const name of NAMED_COLOURS) {
       expect(assertThemeOnlyCss(`.a { color: ${name}; }`), name).toEqual([name])
     }
+  })
+})
+
+describe('assertFaceScopedCss: a face styles only inside its own root', () => {
+  it('accepts rules on the face root and inside it, at-rules and keyframes', () => {
+    const css = `
+      .rm { overflow-x: clip; }
+      .rm-body, .rm .body-copy, [data-slot="item.body"] { margin: 0; }
+      @media (prefers-reduced-motion: no-preference) { .rm-sheet { animation: rm-up .2s; } }
+      @keyframes rm-up { from { opacity: 0; } to { opacity: 1; } }
+      /* html { overflow: hidden } is only a comment */
+      .rm::after { content: "body"; }
+    `
+    expect(assertFaceScopedCss(css)).toEqual([])
+  })
+
+  it('flags html, body and :root rules, also inside @media and in a selector list', () => {
+    const css = `
+      html:has(.rm), body:has(.rm) { overflow-x: hidden; }
+      html:has(.rm)::-webkit-scrollbar { display: none; }
+      @media (prefers-reduced-motion: no-preference) { html:has(.rq-root) { scroll-behavior: smooth; } }
+      :root { --x: 1px; }
+      .rm, body > .rm { color: var(--rm-text); }
+    `
+    expect(assertFaceScopedCss(css)).toEqual([
+      'html:has(.rm), body:has(.rm)',
+      'html:has(.rm)::-webkit-scrollbar',
+      'html:has(.rq-root)',
+      ':root',
+      '.rm, body > .rm',
+    ])
   })
 })

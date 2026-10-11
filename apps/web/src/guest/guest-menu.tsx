@@ -276,6 +276,16 @@ export function GuestMenu({ venue }: { readonly venue: string }) {
     setSearch(url.search)
   }, [])
 
+  // The page around the template is ours (globals.css, `html[data-guest-page]`): templates never
+  // style html or body themselves, so the admin's previews of them stay untouched.
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.guestPage = ''
+    return () => {
+      delete root.dataset.guestPage
+    }
+  }, [])
+
   const shownLocale = view?.locale ?? locale
   useEffect(() => {
     const root = document.documentElement

@@ -94,6 +94,16 @@ describe('the guest menu page', () => {
     expect(requested.some((url) => url.includes('/api/') || url.includes('/venues'))).toBe(false)
   })
 
+  it('marks the page as the guest page while it is on screen (the page rules are ours, not the template’s)', async () => {
+    serve(published())
+    visit('', ['en-GB'])
+    const { unmount } = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Negroni')).toBeTruthy()
+    expect(document.documentElement.dataset.guestPage).toBe('')
+    unmount()
+    expect(document.documentElement.dataset.guestPage).toBeUndefined()
+  })
+
   it('takes the language from ?lang= over the browser, and switching it updates the address', async () => {
     serve(published())
     visit('?lang=bg', ['en-US'])
