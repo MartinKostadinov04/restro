@@ -15,6 +15,8 @@ import { serveCdn } from './cdn'
 import { cdnSource, inactivePageHtml, tableTokenResponse } from './table-token'
 
 const TOKEN = 'tb_0123456789ABCDEFGHIJKL'
+const CODE = 'k3x9p2m7qa1z'
+const FILE = { venue_public_id: CODE, venue_slug: 'demo-club', table_label: '12' }
 
 describe('/t/<token> (no database)', () => {
   let root: string
@@ -28,12 +30,28 @@ describe('/t/<token> (no database)', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('redirects a known code to the venue menu with the token (302, never cached)', async () => {
-    await writeTableTokenFile(store, TOKEN, { venue_slug: 'demo-club', table_label: '12' })
+  it('redirects a known code to the canonical menu path with the token (302, never cached)', async () => {
+    await writeTableTokenFile(store, TOKEN, FILE)
     const response = await tableTokenResponse(TOKEN, store)
     expect(response.status).toBe(302)
-    expect(response.headers.get('location')).toBe(`/m/demo-club?t=${TOKEN}`)
+    expect(response.headers.get('location')).toBe(`/m/demo-club-${CODE}?t=${TOKEN}`)
     expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  it('redirects with the slug the file holds; a renamed venue is corrected by the guest page', async () => {
+    await writeTableTokenFile(store, TOKEN, { ...FILE, venue_slug: 'old-name' })
+    const response = await tableTokenResponse(TOKEN, store)
+    expect(response.headers.get('location')).toBe(`/m/old-name-${CODE}?t=${TOKEN}`)
+  })
+
+  it('treats a token file of the older shape (no public code) as no file', async () => {
+    const file = tableTokenPath(TOKEN)
+    await store.put(
+      file,
+      new TextEncoder().encode(JSON.stringify({ venue_slug: 'demo-club', table_label: '12' })),
+      publishPutOptions(file),
+    )
+    expect((await tableTokenResponse(TOKEN, store)).status).toBe(404)
   })
 
   it('shows the "not active" page for a code nobody knows, in both languages, with no venue data', async () => {
@@ -90,12 +108,12 @@ describe('/t/<token> (no database)', () => {
     const fetchFile = (async (url: string) => {
       calls.push(url)
       return url.endsWith(`${TOKEN}.json`)
-        ? Response.json({ venue_slug: 'demo-club', table_label: '7' })
+        ? Response.json({ ...FILE, table_label: '7' })
         : new Response(null, { status: 404 })
     }) as unknown as typeof fetch
     const source = cdnSource('https://cdn.example.test/', fetchFile)
     expect((await tableTokenResponse(TOKEN, source)).headers.get('location')).toBe(
-      `/m/demo-club?t=${TOKEN}`,
+      `/m/demo-club-${CODE}?t=${TOKEN}`,
     )
     expect(calls).toEqual([`https://cdn.example.test/t/${TOKEN}.json`])
     expect((await tableTokenResponse('tb_ZZZZZZZZZZZZZZZZZZZZZZ', source)).status).toBe(404)
@@ -107,7 +125,7 @@ describe('/t/<token> (no database)', () => {
   })
 })
 
-describe('the slug index and token files are served at /cdn like the others', () => {
+describe('the venue index and token files are served at /cdn like the others', () => {
   let root: string
   let store: LocalPublishStore
 
@@ -119,11 +137,11 @@ describe('the slug index and token files are served at /cdn like the others', ()
     await rm(root, { recursive: true, force: true })
   })
 
-  it('serves v/<slug>.json and t/<token>.json for 30 seconds as json', async () => {
-    const index = { venue_id: newId('vn'), menu_id: newId('nd') }
-    const file = venueIndexPath('demo-club')
+  it('serves v/<code>.json and t/<token>.json for 30 seconds as json', async () => {
+    const index = { venue_id: newId('vn'), menu_id: newId('nd'), slug: 'demo-club' }
+    const file = venueIndexPath(CODE)
     await store.put(file, new TextEncoder().encode(JSON.stringify(index)), publishPutOptions(file))
-    await writeTableTokenFile(store, TOKEN, { venue_slug: 'demo-club', table_label: '12' })
+    await writeTableTokenFile(store, TOKEN, FILE)
 
     const indexResponse = await serveCdn(file, store)
     expect(indexResponse.status).toBe(200)
@@ -131,8 +149,10 @@ describe('the slug index and token files are served at /cdn like the others', ()
     expect(await indexResponse.json()).toEqual(index)
 
     const tokenResponse = await serveCdn(tableTokenPath(TOKEN), store)
-    expect(await tokenResponse.json()).toEqual({ venue_slug: 'demo-club', table_label: '12' })
+    expect(await tokenResponse.json()).toEqual(FILE)
+    // The older v/<slug>.json files are not served any more, and neither is a made-up code.
+    expect((await serveCdn('v/demo-club.json', store)).status).toBe(404)
     expect((await serveCdn('v/Demo-Club.json', store)).status).toBe(404)
-    expect((await serveCdn('t/../v/demo-club.json', store)).status).toBe(404)
+    expect((await serveCdn(`t/../v/${CODE}.json`, store)).status).toBe(404)
   })
 })

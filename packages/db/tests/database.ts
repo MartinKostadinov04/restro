@@ -64,11 +64,20 @@ export function appDatabaseUrl(): string {
 }
 
 /**
- * A venue slug no other test created: `base` and a random suffix. Venue slugs are globally unique
- * (brief S3-10) and the test files share one database, so a literal slug would collide.
+ * A venue slug with a random suffix. Slugs no longer have to be unique (D68), but tests that look
+ * a venue up by its slug in a database the test files share still need one nobody else uses.
  */
 export function testSlug(base: string): string {
   return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`
+}
+
+/**
+ * A venue public code no other test created: 12 characters of `a-z0-9`, unique per call (the
+ * `venues_public_id_unique` index spans every test file). Core's `newPublicId` is not importable
+ * here (core depends on this package), and this one does not need its uniform draw.
+ */
+export function testPublicId(): string {
+  return randomUUID().replaceAll('-', '').slice(0, 12)
 }
 
 /** A fresh id of a kind (`tn`, `vn`, `tp`): unique per test run, valid for the id checks. */

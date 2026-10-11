@@ -66,7 +66,12 @@ const MAX_HELD_NAMES = 100
 export interface ViewScope {
   readonly pool: DbPool
   readonly tenantId: string
-  readonly venue: { readonly id: string; readonly slug: string; readonly timezone: string }
+  readonly venue: {
+    readonly id: string
+    readonly slug: string
+    readonly publicId: string
+    readonly timezone: string
+  }
   readonly canPublish: boolean
 }
 
@@ -503,6 +508,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
   const base = {
     venueId: scope.venue.id,
     venueSlug: scope.venue.slug,
+    venuePublicId: scope.venue.publicId,
     timeZone: scope.venue.timezone,
     canPublish: scope.canPublish,
   }

@@ -17,7 +17,8 @@ describe('the Live card', () => {
       /^Published by hand, .*12:30, by Maria Ivanova$/,
     )
     const link = screen.getByRole('link', { name: /Open the guest page/ }) as HTMLAnchorElement
-    expect(link.getAttribute('href')).toBe('/m/demo-club')
+    // The slug and the public code of the venue (menuPath), never an internal id.
+    expect(link.getAttribute('href')).toBe('/m/demo-club-k3x9p2m7qa1z')
     expect(link.target).toBe('_blank')
     expect(screen.queryByTestId('live-nothing')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull()

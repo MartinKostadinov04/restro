@@ -13,6 +13,7 @@ import QRCode from 'qrcode'
 
 import { svgFromDataUri } from '../src/tables/svg-uri'
 import { runScript } from './global-setup'
+import { addressOfVenue, type VenueAddress } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
 
 // The Tables & QR tab on a production build (brief S3-07, D61), in Bulgarian, against the demo
@@ -59,6 +60,8 @@ let page: Page
 let tabUrl: string
 let venueUrl: string
 let origin: string
+/** The demo venue's address: `/m/<slug>-<code>` (D68). */
+let venue: VenueAddress
 
 // --- helpers ---------------------------------------------------------------------------------
 const rows = () => page.getByTestId('table-row')
@@ -134,6 +137,7 @@ async function guestPhone(browserContext: BrowserContext): Promise<Page> {
 
 test.beforeAll(async ({ browser }) => {
   runScript('./scripts/seed-tables-e2e.ts', 'seed')
+  venue = await addressOfVenue({ slug: GUEST_SLUG })
   context = await browser.newContext({ viewport: { width: 1280, height: 1100 }, locale: 'bg-BG' })
   page = await context.newPage()
   // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
@@ -240,13 +244,17 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 
   const redirect = await page.request.get(`/t/${token}`, { maxRedirects: 0 })
   expect(redirect.status()).toBe(302)
-  expect(redirect.headers().location).toBe(`/m/${GUEST_SLUG}?t=${token}`)
+  expect(redirect.headers().location).toBe(`${venue.path}?t=${token}`)
   const file = await page.request.get(`/cdn/t/${token}.json`)
-  expect(await file.json()).toEqual({ venue_slug: GUEST_SLUG, table_label: '1' })
+  expect(await file.json()).toEqual({
+    venue_public_id: venue.publicId,
+    venue_slug: GUEST_SLUG,
+    table_label: '1',
+  })
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)
-  await guest.waitForURL(`**/m/${GUEST_SLUG}?t=${token}`)
+  await guest.waitForURL(`**${venue.path}?t=${token}`)
   await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(guest.getByRole('status').filter({ hasText: 'Маса 1' })).toBeVisible()
   await guest.screenshot({ path: shot('guest-table-1-bg') })
@@ -266,7 +274,11 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.every((job) => job.retired.length === 0)).toBe(true)
   const file = await page.request.get(`/cdn/t/${token}.json`)
-  expect(await file.json()).toEqual({ venue_slug: GUEST_SLUG, table_label: 'Тераса Е5' })
+  expect(await file.json()).toEqual({
+    venue_public_id: venue.publicId,
+    venue_slug: GUEST_SLUG,
+    table_label: 'Тераса Е5',
+  })
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)

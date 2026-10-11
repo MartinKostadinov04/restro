@@ -275,6 +275,8 @@ describe.skipIf(!hasDatabase)('tables and QR codes (as the restro_app role)', ()
 
       const files = await loadTokenFiles(app, tenant, venue)
       expect(files?.venueSlug).toMatch(/^tables-venue-\d+-[0-9a-f]{8}$/)
+      // And the venue's public code, which the token files carry to find the venue by (D68).
+      expect(files?.venuePublicId).toMatch(/^[a-z0-9]{12}$/)
       expect(files?.files.map((file) => file.tableLabel).sort()).toEqual(['7', 'VIP 3'])
       const seven = await byNum(venue, '7')
       expect(files?.files.find((file) => file.token === seven.token)?.tableLabel).toBe('7')

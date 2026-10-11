@@ -81,8 +81,9 @@ function assertLocal(url: string, name: string): void {
 }
 
 /**
- * A venue slug that no other test created: `base` and a random suffix. Venue slugs are globally
- * unique, so tests that provision venues in a shared database must not reuse a literal slug.
+ * A venue slug that no other test created: `base` and a random suffix. Slugs need not be unique
+ * any more (D68, the public code is); a test that tells its venue from another world's by slug
+ * still needs one that is its own.
  */
 export function testSlug(base: string): string {
   return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`

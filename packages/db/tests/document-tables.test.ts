@@ -35,7 +35,7 @@ import {
   hasDatabase,
   openOwnerPool,
   testId,
-  testSlug,
+  testPublicId,
 } from './database'
 
 const RLS_VIOLATION = /violates row-level security policy/
@@ -80,8 +80,8 @@ async function writeSample(tx: WriteTx, s: Sample): Promise<void> {
   const t = s.tenant
   await tx.insert(tenants).values({ id: t, name: `Club ${t}` })
   await tx.insert(venues).values([
-    { id: s.venue, tenantId: t, name: 'Main', slug: testSlug('main') },
-    { id: s.spareVenue, tenantId: t, name: 'Spare', slug: testSlug('spare') },
+    { id: s.venue, tenantId: t, name: 'Main', slug: 'main', publicId: testPublicId() },
+    { id: s.spareVenue, tenantId: t, name: 'Spare', slug: 'spare', publicId: testPublicId() },
   ])
   await tx.insert(integrations).values({ id: s.integration, tenantId: t, kind: 'barsy', host: 'x' })
   await tx

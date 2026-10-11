@@ -39,8 +39,10 @@ export interface World {
   readonly pool: DbPool
   readonly tenantId: string
   readonly venueId: string
-  /** The venue's slug: `demo-club-` and a random suffix, since slugs are globally unique. */
+  /** The venue's slug: `demo-club-` and a random suffix (slugs need not be unique, D68). */
   readonly venueSlug: string
+  /** The venue's public code (D68): what its published files are keyed by. */
+  readonly venuePublicId: string
   readonly menuId: string
   readonly integrationId: string
   readonly keys: SealKeys
@@ -102,7 +104,7 @@ export async function createWorld(
 
   const tenantId = newId('tn')
   await provisionTenant(pool, { tenantId, name: 'Sync test club' })
-  // Venue slugs are globally unique (brief S3-10) and a file's worlds share one database.
+  // A slug of its own per world, so a test can tell its venue from another world's.
   const slug = testSlug('demo-club')
   const venue = await provisionVenue(pool, tenantId, { name: 'Demo club', slug })
   const menu = await provisionMenu(pool, tenantId, venue.id)
@@ -205,6 +207,7 @@ export async function createWorld(
     tenantId,
     venueId: venue.id,
     venueSlug: slug,
+    venuePublicId: venue.publicId,
     menuId: menu.id,
     integrationId,
     keys,

@@ -1,13 +1,18 @@
 // Writing what a publish decided into the publish store (brief S3-01b). `publishMenu` (core/apply)
 // only moves rows in the database; these functions turn the current pointer into the files a guest
 // page reads: `snap/<sn>.json`, `m/<menu>/<venue>/current.json` and `m/<menu>/<venue>/live.json`,
-// and (S3-03) the slug index `v/<venue slug>.json` that `/m/<slug>` starts from.
+// and (S3-03, D68) the venue index `v/<venue public code>.json` = {venue_id, menu_id, slug} that
+// `/m/<slug>-<code>` starts from. The slug in it is the venue's current one: the guest page
+// corrects a stale address from it, so a rename needs only this file written again.
 //
 // Both are idempotent and safe to repeat, which is what makes `publish-files` a repair: they
 // compare with what is in the store and write only what is missing or different. The snapshot
 // file always goes first, so a reader that finds `current.json` never finds a pointer to a
-// snapshot that is not there yet, and the slug index goes last, so a reader that finds it finds a
-// menu that is published.
+// snapshot that is not there yet, and the venue index goes last, so a reader that finds it finds
+// a menu that is published.
+//
+// The older `v/<slug>.json` files of before CF-14 were test data. They are not migrated or
+// removed: they stay in the store and nothing reads them again.
 import {
   currentPath,
   livePath,
@@ -36,24 +41,24 @@ export interface PublishScope {
   readonly venueId: VenueId
 }
 
-/** What happened to the slug index `v/<slug>.json`. */
-export type SlugIndexStatus = 'written' | 'unchanged'
+/** What happened to the venue index `v/<public code>.json`. */
+export type VenueIndexStatus = 'written' | 'unchanged'
 
 /**
- * `v/<slug>.json` names another venue, so this venue's address `/m/<slug>` is not its own. The
- * database keeps venue slugs globally unique (`venues_slug_unique`), so this means the store holds
+ * `v/<public code>.json` names another venue, so this venue's code is not its own. The database
+ * keeps public codes globally unique (`venues_public_id_unique`), so this means the store holds
  * a foreign or stale file; it is never overwritten, and the job fails so that someone looks.
  */
-export class VenueAddressTakenError extends Error {
-  override name = 'VenueAddressTakenError'
-  readonly slug: string
+export class VenueCodeTakenError extends Error {
+  override name = 'VenueCodeTakenError'
+  readonly publicId: string
 
-  constructor(slug: string) {
+  constructor(publicId: string) {
     super(
-      `the address /m/${slug} belongs to another venue (v/${slug}.json names a different venue): ` +
-        'the menu is not served there until the venue slug or the file is fixed',
+      `the public code ${publicId} belongs to another venue (v/${publicId}.json names a different ` +
+        'venue): the menu is not served there until the file is fixed',
     )
-    this.slug = slug
+    this.publicId = publicId
   }
 }
 
@@ -66,8 +71,10 @@ export type PublishFilesResult =
       readonly version: number
       /** The paths put to the store (empty when everything was there already). */
       readonly written: readonly string[]
-      readonly slugIndex: SlugIndexStatus
-      /** The slug the index is under. */
+      readonly venueIndex: VenueIndexStatus
+      /** The public code the index is under. */
+      readonly publicId: string
+      /** The slug the index carries. */
       readonly slug: string
     }
 
@@ -90,37 +97,48 @@ async function pointerId(deps: PublishFilesDeps, scope: PublishScope): Promise<s
   return row?.id ?? null
 }
 
-/** The slug of the venue (the address `/m/<slug>` lives under). */
-async function slugOf(deps: PublishFilesDeps, scope: PublishScope): Promise<string> {
+/** The public code and the slug of the venue (the address `/m/<slug>-<code>` is made of them). */
+async function addressOf(
+  deps: PublishFilesDeps,
+  scope: PublishScope,
+): Promise<{ readonly publicId: string; readonly slug: string }> {
   const [row] = await withTenant(deps.pool, scope.tenantId, (tx) =>
-    tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, scope.venueId)),
+    tx
+      .select({ publicId: venues.publicId, slug: venues.slug })
+      .from(venues)
+      .where(eq(venues.id, scope.venueId)),
   )
   if (row === undefined) throw new Error(`there is no venue ${scope.venueId} to publish`)
-  return row.slug
+  return row
 }
 
 /**
- * Writes `v/<slug>.json` = {venue_id, menu_id} unless it is there already. A file that names
- * another venue is never overwritten and fails the job (`VenueAddressTakenError`); a file that
- * cannot be read is replaced.
+ * Writes `v/<public code>.json` = {venue_id, menu_id, slug} unless the store holds the same bytes.
+ * A renamed venue has a different slug, so its index is written again (same path, new content). A
+ * file that names another venue is never overwritten and fails the job (`VenueCodeTakenError`); a
+ * file that cannot be read is replaced.
  *
- * Defence in depth: since slugs became globally unique in the database, no two venues can hold
- * the same slug, so this only fires for a stale or foreign file in the store. By the time it
- * fires, `publishMenu` has already moved the pointer; that is acceptable, because the database
- * index prevents the case and the failure is loud (the run is recorded as failed and the job
- * fails, instead of the menu quietly not being served at its address).
+ * Defence in depth: public codes are unique in the database, so this only fires for a stale or
+ * foreign file in the store. By the time it fires, `publishMenu` has already moved the pointer;
+ * that is acceptable, because the database index prevents the case and the failure is loud (the
+ * run is recorded as failed and the job fails, instead of the menu quietly not being served at
+ * its address).
  */
-async function writeSlugIndex(
+async function writeVenueIndex(
   deps: PublishFilesDeps,
   scope: PublishScope,
-  slug: string,
-): Promise<SlugIndexStatus> {
-  const existing = await readVenueIndex(deps.store, slug)
+  address: { readonly publicId: string; readonly slug: string },
+): Promise<VenueIndexStatus> {
+  const existing = await readVenueIndex(deps.store, address.publicId)
   if (existing !== null && existing.venue_id !== scope.venueId) {
-    throw new VenueAddressTakenError(slug)
+    throw new VenueCodeTakenError(address.publicId)
   }
-  const file = venueIndexPath(slug)
-  const bytes = venueIndexBytes({ venue_id: scope.venueId, menu_id: scope.menuId })
+  const file = venueIndexPath(address.publicId)
+  const bytes = venueIndexBytes({
+    venue_id: scope.venueId,
+    menu_id: scope.menuId,
+    slug: address.slug,
+  })
   if (sameBytes(await deps.store.get(file), bytes)) return 'unchanged'
   await deps.store.put(file, bytes, publishPutOptions(file))
   return 'written'
@@ -173,9 +191,9 @@ export async function writePublishFiles(
       written.push(pointerFile)
     }
 
-    const slug = await slugOf(deps, scope)
-    const slugIndex = await writeSlugIndex(deps, scope, slug)
-    if (slugIndex === 'written') written.push(venueIndexPath(slug))
+    const address = await addressOf(deps, scope)
+    const venueIndex = await writeVenueIndex(deps, scope, address)
+    if (venueIndex === 'written') written.push(venueIndexPath(address.publicId))
 
     if ((await pointerId(deps, scope)) === current.id) {
       return {
@@ -183,8 +201,9 @@ export async function writePublishFiles(
         snapshotId: current.id,
         version: current.version,
         written,
-        slugIndex,
-        slug,
+        venueIndex,
+        publicId: address.publicId,
+        slug: address.slug,
       }
     }
   }

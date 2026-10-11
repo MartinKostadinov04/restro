@@ -1,5 +1,6 @@
-// The files behind a venue's table QR codes (brief S3-07): `t/<token>.json` = {venue_slug,
-// table_label}, which `/t/<token>` reads to lead a guest to the menu with the table's name. The
+// The files behind a venue's table QR codes (brief S3-07): `t/<token>.json` = {venue_public_id,
+// venue_slug, table_label}, which `/t/<token>` reads to lead a guest to the menu (`menuPath`) with
+// the table's name. A renamed venue changes `venue_slug`; the job writes the files again. The
 // admin changes rows in the database (issue, retire, rename); this turns the rows into files, and
 // is the ONLY writer of these files (the web app never writes the publish store).
 //
@@ -51,7 +52,11 @@ export async function writeTableTokenFiles(
   let unchanged = 0
   for (const { token, tableLabel } of wanted.files) {
     const path = tableTokenPath(token)
-    const bytes = tableTokenBytes({ venue_slug: wanted.venueSlug, table_label: tableLabel })
+    const bytes = tableTokenBytes({
+      venue_public_id: wanted.venuePublicId,
+      venue_slug: wanted.venueSlug,
+      table_label: tableLabel,
+    })
     if (sameBytes(await deps.store.get(path), bytes)) {
       unchanged += 1
       continue

@@ -157,8 +157,12 @@ export async function findVenueTable(
   return { venueId: row.venueId as VenueId, table: toTable(row.place) }
 }
 
-/** What the token job writes for a venue: its slug and, per active code, the table's name. */
+/**
+ * What the token job writes for a venue: its public code and slug and, per active code, the
+ * table's name.
+ */
 export interface TokenFiles {
+  readonly venuePublicId: string
   readonly venueSlug: string
   readonly files: readonly { readonly token: string; readonly tableLabel: string }[]
 }
@@ -176,7 +180,7 @@ export async function loadTokenFiles(
   if (!isId('vn', venueId)) return null
   return withTenant(pool, tenantId, async (tx) => {
     const [venue] = await tx
-      .select({ slug: venues.slug })
+      .select({ slug: venues.slug, publicId: venues.publicId })
       .from(venues)
       .where(eq(venues.id, venueId))
     if (venue === undefined) return null
@@ -199,7 +203,7 @@ export async function loadTokenFiles(
       const tableLabel = tableDisplayLabel(place)
       if (tableLabel !== null) files.push({ token: place.qrToken, tableLabel })
     }
-    return { venueSlug: venue.slug, files }
+    return { venuePublicId: venue.publicId, venueSlug: venue.slug, files }
   })
 }
 

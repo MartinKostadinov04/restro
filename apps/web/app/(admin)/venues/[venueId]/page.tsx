@@ -1,3 +1,4 @@
+import { menuPath } from '@restro/core'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
@@ -52,8 +53,11 @@ export default async function VenueWorkspacePage({
       <div className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{venue.name}</h1>
-          <code className="mt-2 inline-block rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground ring-1 ring-border">
-            #{venue.slug}
+          <code
+            className="mt-2 inline-block max-w-full break-all rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground ring-1 ring-border"
+            data-testid="venue-header-address"
+          >
+            {menuPath(venue)}
           </code>
         </div>
         <WorkspaceTabs
@@ -88,7 +92,7 @@ export default async function VenueWorkspacePage({
             ),
             settings: (
               <div className="space-y-8">
-                <VenueSettings venue={venue} />
+                <VenueSettings venue={venue} role={organization.role} />
                 {settingsOpen ? (
                   <Suspense fallback={<Skeleton className="h-96 w-full" />}>
                     <AppearanceSection

@@ -38,8 +38,7 @@ async function withScope<T>(
   run: (
     scope: PublishScope,
     services: PublishServices,
-    venueSlug: string,
-    timeZone: string,
+    venue: { readonly slug: string; readonly publicId: string; readonly timezone: string },
   ) => Promise<T>,
   onError: (error: ScopeError) => T,
 ): Promise<T> {
@@ -56,7 +55,7 @@ async function withScope<T>(
       actor: `user:${user.id}`,
       canPublish: canPublishMenu(organization.role),
     }
-    return await run(scope, { enqueue: enqueueJob }, found.slug, found.timezone)
+    return await run(scope, { enqueue: enqueueJob }, found)
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
@@ -131,13 +130,13 @@ export async function loadHistoryPageAction(
   if (!before.success) return { ok: false }
   return withScope(
     venueId,
-    async (scope, _services, slug, timezone): Promise<HistoryPageResult> => {
+    async (scope, _services, { slug, publicId, timezone }): Promise<HistoryPageResult> => {
       const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
       if (menuId === null) return { ok: false }
       const view: ViewScope = {
         pool: scope.pool,
         tenantId: scope.tenantId,
-        venue: { id: scope.venueId, slug, timezone },
+        venue: { id: scope.venueId, slug, publicId, timezone },
         canPublish: scope.canPublish,
       }
       return { ok: true, page: await loadHistoryPage(view, menuId, { beforeVersion: before.data }) }

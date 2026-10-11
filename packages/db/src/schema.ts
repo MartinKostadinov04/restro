@@ -44,7 +44,18 @@ export const venues = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
+    /**
+     * The readable part of the public menu address (`/m/<slug>-<public_id>`, D68). Cosmetic and
+     * editable: it is not unique, and a stale one still finds the menu. The format is checked in
+     * core (`isVenueSlug`) before every write.
+     */
     slug: text('slug').notNull(),
+    /**
+     * The random code that finds the venue's menu (`/m/<slug>-<public_id>`, `v/<public_id>.json`,
+     * D68): 12 characters of `a-z0-9` from `crypto` (core `newPublicId`), set when the venue is
+     * created and never changed. Never derived from `id` (rule 3).
+     */
+    publicId: text('public_id').notNull(),
     /** IANA time zone the venue's day and schedules are counted in. */
     timezone: text('timezone').notNull().default('Europe/Sofia'),
     /** Local time at which the venue's service day ends (D45); the night before owns earlier hours. */
@@ -66,13 +77,11 @@ export const venues = restro.table(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique('venues_tenant_id_slug_unique').on(t.tenantId, t.slug),
-    // A venue's slug is its public address (`/m/<slug>`, `v/<slug>.json`, the table QR links), which
-    // is global, so it is unique across all tenants (T61). Slugs are lower-case by construction
-    // (`provisionVenue` accepts only the `isVenueSlug` pattern and nothing else sets the column), so
-    // a plain index on `slug` is enough; row-level security hides other tenants' rows, which is why
-    // only the index can tell a tenant that its slug is taken.
-    uniqueIndex('venues_slug_unique').on(t.slug),
+    // The public code is the venue's global address (D68, replacing the unique slug of T61): unique
+    // across all tenants. Row-level security hides other tenants' rows, which is why only the index
+    // can tell that a drawn code is taken (`provisionVenue` draws again).
+    uniqueIndex('venues_public_id_unique').on(t.publicId),
+    check('venues_public_id_format', sql`${t.publicId} ~ '^[a-z0-9]{12}$'`),
     check('venues_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
     // Target of the composite foreign keys (tenant_id, venue_id) of the document tables.
     unique('venues_tenant_id_id_unique').on(t.tenantId, t.id),

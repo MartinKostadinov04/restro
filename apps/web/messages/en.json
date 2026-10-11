@@ -413,7 +413,6 @@
       "slug": "Public address",
       "slugHelp": "The readable part of the menu’s web address. A short unique code is added to it automatically.",
       "slugInvalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
-      "slugTaken": "This address is already taken. Choose another one.",
       "languages": "Languages",
       "languagesHelp": "The languages the menu can be written in. Each item can be translated later.",
       "defaultLanguage": "Main language",
@@ -651,13 +650,30 @@
       "title": "Venue settings",
       "description": "How this venue keeps time, which languages and which currency it uses.",
       "name": "Name",
-      "slug": "Identifier",
+      "address": "Menu address",
       "timezone": "Time zone",
       "serviceDayEnd": "Service day ends at",
       "languages": "Languages",
       "defaultLanguage": "default",
       "currency": "Currency",
-      "readOnly": "These settings are read-only for now. Editing them arrives with the composer."
+      "readOnly": "The other settings are read-only for now. Editing them arrives with the composer.",
+      "slug": {
+        "label": "Readable part of the address",
+        "help": "Lower-case Latin letters, digits and single hyphens, for example demo-club. It only makes the address easier to read; it does not have to be unique.",
+        "keep": "Links that are already shared or printed keep working: the code at the end of the address (12 characters) never changes.",
+        "suggest": "Suggest from the name",
+        "save": "Save address",
+        "saving": "Saving…",
+        "saved": "Address saved. Guests see the new name within a minute.",
+        "savedLate": "Address saved. The published files could not be updated just now: publish the menu to bring them up to date.",
+        "invalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
+        "open": "Open the menu in a new tab",
+        "errors": {
+          "not_allowed": "Only an owner or admin can change the address.",
+          "invalid": "This address cannot be used. Check it and try again.",
+          "failed": "Something went wrong. The address was not changed, try again."
+        }
+      }
     }
   },
   "publish": {
