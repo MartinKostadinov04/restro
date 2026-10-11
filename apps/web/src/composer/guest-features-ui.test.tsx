@@ -145,6 +145,24 @@ describe('the guest features panel', () => {
     )
   })
 
+  it('will not save "Call a waiter" with no request ticked, and says why', async () => {
+    setup()
+    await userEvent.click(switchNamed('Call a waiter'))
+    expect(screen.queryByTestId('call-kinds-none')).toBeNull()
+
+    await userEvent.click(checkboxNamed('Waiter'))
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Tick at least one request, or switch Call a waiter off.',
+    )
+    expect(save().hasAttribute('disabled')).toBe(true)
+
+    // Switching it off is a valid way out: nothing changed, so nothing to save, and no alert.
+    await userEvent.click(switchNamed('Call a waiter'))
+    expect(screen.queryByTestId('call-kinds-none')).toBeNull()
+    expect(save().hasAttribute('disabled')).toBe(true)
+    expect(saveGuestFeaturesAction).not.toHaveBeenCalled()
+  })
+
   it('shows the Stage 4 note under waiter, bill and ordering, and the Stage 5 note under pay', () => {
     setup()
     expect(

@@ -103,6 +103,8 @@ function FeaturesForm({
   const dirty = featuresChanged || optionsChanged
   const locked = !canEdit || pending
   const callWaiter = draft.features.call_waiter
+  // Call a waiter with no request kind would show guests nothing (R15): it cannot be saved.
+  const noKinds = callWaiter.enabled && callWaiter.kinds.length === 0
 
   function setFeature(change: (current: GuestFeatures) => GuestFeatures) {
     setDraft((current) => ({ ...current, features: change(current.features) }))
@@ -173,7 +175,7 @@ function FeaturesForm({
       className="flex min-h-0 flex-1 flex-col"
       onSubmit={(event) => {
         event.preventDefault()
-        if (dirty && canEdit) save()
+        if (dirty && canEdit && !noKinds) save()
       }}
       data-testid="guest-features-form"
     >
@@ -247,6 +249,11 @@ function FeaturesForm({
                   </div>
                 ))}
               </fieldset>
+              {noKinds ? (
+                <p role="alert" className="text-xs text-destructive" data-testid="call-kinds-none">
+                  {t('kindsNone')}
+                </p>
+              ) : null}
               <Note>{t('stage4')}</Note>
             </SwitchRow>
             <SwitchRow
@@ -284,7 +291,11 @@ function FeaturesForm({
       </div>
 
       <div className="flex justify-end border-t p-4">
-        <Button type="submit" disabled={locked || !dirty} data-testid="guest-features-save">
+        <Button
+          type="submit"
+          disabled={locked || !dirty || noKinds}
+          data-testid="guest-features-save"
+        >
           {t('save')}
         </Button>
       </div>

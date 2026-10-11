@@ -624,6 +624,7 @@
         "other": "Other"
       },
       "otherNote": "Guests can say what they need in a short note.",
+      "kindsNone": "Tick at least one request, or switch Call a waiter off.",
       "bill": "Show the table's bill",
       "ordering": "Order from the phone",
       "pay": "Pay from the phone",

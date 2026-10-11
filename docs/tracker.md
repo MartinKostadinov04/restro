@@ -567,7 +567,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - **Open from SH-05b:**
     - **(a) Two lists of templates.** Server code cannot import the registry (it breaks the build), so `feature-face.ts` keeps a second list of the manifests. SH-05a is asked to make one server-safe `faces/manifests.ts`. **Done in SH-05a.**
     - **(b) The first save pins the template.** The first feature-option save stores the default face for a venue that never chose one.
-    - **(c) Call a waiter with no request kind** can be saved; guests then see no control. Block it or hint.
+    - **(c) Call a waiter with no request kind** can be saved; guests then see no control. Block it or hint. **Done (lead, 10-11):** Save is blocked and the panel says to tick a request or switch it off.
     - **(d) The "other" request kind.** Its wording promises a note; the core schema has none yet (Stage 4).
     - **(e) Bulgarian copy** of the panel: draft, for Martin's review.
   - **Open from SH-04, for SH-07:**
