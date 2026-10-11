@@ -90,6 +90,9 @@ const card = (page: Page, name: string) =>
 
 /** Loads the photos that wait for the guest to scroll, and waits for all of them. */
 async function loadPhotos(page: Page) {
+  // A picture of a section taller than the screen would leave out the items the browser has not
+  // painted (it skips what is off screen, `content-visibility: auto`): paint them all.
+  await page.addStyleTag({ content: '.rm-item { content-visibility: visible !important; }' })
   await page.evaluate(() => {
     for (const image of document.querySelectorAll('img[loading="lazy"]')) {
       image.setAttribute('loading', 'eager')

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 
-import { dialogs, exerciseDialog, settled } from './faces-audit'
+import { dialogs, exerciseDialog, overlapsInHeader, settled } from './faces-audit'
 import {
   chooseTheme,
   fillBag,
@@ -106,6 +106,8 @@ test.describe('the screen width', () => {
         { root, state },
       )
     problems.push(...(await outside(PREVIEW_FACE, 'the page')))
+    // The venue bar, with the bill and pay entries beside the logo and the language switch.
+    problems.push(...(await overlapsInHeader(page, PREVIEW_FACE)))
     for (const screen of SCREENS) {
       await onScreen(page, screen, async () => {
         problems.push(...(await outside('.rm-overlay', screen)))

@@ -77,7 +77,7 @@ export const EDITORIAL_CSS = `
 }
 .rm-brandline {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   align-items: center;
 }

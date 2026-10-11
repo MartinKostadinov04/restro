@@ -80,6 +80,14 @@ const PHOTOS = [
     alt: bgen('Бирена градина', 'Beer garden'),
   },
   { n: 6, w: 1600, h: 1200, colours: ['#38bdf8', '#1e3a8a'], alt: bgen('Шот', 'Shot') },
+  // The venue's logo, as wide as the logos of the demo venue.
+  {
+    n: 7,
+    w: 640,
+    h: 200,
+    colours: ['#2563eb', '#1e3a8a'],
+    alt: bgen('Логото на клуба', 'The club logo'),
+  },
 ] as const
 const photo = (n: number) => fixtureId('as', n)
 
@@ -113,6 +121,8 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
       ]),
     ),
     tags: { [signature]: bgen('Фирмено', 'Signature'), [spicy]: bgen('Люто', 'Spicy') },
+    // The logo is the one asset no item uses; the snapshot must name it to accept it.
+    theme: { logo: photo(7) },
     features: {
       filters: true,
       call_waiter: { enabled: false, kinds: [] },
@@ -316,6 +326,7 @@ function snapshotOf(theme: VisualTheme, index: number): MenuSnapshot {
       ...base.theme,
       palette: snapshotPalette(tertiary),
       font: 'Inter',
+      logo: photo(7),
       radius: preset?.radius ?? 12,
       shadow: 1,
       roles: { light: roles.light, dark: roles.dark },

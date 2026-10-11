@@ -286,6 +286,39 @@ export async function settled(page: Page): Promise<void> {
   )
 }
 
+/**
+ * The things of the venue bar that draw over one another: the logo, the table label and every
+ * control in it. Returns a description of each pair that overlaps by more than a pixel.
+ */
+export async function overlapsInHeader(page: Page, root: string): Promise<string[]> {
+  return page.evaluate((root) => {
+    const header = document.querySelector(`${root} .rm-header .rm-brandline`)
+    if (header === null) return ['no venue bar']
+    const parts = [
+      ...header.querySelectorAll<HTMLElement>('.rm-logo, .rm-table, .rm-language button, button'),
+    ]
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => ({
+        name: `${element.className || element.tagName.toLowerCase()} "${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 12)}"`,
+        box: element.getBoundingClientRect(),
+        // The 44 px boxes of the language switch reach a little past its pill, and over its other button.
+        pad: element.closest('.rm-language') !== null ? 4 : 0,
+      }))
+    const found: string[] = []
+    for (let a = 0; a < parts.length; a += 1) {
+      for (let b = a + 1; b < parts.length; b += 1) {
+        const [one, two] = [parts[a], parts[b]]
+        if (one === undefined || two === undefined) continue
+        const slack = 1 + Math.max(one.pad, two.pad)
+        const across = Math.min(one.box.right, two.box.right) - Math.max(one.box.left, two.box.left)
+        const down = Math.min(one.box.bottom, two.box.bottom) - Math.max(one.box.top, two.box.top)
+        if (across > slack && down > slack) found.push(`${one.name} over ${two.name}`)
+      }
+    }
+    return found
+  }, root)
+}
+
 /** Every dialog on the page. */
 export const dialogs = (page: Page): Locator => page.locator('[role="dialog"]')
 

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 
-import { dialogs, exerciseDialog, settled, withAudit } from './faces-audit'
+import { dialogs, exerciseDialog, overlapsInHeader, settled, withAudit } from './faces-audit'
 import { runScript } from './global-setup'
 import {
   LONG_NAME_BG,
@@ -393,7 +393,9 @@ test.describe('the markup', () => {
     await expect(page.getByRole('dialog', { name: VISUAL_ITEMS.negroni })).toBeVisible()
   })
 
-  test('the table label stays on a narrow screen', async ({ page }) => {
+  test('the table label stays on a narrow screen, and nothing in the venue bar draws over the logo or another control', async ({
+    page,
+  }) => {
     for (const width of [320, 340, 360, 390]) {
       await openMenu(page, { width, table: true })
       const label = page.locator('.rm-table')
@@ -404,6 +406,9 @@ test.describe('the markup', () => {
       expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width)
       const head = await page.locator('.rm-headtools').boundingBox()
       expect((head?.x ?? 0) + (head?.width ?? 0)).toBeLessThanOrEqual(width)
+      // The fixture menus have a logo: it keeps its place, and the controls wrap beside it.
+      await expect(page.locator('.rm-logo')).toBeVisible()
+      expect(await overlapsInHeader(page, FACE), `the venue bar at ${width} px`).toEqual([])
     }
   })
 
