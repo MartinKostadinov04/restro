@@ -68,6 +68,33 @@ module.exports = {
       to: { path: IO_PACKAGES },
     },
 
+    // 1b. A face is a pure function from a view model to markup, and the registry loads it by
+    //     name (SH-04): it may use React and the shell's types and helpers, nothing else. Not
+    //     even core: a face that needs a core helper asks for it to be put into the shell, so
+    //     the contract between host and face stays one package wide. `$1` is the face's own
+    //     folder, which it may of course import. Test files and the `test-*` helpers beside them
+    //     are exempt (they use vitest, Testing Library and the shell's `testing` fixtures); the
+    //     shell's `testing` folder is otherwise off limits.
+    {
+      name: 'faces-only-react-and-shell',
+      severity: 'error',
+      comment:
+        'A file under packages/faces/<face>/src/ (tests and test-* helpers excepted) may import only its own package, react, react-dom (and their internals, such as react/jsx-runtime and scheduler) and @restro/shell (not @restro/shell/testing). No @restro/core, no icon or UI library, no other face: the face stays a function of its view model, and its code stays small for the guest who downloads it.',
+      from: {
+        path: '^packages/faces/([^/]+)/src/',
+        pathNot: ['\\.test\\.[jt]sx?$', '(^|/)test-[^/]+\\.[jt]sx?$'],
+      },
+      to: {
+        pathNot: [
+          '^packages/faces/$1/',
+          '^(react|react-dom|scheduler)(/|$)',
+          '(^|/)node_modules/(react|react-dom|scheduler)/',
+          '^packages/shell/(?!testing/)',
+          '^@restro/shell(/(?!testing(/|$))|$)',
+        ],
+      },
+    },
+
     // 2. One write path (rule 1): only apply() may use the write side of the db package, and
     //    the package has exactly two doors.
     {

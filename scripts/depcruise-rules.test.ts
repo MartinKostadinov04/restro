@@ -123,16 +123,22 @@ describe('rule 1: shell and faces stay pure', () => {
     }
   })
 
-  it('rejects the same imports from a face', async () => {
-    await expectRules(
+  it('rejects the same imports from a face (which the faces rule refuses too)', async () => {
+    const lines = await expectRules(
       {
         ...base,
         'packages/faces/qr-phone/src/a.ts': "import '@restro/db'",
         'packages/faces/qr-phone/src/b.ts': "import '@restro/barsy'",
         'packages/faces/qr-phone/src/c.ts': "import '../../../../apps/web/app/page'",
       },
-      ['pure-layers-no-data-or-apps', 'barsy-only-from-worker', 'packages-never-import-apps'],
+      [
+        'faces-only-react-and-shell',
+        'pure-layers-no-data-or-apps',
+        'barsy-only-from-worker',
+        'packages-never-import-apps',
+      ],
     )
+    expect(lines.filter((line) => line.startsWith('faces-only-react-and-shell'))).toHaveLength(3)
   })
 
   it.each([
@@ -151,9 +157,11 @@ describe('rule 1: shell and faces stay pure', () => {
         'packages/shell/src/io.ts': `import '${builtin}'`,
         'packages/faces/qr-phone/src/io.ts': `import '${builtin}'`,
       },
-      ['pure-layers-no-io-builtins'],
+      ['faces-only-react-and-shell', 'pure-layers-no-io-builtins'],
     )
-    expect(lines).toHaveLength(2)
+    // The shell file breaks the I/O rule; the face file breaks it and the faces rule.
+    expect(lines).toHaveLength(3)
+    expect(lines.filter((line) => line.startsWith('pure-layers-no-io-builtins'))).toHaveLength(2)
   })
 
   it.each(['pg', 'pg-boss', 'postgres'])('rejects the database package %s', async (name) => {
@@ -437,6 +445,89 @@ describe('the guest page reads published files only (rule 4)', () => {
       },
       [],
     )
+  })
+})
+
+describe('a face imports only react and the shell (SH-04)', () => {
+  const faces: Files = {
+    ...base,
+    'packages/shell/testing/index.ts': 'export const testing = 1',
+    'packages/faces/qr-phone/src/model.ts': 'export const model = 1',
+    'packages/faces/editorial-market/src/index.ts': 'export const other = 1',
+  }
+  const FACE = 'packages/faces/qr-phone/src'
+
+  it('rejects core, an icon library, another face and a Node built-in (as written and by path)', async () => {
+    const lines = await expectRules(
+      {
+        ...faces,
+        [`${FACE}/core.ts`]: "import '@restro/core'",
+        [`${FACE}/core-by-path.ts`]: "import '../../../core/src/index'",
+        [`${FACE}/icons.ts`]: "import 'lucide-react'",
+        [`${FACE}/other-face.ts`]: "import '../../editorial-market/src/index'",
+        [`${FACE}/other-face-by-name.ts`]: "import '@restro/editorial-market'",
+        [`${FACE}/crypto.ts`]: "import 'node:crypto'",
+        [`${FACE}/type-only.ts`]:
+          "import type { Locale } from '@restro/core'\nexport type L = Locale",
+        'packages/faces/editorial-market/src/deep.ts': "import '../../qr-phone/src/model'",
+      },
+      ['faces-only-react-and-shell'],
+    )
+    expect(lines).toHaveLength(8)
+  })
+
+  it('rejects the shell’s testing helpers from a face’s own code, by name and by path', async () => {
+    const lines = await expectRules(
+      {
+        ...faces,
+        [`${FACE}/by-name.ts`]: "import '@restro/shell/testing'",
+        [`${FACE}/by-path.ts`]: "import '../../../shell/testing/index'",
+      },
+      ['faces-only-react-and-shell'],
+    )
+    expect(lines).toHaveLength(2)
+  })
+
+  it('allows its own files, react, react-dom (with internals), and the shell', async () => {
+    await expectRules(
+      {
+        ...faces,
+        [`${FACE}/face.ts`]:
+          "import './model'\nimport { model } from './model'\nexport const face = model",
+        [`${FACE}/react.ts`]:
+          "import 'react'\nimport 'react/jsx-runtime'\nimport 'react-dom'\nimport 'react-dom/server'\nimport 'scheduler'",
+        [`${FACE}/shell.ts`]:
+          "import '@restro/shell'\nimport type { shell } from '../../../shell/src/index'\nexport type S = typeof shell",
+      },
+      [],
+    )
+  })
+
+  it('leaves tests and test-* helpers alone, and does not look at code outside the faces', async () => {
+    await expectRules(
+      {
+        ...faces,
+        [`${FACE}/face.test.tsx`]:
+          "import 'vitest'\nimport '@restro/shell/testing'\nimport '@restro/core'",
+        [`${FACE}/test-views.ts`]: "import '@restro/shell/testing'\nimport '@restro/core'",
+        'packages/shell/src/uses-core.ts': "import '../../core/src/index'",
+        'apps/web/app/uses-icons.ts': "import 'lucide-react'\nimport '@restro/editorial-market'",
+      },
+      [],
+    )
+  })
+
+  it('does not exempt a production file that merely has "test" in its name', async () => {
+    const lines = await expectRules(
+      {
+        ...faces,
+        [`${FACE}/contest.ts`]: "import '@restro/core'",
+        [`${FACE}/latest.tsx`]: "import 'lucide-react'",
+        [`${FACE}/testing.ts`]: "import '@restro/core'",
+      },
+      ['faces-only-react-and-shell'],
+    )
+    expect(lines).toHaveLength(3)
   })
 })
 

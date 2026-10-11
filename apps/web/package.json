@@ -17,6 +17,7 @@
     "@restro/assets": "workspace:*",
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
+    "@restro/editorial-market": "workspace:*",
     "@restro/qr-phone": "workspace:*",
     "@restro/shell": "workspace:*",
     "better-auth": "1.7.7",

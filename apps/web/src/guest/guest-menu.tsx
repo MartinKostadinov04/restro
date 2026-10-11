@@ -14,11 +14,20 @@
 // canonical path through the History API, keeping `?t=`, `?lang=` and the rest. There is no
 // redirect and no server read: the page stays a static shell over published files (rule 4).
 
-import { type LiveOverlay, type Locale, menuPath, parseMenuParam } from '@restro/core'
-import { bcp47, QrPhoneFace, QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
+import {
+  type LiveOverlay,
+  type Locale,
+  localeToBcp47,
+  menuPath,
+  parseMenuParam,
+} from '@restro/core'
+import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { ChosenFace, preloadFace } from '@/faces/chosen-face'
+import { faceEntry } from '@/faces/registry'
+import { FONT_STACKS } from '@/fonts'
 import { CDN_BASE } from './cdn'
 import {
   buildContext,
@@ -50,9 +59,6 @@ type Phase =
 const POINTER_EVERY_MS = 30_000
 const LIVE_EVERY_MS = 15_000
 const CLOCK_EVERY_MS = 60_000
-
-/** The font stacks of fonts this app serves itself (next/font in the root layout). */
-export const FONT_STACKS = { Inter: 'var(--font-inter), "Inter", system-ui, sans-serif' } as const
 
 /** Runs `callback` every `ms` while the page is visible, and once when it becomes visible again. */
 function useVisibleInterval(callback: () => void, ms: number, enabled: boolean): void {
@@ -102,6 +108,9 @@ export function GuestMenu({ venue }: { readonly venue: string }) {
   useEffect(() => {
     setSearch(window.location.search)
     setBrowser(navigator.languages?.length > 0 ? navigator.languages : [navigator.language])
+    // Nearly every venue uses the default template: fetch its code now, while the menu's files are
+    // still on their way. (A venue that chose another one fetches that when its snapshot arrives.)
+    preloadFace(faceEntry(null))
   }, [])
 
   // --- loading ----------------------------------------------------------------------------
@@ -244,12 +253,20 @@ export function GuestMenu({ venue }: { readonly venue: string }) {
     available: snapshot?.locales.available ?? [],
     menuDefault: snapshot?.locales.default ?? null,
   })
+  // The template the venue chose (the registry's default when it chose none); its manifest decides
+  // which photo sizes the shell asks for.
+  const faceId = snapshot?.presentation?.face
+  const entry = useMemo(() => faceEntry(faceId), [faceId])
   const view = useMemo(
     () =>
       snapshot === null
         ? null
-        : buildViewModel(snapshot, live, buildContext({ locale, now, tableToken })),
-    [snapshot, live, locale, now, tableToken],
+        : buildViewModel(
+            snapshot,
+            live,
+            buildContext({ locale, now, tableToken, manifest: entry.manifest }),
+          ),
+    [snapshot, live, locale, now, tableToken, entry],
   )
 
   const switchLanguage = useCallback((next: Locale) => {
@@ -263,7 +280,7 @@ export function GuestMenu({ venue }: { readonly venue: string }) {
   useEffect(() => {
     const root = document.documentElement
     const previous = root.lang
-    root.lang = bcp47(shownLocale)
+    root.lang = localeToBcp47(shownLocale)
     return () => {
       root.lang = previous
     }
@@ -285,24 +302,28 @@ export function GuestMenu({ venue }: { readonly venue: string }) {
       return (
         <QrPhoneNotice
           {...text}
-          lang={bcp47(shownLocale)}
+          lang={localeToBcp47(shownLocale)}
           {...(phase.reason === 'unknown_venue'
             ? {}
             : { actionLabel: strings.retry, onAction: () => setAttempt((n) => n + 1) })}
         />
       )
     }
-    return <QrPhoneSkeleton label={strings.loading} lang={bcp47(shownLocale)} />
+    return <QrPhoneSkeleton label={strings.loading} lang={localeToBcp47(shownLocale)} />
   }
 
   return (
-    <QrPhoneFace
+    <ChosenFace
+      entry={entry}
+      strings={strings}
       view={view}
       assetBase={CDN_BASE}
       languages={snapshot.locales.available}
       onLanguageChange={switchLanguage}
       tableLabel={tableLabel}
       fontStacks={FONT_STACKS}
+      scheme={snapshot.theme.scheme ?? 'auto'}
+      options={snapshot.presentation?.options}
     />
   )
 }
