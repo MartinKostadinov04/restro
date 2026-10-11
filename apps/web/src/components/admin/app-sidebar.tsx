@@ -72,8 +72,9 @@ export function AppSidebar({
         </Link>
         <SidebarSeparator />
       </SidebarHeader>
-      {/* Many venues: the list scrolls, also when the sidebar is collapsed to icons. */}
-      <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
+      {/* Many venues: the list scrolls, also when the sidebar is collapsed to icons (where a
+          scroll bar would not fit beside the icons, so it is not drawn). */}
+      <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto group-data-[collapsible=icon]:[scrollbar-width:none]">
         <VenueNav venues={venues} canCreateVenue={canCreateVenue} />
         <SidebarGroup>
           <SidebarGroupLabel>{t('organization')}</SidebarGroupLabel>
