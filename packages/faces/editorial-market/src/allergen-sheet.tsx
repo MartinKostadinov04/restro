@@ -24,18 +24,24 @@ export function AllergenSheet({
   return (
     <Overlay title={strings.allergensTitle} closeLabel={strings.close} onClose={onClose}>
       <p className="rm-overlay-intro">{strings.allergensHint}</p>
-      <div className="rm-allergen-sheet">
-        {legend.map((allergen) => (
-          <span
-            key={allergen.code}
-            className={own.has(allergen.code) ? 'is-present' : undefined}
-            lang={langOf(allergen.label, page)}
-          >
-            <b>{allergen.number}</b>
-            {allergen.label.text}
-          </span>
-        ))}
-      </div>
+      {/* A list; the dish's own allergens carry aria-current, so a screen reader hears which ones
+          they are, and the look marks them by a filled number as well as by weight and shade. */}
+      <ul className="rm-allergen-sheet">
+        {legend.map((allergen) => {
+          const present = own.has(allergen.code)
+          return (
+            <li
+              key={allergen.code}
+              className={present ? 'is-present' : undefined}
+              aria-current={present ? 'true' : undefined}
+              lang={langOf(allergen.label, page)}
+            >
+              <b>{allergen.number}</b>
+              {allergen.label.text}
+            </li>
+          )
+        })}
+      </ul>
     </Overlay>
   )
 }

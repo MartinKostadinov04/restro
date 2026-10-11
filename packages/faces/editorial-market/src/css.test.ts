@@ -122,3 +122,67 @@ describe('the stylesheet (motion, schemes and the rules of the contract)', () =>
     expect(EDITORIAL_CSS).not.toMatch(/\.rm-wordmark|\.rm-kicker/)
   })
 })
+
+/** The declarations of every rule whose selector list holds exactly `selector`, outside any media query or inside. */
+function declarationsFor(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const rule = new RegExp(
+    `(?:^|[}\\n])\\s*(?:[^{}]*,\\s*)?${escaped}\\s*(?:,[^{}]*)?\\{([^}]*)\\}`,
+    'g',
+  )
+  return [...EDITORIAL_CSS.matchAll(rule)].map((match) => match[1] ?? '').join('\n')
+}
+
+describe('the audit of the stylesheet (SH-07)', () => {
+  it('makes every control a 44 x 44 px target in its own box, not by an area beside it', () => {
+    // The switches keep their look: a negative margin keeps the room, the chosen fill is the ::before.
+    for (const selector of ['.rm .rm-layout button', '.rm .rm-language button']) {
+      const rule = declarationsFor(selector)
+      expect(rule, selector).toMatch(/(?:min-)?height:\s*44px/)
+      expect(rule, selector).toMatch(/(?:min-)?width:\s*44px/)
+      expect(rule, selector).toMatch(/margin:\s*-\d+px 0/)
+    }
+    for (const selector of [
+      '.rm-sections a',
+      '.rm-allergens button',
+      '.rm-filter-group button',
+      '.rm-clear',
+    ]) {
+      expect(declarationsFor(selector), selector).toMatch(/min-width:\s*44px/)
+    }
+    expect(declarationsFor('.rm-icon')).toMatch(/width:\s*44px/)
+  })
+
+  it('keeps the table label on every width (it was hidden at 350 px and under)', () => {
+    expect(EDITORIAL_CSS).not.toMatch(/\.rm-table\s*\{[^}]*display:\s*none/)
+    expect(declarationsFor('.rm-headtools')).toContain('flex-wrap: wrap')
+  })
+
+  it('gives the arrow after a name no meaning of its own (a picture with an empty alternative text)', () => {
+    expect(EDITORIAL_CSS).toContain('content: "→" / ""')
+    expect(EDITORIAL_CSS).not.toContain('.rm-chevron')
+  })
+
+  it('fades the photo of a sold-out item and keeps its words at full strength', () => {
+    expect(EDITORIAL_CSS).not.toMatch(/\.rm-item\[data-state="(sold_out|unavailable)"\]\s*(,|\{)/)
+    expect(declarationsFor('.rm-item[data-state="sold_out"] .rm-photo')).toContain('opacity')
+    expect(declarationsFor('.rm-item[data-state="sold_out"] .rm-item-open')).toContain(
+      'color: var(--rm-muted)',
+    )
+  })
+
+  it('keeps the section titles and the items apart, the items being h3 or h4', () => {
+    expect(EDITORIAL_CSS).toContain('.rm-item :is(h3, h4)')
+    expect(EDITORIAL_CSS).not.toMatch(/\.rm-item h3|\.rm-item\.has-photo h3/)
+  })
+
+  it('switches the motion of the pseudo-elements off as well', () => {
+    expect(EDITORIAL_CSS).toMatch(/\.rm \*::before,\s*\.rm \*::after/)
+  })
+
+  it('shows the edge of a choice on the sheet at 3:1 (a stronger mix than 30 %)', () => {
+    const chip = declarationsFor('.rm-filter-group button')
+    const share = Number(/color-mix\(in srgb, var\(--rm-bg\) (\d+)%/.exec(chip)?.[1])
+    expect(share).toBeGreaterThanOrEqual(50)
+  })
+})

@@ -77,7 +77,7 @@ export const EDITORIAL_CSS = `
 }
 .rm-brandline {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
   align-items: center;
 }
@@ -90,9 +90,10 @@ export const EDITORIAL_CSS = `
 .rm-headtools {
   grid-column: 2;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 2px 6px;
   min-width: 0;
 }
 .rm-table {
@@ -137,9 +138,9 @@ export const EDITORIAL_CSS = `
   z-index: 10;
   top: 0;
   display: flex;
-  gap: 24px;
+  gap: 8px;
   overflow-x: auto;
-  padding: 0 20px;
+  padding: 0 12px;
   background: color-mix(in srgb, var(--rm-bg) 96%, transparent);
   border-bottom: 1px solid var(--rm-border);
   scrollbar-width: none;
@@ -152,9 +153,12 @@ export const EDITORIAL_CSS = `
 .rm-sections a {
   position: relative;
   flex: none;
+  min-width: 44px;
   min-height: 56px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
+  justify-content: center;
   color: var(--rm-muted);
   font-size: 13px;
   font-weight: 800;
@@ -164,9 +168,9 @@ export const EDITORIAL_CSS = `
 .rm-sections a:after {
   content: "";
   position: absolute;
-  right: 0;
+  right: 8px;
   bottom: 0;
-  left: 0;
+  left: 8px;
   height: 3px;
   background: var(--rm-accent-text);
   transform: scaleX(0);
@@ -195,7 +199,8 @@ export const EDITORIAL_CSS = `
   margin-bottom: 24px;
 }
 .rm-section h2,
-.rm-section h3 {
+.rm-section h3,
+.rm-section h4 {
   margin: 0;
   font-size: 31px;
   line-height: 1.02;
@@ -220,9 +225,18 @@ export const EDITORIAL_CSS = `
   content-visibility: auto;
   contain-intrinsic-size: 210px;
 }
-.rm-item[data-state="sold_out"],
-.rm-item[data-state="unavailable"] {
+/* A sold-out or unavailable item is greyed: its photo fades, and its name and price take the muted
+   colour. The state label, the allergens and the labels stay at full strength: they say why and
+   what is in it, and a text faded to half would not read (the whole card used to fade to 52 %). */
+.rm-item[data-state="sold_out"] .rm-photo,
+.rm-item[data-state="unavailable"] .rm-photo {
   opacity: 0.52;
+}
+.rm-item[data-state="sold_out"] .rm-item-open,
+.rm-item[data-state="sold_out"] .rm-price,
+.rm-item[data-state="unavailable"] .rm-item-open,
+.rm-item[data-state="unavailable"] .rm-price {
+  color: var(--rm-muted);
 }
 .rm-photo {
   grid-column: 2;
@@ -273,7 +287,7 @@ export const EDITORIAL_CSS = `
   background: transparent;
   text-align: left;
 }
-.rm-item h3 {
+.rm-item :is(h3, h4) {
   font-size: 19px;
   line-height: 1.12;
   font-weight: 850;
@@ -329,11 +343,14 @@ export const EDITORIAL_CSS = `
   margin-top: 8px;
 }
 .rm-allergens button {
+  min-width: 44px;
+  max-width: 100%;
   min-height: 44px;
   padding: 4px 0;
   border: 0;
   background: transparent;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
 }
@@ -400,7 +417,7 @@ export const EDITORIAL_CSS = `
 .rm-section.is-feature .rm-item-copy {
   padding-top: 17px;
 }
-.rm-section.is-feature .rm-item h3 {
+.rm-section.is-feature .rm-item :is(h3, h4) {
   font-size: 22px;
 }
 .rm-section.is-feature .rm-price {
@@ -428,7 +445,7 @@ export const EDITORIAL_CSS = `
   margin-top: 28px;
 }
 .rm-legend span,
-.rm-allergen-sheet span {
+.rm-allergen-sheet li {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -532,9 +549,11 @@ export const EDITORIAL_CSS = `
   font-weight: 850;
 }
 .rm-filter-group button {
+  min-width: 44px;
   min-height: 48px;
   padding: 0 17px;
-  border: 1px solid color-mix(in srgb, var(--rm-bg) 30%, transparent);
+  /* The edge of a choice shows at 3:1 on the panel (it was 30 %, about 1.9:1). */
+  border: 1px solid color-mix(in srgb, var(--rm-bg) 52%, transparent);
   border-radius: var(--rm-pill);
   background: transparent;
 }
@@ -544,6 +563,7 @@ export const EDITORIAL_CSS = `
   border-color: var(--rm-accent);
 }
 .rm-clear {
+  min-width: 44px;
   min-height: 48px;
   margin-top: 30px;
   padding: 0;
@@ -555,14 +575,20 @@ export const EDITORIAL_CSS = `
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  margin-top: 26px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
 }
-.rm-allergen-sheet span {
-  opacity: 0.48;
+.rm-allergen-sheet li {
+  opacity: 0.72;
 }
-.rm-allergen-sheet span.is-present {
+.rm-allergen-sheet li.is-present {
   opacity: 1;
   font-weight: 800;
+}
+.rm-allergen-sheet li.is-present b {
+  background: var(--rm-bg);
+  color: var(--rm-text);
 }
 .rm-detail-photo {
   overflow: hidden;
@@ -671,7 +697,10 @@ export const EDITORIAL_CSS = `
   .rm-header {
     padding: 22px 34px 30px;
   }
-  .rm-sections,
+  .rm-sections {
+    padding-left: 26px;
+    padding-right: 26px;
+  }
   .rm-section {
     padding-left: 34px;
     padding-right: 34px;
@@ -702,10 +731,13 @@ export const EDITORIAL_CSS = `
 @media (max-width: 350px) {
   .rm-header,
   .rm-section,
-  .rm-sections,
   .rm-footer {
     padding-left: 14px;
     padding-right: 14px;
+  }
+  .rm-sections {
+    padding-left: 6px;
+    padding-right: 6px;
   }
   .rm-item {
     grid-template-columns: minmax(0, 1fr) 92px;
@@ -725,9 +757,6 @@ export const EDITORIAL_CSS = `
   .rm-allergen-sheet {
     grid-template-columns: 1fr;
   }
-  .rm-table {
-    display: none;
-  }
 }
 /* Motion: smooth only when the guest has not asked for less; the reduce blocks switch it all off. */
 @media (prefers-reduced-motion: no-preference) {
@@ -736,7 +765,9 @@ export const EDITORIAL_CSS = `
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .rm * {
+  .rm *,
+  .rm *::before,
+  .rm *::after {
     scroll-behavior: auto !important;
     animation: none !important;
     transition: none !important;
@@ -749,30 +780,32 @@ export const EDITORIAL_CSS = `
 .rm-item {
   position: relative;
 }
-.rm-item-open:after {
+/* The button sits inside the item's heading and carries its name; its ::before is the item-wide tap
+   area, its ::after the arrow (a picture: the second content value is its empty alternative text). */
+.rm-item-open {
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+.rm-item-open::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 1;
 }
-.rm-allergens button {
-  position: relative;
-  z-index: 2;
-}
-.rm-item-open [data-slot="item.name"] {
-  display: inline;
-}
-.rm-item-open h3 {
-  display: inline;
-}
-.rm-chevron {
+.rm-item-open::after {
+  content: "→";
+  content: "→" / "";
   display: inline-block;
   margin-left: 8px;
   color: var(--rm-muted);
   font-weight: 500;
   transition: transform 0.2s;
 }
-.rm-item:hover .rm-chevron {
+.rm-allergens button {
+  position: relative;
+  z-index: 2;
+}
+.rm-item:hover .rm-item-open::after {
   transform: translateX(4px);
   color: var(--rm-text);
 }
@@ -800,7 +833,7 @@ export const EDITORIAL_CSS = `
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy {
   padding-top: 18px;
 }
-.rm-section:not(.is-feature) .rm-item.has-photo h3 {
+.rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
   font-size: 24px;
   line-height: 1.1;
 }
@@ -858,7 +891,7 @@ export const EDITORIAL_CSS = `
 }
 @media (prefers-reduced-motion: reduce) {
   .rm-photo img,
-  .rm-chevron {
+  .rm-item-open::after {
     transition: none !important;
     transform: none !important;
   }
@@ -888,7 +921,7 @@ export const EDITORIAL_CSS = `
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.rm-item h3,
+.rm-item :is(h3, h4),
 .rm-detail-title h2 {
   text-transform: uppercase;
   letter-spacing: 0.005em;
@@ -1069,28 +1102,40 @@ export const EDITORIAL_CSS = `
   border-radius: var(--rm-pill);
   background: var(--rm-bg);
 }
+/* Each button is a 44 x 44 px target; the negative margin keeps the row 30 px high, so the capsule
+   keeps its height, and the chosen button's fill (its ::before) keeps the 30 px of the old look. */
 .rm .rm-layout button {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 30px;
-  min-height: 30px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: -7px 0;
   padding: 0;
   border: 0;
-  border-radius: calc(var(--rm-pill) - 3px);
   background: transparent;
   color: var(--rm-muted);
-  transition:
-    background 0.18s,
-    color 0.18s;
+  transition: color 0.18s;
+}
+.rm .rm-layout button::before {
+  content: "";
+  position: absolute;
+  inset: 7px 0;
+  z-index: -1;
+  border-radius: calc(var(--rm-pill) - 3px);
+  background: transparent;
 }
 .rm .rm-layout button svg {
   width: 18px;
   height: 18px;
 }
 .rm .rm-layout button[aria-checked="true"] {
-  background: var(--rm-text);
   color: var(--rm-bg);
+}
+.rm .rm-layout button[aria-checked="true"]::before {
+  background: var(--rm-text);
 }
 .rm .rm-language {
   display: inline-flex;
@@ -1101,31 +1146,37 @@ export const EDITORIAL_CSS = `
   border: 1px solid color-mix(in srgb, var(--rm-bg) 30%, transparent);
   border-radius: var(--rm-pill);
 }
+/* The same for the language buttons: 44 x 44 px targets in a 34 px high pill. */
 .rm .rm-language button {
-  min-width: 38px;
-  height: 34px;
-  min-height: 30px;
+  position: relative;
+  isolation: isolate;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: -5px 0;
   padding: 0 8px;
   border: 0;
-  border-radius: calc(var(--rm-pill) - 3px);
   background: transparent;
   color: color-mix(in srgb, var(--rm-bg) 70%, transparent);
   font-size: 11.5px;
   font-weight: 850;
   letter-spacing: 0.06em;
 }
+.rm .rm-language button::before {
+  content: "";
+  position: absolute;
+  inset: 5px 0;
+  z-index: -1;
+  border-radius: calc(var(--rm-pill) - 3px);
+  background: transparent;
+}
 .rm .rm-language button[aria-pressed="true"] {
-  background: var(--rm-bg);
   color: var(--rm-text);
 }
+.rm .rm-language button[aria-pressed="true"]::before {
+  background: var(--rm-bg);
+}
 @media (max-width: 380px) {
-  .rm .rm-table {
-    display: none;
-  }
-  .rm .rm-language button {
-    min-width: 32px;
-    padding: 0 6px;
-  }
   .rm .rm-layout {
     margin-left: 14px;
   }
@@ -1148,7 +1199,7 @@ export const EDITORIAL_CSS = `
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img {
   aspect-ratio: 4 / 3;
 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo h3 {
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
   font-size: 14px;
   line-height: 1.15;
   overflow-wrap: anywhere;
@@ -1172,7 +1223,7 @@ export const EDITORIAL_CSS = `
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-description {
   font-size: 12.5px;
 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-chevron {
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after {
   display: none;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-modifiers,
@@ -1183,7 +1234,7 @@ export const EDITORIAL_CSS = `
   .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items {
     column-gap: 10px;
   }
-  .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo h3 {
+  .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
     font-size: 12.5px;
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo {
@@ -1233,7 +1284,7 @@ export const EDITORIAL_CSS = `
   min-width: 0;
   padding-top: 0;
 }
-.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo h3 {
+.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
   font-size: 17px;
 }
 /* The narrowest phones. The page around the face (no sideways scroll, no scrollbar) is the guest

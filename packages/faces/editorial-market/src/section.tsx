@@ -45,7 +45,7 @@ export function SectionBlock({
             image={section.image}
             assetBase={assetBase}
             page={locale}
-            sizes="(max-width: 640px) 100vw, 640px"
+            sizes="(min-width: 821px) 752px, (min-width: 641px) calc(100vw - 68px), calc(100vw - 40px)"
           />
         ) : null}
         <Text as={Title} value={section.title} page={locale} />
@@ -56,7 +56,14 @@ export function SectionBlock({
       </div>
       <div className="rm-items">
         {section.items.map((item, index) => (
-          <Item key={item.id} item={item} ctx={ctx} priority={feature && index < EAGER_PHOTOS} />
+          <Item
+            key={item.id}
+            item={item}
+            ctx={ctx}
+            priority={feature && index < EAGER_PHOTOS}
+            strip={feature}
+            nameLevel={level === 2 ? 3 : 4}
+          />
         ))}
       </div>
       {section.sections.map((child) => (

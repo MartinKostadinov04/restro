@@ -6,7 +6,7 @@
 
 import type { ViewItem } from '@restro/shell'
 
-import { badgeKey, langOf, localeLang } from './model'
+import { badgeKey, langOf, localeLang, photoSizes } from './model'
 import { type PageContext, Photo, Slot, Text } from './parts'
 import { QuickAdd } from './services/quick-add'
 
@@ -28,13 +28,20 @@ export function Item({
   item,
   ctx,
   priority,
+  strip = false,
+  nameLevel = 3,
 }: {
   readonly item: ViewItem
   readonly ctx: PageContext
   /** One of the first photos of the page: load it now. */
   readonly priority: boolean
+  /** The item is a card of the photo-led strip (its photo has a size of its own). */
+  readonly strip?: boolean
+  /** The heading level of the name: 3 under a section, 4 under a sub-section. */
+  readonly nameLevel?: 3 | 4
 }) {
   const { locale, strings, assetBase } = ctx
+  const Name = nameLevel === 3 ? 'h3' : 'h4'
   const { image } = item
   const hasBadges = item.badges.length > 0
   const className = [
@@ -58,7 +65,7 @@ export function Item({
             image={image}
             assetBase={assetBase}
             page={locale}
-            sizes={priority ? '82vw' : '(max-width: 680px) 100vw, 640px'}
+            sizes={photoSizes(ctx.layout, strip)}
             loading={priority ? 'eager' : 'lazy'}
           />
           {hasBadges ? <Badges item={item} ctx={ctx} /> : null}
@@ -66,19 +73,21 @@ export function Item({
       ) : null}
       <div className="rm-item-copy">
         {image === null && hasBadges ? <Badges item={item} ctx={ctx} /> : null}
-        <button
-          type="button"
-          className="rm-item-open"
-          onClick={(event) => ctx.openDish(item.id, event.currentTarget)}
-        >
-          <Slot name="item.name">
-            <Text as="h3" value={item.name} page={locale} />
-          </Slot>
-          <span className="rm-chevron" aria-hidden="true">
-            →
-          </span>
-          <span className="rm-sr">, {strings.more}</span>
-        </button>
+        {/* The name is the item's heading, and the button inside it opens the dish page: a button may
+            not hold a heading, a heading may hold a button. The arrow after the name is the
+            button's ::after. */}
+        <Slot name="item.name">
+          <Name lang={langOf(item.name, locale)}>
+            <button
+              type="button"
+              className="rm-item-open"
+              aria-haspopup="dialog"
+              onClick={(event) => ctx.openDish(item.id, event.currentTarget)}
+            >
+              {item.name.text}
+            </button>
+          </Name>
+        </Slot>
         {item.price !== null ? (
           <Slot name="item.price" className="rm-price">
             {item.price.text}

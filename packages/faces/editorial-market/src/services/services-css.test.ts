@@ -190,6 +190,50 @@ describe('the stylesheet of the services (R13)', () => {
   })
 })
 
+describe('the edges of inputs and choices (brief SH-07): 3:1 against what is around them', () => {
+  const borderOf = (selector: string, property: string) =>
+    services
+      .filter((rule) => rule.media === null && rule.selectors.includes(selector))
+      .map((rule) => rule.declarations.get(property))
+      .filter((value) => value !== undefined)
+      .at(-1)
+
+  it('draws the edge of a choice or an input on the page in the muted colour, not the border colour', () => {
+    // The border role is for separators (about 1.3:1); muted reads at 4.5:1 on the page.
+    for (const selector of ['.rm .ro-options button', '.rm .ro-note textarea']) {
+      expect(borderOf(selector, 'border'), selector).toBe('1px solid var(--rm-muted)')
+    }
+  })
+
+  it('draws the edge of a choice or an input on a sheet (inverse colours) at 54 % of its text', () => {
+    for (const selector of [
+      '.rm .ro-choicegrid button',
+      '.rm .ro-tips button',
+      '.rm .ro-scope button',
+      '.rm .ro-sheet .ro-note textarea',
+      '.rm .ro-sheet .ro-input input',
+      '.rm .ro-sheet .ro-promo input',
+    ]) {
+      expect(borderOf(selector, 'border-color'), selector).toBe(
+        'color-mix(in srgb, currentColor 54%, transparent)',
+      )
+    }
+  })
+
+  it('marks the chosen one by a ring in the sheet’s text colour as well as by the accent fill', () => {
+    const chosen = '.rm .ro-choicegrid [aria-checked="true"]'
+    expect(borderOf(chosen, 'border-color')).toBe('var(--rm-bg)')
+    expect(borderOf(chosen, 'box-shadow')).toBe('inset 0 0 0 1px var(--rm-bg)')
+  })
+
+  it('does not fade the status of a bill line (a faded small text reads at about 3.5:1)', () => {
+    const done = services.find((rule) =>
+      rule.selectors.includes('.rm .ro-status[data-status="served"]'),
+    )
+    expect(done?.declarations.has('opacity')).toBe(false)
+  })
+})
+
 describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet', () => {
   const tall = [
     '.rm .ro-stepper button',
@@ -236,15 +280,29 @@ describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet'
     expect(sizeOf(base, '.rm-overlay-head button', 'height')).toBe(44)
   })
 
-  it('keeps a 44 px area around the compact "+" and counter on a dish card', () => {
-    // The visible button is 32 to 38 px (the designer's size); its `::after` adds 6 px on every side.
+  it('makes the compact "+" and counter on a dish card real 44 x 44 px buttons that look as drawn', () => {
+    // They look 32 to 38 px (the designer's size: the round fill is their ::before); the button itself
+    // is 44 x 44 px, and a negative margin keeps the room the smaller one took. (SH-07 replaced the
+    // 6 px `::after` area around them, which no measure of the button itself could see.)
     expect(SERVICES_CSS).toMatch(/--ro-btn:\s*clamp\(32px,/)
-    const around = services.find((rule) => rule.selectors.includes('.rm .ro-plus::after'))
-    expect(around?.declarations.get('inset')).toBe('-6px')
-    expect(around?.declarations.get('position')).toBe('absolute')
-    const counter = services.find((rule) =>
-      rule.selectors.includes('.rm .ro-quick .ro-stepper button::after'),
-    )
-    expect(counter?.declarations.get('inset')).toBe('-6px 0')
+    for (const selector of ['.rm .ro-plus', '.rm .ro-quick .ro-stepper button']) {
+      expect(sizeOf(services, selector, 'width'), `${selector} width`).toBe(44)
+      expect(sizeOf(services, selector, 'height'), `${selector} height`).toBe(44)
+      const margin = services.find(
+        (rule) =>
+          rule.media === null &&
+          rule.selectors.includes(selector) &&
+          rule.declarations.has('margin'),
+      )
+      expect(margin?.declarations.get('margin'), `${selector} margin`).toMatch(
+        /^calc\(\(var\(--ro-(circle|btn)\) - 44px\) \/ 2\)$/,
+      )
+      const fill = services.find(
+        (rule) => rule.media === null && rule.selectors.includes(`${selector}::before`),
+      )
+      expect(fill?.declarations.get('position'), `${selector}::before`).toBe('absolute')
+    }
+    expect(SERVICES_CSS).not.toContain('.rm .ro-plus::after')
+    expect(SERVICES_CSS).not.toContain('.rm .ro-quick .ro-stepper button::after')
   })
 })

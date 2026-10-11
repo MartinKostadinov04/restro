@@ -9,8 +9,9 @@
 // to that, and to the touch rules below.
 //
 // Touch targets: every control on a sheet, the header and the bar is at least 44 px high and wide.
-// The only compact controls are the "+" and the counter on a dish card, which are as small as the
-// designer drew them but keep a 44 px area around them (the `::after` boxes).
+// The only compact ones are the "+" and the counter on a dish card. They look as small as the
+// designer drew them (a round button of 32 to 38 px) but are 44 x 44 px themselves: a negative
+// margin keeps the room they take and their `::before` draws the round fill (brief SH-07).
 
 export const SERVICES_CSS = `
 /* Sizes of the compact controls, and the room the bottom bar needs. */
@@ -38,29 +39,37 @@ export const SERVICES_CSS = `
 .rm .ro-quick > * {
   pointer-events: auto;
 }
+/* The "+" is a real 44 x 44 px button that looks like the designer's round one: the negative margin
+   keeps the room it takes (--ro-circle, 32 to 38 px), and the round fill is its ::before. */
 .rm .ro-plus {
+  --ro-circle: var(--ro-btn);
   position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  width: var(--ro-btn);
-  height: var(--ro-btn);
+  width: 44px;
+  height: 44px;
+  margin: calc((var(--ro-circle) - 44px) / 2);
   padding: 0;
   border: 0;
-  border-radius: var(--rm-pill);
-  background: var(--rm-text);
+  background: transparent;
   color: var(--rm-bg);
   line-height: 1;
   touch-action: manipulation;
   transition:
     transform 0.18s ease,
-    background 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
+    color 0.18s ease;
 }
-.rm .ro-plus::after {
+.rm .ro-plus::before {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: calc((44px - var(--ro-circle)) / 2);
+  z-index: -1;
+  border-radius: var(--rm-pill);
+  background: var(--rm-text);
+  transition:
+    background 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .rm .ro-plus svg {
   width: var(--ro-icon);
@@ -72,8 +81,8 @@ export const SERVICES_CSS = `
 }
 .rm .ro-plus-count {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: calc((44px - var(--ro-circle)) / 2 - 4px);
+  right: calc((44px - var(--ro-circle)) / 2 - 4px);
   min-width: 18px;
   height: 18px;
   border-radius: 999px;
@@ -86,14 +95,22 @@ export const SERVICES_CSS = `
 }
 @media (hover: hover) {
   .rm .ro-plus:hover {
-    background: var(--rm-accent);
     color: var(--rm-on-accent);
     transform: translateY(-2px);
+  }
+  .rm .ro-plus:hover::before {
+    background: var(--rm-accent);
     box-shadow: 0 6px 16px color-mix(in srgb, var(--rm-text) 22%, transparent);
   }
   .rm .ro-stepper button:hover {
     background: var(--rm-accent);
     color: var(--rm-on-accent);
+  }
+  .rm .ro-quick .ro-stepper button:hover {
+    background: transparent;
+  }
+  .rm .ro-quick .ro-stepper button:hover::before {
+    background: var(--rm-accent);
   }
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy > .ro-quick {
@@ -108,8 +125,9 @@ export const SERVICES_CSS = `
   margin: 0;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .ro-quick .ro-plus {
-  width: 36px;
-  height: 36px;
+  --ro-circle: 36px;
+}
+.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .ro-quick .ro-plus::before {
   box-shadow: 0 4px 12px color-mix(in srgb, var(--rm-text) 20%, transparent);
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.is-text .ro-quick {
@@ -149,18 +167,29 @@ export const SERVICES_CSS = `
   font-weight: 850;
   animation: ro-pop 0.2s ease;
 }
+/* On a dish card the counter keeps the size the designer drew (buttons of 32 to 38 px) but its buttons
+   are real 44 x 44 px targets: the negative margin keeps the room, and the capsule no longer clips
+   (its buttons reach a little past it), so the hover fill is drawn by the ::before of each button. */
+.rm .ro-quick .ro-stepper {
+  overflow: visible;
+}
 .rm .ro-quick .ro-stepper button {
   position: relative;
-  width: var(--ro-btn);
-  height: var(--ro-btn);
-  min-width: 0;
-  min-height: 0;
+  isolation: isolate;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: calc((var(--ro-btn) - 44px) / 2);
   font-size: 16px;
 }
-.rm .ro-quick .ro-stepper button::after {
+.rm .ro-quick .ro-stepper button::before {
   content: "";
   position: absolute;
-  inset: -6px 0;
+  inset: calc((44px - var(--ro-btn)) / 2);
+  z-index: -1;
+  border-radius: var(--rm-pill);
+  background: transparent;
 }
 
 /* The bill and the pay entry in the venue bar. */
@@ -353,7 +382,9 @@ export const SERVICES_CSS = `
   align-items: center;
   min-height: 58px;
   padding: 10px 14px;
-  border: 1px solid var(--rm-border);
+  /* The edge of a choice shows at 3:1: the muted colour reads at 4.5:1 on the page (the border
+     colour is for separators and is about 1.3:1). */
+  border: 1px solid var(--rm-muted);
   border-radius: var(--rm-radius);
   background: transparent;
   text-align: left;
@@ -388,7 +419,7 @@ export const SERVICES_CSS = `
   width: 100%;
   min-height: 52px;
   padding: 13px 14px;
-  border: 1px solid var(--rm-border);
+  border: 1px solid var(--rm-muted);
   border-radius: var(--rm-radius);
   background: transparent;
   color: inherit;
@@ -399,7 +430,8 @@ export const SERVICES_CSS = `
 .rm .ro-sheet .ro-note textarea,
 .rm .ro-sheet .ro-input input,
 .rm .ro-sheet .ro-promo input {
-  border-color: color-mix(in srgb, currentColor 30%, transparent);
+  /* On a sheet (the inverse colours) the edge of an input shows at 3:1 as well: 54 % of the text. */
+  border-color: color-mix(in srgb, currentColor 54%, transparent);
 }
 .rm .ro-dish-bar {
   position: sticky;
@@ -651,9 +683,12 @@ export const SERVICES_CSS = `
   background: var(--rm-accent);
   color: var(--rm-on-accent);
 }
+/* A line that is done is quieter: an outline instead of a tint. (It used to fade to 60 %, which
+   left its small text at about 3.5:1.) */
 .rm .ro-status[data-status="served"],
 .rm .ro-status[data-status="cancelled"] {
-  opacity: 0.6;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 40%, transparent);
 }
 
 /* The waiter sheet, and the states a service goes through. */
@@ -667,7 +702,9 @@ export const SERVICES_CSS = `
 .rm .ro-choicegrid button,
 .rm .ro-tips button,
 .rm .ro-scope button {
-  border-color: color-mix(in srgb, currentColor 24%, transparent);
+  /* On a sheet (the inverse colours) a choice's edge is 54 % of the text colour, which shows at
+     3:1 on every theme checked (it was 24 %, about 1.7:1). */
+  border-color: color-mix(in srgb, currentColor 54%, transparent);
 }
 .rm .ro-choicegrid button {
   display: flex;
@@ -682,10 +719,12 @@ export const SERVICES_CSS = `
 .rm .ro-choicegrid [aria-checked="true"],
 .rm .ro-tips [aria-checked="true"],
 .rm .ro-scope [aria-checked="true"] {
-  border-color: var(--rm-accent);
+  /* The chosen one: the accent fill, and a ring in the sheet's own text colour, so it stands out by
+     more than hue (the accent can be as light as the sheet itself: 1.06:1 on Botanical dark). */
+  border-color: var(--rm-bg);
   background: var(--rm-accent);
   color: var(--rm-on-accent);
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px var(--rm-bg);
 }
 .rm .ro-state {
   display: grid;

@@ -14,6 +14,7 @@ import {
   localeLang,
   matchesFilters,
   NO_FILTERS,
+  photoSizes,
   themeVariables,
   toggled,
 } from './model'
@@ -152,5 +153,24 @@ describe('the theme as CSS variables', () => {
     expect(own['--rm-font']).toBe('var(--font-inter), sans-serif')
     const fallback = themeVariables({ ...theme, font: 'Playfair Display' })['--rm-font']
     expect(fallback).toMatch(/^"Playfair Display", system-ui/)
+  })
+})
+
+describe('the size of an item photo (SH-07)', () => {
+  it('follows the layout: the column, half of it, a 96 px square, or a card of the strip', () => {
+    expect(photoSizes('list', false)).toBe('96px')
+    expect(photoSizes('one', false)).toContain('calc(100vw - 68px)')
+    expect(photoSizes('two', false)).toContain('calc(50vw - 42px)')
+    expect(photoSizes('two', true)).toContain('84vw')
+    // The strip ignores the layout.
+    expect(photoSizes('list', true)).toBe(photoSizes('two', true))
+    expect(photoSizes('one', true)).toBe(photoSizes('two', true))
+  })
+
+  it('never claims a photo is the whole screen wide, so a phone is not sent the biggest file', () => {
+    for (const layout of ['list', 'one', 'two'] as const) {
+      for (const strip of [false, true])
+        expect(photoSizes(layout, strip)).not.toMatch(/(^|[ (,])100vw(?!\s*-)/)
+    }
   })
 })
