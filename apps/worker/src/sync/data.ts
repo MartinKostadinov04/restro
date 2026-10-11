@@ -66,8 +66,8 @@ export async function syncSkipReason(
       .select({
         archivedAt: venues.archivedAt,
         linked: sql<boolean>`exists (
-          select 1 from restro.barsy_venues l
-          where l.venue_id = ${venues.id} and l.integration_id = ${integrationId})`,
+          select 1 from ${venueLinks}
+          where ${venueLinks.venueId} = ${venues.id} and ${venueLinks.integrationId} = ${integrationId})`,
       })
       .from(venues)
       .where(eq(venues.id, venueId)),

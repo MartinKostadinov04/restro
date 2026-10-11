@@ -225,7 +225,7 @@ const UNKNOWN_TABLE = 'this venue has no such table'
 
 /**
  * The table with its venue, locked for the rest of the transaction; a refusal when it is not
- * usable: no such table (also one whose barsy venue serves no venue of ours) or a venue that was
+ * usable: no such table (also one whose till venue serves no venue of ours) or a venue that was
  * deleted. The venue is locked live (`lockLiveVenue`) after the table, so a table edit and the
  * deletion of its venue never interleave.
  */
@@ -240,17 +240,17 @@ async function lockTable(
   if (place === undefined || place.state === 'deleted') {
     return refusal('unknown_table', UNKNOWN_TABLE)
   }
-  const [barsy] = await tx
+  const [link] = await tx
     .select({ venueId: barsyVenues.venueId })
     .from(barsyVenues)
     .where(and(eq(barsyVenues.integrationId, place.integrationId), eq(barsyVenues.bid, place.bid)))
-  if (barsy === undefined || barsy.venueId === null) return refusal('unknown_table', UNKNOWN_TABLE)
-  const locked = await lockLiveVenue(tx, barsy.venueId)
+  if (link === undefined || link.venueId === null) return refusal('unknown_table', UNKNOWN_TABLE)
+  const locked = await lockLiveVenue(tx, link.venueId)
   if (locked.refused === 'venue_archived') {
-    return refusal('venue_archived', venueRefusalText(barsy.venueId, 'venue_archived'))
+    return refusal('venue_archived', venueRefusalText(link.venueId, 'venue_archived'))
   }
   if (locked.refused !== null) return refusal('unknown_table', UNKNOWN_TABLE)
-  return { place, venueId: barsy.venueId as VenueId }
+  return { place, venueId: link.venueId as VenueId }
 }
 
 /**

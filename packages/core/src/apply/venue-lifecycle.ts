@@ -5,7 +5,7 @@
 // so do its public code and its tables' QR tokens, so a restore brings the same addresses back.
 // What a deletion does:
 //   - sets `venues.archived_at`;
-//   - releases the venue's till link in the same transaction (`barsy_venues.venue_id` goes back to
+//   - releases the venue's till link in the same transaction (the till venue's `venue_id` goes back to
 //     null, so the till venue is free for another venue of ours; the tables' codes belong to the
 //     till venue's places and stay with them);
 //   - reports the QR tokens of the venue's tables, because the link is gone by the time the
@@ -23,10 +23,11 @@
 // delete wait for the save. Like the other writers of a venue's own settings, none of the three
 // writes an `events` row: that changelog is about nodes and their values.
 
-import { barsyVenues, type DbPool, places, venues } from '@restro/db'
+import { type DbPool, places, venues } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { and, asc, eq, isNotNull, ne, sql } from 'drizzle-orm'
 
+import { tillVenueLinks } from '../connectors/till-venues'
 import { isId } from '../ids'
 import { ProvisionError } from './provision'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
@@ -126,16 +127,16 @@ export async function archiveVenue(
       .select({ token: places.qrToken })
       .from(places)
       .innerJoin(
-        barsyVenues,
+        tillVenueLinks,
         and(
-          eq(places.tenantId, barsyVenues.tenantId),
-          eq(places.integrationId, barsyVenues.integrationId),
-          eq(places.bid, barsyVenues.bid),
+          eq(places.tenantId, tillVenueLinks.tenantId),
+          eq(places.integrationId, tillVenueLinks.integrationId),
+          eq(places.bid, tillVenueLinks.bid),
         ),
       )
       .where(
         and(
-          eq(barsyVenues.venueId, venueId),
+          eq(tillVenueLinks.venueId, venueId),
           ne(places.state, 'deleted'),
           isNotNull(places.qrToken),
         ),
@@ -151,10 +152,10 @@ export async function archiveVenue(
     if (archived?.archivedAt == null) throw new Error('the venue could not be archived')
 
     const released = await tx
-      .update(barsyVenues)
+      .update(tillVenueLinks)
       .set({ venueId: null, updatedAt: new Date() })
-      .where(eq(barsyVenues.venueId, venueId))
-      .returning({ bid: barsyVenues.bid })
+      .where(eq(tillVenueLinks.venueId, venueId))
+      .returning({ bid: tillVenueLinks.bid })
     return {
       venueId,
       changed: true,
