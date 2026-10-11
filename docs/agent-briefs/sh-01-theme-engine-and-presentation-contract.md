@@ -223,6 +223,10 @@ SnapshotShape += {
 
 - Every snapshot published before this change (no new keys) must still parse. Test it with a stored old snapshot, e.g. `docs/guides/shell-handoff/barsy-demo-snapshot.json`.
 - Put a comment above the additions: new fields inside `menu-snapshot/1` stay optional forever. After the first deploy the readers change first (CF-12's parser-first rule).
+- **Fix CF-12's comment** above `LiveOverlaySchema`. It says the snapshot is "not extended in place", which is no longer true. Reword it to the actual rule:
+  - the snapshot schema stays strict for **unknown** keys;
+  - it gains **known, optional** fields in place (D69–D71);
+  - after the first deploy, a new field ships in the reader one deploy before the producer writes it. A phone still running an older reader keeps its current menu on screen until reload, because the pointer poll ignores a snapshot it cannot parse.
 
 ### 11. Builder and publisher
 
