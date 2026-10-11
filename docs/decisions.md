@@ -82,6 +82,7 @@ Status: **firm** (tracker: Firm or Agreed), **applied** (done or in force), **pe
 | D73 | Organisation-wide (Settings → Integrations): the barsy connection, the barsy venues found (Add as venue / Link to an existing venue / Not used), the allergen field and text language, the sync schedule, "sync everything" and run history. Per venue: identity, Menu source (its barsy venue, menu category, which barsy price), publishing rules, composer, Design, tables, publishing. Price per venue because barsy prices by venue; reading and deletions per catalogue because venues share catalogues. | firm |
 | D74 | The sidebar lists the venues and the organisation's Settings; a venue's sections stay as the tabs on its page (nothing shown twice). | firm |
 | D75 | When barsy has no public name for an item, option or category, Restro shows barsy's own name (`article_name`, `cat_name`) and the composer warns that the menu name is missing; no other internal field ever reaches a snapshot. | firm |
+| D76 | Deleting a venue (owners, after typing its name) archives it: gone from the admin, guest page and table codes say "not available", till link released, sync and publishing stop; nothing is erased, and owners restore it from Settings › Deleted venues (no till link, unpublished). Owners and admins rename. Every page, action, core writer and job checks the venue is live; `proxy.ts` stays a cookie check. | firm |
 
 ## Open questions
 Owner is the group heading. None blocks the current stages unless a brief says so.
@@ -152,6 +153,7 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T62 Claude: catalogue-root safety (warn on root or venue change, hold above 30% missing); sync side partly in CF-02; before the pilot.
 - T67 Claude: read `Places_getlist` once a barsy venue is mapped; with T66 (CF-10).
 - T68 Claude: built 10-11 (CF-09a, CF-16, CF-09b merged into `sh/foundation`); left: Martin's acceptance.
+- T77 Claude: rename and delete venues (D76), CF-18 running.
 - T76 Claude: the rollback pause (`publish.auto_paused`) moves from the integration to the venue, like `after_sync`.
 - T70 Claude: connector foundation; merged CF-01, 02, 03, 08a, 12, 14; remaining CF-04 to 07, rest of 08, 09, 10, 11, 13; staging migration 0014 needs Martin's OK.
 - T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; SH-01 to SH-08 all merged into `sh/foundation` on 10-11; left: acceptance with Martin, then the PRs; open points per step in the tracker.
