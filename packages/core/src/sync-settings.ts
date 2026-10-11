@@ -1,7 +1,8 @@
 // The sync settings of an integration (brief S3-04, decision D59): when barsy is read and whether
 // a sync goes live by itself. They live in the integration's `config`, in two objects:
 //
-//   config.schedule  incremental_enabled, incremental_minutes, full_pull_enabled, full_pull_time
+//   config.schedule  incremental_enabled, incremental_minutes, full_pull_enabled, full_pull_time,
+//                    time_zone (CF-16: the zone of the daily full read; default Europe/Sofia)
 //   config.publish   after_sync (auto | manual), new_items (show | hold)
 //
 // The web app writes them (Integration tab) and the worker reads them, both through this module,
@@ -140,6 +141,30 @@ export function parseSyncSettings(config: unknown): SyncSettings {
       new_items: orDefault(NewItemsSchema, publish.new_items, defaults.publish.new_items),
     },
   }
+}
+
+/** The zone the daily full read is timed in when the integration names none (D73). */
+export const SYNC_TIME_ZONE_DEFAULT = 'Europe/Sofia'
+
+/** True for a time zone this runtime knows (an IANA name such as `Europe/Sofia`). */
+function isTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 64) return false
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The time zone of an integration's schedule (brief CF-16, D73: one schedule per integration):
+ * `config.schedule.time_zone` when it names a zone this runtime knows, else Europe/Sofia. The daily
+ * full read is timed in it, whatever the time zones of the integration's venues. Never throws.
+ */
+export function syncTimeZone(config: unknown): string {
+  const zone = record(record(config).schedule).time_zone
+  return isTimeZone(zone) ? zone : SYNC_TIME_ZONE_DEFAULT
 }
 
 /** Whether a sync that changed something publishes on its own. */

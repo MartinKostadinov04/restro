@@ -117,8 +117,9 @@ describe.skipIf(!hasDatabase)('barsy-incremental', () => {
     advance(5)
     await incremental()
     const calls = fake.callsOf('Articles_getlist')
-    // [0] is the full pull's page, [1] the incremental's.
-    expect(calls[0]?.params.filters).toEqual({ cat_id_deep: '1091' })
+    // [0] is the full pull's page (the whole catalogue of bid 10, CF-16), [1] the incremental's
+    // (the venue's root only).
+    expect(calls[0]?.params.filters).toEqual({ menu_id: '1' })
     const expected = `>${lastUpdateFilter(fullPullStart, 'Europe/Sofia')}`
     expect(expected).toMatch(/^>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/)
     expect(calls[1]?.params.filters).toEqual({ cat_id_deep: '1091', last_update: expected })
@@ -242,7 +243,10 @@ describe.skipIf(!hasDatabase)('barsy-incremental', () => {
       expect(fake.callsOf('Articles_getlist')).toHaveLength(articleCalls)
       const queued = world.enqueued.filter((job) => job.name === JOB_NAMES.barsyFullPull)
       expect(queued).toHaveLength(1)
-      expect(queued[0]).toMatchObject({ data: payload(), singletonKey: world.integrationId })
+      expect(queued[0]).toMatchObject({
+        data: payload(),
+        singletonKey: `${world.integrationId}:${world.venueId}`,
+      })
       const run = await lastRun('barsy_incremental')
       expect(run.status).toBe('completed')
       expect(run.error_summary).toContain('a full pull was queued')

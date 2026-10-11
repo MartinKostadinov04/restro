@@ -21,6 +21,13 @@ export type BarsyNumber = z.output<typeof barsyNumberSchema>
 /** barsy's 0/1 flags. */
 const flagSchema = z.union([z.literal(0), z.literal(1), z.boolean()])
 
+/**
+ * A flag inside the per-venue for-sale exceptions: the catalogue recordings send them as text
+ * (`{"1":"1","10":"1"}`, fixtures/demo/articles-bid*-menu72.json), so "0" and "1" are accepted
+ * too (brief CF-16; before, one such article failed the whole page).
+ */
+const venueFlagSchema = z.union([flagSchema, z.literal('0'), z.literal('1')])
+
 /** Text per barsy language key. Empty string and null both mean "no text in that language". */
 const mlTextSchema = z.record(z.string(), z.string().nullable())
 
@@ -109,7 +116,7 @@ export const articleSchema = z.looseObject({
   is_public: flagSchema.nullish(),
   is_for_sale: flagSchema.nullish(),
   /** Per-venue for-sale exceptions, keyed by barsy venue id (only with `limits_by_barsys`). */
-  is_for_sale_barsys: z.record(z.string(), flagSchema.nullable()).nullish(),
+  is_for_sale_barsys: z.record(z.string(), venueFlagSchema.nullable()).nullish(),
   is_service: flagSchema.nullish(),
   delete_flag: flagSchema.nullish(),
   /** File name inside barsy, or (some demo articles) a full image URL. */
@@ -119,6 +126,8 @@ export const articleSchema = z.looseObject({
   /** Characteristics by key (`k102`); empty in every demo recording, so the value shape is unconfirmed. */
   article_details: z.record(z.string(), z.unknown()).nullish(),
   has_supplements: flagSchema.nullish(),
+  /** The catalogue the article belongs to (brief CF-16, T71): venues can share a catalogue. */
+  menu_id: z.int().nullish(),
 })
 export type Article = z.output<typeof articleSchema>
 export const articlesSchema = z.array(articleSchema)

@@ -4,7 +4,7 @@
 //
 // barsy ids (`bid`, `place_id`) stay in these tables (rule 3).
 
-import { type BarsyVenue, barsyVenues, type DbPool, places, venues } from '@restro/db'
+import { type BarsyVenue, type DbPool, places, barsyVenues as venueLinks, venues } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { and, eq, sql } from 'drizzle-orm'
 
@@ -26,12 +26,18 @@ function checked(tenantId: string, integrationId: string): void {
 export interface BarsyVenueInput {
   readonly bid: number
   readonly name: string
+  /**
+   * The catalogue it sells from (`menu_id`; brief CF-16). Null or absent: not reported, and a
+   * catalogue stored earlier is kept.
+   */
+  readonly catalogueId?: number | null
 }
 
 /**
- * Records the venues of an installation: a new `bid` gets a row, a known one only follows the
- * name barsy shows. What the manager chose (our venue, the catalogue root) is never touched. A
- * venue barsy no longer lists keeps its row (the app role cannot delete; the manager unmaps it).
+ * Records the venues of an installation: a new `bid` gets a row, a known one follows the name and
+ * the catalogue barsy shows (a catalogue barsy does not report keeps the stored one). What the
+ * manager chose (our venue, the catalogue root, the price) is never touched. A venue barsy no
+ * longer lists keeps its row (the app role cannot delete; the manager unmaps it).
  */
 export async function upsertBarsyVenues(
   pool: DbPool,
@@ -44,22 +50,30 @@ export async function upsertBarsyVenues(
     if (!Number.isSafeInteger(venue.bid) || venue.bid < 0 || venue.name.trim() === '') {
       throw new ProvisionError('invalid_input', 'a barsy venue needs a non-negative bid and a name')
     }
+    const catalogue = venue.catalogueId
+    if (catalogue != null && (!Number.isSafeInteger(catalogue) || catalogue < 0)) {
+      throw new ProvisionError('invalid_input', 'a catalogue id is a non-negative integer')
+    }
   }
   if (venues.length === 0) return []
   return withTenantWrite(pool, tenantId, (tx) =>
     tx
-      .insert(barsyVenues)
+      .insert(venueLinks)
       .values(
         venues.map((venue) => ({
           tenantId,
           integrationId,
           bid: venue.bid,
           name: venue.name.trim(),
+          catalogueId: venue.catalogueId ?? null,
         })),
       )
       .onConflictDoUpdate({
-        target: [barsyVenues.integrationId, barsyVenues.bid],
-        set: { name: sql`excluded.name` },
+        target: [venueLinks.integrationId, venueLinks.bid],
+        set: {
+          name: sql`excluded.name`,
+          catalogueId: sql`coalesce(excluded.catalogue_id, ${venueLinks.catalogueId})`,
+        },
       })
       .returning(),
   )
@@ -102,8 +116,8 @@ export async function mapBarsyVenue(
     await lockTenantDocument(tx, tenantId)
     const [row] = await tx
       .select()
-      .from(barsyVenues)
-      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.bid, bid)))
+      .from(venueLinks)
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
     if (!row) return { ok: false, error: 'barsy_venue_missing' } as const
     const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
     if (!venue) return { ok: false, error: 'venue_missing' } as const
@@ -113,13 +127,13 @@ export async function mapBarsyVenue(
     if (row.venueId === venueId) return { ok: true, row } as const
     // The venue may serve another barsy venue now (unique on venue_id): free that one first.
     await tx
-      .update(barsyVenues)
+      .update(venueLinks)
       .set({ venueId: null, updatedAt: new Date() })
-      .where(eq(barsyVenues.venueId, venueId))
+      .where(eq(venueLinks.venueId, venueId))
     const [updated] = await tx
-      .update(barsyVenues)
+      .update(venueLinks)
       .set({ venueId, updatedAt: new Date() })
-      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.bid, bid)))
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
       .returning()
     if (!updated) return { ok: false, error: 'barsy_venue_missing' } as const
     return { ok: true, row: updated } as const
@@ -147,13 +161,45 @@ export async function setCatalogueRoot(
   }
   return withTenantWrite(pool, tenantId, async (tx) => {
     const [row] = await tx
-      .update(barsyVenues)
+      .update(venueLinks)
       .set({ catalogueRootCatId: catId, updatedAt: new Date() })
-      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.bid, bid)))
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
       .returning()
     return row
       ? ({ ok: true, row } as const)
       : ({ ok: false, error: 'barsy_venue_missing' } as const)
+  })
+}
+
+/** Which till price a venue's menu shows (D73: per venue). */
+export type VenuePriceSource = 'actual_price' | 'current_price'
+
+/**
+ * Records which till price the menu of the venue linked to `bid` shows (brief CF-16, D73): per
+ * venue, because prices differ per venue. Returns whether the link exists. The next pull of that
+ * venue reads it (a changed price source makes the change check ask for a full pull).
+ */
+export async function setVenuePriceSource(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  priceSource: VenuePriceSource,
+): Promise<boolean> {
+  checked(tenantId, integrationId)
+  if (!Number.isSafeInteger(bid) || bid < 0) {
+    throw new ProvisionError('invalid_input', 'bid must be a non-negative integer')
+  }
+  if (priceSource !== 'actual_price' && priceSource !== 'current_price') {
+    throw new ProvisionError('invalid_input', 'priceSource must be actual_price or current_price')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(venueLinks)
+      .set({ priceSource, updatedAt: new Date() })
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
+      .returning({ bid: venueLinks.bid })
+    return rows.length > 0
   })
 }
 
@@ -169,10 +215,10 @@ export async function clearBarsyVenueChoices(
   checked(tenantId, integrationId)
   return withTenantWrite(pool, tenantId, async (tx) => {
     const rows = await tx
-      .update(barsyVenues)
+      .update(venueLinks)
       .set({ venueId: null, catalogueRootCatId: null, updatedAt: new Date() })
-      .where(eq(barsyVenues.integrationId, integrationId))
-      .returning({ bid: barsyVenues.bid })
+      .where(eq(venueLinks.integrationId, integrationId))
+      .returning({ bid: venueLinks.bid })
     return rows.length
   })
 }

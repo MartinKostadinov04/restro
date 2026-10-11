@@ -504,10 +504,19 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
       })
       const [row] = await integrationRows()
       expect(row?.config).toMatchObject({
-        price_source: 'current_price',
         allergen_detail_key: 'k103',
         default_locale: 'en_US',
       })
+      // The price is the setting of this venue's barsy venue (D73, CF-16), not the integration's.
+      expect(row?.config).not.toHaveProperty('price_source')
+      const { rows: links } = await owner.query<{ bid: number; price_source: string | null }>(
+        'select bid, price_source from restro.barsy_venues where tenant_id = $1 order by bid',
+        [tenant],
+      )
+      expect(links.find((link) => link.bid === 1)?.price_source).toBe('current_price')
+      expect(links.filter((link) => link.bid !== 1).every((l) => l.price_source === null)).toBe(
+        true,
+      )
 
       // Automatic again: the key goes away, the rest stays.
       await saveMappingSettings(scopeFor(venueA), {
@@ -858,7 +867,7 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
       expect(after?.config).not.toHaveProperty('catalogue_trees')
       expect(after?.config).not.toHaveProperty('sync')
       // The settings the manager chose for the integration are not about the host: they stay.
-      expect(after?.config).toHaveProperty('price_source')
+      expect(after?.config).toHaveProperty('default_locale')
       const view = await loadIntegrationView(scopeFor(venueA), services())
       expect(view.venueMapped).toBe(false)
       expect(view.rootCatId).toBeNull()

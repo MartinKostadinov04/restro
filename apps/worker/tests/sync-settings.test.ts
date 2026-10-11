@@ -106,12 +106,15 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
   // --- the minute tick ---------------------------------------------------------------------
 
   describe('the minute tick', () => {
-    /** The tick at an instant: the names of the jobs it queued, in order. */
+    /**
+     * The tick at an instant: the names of the pulls it queued, in order (its places reads, CF-16,
+     * are tested in sync-venues.test.ts).
+     */
     const tickAt = async (instant: string) => {
       world.clock = new Date(instant)
       world.enqueued.length = 0
       await world.run(JOB_NAMES.barsySyncTick, {})
-      return world.enqueued.map((job) => job.name)
+      return world.enqueued.map((job) => job.name).filter((name) => name !== JOB_NAMES.placesRead)
     }
     const INC = JOB_NAMES.barsyIncremental
     const FULL = JOB_NAMES.barsyFullPull
@@ -168,7 +171,11 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
       ]) {
         expect(await tickAt(instant), instant).toEqual([])
       }
-      expect(await syncState()).toEqual({})
+      // No pull was asked for. (The venue's tables are read once it is mapped, whatever the
+      // switches say: CF-16, T67.)
+      const { places_queued_at: tables, ...marks } = await syncState()
+      expect(tables).toBeDefined()
+      expect(marks).toEqual({})
     })
 
     it('each loop has its own switch', async () => {
@@ -213,14 +220,18 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
       expect(await tickAt('2026-10-10T05:05:00.200Z')).toEqual([INC])
     })
 
-    it('reads the full pull time in the venue’s own time zone', async () => {
+    it('reads the full pull time in the integration’s time zone, not the venue’s (D73)', async () => {
       await settings({ incremental_enabled: false })
       await world.query(`update restro.venues set timezone = 'America/New_York' where id = $1`, [
         world.venueId,
       ])
-      // Noon in New York in October is 16:00 UTC (EDT).
-      expect(await tickAt('2026-10-10T15:59:30Z')).toEqual([])
-      expect(await tickAt('2026-10-10T16:00:10Z')).toEqual([FULL])
+      // One schedule per integration: noon in Sofia (09:00 UTC in October), whatever the venue's zone.
+      expect(await tickAt('2026-10-10T08:59:30Z')).toEqual([])
+      expect(await tickAt('2026-10-10T09:00:10Z')).toEqual([FULL])
+      // The integration may name its own zone: noon in New York is 16:00 UTC (EDT).
+      await settings({ incremental_enabled: false, time_zone: 'America/New_York' })
+      expect(await tickAt('2026-10-11T15:59:30Z')).toEqual([])
+      expect(await tickAt('2026-10-11T16:00:10Z')).toEqual([FULL])
     })
 
     it('spring change day in Sofia: a time inside the skipped hour runs once, shifted forward', async () => {

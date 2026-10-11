@@ -9,6 +9,7 @@
 //   item      name, description, visible, allergens               (master)
 //             image: cleared when barsy has no picture; set by the photo job, never here
 //             price, for_sale                                      (venue:<our vn_ id>)
+//             visible at venue scope: cleared when the venue had hidden the item (CF-16)
 //   group     name, min, max                                      (master)
 //   option    name (master), price_delta                          (venue)
 // A field barsy has no value for is cleared in the till layer (so the layers below show through
@@ -17,6 +18,10 @@
 //
 // Nodes are named by source link everywhere after their creation, so the change set can be split
 // into chunks. Node ids are derived (./ids.ts), so a repeated pull creates nothing new.
+//
+// Several venues on one catalogue (brief CF-16): items are the installation's (one link per
+// article); sections are the venue's, linked under the keys `input.qualifiedSections` names
+// (./venues.ts). Without it every key is the plain one, exactly as before CF-16.
 
 import {
   type ChangeSet,
@@ -54,6 +59,7 @@ import {
   type SourceRecordDescriptor,
 } from './types.ts'
 import { decimalText, flagOf, uniqueBy } from './util.ts'
+import { sectionLinkId } from './venues.ts'
 
 const CURRENCY = 'EUR' as const
 
@@ -164,24 +170,29 @@ function money(minor: number): { amount_minor: number; currency: typeof CURRENCY
 
 // --- sections -----------------------------------------------------------------------------
 
+/** The section link of a category in this venue (plain, or qualified by the venue; CF-16). */
+function sectionLinkOf(run: Run, catId: number): SourceLink {
+  const qualified = run.input.qualifiedSections?.has(catId) === true
+  return linkOf(run, 'category', sectionLinkId(catId, qualified ? run.input.venueId : null))
+}
+
 function mapSections(run: Run, plan: SectionsPlan): void {
   for (const section of plan.sections) {
     const category = section.node.category
     const externalId = String(section.catId)
-    const link = linkOf(run, 'category', externalId)
+    const link = sectionLinkOf(run, section.catId)
+    // The record is barsy's category, shared by every venue that shows it.
     const record = describeSource(run.cfg.integrationId, 'category', externalId, 'master', category)
     run.sourceRecords.push(record)
 
-    const parent: NodeRef =
-      section.parentCatId === null
-        ? { id: run.input.menuId }
-        : { link: linkOf(run, 'category', String(section.parentCatId)) }
+    const parentLink = section.parentCatId === null ? null : sectionLinkOf(run, section.parentCatId)
+    const parent: NodeRef = parentLink === null ? { id: run.input.menuId } : { link: parentLink }
     // The parent is part of the id: a category moved in barsy gets a new derived id, which apply()
     // collapses onto the node it is already linked to (instead of refusing the same id under a
-    // new parent).
+    // new parent). Plain keys derive exactly the ids they did before CF-16.
     const parentKey =
-      section.parentCatId === null ? `menu:${run.input.menuId}` : `category:${section.parentCatId}`
-    createAndLink(run, 'section', link, parent, ['category', externalId, parentKey])
+      parentLink === null ? `menu:${run.input.menuId}` : `category:${parentLink.externalId}`
+    createAndLink(run, 'section', link, parent, ['category', link.externalId, parentKey])
 
     const title = localizedText(category.cat_name_public_ml, category.cat_name_public, run.text)
     if (!writeText(run, link, 'title', title, record)) {
@@ -314,6 +325,10 @@ function mapItemFields(run: Run, item: ItemPlan, allergenKey: string | null): vo
   const visible = flagOf(article.is_public)
   if (visible === null) clear(run, link, 'visible', 'master')
   else write(run, link, 'visible', 'master', visible, record)
+  // The venue had hidden the item (it was outside the venue's root, CF-16): its root holds it again.
+  if (run.input.venueHiddenArticles?.has(externalId) === true) {
+    clear(run, link, 'visible', run.venueScope)
+  }
 
   mapAllergens(run, item, allergenKey)
 }
@@ -502,7 +517,8 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
       if (categories.includes(cfg.catalogueRootCatId)) {
         warn(run, 'article_unplaced', 'article', externalId, 'sits directly in the catalogue root')
       } else {
-        warn(run, 'article_outside_catalogue', 'article', externalId)
+        // Outside this venue's root: another venue's part of a shared catalogue, or no category of
+        // the tree. Counted, not warned about: a whole-catalogue read holds many (CF-16).
         outsideCatalogue += 1
         continue
       }
@@ -539,7 +555,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
       run.ops.push({
         op: 'setPlacement',
         item: { link: item.link },
-        section: { link: linkOf(run, 'category', String(section.catId)) },
+        section: { link: sectionLinkOf(run, section.catId) },
         sortKey: 'end',
         onlyIfUnplaced: true,
       })

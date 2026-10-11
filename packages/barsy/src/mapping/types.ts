@@ -56,7 +56,7 @@ export interface CatalogueInput {
   readonly menuId: NodeId
   /** `Categories_getalltree` (public tree of this venue): one root node. */
   readonly tree: CategoryTreeNode
-  /** All pages of `Articles_getlist` for the catalogue root, concatenated. */
+  /** All pages of `Articles_getlist` (the venue's root, or its whole catalogue), concatenated. */
   readonly articles: readonly Article[]
   /** `Articlesupplements_get` per article id (as text), for articles with `has_supplements`. */
   readonly supplementsByArticle: Readonly<Record<string, readonly SupplementGroup[]>>
@@ -64,6 +64,14 @@ export interface CatalogueInput {
   readonly detailsTree: readonly ArticleDetailsGroup[]
   /** `Languages_getlist`: the languages the installation holds. */
   readonly languages: readonly Language[]
+  /**
+   * Categories whose section in this venue is linked under the venue-qualified key
+   * (`<catId>@<vn_ id>`, ./venues.ts `qualifiedSections`). Absent or empty: every section uses the
+   * plain key, as before several venues shared a catalogue (CF-16).
+   */
+  readonly qualifiedSections?: ReadonlySet<number> | undefined
+  /** Articles (ids as text) this venue had hidden, outside its root: cleared when mapped (CF-16). */
+  readonly venueHiddenArticles?: ReadonlySet<string> | undefined
 }
 
 /** What kind of barsy object a source record holds. */
@@ -122,7 +130,6 @@ export type MappingWarningCode =
   | 'category_flattened'
   | 'section_title_missing'
   | 'article_duplicate'
-  | 'article_outside_catalogue'
   | 'article_unplaced'
   | 'item_name_missing'
   | 'price_missing'
@@ -156,7 +163,7 @@ export interface CatalogueCounts {
   readonly deletedArticles: number
   /** `is_service` articles left out. */
   readonly skippedServices: number
-  /** Articles with no category inside the catalogue. */
+  /** Articles with no category under the venue's root (another venue's part of the catalogue, or none). */
   readonly outsideCatalogue: number
 }
 

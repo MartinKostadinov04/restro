@@ -3,27 +3,68 @@
 // `@restro/core/apply`.
 
 import {
-  barsyVenues,
   fieldValues,
   jobRuns,
   sourceLinks,
   sourceRecords,
+  barsyVenues as venueLinks,
   venues,
   withTenant,
 } from '@restro/db'
-import { and, count, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { SyncEnvironment } from './context'
 import { SyncError } from './errors'
 
-/** A venue of ours mapped to a barsy venue with a catalogue root. */
-export interface VenueTarget {
+/** A venue of ours mapped to a till venue (`bid`), with what its sync reads per venue. */
+export interface MappedVenue {
   readonly venueId: string
   readonly bid: number
-  readonly catalogueRootCatId: number
+  /** The menu category it reads (D56); null until chosen. */
+  readonly catalogueRootCatId: number | null
+  /** The catalogue the till venue sells from (CF-16); null until the venue list was read. */
+  readonly catalogueId: number | null
+  /** Its own price setting (D73); null: the integration's. */
+  readonly priceSource: string | null
   /** IANA zone barsy's offset-less timestamps are read in (Q60). */
   readonly timezone: string
-  /** How many venues of this integration are mapped and have a catalogue root. */
-  readonly mappedVenues: number
+}
+
+/** A mapped venue with a catalogue root: what a pull reads. */
+export interface VenueTarget extends MappedVenue {
+  readonly catalogueRootCatId: number
+}
+
+/** The venue's link to its till venue; throws `venue_not_mapped` when it has none. */
+export async function loadMappedVenue(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+  venueId: string,
+): Promise<MappedVenue> {
+  const [row] = await withTenant(env.pool, tenantId, (tx) =>
+    tx
+      .select({
+        bid: venueLinks.bid,
+        root: venueLinks.catalogueRootCatId,
+        catalogueId: venueLinks.catalogueId,
+        priceSource: venueLinks.priceSource,
+        timezone: venues.timezone,
+      })
+      .from(venueLinks)
+      .innerJoin(venues, eq(venues.id, venueLinks.venueId))
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.venueId, venueId))),
+  )
+  if (!row) {
+    throw new SyncError('venue_not_mapped', 'This venue is not mapped to a venue of the till.')
+  }
+  return {
+    venueId,
+    bid: row.bid,
+    catalogueRootCatId: row.root,
+    catalogueId: row.catalogueId,
+    priceSource: row.priceSource,
+    timezone: row.timezone,
+  }
 }
 
 export async function loadVenueTarget(
@@ -32,40 +73,181 @@ export async function loadVenueTarget(
   integrationId: string,
   venueId: string,
 ): Promise<VenueTarget> {
-  return withTenant(env.pool, tenantId, async (tx) => {
-    const [row] = await tx
-      .select({
-        bid: barsyVenues.bid,
-        root: barsyVenues.catalogueRootCatId,
-        timezone: venues.timezone,
-      })
-      .from(barsyVenues)
-      .innerJoin(venues, eq(venues.id, barsyVenues.venueId))
-      .where(and(eq(barsyVenues.integrationId, integrationId), eq(barsyVenues.venueId, venueId)))
-    if (!row || row.root === null) {
-      throw new SyncError(
-        'venue_not_mapped',
-        'This venue is not mapped to a barsy venue with a catalogue root.',
-      )
-    }
-    const [mapped] = await tx
-      .select({ total: count() })
-      .from(barsyVenues)
+  const mapped = await loadMappedVenue(env, tenantId, integrationId, venueId)
+  const root = mapped.catalogueRootCatId
+  if (root === null) {
+    throw new SyncError(
+      'venue_not_mapped',
+      'This venue is not mapped to a barsy venue with a catalogue root.',
+    )
+  }
+  return { ...mapped, catalogueRootCatId: root }
+}
+
+/** Our venues mapped to till venues of this integration that sell from `catalogueId`. */
+export async function venuesOnCatalogue(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+  catalogueId: number,
+): Promise<string[]> {
+  const rows = await withTenant(env.pool, tenantId, (tx) =>
+    tx
+      .select({ venueId: venueLinks.venueId })
+      .from(venueLinks)
       .where(
         and(
-          eq(barsyVenues.integrationId, integrationId),
-          isNotNull(barsyVenues.venueId),
-          isNotNull(barsyVenues.catalogueRootCatId),
+          eq(venueLinks.integrationId, integrationId),
+          eq(venueLinks.catalogueId, catalogueId),
+          isNotNull(venueLinks.venueId),
+        ),
+      ),
+  )
+  return rows.flatMap((row) => (row.venueId === null ? [] : [row.venueId]))
+}
+
+/**
+ * Every section link of the integration with the menu its section sits in (the root of its parent
+ * chain; null when none is found). Decides a venue's section keys and its own sections (CF-16).
+ */
+export async function readSectionOwners(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+): Promise<{ externalId: string; menuId: string | null }[]> {
+  const result = await withTenant(env.pool, tenantId, (tx) =>
+    tx.execute<{ external_id: string; menu_id: string | null }>(sql`
+      with recursive up as (
+        select l.external_id, n.id, n.parent_id
+        from restro.source_links l join restro.nodes n on n.id = l.node_id
+        where l.integration_id = ${integrationId} and l.external_type = 'category'
+        union
+        select up.external_id, n.id, n.parent_id
+        from up join restro.nodes n on n.id = up.parent_id
+      )
+      select l.external_id, top.id as menu_id
+      from restro.source_links l
+      left join up top on top.external_id = l.external_id and top.parent_id is null
+      where l.integration_id = ${integrationId} and l.external_type = 'category'`),
+  )
+  return result.rows.map((row) => ({ externalId: row.external_id, menuId: row.menu_id ?? null }))
+}
+
+/**
+ * The catalogue of every article link: the `menu_id` of the record its link names (`last_hash`).
+ * Null when no record names one: such a link is never concluded absent per catalogue (CF-16).
+ */
+export async function readArticleCatalogues(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+): Promise<Map<string, number | null>> {
+  const result = await withTenant(env.pool, tenantId, (tx) =>
+    tx.execute<{ external_id: string; catalogue: string | null }>(sql`
+      select l.external_id, (
+        select r.payload ->> 'menu_id' from restro.source_records r
+        where r.integration_id = l.integration_id and r.external_type = 'article'
+          and r.external_id = l.external_id and r.content_hash = l.last_hash
+        limit 1
+      ) as catalogue
+      from restro.source_links l
+      where l.integration_id = ${integrationId} and l.external_type = 'article'`),
+  )
+  const catalogues = new Map<string, number | null>()
+  for (const row of result.rows) {
+    const text = row.catalogue
+    catalogues.set(row.external_id, text !== null && /^\d{1,9}$/.test(text) ? Number(text) : null)
+  }
+  return catalogues
+}
+
+/** The articles (external ids) whose items are placed in a section of this menu. */
+export async function readMenuArticles(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+  menuId: string,
+): Promise<Set<string>> {
+  const result = await withTenant(env.pool, tenantId, (tx) =>
+    tx.execute<{ external_id: string }>(sql`
+      with recursive sections as (
+        select n.id from restro.nodes n where n.parent_id = ${menuId} and n.node_type = 'section'
+        union
+        select n.id from restro.nodes n join sections s on n.parent_id = s.id
+        where n.node_type = 'section'
+      )
+      select distinct l.external_id
+      from restro.source_links l
+      join restro.placements p on p.item_id = l.node_id
+      join sections s on s.id = p.section_id
+      where l.integration_id = ${integrationId} and l.external_type = 'article'`),
+  )
+  return new Set(result.rows.map((row) => row.external_id))
+}
+
+/** The articles this venue hides (till `visible = false` at its scope: outside its root, CF-16). */
+export async function readVenueHidden(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+  venueId: string,
+): Promise<Set<string>> {
+  const rows = await withTenant(env.pool, tenantId, (tx) =>
+    tx
+      .select({ externalId: sourceLinks.externalId })
+      .from(sourceLinks)
+      .innerJoin(
+        fieldValues,
+        and(
+          eq(fieldValues.nodeId, sourceLinks.nodeId),
+          eq(fieldValues.fieldKey, 'visible'),
+          eq(fieldValues.layer, 'till'),
+          eq(fieldValues.scope, `venue:${venueId}`),
+          eq(fieldValues.valid, true),
+          sql`${fieldValues.value} = 'false'::jsonb`,
         ),
       )
-    return {
-      venueId,
-      bid: row.bid,
-      catalogueRootCatId: row.root,
-      timezone: row.timezone,
-      mappedVenues: mapped?.total ?? 1,
-    }
-  })
+      .where(
+        and(eq(sourceLinks.integrationId, integrationId), eq(sourceLinks.externalType, 'article')),
+      ),
+  )
+  return new Set(rows.map((row) => row.externalId))
+}
+
+/** The id of the record each article link names (by its `last_hash`), for the articles asked. */
+export async function recordIdsOfLinks(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+  externalIds: readonly string[],
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>()
+  const unique = [...new Set(externalIds)]
+  for (let start = 0; start < unique.length; start += 500) {
+    const rows = await withTenant(env.pool, tenantId, (tx) =>
+      tx
+        .select({ externalId: sourceLinks.externalId, recordId: sourceRecords.id })
+        .from(sourceLinks)
+        .innerJoin(
+          sourceRecords,
+          and(
+            eq(sourceRecords.integrationId, sourceLinks.integrationId),
+            eq(sourceRecords.externalType, sourceLinks.externalType),
+            eq(sourceRecords.externalId, sourceLinks.externalId),
+            eq(sourceRecords.contentHash, sourceLinks.lastHash),
+          ),
+        )
+        .where(
+          and(
+            eq(sourceLinks.integrationId, integrationId),
+            eq(sourceLinks.externalType, 'article'),
+            inArray(sourceLinks.externalId, unique.slice(start, start + 500)),
+          ),
+        ),
+    )
+    for (const row of rows) if (!found.has(row.externalId)) found.set(row.externalId, row.recordId)
+  }
+  return found
 }
 
 /** A stored link, as the sync needs it. */

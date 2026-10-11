@@ -22,3 +22,13 @@ export {
   type SourceExternalType,
   type SourceRecordDescriptor,
 } from './types.ts'
+export {
+  inMenuOf,
+  parseSectionLinkId,
+  qualifiedSections,
+  type SectionLinkOwner,
+  sectionLinkId,
+  sectionLinksOfMenu,
+  type VenueHide,
+  venueHideOps,
+} from './venues.ts'

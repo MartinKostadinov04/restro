@@ -34,20 +34,32 @@ describe('job names and payloads', () => {
     for (const name of names) expect(name).toMatch(/^[a-z0-9-]+$/)
   })
 
-  it('a pull is keyed by its integration, so a queue holds one pull of it at a time', () => {
+  it('a pull is keyed by its integration and venue: a queue holds one pull per venue (CF-16, T50)', () => {
     const full = prepareJob(JOB_NAMES.barsyFullPull, { tenantId, integrationId, venueId })
     const incremental = prepareJob(JOB_NAMES.barsyIncremental, { tenantId, integrationId, venueId })
-    expect(full.singletonKey).toBe(integrationId)
-    expect(incremental.singletonKey).toBe(integrationId)
+    const places = prepareJob(JOB_NAMES.placesRead, { tenantId, integrationId, venueId })
+    expect(full.singletonKey).toBe(`${integrationId}:${venueId}`)
+    expect(incremental.singletonKey).toBe(`${integrationId}:${venueId}`)
+    expect(places.singletonKey).toBe(`${integrationId}:${venueId}`)
     expect(jobSingletonKey(JOB_NAMES.barsyConnect, { tenantId, integrationId })).toBe(integrationId)
+  })
+
+  it('two venues of one integration never share a pull key, so neither pull drops the other', () => {
+    const other = newId('vn')
+    const keys = [venueId, other].map(
+      (id) =>
+        prepareJob(JOB_NAMES.barsyFullPull, { tenantId, integrationId, venueId: id }).singletonKey,
+    )
+    expect(new Set(keys).size).toBe(2)
   })
 
   it('a pull sent again for later has a key of its own, different each second', () => {
     const at = new Date('2026-10-10T12:00:00.900Z')
-    const key = deferredSingletonKey(integrationId, at)
-    expect(key).toBe(`${integrationId}:later:${Math.floor(at.getTime() / 1000)}`)
-    expect(key).not.toBe(integrationId)
-    expect(deferredSingletonKey(integrationId, new Date(at.getTime() + 60_000))).not.toBe(key)
+    const own = `${integrationId}:${venueId}`
+    const key = deferredSingletonKey(own, at)
+    expect(key).toBe(`${own}:later:${Math.floor(at.getTime() / 1000)}`)
+    expect(key).not.toBe(own)
+    expect(deferredSingletonKey(own, new Date(at.getTime() + 60_000))).not.toBe(key)
   })
 
   it('a picture is keyed by integration and article', () => {
