@@ -349,7 +349,7 @@ The mapping is versioned configuration per integration, not code paths scattered
 | --- | --- | --- |
 | `cat_id` | source link (`category`) | Identity only |
 | `parent_id`, `cat_path_ids` | Section parent | Used only when the menu mirrors the Barsy tree |
-| `cat_name_public_ml` | `title` (localized\_text) | `cat_name` is internal and never shown. Missing public name → validation warning |
+| `cat_name_public_ml` | `title` (localized\_text) | `cat_name` is barsy's own name. It stands in, under the default language, only when the public name is empty in every language (D75), with a warning in the run and the composer |
 | `description_ml` | `description` |  |
 | `cat_picture` | `image` | Downloaded into the asset store |
 | `category_color`, `category_icon`, `cat_public_view` | display hints | Faces may use them; never required |
@@ -360,7 +360,7 @@ The mapping is versioned configuration per integration, not code paths scattered
 | Barsy field (extra property needed) | Canonical field | Transform and notes |
 | --- | --- | --- |
 | `article_id` | source link (`article`) | Identity only |
-| `article_name_public_ml` (`ml_data`) | `name` | `article_name` is internal and unique per catalog; never shown |
+| `article_name_public_ml` (`ml_data`) | `name` | `article_name` is barsy's own name, unique per catalog. It stands in, under the default language, only when the public name is empty in every language (D75), with a warning in the run and the composer; the same for an option's article |
 | `description_public` (`description_public`), `description_ml` | `description`, as fallback | Builder copy wins (see ownership) |
 | `actual_price`, `current_price` | `price` | Parse as a decimal string, round half-up to 2 places, store integer minor units. Which one feeds `price` is the open price decision |
 | `amount_unit` + `amount_type_id` | `portion` | Unit name from `Amounttypes_getlist` |
@@ -608,7 +608,7 @@ Four fields were added to `menu-snapshot/1` after it first shipped. All are opti
 
 ### What a snapshot never contains
 
-External ids (Barsy article, category, place ids), Barsy internal names, cost or delivery prices, `internal_note` and any other internal field, override bases, review state, or anything a guest should not see. The order backend maps `nd_` ids to Barsy ids on the server side.
+External ids (Barsy article, category, place ids), Barsy internal names (except the D75 stand-in for a missing public name), cost or delivery prices, `internal_note` and any other internal field, override bases, review state, or anything a guest should not see. The order backend maps `nd_` ids to Barsy ids on the server side.
 
 ## The visualization shell
 

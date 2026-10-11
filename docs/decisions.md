@@ -153,6 +153,7 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T62 Claude: catalogue-root safety (warn on root or venue change, hold above 30% missing); sync side partly in CF-02; before the pilot.
 - T67 Claude: read `Places_getlist` once a barsy venue is mapped; with T66 (CF-10).
 - T68 Claude: built 10-11 (CF-09a, CF-16, CF-09b merged into `sh/foundation`); left: Martin's acceptance.
+- T78 Claude: D75 built (CF-17 merged 10-11); open: a manual name ranks below the till's stand-in, sections can't be renamed in the composer, no warning for a public name in a language the installation lacks.
 - T77 Claude: rename and delete venues (D76), CF-18 running.
 - T76 Claude: the rollback pause (`publish.auto_paused`) moves from the integration to the venue, like `after_sync`.
 - T70 Claude: connector foundation; merged CF-01, 02, 03, 08a, 12, 14; remaining CF-04 to 07, rest of 08, 09, 10, 11, 13; staging migration 0014 needs Martin's OK.
