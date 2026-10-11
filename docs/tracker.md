@@ -503,6 +503,24 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - **Harness:** `faceContractSuite`, `assertThemeOnlyCss`, and feature-slot checks both ways; three new fixtures.
     - **Proof:** mutation-tested; the property test runs 500 times.
   - **Running:** SH-04 (registry, guest page, fonts) and SH-06 (service screens; it starts early, since it needs nothing from SH-04).
+  - **SH-04 merged.**
+    - **Registry:** Editorial Market is the default and qr-phone is hidden. The guest page and the publish preview render the chosen template, loaded lazily.
+    - **Fonts:** six self-hosted Cyrillic fonts; guests load them only from our own origin.
+    - **New dependency rule:** faces import only react, react-dom and `@restro/shell`.
+    - **History:** Back and shared `#item-` links work on the real page.
+    - **Size:** the first-load JS is unchanged; the template is a 12 KB gzip chunk loaded on demand.
+  - **Lead fix (937dc75):** templates never style the page around them.
+    - The Editorial `html:has(.rm)` rules and qr-phone's smooth-scroll rule moved to the guest page (`html[data-guest-page]`).
+    - `faceContractSuite` now refuses `html`, `body` and `:root` selectors.
+    - This had to land before the Design tab, which shows the template inside the admin.
+  - **SH-06:**
+    - It was cut off by a session limit, after 5 commits (money helpers, services contract, screens, tests, a fix).
+    - It was resumed to merge `sh/foundation` properly, bind the test stub in the registry test, and run the gate.
+  - **Running:** SH-06 (finishing), SH-05a (Design tab), SH-05b (composer Guest features panel, Haiku).
+  - **Open from SH-04, for SH-07:**
+    - the Editorial language and layout buttons are under 44 px;
+    - the table label is hidden at 350 px width or less;
+    - the dish name sits inside a `<button>` (invalid markup).
 - [ ] T75. **Worker queue tests time out when the machine is busy.** `apps/worker/tests/worker.integration.test.ts` (`afterAll`, 60 s) and `sync-queue.test.ts` ("a job travels the queue end to end") failed a few times on 10-11 while 2–3 agents ran gates at once. Alone they pass in about 16 s. Check CI. If it shows the same, give these suites more time or a pool of their own. This is not a weakening: the assertions stay — Claude
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 

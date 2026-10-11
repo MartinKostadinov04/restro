@@ -61,6 +61,11 @@ Add them to the same spec, or to a second spec without the skip:
 - **Image sizes:** item photos use full-width `sizes` even in the two-column layout. Make `sizes` follow the layout so phones pick smaller files.
 - **Allergen sheet:** it marks the dish's allergens only by weight and opacity. Add a non-visual cue as well, such as visually hidden text or `aria-current`.
 
+**Known from SH-04:**
+- **Table label:** `.rm-table { display: none }` hides the table label at 350 px wide or less, so the guest loses "Table 12". Keep it visible: shorten it or let it wrap.
+- **Dish name markup:** the dish name is a `div` and an `h3` inside a `<button>`, which is not valid. Restructure it, for example the button inside the heading, or a link-style button beside it, keeping the contract markers and the focus behaviour.
+- **Assertion:** SH-04 records the Editorial targets under 44 px as an e2e annotation. Once you fix them, promote that annotation to an assertion.
+
 ### 3. Fixes
 
 - Fix every failure in the face's CSS and markup only (`css.ts`, `services/services-css.ts`, small markup changes such as `aria-*` or wrapping a target).
