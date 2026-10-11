@@ -4,6 +4,7 @@
 // the title carries the identity.
 
 import type { Locale, ViewModel } from '@restro/shell'
+import type { ReactNode } from 'react'
 
 import { FilterIcon } from './icons'
 import { bcp47, langOf, languageLabel } from './model'
@@ -17,6 +18,7 @@ export function Header({
   onLanguageChange,
   hasFilters,
   onOpenFilters,
+  tools = null,
 }: {
   readonly view: ViewModel
   readonly ctx: PageContext
@@ -26,6 +28,8 @@ export function Header({
   /** R15: the venue offers filters and the menu has dietary labels or tags to filter by. */
   readonly hasFilters: boolean
   readonly onOpenFilters: (opener: HTMLElement) => void
+  /** More controls for the bar, before the filter button (the bill and the pay entry). */
+  readonly tools?: ReactNode
 }) {
   const { locale, strings, assetBase } = ctx
   const { logo } = view.theme
@@ -62,6 +66,7 @@ export function Header({
               ))}
             </fieldset>
           ) : null}
+          {tools}
           {hasFilters ? (
             <button
               type="button"

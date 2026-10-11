@@ -5,6 +5,9 @@
 
 import type { Allergen, DietaryLabel, Locale, MeasurementUnit } from '@restro/core'
 
+import type { ServiceKind } from './features'
+import type { BillLineStatus, PayMethod, PayScope, RequestStatus } from './service-vocabulary'
+
 /**
  * The words of a guest page that are not menu text (S3-03: the phone face and its loader). Menu
  * text never comes from here; these are the controls and the messages around it.
@@ -51,6 +54,126 @@ export interface GuestStrings {
   readonly retry: string
 }
 
+/**
+ * The words of the service screens (D71): the bag, the table bill, calling a waiter, paying and
+ * the receipt. Like the guest strings, they are interface words; menu text never comes from here.
+ */
+export interface ServiceStrings {
+  /** The small label on every service sheet in the admin's preview with demo data. */
+  readonly preview: string
+  /** "approx.": a total the face added up itself, until the host's quote exists. */
+  readonly approx: string
+  readonly addNamed: (name: string) => string
+  readonly increase: string
+  readonly decrease: string
+  readonly quantity: string
+  // The dish page.
+  readonly required: string
+  readonly optional: string
+  readonly pickOne: string
+  readonly pickUpTo: (max: number) => string
+  readonly pickAtLeast: (min: number) => string
+  readonly note: string
+  readonly notePlaceholder: string
+  readonly addToBag: string
+  // The bag.
+  readonly bag: string
+  readonly viewBag: string
+  readonly emptyBag: string
+  readonly remove: string
+  readonly edit: string
+  readonly sendToKitchen: string
+  readonly estimateTotal: string
+  /** The host accepted the order (shown when the venue shows no bill to open instead). */
+  readonly sent: string
+  readonly sentHint: string
+  readonly sending: string
+  /** The host has the order but has not said yes or no yet. */
+  readonly sendReceived: string
+  /** The answer did not arrive (an error or a timeout): the order may or may not have gone. */
+  readonly sendFailedTitle: string
+  readonly sendFailedHint: string
+  /** The host said no and gave no reason. */
+  readonly sendRejectedTitle: string
+  readonly sendRejectedHint: string
+  readonly unavailableLine: string
+  readonly unavailableHint: string
+  readonly reference: (ref: string) => string
+  readonly retry: string
+  // The table bill.
+  readonly bill: string
+  readonly tab: string
+  readonly tabIntro: string
+  readonly emptyTab: string
+  readonly round: string
+  readonly fromApp: string
+  readonly fromWaiter: string
+  readonly lineStatus: { readonly [S in BillLineStatus]: string }
+  readonly tableTotal: string
+  readonly pay: string
+  readonly viewReceipt: string
+  // Calling a waiter.
+  readonly callServer: string
+  /** The label of the waiter button before the bag has anything in it. */
+  readonly bell: string
+  readonly kinds: { readonly [K in ServiceKind]: string }
+  readonly otherPlaceholder: string
+  readonly send: string
+  readonly requesting: string
+  readonly requestFailed: string
+  readonly requestStates: {
+    readonly [S in RequestStatus]: { readonly title: string; readonly hint: string }
+  }
+  readonly cancelRequest: string
+  readonly newRequest: string
+  // Paying.
+  readonly payTitle: string
+  readonly whatToPay: string
+  readonly scopes: { readonly [S in PayScope]: string }
+  readonly people: string
+  readonly perPerson: string
+  readonly tip: string
+  readonly noTip: string
+  readonly custom: string
+  readonly customTip: string
+  readonly promo: string
+  readonly apply: string
+  readonly promoAccepted: string
+  readonly promoRejected: string
+  readonly allergyNote: string
+  readonly subtotal: string
+  readonly total: string
+  readonly vatIncluded: (rate: string) => string
+  readonly payWith: string
+  readonly methods: { readonly [M in PayMethod]: string }
+  readonly updatingQuote: string
+  readonly quoteFailed: string
+  readonly nothingToPay: string
+  readonly processing: string
+  /** The host has the payment but has not confirmed it yet. */
+  readonly payReceived: string
+  readonly success: string
+  readonly successHint: string
+  readonly failure: string
+  readonly failureHint: string
+  /** The answer did not arrive: the payment may or may not have gone through. */
+  readonly payUnknown: string
+  readonly payUnknownHint: string
+  readonly done: string
+  // The receipt.
+  readonly receipt: string
+  readonly noReceipt: string
+  readonly table: string
+  readonly date: string
+  readonly method: string
+  readonly fiscal: string
+  readonly downloadPdf: string
+  readonly email: string
+  readonly print: string
+  readonly receiptActionDone: string
+  readonly receiptActionFailed: string
+}
+
 /** The words of one language. `lang` is the language the strings are really in. */
 export interface Strings {
   readonly lang: Locale
@@ -72,6 +195,7 @@ export interface Strings {
   readonly allergens: { readonly [A in Allergen]: string }
   readonly dietary: { readonly [D in DietaryLabel]: string }
   readonly guest: GuestStrings
+  readonly services: ServiceStrings
 }
 
 const EN: Strings = {
@@ -147,6 +271,131 @@ const EN: Strings = {
     loadFailedText: 'Check your connection and try again.',
     retry: 'Try again',
   },
+  services: {
+    preview: 'Preview',
+    approx: 'approx.',
+    addNamed: (name) => `Add ${name}`,
+    increase: 'One more',
+    decrease: 'One less',
+    quantity: 'Quantity',
+    required: 'Required',
+    optional: 'Optional',
+    pickOne: 'Choose 1',
+    pickUpTo: (max) => `Choose up to ${max}`,
+    pickAtLeast: (min) => `Choose at least ${min}`,
+    note: 'Note for the kitchen',
+    notePlaceholder: 'e.g. no onion, sauce on the side',
+    addToBag: 'Add to bag',
+    bag: 'Your bag',
+    viewBag: 'View bag',
+    emptyBag: 'Your bag is empty. Add something from the menu.',
+    remove: 'Remove',
+    edit: 'Edit',
+    sendToKitchen: 'Send to kitchen',
+    estimateTotal: 'Total (approx.)',
+    sent: 'Sent to the kitchen',
+    sentHint: 'Your order has been received.',
+    sending: 'Sending your order',
+    sendReceived: 'Your order is received. We are waiting for the kitchen to confirm it.',
+    sendFailedTitle: 'Your order was not confirmed',
+    sendFailedHint: 'Nothing is lost: your bag is still here. Try again, or ask your waiter.',
+    sendRejectedTitle: 'The kitchen could not take your order',
+    sendRejectedHint: 'Your bag is still here. Ask your waiter.',
+    unavailableLine: 'No longer available',
+    unavailableHint: 'Remove the items that are no longer available to send your order.',
+    reference: (ref) => `Reference ${ref}`,
+    retry: 'Try again',
+    bill: 'Bill',
+    tab: 'Table order',
+    tabIntro: 'Everything ordered at this table, from the app and from the waiter.',
+    emptyTab: 'Nothing has been ordered yet.',
+    round: 'Round',
+    fromApp: 'From the app',
+    fromWaiter: 'From the waiter',
+    lineStatus: {
+      received: 'Received',
+      preparing: 'Preparing',
+      served: 'Served',
+      cancelled: 'Cancelled',
+    },
+    tableTotal: 'Table total',
+    pay: 'Pay',
+    viewReceipt: 'View receipt',
+    callServer: 'Call a server',
+    bell: 'Waiter',
+    kinds: {
+      waiter: 'Call waiter',
+      bill: 'Bring the bill',
+      water: 'Water',
+      cutlery: 'Cutlery',
+      terminal: 'Card terminal',
+      other: 'Something else',
+    },
+    otherPlaceholder: 'Tell us what you need',
+    send: 'Send',
+    requesting: 'Sending your request',
+    requestFailed: 'Your request did not go through. Try again, or call a waiter over.',
+    requestStates: {
+      sent: { title: 'Request sent', hint: 'We are waiting for the team to confirm it.' },
+      accepted: { title: 'The team has your request', hint: 'You can keep browsing.' },
+      on_the_way: {
+        title: 'A waiter is on the way',
+        hint: 'You can keep browsing. We let the team know.',
+      },
+      done: { title: 'Done', hint: 'The team has taken care of your request.' },
+      cancelled: { title: 'Request cancelled', hint: 'You can send a new one.' },
+      rejected: { title: 'The team could not take this request', hint: 'Ask your waiter.' },
+    },
+    cancelRequest: 'Cancel request',
+    newRequest: 'Send another request',
+    payTitle: 'Pay',
+    whatToPay: 'What would you like to pay?',
+    scopes: { full: 'Full table', split: 'Split equally', mine: 'My items' },
+    people: 'People',
+    perPerson: 'per person',
+    tip: 'Tip for the team',
+    noTip: 'No tip',
+    custom: 'Custom',
+    customTip: 'Custom tip amount',
+    promo: 'Promo code',
+    apply: 'Apply',
+    promoAccepted: 'Code applied',
+    promoRejected: 'This code did not work',
+    allergyNote: 'Any allergies? Tell your waiter before paying if something needs to change.',
+    subtotal: 'Subtotal',
+    total: 'Total',
+    vatIncluded: (rate) => `incl. VAT ${rate}`,
+    payWith: 'Pay with',
+    methods: {
+      apple: 'Apple Pay',
+      google: 'Google Pay',
+      card: 'Card',
+      waiter: 'Pay the waiter at the table',
+    },
+    updatingQuote: 'Updating the amount',
+    quoteFailed: 'We could not get the amount to pay. Try again.',
+    nothingToPay: 'There is nothing to pay yet.',
+    processing: 'Processing your payment',
+    payReceived: 'We are waiting for your payment to be confirmed.',
+    success: 'Payment complete',
+    successHint: 'Thank you. Your receipt is ready.',
+    failure: 'Payment did not go through',
+    failureHint: 'Try again or choose another method.',
+    payUnknown: 'We could not confirm your payment',
+    payUnknownHint: 'Try again, or ask your waiter to check before you pay another way.',
+    done: 'Back to menu',
+    receipt: 'Receipt',
+    noReceipt: 'There is no receipt yet.',
+    table: 'Table',
+    date: 'Date',
+    method: 'Paid with',
+    fiscal: 'Fiscal ref.',
+    downloadPdf: 'Download PDF',
+    email: 'Email receipt',
+    print: 'Ask waiter to print',
+    receiptActionDone: 'Done: request sent',
+    receiptActionFailed: 'That did not go through. Try again.',
+  },
 }
 
 const BG: Strings = {
@@ -221,6 +470,134 @@ const BG: Strings = {
     loadFailedTitle: 'Менюто не можа да се зареди',
     loadFailedText: 'Проверете връзката си и опитайте отново.',
     retry: 'Опитайте отново',
+  },
+  services: {
+    preview: 'Преглед',
+    approx: 'прибл.',
+    addNamed: (name) => `Добави ${name}`,
+    increase: 'Още едно',
+    decrease: 'Едно по-малко',
+    quantity: 'Количество',
+    required: 'Задължително',
+    optional: 'По избор',
+    pickOne: 'Изберете 1',
+    pickUpTo: (max) => `Изберете до ${max}`,
+    pickAtLeast: (min) => `Изберете поне ${min}`,
+    note: 'Бележка за кухнята',
+    notePlaceholder: 'напр. без лук, сосът отделно',
+    addToBag: 'Добави в поръчката',
+    bag: 'Вашата поръчка',
+    viewBag: 'Виж поръчката',
+    emptyBag: 'Поръчката е празна. Добавете нещо от менюто.',
+    remove: 'Премахни',
+    edit: 'Промени',
+    sendToKitchen: 'Изпрати към кухнята',
+    estimateTotal: 'Общо (прибл.)',
+    sent: 'Изпратено към кухнята',
+    sentHint: 'Поръчката ви е получена.',
+    sending: 'Поръчката се изпраща',
+    sendReceived: 'Поръчката е получена. Чакаме кухнята да я потвърди.',
+    sendFailedTitle: 'Поръчката не беше потвърдена',
+    sendFailedHint:
+      'Нищо не е изгубено: поръчката ви още е тук. Опитайте отново или попитайте сервитьора.',
+    sendRejectedTitle: 'Кухнята не можа да приеме поръчката',
+    sendRejectedHint: 'Поръчката ви още е тук. Попитайте сервитьора.',
+    unavailableLine: 'Вече не е налично',
+    unavailableHint: 'Премахнете артикулите, които вече не са налични, за да изпратите поръчката.',
+    reference: (ref) => `Номер ${ref}`,
+    retry: 'Опитай отново',
+    bill: 'Сметка',
+    tab: 'Поръчка на масата',
+    tabIntro: 'Всичко поръчано на тази маса — от приложението и от сервитьора.',
+    emptyTab: 'Все още няма поръчки.',
+    round: 'Поръчка',
+    fromApp: 'От приложението',
+    fromWaiter: 'От сервитьора',
+    lineStatus: {
+      received: 'Приета',
+      preparing: 'Приготвя се',
+      served: 'Сервирана',
+      cancelled: 'Отказана',
+    },
+    tableTotal: 'Общо за масата',
+    pay: 'Плати',
+    viewReceipt: 'Виж бележката',
+    callServer: 'Повикай сервитьор',
+    bell: 'Сервитьор',
+    kinds: {
+      waiter: 'Повикай сервитьор',
+      bill: 'Сметката, моля',
+      water: 'Вода',
+      cutlery: 'Прибори',
+      terminal: 'ПОС терминал',
+      other: 'Друго',
+    },
+    otherPlaceholder: 'Напишете от какво имате нужда',
+    send: 'Изпрати',
+    requesting: 'Заявката се изпраща',
+    requestFailed: 'Заявката не стигна до екипа. Опитайте отново или повикайте сервитьора.',
+    requestStates: {
+      sent: { title: 'Заявката е изпратена', hint: 'Чакаме екипът да я потвърди.' },
+      accepted: { title: 'Екипът получи заявката', hint: 'Може да продължите да разглеждате.' },
+      on_the_way: {
+        title: 'Сервитьор идва',
+        hint: 'Може да продължите да разглеждате. Екипът е уведомен.',
+      },
+      done: { title: 'Готово', hint: 'Екипът се погрижи за заявката ви.' },
+      cancelled: { title: 'Заявката е отменена', hint: 'Може да изпратите нова.' },
+      rejected: { title: 'Екипът не можа да приеме заявката', hint: 'Попитайте сервитьора.' },
+    },
+    cancelRequest: 'Отмени заявката',
+    newRequest: 'Изпрати друга заявка',
+    payTitle: 'Плащане',
+    whatToPay: 'Какво искате да платите?',
+    scopes: { full: 'Цялата маса', split: 'Раздели поравно', mine: 'Моите артикули' },
+    people: 'Души',
+    perPerson: 'на човек',
+    tip: 'Бакшиш за екипа',
+    noTip: 'Без',
+    custom: 'Друг',
+    customTip: 'Друга сума бакшиш',
+    promo: 'Промо код',
+    apply: 'Приложи',
+    promoAccepted: 'Кодът е приложен',
+    promoRejected: 'Този код не работи',
+    allergyNote:
+      'Имате алергии? Кажете на сервитьора преди плащане, ако нещо трябва да се промени.',
+    subtotal: 'Междинна сума',
+    total: 'Общо',
+    vatIncluded: (rate) => `вкл. ДДС ${rate}`,
+    payWith: 'Плащане с',
+    methods: {
+      apple: 'Apple Pay',
+      google: 'Google Pay',
+      card: 'Карта',
+      waiter: 'Плащане при сервитьора',
+    },
+    updatingQuote: 'Сумата се обновява',
+    quoteFailed: 'Не успяхме да получим сумата за плащане. Опитайте отново.',
+    nothingToPay: 'Все още няма какво да се плати.',
+    processing: 'Плащането се обработва',
+    payReceived: 'Чакаме плащането ви да бъде потвърдено.',
+    success: 'Плащането е успешно',
+    successHint: 'Благодарим! Бележката ви е готова.',
+    failure: 'Плащането не беше успешно',
+    failureHint: 'Опитайте отново или изберете друг начин.',
+    payUnknown: 'Не успяхме да потвърдим плащането ви',
+    payUnknownHint:
+      'Опитайте отново или помолете сервитьора да провери, преди да платите по друг начин.',
+    done: 'Обратно към менюто',
+    receipt: 'Касова бележка',
+    noReceipt: 'Все още няма бележка.',
+    table: 'Маса',
+    date: 'Дата',
+    method: 'Платено с',
+    fiscal: 'Фискален №',
+    downloadPdf: 'Изтегли PDF',
+    email: 'Изпрати по имейл',
+    print: 'Помоли за разпечатка',
+    receiptActionDone: 'Готово: заявката е изпратена',
+    receiptActionFailed: 'Не се получи. Опитайте отново.',
   },
 }
 

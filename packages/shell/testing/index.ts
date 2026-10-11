@@ -1,6 +1,7 @@
-// The contract-test harness for faces (briefs S3-02 and SH-03): fixture snapshots that pass the
-// snapshot schema, a small HTML reader, `runFaceContract`, the theme-only stylesheet check and
-// `faceContractSuite`, which every face's test calls.
+// The contract-test harness for faces (briefs S3-02, SH-03 and SH-06): fixture snapshots that pass
+// the snapshot schema, a small HTML reader, `runFaceContract`, the theme-only stylesheet check,
+// `faceContractSuite`, which every face's test calls, and `stubServices`, the empty services
+// binding a face is rendered with.
 
 export {
   assertFaceContract,
@@ -28,4 +29,5 @@ export {
   snapshotFromSpec,
 } from './fixtures'
 export { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
+export { stubServices } from './services'
 export { type FaceContractSuiteOptions, faceContractSuite } from './suite'

@@ -603,6 +603,41 @@
       "restore": "Restore {name}",
       "restoreShort": "Restore"
     },
+    "guestFeatures": {
+      "open": "Guest features",
+      "title": "Guest features",
+      "description": "What guests can use on the menu on their phone. Changes reach guests with the next publish.",
+      "groups": {
+        "menu": "Menu",
+        "service": "Service at the table"
+      },
+      "filters": "Filters (diet and tags)",
+      "allergensAlways": "Allergen information is always shown",
+      "callWaiter": "Call a waiter",
+      "kinds": {
+        "legend": "Requests a guest can send",
+        "waiter": "Waiter",
+        "bill": "Bill",
+        "water": "Water",
+        "cutlery": "Cutlery",
+        "terminal": "Card terminal",
+        "other": "Other"
+      },
+      "otherNote": "Guests can say what they need in a short note.",
+      "bill": "Show the table's bill",
+      "ordering": "Order from the phone",
+      "pay": "Pay from the phone",
+      "stage4": "Guests see this once ordering is connected (Stage 4)",
+      "stage5": "Guests see this once payment is connected (Stage 5)",
+      "save": "Save",
+      "saved": "Saved. Guests see it after the next publish",
+      "readOnly": "Only owners and admins can change these.",
+      "errors": {
+        "forbidden": "Only owners and admins can change guest features.",
+        "invalid": "These changes could not be saved. Reload the page and try again.",
+        "failed": "Something went wrong. Try again."
+      }
+    },
     "toolbar": {
       "selectAll": "Select all in this section",
       "filter": "Filter by tag",

@@ -1,12 +1,14 @@
 // One item of the menu: a photo card (the photo on a "stage" panel with the badges in its corner)
 // or, for an item without a photo, a clean text row. The whole card opens the dish page; the
 // allergen codes open the allergen sheet. Every slot carries `data-slot`, and the card carries
-// `data-item` and `data-state`, which is what the contract tests read.
+// `data-item` and `data-state`, which is what the contract tests read. When the venue orders by
+// phone, a "+" sits beside the price (services/quick-add.tsx); otherwise nothing is added.
 
 import type { ViewItem } from '@restro/shell'
 
 import { badgeKey, langOf, localeLang } from './model'
 import { type PageContext, Photo, Slot, Text } from './parts'
+import { QuickAdd } from './services/quick-add'
 
 /** All the badges of an item, in one `item.badges` slot: over the photo's corner, or above a text row. */
 function Badges({ item, ctx }: { readonly item: ViewItem; readonly ctx: PageContext }) {
@@ -82,6 +84,7 @@ export function Item({
             {item.price.text}
           </Slot>
         ) : null}
+        <QuickAdd item={item} />
         <Slot name="item.state" className="rm-state" state={item.state.code}>
           {item.state.label !== null ? <Text value={item.state.label} page={locale} /> : null}
         </Slot>

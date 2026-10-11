@@ -80,6 +80,86 @@ export function SquareIcon() {
   )
 }
 
+/** A plus: adds a dish to the bag. */
+export function PlusIcon() {
+  return (
+    <Svg round>
+      <path d="M5 12h14M12 5v14" />
+    </Svg>
+  )
+}
+
+/** A raised hand: calls a waiter. */
+export function HandIcon() {
+  return (
+    <Svg round>
+      <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" />
+      <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2" />
+      <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+    </Svg>
+  )
+}
+
+/** A bill with lines of text: the table bill. */
+export function ReceiptIcon() {
+  return (
+    <Svg round>
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M14 8H8M16 12H8M13 16H8" />
+    </Svg>
+  )
+}
+
+/** A bank card: the card terminal, and the pay entry. */
+export function CardIcon() {
+  return (
+    <Svg round>
+      <rect width="20" height="14" x="2" y="5" rx="2" />
+      <path d="M2 10h20" />
+    </Svg>
+  )
+}
+
+/** Two drops: water. */
+export function DropletsIcon() {
+  return (
+    <Svg round>
+      <path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z" />
+      <path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97" />
+    </Svg>
+  )
+}
+
+/** A fork and a knife: cutlery. */
+export function UtensilsIcon() {
+  return (
+    <Svg round>
+      <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20" />
+      <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+    </Svg>
+  )
+}
+
+/** A service bell: calls a waiter. */
+export function BellIcon() {
+  return (
+    <Svg round>
+      <path d="M3 20a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v1a1 1 0 0 1-1 1Z" />
+      <path d="M20 16a8 8 0 1 0-16 0M12 4v4M10 4h4" />
+    </Svg>
+  )
+}
+
+/** A speech bubble: something else. */
+export function MessageIcon() {
+  return (
+    <Svg round>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </Svg>
+  )
+}
+
 /** Four squares: the two-column layout. */
 export function GridIcon() {
   return (

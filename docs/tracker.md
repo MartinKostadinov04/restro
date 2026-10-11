@@ -503,6 +503,60 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - **Harness:** `faceContractSuite`, `assertThemeOnlyCss`, and feature-slot checks both ways; three new fixtures.
     - **Proof:** mutation-tested; the property test runs 500 times.
   - **Running:** SH-04 (registry, guest page, fonts) and SH-06 (service screens; it starts early, since it needs nothing from SH-04).
+  - **SH-04 merged.**
+    - **Registry:** Editorial Market is the default and qr-phone is hidden. The guest page and the publish preview render the chosen template, loaded lazily.
+    - **Fonts:** six self-hosted Cyrillic fonts; guests load them only from our own origin.
+    - **New dependency rule:** faces import only react, react-dom and `@restro/shell`.
+    - **History:** Back and shared `#item-` links work on the real page.
+    - **Size:** the first-load JS is unchanged; the template is a 12 KB gzip chunk loaded on demand.
+  - **Lead fix (937dc75):** templates never style the page around them.
+    - The Editorial `html:has(.rm)` rules and qr-phone's smooth-scroll rule moved to the guest page (`html[data-guest-page]`).
+    - `faceContractSuite` now refuses `html`, `body` and `:root` selectors.
+    - This had to land before the Design tab, which shows the template inside the admin.
+  - **SH-06:**
+    - It was cut off by a session limit, after 5 commits (money helpers, services contract, screens, tests, a fix).
+    - It was resumed to merge `sh/foundation` properly, bind the test stub in the registry test, and run the gate.
+  - **Running:** SH-06 (finishing), SH-05a (Design tab), SH-05b (composer Guest features panel, Haiku).
+  - **SH-06 merged.**
+    - **What it built:**
+      - the bag, bill, call-a-waiter, pay and receipt screens in Editorial Market;
+      - the services contract in the shell (`GuestCommand`, `CommandResult`, `ServiceState`, `ServiceBinding`, strict Zod);
+      - the bag estimate through core money (new `multiplyMinor`, `percentOfMinor`, `subtractMinor`, `ratioOfMinor`, property-tested);
+      - the demo adapter `@restro/editorial-market/preview`, admin only;
+      - two dependency rules: guest pages never import `/preview`, and money arithmetic stays inside a face's `preview/`.
+    - **D72 holds:**
+      - the bag clears only on the host's acceptance;
+      - a rejection or timeout keeps it, and a retry reuses the same `actionId`;
+      - "on the way" and "paid" come from the host's state only.
+    - **Not done:** the visual check (→ SH-07).
+  - **Open from SH-06:**
+    - **UX, to decide with Martin at acceptance:**
+      - (a) the bag's place in the bottom bar stays empty until the bag has lines;
+      - (b) pay is a header icon.
+    - **Stage 4 design notes:**
+      - (c) a host that answers `pending` is reconciled by the bill round's `actionId` within 15 s, then a retry;
+      - (d) the host must issue a fresh receipt id per settlement;
+      - (e) `PayQuote` should list the allowed pay scopes;
+      - (f) keep the bag across a reload (`sessionStorage`).
+  - **SH-05b merged** (Haiku). The composer's "Guest features" panel:
+    - filters;
+    - call a waiter, with its request kinds;
+    - bill, ordering, pay, each with a Stage 4/5 note;
+    - the template's feature options;
+    - the fixed allergen line;
+    - owners and admins only.
+
+    The two save actions keep each other's keys.
+  - **Open from SH-05b:**
+    - **(a) Two lists of templates.** Server code cannot import the registry (it breaks the build), so `feature-face.ts` keeps a second list of the manifests. SH-05a is asked to make one server-safe `faces/manifests.ts`.
+    - **(b) The first save pins the template.** The first feature-option save stores the default face for a venue that never chose one.
+    - **(c) Call a waiter with no request kind** can be saved; guests then see no control. Block it or hint.
+    - **(d) The "other" request kind.** Its wording promises a note; the core schema has none yet (Stage 4).
+    - **(e) Bulgarian copy** of the panel: draft, for Martin's review.
+  - **Open from SH-04, for SH-07:**
+    - the Editorial language and layout buttons are under 44 px;
+    - the table label is hidden at 350 px width or less;
+    - the dish name sits inside a `<button>` (invalid markup).
 - [ ] T75. **Worker queue tests time out when the machine is busy.** `apps/worker/tests/worker.integration.test.ts` (`afterAll`, 60 s) and `sync-queue.test.ts` ("a job travels the queue end to end") failed a few times on 10-11 while 2–3 agents ran gates at once. Alone they pass in about 16 s. Check CI. If it shows the same, give these suites more time or a pool of their own. This is not a weakening: the assertions stay — Claude
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 

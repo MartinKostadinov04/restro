@@ -1,7 +1,9 @@
 // The dish page: a full-screen dialog over the menu with the big photo, the name and price, the
 // whole description (nothing is cut here), the state, the dietary labels, the allergens (with a
-// button for the allergen sheet), the custom fields and the choices the dish offers. It is
-// browsing only: the choices are listed, not selected.
+// button for the allergen sheet), the custom fields and the choices the dish offers. The choices
+// are listed, not selected, unless the guest can order the dish (the venue switched ordering on,
+// the host bound its services and the dish has ordering controls): then they are chosen here, with
+// a note, a quantity and "Add to bag" (services/dish-order.tsx).
 
 import type { ViewItem } from '@restro/shell'
 import { Fragment } from 'react'
@@ -10,9 +12,22 @@ import { InfoIcon } from './icons'
 import { langOf, localeLang } from './model'
 import { Overlay } from './overlay'
 import { type PageContext, Photo, Text } from './parts'
+import { DishOrder } from './services/dish-order'
+import { useServices } from './services/provider'
 
-function DishBody({ item, ctx }: { readonly item: ViewItem; readonly ctx: PageContext }) {
+function DishBody({
+  item,
+  ctx,
+  onDone,
+}: {
+  readonly item: ViewItem
+  readonly ctx: PageContext
+  /** The dish went in the bag: close the page. */
+  readonly onDone: () => void
+}) {
   const { locale, strings, assetBase } = ctx
+  const services = useServices()
+  const ordering = services?.canOrder(item) === true
   return (
     <div className="rm-detail">
       {item.image !== null ? (
@@ -61,21 +76,25 @@ function DishBody({ item, ctx }: { readonly item: ViewItem; readonly ctx: PageCo
             <b lang={localeLang(field.lang, locale)}>{field.text}</b>
           </p>
         ))}
-        {item.modifierGroups.map((group) => (
-          <div className="rm-detail-group" key={group.id}>
-            <Text as="h3" value={group.name} page={locale} />
-            <div className="rm-detail-options">
-              {group.options.map((option) => (
-                <div className="rm-detail-option" key={option.id}>
-                  <Text value={option.name} page={locale} />
-                  <b>{option.delta?.text}</b>
-                </div>
-              ))}
+        {ordering ? (
+          <DishOrder item={item} onDone={onDone} />
+        ) : (
+          item.modifierGroups.map((group) => (
+            <div className="rm-detail-group" key={group.id}>
+              <Text as="h3" value={group.name} page={locale} />
+              <div className="rm-detail-options">
+                {group.options.map((option) => (
+                  <div className="rm-detail-option" key={option.id}>
+                    <Text value={option.name} page={locale} />
+                    <b>{option.delta?.text}</b>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
-      {item.price !== null ? (
+      {!ordering && item.price !== null ? (
         <div className="rm-detail-bar">
           <Text value={item.name} page={locale} />
           <strong>{item.price.text}</strong>
@@ -119,7 +138,7 @@ export function DishPage({
         ) : null
       }
     >
-      <DishBody item={item} ctx={ctx} />
+      <DishBody item={item} ctx={ctx} onDone={onClose} />
     </Overlay>
   )
 }
