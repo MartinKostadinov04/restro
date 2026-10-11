@@ -4,11 +4,14 @@
 // below it). The button is off, with the reason written next
 // to it, until the integration is connected and both pickers are set, and while a pull is
 // queued or running (the queue is exclusive per integration, so a second press would do
-// nothing). The server checks the same rule again; this only explains it.
-import { RefreshCwIcon } from 'lucide-react'
+// nothing). The server checks the same rule again; this only explains it. When the latest
+// complete full pull was held back (it found nothing, or far fewer items than the menu has, and
+// hid nothing), a warning on top says so and what to check; there is no button to release it yet.
+import { AlertTriangleIcon, RefreshCwIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState, useTransition } from 'react'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { FormSection } from '@/components/ui/form-section'
 import { syncNowAction } from '@/server/integration/actions'
@@ -26,7 +29,7 @@ export function SyncCard({ venueId, view }: { venueId: string; view: Integration
   const [queued, setQueued] = useState(false)
   const [pending, startTransition] = useTransition()
   useClearWhenIdle(view.activeJob, () => setQueued(false))
-  const { gate } = view
+  const { gate, heldSync: held } = view
   const lastSynced = moment(view.lastSyncedAt)
 
   function press() {
@@ -41,6 +44,19 @@ export function SyncCard({ venueId, view }: { venueId: string; view: Integration
 
   return (
     <FormSection title={t('title')} description={t('description')}>
+      {held ? (
+        <Alert
+          className="border-warning/40 [&>svg]:text-warning"
+          data-testid="sync-held"
+          data-reason={held.reason}
+        >
+          <AlertTriangleIcon aria-hidden />
+          <AlertTitle>{t('held.title')}</AlertTitle>
+          <AlertDescription>
+            {t(`held.${held.reason}`, { wouldHide: held.wouldHide, active: held.active })}
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={press} disabled={!gate.enabled || pending}>
           <RefreshCwIcon aria-hidden className={pending ? 'animate-spin' : undefined} />

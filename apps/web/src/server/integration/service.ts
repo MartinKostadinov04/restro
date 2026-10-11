@@ -53,6 +53,12 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 
+import {
+  absenceHeldOf,
+  readHeldSync,
+  readVenueHints,
+  type VenueHint,
+} from '../../connectors/sync-reads'
 import { logError } from '../log'
 import { syncGate } from './gating'
 import { parseBarsyHost } from './host'
@@ -239,6 +245,7 @@ export async function readActiveJob(
 
 function toRunView(run: JobRun): RunView {
   const details = run.details
+  const absenceHeld = absenceHeldOf(details)
   return {
     id: run.id,
     kind: run.kind,
@@ -259,6 +266,7 @@ function toRunView(run: JobRun): RunView {
             ...(details.deletionCheckSkipped !== undefined
               ? { deletionCheckSkipped: details.deletionCheckSkipped }
               : {}),
+            ...(absenceHeld !== null ? { absenceHeld } : {}),
           },
   }
 }
@@ -338,15 +346,30 @@ export async function loadIntegrationView(
     return moments.sort().at(-1) ?? null
   })()
 
-  const barsyVenueOptions: BarsyVenueOption[] = state.barsyRows.map((row) => ({
-    key: row.bid,
-    name: row.name,
-    mappedHere: row.venueId === scope.venue.id,
-    usedBy:
-      row.venueId !== null && row.venueId !== scope.venue.id
-        ? (state.venueNames.get(row.venueId) ?? '')
-        : null,
-  }))
+  // Hints for the pickers and the held-sync warning, read from what the sync stored. They never
+  // choose anything: a venue without a record simply has no hint.
+  const { hints, heldSync } = integration
+    ? await withTenant(scope.pool, scope.tenantId, async (tx) => ({
+        hints: await readVenueHints(tx, integration.id),
+        heldSync: await readHeldSync(tx, integration.id),
+      }))
+    : { hints: new Map<number, VenueHint>(), heldSync: null }
+  const suggestedCatId = mapped ? (hints.get(mapped.bid)?.publicCatId ?? null) : null
+
+  const barsyVenueOptions: BarsyVenueOption[] = state.barsyRows.map((row) => {
+    const hint = hints.get(row.bid)
+    return {
+      key: row.bid,
+      name: row.name,
+      mappedHere: row.venueId === scope.venue.id,
+      usedBy:
+        row.venueId !== null && row.venueId !== scope.venue.id
+          ? (state.venueNames.get(row.venueId) ?? '')
+          : null,
+      ...(hint?.address ? { address: hint.address } : {}),
+      ...(hint?.publicCatId != null ? { publicMenuSetUp: true as const } : {}),
+    }
+  })
 
   const info: IntegrationInfo | null = integration
     ? {
@@ -367,7 +390,7 @@ export async function loadIntegrationView(
     activeJob,
     barsyVenues: barsyVenueOptions,
     venueMapped: mapped !== null,
-    tree: cached ? buildCategoryTree(cached.categories) : null,
+    tree: cached ? buildCategoryTree(cached.categories, suggestedCatId) : null,
     treeFetchedAt: cached?.fetched_at ?? null,
     rootCatId: mapped?.catalogueRootCatId ?? null,
     settings: {
@@ -380,6 +403,7 @@ export async function loadIntegrationView(
     },
     syncSettings: syncSettingsViewOf(integration, mapped, scope.venue.timezone, now),
     lastSyncedAt,
+    heldSync,
     gate: syncGate({
       canManage: scope.canManage,
       integration: info ? { hasCredentials: info.hasCredentials, status: info.status } : null,

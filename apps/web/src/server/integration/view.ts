@@ -26,7 +26,11 @@ export type SyncGate =
   | { readonly enabled: true }
   | { readonly enabled: false; readonly reason: SyncBlock }
 
-/** A barsy venue of the installation. `key` is what the picker sends back; it is never shown. */
+/**
+ * A barsy venue of the installation. `key` is what the picker sends back; it is never shown.
+ * `address` and `publicMenuSetUp` are hints from the stored record of the venue (B1-Q6): present
+ * only when the record says so, and never a reason to choose anything by itself.
+ */
 export interface BarsyVenueOption {
   readonly key: number
   readonly name: string
@@ -34,13 +38,22 @@ export interface BarsyVenueOption {
   readonly mappedHere: boolean
   /** Mapped to another venue of the organisation: the name of that venue. */
   readonly usedBy: string | null
+  /** The venue's public address, if its record has one. */
+  readonly address?: string
+  /** The venue has a public menu set up in the till (its record names a public category). */
+  readonly publicMenuSetUp?: true
 }
 
-/** A category of the cached public tree. `id` is what the picker sends back; it is never shown. */
+/**
+ * A category of the cached public tree. `id` is what the picker sends back; it is never shown.
+ * `suggested` marks the category the venue's record names as its public menu (B1-Q6): a hint,
+ * nothing is chosen for the manager.
+ */
 export interface CategoryNode {
   readonly id: number
   readonly name: string
   readonly children: readonly CategoryNode[]
+  readonly suggested?: true
 }
 
 export type PriceSource = 'actual_price' | 'current_price'
@@ -92,6 +105,21 @@ export interface RefusedWrite {
   readonly code: string
 }
 
+/** A complete full pull that held its absence conclusion back (T62): why, and how much. */
+export interface AbsenceHeldView {
+  readonly reason: 'empty_read' | 'too_many_missing'
+  /** How many items the pull would have hidden. */
+  readonly wouldHide: number
+  /** How many items were on the menu before the pull. */
+  readonly active: number
+}
+
+/** The latest complete full pull of the integration, when it was held (nothing was hidden). */
+export interface HeldSync extends AbsenceHeldView {
+  /** When that pull finished (ISO). */
+  readonly finishedAt: string | null
+}
+
 export interface RunView {
   readonly id: string
   /** `barsy_connect`, `barsy_full_pull`, `barsy_incremental`, … */
@@ -108,6 +136,8 @@ export interface RunView {
     readonly refused: readonly RefusedWrite[]
     /** Set on runs recorded since the flag existed; absent on older runs. */
     readonly deletionCheckSkipped?: boolean
+    /** Set when this complete full pull held its absence conclusion back. */
+    readonly absenceHeld?: AbsenceHeldView
   } | null
 }
 
@@ -143,6 +173,12 @@ export interface IntegrationView {
   readonly syncSettings: SyncSettingsView
   /** The latest of the last full and the last incremental pull, from the sync state. */
   readonly lastSyncedAt: string | null
+  /**
+   * Set while the latest complete full pull is one that held its absence conclusion back: the menu
+   * was left as it was and the manager should check the category and the venue. Null otherwise.
+   * It comes from its own query, not from `runs`, since twenty later runs would push it out.
+   */
+  readonly heldSync: HeldSync | null
   readonly gate: SyncGate
   readonly runs: readonly RunView[]
 }

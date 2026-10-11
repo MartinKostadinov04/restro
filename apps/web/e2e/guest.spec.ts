@@ -219,6 +219,26 @@ test.describe('the table code', () => {
     await page.screenshot({ path: shot('table-code-not-active') })
   })
 
+  test('the menu and the table address send no referrer, so the code in the address stays here (A5-F5)', async ({
+    request,
+  }) => {
+    const menu = await request.get(`/m/${GUEST_SLUG}`)
+    expect(menu.status()).toBe(200)
+    expect(menu.headers()['referrer-policy']).toBe('no-referrer')
+
+    const redirect = await request.get(`/t/${GUEST_TABLE_TOKEN}`, { maxRedirects: 0 })
+    expect(redirect.status()).toBe(302)
+    expect(redirect.headers()['referrer-policy']).toBe('no-referrer')
+
+    const unknown = await request.get('/t/tb_notARealCode0000001', { maxRedirects: 0 })
+    expect(unknown.status()).toBe(404)
+    expect(unknown.headers()['referrer-policy']).toBe('no-referrer')
+
+    // Only the guest's own pages are changed.
+    const health = await request.get('/api/health')
+    expect(health.headers()['referrer-policy']).toBeUndefined()
+  })
+
   test('a venue that does not exist gets a friendly notice, not an error page', async ({
     page,
   }) => {

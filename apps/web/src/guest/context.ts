@@ -1,7 +1,8 @@
 // The context the guest page gives the shell (doc "The visualization shell", step 2): the language
-// (the address `?lang=`, then the browser, then the menu's default), the table token from `?t=`,
-// and the channel. The venue's clock is the shell's own default (Europe/Sofia)
-// until the snapshot carries a time zone. Ordering is off in Stage 3.
+// (the address `?lang=`, then the browser, then the menu's default), the table token from `?t=`
+// (given on only after the published table file confirmed it, see `confirmedTable`) and the
+// channel. The venue's clock is the shell's own default (Europe/Sofia) until the snapshot
+// carries a time zone. Ordering is off in Stage 3.
 
 import { type Locale, TABLE_TOKEN_PATTERN } from '@restro/core'
 import { QR_PHONE_MANIFEST } from '@restro/qr-phone'
@@ -62,6 +63,26 @@ export function langParam(locale: Locale): string {
 export function readTableToken(search: string): string | null {
   const token = new URLSearchParams(search).get('t')
   return token !== null && TABLE_TOKEN_PATTERN.test(token) ? token : null
+}
+
+/** A table the published files know: the code from the address and how the table is called. */
+export interface ConfirmedTable {
+  readonly token: string
+  readonly label: string
+}
+
+/**
+ * The table the shell may be told about (A5-F5). The code in the address is only a claim until
+ * `t/<token>.json` has answered for this venue; a well-formed but unknown `?t=` is the same as no
+ * code at all. `found` is the answer to the lookup of `requested` (null while it is out, when the
+ * code is unknown, belongs to another venue or could not be read); an answer for another code,
+ * left over from before the address changed, counts for nothing.
+ */
+export function confirmedTable(
+  requested: string | null,
+  found: ConfirmedTable | null,
+): ConfirmedTable | null {
+  return requested !== null && found !== null && found.token === requested ? found : null
 }
 
 /** The context of one view model. */

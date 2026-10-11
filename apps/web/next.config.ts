@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import type { NextConfig } from 'next'
 
+import { guestHeaders } from './src/guest/headers'
+
 // Next.js reads .env files from this folder only, but the repo keeps one `.env.local` at its root
 // (README, "Running it locally"). Load it too. Values already in the environment win, and so
 // does a `.env.local` in this folder; nothing is committed (`.env*` is git-ignored).
@@ -20,6 +22,8 @@ const requestConfig = './src/i18n/request.ts'
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // No referrer from the guest's pages: the table code is in their address (src/guest/headers.ts).
+  headers: async () => guestHeaders(),
   // Workspace packages export TypeScript source (see README, "Workspace packages"),
   // so Next has to compile them. @restro/barsy is deliberately absent: the web app
   // never imports it (CLAUDE.md, import boundaries).

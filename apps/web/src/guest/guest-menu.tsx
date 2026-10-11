@@ -14,7 +14,14 @@ import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CDN_BASE } from './cdn'
-import { buildContext, chooseLocale, langParam, readTableToken } from './context'
+import {
+  buildContext,
+  type ConfirmedTable,
+  chooseLocale,
+  confirmedTable,
+  langParam,
+  readTableToken,
+} from './context'
 import {
   GuestLoadError,
   type LoadDeps,
@@ -79,7 +86,7 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
   // The address and the browser are read after mount, so the first client render equals the server's.
   const [search, setSearch] = useState('')
   const [browser, setBrowser] = useState<readonly string[]>([])
-  const [tableLabel, setTableLabel] = useState<string | null>(null)
+  const [foundTable, setFoundTable] = useState<ConfirmedTable | null>(null)
   const [now, setNow] = useState(() => new Date())
   const deps = useMemo<LoadDeps>(() => ({ fetch: (url) => fetch(url), base: CDN_BASE }), [])
 
@@ -111,20 +118,25 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
     }
   }, [deps, slug, attempt])
 
-  const tableToken = readTableToken(search)
+  // The code in the address is a claim until the published `t/<token>.json` answers for this venue.
+  // The banner and the shell's context use the confirmed table only: an unknown code is no code.
+  const requestedToken = readTableToken(search)
   useEffect(() => {
-    if (tableToken === null) {
-      setTableLabel(null)
+    if (requestedToken === null) {
+      setFoundTable(null)
       return
     }
     let cancelled = false
-    loadTableLabel(deps, tableToken, slug).then((label) => {
-      if (!cancelled) setTableLabel(label)
+    loadTableLabel(deps, requestedToken, slug).then((label) => {
+      if (!cancelled) setFoundTable(label === null ? null : { token: requestedToken, label })
     })
     return () => {
       cancelled = true
     }
-  }, [deps, slug, tableToken])
+  }, [deps, slug, requestedToken])
+  const table = confirmedTable(requestedToken, foundTable)
+  const tableToken = table?.token ?? null
+  const tableLabel = table?.label ?? null
 
   // --- keeping fresh ----------------------------------------------------------------------
   const ready = phase.kind === 'ready'
