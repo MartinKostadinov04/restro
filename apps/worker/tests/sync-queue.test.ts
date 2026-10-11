@@ -348,7 +348,7 @@ describe('buildJobs', () => {
     expect(warnings[0]).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
-  it('with the keys it adds the four sync jobs and the one tick to the publish jobs', async () => {
+  it('with the keys it adds the five sync jobs and the one tick to the publish jobs', async () => {
     const world = await import('../src/config').then(async ({ loadConfig }) => {
       const { generateSealKeyPair } = await import('@restro/core/seal-open')
       const pair = generateSealKeyPair()
@@ -364,6 +364,7 @@ describe('buildJobs', () => {
       JOB_NAMES.barsyConnect,
       JOB_NAMES.barsyFullPull,
       JOB_NAMES.barsyIncremental,
+      JOB_NAMES.placesRead,
       JOB_NAMES.assetFetch,
       JOB_NAMES.barsySyncTick,
       JOB_NAMES.publishMenu,
