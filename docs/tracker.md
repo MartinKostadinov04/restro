@@ -469,6 +469,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - tap targets below 44 px on the layout and language buttons, and `h3`/`h4` heading levels → SH-07;
     - Next's history patch for the `#item-` route, and the page-wide `html:has(.rm)` rule → SH-04 and SH-05a;
     - the ordering CSS sits in the delivery's `ORDER_CSS` → SH-06.
+  - **After CF-12 and CF-03 were merged into `cf/foundation` and then into `sh/foundation`:** SH-01 (Opus) was launched, in parallel with CF-14.
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 
   — Claude
