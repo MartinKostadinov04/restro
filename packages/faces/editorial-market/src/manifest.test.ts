@@ -1,7 +1,8 @@
-import { validateManifest } from '@restro/shell'
+import { resolveOptions, validateManifest } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
 import { EDITORIAL_MARKET_MANIFEST } from './manifest'
+import { faceOptions, LAYOUTS } from './model'
 
 describe('the editorial-market manifest', () => {
   it('passes validateManifest (R6, R7, R9)', () => {
@@ -61,5 +62,51 @@ describe('the editorial-market manifest', () => {
         'shadow',
       ].sort(),
     )
+  })
+})
+
+describe('the editorial-market manifest: features and options (R15)', () => {
+  it('has the controls of a browsing face: the filter button, and no service yet', () => {
+    expect(EDITORIAL_MARKET_MANIFEST.features).toEqual(['filters'])
+  })
+
+  it('declares the three options of the brief, with defaults, groups and labels in both languages', () => {
+    const { options } = EDITORIAL_MARKET_MANIFEST
+    expect(Object.keys(options).sort()).toEqual(['featureFirstSection', 'layout', 'layoutSwitch'])
+    expect(options.layout).toMatchObject({
+      type: 'enum',
+      values: ['list', 'one', 'two'],
+      default: 'two',
+      group: 'look',
+    })
+    expect(options.featureFirstSection).toMatchObject({
+      type: 'boolean',
+      default: true,
+      group: 'look',
+    })
+    expect(options.layoutSwitch).toMatchObject({
+      type: 'boolean',
+      default: true,
+      group: 'feature',
+    })
+    for (const [key, option] of Object.entries(options)) {
+      expect(option.label.bg.trim().length, key).toBeGreaterThan(0)
+      expect(option.label.en.trim().length, key).toBeGreaterThan(0)
+    }
+  })
+
+  it('lists the layouts the face can draw, no more and no fewer', () => {
+    const layout = EDITORIAL_MARKET_MANIFEST.options.layout
+    expect(layout?.type === 'enum' ? layout.values : null).toEqual([...LAYOUTS])
+  })
+
+  it('has defaults that the face and the manifest agree on', () => {
+    const resolved = resolveOptions(EDITORIAL_MARKET_MANIFEST, undefined)
+    expect(resolved).toEqual({ layout: 'two', layoutSwitch: true, featureFirstSection: true })
+    // faceOptions only narrows the types; it never changes a resolved value.
+    expect(faceOptions(resolved)).toEqual(resolved)
+    for (const layout of LAYOUTS) {
+      expect(faceOptions(resolveOptions(EDITORIAL_MARKET_MANIFEST, { layout })).layout).toBe(layout)
+    }
   })
 })

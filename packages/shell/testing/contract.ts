@@ -9,13 +9,18 @@
 // The face renders a view model to an HTML string (`renderToStaticMarkup` in S3-03). It marks each
 // item placement with `data-item="<nd_ id>"` and each slot with `data-slot="item.name"` etc.
 // Menu-level slots used here: `menu.allergen_legend` (numbered legend) and `menu.allergen_info`
-// (info link or QR code).
+// (info link or QR code), and the five feature slots below (R15).
+//
+// R15, fail-closed: a control for a guest feature carries the slot named in FEATURE_SLOTS.
+//   - when the view model has the feature off, no element with that slot may exist, whatever the
+//     manifest declares (a hidden control must not be in the page at all);
+//   - when the manifest declares the feature and the view model has it on, the slot must exist.
 
 import { localeToBcp47 } from '@restro/core'
 
 import { buildViewModel } from '../src/build'
 import type { Channel } from '../src/context'
-import { type FaceManifest, imageSlotsFor } from '../src/manifest'
+import { type FaceManifest, type FeatureName, imageSlotsFor } from '../src/manifest'
 import type { ViewItem, ViewModel, ViewSection } from '../src/view-model'
 import { fixtures as allFixtures, type Fixture } from './fixtures'
 import {
@@ -61,6 +66,31 @@ export interface ContractOptions {
   readonly fixtures?: readonly Fixture[]
   /** Pixel density to build the view models for. */
   readonly density?: number
+}
+
+/** The menu-level slot of each guest feature's control (R15). */
+export const FEATURE_SLOTS: readonly { readonly slot: string; readonly feature: FeatureName }[] = [
+  { slot: 'menu.filters', feature: 'filters' },
+  { slot: 'menu.call_waiter', feature: 'call_waiter' },
+  { slot: 'menu.bill', feature: 'bill' },
+  { slot: 'menu.bag', feature: 'ordering' },
+  { slot: 'menu.pay', feature: 'pay' },
+]
+
+/** Whether the view model has the feature on. */
+function featureOn(view: ViewModel, feature: FeatureName): boolean {
+  switch (feature) {
+    case 'filters':
+      return view.features.filters
+    case 'call_waiter':
+      return view.features.callWaiter !== null
+    case 'bill':
+      return view.features.bill
+    case 'ordering':
+      return view.features.ordering
+    case 'pay':
+      return view.features.pay
+  }
 }
 
 /** Ids our snapshots and view models may show. Any other id-shaped string is a leak. */
@@ -217,6 +247,18 @@ function checkDocument(
       !documentSlots.has('menu.allergen_info')
     ) {
       fail('R6', 'an info-link or info-QR face must draw menu.allergen_info')
+    }
+  }
+
+  // R15: feature controls appear only when the view model has the feature on.
+  for (const { slot, feature } of FEATURE_SLOTS) {
+    const on = featureOn(view, feature)
+    const drawn = documentSlots.has(slot)
+    if (!on && drawn) {
+      fail('R15', `${slot} is drawn while the ${feature} feature is off (R15 is fail-closed)`)
+    }
+    if (on && !drawn && manifest.features.includes(feature)) {
+      fail('R15', `the manifest declares ${feature} and it is on, but ${slot} is not drawn`)
     }
   }
   return expected.length

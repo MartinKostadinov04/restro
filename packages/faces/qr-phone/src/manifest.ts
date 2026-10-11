@@ -33,6 +33,8 @@ const CANDIDATE = {
   ordering: false,
   // The phone scrolls.
   paging: null,
+  // The guest controls this face draws (R15): the filter chips. It has no options of its own.
+  features: ['filters'],
   tokens: [
     'color.background',
     'color.surface',

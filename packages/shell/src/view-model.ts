@@ -14,9 +14,11 @@ import type {
   MeasurementUnit,
   NodeId,
   TagId,
+  ThemeScheme,
 } from '@restro/core'
 
 import type { Channel } from './context'
+import type { ViewFeatures } from './features'
 import type { SnapshotFieldType } from './fields'
 import type { ViewImage } from './images'
 import type { ViewMoney, ViewPrice } from './money'
@@ -24,7 +26,7 @@ import type { Palette, SemanticColours } from './palette'
 import type { ViewSchedule } from './schedule'
 import type { ViewText } from './text'
 
-export type { ViewImage, ViewMoney, ViewPrice, ViewSchedule, ViewText }
+export type { ViewFeatures, ViewImage, ViewMoney, ViewPrice, ViewSchedule, ViewText }
 
 /** R5: how an item is offered right now. */
 export const ITEM_STATES = ['available', 'sold_out', 'scheduled', 'unavailable'] as const
@@ -158,10 +160,15 @@ export interface ViewSection {
 export interface ViewTheme {
   /** Token `palette.<step>`. */
   readonly palette: { readonly [S in `${keyof Palette}`]: string }
-  /** Token `color.<name>`: the semantic colours. */
+  /**
+   * Token `color.<name>`: the semantic colours. The venue's published roles when the snapshot has
+   * them (each text-on-colour pair re-checked), else derived from the palette.
+   */
   readonly colors: SemanticColours
   /** The same colours for a dark screen; a face that follows the guest's colour scheme uses them. */
   readonly colorsDark: SemanticColours
+  /** The venue's light/dark policy: follow the phone (`auto`), or always `light` or `dark`. */
+  readonly scheme: ThemeScheme
   readonly font: string
   readonly radius: number
   readonly shadow: number
@@ -192,6 +199,8 @@ export interface ViewModel {
   }
   /** R11: ordering is on for this venue, channel and table. */
   readonly ordering: { readonly enabled: boolean }
+  /** R15: which guest controls the face may draw. Everything not switched on is off. */
+  readonly features: ViewFeatures
   readonly theme: ViewTheme
 }
 

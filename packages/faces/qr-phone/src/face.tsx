@@ -252,16 +252,24 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
   const locale = view.locale
   const strings = stringsFor(locale).guest
 
+  // The chips are drawn only when the shell turned the filter control on (R15: the venue offers
+  // filters and the menu has chips). The chip check is the shell's too; it is repeated here so a
+  // view model with its chips taken out never draws an empty filter bar.
+  const hasFilters =
+    view.features.filters && (view.filters.tags.length > 0 || view.filters.dietary.length > 0)
+
   const [chosen, setChosen] = useState<Filters>(NO_FILTERS)
-  // A chip that left the menu (a language or a refresh changed the lists) cannot stay switched on.
+  // A chip that left the menu (a language or a refresh changed the lists) cannot stay switched on,
+  // and neither can any chip once the chips are gone: the guest could not switch it off again.
   const filters = useMemo<Filters>(() => {
+    if (!hasFilters) return NO_FILTERS
     const tags = new Set(view.filters.tags.map((tag) => tag.id as string))
     const dietary = new Set(view.filters.dietary.map((label) => label.code as string))
     return {
       tags: new Set([...chosen.tags].filter((id) => tags.has(id))),
       dietary: new Set([...chosen.dietary].filter((code) => dietary.has(code))),
     }
-  }, [chosen, view.filters])
+  }, [chosen, hasFilters, view.filters])
   const sections = useMemo(() => filterSections(view.sections, filters), [view.sections, filters])
 
   const [sheet, setSheet] = useState<SheetState | null>(null)
@@ -286,7 +294,6 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
   )
 
   const { logo } = view.theme
-  const hasFilters = view.filters.tags.length > 0 || view.filters.dietary.length > 0
   const title = view.menu.title
   const empty = sections.length === 0
 
@@ -381,7 +388,7 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
         ) : null}
 
         {hasFilters ? (
-          <div className="rq-filters">
+          <div className="rq-filters" data-slot="menu.filters">
             {view.filters.dietary.length > 0 ? (
               <ChipGroup
                 label={strings.filterDiet}

@@ -23,7 +23,7 @@ export function Header({
   readonly tableLabel: string | null
   readonly languages: readonly Locale[]
   readonly onLanguageChange: ((locale: Locale) => void) | undefined
-  /** The menu has dietary labels or tags to filter by. */
+  /** R15: the venue offers filters and the menu has dietary labels or tags to filter by. */
   readonly hasFilters: boolean
   readonly onOpenFilters: (opener: HTMLElement) => void
 }) {
@@ -66,6 +66,7 @@ export function Header({
             <button
               type="button"
               className="rm-icon"
+              data-slot="menu.filters"
               aria-label={strings.filters}
               onClick={(event) => onOpenFilters(event.currentTarget)}
             >

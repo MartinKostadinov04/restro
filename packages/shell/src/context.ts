@@ -54,6 +54,23 @@ const ImageSlotsSchema = z.strictObject({
   logo: ImageRequestSchema.default({ variant: 'thumb', density: 1 }),
 })
 
+/**
+ * What the platform can do for this guest page today (R15, D71): the host sets a flag when the
+ * service behind it exists (Stage 4: waiter, bill, ordering; Stage 5: pay). Every flag defaults
+ * to false, so a host that knows nothing about a service never shows it.
+ */
+export const CapabilitiesSchema = z
+  .strictObject({
+    callWaiter: z.boolean().default(false),
+    bill: z.boolean().default(false),
+    ordering: z.boolean().default(false),
+    pay: z.boolean().default(false),
+  })
+  .prefault({})
+
+/** The services the platform supports, as the context carries them. */
+export type ShellCapabilities = z.output<typeof CapabilitiesSchema>
+
 /** The context of one view model. */
 export const ShellContextSchema = z.strictObject({
   /** The requested language (R3); the menu default and any available follow. */
@@ -69,6 +86,8 @@ export const ShellContextSchema = z.strictObject({
   orderingEnabled: z.boolean().default(false),
   /** The menu setting `sold_out_display`, applied in R5. */
   soldOutDisplay: z.enum(SOLD_OUT_DISPLAYS).default('show'),
+  /** The services the platform supports for this page (R15); none until the host says so. */
+  capabilities: CapabilitiesSchema,
   /** The face's declared image slots (R10). */
   images: ImageSlotsSchema.prefault({}),
 })

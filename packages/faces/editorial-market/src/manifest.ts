@@ -2,9 +2,10 @@
 // module loads: a face that breaks R6, R7 or R9 cannot even be imported, let alone installed.
 //
 // Browsing only (D38, D69): `ordering` is false until the service screens are ported (brief
-// SH-06). The face's own presentation options (layout, layout switch, feature strip) are
-// declared in the manifest by brief SH-03; `validateManifest` rejects an `options` key before
-// that.
+// SH-06), which also adds the service features (call a waiter, bill, bag, pay) to `features`.
+// The manifest is also where the face's options are declared, with their defaults: the face reads
+// them through `resolveOptions(EDITORIAL_MARKET_MANIFEST, props.options)` and keeps no defaults of
+// its own, and the admin builds its form from the same declaration (brief SH-05b).
 
 import { type FaceManifest, validateManifest } from '@restro/shell'
 
@@ -35,6 +36,35 @@ const CANDIDATE = {
   ordering: false,
   // The phone scrolls.
   paging: null,
+  // The guest controls this face draws (R15): the filter button. SH-06 adds the services.
+  features: ['filters'],
+  options: {
+    // How the items of a section are laid out when the guest has not chosen another.
+    layout: {
+      type: 'enum',
+      values: ['list', 'one', 'two'],
+      default: 'two',
+      group: 'look',
+      label: { bg: 'Подредба на менюто', en: 'Menu layout' },
+    },
+    // The first section as a photo-led strip.
+    featureFirstSection: {
+      type: 'boolean',
+      default: true,
+      group: 'look',
+      label: {
+        bg: 'Първата секция като лента със снимки',
+        en: 'Photo strip for the first section',
+      },
+    },
+    // The three-button layout switch the guest sees under a section title.
+    layoutSwitch: {
+      type: 'boolean',
+      default: true,
+      group: 'feature',
+      label: { bg: 'Гостите могат да сменят подредбата', en: 'Guests can change the layout' },
+    },
+  },
   tokens: [
     'color.background',
     'color.surface',
