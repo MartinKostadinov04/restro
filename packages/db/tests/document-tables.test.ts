@@ -125,11 +125,11 @@ async function writeSample(tx: WriteTx, s: Sample): Promise<void> {
     tenantId: t,
     nodeId: s.item,
     fieldKey: 'price',
-    layer: 'barsy',
+    layer: 'till',
     scope: `venue:${s.venue}`,
     value: { amount_minor: 1250, currency: 'EUR' },
     valueHash: HASH,
-    source: `barsy:${s.integration}`,
+    source: `till:${s.integration}`,
     jobId: s.job,
     actor: `integration:${s.integration}`,
     observedAt: new Date(),
@@ -140,11 +140,11 @@ async function writeSample(tx: WriteTx, s: Sample): Promise<void> {
     tenantId: t,
     nodeId: s.item,
     fieldKey: 'price',
-    layer: 'barsy',
+    layer: 'till',
     scope: `venue:${s.venue}`,
     oldValue: null,
     newValue: { amount_minor: 1250, currency: 'EUR' },
-    source: `barsy:${s.integration}`,
+    source: `till:${s.integration}`,
     actor: `integration:${s.integration}`,
     jobId: s.job,
     changeSetId: testId('cs'),
@@ -354,11 +354,11 @@ describe.skipIf(!hasDatabase)('document tables', () => {
           tenantId: b.tenant,
           nodeId: b.item,
           fieldKey: 'name',
-          layer: 'barsy',
+          layer: 'till',
           scope: 'master',
           value: { en_US: 'x' },
           valueHash: HASH,
-          source: `barsy:${b.integration}`,
+          source: `till:${b.integration}`,
           jobId: b.job,
           actor: 'system',
           observedAt: new Date(),
@@ -473,23 +473,88 @@ describe.skipIf(!hasDatabase)('document tables', () => {
       expect(await insert({ [column]: null }), column).toMatch(/violates not-null constraint/)
     }
     expect(
-      await insert({ layer: 'barsy', sourceRecordId: a.sourceRecord, mappingVersion: 1 }),
+      await insert({ layer: 'till', sourceRecordId: a.sourceRecord, mappingVersion: 1 }),
     ).toMatch(/field_values_layer_matches_source/)
-    expect(await insert({ source: `barsy:${a.integration}` })).toMatch(
+    expect(await insert({ source: `till:${a.integration}` })).toMatch(
       /field_values_layer_matches_source/,
     )
     expect(await insert({ scope: `venue:${a.venue}` })).toMatch(
-      /field_values_venue_scope_barsy_only/,
+      /field_values_venue_scope_till_only/,
     )
     expect(await insert({ layer: 'override' })).toMatch(/field_values_basis_on_overrides/)
     expect(await insert({ valid: false })).toMatch(/field_values_reject_reason/)
-    expect(
-      await insert({
-        layer: 'barsy',
-        source: `barsy:${a.integration}`,
-        fieldKey: 'name',
-      }),
-    ).toMatch(/field_values_barsy_provenance/)
+    // Till provenance (rule 2): a till value names its source record and mapping version.
+    for (const missing of [
+      { sourceRecordId: null, mappingVersion: 1 },
+      { sourceRecordId: a.sourceRecord, mappingVersion: null },
+      {},
+    ]) {
+      expect(
+        await insert({
+          layer: 'till',
+          source: `till:${a.integration}`,
+          fieldKey: 'name',
+          ...missing,
+        }),
+        JSON.stringify(missing),
+      ).toMatch(/field_values_till_provenance/)
+    }
+  })
+
+  it('refuses the import layer and import sources (D65), and the vendor as a layer or source', async () => {
+    const insert = (columns: Record<string, unknown>) =>
+      databaseError(
+        withTenantWrite(app, a.tenant, (tx) =>
+          tx.insert(fieldValues).values({
+            tenantId: a.tenant,
+            nodeId: a.item,
+            fieldKey: 'name',
+            layer: 'manual',
+            scope: 'master',
+            value: { en_US: 'x' },
+            valueHash: HASH,
+            source: 'manual',
+            jobId: 'job_import',
+            actor: 'system',
+            observedAt: new Date(),
+            sourceRecordId: a.sourceRecord,
+            mappingVersion: 1,
+            ...columns,
+          } as typeof fieldValues.$inferInsert),
+        ),
+      )
+    expect(await insert({ layer: 'import', source: 'import:wines' })).toMatch(
+      /field_values_layer|field_values_source/,
+    )
+    expect(await insert({ layer: 'import' })).toMatch(/field_values_layer/)
+    expect(await insert({ source: 'import:wines' })).toMatch(/field_values_source/)
+    expect(await insert({ layer: 'barsy', source: `barsy:${a.integration}` })).toMatch(
+      /field_values_layer|field_values_source/,
+    )
+    expect(await insert({ layer: 'barsy' })).toMatch(/field_values_layer/)
+    const event = (columns: Record<string, unknown>) =>
+      databaseError(
+        withTenantWrite(app, a.tenant, (tx) =>
+          tx.insert(events).values({
+            tenantId: a.tenant,
+            nodeId: a.item,
+            fieldKey: 'name',
+            layer: 'manual',
+            scope: 'master',
+            oldValue: null,
+            newValue: { en_US: 'x' },
+            source: 'manual',
+            actor: 'system',
+            jobId: 'job_import',
+            changeSetId: testId('cs'),
+            ...columns,
+          } as typeof events.$inferInsert),
+        ),
+      )
+    expect(await event({ layer: 'import' })).toMatch(/events_layer/)
+    expect(await event({ source: 'import:wines' })).toMatch(/events_source/)
+    expect(await event({ layer: 'barsy' })).toMatch(/events_layer/)
+    expect(await event({ source: `barsy:${a.integration}` })).toMatch(/events_source/)
   })
 
   it('keeps a menu’s id equal to its root node and one menu per venue', async () => {
