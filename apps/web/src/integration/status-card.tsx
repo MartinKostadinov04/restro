@@ -1,12 +1,14 @@
 'use client'
 
 // The Status card: whether Restro can reach barsy with the saved credentials, when it last
-// looked and when it last synced (all in the venue's time zone), and whether a connection check
-// or a full pull is waiting or running right now. "Check again" queues the connection check.
+// looked (in the integration's time zone), and whether a connection check or a pull is waiting or
+// running right now. "Check again" queues the connection check. Under it the warnings: the
+// till's currency, and each venue whose last full sync was held back (T62, CF-02), by name.
 import { AlertTriangleIcon, CheckCircle2Icon, CircleDashedIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState, useTransition } from 'react'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FormSection } from '@/components/ui/form-section'
@@ -55,7 +57,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-export function StatusCard({ venueId, view }: { venueId: string; view: IntegrationView }) {
+export function StatusCard({ view }: { view: IntegrationView }) {
   const t = useTranslations('integration')
   const moment = useMoment(view.timeZone)
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
@@ -68,7 +70,7 @@ export function StatusCard({ venueId, view }: { venueId: string; view: Integrati
     setError(null)
     setQueued(false)
     startTransition(async () => {
-      const result = await checkConnectionAction({ venueId })
+      const result = await checkConnectionAction()
       if (result.ok) setQueued(true)
       else setError(result.error)
     })
@@ -138,6 +140,24 @@ export function StatusCard({ venueId, view }: { venueId: string; view: Integrati
           {queued ? <Notice>{t('status.checkQueued')}</Notice> : null}
         </div>
       ) : null}
+      {view.heldSyncs.map((held) => (
+        <Alert
+          key={held.venue?.id ?? 'unknown'}
+          className="border-warning/40 [&>svg]:text-warning"
+          data-testid="sync-held"
+          data-reason={held.reason}
+        >
+          <AlertTriangleIcon aria-hidden />
+          <AlertTitle>
+            {held.venue
+              ? t('status.held.title', { venue: held.venue.name })
+              : t('status.held.titleNoVenue')}
+          </AlertTitle>
+          <AlertDescription>
+            {t(`status.held.${held.reason}`, { wouldHide: held.wouldHide, active: held.active })}
+          </AlertDescription>
+        </Alert>
+      ))}
       <ErrorNote code={error} />
     </FormSection>
   )

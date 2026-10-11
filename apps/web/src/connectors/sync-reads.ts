@@ -1,4 +1,4 @@
-// What the Integration tab reads of the records the barsy sync left behind, in barsy's own words:
+// What Settings -> Integrations and the venue's Menu source card read of the records the barsy sync left behind, in barsy's own words:
 // the kind of its full-pull runs, the type of its stored venue records and the fields of those
 // records. Everything else in the tab stays neutral. This is the web app's home for such code
 // (`apps/web/src/connectors/`, where the vendor-word test lets a connector name its vendor, D67).
@@ -15,8 +15,8 @@ const FULL_PULL_KIND = 'barsy_full_pull'
 /** The type of the stored record of a venue (`Barsys_getlist`, one record per venue). */
 const VENUE_RECORD_TYPE = 'barsy_venue'
 
-/** How many of the latest completed full pulls are looked through for a complete one. */
-const FULL_PULL_LOOKBACK = 20
+/** How many of the latest completed full pulls are looked through for a complete one (all venues together). */
+const FULL_PULL_LOOKBACK = 100
 
 /** The longest address shown; a longer one is cut (the record is the till's, not ours). */
 const MAX_ADDRESS_LENGTH = 200
@@ -40,17 +40,63 @@ export function absenceHeldOf(details: unknown): AbsenceHeldView | null {
   return { reason, wouldHide, active }
 }
 
+/** A held conclusion and the venue (ours, `vn_…`) of the run that held it; null: an older run, which names none. */
+export interface HeldSyncEntry {
+  readonly venueId: string | null
+  readonly held: HeldSync
+}
+
+/** The part of a full-pull run that decides whether it was held, newest first in the list. */
+export interface FullPullRunRow {
+  readonly counters: Readonly<Record<string, number>>
+  readonly details: unknown
+  readonly finishedAt: Date | null
+}
+
+/** The `venue_id` a run's details name (CF-09b), or null for a run recorded before runs named one. */
+function venueOfRun(details: unknown): string | null {
+  if (typeof details !== 'object' || details === null) return null
+  const venueId = (details as { venue_id?: unknown }).venue_id
+  return typeof venueId === 'string' ? venueId : null
+}
+
 /**
- * Whether the latest COMPLETE full pull of the integration was held (T62, CF-02): then the menu was
- * left as it was and the manager should look at the category and the venue.
+ * Which venues' latest COMPLETE full pull was held (T62, CF-02): then the menu was left as it was
+ * and the manager should look at the category and the till venue.
  *
  * A pull is complete when it read every page (`failed_pages` is 0); a pull that failed a page, or
  * one that only queued itself again behind a running pull, concluded nothing and says nothing about
- * an earlier hold, so it is passed over. The newest complete one decides: held means a warning,
- * anything else means none. This looks at the full pulls alone, not at the latest twenty runs of
- * every kind, so the warning stays when many change checks have run since.
+ * an earlier hold, so it is passed over. For each venue the newest complete one decides: held means
+ * a warning, anything else means none. Runs recorded before runs named their venue count as one
+ * venue of their own (`venueId: null`), but only until a pull that names its venue has completed:
+ * from then on they are old news and are passed over. `runs` are newest first.
  */
-export async function readHeldSync(tx: ReadTx, integrationId: string): Promise<HeldSync | null> {
+export function heldSyncsOf(runs: readonly FullPullRunRow[]): HeldSyncEntry[] {
+  const decided = new Set<string | null>()
+  const entries: HeldSyncEntry[] = []
+  for (const run of runs) {
+    if (run.counters.failed_pages !== 0) continue
+    const venueId = venueOfRun(run.details)
+    if (venueId === null && [...decided].some((key) => key !== null)) continue
+    if (decided.has(venueId)) continue
+    decided.add(venueId)
+    const held = absenceHeldOf(run.details)
+    if (held !== null) {
+      entries.push({
+        venueId,
+        held: { ...held, finishedAt: run.finishedAt?.toISOString() ?? null },
+      })
+    }
+  }
+  return entries
+}
+
+/**
+ * The held full pulls of the integration, one per venue (see `heldSyncsOf`). This looks at the
+ * full pulls alone, not at the latest twenty runs of every kind, so the warning stays when many
+ * change checks have run since.
+ */
+export async function readHeldSyncs(tx: ReadTx, integrationId: string): Promise<HeldSyncEntry[]> {
   const rows = await tx
     .select({
       counters: jobRuns.counters,
@@ -67,12 +113,7 @@ export async function readHeldSync(tx: ReadTx, integrationId: string): Promise<H
     )
     .orderBy(desc(jobRuns.createdAt), desc(jobRuns.id))
     .limit(FULL_PULL_LOOKBACK)
-  for (const row of rows) {
-    if (row.counters.failed_pages !== 0) continue
-    const held = absenceHeldOf(row.details)
-    return held === null ? null : { ...held, finishedAt: row.finishedAt?.toISOString() ?? null }
-  }
-  return null
+  return heldSyncsOf(rows)
 }
 
 /** What the stored record of a venue says that the pickers can hint at. */

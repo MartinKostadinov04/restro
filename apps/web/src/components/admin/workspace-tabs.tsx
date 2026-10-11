@@ -14,10 +14,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
-  DEFAULT_WORKSPACE_TAB,
   isWorkspaceTab,
   WORKSPACE_TAB_DEFS,
   type WorkspaceTabValue,
+  workspaceTabOf,
 } from './workspace-tab-defs'
 
 interface WorkspaceTabsProps {
@@ -39,8 +39,7 @@ export function WorkspaceTabs({ contents }: WorkspaceTabsProps) {
   const searchParams = useSearchParams()
   const [, startTransition] = useTransition()
 
-  const requested = searchParams.get('tab')
-  const fromUrl: WorkspaceTabValue = isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
+  const fromUrl: WorkspaceTabValue = workspaceTabOf(searchParams.get('tab'))
   // Shows the new tab at once while the URL (and the page) catch up; falls back to the URL's tab.
   const [current, showTab] = useOptimistic(fromUrl)
   // The tab last asked for: a click can fire Radix's change event twice (press, then focus) before

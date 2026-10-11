@@ -103,7 +103,6 @@ test('the Design tab follows Publishing, and Settings no longer holds the Appear
     'Tables & QR',
     'Publishing',
     'Design',
-    'Integration',
     'Settings',
   ])
   await page.getByRole('tab', { name: 'Design' }).click()

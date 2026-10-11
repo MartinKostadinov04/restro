@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { type SyncGateInput, syncGate } from './gating'
+import { type SyncAllGateInput, type SyncGateInput, syncAllGate, syncGate } from './gating'
 
 const ready: SyncGateInput = {
   canManage: true,
@@ -33,7 +33,7 @@ describe('syncGate', () => {
       { integration: { hasCredentials: true, status: 'error' } },
       'not_connected',
     ],
-    ['no barsy venue chosen', { venueMapped: false }, 'no_barsy_venue'],
+    ['no till venue chosen', { venueMapped: false }, 'no_till_venue'],
     ['no catalogue root chosen', { rootChosen: false }, 'no_root'],
     ['a pull that is queued or running', { activeJob: 'pull' }, 'busy'],
     ['a connection check that is queued or running', { activeJob: 'connect' }, 'checking'],
@@ -55,11 +55,44 @@ describe('syncGate', () => {
         ...nothingDone,
         integration: { hasCredentials: true, status: 'connected' },
       }),
-    ).toEqual({ enabled: false, reason: 'no_barsy_venue' })
+    ).toEqual({ enabled: false, reason: 'no_till_venue' })
     // Not being allowed to manage outranks everything: there is nothing for that person to fix.
     expect(syncGate({ ...nothingDone, canManage: false })).toEqual({
       enabled: false,
       reason: 'not_manager',
+    })
+  })
+})
+
+describe('syncAllGate ("Sync everything now")', () => {
+  const ready: SyncAllGateInput = {
+    canManage: true,
+    integration: { hasCredentials: true, status: 'connected' },
+    linkedVenues: 2,
+    linkedWithCategory: 1,
+    activeJob: null,
+  }
+
+  it('opens when connected and at least one linked venue has its menu category', () => {
+    expect(syncAllGate(ready)).toEqual({ enabled: true })
+  })
+
+  it.each([
+    ['someone who cannot manage', { canManage: false }, 'not_manager'],
+    ['no integration at all', { integration: null }, 'no_credentials'],
+    [
+      'an integration that was never checked',
+      { integration: { hasCredentials: true, status: 'new' } },
+      'not_connected',
+    ],
+    ['no venue linked', { linkedVenues: 0, linkedWithCategory: 0 }, 'no_till_venue'],
+    ['linked venues without a menu category', { linkedWithCategory: 0 }, 'no_root'],
+    ['a pull that is queued or running', { activeJob: 'pull' }, 'busy'],
+    ['a connection check that is queued or running', { activeJob: 'connect' }, 'checking'],
+  ] as const)('is closed for %s', (_name, change, reason) => {
+    expect(syncAllGate({ ...ready, ...change } as SyncAllGateInput)).toEqual({
+      enabled: false,
+      reason,
     })
   })
 })

@@ -1,6 +1,7 @@
 'use client'
 
-// The Connection card: the barsy address and the API user's name and password (brief S2-05).
+// The Connection card: the barsy address and the API user's name and password (brief S2-05). One
+// connection for the whole organisation (D73), set on Settings -> Integrations.
 //
 // The password goes to the server action once, to be sealed there, and is cleared from the form
 // whatever the answer. Nothing sent back ever holds it, so after a save the card can only say
@@ -22,11 +23,10 @@ import { ErrorNote, Notice } from './error-note'
 import { useClearWhenIdle } from './use-clear-when-idle'
 
 interface ConnectCardProps {
-  readonly venueId: string
   readonly view: IntegrationView
 }
 
-export function ConnectCard({ venueId, view }: ConnectCardProps) {
+export function ConnectCard({ view }: ConnectCardProps) {
   const t = useTranslations('integration')
   const formId = useId()
   const info = view.integration
@@ -46,7 +46,7 @@ export function ConnectCard({ venueId, view }: ConnectCardProps) {
     event.preventDefault()
     setError(null)
     setNotice(null)
-    const sent = { venueId, host, user, password }
+    const sent = { host, user, password }
     // The password leaves the form the moment it is sent, whatever comes back.
     setPassword('')
     startTransition(async () => {

@@ -6,7 +6,7 @@
 //
 // Pure, apart from the types: also imported by the client components (types only) and tested alone.
 
-import type { DiffArea, LocalizedText, Money } from '@restro/core'
+import type { AfterSyncMode, DiffArea, LocalizedText, Money, NewItemsMode } from '@restro/core'
 
 /** Who did it, without ever carrying an id: a person (named when we still know them), the sync, or the system. */
 export type ActorView =
@@ -165,6 +165,17 @@ export interface PublishRunView {
 /** A job of this menu is queued or running: `publish` (a person's publish), `files` (after a return). */
 export type BusyView = 'publish' | 'files' | null
 
+/**
+ * The venue's publishing rules (CF-09b, CF-04, D73): what happens after a sync of the till, and
+ * what happens to the items the till adds. `inherited` is true while at least one of them is not
+ * the venue's own yet and follows the integration's old setting; saving makes both the venue's.
+ */
+export interface PublishRulesView {
+  readonly afterSync: AfterSyncMode
+  readonly newItems: NewItemsMode
+  readonly inherited: boolean
+}
+
 export interface PublishView {
   readonly venueId: string
   readonly venueSlug: string
@@ -180,6 +191,8 @@ export interface PublishView {
   readonly held: HeldView | null
   /** Automatic publishing is paused after a return to an older version. */
   readonly paused: boolean
+  /** The venue's publishing rules (the Rules card). */
+  readonly rules: PublishRulesView
   readonly history: HistoryPage
   readonly busy: BusyView
   readonly lastRun: PublishRunView | null

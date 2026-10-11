@@ -84,12 +84,7 @@ describe.skipIf(!hasDatabase)('changing the host of a connection that holds a me
       slug: testSlug('host-change'),
     })
     await provisionMenu(app, tenant, venue.id)
-    scope = {
-      pool: app,
-      tenantId: tenant,
-      venue: { id: venue.id, name: venue.name, timezone: venue.timezone },
-      canManage: true,
-    }
+    scope = { pool: app, tenantId: tenant, canManage: true }
   })
 
   afterAll(async () => {

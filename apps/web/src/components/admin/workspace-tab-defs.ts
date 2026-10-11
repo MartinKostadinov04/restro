@@ -6,7 +6,6 @@ import {
   LayoutListIcon,
   type LucideIcon,
   PaletteIcon,
-  PlugIcon,
   QrCodeIcon,
   RocketIcon,
   SettingsIcon,
@@ -26,7 +25,6 @@ export const WORKSPACE_TAB_DEFS = [
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
   { value: 'publishing', labelKey: 'workspace.tabs.publishing', icon: RocketIcon },
   { value: 'design', labelKey: 'workspace.tabs.design', icon: PaletteIcon },
-  { value: 'integration', labelKey: 'workspace.tabs.integration', icon: PlugIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
 ] as const satisfies readonly WorkspaceTabDef[]
 
@@ -38,4 +36,14 @@ export const DEFAULT_WORKSPACE_TAB: WorkspaceTabValue = 'composer'
 
 export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
   return WORKSPACE_TAB_DEFS.some((tab) => tab.value === value)
+}
+
+/**
+ * The tab a `?tab=` value opens. The venue's Integration tab is gone (CF-09b, D73: the connection
+ * is the organisation's, the venue's part is the Menu source card in its Settings tab), so an old
+ * link `?tab=integration` opens Settings; anything else unknown opens the default tab.
+ */
+export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
+  if (requested === 'integration') return 'settings'
+  return isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
 }

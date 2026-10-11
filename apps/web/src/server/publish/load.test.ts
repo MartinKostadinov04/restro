@@ -339,12 +339,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
 
     it('keeps the pause when the form saves the sync settings (they do not own it)', async () => {
       const result = await saveSyncSettings(
-        {
-          pool: app,
-          tenantId: tenant,
-          venue: { id: venueId, name: 'Main', timezone: 'Europe/Sofia' },
-          canManage: true,
-        },
+        { pool: app, tenantId: tenant, canManage: true },
         {
           schedule: {
             incremental_enabled: true,
@@ -352,7 +347,6 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
             full_pull_enabled: true,
             full_pull_time: '12:00',
           },
-          publish: { after_sync: 'auto', new_items: 'show' },
         },
       )
       expect(result).toEqual({ ok: true })

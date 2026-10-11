@@ -1,7 +1,8 @@
 'use client'
 
-// The run history: the latest 20 runs of the integration, newest first. A row shows what ran,
-// when (the venue's clock), how long, how it ended and its counters; it opens to the notes of
+// The run history: the latest 20 runs of the integration (every venue's), newest first. A row
+// shows what ran, for which venue, when (the integration's clock), how long, how it ended and its
+// counters; it opens to the notes of
 // the run (what it skipped and why, or the error) and the writes `apply()` refused (the field
 // and the reason, never an id from barsy). Runs recorded before structured details existed show
 // their text instead.
@@ -72,6 +73,9 @@ function RunRow({ run, timeZone }: { run: RunView; timeZone: string }) {
         </Button>
         <span className="min-w-32 text-sm font-medium">
           {isKnownRunKind(run.kind) ? t(`kind.${run.kind}`) : t('kind.other')}
+        </span>
+        <span className="min-w-28 text-sm text-muted-foreground" data-testid="run-venue">
+          {run.venue?.name ?? '—'}
         </span>
         <span className="text-sm text-muted-foreground" data-testid="run-started">
           {started ?? '—'}

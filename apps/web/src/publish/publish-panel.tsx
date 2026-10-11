@@ -1,8 +1,8 @@
 'use client'
 
 // The Publish tab's cards in the order a manager reads them: the answer to a press, the banners that
-// need a decision (a held publish, a paused sync), what guests see now, what is waiting, and the
-// history. Plain data in (see server/publish/view.ts); every button goes through one `Publisher`
+// need a decision (a held publish, a paused sync), what guests see now, what is waiting, the
+// history, and the venue's publishing rules. Plain data in (see server/publish/view.ts); every button goes through one `Publisher`
 // so they agree on what is busy. The page keeps itself fresh while a publish is queued or running.
 import { useTranslations } from 'next-intl'
 
@@ -14,6 +14,7 @@ import { HistoryCard } from './history-card'
 import { LiveCard } from './live-card'
 import { OutcomeNote } from './outcome-note'
 import { PausedBanner } from './paused-banner'
+import { RulesCard } from './rules-card'
 import { usePublisher } from './use-publisher'
 
 export function PublishPanel({ view }: { view: PublishView }) {
@@ -22,9 +23,12 @@ export function PublishPanel({ view }: { view: PublishView }) {
 
   if (view.menu === 'none') {
     return (
-      <div className="grid gap-1 pt-2" data-testid="publish-no-menu">
-        <p className="font-medium">{t('noMenu.title')}</p>
-        <p className="text-sm text-muted-foreground">{t('noMenu.description')}</p>
+      <div className="grid gap-8 pt-2">
+        <div className="grid gap-1" data-testid="publish-no-menu">
+          <p className="font-medium">{t('noMenu.title')}</p>
+          <p className="text-sm text-muted-foreground">{t('noMenu.description')}</p>
+        </div>
+        <RulesCard venueId={view.venueId} canPublish={view.canPublish} rules={view.rules} />
       </div>
     )
   }
@@ -64,6 +68,7 @@ export function PublishPanel({ view }: { view: PublishView }) {
       <LiveCard view={view} busy={publisher.busy} onPublish={publisher.publish} />
       <ChangesCard view={view} busy={publisher.busy} onPublish={publisher.publish} />
       <HistoryCard view={view} busy={publisher.busy} returnTo={publisher.returnTo} />
+      <RulesCard venueId={view.venueId} canPublish={view.canPublish} rules={view.rules} />
     </div>
   )
 }
