@@ -29,6 +29,8 @@ export interface StartJobRunInput {
   readonly kind: string
   /** The integration the run belongs to, if any. */
   readonly integrationId?: string
+  /** The venue of ours the run is for, if any: kept in `details.venue_id` (CF-09b). */
+  readonly venueId?: string
   readonly startedAt?: Date
 }
 
@@ -45,6 +47,9 @@ export async function startJobRun(
   if (input.integrationId !== undefined && !isId('in', input.integrationId)) {
     throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
   }
+  if (input.venueId !== undefined && !isId('vn', input.venueId)) {
+    throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  }
   return withTenantWrite(pool, tenantId, async (tx) => {
     const [row] = await tx
       .insert(jobRuns)
@@ -55,6 +60,10 @@ export async function startJobRun(
         kind: input.kind,
         status: 'running',
         startedAt: input.startedAt ?? new Date(),
+        // Said at the start, so the history names the venue of a run that is still going.
+        ...(input.venueId !== undefined
+          ? { details: { notes: [], refused: [], venue_id: input.venueId } }
+          : {}),
       })
       .returning()
     if (!row) throw new ProvisionError('invalid_input', 'the job run was not created')
@@ -83,6 +92,8 @@ export interface FinishJobRunInput {
    * T62); written into `details.absence_held` as `{ reason, would_hide, active }`.
    */
   readonly absenceHeld?: AbsenceHeld
+  /** The venue of ours the run was for; written into `details.venue_id` (CF-09b). */
+  readonly venueId?: string
   readonly finishedAt?: Date
 }
 
@@ -143,6 +154,9 @@ export async function finishJobRun(
 ): Promise<JobRun | null> {
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
   if (!isId('jb', jobRunId)) throw new ProvisionError('invalid_input', 'jobRunId must be a jb_ id')
+  if (input.venueId !== undefined && !isId('vn', input.venueId)) {
+    throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  }
   const counters: Record<string, number> = {}
   for (const [name, value] of Object.entries(input.counters ?? {})) {
     if (!Number.isSafeInteger(value)) {
@@ -180,6 +194,7 @@ export async function finishJobRun(
           },
         }
       : {}),
+    ...(input.venueId !== undefined ? { venue_id: input.venueId } : {}),
   }
   return withTenantWrite(pool, tenantId, async (tx) => {
     const [row] = await tx

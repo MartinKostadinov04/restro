@@ -155,7 +155,7 @@ const storedPublish =
 
 /**
  * The stored `config.schedule.time_zone`, as a one-key object to merge (or an empty one): the
- * form does not send the zone (CF-09b will), so a save must not drop it.
+ * form does not send the zone (the page names it, read-only), so a save must not drop it.
  */
 const storedTimeZone =
   () => sql`case when jsonb_typeof(${integrations.config} #> '{schedule,time_zone}') = 'string'
@@ -163,11 +163,11 @@ const storedTimeZone =
   else '{}'::jsonb end`
 
 /**
- * Saves the sync settings form (D59, Integration tab): `config.schedule` is replaced with the form's
- * schedule (keeping a stored `time_zone`, which the form does not show yet) and the form's two
- * publish settings (`after_sync`, `new_items`) are merged into `config.publish`. The flat key
- * `publish_after_sync` of S3-01b is removed (`publish.after_sync` says it now). Returns whether
- * the integration exists.
+ * Saves the automatic-sync form (D59, Settings -> Integrations): `config.schedule` is replaced
+ * with the form's schedule (keeping a stored `time_zone`, which the form does not send). Since
+ * CF-09b (D73) the publishing rules are per venue and this never touches `config.publish` or the
+ * flat key `publish_after_sync` of S3-01b: they stay as what a venue without rules of its own
+ * inherits (`venuePublishRules`). Returns whether the integration exists.
  *
  * One atomic `UPDATE`, merged inside Postgres: `publish.auto_paused`, which the Publish tab sets
  * after a rollback and a manual publish clears, is never read or written here, so a pause set or
@@ -187,14 +187,63 @@ export async function saveSyncSettingsConfig(
   const parsed = SyncSettingsInputSchema.safeParse(settings)
   if (!parsed.success) throw new ProvisionError('invalid_input', z.prettifyError(parsed.error))
   const schedule = JSON.stringify(parsed.data.schedule)
-  const publishPatch = JSON.stringify(parsed.data.publish)
   return withTenantWrite(pool, tenantId, async (tx) => {
     const rows = await tx
       .update(integrations)
       .set({
-        config: sql`(${integrations.config} || jsonb_build_object(
-            'schedule', ${schedule}::jsonb || ${storedTimeZone()},
-            'publish', ${storedPublish()} || ${publishPatch}::jsonb)) - 'publish_after_sync'`,
+        config: sql`${integrations.config} || jsonb_build_object(
+            'schedule', ${schedule}::jsonb || ${storedTimeZone()})`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}
+
+// --- the venues of the till nobody wants as a venue ("Not used", CF-09b, D73) --------------------
+
+const NotUsedSchema = z.record(z.string(), z.literal(true))
+
+/**
+ * The till venues (by their number in the till) marked "Not used": a shop, a catering unit,
+ * "Services". Stored in the integration's config as `not_used: { "<bid>": true }`, so it needs no
+ * migration and two marks never overwrite each other. Empty when there is none or it is unreadable.
+ */
+export function readNotUsedVenues(config: unknown): ReadonlySet<number> {
+  const stored = (config as { not_used?: unknown } | null | undefined)?.not_used
+  const parsed = NotUsedSchema.safeParse(stored)
+  if (!parsed.success) return new Set()
+  return new Set(
+    Object.keys(parsed.data)
+      .map(Number)
+      .filter((bid) => Number.isSafeInteger(bid) && bid >= 0),
+  )
+}
+
+/**
+ * Marks a till venue "Not used" (`true`) or takes the mark off (`false`). One atomic `UPDATE`
+ * merged inside Postgres. Returns whether the integration exists. Whether the till venue exists
+ * and is unlinked is the caller's check.
+ */
+export async function setTillVenueNotUsed(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  notUsed: boolean,
+): Promise<boolean> {
+  check(tenantId, integrationId, bid)
+  const key = String(bid)
+  const stored = sql`case when jsonb_typeof(${integrations.config} -> 'not_used') = 'object'
+    then ${integrations.config} -> 'not_used' else '{}'::jsonb end`
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: notUsed
+          ? sql`${integrations.config} || jsonb_build_object('not_used',
+              ${stored} || jsonb_build_object(${key}::text, true))`
+          : sql`${integrations.config} || jsonb_build_object('not_used', ${stored} - ${key}::text)`,
       })
       .where(eq(integrations.id, integrationId))
       .returning({ id: integrations.id })

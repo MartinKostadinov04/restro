@@ -7,7 +7,7 @@
 // the database driver, and pure consumers (the shell, the faces, client components) must not.
 
 import { type DbPool, menus, nodes, tenants, type Venue, venues } from '@restro/db'
-import { withTenantWrite } from '@restro/db/write'
+import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { eq } from 'drizzle-orm'
 
 import { isVenueSlug } from '../guest-files'
@@ -139,22 +139,19 @@ function pgErrorOf(error: unknown): { code?: string; constraint?: string } {
   return {}
 }
 
-/**
- * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id and a fresh public code,
- * and returns the row. Refuses a malformed name, slug, time zone, currency or locale list before
- * touching the database; a missing tenant row comes back as a `ProvisionError`.
- *
- * The public code (`public_id`, D68) is what finds the venue's menu: 12 random characters, unique
- * across all tenants and permanent. Row-level security hides other tenants' venues, so no query
- * could tell whether a drawn code is free: the unique index decides (`venues_public_id_unique`),
- * and on a clash a new code is drawn once more (a second clash among 36^12 codes is a bug, and
- * throws). The slug is only decoration: any number of venues may share one.
- */
-export async function provisionVenue(
-  pool: DbPool,
-  tenantId: string,
-  input: ProvisionVenueInput,
-): Promise<Venue> {
+/** A venue's input after `checkedVenue`: every default filled in, every rule checked. */
+interface CheckedVenue {
+  readonly name: string
+  readonly slug: string
+  readonly timezone: string
+  readonly serviceDayEndsAt: string
+  readonly currency: Currency
+  readonly defaultLocale: Locale
+  readonly enabledLocales: Locale[]
+}
+
+/** Refuses a malformed name, slug, time zone, currency or locale list before the database is touched. */
+function checkedVenue(tenantId: string, input: ProvisionVenueInput): CheckedVenue {
   if (!isId('tn', tenantId)) {
     throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
   }
@@ -197,35 +194,59 @@ export async function provisionVenue(
       'the default locale must be one of the enabled locales',
     )
   }
+  return {
+    name,
+    slug: input.slug,
+    timezone,
+    serviceDayEndsAt,
+    currency,
+    defaultLocale,
+    enabledLocales,
+  }
+}
 
+/** Inserts the venue row, with a fresh id and a fresh public code. */
+async function insertVenueRow(tx: WriteTx, tenantId: string, venue: CheckedVenue): Promise<Venue> {
+  const [row] = await tx
+    .insert(venues)
+    .values({ id: newId('vn'), tenantId, publicId: newPublicId(), ...venue })
+    .returning()
+  if (!row) throw new ProvisionError('invalid_input', 'the venue row was not created')
+  return row
+}
+
+/** Whether `error` is the clash of a drawn public code with a taken one. */
+function isPublicIdClash(error: unknown): boolean {
+  const { code, constraint } = pgErrorOf(error)
+  return code === '23505' && constraint === 'venues_public_id_unique'
+}
+
+/**
+ * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id and a fresh public code,
+ * and returns the row. Refuses a malformed name, slug, time zone, currency or locale list before
+ * touching the database; a missing tenant row comes back as a `ProvisionError`.
+ *
+ * The public code (`public_id`, D68) is what finds the venue's menu: 12 random characters, unique
+ * across all tenants and permanent. Row-level security hides other tenants' venues, so no query
+ * could tell whether a drawn code is free: the unique index decides (`venues_public_id_unique`),
+ * and on a clash a new code is drawn once more (a second clash among 36^12 codes is a bug, and
+ * throws). The slug is only decoration: any number of venues may share one.
+ */
+export async function provisionVenue(
+  pool: DbPool,
+  tenantId: string,
+  input: ProvisionVenueInput,
+): Promise<Venue> {
+  const checked = checkedVenue(tenantId, input)
   const insertVenue = () =>
-    withTenantWrite(pool, tenantId, async (tx) => {
-      const [venue] = await tx
-        .insert(venues)
-        .values({
-          id: newId('vn'),
-          tenantId,
-          name,
-          slug: input.slug,
-          publicId: newPublicId(),
-          timezone,
-          serviceDayEndsAt,
-          currency,
-          defaultLocale,
-          enabledLocales,
-        })
-        .returning()
-      if (!venue) throw new ProvisionError('invalid_input', 'the venue row was not created')
-      return venue
-    })
+    withTenantWrite(pool, tenantId, (tx) => insertVenueRow(tx, tenantId, checked))
 
   try {
     try {
       return await insertVenue()
     } catch (error) {
       // The drawn code is taken: the failed transaction is rolled back, so draw once more.
-      const { code, constraint } = pgErrorOf(error)
-      if (code !== '23505' || constraint !== 'venues_public_id_unique') throw error
+      if (!isPublicIdClash(error)) throw error
       return await insertVenue()
     }
   } catch (error) {
@@ -237,6 +258,28 @@ export async function provisionVenue(
       })
     }
     throw error
+  }
+}
+
+/**
+ * `provisionVenue` inside a transaction the caller owns, for a write that must create the venue
+ * and something else together or not at all (CF-09b: "Add as venue" makes the venue, its menu and
+ * the link in one go). The same checks and the same public code; a clash of the code is redrawn
+ * once inside a savepoint, since the failed insert would otherwise spoil the whole transaction.
+ * A missing tenant row is left to the caller (its foreign key fails the transaction).
+ */
+export async function provisionVenueIn(
+  tx: WriteTx,
+  tenantId: string,
+  input: ProvisionVenueInput,
+): Promise<Venue> {
+  const checked = checkedVenue(tenantId, input)
+  const attempt = () => tx.transaction((inner) => insertVenueRow(inner, tenantId, checked))
+  try {
+    return await attempt()
+  } catch (error) {
+    if (!isPublicIdClash(error)) throw error
+    return await attempt()
   }
 }
 
@@ -300,31 +343,40 @@ export async function provisionMenu(
 ): Promise<ProvisionedMenu> {
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
   if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
-  return withTenantWrite(pool, tenantId, async (tx) => {
-    await lockTenantDocument(tx, tenantId)
-    const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
-    if (!venue) throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
-    const [existing] = await tx.select().from(menus).where(eq(menus.venueId, venueId))
-    if (existing) {
-      return {
-        id: existing.id as NodeId,
-        venueId: existing.venueId,
-        templateKey: existing.templateKey,
-        templateVersion: existing.templateVersion,
-        rootNodeId: existing.rootNodeId as NodeId,
-        created: false,
-      }
+  return withTenantWrite(pool, tenantId, (tx) => provisionMenuIn(tx, tenantId, venueId))
+}
+
+/** `provisionMenu` inside a transaction the caller owns (see `provisionVenueIn`). */
+export async function provisionMenuIn(
+  tx: WriteTx,
+  tenantId: string,
+  venueId: string,
+): Promise<ProvisionedMenu> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  await lockTenantDocument(tx, tenantId)
+  const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
+  if (!venue) throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
+  const [existing] = await tx.select().from(menus).where(eq(menus.venueId, venueId))
+  if (existing) {
+    return {
+      id: existing.id as NodeId,
+      venueId: existing.venueId,
+      templateKey: existing.templateKey,
+      templateVersion: existing.templateVersion,
+      rootNodeId: existing.rootNodeId as NodeId,
+      created: false,
     }
-    const rootNodeId = newId('nd')
-    await tx.insert(nodes).values({ id: rootNodeId, tenantId, nodeType: 'menu', parentId: null })
-    const menu = {
-      id: rootNodeId,
-      venueId,
-      templateKey: VENUE_MENU_TEMPLATE.key,
-      templateVersion: VENUE_MENU_TEMPLATE.version,
-      rootNodeId,
-    }
-    await tx.insert(menus).values({ ...menu, tenantId })
-    return { ...menu, created: true }
-  })
+  }
+  const rootNodeId = newId('nd')
+  await tx.insert(nodes).values({ id: rootNodeId, tenantId, nodeType: 'menu', parentId: null })
+  const menu = {
+    id: rootNodeId,
+    venueId,
+    templateKey: VENUE_MENU_TEMPLATE.key,
+    templateVersion: VENUE_MENU_TEMPLATE.version,
+    rootNodeId,
+  }
+  await tx.insert(menus).values({ ...menu, tenantId })
+  return { ...menu, created: true }
 }

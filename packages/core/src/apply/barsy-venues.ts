@@ -4,7 +4,14 @@
 //
 // barsy ids (`bid`, `place_id`) stay in these tables (rule 3).
 
-import { type BarsyVenue, type DbPool, places, barsyVenues as venueLinks, venues } from '@restro/db'
+import {
+  type BarsyVenue,
+  type DbPool,
+  places,
+  type Venue,
+  barsyVenues as venueLinks,
+  venues,
+} from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { and, eq, sql } from 'drizzle-orm'
 
@@ -13,7 +20,12 @@ import { isId, newId } from '../ids'
 import { type AbsenceHeld, absenceHold } from '../sync/absence-hold'
 import { concludeFullPull } from '../sync/conclude-full-pull'
 import { lockTenantDocument } from './lock'
-import { ProvisionError } from './provision'
+import {
+  ProvisionError,
+  type ProvisionVenueInput,
+  provisionMenuIn,
+  provisionVenueIn,
+} from './provision'
 
 function checked(tenantId: string, integrationId: string): void {
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
@@ -87,6 +99,8 @@ export type BarsyVenueChoiceError =
   | 'venue_missing'
   /** The barsy venue is mapped to another venue of ours already. */
   | 'barsy_venue_taken'
+  /** `venueMustBeUnlinked` was asked for and the venue serves another barsy venue already. */
+  | 'venue_already_linked'
 
 /** What `mapBarsyVenue` and `setCatalogueRoot` answer. */
 export type BarsyVenueChoice =
@@ -99,6 +113,10 @@ export type BarsyVenueChoice =
  * venue of ours is refused (`barsy_venue_taken`); a venue that was mapped to a different barsy
  * venue is moved to this one (that one is freed). Mapping the same pair again changes nothing.
  * The catalogue root of the barsy venue is kept.
+ *
+ * With `venueMustBeUnlinked` a venue that serves another barsy venue already is refused
+ * (`venue_already_linked`) instead of being moved: Settings -> Integrations only links venues that
+ * have no link yet; moving a venue is the deliberate "Change…" of its own Menu source card.
  */
 export async function mapBarsyVenue(
   pool: DbPool,
@@ -106,6 +124,7 @@ export async function mapBarsyVenue(
   integrationId: string,
   bid: number,
   venueId: string,
+  options: { readonly venueMustBeUnlinked?: boolean } = {},
 ): Promise<BarsyVenueChoice> {
   checked(tenantId, integrationId)
   if (!Number.isSafeInteger(bid) || bid < 0) {
@@ -125,6 +144,14 @@ export async function mapBarsyVenue(
       return { ok: false, error: 'barsy_venue_taken' } as const
     }
     if (row.venueId === venueId) return { ok: true, row } as const
+    if (options.venueMustBeUnlinked === true) {
+      const [other] = await tx
+        .select({ bid: venueLinks.bid })
+        .from(venueLinks)
+        .where(eq(venueLinks.venueId, venueId))
+        .limit(1)
+      if (other) return { ok: false, error: 'venue_already_linked' } as const
+    }
     // The venue may serve another barsy venue now (unique on venue_id): free that one first.
     await tx
       .update(venueLinks)
@@ -137,6 +164,49 @@ export async function mapBarsyVenue(
       .returning()
     if (!updated) return { ok: false, error: 'barsy_venue_missing' } as const
     return { ok: true, row: updated } as const
+  })
+}
+
+/** What `addVenueFromTillVenue` answers. */
+export type AddedVenue =
+  | { readonly ok: true; readonly venue: Venue }
+  | { readonly ok: false; readonly error: 'link_missing' | 'link_taken' }
+
+/**
+ * "Add as venue" (CF-09b, D73): makes a venue of ours for a barsy venue that has none, with its
+ * empty menu, and links the two, all in ONE transaction under the tenant's document lock. Either
+ * all three happen or none does, and two requests for the same barsy venue cannot make two
+ * venues: the second finds the link and is refused (`link_taken`). The venue gets
+ * `provisionVenue`'s checks, public code and defaults; `input` carries its name and slug.
+ * The catalogue root is not chosen here: the person picks the menu category next.
+ */
+export async function addVenueFromTillVenue(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  input: ProvisionVenueInput,
+): Promise<AddedVenue> {
+  checked(tenantId, integrationId)
+  if (!Number.isSafeInteger(bid) || bid < 0) {
+    throw new ProvisionError('invalid_input', 'bid must be a non-negative integer')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const [row] = await tx
+      .select()
+      .from(venueLinks)
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
+      .for('update')
+    if (!row) return { ok: false, error: 'link_missing' } as const
+    if (row.venueId !== null) return { ok: false, error: 'link_taken' } as const
+    const venue = await provisionVenueIn(tx, tenantId, input)
+    await provisionMenuIn(tx, tenantId, venue.id)
+    await tx
+      .update(venueLinks)
+      .set({ venueId: venue.id, updatedAt: new Date() })
+      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
+    return { ok: true, venue } as const
   })
 }
 

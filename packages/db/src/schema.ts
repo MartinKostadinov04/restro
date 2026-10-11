@@ -759,6 +759,12 @@ export const events = restro.table(
 export interface JobRunDetails {
   notes: string[]
   refused: { nodeRef: string | null; fieldKey?: string; code: string }[]
+  /**
+   * The venue of ours (`vn_…`) a run was for, so the history of the whole installation can say
+   * which venue each pull belonged to (CF-09b). Absent on runs recorded before it existed and on
+   * runs that belong to no venue (the connection check).
+   */
+  venue_id?: string
   /** True when a full pull did not conclude absence. Absent on runs recorded before it existed. */
   deletionCheckSkipped?: boolean
   /**

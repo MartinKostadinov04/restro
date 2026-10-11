@@ -10,12 +10,15 @@
 //     longer holds is hidden in that venue only, and comes back when the root holds it again;
 //   - a deleted or recreated article is concluded once per catalogue;
 //   - a venue whose root would drop most of its menu holds (CF-02 per venue);
-//   - the tables of a newly mapped venue are read without a catalogue root (T67).
+//   - the tables of a newly mapped venue are read without a catalogue root (T67);
+//   - the publishing rules are the venue's (CF-09b, CF-04): after a pull that changed a shared
+//     catalogue, each venue on it publishes by its own rule, and holds new items by its own rule.
 import { JOB_NAMES, type NodeId, resolve, VENUE_MENU_TEMPLATE, type VenueId } from '@restro/core'
 import {
   loadMenuDocument,
   provisionMenu,
   provisionVenue,
+  setVenuePublishRules,
   upsertBarsyVenues,
 } from '@restro/core/apply'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -365,6 +368,98 @@ describe.skipIf(!hasDatabase)('several venues on one barsy account (CF-16)', () 
     expect(await visibleIn(venueB, menuB, '7408')).toBe(true)
     expect((await sectionParents(menuB)).length).toBeGreaterThan(0)
     expect((await links('category')).every((link) => link.state === 'active')).toBe(true)
+  })
+
+  describe('the publishing rules belong to the venue (CF-09b)', () => {
+    const publishes = () =>
+      world.enqueued
+        .filter((job) => job.name === JOB_NAMES.publishMenu)
+        .map((job) => job.data.venueId as string)
+        .sort()
+    const rules = (venueId: string, after_sync: 'auto' | 'manual', new_items: 'show' | 'hold') =>
+      setVenuePublishRules(world.pool, world.tenantId, {
+        venueId,
+        rules: { after_sync, new_items },
+      })
+    /** Both venues know their catalogue, so a pull of one reaches the other (CF-16). */
+    const knowCatalogues = async () => {
+      await pullA()
+      advance(MINUTE)
+      await pullB()
+      advance(10 * MINUTE)
+      world.enqueued.length = 0
+    }
+
+    it('with no rule of their own, both venues on the catalogue publish after a change', async () => {
+      await knowCatalogues()
+      everywhere((list) => {
+        article(list, 7409).actual_price = 7.3
+      })
+      await pullA()
+      expect(publishes()).toEqual([world.venueId, venueB].sort())
+    })
+
+    it('two venues on one catalogue with different after_sync rules: only the automatic one publishes', async () => {
+      await knowCatalogues()
+      await rules(world.venueId, 'auto', 'show')
+      await rules(venueB, 'manual', 'show')
+      everywhere((list) => {
+        article(list, 7409).actual_price = 7.4
+      })
+      await pullA()
+      expect(publishes()).toEqual([world.venueId])
+
+      // The other way round, and the pull of the other venue: the rule is still each venue's own.
+      await rules(world.venueId, 'manual', 'show')
+      await rules(venueB, 'auto', 'show')
+      advance(10 * MINUTE)
+      world.enqueued.length = 0
+      everywhere((list) => {
+        article(list, 7409).actual_price = 7.5
+      })
+      await pullB()
+      expect(publishes()).toEqual([venueB])
+    })
+
+    it('a venue with its own rule is not moved by the integration’s old one, and one without follows it', async () => {
+      await knowCatalogues()
+      await world.query(
+        `update restro.integrations set config = config || '{"publish":{"after_sync":"manual","new_items":"show"}}'::jsonb
+         where id = $1`,
+        [world.integrationId],
+      )
+      await rules(venueB, 'auto', 'show')
+      everywhere((list) => {
+        article(list, 7409).actual_price = 7.6
+      })
+      await pullA()
+      // A never saved its rules: it reads the integration's (manual). B saved its own (auto).
+      expect(publishes()).toEqual([venueB])
+    })
+
+    it('new items are held by the rule of the venue whose pull creates them', async () => {
+      const heldArticles = async () =>
+        (
+          await world.query<{ external_id: string }>(
+            `select distinct sl.external_id from restro.field_values fv
+             join restro.source_links sl on sl.node_id = fv.node_id
+             where sl.integration_id = $1 and sl.external_type = 'article'
+               and fv.field_key = 'visible' and fv.layer = 'manual' and fv.value = 'false'::jsonb`,
+            [world.integrationId],
+          )
+        ).map((row) => row.external_id)
+      await rules(world.venueId, 'auto', 'hold')
+      await rules(venueB, 'auto', 'show')
+      // B's pull creates the drinks: B shows new items, so none is held.
+      await pullB()
+      expect(await heldArticles()).toEqual([])
+      advance(MINUTE)
+      // A's pull creates the food, which is new: A holds new items, so only those are held.
+      await pullA()
+      const held = await heldArticles()
+      expect(held).toContain('7405')
+      expect(held).not.toContain('7409')
+    })
   })
 
   it('reads the tables of a venue as soon as it is mapped, without a catalogue root (T67)', async () => {

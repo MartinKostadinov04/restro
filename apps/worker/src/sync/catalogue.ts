@@ -53,7 +53,6 @@ import {
   type ChildLink,
   canonicalJson,
   concludeVenuePull,
-  holdsNewItems,
   type IntegrationId,
   isLocale,
   JOB_NAMES,
@@ -65,6 +64,7 @@ import {
   sha256Hex,
   tillSource,
   type VenueId,
+  venueHoldsNewItems,
 } from '@restro/core'
 import {
   type ApplyRejection,
@@ -526,8 +526,9 @@ async function syncFetched(
   counters.records_new = appended.filter((record) => record.created).length
 
   const totals = emptyTotals()
-  // `publish.new_items = hold`: the items this run creates are hidden for a manager to review.
-  const holding = holdsNewItems(session.integration.config)
+  // The venue's rule `new_items = hold` (CF-09b; a venue with none reads the integration's): the
+  // items this run creates are hidden for a manager to review.
+  const holding = venueHoldsNewItems(target.venueSettings, session.integration.config)
   await applyMapped(
     env,
     tenantId,

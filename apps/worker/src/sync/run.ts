@@ -61,14 +61,17 @@ export async function trackedRun(
     readonly tenantId: string
     /** Absent for a run that belongs to no integration (the publish jobs). */
     readonly integrationId?: string
+    /** The venue of ours the run is for, when it is for one: the history names it (CF-09b). */
+    readonly venueId?: string
     readonly kind: string
   },
   body: (run: JobRun) => Promise<RunReport | undefined>,
 ): Promise<void> {
-  const { tenantId, integrationId } = target
+  const { tenantId, integrationId, venueId } = target
   const run = await startJobRun(env.pool, tenantId, {
     kind: target.kind,
     ...(integrationId === undefined ? {} : { integrationId }),
+    ...(venueId === undefined ? {} : { venueId }),
     startedAt: env.now(),
   })
   const finish = async (status: 'completed' | 'failed', report: RunReport, summary?: string) => {
