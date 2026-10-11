@@ -1,0 +1,26 @@
+{
+  "botanical": {
+    "label": "Botanical",
+    "radius": 14,
+    "colors": { "background": "#F4EFE6", "surface": "#E8DFCF", "accent": "#D9F26B", "onAccent": "#1F3A2B", "text": "#1F3A2B", "muted": "#4F5B50", "accentText": "#2F6B3F", "border": "#D8CDB8" },
+    "colorsDark": { "background": "#13201A", "surface": "#1D2E25", "accent": "#D9F26B", "onAccent": "#13201A", "text": "#F1ECE0", "muted": "#B9C2B5", "accentText": "#D9F26B", "border": "#2E4236" }
+  },
+  "midnight": {
+    "label": "Midnight",
+    "radius": 6,
+    "colors": { "background": "#F5F1EA", "surface": "#E7E0D4", "accent": "#E0A43A", "onAccent": "#1A1410", "text": "#1A1410", "muted": "#5A5048", "accentText": "#8A5A12", "border": "#D9D0C2" },
+    "colorsDark": { "background": "#0E0D0C", "surface": "#1C1A18", "accent": "#E0A43A", "onAccent": "#0E0D0C", "text": "#F3EBDD", "muted": "#B5AB9C", "accentText": "#F0B656", "border": "#2E2A26" }
+  },
+  "nordic": {
+    "label": "Nordic",
+    "radius": 4,
+    "colors": { "background": "#FAFBFC", "surface": "#EEF1F4", "accent": "#2F5BEA", "onAccent": "#FFFFFF", "text": "#1E2329", "muted": "#555E69", "accentText": "#2348C4", "border": "#DDE2E8" },
+    "colorsDark": { "background": "#12161B", "surface": "#1C222A", "accent": "#6E8EFF", "onAccent": "#0B0F14", "text": "#EEF2F6", "muted": "#A9B3BF", "accentText": "#8EA8FF", "border": "#2A323C" }
+  },
+  "terracotta": {
+    "label": "Terracotta",
+    "radius": 18,
+    "colors": { "background": "#FBF5EC", "surface": "#F0E2D2", "accent": "#C8372D", "onAccent": "#FFFFFF", "text": "#2B1B14", "muted": "#6A5246", "accentText": "#A62C23", "border": "#E4D3C0" },
+    "colorsDark": { "background": "#1C1310", "surface": "#2A1D18", "accent": "#E5533F", "onAccent": "#1C1310", "text": "#F6EBDD", "muted": "#C4AFA0", "accentText": "#F07A66", "border": "#3D2B24" }
+  }
+}
