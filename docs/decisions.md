@@ -79,6 +79,8 @@ Status: **firm** (tracker: Firm or Agreed), **applied** (done or in force), **pe
 | D70 | Venue colours: Primary ~60%, Secondary ~30%, Tertiary ~10%; the rest derived in OKLCH, text-on-colour at least 4.5:1; six self-hosted Cyrillic fonts; rounding, shadow, light/dark per venue. | firm |
 | D71 | Guest features are venue settings in the composer; a guest sees a service only if the venue switched it on, the platform supports it, the channel is interactive and a confirmed table token is present; allergen information can never be switched off; no ordering, payment or barsy-write backend before Stage 4/5. | firm |
 | D72 | Faces stay pure: a face draws the host's service state and sends commands with an `actionId`, showing pending, then accepted or rejected; it never adds bill rounds, confirms a waiter or reports a payment itself; totals, tips, VAT and splits come from the platform's quote. | firm |
+| D73 | Organisation-wide (Settings → Integrations): the barsy connection, the barsy venues found (Add as venue / Link to an existing venue / Not used), the allergen field and text language, the sync schedule, "sync everything" and run history. Per venue: identity, Menu source (its barsy venue, menu category, which barsy price), publishing rules, composer, Design, tables, publishing. Price per venue because barsy prices by venue; reading and deletions per catalogue because venues share catalogues. | firm |
+| D74 | The sidebar lists the venues and the organisation's Settings; a venue's sections stay as the tabs on its page (nothing shown twice). | firm |
 
 ## Open questions
 Owner is the group heading. None blocks the current stages unless a brief says so.
@@ -148,7 +150,7 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T60 Claude: photo variants: EXIF width/height, `variants:backfill --force`, CORS on the real CDN.
 - T62 Claude: catalogue-root safety (warn on root or venue change, hold above 30% missing); sync side partly in CF-02; before the pilot.
 - T67 Claude: read `Places_getlist` once a barsy venue is mapped; with T66 (CF-10).
-- T68 Martin to confirm, then Claude: Integration moves to the organisation's Settings; barsy venues appear as venues (CF-09).
+- T68 Claude: confirmed 10-11 (D73, D74); CF-09a navigation and CF-16 multi-venue sync (wave 1), then CF-09b Settings → Integrations (wave 2).
 - T70 Claude: connector foundation; merged CF-01, 02, 03, 08a, 12, 14; remaining CF-04 to 07, rest of 08, 09, 10, 11, 13; staging migration 0014 needs Martin's OK.
 - T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; SH-01 to SH-08 all merged into `sh/foundation` on 10-11; left: acceptance with Martin, then the PRs; open points per step in the tracker.
 - T72 Claude: hand-made items need a venue (they show in another venue's Unsorted); fix in CF-05 with a test.
