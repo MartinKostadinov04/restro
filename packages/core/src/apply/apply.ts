@@ -34,6 +34,7 @@ import {
   events,
   fieldValues,
   integrations,
+  menus,
   nodes,
   placements,
   sourceLinks,
@@ -42,7 +43,7 @@ import {
   venues,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { type SQL, sql } from 'drizzle-orm'
+import { asc, type SQL, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import {
@@ -89,6 +90,12 @@ export type ApplyRejectionCode =
   | 'unknown_node'
   /** A `venue:` scope names a venue the tenant does not have. */
   | 'unknown_venue'
+  /**
+   * The op is about a deleted (archived) venue, D76: a `venue:` scope of it, or a node of its menu
+   * (the menu itself, a section of it, a placement into one). Items are not in a menu, so a
+   * master value of an item is not refused by this.
+   */
+  | 'venue_archived'
   /** A till write cites a source record that does not exist or belongs to another integration. */
   | 'unknown_source_record'
   /** A link names an integration the tenant does not have. */
@@ -313,6 +320,10 @@ function batches<T>(rows: readonly T[], size = 500): T[][] {
 class DocumentState {
   readonly integrations = new Map<string, { kind: string }>()
   readonly venues = new Set<string>()
+  /** The venues that were deleted (archived, D76); a subset of `venues`. */
+  readonly archivedVenues = new Set<string>()
+  /** The menus (root node ids) of the archived venues: nothing is written into them. */
+  readonly archivedMenus = new Set<NodeId>()
   readonly records = new Map<string, string>()
   readonly nodes = new Map<NodeId, NodeState>()
   readonly aliases = new Map<NodeId, NodeId>()
@@ -452,7 +463,24 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     .from(integrations)) {
     state.integrations.set(row.id, { kind: row.kind })
   }
-  for (const row of await tx.select({ id: venues.id }).from(venues)) state.venues.add(row.id)
+  // The tenant's venues, locked shared (in id order, so two writers cannot wait for each other):
+  // a deletion (`archiveVenue`, FOR UPDATE) waits for this change set to commit, and one that
+  // committed first is read here, so nothing is written into a venue that was deleted (D76).
+  for (const row of await tx
+    .select({ id: venues.id, archivedAt: venues.archivedAt })
+    .from(venues)
+    .orderBy(asc(venues.id))
+    .for('share')) {
+    state.venues.add(row.id)
+    if (row.archivedAt !== null) state.archivedVenues.add(row.id)
+  }
+  if (state.archivedVenues.size > 0) {
+    const archivedMenus = await tx
+      .select({ rootNodeId: menus.rootNodeId })
+      .from(menus)
+      .where(anyOf(menus.venueId, [...state.archivedVenues]))
+    for (const menu of archivedMenus) state.archivedMenus.add(menu.rootNodeId as NodeId)
+  }
   if (recordIds.size > 0) {
     const rows = await tx
       .select({ id: sourceRecords.id, integrationId: sourceRecords.integrationId })
@@ -860,6 +888,17 @@ class Run {
   }
 
   private node(ref: NodeRef): NodeState | Outcome {
+    const found = this.nodeNamed(ref)
+    if (isOutcome(found)) return found
+    // Nothing is written into the menu of a deleted venue (D76); this is where every op resolves
+    // the nodes it is about, so one check covers them all.
+    if (this.state.archivedMenus.size > 0 && this.state.archivedMenus.has(this.rootOf(found))) {
+      return refused('venue_archived', `${found.id} is in the menu of a deleted venue`)
+    }
+    return found
+  }
+
+  private nodeNamed(ref: NodeRef): NodeState | Outcome {
     if ('id' in ref) {
       const node = this.state.nodes.get(this.state.aliases.get(ref.id) ?? ref.id)
       return node ?? refused('unknown_node', `there is no node ${ref.id}`)
@@ -867,6 +906,15 @@ class Run {
     const link = this.state.links.get(refKey(ref.link))
     const node = link && this.state.nodes.get(link.nodeId)
     return node ?? refused('unknown_node', `no node is linked to ${describeLink(ref.link)}`)
+  }
+
+  /** A refusal when a `venue:` scope names a deleted venue (D76); null for master or a live venue. */
+  private archivedScope(scope: Scope): Outcome | null {
+    if (scope === 'master') return null
+    const venueId = scope.slice('venue:'.length)
+    return this.state.archivedVenues.has(venueId)
+      ? refused('venue_archived', `${scope} is a deleted venue`)
+      : null
   }
 
   private touch(nodeId: NodeId): void {
@@ -934,6 +982,9 @@ class Run {
   private setField(write: FieldWrite): Outcome {
     const node = this.node(write.node)
     if (isOutcome(node)) return node
+    // A deleted venue's scope is refused before anything else is asked about the write (D76).
+    const archived = this.archivedScope(write.scope)
+    if (archived) return archived
     if (write.layer === 'till') {
       const problem = this.tillLinkProblem(node)
       if (problem) return problem
@@ -1035,6 +1086,8 @@ class Run {
   private clearField(clear: ClearField): Outcome {
     const node = this.node(clear.node)
     if (isOutcome(node)) return node
+    const archived = this.archivedScope(clear.scope)
+    if (archived) return archived
     if (clear.layer === 'till') {
       const problem = this.tillLinkProblem(node)
       if (problem) return problem

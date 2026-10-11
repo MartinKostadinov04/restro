@@ -13,15 +13,7 @@
 // - every writer takes the tenant's document lock, so a tag cannot be archived while an assignment
 //   of it is being checked (apply() checks the tag ids it is given).
 
-import {
-  type DbPool,
-  fieldValues,
-  type ReadTx,
-  type TagRow,
-  tags,
-  venues,
-  withTenant,
-} from '@restro/db'
+import { type DbPool, fieldValues, type ReadTx, type TagRow, tags, withTenant } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -42,6 +34,7 @@ import {
 } from '../tags'
 import { type ApplyResult, applyInTransaction } from './apply'
 import { lockTenantDocument } from './lock'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** Why a tag writer refused. Nothing is written when one is returned. */
 export type TagWriteError =
@@ -49,6 +42,8 @@ export type TagWriteError =
   | 'invalid_input'
   /** The tenant has no such venue. */
   | 'unknown_venue'
+  /** The venue was deleted (D76). */
+  | 'venue_archived'
   /** The venue has no such tag (or a position names one it does not have). */
   | 'unknown_tag'
   /** The name has no text in the venue's default language. */
@@ -143,8 +138,14 @@ async function inVenue(
   }
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
-    const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId))
-    if (!venue) return failure('unknown_venue', `this tenant has no venue ${venueId}`)
+    const locked = await lockLiveVenue(tx, venueId)
+    if (locked.refused !== null) {
+      return failure(
+        locked.refused === 'venue_archived' ? 'venue_archived' : 'unknown_venue',
+        venueRefusalText(venueId, locked.refused),
+      )
+    }
+    const { venue } = locked
     const enabled = venue.enabledLocales.filter(isLocale)
     const defaultLocale = isLocale(venue.defaultLocale)
       ? venue.defaultLocale
@@ -390,8 +391,23 @@ const SetItemTagsSchema = z
 export type SetItemTagsInput = z.input<typeof SetItemTagsSchema>
 
 /** Why `setItemTags` was refused before it reached apply(). */
+export type SetItemTagsErrorCode =
+  /** The input is not shaped right. */
+  | 'invalid_input'
+  /** The tenant has no such venue. */
+  | 'unknown_venue'
+  /** The venue was deleted (D76). */
+  | 'venue_archived'
+
+/** Why `setItemTags` was refused before it reached apply(). */
 export class SetItemTagsError extends Error {
   override name = 'SetItemTagsError'
+  readonly code: SetItemTagsErrorCode
+
+  constructor(message: string, code: SetItemTagsErrorCode = 'invalid_input') {
+    super(message)
+    this.code = code
+  }
 }
 
 /**
@@ -415,10 +431,17 @@ export async function setItemTags(
   if (!parsed.success) {
     throw new SetItemTagsError(parsed.error.issues[0]?.message ?? 'invalid input')
   }
-  const { itemIds, add, remove, actor } = parsed.data
+  const { venueId, itemIds, add, remove, actor } = parsed.data
   const unique = [...new Set<NodeId>(itemIds)]
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
+    const locked = await lockLiveVenue(tx, venueId)
+    if (locked.refused !== null) {
+      throw new SetItemTagsError(
+        venueRefusalText(venueId, locked.refused),
+        locked.refused === 'venue_archived' ? 'venue_archived' : 'unknown_venue',
+      )
+    }
     const rows = await tx
       .select({ nodeId: fieldValues.nodeId, value: fieldValues.value, valid: fieldValues.valid })
       .from(fieldValues)

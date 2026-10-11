@@ -10,7 +10,6 @@ import {
   places,
   type Venue,
   barsyVenues as venueLinks,
-  venues,
 } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { and, eq, sql } from 'drizzle-orm'
@@ -26,6 +25,7 @@ import {
   provisionMenuIn,
   provisionVenueIn,
 } from './provision'
+import { lockLiveVenue } from './venue-lock'
 
 function checked(tenantId: string, integrationId: string): void {
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
@@ -97,6 +97,8 @@ export type BarsyVenueChoiceError =
   | 'barsy_venue_missing'
   /** The tenant has no venue with this id. */
   | 'venue_missing'
+  /** The venue was deleted (archived, D76): a till venue is never mapped to it. */
+  | 'venue_archived'
   /** The barsy venue is mapped to another venue of ours already. */
   | 'barsy_venue_taken'
   /** `venueMustBeUnlinked` was asked for and the venue serves another barsy venue already. */
@@ -138,8 +140,10 @@ export async function mapBarsyVenue(
       .from(venueLinks)
       .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
     if (!row) return { ok: false, error: 'barsy_venue_missing' } as const
-    const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
-    if (!venue) return { ok: false, error: 'venue_missing' } as const
+    // A till venue is never mapped to a deleted venue (D76); the lock keeps a deletion from
+    // landing between this check and the link below.
+    const locked = await lockLiveVenue(tx, venueId)
+    if (locked.refused !== null) return { ok: false, error: locked.refused } as const
     if (row.venueId !== null && row.venueId !== venueId) {
       return { ok: false, error: 'barsy_venue_taken' } as const
     }

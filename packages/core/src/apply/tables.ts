@@ -27,6 +27,7 @@ import {
   type VenueQr,
   VenueQrSchema,
 } from '../qr'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** A table as the tab shows it. barsy's `place_id` and `bid` never leave this module (rule 3). */
 export interface VenueTable {
@@ -50,6 +51,8 @@ export type TableWriteError =
   | 'invalid_input'
   /** The tenant has no such venue. */
   | 'unknown_venue'
+  /** The venue was deleted (archived, D76): its tables are not edited until it is restored. */
+  | 'venue_archived'
   /** The tenant has no such table (or it is deleted, or its barsy venue serves no venue of ours). */
   | 'unknown_table'
   /** The table has neither a name of its own nor a number from barsy: there is nothing to show a guest. */
@@ -164,13 +167,19 @@ export async function findVenueTable(
 export interface TokenFiles {
   readonly venuePublicId: string
   readonly venueSlug: string
+  /**
+   * The venue was deleted (D76): it should have no files at all (`files` is empty, whatever its
+   * tables hold). The job withdraws the files it is told about (`retired`) instead.
+   */
+  readonly archived: boolean
   readonly files: readonly { readonly token: string; readonly tableLabel: string }[]
 }
 
 /**
  * The files `t/<token>.json` a venue should have: one per table with a code, none for a table
  * barsy deleted (its code was retired). A table with a code but no name cannot be shown to a guest
- * and is left out. Null when the tenant has no such venue.
+ * and is left out. A deleted venue (`archived`) should have none. Null when the tenant has no such
+ * venue.
  */
 export async function loadTokenFiles(
   pool: DbPool,
@@ -180,10 +189,13 @@ export async function loadTokenFiles(
   if (!isId('vn', venueId)) return null
   return withTenant(pool, tenantId, async (tx) => {
     const [venue] = await tx
-      .select({ slug: venues.slug, publicId: venues.publicId })
+      .select({ slug: venues.slug, publicId: venues.publicId, archivedAt: venues.archivedAt })
       .from(venues)
       .where(eq(venues.id, venueId))
     if (venue === undefined) return null
+    if (venue.archivedAt !== null) {
+      return { venuePublicId: venue.publicId, venueSlug: venue.slug, archived: true, files: [] }
+    }
     const rows = await tx
       .select({ place: places })
       .from(places)
@@ -203,31 +215,43 @@ export async function loadTokenFiles(
       const tableLabel = tableDisplayLabel(place)
       if (tableLabel !== null) files.push({ token: place.qrToken, tableLabel })
     }
-    return { venuePublicId: venue.publicId, venueSlug: venue.slug, files }
+    return { venuePublicId: venue.publicId, venueSlug: venue.slug, archived: false, files }
   })
 }
 
 // --- writing: one table -------------------------------------------------------------------------
 
-/** The table with its venue, locked for the rest of the transaction; null when it is not usable. */
+const UNKNOWN_TABLE = 'this venue has no such table'
+
+/**
+ * The table with its venue, locked for the rest of the transaction; a refusal when it is not
+ * usable: no such table (also one whose barsy venue serves no venue of ours) or a venue that was
+ * deleted. The venue is locked live (`lockLiveVenue`) after the table, so a table edit and the
+ * deletion of its venue never interleave.
+ */
 async function lockTable(
   tx: WriteTx,
   tableId: string,
-): Promise<{ place: Place; venueId: VenueId } | null> {
-  if (!isId('tb', tableId)) return null
+): Promise<{ place: Place; venueId: VenueId } | TableWriteRefusal> {
+  if (!isId('tb', tableId)) return refusal('unknown_table', UNKNOWN_TABLE)
   // Lock the row alone: Postgres wants `FOR UPDATE OF` to name a relation without its schema,
   // which the query builder does not write, so the lock and the join are two queries.
   const [place] = await tx.select().from(places).where(eq(places.id, tableId)).for('update')
-  if (place === undefined || place.state === 'deleted') return null
+  if (place === undefined || place.state === 'deleted') {
+    return refusal('unknown_table', UNKNOWN_TABLE)
+  }
   const [barsy] = await tx
     .select({ venueId: barsyVenues.venueId })
     .from(barsyVenues)
     .where(and(eq(barsyVenues.integrationId, place.integrationId), eq(barsyVenues.bid, place.bid)))
-  if (barsy === undefined || barsy.venueId === null) return null
+  if (barsy === undefined || barsy.venueId === null) return refusal('unknown_table', UNKNOWN_TABLE)
+  const locked = await lockLiveVenue(tx, barsy.venueId)
+  if (locked.refused === 'venue_archived') {
+    return refusal('venue_archived', venueRefusalText(barsy.venueId, 'venue_archived'))
+  }
+  if (locked.refused !== null) return refusal('unknown_table', UNKNOWN_TABLE)
   return { place, venueId: barsy.venueId as VenueId }
 }
-
-const UNKNOWN_TABLE = 'this venue has no such table'
 
 /**
  * Gives a table a new code: a table without one gets its first, a table with one gets a different
@@ -241,7 +265,7 @@ export async function issueTableToken(
 ): Promise<TableChange | TableWriteRefusal> {
   return withTenantWrite(pool, tenantId, async (tx) => {
     const found = await lockTable(tx, tableId)
-    if (found === null) return refusal('unknown_table', UNKNOWN_TABLE)
+    if ('ok' in found) return found
     if (tableDisplayLabel(found.place) === null) {
       return refusal('no_label', 'the table has no number from barsy and no name of its own')
     }
@@ -269,7 +293,7 @@ export async function retireTableToken(
 ): Promise<TableChange | TableWriteRefusal> {
   return withTenantWrite(pool, tenantId, async (tx) => {
     const found = await lockTable(tx, tableId)
-    if (found === null) return refusal('unknown_table', UNKNOWN_TABLE)
+    if ('ok' in found) return found
     if (found.place.qrToken === null) {
       return { ok: true, venueId: found.venueId, table: toTable(found.place), retired: null }
     }
@@ -305,7 +329,7 @@ export async function setTableLabel(
   const next = text === '' ? null : text
   return withTenantWrite(pool, tenantId, async (tx) => {
     const found = await lockTable(tx, tableId)
-    if (found === null) return refusal('unknown_table', UNKNOWN_TABLE)
+    if ('ok' in found) return found
     // A name cannot be taken away from a table that has a code and no number to fall back on.
     if (
       next === null &&
@@ -341,8 +365,13 @@ export async function issueAllTableTokens(
 ): Promise<IssueAllResult> {
   if (!isId('vn', venueId)) return refusal('invalid_input', 'venueId must be a vn_ id')
   return withTenantWrite(pool, tenantId, async (tx) => {
-    const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
-    if (venue === undefined) return refusal('unknown_venue', 'the tenant has no such venue')
+    const locked = await lockLiveVenue(tx, venueId)
+    if (locked.refused !== null) {
+      return refusal(
+        locked.refused === 'venue_archived' ? 'venue_archived' : 'unknown_venue',
+        venueRefusalText(venueId, locked.refused),
+      )
+    }
     const candidates = await tx
       .select({ id: places.id })
       .from(places)
@@ -459,11 +488,16 @@ export async function setVenueQrSettings(
   })
 
   return withTenantWrite(pool, tenantId, async (tx) => {
-    const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId)).for('update')
-    if (venue === undefined) return refusal('unknown_venue', 'the tenant has no such venue')
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      return refusal(
+        locked.refused === 'venue_archived' ? 'venue_archived' : 'unknown_venue',
+        venueRefusalText(venueId, locked.refused),
+      )
+    }
     await tx
       .update(venues)
-      .set({ settings: { ...venue.settings, qr } })
+      .set({ settings: { ...locked.venue.settings, qr } })
       .where(eq(venues.id, venueId))
     return { ok: true, qr } as const
   })
