@@ -20,6 +20,8 @@ import { CURRENCIES } from '../money'
 import type { NodeType } from '../node-types'
 import type { Template } from '../template'
 import { ORDER_MODES } from '../templates/venue-menu'
+import { CALL_WAITER_KINDS, GuestFeaturesSchema, PresentationSchema } from '../theme/presentation'
+import { ROLE_MODES, ROLE_NAMES, THEME_SCHEMES } from '../theme/roles'
 import { parseSnapshot, SnapshotError, type SnapshotProblem, snapshotPath } from './errors'
 import {
   type MenuSnapshot,
@@ -49,6 +51,20 @@ const SNAPSHOT_VOCABULARY: readonly string[] = [
   ...CURRENCIES,
   ...MEASUREMENT_UNITS,
   ...FIELD_TYPE_NAMES,
+  // SH-01: the theme roles, the template and the guest services, keys and fixed values. The
+  // venue's own values (role colours, the face id, option keys and values) are public strings the
+  // publisher passes in (`ForbiddenSources.publicStrings`).
+  'roles',
+  'scheme',
+  'presentation',
+  'features',
+  ...ROLE_MODES,
+  ...ROLE_NAMES,
+  ...THEME_SCHEMES,
+  ...Object.keys(PresentationSchema.shape),
+  ...Object.keys(GuestFeaturesSchema.shape),
+  ...Object.keys(GuestFeaturesSchema.shape.call_waiter.shape),
+  ...CALL_WAITER_KINDS,
 ]
 
 /** Every string inside a JSON value (object keys excluded: they are shapes, not data). */

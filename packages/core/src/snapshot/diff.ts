@@ -1,6 +1,7 @@
 // What changed between two snapshots (brief S3-05, the Publish tab's "changes waiting"): items
 // added, hidden or removed, prices and names changed, any other change of an item, and the parts
 // of the menu outside the items (look, sections, texts, languages, tags, choices). Pure.
+// SH-01: the template and its options count as the look, the guest services as the menu.
 //
 // A snapshot has no hidden items, so "hidden" and "removed" are the same thing here: an item the
 // live snapshot shows and the next one would not. That is exactly what V11 counts, so the list is
@@ -181,13 +182,16 @@ export function diffSnapshots(live: MenuSnapshot | null, next: MenuSnapshot): Sn
   renamed.sort((a, b) => sorted({ id: a.id, name: a.to }, { id: b.id, name: b.to }))
 
   const differs: Record<DiffArea, () => boolean> = {
-    look: () => !same(live.theme, next.theme),
+    // The look: the theme and the template with its options (D69).
+    look: () =>
+      !same([live.theme, live.presentation ?? null], [next.theme, next.presentation ?? null]),
     sections: () =>
       !same(sectionsView(live, common, commonSections), sectionsView(next, common, commonSections)),
+    // The menu's own texts and the guest services it offers (D71).
     menu: () =>
       !same(
-        [live.menu.title, live.menu.intro, live.menu.availability],
-        [next.menu.title, next.menu.intro, next.menu.availability],
+        [live.menu.title, live.menu.intro, live.menu.availability, live.features ?? null],
+        [next.menu.title, next.menu.intro, next.menu.availability, next.features ?? null],
       ),
     languages: () =>
       !same(
