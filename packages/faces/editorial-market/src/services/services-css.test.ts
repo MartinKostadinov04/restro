@@ -188,6 +188,16 @@ describe('the stylesheet of the services (R13)', () => {
       expect(stopped, selector).toContain(selector)
     }
   })
+
+  it('keeps the bill to its icon and total up to 440 px when the pay entry sits beside it', () => {
+    // Otherwise the pay entry drops to a row of its own at 390-439 px and pushes the title down.
+    const compact = services.find(
+      (rule) =>
+        rule.media === '(max-width: 439px)' &&
+        rule.selectors.includes('.rm .ro-pill:has(~ .ro-payentry) .ro-billword'),
+    )
+    expect(compact?.declarations.get('display')).toBe('none')
+  })
 })
 
 describe('the edges of inputs and choices (brief SH-07): 3:1 against what is around them', () => {

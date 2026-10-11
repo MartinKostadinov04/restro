@@ -230,6 +230,14 @@ export const SERVICES_CSS = `
     display: none;
   }
 }
+/* With the pay entry beside it, the bill keeps to its icon and total up to 440 px too, so the two
+   share the venue bar's row instead of the pay entry dropping to a row of its own and pushing the
+   title down. The button's name (aria-label) still says "bill". */
+@media (max-width: 439px) {
+  .rm .ro-pill:has(~ .ro-payentry) .ro-billword {
+    display: none;
+  }
+}
 @media (max-width: 380px) {
   .rm .ro-pill {
     gap: 4px;
