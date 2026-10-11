@@ -11,6 +11,15 @@
 // snapshot that is not there yet, and the venue index goes last, so a reader that finds it finds
 // a menu that is published.
 //
+// A DELETED venue (D76, `venues.archived_at`) is withdrawn instead: its index `v/<code>.json` is removed,
+// so `/m/<slug>-<code>` says the menu is not available (the guest page treats a missing index as an
+// unknown venue). The snapshots, the pointer and the live overlay stay where they are: their paths
+// hold random ids that only the index names, so nothing points at them. Whichever run is last leaves
+// what the database says: a run looks at the venue before it writes anything and again after it
+// wrote the index, and withdraws if the venue was deleted meanwhile, so a publish that started
+// before the deletion cannot bring the page back. Restoring the venue and publishing writes the
+// index again (the code is the same, so old links work).
+//
 // The older `v/<slug>.json` files of before CF-14 were test data. They are not migrated or
 // removed: they stay in the store and nothing reads them again.
 import {
@@ -24,7 +33,7 @@ import {
   venueIndexPath,
 } from '@restro/assets'
 import type { NodeId, VenueId } from '@restro/core'
-import { loadCurrentSnapshot, loadLiveOverlay } from '@restro/core/apply'
+import { loadCurrentSnapshot, loadLiveOverlay, PublishError } from '@restro/core/apply'
 import { type DbPool, publishPointers, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
@@ -65,6 +74,15 @@ export class VenueCodeTakenError extends Error {
 export type PublishFilesResult =
   /** Nothing was ever published for this menu + venue: there is nothing to write. */
   | { readonly status: 'nothing_published' }
+  /**
+   * The venue was deleted (D76): nothing was written, and its venue index was taken out of the
+   * store (`removed`: false when there was none, or it names another venue and was left alone).
+   */
+  | {
+      readonly status: 'withdrawn'
+      readonly publicId: string
+      readonly removed: boolean
+    }
   | {
       readonly status: 'checked'
       readonly snapshotId: string
@@ -110,6 +128,39 @@ async function addressOf(
   )
   if (row === undefined) throw new Error(`there is no venue ${scope.venueId} to publish`)
   return row
+}
+
+/** The public code of the venue when it was deleted (archived, D76); null when it is live or missing. */
+async function archivedCodeOf(deps: PublishFilesDeps, scope: PublishScope): Promise<string | null> {
+  const [row] = await withTenant(deps.pool, scope.tenantId, (tx) =>
+    tx
+      .select({ publicId: venues.publicId, archivedAt: venues.archivedAt })
+      .from(venues)
+      .where(eq(venues.id, scope.venueId)),
+  )
+  return row !== undefined && row.archivedAt !== null ? row.publicId : null
+}
+
+/**
+ * Takes `v/<public code>.json` out of the store, so `/m/<slug>-<code>` stops finding the menu. A
+ * file that names another venue is left alone (it is not ours to remove; writing refuses the same
+ * case with `VenueCodeTakenError`); a file that cannot be read is under this venue's own code and
+ * goes. Nothing there is not an error: a repeated job finds the work done.
+ */
+async function withdrawVenueIndex(
+  deps: PublishFilesDeps,
+  scope: PublishScope,
+  publicId: string,
+): Promise<PublishFilesResult> {
+  const file = venueIndexPath(publicId)
+  const bytes = await deps.store.get(file)
+  if (bytes === null) return { status: 'withdrawn', publicId, removed: false }
+  const index = await readVenueIndex(deps.store, publicId)
+  if (index !== null && index.venue_id !== scope.venueId) {
+    return { status: 'withdrawn', publicId, removed: false }
+  }
+  await deps.store.delete(file)
+  return { status: 'withdrawn', publicId, removed: true }
 }
 
 /**
@@ -163,6 +214,10 @@ export async function writePublishFiles(
 ): Promise<PublishFilesResult> {
   const written: string[] = []
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    // A deleted venue has no files: withdraw before anything is written (D76).
+    const deletedBefore = await archivedCodeOf(deps, scope)
+    if (deletedBefore !== null) return withdrawVenueIndex(deps, scope, deletedBefore)
+
     const current = await loadCurrentSnapshot(deps.pool, scope.tenantId, {
       menuId: scope.menuId,
       venueId: scope.venueId,
@@ -195,6 +250,11 @@ export async function writePublishFiles(
     const venueIndex = await writeVenueIndex(deps, scope, address)
     if (venueIndex === 'written') written.push(venueIndexPath(address.publicId))
 
+    // The venue may have been deleted while the files were written: the index goes again, so the
+    // last run leaves what the database says, whichever job it was (D76).
+    const deletedAfter = await archivedCodeOf(deps, scope)
+    if (deletedAfter !== null) return withdrawVenueIndex(deps, scope, deletedAfter)
+
     if ((await pointerId(deps, scope)) === current.id) {
       return {
         status: 'checked',
@@ -212,6 +272,8 @@ export async function writePublishFiles(
 
 export type LiveFilesResult =
   | { readonly status: 'nothing_published' }
+  /** The venue was deleted (D76): the overlay is not made and no file is written. */
+  | { readonly status: 'venue_archived' }
   | {
       /** `unchanged`: the file in the store was the same, so nothing was put. */
       readonly status: 'written' | 'unchanged'
@@ -228,12 +290,21 @@ export async function writeLiveOverlay(
   deps: PublishFilesDeps,
   scope: PublishScope,
 ): Promise<LiveFilesResult> {
-  const live = await loadLiveOverlay(
-    deps.pool,
-    scope.tenantId,
-    { menuId: scope.menuId, venueId: scope.venueId },
-    { now: deps.now() },
-  )
+  let live: Awaited<ReturnType<typeof loadLiveOverlay>>
+  try {
+    live = await loadLiveOverlay(
+      deps.pool,
+      scope.tenantId,
+      { menuId: scope.menuId, venueId: scope.venueId },
+      { now: deps.now() },
+    )
+  } catch (error) {
+    // A deleted venue has no overlay to write (D76); this is an answer, not a failure.
+    if (error instanceof PublishError && error.code === 'venue_archived') {
+      return { status: 'venue_archived' }
+    }
+    throw error
+  }
   if (live === null) return { status: 'nothing_published' }
   const file = livePath(scope.menuId, scope.venueId)
   const bytes = encode(live.overlay)

@@ -11,7 +11,7 @@ import {
   venues,
   withTenant,
 } from '@restro/db'
-import { and, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { SyncEnvironment } from './context'
 import { SyncError } from './errors'
 
@@ -39,6 +39,44 @@ export interface VenueTarget extends MappedVenue {
   readonly catalogueRootCatId: number
 }
 
+/** Why a queued sync is skipped instead of run: the venue is gone, deleted, or no longer linked. */
+export type SyncSkipReason = 'venue_missing' | 'venue_archived' | 'venue_not_linked'
+
+/** The line a skipped sync leaves in the log. */
+export const SYNC_SKIP_TEXT: Record<SyncSkipReason, string> = {
+  venue_missing: 'sync skipped: this venue does not exist',
+  venue_archived: 'sync skipped: this venue was deleted',
+  venue_not_linked: 'sync skipped: this venue is not linked to a venue of the till (any more)',
+}
+
+/**
+ * Whether a queued sync for one of our venues may run (D76): the venue exists, is not deleted and
+ * is still linked to a till venue of this integration. The check runs before anything is recorded
+ * or asked of the till, so a sync queued before a deletion, or before the link was released, ends
+ * without a write and without a failure. Returns the reason when it may not.
+ */
+export async function syncSkipReason(
+  env: SyncEnvironment,
+  tenantId: string,
+  integrationId: string,
+  venueId: string,
+): Promise<SyncSkipReason | null> {
+  const [row] = await withTenant(env.pool, tenantId, (tx) =>
+    tx
+      .select({
+        archivedAt: venues.archivedAt,
+        linked: sql<boolean>`exists (
+          select 1 from restro.barsy_venues l
+          where l.venue_id = ${venues.id} and l.integration_id = ${integrationId})`,
+      })
+      .from(venues)
+      .where(eq(venues.id, venueId)),
+  )
+  if (row === undefined) return 'venue_missing'
+  if (row.archivedAt !== null) return 'venue_archived'
+  return row.linked ? null : 'venue_not_linked'
+}
+
 /** The venue's link to its till venue; throws `venue_not_mapped` when it has none. */
 export async function loadMappedVenue(
   env: SyncEnvironment,
@@ -58,7 +96,15 @@ export async function loadMappedVenue(
       })
       .from(venueLinks)
       .innerJoin(venues, eq(venues.id, venueLinks.venueId))
-      .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.venueId, venueId))),
+      .where(
+        and(
+          eq(venueLinks.integrationId, integrationId),
+          eq(venueLinks.venueId, venueId),
+          // A deleted venue is never synced (D76); its link is released with it, this is the
+          // second line.
+          isNull(venues.archivedAt),
+        ),
+      ),
   )
   if (!row) {
     throw new SyncError('venue_not_mapped', 'This venue is not mapped to a venue of the till.')
@@ -102,11 +148,14 @@ export async function venuesOnCatalogue(
     tx
       .select({ venueId: venueLinks.venueId })
       .from(venueLinks)
+      .innerJoin(venues, eq(venues.id, venueLinks.venueId))
       .where(
         and(
           eq(venueLinks.integrationId, integrationId),
           eq(venueLinks.catalogueId, catalogueId),
           isNotNull(venueLinks.venueId),
+          // A deleted venue is not published after a pull (D76).
+          isNull(venues.archivedAt),
         ),
       ),
   )

@@ -564,14 +564,18 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     expect(row).toMatchObject({ status: 'error', status_detail: 'wrong_credentials' })
   })
 
-  it('a venue that is not mapped fails the run without calling barsy', async () => {
+  it('a venue that is not mapped is skipped without a run, a failure or a call to barsy (CF-18)', async () => {
     await world.query(
       'update restro.barsy_venues set venue_id = null, catalogue_root_cat_id = null where integration_id = $1',
       [world.integrationId],
     )
     await expect(pull()).resolves.toBeUndefined()
-    expect((await lastPull()).status).toBe('failed')
+    // Skipped with the reason in the log: no run, so nothing is recorded as failed and nothing is
+    // written; the till was not asked.
+    expect(await fullPulls()).toEqual([])
+    expect(world.logLines.join('\n')).toContain('not linked')
     expect(fake.callsOf('Categories_getalltree')).toHaveLength(0)
+    expect(fake.calls).toHaveLength(0)
   })
 
   it('no network leaks: the only host the sync talked to is the integration’s own', async () => {

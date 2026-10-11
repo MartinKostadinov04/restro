@@ -137,8 +137,18 @@ async function migrateThrough(url: string, tag: string): Promise<void> {
   )
 }
 
-/** Applies every pending migration to a test database (what `pnpm db:migrate` does). */
-export async function migrateTestDatabase(db: TestDatabase): Promise<void> {
+/**
+ * Applies every pending migration to a test database (what `pnpm db:migrate` does); with
+ * `through`, only up to that one.
+ */
+export async function migrateTestDatabase(
+  db: TestDatabase,
+  options: { readonly through?: string } = {},
+): Promise<void> {
+  if (options.through !== undefined) {
+    await migrateThrough(db.ownerUrl, options.through)
+    return
+  }
   await run(
     process.execPath,
     ['--disable-warning=ExperimentalWarning', `${DB_SCRIPTS}migrate.ts`],
