@@ -116,7 +116,7 @@ docs/               tracker, architecture mirrors, platform reference, agent bri
 - Edit, branch or commit in `C:\Platform`.
 - Write to barsy, subscribe webhooks, or register a POS.
 - Call barsy from `apps/web`.
-- Put barsy ids, internal names, cost prices or internal fields in a snapshot or URL.
+- Put barsy ids, internal names, cost prices or internal fields in a snapshot or URL. One exception (D75): when barsy has no public name for an item, option or category, its own name (`article_name`, `cat_name`) is shown, and the composer warns.
 - Use floats for money or bypass the money module.
 - Bypass `apply()`.
 - Use the database owner role, `BYPASSRLS`, or disable RLS in app code.

@@ -81,6 +81,7 @@ Status: **firm** (tracker: Firm or Agreed), **applied** (done or in force), **pe
 | D72 | Faces stay pure: a face draws the host's service state and sends commands with an `actionId`, showing pending, then accepted or rejected; it never adds bill rounds, confirms a waiter or reports a payment itself; totals, tips, VAT and splits come from the platform's quote. | firm |
 | D73 | Organisation-wide (Settings → Integrations): the barsy connection, the barsy venues found (Add as venue / Link to an existing venue / Not used), the allergen field and text language, the sync schedule, "sync everything" and run history. Per venue: identity, Menu source (its barsy venue, menu category, which barsy price), publishing rules, composer, Design, tables, publishing. Price per venue because barsy prices by venue; reading and deletions per catalogue because venues share catalogues. | firm |
 | D74 | The sidebar lists the venues and the organisation's Settings; a venue's sections stay as the tabs on its page (nothing shown twice). | firm |
+| D75 | When barsy has no public name for an item, option or category, Restro shows barsy's own name (`article_name`, `cat_name`) and the composer warns that the menu name is missing; no other internal field ever reaches a snapshot. | firm |
 
 ## Open questions
 Owner is the group heading. None blocks the current stages unless a brief says so.
