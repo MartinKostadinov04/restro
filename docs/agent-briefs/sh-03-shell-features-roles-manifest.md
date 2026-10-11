@@ -43,8 +43,15 @@ capabilities: z.strictObject({
 
 The view model gets `ViewModel.features`:
 
+SH-01 is merged. Use its names from `@restro/core` (`packages/core/src/theme/presentation.ts`):
+- `CALL_WAITER_KINDS` / `CallWaiterKind` (the six request kinds);
+- `GuestFeatures`, `DEFAULT_GUEST_FEATURES`, `readGuestFeatures`;
+- `Presentation`, `PresentationSchema`, `FaceNameSchema`;
+- `THEME_SCHEMES`.
+
+In the shell, re-export them as `SERVICE_KINDS` / `ServiceKind`; do not define a second list.
+
 ```ts
-export const SERVICE_KINDS = ['waiter', 'bill', 'water', 'cutlery', 'terminal', 'other'] as const
 export interface ViewFeatures {
   /** Show the filter control: the venue left filters on and the menu has chips. */
   readonly filters: boolean

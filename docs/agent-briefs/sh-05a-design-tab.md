@@ -55,6 +55,7 @@
 - **`saveLookAction({ venueId, theme })`:** calls `setVenueTheme`.
   - Map `'unreadable'` to an error that names the failing pairs.
   - Map invalid input and an unusable logo as today.
+  - **Never save a partial theme** (SH-01 finding). The old `saveAppearance` wrote only `{brand, logo_asset_id}` and would drop every v2 field. Build the whole v2 theme from the complete form state (preset, colours, overrides, font, radius, shadow, scheme, logo, plus `brand` if the venue still uses the brand-colour path), and remove the old action with the card.
 - **`chooseTemplateAction({ venueId, face, lookOptions })`:**
   1. checks that the face is a **visible** registry entry;
   2. runs the look options through `resolveOptions` with that face's manifest, keeping only `group: 'look'` keys;

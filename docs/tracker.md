@@ -470,6 +470,19 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - Next's history patch for the `#item-` route, and the page-wide `html:has(.rm)` rule → SH-04 and SH-05a;
     - the ordering CSS sits in the delivery's `ORDER_CSS` → SH-06.
   - **After CF-12 and CF-03 were merged into `cf/foundation` and then into `sh/foundation`:** SH-01 (Opus) was launched, in parallel with CF-14.
+  - **SH-01 merged.** `packages/core/src/theme/` holds:
+    - OKLCH maths;
+    - `deriveRoles` (every required pair at 4.5:1 or better for any three colours, pinned by property tests);
+    - `suggestHarmony`;
+    - the 4 presets, exactly as the designer delivered them (all pass; Midnight light's tightest pair is 4.51:1);
+    - 6 fonts, all with Cyrillic;
+    - settings v2 and the `presentation` and `guest_features` writers;
+    - the snapshot's `theme.roles`/`scheme`, `presentation` and `features`.
+
+    **Two choices to show Martin:**
+    - **(1)** When the page colour and the panel colour sit on opposite sides of mid-grey, no text colour reads on both. Only then is the panel colour's lightness moved, keeping its hue and colour.
+    - **(2)** After deploy, every venue's next publish makes a new snapshot once, because the new look fields are always written.
+  - **Next:** SH-03 (shell rules) now; SH-04 after CF-14.
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 
   — Claude
