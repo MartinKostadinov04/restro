@@ -111,13 +111,11 @@ describe('the stylesheet of the services (R13)', () => {
     ])
   })
 
-  it('styles nothing outside the face's own root: no html, body or :root rule', () => {
+  it('styles nothing outside its own root: no html, body or :root rule (the host owns the page)', () => {
     expect(assertFaceScopedCss(SERVICES_CSS)).toEqual([])
-    expect(assertFaceScopedCss(`${EDITORIAL_CSS}
-${SERVICES_CSS}`)).toEqual([])
+    expect(assertFaceScopedCss(`${EDITORIAL_CSS}\n${SERVICES_CSS}`)).toEqual([])
     // And the check would catch one.
-    expect(assertFaceScopedCss(`${SERVICES_CSS}
-body:has(.rm) { overflow-x: hidden }`)).toEqual([
+    expect(assertFaceScopedCss(`${SERVICES_CSS}\nbody:has(.rm) { overflow-x: hidden }`)).toEqual([
       'body:has(.rm)',
     ])
   })
