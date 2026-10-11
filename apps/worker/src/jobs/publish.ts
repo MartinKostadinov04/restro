@@ -24,6 +24,7 @@ import {
   PublishScopeJobSchema,
   type PublishTableTokensJob,
   PublishTableTokensJobSchema,
+  prepareJob,
 } from '@restro/core'
 import { PublishError, publishMenu } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
@@ -34,6 +35,7 @@ import { type PublishFilesDeps, writeLiveOverlay, writePublishFiles } from '../p
 import { type LiveAsks, queueLiveRollovers } from '../publish/rollover'
 import { writeTableTokenFiles } from '../publish/table-tokens'
 import { runAssetVariants } from '../publish/variants'
+import { venueState } from '../publish/venue-state'
 import { type RunReport, trackedRun } from '../sync/run'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
 
@@ -80,6 +82,27 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     }
   }
 
+  /**
+   * The table files of the venue, brought in line after a publish: a venue that was deleted and
+   * restored has its files withdrawn, and this is what writes them again once its till is linked
+   * and its menu published (D76). Idempotent (it writes only what differs), one waiting job per
+   * venue; a failure is logged and does not fail the publish.
+   */
+  async function queueTableFiles(
+    context: WorkerContext,
+    tenantId: string,
+    venueId: string,
+  ): Promise<void> {
+    try {
+      const tokens = prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: [] })
+      await context.queue.send(JOB_NAMES.publishTableTokens, tokens.data, {
+        singletonKey: tokens.singletonKey,
+      })
+    } catch (error) {
+      context.log.warn({ err: error }, 'the table files could not be queued after a publish')
+    }
+  }
+
   // --- publish-menu ----------------------------------------------------------------------
 
   const publish = defineJob<PublishMenuJob>({
@@ -99,6 +122,13 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(PublishMenuJobSchema, job, JOB_NAMES.publishMenu)
         const { tenantId, menuId, venueId } = payload
+        // A venue that was deleted after this job was queued publishes nothing (D76): no run is
+        // recorded and nothing is written; the log says so. (A deletion that lands after this
+        // look is refused by `publishMenu` itself, and ends the run as skipped below.)
+        if ((await venueState(context.pool, tenantId, venueId)) === 'archived') {
+          context.log.info({ menuId, venueId }, 'publish skipped: the venue was deleted')
+          continue
+        }
         // A rollback pauses automatic publishing (S3-05). Every automatic publish, a sync's or a
         // photo's, is `auto_sync`, so this stops exactly those; the pause is read now, not when
         // the job was queued, so a job that was waiting out its delay cannot undo a rollback. No
@@ -134,6 +164,10 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
                 { now: context.now() },
               )
             } catch (error) {
+              // The venue was deleted between the look above and the publish: skipped, not failed.
+              if (error instanceof PublishError && error.code === 'venue_archived') {
+                return { notes: ['skipped: the venue was deleted; nothing was published'] }
+              }
               // A refusal (V10, a blocked menu, an outdated hold …) is an answer, not a fault:
               // retrying the same document would be refused again.
               if (error instanceof PublishError) return refusal(error)
@@ -171,7 +205,17 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
             // `unchanged` writes files too: they are normally there already (nothing is written
             // then), and a publish whose files failed halfway is repaired by the next one.
             const files = await writePublishFiles(filesDeps(context), { tenantId, menuId, venueId })
+            if (files.status === 'withdrawn') {
+              // Deleted while this publish ran: the snapshot is stored, and the address is not out.
+              return {
+                counters,
+                notes: [
+                  'the venue was deleted while this was published: its address is not served',
+                ],
+              }
+            }
             await refreshLive(context, { tenantId, menuId, venueId })
+            await queueTableFiles(context, tenantId, venueId)
             const written = files.status === 'checked' ? files.written.length : 0
             return {
               counters: {
@@ -214,10 +258,17 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         await trackedRun(
           { pool: context.pool, log: context.log, now: context.now },
           { tenantId: payload.tenantId, kind: 'publish_files' },
-          async () => {
+          async (): Promise<RunReport> => {
             const result = await writePublishFiles(filesDeps(context), payload)
             if (result.status === 'nothing_published') {
               return { notes: ['nothing is published for this menu yet'] }
+            }
+            if (result.status === 'withdrawn') {
+              // A deleted venue: its address is taken out, which is what the files must say (D76).
+              return {
+                counters: { files_removed: result.removed ? 1 : 0 },
+                notes: ['the venue was deleted: its menu address is not served'],
+              }
             }
             await refreshLive(context, payload)
             return {

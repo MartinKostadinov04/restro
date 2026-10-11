@@ -30,7 +30,7 @@ import {
   withTenant,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, desc, eq, getTableColumns, inArray, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { parseAssetVariants } from '../asset-variants'
@@ -71,6 +71,7 @@ import {
 } from '../theme'
 import { readMenuDocument } from './load-document'
 import { loadTagVocabulary } from './tags'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** Why a publish happens: a person pressed Publish, or a sync published on its own. */
 export const PUBLISH_REASONS = ['manual', 'auto_sync'] as const
@@ -141,6 +142,8 @@ export type PublishErrorCode =
   | 'invalid_input'
   /** The tenant has no such menu, or the menu is not this venue's. */
   | 'menu_not_found'
+  /** The venue was deleted (archived, D76): nothing of it is published until it is restored. */
+  | 'venue_archived'
   /** The menu cannot be resolved for this venue (missing root, template, locales …). */
   | 'menu_blocked'
   /** V10: no item would be visible. */
@@ -272,6 +275,18 @@ async function lockPublish(tx: WriteTx, tenantId: string, menuId: string, venueI
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`restro:publish:${tenantId}:${menuId}:${venueId}`}, 0))`,
   )
+}
+
+/**
+ * Locks the venue (shared, `lockLiveVenue`) and refuses a deleted one, so a publish, a rollback or a
+ * decision and the deletion of its venue never interleave. A venue the tenant does not have keeps
+ * the refusal the writer gives it later (`menu_not_found`, `nothing_published`, …).
+ */
+async function refuseArchivedVenue(tx: WriteTx, venueId: string): Promise<void> {
+  const locked = await lockLiveVenue(tx, venueId)
+  if (locked.refused === 'venue_archived') {
+    throw new PublishError('venue_archived', venueRefusalText(venueId, 'venue_archived'))
+  }
 }
 
 const inScope = (menuId: string, venueId: string) =>
@@ -439,6 +454,9 @@ async function resolveForVenue(
   const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId))
   if (venue === undefined) {
     throw new PublishError('menu_not_found', `this tenant has no venue ${venueId}`)
+  }
+  if (venue.archivedAt !== null) {
+    throw new PublishError('venue_archived', venueRefusalText(venueId, 'venue_archived'))
   }
   const doc = await readMenuDocument(tx, menuId)
 
@@ -645,6 +663,7 @@ export async function publishMenu(
   const now = options.now ?? new Date()
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
+    await refuseArchivedVenue(tx, venueId)
     const version = await nextVersion(tx, menuId, venueId)
     const { snapshot } = await prepareSnapshot(
       tx,
@@ -767,6 +786,7 @@ export async function rollbackTo(
   const now = options.now ?? new Date()
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
+    await refuseArchivedVenue(tx, venueId)
     const current = await currentRow(tx, menuId, venueId)
     if (current === undefined) {
       throw new PublishError('nothing_published', 'this menu has never been published here')
@@ -818,6 +838,7 @@ export async function rejectHeld(
   const now = options.now ?? new Date()
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
+    await refuseArchivedVenue(tx, venueId)
     const held = await snapshotRow(tx, menuId, venueId, snapshotId)
     if (held === undefined || held.status !== 'held') {
       throw new PublishError('held_not_found', `no held snapshot ${snapshotId} for this menu`)
@@ -917,6 +938,8 @@ export async function listPublishedScopes(
       })
       .from(publishPointers)
       .innerJoin(venues, eq(venues.id, publishPointers.venueId))
+      // A deleted venue has nothing to remake (D76).
+      .where(isNull(venues.archivedAt))
       .orderBy(publishPointers.menuId, publishPointers.venueId),
   )
   return rows.map((row) => ({

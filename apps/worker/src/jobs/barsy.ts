@@ -46,11 +46,12 @@ import {
 import {
   authOrganization,
   integrations,
+  venues as ourVenues,
   barsyVenues as venueLinks,
   withSystem,
   withTenant,
 } from '@restro/db'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
@@ -76,6 +77,8 @@ import {
   fullPullStartedWithin,
   loadMappedVenue,
   loadVenueTarget,
+  SYNC_SKIP_TEXT,
+  syncSkipReason,
   type VenueTarget,
   venuesOnCatalogue,
 } from '../sync/data'
@@ -231,6 +234,26 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
   }
   const incrementalLock = { waitMs: 0, maxHeld }
 
+  /**
+   * A sync queued for a venue that was deleted since, or whose till link was released, ends here
+   * (D76): skipped with the reason in the log, no run recorded, nothing asked of the till and
+   * nothing written. Never a failure, so the job is not retried.
+   */
+  async function skipped(env: SyncEnvironment, payload: VenueSyncJob): Promise<boolean> {
+    const reason = await syncSkipReason(
+      env,
+      payload.tenantId,
+      payload.integrationId,
+      payload.venueId,
+    )
+    if (reason === null) return false
+    env.log.info(
+      { venueId: payload.venueId, integrationId: payload.integrationId, reason },
+      SYNC_SKIP_TEXT[reason],
+    )
+    return true
+  }
+
   const environment = (context: WorkerContext, job?: Job<object>): SyncEnvironment => ({
     pool: context.pool,
     log: context.log,
@@ -359,6 +382,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(VenueSyncJobSchema, job, JOB_NAMES.barsyFullPull)
         const env = environment(context, job)
+        if (await skipped(env, payload)) continue
         await trackedRun(env, { ...payload, kind: 'barsy_full_pull' }, async (run) => {
           // Held for the whole pull. Another pull of this integration (an incremental run, or a
           // full pull of a retried job) is waited for, up to a minute.
@@ -447,6 +471,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(VenueSyncJobSchema, job, JOB_NAMES.barsyIncremental)
         const env = environment(context, job)
+        if (await skipped(env, payload)) continue
         await trackedRun(env, { ...payload, kind: 'barsy_incremental' }, async (run) => {
           // Another pull in progress (a full pull reads everything anyway): do not wait, the next
           // check is due again after the interval. Held for the whole run otherwise.
@@ -548,6 +573,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       for (const job of jobs) {
         const payload = parsePayload(VenueSyncJobSchema, job, JOB_NAMES.placesRead)
         const env = environment(context, job)
+        if (await skipped(env, payload)) continue
         await trackedRun(env, { ...payload, kind: 'places_read' }, async () => {
           const locked = await withPullLock(
             env,
@@ -672,11 +698,15 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
           })
           .from(integrations)
           .innerJoin(venueLinks, eq(venueLinks.integrationId, integrations.id))
+          .innerJoin(ourVenues, eq(ourVenues.id, venueLinks.venueId))
           .where(
             and(
               eq(integrations.kind, 'barsy'),
               eq(integrations.status, 'connected'),
               isNotNull(venueLinks.venueId),
+              // A deleted venue is never scheduled (D76); its link is released with it, this is
+              // the second line.
+              isNull(ourVenues.archivedAt),
             ),
           ),
       )

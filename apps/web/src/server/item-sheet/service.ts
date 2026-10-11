@@ -32,7 +32,7 @@ import {
 } from '@restro/core'
 import { apply, ItemNotFoundError, loadItemDocument } from '@restro/core/apply'
 import { assets, type DbPool, events, menus, venues, withTenant } from '@restro/db'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 
 import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
 import { tillTextShown } from '@/fields/name-fallback'
@@ -119,8 +119,12 @@ function venueLocales(venue: typeof venues.$inferSelect): Locale[] {
 
 async function readState(scope: SheetScope): Promise<ItemState | null> {
   const { pool, tenantId, venueId, itemId } = scope
+  // A deleted venue (D76) has no item sheet: it reads as no venue.
   const [venue] = await withTenant(pool, tenantId, (tx) =>
-    tx.select().from(venues).where(eq(venues.id, venueId)),
+    tx
+      .select()
+      .from(venues)
+      .where(and(eq(venues.id, venueId), isNull(venues.archivedAt))),
   )
   if (!venue) return null
   const [menu] = await withTenant(pool, tenantId, (tx) =>

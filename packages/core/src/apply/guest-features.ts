@@ -17,6 +17,7 @@ import {
   GuestFeaturesSchema,
   readGuestFeatures,
 } from '../theme'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** Why `setGuestFeatures` refused. */
 export type GuestFeaturesErrorCode =
@@ -24,6 +25,8 @@ export type GuestFeaturesErrorCode =
   | 'invalid_input'
   /** The tenant has no such venue. */
   | 'venue_not_found'
+  /** The venue was deleted (D76). */
+  | 'venue_archived'
 
 /** Thrown by `setGuestFeatures`. */
 export class GuestFeaturesError extends Error {
@@ -61,11 +64,14 @@ export async function setGuestFeatures(
   const features = parsed.data.features === null ? null : canonicalFeatures(parsed.data.features)
 
   return withTenantWrite(pool, tenantId, async (tx) => {
-    const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId)).for('update')
-    if (venue === undefined) {
-      throw new GuestFeaturesError('venue_not_found', `this tenant has no venue ${venueId}`)
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new GuestFeaturesError(
+        locked.refused === 'venue_archived' ? 'venue_archived' : 'venue_not_found',
+        venueRefusalText(venueId, locked.refused),
+      )
     }
-    const { guest_features: _previous, ...others } = venue.settings
+    const { guest_features: _previous, ...others } = locked.venue.settings
     const settings = features === null ? others : { ...others, guest_features: features }
     await tx.update(venues).set({ settings }).where(eq(venues.id, venueId))
     return readGuestFeatures(settings)

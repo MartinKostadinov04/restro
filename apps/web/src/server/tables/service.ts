@@ -162,6 +162,8 @@ const FORBIDDEN: TablesActionResult = { ok: false, error: 'forbidden' }
 const REFUSALS: Record<TableWriteRefusal['error'], TablesErrorCode> = {
   invalid_input: 'invalid',
   unknown_venue: 'not_found',
+  // A deleted venue (D76) is gone to this screen; its page is a 404 already.
+  venue_archived: 'not_found',
   unknown_table: 'not_found',
   no_label: 'no_label',
 }

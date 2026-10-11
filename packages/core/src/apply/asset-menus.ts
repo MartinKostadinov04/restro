@@ -20,7 +20,10 @@ export interface MenuUsingAsset {
   readonly venueId: string
 }
 
-/** The menus of the tenant that use the stored picture `assetId`, by menu id. Empty for an unknown id. */
+/**
+ * The menus of the tenant that use the stored picture `assetId`, by menu id. Empty for an unknown
+ * id. The menus of deleted (archived) venues are left out.
+ */
 export async function loadMenusUsingAsset(
   pool: DbPool,
   tenantId: string,
@@ -49,7 +52,10 @@ export async function loadMenusUsingAsset(
       )
       select m.id as menu_id, m.venue_id
       from restro.menus m
+      join restro.venues v on v.id = m.venue_id
       where m.root_node_id in (select id from climb)
+        -- A deleted venue (D76) publishes nothing.
+        and v.archived_at is null
       order by m.id collate "C"`),
   )
   return result.rows.map((row) => ({ menuId: row.menu_id, venueId: row.venue_id }))

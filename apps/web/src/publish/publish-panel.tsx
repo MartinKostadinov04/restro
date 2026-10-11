@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl'
 
 import { LiveRefresh } from '@/integration/live-refresh'
 import type { PublishView } from '@/server/publish/view'
+import { AddressOffBanner } from './address-off-banner'
 import { ChangesCard } from './changes-card'
 import { HeldBanner } from './held-banner'
 import { HistoryCard } from './history-card'
@@ -65,6 +66,7 @@ export function PublishPanel({ view }: { view: PublishView }) {
         />
       ) : null}
       {view.paused ? <PausedBanner /> : null}
+      {view.addressServed ? null : <AddressOffBanner />}
       <LiveCard view={view} busy={publisher.busy} onPublish={publisher.publish} />
       <ChangesCard view={view} busy={publisher.busy} onPublish={publisher.publish} />
       <HistoryCard view={view} busy={publisher.busy} returnTo={publisher.returnTo} />

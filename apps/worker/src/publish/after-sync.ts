@@ -24,6 +24,7 @@ import { assets, barsyVenues, integrations, menus, venues, withTenant } from '@r
 import { eq } from 'drizzle-orm'
 
 import type { SyncEnvironment } from '../sync/context'
+import { venueState } from './venue-state'
 
 export { venuePublishesAfterSync }
 
@@ -101,6 +102,10 @@ async function decide(
 ): Promise<string | null> {
   if (appliedOps <= 0) return null
   try {
+    // A venue that was deleted while its pull ran publishes nothing (D76).
+    if ((await venueState(env.pool, target.tenantId, target.venueId)) === 'archived') {
+      return 'this venue was deleted: nothing was queued to publish'
+    }
     // The venue's own rule (CF-09b); a venue with none reads the integration's.
     const settings = await venueSettingsOf(env, target.tenantId, target.venueId)
     if (!venuePublishesAfterSync(settings, target.config)) {

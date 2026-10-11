@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
 import { AdminHeader } from '@/components/admin/admin-header'
+import { VenueDangerZone } from '@/components/admin/venue-danger-zone'
 import { VenueSettings } from '@/components/admin/venue-settings'
 import { workspaceTabOf } from '@/components/admin/workspace-tab-defs'
 import { WorkspaceTabs } from '@/components/admin/workspace-tabs'
@@ -14,6 +15,7 @@ import { MenuSourceSkeleton } from '@/integration/menu-source-skeleton'
 import { MenuSourceTab } from '@/integration/menu-source-tab'
 import { PublishSkeleton } from '@/publish/publish-skeleton'
 import { PublishTab } from '@/publish/publish-tab'
+import { canDeleteVenue } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { getVenue } from '@/server/venues'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
@@ -103,6 +105,10 @@ export default async function VenueWorkspacePage({
                 ) : (
                   <MenuSourceSkeleton />
                 )}
+                {/* The end of the tab (D76): only an owner deletes a venue; the action checks again. */}
+                {canDeleteVenue(organization.role) ? (
+                  <VenueDangerZone venueId={venue.id} venueName={venue.name} />
+                ) : null}
               </div>
             ),
           }}

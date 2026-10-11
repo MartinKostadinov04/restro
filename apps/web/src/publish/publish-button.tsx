@@ -17,8 +17,11 @@ export function publishBlock(
   if (busy) return 'busy'
   if (view.draft.state !== 'ready') return 'draft'
   // Up to date and nothing paused: publishing would find nothing new. (A pause is lifted by a
-  // publish even when the menu is the same, so then the button stays on.)
-  if (view.live !== null && view.draft.changes.identical && !view.paused) return 'up_to_date'
+  // publish even when the menu is the same, so then the button stays on. So does a withdrawn
+  // address: a publish writes it again, which is how a restored venue goes live, D76.)
+  if (view.live !== null && view.draft.changes.identical && !view.paused && view.addressServed) {
+    return 'up_to_date'
+  }
   return null
 }
 

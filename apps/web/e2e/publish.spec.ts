@@ -183,7 +183,7 @@ test('before the first publish: nothing live, the whole menu waiting, Publish on
   // The guest page has nothing to show yet.
   const guest = await page.context().newPage()
   await guest.goto(`${guestPath}?lang=en`)
-  await expect(guest.getByText('Menu not found')).toBeVisible()
+  await expect(guest.getByText('This menu is not available')).toBeVisible()
   await guest.close()
   await page.screenshot({ path: shotPath('en-light-desktop-empty'), fullPage: true })
 })

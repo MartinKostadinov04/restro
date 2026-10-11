@@ -588,7 +588,7 @@ test.describe('the table code', () => {
     page,
   }) => {
     await page.goto('/m/no-such-club?lang=en')
-    await expect(page.getByText('Menu not found')).toBeVisible()
+    await expect(page.getByText('This menu is not available')).toBeVisible()
     await expect(page.getByRole('button')).toHaveCount(0)
   })
 
@@ -596,12 +596,12 @@ test.describe('the table code', () => {
     page,
   }) => {
     await page.goto(`/m/${GUEST_SLUG}?lang=en`)
-    await expect(page.getByText('Menu not found')).toBeVisible()
+    await expect(page.getByText('This menu is not available')).toBeVisible()
     await page.goto(`/m/${GUEST_SLUG}-000000000000?lang=en`)
-    await expect(page.getByText('Menu not found')).toBeVisible()
+    await expect(page.getByText('This menu is not available')).toBeVisible()
     // Upper case is not part of a code.
     await page.goto(`/m/${GUEST_SLUG}-${GUEST.publicId.toUpperCase()}?lang=en`)
-    await expect(page.getByText('Menu not found')).toBeVisible()
+    await expect(page.getByText('This menu is not available')).toBeVisible()
   })
 })
 

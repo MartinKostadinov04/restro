@@ -152,6 +152,8 @@ The internal data source has four tiers, and data only ever moves down them: raw
 | `review_queue` | id | Proposed changes waiting for a person: new Barsy items, stale overrides, conflicts |
 | `outbox` | id | Outbound order commands to Barsy (see Outbound) |
 
+**Venue lifecycle (D76).** Owners and admins rename a venue; only an owner deletes it, after typing its name. Deleting **archives** it (`venues.archived_at`, null = live) and erases nothing, because history is append-only. One transaction sets the flag and releases the till link (`barsy_venues.venue_id` goes back to null, so the till venue is free for another venue); the venue's public code, menu, tables and QR tokens stay. Every core writer of one venue first locks its row (`FOR SHARE`, the delete takes `FOR UPDATE`) and refuses an archived one (`venue_archived`), so a save and a delete never interleave; `apply()` refuses writes into an archived venue's menu and its `venue:` scope. The admin's reads, the sync and its schedule, and the publish jobs leave an archived venue out. The worker withdraws the guest files by **removing** them (the venue index `v/<code>.json` and the table files `t/<token>.json`; no marker), keeping the QR tokens so a restore brings the same codes back, and whichever job runs last leaves what the database says. A restore clears the flag: the venue comes back without a till link and unpublished, the owner links the till again and publishes, and the same addresses work again. Erasing a venue for good is an operator task, never a button.
+
 One row in `field_values` looks like this:
 
 ```json

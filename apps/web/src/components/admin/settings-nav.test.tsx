@@ -9,15 +9,31 @@ import { renderWithIntl } from '@/test-utils'
 
 import { SettingsHeader } from './settings-header'
 import { SettingsNav } from './settings-nav'
-import { SETTINGS_SECTIONS, settingsSectionOf, settingsSectionPath } from './settings-sections'
+import {
+  SETTINGS_SECTIONS,
+  settingsSectionOf,
+  settingsSectionPath,
+  visibleSettingsSections,
+} from './settings-sections'
 
 const navigation = vi.hoisted(() => ({ pathname: '/settings/integrations' }))
 
 vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }))
 
 describe('the Settings sections', () => {
-  it('start with Integrations, at /settings/integrations', () => {
-    expect(SETTINGS_SECTIONS.map(settingsSectionPath)).toEqual(['/settings/integrations'])
+  it('start with Integrations, at /settings/integrations, then Deleted venues (D76)', () => {
+    expect(SETTINGS_SECTIONS.map(settingsSectionPath)).toEqual([
+      '/settings/integrations',
+      '/settings/deleted-venues',
+    ])
+  })
+
+  it('keep Deleted venues for owners: everyone else is not offered it', () => {
+    expect(visibleSettingsSections(true).map((section) => section.value)).toEqual([
+      'integrations',
+      'deleted-venues',
+    ])
+    expect(visibleSettingsSections(false).map((section) => section.value)).toEqual(['integrations'])
   })
 
   it('own their path and anything below it, and nothing else', () => {
@@ -37,6 +53,26 @@ describe('SettingsNav', () => {
     expect(links.map((link) => link.textContent)).toEqual(['Integrations'])
     expect(links[0]?.getAttribute('href')).toBe('/settings/integrations')
     expect(links[0]?.getAttribute('aria-current')).toBe('page')
+  })
+
+  it('draws Deleted venues for an owner only', () => {
+    navigation.pathname = '/settings/deleted-venues'
+    const { unmount } = renderWithIntl(<SettingsNav isOwner />)
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' })
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((link) => link.textContent)).toEqual(['Integrations', 'Deleted venues'])
+    expect(links[1]?.getAttribute('href')).toBe('/settings/deleted-venues')
+    expect(links[1]?.getAttribute('aria-current')).toBe('page')
+    unmount()
+
+    renderWithIntl(<SettingsNav />)
+    expect(screen.queryByRole('link', { name: 'Deleted venues' })).toBeNull()
+  })
+
+  it('is in Bulgarian for the owner too', () => {
+    navigation.pathname = '/settings/integrations'
+    renderWithIntl(<SettingsNav isOwner />, { locale: 'bg' })
+    expect(screen.getByRole('link', { name: 'Изтрити заведения' })).toBeTruthy()
   })
 
   it('marks no section as open on a path that belongs to none', () => {
@@ -72,6 +108,13 @@ describe('SettingsHeader', () => {
       '/settings',
     )
     expect(within(trail).getByText('Integrations').getAttribute('aria-current')).toBe('page')
+  })
+
+  it('shows "Settings › Deleted venues" on that page', () => {
+    navigation.pathname = '/settings/deleted-venues'
+    header()
+    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(within(trail).getByText('Deleted venues').getAttribute('aria-current')).toBe('page')
   })
 
   it('shows just "Settings" where no section is open', () => {

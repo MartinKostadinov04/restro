@@ -9,6 +9,7 @@
 //   paused     the integration's `publish.auto_paused` (set by a return to an older version)
 //   history    the versions, newest first, 20 to a page, each with what it changed
 //   busy/run   a publish or a files job of this menu is queued or running; how the last publish run ended
+import { readVenueIndex } from '@restro/assets'
 import {
   autoPublishPaused,
   diffSnapshots,
@@ -42,6 +43,7 @@ import {
 import { and, desc, eq, getTableColumns, inArray, lt, sql } from 'drizzle-orm'
 
 import { getAuthDb } from '../db'
+import { getTokenSource } from './table-token'
 import {
   type ActorView,
   type BusyView,
@@ -79,8 +81,30 @@ export interface ViewScope {
   readonly canPublish: boolean
 }
 
+/**
+ * Whether the venue's address is out: `v/<public code>.json` is in the published files and names
+ * this venue. Read the way the guest page reads it (the local store, else the CDN). When the files
+ * cannot be read at all (no store configured, the CDN not answering) the address counts as served,
+ * so the tab behaves as it did before this check existed.
+ */
+async function venueIndexServed(venue: { readonly id: string; readonly publicId: string }) {
+  try {
+    const source = await getTokenSource()
+    if (source === null) return true
+    const index = await readVenueIndex(source, venue.publicId)
+    return index !== null && index.venue_id === venue.id
+  } catch {
+    return true
+  }
+}
+
 /** What the view needs from outside the tenant's tables. */
 export interface ViewDeps {
+  /** Whether the venue's address is out (default: read the published files). */
+  readonly addressServed?: (venue: {
+    readonly id: string
+    readonly publicId: string
+  }) => Promise<boolean>
   /** The names of the organisation's people by user id (default: the auth tables). */
   readonly personNames?: (
     tenantId: string,
@@ -559,6 +583,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
       draft: { state: 'unavailable' },
       held: null,
       paused: false,
+      addressServed: true,
       rules,
       history: { entries: [], nextBeforeVersion: null },
       busy: null,
@@ -567,15 +592,20 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
   }
   const target = { menuId, venueId: scope.venue.id }
   const current = await loadCurrentSnapshot(scope.pool, scope.tenantId, target)
-  const [outcome, heldRows, history, paused, busy, lastRun, live] = await Promise.all([
-    buildDraft(scope, menuId, deps),
-    loadHeldRows(scope.pool, scope.tenantId, target),
-    loadHistoryPage(scope, menuId, {}, deps),
-    readPaused(scope.pool, scope.tenantId, scope.venue.id),
-    readBusy(scope.pool, scope.tenantId, menuId),
-    readLastRun(scope.pool, scope.tenantId),
-    current === null ? Promise.resolve(null) : liveViewOf(scope, deps, menuId, current),
-  ])
+  const [outcome, heldRows, history, paused, busy, lastRun, live, addressServed] =
+    await Promise.all([
+      buildDraft(scope, menuId, deps),
+      loadHeldRows(scope.pool, scope.tenantId, target),
+      loadHistoryPage(scope, menuId, {}, deps),
+      readPaused(scope.pool, scope.tenantId, scope.venue.id),
+      readBusy(scope.pool, scope.tenantId, menuId),
+      readLastRun(scope.pool, scope.tenantId),
+      current === null ? Promise.resolve(null) : liveViewOf(scope, deps, menuId, current),
+      // Nothing published, nothing to serve.
+      current === null
+        ? Promise.resolve(true)
+        : (deps.addressServed ?? venueIndexServed)(scope.venue),
+    ])
 
   const draftHash = outcome.kind === 'built' ? outcome.draft.snapshot.snapshot.hash : null
   const draft: DraftView =
@@ -601,6 +631,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
     draft,
     held: newestHeld ? heldViewOf(newestHeld, current?.body ?? null, draftHash) : null,
     paused,
+    addressServed,
     rules,
     history,
     busy,

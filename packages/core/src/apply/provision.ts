@@ -17,16 +17,19 @@ import { CURRENCIES, type Currency } from '../money'
 import { newPublicId } from '../public-id'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { lockTenantDocument } from './lock'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** Why a provisioning call was refused. */
 export type ProvisionErrorCode =
   | 'invalid_input'
   /** The venue's tenant has no `tenants` row yet (provision the tenant first). */
   | 'tenant_missing'
-  /** The tenant has no venue with this id (`provisionMenu`, `renameVenueSlug`). */
+  /** The tenant has no venue with this id (`provisionMenu`, `renameVenueSlug`, `renameVenue`, …). */
   | 'venue_missing'
+  /** The venue was deleted (archived, D76): every writer of one venue refuses it (`lockLiveVenue`). */
+  | 'venue_archived'
 
-/** Thrown by `provisionTenant`, `provisionVenue` and `renameVenueSlug` for input or state they refuse. */
+/** Thrown by the provisioning and venue-lifecycle writers for input or state they refuse. */
 export class ProvisionError extends Error {
   override name = 'ProvisionError'
   readonly code: ProvisionErrorCode
@@ -311,8 +314,11 @@ export async function renameVenueSlug(
     throw new ProvisionError('invalid_input', 'the venue slug must be lower-case kebab-case')
   }
   return withTenantWrite(pool, tenantId, async (tx) => {
-    const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId)).for('update')
-    if (!venue) throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
+    }
+    const { venue } = locked
     if (venue.slug === slug) return { venueId, slug, publicId: venue.publicId, changed: false }
     await tx.update(venues).set({ slug }).where(eq(venues.id, venueId))
     return { venueId, slug, publicId: venue.publicId, changed: true }
@@ -355,8 +361,10 @@ export async function provisionMenuIn(
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
   if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
   await lockTenantDocument(tx, tenantId)
-  const [venue] = await tx.select({ id: venues.id }).from(venues).where(eq(venues.id, venueId))
-  if (!venue) throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
+  const locked = await lockLiveVenue(tx, venueId)
+  if (locked.refused !== null) {
+    throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
+  }
   const [existing] = await tx.select().from(menus).where(eq(menus.venueId, venueId))
   if (existing) {
     return {

@@ -14,7 +14,7 @@
 //
 // One atomic `UPDATE` merged inside Postgres: other keys of `settings` (the theme, the guest
 // features) are neither read nor rewritten here, so a save that lands at the same time as a design
-// change cannot undo it.
+// change cannot undo it. The venue row is locked first and must be live (D76, `lockLiveVenue`).
 
 import { type DbPool, venues } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
@@ -24,6 +24,7 @@ import { z } from 'zod'
 import { idSchema } from '../ids'
 import { type VenuePublishRules, VenuePublishRulesSchema } from '../sync-settings'
 import { ProvisionError } from './provision'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 const InputSchema = z.strictObject({
   venueId: idSchema('vn'),
@@ -49,6 +50,12 @@ export async function setVenuePublishRules(
   const { venueId, rules } = parsed.data
   const value = JSON.stringify(rules)
   return withTenantWrite(pool, tenantId, async (tx) => {
+    // The row lock is taken for update at once (this writer updates the row, so a shared lock
+    // would have to be upgraded and two saves could deadlock); a deleted venue is refused.
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
+    }
     const rows = await tx
       .update(venues)
       .set({

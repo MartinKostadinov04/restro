@@ -71,6 +71,7 @@ export function publishView(overrides: Partial<PublishView> = {}): PublishView {
     draft: readyDraft(),
     held: null,
     paused: false,
+    addressServed: true,
     rules: { afterSync: 'auto', newItems: 'show', inherited: false },
     history: {
       entries: [

@@ -156,6 +156,10 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
       privateKey: parseSealPrivateKey(pair.privateKey),
     }
 
+    // 0016 does not touch `venues`, but today's core writers read and write the column 0017 added
+    // to it (`archived_at`, CF-18): add that one column to this 0015 database by hand, so the
+    // writers below can run on it.
+    await query('alter table restro.venues add column archived_at timestamp with time zone')
     // The tenant, the demo venue and its integration, as before CF-16 (price: current_price).
     await provisionTenant(pool, { tenantId, name: 'Demo club' })
     const venue = await provisionVenue(pool, tenantId, {
@@ -325,7 +329,9 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
         [integrationId],
       )
     const linksBefore = sorted(await links(), (row) => String(row.bid))
-    await migrateTestDatabase(db)
+    // Only up to 0016: the column 0017 adds to venues was put in by hand in beforeAll, and 0017
+    // has a test of its own (packages/db/tests/venue-archived-migration.test.ts).
+    await migrateTestDatabase(db, { through: '0016_venue_catalogue' })
     const after = sorted(await links(), (row) => String(row.bid))
     expect(after).toEqual(linksBefore)
     const added = sorted(

@@ -11,6 +11,7 @@ import { z } from 'zod'
 
 import { idSchema } from '../ids'
 import { type Presentation, PresentationSchema, readPresentation } from '../theme'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** Why `setVenuePresentation` refused. */
 export type VenuePresentationErrorCode =
@@ -18,6 +19,8 @@ export type VenuePresentationErrorCode =
   | 'invalid_input'
   /** The tenant has no such venue. */
   | 'venue_not_found'
+  /** The venue was deleted (D76). */
+  | 'venue_archived'
 
 /** Thrown by `setVenuePresentation`. */
 export class VenuePresentationError extends Error {
@@ -55,11 +58,14 @@ export async function setVenuePresentation(
   const { venueId, presentation } = parsed.data
 
   return withTenantWrite(pool, tenantId, async (tx) => {
-    const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId)).for('update')
-    if (venue === undefined) {
-      throw new VenuePresentationError('venue_not_found', `this tenant has no venue ${venueId}`)
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new VenuePresentationError(
+        locked.refused === 'venue_archived' ? 'venue_archived' : 'venue_not_found',
+        venueRefusalText(venueId, locked.refused),
+      )
     }
-    const { presentation: _previous, ...others } = venue.settings
+    const { presentation: _previous, ...others } = locked.venue.settings
     const settings = presentation === null ? others : { ...others, presentation }
     await tx.update(venues).set({ settings }).where(eq(venues.id, venueId))
     return readPresentation(settings)
