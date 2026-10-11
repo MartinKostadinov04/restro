@@ -398,12 +398,12 @@ export async function loadHistoryPage(
 
 // --- the integration's pause, the queue, the last run --------------------------------------------
 
-/** The pause flag of the barsy integration this venue is mapped to; false when it has none. */
-export async function readPaused(
+/** The config of the integration this venue is mapped to; null when it has none. */
+async function integrationConfigOf(
   pool: DbPool,
   tenantId: string,
   venueId: string,
-): Promise<boolean> {
+): Promise<unknown> {
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx
       .select({ config: integrations.config })
@@ -412,7 +412,17 @@ export async function readPaused(
       .where(eq(barsyVenues.venueId, venueId))
       .limit(1),
   )
-  return row !== undefined && autoPublishPaused(row.config)
+  return row?.config ?? null
+}
+
+/** The pause flag of the integration this venue is mapped to; false when it has none. */
+export async function readPaused(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<boolean> {
+  const config = await integrationConfigOf(pool, tenantId, venueId)
+  return config !== null && autoPublishPaused(config)
 }
 
 /**
@@ -425,19 +435,11 @@ export async function readPublishRules(
   tenantId: string,
   venueId: string,
 ): Promise<PublishRulesView> {
-  const [venue, link] = await withTenant(pool, tenantId, async (tx) => [
-    (await tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)))[0],
-    (
-      await tx
-        .select({ config: integrations.config })
-        .from(barsyVenues)
-        .innerJoin(integrations, eq(integrations.id, barsyVenues.integrationId))
-        .where(eq(barsyVenues.venueId, venueId))
-        .limit(1)
-    )[0],
-  ])
+  const [venue] = await withTenant(pool, tenantId, (tx) =>
+    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)),
+  )
   const settings = venue?.settings ?? {}
-  const rules = venuePublishRules(settings, link?.config ?? {})
+  const rules = venuePublishRules(settings, await integrationConfigOf(pool, tenantId, venueId))
   const own = venueOwnPublishRules(settings)
   return {
     afterSync: rules.after_sync,

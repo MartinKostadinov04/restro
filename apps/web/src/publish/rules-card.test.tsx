@@ -29,8 +29,8 @@ describe('the venue’s publishing rules', () => {
       true,
     )
     for (const help of [
-      'Guests see changes from barsy within about a minute.',
-      'Changes from barsy wait until you publish them here.',
+      'Guests see changes from the till within about a minute.',
+      'Changes from the till wait until you publish them here.',
       'A new item is on the menu with the next publish.',
       'New items stay hidden in the composer until you show them.',
     ]) {

@@ -184,7 +184,7 @@ describe('where the New item buttons are', () => {
     state.view = { ...state.view, rootIds: [], sections: {}, placements: {}, unsortedIds: [] }
     pane(state)
     expect(screen.getByTestId('pane-no-sections').textContent).toContain(
-      'Create a section, or connect a till in the Integration tab.',
+      'Create a section, or connect a till in Settings → Integrations.',
     )
     await userEvent.setup({ delay: null }).click(screen.getByTestId('new-section-empty'))
     expect(state.newSection).toHaveBeenCalledWith(null)

@@ -230,6 +230,7 @@ async function worker(): Promise<void> {
   await upsertBarsyVenues(pool, tenantId, integrationId, [
     { bid: 1, name: 'Main bar' },
     { bid: 2, name: 'Roof terrace' },
+    { bid: 3, name: 'Shop' },
   ])
   await storeCachedTree(pool, tenantId, integrationId, 1, {
     fetched_at: new Date().toISOString(),
@@ -264,7 +265,7 @@ async function worker(): Promise<void> {
   const check = await startJobRun(pool, tenantId, { kind: 'barsy_connect', integrationId })
   await finishJobRun(pool, tenantId, check.id, {
     status: 'completed',
-    counters: { venues: 2, languages: 2, currencies: 1, trees_cached: 1 },
+    counters: { venues: 3, languages: 2, currencies: 1, trees_cached: 1 },
   })
   await dropJobs(tenantId, [JOB_NAMES.barsyConnect])
 }

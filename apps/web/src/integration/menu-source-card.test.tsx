@@ -101,7 +101,7 @@ describe('the Menu source card, linked', () => {
       await user.click(within(dialog).getByRole('radio', { name: /Roof terrace/ }))
       await user.click(within(dialog).getByRole('button', { name: 'Change' }))
       expect((await within(dialog).findByRole('alert')).textContent).toBe(
-        'That venue in barsy already belongs to another venue.',
+        'That venue in the till already belongs to another venue.',
       )
     })
   })
@@ -148,9 +148,12 @@ describe('the Menu source card, linked', () => {
 
     it.each([
       ['not_manager', 'Only owners and admins can start a sync.'],
-      ['no_credentials', 'Save the barsy credentials first.'],
+      ['no_credentials', 'Save the till credentials first.'],
       ['checking', 'The connection is being checked. Wait until it finishes.'],
-      ['not_connected', 'The connection to barsy has to work first. See Settings → Integrations.'],
+      [
+        'not_connected',
+        'The connection to the till has to work first. See Settings → Integrations.',
+      ],
       ['no_root', 'Choose the menu category first.'],
       ['busy', 'A sync is already queued or running.'],
     ] as [SyncBlock, string][])('is off for "%s" and says why', async (reason, text) => {
@@ -253,7 +256,7 @@ describe('the Menu source card, not linked', () => {
     const user = userEvent.setup()
     actions.chooseTillVenueAction.mockResolvedValue({ ok: true })
     card(unlinked())
-    expect(screen.getByText('This venue is not linked to a venue in barsy yet.')).toBeTruthy()
+    expect(screen.getByText('This venue is not linked to a venue in the till yet.')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Link a barsy venue' })).toBeTruthy()
     const options = screen.getAllByTestId('till-venue-option')
     expect(options.map((option) => option.querySelector('.font-medium')?.textContent)).toEqual([
@@ -261,7 +264,7 @@ describe('the Menu source card, not linked', () => {
       'Shop',
     ])
     expect(screen.getByTestId('venue-address').textContent).toBe('Sofia, Vitosha')
-    expect(screen.getByText(/Linking reads this venue's menu from barsy/)).toBeTruthy()
+    expect(screen.getByText(/Linking reads this venue's menu from the till/)).toBeTruthy()
 
     const link = screen.getByRole('button', { name: 'Link' }) as HTMLButtonElement
     expect(link.disabled).toBe(true)
@@ -273,7 +276,7 @@ describe('the Menu source card, not linked', () => {
   it('says so when every venue in barsy is linked already', () => {
     card(unlinked({ options: [] }))
     expect(screen.getByTestId('link-none').textContent).toBe(
-      'Every venue in barsy is linked to a venue already.',
+      'Every venue in the till is linked to a venue already.',
     )
     expect(screen.queryByRole('button', { name: 'Link' })).toBeNull()
   })

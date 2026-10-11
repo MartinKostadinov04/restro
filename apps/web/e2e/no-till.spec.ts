@@ -100,7 +100,7 @@ test('venue with no till: create the venue from the list', async () => {
   await expect(page.getByTestId('composer')).toBeVisible()
   await expect(page.getByTestId('no-menu')).toHaveCount(0)
   await expect(page.getByTestId('pane-no-sections')).toContainText(
-    'Create a section, or connect a till in the Integration tab.',
+    'Create a section, or connect a till in Settings → Integrations.',
   )
 
   // The address is the slug and a random code of 12 characters.

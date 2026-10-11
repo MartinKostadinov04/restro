@@ -74,7 +74,7 @@ describe('the sync settings form', () => {
     renderWithIntl(<SyncSettingsForm view={integrationView()} />)
     expect(screen.queryAllByRole('radio')).toHaveLength(0)
     expect(screen.queryByText('After a sync')).toBeNull()
-    expect(screen.queryByText('New items from barsy')).toBeNull()
+    expect(screen.queryByText('New items from the till')).toBeNull()
   })
 
   it('names another zone by its name', () => {

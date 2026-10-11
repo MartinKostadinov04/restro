@@ -95,7 +95,7 @@ describe('the list of venues in barsy', () => {
     renderWithIntl(<TillVenuesCard view={integrationView()} />)
     await user.click(within(rowOf('Garden')).getByRole('button', { name: 'Add as venue' }))
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'That venue in barsy already belongs to another venue.',
+      'That venue in the till already belongs to another venue.',
     )
     expect(navigation.push).not.toHaveBeenCalled()
   })
@@ -153,7 +153,7 @@ describe('the list of venues in barsy', () => {
       await user.click(within(dialog).getByRole('radio', { name: 'Spare venue' }))
       await user.click(within(dialog).getByRole('button', { name: 'Link' }))
       expect((await screen.findByRole('alert')).textContent).toBe(
-        'That venue is already linked to a venue in barsy.',
+        'That venue is already linked to a venue in the till.',
       )
     })
 

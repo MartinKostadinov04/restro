@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
-import { type Browser, expect, type Page, test } from '@playwright/test'
+import { type Browser, expect, type Locator, type Page, test } from '@playwright/test'
 import pg from 'pg'
 
 import { runScript } from './global-setup'
@@ -85,6 +85,14 @@ async function snapshot(fileName: string, target: Page = page) {
   await target.screenshot({ path: path.join(dir, fileName), fullPage: true })
 }
 
+/** Just one element, for the screenshots of the brief. */
+async function snapshotOf(target: Locator, fileName: string) {
+  const dir = process.env.SCREENSHOT_DIR
+  if (!dir) return
+  mkdirSync(dir, { recursive: true })
+  await target.screenshot({ path: path.join(dir, fileName) })
+}
+
 test.beforeAll(async ({ browser }) => {
   db = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 })
   page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
@@ -163,9 +171,9 @@ test('the worker answers: the page notices by itself and the venues of the till 
   })
   await expect(page.getByTestId('status-badge')).toHaveText('Свързано')
   await expect(page.getByTestId('status-active')).toHaveCount(0)
-  await expect(page.getByTestId('till-venue')).toHaveCount(2)
+  await expect(page.getByTestId('till-venue')).toHaveCount(3)
   await expect(page.getByTestId('till-venue').first()).toHaveAttribute('data-state', 'unlinked')
-  await expect(page.getByTestId('till-venues-todo')).toHaveText('2 заведения за настройване')
+  await expect(page.getByTestId('till-venues-todo')).toHaveText('3 заведения за настройване')
   await expect(page.getByTestId('run-row').first()).toContainText('Проверка на връзката')
   await expect(page.getByTestId('sync-blocked')).toHaveText(
     'Първо свържете заведение от barsy със заведение.',
@@ -173,16 +181,20 @@ test('the worker answers: the page notices by itself and the venues of the till 
 })
 
 test('"Not used" sets a venue aside, "Use again" brings it back', async () => {
-  const roof = tillVenue(page, 'Roof terrace')
-  await roof.getByRole('button', { name: 'Не се използва' }).click()
-  await expect(roof).toHaveAttribute('data-state', 'not_used')
-  await expect(roof.getByTestId('till-venue-not-used')).toHaveText('Не се използва')
-  await expect(page.getByTestId('till-venues-todo')).toHaveText('1 заведение за настройване')
+  const shop = tillVenue(page, 'Shop')
+  await shop.getByRole('button', { name: 'Не се използва' }).click()
+  await expect(shop).toHaveAttribute('data-state', 'not_used')
+  await expect(shop.getByTestId('till-venue-not-used')).toHaveText('Не се използва')
+  await expect(page.getByTestId('till-venues-todo')).toHaveText('2 заведения за настройване')
   // Stored, so it survives a reload.
   await page.reload()
-  await expect(tillVenue(page, 'Roof terrace')).toHaveAttribute('data-state', 'not_used')
-  await tillVenue(page, 'Roof terrace').getByRole('button', { name: 'Използвай отново' }).click()
-  await expect(tillVenue(page, 'Roof terrace')).toHaveAttribute('data-state', 'unlinked')
+  await expect(tillVenue(page, 'Shop')).toHaveAttribute('data-state', 'not_used')
+  await tillVenue(page, 'Shop').getByRole('button', { name: 'Използвай отново' }).click()
+  await expect(tillVenue(page, 'Shop')).toHaveAttribute('data-state', 'unlinked')
+  await expect(page.getByTestId('till-venues-todo')).toHaveText('3 заведения за настройване')
+  // Set aside again: a shop is not a venue guests order from, and it stays so for the rest.
+  await tillVenue(page, 'Shop').getByRole('button', { name: 'Не се използва' }).click()
+  await expect(tillVenue(page, 'Shop')).toHaveAttribute('data-state', 'not_used')
   await expect(page.getByTestId('till-venues-todo')).toHaveText('2 заведения за настройване')
 })
 
@@ -209,6 +221,10 @@ test('"Add as venue": a new venue, and the person lands on its Menu source card'
   await expect(main.getByTestId('till-venue-linked')).toHaveText('Свързано със „Main bar“')
   await expect(main.getByTestId('till-venue-needs-category')).toBeVisible()
   await expect(page.getByTestId('till-venues-todo')).toHaveText('1 заведение за настройване')
+  // Three of the four states at once: linked (still to choose its category), to do, set aside.
+  await expect(tillVenue(page, 'Roof terrace')).toHaveAttribute('data-state', 'unlinked')
+  await expect(tillVenue(page, 'Shop')).toHaveAttribute('data-state', 'not_used')
+  await snapshotOf(page.getByTestId('till-venues'), 'cf-09b-barsy-venues-list-states-bg-light.png')
 })
 
 test('the venue chooses its menu category and its price; "Sync this venue" queues one pull', async () => {
@@ -516,7 +532,7 @@ test('a plain member sees the list, the history and the Menu source, and can cha
       'Само собствениците и администраторите',
     )
     await expect(member.getByTestId('status-badge')).toHaveText('Свързано')
-    await expect(member.getByTestId('till-venue')).toHaveCount(2)
+    await expect(member.getByTestId('till-venue')).toHaveCount(3)
     await expect(member.getByTestId('run-row').first()).toBeVisible()
     await expect(member.getByRole('button', { name: 'Смени данните за достъп' })).toHaveCount(0)
     await expect(member.getByRole('button', { name: 'Провери отново' })).toHaveCount(0)
@@ -601,14 +617,7 @@ test('saves the screenshots of the brief when SCREENSHOT_DIR is set', async ({ b
     '/settings/integrations',
   )
   await expect(light.target.getByRole('heading', { name: 'Venues in barsy' })).toBeVisible()
-  await light.target
-    .getByTestId('till-venues')
-    .screenshot({
-      path: path.join(
-        process.env.SCREENSHOT_DIR as string,
-        'cf-09b-barsy-venues-list-en-light.png',
-      ),
-    })
+  await snapshotOf(light.target.getByTestId('till-venues'), 'cf-09b-barsy-venues-list-en-light.png')
   await snapshot('cf-09b-settings-integrations-en-light-desktop.png', light.target)
   await light.context.close()
 

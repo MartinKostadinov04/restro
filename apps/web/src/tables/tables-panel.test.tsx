@@ -237,7 +237,7 @@ describe('the Tables & QR tab', () => {
     expect(none.disabled).toBe(true)
   })
 
-  it('has an empty state that sends the manager to the Integration tab', () => {
+  it('has an empty state that sends the manager to the venue’s Menu source', () => {
     renderWithIntl(<TablesPanel view={view({ halls: [], total: 0, coded: 0, sample: null })} />)
     expect(screen.getByText('No tables yet')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Go to the Menu source' }).getAttribute('href')).toBe(
