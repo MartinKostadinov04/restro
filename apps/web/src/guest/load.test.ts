@@ -3,7 +3,7 @@ import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
 import { cdnBase } from './cdn'
-import { buildContext, chooseLocale, langParam, readTableToken } from './context'
+import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
 import {
   files,
   GuestLoadError,
@@ -104,6 +104,27 @@ describe('the guest loader follows the published files (rule 4)', () => {
     ])
     expect((await loadMenu(f.deps(broken), 'demo-club')).live).toBeNull()
     await expect(loadLive(f.deps(broken), f.index)).rejects.toMatchObject({ reason: 'failed' })
+  })
+
+  it('reads an overlay that has keys this loader does not know, and keeps its marks (A5-F2)', async () => {
+    const f = publishedFiles()
+    const [first = ''] = Object.keys(f.snapshot.items)
+    const newer = {
+      version: f.pointer.version,
+      items: { [first]: { sold_out: true } },
+      ordering: { state: 'on' },
+    }
+    const overrides = new Map<string, unknown>([[files.live(BASE, f.index), newer]])
+    const live = await loadLive(f.deps(overrides), f.index)
+    expect(live?.items).toEqual({ [first]: { sold_out: true } })
+    expect((await loadMenu(f.deps(overrides), 'demo-club')).live?.items).toEqual({
+      [first]: { sold_out: true },
+    })
+    // Inside `items` nothing is guessed: a mark of another shape is still a failed parse.
+    const odd = new Map<string, unknown>([
+      [files.live(BASE, f.index), { version: 1, items: { [first]: { sold_out: true, hint: 1 } } }],
+    ])
+    await expect(loadLive(f.deps(odd), f.index)).rejects.toMatchObject({ reason: 'failed' })
   })
 
   it('fails (to be retried) on a server error, bad JSON or a file of the wrong shape', async () => {
@@ -304,6 +325,17 @@ describe('the guest context', () => {
     expect(readTableToken('?t=short')).toBeNull()
     expect(readTableToken('?t=../../x')).toBeNull()
     expect(readTableToken('')).toBeNull()
+  })
+
+  it('tells the shell about a table only when the lookup of that very code found one (A5-F5)', () => {
+    const token = 'tb_0123456789ABCDEFGHIJKL'
+    const found = { token, label: '12' }
+    expect(confirmedTable(token, found)).toEqual(found)
+    // No code asked for, no answer yet or an unknown code: no table.
+    expect(confirmedTable(null, found)).toBeNull()
+    expect(confirmedTable(token, null)).toBeNull()
+    // An answer left over from another code (the address changed) counts for nothing.
+    expect(confirmedTable('tb_ZZZZZZZZZZZZZZZZZZZZZZ', found)).toBeNull()
   })
 
   it('builds a qr context with ordering off', () => {

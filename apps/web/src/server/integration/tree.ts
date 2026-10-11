@@ -15,9 +15,13 @@ export interface CachedCategory {
 /**
  * Nests the flat cached list. A category whose parent is not in the list becomes a top-level one,
  * and each category is placed once, so a damaged cache cannot loop. Siblings keep the order of
- * the cache (barsy's order).
+ * the cache (barsy's order). The category numbered `suggestedId` (the venue's public menu, per its
+ * stored record) is marked `suggested`; nothing else is, and nothing is chosen by it.
  */
-export function buildCategoryTree(categories: readonly CachedCategory[]): CategoryNode[] {
+export function buildCategoryTree(
+  categories: readonly CachedCategory[],
+  suggestedId: number | null = null,
+): CategoryNode[] {
   const ids = new Set(categories.map((category) => category.cat_id))
   const childrenOf = new Map<number | null, CachedCategory[]>()
   for (const category of categories) {
@@ -36,7 +40,14 @@ export function buildCategoryTree(categories: readonly CachedCategory[]): Catego
     (childrenOf.get(parent) ?? []).flatMap((category) => {
       if (placed.has(category.cat_id)) return []
       placed.add(category.cat_id)
-      return [{ id: category.cat_id, name: category.name, children: build(category.cat_id) }]
+      return [
+        {
+          id: category.cat_id,
+          name: category.name,
+          children: build(category.cat_id),
+          ...(category.cat_id === suggestedId ? { suggested: true as const } : {}),
+        },
+      ]
     })
   return build(null)
 }

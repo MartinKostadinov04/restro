@@ -134,4 +134,40 @@ describe('the Status card', () => {
     await user.click(screen.getByRole('button', { name: 'Check again' }))
     expect((await screen.findByRole('alert')).textContent).toContain('could not be reached')
   })
+
+  it('shows the currency warning on a connection that works, in both languages', () => {
+    const { unmount } = renderWithIntl(
+      <StatusCard
+        venueId={VENUE_ID}
+        view={withIntegration({ status: 'connected', statusDetail: 'currency_not_eur' })}
+      />,
+    )
+    expect(screen.getByTestId('status-badge').getAttribute('data-status')).toBe('connected')
+    const detail = screen.getByTestId('status-detail')
+    expect(detail.textContent).toBe(
+      "The till's main currency is not EUR; Restro shows prices in EUR only.",
+    )
+    expect(detail.getAttribute('data-level')).toBe('warning')
+    unmount()
+    renderWithIntl(
+      <StatusCard
+        venueId={VENUE_ID}
+        view={withIntegration({ status: 'connected', statusDetail: 'currency_not_eur' })}
+      />,
+      { locale: 'bg' },
+    )
+    expect(screen.getByTestId('status-detail').textContent).toBe(
+      'Основната валута на касата не е EUR; Restro показва цените само в EUR.',
+    )
+  })
+
+  it('marks a connection problem as a problem, not a warning', () => {
+    renderWithIntl(
+      <StatusCard
+        venueId={VENUE_ID}
+        view={withIntegration({ status: 'error', statusDetail: 'wrong_credentials' })}
+      />,
+    )
+    expect(screen.getByTestId('status-detail').getAttribute('data-level')).toBe('problem')
+  })
 })

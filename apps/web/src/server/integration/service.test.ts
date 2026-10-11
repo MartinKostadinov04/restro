@@ -375,6 +375,70 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
       expect(view.treeFetchedAt).toBe('2026-10-09T10:00:00.000Z')
     })
 
+    it('hints at the public address and menu from the stored record of each venue, and suggests its public category (B1-Q6)', async () => {
+      const venueRecord = (bid: number, payload: Record<string, unknown>) => ({
+        externalType: 'barsy_venue',
+        externalId: String(bid),
+        scope: 'master' as const,
+        raw: JSON.stringify(payload),
+        payload,
+      })
+      const before = await loadIntegrationView(scopeFor(venueA), services())
+      // An older record of venue 1 and a newer one: the newer one speaks.
+      await appendSourceRecords(app, tenant, integrationId, [
+        venueRecord(1, { barsy_id: 1, name: 'Main bar', public_address: 'Old street 1' }),
+      ])
+      await appendSourceRecords(app, tenant, integrationId, [
+        venueRecord(1, {
+          barsy_id: 1,
+          name: 'Main bar',
+          public_address: '  Sofia, 108 Vitosha Blvd ',
+          public_cat_id: 1171,
+        }),
+        // Venue 2 has a record that says nothing: no hint at all.
+        venueRecord(2, { barsy_id: 2, name: 'Roof', public_address: null, public_cat_id: null }),
+      ])
+      try {
+        const view = await loadIntegrationView(scopeFor(venueA), services())
+        expect(view.barsyVenues).toEqual([
+          {
+            key: 1,
+            name: 'Main bar',
+            mappedHere: true,
+            usedBy: null,
+            address: 'Sofia, 108 Vitosha Blvd',
+            publicMenuSetUp: true,
+          },
+          { key: 2, name: 'Roof', mappedHere: false, usedBy: null },
+        ])
+        // The venue's public category is suggested in its own tree, and nothing else is.
+        expect(view.tree).toEqual([
+          {
+            id: 1171,
+            name: 'Публично меню',
+            suggested: true,
+            children: [{ id: 1172, name: 'Коктейли', children: [] }],
+          },
+          { id: 1091, name: 'Каса Kiosk', children: [] },
+        ])
+        // Hints only: what was chosen stays chosen, and no barsy number or field name reaches the view.
+        expect(view.rootCatId).toBe(before.rootCatId)
+        expect(view.venueMapped).toBe(before.venueMapped)
+        expect(JSON.stringify(view)).not.toContain('public_cat_id')
+        // Another venue of the organisation sees the hints of the venues, but no tree of this one.
+        const asB = await loadIntegrationView(scopeFor(venueB), services())
+        expect(asB.tree).toBeNull()
+      } finally {
+        await owner.query(
+          `delete from restro.source_records where tenant_id = $1 and external_type = 'barsy_venue'`,
+          [tenant],
+        )
+      }
+      const after = await loadIntegrationView(scopeFor(venueA), services())
+      expect(after.barsyVenues).toEqual(before.barsyVenues)
+      expect(after.tree).toEqual(before.tree)
+    })
+
     it('chooses the catalogue root only from the cached tree', async () => {
       expect(await chooseCatalogueRoot(scopeFor(venueA), { catId: 5555 })).toEqual({
         ok: false,
@@ -885,6 +949,103 @@ describe.skipIf(!hasDatabase)('the Integration tab service (as the restro_app ro
       }
       const view = await loadIntegrationView(scopeFor(venueA), services())
       expect(view.runs).toHaveLength(HISTORY_LENGTH)
+    })
+
+    describe('a held full sync (CF-02)', () => {
+      const secondIntegration = async () =>
+        (await integrationRows()).find((row) => row.host === 'second.barsyonline.com')?.id ?? ''
+      const fullPull = async (
+        integrationId: string,
+        finish: Parameters<typeof finishJobRun>[3],
+      ): Promise<void> => {
+        const pull = await startJobRun(app, tenant, { kind: 'barsy_full_pull', integrationId })
+        await finishJobRun(app, tenant, pull.id, finish)
+      }
+      const heldView = async () =>
+        (await loadIntegrationView(scopeFor(venueA), services())).heldSync
+
+      it('is not held when no full pull read everything (the one so far skipped a failed page)', async () => {
+        expect(await heldView()).toBeNull()
+      })
+
+      it('carries the held conclusion of a complete full pull into the run and the warning', async () => {
+        const integrationId = await secondIntegration()
+        await fullPull(integrationId, {
+          status: 'completed',
+          counters: { articles_seen: 4, failed_pages: 0, missing: 0 },
+          deletionCheckSkipped: true,
+          absenceHeld: { reason: 'too_many_missing', wouldHide: 61, active: 65 },
+          summary: 'deletion check skipped: the read would have hidden 61 of 65 items',
+        })
+        const view = await loadIntegrationView(scopeFor(venueA), services())
+        expect(view.heldSync).toMatchObject({
+          reason: 'too_many_missing',
+          wouldHide: 61,
+          active: 65,
+        })
+        expect(view.heldSync?.finishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+        expect(view.runs[0]?.details?.absenceHeld).toEqual({
+          reason: 'too_many_missing',
+          wouldHide: 61,
+          active: 65,
+        })
+        // A run that held nothing has no such field.
+        expect(view.runs.slice(1).every((run) => run.details?.absenceHeld === undefined)).toBe(true)
+      })
+
+      it('stays after more than twenty later runs have pushed the held run out of the history', async () => {
+        const integrationId = await secondIntegration()
+        for (let i = 0; i < 25; i += 1) {
+          const run = await startJobRun(app, tenant, { kind: 'barsy_incremental', integrationId })
+          await finishJobRun(app, tenant, run.id, { status: 'completed' })
+        }
+        const view = await loadIntegrationView(scopeFor(venueA), services())
+        expect(view.runs).toHaveLength(HISTORY_LENGTH)
+        expect(view.runs.some((run) => run.details?.absenceHeld !== undefined)).toBe(false)
+        expect(view.heldSync).toMatchObject({ reason: 'too_many_missing', wouldHide: 61 })
+      })
+
+      it('is not changed by a later full pull that read nothing conclusive: a failed page, or one queued again', async () => {
+        const integrationId = await secondIntegration()
+        await fullPull(integrationId, {
+          status: 'completed',
+          counters: { articles_seen: 30, failed_pages: 2 },
+          deletionCheckSkipped: true,
+        })
+        // A full pull that found another pull running and queued itself again records no counters.
+        await fullPull(integrationId, {
+          status: 'completed',
+          notes: ['another pull is running; this full pull was queued again to start in 60 s'],
+        })
+        // A failed run says nothing either.
+        await fullPull(integrationId, { status: 'failed', summary: 'timeout' })
+        expect(await heldView()).toMatchObject({ reason: 'too_many_missing', wouldHide: 61 })
+      })
+
+      it('shows the newest complete full pull: a new hold replaces the old, a clean one clears it', async () => {
+        const integrationId = await secondIntegration()
+        await fullPull(integrationId, {
+          status: 'completed',
+          counters: { articles_seen: 0, failed_pages: 0 },
+          deletionCheckSkipped: true,
+          absenceHeld: { reason: 'empty_read', wouldHide: 65, active: 65 },
+        })
+        expect(await heldView()).toMatchObject({ reason: 'empty_read', wouldHide: 65, active: 65 })
+
+        await fullPull(integrationId, {
+          status: 'completed',
+          counters: { articles_seen: 65, failed_pages: 0, missing: 0 },
+        })
+        expect(await heldView()).toBeNull()
+      })
+
+      it('is not shown for an organisation without an integration', async () => {
+        const view = await loadIntegrationView(
+          scopeFor(foreignVenue, { tenantId: otherTenant }),
+          services(),
+        )
+        expect(view.heldSync).toBeNull()
+      })
     })
 
     it('another organisation’s runs are invisible', async () => {

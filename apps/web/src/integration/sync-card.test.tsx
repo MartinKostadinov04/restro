@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -88,5 +88,46 @@ describe('the Sync card', () => {
   it('speaks Bulgarian', () => {
     renderWithIntl(<SyncCard venueId={VENUE_ID} view={integrationView()} />, { locale: 'bg' })
     expect(screen.getByRole('button', { name: 'Синхронизирай сега' })).toBeTruthy()
+  })
+
+  describe('a held full sync (CF-02: nothing was hidden)', () => {
+    const held = (reason: 'empty_read' | 'too_many_missing', wouldHide: number, active: number) =>
+      integrationView({
+        heldSync: { reason, wouldHide, active, finishedAt: '2026-10-09T10:00:00.000Z' },
+      })
+
+    it('warns when the read found far fewer items than the menu has, with the numbers', () => {
+      renderWithIntl(<SyncCard venueId={VENUE_ID} view={held('too_many_missing', 61, 65)} />)
+      const warning = screen.getByTestId('sync-held')
+      expect(warning.getAttribute('data-reason')).toBe('too_many_missing')
+      expect(warning.textContent).toContain('The last full sync was held back')
+      expect(warning.textContent).toContain(
+        'found fewer items than the menu has and hid nothing: it would have hidden 61 of 65 items.',
+      )
+      expect(warning.textContent).toContain('Check the menu category and the venue in the till.')
+      // A warning, not a button: there is nothing to press yet.
+      expect(within(warning).queryByRole('button')).toBeNull()
+    })
+
+    it('says the read found no items at all for an empty read', () => {
+      renderWithIntl(<SyncCard venueId={VENUE_ID} view={held('empty_read', 1, 1)} />)
+      const warning = screen.getByTestId('sync-held')
+      expect(warning.textContent).toContain('found no items at all and hid nothing')
+      expect(warning.textContent).toContain('would have hidden 1 of 1 item.')
+    })
+
+    it('speaks Bulgarian', () => {
+      renderWithIntl(<SyncCard venueId={VENUE_ID} view={held('too_many_missing', 61, 65)} />, {
+        locale: 'bg',
+      })
+      const warning = screen.getByTestId('sync-held')
+      expect(warning.textContent).toContain('Последната пълна синхронизация е задържана')
+      expect(warning.textContent).toContain('щеше да скрие 61 от 65 артикула')
+    })
+
+    it('shows nothing when the latest complete full sync was not held', () => {
+      renderWithIntl(<SyncCard venueId={VENUE_ID} view={integrationView()} />)
+      expect(screen.queryByTestId('sync-held')).toBeNull()
+    })
   })
 })

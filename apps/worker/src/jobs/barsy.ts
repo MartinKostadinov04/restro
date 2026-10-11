@@ -180,6 +180,9 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             await client.pingUser()
             const venues = (await reader.getVenues()).data
             const languages = (await reader.getLanguages()).data
+            // OPEN (CF-12): which Currencies_getlist field marks the system currency? Not yet verified
+            // in the official docs (https://docs.lukanet.com/barsy.api/methods/currencies/getlist.html),
+            // so no currency check happens here; the status code `currency_not_eur` waits for it.
             const currencies = (await reader.getCurrencies()).data
             const details = (await reader.getArticleDetailsTree()).data
 

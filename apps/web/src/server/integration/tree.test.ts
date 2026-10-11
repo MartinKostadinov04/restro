@@ -28,6 +28,26 @@ describe('buildCategoryTree', () => {
     ])
   })
 
+  it('marks only the suggested category, wherever it is, and nothing else', () => {
+    const categories = [
+      cat(1171, null, 'Публично меню'),
+      cat(2, 1171, 'Бира'),
+      cat(3, 1171, 'Коктейли'),
+      cat(4, 3, 'Класически'),
+    ]
+    const marked = buildCategoryTree(categories, 4)
+    const flat = (nodes: typeof marked): { id: number; suggested?: true }[] =>
+      nodes.flatMap((node) => [
+        { id: node.id, ...(node.suggested ? { suggested: true as const } : {}) },
+        ...flat([...node.children]),
+      ])
+    expect(flat(marked).filter((node) => node.suggested)).toEqual([{ id: 4, suggested: true }])
+    // No suggestion, or one that is not in the tree: no mark at all, the tree is as before.
+    expect(buildCategoryTree(categories)).toEqual(buildCategoryTree(categories, null))
+    expect(flat(buildCategoryTree(categories, 999)).some((node) => node.suggested)).toBe(false)
+    expect(JSON.stringify(buildCategoryTree(categories))).not.toContain('suggested')
+  })
+
   it('makes a category with an unknown parent a top-level one', () => {
     expect(buildCategoryTree([cat(5, 999, 'Orphan')])).toEqual([
       { id: 5, name: 'Orphan', children: [] },

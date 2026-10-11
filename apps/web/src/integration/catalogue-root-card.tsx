@@ -4,11 +4,13 @@
 // tree ("Каса Kiosk", "English", "Showx", "Публично меню" in the demo), so each venue says which
 // category its menu starts from. The tree is the cached PUBLIC tree the connection check read;
 // nothing is fetched here. A category's own id is only handed back to the server action; it is
-// never drawn.
+// never drawn. The category the venue's record names as its public menu carries a "Suggested"
+// mark; it is a hint, nothing is chosen for the manager.
 import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useId, useMemo, useOptimistic, useState, useTransition } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { FormSection } from '@/components/ui/form-section'
@@ -17,6 +19,16 @@ import type { CategoryNode, IntegrationErrorCode, IntegrationView } from '@/serv
 
 import { ErrorNote } from './error-note'
 import { useMoment } from './use-moment'
+
+/** The category marked `suggested`, if the tree has one. */
+function suggestedId(tree: readonly CategoryNode[]): number | null {
+  for (const node of tree) {
+    if (node.suggested) return node.id
+    const inside = suggestedId(node.children)
+    if (inside !== null) return inside
+  }
+  return null
+}
 
 /** The ids of the ancestors of `target`, so the chosen category is visible when the tree opens. */
 function ancestorsOf(tree: readonly CategoryNode[], target: number | null): number[] {
@@ -83,6 +95,11 @@ function Tree({ nodes, chosen, open, groupName, disabled, onToggle, onChoose }: 
                   onChange={() => onChoose(node.id)}
                 />
                 <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
+                {node.suggested ? (
+                  <Badge variant="info" data-testid="category-suggested">
+                    {t('suggested')}
+                  </Badge>
+                ) : null}
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {t('children', { count: node.children.length })}
                 </span>
@@ -116,7 +133,11 @@ export function CatalogueRootCard({ venueId, view }: { venueId: string; view: In
   const [chosen, setChosen] = useOptimistic(view.rootCatId)
   const [open, setOpen] = useState<ReadonlySet<number>>(
     () =>
-      new Set([...(tree ?? []).map((node) => node.id), ...ancestorsOf(tree ?? [], view.rootCatId)]),
+      new Set([
+        ...(tree ?? []).map((node) => node.id),
+        ...ancestorsOf(tree ?? [], view.rootCatId),
+        ...ancestorsOf(tree ?? [], suggestedId(tree ?? [])),
+      ]),
   )
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [pending, startTransition] = useTransition()

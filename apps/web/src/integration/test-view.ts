@@ -65,6 +65,7 @@ export function integrationView(overrides: Partial<IntegrationView> = {}): Integ
       nextFullPullAt: '2026-10-10T09:00:00.000Z',
     },
     lastSyncedAt: '2026-10-09T09:30:00.000Z',
+    heldSync: null,
     gate: { enabled: true },
     runs: [],
     ...overrides,

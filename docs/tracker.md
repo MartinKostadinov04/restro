@@ -429,7 +429,20 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - CF-08a: workspace guard, vendor-word test (baseline 915 words, wall on the published surface), PR template;
     - lead fixes: sold-out rollover e2e skips before 07:00; baseline raised twice, approved and noted in the commits.
   - **Known limit until CF-11:** a deliberate switch to another barsy venue on a venue that has a menu is always held (100% of the old items would go). The old menu stays until a person releases the hold, so for now a switch needs the lead.
-  - **Running:** CF-03 neutral till role (Opus); CF-12 small hardening (Sonnet).
+  - **Merged 10-11 (later):** CF-12 small hardening.
+    - What it did:
+      - phones read newer `live.json` files;
+      - `Referrer-Policy: no-referrer` on `/m` and `/t`;
+      - the shell gets a table code only once the table file confirmed it;
+      - a "held" warning and badge in the Integration tab, from the latest complete full pull;
+      - picker hints: public address, "public menu set up", and the suggested catalogue category;
+      - the `currency_not_eur` status text.
+    - Open:
+      - **(a) The currency check in the worker.** Which `Currencies_getlist` field marks the till's main currency? The demo fixture has one row, so the docs must say. The docs session had expired. The web text is ready; the worker check is not wired.
+      - **(b) Warnings are wiped.** A successful pull resets `statusDetail` to null, which would clear a currency warning at the next sync. Keep warning codes across pulls (CF-09).
+      - **(c) Wording.** The new Integration strings say "the till" to keep the vendor-word wall. Move them under `connectors.barsy.*` if Martin wants "barsy" on that screen.
+      - **(d) Item counts.** The cached category tree drops `child_articles_cnt`, so the picker shows no counts.
+  - **Running:** CF-03 neutral till role (Opus).
     - **Setback, 10-11:** while the lead planned T74 in plan mode, both agents were put into plan mode too. They stopped editing, and CF-03 was left with two uncommitted files.
     - CF-03 was resumed with its context and runs again. Lesson saved: no plan mode while agents run.
   - **Queued:**

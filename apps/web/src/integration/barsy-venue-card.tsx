@@ -3,7 +3,9 @@
 // The barsy venue picker: the venues of the installation (cached by the connection check), by
 // name. Choosing one maps it to THIS venue; one barsy venue serves one venue and the other way
 // round, so a barsy venue that belongs to another venue is shown but cannot be chosen. A barsy
-// venue's own id is only handed back to the server action; it is never drawn.
+// venue's own id is only handed back to the server action; it is never drawn. Each venue shows what
+// its stored record says (its public address, and whether a public menu is set up) as a hint; the
+// choice is always the manager's.
 import { StoreIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useId, useOptimistic, useState, useTransition } from 'react'
@@ -67,6 +69,16 @@ export function BarsyVenueCard({ venueId, view }: { venueId: string; view: Integ
                 />
                 <span className="grid gap-0.5">
                   <span className="font-medium">{option.name}</span>
+                  {option.address ? (
+                    <span className="text-xs text-muted-foreground" data-testid="venue-address">
+                      {option.address}
+                    </span>
+                  ) : null}
+                  {option.publicMenuSetUp ? (
+                    <span className="text-xs text-muted-foreground" data-testid="venue-public-menu">
+                      {t('publicMenu')}
+                    </span>
+                  ) : null}
                   {taken ? (
                     <span className="text-xs text-muted-foreground">
                       {t('usedBy', { venue: option.usedBy ?? '' })}
