@@ -3,7 +3,7 @@
 // context (venue, editions, languages, time) to the resolved menu. No I/O, no clock, no
 // randomness; the order of the input arrays never changes the output.
 
-import { isScope, type Layer } from '../change-set'
+import { isScope, isTillSource, type Layer } from '../change-set'
 import type { MenuDocument } from '../document/types'
 import type { FieldDefinition } from '../field-definition'
 import { canonicalJson } from '../hash'
@@ -52,9 +52,6 @@ const V3_FIELD: Partial<Record<NodeType, string>> = { item: KEYS.name, section: 
 
 /** The `new` badge lasts this long after an item is first published. */
 const NEW_BADGE_MS = 14 * 24 * 60 * 60 * 1000
-
-/** Source links to this barsy external type make an item orderable (doc: "source link (article)"). */
-const BARSY_ARTICLE = 'article'
 
 function compareText(a: string, b: string): number {
   if (a < b) return -1
@@ -119,23 +116,24 @@ class IssueBook {
 
 /** What a node's source links say about it. */
 interface LinkFacts {
-  /** It has a barsy link, whatever its state: `locked` fields read barsy alone. */
-  readonly linkedToBarsy: boolean
-  /** It has an active barsy link to an article: the first condition of `orderable`. */
-  readonly barsyArticle: boolean
+  /** It has a till link (source `till:…`), whatever its state: `locked` fields read the till alone. */
+  readonly linkedToTill: boolean
+  /**
+   * It is an item with an active till link: the first condition of `orderable`. The link's
+   * external type is the connector's business, checked when the link is made (`apply()`).
+   */
+  readonly tillItem: boolean
   /** A link is deleted or missing: the node is hidden whatever its status (rule 6). */
   readonly broken: 'link_deleted' | 'link_missing' | null
 }
 
-function linkFacts(links: readonly DocLink[]): LinkFacts {
-  const barsy = links.filter((link) => link.source.startsWith('barsy:'))
+function linkFacts(node: DocNode, links: readonly DocLink[]): LinkFacts {
+  const till = links.filter((link) => isTillSource(link.source))
   const deleted = links.some((link) => link.state === 'deleted')
   const missing = links.some((link) => link.state === 'missing')
   return {
-    linkedToBarsy: barsy.length > 0,
-    barsyArticle: barsy.some(
-      (link) => link.state === 'active' && link.externalType === BARSY_ARTICLE,
-    ),
+    linkedToTill: till.length > 0,
+    tillItem: node.type === 'item' && till.some((link) => link.state === 'active'),
     broken: deleted ? 'link_deleted' : missing ? 'link_missing' : null,
   }
 }
@@ -269,7 +267,12 @@ export function resolve(
   const linksOf = new Map<NodeId, DocLink[]>()
   for (const link of doc.links)
     linksOf.set(link.nodeId, [...(linksOf.get(link.nodeId) ?? []), link])
-  const factsOf = (id: NodeId) => linkFacts(linksOf.get(id) ?? [])
+  const factsOf = (id: NodeId): LinkFacts => {
+    const node = nodes.get(id)
+    return node === undefined
+      ? { linkedToTill: false, tillItem: false, broken: null }
+      : linkFacts(node, linksOf.get(id) ?? [])
+  }
 
   const root = nodes.get(doc.menu.rootNodeId)
   if (root === undefined || root.type !== 'menu' || root.status === 'archived') {
@@ -520,7 +523,7 @@ function resolveFields(
     const picked = pickLayers(
       definition,
       stored?.get(fieldKey),
-      (layer) => readsLayer(definition, facts.linkedToBarsy, layer),
+      (layer) => readsLayer(definition, facts.linkedToTill, layer),
       definition.combinator === 'all_true',
     )
     const note = (code: IssueCode, severity: IssueSeverity) =>
@@ -530,7 +533,7 @@ function resolveFields(
     const outcome = combineField({
       definition,
       layers: picked.values,
-      linkedToBarsy: facts.linkedToBarsy,
+      linkedToTill: facts.linkedToTill,
       locales,
     })
     fields[fieldKey] = outcome.field
@@ -544,7 +547,7 @@ function resolveFields(
 
 /**
  * Node checks: broken links (rule 6), V3 (name in the default language), required fields (V4 for
- * allergens), V6 (price), V7 (every enabled language), the barsy price's scope, and a modifier
+ * allergens), V6 (price), V7 (every enabled language), the till price's scope, and a modifier
  * group's `min ≤ max`.
  */
 function checkNode(
@@ -583,12 +586,12 @@ function checkNode(
   if (node.type === 'item') {
     const orderMode = fields[KEYS.orderMode]?.value
     const price = fields[KEYS.price]
-    const shownWithPrice = facts.linkedToBarsy || orderMode === 'ask_waiter'
+    const shownWithPrice = facts.linkedToTill || orderMode === 'ask_waiter'
     if (orderMode !== 'hidden' && shownWithPrice && (price === undefined || price.value === null)) {
       book.add({ code: 'V6', severity: 'block_node', nodeId, fieldKey: KEYS.price })
     }
-    const barsyPrice = layers.get(KEYS.price)?.get('barsy')
-    if (facts.linkedToBarsy && barsyPrice !== undefined && barsyPrice.scope === 'master') {
+    const tillPrice = layers.get(KEYS.price)?.get('till')
+    if (facts.linkedToTill && tillPrice !== undefined && tillPrice.scope === 'master') {
       book.add({
         code: 'price_not_venue_scoped',
         severity: 'warning',
@@ -693,20 +696,20 @@ function computeItem(item: DocNode, inputs: ItemInputs): ResolvedItem['computed'
       ? null
       : { amount_minor: total, currency: price.currency }
 
-  const barsyPrice = layers.get(KEYS.price)?.get('barsy')
-  const pricedByBarsyHere =
+  const tillPrice = layers.get(KEYS.price)?.get('till')
+  const pricedByTillHere =
     price !== null &&
     priceField?.provenance === 'locked' &&
-    priceField.layer === 'barsy' &&
-    barsyPrice?.scope === inputs.venueScope
+    priceField.layer === 'till' &&
+    tillPrice?.scope === inputs.venueScope
   const forSale = fields[KEYS.forSale]
-  const forSaleByBarsy =
-    forSale?.value === true && layers.get(KEYS.forSale)?.get('barsy')?.value === true
+  const forSaleByTill =
+    forSale?.value === true && layers.get(KEYS.forSale)?.get('till')?.value === true
   const orderable =
     inputs.visible &&
-    inputs.facts.barsyArticle &&
-    pricedByBarsyHere &&
-    forSaleByBarsy &&
+    inputs.facts.tillItem &&
+    pricedByTillHere &&
+    forSaleByTill &&
     fields[KEYS.orderMode]?.value === 'orderable' &&
     groupsOk
 

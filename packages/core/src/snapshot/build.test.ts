@@ -53,13 +53,13 @@ function barMenu(): DocBuilder {
   const builder = new DocBuilder()
     .section(COCKTAILS, ROOT, 'active', 'a0')
     .section(WINES, ROOT, 'active', 'a1')
-    .barsyItem(NEGRONI, 1250)
-    .barsyItem(SPRITZ, 900)
+    .tillItem(NEGRONI, 1250)
+    .tillItem(SPRITZ, 900)
     .item(MERLOT)
     .place(SPRITZ, COCKTAILS, 'a1')
     .place(NEGRONI, COCKTAILS, 'a0')
     .place(MERLOT, WINES, 'a0')
-  builder.set(SPRITZ, 'name', 'barsy', { bg_BG: 'Шприц', en_US: 'Spritz' })
+  builder.set(SPRITZ, 'name', 'till', { bg_BG: 'Шприц', en_US: 'Spritz' })
   builder.set(MERLOT, 'name', 'manual', { bg_BG: 'Мерло' })
   builder.set(MERLOT, 'price', 'manual', eur(3200))
   builder.set(MERLOT, 'allergens', 'manual', ['sulphites'])
@@ -92,7 +92,7 @@ describe('buildSnapshot', () => {
     expect(snapshot.theme).toEqual(DEFAULT_THEME)
   })
 
-  it('carries orderable and order mode: a barsy item is orderable, a hand-made one is not', () => {
+  it('carries orderable and order mode: a till item is orderable, a hand-made one is not', () => {
     const snapshot = snapshotOf(barMenu())
     expect(snapshot.items[NEGRONI]).toMatchObject({ orderable: true, order_mode: 'orderable' })
     expect(snapshot.items[MERLOT]).toMatchObject({ orderable: false, order_mode: 'orderable' })
@@ -112,14 +112,14 @@ describe('buildSnapshot', () => {
     const shown = nd('premium')
     const hidden = nd('house')
     builder.node(group, 'modifier_group', NEGRONI)
-    builder.set(group, 'name', 'barsy', { en_US: 'Gin' })
-    builder.set(group, 'min', 'barsy', 0)
-    builder.set(group, 'max', 'barsy', 1)
+    builder.set(group, 'name', 'till', { en_US: 'Gin' })
+    builder.set(group, 'min', 'till', 0)
+    builder.set(group, 'max', 'till', 1)
     builder.node(shown, 'option', group, 'active', 'a0')
-    builder.set(shown, 'name', 'barsy', { en_US: 'Premium gin' })
-    builder.set(shown, 'price_delta', 'barsy', eur(300))
+    builder.set(shown, 'name', 'till', { en_US: 'Premium gin' })
+    builder.set(shown, 'price_delta', 'till', eur(300))
     builder.node(hidden, 'option', group, 'hidden', 'a1')
-    builder.set(hidden, 'name', 'barsy', { en_US: 'House gin' })
+    builder.set(hidden, 'name', 'till', { en_US: 'House gin' })
     const snapshot = snapshotOf(builder)
     expect(Object.keys(snapshot.items)).toEqual([NEGRONI])
     expect(snapshot.menu.sections).toEqual([COCKTAILS])
@@ -149,12 +149,12 @@ describe('buildSnapshot', () => {
     })
   })
 
-  it('marks an item that barsy has off sale as sold out and never orderable', () => {
-    // Barsy's own flag. A service-edition mark does not belong here any more (S3-08): the
+  it('marks an item that the till has off sale as sold out and never orderable', () => {
+    // The till's own flag. A service-edition mark does not belong here any more (S3-08): the
     // publisher resolves a snapshot without the service edition, so tonight's marks reach guests
     // only through the live overlay (see "buildLiveOverlay" below and the publisher's tests).
     const builder = barMenu()
-    builder.set(NEGRONI, 'for_sale', 'barsy', false, { scope: VENUE })
+    builder.set(NEGRONI, 'for_sale', 'till', false, { scope: VENUE })
     const snapshot = snapshotOf(builder)
     expect(snapshot.items[NEGRONI]).toMatchObject({
       orderable: false,
@@ -246,7 +246,7 @@ describe('buildSnapshot', () => {
     expect(one.snapshot.hash).toMatch(/^[0-9a-f]{64}$/)
 
     const changed = barMenu()
-    changed.set(NEGRONI, 'price', 'barsy', eur(1300), { scope: VENUE })
+    changed.set(NEGRONI, 'price', 'till', eur(1300), { scope: VENUE })
     expect(snapshotOf(changed).snapshot.hash).not.toBe(one.snapshot.hash)
   })
 
@@ -338,7 +338,7 @@ describe('collectForbiddenValues', () => {
   it('refuses external ids, internal values and private override bases, not public text', () => {
     const builder = barMenu()
     builder.set(NEGRONI, 'internal_note', 'manual', 'cost 2.10 per glass')
-    // An override of a name: barsy's earlier BG name is private, its EN name is still public.
+    // An override of a name: the till's earlier BG name is private, its EN name is still public.
     builder.set(
       SPRITZ,
       'name',
@@ -348,7 +348,7 @@ describe('collectForbiddenValues', () => {
         basis: { bg_BG: 'Шприц старо', en_US: 'Spritz' },
       },
     )
-    // An override of allergens whose basis is barsy's (public) codes.
+    // An override of allergens whose basis is the till's (public) codes.
     builder.set(NEGRONI, 'allergens', 'override', ['sulphites', 'milk'], { basis: ['sulphites'] })
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
@@ -376,7 +376,7 @@ describe('buildLiveOverlay', () => {
     tonight.set(NEGRONI, 'for_sale', 'edition:service:2026-10-09', false)
     tonight.set(MERLOT, 'for_sale', 'edition:service:2026-10-09', false)
     const added = nd('added')
-    tonight.barsyItem(added).place(added, COCKTAILS, 'a2')
+    tonight.tillItem(added).place(added, COCKTAILS, 'a2')
     tonight.set(added, 'for_sale', 'edition:service:2026-10-09', false)
     tonight.set(SPRITZ, 'visible', 'manual', false)
     const overlay = buildLiveOverlay(

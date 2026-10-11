@@ -3,7 +3,7 @@
 // (an unknown key fails), every id is a prefixed id of the right kind, every record key has a
 // pattern, and a final check ties the references together (no dangling id, no unreferenced
 // node, no hidden node smuggled in beside the tree). Rule 3: nothing in this shape can hold a
-// barsy id, an internal field or provenance — there is simply no place for one.
+// till's id, an internal field or provenance — there is simply no place for one.
 //
 // The ids here are plain regex strings, not `idSchema` (a `z.custom`), so the whole schema can
 // be exported as JSON Schema for faces.

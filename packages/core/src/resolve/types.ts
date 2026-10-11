@@ -30,12 +30,12 @@ export interface ResolveContext {
 }
 
 /**
- * Who controls a resolved value, as the composer shows it: `barsy` (from barsy, read-only),
- * `owned` (set here, in the manual or import layer), `overridden` (our override of a barsy
- * value), `stale` (an override whose basis no longer matches barsy), `locked` (barsy-owned and
- * not changeable here: "Change this in barsy"), `none` (no layer holds a value).
+ * Who controls a resolved value, as the composer shows it: `till` (from the till, read-only),
+ * `owned` (set here, in the manual layer), `overridden` (our override of a till value), `stale`
+ * (an override whose basis no longer matches the till), `locked` (till-owned and not changeable
+ * here: "Change this in the till"), `none` (no layer holds a value).
  */
-export type Provenance = 'barsy' | 'owned' | 'overridden' | 'stale' | 'locked' | 'none'
+export type Provenance = 'till' | 'owned' | 'overridden' | 'stale' | 'locked' | 'none'
 
 /** The layer a value came from, `default` for the field definition's default, or none. */
 export type ResolvedLayer = Layer | 'default' | null
@@ -69,7 +69,7 @@ export type IssueSeverity = 'block_node' | 'warning' | 'block_menu'
 /**
  * Issue codes: the doc's node and menu checks V3–V12 (V8 needs asset sizes and V11 the previous
  * resolution, so the resolver never emits them; see `compareVisibility`), plus:
- * - `stale_override`: an override's basis differs from barsy's current value (policy `review`);
+ * - `stale_override`: an override's basis differs from the till's current value (policy `review`);
  * - `link_missing` / `link_deleted`: the node's source link is missing or deleted (rule 6);
  * - `invalid_value`: a stored row is rejected or no longer valid for its definition; ignored;
  * - `ignored_value`: a row sits in a layer this field never reads (a manual price on a linked
@@ -77,8 +77,8 @@ export type IssueSeverity = 'block_node' | 'warning' | 'block_menu'
  * - `required_missing`: a required field has no value (V3, V4 and V6 have their own codes);
  * - `group_min_max`: a modifier group's minimum is above its maximum;
  * - `required_group_unsatisfiable`: a required modifier group has too few available options;
- * - `translation_review`: barsy's text changed after our translation of it (D24);
- * - `price_not_venue_scoped`: barsy's price for a linked item is not stored for this venue;
+ * - `translation_review`: the till's text changed after our translation of it (D24);
+ * - `price_not_venue_scoped`: the till's price for a linked item is not stored for this venue;
  * - `unplaced_item`: an otherwise visible item is in no section;
  * - `orphan_node`: a node whose parent is missing or cannot hold it;
  * - `missing_root`, `template_mismatch`, `venue_mismatch`, `invalid_context`, `no_locales`:
@@ -125,8 +125,8 @@ export interface Issue {
 /** Fields the resolver computes and never stores (doc "Computed fields"). */
 export interface ComputedItemFields {
   /**
-   * Visible, linked to an active barsy article, priced by barsy for this venue, for sale per
-   * barsy and every other layer, `order_mode` = `orderable`, and every required modifier group
+   * Visible, an item with an active till link, priced by the till for this venue, for sale per
+   * the till and every other layer, `order_mode` = `orderable`, and every required modifier group
    * satisfiable. The shell adds runtime context (ordering switched on, a table token).
    */
   readonly orderable: boolean

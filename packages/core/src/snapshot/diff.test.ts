@@ -31,18 +31,18 @@ function context(overrides: Partial<SnapshotContext> = {}): SnapshotContext {
   }
 }
 
-/** Two sections, three items: Negroni and Spritz (barsy, priced), Merlot (by hand). */
+/** Two sections, three items: Negroni and Spritz (from the till, priced), Merlot (by hand). */
 function bar(change: (builder: DocBuilder) => void = () => {}): DocBuilder {
   const builder = new DocBuilder()
     .section(COCKTAILS, ROOT, 'active', 'a0')
     .section(WINES, ROOT, 'active', 'a1')
-    .barsyItem(NEGRONI, 1250)
-    .barsyItem(SPRITZ, 900)
+    .tillItem(NEGRONI, 1250)
+    .tillItem(SPRITZ, 900)
     .item(MERLOT)
     .place(NEGRONI, COCKTAILS, 'a0')
     .place(SPRITZ, COCKTAILS, 'a1')
     .place(MERLOT, WINES, 'a0')
-  builder.set(SPRITZ, 'name', 'barsy', { bg_BG: 'Шприц', en_US: 'Spritz' })
+  builder.set(SPRITZ, 'name', 'till', { bg_BG: 'Шприц', en_US: 'Spritz' })
   builder.set(MERLOT, 'name', 'manual', { bg_BG: 'Мерло', en_US: 'Merlot' })
   builder.set(MERLOT, 'price', 'manual', eur(3200))
   builder.set(MERLOT, 'allergens', 'manual', ['sulphites'])
@@ -136,8 +136,8 @@ describe('diffSnapshots', () => {
     const coffee = nd('coffee')
     const next = snapshotOf(
       bar((b) => {
-        b.barsyItem(coffee, 300).place(coffee, COCKTAILS, 'a2')
-        b.set(coffee, 'name', 'barsy', { bg_BG: 'Кафе', en_US: 'Coffee' })
+        b.tillItem(coffee, 300).place(coffee, COCKTAILS, 'a2')
+        b.set(coffee, 'name', 'till', { bg_BG: 'Кафе', en_US: 'Coffee' })
       }),
     )
     const diff = diffSnapshots(live(), next)
@@ -205,8 +205,8 @@ describe('diffSnapshots', () => {
   it('sorts the lists by name in the menu default language', () => {
     const next = snapshotOf(
       bar((b) => {
-        b.set(NEGRONI, 'price', 'barsy', eur(1300), { scope: `venue:${VENUE_ID}` })
-        b.set(SPRITZ, 'price', 'barsy', eur(950), { scope: `venue:${VENUE_ID}` })
+        b.set(NEGRONI, 'price', 'till', eur(1300), { scope: `venue:${VENUE_ID}` })
+        b.set(SPRITZ, 'price', 'till', eur(950), { scope: `venue:${VENUE_ID}` })
       }),
     )
     const diff = diffSnapshots(live(), next)

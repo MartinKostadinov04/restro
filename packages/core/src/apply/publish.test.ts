@@ -107,7 +107,7 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     op: 'setField',
     node: { link: { integration, externalType: 'article', externalId: EXTERNAL_ID } },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value,
     sourceRecordId: record,
@@ -200,7 +200,7 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
         barsy('visible', true),
         barsy('allergens', []),
       ],
-      `barsy:${integration}`,
+      `till:${integration}`,
     )
     await run([
       { op: 'setPlacement', item: { id: barsyItem }, section: { id: section }, sortKey: 'end' },
@@ -533,12 +533,12 @@ describe.skipIf(!hasDatabase)('publishing against Postgres (as the restro_app ro
     expect(before?.snapshotId).toBe(published?.id)
     expect(before?.overlay).toEqual({ version: published?.version, items: {} })
 
-    await run([barsy('for_sale', false, `venue:${venueId}`)], `barsy:${integration}`)
+    await run([barsy('for_sale', false, `venue:${venueId}`)], `till:${integration}`)
     const soldOut = await loadLiveOverlay(app, tenant, scope(), { now: at(71) })
     expect(soldOut?.overlay.items).toEqual({ [barsyItem]: { sold_out: true } })
     // Nothing was published: the snapshot is the same, and the overlay is only a file to write.
     expect((await loadCurrentSnapshot(app, tenant, scope()))?.id).toBe(published?.id)
-    await run([barsy('for_sale', true, `venue:${venueId}`)], `barsy:${integration}`)
+    await run([barsy('for_sale', true, `venue:${venueId}`)], `till:${integration}`)
     expect((await loadLiveOverlay(app, tenant, scope(), { now: at(72) }))?.overlay.items).toEqual(
       {},
     )

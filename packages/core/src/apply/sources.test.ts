@@ -283,7 +283,7 @@ describe.skipIf(!hasDatabase)('integrations and source records (as the restro_ap
     const link = { integration: integration.id, externalType: 'category', externalId: '12' }
     const changeSet: ChangeSet = {
       id: newId('cs'),
-      source: `barsy:${integration.id}`,
+      source: `till:${integration.id}`,
       jobId: newId('jb'),
       actor: `integration:${integration.id}`,
       observedAt: new Date().toISOString(),
@@ -301,7 +301,7 @@ describe.skipIf(!hasDatabase)('integrations and source records (as the restro_ap
           op: 'setField',
           node: { link },
           fieldKey: 'title',
-          layer: 'barsy',
+          layer: 'till',
           scope: 'master',
           value: { bg_BG: 'Коктейли' },
           sourceRecordId: record?.id as string,
