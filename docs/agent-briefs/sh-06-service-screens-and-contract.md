@@ -164,7 +164,11 @@ The contract must stay green on every fixture:
 
 ### 5. Testing stub (`packages/shell/testing/services.ts`)
 
-`stubServices(): ServiceBinding`: an empty state, and `dispatch` answers `pending`. Use it in both the face's contract render and SH-04's registry test, and update that test.
+`stubServices(): ServiceBinding`: an empty state, and `dispatch` answers `pending`. Use it in the face's contract render (`faceContractSuite`).
+
+SH-04 (the registry) runs in parallel with you. If its registry test (`apps/web/src/faces/registry.test.ts`) is not in your base, do not create it: the lead binds the stub there when merging.
+
+**Two files you share with SH-04:** both add a rule to `.dependency-cruiser.cjs` and `scripts/depcruise-rules.test.ts`. Add yours as a separate, clearly commented block, so the merge stays simple.
 
 ### 6. Demo adapter (`packages/faces/editorial-market/src/preview/demo-services.ts`)
 

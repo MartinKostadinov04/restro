@@ -1,5 +1,5 @@
 // The small pure helpers of the Editorial Market face: language tags, asset addresses, image
-// attributes, the guest's filters, the face's presentation options and the theme as CSS
+// attributes, the guest's filters, the face's typed presentation options and the theme as CSS
 // variables. No React and nothing from outside @restro/shell.
 
 import type {
@@ -106,7 +106,7 @@ export function isLayout(value: unknown): value is Layout {
  * Options
  * ------------------------------------------------------------------------------------------- */
 
-/** The face's own presentation options, as the venue published them. */
+/** The face's own presentation options, as typed values. */
 export interface FaceOptions {
   /** The layout the menu starts in. */
   readonly layout: Layout
@@ -116,27 +116,19 @@ export interface FaceOptions {
   readonly featureFirstSection: boolean
 }
 
-/** What the face does when an option is missing, unknown or of the wrong type. */
-export const DEFAULT_OPTIONS: FaceOptions = {
-  layout: 'two',
-  layoutSwitch: true,
-  featureFirstSection: true,
-}
-
-/** The options from the host's (unvalidated) record; anything that is not right falls back to the default. */
-export function readOptions(
-  raw: Readonly<Record<string, string | boolean>> | undefined,
-): FaceOptions {
-  const layout = raw?.layout
-  const layoutSwitch = raw?.layoutSwitch
-  const featureFirstSection = raw?.featureFirstSection
+/**
+ * The options as typed values, from what the shell's `resolveOptions` returned for this face's
+ * manifest. The manifest is the one place that declares the options and their defaults:
+ * `resolveOptions` has already dropped unknown keys and replaced anything missing, of the wrong
+ * type or not in the enum with the default, so the checks below always hold. They are there for
+ * the types, and the values they fall back to are the manifest's own defaults (a test pins both).
+ */
+export function faceOptions(resolved: Readonly<Record<string, string | boolean>>): FaceOptions {
+  const { layout, layoutSwitch, featureFirstSection } = resolved
   return {
-    layout: isLayout(layout) ? layout : DEFAULT_OPTIONS.layout,
-    layoutSwitch: typeof layoutSwitch === 'boolean' ? layoutSwitch : DEFAULT_OPTIONS.layoutSwitch,
-    featureFirstSection:
-      typeof featureFirstSection === 'boolean'
-        ? featureFirstSection
-        : DEFAULT_OPTIONS.featureFirstSection,
+    layout: isLayout(layout) ? layout : 'two',
+    layoutSwitch: typeof layoutSwitch === 'boolean' ? layoutSwitch : true,
+    featureFirstSection: typeof featureFirstSection === 'boolean' ? featureFirstSection : true,
   }
 }
 
