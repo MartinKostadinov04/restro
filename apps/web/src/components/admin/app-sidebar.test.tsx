@@ -2,12 +2,13 @@
 // The admin sidebar (D74): the organisation's venues as items of their own (no list of a venue's
 // sections), "All venues", "New venue" for owners and admins only, the organisation's Settings, and
 // in the footer the organisation (a switcher only for a person who belongs to several).
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { switchOrganization } from '@/server/actions'
+import { createVenueAction } from '@/server/venues-actions'
 import { renderWithIntl } from '@/test-utils'
 
 import { AppSidebar } from './app-sidebar'
@@ -18,11 +19,10 @@ const navigation = vi.hoisted(() => ({
   pathname: '/venues',
   search: '',
   push: vi.fn(),
-  refresh: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: navigation.push, refresh: navigation.refresh }),
+  useRouter: () => ({ push: navigation.push }),
   usePathname: () => navigation.pathname,
   useSearchParams: () => new URLSearchParams(navigation.search),
 }))
@@ -82,7 +82,6 @@ const venueNamed = (name: string) => {
 
 beforeEach(() => {
   navigation.push.mockReset()
-  navigation.refresh.mockReset()
   vi.mocked(switchOrganization).mockReset()
 })
 
@@ -163,6 +162,15 @@ describe('the Venues group', () => {
     renderSidebar({ canCreateVenue: true })
     await userEvent.click(screen.getByRole('button', { name: 'New venue' }))
     expect(await screen.findByTestId('new-venue-dialog')).toBeTruthy()
+  })
+
+  it('opens the new venue once the dialog has made it', async () => {
+    vi.mocked(createVenueAction).mockResolvedValue({ ok: true, venueId: 'vn_new' })
+    renderSidebar({ canCreateVenue: true })
+    await userEvent.click(screen.getByRole('button', { name: 'New venue' }))
+    await userEvent.type(await screen.findByTestId('new-venue-name'), 'Sea Bar')
+    await userEvent.click(screen.getByTestId('new-venue-submit'))
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith('/venues/vn_new'))
   })
 
   it('does not show "New venue" to members', () => {

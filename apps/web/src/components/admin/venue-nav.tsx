@@ -76,7 +76,9 @@ function VenueItems({ venues, openId, tab }: VenueItemsProps) {
           >
             <span
               aria-hidden
-              className="flex size-4 shrink-0 items-center justify-center rounded-sm border text-[10px] leading-none font-semibold"
+              // Collapsed to icons the mark is all there is of the venue: make it larger, in the
+              // space the button's padding leaves around the icon.
+              className="flex size-4 shrink-0 items-center justify-center rounded-sm border text-[10px] leading-none font-semibold group-data-[collapsible=icon]:-m-1 group-data-[collapsible=icon]:size-6 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:text-xs"
             >
               {initialOf(venue.name)}
             </span>
@@ -96,7 +98,10 @@ function VenueItemsWithTab({ venues, openId }: Omit<VenueItemsProps, 'tab'>) {
   return <VenueItems venues={venues} openId={openId} tab={tab} />
 }
 
-/** "New venue": opens the dialog of CF-01, then the new venue, and refreshes this list. */
+/**
+ * "New venue": opens the dialog of CF-01, then the new venue. The list is up to date by then,
+ * because the server action revalidates the admin pages (the e2e test checks it).
+ */
 function NewVenueItem() {
   const t = useTranslations('nav')
   const router = useRouter()
@@ -118,9 +123,6 @@ function NewVenueItem() {
         onOpenChange={setOpen}
         onCreated={(venueId) => {
           router.push(`${VENUES_PATH}/${venueId}`)
-          // The sidebar belongs to the layout, which a move between pages does not re-render:
-          // ask for it again so the new venue is in the list.
-          router.refresh()
         }}
       />
     </SidebarMenuItem>
