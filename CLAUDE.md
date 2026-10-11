@@ -29,6 +29,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 | `pnpm typecheck` | `tsc --noEmit` in every package |
 | `pnpm test` | Vitest (unit, property, integration, contract) |
 | `pnpm test:e2e` | Playwright |
+| `FACES_VISUAL=1 pnpm test:e2e` | Playwright plus the templates' screenshot matrix (`apps/web/e2e/faces-visual.spec.ts`, skipped without the variable): it saves pictures to `apps/web/test-results/faces-visual/` for people to review, and compares nothing. PowerShell: `$env:FACES_VISUAL='1'` first. Run it when a template's look changes; CI does not set the variable |
 | `pnpm deps:check` | dependency-cruiser import rules |
 | `pnpm build` | Build all |
 | `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:roles` | Drizzle migrations and the `restro_app` role (owner URL; local / CI only — remote needs `RESTRO_DB_ALLOW_REMOTE=1` and Martin's OK) |
@@ -61,13 +62,16 @@ The full Playwright suite runs in CI, when the lead pushes the merged branch. Ne
 
 ## Repository layout
 ```
-apps/web            Next.js 16.4: venue admin, guest phone shell, small API (/t/[token], /api/events, /api/health)
+apps/web            Next.js 16.4: venue admin (composer, Design tab, Publishing), guest phone shell with the template
+                    registry (src/faces), small API (/t/[token], /api/events, /api/health)
 apps/worker         Node 24 + pg-boss 12: barsy read sync, resolve, publish, assets, backups, health
 packages/core       field types + canonical shapes (Zod), field-type registry contract, template-as-data,
-                    change sets, apply(), resolver + combinators, validators V1–V12, snapshot builder, money
-packages/shell      population rules R1–R14 → view model (pure), face manifest schema, contract-test harness
-packages/faces/*    phone faces ("templates", D69); each = manifest + React components; default: editorial-market,
-                    qr-phone = hidden test reference
+                    change sets, apply(), resolver + combinators, validators V1–V12, snapshot builder, money,
+                    theme (colour roles, presets, fonts, the venue's presentation and guest features)
+packages/shell      population rules R1–R15 → view model (pure), face manifest schema (slots, features, options),
+                    services contract (D72), contract-test harness (`@restro/shell/testing`)
+packages/faces/*    phone faces ("templates", D69); each = manifest + React components; default: editorial-market
+                    (with a `./preview` demo host for the admin), qr-phone = hidden test reference
 packages/db         Drizzle schema, migrations, roles, RLS, tenant-scoped client (read / write split)
 packages/barsy      typed read client, mapping (versioned config), fixture recorder, MSW handlers; write/ is empty
 docs/               tracker, architecture mirrors, platform reference, agent briefs, runbooks, research
@@ -86,6 +90,7 @@ docs/               tracker, architecture mirrors, platform reference, agent bri
 
 ## Import boundaries (dependency-cruiser enforces them in CI)
 - `packages/shell` and `packages/faces/*` never import `db`, `barsy`, `apps/*`, or anything with I/O.
+- A face imports only its own package, `react`, `react-dom` and `@restro/shell` (not `@restro/core`, not `@restro/shell/testing` outside tests); guest pages never import a face's `/preview`, and only a face's `preview/` folder may use `@restro/shell/money`.
 - Only `core/apply` imports the write side of `db`.
 - Only `apps/worker` imports `barsy`.
 - `apps/web` never calls barsy.
@@ -96,6 +101,7 @@ docs/               tracker, architecture mirrors, platform reference, agent bri
 - **Workspace packages export TypeScript source** (no package build step); conventions in `README.md` → "Scaffold conventions". Biome style: 2 spaces, single quotes, semicolons only where needed.
 - **TypeScript strict** everywhere (TypeScript 6.0.3; 7.x is not yet supported by Next.js and dependency-cruiser). Zod at every boundary (barsy responses, change sets, snapshots, server-action inputs).
 - **Data fetching (U4):** admin = server components for reads, server actions that call `apply()` for writes. Guest = static shell that reads snapshots from the CDN. TanStack Query only for ordering later.
+- **Templates (D69):** a face is added to `MANIFESTS` in `apps/web/src/faces/manifests.ts` and gets a loader in `apps/web/src/faces/registry.ts`. Server code reads `manifests.ts` and never imports `registry.ts` (a server module that imports the registry makes the build follow `load()` into the faces' client components and fail); only client code imports the registry. The designer guide's "A new template" has the full checklist.
 - **One field-type registry.** Each field type registers `{ schema, Display, Editor, DefinitionEditor }` once. Never write a `switch (type)` over field types in a component (the Platform's main flaw).
 - **Layout is separate from schema.** Section membership and order are `placements` with fractional `sort_key`s, not part of the template.
 - **i18n:** every interface string goes through next-intl (BG + EN). Menu text comes from the document's `localized_text`, never from interface strings.
