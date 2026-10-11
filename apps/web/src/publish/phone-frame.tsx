@@ -8,10 +8,17 @@
 //     face's `position: fixed` sheet, so the sheet covers the phone screen and nothing else;
 //   - the inner box scrolls, so `position: sticky; top: 0` sticks to the top of the screen;
 //   - the face's `min-height: 100dvh` (the browser window) becomes the screen's height.
+//
+// The rules below name the roots of the two faces the app has (`.rq-root`, `.rm`) and the Editorial
+// Market's full-height dish page, whose height is the browser window's in the face's own style.
 import type { ReactNode } from 'react'
 
 const FRAME_CSS = `
-.restro-phone .rq-root { min-height: 100%; }
+.restro-phone .rq-root,
+.restro-phone .rm { min-height: 100%; }
+.restro-phone .rm-overlay-panel,
+.restro-phone .rm-overlay-panel.is-detail { max-height: 100%; }
+.restro-phone .rm-overlay-panel.is-detail { height: 100%; }
 `
 
 export function PhoneFrame({ label, children }: { label: string; children: ReactNode }) {

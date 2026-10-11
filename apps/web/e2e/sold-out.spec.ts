@@ -209,6 +209,26 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
   expect(await guestState(browser, 'Негрони')).toEqual({ state: 'available', soldOutWord: false })
   await expect(page.getByTestId('sold-out-chip')).toHaveCount(0)
 
+  // A guest who already has the menu open (the Editorial Market, the registry's default, SH-04):
+  // the page asks for the overlay itself every 15 seconds, so the mark must reach it without a
+  // reload. `window.openGuestPage` is the page's own marker: it is gone if the page reloads.
+  const watcherContext = await browser.newContext()
+  const watcher = await watcherContext.newPage()
+  await watcher.goto(`${guestPath}?lang=bg`)
+  await expect(watcher.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(watcher.locator('[data-face]:not([data-testid])')).toHaveAttribute(
+    'data-face',
+    'editorial-market',
+  )
+  await watcher.evaluate(() => {
+    ;(window as unknown as { openGuestPage: boolean }).openGuestPage = true
+  })
+  const watched = watcher
+    .locator('[data-item]')
+    .filter({ has: watcher.getByRole('heading', { name: 'Негрони', exact: true }) })
+    .first()
+  await expect(watched).toHaveAttribute('data-state', 'available')
+
   await markFromRowMenu(page, 'Негрони')
   await expect(rowOf(page, 'Негрони').getByTestId('sold-out-badge')).toHaveText(
     'Изчерпано тази вечер',
@@ -222,6 +242,16 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
     .toBe('sold_out')
   expect(await guestState(browser, 'Негрони')).toEqual({ state: 'sold_out', soldOutWord: true })
   expect(await guestState(browser, 'Мохито')).toEqual({ state: 'available', soldOutWord: false })
+  // The page that was already open shows it too, within its own 15-second refresh (the worker has
+  // rewritten live.json by now), and was not reloaded to do it.
+  await expect(watched).toHaveAttribute('data-state', 'sold_out', { timeout: 30_000 })
+  await expect(watched).toContainText(SOLD_OUT_WORD)
+  expect(
+    await watcher.evaluate(
+      () => (window as unknown as { openGuestPage?: boolean }).openGuestPage === true,
+    ),
+  ).toBe(true)
+  await watcherContext.close()
   // live.json lists the marked drink and the Campari (barsy has it off sale), and is for version 1.
   const live = (await cdnJson(page, liveFile())) as { version: number; items: object }
   expect(live.version).toBe(1)

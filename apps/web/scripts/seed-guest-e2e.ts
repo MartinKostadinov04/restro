@@ -6,7 +6,9 @@
 // `TAG_PUBLIC_ID` (address `/m/tag-fixture-<code>`), because tags can only be assigned in the
 // composer from S3-06 on and the tag filter needs some. The demo venue's code is random and made
 // by the database seed; the specs read it from the database (e2e/menu-path.ts), and this script
-// prints both addresses when it is done.
+// prints the addresses when it is done. A third menu (`LOOK_PUBLIC_ID`, `/m/look-fixture-<code>`) is the
+// same fixture with a venue that chose the reference template, a forced dark scheme and another font
+// (SH-04).
 //
 // The publish goes the real way: `publishMenu` (core/apply), then the worker's own
 // `writePublishFiles` (snapshot, pointer, venue index) and `runAssetVariants` (webp photo variants
@@ -50,6 +52,8 @@ import {
   GUEST_SLUG,
   GUEST_TABLE_LABEL,
   GUEST_TABLE_TOKEN,
+  LOOK_PUBLIC_ID,
+  LOOK_SLUG,
   TAG_PUBLIC_ID,
   TAG_SLUG,
 } from '../e2e/support'
@@ -237,6 +241,43 @@ async function main(): Promise<void> {
     publishPutOptions(venueIndexPath(TAG_PUBLIC_ID)),
   )
 
+  // --- a third menu: another template, a forced scheme and a font of its own (SH-04) -------------
+  // The same fixture, with ids of its own (all fixtures share theirs, and files are keyed by id).
+  // Its venue chose the reference template, forces the dark scheme and asks for Playfair Display,
+  // which is how the guest page, the template registry and the self-hosted fonts are checked on a
+  // production build without touching the demo venue's look.
+  const lookIds = {
+    snapshot: `sn_${'E2eLookSnapshot'.padEnd(22, '0')}`,
+    menu: `nd_${'E2eLookMenu'.padEnd(22, '0')}`,
+    venue: `vn_${'E2eLookVenue'.padEnd(22, '0')}`,
+  }
+  const looked = {
+    ...tagged,
+    snapshot: {
+      ...tagged.snapshot,
+      id: lookIds.snapshot,
+      menu_id: lookIds.menu,
+      venue_id: lookIds.venue,
+    },
+    menu: { ...tagged.menu, id: lookIds.menu },
+    theme: { ...tagged.theme, font: 'Playfair Display', scheme: 'dark' as const },
+    presentation: { face: 'qr-phone', options: {} },
+  }
+  const lookMenu = lookIds.menu as NodeId
+  const lookVenue = lookIds.venue as VenueId
+  await put(snapshotPath(lookIds.snapshot as SnapshotId), looked)
+  await put(currentPath(lookMenu, lookVenue), {
+    snapshot_id: lookIds.snapshot,
+    version: looked.snapshot.version,
+    hash: looked.snapshot.hash,
+  })
+  await put(livePath(lookMenu, lookVenue), { version: looked.snapshot.version, items: {} })
+  await publishStore.put(
+    venueIndexPath(LOOK_PUBLIC_ID),
+    venueIndexBytes({ venue_id: lookVenue, menu_id: lookMenu, slug: LOOK_SLUG }),
+    publishPutOptions(venueIndexPath(LOOK_PUBLIC_ID)),
+  )
+
   console.log(
     JSON.stringify({
       level: 'info',
@@ -245,6 +286,7 @@ async function main(): Promise<void> {
       venueIndex: files.status === 'checked' ? files.venueIndex : files.status,
       guestPath: menuPath({ slug: GUEST_SLUG, publicId: venue.publicId }),
       tagPath: menuPath({ slug: TAG_SLUG, publicId: TAG_PUBLIC_ID }),
+      lookPath: menuPath({ slug: LOOK_SLUG, publicId: LOOK_PUBLIC_ID }),
       publishDir: publishDir.dir,
     }),
   )

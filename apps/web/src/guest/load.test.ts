@@ -2,6 +2,7 @@ import { CurrentPointerSchema, VenueIndexSchema } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
+import { faceEntry } from '@/faces/registry'
 import { cdnBase } from './cdn'
 import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
 import {
@@ -362,7 +363,31 @@ describe('the guest context', () => {
       locale: 'bg_BG',
       now: new Date('2026-10-10T12:00:00Z'),
       tableToken: null,
+      manifest: faceEntry(null).manifest,
     })
     expect(context).toMatchObject({ channel: 'qr', orderingEnabled: false, tableToken: null })
+  })
+
+  it('asks for the photo size the chosen template’s manifest declares (R10)', () => {
+    const input = {
+      locale: 'bg_BG' as const,
+      now: new Date('2026-10-10T12:00:00Z'),
+      tableToken: null,
+    }
+    const manifest = faceEntry(null).manifest
+    expect(buildContext({ ...input, manifest }).images).toEqual({
+      item: { variant: 'card', density: 1 },
+    })
+    // A template that wants its photos at full size gets them at full size.
+    const wide = {
+      ...manifest,
+      slots: {
+        ...manifest.slots,
+        'item.image': { optional: true as const, variant: 'full' as const },
+      },
+    }
+    expect(buildContext({ ...input, manifest: wide }).images).toEqual({
+      item: { variant: 'full', density: 1 },
+    })
   })
 })
