@@ -3,6 +3,7 @@
 // CDN: the loading skeleton, the menu, the table banner from ?t=, the language from ?lang=, and the
 // friendly notices. The page may only ask for files under /cdn (rule 4). The address is
 // `/m/<slug>-<code>` (D68): only the code finds the venue, and the page corrects the slug.
+import type { MenuSnapshot } from '@restro/core'
 import * as shell from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -29,8 +30,9 @@ const SLUG = 'demo-club'
 const PARAM = `${SLUG}-${CODE}`
 const PATH = `/m/${PARAM}`
 
-function published() {
-  const { snapshot } = fixture('tags-dietary')
+/** The published files of the fixture menu; `look` changes the snapshot's look and template. */
+function published(look: Partial<MenuSnapshot> = {}) {
+  const snapshot: MenuSnapshot = { ...fixture('tags-dietary').snapshot, ...look }
   const index = {
     venue_id: snapshot.snapshot.venue_id,
     menu_id: snapshot.snapshot.menu_id,
@@ -90,6 +92,16 @@ describe('the guest menu page', () => {
     expect(document.documentElement.lang).toBe('en-US')
     expect(requested.every((url) => url.startsWith('/cdn/'))).toBe(true)
     expect(requested.some((url) => url.includes('/api/') || url.includes('/venues'))).toBe(false)
+  })
+
+  it('marks the page as the guest page while it is on screen (the page rules are ours, not the template’s)', async () => {
+    serve(published())
+    visit('', ['en-GB'])
+    const { unmount } = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Negroni')).toBeTruthy()
+    expect(document.documentElement.dataset.guestPage).toBe('')
+    unmount()
+    expect(document.documentElement.dataset.guestPage).toBeUndefined()
   })
 
   it('takes the language from ?lang= over the browser, and switching it updates the address', async () => {
@@ -368,5 +380,87 @@ describe('the guest menu page', () => {
     broken = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await waitFor(() => expect(screen.getByText('Negroni')).toBeTruthy())
+  })
+})
+
+describe('the template the venue chose (SH-04)', () => {
+  const theme = fixture('tags-dietary').snapshot.theme
+
+  /** The face on the page, once its code has loaded (the skeleton has the same `data-face` marker). */
+  const faceRoot = (face: string) =>
+    waitFor(() => {
+      const root = document.querySelector(`[data-face="${face}"]:not([data-testid])`)
+      expect(root, `${face} is on the page`).toBeTruthy()
+      return root as HTMLElement
+    })
+
+  it('draws the Editorial Market when the snapshot names no template, following the guest’s screen', async () => {
+    serve(published())
+    visit('', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    const root = await faceRoot('editorial-market')
+    expect(root.dataset.scheme).toBe('auto')
+    expect(root.dataset.layout).toBe('two')
+    expect(screen.queryByTestId('menu-skeleton')).toBeNull()
+  })
+
+  it('draws the template the snapshot names, with the options it carries', async () => {
+    serve(
+      published({
+        presentation: {
+          face: 'editorial-market',
+          options: { layout: 'list', layoutSwitch: false },
+        },
+      }),
+    )
+    visit('', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    expect((await faceRoot('editorial-market')).dataset.layout).toBe('list')
+  })
+
+  it('draws another template when the snapshot names it', async () => {
+    serve(published({ presentation: { face: 'qr-phone', options: {} } }))
+    visit('', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await faceRoot('qr-phone')
+    expect(document.querySelector('[data-face="editorial-market"]')).toBeNull()
+    expect(await screen.findByText('Negroni')).toBeTruthy()
+  })
+
+  it('draws the Editorial Market for a template it does not know, and says so once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    serve(published({ presentation: { face: 'a-template-from-the-future', options: {} } }))
+    visit('', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await faceRoot('editorial-market')
+    expect(warn.mock.calls.filter(([line]) => String(line).includes('unknown_face'))).toHaveLength(
+      1,
+    )
+  })
+
+  it('forces the scheme the snapshot carries onto the template', async () => {
+    serve(published({ theme: { ...theme, scheme: 'dark' } }))
+    visit('', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    expect((await faceRoot('editorial-market')).dataset.scheme).toBe('dark')
+  })
+
+  it('gives the template our own copy of the font the venue chose, first in its stack', async () => {
+    serve(published({ theme: { ...theme, font: 'Playfair Display' } }))
+    visit('', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    const root = await faceRoot('editorial-market')
+    expect(root.style.getPropertyValue('--rm-font')).toMatch(
+      /^var\(--font-playfair-display\), "Playfair Display", /,
+    )
+  })
+
+  it('draws the template with the confirmed table and the languages of the menu', async () => {
+    serve(published())
+    visit(`?t=${TOKEN}`, ['bg-BG'])
+    render(<GuestMenu venue={PARAM} />)
+    await faceRoot('editorial-market')
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'EN' })).toBeTruthy()
   })
 })

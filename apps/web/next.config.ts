@@ -31,6 +31,7 @@ const nextConfig: NextConfig = {
     '@restro/assets',
     '@restro/core',
     '@restro/db',
+    '@restro/editorial-market',
     '@restro/shell',
     '@restro/qr-phone',
   ],

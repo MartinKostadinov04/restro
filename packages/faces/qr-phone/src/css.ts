@@ -140,7 +140,6 @@ export const FACE_CSS = `
 .rq-button { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--rq-accent, Highlight); color: var(--rq-on-accent, HighlightText); font-weight: 600; }
 
 @media (prefers-reduced-motion: no-preference) {
-  html:has(.rq-root) { scroll-behavior: smooth; }
   .rq-sheet { animation: rq-up 0.2s ease-out; }
   .rq-backdrop { animation: rq-fade 0.2s ease-out; }
   .rq-skel { animation: rq-pulse 1.4s ease-in-out infinite; }

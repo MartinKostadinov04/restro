@@ -47,6 +47,9 @@ importers:
       '@restro/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@restro/editorial-market':
+        specifier: workspace:*
+        version: link:../../packages/faces/editorial-market
       '@restro/qr-phone':
         specifier: workspace:*
         version: link:../../packages/faces/qr-phone

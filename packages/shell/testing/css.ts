@@ -93,6 +93,35 @@ function withoutVariables(text: string): string {
   return out + text.slice(position)
 }
 
+/** A selector that reaches the page around the face: `html`, `body` or `:root` as a selector of its own. */
+const PAGE_SELECTOR = /(?:^|[\s,>+~(])(?:html|body|:root)(?![-\w])/i
+
+/**
+ * The selectors of a stylesheet that style the page around the face (`html`, `body`, `:root`), each
+ * once, in order. A face draws inside its own root element: how the page scrolls and looks is the
+ * host's (the guest page's `html[data-guest-page]` rules in apps/web), so the same face can sit on
+ * the guest page and inside the admin's preview without changing either (lead, after SH-04).
+ * At-rule preludes (`@media …`) are not selectors and are skipped; `.rm-body` is not `body`.
+ */
+export function assertFaceScopedCss(css: string): string[] {
+  const text = stripped(css)
+  const found: string[] = []
+  let start = 0
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+    if (char === '{') {
+      const prelude = text.slice(start, i).trim()
+      if (prelude !== '' && !prelude.startsWith('@') && PAGE_SELECTOR.test(prelude)) {
+        found.push(prelude)
+      }
+      start = i + 1
+    } else if (char === '}' || char === ';') {
+      start = i + 1
+    }
+  }
+  return [...new Set(found)]
+}
+
 /**
  * The colours a stylesheet chooses for itself, in the order they appear (each once). An empty
  * list means every colour comes from the theme, a system colour or a keyword.

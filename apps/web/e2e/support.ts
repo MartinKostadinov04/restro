@@ -29,3 +29,8 @@ export const GUEST_TABLE_TOKEN = 'tb_e2eGuestTable000001'
 export const GUEST_TABLE_LABEL = '12'
 export const TAG_SLUG = 'tag-fixture'
 export const TAG_PUBLIC_ID = 'tagfixture01'
+// A third published menu, for the template registry (SH-04): the tagged fixture again, but its venue
+// chose the reference template (`qr-phone`), forces the dark scheme and asks for Playfair Display.
+// Like the tagged menu it has no venue row, so its public code is a fixed one.
+export const LOOK_SLUG = 'look-fixture'
+export const LOOK_PUBLIC_ID = 'lookfixture1'

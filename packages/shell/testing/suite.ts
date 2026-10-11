@@ -7,13 +7,15 @@
 //   - the manifest passes `validateManifest` (R6, R7, R9, R11, R15);
 //   - the face passes `runFaceContract` on every fixture and every channel it declares (R1–R15,
 //     including the fail-closed feature slots), with no failure;
-//   - the stylesheet chooses no colour of its own (R13): `assertThemeOnlyCss` finds nothing.
+//   - the stylesheet chooses no colour of its own (R13): `assertThemeOnlyCss` finds nothing;
+//   - the stylesheet styles nothing outside the face's own root (no `html`, `body` or `:root`):
+//     `assertFaceScopedCss` finds nothing.
 
 import { describe, expect, it } from 'vitest'
 
 import { type FaceManifest, validateManifest } from '../src/manifest'
 import { type RenderFn, runFaceContract } from './contract'
-import { assertThemeOnlyCss } from './css'
+import { assertFaceScopedCss, assertThemeOnlyCss } from './css'
 import { fixtures } from './fixtures'
 
 /** What a face hands to the suite. */
@@ -51,6 +53,10 @@ export function faceContractSuite(name: string, options: FaceContractSuiteOption
 
     it('chooses no colour of its own: the stylesheet takes every colour from the theme (R13)', () => {
       expect(assertThemeOnlyCss(css)).toEqual([])
+    })
+
+    it('styles nothing outside its own root: no html, body or :root rules (the host owns the page)', () => {
+      expect(assertFaceScopedCss(css)).toEqual([])
     })
   })
 }

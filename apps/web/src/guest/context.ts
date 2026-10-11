@@ -5,8 +5,7 @@
 // carries a time zone. Ordering is off in Stage 3.
 
 import { type Locale, TABLE_TOKEN_PATTERN } from '@restro/core'
-import { QR_PHONE_MANIFEST } from '@restro/qr-phone'
-import { imageSlotsFor, type ShellContextInput } from '@restro/shell'
+import { type FaceManifest, imageSlotsFor, type ShellContextInput } from '@restro/shell'
 
 /** The language of the page before the menu says otherwise: the pilot venues are Bulgarian. */
 export const FALLBACK_LOCALE: Locale = 'bg_BG'
@@ -85,11 +84,15 @@ export function confirmedTable(
   return requested !== null && found !== null && found.token === requested ? found : null
 }
 
-/** The context of one view model. */
+/**
+ * The context of one view model. `manifest` is the manifest of the template that will draw it: it
+ * decides which photo sizes the shell asks for (R10).
+ */
 export function buildContext(input: {
   readonly locale: Locale
   readonly now: Date
   readonly tableToken: string | null
+  readonly manifest: FaceManifest
 }): ShellContextInput {
   return {
     locale: input.locale,
@@ -98,6 +101,6 @@ export function buildContext(input: {
     tableToken: input.tableToken,
     orderingEnabled: false,
     // One device pixel per CSS pixel: the face lets the browser choose among the photo files (srcset).
-    images: imageSlotsFor(QR_PHONE_MANIFEST, 1),
+    images: imageSlotsFor(input.manifest, 1),
   }
 }

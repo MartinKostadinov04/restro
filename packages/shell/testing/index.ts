@@ -15,7 +15,7 @@ export {
   SLOT_ATTRIBUTE,
   STATE_ATTRIBUTE,
 } from './contract'
-export { assertThemeOnlyCss, NAMED_COLOURS } from './css'
+export { assertFaceScopedCss, assertThemeOnlyCss, NAMED_COLOURS } from './css'
 export {
   CUSTOM_ROLES,
   type Fixture,

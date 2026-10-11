@@ -1,4 +1,4 @@
-import { assertThemeOnlyCss } from '@restro/shell/testing'
+import { assertFaceScopedCss, assertThemeOnlyCss } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
 import { EDITORIAL_CSS } from '../css'
@@ -108,6 +108,17 @@ describe('the stylesheet of the services (R13)', () => {
     expect(assertThemeOnlyCss(`${SERVICES_CSS}\n.x { color: #fff; background: red }`)).toEqual([
       '#fff',
       'red',
+    ])
+  })
+
+  it('styles nothing outside the face's own root: no html, body or :root rule', () => {
+    expect(assertFaceScopedCss(SERVICES_CSS)).toEqual([])
+    expect(assertFaceScopedCss(`${EDITORIAL_CSS}
+${SERVICES_CSS}`)).toEqual([])
+    // And the check would catch one.
+    expect(assertFaceScopedCss(`${SERVICES_CSS}
+body:has(.rm) { overflow-x: hidden }`)).toEqual([
+      'body:has(.rm)',
     ])
   })
 

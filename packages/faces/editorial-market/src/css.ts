@@ -1236,15 +1236,8 @@ export const EDITORIAL_CSS = `
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo h3 {
   font-size: 17px;
 }
-/* The page: no sideways scroll and no scrollbar while the face is on it; the narrowest phones. */
-html:has(.rm),
-body:has(.rm) {
-  overflow-x: hidden;
-  scrollbar-width: none;
-}
-html:has(.rm)::-webkit-scrollbar {
-  display: none;
-}
+/* The narrowest phones. The page around the face (no sideways scroll, no scrollbar) is the guest
+   page's, not the face's: apps/web styles html[data-guest-page]. */
 .rm {
   overflow-x: clip;
   max-width: 100vw;

@@ -237,11 +237,26 @@ test('a price changes behind the tab: "1 change waiting", the preview shows it, 
   )
   await snapshotsOfChanges(browser)
 
-  // The preview: a phone frame with the guest face, drawn from the draft.
+  // The preview: a phone frame with the guest face, drawn from the draft. The draft names no
+  // template, so it is the registry's default, the Editorial Market (SH-04).
+  const pageRules = () =>
+    page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement)
+      return `overflow-x: ${style.overflowX}, scrollbar-width: ${style.scrollbarWidth}`
+    })
+  const rulesBefore = await pageRules()
   await page.getByRole('button', { name: 'Preview' }).click()
   const frame = page.getByTestId('phone-frame')
   await expect(frame).toBeVisible()
-  await expect(frame.locator('[data-face="qr-phone"]')).toBeVisible()
+  await expect(frame.locator('[data-face="editorial-market"]:not([data-testid])')).toBeVisible()
+  // The face's stylesheet has page-wide rules (no sideways scroll, no scrollbar, while it is on
+  // the page). SH-02 left them in; whether they reach the admin page around the frame is reported
+  // here, not asserted: the lead decides (brief SH-04, section 8). SH-05a renders the face in the
+  // Design tab, where this matters more.
+  test.info().annotations.push({
+    type: 'admin page rules while the preview is open',
+    description: `before: ${rulesBefore}; open: ${await pageRules()}`,
+  })
   const negroni = frame.locator('[data-item]').filter({ hasText: 'Negroni' })
   await expect(negroni).toContainText(PRICE_AFTER)
   // A phone-sized screen inside the dialog, scrolling on its own.
@@ -250,7 +265,10 @@ test('a price changes behind the tab: "1 change waiting", the preview shows it, 
   expect(screen?.width).toBeLessThan(400)
   await page.getByRole('dialog').screenshot({ path: shotPath('en-light-desktop-preview') })
   await page.getByRole('button', { name: 'Dark' }).click()
-  await expect(frame.locator('.rq-root')).toHaveAttribute('data-scheme', 'dark')
+  await expect(frame.locator('[data-face]:not([data-testid])')).toHaveAttribute(
+    'data-scheme',
+    'dark',
+  )
   await page.getByRole('dialog').screenshot({ path: shotPath('en-dark-desktop-preview') })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)

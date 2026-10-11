@@ -159,3 +159,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* The guest's menu page (/m/…): no sideways scroll and no scrollbar. The guest page marks <html>
+   with data-guest-page (src/guest/guest-menu.tsx); templates never style the page around them, so
+   the same template sits unchanged inside the admin's previews. */
+html[data-guest-page],
+html[data-guest-page] body {
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+html[data-guest-page]::-webkit-scrollbar {
+  display: none;
+}

@@ -256,7 +256,7 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
   await guest.goto(`${origin}/t/${token}`)
   await guest.waitForURL(`**${venue.path}?t=${token}`)
   await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
-  await expect(guest.getByRole('status').filter({ hasText: 'Маса 1' })).toBeVisible()
+  await expect(guest.getByText('Маса 1', { exact: true })).toBeVisible()
   await guest.screenshot({ path: shot('guest-table-1-bg') })
   await guest.context().close()
 })
@@ -282,7 +282,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)
-  await expect(guest.getByRole('status').filter({ hasText: 'Тераса Е5' })).toBeVisible()
+  await expect(guest.getByText('Тераса Е5', { exact: true })).toBeVisible()
   await guest.context().close()
 
   // An empty name goes back to barsy's number.
