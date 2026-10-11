@@ -58,6 +58,8 @@ export function useHashRoute(route: HashRoute) {
     null,
   )
   const opener = useRef<HTMLElement | null>(null)
+  /** An opener that could not take the focus back at once (the service bar is hidden while a sheet slides out). */
+  const retryFocus = useRef<HTMLElement | null>(null)
   const wasOpen = useRef(false)
   const openRef = useRef<string | null>(null)
   openRef.current = openId
@@ -76,12 +78,25 @@ export function useHashRoute(route: HashRoute) {
     } else {
       const instant = prefersReducedMotion()
       setShown((current) => (current === null || instant ? null : { ...current, leaving: true }))
-      // Hand the focus back to the element that opened the page.
-      if (wasOpen.current) opener.current?.focus({ preventScroll: true })
+      // Hand the focus back to the element that opened the page. A control that is hidden while the
+      // page slides out (the bar of the services) cannot take it yet: it is tried again below, once
+      // the page is gone and the control is drawn.
+      if (wasOpen.current) {
+        const target = opener.current
+        target?.focus({ preventScroll: true })
+        retryFocus.current = target !== null && document.activeElement !== target ? target : null
+      }
       opener.current = null
     }
     wasOpen.current = openId !== null
   }, [openId])
+
+  useEffect(() => {
+    if (shown !== null || retryFocus.current === null) return
+    const target = retryFocus.current
+    retryFocus.current = null
+    target.focus({ preventScroll: true })
+  }, [shown])
 
   const leaving = shown?.leaving === true
   useEffect(() => {

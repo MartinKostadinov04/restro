@@ -158,11 +158,12 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       locale,
       strings,
       assetBase,
+      layout,
       isVisible: (item: ViewItem) => matchesFilters(item, filters),
       openDish: dish.open,
       openAllergens,
     }),
-    [locale, strings, assetBase, filters, dish.open, openAllergens],
+    [locale, strings, assetBase, layout, filters, dish.open, openAllergens],
   )
 
   // The first section is the photo-led strip, unless the venue turned that off. The layout switch

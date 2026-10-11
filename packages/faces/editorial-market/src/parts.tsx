@@ -5,13 +5,15 @@
 import type { GuestStrings, Locale, ViewImage, ViewItem, ViewText } from '@restro/shell'
 import type { ReactNode } from 'react'
 
-import { imageAttributes, langOf } from './model'
+import { imageAttributes, type Layout, langOf } from './model'
 
 /** What the components of one page need from it. */
 export interface PageContext {
   readonly locale: Locale
   readonly strings: GuestStrings
   readonly assetBase: string
+  /** How the items of a section are laid out now (the photos' `sizes` follow it). */
+  readonly layout: Layout
   /** Whether an item passes the guest's filters; one that does not stays in the markup, hidden. */
   readonly isVisible: (item: ViewItem) => boolean
   /** Opens the dish page for an item (the element that asked gets the focus back). */

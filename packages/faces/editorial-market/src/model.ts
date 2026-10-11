@@ -102,6 +102,27 @@ export function isLayout(value: unknown): value is Layout {
   return LAYOUTS.some((layout) => layout === value)
 }
 
+/**
+ * The `sizes` of an item photo: how wide the picture is drawn, so a phone takes the smallest file
+ * that is sharp enough (the photo sits on a stage panel, so it is narrower than its card). A
+ * photo of the strip is a card of 84 % of the screen (at most 390 px); in the sections it is the
+ * column (one), half of it (two) or a 96 px square (list). The column is 820 px at most, with
+ * margins of 20 px (34 px from 641 px up). The figures run a little over, never under.
+ */
+export function photoSizes(layout: Layout, strip: boolean): string {
+  if (strip) {
+    return '(min-width: 821px) 350px, (min-width: 641px) calc(46vw - 59px), calc(min(84vw, 390px) - 28px)'
+  }
+  switch (layout) {
+    case 'list':
+      return '96px'
+    case 'one':
+      return '(min-width: 821px) 684px, calc(100vw - 68px)'
+    case 'two':
+      return '(min-width: 821px) 354px, (min-width: 641px) calc(50vw - 56px), calc(50vw - 42px)'
+  }
+}
+
 /* ---------------------------------------------------------------------------------------------
  * Options
  * ------------------------------------------------------------------------------------------- */

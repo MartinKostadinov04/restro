@@ -236,15 +236,29 @@ describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet'
     expect(sizeOf(base, '.rm-overlay-head button', 'height')).toBe(44)
   })
 
-  it('keeps a 44 px area around the compact "+" and counter on a dish card', () => {
-    // The visible button is 32 to 38 px (the designer's size); its `::after` adds 6 px on every side.
+  it('makes the compact "+" and counter on a dish card real 44 x 44 px buttons that look as drawn', () => {
+    // They look 32 to 38 px (the designer's size: the round fill is their ::before); the button itself
+    // is 44 x 44 px, and a negative margin keeps the room the smaller one took. (SH-07 replaced the
+    // 6 px `::after` area around them, which no measure of the button itself could see.)
     expect(SERVICES_CSS).toMatch(/--ro-btn:\s*clamp\(32px,/)
-    const around = services.find((rule) => rule.selectors.includes('.rm .ro-plus::after'))
-    expect(around?.declarations.get('inset')).toBe('-6px')
-    expect(around?.declarations.get('position')).toBe('absolute')
-    const counter = services.find((rule) =>
-      rule.selectors.includes('.rm .ro-quick .ro-stepper button::after'),
-    )
-    expect(counter?.declarations.get('inset')).toBe('-6px 0')
+    for (const selector of ['.rm .ro-plus', '.rm .ro-quick .ro-stepper button']) {
+      expect(sizeOf(services, selector, 'width'), `${selector} width`).toBe(44)
+      expect(sizeOf(services, selector, 'height'), `${selector} height`).toBe(44)
+      const margin = services.find(
+        (rule) =>
+          rule.media === null &&
+          rule.selectors.includes(selector) &&
+          rule.declarations.has('margin'),
+      )
+      expect(margin?.declarations.get('margin'), `${selector} margin`).toMatch(
+        /^calc\(\(var\(--ro-(circle|btn)\) - 44px\) \/ 2\)$/,
+      )
+      const fill = services.find(
+        (rule) => rule.media === null && rule.selectors.includes(`${selector}::before`),
+      )
+      expect(fill?.declarations.get('position'), `${selector}::before`).toBe('absolute')
+    }
+    expect(SERVICES_CSS).not.toContain('.rm .ro-plus::after')
+    expect(SERVICES_CSS).not.toContain('.rm .ro-quick .ro-stepper button::after')
   })
 })
