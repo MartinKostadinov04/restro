@@ -144,6 +144,14 @@ test('the preview draws the template from the draft, and the admin page keeps it
   expect(rules.scrollable).toBe(true)
   expect(rules.scrolled).toBeGreaterThan(0)
   await page.evaluate(() => window.scrollTo(0, 0))
+
+  // The derived colours: the light and the dark screen side by side, one role per row.
+  const light = await page.getByTestId('role-light-text').boundingBox()
+  const dark = await page.getByTestId('role-dark-text').boundingBox()
+  expect(light).not.toBeNull()
+  expect(dark).not.toBeNull()
+  expect(Math.abs((light?.y ?? 0) - (dark?.y ?? 99))).toBeLessThan(2)
+  expect(dark?.x ?? 0).toBeGreaterThanOrEqual((light?.x ?? 0) + (light?.width ?? 0))
   await page.screenshot({ path: shotPath('desktop-light'), fullPage: false })
 })
 
@@ -153,7 +161,11 @@ test('choosing Midnight shows its colours in the preview at once and turns Save 
   await expect(page.getByLabel('Primary', { exact: true })).toHaveValue(MIDNIGHT_PAGE)
   await expect(page.getByLabel('Tertiary', { exact: true })).toHaveValue('#e0a43a')
   // Sixteen roles, the designer's own, each with the contrast of its pairs.
-  await expect(page.getByTestId('design-roles').locator('li[data-testid^="role-"]')).toHaveCount(16)
+  await expect(
+    page
+      .getByTestId('design-roles')
+      .locator('div[data-testid^="role-light-"], div[data-testid^="role-dark-"]'),
+  ).toHaveCount(16)
   await expect(previewRoot()).toHaveCSS('--rm-l-background', MIDNIGHT_PAGE)
   await expect(previewRoot()).toHaveCSS('--rm-d-background', '#0e0d0c')
   await expect(save()).toBeEnabled()
@@ -255,7 +267,15 @@ test('at phone width the tab stacks, with the preview below the form and no side
     expect(form).not.toBeNull()
     expect(preview).not.toBeNull()
     expect((preview?.y ?? 0) > (form?.y ?? 0) + (form?.height ?? 0)).toBe(true)
-    await target.screenshot({ path: shotPath('phone'), fullPage: true })
+    // Narrow: the dark screen's colour sits under the light one's.
+    const light = await target.getByTestId('role-light-text').boundingBox()
+    const dark = await target.getByTestId('role-dark-text').boundingBox()
+    expect((dark?.y ?? 0) >= (light?.y ?? 0) + (light?.height ?? 0)).toBe(true)
+    // The whole page (very tall: the form, then the preview), and the screen a person sees on
+    // the colours.
+    await target.screenshot({ path: shotPath('phone-full-page'), fullPage: true })
+    await target.getByTestId('design-role-text').scrollIntoViewIfNeeded()
+    await target.screenshot({ path: shotPath('phone') })
   } finally {
     await phone.close()
   }
@@ -276,9 +296,9 @@ test('in Bulgarian', async ({ browser }) => {
       'aria-selected',
       'true',
     )
-    await expect(target.getByRole('heading', { name: 'Шаблон' })).toBeVisible()
+    await expect(target.getByRole('heading', { name: 'Шаблон', exact: true })).toBeVisible()
     await expect(target.getByTestId('template-in-use')).toHaveText('Използва се')
-    await expect(target.getByRole('heading', { name: 'Цветове' })).toBeVisible()
+    await expect(target.getByRole('heading', { name: 'Цветове', exact: true })).toBeVisible()
     await expect(target.getByRole('button', { name: 'Полунощ' })).toHaveAttribute(
       'aria-pressed',
       'true',

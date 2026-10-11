@@ -57,7 +57,8 @@ export function useIssueText(): (issue: PairIssue) => string {
     })
 }
 
-function RoleRow({
+/** One role on one screen: its colour, the contrast of its pairs, and the way to set it by hand. */
+function RoleCell({
   mode,
   role,
   state,
@@ -98,32 +99,31 @@ function RoleRow({
   const screenName = t(`screens.${mode}`)
 
   return (
-    <li
+    <div
       className={cn(
-        'grid gap-2 rounded-lg border p-3',
+        'grid content-start gap-2 rounded-md border p-2.5',
         (failing || invalid) && 'border-destructive bg-destructive/5',
       )}
       data-testid={`role-${mode}-${role}`}
       data-failing={failing || invalid ? 'true' : undefined}
     >
-      <div className="flex items-start gap-3">
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {screenName}
+      </p>
+      <div className="flex items-center gap-2">
         <span
-          className="mt-0.5 size-9 shrink-0 rounded-md border"
+          className="size-8 shrink-0 rounded-md border"
           style={{ backgroundColor: colour }}
           role="img"
           aria-label={t('swatch', { role: roleName, colour })}
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-medium">{roleName}</p>
-            {overridden ? (
-              <Badge variant="outline" data-testid="role-adjusted">
-                {isFromPreset(state, mode, role) ? t('fromPreset') : t('adjusted')}
-              </Badge>
-            ) : null}
-            <code className="font-mono text-xs text-muted-foreground">{colour}</code>
-          </div>
-          <p className="text-xs text-muted-foreground">{t(`${role}.help`)}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <code className="font-mono text-xs">{colour}</code>
+          {overridden ? (
+            <Badge variant="outline" data-testid="role-adjusted">
+              {isFromPreset(state, mode, role) ? t('fromPreset') : t('adjusted')}
+            </Badge>
+          ) : null}
         </div>
       </div>
 
@@ -209,7 +209,7 @@ function RoleRow({
           {t('derivedWas', { colour: derived[mode][role] })}
         </p>
       ) : null}
-    </li>
+    </div>
   )
 }
 
@@ -260,14 +260,23 @@ export function RolePanel({
           </ul>
         </div>
       ) : null}
-      <div className="grid gap-6 @xl:grid-cols-2">
-        {ROLE_MODES.map((mode) => (
-          <section key={mode} className="grid gap-2" aria-label={t(`screens.${mode}`)}>
-            <h5 className="text-sm font-medium">{t(`screens.${mode}`)}</h5>
-            <ul className="grid gap-2">
-              {ROLE_NAMES.map((role) => (
-                <RoleRow
-                  key={role}
+      {/* One row per role, the light and the dark screen side by side (one under the other on a
+          narrow panel). */}
+      <ul className="grid gap-3">
+        {ROLE_NAMES.map((role) => (
+          <li
+            key={role}
+            className="grid gap-2 rounded-lg border p-3"
+            data-testid={`design-role-${role}`}
+          >
+            <div>
+              <p className="text-sm font-medium">{t(`${role}.name`)}</p>
+              <p className="text-xs text-muted-foreground">{t(`${role}.help`)}</p>
+            </div>
+            <div className="grid gap-2 @md:grid-cols-2">
+              {ROLE_MODES.map((mode) => (
+                <RoleCell
+                  key={mode}
                   mode={mode}
                   role={role}
                   state={state}
@@ -279,10 +288,10 @@ export function RolePanel({
                   onChange={onChange}
                 />
               ))}
-            </ul>
-          </section>
+            </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   )
 }

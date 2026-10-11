@@ -295,7 +295,9 @@ describe('the derived colours', () => {
     }
     expect(within(row('light', 'border')).getByText('No reading requirement.')).toBeTruthy()
     // Plain words, not role names.
-    expect(within(row('dark', 'on_accent')).getByText('Text on highlights')).toBeTruthy()
+    expect(
+      within(screen.getByTestId('design-role-on_accent')).getByText('Text on highlights'),
+    ).toBeTruthy()
   })
 
   it('blocks Save, in red, and names the pair when a colour set by hand does not read', async () => {
