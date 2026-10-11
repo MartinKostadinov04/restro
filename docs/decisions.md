@@ -150,7 +150,7 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T67 Claude: read `Places_getlist` once a barsy venue is mapped; with T66 (CF-10).
 - T68 Martin to confirm, then Claude: Integration moves to the organisation's Settings; barsy venues appear as venues (CF-09).
 - T70 Claude: connector foundation; merged CF-01, 02, 03, 08a, 12, 14; remaining CF-04 to 07, rest of 08, 09, 10, 11, 13; staging migration 0014 needs Martin's OK.
-- T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; order SH-02, SH-01, SH-03 + 04, SH-05a/b + 06, SH-07 + 08; agent cap is two (CLAUDE.md), not the tracker's three.
+- T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; SH-01 to SH-08 all merged into `sh/foundation` on 10-11; left: acceptance with Martin, then the PRs; open points per step in the tracker.
 - T72 Claude: hand-made items need a venue (they show in another venue's Unsorted); fix in CF-05 with a test.
 - T73 Claude: one role rule for composer writes (recommend owner/admin); with CF-09.
 - T71 Claude: barsy shares items by catalogue; follow it (sync unit = catalogue); decides CF-05/CF-07 (Opus).

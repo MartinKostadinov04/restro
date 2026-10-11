@@ -595,6 +595,20 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - **(b)** `docs/architecture/stack.md` still says R1–R14 and lists no `packages/faces`; fix with the live doc's Stack tab.
     - **(c)** The comment atop `packages/shell/src/theme.ts` says "the publisher refuses" unreadable themes; it is `setVenueTheme` at save.
     - **(d)** Mapping the face's `actionId` to A5's `client_ref` / `commands.id` is for Stage 4.
+  - **SH-07 merged** (10-11). Accessibility and visual audit of the Editorial Market, fixed in the face's CSS and markup:
+    - every button and link of the page, the 3 sheets and the 5 service screens is at least 44 × 44 px (the look kept with negative margins; the language and layout switches are 24 px wider);
+    - item names are `h3` / `h4` with the button inside the heading (no block inside a button); photo `sizes` follow the layout;
+    - the allergen sheet marks the dish's allergens with `aria-current`; the table label stays visible at 320 px; 14 allergen codes wrap;
+    - all 8 dialogs: focus in, Tab trapped, Escape closes, focus returns (the bag and waiter bar buttons were fixed);
+    - reduced motion covers pseudo-elements; text 4.5:1 and control edges 3:1 in the 4 presets plus a custom theme, light and dark (sold-out cards keep their words at full strength and fade only the photo; status pills outlined; the chosen option gets a ring).
+    
+    New gate specs `faces-a11y.spec.ts` (36 checks) and `faces-a11y-services.spec.ts` (16, in the Design preview); the screenshot matrix `faces-visual.spec.ts` runs with `FACES_VISUAL=1` (1140 pictures). `guest.spec.ts`'s tap-size note is now an assertion.
+  - **Open from SH-07:**
+    - **(a) A hidden-text allergen cue.** Today it is `aria-current` only; visually hidden words need a shell `GuestStrings` key (`allergenPresent`). Recommendation: a small shell task.
+    - **(b) Muted text on the inverse bands** is a 65–75% mix. It reads 5.7–8.3:1 in the five audited themes, but core only guarantees 4.5:1 for the text/background pair; at 70% the mix needs about 7.2:1 (light) or 8.2:1 (dark). Recommendation: core checks the mixes too (lead's call; not changed).
+    - **(c) The Botanical preset's dark accent (lime) on the cream sheet** reads 1.06:1 as a fill; the chosen-option ring carries the state. The designer's values; Martin to decide at acceptance.
+    - **(d)** A 60-character name with no spaces hyphenates every two letters in two columns at 320 px (never cut; real words are fine). The list layout's arrow can wrap to its own line. With a logo, the filter button wraps to a second row below about 370 px.
+    - **(e) A manual-only menu cannot preview ordering.** Items with no till link get no "+", so the Design preview shows no bag for them.
 - [ ] T75. **Worker queue tests time out when the machine is busy.** `apps/worker/tests/worker.integration.test.ts` (`afterAll`, 60 s) and `sync-queue.test.ts` ("a job travels the queue end to end") failed a few times on 10-11 while 2–3 agents ran gates at once. Alone they pass in about 16 s. Check CI. If it shows the same, give these suites more time or a pool of their own. This is not a weakening: the assertions stay — Claude
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 
