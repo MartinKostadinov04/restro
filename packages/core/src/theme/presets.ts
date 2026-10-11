@@ -8,7 +8,7 @@
 // Every preset passes `REQUIRED_PAIRS` in both schemes as delivered (presets.test.ts): no value
 // had to change.
 
-import type { RoleOverrides, ThemeColours, ThemeRoles } from './roles'
+import type { RoleOverrides, ThemeColours, ThemeRoleSet, ThemeRoles } from './roles'
 
 /** The preset ids, in the designer's order. */
 export const THEME_PRESET_IDS = ['botanical', 'midnight', 'nordic', 'terracotta'] as const
@@ -16,12 +16,15 @@ export const THEME_PRESET_IDS = ['botanical', 'midnight', 'nordic', 'terracotta'
 /** One preset id. */
 export type ThemePresetId = (typeof THEME_PRESET_IDS)[number]
 
-/** A starting point: its name, three colours, the designer's 16 roles and corner radius. */
+/**
+ * A starting point: its name, three colours, the designer's 16 roles and corner radius. The
+ * overrides are typed as a full role set too: every role of both schemes is there.
+ */
 export interface ThemePreset {
   readonly id: ThemePresetId
   readonly label: { readonly bg: string; readonly en: string }
   readonly colours: ThemeColours
-  readonly overrides: Required<RoleOverrides>
+  readonly overrides: Required<RoleOverrides> & ThemeRoleSet
   readonly radius: number
 }
 

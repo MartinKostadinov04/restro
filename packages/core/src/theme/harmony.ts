@@ -34,12 +34,15 @@ export const HARMONY_OFFSETS: { readonly [R in HarmonyRule]: readonly [number, n
   monochrome: [0, 0],
 }
 
-/** The page: light and calm (OKLCH L 0.94–0.97 band). */
+/**
+ * The page: light and calm (OKLCH L 0.94–0.97 band), a tint rather than a colour (the designer's
+ * pages sit at chroma 0.002–0.013; a little more keeps the rule's hue visible).
+ */
 const PRIMARY_L = 0.96
-const PRIMARY_MAX_CHROMA = 0.025
-/** The panels: a step deeper than the page, a little more colour. */
+const PRIMARY_MAX_CHROMA = 0.02
+/** The panels: a step deeper than the page, a little more colour (the designer's: 0.015–0.025). */
 const SECONDARY_L = 0.91
-const SECONDARY_MAX_CHROMA = 0.04
+const SECONDARY_MAX_CHROMA = 0.035
 /** Page and panels never carry more than this share of the seed's own chroma. */
 const PRIMARY_CHROMA_SHARE = 0.5
 const SECONDARY_CHROMA_SHARE = 0.75

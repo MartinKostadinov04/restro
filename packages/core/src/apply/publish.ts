@@ -49,7 +49,11 @@ import {
   type SnapshotAssetInput,
 } from '../snapshot/build'
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
-import { assertSnapshotSafe, collectForbiddenValues } from '../snapshot/leak-guard'
+import {
+  assertSnapshotSafe,
+  collectForbiddenValues,
+  lookPublicStrings,
+} from '../snapshot/leak-guard'
 import { buildLiveOverlay } from '../snapshot/overlay'
 import type { LiveOverlay, MenuSnapshot, SnapshotTheme } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
@@ -379,22 +383,6 @@ function snapshotThemeOf(
     roles: themeRolesOf(theme),
     scheme: theme.scheme ?? 'auto',
   }
-}
-
-/** The strings of the theme and the template that are public by design (for the leak guard). */
-function lookPublicStrings(theme: SnapshotTheme, presentation: Presentation | null): string[] {
-  const strings = [theme.font, ...theme.palette]
-  if (theme.roles !== undefined) {
-    strings.push(...Object.values(theme.roles.light), ...Object.values(theme.roles.dark))
-  }
-  if (presentation !== null) {
-    strings.push(presentation.face)
-    for (const [key, value] of Object.entries(presentation.options)) {
-      strings.push(key)
-      if (typeof value === 'string') strings.push(value)
-    }
-  }
-  return strings
 }
 
 /** The template a menu is resolved with. Only `venue-menu@1` exists so far. */
