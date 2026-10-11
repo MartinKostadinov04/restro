@@ -137,7 +137,7 @@ export async function saveItemFieldAction(
   )
 }
 
-/** Removes our override of a field: revert, or take barsy's value instead of ours. */
+/** Removes our override of a field: revert, or take the till's value instead of ours. */
 export async function revertItemFieldAction(
   venueId: string,
   itemId: string,
@@ -151,7 +151,7 @@ export async function revertItemFieldAction(
   )
 }
 
-/** Keeps our override although barsy changed since. */
+/** Keeps our override although the till changed since. */
 export async function keepItemOverrideAction(
   venueId: string,
   itemId: string,
@@ -210,7 +210,7 @@ export async function setItemImageAction(
 
 /**
  * Marks the item sold out tonight (`soldOut`), or takes OUR mark off (owner or admin, D46). There
- * is no way to put an item back on sale that barsy has off sale: "back on sale" removes the mark
+ * is no way to put an item back on sale that the till has off sale: "back on sale" removes the mark
  * and nothing else (rule 5). The sheet comes back refreshed.
  */
 export async function setItemSoldOutAction(

@@ -139,7 +139,7 @@ export async function picturesOfRecords(
   return result
 }
 
-/** External ids of the articles whose item already has a barsy-layer photo. */
+/** External ids of the articles whose item already has a till-layer photo. */
 export async function articlesWithPhoto(
   env: SyncEnvironment,
   tenantId: string,
@@ -154,7 +154,7 @@ export async function articlesWithPhoto(
         and(
           eq(fieldValues.nodeId, sourceLinks.nodeId),
           eq(fieldValues.fieldKey, 'image'),
-          eq(fieldValues.layer, 'barsy'),
+          eq(fieldValues.layer, 'till'),
         ),
       )
       .where(

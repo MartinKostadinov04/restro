@@ -84,7 +84,7 @@ describe.skipIf(!hasDatabase)('barsy-incremental', () => {
         `select fv.value from restro.field_values fv
          join restro.source_links sl on sl.node_id = fv.node_id
          where sl.integration_id = $1 and sl.external_type = 'article' and sl.external_id = $2
-           and fv.field_key = 'price' and fv.layer = 'barsy'`,
+           and fv.field_key = 'price' and fv.layer = 'till'`,
         [world.integrationId, articleId],
       )
     )[0]?.value.amount_minor

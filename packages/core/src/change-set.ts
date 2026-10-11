@@ -1,6 +1,10 @@
 // The change set (doc "One write path"; rule 1): the only input `apply()` will ever accept.
-// Every adapter вЂ” manual editor, spreadsheet import, barsy pull вЂ” produces one. Every field write
+// Every adapter — the manual editor, a till connector's pull — produces one. Every field write
 // carries its layer, and the set carries its source and job (rule 2: provenance, NOT NULL).
+//
+// The till is a role, not a vendor (brief CF-03): whichever connector feeds a venue's till writes
+// the `till` layer under the source `till:<integration>`; the vendor is only the integration's
+// kind (`connectors/`).
 
 import { z } from 'zod'
 
@@ -10,36 +14,55 @@ import { NodeStatusSchema, type NodeType, NodeTypeSchema } from './node-types'
 import { type Parsed, reject } from './result'
 import { SortKeySchema } from './sort-keys'
 
-/** Names inside sources, layers and links: profile names, integration ids, edition ids. */
+/** Names inside sources, layers and links: integration ids, edition ids. */
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 
-/** Where a change set came from: `manual`, `import:<profile>` or `barsy:<integration>`. */
-export type Source = 'manual' | `import:${string}` | `barsy:${string}`
+/** The prefix of a till source: `till:<integration>`. */
+export const TILL_SOURCE_PREFIX = 'till:'
+
+/**
+ * Where a change set came from: `manual` (a person) or `till:<integration>` (the connector that
+ * feeds a venue's till: the authority for price, sale and existence).
+ */
+export type Source = 'manual' | `till:${string}`
 
 /** True if `value` is a well-formed `Source`. */
 export function isSource(value: unknown): value is Source {
   if (value === 'manual') return true
   if (typeof value !== 'string') return false
-  const match = /^(import|barsy):(.+)$/.exec(value)
-  return match !== null && NAME_PATTERN.test(match[2] ?? '')
+  const match = /^till:(.+)$/.exec(value)
+  return match !== null && NAME_PATTERN.test(match[1] ?? '')
 }
 
 /** Zod schema for a `Source`. */
 export const SourceSchema = z.custom<Source>(isSource, {
-  message: 'expected manual, import:<profile> or barsy:<integration>',
+  message: 'expected manual or till:<integration>',
 })
 
+/** True if `source` is a till source (`till:<integration>`). */
+export function isTillSource(source: string): source is `till:${string}` {
+  return source.startsWith(TILL_SOURCE_PREFIX)
+}
+
+/** The till source of an integration: `till:<integration>`. */
+export function tillSource(integrationId: string): `till:${string}` {
+  return `${TILL_SOURCE_PREFIX}${integrationId}`
+}
+
+/** The integration a till source names, or null for any other source. */
+export function tillIntegrationOf(source: string): string | null {
+  return isTillSource(source) ? source.slice(TILL_SOURCE_PREFIX.length) : null
+}
+
 /**
- * A layer of field values, lowest to highest: `barsy`, `import`, `manual`, `override`,
- * `edition:<id>` (venue and service-period editions). Higher does not automatically win.
+ * A layer of field values, lowest to highest: `till`, `manual`, `override`, `edition:<id>` (venue
+ * and service-period editions). Higher does not automatically win.
  */
-export type Layer = 'barsy' | 'import' | 'manual' | 'override' | `edition:${string}`
+export type Layer = 'till' | 'manual' | 'override' | `edition:${string}`
 
 /** True if `value` is a well-formed `Layer`. */
 export function isLayer(value: unknown): value is Layer {
-  if (value === 'barsy' || value === 'import' || value === 'manual' || value === 'override') {
-    return true
-  }
+  if (value === 'till' || value === 'manual' || value === 'override') return true
   return typeof value === 'string' && isEditionLayer(value)
 }
 
@@ -51,20 +74,20 @@ export function isEditionLayer(layer: string): layer is `edition:${string}` {
 
 /** Zod schema for a `Layer`. */
 export const LayerSchema = z.custom<Layer>(isLayer, {
-  message: 'expected barsy, import, manual, override or edition:<id>',
+  message: 'expected till, manual, override or edition:<id>',
 })
 
-/** Which venues a value applies to: all (`master`) or one (`venue:vn_вЂ¦`, barsy values only). */
+/** Which venues a value applies to: all (`master`) or one (`venue:vn_…`, till values only). */
 export type Scope = 'master' | `venue:${string}`
 
-/** True if `value` is a well-formed `Scope`; a venue scope names our venue id, never a barsy id. */
+/** True if `value` is a well-formed `Scope`; a venue scope names our venue id, never a till's. */
 export function isScope(value: unknown): value is Scope {
   if (value === 'master') return true
   return typeof value === 'string' && value.startsWith('venue:') && isId('vn', value.slice(6))
 }
 
 /** Zod schema for a `Scope`. */
-export const ScopeSchema = z.custom<Scope>(isScope, { message: 'expected master or venue:vn_вЂ¦' })
+export const ScopeSchema = z.custom<Scope>(isScope, { message: 'expected master or venue:vn_…' })
 
 /**
  * Who made the change: `user:<id>`, `integration:<id>` or `system`. Never personal data such as
@@ -107,15 +130,15 @@ export const NodeRefSchema = z.union([NodeIdRefSchema, z.strictObject({ link: So
 export type NodeRef = z.output<typeof NodeRefSchema>
 
 /**
- * The job a change set belongs to: a pull or import names its `jb_` job run; a manual save, which
- * has no job run, names its own job (any safe name). Kept loose until the composer settles it.
+ * The job a change set belongs to: a pull names its `jb_` job run; a manual save, which has no
+ * job run, names its own job (any safe name). Kept loose until the composer settles it.
  */
 const JobIdSchema = z.string().regex(NAME_PATTERN, 'expected a job id')
 
 /**
  * One typed field write. `basis` (the source value an override replaces) is required on the
- * `override` layer and nowhere else; `venue:` scope only on the `barsy` layer (per-venue barsy
- * values such as price and for-sale); barsy writes carry their source record and mapping version.
+ * `override` layer and nowhere else; `venue:` scope only on the `till` layer (per-venue till
+ * values such as price and for-sale); till writes carry their source record and mapping version.
  */
 export const FieldWriteSchema = z
   .strictObject({
@@ -138,14 +161,14 @@ export const FieldWriteSchema = z
     if (write.layer !== 'override' && write.basis !== undefined) {
       issue('only override writes carry a basis', 'basis')
     }
-    if (write.scope !== 'master' && write.layer !== 'barsy') {
-      issue('only barsy values are venue-scoped; editions use edition layers', 'scope')
+    if (write.scope !== 'master' && write.layer !== 'till') {
+      issue('only till values are venue-scoped; editions use edition layers', 'scope')
     }
-    if (write.layer === 'barsy' && write.sourceRecordId === undefined) {
-      issue('barsy writes name their source record', 'sourceRecordId')
+    if (write.layer === 'till' && write.sourceRecordId === undefined) {
+      issue('till writes name their source record', 'sourceRecordId')
     }
-    if (write.layer === 'barsy' && write.mappingVersion === undefined) {
-      issue('barsy writes record their mapping version', 'mappingVersion')
+    if (write.layer === 'till' && write.mappingVersion === undefined) {
+      issue('till writes record their mapping version', 'mappingVersion')
     }
   })
 
@@ -156,7 +179,7 @@ export type FieldWrite = z.output<typeof FieldWriteSchema>
  * Where a placement or a new sibling goes: a fractional sort key (the composer computes it
  * between two neighbours), or the position hint `'end'`, which `apply()` turns into a key after
  * the current last one. `'end'` never moves an item that is already in the section. Adapters
- * (barsy, import) only ever send `'end'`: they never compute sort keys themselves.
+ * (till connectors) only ever send `'end'`: they never compute sort keys themselves.
  */
 export const PlacementPositionSchema = z.union([SortKeySchema, z.literal('end')])
 
@@ -198,8 +221,8 @@ export const CreateNodeSchema = z
 /**
  * Places an item in a section at a sort position (one row; moving rewrites only this row).
  *
- * `onlyIfUnplaced` (default false) is for adapters that mirror a source's categories (barsy,
- * mirror mode): the placement is skipped (counted as `skipped`) when the item already had a
+ * `onlyIfUnplaced` (default false) is for adapters that mirror a source's categories (a till
+ * connector): the placement is skipped (counted as `skipped`) when the item already had a
  * placement in a section of the same menu before this change set started, so a re-sync never
  * re-adds an item the manager moved and never reorders their arrangement (D20: a new item lands
  * at the end of its section). Placements made earlier in the same change set do not count, so a
@@ -243,7 +266,7 @@ export const SetNodeStatusSchema = z.strictObject({
   status: NodeStatusSchema,
 })
 
-/** Links a node to an external object (one link per source per node). */
+/** Links a node to an external object (at most one till link per node). */
 export const LinkSourceSchema = z.strictObject({
   op: z.literal('linkSource'),
   node: NodeIdRefSchema,
@@ -276,8 +299,8 @@ export const LINK_TRANSITIONS: { readonly [From in LinkStateName]: readonly Link
 
 /**
  * Moves a source link through its lifecycle (doc "Link lifecycle"): `active` → `missing` when a
- * complete full pull no longer has the object, `active`/`missing` → `deleted` (barsy's
- * `delete_flag`, or missing for 7 days), `missing`/`deleted` → `active` when it is seen again.
+ * complete full pull no longer has the object, `active`/`missing` → `deleted` (the till says the
+ * object is deleted, or missing for 7 days), `missing`/`deleted` → `active` when it is seen again.
  * Only the link's own source sends it. A state change never touches field values, overrides or
  * placements (the enrichment is kept, rule 6); hiding is the resolver's job.
  *
@@ -311,7 +334,7 @@ export type SetLinkState = z.output<typeof SetLinkStateSchema>
 
 /**
  * Removes the value of one field in one layer and scope, so the layers below show through:
- * revert an override, take barsy's value instead of ours, undo a builder hide. Same layer and
+ * revert an override, take the till's value instead of ours, undo a builder hide. Same layer and
  * scope rules as a write; clearing a slot that holds nothing changes nothing.
  */
 export const ClearFieldSchema = z
@@ -323,10 +346,10 @@ export const ClearFieldSchema = z
     scope: ScopeSchema,
   })
   .superRefine((clear, ctx) => {
-    if (clear.scope !== 'master' && clear.layer !== 'barsy') {
+    if (clear.scope !== 'master' && clear.layer !== 'till') {
       ctx.addIssue({
         code: 'custom',
-        message: 'only barsy values are venue-scoped; editions use edition layers',
+        message: 'only till values are venue-scoped; editions use edition layers',
         path: ['scope'],
       })
     }
@@ -384,10 +407,9 @@ export const CHANGE_SET_OP_NAMES = [
   'setLinkState',
 ] as const satisfies readonly ChangeSetOpName[]
 
-/** The layers each kind of source may write: barsy в†’ barsy, import в†’ import, manual в†’ the rest. */
+/** The layers each kind of source may write: a till → `till`, manual → the rest. */
 export function layerAllowedForSource(source: Source, layer: Layer): boolean {
-  if (source.startsWith('barsy:')) return layer === 'barsy'
-  if (source.startsWith('import:')) return layer === 'import'
+  if (isTillSource(source)) return layer === 'till'
   return layer === 'manual' || layer === 'override' || isEditionLayer(layer)
 }
 
@@ -416,7 +438,7 @@ export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
 /**
  * The change set: id, source, job, actor, when the source observed the data, and its ops, applied
  * atomically. Cross-checks: each write's and clear's layer matches the source; manual sets name
- * nodes by id; a barsy set only touches links of its own integration; adapters place items only
+ * nodes by id; a till set only touches links of its own integration; adapters place items only
  * with `'end'`; created ids are unique.
  */
 export const ChangeSetSchema = z
@@ -429,7 +451,7 @@ export const ChangeSetSchema = z
     ops: z.array(ChangeSetOpSchema).min(1),
   })
   .superRefine((set, ctx) => {
-    const barsyIntegration = set.source.startsWith('barsy:') ? set.source.slice(6) : null
+    const tillIntegration = tillIntegrationOf(set.source)
     const created = new Set<string>()
     set.ops.forEach((op, index) => {
       const issue = (message: string) =>
@@ -450,14 +472,14 @@ export const ChangeSetSchema = z
       for (const ref of nodeRefsOf(op)) {
         if (!('link' in ref)) continue
         if (set.source === 'manual') issue('manual change sets name nodes by id')
-        if (barsyIntegration !== null && ref.link.integration !== barsyIntegration) {
+        if (tillIntegration !== null && ref.link.integration !== tillIntegration) {
           issue(`a ${set.source} change set cannot name nodes of another integration`)
         }
       }
       if (
         (op.op === 'linkSource' || op.op === 'unlinkSource' || op.op === 'setLinkState') &&
-        barsyIntegration !== null &&
-        op.link.integration !== barsyIntegration
+        tillIntegration !== null &&
+        op.link.integration !== tillIntegration
       ) {
         issue(`a ${set.source} change set cannot link another integration`)
       }

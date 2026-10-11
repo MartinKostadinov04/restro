@@ -146,7 +146,7 @@ describe.skipIf(!hasDatabase)('mapCatalogue → apply(): the demo catalogue and 
     expect(groupLinks.every((link) => link.state === 'active')).toBe(true)
     for (const group of groups) {
       const fields = doc.values
-        .filter((value) => value.nodeId === group.id && value.layer === 'barsy')
+        .filter((value) => value.nodeId === group.id && value.layer === 'till')
         .map((value) => value.fieldKey)
       expect(fields).toEqual(expect.arrayContaining(['min', 'max']))
     }

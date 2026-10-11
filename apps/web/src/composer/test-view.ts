@@ -8,6 +8,8 @@
 
 import { type NodeId, newId, type TagColor, type TagId } from '@restro/core'
 
+import { SAMPLE_TILL_LABEL } from '@/fields/samples'
+
 import type { ComposerItem, ComposerSection, ComposerTag, ComposerView } from './view-model'
 
 const section = (
@@ -20,7 +22,7 @@ const section = (
   id,
   parentId,
   title: `Section ${sortKey}`,
-  origin: 'barsy',
+  origin: 'till',
   hidden: false,
   shown: true,
   sortKey,
@@ -33,7 +35,7 @@ const item = (id: NodeId, name: string, extra: Partial<ComposerItem> = {}): Comp
   id,
   name,
   price: { amount_minor: 850, currency: 'EUR' },
-  origin: 'barsy',
+  origin: 'till',
   hiddenBy: null,
   shown: true,
   issues: [],
@@ -133,6 +135,7 @@ export function makeTestView(): TestView {
       [ids.local]: tag(ids.local, 'Local', 'muted'),
       [ids.old]: tag(ids.old, 'Old', 'border', true),
     },
+    tillLabel: SAMPLE_TILL_LABEL,
   }
   return { view, ids }
 }

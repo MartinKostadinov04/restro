@@ -32,14 +32,14 @@ function codes(issues: readonly Issue[]): string[] {
   return issues.map((issue) => issue.code)
 }
 
-describe('a complete barsy item', () => {
-  it('resolves visible and orderable with barsy provenance', () => {
+describe('a complete till item', () => {
+  it('resolves visible and orderable with till provenance', () => {
     const menu = run(oneItemMenu())
     const negroni = item(menu)
     expect(negroni.visible).toBe(true)
     expect(negroni.computed).toEqual({ orderable: true, priceFrom: null, badges: [] })
-    expect(negroni.fields.name).toMatchObject({ provenance: 'barsy', layer: 'barsy' })
-    expect(negroni.fields.price).toEqual({ value: eur(1250), provenance: 'locked', layer: 'barsy' })
+    expect(negroni.fields.name).toMatchObject({ provenance: 'till', layer: 'till' })
+    expect(negroni.fields.price).toEqual({ value: eur(1250), provenance: 'locked', layer: 'till' })
     expect(negroni.fields.order_mode).toEqual({
       value: 'orderable',
       provenance: 'none',
@@ -81,7 +81,7 @@ describe('a complete barsy item', () => {
 })
 
 describe('ownership matrix (Item)', () => {
-  it('name: barsy, display override allowed, stale when barsy changes → review', () => {
+  it('name: till-owned, display override allowed, stale when the till changes → review', () => {
     const fresh = oneItemMenu().set(
       ITEM,
       'name',
@@ -106,20 +106,20 @@ describe('ownership matrix (Item)', () => {
     expect(menu.issues).toContainEqual({ code: 'V12', severity: 'warning' })
   })
 
-  it('description: builder copy wins, barsy text only a fallback', () => {
+  it("description: builder copy wins, the till's text only a fallback", () => {
     const builder = oneItemMenu()
-      .set(ITEM, 'description', 'barsy', { bg_BG: 'barsy', en_US: 'barsy' })
+      .set(ITEM, 'description', 'till', { bg_BG: 'till', en_US: 'till' })
       .set(ITEM, 'description', 'manual', { en_US: 'Gin, Campari, vermouth' })
     expect(item(run(builder)).fields.description?.value).toEqual({
-      bg_BG: 'barsy',
+      bg_BG: 'till',
       en_US: 'Gin, Campari, vermouth',
     })
   })
 
-  it('price: locked to barsy on a linked item; a manual price there is ignored and reported', () => {
+  it('price: locked to the till on a linked item; a manual price there is ignored and reported', () => {
     const builder = oneItemMenu().set(ITEM, 'price', 'manual', eur(100))
     const negroni = item(run(builder))
-    expect(negroni.fields.price).toEqual({ value: eur(1250), provenance: 'locked', layer: 'barsy' })
+    expect(negroni.fields.price).toEqual({ value: eur(1250), provenance: 'locked', layer: 'till' })
     expect(negroni.issues).toContainEqual({
       code: 'ignored_value',
       severity: 'warning',
@@ -169,16 +169,16 @@ describe('ownership matrix (Item)', () => {
     expect(negroni.computed.orderable).toBe(true)
   })
 
-  it('dietary and tags: union; barsy-mapped tags join the set', () => {
+  it('dietary and tags: union; till-mapped tags join the set', () => {
     const builder = oneItemMenu()
-      .set(ITEM, 'tags', 'barsy', ['house'])
+      .set(ITEM, 'tags', 'till', ['house'])
       .set(ITEM, 'tags', 'manual', ['signature'])
     expect(item(run(builder)).fields.tags?.value).toEqual(['signature', 'house'])
   })
 
-  it('portion: barsy-owned with override; stale override reported', () => {
+  it('portion: till-owned with override; stale override reported', () => {
     const builder = oneItemMenu()
-      .set(ITEM, 'portion', 'barsy', { value: 100, unit: 'ml' })
+      .set(ITEM, 'portion', 'till', { value: 100, unit: 'ml' })
       .set(
         ITEM,
         'portion',
@@ -195,16 +195,16 @@ describe('ownership matrix (Item)', () => {
     expect(codes(negroni.issues)).toEqual(['stale_override'])
   })
 
-  it('visibility: the builder can hide, never unhide; barsy hiding wins at once', () => {
+  it("visibility: the builder can hide, never unhide; the till's hiding wins at once", () => {
     const hidden = oneItemMenu().set(ITEM, 'visible', 'manual', false)
     expect(item(run(hidden)).visible).toBe(false)
     const unhide = oneItemMenu()
-      .set(ITEM, 'visible', 'barsy', false)
+      .set(ITEM, 'visible', 'till', false)
       .set(ITEM, 'visible', 'manual', true)
       .set(ITEM, 'visible', 'override', true, { basis: false })
     const resolved = item(run(unhide))
     expect(resolved.visible).toBe(false)
-    expect(resolved.fields.visible).toEqual({ value: false, provenance: 'barsy', layer: 'barsy' })
+    expect(resolved.fields.visible).toEqual({ value: false, provenance: 'till', layer: 'till' })
     expect(resolved.computed.orderable).toBe(false)
   })
 
@@ -212,7 +212,7 @@ describe('ownership matrix (Item)', () => {
     const soldOut = oneItemMenu().set(ITEM, 'for_sale', 'manual', false)
     expect(item(run(soldOut))).toMatchObject({ visible: true, computed: { orderable: false } })
     const backOnSale = oneItemMenu()
-      .set(ITEM, 'for_sale', 'barsy', false, { scope: VENUE })
+      .set(ITEM, 'for_sale', 'till', false, { scope: VENUE })
       .set(ITEM, 'for_sale', 'manual', true)
     expect(item(run(backOnSale))).toMatchObject({ visible: true, computed: { orderable: false } })
   })
@@ -221,9 +221,9 @@ describe('ownership matrix (Item)', () => {
     const [a, b, c] = [nd('a'), nd('b'), nd('c')]
     const builder = new DocBuilder()
       .section(SECTION)
-      .barsyItem(a)
-      .barsyItem(b)
-      .barsyItem(c)
+      .tillItem(a)
+      .tillItem(b)
+      .tillItem(c)
       .place(a, SECTION, 'a2')
       .place(b, SECTION, 'a0')
       .place(c, SECTION, 'a1')
@@ -235,25 +235,25 @@ describe('scope and editions', () => {
   it("a venue row beats master for the same layer; another venue's row is ignored", () => {
     const builder = new DocBuilder()
       .section(SECTION)
-      .barsyItem(ITEM, 1250)
+      .tillItem(ITEM, 1250)
       .place(ITEM, SECTION)
-      .set(ITEM, 'price', 'barsy', eur(999))
-      .set(ITEM, 'price', 'barsy', eur(1500), { scope: OTHER_VENUE })
+      .set(ITEM, 'price', 'till', eur(999))
+      .set(ITEM, 'price', 'till', eur(1500), { scope: OTHER_VENUE })
     expect(item(run(builder)).fields.price?.value).toEqual(eur(1250))
     expect(item(run(builder), ITEM).computed.orderable).toBe(true)
   })
 
   it('the per-venue for-sale flag beats the base flag', () => {
-    const builder = oneItemMenu().set(ITEM, 'for_sale', 'barsy', false)
+    const builder = oneItemMenu().set(ITEM, 'for_sale', 'till', false)
     expect(item(run(builder)).computed.orderable).toBe(true)
     const offHere = oneItemMenu()
-      .set(ITEM, 'for_sale', 'barsy', true)
-      .set(ITEM, 'for_sale', 'barsy', false, { scope: VENUE })
+      .set(ITEM, 'for_sale', 'till', true)
+      .set(ITEM, 'for_sale', 'till', false, { scope: VENUE })
     expect(item(run(offHere)).computed.orderable).toBe(false)
   })
 
   it('a master price alone is shown but never makes an item orderable', () => {
-    const builder = oneItemMenu().unset(ITEM, 'price').set(ITEM, 'price', 'barsy', eur(1250))
+    const builder = oneItemMenu().unset(ITEM, 'price').set(ITEM, 'price', 'till', eur(1250))
     const negroni = item(run(builder))
     expect(negroni.fields.price?.value).toEqual(eur(1250))
     expect(negroni.computed.orderable).toBe(false)
@@ -262,8 +262,8 @@ describe('scope and editions', () => {
 
   it('a broken venue price never falls back to the master price', () => {
     const builder = oneItemMenu()
-      .set(ITEM, 'price', 'barsy', eur(999))
-      .set(ITEM, 'price', 'barsy', { amount_minor: 12.5, currency: 'EUR' }, { scope: VENUE })
+      .set(ITEM, 'price', 'till', eur(999))
+      .set(ITEM, 'price', 'till', { amount_minor: 12.5, currency: 'EUR' }, { scope: VENUE })
     const negroni = item(run(builder))
     expect(negroni.fields.price?.value).toBeNull()
     expect(negroni.computed.orderable).toBe(false)
@@ -299,7 +299,7 @@ describe('scope and editions', () => {
 
 describe('source links (rule 6)', () => {
   it.each(['missing', 'deleted'] as const)(
-    'a %s barsy link hides the item whatever its status',
+    'a %s till link hides the item whatever its status',
     (state) => {
       const builder = oneItemMenu()
       builder.links.splice(0, 1)
@@ -315,24 +315,35 @@ describe('source links (rule 6)', () => {
     },
   )
 
-  it('a missing import link hides the node too', () => {
-    const builder = oneItemMenu().link(ITEM, 'missing', 'row', 'import:wines')
+  it('a missing link of another integration hides the node too', () => {
+    const builder = oneItemMenu().link(ITEM, 'missing', 'article', 'till:in_other')
     expect(item(run(builder)).visible).toBe(false)
   })
 
-  it('a link to something other than an article never makes an item orderable', () => {
+  it('any active till link makes an item eligible, whatever the till calls the object', () => {
+    // The link type is the connector's business, checked when the link is made (apply()).
     const builder = oneItemMenu()
     builder.links.splice(0, 1)
-    builder.link(ITEM, 'active', 'category')
-    expect(item(run(builder)).computed.orderable).toBe(false)
+    builder.link(ITEM, 'active', 'product', 'till:in_second')
+    expect(item(run(builder)).computed.orderable).toBe(true)
+  })
+
+  it('a link that is not a till link never makes an item orderable', () => {
+    const builder = oneItemMenu()
+    builder.links.splice(0, 1)
+    builder.link(ITEM, 'active', 'article', 'manual')
+    const negroni = item(run(builder))
+    expect(negroni.computed.orderable).toBe(false)
+    // Without a till link the price is not locked: it is read like any till-owned value.
+    expect(negroni.fields.price?.provenance).toBe('till')
   })
 })
 
 describe('computed orderable', () => {
   it.each([
     ['hidden status', (b: DocBuilder) => b.status(ITEM, 'hidden')],
-    ['no barsy link', (b: DocBuilder) => b.links.splice(0, 1)],
-    ['no for-sale flag from barsy', (b: DocBuilder) => b.unset(ITEM, 'for_sale')],
+    ['no till link', (b: DocBuilder) => b.links.splice(0, 1)],
+    ['no for-sale flag from the till', (b: DocBuilder) => b.unset(ITEM, 'for_sale')],
     [
       'a manual for-sale flag only',
       (b: DocBuilder) => b.unset(ITEM, 'for_sale').set(ITEM, 'for_sale', 'manual', true),
@@ -364,17 +375,17 @@ describe('computed priceFrom (required modifier groups)', () => {
   function withGroups(min: number, deltas: (number | null)[], optionalDeltas: number[] = []) {
     const builder = oneItemMenu()
       .node(group, 'modifier_group', ITEM)
-      .set(group, 'name', 'barsy', { bg_BG: 'Джин', en_US: 'Gin' })
-      .set(group, 'min', 'barsy', min)
-      .set(group, 'max', 'barsy', Math.max(1, min))
+      .set(group, 'name', 'till', { bg_BG: 'Джин', en_US: 'Gin' })
+      .set(group, 'min', 'till', min)
+      .set(group, 'max', 'till', Math.max(1, min))
       .node(extra, 'modifier_group', ITEM)
       .set(extra, 'name', 'manual', { bg_BG: 'Екстри', en_US: 'Extras' })
       .set(extra, 'min', 'manual', 0)
       .set(extra, 'max', 'manual', 3)
     deltas.forEach((delta, index) => {
       const option = nd(`opt${index}`)
-      builder.node(option, 'option', group).set(option, 'name', 'barsy', { bg_BG: `О${index}` })
-      if (delta !== null) builder.set(option, 'price_delta', 'barsy', eur(delta))
+      builder.node(option, 'option', group).set(option, 'name', 'till', { bg_BG: `О${index}` })
+      if (delta !== null) builder.set(option, 'price_delta', 'till', eur(delta))
     })
     optionalDeltas.forEach((delta, index) => {
       const option = nd(`extra${index}`)
@@ -422,7 +433,7 @@ describe('computed priceFrom (required modifier groups)', () => {
   it('a group with min above max is blocked, and its item cannot be ordered', () => {
     const builder = withGroups(2, [300, 150, 500])
     builder.unset(group, 'max')
-    builder.set(group, 'max', 'barsy', 1)
+    builder.set(group, 'max', 'till', 1)
     const menu = run(builder)
     expect(menu.modifierGroups[group]?.issues).toContainEqual({
       code: 'group_min_max',
@@ -454,7 +465,7 @@ describe('checks', () => {
   it('V3: an item without a name in the default language is left out', () => {
     const builder = oneItemMenu()
     builder.unset(ITEM, 'name')
-    builder.set(ITEM, 'name', 'barsy', { en_US: 'Negroni' })
+    builder.set(ITEM, 'name', 'till', { en_US: 'Negroni' })
     const menu = run(builder)
     expect(item(menu).issues).toContainEqual({
       code: 'V3',
@@ -477,7 +488,7 @@ describe('checks', () => {
     expect(negroni.visible).toBe(true)
   })
 
-  it('V6: a barsy item without a price is left out', () => {
+  it('V6: a till item without a price is left out', () => {
     const builder = oneItemMenu()
     builder.unset(ITEM, 'price')
     const negroni = item(run(builder))
@@ -509,7 +520,7 @@ describe('checks', () => {
   })
 
   it('reports an item that is in no section', () => {
-    const builder = oneItemMenu().barsyItem(nd('loose'))
+    const builder = oneItemMenu().tillItem(nd('loose'))
     expect(item(run(builder), nd('loose')).issues).toEqual([
       { code: 'unplaced_item', severity: 'warning', nodeId: nd('loose') },
     ])
@@ -538,9 +549,9 @@ describe('structure', () => {
       .section(gin, bar)
       .section(archived, ROOT, 'archived')
       .section(inArchived, archived)
-      .barsyItem(ITEM)
+      .tillItem(ITEM)
       .place(ITEM, gin)
-      .barsyItem(nd('gone'), 900, 'archived')
+      .tillItem(nd('gone'), 900, 'archived')
     const menu = run(builder)
     expect(menu.sections.map((section) => section.id)).toEqual([bar])
     expect(menu.sections[0]?.children.map((section) => section.id)).toEqual([gin])
@@ -566,7 +577,7 @@ describe('structure', () => {
       .section(mid, ROOT, 'active', 'a0')
       .section(sub2, mid, 'active', 'a0')
       .section(sub1, mid, 'active', 'a1')
-      .barsyItem(ITEM)
+      .tillItem(ITEM)
       .place(ITEM, sub1)
       .place(ITEM, sub2)
       .place(ITEM, zeta)

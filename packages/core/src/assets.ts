@@ -15,8 +15,8 @@ export const ASSET_IMAGE_EXTENSIONS = {
   'image/webp': 'webp',
 } as const satisfies Record<AssetImageType, string>
 
-/** Where an asset came from: a person's upload or a photo fetched from barsy. */
-export const ASSET_ORIGINS = ['upload', 'barsy'] as const
+/** Where an asset came from: a person's upload or a photo a till connector fetched. */
+export const ASSET_ORIGINS = ['upload', 'connector'] as const
 
 /** One of the asset origins. */
 export type AssetOrigin = (typeof ASSET_ORIGINS)[number]

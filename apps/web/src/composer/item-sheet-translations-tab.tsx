@@ -2,9 +2,9 @@
 
 import type { Locale } from '@restro/core'
 // The Translations tab: the item's localized fields (name, description) as a grid of the venue's
-// languages. A language barsy holds is shown read-only; one it lacks is ours to write, saved per
+// languages. A language the till holds is shown read-only; one it lacks is ours to write, saved per
 // language to the manual layer (D24: a translation, not an override). Cells with no text are
-// highlighted, and a translation whose barsy text changed after it was written carries the review
+// highlighted, and a translation whose till text changed after it was written carries the review
 // flag (our text stays live meanwhile).
 import { LockIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useFieldLabel } from '@/fields/field-row'
 import { localeChip } from '@/fields/localized'
 import { ProvenanceBadge } from '@/fields/provenance-badge'
+import { useTillLabel } from '@/fields/till-label'
 import { cn } from '@/lib/utils'
 import type { ItemSheetData, TranslationCell, TranslationRow } from '@/server/item-sheet/types'
 
@@ -39,6 +40,7 @@ interface CellProps {
 
 function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellProps) {
   const t = useTranslations('itemSheet.translations')
+  const source = useTillLabel()
   const uiLanguage = useLocale()
   const id = useId()
   const [draft, setDraft] = useState(cell.ourText ?? '')
@@ -78,7 +80,7 @@ function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellPro
             rows={3}
             lang={langTag}
             value={draft}
-            // Where barsy's text is only the fallback, it shows greyed until ours replaces it.
+            // Where the till's text is only the fallback, it shows greyed until ours replaces it.
             placeholder={cell.ourText === null && cell.text ? cell.text : t('placeholder')}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -94,7 +96,7 @@ function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellPro
                 <ProvenanceBadge provenance={badgeProvenance(cell.provenance) ?? 'owned'} />
               ) : null}
               {cell.review ? (
-                <p className="text-xs text-muted-foreground">{t('reviewHint')}</p>
+                <p className="text-xs text-muted-foreground">{t('reviewHint', { source })}</p>
               ) : null}
             </div>
             <Button type="button" size="sm" disabled={!dirty || busy} onClick={save}>
@@ -113,11 +115,11 @@ function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellPro
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {cell.provenance !== 'none' ? (
-              <ProvenanceBadge provenance={badgeProvenance(cell.provenance) ?? 'barsy'} />
+              <ProvenanceBadge provenance={badgeProvenance(cell.provenance) ?? 'till'} />
             ) : null}
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <LockIcon className="size-3" aria-hidden />
-              {t('heldByBarsy')}
+              {t('heldByTill', { source })}
             </span>
           </div>
         </>
@@ -169,9 +171,10 @@ function TranslationFieldCard({
 
 export function ItemSheetTranslationsTab({ data, busy, onSave }: ItemSheetTranslationsTabProps) {
   const t = useTranslations('itemSheet.translations')
+  const source = useTillLabel()
   return (
     <div className="grid gap-4" data-testid="item-sheet-translations">
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
+      <p className="text-sm text-muted-foreground">{t('intro', { source })}</p>
       {data.translations.map((row) => (
         <TranslationFieldCard
           key={row.fieldKey}

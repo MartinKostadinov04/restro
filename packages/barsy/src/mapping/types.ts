@@ -20,7 +20,7 @@ import type {
   SupplementGroup,
 } from '../read/schemas.ts'
 
-/** The mapping version stamped on every barsy-layer write (doc: "Every write records mapping_version"). */
+/** The mapping version stamped on every till-layer write (doc: "Every write records mapping_version"). */
 export const BARSY_MAPPING_VERSION = 1
 
 /** Which barsy price feeds `price` (the open decision P52; both stay in the source record). */

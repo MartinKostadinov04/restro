@@ -1,6 +1,6 @@
 // loadItemDocument(): the menu document plus one item that may sit outside it. `loadMenuDocument`
 // reaches an item only through the placements of the menu's sections, so an item placed nowhere
-// (new from barsy and not yet sorted, or taken out of every section) is not in it. The item sheet
+// (new from the till and not yet sorted, or taken out of every section) is not in it. The item sheet
 // opens such items too, and shows their values and issues, so this adds the item's own subtree
 // (the item, its modifier groups and options with their values and links) to the document.
 // Read side only: it runs in READ ONLY transactions (`withTenant`).
@@ -100,7 +100,7 @@ export async function loadItemDocument(
         ), '[]'::json) as values,
         coalesce((
           select json_agg(json_build_object(
-              'nodeId', l.node_id, 'source', i.kind || ':' || l.integration_id,
+              'nodeId', l.node_id, 'source', 'till:' || l.integration_id,
               'externalType', l.external_type, 'state', l.state)
             order by l.node_id collate "C", l.integration_id collate "C",
               l.external_type collate "C")

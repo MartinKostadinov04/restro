@@ -284,7 +284,7 @@ test('an item barsy has off sale says so and has no control, in the row and in t
   await campari.getByTestId('item-open').click()
   const card = page.getByTestId('item-sheet-sale')
   await expect(card).toBeVisible()
-  await expect(card).toHaveAttribute('data-state', 'off_barsy')
+  await expect(card).toHaveAttribute('data-state', 'off_till')
   await expect(card.getByTestId('sale-state')).toHaveText('Не се продава в barsy')
   await expect(card.getByRole('button')).toHaveCount(0)
   await expect(page.getByText('Върни в продажба')).toHaveCount(0)

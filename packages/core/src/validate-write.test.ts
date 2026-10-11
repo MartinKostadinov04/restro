@@ -10,6 +10,18 @@ import { layerAllowed, validateWrite } from './validate-write'
 const template = VENUE_MENU_TEMPLATE
 const node = { id: newId('nd') }
 
+/** The till's layer: whichever connector feeds the venue's till writes it (brief CF-03). */
+const TILL = 'till' as const satisfies Layer
+
+/**
+ * The two venue shapes rule 5 is checked on: an item linked to a till, and a venue with no till
+ * at all (hand-made items, manual layer only).
+ */
+const VENUE_SHAPES = [
+  { name: 'a till-linked item', linkedToTill: true },
+  { name: 'a no-till (manual-only) item', linkedToTill: false },
+] as const
+
 function write(
   fieldKey: string,
   layer: Layer,
@@ -24,7 +36,7 @@ function write(
     scope: 'master',
     value: value as FieldWrite['value'],
   }
-  if (layer === 'barsy') Object.assign(base, { sourceRecordId: 'sr_1', mappingVersion: 1 })
+  if (layer === 'till') Object.assign(base, { sourceRecordId: 'sr_1', mappingVersion: 1 })
   return { ...base, ...extra }
 }
 
@@ -41,46 +53,46 @@ function expectRejected(verdict: ReturnType<typeof validateWrite>, code: string)
 describe('validateWrite', () => {
   it('accepts valid writes in allowed layers', () => {
     const ok = [
-      validateWrite(template, 'item', write('price', 'barsy', price(1250))),
+      validateWrite(template, 'item', write('price', 'till', price(1250))),
       validateWrite(template, 'item', write('description', 'manual', { en_US: 'Gin, Campari' })),
-      validateWrite(template, 'item', write('allergens', 'barsy', ['sulphites'])),
+      validateWrite(template, 'item', write('allergens', 'till', ['sulphites'])),
       validateWrite(template, 'item', write('allergens', 'manual', [])),
       validateWrite(
         template,
         'item',
         write('name', 'override', { en_US: 'Negroni Sbagliato' }, { basis: { en_US: 'Negroni' } }),
       ),
-      validateWrite(template, 'item', write('visible', 'barsy', true)),
+      validateWrite(template, 'item', write('visible', 'till', true)),
       validateWrite(template, 'item', write('visible', 'manual', false)),
       validateWrite(template, 'item', write('for_sale', 'edition:service-2026-10-08', false)),
       validateWrite(template, 'item', write('order_mode', 'manual', 'ask_waiter')),
-      validateWrite(template, 'option', write('price_delta', 'barsy', price(0))),
+      validateWrite(template, 'option', write('price_delta', 'till', price(0))),
       validateWrite(template, 'section', write('title', 'manual', { bg_BG: 'Коктейли' })),
     ]
     for (const verdict of ok) expect(verdict).toEqual({ ok: true })
   })
 
   it('rejects a price float (V2)', () => {
-    expectRejected(validateWrite(template, 'item', write('price', 'barsy', price(12.5))), 'V2')
-    expectRejected(validateWrite(template, 'item', write('price', 'barsy', 12.5)), 'V2')
+    expectRejected(validateWrite(template, 'item', write('price', 'till', price(12.5))), 'V2')
+    expectRejected(validateWrite(template, 'item', write('price', 'till', 12.5)), 'V2')
   })
 
   it('rejects a negative price (V2)', () => {
-    expectRejected(validateWrite(template, 'item', write('price', 'barsy', price(-100))), 'V2')
+    expectRejected(validateWrite(template, 'item', write('price', 'till', price(-100))), 'V2')
     expectRejected(
-      validateWrite(template, 'option', write('price_delta', 'barsy', price(-50))),
+      validateWrite(template, 'option', write('price_delta', 'till', price(-50))),
       'V2',
     )
   })
 
   it('rejects a price in an unknown currency (V2)', () => {
     const bgn = { amount_minor: 1250, currency: 'BGN' }
-    expectRejected(validateWrite(template, 'item', write('price', 'barsy', bgn)), 'V2')
+    expectRejected(validateWrite(template, 'item', write('price', 'till', bgn)), 'V2')
   })
 
   it('rejects an unknown allergen (V1)', () => {
     expectRejected(
-      validateWrite(template, 'item', write('allergens', 'barsy', ['gluten', 'peanut'])),
+      validateWrite(template, 'item', write('allergens', 'till', ['gluten', 'peanut'])),
       'V1',
     )
   })
@@ -99,8 +111,8 @@ describe('validateWrite', () => {
     }
   })
 
-  it('rejects a non-barsy layer on a locked field (price)', () => {
-    for (const layer of ['manual', 'import', 'override', 'edition:venue-1'] as const) {
+  it('rejects any layer but the till on a locked field (price)', () => {
+    for (const layer of ['manual', 'override', 'edition:venue-1'] as const) {
       const extra = layer === 'override' ? { basis: price(1100) } : {}
       expectRejected(
         validateWrite(template, 'item', write('price', layer, price(1250), extra)),
@@ -153,30 +165,30 @@ describe('validateWrite', () => {
   it('applies field constraints (V1)', () => {
     expectRejected(validateWrite(template, 'item', write('abv', 'manual', 140)), 'V1')
     expectRejected(validateWrite(template, 'item', write('order_mode', 'manual', 'delivery')), 'V1')
-    expectRejected(validateWrite(template, 'modifier_group', write('max', 'barsy', 0)), 'V1')
+    expectRejected(validateWrite(template, 'modifier_group', write('max', 'till', 0)), 'V1')
   })
 })
 
-describe('validateWrite with node context (linked to barsy or hand-made)', () => {
-  const linked = { linkedToBarsy: true }
-  const handMade = { linkedToBarsy: false }
+describe('validateWrite with node context (linked to a till or hand-made)', () => {
+  const linked = { linkedToTill: true }
+  const handMade = { linkedToTill: false }
 
-  it('allows a manual or import price only on a node without a barsy link', () => {
-    for (const layer of ['manual', 'import'] as const) {
-      expect(validateWrite(template, 'item', write('price', layer, price(900)), handMade)).toEqual({
+  it('allows a manual price only on a node without a till link', () => {
+    expect(validateWrite(template, 'item', write('price', 'manual', price(900)), handMade)).toEqual(
+      {
         ok: true,
-      })
-      expectRejected(
-        validateWrite(template, 'item', write('price', layer, price(900)), linked),
-        'layer_not_allowed',
-      )
-    }
+      },
+    )
+    expectRejected(
+      validateWrite(template, 'item', write('price', 'manual', price(900)), linked),
+      'layer_not_allowed',
+    )
     expect(
       validateWrite(template, 'option', write('price_delta', 'manual', price(150)), handMade),
     ).toEqual({ ok: true })
   })
 
-  it('treats a missing context as linked to barsy (the stricter reading)', () => {
+  it('treats a missing context as linked to a till (the stricter reading)', () => {
     expectRejected(
       validateWrite(template, 'item', write('price', 'manual', price(900))),
       'layer_not_allowed',
@@ -199,9 +211,9 @@ describe('validateWrite with node context (linked to barsy or hand-made)', () =>
     }
   })
 
-  it('refuses barsy values and overrides on a hand-made node', () => {
+  it('refuses till values and overrides on a hand-made node', () => {
     expectRejected(
-      validateWrite(template, 'item', write('price', 'barsy', price(900)), handMade),
+      validateWrite(template, 'item', write('price', 'till', price(900)), handMade),
       'not_linked',
     )
     expectRejected(
@@ -231,12 +243,12 @@ describe('sold out tonight (S3-08, D46): the service edition can only say false'
   const layer = 'edition:service:2026-10-09' as const
 
   it('accepts for_sale = false and refuses true, on a linked and on a hand-made item', () => {
-    for (const linkedToBarsy of [true, false]) {
+    for (const linkedToTill of [true, false]) {
       expect(
-        validateWrite(template, 'item', write('for_sale', layer, false), { linkedToBarsy }),
+        validateWrite(template, 'item', write('for_sale', layer, false), { linkedToTill }),
       ).toEqual({ ok: true })
       expectRejected(
-        validateWrite(template, 'item', write('for_sale', layer, true), { linkedToBarsy }),
+        validateWrite(template, 'item', write('for_sale', layer, true), { linkedToTill }),
         'less_cautious',
       )
     }
@@ -263,7 +275,6 @@ describe('sold out tonight (S3-08, D46): the service edition can only say false'
 describe('rule 5 (property): builder layers only ever make the menu more cautious', () => {
   const builderLayer = fc.constantFrom<Layer>(
     'manual',
-    'import',
     'override',
     'edition:venue-1',
     'edition:service-2026-10-08',
@@ -278,31 +289,46 @@ describe('rule 5 (property): builder layers only ever make the menu more cautiou
     fc.jsonValue(),
   )
 
-  it('never accepts visible or for_sale = true, nor any price on a linked item', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom('visible', 'for_sale', 'price'),
-        builderLayer,
-        anyValue,
-        anyValue,
-        fc.boolean(),
-        (fieldKey, layer, value, basis, linkedToBarsy) => {
-          const extra = layer === 'override' ? { basis: basis as FieldWrite['value'] } : {}
-          const verdict = validateWrite(template, 'item', write(fieldKey, layer, value, extra), {
-            linkedToBarsy,
-          })
-          if (fieldKey === 'price') {
-            if (linkedToBarsy) expect(verdict.ok).toBe(false)
-            // On a hand-made item only manual and import may carry a price.
-            if (verdict.ok) expect(['manual', 'import']).toContain(layer)
-          } else if (verdict.ok) {
-            expect(value).toBe(false)
-          }
-        },
-      ),
-      { numRuns: 2000 },
-    )
-  })
+  it.each(VENUE_SHAPES)(
+    'never accepts visible or for_sale = true, nor a price the till owns: $name',
+    ({ linkedToTill }) => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom('visible', 'for_sale', 'price'),
+          builderLayer,
+          anyValue,
+          anyValue,
+          (fieldKey, layer, value, basis) => {
+            expect(layer).not.toBe(TILL)
+            const extra = layer === 'override' ? { basis: basis as FieldWrite['value'] } : {}
+            const verdict = validateWrite(template, 'item', write(fieldKey, layer, value, extra), {
+              linkedToTill,
+            })
+            if (fieldKey === 'price') {
+              if (linkedToTill) expect(verdict.ok).toBe(false)
+              // On a hand-made item only the manual layer may carry a price.
+              if (verdict.ok) expect(layer).toBe('manual')
+            } else if (verdict.ok) {
+              expect(value).toBe(false)
+            }
+          },
+        ),
+        { numRuns: 2000 },
+      )
+    },
+  )
+
+  it.each(VENUE_SHAPES)(
+    'only the till layer may say true, and only when linked: $name',
+    ({ linkedToTill }) => {
+      for (const fieldKey of ['visible', 'for_sale']) {
+        const verdict = validateWrite(template, 'item', write(fieldKey, TILL, true), {
+          linkedToTill,
+        })
+        expect(verdict.ok).toBe(linkedToTill)
+      }
+    },
+  )
 })
 
 describe('layerAllowed', () => {
@@ -312,25 +338,24 @@ describe('layerAllowed', () => {
     return definition
   }
 
-  it('accepts only the barsy layer on a barsy-owned locked field', () => {
-    expect(layerAllowed(field('price'), 'barsy').ok).toBe(true)
-    for (const layer of ['import', 'manual', 'override', 'edition:x'] as const) {
+  it('accepts only the till layer on a till-owned locked field', () => {
+    expect(layerAllowed(field('price'), 'till').ok).toBe(true)
+    for (const layer of ['manual', 'override', 'edition:x'] as const) {
       expect(layerAllowed(field('price'), layer).ok, layer).toBe(false)
     }
   })
 
-  it('opens the manual and import layers of a locked field on a hand-made node only', () => {
-    const handMade = { linkedToBarsy: false }
+  it('opens the manual layer of a locked field on a hand-made node only', () => {
+    const handMade = { linkedToTill: false }
     expect(layerAllowed(field('price'), 'manual', handMade).ok).toBe(true)
-    expect(layerAllowed(field('price'), 'import', handMade).ok).toBe(true)
-    expect(layerAllowed(field('price'), 'barsy', handMade).ok).toBe(false)
+    expect(layerAllowed(field('price'), 'till', handMade).ok).toBe(false)
     expect(layerAllowed(field('price'), 'override', handMade).ok).toBe(false)
     expect(layerAllowed(field('price'), 'edition:x', handMade).ok).toBe(false)
   })
 
   it('lets builder layers write builder-owned and overridable fields', () => {
     expect(layerAllowed(field('description'), 'manual').ok).toBe(true)
-    expect(layerAllowed(field('description'), 'barsy').ok).toBe(true)
+    expect(layerAllowed(field('description'), 'till').ok).toBe(true)
     expect(layerAllowed(field('name'), 'manual').ok).toBe(true)
     expect(layerAllowed(field('name'), 'override').ok).toBe(true)
     expect(layerAllowed(field('visible'), 'edition:venue-1').ok).toBe(true)

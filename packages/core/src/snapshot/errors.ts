@@ -1,5 +1,5 @@
 // Errors about a snapshot say where the problem is, never what the offending value was: a
-// message that echoed it could carry the very barsy id or internal text the check refused
+// message that echoed it could carry the very external id or internal text the check refused
 // (rule 3) into a log, a job run or the admin. Path segments that are not plainly ours (a
 // schema key, a field key, one of our ids, an index) are redacted too, since a record key can
 // itself be the leak.

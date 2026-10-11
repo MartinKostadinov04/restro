@@ -262,8 +262,11 @@ export const authInvitation = restro.table(
 
 /** Edition layers: edition:<id> (the other layers are listed in the checks). */
 const EDITION_LAYER_PATTERN = sql.raw(`'^edition:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
-/** Sources other than `manual`: import:<profile>, barsy:<integration>. */
-const SOURCE_PATTERN = sql.raw(`'^(import|barsy):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
+/**
+ * Sources other than `manual`: till:<integration>, the role of whichever connector feeds a
+ * venue's till (brief CF-03). The vendor is the integration's `kind`, never part of a source.
+ */
+const SOURCE_PATTERN = sql.raw(`'^till:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
 /** Actors other than `system`: user:<id>, integration:<id> (never personal data). */
 const ACTOR_PATTERN = sql.raw(`'^(user|integration):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
 /** Scopes other than `master`: venue:<our vn_ id> (never a barsy bid). */
@@ -616,29 +619,26 @@ export const fieldValues = restro.table(
     check('field_values_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
       'field_values_layer',
-      sql`${t.layer} in ('barsy', 'import', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
+      sql`${t.layer} in ('till', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
     ),
     check('field_values_scope', sql`${t.scope} = 'master' or ${t.scope} ~ ${VENUE_SCOPE_PATTERN}`),
     check('field_values_source', sql`${t.source} = 'manual' or ${t.source} ~ ${SOURCE_PATTERN}`),
     check('field_values_actor', sql`${t.actor} = 'system' or ${t.actor} ~ ${ACTOR_PATTERN}`),
     check('field_values_job_id', sql`length(${t.jobId}) between 1 and 128`),
     check('field_values_value_hash', sql`${t.valueHash} ~ ${SHA256_PATTERN}`),
-    // Each source writes its own layers: barsy -> barsy, import -> import, manual -> the rest.
+    // Each source writes its own layers: a till -> till, manual -> the rest.
     check(
       'field_values_layer_matches_source',
-      sql`(${t.layer} = 'barsy') = (${t.source} like 'barsy:%') and (${t.layer} = 'import') = (${t.source} like 'import:%')`,
+      sql`(${t.layer} = 'till') = (${t.source} like 'till:%')`,
     ),
-    check(
-      'field_values_venue_scope_barsy_only',
-      sql`${t.scope} = 'master' or ${t.layer} = 'barsy'`,
-    ),
+    check('field_values_venue_scope_till_only', sql`${t.scope} = 'master' or ${t.layer} = 'till'`),
     check(
       'field_values_basis_on_overrides',
       sql`(${t.layer} = 'override') = (${t.basis} is not null)`,
     ),
     check(
-      'field_values_barsy_provenance',
-      sql`${t.layer} <> 'barsy' or (${t.sourceRecordId} is not null and ${t.mappingVersion} is not null)`,
+      'field_values_till_provenance',
+      sql`${t.layer} <> 'till' or (${t.sourceRecordId} is not null and ${t.mappingVersion} is not null)`,
     ),
     check('field_values_mapping_version_positive', sql`${t.mappingVersion} >= 1`),
     check('field_values_reject_reason', sql`${t.valid} = (${t.rejectReason} is null)`),
@@ -672,13 +672,13 @@ export const EVENT_OPS = [
  * a field value: `field_key` is the field, `layer` and `scope` the slot. The structural ops
  * (`createNode`, `setNodeStatus`, `setPlacement`, `removePlacement`, `moveNode`, `linkSource`,
  * `unlinkSource`, `setLinkState`) fill the same columns with a reserved key naming what changed
- * (`node`, `status`, `placement`, `parent`, `link`), the layer of their source (`manual`,
- * `import` or `barsy`), scope `master`, and JSON in `old_value` / `new_value` that names only our
+ * (`node`, `status`, `placement`, `parent`, `link`), the layer of their source (`manual` or
+ * `till`), scope `master`, and JSON in `old_value` / `new_value` that names only our
  * own ids and never an external id (rule 3): `{section, sort_key}` for a placement,
  * `{parent, sort_key}` for a move, `{type, parent, status}` for a new node,
  * `{source, external_type}` for a link, `{source, external_type, state}` for a link-state
- * change, the status text for a status change. `node_id` is the node that changed (the item,
- * for a placement).
+ * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
+ * the node that changed (the item, for a placement).
  */
 export const events = restro.table(
   'events',
@@ -715,7 +715,7 @@ export const events = restro.table(
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
       'events_layer',
-      sql`${t.layer} in ('barsy', 'import', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
+      sql`${t.layer} in ('till', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
     ),
     check('events_scope', sql`${t.scope} = 'master' or ${t.scope} ~ ${VENUE_SCOPE_PATTERN}`),
     check('events_source', sql`${t.source} = 'manual' or ${t.source} ~ ${SOURCE_PATTERN}`),
@@ -854,7 +854,7 @@ export const assets = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     origin: text('origin').notNull(),
-    /** Where it came from (the barsy picture it was fetched for); backend only. */
+    /** Where it came from (the connector's picture it was fetched for); backend only. */
     originRef: text('origin_ref'),
     checksum: text('checksum'),
     contentType: text('content_type'),
@@ -873,7 +873,7 @@ export const assets = restro.table(
       'assets_variants_object',
       sql`${t.variants} is null or jsonb_typeof(${t.variants}) = 'object'`,
     ),
-    check('assets_origin', sql`${t.origin} in ('upload', 'barsy')`),
+    check('assets_origin', sql`${t.origin} in ('upload', 'connector')`),
     check('assets_status', sql`${t.status} in ('pending', 'stored', 'failed')`),
     check('assets_checksum', sql`${t.checksum} ~ ${SHA256_PATTERN}`),
     check('assets_dimensions_positive', sql`${t.width} > 0 and ${t.height} > 0`),

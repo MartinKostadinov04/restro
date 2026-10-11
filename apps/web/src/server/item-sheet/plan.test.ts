@@ -39,7 +39,7 @@ const entry = (value: unknown, basis: unknown | null = null): LayerEntry => ({
 function context(key: string, options: { linked?: boolean; layers?: LayerView } = {}): PlanContext {
   return {
     definition: definition(key),
-    linkedToBarsy: options.linked ?? true,
+    linkedToTill: options.linked ?? true,
     layers: options.layers ?? {},
   }
 }
@@ -75,18 +75,18 @@ describe('builder-owned fields go to the manual layer', () => {
     expect(writesOf(planFieldSave(context('abv'), undefined))).toEqual([])
   })
 
-  it('never overrides a builder-owned field, even when barsy holds a value', () => {
-    const layers = { barsy: entry({ bg_BG: 'От barsy' }) }
+  it('never overrides a builder-owned field, even when till holds a value', () => {
+    const layers = { till: entry({ bg_BG: 'От till' }) }
     const writes = writesOf(planFieldSave(context('description', { layers }), { bg_BG: 'Мое' }))
     expect(writes).toEqual([{ kind: 'set', layer: 'manual', value: { bg_BG: 'Мое' } }])
   })
 
-  it('does not copy a fallback text from barsy into manual: only what changed is written', () => {
-    const layers = { barsy: entry({ bg_BG: 'От barsy', en_US: 'From barsy' }) }
+  it('does not copy a fallback text from till into manual: only what changed is written', () => {
+    const layers = { till: entry({ bg_BG: 'От till', en_US: 'From till' }) }
     // The editor holds both resolved texts; the person only changed English.
     const writes = writesOf(
       planFieldSave(context('description', { layers }), {
-        bg_BG: 'От barsy',
+        bg_BG: 'От till',
         en_US: 'Our own words',
       }),
     )
@@ -95,8 +95,8 @@ describe('builder-owned fields go to the manual layer', () => {
     expect(
       writesOf(
         planFieldSave(context('description', { layers }), {
-          bg_BG: 'От barsy',
-          en_US: 'From barsy',
+          bg_BG: 'От till',
+          en_US: 'From till',
         }),
       ),
     ).toEqual([])
@@ -104,7 +104,7 @@ describe('builder-owned fields go to the manual layer', () => {
 
   it('keeps a language already in the manual layer even when it equals the fallback', () => {
     const layers = {
-      barsy: entry({ bg_BG: 'Същото' }),
+      till: entry({ bg_BG: 'Същото' }),
       manual: entry({ bg_BG: 'Същото', en_US: 'Same' }),
     }
     expect(
@@ -125,15 +125,15 @@ describe('builder-owned fields go to the manual layer', () => {
   })
 })
 
-describe('barsy-owned, overridable fields: override with a basis, or manual', () => {
-  it("overrides a linked item's allergens with barsy's current value as the basis", () => {
-    const layers = { barsy: entry(['gluten']) }
+describe('till-owned, overridable fields: override with a basis, or manual', () => {
+  it("overrides a linked item's allergens with till's current value as the basis", () => {
+    const layers = { till: entry(['gluten']) }
     expect(writesOf(planFieldSave(context('allergens', { layers }), ['gluten', 'milk']))).toEqual([
       { kind: 'set', layer: 'override', value: ['gluten', 'milk'], basis: ['gluten'] },
     ])
   })
 
-  it('writes the manual layer when barsy holds no value for the field', () => {
+  it('writes the manual layer when till holds no value for the field', () => {
     expect(writesOf(planFieldSave(context('allergens'), ['milk']))).toEqual([
       { kind: 'set', layer: 'manual', value: ['milk'] },
     ])
@@ -142,7 +142,7 @@ describe('barsy-owned, overridable fields: override with a basis, or manual', ()
     ])
   })
 
-  it('writes the manual layer for an item with no barsy link, whatever the field', () => {
+  it('writes the manual layer for an item with no till link, whatever the field', () => {
     for (const [key, value] of [
       ['allergens', ['milk']],
       ['portion', { value: 80, unit: 'ml' }],
@@ -154,9 +154,9 @@ describe('barsy-owned, overridable fields: override with a basis, or manual', ()
     }
   })
 
-  it("says nothing new when a source_first field is set to barsy's own value", () => {
+  it("says nothing new when a source_first field is set to till's own value", () => {
     const layers = {
-      barsy: entry({ value: 80, unit: 'ml' }),
+      till: entry({ value: 80, unit: 'ml' }),
       override: entry({ value: 90, unit: 'ml' }, { value: 80, unit: 'ml' }),
     }
     expect(
@@ -164,7 +164,7 @@ describe('barsy-owned, overridable fields: override with a basis, or manual', ()
     ).toEqual([{ kind: 'clear', layer: 'override' }])
     expect(
       writesOf(
-        planFieldSave(context('portion', { layers: { barsy: layers.barsy } }), {
+        planFieldSave(context('portion', { layers: { till: layers.till } }), {
           value: 80,
           unit: 'ml',
         }),
@@ -172,22 +172,22 @@ describe('barsy-owned, overridable fields: override with a basis, or manual', ()
     ).toEqual([])
   })
 
-  it("records an override even for barsy's own value on a must_agree field (it settles a conflict)", () => {
-    const layers = { barsy: entry(['gluten']), manual: entry(['milk']) }
+  it("records an override even for till's own value on a must_agree field (it settles a conflict)", () => {
+    const layers = { till: entry(['gluten']), manual: entry(['milk']) }
     expect(writesOf(planFieldSave(context('allergens', { layers }), ['gluten']))).toEqual([
       { kind: 'set', layer: 'override', value: ['gluten'], basis: ['gluten'] },
     ])
   })
 
   it('clearing an overridden value reverts it', () => {
-    const layers = { barsy: entry(['gluten']), override: entry(['milk'], ['gluten']) }
+    const layers = { till: entry(['gluten']), override: entry(['milk'], ['gluten']) }
     expect(writesOf(planFieldSave(context('allergens', { layers }), undefined))).toEqual([
       { kind: 'clear', layer: 'override' },
     ])
   })
 
-  it('refreshes the basis when an override is saved again after barsy changed', () => {
-    const layers = { barsy: entry(['gluten', 'eggs']), override: entry(['milk'], ['gluten']) }
+  it('refreshes the basis when an override is saved again after till changed', () => {
+    const layers = { till: entry(['gluten', 'eggs']), override: entry(['milk'], ['gluten']) }
     expect(writesOf(planFieldSave(context('allergens', { layers }), ['milk']))).toEqual([
       { kind: 'set', layer: 'override', value: ['milk'], basis: ['gluten', 'eggs'] },
     ])
@@ -195,9 +195,9 @@ describe('barsy-owned, overridable fields: override with a basis, or manual', ()
 })
 
 describe('the display name: per language (D24)', () => {
-  const layers: LayerView = { barsy: entry({ bg_BG: 'Негрони' }) }
+  const layers: LayerView = { till: entry({ bg_BG: 'Негрони' }) }
 
-  it("overrides a language barsy holds, with barsy's whole name as the basis", () => {
+  it("overrides a language till holds, with till's whole name as the basis", () => {
     expect(
       writesOf(planFieldSave(context('name', { layers }), { bg_BG: 'Негрони Класик' })),
     ).toEqual([
@@ -210,7 +210,7 @@ describe('the display name: per language (D24)', () => {
     ])
   })
 
-  it('saves a language barsy lacks as a manual translation, not an override', () => {
+  it('saves a language till lacks as a manual translation, not an override', () => {
     expect(
       writesOf(planFieldSave(context('name', { layers }), { bg_BG: 'Негрони', en_US: 'Negroni' })),
     ).toEqual([{ kind: 'set', layer: 'manual', value: { en_US: 'Negroni' } }])
@@ -235,9 +235,9 @@ describe('the display name: per language (D24)', () => {
     expect(writesOf(planFieldSave(context('name', { layers }), { bg_BG: 'Негрони' }))).toEqual([])
   })
 
-  it('drops the override of a language once it says what barsy says again', () => {
+  it('drops the override of a language once it says what till says again', () => {
     const withOverride: LayerView = {
-      barsy: entry({ bg_BG: 'Негрони' }),
+      till: entry({ bg_BG: 'Негрони' }),
       override: entry({ bg_BG: 'Негрони Класик' }, { bg_BG: 'Негрони' }),
     }
     expect(
@@ -245,22 +245,22 @@ describe('the display name: per language (D24)', () => {
     ).toEqual([{ kind: 'clear', layer: 'override' }])
   })
 
-  it('leaves a translation that barsy has since taken over untouched', () => {
+  it('leaves a translation that till has since taken over untouched', () => {
     const shadowed: LayerView = {
-      barsy: entry({ bg_BG: 'Негрони', en_US: 'Negroni (barsy)' }),
+      till: entry({ bg_BG: 'Негрони', en_US: 'Negroni (till)' }),
       manual: entry({ en_US: 'Negroni (ours)' }),
     }
     expect(
       writesOf(
         planFieldSave(context('name', { layers: shadowed }), {
           bg_BG: 'Негрони',
-          en_US: 'Negroni (barsy)',
+          en_US: 'Negroni (till)',
         }),
       ),
     ).toEqual([])
   })
 
-  it('is a plain manual value on an item with no barsy link', () => {
+  it('is a plain manual value on an item with no till link', () => {
     expect(
       writesOf(
         planFieldSave(context('name', { linked: false }), { bg_BG: 'Домашно', en_US: 'House' }),
@@ -270,8 +270,8 @@ describe('the display name: per language (D24)', () => {
 })
 
 describe('locked and read-only fields', () => {
-  it('refuses the price of a linked item: change it in barsy', () => {
-    const plan = planFieldSave(context('price', { layers: { barsy: entry(eur(450)) } }), eur(500))
+  it('refuses the price of a linked item: change it in till', () => {
+    const plan = planFieldSave(context('price', { layers: { till: entry(eur(450)) } }), eur(500))
     expect(plan).toEqual({ ok: false, refusal: 'locked' })
   })
 
@@ -287,21 +287,21 @@ describe('locked and read-only fields', () => {
 
 describe('revert and keep', () => {
   it('reverting clears the override; nothing to revert is refused', () => {
-    const layers = { barsy: entry(['gluten']), override: entry(['milk'], ['gluten']) }
+    const layers = { till: entry(['gluten']), override: entry(['milk'], ['gluten']) }
     expect(writesOf(planRevert(context('allergens', { layers })))).toEqual([
       { kind: 'clear', layer: 'override' },
     ])
     expect(planRevert(context('allergens'))).toEqual({ ok: false, refusal: 'nothing_to_revert' })
   })
 
-  it("keeping re-records the override over barsy's current value", () => {
-    const layers = { barsy: entry(['gluten', 'eggs']), override: entry(['milk'], ['gluten']) }
+  it("keeping re-records the override over till's current value", () => {
+    const layers = { till: entry(['gluten', 'eggs']), override: entry(['milk'], ['gluten']) }
     expect(writesOf(planKeepOverride(context('allergens', { layers })))).toEqual([
       { kind: 'set', layer: 'override', value: ['milk'], basis: ['gluten', 'eggs'] },
     ])
   })
 
-  it('cannot keep an override when barsy no longer holds a value, or when there is none', () => {
+  it('cannot keep an override when till no longer holds a value, or when there is none', () => {
     expect(
       planKeepOverride(context('allergens', { layers: { override: entry(['milk'], ['gluten']) } })),
     ).toEqual({ ok: false, refusal: 'no_basis' })
@@ -313,23 +313,23 @@ describe('revert and keep', () => {
 })
 
 describe('translations', () => {
-  it('adds a language barsy lacks to the manual layer, keeping the others', () => {
-    const layers = { barsy: entry({ bg_BG: 'Негрони' }), manual: entry({ de_DE: 'Negroni' }) }
+  it('adds a language till lacks to the manual layer, keeping the others', () => {
+    const layers = { till: entry({ bg_BG: 'Негрони' }), manual: entry({ de_DE: 'Negroni' }) }
     expect(writesOf(planTranslation(context('name', { layers }), 'en_US', 'Negroni'))).toEqual([
       { kind: 'set', layer: 'manual', value: { en_US: 'Negroni', de_DE: 'Negroni' } },
     ])
   })
 
-  it('is read-only where barsy holds the language of a barsy-owned field', () => {
-    const layers = { barsy: entry({ bg_BG: 'Негрони' }) }
+  it('is read-only where till holds the language of a till-owned field', () => {
+    const layers = { till: entry({ bg_BG: 'Негрони' }) }
     expect(planTranslation(context('name', { layers }), 'bg_BG', 'Друго')).toEqual({
       ok: false,
       refusal: 'locked',
     })
   })
 
-  it("may write over barsy's text of a builder-owned field (barsy is only the fallback)", () => {
-    const layers = { barsy: entry({ bg_BG: 'От barsy' }) }
+  it("may write over till's text of a builder-owned field (till is only the fallback)", () => {
+    const layers = { till: entry({ bg_BG: 'От till' }) }
     expect(writesOf(planTranslation(context('description', { layers }), 'bg_BG', 'Наше'))).toEqual([
       { kind: 'set', layer: 'manual', value: { bg_BG: 'Наше' } },
     ])
@@ -401,7 +401,7 @@ describe('every planned write passes write validation (property)', () => {
       'name',
       localeText,
       fc.record({
-        barsy: fc.option(
+        till: fc.option(
           localeText.map((v) => entry(v)),
           { nil: undefined },
         ),
@@ -411,7 +411,7 @@ describe('every planned write passes write validation (property)', () => {
       'description',
       localeText,
       fc.record({
-        barsy: fc.option(
+        till: fc.option(
           localeText.map((v) => entry(v)),
           { nil: undefined },
         ),
@@ -421,7 +421,7 @@ describe('every planned write passes write validation (property)', () => {
       'allergens',
       allergenSet,
       fc.record({
-        barsy: fc.option(
+        till: fc.option(
           allergenSet.map((v) => entry(v)),
           { nil: undefined },
         ),
@@ -431,7 +431,7 @@ describe('every planned write passes write validation (property)', () => {
       'portion',
       measurement,
       fc.record({
-        barsy: fc.option(
+        till: fc.option(
           measurement.map((v) => entry(v)),
           { nil: undefined },
         ),
@@ -444,7 +444,7 @@ describe('every planned write passes write validation (property)', () => {
       it(`${key}, ${linked ? 'linked' : 'hand-made'}`, () => {
         fc.assert(
           fc.property(edited, layers, (value, view) => {
-            // A hand-made item has no barsy value.
+            // A hand-made item has no till value.
             const effective: LayerView = linked ? view : {}
             const plan = planFieldSave(context(key, { linked, layers: effective }), value)
             if (!plan.ok) return
@@ -452,13 +452,13 @@ describe('every planned write passes write validation (property)', () => {
               const candidate = asWrite(key, write)
               if (candidate === null) continue
               const verdict = validateWrite(VENUE_MENU_TEMPLATE, 'item', candidate, {
-                linkedToBarsy: linked,
+                linkedToTill: linked,
               })
               expect(verdict, JSON.stringify(write)).toEqual({ ok: true })
-              // Only a linked item has an override, and always over a value barsy holds.
+              // Only a linked item has an override, and always over a value till holds.
               if (write.layer === 'override') {
                 expect(linked).toBe(true)
-                expect(effective.barsy).toBeDefined()
+                expect(effective.till).toBeDefined()
               }
             }
           }),
@@ -468,7 +468,7 @@ describe('every planned write passes write validation (property)', () => {
     }
   }
 
-  it('a manual price is written only for an item with no barsy link', () => {
+  it('a manual price is written only for an item with no till link', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100000 }), fc.boolean(), (minor, linked) => {
         const plan = planFieldSave(context('price', { linked }), eur(minor))
@@ -476,7 +476,7 @@ describe('every planned write passes write validation (property)', () => {
         if (plan.ok) {
           const candidate = asWrite('price', plan.writes[0] as PlannedWrite) as FieldWrite
           expect(
-            validateWrite(VENUE_MENU_TEMPLATE, 'item', candidate, { linkedToBarsy: linked }),
+            validateWrite(VENUE_MENU_TEMPLATE, 'item', candidate, { linkedToTill: linked }),
           ).toEqual({ ok: true })
         }
       }),

@@ -9,7 +9,7 @@ describe('saleStateOf (rule 5: only our own mark is ours to take off)', () => {
   it('is on sale without a flag, and when every layer says true', () => {
     expect(saleStateOf(undefined)).toEqual({ soldOutTonight: false, offSale: null })
     expect(saleStateOf(field(null, null))).toEqual({ soldOutTonight: false, offSale: null })
-    expect(saleStateOf(field(true, 'barsy'))).toEqual({ soldOutTonight: false, offSale: null })
+    expect(saleStateOf(field(true, 'till'))).toEqual({ soldOutTonight: false, offSale: null })
     expect(saleStateOf(field(true, 'default'))).toEqual({ soldOutTonight: false, offSale: null })
   })
 
@@ -21,11 +21,11 @@ describe('saleStateOf (rule 5: only our own mark is ours to take off)', () => {
   })
 
   it("reads a false from barsy as barsy's, which no control may undo", () => {
-    expect(saleStateOf(field(false, 'barsy'))).toEqual({ soldOutTonight: false, offSale: 'barsy' })
+    expect(saleStateOf(field(false, 'till'))).toEqual({ soldOutTonight: false, offSale: 'till' })
   })
 
   it('reads a false from any other layer as "other": neither ours to mark nor to clear', () => {
-    for (const layer of ['manual', 'import', 'override', 'edition:venue:vn_x']) {
+    for (const layer of ['manual', 'override', 'edition:venue:vn_x']) {
       expect(saleStateOf(field(false, layer)), layer).toEqual({
         soldOutTonight: false,
         offSale: 'other',

@@ -117,7 +117,7 @@ describe.skipIf(!hasDatabase)('the demo menu against Postgres (as the restro_app
       'Храна',
     ])
     expect(view.rootIds.map((id) => view.placements[id]?.length)).toEqual([7, 5, 4, 4])
-    expect(view.rootIds.every((id) => view.sections[id]?.origin === 'barsy')).toBe(true)
+    expect(view.rootIds.every((id) => view.sections[id]?.origin === 'till')).toBe(true)
 
     const named = (name: string) => Object.values(view.items).find((item) => item.name === name)
     expect(view.unsortedIds.map((id) => view.items[id]?.name)).toEqual([
@@ -125,9 +125,9 @@ describe.skipIf(!hasDatabase)('the demo menu against Postgres (as the restro_app
       'Текила шот',
     ])
     expect(named('Лимонада на къщата')?.origin).toBe('owned')
-    expect(named('Текила шот')?.origin).toBe('barsy')
+    expect(named('Текила шот')?.origin).toBe('till')
     expect(named('Негрони')?.price).toEqual({ amount_minor: 1050, currency: 'EUR' })
-    expect(named('Гинес 440 мл')).toMatchObject({ hiddenBy: 'barsy', shown: false })
+    expect(named('Гинес 440 мл')).toMatchObject({ hiddenBy: 'till', shown: false })
     expect(Object.values(view.items).filter((item) => item.hiddenBy !== null)).toHaveLength(1)
 
     // One description written here; an item without allergens or an English name has issues.

@@ -96,9 +96,9 @@ test('open an item from barsy, edit it, translate it, give it a photo, read its 
   await page.getByTestId('field-editor-sheet').getByRole('button', { name: 'Milk' }).click()
   await page.getByTestId('field-editor-sheet').getByRole('button', { name: 'Save' }).click()
   await expect(allergens.locator('[data-provenance="overridden"]')).toHaveText('Overridden')
-  await expect(allergens.getByTestId('barsy-value')).toContainText('Sulphites')
+  await expect(allergens.getByTestId('till-value')).toContainText('Sulphites')
   await allergens.getByRole('button', { name: /^Revert Allergens/ }).click()
-  await expect(allergens.locator('[data-provenance="barsy"]')).toHaveText('From barsy')
+  await expect(allergens.locator('[data-provenance="till"]')).toHaveText('From barsy')
   await expect(allergens.getByRole('button', { name: /^Revert Allergens/ })).toHaveCount(0)
 
   // --- Translations: barsy's Bulgarian is read-only, add the English name ----------------------

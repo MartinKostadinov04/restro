@@ -1,13 +1,13 @@
 // The leak guard (rule 3; brief S3-01a): a snapshot is published only if it parses against the
 // strict `menu-snapshot/1` schema AND no string in it — value or key — equals a value the
-// backend keeps to itself. The strict schema leaves no slot for a barsy id or an internal
+// backend keeps to itself. The strict schema leaves no slot for a till's id or an internal
 // field; the walk catches a builder bug that would put one into a slot that does exist.
 //
 // `collectForbiddenValues` gathers those values from the document. External ids are refused
 // outright. Internal field values and override bases are refused unless the same string is
 // public anyway (a public value of the document, the template's public labels, or a word of
-// the snapshot's own vocabulary): an override basis is barsy's earlier text, which commonly
-// equals a public value elsewhere (barsy's allergen codes beside our override of them, the
+// the snapshot's own vocabulary): an override basis is the till's earlier text, which commonly
+// equals a public value elsewhere (the till's allergen codes beside our override of them, the
 // other languages of a name), and refusing those would block every publish without keeping
 // anything private.
 
@@ -67,7 +67,7 @@ function stringLeaves(value: unknown, out: string[] = []): string[] {
 export interface ForbiddenSources {
   readonly template: Template
   readonly doc: MenuDocument
-  /** External ids of the document's nodes (barsy article, category, modifier ids …). */
+  /** External ids of the document's nodes (the till's item, category, modifier ids …). */
   readonly externalIds: Iterable<string>
   /** Other backend-only strings, always refused (asset storage keys and origins …). */
   readonly backendOnly?: Iterable<string>

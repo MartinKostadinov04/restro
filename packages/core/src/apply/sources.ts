@@ -10,13 +10,14 @@ import { type DbPool, type Integration, integrations, sourceRecords } from '@res
 import { withTenantWrite } from '@restro/db/write'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { isScope, type Scope } from '../change-set'
+import type { IntegrationKind } from '../connectors'
 import { sha256Hex } from '../hash'
 import { isId, newId } from '../ids'
 import { lockTenantDocument } from './lock'
 import { ProvisionError } from './provision'
 
-/** The integration kinds a tenant can configure. */
-export type IntegrationKind = 'barsy'
+/** The integration kinds a tenant can configure (defined with the connector data in core). */
+export type { IntegrationKind }
 
 /** The states of an integration (`integrations.status`). */
 export const INTEGRATION_STATUSES = ['new', 'connected', 'error'] as const
@@ -66,7 +67,7 @@ export interface CreateIntegrationInput {
 
 /** An integration row after `createIntegration`; `created` is false when it existed. */
 export interface CreatedIntegration {
-  /** The `in_` id that sources name (`barsy:<id>`). */
+  /** The `in_` id that till sources name (`till:<id>`). */
   readonly id: string
   readonly kind: IntegrationKind
   readonly host: string

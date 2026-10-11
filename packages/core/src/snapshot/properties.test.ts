@@ -1,5 +1,5 @@
 // Property tests of the snapshot builder (brief S3-01a): no backend-only string ever reaches a
-// snapshot (rule 3), our layers never make an item barsy hides or takes off sale appear or
+// snapshot (rule 3), our layers never make an item the till hides or takes off sale appear or
 // appear orderable (rule 5), and the same document always gives the same snapshot and hash.
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
@@ -91,9 +91,8 @@ const ITEM_FIELDS = [
   'image',
 ]
 const allLayers = fc.constantFrom<Layer>(
-  'barsy',
-  'barsy',
-  'import',
+  'till',
+  'till',
   'manual',
   'manual',
   'override',
@@ -182,8 +181,8 @@ function buildDocument(spec: Spec): DocBuilder {
     const link = spec.itemLinks[index] ?? 'none'
     if (link !== 'none') {
       builder.link(id, link)
-      builder.set(id, 'price', 'barsy', { amount_minor: 990, currency: 'EUR' }, { scope: VENUE })
-      builder.set(id, 'for_sale', 'barsy', true, { scope: VENUE })
+      builder.set(id, 'price', 'till', { amount_minor: 990, currency: 'EUR' }, { scope: VENUE })
+      builder.set(id, 'for_sale', 'till', true, { scope: VENUE })
     }
   })
   for (const placement of spec.placements) {
@@ -261,7 +260,7 @@ describe('rule 3: nothing backend-only ever reaches a snapshot', () => {
             builder.set(id, 'internal_note', 'manual', mark('note'))
             builder.set(id, 'secret_cost', 'manual', { amount: mark('cost') })
           }
-          // Overrides whose bases (barsy's earlier values) are sentinels.
+          // Overrides whose bases (the till's earlier values) are sentinels.
           for (const { node, field } of overrides) {
             const basis =
               field === 'tags' || field === 'allergens'
@@ -296,39 +295,34 @@ const ITEM = nd('negroni')
 const SECTION = nd('cocktails')
 const mostlyTrue = fc.constantFrom(true, true, true, false)
 const maybe = <T>(arbitrary: fc.Arbitrary<T>) => fc.option(arbitrary, { nil: undefined, freq: 4 })
-const barsyFlags = fc.record({
+const tillFlags = fc.record({
   visibleMaster: maybe(mostlyTrue),
   visibleVenue: maybe(mostlyTrue),
   forSaleMaster: maybe(mostlyTrue),
   forSaleVenue: maybe(mostlyTrue),
 })
-const builderLayer = fc.constantFrom<Layer>(
-  'import',
-  'manual',
-  'override',
-  'edition:service:2026-10-09',
-)
+const builderLayer = fc.constantFrom<Layer>('manual', 'override', 'edition:service:2026-10-09')
 
-describe('rule 5: our layers never make the snapshot less cautious than barsy', () => {
-  it('an item barsy hides is never in the snapshot; one it takes off sale is never orderable', () => {
+describe('rule 5: our layers never make the snapshot less cautious than the till', () => {
+  it('an item the till hides is never in the snapshot; one it takes off sale is never orderable', () => {
     fc.assert(
       fc.property(
-        barsyFlags,
+        tillFlags,
         fc.array(rowFor(ITEM_FIELDS, builderLayer), { maxLength: 12 }),
         (flags, rows) => {
           const hidden = (flags.visibleVenue ?? flags.visibleMaster) === false
           const offSale = (flags.forSaleVenue ?? flags.forSaleMaster) === false
           fc.pre(hidden || offSale)
-          const builder = new DocBuilder().section(SECTION).barsyItem(ITEM).place(ITEM, SECTION)
+          const builder = new DocBuilder().section(SECTION).tillItem(ITEM).place(ITEM, SECTION)
           builder.unset(ITEM, 'visible').unset(ITEM, 'for_sale')
-          const barsyRows: [string, boolean | undefined, Scope][] = [
+          const tillRows: [string, boolean | undefined, Scope][] = [
             ['visible', flags.visibleMaster, 'master'],
             ['visible', flags.visibleVenue, VENUE],
             ['for_sale', flags.forSaleMaster, 'master'],
             ['for_sale', flags.forSaleVenue, VENUE],
           ]
-          for (const [field, value, scope] of barsyRows) {
-            if (value !== undefined) builder.set(ITEM, field, 'barsy', value, { scope })
+          for (const [field, value, scope] of tillRows) {
+            if (value !== undefined) builder.set(ITEM, field, 'till', value, { scope })
           }
           for (const row of rows) {
             builder.set(ITEM, row.fieldKey, row.layer, row.value, {
