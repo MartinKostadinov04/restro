@@ -17,8 +17,8 @@ describe('the editorial-market manifest', () => {
       paging: null,
       allergen_mode: 'inline_codes',
       no_image_layout: 'text_only',
-      // The service screens come with SH-06.
-      ordering: false,
+      // The service screens (SH-06): the face orders, and draws a control only when R15 lets it.
+      ordering: true,
     })
     expect(EDITORIAL_MARKET_MANIFEST.slots['item.image']).toEqual({
       optional: true,
@@ -66,8 +66,14 @@ describe('the editorial-market manifest', () => {
 })
 
 describe('the editorial-market manifest: features and options (R15)', () => {
-  it('has the controls of a browsing face: the filter button, and no service yet', () => {
-    expect(EDITORIAL_MARKET_MANIFEST.features).toEqual(['filters'])
+  it('has controls for the filters and for every service (SH-06): waiter, bill, ordering, pay', () => {
+    expect(EDITORIAL_MARKET_MANIFEST.features).toEqual([
+      'filters',
+      'call_waiter',
+      'bill',
+      'ordering',
+      'pay',
+    ])
   })
 
   it('declares the three options of the brief, with defaults, groups and labels in both languages', () => {

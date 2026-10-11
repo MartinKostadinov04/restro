@@ -1,8 +1,10 @@
 // The manifest of the Editorial Market face (doc "The face contract"). It is validated when the
 // module loads: a face that breaks R6, R7 or R9 cannot even be imported, let alone installed.
 //
-// Browsing only (D38, D69): `ordering` is false until the service screens are ported (brief
-// SH-06), which also adds the service features (call a waiter, bill, bag, pay) to `features`.
+// The face draws the service screens (brief SH-06, D71): the bag, the table bill, calling a waiter,
+// paying and the receipt. It declares `ordering: true` and the five guest features it has controls
+// for; a control is still drawn only when the venue switched the feature on, the platform supports
+// it and the host bound its services (R15, D72).
 // The manifest is also where the face's options are declared, with their defaults: the face reads
 // them through `resolveOptions(EDITORIAL_MARKET_MANIFEST, props.options)` and keeps no defaults of
 // its own, and the admin builds its form from the same declaration (brief SH-05b).
@@ -33,11 +35,12 @@ const CANDIDATE = {
   allergen_mode: 'inline_codes',
   // An item without a photo is a clean text row: no placeholder picture (R8, R10).
   no_image_layout: 'text_only',
-  ordering: false,
+  ordering: true,
   // The phone scrolls.
   paging: null,
-  // The guest controls this face draws (R15): the filter button. SH-06 adds the services.
-  features: ['filters'],
+  // The guest controls this face draws (R15): the filter button, and the services: the waiter, the
+  // bill, the bag (ordering) and the pay entry.
+  features: ['filters', 'call_waiter', 'bill', 'ordering', 'pay'],
   options: {
     // How the items of a section are laid out when the guest has not chosen another.
     layout: {

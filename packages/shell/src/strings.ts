@@ -84,6 +84,9 @@ export interface ServiceStrings {
   readonly edit: string
   readonly sendToKitchen: string
   readonly estimateTotal: string
+  /** The host accepted the order (shown when the venue shows no bill to open instead). */
+  readonly sent: string
+  readonly sentHint: string
   readonly sending: string
   /** The host has the order but has not said yes or no yet. */
   readonly sendReceived: string
@@ -290,6 +293,8 @@ const EN: Strings = {
     edit: 'Edit',
     sendToKitchen: 'Send to kitchen',
     estimateTotal: 'Total (approx.)',
+    sent: 'Sent to the kitchen',
+    sentHint: 'Your order has been received.',
     sending: 'Sending your order',
     sendReceived: 'Your order is received. We are waiting for the kitchen to confirm it.',
     sendFailedTitle: 'Your order was not confirmed',
@@ -488,6 +493,8 @@ const BG: Strings = {
     edit: 'Промени',
     sendToKitchen: 'Изпрати към кухнята',
     estimateTotal: 'Общо (прибл.)',
+    sent: 'Изпратено към кухнята',
+    sentHint: 'Поръчката ви е получена.',
     sending: 'Поръчката се изпраща',
     sendReceived: 'Поръчката е получена. Чакаме кухнята да я потвърди.',
     sendFailedTitle: 'Поръчката не беше потвърдена',

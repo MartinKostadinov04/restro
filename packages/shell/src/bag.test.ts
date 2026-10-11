@@ -7,6 +7,7 @@ import {
   type BagLine,
   bagEstimate,
   bagReducer,
+  draftPrice,
   groupValid,
   lineKey,
   needsChoices,
@@ -324,6 +325,35 @@ describe('the estimate', () => {
       bagEstimate(view, add([], draft(pizza.id, { optionIds: [large as `nd_${string}`], qty: 2 })))
         .total.minor,
     ).toBe(2100)
+  })
+
+  it('prices a dish while the guest is still choosing (draftPrice)', () => {
+    const view = viewOf([
+      {
+        name: en('Pizza'),
+        price: 800,
+        priceFrom: 900,
+        groups: [group('Size', 1, 1, [100, 250]), group('Extras', 0, 2, [50, 70])],
+      },
+    ])
+    const pizza = itemNamed(view, 'Pizza')
+    const [size, extras] = pizza.modifierGroups as [ViewModifierGroup, ViewModifierGroup]
+    const [small, large] = size.options.map((option) => option.id)
+    const [cheese] = extras.options.map((option) => option.id)
+    // Nothing chosen yet: the "from" price. Choosing moves it.
+    expect(draftPrice(view, pizza, [], 1)?.minor).toBe(900)
+    expect(draftPrice(view, pizza, [], 2)?.minor).toBe(1800)
+    expect(draftPrice(view, pizza, [cheese ?? ''], 1)?.minor).toBe(950)
+    expect(draftPrice(view, pizza, [small ?? ''], 1)?.minor).toBe(900)
+    expect(draftPrice(view, pizza, [large ?? ''], 1)?.minor).toBe(1050)
+    expect(draftPrice(view, pizza, [large ?? '', cheese ?? ''], 3)?.minor).toBe(3300)
+    // A complete line costs what the bag says it costs.
+    const bag = add([], draft(pizza.id, { qty: 3, optionIds: [large, cheese] as `nd_${string}`[] }))
+    expect(resolveBag(view, bag).total.minor).toBe(3300)
+    // Nothing for an option the dish does not offer, or an unusable quantity.
+    expect(draftPrice(view, pizza, [nd(999)], 1)).toBeNull()
+    expect(draftPrice(view, pizza, [], 1.5)).toBeNull()
+    expect(draftPrice(view, pizza, [], -1)).toBeNull()
   })
 
   it('equals core money arithmetic for any menu and bag (property)', () => {

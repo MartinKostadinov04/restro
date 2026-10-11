@@ -226,24 +226,59 @@ function itemIndex(
   return found
 }
 
-/** What the cheapest valid choice in the required groups of an item adds, as core's `price_from` counts it. */
-function cheapestRequired(item: ViewItem): number {
-  let sum = 0
-  for (const group of item.modifierGroups) {
-    if (group.min <= 0) continue
-    const deltas = group.options.map((option) => option.delta?.minor ?? 0).sort((a, b) => a - b)
-    for (const delta of deltas.slice(0, group.min)) sum = addMinor(sum, delta)
-  }
-  return sum
+/** What the cheapest valid choice in one required group adds, as core's `price_from` counts it. */
+function cheapestInGroup(group: ViewModifierGroup): number {
+  const deltas = group.options.map((option) => option.delta?.minor ?? 0).sort((a, b) => a - b)
+  return deltas.slice(0, group.min).reduce((sum, delta) => addMinor(sum, delta), 0)
 }
 
-/** The price of one of the item with the chosen options, in minor units. */
+/**
+ * The price of one of the item with the chosen options, in minor units, or null for an item with
+ * no price. A "from" price already holds the cheapest choice of every required group; a group
+ * the guest has picked from swaps that cheapest choice for the picks, and a group still to be
+ * picked keeps it. So a half-chosen dish reads "from …" and moves as the guest chooses, and a
+ * complete choice is the price plus the deltas.
+ */
 function unitMinor(item: ViewItem, options: readonly ViewOption[]): number | null {
   if (item.price === null) return null
-  const base = item.price.from
-    ? subtractMinor(item.price.minor, cheapestRequired(item))
-    : item.price.minor
+  let base = item.price.minor
+  if (item.price.from) {
+    for (const group of item.modifierGroups) {
+      const picked = group.options.some((option) => options.some((o) => o.id === option.id))
+      if (group.min > 0 && picked) base = subtractMinor(base, cheapestInGroup(group))
+    }
+  }
   return options.reduce((sum, option) => addMinor(sum, option.delta?.minor ?? 0), base)
+}
+
+/** The options of the item that these ids name, in the order of its groups. */
+function offeredOptions(item: ViewItem, optionIds: readonly string[]): ViewOption[] {
+  return item.modifierGroups
+    .flatMap((group) => group.options)
+    .filter((option) => optionIds.includes(option.id))
+}
+
+/**
+ * What a draft line of `qty` of the item with these options costs, whether or not the choices
+ * are complete: for the dish page, which shows the price while the guest is still choosing.
+ * Null for an item with no price, a choice the item does not offer or a quantity out of range.
+ */
+export function draftPrice(
+  view: ViewModel,
+  item: ViewItem,
+  optionIds: readonly string[],
+  qty: number,
+): ViewMoney | null {
+  const options = offeredOptions(item, optionIds)
+  if (options.length !== new Set(optionIds).size) return null
+  try {
+    const unit = unitMinor(item, options)
+    if (unit === null) return null
+    return viewMinor(multiplyMinor(unit, qty), view.currency, view.locale)
+  } catch (error) {
+    if (error instanceof MoneyError) return null
+    throw error
+  }
 }
 
 function resolveLine(
@@ -261,8 +296,7 @@ function resolveLine(
   }
   const item = items.get(line.itemId)
   if (item === undefined) return gone
-  const offered = item.modifierGroups.flatMap((group) => group.options)
-  const options = offered.filter((option) => line.optionIds.includes(option.id))
+  const options = offeredOptions(item, line.optionIds)
   const flagged: ResolvedBagLine = { ...gone, item, options }
   if (!item.order.controls || options.length !== line.optionIds.length) return flagged
   if (!selectionValid(item.modifierGroups, selectionOf(item.modifierGroups, line.optionIds))) {
