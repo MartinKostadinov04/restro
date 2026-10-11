@@ -68,7 +68,9 @@ describe.skipIf(!hasDatabase)('migration 0015 (public code of a venue)', () => {
     )
     return rows.map((r) => r.row).sort((a, b) => compareText(String(a.id), String(b.id)))
   }
-  const withoutCode = ({ public_id: _code, ...rest }: Row): Row => rest
+  // The test applies every migration after 0014; the columns added to `venues` by later ones
+  // (0017: `archived_at`, null for every venue) are not part of what 0015 did.
+  const withoutCode = ({ public_id: _code, archived_at: _archived, ...rest }: Row): Row => rest
   let start: Row[]
 
   beforeAll(async () => {

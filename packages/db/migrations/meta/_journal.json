@@ -120,6 +120,13 @@
       "when": 1791734866347,
       "tag": "0016_venue_catalogue",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791743786511,
+      "tag": "0017_venue_archived",
+      "breakpoints": true
     }
   ]
 }

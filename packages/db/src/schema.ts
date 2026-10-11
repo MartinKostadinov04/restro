@@ -75,6 +75,15 @@ export const venues = restro.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Kept current by the `venues_touch_updated_at` trigger, whatever writes the row. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * When the venue was deleted (D76, brief CF-18); null = live. Deleting a venue only archives
+     * it: the row, its menu, tables and settings stay (history is append-only, rule 2) and the app
+     * role has no DELETE on this table. Core's `archiveVenue` / `restoreVenue` are the only
+     * writers; every other writer of one venue calls `lockLiveVenue` first, and every admin read
+     * and worker job leaves archived venues out. The public code and the QR tokens stay, so a
+     * restore brings the same addresses back.
+     */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
   },
   (t) => [
     // The public code is the venue's global address (D68, replacing the unique slug of T61): unique
