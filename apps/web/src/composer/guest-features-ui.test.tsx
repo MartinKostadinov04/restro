@@ -175,7 +175,8 @@ describe('the guest features panel', () => {
     )
     expect(toast.success).not.toHaveBeenCalled()
     expect(switchNamed('Order from the phone').getAttribute('aria-checked')).toBe('true')
-    expect(save().hasAttribute('disabled')).toBe(false)
+    // The save is over once the button is pressable again (the transition ends after the toast).
+    await waitFor(() => expect(save().hasAttribute('disabled')).toBe(false))
   })
 
   it('is read-only for a person who may not change the venue', () => {
