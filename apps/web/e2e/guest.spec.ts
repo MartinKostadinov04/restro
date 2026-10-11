@@ -184,12 +184,13 @@ test.describe('the address in the browser (D68)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
     await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST.path)
     expect(new URL(page.url()).search).toBe(search)
-    // Replaced, not pushed: going back leaves the site, it does not return to the stale address.
-    expect(await page.evaluate(() => window.history.length)).toBe(1)
     // The corrected address is the one that reloads.
     await page.reload()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
     expect(new URL(page.url()).pathname).toBe(GUEST.path)
+    // Replaced, not pushed: going back leaves the site, it does not return to the stale address.
+    await page.goBack()
+    expect(page.url()).toBe('about:blank')
   })
 
   test('a bare code finds the menu and gets its slug back', async ({ page }) => {
@@ -322,7 +323,7 @@ test.describe('what the page asks for (rule 4)', () => {
         bodies.push({ url: url.pathname, text: await response.text() })
       }
     })
-    await open(page, `/m/${GUEST_SLUG}?t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
     await page.waitForLoadState('networkidle')
 
     const allowed = (pathname: string) =>
