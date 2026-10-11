@@ -538,6 +538,21 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
       - (d) the host must issue a fresh receipt id per settlement;
       - (e) `PayQuote` should list the allowed pay scopes;
       - (f) keep the bag across a reload (`sessionStorage`).
+  - **SH-05b merged** (Haiku). The composer's "Guest features" panel:
+    - filters;
+    - call a waiter, with its request kinds;
+    - bill, ordering, pay, each with a Stage 4/5 note;
+    - the template's feature options;
+    - the fixed allergen line;
+    - owners and admins only.
+
+    The two save actions keep each other's keys.
+  - **Open from SH-05b:**
+    - **(a) Two lists of templates.** Server code cannot import the registry (it breaks the build), so `feature-face.ts` keeps a second list of the manifests. SH-05a is asked to make one server-safe `faces/manifests.ts`.
+    - **(b) The first save pins the template.** The first feature-option save stores the default face for a venue that never chose one.
+    - **(c) Call a waiter with no request kind** can be saved; guests then see no control. Block it or hint.
+    - **(d) The "other" request kind.** Its wording promises a note; the core schema has none yet (Stage 4).
+    - **(e) Bulgarian copy** of the panel: draft, for Martin's review.
   - **Open from SH-04, for SH-07:**
     - the Editorial language and layout buttons are under 44 px;
     - the table label is hidden at 350 px width or less;
