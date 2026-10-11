@@ -195,4 +195,51 @@ describe('the run history', () => {
     expect(screen.getByText('Пълна синхронизация')).toBeTruthy()
     expect(screen.getByTestId('run-duration').textContent).toBe('1 мин 12 с')
   })
+
+  it('shows a short "Held" badge on a full sync that held its conclusion back, instead of "Deletion check skipped"', () => {
+    renderWithIntl(
+      <RunHistoryCard
+        view={view([
+          run({
+            id: 'jb_held',
+            details: {
+              notes: [],
+              refused: [],
+              deletionCheckSkipped: true,
+              absenceHeld: { reason: 'too_many_missing', wouldHide: 61, active: 65 },
+            },
+          }),
+          run({
+            id: 'jb_skipped',
+            details: { notes: [], refused: [], deletionCheckSkipped: true },
+          }),
+          run({ id: 'jb_plain' }),
+        ])}
+      />,
+    )
+    const [heldRow, skippedRow, plainRow] = screen.getAllByTestId('run-row') as HTMLElement[]
+    expect(within(heldRow as HTMLElement).getByTestId('run-held').textContent).toBe('Held')
+    expect(within(heldRow as HTMLElement).queryByTestId('run-deletion-skipped')).toBeNull()
+    expect(within(skippedRow as HTMLElement).queryByTestId('run-held')).toBeNull()
+    expect(within(skippedRow as HTMLElement).getByTestId('run-deletion-skipped')).toBeTruthy()
+    expect(within(plainRow as HTMLElement).queryByTestId('run-held')).toBeNull()
+  })
+
+  it('says "Задържана" in Bulgarian', () => {
+    renderWithIntl(
+      <RunHistoryCard
+        view={view([
+          run({
+            details: {
+              notes: [],
+              refused: [],
+              absenceHeld: { reason: 'empty_read', wouldHide: 3, active: 3 },
+            },
+          }),
+        ])}
+      />,
+      { locale: 'bg' },
+    )
+    expect(screen.getByTestId('run-held').textContent).toBe('Задържана')
+  })
 })

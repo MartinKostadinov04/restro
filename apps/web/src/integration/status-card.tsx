@@ -21,8 +21,16 @@ import { ErrorNote, Notice } from './error-note'
 import { useClearWhenIdle } from './use-clear-when-idle'
 import { useMoment } from './use-moment'
 
-/** The status codes the worker writes into `status_detail` (apps/worker/src/sync/run.ts). */
-const STATUS_DETAIL_CODES = ['wrong_credentials', 'host_refused', 'credentials_unreadable'] as const
+/**
+ * The status codes the worker writes into `status_detail` (apps/worker/src/sync/run.ts). Most are
+ * problems of a failed connection. `currency_not_eur` is a warning on a connection that works.
+ */
+const STATUS_DETAIL_CODES = [
+  'wrong_credentials',
+  'host_refused',
+  'credentials_unreadable',
+  'currency_not_eur',
+] as const
 type StatusDetailCode = (typeof STATUS_DETAIL_CODES)[number]
 
 function isStatusDetailCode(value: string): value is StatusDetailCode {
@@ -73,6 +81,8 @@ export function StatusCard({ venueId, view }: { venueId: string; view: Integrati
       ? t(`statusDetail.${info.statusDetail}`)
       : info?.statusDetail
 
+  const warning = info?.statusDetail === 'currency_not_eur'
+
   return (
     <FormSection title={t('status.title')} description={t('status.description')}>
       {info === null ? (
@@ -102,7 +112,14 @@ export function StatusCard({ venueId, view }: { venueId: string; view: Integrati
               ) : null}
             </span>
             {detail ? (
-              <span className="mt-1 block text-foreground" data-testid="status-detail">
+              <span
+                className="mt-1 flex items-start gap-1.5 text-foreground"
+                data-testid="status-detail"
+                data-level={warning ? 'warning' : 'problem'}
+              >
+                {warning ? (
+                  <AlertTriangleIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+                ) : null}
                 {detail}
               </span>
             ) : null}

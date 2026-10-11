@@ -109,4 +109,55 @@ describe('the catalogue-root picker', () => {
     )
     expect(screen.getByRole('alert').textContent).toContain('no longer in the tree')
   })
+
+  it('marks the category the venue names as its public menu, and chooses nothing by it', () => {
+    const tree = [
+      { id: 1171, name: 'Публично меню', children: [] },
+      {
+        id: 1091,
+        name: 'Каса Kiosk',
+        children: [{ id: 1092, name: 'Горещи напитки', suggested: true as const, children: [] }],
+      },
+    ]
+    renderWithIntl(
+      <CatalogueRootCard venueId={VENUE_ID} view={integrationView({ tree, rootCatId: 1171 })} />,
+    )
+    // The suggested one is nested: its branch is open so the mark can be seen.
+    const mark = screen.getByTestId('category-suggested')
+    expect(mark.textContent).toBe("Suggested (the venue's public menu in the till)")
+    expect(
+      (mark.closest('label') as HTMLElement).contains(
+        screen.getByRole('radio', { name: /Горещи напитки/ }),
+      ),
+    ).toBe(true)
+    expect(screen.getAllByTestId('category-suggested')).toHaveLength(1)
+    // The chosen root is still the one that was chosen.
+    expect((screen.getByRole('radio', { name: /Публично меню/ }) as HTMLInputElement).checked).toBe(
+      true,
+    )
+    expect(
+      (screen.getByRole('radio', { name: /Горещи напитки/ }) as HTMLInputElement).checked,
+    ).toBe(false)
+    expect(actions.chooseCatalogueRootAction).not.toHaveBeenCalled()
+  })
+
+  it('shows no mark when no category is suggested, and says it in Bulgarian when one is', () => {
+    const { unmount } = renderWithIntl(
+      <CatalogueRootCard venueId={VENUE_ID} view={integrationView()} />,
+    )
+    expect(screen.queryByTestId('category-suggested')).toBeNull()
+    unmount()
+    renderWithIntl(
+      <CatalogueRootCard
+        venueId={VENUE_ID}
+        view={integrationView({
+          tree: [{ id: 1171, name: 'Публично меню', suggested: true, children: [] }],
+        })}
+      />,
+      { locale: 'bg' },
+    )
+    expect(screen.getByTestId('category-suggested').textContent).toBe(
+      'Препоръчана (публичното меню на заведението в касата)',
+    )
+  })
 })

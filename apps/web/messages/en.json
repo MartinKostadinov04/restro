@@ -874,7 +874,8 @@
     "statusDetail": {
       "wrong_credentials": "Wrong user or password.",
       "host_refused": "This barsy address is not allowed.",
-      "credentials_unreadable": "The saved credentials cannot be read. Enter them again."
+      "credentials_unreadable": "The saved credentials cannot be read. Enter them again.",
+      "currency_not_eur": "The till's main currency is not EUR; Restro shows prices in EUR only."
     },
     "barsyVenue": {
       "title": "barsy venue",
@@ -885,7 +886,8 @@
         "description": "They appear after the connection check succeeds."
       },
       "usedBy": "Used by {venue}",
-      "switchHint": "Choosing another barsy venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist."
+      "switchHint": "Choosing another barsy venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist.",
+      "publicMenu": "Public menu set up in the till"
     },
     "catalogue": {
       "title": "Menu catalogue",
@@ -900,7 +902,8 @@
       "expand": "Show the sub-categories of {name}",
       "collapse": "Hide the sub-categories of {name}",
       "readAt": "Read {when}",
-      "unknownRoot": "The chosen category is no longer in the tree."
+      "unknownRoot": "The chosen category is no longer in the tree.",
+      "suggested": "Suggested (the venue's public menu in the till)"
     },
     "mapping": {
       "title": "Mapping settings",
@@ -984,6 +987,11 @@
         "save": "Save automatic sync",
         "saving": "Saving…",
         "saved": "Saved. It applies from the next minute."
+      },
+      "held": {
+        "title": "The last full sync was held back",
+        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till.",
+        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the menu category and the venue in the till."
       }
     },
     "history": {
@@ -1052,7 +1060,8 @@
         "unknown_link": "Unknown link",
         "link_taken": "The barsy object is linked to another item",
         "already_linked": "The item already has a barsy link"
-      }
+      },
+      "held": "Held"
     },
     "errors": {
       "not_allowed": "Only owners and admins can do this.",

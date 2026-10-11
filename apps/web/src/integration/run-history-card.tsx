@@ -51,6 +51,8 @@ function RunRow({ run, timeZone }: { run: RunView; timeZone: string }) {
   const Icon = badge.icon
   const counters = listedCounters(run.counters)
   const skipped = deletionCheckSkipped(run)
+  // A held pull skipped its deletion check too; the more specific badge says it.
+  const held = run.details?.absenceHeld !== undefined
   const notes = run.details ? run.details.notes : run.errorSummary ? [run.errorSummary] : []
   const refused = run.details?.refused ?? []
   const label = started ?? t('status.queued')
@@ -85,7 +87,11 @@ function RunRow({ run, timeZone }: { run: RunView; timeZone: string }) {
           <Icon aria-hidden className={run.status === 'running' ? 'animate-spin' : undefined} />
           {t(`status.${run.status}`)}
         </Badge>
-        {skipped ? (
+        {held ? (
+          <Badge variant="warning" data-testid="run-held">
+            {t('held')}
+          </Badge>
+        ) : skipped ? (
           <Badge variant="warning" data-testid="run-deletion-skipped">
             {t('deletionSkipped')}
           </Badge>
