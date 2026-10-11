@@ -3,7 +3,7 @@
 import { Draggable } from '@hello-pangea/dnd'
 // One item in a section's list (or in Unsorted): a drag handle, the name (opens the item sheet),
 // its badges, the price, the shown-to-guests switch and the "more" menu. The switch follows
-// rule 5: an item barsy hides cannot be shown from here, and the row says so.
+// rule 5: an item the till hides cannot be shown from here, and the row says so.
 import { formatMoney, type NodeId } from '@restro/core'
 import { GripVerticalIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -19,8 +19,8 @@ import { ItemMenu } from './row-menus'
 import type { ComposerItem } from './view-model'
 
 /** The sentence under a locked switch, or null when the switch works. */
-function lockedReason(item: ComposerItem): 'lockedByBarsy' | 'lockedOther' | null {
-  if (item.hiddenBy === 'barsy') return 'lockedByBarsy'
+function lockedReason(item: ComposerItem): 'lockedByTill' | 'lockedOther' | null {
+  if (item.hiddenBy === 'till') return 'lockedByTill'
   if (item.hiddenBy === 'other') return 'lockedOther'
   return null
 }
@@ -42,6 +42,7 @@ export function ItemRow({
   if (!item) return null
   const name = itemName(view, itemId, t('unnamedItem'))
   const locked = lockedReason(item)
+  const source = view.tillLabel
   const hidden = item.hiddenBy !== null
   const isSelected = selected.has(itemId)
   const selecting = selected.size > 0
@@ -121,7 +122,7 @@ export function ItemRow({
             />
             {locked ? (
               <span className="max-w-32 text-right text-[11px] leading-tight text-muted-foreground">
-                {t(`visibility.${locked}`)}
+                {t(`visibility.${locked}`, { source })}
               </span>
             ) : null}
           </div>

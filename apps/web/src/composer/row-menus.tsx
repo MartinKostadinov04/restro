@@ -36,7 +36,7 @@ export function ItemMenu({ itemId, sectionId }: { itemId: NodeId; sectionId: Nod
   const name = itemName(view, itemId, t('unnamedItem'))
   const targets = flattenSections(view).filter(({ id }) => id !== sectionId)
   const item = view.items[itemId]
-  // Sold out tonight (D46): managers mark and unmark; an item barsy has off sale has no control,
+  // Sold out tonight (D46): managers mark and unmark; an item the till has off sale has no control,
   // since ours can only add caution (rule 5) and "back on sale" would be a lie.
   const soldOutControl =
     canMarkSoldOut && item !== undefined && item.offSale === null

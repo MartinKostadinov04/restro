@@ -9,10 +9,10 @@ const SERVICE_EDITION_PREFIX = 'edition:service:'
 
 /**
  * Why an item is off sale when something other than a manager's "sold out tonight" mark says so:
- * `barsy` (the till's own flag) or `other` (another layer or edition). Ours cannot undo either
+ * `till` (the till's own flag) or `other` (another layer or edition). Ours cannot undo either
  * (rule 5).
  */
-export type OffSaleBy = 'barsy' | 'other'
+export type OffSaleBy = 'till' | 'other'
 
 /** An item's sale state for the admin. */
 export interface SaleState {
@@ -28,8 +28,8 @@ export interface SaleState {
 /**
  * The sale state from the item's resolved `for_sale` field. The menu must have been resolved with
  * the live editions (`liveEditions`: the venue's and the current service day's), so a mark of an
- * earlier day is not in it. `all_true` names the first layer that says false and checks barsy
- * first, so a mark that sits under barsy's own flag reads as barsy's: `soldOutTonight` is false
+ * earlier day is not in it. `all_true` names the first layer that says false and checks the till
+ * first, so a mark that sits under the till's own flag reads as the till's: `soldOutTonight` is false
  * and the mark is not offered for removal (it would change nothing).
  */
 export function saleStateOf(field: ResolvedField | undefined): SaleState {
@@ -38,5 +38,5 @@ export function saleStateOf(field: ResolvedField | undefined): SaleState {
   if (typeof layer === 'string' && layer.startsWith(SERVICE_EDITION_PREFIX)) {
     return { soldOutTonight: true, offSale: null }
   }
-  return { soldOutTonight: false, offSale: layer === 'barsy' ? 'barsy' : 'other' }
+  return { soldOutTonight: false, offSale: layer === 'till' ? 'till' : 'other' }
 }

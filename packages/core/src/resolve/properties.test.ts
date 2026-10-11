@@ -15,6 +15,9 @@ import type { ResolveContext } from './types'
 const ITEM = nd('negroni')
 const SECTION = nd('cocktails')
 
+/** The till's layer: whichever connector feeds the venue's till writes it (brief CF-03). */
+const TILL = 'till' as const satisfies Layer
+
 // --- value arbitraries: mostly valid values of each field, sometimes anything JSON ---------------
 
 const junk = fc.jsonValue({ maxDepth: 2 })
@@ -56,7 +59,6 @@ const ITEM_FIELDS = [
 ]
 
 const builderLayer = fc.constantFrom<Layer>(
-  'import',
   'manual',
   'override',
   'edition:tonight',
@@ -102,13 +104,13 @@ function contextWith(edition: string[] | undefined): ResolveContext {
   return edition === undefined ? CONTEXT : { ...CONTEXT, edition }
 }
 
-// --- barsy's own rows for the one item ----------------------------------------------------------
+// --- the base rows of the one item: the till's, or the manager's in a venue with no till -------
 
 // Biased towards an orderable item (true flags, a valid venue price, an active link), so the price
 // property meets many orderable items; every combination still occurs.
 const mostlyTrue = fc.constantFrom(true, true, true, false)
 const maybe = <T>(arbitrary: fc.Arbitrary<T>) => fc.option(arbitrary, { nil: undefined, freq: 4 })
-const barsyFlags = fc.record({
+const baseFlags = fc.record({
   visibleMaster: maybe(mostlyTrue),
   visibleVenue: maybe(mostlyTrue),
   forSaleMaster: maybe(mostlyTrue),
@@ -120,13 +122,28 @@ const barsyFlags = fc.record({
   linkState: fc.constantFrom('active', 'active', 'active', 'missing', 'deleted' as const),
 })
 
-type BarsyFlags = typeof barsyFlags extends fc.Arbitrary<infer T> ? T : never
+type BaseFlags = typeof baseFlags extends fc.Arbitrary<infer T> ? T : never
 
-function barsyItemMenu(flags: BarsyFlags): DocBuilder {
+/** The base's own value of a flag at this venue: the venue row, else the master row. */
+function baseSays(venue: boolean | undefined, master: boolean | undefined): boolean | undefined {
+  return venue ?? master
+}
+
+/** One venue shape rule 5 is checked on. */
+interface VenueShape {
+  readonly name: string
+  /** True when the item is linked to the venue's till: only then may it ever be orderable. */
+  readonly tillLinked: boolean
+  /** The menu with the base's rows for the one item and the builder rows `rows` on top. */
+  readonly menu: (flags: BaseFlags, rows: readonly RowSpec[]) => DocBuilder
+}
+
+/** A venue with a till: the item is linked, and the till's rows are its base. */
+function tillLinkedMenu(flags: BaseFlags, rows: readonly RowSpec[]): DocBuilder {
   const builder = new DocBuilder().section(SECTION).item(ITEM).place(ITEM, SECTION)
   builder.link(ITEM, flags.linkState)
-  builder.set(ITEM, 'name', 'barsy', { bg_BG: 'Негрони', en_US: 'Negroni' })
-  builder.set(ITEM, 'allergens', 'barsy', [])
+  builder.set(ITEM, 'name', TILL, { bg_BG: 'Негрони', en_US: 'Negroni' })
+  builder.set(ITEM, 'allergens', TILL, [])
   const optional: [string, unknown, Scope, boolean][] = [
     ['visible', flags.visibleMaster, 'master', true],
     ['visible', flags.visibleVenue, VENUE, true],
@@ -136,30 +153,61 @@ function barsyItemMenu(flags: BarsyFlags): DocBuilder {
     ['price', flags.priceMaster, 'master', true],
   ]
   for (const [fieldKey, value, scope, valid] of optional) {
-    if (value !== undefined) builder.set(ITEM, fieldKey, 'barsy', value, { scope, valid })
+    if (value !== undefined) builder.set(ITEM, fieldKey, TILL, value, { scope, valid })
+  }
+  if (flags.orderMode !== undefined) builder.set(ITEM, 'order_mode', 'manual', flags.orderMode)
+  addRows(builder, ITEM, rows)
+  return builder
+}
+
+/**
+ * A venue with no till (D64): a hand-made item, its name, price and flags in the manual layer. A
+ * builder layer may only say false to a flag (`validateWrite`), so the base's `true` is no row at
+ * all. The base rows go in after the builder rows, so they keep their slots. Without a till the
+ * manual layer is the base itself, so the builder rows are the ones the database can hold: only
+ * the till layer is ever venue-scoped (check `field_values_venue_scope_till_only`), and a venue
+ * row of the manual layer would otherwise stand in for the base's own master row.
+ */
+function noTillMenu(flags: BaseFlags, rows: readonly RowSpec[]): DocBuilder {
+  const builder = new DocBuilder().section(SECTION).item(ITEM).place(ITEM, SECTION)
+  addRows(
+    builder,
+    ITEM,
+    rows.filter((row) => row.scope === 'master'),
+  )
+  builder.set(ITEM, 'name', 'manual', { bg_BG: 'Негрони', en_US: 'Negroni' })
+  builder.set(ITEM, 'allergens', 'manual', [])
+  if (baseSays(flags.visibleVenue, flags.visibleMaster) === false) {
+    builder.set(ITEM, 'visible', 'manual', false)
+  }
+  if (baseSays(flags.forSaleVenue, flags.forSaleMaster) === false) {
+    builder.set(ITEM, 'for_sale', 'manual', false)
+  }
+  const price = flags.priceVenue ?? flags.priceMaster
+  if (price !== undefined) {
+    builder.set(ITEM, 'price', 'manual', price, { valid: flags.priceVenueValid })
   }
   if (flags.orderMode !== undefined) builder.set(ITEM, 'order_mode', 'manual', flags.orderMode)
   return builder
 }
 
-/** barsy's own value of a flag at this venue: the venue row, else the master row. */
-function barsySays(venue: boolean | undefined, master: boolean | undefined): boolean | undefined {
-  return venue ?? master
-}
+const VENUE_SHAPES: readonly VenueShape[] = [
+  { name: 'a till-linked menu', tillLinked: true, menu: tillLinkedMenu },
+  { name: 'a no-till (manual-only) menu', tillLinked: false, menu: noTillMenu },
+]
 
-describe('rule 5: our layers never make an item less cautious than barsy', () => {
-  it('an item barsy hides or takes off sale is never visible and orderable', () => {
+describe.each(VENUE_SHAPES)('rule 5 on $name: our layers never undo the base', (shape) => {
+  it('an item its base hides or takes off sale is never visible and orderable', () => {
     fc.assert(
       fc.property(
-        barsyFlags,
+        baseFlags,
         fc.array(rowsFor(ITEM_FIELDS, builderLayer), { maxLength: 12 }),
         editionContext,
         (flags, rows, edition) => {
-          const hidden = barsySays(flags.visibleVenue, flags.visibleMaster) === false
-          const offSale = barsySays(flags.forSaleVenue, flags.forSaleMaster) === false
+          const hidden = baseSays(flags.visibleVenue, flags.visibleMaster) === false
+          const offSale = baseSays(flags.forSaleVenue, flags.forSaleMaster) === false
           fc.pre(hidden || offSale)
-          const builder = barsyItemMenu(flags)
-          addRows(builder, ITEM, rows)
+          const builder = shape.menu(flags, rows)
           const menu = resolve(VENUE_MENU_TEMPLATE, builder.build(), contextWith(edition))
           const item = menu.items[ITEM]
           expect(item?.computed.orderable).toBe(false)
@@ -170,38 +218,38 @@ describe('rule 5: our layers never make an item less cautious than barsy', () =>
   })
 
   /** Checks the price rule on one document; returns whether the item was orderable. */
-  function priceIsBarsys(doc: MenuDocument, edition: string[] | undefined): boolean {
+  function priceIsTills(doc: MenuDocument, edition: string[] | undefined): boolean {
     const item = resolve(VENUE_MENU_TEMPLATE, doc, contextWith(edition)).items[ITEM]
     if (item?.computed.orderable !== true) return false
-    const barsyPrice = doc.values.find(
+    // Nothing is orderable without a till link.
+    expect(shape.tillLinked).toBe(true)
+    const tillPrice = doc.values.find(
       (row) =>
         row.nodeId === ITEM &&
         row.fieldKey === 'price' &&
-        row.layer === 'barsy' &&
+        row.layer === TILL &&
         row.scope === VENUE,
     )
-    expect(barsyPrice?.valid).toBe(true)
-    expect(item.fields.price?.value).toEqual(barsyPrice?.value)
+    expect(tillPrice?.valid).toBe(true)
+    expect(item.fields.price?.value).toEqual(tillPrice?.value)
     return true
   }
 
-  it("an orderable item's price is always barsy's price for this venue", () => {
+  it("an orderable item's price is always the till's price for this venue", () => {
     fc.assert(
       fc.property(
-        barsyFlags,
+        baseFlags,
         fc.array(rowsFor(ITEM_FIELDS, builderLayer), { maxLength: 6 }),
         editionContext,
         (flags, rows, edition) => {
-          const builder = barsyItemMenu(flags)
-          addRows(builder, ITEM, rows)
-          priceIsBarsys(builder.build(), edition)
+          priceIsTills(shape.menu(flags, rows).build(), edition)
         },
       ),
       { numRuns: 300 },
     )
   })
 
-  it('… also when every builder layer tries to set a price on an orderable barsy item', () => {
+  it('… also when every builder layer tries to set a price on an orderable item', () => {
     let orderableRuns = 0
     const runs = 300
     fc.assert(
@@ -213,26 +261,33 @@ describe('rule 5: our layers never make an item less cautious than barsy', () =>
         }),
         editionContext,
         (venuePrice, masterPrice, rows, edition) => {
-          const builder = barsyItemMenu({
-            visibleMaster: true,
-            visibleVenue: undefined,
-            forSaleMaster: undefined,
-            forSaleVenue: true,
-            priceVenue: venuePrice,
-            priceVenueValid: true,
-            priceMaster: masterPrice,
-            orderMode: undefined,
-            linkState: 'active',
-          })
-          addRows(builder, ITEM, rows)
-          if (priceIsBarsys(builder.build(), edition)) orderableRuns += 1
+          const builder = shape.menu(
+            {
+              visibleMaster: true,
+              visibleVenue: undefined,
+              forSaleMaster: undefined,
+              forSaleVenue: true,
+              priceVenue: venuePrice,
+              priceVenueValid: true,
+              priceMaster: masterPrice,
+              orderMode: undefined,
+              linkState: 'active',
+            },
+            rows,
+          )
+          if (priceIsTills(builder.build(), edition)) orderableRuns += 1
         },
       ),
       // A fixed seed, so the coverage count below cannot flake.
       { numRuns: runs, seed: 20261009 },
     )
-    // The rule only bites on orderable items: the runs must have met plenty of them.
-    expect(orderableRuns).toBeGreaterThan(runs / 4)
+    if (shape.tillLinked) {
+      // The rule only bites on orderable items: the runs must have met plenty of them.
+      expect(orderableRuns).toBeGreaterThan(runs / 4)
+    } else {
+      // Without a till nothing is orderable, whatever the builder layers say (D12 not built).
+      expect(orderableRuns).toBe(0)
+    }
   })
 })
 
@@ -263,14 +318,7 @@ const sections = [nd('s0'), nd('s1'), nd('s2'), nd('s3')]
 const items = [nd('i0'), nd('i1'), nd('i2'), nd('i3'), nd('i4')]
 const groups = [nd('g0'), nd('g1')]
 const options = [nd('o0'), nd('o1'), nd('o2')]
-const allLayers = fc.constantFrom<Layer>(
-  'barsy',
-  'barsy',
-  'import',
-  'manual',
-  'override',
-  'edition:tonight',
-)
+const allLayers = fc.constantFrom<Layer>(TILL, TILL, 'manual', 'override', 'edition:tonight')
 const status = fc.constantFrom('active', 'active', 'active', 'hidden', 'archived' as const)
 
 const documentArbitrary = fc.record({

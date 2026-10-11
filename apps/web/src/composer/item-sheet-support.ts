@@ -51,8 +51,8 @@ export function badgeProvenance(provenance: SheetProvenance): Provenance | undef
 
 /** The provenance a stored layer stands for in the history (`edition:` layers have none). */
 export function layerProvenance(layer: string): Provenance | null {
-  if (layer === 'barsy') return 'barsy'
-  if (layer === 'manual' || layer === 'import') return 'owned'
+  if (layer === 'till') return 'till'
+  if (layer === 'manual') return 'owned'
   if (layer === 'override') return 'overridden'
   return null
 }

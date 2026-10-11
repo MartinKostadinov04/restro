@@ -160,7 +160,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       `select fv.value from restro.field_values fv
        join restro.source_links sl on sl.node_id = fv.node_id
        where sl.integration_id = $1 and sl.external_type = 'article' and sl.external_id = '11'
-         and fv.field_key = 'price' and fv.layer = 'barsy' and fv.scope = $2`,
+         and fv.field_key = 'price' and fv.layer = 'till' and fv.scope = $2`,
       [world.integrationId, `venue:${world.venueId}`],
     )
     expect(price?.value).toEqual({ amount_minor: 97, currency: 'EUR' })
@@ -250,7 +250,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       `select fv.value from restro.field_values fv
        join restro.source_links sl on sl.node_id = fv.node_id
        where sl.integration_id = $1 and sl.external_type = 'article' and sl.external_id = '11'
-         and fv.field_key = 'price' and fv.layer = 'barsy'`,
+         and fv.field_key = 'price' and fv.layer = 'till'`,
       [world.integrationId],
     )
     expect(price?.value.amount_minor).toBe(125)

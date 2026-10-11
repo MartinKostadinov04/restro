@@ -130,8 +130,8 @@ export function createItemOps(input: {
 
 /**
  * Hide or show an item. Hiding writes `visible = false` in the manual layer. Showing only
- * removes that value (and makes a held-back item active again): the barsy layer is never
- * written, so an item barsy hides stays hidden (rule 5).
+ * removes that value (and makes a held-back item active again): the till layer is never
+ * written, so an item the till hides stays hidden (rule 5).
  */
 export function setItemHiddenOps(input: {
   itemId: NodeId

@@ -7,7 +7,7 @@ import type { Layer, MenuDocument, Scope } from '@restro/core'
 /** One layer's usable value. */
 export interface LayerEntry {
   readonly value: unknown
-  /** Overrides only: barsy's value when the override was made. */
+  /** Overrides only: the till's value when the override was made. */
   readonly basis: unknown | null
   readonly scope: Scope
   readonly observedAt: string
@@ -15,13 +15,12 @@ export interface LayerEntry {
 
 /** The layers a person's save can touch, plus the ones it can be compared with. */
 export interface LayerView {
-  readonly barsy?: LayerEntry
-  readonly import?: LayerEntry
+  readonly till?: LayerEntry
   readonly manual?: LayerEntry
   readonly override?: LayerEntry
 }
 
-const BASE_LAYERS = ['barsy', 'import', 'manual', 'override'] as const
+const BASE_LAYERS = ['till', 'manual', 'override'] as const
 
 /** The layers of one field of one node, for the venue `venueScope` (`venue:vn_…`). */
 export function layerView(

@@ -61,8 +61,8 @@ describe('the Details tab', () => {
           price: {
             value: { amount_minor: 1250, currency: 'EUR' },
             provenance: 'locked',
-            layer: 'barsy',
-            access: { kind: 'readonly', reason: 'locked_to_barsy' },
+            layer: 'till',
+            access: { kind: 'readonly', reason: 'locked_to_till' },
           },
         },
       }),
@@ -81,7 +81,7 @@ describe('the Details tab', () => {
           price: {
             value: { amount_minor: 1250, currency: 'EUR' },
             provenance: 'locked',
-            access: { kind: 'readonly', reason: 'locked_to_barsy' },
+            access: { kind: 'readonly', reason: 'locked_to_till' },
           },
         },
       }),
@@ -98,7 +98,7 @@ describe('the Details tab', () => {
     setup(
       sheetData({
         fields: {
-          name: { value: { bg_BG: 'Негрони' }, provenance: 'barsy', layer: 'barsy' },
+          name: { value: { bg_BG: 'Негрони' }, provenance: 'till', layer: 'till' },
           description: { value: { bg_BG: 'Горчив' }, provenance: 'owned', layer: 'manual' },
           portion: {
             value: { value: 80, unit: 'ml' },
@@ -120,12 +120,12 @@ describe('the Details tab', () => {
         fields: {
           visible: {
             value: true,
-            provenance: 'barsy',
+            provenance: 'till',
             access: { kind: 'readonly', reason: 'composer_toggle' },
           },
           for_sale: {
             value: true,
-            provenance: 'barsy',
+            provenance: 'till',
             access: { kind: 'readonly', reason: 'sold_out_control' },
           },
           image: { access: { kind: 'media' } },
@@ -150,13 +150,13 @@ describe('the Details tab', () => {
             provenance: 'overridden',
             layer: 'override',
             canRevert: true,
-            barsyValue: ['gluten'],
+            tillValue: ['gluten'],
           },
         },
       }),
     )
     const allergens = row('allergens')
-    expect(within(within(allergens).getByTestId('barsy-value')).getByText('Gluten')).toBeTruthy()
+    expect(within(within(allergens).getByTestId('till-value')).getByText('Gluten')).toBeTruthy()
     await userEvent.click(within(allergens).getByRole('button', { name: /revert allergens/i }))
     expect(onRevert).toHaveBeenCalledWith('allergens')
   })
@@ -171,7 +171,7 @@ describe('the Details tab', () => {
             layer: 'override',
             canRevert: true,
             canKeep: true,
-            barsyValue: { value: 100, unit: 'ml' },
+            tillValue: { value: 100, unit: 'ml' },
           },
         },
       }),
@@ -267,8 +267,8 @@ describe('the Details tab', () => {
         fields: {
           name: {
             value: { bg_BG: 'Негрони', en_US: 'Negroni' },
-            provenance: 'barsy',
-            localeProvenance: { bg_BG: 'barsy', en_US: 'owned' },
+            provenance: 'till',
+            localeProvenance: { bg_BG: 'till', en_US: 'owned' },
           },
         },
       }),

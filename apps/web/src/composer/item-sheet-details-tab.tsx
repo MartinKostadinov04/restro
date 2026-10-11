@@ -5,7 +5,7 @@
 // resolver's provenance, and an editor that saves through a server action and `apply()`.
 // Ported from the Platform's ValueField / DrawerInput (see fields/field-row.tsx and
 // fields/field-editor-sheet.tsx); the rows here add what the Platform could not show: where a
-// value comes from, barsy's value beside an override, Revert, and "keep mine / take barsy's".
+// value comes from, the till's value beside an override, Revert, and "keep mine / take the till's".
 import { LockIcon, TriangleAlertIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -17,6 +17,7 @@ import { ITEM_GROUPS } from '@/fields/item-groups'
 import { localeChip } from '@/fields/localized'
 import { ProvenanceBadge } from '@/fields/provenance-badge'
 import { FieldValueView } from '@/fields/registry'
+import { useTillLabel } from '@/fields/till-label'
 import type { ItemSheetData, SheetField } from '@/server/item-sheet/types'
 
 import { ItemSheetIssues } from './item-sheet-issues'
@@ -29,7 +30,7 @@ export interface ItemSheetDetailsTabProps {
   busy: boolean
   /** Saves a field's whole value (`null` = cleared); resolves true when it was saved. */
   onSave: (fieldKey: string, value: unknown | null) => Promise<boolean>
-  /** Removes our override (revert, or take barsy's value); resolves true when done. */
+  /** Removes our override (revert, or take the till's value); resolves true when done. */
   onRevert: (fieldKey: string) => Promise<boolean>
   /** Keeps a stale override; resolves true when done. */
   onKeep: (fieldKey: string) => Promise<boolean>
@@ -65,6 +66,7 @@ interface RowExtrasProps {
 /** What goes under a row's value and badge: why it is read-only, the conflict, Revert, keep / take. */
 function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
   const t = useTranslations('itemSheet.details')
+  const source = useTillLabel()
   const label = useFieldLabel(field.definition)
   const stale = field.provenance === 'stale' || field.canKeep
   return (
@@ -73,21 +75,25 @@ function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
       {field.access.kind === 'readonly' ? (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <LockIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
-          <span data-testid="read-only-note">{t(`readOnly.${field.access.reason}`)}</span>
+          <span data-testid="read-only-note">
+            {t(`readOnly.${field.access.reason}`, { source })}
+          </span>
         </p>
       ) : null}
       {field.conflict ? (
         <p className="flex items-start gap-1.5 text-xs text-warning">
           <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
-          <span>{t('conflict')}</span>
+          <span>{t('conflict', { source })}</span>
         </p>
       ) : null}
       {field.canRevert ? (
         <div className="grid w-full gap-2 rounded-md border bg-muted/30 p-2.5 text-xs">
-          <p className="text-muted-foreground">{stale ? t('staleHint') : t('barsyValueHint')}</p>
-          {field.barsyValue !== null ? (
-            <div className="text-sm" data-testid="barsy-value">
-              <FieldValueView definition={field.definition} value={field.barsyValue} />
+          <p className="text-muted-foreground">
+            {stale ? t('staleHint', { source }) : t('tillValueHint', { source })}
+          </p>
+          {field.tillValue !== null ? (
+            <div className="text-sm" data-testid="till-value">
+              <FieldValueView definition={field.definition} value={field.tillValue} />
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
@@ -109,11 +115,13 @@ function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
               variant={stale ? 'default' : 'outline'}
               disabled={busy}
               aria-label={
-                stale ? t('takeBarsyFor', { field: label }) : t('revertFor', { field: label })
+                stale
+                  ? t('takeTillFor', { field: label, source })
+                  : t('revertFor', { field: label, source })
               }
               onClick={onRevert}
             >
-              {stale ? t('takeBarsy') : t('revert')}
+              {stale ? t('takeTill', { source }) : t('revert')}
             </Button>
           </div>
         </div>

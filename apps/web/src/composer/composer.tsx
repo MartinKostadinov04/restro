@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select'
 import { pickLocalized } from '@/fields/localized'
 import { parseMoneyInput } from '@/fields/money-input'
+import { TillLabelProvider } from '@/fields/till-label'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import type { ActionResult } from './action-result'
 import {
@@ -363,8 +364,8 @@ export function Composer({
       }),
     toggleItemHidden: (itemId) => {
       const item = view.items[itemId]
-      // barsy's hide (and any other layer's) is not ours to undo (rule 5).
-      if (!item || item.hiddenBy === 'barsy' || item.hiddenBy === 'other') return
+      // The till's hide (and any other layer's) is not ours to undo (rule 5).
+      if (!item || item.hiddenBy === 'till' || item.hiddenBy === 'other') return
       const hidden = item.hiddenBy === null
       mutate({ type: 'setItemHidden', itemId, hidden }, () =>
         setItemHiddenAction({ venueId, itemId, hidden }),
@@ -423,7 +424,7 @@ export function Composer({
 
     setSoldOut: (itemIds, soldOut) => {
       if (!canMarkSoldOut) return
-      // An item barsy has off sale is not ours to touch (rule 5): there is nothing to mark or clear.
+      // An item the till has off sale is not ours to touch (rule 5): nothing to mark or clear.
       const ids = itemIds.filter(
         (id) => view.items[id] !== undefined && view.items[id]?.offSale === null,
       )
@@ -622,139 +623,144 @@ export function Composer({
   const sectionOptions = flattenSections(view)
 
   return (
-    <ComposerProvider
-      value={{
-        ...actions,
-        view,
-        selection,
-        expanded,
-        locale,
-        overTarget,
-        selected,
-        tagFilter,
-        canMarkSoldOut,
-        canCreateItem: mayCreateItem,
-        hasTill,
-      }}
-    >
-      <DragDropContext
-        onDragStart={onDragStart}
-        onDragUpdate={onDragUpdate}
-        onDragEnd={onDragEnd}
-        dragHandleUsageInstructions={t('dnd.instructions')}
+    <TillLabelProvider label={view.tillLabel}>
+      <ComposerProvider
+        value={{
+          ...actions,
+          view,
+          selection,
+          expanded,
+          locale,
+          overTarget,
+          selected,
+          tagFilter,
+          canMarkSoldOut,
+          canCreateItem: mayCreateItem,
+          hasTill,
+        }}
       >
-        <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
-          <aside className="grid content-start gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>
+        <DragDropContext
+          onDragStart={onDragStart}
+          onDragUpdate={onDragUpdate}
+          onDragEnd={onDragEnd}
+          dragHandleUsageInstructions={t('dnd.instructions')}
+        >
+          <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
+            <aside className="grid content-start gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => actions.newSection(null)}
+                  data-testid="new-section"
+                >
+                  <PlusIcon aria-hidden />
+                  {t('newSection')}
+                </Button>
+              </div>
+
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => actions.newSection(null)}
-                data-testid="new-section"
+                className="justify-start"
+                onClick={() => setTagsOpen(true)}
+                data-testid="open-tags"
               >
-                <PlusIcon aria-hidden />
-                {t('newSection')}
+                <TagsIcon aria-hidden />
+                {t('tags.open')}
+                <span className="ml-auto text-muted-foreground" data-testid="tag-count">
+                  {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
+                </span>
               </Button>
-            </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="justify-start"
-              onClick={() => setTagsOpen(true)}
-              data-testid="open-tags"
-            >
-              <TagsIcon aria-hidden />
-              {t('tags.open')}
-              <span className="ml-auto text-muted-foreground" data-testid="tag-count">
-                {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
-              </span>
-            </Button>
-
-            {/* Small screens: a picker instead of the tree (its drops need room). */}
-            <div className="lg:hidden">
-              <Select value={selection ?? ''} onValueChange={(value) => select(value as Selection)}>
-                <SelectTrigger
-                  className="w-full"
-                  aria-label={t('chooseSection')}
-                  data-testid="section-picker"
+              {/* Small screens: a picker instead of the tree (its drops need room). */}
+              <div className="lg:hidden">
+                <Select
+                  value={selection ?? ''}
+                  onValueChange={(value) => select(value as Selection)}
                 >
-                  <SelectValue placeholder={t('chooseSection')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {sectionOptions.map(({ id, depth }) => (
-                    <SelectItem key={id} value={id}>
-                      <span style={{ paddingInlineStart: `${(depth - 1) * 0.75}rem` }}>
-                        {sectionTitle(view, id, t('untitledSection'))}
-                      </span>
+                  <SelectTrigger
+                    className="w-full"
+                    aria-label={t('chooseSection')}
+                    data-testid="section-picker"
+                  >
+                    <SelectValue placeholder={t('chooseSection')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectionOptions.map(({ id, depth }) => (
+                      <SelectItem key={id} value={id}>
+                        <span style={{ paddingInlineStart: `${(depth - 1) * 0.75}rem` }}>
+                          {sectionTitle(view, id, t('untitledSection'))}
+                        </span>
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={UNSORTED_KEY}>
+                      {t('unsorted')} ({view.unsortedIds.length})
                     </SelectItem>
-                  ))}
-                  <SelectItem value={UNSORTED_KEY}>
-                    {t('unsorted')} ({view.unsortedIds.length})
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="hidden lg:block">
-              <SectionTree />
-            </div>
-          </aside>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="hidden lg:block">
+                <SectionTree />
+              </div>
+            </aside>
 
-          <ItemPane />
-        </div>
-      </DragDropContext>
+            <ItemPane />
+          </div>
+        </DragDropContext>
 
-      <SelectionBar />
-      {/* Outside the drag-and-drop context above: the panel has a list of its own to reorder. */}
-      <TagsPanel
-        open={tagsOpen}
-        onOpenChange={setTagsOpen}
-        defaultLocale={defaultLocale}
-        enabledLocales={enabledLocales}
-      />
-
-      {openItemId ? (
-        <ItemSheet
-          key={openItemId}
-          itemId={openItemId}
-          tags={sheetTags}
-          onCreateTag={createSheetTag}
-          onOpenChange={(open) => {
-            if (open) return
-            clearOpenItem()
-            // The sheet saves through its own actions; reload the composer's view so names,
-            // badges and issue counts match what was saved.
-            router.refresh()
-          }}
+        <SelectionBar />
+        {/* Outside the drag-and-drop context above: the panel has a list of its own to reorder. */}
+        <TagsPanel
+          open={tagsOpen}
+          onOpenChange={setTagsOpen}
+          defaultLocale={defaultLocale}
+          enabledLocales={enabledLocales}
         />
-      ) : null}
 
-      <NewItemDialog
-        open={itemDialog.open}
-        onOpenChange={(open) => setItemDialog((current) => ({ ...current, open }))}
-        defaultLocale={defaultLocale}
-        enabledLocales={enabledLocales}
-        currency={currency}
-        sectionLabel={
-          itemDialog.sectionId === null
-            ? t('unsorted')
-            : sectionTitle(view, itemDialog.sectionId, t('untitledSection'))
-        }
-        onCreate={({ name, price }) => createItem(itemDialog.sectionId, name, price)}
-      />
+        {openItemId ? (
+          <ItemSheet
+            key={openItemId}
+            itemId={openItemId}
+            tags={sheetTags}
+            onCreateTag={createSheetTag}
+            onOpenChange={(open) => {
+              if (open) return
+              clearOpenItem()
+              // The sheet saves through its own actions; reload the composer's view so names,
+              // badges and issue counts match what was saved.
+              router.refresh()
+            }}
+          />
+        ) : null}
 
-      <NewSectionDialog
-        open={dialog.open}
-        onOpenChange={(open) => setDialog((current) => ({ ...current, open }))}
-        view={view}
-        defaultLocale={defaultLocale}
-        enabledLocales={enabledLocales}
-        initialParentId={dialog.parentId}
-        onCreate={({ parentId, title }) => createSection(parentId, title)}
-      />
-    </ComposerProvider>
+        <NewItemDialog
+          open={itemDialog.open}
+          onOpenChange={(open) => setItemDialog((current) => ({ ...current, open }))}
+          defaultLocale={defaultLocale}
+          enabledLocales={enabledLocales}
+          currency={currency}
+          sectionLabel={
+            itemDialog.sectionId === null
+              ? t('unsorted')
+              : sectionTitle(view, itemDialog.sectionId, t('untitledSection'))
+          }
+          onCreate={({ name, price }) => createItem(itemDialog.sectionId, name, price)}
+        />
+
+        <NewSectionDialog
+          open={dialog.open}
+          onOpenChange={(open) => setDialog((current) => ({ ...current, open }))}
+          view={view}
+          defaultLocale={defaultLocale}
+          enabledLocales={enabledLocales}
+          initialParentId={dialog.parentId}
+          onCreate={({ parentId, title }) => createSection(parentId, title)}
+        />
+      </ComposerProvider>
+    </TillLabelProvider>
   )
 }

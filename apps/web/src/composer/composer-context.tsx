@@ -53,8 +53,8 @@ export interface ComposerActions {
   // --- sold out tonight (D46) --------------------------------------------------------------------
   /**
    * Marks items sold out tonight (`true`) or takes OUR mark off (`false`: "back on sale" only
-   * removes the mark, so an item barsy has off sale stays off sale, rule 5). Only owners and
-   * admins; items barsy has off sale are left out.
+   * removes the mark, so an item the till has off sale stays off sale, rule 5). Only owners and
+   * admins; items the till has off sale are left out.
    */
   readonly setSoldOut: (itemIds: readonly NodeId[], soldOut: boolean) => void
 

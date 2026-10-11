@@ -21,7 +21,7 @@ const nameRow: TranslationRow = {
   cells: {
     bg_BG: {
       text: 'Негрони',
-      provenance: 'barsy',
+      provenance: 'till',
       ourText: null,
       editable: false,
       missing: false,

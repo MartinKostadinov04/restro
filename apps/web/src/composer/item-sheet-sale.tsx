@@ -1,16 +1,17 @@
 'use client'
 
 // The sale state of an item on the Details tab (brief S3-08, D46): on sale, sold out tonight (a
-// manager's mark), or off sale in barsy. Managers get "Mark sold out tonight" / "Back on sale".
+// manager's mark), or off sale in the till. Managers get "Mark sold out tonight" / "Back on sale".
 //
-// Rule 5 shapes this card. "Back on sale" only takes OUR mark off. An item barsy has off sale shows
-// "Not on sale in barsy" and has NO button at all, not even a disabled "Back on sale": our layers
+// Rule 5 shapes this card. "Back on sale" only takes OUR mark off. An item the till has off sale shows
+// "Not on sale in {source}" and has NO button at all, not even a disabled "Back on sale": our layers
 // can only add caution, and such a button would promise what nothing here can do.
 import { BanIcon, Undo2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useTillLabel } from '@/fields/till-label'
 import type { SheetSale } from '@/server/item-sheet/types'
 
 export interface ItemSheetSaleProps {
@@ -23,6 +24,7 @@ export interface ItemSheetSaleProps {
 
 export function ItemSheetSale({ sale, busy, onChange }: ItemSheetSaleProps) {
   const t = useTranslations('itemSheet.details.sale')
+  const source = useTillLabel()
   const state =
     sale.offSale !== null ? `off_${sale.offSale}` : sale.soldOutTonight ? 'tonight' : 'on'
   return (
@@ -36,8 +38,8 @@ export function ItemSheetSale({ sale, busy, onChange }: ItemSheetSaleProps) {
         <div className="grid gap-1">
           <h3 className="text-sm font-medium">{t('title')}</h3>
           <div className="flex flex-wrap items-center gap-2" data-testid="sale-state">
-            {sale.offSale === 'barsy' ? (
-              <Badge variant="warning">{t('offSaleBarsy')}</Badge>
+            {sale.offSale === 'till' ? (
+              <Badge variant="warning">{t('offSaleTill', { source })}</Badge>
             ) : sale.offSale === 'other' ? (
               <Badge variant="warning">{t('offSaleOther')}</Badge>
             ) : sale.soldOutTonight ? (
@@ -76,8 +78,8 @@ export function ItemSheetSale({ sale, busy, onChange }: ItemSheetSaleProps) {
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground" data-testid="sale-note">
-        {sale.offSale === 'barsy'
-          ? t('offSaleBarsyNote')
+        {sale.offSale === 'till'
+          ? t('offSaleTillNote', { source })
           : sale.offSale === 'other'
             ? t('offSaleOtherNote')
             : sale.soldOutTonight

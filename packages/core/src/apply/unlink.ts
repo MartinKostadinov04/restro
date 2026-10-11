@@ -1,19 +1,19 @@
-// Unlink (doc "Linking and unlinking", step 3): "the current Barsy values are copied into the
-// manual layer, so the item keeps showing". Pure: given one field's barsy rows and the node's
-// other layers, which value the manual layer must hold so the field resolves as before once the
-// barsy rows are gone. apply() then validates the copy as a manual write on an unlinked node.
+// Unlink (doc "Linking and unlinking", step 3): "the current till values are copied into the
+// manual layer, so the item keeps showing". Pure: given one field's till rows and the node's
+// manual layer, which value the manual layer must hold so the field resolves as before once the
+// till rows are gone. apply() then validates the copy as a manual write on an unlinked node.
 //
 // Per combinator (doc "Combinators"; override and edition layers are left as they are):
-// - all_true (visible, for_sale): only a barsy `false` is carried over (absence already means
+// - all_true (visible, for_sale): only a till `false` is carried over (absence already means
 //   true, and a builder layer may never say true: rule 5);
-// - union (tags, dietary): manual becomes manual ∪ barsy;
-// - builder_first (description, image): barsy was only the fallback; it is copied where neither
-//   manual nor import has a value (per locale for localized text);
-// - source_first, locked (name, portion, price): barsy ranked above manual, so barsy's value
-//   replaces manual's (per locale for localized text: barsy's locales win, ours are kept);
-// - must_agree (allergens): manual becomes manual ∪ barsy when both hold a set (declaring more
-//   allergens is the cautious side), barsy's value otherwise.
-// barsy rows of several venue scopes collapse into one master value only when they agree (an
+// - union (tags, dietary): manual becomes manual ∪ till;
+// - builder_first (description, image): the till was only the fallback; it is copied where the
+//   manual layer has no value (per locale for localized text);
+// - source_first, locked (name, portion, price): the till ranked above manual, so the till's
+//   value replaces manual's (per locale for localized text: the till's locales win, ours are kept);
+// - must_agree (allergens): manual becomes manual ∪ till when both hold a set (declaring more
+//   allergens is the cautious side), the till's value otherwise.
+// Till rows of several venue scopes collapse into one master value only when they agree (an
 // all_true flag: false if any venue says false); otherwise nothing is copied (an item with two
 // venue prices gets no hand price, rather than a wrong one).
 
@@ -22,10 +22,9 @@ import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 
 /** One field's valid values on one node, by layer, as stored. */
 export interface UnlinkSlots {
-  /** The barsy rows being removed, one per scope. */
-  readonly barsy: readonly unknown[]
+  /** The till rows being removed, one per scope. */
+  readonly till: readonly unknown[]
   readonly manual?: unknown
-  readonly import?: unknown
 }
 
 type Localized = Record<string, string>
@@ -41,7 +40,7 @@ function sortedUnion(...sets: readonly unknown[][]): string[] {
 }
 
 /**
- * The value the manual layer must take when the barsy rows of this field are removed, or `null`
+ * The value the manual layer must take when the till rows of this field are removed, or `null`
  * when the manual layer stays as it is.
  */
 export function unlinkCopy(
@@ -52,15 +51,15 @@ export function unlinkCopy(
   const spec = FIELD_TYPES[definition.type] as FieldTypeSpec
   const equal = (a: unknown, b: unknown) => spec.hash(a as never) === spec.hash(b as never)
 
-  const rows = slots.barsy
+  const rows = slots.till
   if (rows.length === 0) return null
-  let barsy: unknown
+  let till: unknown
   if (definition.combinator === 'all_true') {
-    barsy = rows.some((row) => row === false) ? false : undefined
+    till = rows.some((row) => row === false) ? false : undefined
   } else {
-    barsy = rows.every((row) => equal(row, rows[0])) ? rows[0] : undefined
+    till = rows.every((row) => equal(row, rows[0])) ? rows[0] : undefined
   }
-  if (barsy === undefined) return null
+  if (till === undefined) return null
 
   const { manual } = slots
   const unlessSame = (value: unknown) =>
@@ -70,29 +69,26 @@ export function unlinkCopy(
     case 'all_true':
       return unlessSame(false)
     case 'union':
-      return Array.isArray(barsy)
-        ? unlessSame(sortedUnion(Array.isArray(manual) ? manual : [], barsy))
+      return Array.isArray(till)
+        ? unlessSame(sortedUnion(Array.isArray(manual) ? manual : [], till))
         : null
     case 'builder_first': {
-      if (definition.localizable && isLocalized(barsy)) {
+      if (definition.localizable && isLocalized(till)) {
         const ours: Localized = isLocalized(manual) ? manual : {}
-        const imported: Localized = isLocalized(slots.import) ? slots.import : {}
-        const added = Object.entries(barsy).filter(
-          ([locale]) => ours[locale] === undefined && imported[locale] === undefined,
-        )
+        const added = Object.entries(till).filter(([locale]) => ours[locale] === undefined)
         return added.length === 0 ? null : { value: { ...ours, ...Object.fromEntries(added) } }
       }
-      return manual === undefined && slots.import === undefined ? { value: barsy } : null
+      return manual === undefined ? { value: till } : null
     }
     case 'must_agree':
-      return Array.isArray(barsy) && Array.isArray(manual)
-        ? unlessSame(sortedUnion(manual, barsy))
-        : unlessSame(barsy)
+      return Array.isArray(till) && Array.isArray(manual)
+        ? unlessSame(sortedUnion(manual, till))
+        : unlessSame(till)
     case 'source_first':
     case 'locked':
-      if (definition.localizable && isLocalized(barsy)) {
-        return unlessSame({ ...(isLocalized(manual) ? manual : {}), ...barsy })
+      if (definition.localizable && isLocalized(till)) {
+        return unlessSame({ ...(isLocalized(manual) ? manual : {}), ...till })
       }
-      return unlessSame(barsy)
+      return unlessSame(till)
   }
 }

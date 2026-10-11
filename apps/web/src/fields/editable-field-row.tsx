@@ -18,7 +18,7 @@ interface EditableFieldRowProps {
 /**
  * A FieldRow that opens a FieldEditorSheet and keeps the saved value in local state. This is all
  * Stage 1 does with a save: no database write (writes arrive with `apply()` in Stage 2, which
- * will replace the local state with a server action). Editing a barsy-owned value is shown as an
+ * will replace the local state with a server action). Editing a till-owned value is shown as an
  * override, anything else as owned here, which is what the layers will say.
  */
 export function EditableFieldRow({ definition, initialValue, provenance }: EditableFieldRowProps) {
@@ -28,7 +28,7 @@ export function EditableFieldRow({ definition, initialValue, provenance }: Edita
   const [open, setOpen] = useState(false)
 
   const shown: Provenance | undefined = saved
-    ? definition.owner === 'barsy'
+    ? definition.owner === 'till'
       ? 'overridden'
       : 'owned'
     : provenance

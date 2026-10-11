@@ -15,6 +15,7 @@ import {
   FIELD_TYPES,
   type FieldDefinition,
   isLocale,
+  isTillSource,
   type Layer,
   LOCALES,
   type Locale,
@@ -34,6 +35,7 @@ import { assets, type DbPool, events, menus, venues, withTenant } from '@restro/
 import { and, desc, eq, lt } from 'drizzle-orm'
 
 import { logError } from '../log'
+import { loadTillLabels, tillLabelOf } from '../till-label'
 import { type LayerView, layerMap, layerView } from './layers'
 import {
   fieldAccess,
@@ -95,8 +97,11 @@ interface ItemState {
   readonly locales: readonly Locale[]
   readonly doc: Awaited<ReturnType<typeof loadItemDocument>>
   readonly item: ResolvedItem
+  /** The item has a till link (source `till:<integration>`), in any state. */
   readonly linked: boolean
   readonly linkState: ItemSheetData['linkState']
+  /** The name of the item's till; '' for a hand-made item. */
+  readonly tillLabel: string
   readonly revision: number
 }
 
@@ -136,18 +141,22 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
   })
   const item = resolved.items[itemId as keyof typeof resolved.items]
   if (!item) return null
-  const barsyLinks = doc.links.filter(
-    (link) => link.nodeId === itemId && link.source.startsWith('barsy:'),
-  )
-  const broken = barsyLinks.find((link) => link.state !== 'active')
+  // Linked to the till = a till link (`till:<integration>`), whichever connector feeds it (A4-F4).
+  const tillLinks = doc.links.filter((link) => link.nodeId === itemId && isTillSource(link.source))
+  const broken = tillLinks.find((link) => link.state !== 'active')
+  const tillLabel =
+    tillLinks.length === 0
+      ? ''
+      : tillLabelOf(doc.links, await loadTillLabels(pool, tenantId), itemId)
   return {
     venue,
     venueScope,
     locales,
     doc,
     item,
-    linked: barsyLinks.length > 0,
-    linkState: barsyLinks.length === 0 ? 'none' : (broken?.state ?? 'active'),
+    linked: tillLinks.length > 0,
+    linkState: tillLinks.length === 0 ? 'none' : (broken?.state ?? 'active'),
+    tillLabel,
     revision: doc.nodes.find((node) => node.id === itemId)?.revision ?? 1,
   }
 }
@@ -155,7 +164,7 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
 function contextFor(state: ItemState, itemId: string, definition: FieldDefinition): PlanContext {
   return {
     definition,
-    linkedToBarsy: state.linked,
+    linkedToTill: state.linked,
     layers: layerView(state.doc, itemId, definition.key, state.venueScope),
   }
 }
@@ -174,7 +183,7 @@ function resolvedFieldOf(
   return combineField({
     definition,
     layers,
-    linkedToBarsy: state.linked,
+    linkedToTill: state.linked,
     locales: state.locales,
   }).field
 }
@@ -187,7 +196,7 @@ function buildField(state: ItemState, itemId: string, definition: FieldDefinitio
   const context = contextFor(state, itemId, definition)
   const resolved = resolvedFieldOf(state, definition, context.layers)
   const override = context.layers.override
-  const barsy = context.layers.barsy
+  const till = context.layers.till
   const localeProvenance = resolved.locales
     ? (Object.fromEntries(
         Object.entries(resolved.locales).map(([locale, info]) => [
@@ -210,8 +219,8 @@ function buildField(state: ItemState, itemId: string, definition: FieldDefinitio
     ...(localeProvenance ? { localeProvenance } : {}),
     access,
     canRevert: access.kind === 'edit' && override !== undefined,
-    canKeep: access.kind === 'edit' && override !== undefined && barsy !== undefined && stale,
-    barsyValue: barsy?.value ?? null,
+    canKeep: access.kind === 'edit' && override !== undefined && till !== undefined && stale,
+    tillValue: till?.value ?? null,
   }
 }
 
@@ -230,7 +239,7 @@ function buildTranslations(
     .map((field) => {
       const { definition } = field
       const layers = layerView(state.doc, itemId, definition.key, state.venueScope)
-      const barsyText = textOf(layers.barsy?.value)
+      const tillText = textOf(layers.till?.value)
       const manualText = textOf(layers.manual?.value)
       const current = textOf(field.value)
       const cells: Partial<Record<Locale, TranslationCell>> = {}
@@ -240,8 +249,8 @@ function buildTranslations(
           text,
           provenance: field.localeProvenance?.[locale] ?? 'none',
           ourText: isBlank(manualText[locale]) ? null : (manualText[locale] ?? null),
-          // Barsy's own text of a barsy-owned field is read-only; a builder-owned field is ours.
-          editable: definition.owner === 'builder' || isBlank(barsyText[locale]),
+          // The till's own text of a till-owned field is read-only; a builder-owned field is ours.
+          editable: definition.owner === 'builder' || isBlank(tillText[locale]),
           missing: text === null,
           review: reviews.has(`${definition.key}:${locale}`),
         }
@@ -308,7 +317,8 @@ export async function loadItemSheet(
     itemId: scope.itemId,
     venueId: scope.venueId,
     title: titleOf(fields, state.locales),
-    linkedToBarsy: state.linked,
+    linkedToTill: state.linked,
+    tillLabel: state.tillLabel,
     linkState: state.linkState,
     revision: state.revision,
     defaultLocale: state.locales[0] ?? 'bg_BG',
@@ -452,7 +462,7 @@ export async function saveField(
   return commit(scope, services, actor, found.definition, planFieldSave(found.context, edited))
 }
 
-/** Removes our override of a field: revert, or take barsy's value instead of ours. */
+/** Removes our override of a field: revert, or take the till's value instead of ours. */
 export async function revertField(
   scope: SheetScope,
   services: SheetServices,
@@ -464,7 +474,7 @@ export async function revertField(
   return commit(scope, services, actor, found.definition, planRevert(found.context))
 }
 
-/** Keeps our override although barsy changed since: barsy's current value becomes its basis. */
+/** Keeps our override although the till changed since: its current value becomes the basis. */
 export async function keepOverride(
   scope: SheetScope,
   services: SheetServices,
@@ -528,7 +538,7 @@ export async function setImage(
   return commit(scope, services, actor, found.definition, planFieldSave(found.context, value))
 }
 
-/** Takes our own picture off the item (a barsy photo, once S2-03 fetches it, shows again). */
+/** Takes our own picture off the item (the till's photo, if there is one, shows again). */
 export async function removeImage(
   scope: SheetScope,
   services: SheetServices,

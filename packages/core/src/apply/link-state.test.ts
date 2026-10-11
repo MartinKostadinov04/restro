@@ -59,7 +59,7 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
       ops,
     } as ChangeSet
   }
-  const barsy = (ops: unknown[]) => apply(app, tenant, changeSet(`barsy:${integration}`, ops))
+  const barsy = (ops: unknown[]) => apply(app, tenant, changeSet(`till:${integration}`, ops))
   const manual = (ops: unknown[], options?: { atomic?: boolean }) =>
     apply(app, tenant, changeSet('manual', ops), options)
 
@@ -67,7 +67,7 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
     op: 'setField',
     node: { link },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value,
     sourceRecordId: record,
@@ -262,11 +262,11 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
       expect(written[0]).toMatchObject({
         op: 'setLinkState',
         fieldKey: 'link',
-        layer: 'barsy',
+        layer: 'till',
         scope: 'master',
-        source: `barsy:${integration}`,
-        oldValue: { source: `barsy:${integration}`, external_type: 'article', state: 'active' },
-        newValue: { source: `barsy:${integration}`, external_type: 'article', state: 'missing' },
+        source: `till:${integration}`,
+        oldValue: { source: `till:${integration}`, external_type: 'article', state: 'active' },
+        newValue: { source: `till:${integration}`, external_type: 'article', state: 'missing' },
       })
       expect(JSON.stringify(written)).not.toContain('91001')
 
@@ -342,7 +342,7 @@ describe.skipIf(!hasDatabase)('setLinkState and onlyIfUnplaced (as the restro_ap
       const fromPerson = await manual([setLinkState(art, 'missing')])
       expect(codesOf(fromPerson)).toEqual([[0, 'source_not_allowed']])
       await expect(
-        apply(app, tenant, changeSet(`barsy:${newId('in')}`, [setLinkState(art, 'missing')])),
+        apply(app, tenant, changeSet(`till:${newId('in')}`, [setLinkState(art, 'missing')])),
       ).rejects.toMatchObject({ code: 'invalid_change_set' })
       expect((await linkRow(art)).state).toBe('active')
     })

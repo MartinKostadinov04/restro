@@ -15,6 +15,7 @@ import { bcp47, useFieldEnvironment } from '@/fields/environment'
 import { pickLocalized } from '@/fields/localized'
 import { ProvenanceBadge } from '@/fields/provenance-badge'
 import { FieldValueView } from '@/fields/registry'
+import { useTillLabel } from '@/fields/till-label'
 import { loadItemHistoryAction } from '@/server/item-sheet/actions'
 import type { HistoryEntry, HistoryPage } from '@/server/item-sheet/types'
 
@@ -67,6 +68,7 @@ function EntryValue({ entry, value }: { entry: HistoryEntry; value: unknown }) {
 function EntryLine({ entry, last }: { entry: HistoryEntry; last: boolean }) {
   const t = useTranslations('itemSheet.history')
   const environment = useFieldEnvironment()
+  const source = useTillLabel()
   const label = entry.definition
     ? (pickLocalized(entry.definition.label, environment.locale) ?? entry.fieldKey)
     : entry.fieldKey
@@ -74,7 +76,7 @@ function EntryLine({ entry, last }: { entry: HistoryEntry; last: boolean }) {
     entry.actor.kind === 'user'
       ? (entry.actor.name ?? t('someone'))
       : entry.actor.kind === 'integration'
-        ? t('barsySync')
+        ? t('tillSync', { source })
         : t('system')
   const provenance = layerProvenance(entry.layer)
   const Icon = ICON[entry.kind]
@@ -113,7 +115,10 @@ function EntryLine({ entry, last }: { entry: HistoryEntry; last: boolean }) {
           <div className="text-sm leading-7 text-muted-foreground" data-testid="history-sentence">
             {splitMarks(
               entry.kind === 'structure'
-                ? t(`structure.${STRUCTURE_OPS.has(entry.op) ? entry.op : 'other'}`, marks('who'))
+                ? t(`structure.${STRUCTURE_OPS.has(entry.op) ? entry.op : 'other'}`, {
+                    ...marks('who'),
+                    source,
+                  })
                 : t(entry.kind, marks('who', 'field', 'value', 'from', 'to')),
             ).map((part, index) => {
               const key = `${index}:${part.kind === 'text' ? part.text : part.name}`

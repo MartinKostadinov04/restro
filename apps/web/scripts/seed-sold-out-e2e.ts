@@ -238,7 +238,7 @@ async function seed(): Promise<void> {
         op: 'setField',
         node: { link: article },
         fieldKey,
-        layer: 'barsy',
+        layer: 'till',
         scope,
         value,
         sourceRecordId: record,
@@ -247,7 +247,7 @@ async function seed(): Promise<void> {
     const linked = await apply(
       pool,
       organizationId,
-      changeSet(`barsy:${integration}`, `integration:${integration}`, [
+      changeSet(`till:${integration}`, `integration:${integration}`, [
         { op: 'createNode', id: barsyItem, nodeType: 'item', parent: null, status: 'active' },
         { op: 'linkSource', node: { id: barsyItem }, link: article },
         field('name', { bg_BG: 'Кампари', en_US: 'Campari' }),

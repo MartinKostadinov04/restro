@@ -1,6 +1,6 @@
 'use client'
 
-// "New section": a curated section with no barsy counterpart (owned here). It needs a name in the
+// "New section": a curated section with no till counterpart (owned here). It needs a name in the
 // venue's main language (check V3); the other enabled languages are optional and can be added
 // later. The title is stored in the manual layer, which is what "owned here" means.
 import type { Locale, LocalizedText, NodeId } from '@restro/core'

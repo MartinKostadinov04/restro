@@ -60,7 +60,7 @@ describe('the sale badge', () => {
   })
 
   it('says "Not on sale in barsy" when barsy has it off sale, whatever else is true', () => {
-    renderWithIntl(<SaleBadge soldOutTonight={false} offSale="barsy" />, { locale: 'bg' })
+    renderWithIntl(<SaleBadge soldOutTonight={false} offSale="till" />, { locale: 'bg' })
     expect(screen.getByTestId('off-sale-badge').textContent).toBe('Не се продава в barsy')
     expect(screen.queryByTestId('sold-out-badge')).toBeNull()
   })
@@ -80,7 +80,7 @@ describe('an item row', () => {
       items: {
         ...state.view.items,
         [negroni]: { ...(state.view.items[negroni] as ComposerItem), soldOutTonight: true },
-        [spritz]: { ...(state.view.items[spritz] as ComposerItem), offSale: 'barsy' },
+        [spritz]: { ...(state.view.items[spritz] as ComposerItem), offSale: 'till' },
       },
     }
     pane(state)
@@ -127,7 +127,7 @@ describe('an item row', () => {
         ...state.view.items,
         [state.ids.negroni]: {
           ...(state.view.items[state.ids.negroni] as ComposerItem),
-          offSale: 'barsy',
+          offSale: 'till',
         },
       },
     }
@@ -221,7 +221,7 @@ describe('the "Sold out (N)" chip and its list', () => {
         ...state.view.items,
         [state.ids.spritz]: {
           ...(state.view.items[state.ids.spritz] as ComposerItem),
-          offSale: 'barsy',
+          offSale: 'till',
           soldOutTonight: true,
         },
       },
@@ -284,7 +284,7 @@ describe('the sale card of the item sheet', () => {
 
   it('shows "Not on sale in barsy" and NO button when barsy has it off sale (rule 5)', () => {
     const { unmount } = renderWithIntl(
-      <ItemSheetSale sale={sale({ offSale: 'barsy' })} busy={false} onChange={noop} />,
+      <ItemSheetSale sale={sale({ offSale: 'till' })} busy={false} onChange={noop} />,
       { locale: 'bg' },
     )
     expect(screen.getByTestId('sale-state').textContent).toBe('Не се продава в barsy')
@@ -293,7 +293,7 @@ describe('the sale card of the item sheet', () => {
     unmount()
 
     // Even when a mark of tonight sits under barsy's flag, and for any other layer's flag.
-    for (const offSale of ['barsy', 'other'] as const) {
+    for (const offSale of ['till', 'other'] as const) {
       const view = renderWithIntl(
         <ItemSheetSale
           sale={sale({ offSale, soldOutTonight: false })}

@@ -33,7 +33,7 @@ function row(
     scope,
     value,
     valueHash: HASH,
-    source: layer === 'barsy' ? `barsy:${integration}` : 'manual',
+    source: layer === 'till' ? `till:${integration}` : 'manual',
     observedAt: '2026-10-09T10:00:00.000Z',
     basis: null,
     valid: true,
@@ -64,11 +64,11 @@ const node = (
 ) => ({ id, type, parentId, status, revision: 1, sortKey })
 
 const barsyItem = (id: NodeId, name: string, price: number, visible = true): Row[] => [
-  row(id, 'name', 'barsy', { bg_BG: name, en_US: `${name} EN` }),
-  row(id, 'price', 'barsy', eur(price), `venue:${venueId}`),
-  row(id, 'for_sale', 'barsy', true, `venue:${venueId}`),
-  row(id, 'visible', 'barsy', visible),
-  row(id, 'allergens', 'barsy', []),
+  row(id, 'name', 'till', { bg_BG: name, en_US: `${name} EN` }),
+  row(id, 'price', 'till', eur(price), `venue:${venueId}`),
+  row(id, 'for_sale', 'till', true, `venue:${venueId}`),
+  row(id, 'visible', 'till', visible),
+  row(id, 'allergens', 'till', []),
 ]
 
 const document: MenuDocument = {
@@ -98,7 +98,7 @@ const document: MenuDocument = {
     { itemId: ids.nameless, sectionId: ids.ownSection, sortKey: 'a0' },
   ],
   values: [
-    row(ids.barsySection, 'title', 'barsy', { bg_BG: 'Коктейли', en_US: 'Cocktails' }),
+    row(ids.barsySection, 'title', 'till', { bg_BG: 'Коктейли', en_US: 'Cocktails' }),
     row(ids.ownSection, 'title', 'manual', { bg_BG: 'Специални' }),
     ...barsyItem(ids.normal, 'Негрони', 850),
     ...barsyItem(ids.barsyHidden, 'Спритц', 900, false),
@@ -111,13 +111,13 @@ const document: MenuDocument = {
   links: [
     ...[ids.barsySection].map((nodeId) => ({
       nodeId,
-      source: `barsy:${integration}` as const,
+      source: `till:${integration}` as const,
       externalType: 'category',
       state: 'active' as const,
     })),
     ...[ids.normal, ids.barsyHidden, ids.builderHidden, ids.held].map((nodeId) => ({
       nodeId,
-      source: `barsy:${integration}` as const,
+      source: `till:${integration}` as const,
       externalType: 'article',
       state: 'active' as const,
     })),
@@ -140,7 +140,7 @@ describe('buildComposerView', () => {
     expect(view.rootIds).toEqual([ids.barsySection, ids.ownSection])
     expect(view.sections[ids.barsySection]).toMatchObject({
       title: 'Коктейли',
-      origin: 'barsy',
+      origin: 'till',
       parentId: null,
       hidden: false,
       sortKey: 'a0',
@@ -164,7 +164,7 @@ describe('buildComposerView', () => {
     expect(build('bg_BG').items[ids.normal]).toMatchObject({
       name: 'Негрони',
       price: eur(850),
-      origin: 'barsy',
+      origin: 'till',
     })
     expect(build('en_US').items[ids.normal]?.name).toBe('Негрони EN')
     expect(build('en_US').sections[ids.barsySection]?.title).toBe('Cocktails')
@@ -175,18 +175,18 @@ describe('buildComposerView', () => {
   it('says why an item is hidden: barsy, the builder, or a held-back status', () => {
     const { items } = build()
     expect(items[ids.normal]).toMatchObject({ hiddenBy: null })
-    expect(items[ids.barsyHidden]).toMatchObject({ hiddenBy: 'barsy', shown: false })
+    expect(items[ids.barsyHidden]).toMatchObject({ hiddenBy: 'till', shown: false })
     expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'builder', shown: false })
     expect(items[ids.held]).toMatchObject({ hiddenBy: 'status', shown: false })
   })
 
   it('marks a builder hide the sync wrote as "new from barsy", and only that one (S3-04)', () => {
     const { items } = build('bg_BG', [ids.builderHidden])
-    expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'new_from_barsy', shown: false })
+    expect(items[ids.builderHidden]).toMatchObject({ hiddenBy: 'new_from_till', shown: false })
     // The marker means nothing for an item that is not hidden by the manual layer.
     const unhidden = build('bg_BG', [ids.normal, ids.barsyHidden, ids.held]).items
     expect(unhidden[ids.normal]?.hiddenBy).toBeNull()
-    expect(unhidden[ids.barsyHidden]?.hiddenBy).toBe('barsy')
+    expect(unhidden[ids.barsyHidden]?.hiddenBy).toBe('till')
     expect(unhidden[ids.held]?.hiddenBy).toBe('status')
     // Without the list, the same item is the builder's own hide.
     expect(build().items[ids.builderHidden]?.hiddenBy).toBe('builder')
@@ -203,7 +203,7 @@ describe('buildComposerView', () => {
       now: '2026-10-09T12:00:00+03:00',
     })
     const view = buildComposerView({ doc: both, resolved, displayLocale: 'bg_BG' })
-    expect(view.items[ids.barsyHidden]?.hiddenBy).toBe('barsy')
+    expect(view.items[ids.barsyHidden]?.hiddenBy).toBe('till')
   })
 
   it('counts the problems the resolver found on a row', () => {
@@ -255,7 +255,7 @@ describe('buildComposerView', () => {
     const json = JSON.stringify(build())
     expect(json).not.toContain(integration)
     expect(json).not.toContain('externalId')
-    expect(json).not.toContain('barsy:')
+    expect(json).not.toContain('till:')
   })
 
   describe('tags and dietary labels (S3-06)', () => {

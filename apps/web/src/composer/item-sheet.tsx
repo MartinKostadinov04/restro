@@ -32,6 +32,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { type EnvironmentTag, FieldEnvironmentProvider, type TagDraft } from '@/fields/environment'
+import { TillLabelProvider } from '@/fields/till-label'
 import {
   keepItemOverrideAction,
   loadItemSheetAction,
@@ -120,6 +121,9 @@ export function ItemSheet({
     }
   }, [open, venueId, itemId])
 
+  // The name of the item's till: `{source}` in "From {source}" and the like (brief CF-03).
+  const source = loaded.status === 'ready' ? loaded.data.tillLabel : ''
+
   /** Runs a save; shows its refreshed data, or says why nothing changed. True when it saved. */
   const run = useCallback(
     async (task: Promise<SheetResult>, success?: string): Promise<boolean> => {
@@ -131,7 +135,7 @@ export function ItemSheet({
           if (success) toast.success(success)
           return true
         }
-        toast.error(t(`errors.${result.error}`))
+        toast.error(t(`errors.${result.error}`, { source }))
         return false
       } catch {
         toast.error(t('errors.failed'))
@@ -140,7 +144,7 @@ export function ItemSheet({
         setBusy(false)
       }
     },
-    [t],
+    [t, source],
   )
 
   const data = loaded.status === 'ready' ? loaded.data : null
@@ -155,7 +159,7 @@ export function ItemSheet({
       : Promise.resolve(false)
   const revertField = (fieldKey: string) =>
     venueId
-      ? run(revertItemFieldAction(venueId, itemId, fieldKey), t('reverted'))
+      ? run(revertItemFieldAction(venueId, itemId, fieldKey), t('reverted', { source }))
       : Promise.resolve(false)
   const keepField = (fieldKey: string) =>
     venueId
@@ -204,11 +208,11 @@ export function ItemSheet({
             <div className="flex flex-wrap items-center gap-2">
               {data ? (
                 <>
-                  <Badge variant={data.linkedToBarsy ? 'info' : 'secondary'}>
-                    {t(data.linkedToBarsy ? 'linked' : 'createdHere')}
+                  <Badge variant={data.linkedToTill ? 'info' : 'secondary'}>
+                    {data.linkedToTill ? t('linked', { source }) : t('createdHere')}
                   </Badge>
                   {data.linkState === 'missing' || data.linkState === 'deleted' ? (
-                    <Badge variant="danger">{t(`linkState.${data.linkState}`)}</Badge>
+                    <Badge variant="danger">{t(`linkState.${data.linkState}`, { source })}</Badge>
                   ) : null}
                   <span>{t('issueCount', { count: data.issues.length })}</span>
                 </>
@@ -237,77 +241,79 @@ export function ItemSheet({
         ) : null}
 
         {data ? (
-          <FieldEnvironmentProvider
-            enabledLocales={data.enabledLocales}
-            currency={data.currency as 'EUR'}
-            timezone={data.timezone}
-            assetUrls={assetUrls}
-            defaultLocale={data.defaultLocale}
-            tags={tags}
-            createTag={onCreateTag}
-          >
-            <Tabs
-              value={tab}
-              onValueChange={(value) => {
-                if (isTab(value)) setTab(value)
-              }}
-              className="min-h-0 flex-1 gap-0"
+          <TillLabelProvider label={data.tillLabel}>
+            <FieldEnvironmentProvider
+              enabledLocales={data.enabledLocales}
+              currency={data.currency as 'EUR'}
+              timezone={data.timezone}
+              assetUrls={assetUrls}
+              defaultLocale={data.defaultLocale}
+              tags={tags}
+              createTag={onCreateTag}
             >
-              <div className="border-b px-4 py-2">
-                <TabsList className="w-full">
-                  {TABS.map((id) => (
-                    <TabsTrigger key={id} value={id}>
-                      {t(`tabs.${id}`)}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-              <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto p-4">
-                {/* Details, Translations and Media stay mounted when hidden (Radix leaves a
+              <Tabs
+                value={tab}
+                onValueChange={(value) => {
+                  if (isTab(value)) setTab(value)
+                }}
+                className="min-h-0 flex-1 gap-0"
+              >
+                <div className="border-b px-4 py-2">
+                  <TabsList className="w-full">
+                    {TABS.map((id) => (
+                      <TabsTrigger key={id} value={id}>
+                        {t(`tabs.${id}`)}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
+                <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto p-4">
+                  {/* Details, Translations and Media stay mounted when hidden (Radix leaves a
                     force-mounted panel showing, so the wrapper hides it), so a half-written
                     translation survives a look at another tab. History loads when it is opened. */}
-                <TabsContent value="details" forceMount>
-                  <div hidden={tab !== 'details'}>
-                    <ItemSheetDetailsTab
-                      data={data}
-                      busy={busy}
-                      onSave={saveField}
-                      onRevert={revertField}
-                      onKeep={keepField}
-                      onOpenMedia={() => setTab('media')}
-                      onSoldOut={setSoldOut}
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="translations" forceMount>
-                  <div hidden={tab !== 'translations'}>
-                    <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
-                  </div>
-                </TabsContent>
-                <TabsContent value="media" forceMount>
-                  <div hidden={tab !== 'media'}>
-                    <ItemSheetMediaTab
-                      key={`${data.revision}:${data.image?.assetId ?? ''}`}
-                      data={data}
-                      busy={busy}
-                      onAttach={attachImage}
-                      onSaveDetails={saveImageDetails}
-                      onRemove={removeImage}
-                    />
-                  </div>
-                </TabsContent>
-                <TabsContent value="history">
-                  {venueId ? (
-                    <ItemSheetHistoryTab
-                      venueId={venueId}
-                      itemId={itemId}
-                      revision={data.revision}
-                    />
-                  ) : null}
-                </TabsContent>
-              </div>
-            </Tabs>
-          </FieldEnvironmentProvider>
+                  <TabsContent value="details" forceMount>
+                    <div hidden={tab !== 'details'}>
+                      <ItemSheetDetailsTab
+                        data={data}
+                        busy={busy}
+                        onSave={saveField}
+                        onRevert={revertField}
+                        onKeep={keepField}
+                        onOpenMedia={() => setTab('media')}
+                        onSoldOut={setSoldOut}
+                      />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="translations" forceMount>
+                    <div hidden={tab !== 'translations'}>
+                      <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="media" forceMount>
+                    <div hidden={tab !== 'media'}>
+                      <ItemSheetMediaTab
+                        key={`${data.revision}:${data.image?.assetId ?? ''}`}
+                        data={data}
+                        busy={busy}
+                        onAttach={attachImage}
+                        onSaveDetails={saveImageDetails}
+                        onRemove={removeImage}
+                      />
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="history">
+                    {venueId ? (
+                      <ItemSheetHistoryTab
+                        venueId={venueId}
+                        itemId={itemId}
+                        revision={data.revision}
+                      />
+                    ) : null}
+                  </TabsContent>
+                </div>
+              </Tabs>
+            </FieldEnvironmentProvider>
+          </TillLabelProvider>
         ) : null}
       </SheetContent>
     </Sheet>

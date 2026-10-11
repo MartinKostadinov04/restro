@@ -1,6 +1,6 @@
 // The composer's view model: a plain, serialisable picture of one menu for the client component
 // (server component -> client component, U4). Built on the server from the loaded document and
-// its resolution; nothing in it is a barsy id (rule 3), a layer value the composer may not show,
+// its resolution; nothing in it is an external id (rule 3), a layer value the composer may not show,
 // or a function. It is normalised (sections and items by id, ordered id lists) because every
 // drag changes one list and the reducer (./reducer.ts) rewrites only that list.
 //
@@ -11,6 +11,7 @@ import {
   type IssueCode,
   type IssueSeverity,
   isId,
+  isTillSource,
   type Locale,
   type LocalizedText,
   type MenuDocument,
@@ -36,8 +37,8 @@ export interface ComposerIssue {
   readonly locale?: Locale
 }
 
-/** Where a node's content comes from: mirrored from barsy, or made here (display only). */
-export type ComposerOrigin = 'barsy' | 'owned'
+/** Where a node's content comes from: mirrored from the till, or made here (display only). */
+export type ComposerOrigin = 'till' | 'owned'
 
 /** A section as the composer shows it. */
 export interface ComposerSection {
@@ -47,7 +48,7 @@ export interface ComposerSection {
   /** Title in the interface language ('' when the section has no title). */
   readonly title: string
   readonly origin: ComposerOrigin
-  /** The builder hid it (`status = hidden`); hiding a section never touches barsy. */
+  /** The builder hid it (`status = hidden`); hiding a section never touches the till. */
   readonly hidden: boolean
   /** Guests would see it (it and its parents are shown and it holds a shown item). */
   readonly shown: boolean
@@ -59,12 +60,12 @@ export interface ComposerSection {
 
 /** Why an item is not shown to guests, as far as the composer can tell and act on. */
 export type ItemHiddenBy =
-  /** barsy hides it: the composer cannot show it (rule 5). */
-  | 'barsy'
+  /** The till hides it: the composer cannot show it (rule 5). */
+  | 'till'
   /** The builder's hide flag (`visible = false` in the manual layer): showing clears it. */
   | 'builder'
-  /** The sync hid a new barsy item for review (setting `publish.new_items = hold`): showing clears it. */
-  | 'new_from_barsy'
+  /** The sync hid a new till item for review (setting `publish.new_items = hold`): showing clears it. */
+  | 'new_from_till'
   /** The item's status is `hidden` (held back): showing makes it active. */
   | 'status'
   /** Another layer or setting hides it (an edition, the ordering mode): not changed here. */
@@ -72,7 +73,7 @@ export type ItemHiddenBy =
 
 /**
  * Why an item is off sale, when something other than a manager's "sold out tonight" mark says so
- * (core's `OffSaleBy`): `barsy` is the till's own flag, `other` another layer or edition. The
+ * (core's `OffSaleBy`): `till` is the till's own flag, `other` another layer or edition. The
  * composer cannot put either back on sale (rule 5).
  */
 export type ItemOffSale = OffSaleBy
@@ -133,6 +134,11 @@ export interface ComposerView {
   /** The venue's tag ids in order, archived ones included. */
   readonly tagIds: readonly TagId[]
   readonly tags: Readonly<Record<TagId, ComposerTag>>
+  /**
+   * The name of the till this menu's items come from (`{source}` in "From {source}"), or '' when
+   * nothing in it comes from a till.
+   */
+  readonly tillLabel: string
 }
 
 function textOf(field: ResolvedField | undefined, locale: Locale): string {
@@ -159,8 +165,8 @@ function hiddenByOf(
   held: boolean,
 ): ItemHiddenBy | null {
   if (visible?.value === false) {
-    if (visible.layer === 'barsy') return 'barsy'
-    if (visible.layer === 'manual') return held ? 'new_from_barsy' : 'builder'
+    if (visible.layer === 'till') return 'till'
+    if (visible.layer === 'manual') return held ? 'new_from_till' : 'builder'
     return 'other'
   }
   if (status === 'hidden') return 'status'
@@ -194,6 +200,8 @@ export interface BuildViewInput {
   readonly heldNewIds?: readonly NodeId[]
   /** The venue's tags in order, archived ones included (`listTags`). Default: none. */
   readonly tags?: readonly Tag[]
+  /** The name of the till the menu's linked nodes come from (`tillLabelOf`). Default: ''. */
+  readonly tillLabel?: string
 }
 
 /** The string entries of a resolved list value (`tags`, `dietary`); nothing else. */
@@ -210,13 +218,15 @@ export function buildComposerView({
   displayLocale,
   heldNewIds = [],
   tags: venueTags = [],
+  tillLabel = '',
 }: BuildViewInput): ComposerView {
   const heldNew = new Set<NodeId>(heldNewIds)
   const nodes = new Map(doc.nodes.map((node) => [node.id, node]))
-  const barsyLinked = new Set(
-    doc.links.filter((link) => link.source.startsWith('barsy:')).map((link) => link.nodeId),
+  // Linked to the till = a till link (`till:<integration>`), whichever connector feeds it.
+  const tillLinked = new Set(
+    doc.links.filter((link) => isTillSource(link.source)).map((link) => link.nodeId),
   )
-  const originOf = (id: NodeId): ComposerOrigin => (barsyLinked.has(id) ? 'barsy' : 'owned')
+  const originOf = (id: NodeId): ComposerOrigin => (tillLinked.has(id) ? 'till' : 'owned')
 
   const sections: Record<NodeId, ComposerSection> = {}
   const addSection = (section: ResolvedSection, parentId: NodeId | null) => {
@@ -309,5 +319,6 @@ export function buildComposerView({
     unsortedIds,
     tagIds: venueTags.map((tag) => tag.id),
     tags: tagRecords,
+    tillLabel,
   }
 }

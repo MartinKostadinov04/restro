@@ -87,7 +87,7 @@ async function main(): Promise<void> {
         op: 'setField',
         node: { link: article },
         fieldKey,
-        layer: 'barsy',
+        layer: 'till',
         scope,
         value,
         sourceRecordId: record,
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     const item = newId('nd')
     await apply(pool, tenantId, {
       id: newId('cs'),
-      source: `barsy:${integration}`,
+      source: `till:${integration}`,
       jobId: newId('jb'),
       actor: `integration:${integration}`,
       observedAt: new Date().toISOString(),
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
           op: 'setField',
           node: { link: category },
           fieldKey: 'title',
-          layer: 'barsy',
+          layer: 'till',
           scope: 'master',
           value: { bg_BG: 'Коктейли (e2e)', en_US: 'Cocktails (e2e)' },
           sourceRecordId: record,

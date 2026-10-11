@@ -517,7 +517,7 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
     /** The variants job the picture's download queued (the world’s queue is only a recorder). */
     async function variantsJobData() {
       const rows = await world.query<{ id: string }>(
-        `select id from restro.assets where tenant_id = $1 and origin = 'barsy'`,
+        `select id from restro.assets where tenant_id = $1 and origin = 'connector'`,
         [world.tenantId],
       )
       const asset = rows[0]
@@ -694,7 +694,7 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
         })
       }
       const rows = await world.query<{ id: string }>(
-        `select id from restro.assets where tenant_id = $1 and origin = 'barsy' order by id`,
+        `select id from restro.assets where tenant_id = $1 and origin = 'connector' order by id`,
         [world.tenantId],
       )
       ids.push(...rows.map((row) => row.id))

@@ -24,6 +24,7 @@ import { getPool } from '@/server/db'
 import { getVenueMenuId } from '@/server/menus'
 import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { loadTillLabels, tillLabelOf } from '@/server/till-label'
 import { venueHasTill } from '@/server/venues'
 
 import { Composer } from './composer'
@@ -38,7 +39,7 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
   }
 
   const pool = getPool()
-  const [document, unplaced, heldNewIds, tags, hasTill] = await Promise.all([
+  const [document, unplaced, heldNewIds, tags, hasTill, tillLabels] = await Promise.all([
     loadMenuDocument(pool, tenantId, menuId),
     loadUnplacedItems(pool, tenantId, menuId),
     // New items the sync hid for review (publish.new_items = hold): they get a badge.
@@ -47,6 +48,8 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
     listTags(pool, tenantId, venue.id, { includeArchived: true }),
     // A venue with a till gets its items from the till only (D66): no "New item" there.
     venueHasTill(tenantId, venue.id),
+    // The name of the till, for "From {source}" and the like (brief CF-03).
+    loadTillLabels(pool, tenantId),
   ])
   const merged = mergeDocumentParts(document, unplaced)
 
@@ -74,6 +77,7 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
     displayLocale: toDataLocale(isAdminLocale(uiLocale) ? uiLocale : 'bg'),
     heldNewIds,
     tags,
+    tillLabel: tillLabelOf(merged.links, tillLabels),
   })
 
   return (

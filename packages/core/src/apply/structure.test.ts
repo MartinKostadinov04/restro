@@ -256,7 +256,7 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       const result = await apply(
         app,
         tenant,
-        changeSet(`barsy:${integration}`, [
+        changeSet(`till:${integration}`, [
           { op: 'moveNode', node: { id: section }, parent: { id: menu.id }, sortKey: 'end' },
         ]),
       )
@@ -371,13 +371,13 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
           fieldKey: 'link',
           ...structural,
           oldValue: null,
-          newValue: { source: `barsy:${integration}`, external_type: 'article' },
+          newValue: { source: `till:${integration}`, external_type: 'article' },
         },
         {
           op: 'unlinkSource',
           fieldKey: 'link',
           ...structural,
-          oldValue: { source: `barsy:${integration}`, external_type: 'article' },
+          oldValue: { source: `till:${integration}`, external_type: 'article' },
           newValue: null,
         },
         {

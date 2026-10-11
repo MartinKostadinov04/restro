@@ -54,7 +54,7 @@ export function ItemSheetIssues({ data }: { data: ItemSheetData }) {
     const field = definition ? (pickLocalized(definition.label, dataLocale) ?? definition.key) : ''
     const language = issue.locale ? languageName(issue.locale, uiLanguage) : ''
     return KNOWN_CODES.has(issue.code)
-      ? t(issue.code, { field, language })
+      ? t(issue.code, { field, language, source: data.tillLabel })
       : t('unknown', { code: issue.code })
   }
 

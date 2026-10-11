@@ -24,7 +24,7 @@ export const VENUE_ID = testId('vn', 'beach')
 export const VENUE: `venue:${string}` = `venue:${VENUE_ID}`
 export const OTHER_VENUE: `venue:${string}` = `venue:${testId('vn', 'city')}`
 export const ROOT = nd('root')
-export const BARSY: Source = 'barsy:in_test'
+export const TILL: Source = 'till:in_test'
 
 /** The default context: venue `beach`, BG default plus EN, fixed time. */
 export const CONTEXT: ResolveContext = {
@@ -49,8 +49,7 @@ export interface ValueOptions {
 }
 
 function sourceFor(layer: Layer): Source {
-  if (layer === 'barsy') return BARSY
-  if (layer === 'import') return 'import:wines'
+  if (layer === 'till') return TILL
   return 'manual'
 }
 
@@ -107,24 +106,24 @@ export class DocBuilder {
   }
 
   /**
-   * An item linked to an active barsy article that resolves orderable: barsy name (BG + EN),
+   * An item with an active till link that resolves orderable: the till's name (BG + EN),
    * venue-scoped price, for sale here, public, explicit empty allergens.
    */
-  barsyItem(id: NodeId, priceMinor = 1250, status: NodeStatus = 'active'): this {
+  tillItem(id: NodeId, priceMinor = 1250, status: NodeStatus = 'active'): this {
     this.item(id, status)
     this.link(id)
-    this.set(id, 'name', 'barsy', { bg_BG: 'Негрони', en_US: 'Negroni' })
-    this.set(id, 'price', 'barsy', eur(priceMinor), { scope: VENUE })
-    this.set(id, 'for_sale', 'barsy', true, { scope: VENUE })
-    this.set(id, 'visible', 'barsy', true)
-    return this.set(id, 'allergens', 'barsy', [])
+    this.set(id, 'name', 'till', { bg_BG: 'Негрони', en_US: 'Negroni' })
+    this.set(id, 'price', 'till', eur(priceMinor), { scope: VENUE })
+    this.set(id, 'for_sale', 'till', true, { scope: VENUE })
+    this.set(id, 'visible', 'till', true)
+    return this.set(id, 'allergens', 'till', [])
   }
 
   link(
     nodeId: NodeId,
     state: Link['state'] = 'active',
     externalType = 'article',
-    source: Source = BARSY,
+    source: Source = TILL,
   ): this {
     this.links.push({ nodeId, source, externalType, state })
     return this
@@ -207,7 +206,7 @@ export class DocBuilder {
   }
 }
 
-/** A menu with one section holding one orderable barsy item. */
+/** A menu with one section holding one orderable till item. */
 export function oneItemMenu(item = nd('negroni'), section = nd('cocktails')): DocBuilder {
-  return new DocBuilder().section(section).barsyItem(item).place(item, section)
+  return new DocBuilder().section(section).tillItem(item).place(item, section)
 }

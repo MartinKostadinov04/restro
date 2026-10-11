@@ -21,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makePng } from '../../../../../packages/assets/src/test-images'
 import { storeImage } from '../assets/upload'
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
+import { tillLabelOfKind } from '../till-label'
 import {
   keepOverride,
   loadHistory,
@@ -120,11 +121,11 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       ops,
     } as ChangeSet
   }
-  const barsyField = (fieldKey: string, value: unknown, scope = 'master') => ({
+  const tillField = (fieldKey: string, value: unknown, scope = 'master') => ({
     op: 'setField',
     node: { link: { integration, externalType: 'article', externalId: 'article-1' } },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value,
     sourceRecordId: record,
@@ -132,7 +133,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
   })
   /** What a later pull of the article does: barsy's own values change. */
   const barsyChanges = (fieldKey: string, value: unknown) =>
-    apply(app, tenant, changeSet(`barsy:${integration}`, [barsyField(fieldKey, value)]))
+    apply(app, tenant, changeSet(`till:${integration}`, [tillField(fieldKey, value)]))
 
   beforeAll(async () => {
     owner = openOwnerPool()
@@ -158,7 +159,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
     await apply(
       app,
       tenant,
-      changeSet(`barsy:${integration}`, [
+      changeSet(`till:${integration}`, [
         {
           op: 'createNode',
           id: section,
@@ -172,12 +173,12 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
           node: { id: linked },
           link: { integration, externalType: 'article', externalId: 'article-1' },
         },
-        barsyField('name', { bg_BG: 'Негрони' }),
-        barsyField('price', eur(1250), `venue:${venueId}`),
-        barsyField('for_sale', true, `venue:${venueId}`),
-        barsyField('visible', true),
-        barsyField('allergens', ['gluten']),
-        barsyField('portion', { value: 80, unit: 'ml' }),
+        tillField('name', { bg_BG: 'Негрони' }),
+        tillField('price', eur(1250), `venue:${venueId}`),
+        tillField('for_sale', true, `venue:${venueId}`),
+        tillField('visible', true),
+        tillField('allergens', ['gluten']),
+        tillField('portion', { value: 80, unit: 'ml' }),
         { op: 'setPlacement', item: { id: linked }, section: { id: section }, sortKey: 'end' },
         { op: 'createNode', id: handMade, nodeType: 'item', parent: null, status: 'active' },
         { op: 'createNode', id: busy, nodeType: 'item', parent: null, status: 'active' },
@@ -230,7 +231,8 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       ])
       expect(data).toMatchObject({
         title: 'Негрони',
-        linkedToBarsy: true,
+        linkedToTill: true,
+        tillLabel: tillLabelOfKind('barsy'),
         linkState: 'active',
         defaultLocale: 'bg_BG',
         enabledLocales: ['bg_BG', 'en_US'],
@@ -238,7 +240,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         timezone: 'Europe/Sofia',
         image: null,
       })
-      expect(field(data, 'name')).toMatchObject({ provenance: 'barsy', access: { kind: 'edit' } })
+      expect(field(data, 'name')).toMatchObject({ provenance: 'till', access: { kind: 'edit' } })
       expect(field(data, 'description')).toMatchObject({ provenance: 'none', value: null })
       expect(field(data, 'order_mode')).toMatchObject({ provenance: 'none', value: 'orderable' })
     })
@@ -248,7 +250,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       expect(price).toMatchObject({
         provenance: 'locked',
         value: eur(1250),
-        access: { kind: 'readonly', reason: 'locked_to_barsy' },
+        access: { kind: 'readonly', reason: 'locked_to_till' },
       })
     })
 
@@ -276,7 +278,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       const row = (await sheet(linked)).translations.find((r) => r.fieldKey === 'name')
       expect(row?.cells.bg_BG).toMatchObject({
         text: 'Негрони',
-        provenance: 'barsy',
+        provenance: 'till',
         editable: false,
         missing: false,
         ourText: null,
@@ -296,7 +298,12 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
 
     it('opens an item that no section places, and a hand-made one', async () => {
       const data = await sheet(handMade)
-      expect(data).toMatchObject({ linkedToBarsy: false, linkState: 'none', visible: false })
+      expect(data).toMatchObject({
+        linkedToTill: false,
+        tillLabel: '',
+        linkState: 'none',
+        visible: false,
+      })
       expect(data.issues.map((issue) => issue.code)).toContain('V3')
     })
 
@@ -383,7 +390,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         value: ['gluten', 'milk'],
         canRevert: true,
         canKeep: false,
-        barsyValue: ['gluten'],
+        tillValue: ['gluten'],
       })
       expect((await storedRow(linked, 'allergens', 'override'))?.basis).toEqual(['gluten'])
       // Our own layer was not touched.
@@ -393,7 +400,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         await revertField(scopeOf(linked), services, actor, { fieldKey: 'allergens' }),
       )
       expect(field(reverted, 'allergens')).toMatchObject({
-        provenance: 'barsy',
+        provenance: 'till',
         value: ['gluten'],
         canRevert: false,
       })
@@ -421,7 +428,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         value: { value: 90, unit: 'ml' },
         canKeep: true,
         canRevert: true,
-        barsyValue: { value: 100, unit: 'ml' },
+        tillValue: { value: 100, unit: 'ml' },
       })
       expect((await sheet(linked)).issues).toContainEqual(
         expect.objectContaining({ code: 'stale_override', fieldKey: 'portion' }),
@@ -445,7 +452,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         await revertField(scopeOf(linked), services, actor, { fieldKey: 'portion' }),
       )
       expect(field(taken, 'portion')).toMatchObject({
-        provenance: 'barsy',
+        provenance: 'till',
         value: { value: 110, unit: 'ml' },
       })
     })
@@ -530,7 +537,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         editable: true,
         missing: false,
       })
-      expect(row?.cells.bg_BG?.provenance).toBe('barsy')
+      expect(row?.cells.bg_BG?.provenance).toBe('till')
       expect((await storedRow(linked, 'name', 'manual'))?.value).toEqual({ en_US: 'Negroni' })
       expect(await storedRow(linked, 'name', 'override')).toBeUndefined()
     })
@@ -605,7 +612,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         await revertField(scopeOf(linked), services, actor, { fieldKey: 'name' }),
       )
       expect(field(reverted, 'name')).toMatchObject({
-        provenance: 'barsy',
+        provenance: 'till',
         value: { bg_BG: 'Негрони Бианко', en_US: 'Negroni Classic' },
       })
     })
@@ -720,7 +727,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       expect(page.entries).toContainEqual(
         expect.objectContaining({
           fieldKey: 'portion',
-          layer: 'barsy',
+          layer: 'till',
           kind: 'changed',
           actor: { kind: 'integration', name: null },
         }),

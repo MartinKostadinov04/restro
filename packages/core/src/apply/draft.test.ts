@@ -53,7 +53,7 @@ describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', ()
     op: 'setField',
     node: { link: { integration, externalType: 'article', externalId: EXTERNAL_ID } },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value,
     sourceRecordId: record,
@@ -132,7 +132,7 @@ describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', ()
         barsy('allergens', []),
         barsy('portion', { value: 100, unit: 'ml' }),
       ],
-      `barsy:${integration}`,
+      `till:${integration}`,
     )
     await run([
       { op: 'setPlacement', item: { id: barsyItem }, section: { id: section }, sortKey: 'end' },
@@ -196,7 +196,7 @@ describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', ()
         basis: { value: 100, unit: 'ml' },
       },
     ])
-    await run([barsy('portion', { value: 120, unit: 'ml' })], `barsy:${integration}`)
+    await run([barsy('portion', { value: 120, unit: 'ml' })], `till:${integration}`)
     const draft = await loadDraft(app, tenant, scope(), { now: at(4) })
     expect(draft.staleOverrides).toEqual([
       {
@@ -209,10 +209,10 @@ describe.skipIf(!hasDatabase)('the draft of a menu (as the restro_app role)', ()
   })
 
   it('carries the sold-out marks of the day, as the live overlay would', async () => {
-    await run([barsy('for_sale', false, `venue:${venueId}`)], `barsy:${integration}`)
+    await run([barsy('for_sale', false, `venue:${venueId}`)], `till:${integration}`)
     const draft = await loadDraft(app, tenant, scope(), { now: at(5) })
     expect(draft.overlay.items).toEqual({ [barsyItem]: { sold_out: true } })
-    await run([barsy('for_sale', true, `venue:${venueId}`)], `barsy:${integration}`)
+    await run([barsy('for_sale', true, `venue:${venueId}`)], `till:${integration}`)
   })
 
   it('refuses the way a publish does: no visible item, an unknown menu, another tenant', async () => {

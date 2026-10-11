@@ -59,7 +59,7 @@ describe.skipIf(!hasDatabase)('changing the host of a connection that holds a me
     const node = newId('nd')
     const changeSet: ChangeSet = {
       id: newId('cs'),
-      source: `barsy:${integrationId}`,
+      source: `till:${integrationId}`,
       jobId: newId('jb'),
       actor: `integration:${integrationId}`,
       observedAt: new Date().toISOString(),
