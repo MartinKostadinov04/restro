@@ -166,7 +166,7 @@ describe('LocalPublishStore', () => {
     expect(await store.get(one)).toBeNull()
     expect(Array.from((await store.get(two)) ?? [])).toEqual([1, 2, 3])
     await store.delete(one)
-    await store.delete(venueIndexPath('never-written'))
+    await store.delete(venueIndexPath('neverwritten'))
   })
 
   it.each([

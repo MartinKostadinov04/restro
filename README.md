@@ -33,7 +33,7 @@ Needs the database, its tables, the app role and a demo owner. With `pnpm db:loc
 
 ```
 pnpm db:migrate && pnpm db:roles    # DATABASE_URL_OWNER and DATABASE_APP_PASSWORD from .env.local; set them in your shell first (the db scripts do not read .env files)
-pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club) + its demo menu
+pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club, with its own random public code: the guest address is printed) + its demo menu
 pnpm dev                            # http://localhost:3000 → sign in with DEV_ADMIN_EMAIL / DEV_ADMIN_PASSWORD
 ```
 

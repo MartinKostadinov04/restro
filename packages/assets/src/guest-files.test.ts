@@ -12,7 +12,7 @@ import {
   venueIndexBytes,
   writeTableTokenFile,
 } from './guest-files'
-import { publishPutOptions, venueIndexPath } from './publish-paths'
+import { InvalidPublishPathError, publishPutOptions, venueIndexPath } from './publish-paths'
 import { LocalPublishStore } from './publish-store'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value))
@@ -43,15 +43,14 @@ describe('guest files (venue index and table tokens)', () => {
     expect(await readVenueIndex(store, '000000000000')).toBeNull()
   })
 
-  it('does not read the older v/<slug>.json file', async () => {
-    // Left in the store from before CF-14; no path of ours, so it cannot even be written.
+  it('does not read, write or serve the older v/<slug>.json file', async () => {
+    // Left in the store from before CF-14, if at all; it is no path of ours any more, so the
+    // store refuses it for every operation, and a slug is no way to ask for a venue index.
+    const options = { contentType: 'application/json', cacheControl: 'public, max-age=30' }
     await expect(
-      store.put('v/demo-club.json', bytes({ venue_id: 'vn_x', menu_id: 'nd_x' }), {
-        contentType: 'application/json',
-        cacheControl: 'public, max-age=30',
-      }),
-    ).rejects.toThrow()
-    expect(await readVenueIndex(store, 'demo-club')).toBeNull()
+      store.put('v/demo-club.json', bytes({ venue_id: 'vn_x', menu_id: 'nd_x' }), options),
+    ).rejects.toBeInstanceOf(InvalidPublishPathError)
+    await expect(readVenueIndex(store, 'demo-club')).rejects.toBeInstanceOf(InvalidPublishPathError)
   })
 
   it('writes a table token file and reads it back', async () => {
