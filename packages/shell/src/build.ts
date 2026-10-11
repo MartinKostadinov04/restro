@@ -1,4 +1,4 @@
-// `buildViewModel(snapshot, overlay, context)`: the population rules R1–R14 in one place. Pure and
+// `buildViewModel(snapshot, overlay, context)`: the population rules R1–R15 in one place. Pure and
 // deterministic: the same three inputs always give a deep-equal view model (R14). Nothing here
 // reads the clock, a global or the environment; `now` arrives in the context.
 
@@ -21,17 +21,11 @@ import {
   type ShellContext,
   type ShellContextInput,
 } from './context'
+import { viewFeatures } from './features'
 import { formatField, type SnapshotFieldType } from './fields'
 import { viewImage } from './images'
 import { viewDelta, viewPrice } from './money'
-import {
-  PALETTE_STEPS,
-  type Palette,
-  resolvePalette,
-  semanticColours,
-  semanticColoursDark,
-  textOn,
-} from './palette'
+import { PALETTE_STEPS, type Palette, resolvePalette, textOn } from './palette'
 import {
   describeOpening,
   type NextOpening,
@@ -41,6 +35,7 @@ import {
 } from './schedule'
 import { type Strings, stringsFor } from './strings'
 import { fallbackChain, pickText, type ViewText } from './text'
+import { themeColours } from './theme'
 import type {
   ItemState,
   ViewAllergen,
@@ -330,15 +325,22 @@ function viewSections(env: Env, ids: readonly string[], seen: Set<string>): View
   return out
 }
 
-/** R13: the palette steps, the semantic colours and the rest of the theme tokens. */
+/**
+ * R13: the palette steps, the semantic colours and the rest of the theme tokens. The colours are
+ * the snapshot's published roles, each text-on-colour pair checked again (a failing one is
+ * replaced by a colour that reads); a snapshot without roles gets the colours derived from its
+ * palette, as before. `scheme` is the venue's light/dark policy, `auto` when it set none.
+ */
 function viewTheme(env: Env, menuTitle: ViewText | null): ViewTheme {
   const { snapshot } = env
   const { palette } = env
   const steps = Object.fromEntries(PALETTE_STEPS.map((step) => [String(step), palette[step]]))
+  const { colors, colorsDark } = themeColours(snapshot.theme.roles, palette)
   return {
     palette: steps as ViewTheme['palette'],
-    colors: semanticColours(palette),
-    colorsDark: semanticColoursDark(palette),
+    colors,
+    colorsDark,
+    scheme: snapshot.theme.scheme ?? 'auto',
     font: snapshot.theme.font,
     radius: snapshot.theme.radius,
     shadow: snapshot.theme.shadow,
@@ -376,7 +378,7 @@ function collect(sections: readonly ViewSection[]): {
 }
 
 /**
- * Applies R1–R14 to a snapshot, the live overlay (or null) and the context. Throws only when the
+ * Applies R1–R15 to a snapshot, the live overlay (or null) and the context. Throws only when the
  * context is malformed; the snapshot is trusted as validated by the loader, and anything in it
  * that does not resolve (an unknown id, a text in no language) is left out rather than guessed.
  */
@@ -413,6 +415,12 @@ export function buildViewModel(
   const menuSchedule: ViewSchedule | null = env.menuStatus.open
     ? null
     : describeOpening(env.menuStatus.next, env.strings)
+  const filters = {
+    tags: onMenu.tags,
+    dietary: DIETARY_LABELS.filter((code) => onMenu.dietary.has(code)).map((code) =>
+      viewDietary(env, code),
+    ),
+  }
 
   return {
     locale,
@@ -428,13 +436,16 @@ export function buildViewModel(
     allergenLegend: ALLERGENS.filter((code) => onMenu.allergens.has(code)).map((code) =>
       viewAllergen(env, code),
     ),
-    filters: {
-      tags: onMenu.tags,
-      dietary: DIETARY_LABELS.filter((code) => onMenu.dietary.has(code)).map((code) =>
-        viewDietary(env, code),
-      ),
-    },
+    filters,
     ordering: { enabled: env.orderingActive },
+    features: viewFeatures({
+      features: snapshot.features,
+      capabilities: context.capabilities,
+      interactive: env.interactive,
+      tableToken: context.tableToken,
+      chips: filters.tags.length + filters.dietary.length,
+      orderingEnabled: env.orderingActive,
+    }),
     theme: viewTheme(env, title),
   }
 }
