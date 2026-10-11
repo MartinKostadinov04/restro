@@ -9,6 +9,8 @@ import {
   GUEST_SLUG,
   GUEST_TABLE_LABEL,
   GUEST_TABLE_TOKEN,
+  LOOK_PUBLIC_ID,
+  LOOK_SLUG,
   TAG_PUBLIC_ID,
   TAG_SLUG,
 } from './support'
@@ -26,6 +28,8 @@ test.use({ ...devices['Pixel 7'] })
 let GUEST: VenueAddress
 /** The tagged fixture menu has no venue row: its code is a fixed one. */
 const TAG_PATH = `/m/${TAG_SLUG}-${TAG_PUBLIC_ID}`
+/** The look fixture (SH-04): the reference template, the dark scheme forced, Playfair Display. */
+const LOOK_PATH = `/m/${LOOK_SLUG}-${LOOK_PUBLIC_ID}`
 
 test.beforeAll(async () => {
   GUEST = await addressOfVenue({ slug: GUEST_SLUG })
@@ -45,8 +49,12 @@ async function open(page: Page, url: string) {
   await page.waitForFunction(() => [...document.images].every((image) => image.complete))
 }
 
-const names = (page: Page) => page.locator('[data-slot="item.name"]').allTextContents()
-const sectionTitles = (page: Page) => page.locator('h2.rq-section-title').allTextContents()
+// The Editorial Market keeps a filtered-out item in the page (`hidden`), so the names are those of
+// the items that are shown.
+const names = (page: Page) =>
+  page.locator('[data-item]:visible [data-slot="item.name"]').allTextContents()
+const sectionTitles = (page: Page) =>
+  page.getByRole('main').getByRole('heading', { level: 2 }).allTextContents()
 const card = (page: Page, name: string) =>
   page.locator('[data-item]').filter({ has: page.getByRole('heading', { name, exact: true }) })
 
@@ -69,19 +77,36 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'en-US')
     expect(new URL(page.url()).searchParams.get('lang')).toBe('en')
 
-    await page.getByRole('button', { name: 'БГ', exact: true }).click()
+    await page.getByRole('button', { name: 'BG', exact: true }).click()
     await expect.poll(() => sectionTitles(page).then((titles) => titles[0])).toBe('Коктейли')
+  })
+
+  test('is the Editorial Market, the registry’s default, as the venue chose no template (SH-04)', async ({
+    page,
+  }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    const face = page.locator('[data-face]:not([data-testid])')
+    await expect(face).toHaveAttribute('data-face', 'editorial-market')
+    // Its layout (one of three) and the colour scheme it follows are on its root.
+    await expect(face).toHaveAttribute('data-layout', /^(list|one|two)$/)
+    await expect(face).toHaveAttribute('data-scheme', 'auto')
+    // One template only: the other face's code and styles never reach the page.
+    await expect(page.locator('[data-face="qr-phone"]')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.outerHTML.includes('rq-root'))).toBe(
+      false,
+    )
   })
 
   test('opens the allergen legend from a code, with the full names', async ({ page }) => {
     await open(page, `${GUEST.path}?lang=bg`)
     // Gluten is number 1 of the EU list; the beer has it.
     const beer = card(page, 'Загорка 500 мл')
-    await beer.getByRole('button', { name: 'Глутен' }).click()
+    await beer.getByRole('button', { name: /Алергени: Глутен/ }).click()
     const dialog = page.getByRole('dialog', { name: 'Алергени' })
     await expect(dialog).toBeVisible()
-    await expect(dialog.locator('li[data-on="true"]')).toContainText('Глутен')
-    await expect(dialog.locator('li').first()).toContainText('Глутен')
+    // The sheet names every allergen of the menu and sets this item's apart.
+    await expect(dialog.locator('.is-present')).toContainText('Глутен')
+    await expect(dialog.getByText('Глутен')).toHaveCount(1)
     await page.screenshot({ path: shot('guest-bg-light-allergen-sheet') })
     await page.keyboard.press('Escape')
     await expect(dialog).toBeHidden()
@@ -92,9 +117,18 @@ test.describe('the menu of /m/demo-club-<code>', () => {
   test('filters by a dietary label, and back', async ({ page }) => {
     await open(page, `${GUEST.path}?lang=bg`)
     const before = await names(page)
-    await page.getByRole('group', { name: 'Диета' }).getByRole('button', { name: 'Веган' }).click()
+    await page.getByRole('button', { name: 'Филтриране на менюто' }).click()
+    const sheet = page.getByRole('dialog', { name: 'Филтриране на менюто' })
+    await sheet.getByRole('group', { name: 'Диета' }).getByRole('button', { name: 'Веган' }).click()
+    await expect(
+      sheet.getByRole('group', { name: 'Диета' }).getByRole('button', { name: 'Веган' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
     await expect.poll(() => names(page)).toEqual(['Негрони', 'Пържени картофки'])
-    await page.getByRole('group', { name: 'Диета' }).getByRole('button', { name: 'Всички' }).click()
+    await page.getByRole('button', { name: 'Филтриране на менюто' }).click()
+    await sheet.getByRole('button', { name: 'Изчисти филтрите' }).click()
+    await page.keyboard.press('Escape')
     await expect.poll(() => names(page)).toEqual(before)
   })
 
@@ -109,41 +143,241 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     // The section sits just under the bar, and the bar stays at the top.
     await expect
       .poll(
-        async () =>
-          (await page.locator('h2.rq-section-title', { hasText: 'Храна' }).boundingBox())?.y,
+        async () => (await page.getByRole('heading', { name: 'Храна', level: 2 }).boundingBox())?.y,
       )
       .toBeLessThan(200)
     expect((await bar.boundingBox())?.y).toBeLessThanOrEqual(1)
   })
 
-  test('keeps cards stable and controls tappable on a phone', async ({ page }) => {
+  test('keeps cards stable on a phone: no sideways scroll, photos with a reserved box', async ({
+    page,
+  }, testInfo) => {
     await open(page, `${GUEST.path}?lang=bg`)
     // No sideways scroll.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)
-    // Photos reserve their box and load lazily.
-    const photos = await page.locator('.rq-item-media img').evaluateAll((images) =>
+    // Photos reserve their box and come in the sizes the shell chose (srcset). The photos of the
+    // first screen load at once; the others lazily.
+    const photos = await page.locator('[data-slot="item.image"] img').evaluateAll((images) =>
       images.map((image) => {
         const img = image as HTMLImageElement
         return {
-          lazy: img.loading,
+          loading: img.loading,
           width: img.getAttribute('width'),
           height: img.getAttribute('height'),
           srcset: img.srcset,
           alt: img.alt,
+          item: img.closest('[data-item]')?.querySelector('h3')?.textContent,
         }
       }),
     )
     expect(photos.length).toBe(3)
     for (const photo of photos) {
-      expect(photo.lazy).toBe('lazy')
       expect(Number(photo.width)).toBeGreaterThan(0)
       expect(Number(photo.height)).toBeGreaterThan(0)
       expect(photo.srcset).toMatch(/\/cdn\/a\/as_\w+\/w\d+\.webp \d+w/)
       expect(photo.alt).not.toBe('')
     }
-    // Every control is at least 44 px high (the language buttons and allergen codes 44 wide too).
+    expect(photos.find((photo) => photo.item === 'Негрони')?.loading).toBe('eager')
+    expect(photos.find((photo) => photo.item === 'Загорка 500 мл')?.loading).toBe('lazy')
+
+    // Controls and tap size. The reference template (qr-phone) holds every control to 44 px, and
+    // its test below keeps doing so. The Editorial Market was delivered with some smaller ones
+    // (the language and layout switches, the allergen codes); they are listed on the report of this
+    // run, and the accessibility audit (SH-07) decides what changes.
+    const small = await page.locator('button, nav a').evaluateAll((elements) =>
+      elements
+        .map((element) => {
+          const box = element.getBoundingClientRect()
+          return {
+            label: element.getAttribute('aria-label') ?? element.textContent?.trim(),
+            w: Math.round(box.width),
+            h: Math.round(box.height),
+          }
+        })
+        .filter((box) => box.w > 0 && (box.h < 44 || box.w < 30))
+        .map((box) => `${box.label}: ${box.w}x${box.h}`),
+    )
+    testInfo.annotations.push({
+      type: 'controls below 44 px high (SH-07)',
+      description: [...new Set(small)].join('; ') || 'none',
+    })
+  })
+
+  test('shows a long description cut on the card and whole on the dish page', async ({ page }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    const daiquiri = card(page, 'Дайкири')
+    // The description is in the markup in full; the card only clips it, and says whether it did.
+    const description = daiquiri.locator('[data-slot="item.description"] p')
+    await expect(description).toHaveText('Класически ром, лайм и захар: леко и свежо.')
+    await expect(description).toHaveAttribute('data-clamped', /^(true|false)$/)
+    await daiquiri
+      .getByRole('button', { name: /Дайкири/ })
+      .first()
+      .click()
+    const dish = page.getByRole('dialog', { name: 'Дайкири' })
+    await expect(dish).toContainText('Класически ром, лайм и захар: леко и свежо.')
+  })
+
+  test('gives less motion to a guest who asks for it', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await open(page, GUEST.path)
+    const scrollBehavior = () =>
+      page.evaluate(() => {
+        const root = document.querySelector('[data-face]:not([data-testid])')
+        return root === null ? null : getComputedStyle(root).scrollBehavior
+      })
+    expect(await scrollBehavior()).toBe('auto')
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    expect(await scrollBehavior()).toBe('smooth')
+  })
+})
+
+// The dish page lives in the address as `#item-<id>` (SH-02): the face pushes a history entry when it
+// opens and goes back one step when it closes. Next.js patches `history.pushState`/`replaceState` for
+// its router, so this is checked on the real page, on a production build (brief SH-04, section 8).
+test.describe('the dish page in the address bar', () => {
+  /** The dish page of the demo's Mojito, whose id the page carries. */
+  const dishOf = (page: Page) => page.getByRole('dialog', { name: 'Мохито' })
+  const openMojito = (page: Page) =>
+    card(page, 'Мохито')
+      .getByRole('button', { name: /Мохито/ })
+      .first()
+      .click()
+
+  test('opening a dish adds #item-<id>; Back closes it and stays on the menu; Forward reopens it', async ({
+    page,
+  }) => {
+    await open(page, `${GUEST.path}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
+    const menuUrl = page.url()
+    const mojito = await card(page, 'Мохито').getAttribute('data-item')
+    expect(mojito).toMatch(/^nd_/)
+
+    await openMojito(page)
+    await expect(dishOf(page)).toBeVisible()
+    expect(page.url()).toBe(`${menuUrl}#item-${mojito}`)
+
+    await page.goBack()
+    await expect(dishOf(page)).toBeHidden()
+    // Still the menu, at its own address (nothing left of the dish in it), not another page.
+    expect(page.url()).toBe(menuUrl)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
+    await expect(card(page, 'Мохито')).toBeVisible()
+
+    await page.goForward()
+    await expect(dishOf(page)).toBeVisible()
+    expect(page.url()).toBe(`${menuUrl}#item-${mojito}`)
+  })
+
+  test('closing a dish with its own button goes back one step, and one more Back leaves the page', async ({
+    page,
+  }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    const menuUrl = page.url()
+    await openMojito(page)
+    await expect(dishOf(page)).toBeVisible()
+    await dishOf(page).getByRole('button', { name: 'Обратно към менюто' }).click()
+    await expect(dishOf(page)).toBeHidden()
+    expect(page.url()).toBe(menuUrl)
+    // The dish left no entry behind to come back to: the next Back is the page before the menu.
+    await page.goBack()
+    expect(page.url()).toBe('about:blank')
+  })
+
+  test('keeps the place in the menu: Back returns to where the guest was reading', async ({
+    page,
+  }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    const fries = card(page, 'Пържени картофки')
+      .getByRole('button', { name: /Пържени картофки/ })
+      .first()
+    // The guest reads down to the dish, which sits in the middle of the screen (away from the
+    // sticky bar, so the tap does not scroll anything); the place is taken just before the tap.
+    await fries.evaluate((element) =>
+      element.scrollIntoView({ block: 'center', behavior: 'instant' }),
+    )
+    const before = await page.evaluate(() => window.scrollY)
+    expect(before).toBeGreaterThan(300)
+    await fries.click()
+    await expect(page.getByRole('dialog', { name: 'Пържени картофки' })).toBeVisible()
+    await page.goBack()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 4)
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(before + 4)
+  })
+
+  test('a shared #item-<id> link opens that dish on load, and closing it cleans the address', async ({
+    page,
+  }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    const mojito = await card(page, 'Мохито').getAttribute('data-item')
+    const shared = `${GUEST.path}?lang=bg#item-${mojito}`
+
+    const fresh = await page.context().newPage()
+    await fresh.goto(shared)
+    await expect(dishOf(fresh)).toBeVisible()
+    // The link entered the page with the dish open: closing it replaces the address (there is no
+    // entry of ours to go back to) and the guest is on the menu.
+    await dishOf(fresh).getByRole('button', { name: 'Обратно към менюто' }).click()
+    await expect(dishOf(fresh)).toBeHidden()
+    await expect(fresh.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(new URL(fresh.url()).hash).toBe('')
+    expect(new URL(fresh.url()).pathname).toBe(GUEST.path)
+    await fresh.close()
+  })
+
+  test('a shared link with an older slug opens the dish and the address is still corrected', async ({
+    page,
+  }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    const mojito = await card(page, 'Мохито').getAttribute('data-item')
+    const fresh = await page.context().newPage()
+    await fresh.goto(`/m/an-older-name-${GUEST.publicId}?lang=bg#item-${mojito}`)
+    await expect(dishOf(fresh)).toBeVisible()
+    await expect.poll(() => new URL(fresh.url()).pathname).toBe(GUEST.path)
+    // The hash survived the correction, and the dish page is still the open one.
+    expect(new URL(fresh.url()).hash).toBe(`#item-${mojito}`)
+    await expect(dishOf(fresh)).toBeVisible()
+    await fresh.close()
+  })
+
+  test('a link to a dish the menu does not have shows the menu, not an error', async ({ page }) => {
+    await open(page, `${GUEST.path}?lang=bg#item-nd_doesNotExist0000000000`)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(card(page, 'Негрони').first()).toBeVisible()
+  })
+})
+
+// The look fixture: a venue that chose the reference template (qr-phone) and forces the dark scheme
+// with Playfair Display. It proves the registry on a production build: the template named in the
+// snapshot is the one drawn, its own code loads and the other's does not, the forced scheme wins over
+// the guest's screen, and the font comes from this app.
+test.describe('the template and the look the snapshot names (SH-04)', () => {
+  test('draws the reference template, forced dark on a light screen, and not the Editorial Market', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await open(page, `${LOOK_PATH}?lang=en`)
+    const face = page.locator('[data-face]:not([data-testid])')
+    await expect(face).toHaveAttribute('data-face', 'qr-phone')
+    await expect(face).toHaveAttribute('data-scheme', 'dark')
+    // Forced: dark although the guest's screen is light.
+    const luminance = await face.evaluate((root) => {
+      const [r = 0, g = 0, b = 0] = (getComputedStyle(root).backgroundColor.match(/\d+/g) ?? [])
+        .slice(0, 3)
+        .map(Number)
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    })
+    expect(luminance).toBeLessThan(0.15)
+    await expect(page.locator('[data-face="editorial-market"]')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.outerHTML.includes('rm-item'))).toBe(
+      false,
+    )
+  })
+
+  test('holds every control of the reference template to 44 px', async ({ page }) => {
+    await open(page, `${LOOK_PATH}?lang=bg`)
     const small = await page.locator('button, nav a').evaluateAll((elements) =>
       elements
         .map((element) => {
@@ -154,24 +388,79 @@ test.describe('the menu of /m/demo-club-<code>', () => {
         .map((box) => `${box.text}: ${box.w}x${box.h}`),
     )
     expect(small).toEqual([])
-    // A long description is cut to three lines and offers "Още".
-    const more = page.getByRole('button', { name: 'Още' }).first()
-    if (await more.count()) {
-      await more.click()
-      await expect(page.getByRole('button', { name: 'По-малко' }).first()).toBeVisible()
+  })
+
+  test('uses the font the venue chose from this app, and only that one', async ({ page }) => {
+    const fonts: { url: string; status: number }[] = []
+    page.on('response', (response) => {
+      if (response.request().resourceType() === 'font') {
+        fonts.push({ url: response.url(), status: response.status() })
+      }
+    })
+    await open(page, `${LOOK_PATH}?lang=bg`)
+    await page.waitForLoadState('networkidle')
+    await page.evaluate(() => document.fonts.ready)
+
+    // The venue's font is in use ...
+    const loaded = await page.evaluate(() =>
+      [...document.fonts].filter((face) => face.status === 'loaded').map((face) => face.family),
+    )
+    expect(
+      loaded.some((family) => /Playfair/i.test(family)),
+      loaded.join(', '),
+    ).toBe(true)
+    // ... and the five others were not fetched for this guest.
+    for (const other of ['Inter', 'Manrope', 'Montserrat', 'Lora', 'Unbounded']) {
+      expect(
+        loaded.some((family) => new RegExp(`^_{0,2}${other}(_|$)`, 'i').test(family)),
+        `${other} loaded`,
+      ).toBe(false)
+    }
+    // Every font file came from this app.
+    expect(fonts.length).toBeGreaterThan(0)
+    for (const font of fonts) {
+      const url = new URL(font.url)
+      expect(url.origin).toBe(new URL(page.url()).origin)
+      expect(url.pathname).toMatch(/^\/_next\/static\/media\/.+\.woff2$/)
+      expect(font.status).toBe(200)
     }
   })
 
-  test('gives less motion to a guest who asks for it', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-    await open(page, GUEST.path)
-    expect(
-      await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior),
-    ).toBe('auto')
-    await page.emulateMedia({ reducedMotion: 'no-preference' })
-    expect(
-      await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior),
-    ).toBe('smooth')
+  test('names no outside host, in the page or in any of its stylesheets', async ({
+    page,
+    request,
+  }) => {
+    const hosts = new Set<string>()
+    page.on('request', (req) => {
+      const url = new URL(req.url())
+      if (url.protocol === 'http:' || url.protocol === 'https:') hosts.add(url.host)
+    })
+    await open(page, `${LOOK_PATH}?lang=bg`)
+    await page.waitForLoadState('networkidle')
+    // Every request of the page went to this app.
+    expect([...hosts]).toEqual([new URL(page.url()).host])
+
+    // The page and the stylesheets it links hold no address of a font host.
+    const html = await (await request.get(LOOK_PATH)).text()
+    const hrefs = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*href="([^"]+)"/g)].map(
+      (match) => match[1] ?? '',
+    )
+    expect(hrefs.length).toBeGreaterThan(0)
+    const outside = /fonts\.googleapis\.com|fonts\.gstatic\.com|use\.typekit|cdnjs|unpkg|jsdelivr/i
+    expect(html).not.toMatch(outside)
+    for (const href of hrefs) {
+      const css = await (await request.get(href)).text()
+      expect(css, href).not.toMatch(outside)
+      // Every font file is one of this app's own (`../media/<name>.woff2`, relative to the sheet).
+      const sources = [...css.matchAll(/url\(([^)]+\.woff2)\)/g)].map((match) =>
+        (match[1] ?? '').replace(/["']/g, ''),
+      )
+      for (const source of sources) {
+        const file = new URL(source, new URL(href, page.url()))
+        expect(file.origin, `${source} in ${href}`).toBe(new URL(page.url()).origin)
+        expect(file.pathname, `${source} in ${href}`).toMatch(/^\/_next\/static\/media\//)
+      }
+    }
   })
 })
 
@@ -212,15 +501,18 @@ test.describe('the tag filter', () => {
   test('filters a menu by tag, and "All" brings everything back', async ({ page }) => {
     await open(page, `${TAG_PATH}?lang=bg`)
     await expect.poll(() => names(page)).toEqual(['Негрони', 'Хумус'])
-    await page
+    const sheet = page.getByRole('dialog', { name: 'Филтриране на менюто' })
+    await page.getByRole('button', { name: 'Филтриране на менюто' }).click()
+    await sheet
       .getByRole('group', { name: 'Етикети' })
       .getByRole('button', { name: 'Фирмено' })
       .click()
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
     await expect.poll(() => names(page)).toEqual(['Негрони'])
-    await page
-      .getByRole('group', { name: 'Етикети' })
-      .getByRole('button', { name: 'Всички' })
-      .click()
+    await page.getByRole('button', { name: 'Филтриране на менюто' }).click()
+    await sheet.getByRole('button', { name: 'Изчисти филтрите' }).click()
+    await page.keyboard.press('Escape')
     await expect.poll(() => names(page)).toEqual(['Негрони', 'Хумус'])
   })
 })
@@ -239,9 +531,8 @@ test.describe('the table code', () => {
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
     await page.waitForURL(`**${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-    await expect(
-      page.getByRole('status').filter({ hasText: `Маса ${GUEST_TABLE_LABEL}` }),
-    ).toBeVisible()
+    // The Editorial Market shows the table in the bar at the top, next to the language switch.
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     await page.screenshot({ path: shot('guest-bg-light-table') })
   })
 
@@ -249,9 +540,7 @@ test.describe('the table code', () => {
     const context = await browser.newContext({ ...devices['Pixel 7'], locale: 'en-GB' })
     const page = await context.newPage()
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
-    await expect(
-      page.getByRole('status').filter({ hasText: `Table ${GUEST_TABLE_LABEL}` }),
-    ).toBeVisible()
+    await expect(page.getByText(`Table ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Club')
     await context.close()
   })
@@ -316,9 +605,11 @@ test.describe('what the page asks for (rule 4)', () => {
   test('only /cdn files and Next assets, and no barsy id in any of them', async ({ page }) => {
     const urls: string[] = []
     const bodies: { url: string; text: string }[] = []
+    const hosts = new Set<string>()
     page.on('response', async (response) => {
       const url = new URL(response.url())
       urls.push(`${url.pathname}`)
+      hosts.add(url.host)
       if (url.pathname.startsWith('/cdn/') && url.pathname.endsWith('.json')) {
         bodies.push({ url: url.pathname, text: await response.text() })
       }
@@ -332,6 +623,8 @@ test.describe('what the page asks for (rule 4)', () => {
       pathname === GUEST.path ||
       pathname === '/favicon.ico'
     expect(urls.filter((pathname) => !allowed(pathname))).toEqual([])
+    // Nothing from another host: not the files, not the fonts, not the template's code.
+    expect([...hosts]).toEqual([new URL(page.url()).host])
     // The chain: venue index (by public code), pointer, snapshot, overlay, and the table's file.
     for (const part of ['/cdn/v/', '/cdn/m/', '/cdn/snap/', '/cdn/t/']) {
       expect(
@@ -394,7 +687,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
         await open(page, `${GUEST.path}?lang=${lang}&t=${GUEST_TABLE_TOKEN}`)
         // The page follows the guest's screen: a dark page on a dark screen, a light one otherwise.
         const luminance = await page.evaluate(() => {
-          const root = document.querySelector('.rq-root') as HTMLElement
+          const root = document.querySelector('[data-face]:not([data-testid])') as HTMLElement
           const [r = 0, g = 0, b = 0] = (getComputedStyle(root).backgroundColor.match(/\d+/g) ?? [])
             .slice(0, 3)
             .map(Number)

@@ -381,7 +381,10 @@ describe('the guest context', () => {
     // A template that wants its photos at full size gets them at full size.
     const wide = {
       ...manifest,
-      slots: { ...manifest.slots, 'item.image': { optional: true, variant: 'full' as const } },
+      slots: {
+        ...manifest.slots,
+        'item.image': { optional: true as const, variant: 'full' as const },
+      },
     }
     expect(buildContext({ ...input, manifest: wide }).images).toEqual({
       item: { variant: 'full', density: 1 },

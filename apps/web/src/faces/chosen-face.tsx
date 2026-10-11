@@ -10,7 +10,7 @@
 // instead of an error page; the next try loads the chunk again.
 
 import { localeToBcp47 } from '@restro/core'
-import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
+import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone/notices'
 import type { FaceHostProps } from '@restro/shell'
 import {
   Component,

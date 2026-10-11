@@ -23,7 +23,7 @@ const LOADERS = {
  */
 const CALLS = Object.fromEntries(
   Object.entries(LOADERS).map(([family, loader]) => [family, [...vi.mocked(loader).mock.calls]]),
-) as Record<keyof typeof LOADERS, unknown[][]>
+) as unknown as Record<keyof typeof LOADERS, unknown[][]>
 
 /** The options the family's loader was called with (exactly one call). */
 function optionsOf(family: keyof typeof LOADERS): Record<string, unknown> {

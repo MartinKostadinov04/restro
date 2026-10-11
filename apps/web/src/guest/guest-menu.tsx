@@ -21,7 +21,7 @@ import {
   menuPath,
   parseMenuParam,
 } from '@restro/core'
-import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
+import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone/notices'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -322,7 +322,7 @@ export function GuestMenu({ venue }: { readonly venue: string }) {
       onLanguageChange={switchLanguage}
       tableLabel={tableLabel}
       fontStacks={FONT_STACKS}
-      scheme={snapshot.theme.scheme ?? 'auto'}
+      scheme={view.theme.scheme}
       options={snapshot.presentation?.options}
     />
   )
