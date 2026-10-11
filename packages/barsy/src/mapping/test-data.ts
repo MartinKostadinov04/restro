@@ -19,7 +19,7 @@ import {
   supplementsSchema,
 } from '../read/schemas.ts'
 import { deriveId } from './ids.ts'
-import type { CatalogueInput, MappingConfig } from './types.ts'
+import { BARSY_MAPPING_VERSION, type CatalogueInput, type MappingConfig } from './types.ts'
 
 function demo(file: string): unknown {
   const fixture = JSON.parse(readFileSync(join(FIXTURES_ROOT, 'demo', file), 'utf8')) as {
@@ -54,7 +54,7 @@ export function config(overrides: Partial<MappingConfig> = {}): MappingConfig {
     integrationId: INTEGRATION_ID,
     catalogueRootCatId: TILL_ROOT,
     priceSource: 'actual_price',
-    mappingVersion: 1,
+    mappingVersion: BARSY_MAPPING_VERSION,
     includeServices: false,
     jobId: JOB_ID,
     actor: `integration:${INTEGRATION_ID}`,

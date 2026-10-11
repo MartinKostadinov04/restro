@@ -290,6 +290,7 @@ export function Composer({
       sortKey,
       childIds: [],
       issues: [],
+      nameFromTill: false,
     }
     mutate({ type: 'addSection', section }, () =>
       createSectionAction({ venueId, id, parentId, title, sortKey }),
@@ -350,6 +351,7 @@ export function Composer({
       dietary: [],
       soldOutTonight: false,
       offSale: null,
+      nameFromTill: false,
     }
     void mutate({ type: 'addItem', item, sectionId, sortKey, locale }, () =>
       createItemAction({

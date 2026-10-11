@@ -21,7 +21,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
-import { HiddenBadge, IssuesBadge, OriginBadge } from './badges'
+import { HiddenBadge, IssuesBadge, NameFromTillBadge, OriginBadge } from './badges'
 import { useComposer } from './composer-context'
 import { UNSORTED_KEY } from './dnd'
 import { ItemRow } from './item-row'
@@ -146,6 +146,7 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
         </h2>
         <div className="flex flex-wrap items-center gap-1.5">
           <OriginBadge origin={section.origin} />
+          {section.nameFromTill ? <NameFromTillBadge target="section" /> : null}
           {section.hidden ? <HiddenBadge hiddenBy="status" /> : null}
           <IssuesBadge issues={section.issues} />
           <span className="text-sm text-muted-foreground">{t('itemCount', { count })}</span>

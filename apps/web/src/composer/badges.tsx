@@ -1,9 +1,11 @@
 'use client'
 
 // The small status badges on every composer row: where it comes from (From {source} / Owned
-// here), why it is hidden (Hidden by {source} / Hidden), and how many problems the resolver found.
+// here), why it is hidden (Hidden by {source} / Hidden), whether the name shown is the till's own
+// for want of a public one (D75), and how many problems the resolver found.
 // `{source}` is the name of the till the menu comes from (`useTillLabel`, brief CF-03).
 import type { Locale } from '@restro/core'
+import { AlertTriangleIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
@@ -78,6 +80,59 @@ export function SaleBadge({
     <Badge variant="danger" data-testid="sold-out-badge">
       {t('soldOutTonight')}
     </Badge>
+  )
+}
+
+/**
+ * The way out of a name that is the till's own: fill in the public name in the till, or (an item)
+ * type a name here, in its sheet. A section cannot be renamed in the composer, so its line names
+ * the till only.
+ */
+const helpKey = (target: 'item' | 'section') =>
+  target === 'section' ? 'nameFromTillHelpSection' : 'nameFromTillHelp'
+
+/**
+ * The name shown is the till's own, because the till has no public name for it (D75): "Menu name
+ * missing in {source}: its own name is shown", with the way out as a help line on hover or focus.
+ * A warning only; it never keeps anything off the menu.
+ */
+export function NameFromTillBadge({ target = 'item' }: { target?: 'item' | 'section' }) {
+  const t = useTranslations('composer.badges')
+  const source = useTillLabel()
+  return (
+    <HoverCard openDelay={150}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          data-testid="name-from-till-badge"
+        >
+          <Badge variant="warning">{t('nameFromTill', { source })}</Badge>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-72 text-sm">
+        <p data-testid="name-from-till-help">{t(helpKey(target), { source })}</p>
+      </HoverCardContent>
+    </HoverCard>
+  )
+}
+
+/** The same warning in full, with its help line, for the item sheet. */
+export function NameFromTillNotice() {
+  const t = useTranslations('composer.badges')
+  const source = useTillLabel()
+  return (
+    <section
+      aria-label={t('nameFromTill', { source })}
+      data-testid="name-from-till-notice"
+      className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+    >
+      <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+      <div className="grid gap-0.5">
+        <p className="font-medium">{t('nameFromTill', { source })}</p>
+        <p className="text-muted-foreground">{t('nameFromTillHelp', { source })}</p>
+      </div>
+    </section>
   )
 }
 

@@ -36,6 +36,18 @@ const row = (key: string) => {
 }
 
 describe('the Details tab', () => {
+  it('warns that the name is the till’s own when it has no public one (D75)', () => {
+    setup(sheetData({ nameFromTill: true }))
+    expect(screen.getByTestId('name-from-till-notice').textContent).toContain(
+      'Menu name missing in',
+    )
+  })
+
+  it('has no such warning for a name that is public or typed here', () => {
+    setup(sheetData({ nameFromTill: false }))
+    expect(screen.queryByTestId('name-from-till-notice')).toBeNull()
+  })
+
   it('shows one row for every Item field, grouped under dividers, in template order', () => {
     setup()
     const keys = [...document.querySelectorAll('[data-testid="field-row"]')].map((el) =>

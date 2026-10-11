@@ -32,7 +32,7 @@ import {
   TILL_ROOT,
   VENUE_ID,
 } from './test-data.ts'
-import type { CatalogueMapping } from './types.ts'
+import { BARSY_MAPPING_VERSION, type CatalogueMapping } from './types.ts'
 import {
   inMenuOf,
   parseSectionLinkId,
@@ -58,14 +58,18 @@ const OTHER_VENUE = deriveId('vn', 'second-venue')
 const OTHER_MENU = deriveId('nd', 'second-menu')
 
 describe('one venue: exactly what the mapping wrote before CF-16', () => {
-  // Hashes of the ops, link intents and record ids, taken with the mapping as it was before CF-16
-  // (b4ecbe1). A single venue gets no qualified key, so nothing it stored changes.
+  // Hashes of the ops, link intents and record ids. First taken with the mapping as it was before
+  // CF-16 (b4ecbe1): a single venue gets no qualified key, so nothing it stored changes. Taken
+  // again for CF-17 (D75, mapping version 2), which changes exactly two things in this output: the
+  // version on every till write, and a missing public name now written as barsy's own (till root:
+  // 11 section titles and 49 item names, clear -> set; the public root: nothing). A comparison of
+  // the old and the new mapping on these inputs showed no other difference.
   it('the till root (1091) with the burger combo', () => {
     const result = mapCatalogue(
       input({ supplementsByArticle: { '7183': demoBurgerSupplements } }),
       config(),
     )
-    expect(pin(result)).toBe('a5dbbb631b5caa1af56efa0c1fb456d939e85a1ec63ee2e7caf90c737f7bb627')
+    expect(pin(result)).toBe('43763f8e06d32237277d2f25c91de6c5bb1ac08dd69482f5d4883b16e02d031b')
   })
 
   it('the public root (1171), current price', () => {
@@ -73,7 +77,7 @@ describe('one venue: exactly what the mapping wrote before CF-16', () => {
       input({ qualifiedSections: new Set(), venueHiddenArticles: new Set() }),
       config({ catalogueRootCatId: PUBLIC_ROOT, priceSource: 'current_price' }),
     )
-    expect(pin(result)).toBe('4c367fb5671c2555b52329a87ce8924efa2c7edd4469b0c47c63b8cf0584f993')
+    expect(pin(result)).toBe('af10c3ff539d63b32b83c899e7abd4625f34c45f2e61666b82684040a06a88ee')
   })
 })
 
@@ -190,7 +194,7 @@ describe('hidden in one venue', () => {
               layer: 'till',
               scope: `venue:${VENUE_ID}`,
               value: false,
-              mappingVersion: 1,
+              mappingVersion: BARSY_MAPPING_VERSION,
             })
             if (op.op === 'setField') {
               expect(validateWrite(VENUE_MENU_TEMPLATE, 'item', op)).toMatchObject({ ok: true })

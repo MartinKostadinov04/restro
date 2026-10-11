@@ -34,6 +34,9 @@ import { apply, ItemNotFoundError, loadItemDocument } from '@restro/core/apply'
 import { assets, type DbPool, events, menus, venues, withTenant } from '@restro/db'
 import { and, desc, eq, lt } from 'drizzle-orm'
 
+import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
+import { tillTextShown } from '@/fields/name-fallback'
+
 import { logError } from '../log'
 import { loadTillLabels, tillLabelOf } from '../till-label'
 import { type LayerView, layerMap, layerView } from './layers'
@@ -102,6 +105,8 @@ interface ItemState {
   readonly linkState: ItemSheetData['linkState']
   /** The name of the item's till; '' for a hand-made item. */
   readonly tillLabel: string
+  /** The name shown is the till's own, standing in for a missing public one (D75). */
+  readonly nameFromTill: boolean
   readonly revision: number
 }
 
@@ -148,6 +153,11 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
     tillLinks.length === 0
       ? ''
       : tillLabelOf(doc.links, await loadTillLabels(pool, tenantId), itemId)
+  // The till's own name stands in for a missing public one (D75), and nothing typed here replaces it.
+  const nameFromTill =
+    tillLinks.length > 0 &&
+    tillTextShown(item.fields.name) &&
+    (await withTenant(pool, tenantId, (tx) => readNameFallbackNodeIds(tx, [itemId]))).length > 0
   return {
     venue,
     venueScope,
@@ -157,6 +167,7 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
     linked: tillLinks.length > 0,
     linkState: tillLinks.length === 0 ? 'none' : (broken?.state ?? 'active'),
     tillLabel,
+    nameFromTill,
     revision: doc.nodes.find((node) => node.id === itemId)?.revision ?? 1,
   }
 }
@@ -327,6 +338,7 @@ export async function loadItemSheet(
     timezone: state.venue.timezone,
     visible: state.item.visible,
     sale: { ...saleStateOf(state.item.fields.for_sale), canMark: scope.canMarkSoldOut === true },
+    nameFromTill: state.nameFromTill,
     fields,
     issues: state.item.issues.map((issue) => ({
       code: issue.code,

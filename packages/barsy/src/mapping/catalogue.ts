@@ -16,6 +16,11 @@
 // and a value removed in barsy does not linger), except where the source is silent (see each).
 // An option's name is silent when its option article is not in this run's article list.
 //
+// Names (D75): the menu name of a section, an item or an option is barsy's public name. Where
+// barsy holds none, in any language, barsy's own name (`cat_name`, `article_name`: what the till
+// shows) stands in for it, under the default language, and the run says so with a warning per
+// fallback (`*_public_*_missing`). Nothing else of barsy's internal fields is ever read as text.
+//
 // Nodes are named by source link everywhere after their creation, so the change set can be split
 // into chunks. Node ids are derived (./ids.ts), so a repeated pull creates nothing new.
 //
@@ -45,7 +50,14 @@ import { assertInputIds, parseMappingConfig, type ResolvedMappingConfig } from '
 import { deriveId } from './ids.ts'
 import { planSections, type SectionsPlan } from './sections.ts'
 import { describeSource } from './source-records.ts'
-import { allowedLocales, isEmptyText, localizedText, type TextContext } from './text.ts'
+import {
+  allowedLocales,
+  isEmptyText,
+  localizedText,
+  type NameText,
+  nameText,
+  type TextContext,
+} from './text.ts'
 import {
   type AssetRequest,
   BARSY_MAPPING_VERSION,
@@ -194,9 +206,17 @@ function mapSections(run: Run, plan: SectionsPlan): void {
       parentLink === null ? `menu:${run.input.menuId}` : `category:${parentLink.externalId}`
     createAndLink(run, 'section', link, parent, ['category', link.externalId, parentKey])
 
-    const title = localizedText(category.cat_name_public_ml, category.cat_name_public, run.text)
-    if (!writeText(run, link, 'title', title, record)) {
+    // The public title, else the category's own name (D75).
+    const title = nameText(
+      category.cat_name_public_ml,
+      category.cat_name_public,
+      category.cat_name,
+      run.text,
+    )
+    if (!writeText(run, link, 'title', title.text, record)) {
       warn(run, 'section_title_missing', 'category', externalId)
+    } else if (title.ownName) {
+      warn(run, 'section_public_title_missing', 'category', externalId)
     }
     writeText(
       run,
@@ -285,17 +305,31 @@ function pictureRequest(run: Run, link: SourceLink, article: Article, externalId
   }
 }
 
+/**
+ * The menu name of an article (an item, or an option, which is an article too): its public name,
+ * else its own name (D75). A response that did not carry the public fields at all (not asked for)
+ * does not say whether a public name exists, so it never falls back.
+ */
+function articleName(run: Run, article: Article): NameText {
+  const asked = provided(article.article_name_public_ml, article.article_name_public)
+  return nameText(
+    article.article_name_public_ml,
+    article.article_name_public,
+    asked ? article.article_name : null,
+    run.text,
+  )
+}
+
 function mapItemFields(run: Run, item: ItemPlan, allergenKey: string | null): void {
   const { article, externalId, link, record } = item
 
   if (provided(article.article_name_public_ml, article.article_name_public)) {
-    const name = localizedText(
-      article.article_name_public_ml,
-      article.article_name_public,
-      run.text,
-    )
-    if (!writeText(run, link, 'name', name, record))
+    const name = articleName(run, article)
+    if (!writeText(run, link, 'name', name.text, record)) {
       warn(run, 'item_name_missing', 'article', externalId)
+    } else if (name.ownName) {
+      warn(run, 'item_public_name_missing', 'article', externalId)
+    }
   }
   if (provided(article.description_ml, article.description_public)) {
     const description = localizedText(article.description_ml, article.description_public, run.text)
@@ -358,7 +392,7 @@ function mapCombo(
   run: Run,
   item: ItemPlan,
   groups: readonly SupplementGroup[],
-  publicNames: ReadonlyMap<number, { name: LocalizedText; record: SourceRecordDescriptor }>,
+  optionNames: ReadonlyMap<number, { name: NameText; record: SourceRecordDescriptor }>,
 ): { groups: number; options: number } {
   const articleId = item.externalId
   const comboRecord = describeSource(
@@ -405,21 +439,24 @@ function mapCombo(
       ])
       optionCount += 1
 
-      // The option's own name in the response is internal. The public name is the option article's.
-      // A name is written only from the option article of this run's article list. An option
-      // article that is not in the list (an incremental run holds only the changed articles, and a
-      // supplement may sit outside the catalogue root) says nothing about the name: it is neither
-      // written nor cleared, so a price change on a combo never wipes its option names (B1-F6).
-      // The warning stays: this run could not name the option.
-      const known = publicNames.get(option.article_id)
+      // The option's own name in the combo response is not read. The name is the option
+      // article's (its public name, else its own name, D75). A name is written only from the
+      // option article of this run's article list. An option article that is not in the list (an
+      // incremental run holds only the changed articles, and a supplement may sit outside the
+      // catalogue root) says nothing about the name: it is neither written nor cleared, so a
+      // price change on a combo never wipes its option names (B1-F6). The warning stays: this run
+      // could not name the option.
+      const known = optionNames.get(option.article_id)
       if (known === undefined) {
         warn(run, 'option_name_missing', 'supplement', optionExternalId)
-      } else if (isEmptyText(known.name)) {
-        // The article is here and has no public name: barsy's value is gone, so ours goes too.
+      } else if (isEmptyText(known.name.text)) {
+        // The article is here and has no name at all: barsy's value is gone, so ours goes too.
         clear(run, optionLink, 'name', 'master')
         warn(run, 'option_name_missing', 'supplement', optionExternalId)
       } else {
-        write(run, optionLink, 'name', 'master', known.name, known.record)
+        write(run, optionLink, 'name', 'master', known.name.text, known.record)
+        if (known.name.ownName)
+          warn(run, 'option_public_name_missing', 'supplement', optionExternalId)
       }
 
       const delta = option.supplement_price
@@ -563,15 +600,12 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     }
   }
 
-  // Combos. An option's public name is its own article's.
-  const publicNames = new Map<number, { name: LocalizedText; record: SourceRecordDescriptor }>()
+  // Combos. An option's name is its own article's.
+  const optionNames = new Map<number, { name: NameText; record: SourceRecordDescriptor }>()
   for (const article of articles) {
     const record = records.get(article.article_id)
     if (record === undefined) continue
-    publicNames.set(article.article_id, {
-      name: localizedText(article.article_name_public_ml, article.article_name_public, run.text),
-      record,
-    })
+    optionNames.set(article.article_id, { name: articleName(run, article), record })
   }
   let modifierGroups = 0
   let options = 0
@@ -579,7 +613,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
   for (const item of items) {
     const groups = input.supplementsByArticle[item.externalId]
     if (groups === undefined || groups.length === 0) continue
-    const counted = mapCombo(run, item, groups, publicNames)
+    const counted = mapCombo(run, item, groups, optionNames)
     modifierGroups += counted.groups
     options += counted.options
   }

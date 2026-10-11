@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { absenceHeldOf, type FullPullRunRow, heldSyncsOf, venueHintOf } from './sync-reads'
+import {
+  absenceHeldOf,
+  type FullPullRunRow,
+  hasPublicName,
+  heldSyncsOf,
+  usesOwnName,
+  venueHintOf,
+} from './sync-reads'
 
 describe('absenceHeldOf (details.absence_held of a run)', () => {
   it('reads the held conclusion of a run', () => {
@@ -114,5 +121,59 @@ describe('heldSyncsOf (the held full pulls, per venue)', () => {
 
   it('is empty without runs', () => {
     expect(heldSyncsOf([])).toEqual([])
+  })
+})
+
+describe('hasPublicName / usesOwnName (D75: the till has no public name, so its own stands in)', () => {
+  it('a plain public name, or text in any language we hold, is a public name', () => {
+    expect(hasPublicName('Negroni', null)).toBe(true)
+    expect(hasPublicName(null, { bg_BG: 'Негрони' })).toBe(true)
+    expect(hasPublicName('', { bg_BG: '', en_US: 'Negroni' })).toBe(true)
+    // The mapping reads these keys as bg_BG and sr_RS.
+    expect(hasPublicName(null, { 'bg-BG': 'Негрони' })).toBe(true)
+    expect(hasPublicName(null, { 'sr_RS@latin': 'Negroni' })).toBe(true)
+  })
+
+  it('empty, blank, null, missing and unknown-language text is not', () => {
+    expect(hasPublicName(null, null)).toBe(false)
+    expect(hasPublicName(undefined, undefined)).toBe(false)
+    expect(hasPublicName('  ', { bg_BG: '', en_US: ' ', de_DE: null })).toBe(false)
+    expect(hasPublicName(null, {})).toBe(false)
+    expect(hasPublicName(null, { xx_XX: 'Negroni' })).toBe(false)
+    expect(hasPublicName(null, ['Negroni'])).toBe(false)
+    expect(hasPublicName(5, 'Negroni')).toBe(false)
+  })
+
+  it('only an article or a category record can hold the stand-in, and only without a public name', () => {
+    const row = (externalType: string, plain: unknown, perLanguage: unknown, carries = true) => ({
+      externalType,
+      carriesPublicFields: carries,
+      plain,
+      perLanguage,
+    })
+    expect(usesOwnName(row('article', null, { bg_BG: '' }))).toBe(true)
+    expect(usesOwnName(row('category', '', null))).toBe(true)
+    expect(usesOwnName(row('article', 'Негрони', null))).toBe(false)
+    expect(usesOwnName(row('article_supplements', null, null))).toBe(false)
+  })
+
+  it('an article read without the public-name fields says nothing: the mapping used no stand-in for it', () => {
+    expect(
+      usesOwnName({
+        externalType: 'article',
+        carriesPublicFields: false,
+        plain: undefined,
+        perLanguage: undefined,
+      }),
+    ).toBe(false)
+    // A category is always mapped, with or without the fields.
+    expect(
+      usesOwnName({
+        externalType: 'category',
+        carriesPublicFields: false,
+        plain: undefined,
+        perLanguage: undefined,
+      }),
+    ).toBe(true)
   })
 })

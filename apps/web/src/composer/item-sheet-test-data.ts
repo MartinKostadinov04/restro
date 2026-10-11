@@ -48,6 +48,7 @@ export function sheetData(
     timezone: 'Europe/Sofia',
     visible: true,
     sale: { soldOutTonight: false, offSale: null, canMark: true },
+    nameFromTill: false,
     issues: [],
     translations: [],
     image: null,

@@ -2,6 +2,7 @@
 // SSRF guard (same origin only), the image checks (magic bytes, 10 MB), the checksum dedupe, the
 // barsy-layer `image` field and the rule that a manual photo still wins. The store is an
 // in-memory fake (the R2 implementation is mocked in its own package's tests).
+import { BARSY_MAPPING_VERSION } from '@restro/barsy'
 import {
   type ChangeSet,
   JOB_NAMES,
@@ -191,7 +192,7 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
     )
     expect(row?.source).toBe(`till:${world.integrationId}`)
     expect(row?.job_id).toMatch(/^jb_/)
-    expect(row?.mapping_version).toBe(1)
+    expect(row?.mapping_version).toBe(BARSY_MAPPING_VERSION)
   })
 
   it('sends no credentials unless the host asks for them, and then only to its own origin', async () => {

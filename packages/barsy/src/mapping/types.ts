@@ -1,4 +1,4 @@
-// Public types of the barsy mapping (mapping v1): what goes in, what comes out. The mapping is
+// Public types of the barsy mapping (mapping v2): what goes in, what comes out. The mapping is
 // pure: no database, no jobs, no network. S2-03 fetches (read wrappers), calls these functions,
 // stores the descriptors and hands the change set to apply().
 
@@ -20,8 +20,13 @@ import type {
   SupplementGroup,
 } from '../read/schemas.ts'
 
-/** The mapping version stamped on every till-layer write (doc: "Every write records mapping_version"). */
-export const BARSY_MAPPING_VERSION = 1
+/**
+ * The mapping version stamped on every till-layer write (doc: "Every write records
+ * mapping_version"). 2 (D75, CF-17): barsy's own name stands in for a public name that is not
+ * there. The change of version also changes the sync's scope hash, so the next pull of every
+ * venue is a full one and writes the names.
+ */
+export const BARSY_MAPPING_VERSION = 2
 
 /** Which barsy price feeds `price` (the open decision P52; both stay in the source record). */
 export type PriceSource = 'actual_price' | 'current_price'
@@ -129,9 +134,11 @@ export interface LinkStateIntent {
 export type MappingWarningCode =
   | 'category_flattened'
   | 'section_title_missing'
+  | 'section_public_title_missing'
   | 'article_duplicate'
   | 'article_unplaced'
   | 'item_name_missing'
+  | 'item_public_name_missing'
   | 'price_missing'
   | 'price_invalid'
   | 'allergen_key_not_found'
@@ -142,9 +149,14 @@ export type MappingWarningCode =
   | 'supplements_for_unmapped_article'
   | 'modifier_group_max_unknown'
   | 'option_name_missing'
+  | 'option_public_name_missing'
   | 'option_price_invalid'
 
-/** Something the mapping did not guess. Barsy ids only, never names, prices or personal data. */
+/**
+ * Something the mapping did not guess. Barsy ids only, never names, prices or personal data.
+ * `*_name_missing` / `section_title_missing`: barsy holds no name at all. `*_public_*_missing`
+ * (D75): barsy holds no public name, so its own name was used; one per fallback.
+ */
 export interface MappingWarning {
   readonly code: MappingWarningCode
   readonly externalType: SourceExternalType | 'catalogue' | 'supplement_group' | 'supplement'

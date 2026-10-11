@@ -20,6 +20,7 @@ import { FieldValueView } from '@/fields/registry'
 import { useTillLabel } from '@/fields/till-label'
 import type { ItemSheetData, SheetField } from '@/server/item-sheet/types'
 
+import { NameFromTillNotice } from './badges'
 import { ItemSheetIssues } from './item-sheet-issues'
 import { ItemSheetSale } from './item-sheet-sale'
 import { badgeProvenance } from './item-sheet-support'
@@ -147,6 +148,8 @@ export function ItemSheetDetailsTab({
   return (
     <div className="grid gap-4" data-testid="item-sheet-details">
       <ItemSheetIssues data={data} />
+      {/* The name is the till's own, for want of a public one (D75): says so, never blocks. */}
+      {data.nameFromTill ? <NameFromTillNotice /> : null}
       <ItemSheetSale sale={data.sale} busy={busy} onChange={onSoldOut} />
       {/* One <dl> per group, with the group label outside it, so every dl holds only row
           wrappers around dt/dd pairs. */}

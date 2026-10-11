@@ -210,6 +210,7 @@ describe('reduceView: hiding and creating', () => {
       sortKey: 'a1',
       childIds: [],
       issues: [],
+      nameFromTill: false,
     }
     const next = reduceView(view, { type: 'addSection', section })
     expect(next.sections[ids.cocktails]?.childIds).toEqual([ids.classics, section.id])
@@ -237,6 +238,7 @@ describe('reduceView: a new item made by hand', () => {
     dietary: [],
     soldOutTonight: false,
     offSale: null,
+    nameFromTill: false,
     ...extra,
   })
 

@@ -367,6 +367,41 @@ describe('collectForbiddenValues', () => {
     const snapshot = snapshotOf(builder)
     expect(() => assertSnapshotSafe(snapshot, forbidden)).not.toThrow()
   })
+
+  it('the till’s own name standing in for a public one (D75) is public text; ids, cost and internal notes stay refused', () => {
+    const builder = barMenu()
+    // The sync's till-layer name when the till has no public name: its own name, a `name` value.
+    builder.set(NEGRONI, 'name', 'till', { bg_BG: 'Негрони (име в касата)' })
+    builder.set(NEGRONI, 'internal_note', 'manual', 'cost 2.10 per glass')
+    // A person typed a name over it: an override whose basis is that stand-in.
+    builder.set(
+      SPRITZ,
+      'name',
+      'override',
+      { bg_BG: 'Апероль Шприц', en_US: 'Spritz' },
+      { basis: { bg_BG: 'Шприц', en_US: 'Spritz' } },
+    )
+    const forbidden = collectForbiddenValues({
+      template: VENUE_MENU_TEMPLATE,
+      doc: builder.build(),
+      externalIds: ['102751'],
+    })
+    // Nothing else was loosened: the id and the internal note are refused, the stand-in is not.
+    expect(Object.fromEntries(forbidden)).toEqual({
+      '102751': 'external_id',
+      'cost 2.10 per glass': 'internal_value',
+    })
+    const snapshot = snapshotOf(builder)
+    expect(JSON.stringify(snapshot)).toContain('Негрони (име в касата)')
+    expect(JSON.stringify(snapshot)).not.toContain('cost 2.10')
+    expect(() => assertSnapshotSafe(snapshot, forbidden)).not.toThrow()
+    // Any of them found in a snapshot still stops the publish.
+    for (const leak of ['102751', 'cost 2.10 per glass']) {
+      const poked = structuredClone(snapshot) as unknown as Poke
+      poked.items[NEGRONI].description = { en_US: leak }
+      expect(() => assertSnapshotSafe(poked, forbidden)).toThrow(SnapshotError)
+    }
+  })
 })
 
 describe('buildLiveOverlay', () => {

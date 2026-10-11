@@ -4,8 +4,9 @@
 // (`apps/web/src/connectors/`, where the vendor-word test lets a connector name its vendor, D67).
 //
 // Read only, and only our own database: nothing here calls barsy (the web app never does).
-import { jobRuns, type ReadTx, sourceRecords } from '@restro/db'
-import { and, desc, eq } from 'drizzle-orm'
+import { isLocale, type NodeId } from '@restro/core'
+import { fieldValues, jobRuns, type ReadTx, sourceRecords } from '@restro/db'
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 
 import type { AbsenceHeldView, HeldSync } from '@/server/integration/view'
 
@@ -165,4 +166,121 @@ export async function readVenueHints(
     if (Number.isSafeInteger(key) && hint !== null) hints.set(key, hint)
   }
   return hints
+}
+
+// --- names that stand in for a missing public name (D75, CF-17) ------------------------------
+
+/** A text key of the till's own words the way the mapping reads it: `sr_RS@latin` is `sr_RS`, `bg-BG` is `bg_BG`. */
+function isOurLanguageKey(key: string): boolean {
+  const base = (key.split('@', 1)[0] ?? '').replace('-', '_')
+  return isLocale(base)
+}
+
+function isFilled(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+/**
+ * True if a stored record holds a public name: the plain public text, or text in at least one
+ * language the mapping knows. This is the mapping's own test for "the public name is empty"
+ * (the till's own name stands in for it only when it is), less one thing it cannot know here: the
+ * installation's list of languages. A name only in a language the installation does not hold is
+ * shown by the mapping as the own name, and read here as public: no warning for that rare case.
+ */
+export function hasPublicName(plain: unknown, perLanguage: unknown): boolean {
+  if (isFilled(plain)) return true
+  if (typeof perLanguage !== 'object' || perLanguage === null || Array.isArray(perLanguage)) {
+    return false
+  }
+  return Object.entries(perLanguage).some(([key, text]) => isOurLanguageKey(key) && isFilled(text))
+}
+
+/** What the stored record a till name was mapped from says about its public name. */
+export interface PublicNameRow {
+  readonly externalType: string
+  /**
+   * The record carries the public-name fields at all (whether or not they are filled). An article
+   * read without them says nothing about a public name, and the mapping then writes no name and
+   * falls back to none; a category is always mapped, so for it this is not asked.
+   */
+  readonly carriesPublicFields: boolean
+  readonly plain: unknown
+  readonly perLanguage: unknown
+}
+
+/**
+ * True if the name stored for this node is the till's own name standing in for a public one: the
+ * record it was mapped from holds no public name. Items and options come from an article record
+ * (read with the public-name fields), sections from a category record; any other record is not
+ * asked.
+ */
+export function usesOwnName(row: PublicNameRow): boolean {
+  if (hasPublicName(row.plain, row.perLanguage)) return false
+  if (row.externalType === 'category') return true
+  return row.externalType === 'article' && row.carriesPublicFields
+}
+
+/**
+ * The nodes (items, options, sections) whose till-layer name is the till's own name, standing in
+ * for a public name the till does not have (D75). Derived from the stored source records: the name
+ * (`name` of an article, `title` of a category) cites the record it was mapped from, and that
+ * record's public fields are empty. A name the sync wrote before D75 left the field empty, so
+ * nothing is flagged until the next full pull writes the names. Pass `nodeIds` to ask about some.
+ *
+ * Whether the guest menu really shows that name is the resolver's answer (a name typed here wins),
+ * so the caller asks it too; see the composer's view model.
+ */
+export async function readNameFallbackNodeIds(
+  tx: ReadTx,
+  nodeIds?: readonly string[],
+): Promise<NodeId[]> {
+  if (nodeIds !== undefined && nodeIds.length === 0) return []
+  const rows = await tx
+    .select({
+      nodeId: fieldValues.nodeId,
+      externalType: sourceRecords.externalType,
+      articleAsked: sql<boolean>`(jsonb_exists(${sourceRecords.payload}, 'article_name_public') or jsonb_exists(${sourceRecords.payload}, 'article_name_public_ml'))`,
+      articlePlain: sql<unknown>`${sourceRecords.payload} -> 'article_name_public'`,
+      articleMl: sql<unknown>`${sourceRecords.payload} -> 'article_name_public_ml'`,
+      categoryPlain: sql<unknown>`${sourceRecords.payload} -> 'cat_name_public'`,
+      categoryMl: sql<unknown>`${sourceRecords.payload} -> 'cat_name_public_ml'`,
+    })
+    .from(fieldValues)
+    .innerJoin(
+      sourceRecords,
+      and(
+        eq(sourceRecords.tenantId, fieldValues.tenantId),
+        eq(sourceRecords.id, fieldValues.sourceRecordId),
+      ),
+    )
+    .where(
+      and(
+        eq(fieldValues.layer, 'till'),
+        eq(fieldValues.scope, 'master'),
+        or(
+          and(eq(fieldValues.fieldKey, 'name'), eq(sourceRecords.externalType, 'article')),
+          and(eq(fieldValues.fieldKey, 'title'), eq(sourceRecords.externalType, 'category')),
+        ),
+        nodeIds === undefined ? undefined : inArray(fieldValues.nodeId, [...nodeIds]),
+      ),
+    )
+  return rows
+    .filter((row) =>
+      usesOwnName(
+        row.externalType === 'article'
+          ? {
+              externalType: row.externalType,
+              carriesPublicFields: row.articleAsked,
+              plain: row.articlePlain,
+              perLanguage: row.articleMl,
+            }
+          : {
+              externalType: row.externalType,
+              carriesPublicFields: true,
+              plain: row.categoryPlain,
+              perLanguage: row.categoryMl,
+            },
+      ),
+    )
+    .map((row) => row.nodeId as NodeId)
 }

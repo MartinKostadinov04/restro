@@ -66,7 +66,7 @@ export const currenciesSchema = z.array(currencySchema)
 export const categorySchema = z.looseObject({
   cat_id: z.int().nullable(),
   parent_id: z.int().nullable(),
-  /** Internal name: never shown to guests. */
+  /** barsy's own name (what the till shows): a guest sees it only where there is no public name (D75). */
   cat_name: z.string(),
   cat_name_public: z.string().nullish(),
   cat_name_public_ml: mlTextSchema.nullish(),
@@ -101,7 +101,10 @@ export const categoryTreeNodeSchema: z.ZodType<CategoryTreeNode> = z.lazy(() =>
 /** A barsy category id as an article lists them: demo responses use strings (`["370"]`). */
 const categoryIdSchema = z.union([z.int(), z.string().regex(/^\d+$/)])
 
-/** `Articles_getlist` → one article. `article_name` is internal and never shown to guests. */
+/**
+ * `Articles_getlist` → one article. `article_name` is barsy's own name (what the till shows): a
+ * guest sees it only where there is no public name (D75).
+ */
 export const articleSchema = z.looseObject({
   article_id: z.int(),
   article_name: z.string(),
