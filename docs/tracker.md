@@ -565,7 +565,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
 
     The two save actions keep each other's keys.
   - **Open from SH-05b:**
-    - **(a) Two lists of templates.** Server code cannot import the registry (it breaks the build), so `feature-face.ts` keeps a second list of the manifests. SH-05a is asked to make one server-safe `faces/manifests.ts`.
+    - **(a) Two lists of templates.** Server code cannot import the registry (it breaks the build), so `feature-face.ts` keeps a second list of the manifests. SH-05a is asked to make one server-safe `faces/manifests.ts`. **Done in SH-05a.**
     - **(b) The first save pins the template.** The first feature-option save stores the default face for a venue that never chose one.
     - **(c) Call a waiter with no request kind** can be saved; guests then see no control. Block it or hint.
     - **(d) The "other" request kind.** Its wording promises a note; the core schema has none yet (Stage 4).
@@ -574,6 +574,21 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - the Editorial language and layout buttons are under 44 px;
     - the table label is hidden at 350 px width or less;
     - the dish name sits inside a `<button>` (invalid markup).
+  - **SH-05a merged** (10-11). The new **Design** tab, after Publishing:
+    - a gallery of the visible templates;
+    - the look: 4 presets or Custom, the three colours with the 60/30/10 bar, colour-theory suggestions, the 8 roles for light and dark with their contrast and per-role overrides, font, corners, shadow, logo, light/dark policy;
+    - the chosen template's look options;
+    - a live phone preview of the unsaved look.
+
+    Unreadable pairs block Save. Appearance left Settings. One server-safe list of templates (`apps/web/src/faces/manifests.ts`) replaced SH-05b's second list, which closes SH-05b (a). Template and feature options keep each other's keys (tested).
+  - **Lead:** the "Preview guest services" switch in the Design preview. It shows the services the venue switched on in the composer, at a demo table with the demo host and its "Preview" marker; nothing is sent.
+  - **Open from SH-05a:**
+    - **(a) Words for option values.** The manifest names an enum's values (`list`, `one`, `two`) but gives no words; the web keeps them in `design.lookOptions.values.*`. Recommendation: add `valueLabels {bg, en}` to manifest enum options (shell).
+    - **(b) Two admins saving options at the same moment** can overwrite each other (the merge reads outside the row lock). Recommendation: a core `mergePresentationOptions` that merges under the lock, before more than one admin per venue.
+    - **(c) Members see the Design tab read-only** rather than not at all. Martin to confirm.
+    - **(d) The corner slider stops at 24** (core allows 32). Keep.
+    - **(e) A venue on an unknown template name** gets the note written for the hidden test template. Wording fix later.
+    - **(f) A newly uploaded logo shows in the preview only after saving** (its photo sizes do not exist before). The tab says so.
 - [ ] T75. **Worker queue tests time out when the machine is busy.** `apps/worker/tests/worker.integration.test.ts` (`afterAll`, 60 s) and `sync-queue.test.ts` ("a job travels the queue end to end") failed a few times on 10-11 while 2–3 agents ran gates at once. Alone they pass in about 16 s. Check CI. If it shows the same, give these suites more time or a pool of their own. This is not a weakening: the assertions stay — Claude
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 

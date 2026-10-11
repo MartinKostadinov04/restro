@@ -18,6 +18,8 @@
    - §13 acceptance scenarios.
 4. The face: `packages/faces/editorial-market/src/**` (`css.ts`, `services/services-css.ts`).
 5. The e2e set-up `apps/web/e2e/{support,global-setup}.ts` and an existing spec, e.g. `guest.spec.ts`.
+6. **For the service screens:** `apps/web/e2e/design.spec.ts` and its seed `apps/web/scripts/seed-design-e2e.ts` (a "Design Club" venue of its own, reset on each run). The Design preview's "Preview guest services" switch is `data-testid="design-preview-services"` (`apps/web/src/design/design-preview.tsx`). It shows only the services the venue switched on, so switch them on first through the composer's Guest features panel or the seed (`venues.settings.guest_features`), then press the preview's Refresh.
+7. **Don't repeat SH-05a's screenshots:** its Design-tab pictures are in the lead's scratchpad already. Yours are of the guest face.
 
 ## What to do
 
