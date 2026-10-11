@@ -53,6 +53,8 @@ export type BagAction =
   | { readonly type: 'qty'; readonly key: string; readonly delta: number }
   | { readonly type: 'remove'; readonly key: string }
   | { readonly type: 'replace'; readonly key: string; readonly line: BagDraft }
+  /** The host accepted these lines: they leave the bag, and whatever the guest added meanwhile stays. */
+  | { readonly type: 'spend'; readonly lines: readonly BagLine[] }
   | { readonly type: 'clear' }
 
 /** The key of a line: the same item with the same options and note is the same line. */
@@ -103,6 +105,13 @@ export function bagReducer(bag: readonly BagLine[], action: BagAction): readonly
         .filter((line) => line.key !== action.key)
         .map((line) => (line.key === twin.key ? { ...line, qty } : line))
     }
+    case 'spend':
+      return bag.flatMap((line) => {
+        const spent = action.lines.find((sent) => sent.key === line.key)
+        if (spent === undefined) return [line]
+        const qty = line.qty - spent.qty
+        return qty <= 0 ? [] : [{ ...line, qty }]
+      })
     case 'clear':
       return []
   }

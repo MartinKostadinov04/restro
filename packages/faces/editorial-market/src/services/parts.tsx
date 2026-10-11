@@ -64,6 +64,7 @@ export function Stepper({
   min = 0,
   max = SERVICE_LIMITS.quantity,
   size = 'md',
+  disabled = false,
 }: {
   readonly value: number
   readonly onChange: (value: number) => void
@@ -73,13 +74,15 @@ export function Stepper({
   readonly min?: number
   readonly max?: number
   readonly size?: 'sm' | 'md'
+  /** Both buttons are off (the bag is with the host). */
+  readonly disabled?: boolean
 }) {
   return (
     <div className={`ro-stepper is-${size}`}>
       <button
         type="button"
         onClick={() => onChange(value - 1)}
-        disabled={value <= min}
+        disabled={disabled || value <= min}
         aria-label={`${words.decrease}: ${label}`}
       >
         −
@@ -90,7 +93,7 @@ export function Stepper({
       <button
         type="button"
         onClick={() => onChange(value + 1)}
-        disabled={value >= max}
+        disabled={disabled || value >= max}
         aria-label={`${words.increase}: ${label}`}
       >
         +

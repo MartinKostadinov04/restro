@@ -36,7 +36,9 @@ describe('newActionId', () => {
 
   it('still makes one on a page where randomUUID does not exist (an insecure page)', () => {
     const real = globalThis.crypto
-    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => real.getRandomValues(bytes) })
+    vi.stubGlobal('crypto', {
+      getRandomValues: (bytes: Uint8Array<ArrayBuffer>) => real.getRandomValues(bytes),
+    })
     expect(typeof (globalThis.crypto as { randomUUID?: unknown }).randomUUID).toBe('undefined')
     const ids = new Set(Array.from({ length: 200 }, () => newActionId()))
     expect(ids.size).toBe(200)

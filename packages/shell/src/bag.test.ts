@@ -107,6 +107,25 @@ describe('bagReducer', () => {
     expect(bagReducer(bag, { type: 'qty', key: 'no such line', delta: 5 })).toEqual(bag)
   })
 
+  it('spends the lines the host accepted and keeps what the guest added meanwhile', () => {
+    const sent = add(add([], draft(nd(1), { qty: 2 })), draft(nd(2)))
+    // While the order was with the host, the guest added one more of the first dish and a third dish.
+    const meanwhile = add(add(sent, draft(nd(1))), draft(nd(3)))
+    const left = bagReducer(meanwhile, { type: 'spend', lines: sent })
+    expect(left.map((line) => [line.itemId, line.qty])).toEqual([
+      [nd(1), 1],
+      [nd(3), 1],
+    ])
+    // Spending the whole bag empties it, and spending what is not there changes nothing.
+    expect(bagReducer(sent, { type: 'spend', lines: sent })).toEqual([])
+    expect(bagReducer(sent, { type: 'spend', lines: [] })).toEqual(sent)
+    const gone = bagReducer(sent, { type: 'remove', key: sent[0]?.key ?? '' })
+    expect(bagReducer(gone, { type: 'spend', lines: sent }).map((line) => line.itemId)).toEqual([])
+    // A line the guest lowered meanwhile is not spent below zero.
+    const fewer = bagReducer(sent, { type: 'qty', key: sent[0]?.key ?? '', delta: -1 })
+    expect(bagReducer(fewer, { type: 'spend', lines: sent })).toEqual([])
+  })
+
   it('removes a line and clears the bag', () => {
     const bag = add(add([], draft(nd(1))), draft(nd(2)))
     const key = bag[0]?.key ?? ''

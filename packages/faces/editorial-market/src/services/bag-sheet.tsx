@@ -82,6 +82,7 @@ export function BagSheet() {
                 {entry.available ? (
                   <Stepper
                     size="sm"
+                    disabled={pending}
                     value={entry.line.qty}
                     label={name}
                     words={words}

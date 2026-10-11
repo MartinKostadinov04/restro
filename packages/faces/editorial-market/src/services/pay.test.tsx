@@ -15,7 +15,6 @@ import {
   eur,
   type FakeHost,
   fakeHost,
-  orderingView,
   quoteOf,
   receiptOf,
   resetPage,

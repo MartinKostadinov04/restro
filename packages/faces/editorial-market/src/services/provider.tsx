@@ -206,7 +206,12 @@ function ActiveServices({
   // The latest of everything an async handler reads when it finishes.
   const latest = useRef({ services, view, bag, features, sheet: null as Sheet | null })
   const alive = useRef(true)
-  const attempt = useRef<{ readonly fingerprint: string; readonly actionId: string } | null>(null)
+  // The send in hand: the bag it was made from, the action it is, and the lines it carried.
+  const attempt = useRef<{
+    readonly fingerprint: string
+    readonly actionId: string
+    readonly sent: readonly BagLine[]
+  } | null>(null)
   const sending = useRef(false)
   useEffect(() => {
     alive.current = true
@@ -230,11 +235,14 @@ function ActiveServices({
     [openRoute],
   )
 
-  /** The host accepted the order (or its bill shows it): the bag is spent, and the bill opens. */
+  /**
+   * The host accepted the order (or its bill shows it): the lines it carried leave the bag (what the
+   * guest added meanwhile stays), and the bill opens.
+   */
   const accepted = useCallback(
-    (ref: string | null) => {
+    (sent: readonly BagLine[], ref: string | null) => {
       attempt.current = null
-      editBag({ type: 'clear' })
+      editBag({ type: 'spend', lines: sent })
       const { features: now, sheet: open } = latest.current
       if (now.bill) {
         setSend(IDLE)
@@ -256,7 +264,7 @@ function ActiveServices({
     // The same bag again is the same action; a changed bag is a new one.
     const actionId =
       attempt.current?.fingerprint === fingerprint ? attempt.current.actionId : newActionId()
-    attempt.current = { fingerprint, actionId }
+    attempt.current = { fingerprint, actionId, sent: nowBag }
     sending.current = true
     setSend({ status: 'pending', received: false })
     let outcome: Outcome
@@ -273,7 +281,7 @@ function ActiveServices({
     }
     const { result } = outcome
     if (result.status === 'accepted') {
-      accepted(result.ref)
+      accepted(nowBag, result.ref)
     } else if (result.status === 'rejected') {
       attempt.current = null // a definite no: whatever is sent next is a new action
       setSend({ status: 'rejected', message: result.message, ref: result.ref })
@@ -299,7 +307,7 @@ function ActiveServices({
     const current = attempt.current
     if (current === null || (send.status !== 'pending' && send.status !== 'failed')) return
     if (state.bill?.rounds.some((round) => round.actionId === current.actionId) === true) {
-      accepted(null)
+      accepted(current.sent, null)
     }
   }, [state.bill, send.status, accepted])
 

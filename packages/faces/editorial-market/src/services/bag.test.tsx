@@ -93,8 +93,14 @@ describe('what is drawn, and what is not (test 1)', () => {
   })
 
   it('draws each service on its own: only the controls of the services that are on', () => {
-    const only = { ...view.features, callWaiter: null, bill: false, ordering: false, pay: false }
-    const cases: [string, Partial<typeof only>, string[]][] = [
+    const only: ViewModel['features'] = {
+      ...view.features,
+      callWaiter: null,
+      bill: false,
+      ordering: false,
+      pay: false,
+    }
+    const cases: [string, Partial<ViewModel['features']>, string[]][] = [
       ['waiter', { callWaiter: { kinds: ['waiter' as const] } }, ['menu.call_waiter']],
       ['bill', { bill: true }, ['menu.bill']],
       ['ordering', { ordering: true }, ['menu.bag']],
@@ -164,9 +170,9 @@ describe('the bag before it is sent', () => {
     drawFace(fakeHost())
     fireEvent.click(quickAdd('Hummus'))
     expect(screen.queryByRole('button', { name: 'Add Hummus' })).toBeNull()
-    expect(
-      document.querySelector('[data-item="' + hummus.id + '"] .ro-quick output')?.textContent,
-    ).toBe('1')
+    expect(document.querySelector(`[data-item="${hummus.id}"] .ro-quick output`)?.textContent).toBe(
+      '1',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'One more: Hummus' }))
     expect(bagButton()?.textContent).toContain('€14.00')
     fireEvent.click(screen.getByRole('button', { name: 'One less: Hummus' }))
@@ -462,6 +468,33 @@ describe('sending the bag: no local success (test 3)', () => {
       ),
     })
     await screen.findByRole('dialog', { name: 'Table order' })
+  })
+
+  it('locks the quantities while the bag is with the host', async () => {
+    const { host, sheet } = await bagWithTwo()
+    await send(host, sheet, 1)
+    for (const name of ['One more: Hummus', 'One less: Mojito']) {
+      expect(within(sheet).getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
+    }
+    expect(
+      within(sheet).getByRole('button', { name: 'Remove: Hummus' }).hasAttribute('disabled'),
+    ).toBe(true)
+  })
+
+  it('spends only the lines the host accepted: what the guest added while it waited stays in the bag', async () => {
+    const { host, sheet } = await bagWithTwo()
+    const call = await send(host, sheet, 1)
+    fireEvent.keyDown(window, { key: 'Escape' }) // the guest goes back to the menu while the order is with the host
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'One more: Mojito' }))
+    await act(async () => call?.answer())
+    // One Hummus and one Mojito were sent; the second Mojito was added meanwhile and is still in the bag.
+    expect(screen.queryByRole('button', { name: /One more: Hummus/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /View bag/ }).textContent).toContain('€10.00')
+    const again = openBag()
+    expect(within(again).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(again).getByText('Mojito')).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
   })
 
   it('only clears the bag, without opening the bill over the menu, if the guest has left the bag', async () => {

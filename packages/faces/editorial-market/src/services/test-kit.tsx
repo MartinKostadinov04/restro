@@ -223,8 +223,8 @@ export function receiptOf(changes: Partial<ReceiptView> = {}): ReceiptView {
 /** One command the face sent, waiting for the test to answer it. */
 export interface Call {
   readonly command: GuestCommand
-  /** Answers it; the status is `accepted` unless the test says otherwise. */
-  readonly answer: (result?: Partial<Omit<CommandResult, 'actionId'>>) => void
+  /** Answers it; the status is `accepted` and the `actionId` its own unless the test says otherwise. */
+  readonly answer: (result?: Partial<CommandResult>) => void
   /** The host throws instead of answering. */
   readonly fail: (error?: Error) => void
 }
