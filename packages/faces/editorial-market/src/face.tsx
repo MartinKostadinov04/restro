@@ -90,6 +90,14 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
   const filterOpener = useRef<HTMLElement | null>(null)
   const allergenOpener = useRef<HTMLElement | null>(null)
 
+  // The sheet and the guest's choices go with the control: neither waits to come back when it does.
+  useEffect(() => {
+    if (!filterControl) {
+      setFiltersOpen(false)
+      setChosen(NO_FILTERS)
+    }
+  }, [filterControl])
+
   const items = useMemo(() => allItems(view.sections), [view.sections])
   const dishItem = items.find((item) => item.id === dish.shownId)
   const allergenItem =

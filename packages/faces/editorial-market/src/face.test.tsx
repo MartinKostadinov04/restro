@@ -319,6 +319,12 @@ describe('the filters', () => {
     expect(screen.queryByRole('button', { name: 'Filter the menu' })).toBeNull()
     expect(visibleNames(container)).toHaveLength(itemsOf(off).length)
     expect(screen.queryByRole('status')).toBeNull()
+
+    // When the control comes back, the sheet does not open by itself and the filters start clean.
+    rerender(<EditorialMarketFace view={on} />)
+    expect(screen.getByRole('button', { name: 'Filter the menu' })).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(visibleNames(container)).toHaveLength(itemsOf(on).length)
   })
 
   it('combines dietary labels with AND and hides a section it has emptied', () => {
