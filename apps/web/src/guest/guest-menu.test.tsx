@@ -8,10 +8,18 @@ import * as shell from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { DEFAULT_FACE_ID, faceEntry } from '@/faces/registry'
 
 import { GuestMenu } from './guest-menu'
 import { files } from './load'
+
+// The template's code loads on demand (SH-04). Load it once before the tests, so its first,
+// cold transform on a busy machine does not count against the first test's wait for the menu.
+beforeAll(async () => {
+  await faceEntry(DEFAULT_FACE_ID).load()
+}, 60_000)
 
 // The real shell, watched: what the page tells it about the table is what these tests are about.
 vi.mock('@restro/shell', async (importOriginal) => {
