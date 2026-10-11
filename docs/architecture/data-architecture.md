@@ -35,7 +35,7 @@ Every later section uses these terms in exactly this sense.
 | Resolved document | The menu after applying every rule: one value per field per node, for one venue and edition |
 | Snapshot | An immutable, versioned, published copy of a resolved document. The only thing a shell reads |
 | Shell | The runtime that loads a snapshot, applies population rules and builds the view model |
-| Face | A presentation template (QR mobile, A4 print, TV board). Renders the view model; owns no data logic |
+| Face | A presentation design (a phone menu, A4 print, a TV board). Renders the view model; owns no data logic. In the venue admin a face is a "template" of the gallery (D69), not to be confused with the schema Template above |
 | Population rules | The shared, deterministic rules for what is shown, in which order, in which state |
 
 ## Schema layer
@@ -556,7 +556,9 @@ Normalised by id, with ordering carried by the id arrays:
   },
   "locales": { "default": "bg_BG", "available": ["bg_BG", "en_US"] },
   "currency": "EUR",
-  "theme": { "palette": ["#f1f2f3", "…"], "font": "Inter", "radius": 4, "shadow": 2, "logo": "as_logo" },
+  "theme": { "palette": ["#f1f2f3", "…"], "font": "Inter", "radius": 4, "shadow": 2, "logo": "as_logo",
+             "roles": { "light": { "background": "#f6f1e7", "…": "…" }, "dark": { "background": "#13201a", "…": "…" } },
+             "scheme": "auto" },
   "assets": {
     "as_9f2": { "w": 1600, "h": 1200, "focal": { "x": 0.5, "y": 0.4 },
                 "alt": { "en_US": "Negroni on ice" },
@@ -582,11 +584,27 @@ Normalised by id, with ordering carried by the id arrays:
     }
   },
   "modifier_groups": { "nd_g1": { "name": { "en_US": "Gin" }, "min": 0, "max": 1, "options": ["nd_o1"] } },
-  "options": { "nd_o1": { "name": { "en_US": "Premium gin" }, "price_delta": { "amount_minor": 300, "currency": "EUR" } } }
+  "options": { "nd_o1": { "name": { "en_US": "Premium gin" }, "price_delta": { "amount_minor": 300, "currency": "EUR" } } },
+  "presentation": { "face": "editorial-market", "options": { "layout": "two", "featureFirstSection": true } },
+  "features": { "filters": true, "call_waiter": { "enabled": false, "kinds": [] },
+                "bill": false, "ordering": false, "pay": false }
 }
 ```
 
 Each item also carries `order_mode` (`orderable` or `ask_waiter`); `hidden` items are left out of the snapshot (decided 2026-10-08).
+
+#### The look, the template and the guest services (D69–D71)
+
+Four fields were added to `menu-snapshot/1` after it first shipped. All are optional, and all come from venue settings, not from the menu document:
+
+| Field | Holds |
+| --- | --- |
+| `theme.roles` | The eight colour roles (`background`, `surface`, `accent`, `on_accent`, `text`, `muted`, `accent_text`, `border`), each a lower-case `#rrggbb`, for a `light` and a `dark` screen. The publisher always writes it (see The theme, R13) |
+| `theme.scheme` | The venue's light/dark policy: `auto` (follow the guest's phone), `light` or `dark`. Always written |
+| `presentation` | `{face, options}`: the template the venue chose and its options (short lower-case tokens or switches, never id-shaped). Written only when the venue chose a template; without it the default template applies |
+| `features` | The guest services the venue switched on: `filters`, `call_waiter` (`enabled` and the request `kinds`), `bill`, `ordering`, `pay`. Always written; a venue that has set nothing gets filters on and every service off |
+
+**Optional forever, parser-first after deploy.** Inside `menu-snapshot/1` a new field is optional forever, so a snapshot published before it still parses (no `roles`: the shell derives them from the palette as it always did; no `features`: the defaults; no `presentation`: the default template). After the first deploy, a new field ships in the reader one deploy before the publisher writes it. A phone still running an older reader keeps its current menu on screen until it reloads, because the pointer poll ignores a snapshot it cannot parse. The live overlay's top level ignores keys it does not know; the snapshot itself stays strict for unknown keys. A breaking change needs a new schema version. One consequence of the new fields: the first publish of each venue after the deploy makes a new snapshot, because the look fields are always written.
 
 ### What a snapshot never contains
 
@@ -599,9 +617,9 @@ The shell turns a snapshot into a view model by applying the population rules; a
 ### What the shell does, in order
 
 1. Load `current.json`, then the snapshot it names, then `live.json`.
-2. Build the context: language (URL, then browser, then the snapshot default), the venue's local time, the channel (`qr`, `print`, `tv`, `kiosk`), the table token if any, and whether ordering is switched on for the venue.
-3. Apply rules R1–R14 below to produce the view model.
-4. Hand the view model, the theme tokens and the face's own settings to the face.
+2. Build the context: language (URL, then browser, then the snapshot default), the venue's local time, the channel (`qr`, `print`, `tv`, `kiosk`), the table token if any, whether ordering is switched on for the venue, and which guest services the platform supports (`capabilities`, all off until a service exists).
+3. Apply rules R1–R15 below to produce the view model.
+4. Hand the view model to the face with the host props: the asset base URL, the menu's languages, the table label, the font stacks, the colour scheme, the template's options from `presentation`, and the `services` binding when the host has one. The face gets nothing else.
 
 The same snapshot, overlay and context always produce the same view model, so the rules are unit-tested without any face.
 
@@ -621,17 +639,39 @@ The same snapshot, overlay and context always produce the same view model, so th
 | R10 Images | The shell picks the asset variant from the face's declared slot size and pixel density, crops around the focal point, and uses the face's declared no-image layout when there is no image |
 | R11 Ordering controls | Shown only if the Item is `orderable` and its order\_mode is orderable, ordering is on for the venue, the channel supports ordering, and a valid table token is present. An ask\_waiter Item shows its price and an "Ask your waiter" action instead |
 | R12 Custom fields | Rendered through `field_types` with one renderer per field type, in template order, into one `extra_fields` slot |
-| R13 Theme | Faces use theme tokens only, never hard-coded colours. The shell derives readable text-on-colour pairs from the palette, since any brand colour can arrive |
+| R13 Theme | Faces use theme tokens only, never hard-coded colours. The snapshot carries the venue's eight colour roles for a light and a dark screen (`theme.roles`); every text-on-colour pair reads at 4.5:1 or better. The shell checks the published roles again, repairs a failing text colour with the nearest readable one, and derives the roles from the palette when a snapshot has none. `theme.scheme` is the venue's light/dark policy, passed on to the face |
 | R14 Determinism | No rule reads anything outside the snapshot, the overlay and the context |
+| R15 Features | Fail-closed. A control for a guest feature (filters, call a waiter with its request kinds, the bill, ordering, pay) is allowed only when the venue switched it on, the platform supports it, the channel is interactive (`qr`, `kiosk`) and a confirmed table token is present; filters need the venue's switch and at least one tag or dietary chip on the menu, not a table. A missing, unreadable or unknown input means off. Allergen information is not a feature and has no switch (R6). The face marks each control with its `menu.*` slot, and a control that is off is not in the page at all |
+
+### The theme (R13)
+
+A venue chooses three colours in the Design tab: a **primary** (about 60%: the page), a **secondary** (about 30%: the panels behind photos, the header) and a **tertiary** (about 10%: badges, buttons, highlights). The publisher works out the eight roles for both schemes in OKLCH and never stores them, so a better derivation reaches every venue with its next publish.
+
+| Role | Light screen | Dark screen |
+| --- | --- | --- |
+| `background` | The primary | The primary's hue at lightness 0.18, chroma reduced |
+| `surface` | The secondary | The secondary's hue at lightness 0.24, chroma reduced |
+| `accent` | The tertiary | The tertiary, lightened until it stands out (3:1) on the dark page |
+| `text` | A deep, low-chroma ink in the primary's hue, darkened until it reads on page and panels | A light ink in the primary's hue |
+| `muted` | The softest blend of the ink toward the page that still reads | Same rule |
+| `accent_text` | The accent with its lightness moved until it reads on page and panels | Same rule |
+| `on_accent` | The first of page, ink, white and black that reads on the accent | Same rule |
+| `border` | 15% of the ink in the page | Same rule |
+
+- **Readable for any three colours.** The seven pairs (`text`, `muted` and `accent_text` on `background` and on `surface`; `on_accent` on `accent`) read at 4.5:1 (WCAG AA). Where colour theory cannot reach it the ink falls back to black, white or the grey between. When the page and the panels sit on opposite sides of mid-grey, no colour reads on both, and only then the panels move in lightness (hue and chroma kept).
+- **Overrides.** Any role of either scheme can be set by hand and is kept as set. A theme with a pair that does not read cannot be saved.
+- **Presets and suggestions.** Four starting points exactly as the designer delivered them (Botanical, Midnight, Nordic, Terracotta), and colour-theory suggestions (complementary, analogous, triadic, split-complementary, monochrome) that turn one colour into three.
+- **Fonts, corners, shadow.** Six families with Cyrillic letters (Inter, Manrope, Montserrat, Playfair Display, Lora, Unbounded), served by the web app itself so a guest's phone never calls a font host; corner radius 0–32 px; shadow 0–5.
+- **Older venues.** A venue that only set a brand colour, or nothing, publishes as before: its roles come from its palette.
 
 ### The face contract
 
-Each face ships a manifest. Installing a face validates the manifest against R6 and R7, and the contract tests run against it.
+Each face ships a manifest. Installing a face validates the manifest against R6, R7, R9 and R15, and the contract tests run against it. The example is the manifest of the Editorial Market, the default template:
 
 ```json
 {
-  "face": "qr-mobile",
-  "version": "1.3.0",
+  "face": "editorial-market",
+  "version": "1.0.0",
   "channels": ["qr"],
   "slots": {
     "item.name": "required",
@@ -641,21 +681,61 @@ Each face ships a manifest. Installing a face validates the manifest against R6 
     "item.description": { "optional": true, "lines": 3, "overflow": "expand" },
     "item.image": { "optional": true, "variant": "card", "aspect": "4:3" },
     "item.badges": "optional",
-    "item.extra_fields": "optional"
+    "item.portion": "optional",
+    "item.dietary": "optional",
+    "item.tags": "optional",
+    "item.extra_fields": "optional",
+    "item.modifiers": "optional"
   },
-  "allergen_mode": "inline_icons",
+  "allergen_mode": "inline_codes",
   "no_image_layout": "text_only",
   "ordering": true,
   "paging": null,
-  "tokens": ["palette.50", "palette.500", "palette.700", "font", "radius", "shadow", "logo"]
+  "features": ["filters", "call_waiter", "bill", "ordering", "pay"],
+  "options": {
+    "layout": { "type": "enum", "values": ["list", "one", "two"], "default": "two", "group": "look",
+                "label": { "bg": "Подредба на менюто", "en": "Menu layout" } },
+    "featureFirstSection": { "type": "boolean", "default": true, "group": "look",
+                             "label": { "bg": "Първата секция като лента със снимки", "en": "Photo strip for the first section" } },
+    "layoutSwitch": { "type": "boolean", "default": true, "group": "feature",
+                      "label": { "bg": "Гостите могат да сменят подредбата", "en": "Guests can change the layout" } }
+  },
+  "tokens": ["color.background", "color.surface", "color.accent", "color.on_accent", "color.text",
+             "color.muted", "color.accent_text", "color.border", "font", "radius", "shadow", "logo"]
 }
 ```
+
+- **`features`** lists the guest features the face has controls for. A feature the face does not list is never offered; one it lists is drawn only when R15 allows it. A face that lists `ordering` must declare `ordering: true`.
+- **`options`** are the settings a venue may change, by camelCase key, each with a `type` (`enum` with its `values`, or `boolean`), a `default` and a `label` in Bulgarian and English, so the admin builds its form from the manifest. A `group` of `look` puts the option in the Design tab; `feature` puts it in the composer's Guest features panel. The shell's `resolveOptions` keeps a published value only where it fits the declaration and falls back to the default otherwise; the face keeps no defaults of its own.
+- **Tokens.** The face lists the theme tokens its CSS reads (`palette.50` to `palette.950`, `color.<role>`, `font`, `radius`, `shadow`, `logo`).
+- **Host props.** Every face receives the same props from its host: the view model, the asset base URL, the menu's languages and a language callback, the table label, the font stacks, the colour scheme, the venue's `options` and the `services` binding.
+
+### The template registry (D69)
+
+A venue's template is the `presentation.face` of its snapshot. Templates are code packages (`packages/faces/*`), listed in the web app in two files:
+
+- `faces/manifests.ts` holds what is known without loading a template: its manifest, its names in Bulgarian and English, its picture and whether it is hidden. Server code reads this one (the Design tab's actions check that a template is real and visible, and what its options are).
+- `faces/registry.ts` is built from it and adds `load()`, a lazy import of the template's components. Only client code imports it: a server module that imports the registry makes the build follow `load()` into the components and fail.
+
+The default is `editorial-market`. A hidden template (`qr-phone`, kept for tests) is never offered, but a venue that already uses it keeps its menu; a name the registry does not know falls back to the default and is logged once. A guest downloads only the template its venue chose, as a separate chunk. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the Design tab, which previews the unsaved look on a phone frame, with the template's `look` options; the composer's Guest features panel holds the `feature` options and the service switches.
+
+### Guest services: the face side of Stage 4 (D71, D72)
+
+The faces draw the bag, the table bill, call a waiter, pay and the receipt before any backend exists, so the platform half can be built against a fixed contract. The two halves meet in the services contract of `@restro/shell`; the platform half is the Stage 4 design in `docs/reviews/connector-architecture/A5-guest-outbound.md` section 5.1.
+
+- **Host to face: state.** `ServiceState` is the host's own record of the bill (rounds, lines, total), the waiter requests (with their status), the payment quote (subtotal, tip, VAT, total, the methods allowed) and the receipt. The face draws it and nothing else.
+- **Face to host: commands.** The guest's actions are `order.send`, `service.request`, `service.cancel`, `pay.quote`, `pay.start` and `receipt.action`. Each carries an `actionId`, a uuid made once per user action and reused on a retry, so the host can answer a repeat with its first answer. A command carries our ids (`nd_`), quantities and notes, never a price, a barsy id or a table token.
+- **The host answers** `accepted`, `rejected` or `pending`, with an optional message and a short reference.
+- **No local success.** A face shows *pending*, then *accepted* or *rejected*, and never succeeds on its own: it adds no bill round, confirms no waiter and reports no payment. An order is "sent" only when the host accepts it or its bill holds the round; a rejected order keeps the guest's bag. A waiter is "on the way" only when a request of the host's says so. A payment is "paid" only after the host accepted it and its state holds a receipt that was not there before.
+- **What the face may compute.** The bag estimate (unit price plus the chosen options, times quantity), labelled approximate, with the money module; nothing else. Totals, tips, VAT and splits come from the platform's quote.
+- **Fail-closed.** A service control is drawn only when R15 allows it and the host bound `services`. In Stage 3 no host binds them and the platform supports none, so guests see no service.
+- **The admin's preview** (the Design tab's "Preview guest services" switch) binds a demo host from the face's `./preview` subpath. It shows the services the venue switched on at a demo table, every sheet marked "Preview", and sends nothing anywhere. Guest pages never import it.
 
 ### Planned faces
 
 | Face | Channel | Paging | Ordering | Allergen mode |
 | --- | --- | --- | --- | --- |
-| QR mobile | `qr` | Scroll | Yes | Inline icons |
+| QR mobile: Editorial Market (built, the default template) and `qr-phone` (built, hidden, the test reference) | `qr` | Scroll | Yes | Inline codes |
 | Kiosk | `kiosk` | Scroll, large touch targets | Yes | Inline icons |
 | A4 print | `print` | Fixed pages | No | Numbered legend |
 | TV board | `tv` | Rotating pages | No | Allergen-info QR code |
@@ -663,7 +743,7 @@ Each face ships a manifest. Installing a face validates the manifest against R6 
 
 ### Contract tests
 
-A set of fixture snapshots covers the hard cases: 60-character names, six languages, no images, sold out, scheduled, 300 Items, deep modifier groups. Every face renders every fixture. The tests assert that each visible Item has every required slot (each slot carries a `data-slot` attribute), that only `nd_` ids appear (never a Barsy id or an internal field), and that screenshots match the approved ones.
+A set of 13 fixture snapshots covers the hard cases: 60-character names, six languages, no images, sold out, scheduled, 300 Items, deep modifier groups, ask-the-waiter items, tags and dietary labels, custom colour roles, and the guest features all on and all off. Every face renders every fixture on every channel it declares, through the shell's `faceContractSuite`. The tests assert that each visible Item has every required slot (each slot carries a `data-slot` attribute), that only `nd_`, `as_` and `tg_` ids appear (never a Barsy id or an internal field), that the feature slots (`menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay`) exist exactly when R15 allows them, that the face's CSS chooses no colour of its own, and that it styles nothing outside its own root (no `html`, `body` or `:root` rule). The tests read markup; they compare no screenshots. A separate Playwright run saves a matrix of screenshots (themes, schemes, languages, widths) for people to review.
 
 ## End-to-end traces
 
@@ -728,9 +808,11 @@ This table covers the menu side. The ordering side's failure modes and the live-
 
 Ordering is not built yet, but it is the reason Barsy ids, venue scopes and tables are modelled the way they are. The order path runs the opposite way to collection: the menu is pulled from Barsy and merged, while orders are pushed to Barsy as commands. Barsy remains the system of record for bills.
 
+The face half of this path is built (D71, D72): see Guest services under The visualization shell. It fixes what the guest's phone sends (commands with an `actionId`, never a price) and what it draws (the host's state, never its own success). The platform half is the Stage 4 design in `docs/reviews/connector-architecture/A5-guest-outbound.md` section 5.1, where the order is our business object and a command is one delivery of it to a writer.
+
 This section is an outline, not a spec. The orders and payments spec is still to be written once Lukanet answers (tracker T29): table sessions, orders, order lines (price shown and price billed), payment shares, payments, refunds, a payment inbox and an append-only money-events table, each with its state machine, plus a failure table per payment route.
 
-1. **The shell sends a cart, never prices:** `{table_token, client_uuid, items: [{node_id, qty, options: [node_id]}]}`.
+1. **The shell sends a cart, never prices:** `{table_token, client_uuid, items: [{node_id, qty, options: [node_id]}]}`. In the face's `order.send` command the lines are `{itemId, optionIds, qty, note}` and the key is its `actionId`; how that key maps onto the order API's own key is for Stage 4 to settle.
 2. **The order API resolves the context.** Token → table → venue, `bid` and `place_id`. Each `nd_` id → its active Barsy link; Options → supplements or modifiers. Items that are not `orderable` in the latest snapshot and overlay are refused.
 3. **It builds one `Accounts_place` call:** `account.uuid` = our server-generated order id (Barsy's official deduplication key; never the client's id, because Barsy would refuse a corrected cart retried under it after the guest has paid), `place_id`, `external_source` tagging our app, `lang_id` = the guest's language, `flag_close_account` = 0 (whether 1 creates and closes the account in one call is Q47). Rows carry `article_id`, `amount`, modifiers and supplements, and no price, so Barsy prices them.
 4. **Outbox.** The command is stored first, then sent by a worker with the venue's `pos_key`, because creating accounts requires a registered POS. On a timeout it retries with the same UUID; Barsy refuses a second account with that UUID.
