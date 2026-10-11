@@ -14,6 +14,7 @@ import { isVenueSlug } from '../guest-files'
 import { isId, type NodeId, newId } from '../ids'
 import { LOCALES, type Locale } from '../locales'
 import { CURRENCIES, type Currency } from '../money'
+import { newPublicId } from '../public-id'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { lockTenantDocument } from './lock'
 
@@ -22,12 +23,10 @@ export type ProvisionErrorCode =
   | 'invalid_input'
   /** The venue's tenant has no `tenants` row yet (provision the tenant first). */
   | 'tenant_missing'
-  /** Some venue (of this or any other tenant) already has this slug: public addresses are global. */
-  | 'slug_taken'
-  /** The tenant has no venue with this id (`provisionMenu`). */
+  /** The tenant has no venue with this id (`provisionMenu`, `renameVenueSlug`). */
   | 'venue_missing'
 
-/** Thrown by `provisionTenant` and `provisionVenue` for input or state they refuse. */
+/** Thrown by `provisionTenant`, `provisionVenue` and `renameVenueSlug` for input or state they refuse. */
 export class ProvisionError extends Error {
   override name = 'ProvisionError'
   readonly code: ProvisionErrorCode
@@ -112,7 +111,10 @@ export async function provisionTenant(
 /** What `provisionVenue` needs; everything but `name` and `slug` has the database's default. */
 export interface ProvisionVenueInput {
   readonly name: string
-  /** Globally unique (it is the public address `/m/<slug>`); lower-case kebab-case. */
+  /**
+   * The readable part of the public address `/m/<slug>-<code>`; lower-case kebab-case. Not unique
+   * and editable later (`renameVenueSlug`): the venue's random public code finds the menu (D68).
+   */
   readonly slug: string
   /** IANA time zone; default `Europe/Sofia`. */
   readonly timezone?: string
@@ -138,14 +140,15 @@ function pgErrorOf(error: unknown): { code?: string; constraint?: string } {
 }
 
 /**
- * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id, and returns the row.
- * Refuses a malformed name, slug, time zone, currency or locale list before touching the
- * database; a taken slug and a missing tenant row come back as `ProvisionError`s.
+ * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id and a fresh public code,
+ * and returns the row. Refuses a malformed name, slug, time zone, currency or locale list before
+ * touching the database; a missing tenant row comes back as a `ProvisionError`.
  *
- * A slug is the venue's public address, so it is unique across all tenants. Row-level security
- * hides other tenants' venues, so no query could tell whether it is free: the unique index decides
- * (`venues_slug_unique`, plus the older per-tenant constraint) and its violation becomes
- * `slug_taken`.
+ * The public code (`public_id`, D68) is what finds the venue's menu: 12 random characters, unique
+ * across all tenants and permanent. Row-level security hides other tenants' venues, so no query
+ * could tell whether a drawn code is free: the unique index decides (`venues_public_id_unique`),
+ * and on a clash a new code is drawn once more (a second clash among 36^12 codes is a bug, and
+ * throws). The slug is only decoration: any number of venues may share one.
  */
 export async function provisionVenue(
   pool: DbPool,
@@ -195,8 +198,8 @@ export async function provisionVenue(
     )
   }
 
-  try {
-    return await withTenantWrite(pool, tenantId, async (tx) => {
+  const insertVenue = () =>
+    withTenantWrite(pool, tenantId, async (tx) => {
       const [venue] = await tx
         .insert(venues)
         .values({
@@ -204,6 +207,7 @@ export async function provisionVenue(
           tenantId,
           name,
           slug: input.slug,
+          publicId: newPublicId(),
           timezone,
           serviceDayEndsAt,
           currency,
@@ -214,17 +218,19 @@ export async function provisionVenue(
       if (!venue) throw new ProvisionError('invalid_input', 'the venue row was not created')
       return venue
     })
+
+  try {
+    try {
+      return await insertVenue()
+    } catch (error) {
+      // The drawn code is taken: the failed transaction is rolled back, so draw once more.
+      const { code, constraint } = pgErrorOf(error)
+      if (code !== '23505' || constraint !== 'venues_public_id_unique') throw error
+      return await insertVenue()
+    }
   } catch (error) {
     if (error instanceof ProvisionError) throw error
-    const { code, constraint } = pgErrorOf(error)
-    if (
-      code === '23505' &&
-      (constraint === 'venues_slug_unique' || constraint === 'venues_tenant_id_slug_unique')
-    ) {
-      throw new ProvisionError('slug_taken', `the venue address "${input.slug}" is already taken`, {
-        cause: error,
-      })
-    }
+    const { code } = pgErrorOf(error)
     if (code === '23503') {
       throw new ProvisionError('tenant_missing', 'the tenant has no row yet: provision it first', {
         cause: error,
@@ -232,6 +238,42 @@ export async function provisionVenue(
     }
     throw error
   }
+}
+
+/** What `renameVenueSlug` did. */
+export interface RenamedVenueSlug {
+  readonly venueId: string
+  readonly slug: string
+  /** The venue's public code, which a rename never changes. */
+  readonly publicId: string
+  /** False when the venue already had this slug (nothing was written). */
+  readonly changed: boolean
+}
+
+/**
+ * Changes the readable part of a venue's public address (D68). The public code stays, so every
+ * link ever printed or shared keeps finding the menu; the published index file carries the new
+ * slug after the next `publish-files` job. Refuses a malformed slug (`invalid_input`) and a venue
+ * the tenant does not have (`venue_missing`); the same slug again writes nothing.
+ */
+export async function renameVenueSlug(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  slug: string,
+): Promise<RenamedVenueSlug> {
+  if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  if (!isVenueSlug(slug)) {
+    throw new ProvisionError('invalid_input', 'the venue slug must be lower-case kebab-case')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId)).for('update')
+    if (!venue) throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
+    if (venue.slug === slug) return { venueId, slug, publicId: venue.publicId, changed: false }
+    await tx.update(venues).set({ slug }).where(eq(venues.id, venueId))
+    return { venueId, slug, publicId: venue.publicId, changed: true }
+  })
 }
 
 /** A venue's menu after `provisionMenu`; `created` is false when it already existed. */

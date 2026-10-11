@@ -22,7 +22,7 @@ export async function PublishTab({
   const view = await loadPublishView({
     pool: getPool(),
     tenantId,
-    venue: { id: venue.id, slug: venue.slug, timezone: venue.timezone },
+    venue: { id: venue.id, slug: venue.slug, publicId: venue.publicId, timezone: venue.timezone },
     canPublish: canPublishMenu(role),
   })
   return <PublishPanel view={view} />

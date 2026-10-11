@@ -168,6 +168,8 @@ export type BusyView = 'publish' | 'files' | null
 export interface PublishView {
   readonly venueId: string
   readonly venueSlug: string
+  /** The venue's public code: with the slug it makes the guest page address (`menuPath`). */
+  readonly venuePublicId: string
   readonly timeZone: string
   /** Owner or admin: may publish, approve, reject and return to a version. */
   readonly canPublish: boolean

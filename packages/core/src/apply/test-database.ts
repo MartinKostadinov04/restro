@@ -37,9 +37,9 @@ function assertLocal(url: string, name: string): void {
 }
 
 /**
- * A venue slug no other test created: `base` and a random suffix. Venue slugs are globally unique
- * (brief S3-10) and the test files of a run share one database and run in parallel, so a literal
- * slug such as `main` would make them collide.
+ * A venue slug no other test created: `base` and a random suffix. Slugs need not be unique any
+ * more (D68, the public code is), but the test files of a run share one database and run in
+ * parallel, and a test that looks a venue up by its slug needs one that is its own.
  */
 export function testSlug(base: string): string {
   return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`

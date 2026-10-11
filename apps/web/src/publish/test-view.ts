@@ -57,6 +57,7 @@ export function publishView(overrides: Partial<PublishView> = {}): PublishView {
   return {
     venueId: VENUE_ID,
     venueSlug: 'demo-club',
+    venuePublicId: 'k3x9p2m7qa1z',
     timeZone: 'Europe/Sofia',
     canPublish: true,
     menu: 'ready',

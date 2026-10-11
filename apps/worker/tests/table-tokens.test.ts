@@ -21,6 +21,7 @@ import {
   issueAllTableTokens,
   issueTableToken,
   listVenueTables,
+  renameVenueSlug,
   retireTableToken,
   setTableLabel,
 } from '@restro/core/apply'
@@ -36,6 +37,7 @@ import {
   hasDatabase,
   SETUP_TIMEOUT_MS,
   type TestDatabase,
+  testSlug,
 } from './database'
 import { createFakeBarsy } from './fake-barsy'
 import { createWorld, type World } from './world'
@@ -140,6 +142,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     expect(store.puts).toHaveLength(coded.length)
     for (const table of coded) {
       expect(await readTableTokenFile(store, table.token as string)).toEqual({
+        venue_public_id: world.venuePublicId,
         venue_slug: world.venueSlug,
         table_label: table.placeNum,
       })
@@ -171,6 +174,26 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     })
   })
 
+  it('writes every file again, with the new slug and the same public code, after a venue rename', async () => {
+    await pull()
+    await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+    await runTokenJob()
+    const coded = (await tables()).filter((table) => table.token !== null)
+    expect(coded.length).toBeGreaterThan(0)
+
+    const renamed = testSlug('renamed-club')
+    await renameVenueSlug(world.pool, world.tenantId, world.venueId, renamed)
+    store.puts.length = 0
+    await runTokenJob()
+    expect(store.puts.sort()).toEqual(coded.map((table) => `t/${table.token}.json`).sort())
+    for (const table of coded) {
+      expect(await readTableTokenFile(store, table.token as string)).toMatchObject({
+        venue_public_id: world.venuePublicId,
+        venue_slug: renamed,
+      })
+    }
+  })
+
   it('removes the files of retired codes: a turned-off table and a table given a new code', async () => {
     await pull()
     await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
@@ -186,6 +209,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     expect(await readTableTokenFile(store, a.token as string)).toBeNull()
     expect(await readTableTokenFile(store, b.token as string)).toBeNull()
     expect(await readTableTokenFile(store, renewed.table.token as string)).toMatchObject({
+      venue_public_id: world.venuePublicId,
       venue_slug: world.venueSlug,
     })
     expect(store.deletes.sort()).toEqual([`t/${a.token}.json`, `t/${b.token}.json`].sort())

@@ -45,6 +45,9 @@ import {
 } from './service'
 import { isLiveEntry, isReturnable } from './view'
 
+/** A venue public code for the scopes below (D68); the view only passes it on. */
+const PUBLIC_ID = 'k3x9p2m7qa1z'
+
 describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => {
   const tenant = newId('tn')
   const otherTenant = newId('tn')
@@ -75,7 +78,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
   const viewScope = (overrides: Partial<ViewScope> = {}): ViewScope => ({
     pool: app,
     tenantId: tenant,
-    venue: { id: venueId, slug: 'main', timezone: 'Europe/Sofia' },
+    venue: { id: venueId, slug: 'main', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
     canPublish: true,
     ...overrides,
   })
@@ -202,6 +205,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         busy: null,
         lastRun: null,
         canPublish: true,
+        // What the guest link is made of (menuPath).
+        venueSlug: 'main',
+        venuePublicId: PUBLIC_ID,
         history: { entries: [], nextBeforeVersion: null },
       })
       expect(before.draft.state).toBe('ready')
@@ -214,7 +220,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
 
     it('says "no menu" for a venue without one', async () => {
       const bare = (await provisionVenue(app, tenant, { name: 'Bare', slug: testSlug('bare') })).id
-      const result = await view({ venue: { id: bare, slug: 'bare', timezone: 'Europe/Sofia' } })
+      const result = await view({
+        venue: { id: bare, slug: 'bare', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      })
       expect(result).toMatchObject({ menu: 'none', live: null, held: null })
     })
 
@@ -601,7 +609,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       ).id as VenueId
       await provisionMenu(app, tenant, noItems)
       const result = await view({
-        venue: { id: noItems, slug: 'nonehere', timezone: 'Europe/Sofia' },
+        venue: { id: noItems, slug: 'nonehere', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
       })
       expect(result.draft).toEqual({ state: 'nothing_visible' })
       expect(result.live).toBeNull()
@@ -645,7 +653,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         {
           pool: app,
           tenantId: otherTenant,
-          venue: { id: venueId, slug: 'main', timezone: 'Europe/Sofia' },
+          venue: { id: venueId, slug: 'main', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
           canPublish: true,
         },
         deps,
@@ -687,7 +695,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
           actor: 'user:us_maria',
         })
       }
-      const scopeMany = viewScope({ venue: { id: many, slug: 'many', timezone: 'Europe/Sofia' } })
+      const scopeMany = viewScope({
+        venue: { id: many, slug: 'many', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      })
       const first = await loadHistoryPage(scopeMany, manyMenu.id, {}, deps)
       expect(first.entries).toHaveLength(20)
       expect(first.entries[0]?.version).toBe(23)
@@ -746,7 +756,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       const four = await publishLone()
       expect(four.snapshot.version).toBe(4)
 
-      const scopeLone = viewScope({ venue: { id: lone, slug: 'return', timezone: 'Europe/Sofia' } })
+      const scopeLone = viewScope({
+        venue: { id: lone, slug: 'return', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      })
       const page = await loadHistoryPage(scopeLone, loneMenu.id, {}, deps)
       expect(page.entries.map((entry) => entry.version)).toEqual([4, 3, 2, 1])
       expect(page.entries[0]).toMatchObject({ counts: { total: 1, priceChanged: 1 } })

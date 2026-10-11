@@ -162,11 +162,15 @@ async function seed(): Promise<void> {
 
   const pool = getPool()
   const [existing] = await withTenant(pool, organizationId, (tx) =>
-    tx.select({ id: venues.id }).from(venues).where(eq(venues.slug, VENUE.slug)).limit(1),
+    tx
+      .select({ id: venues.id, publicId: venues.publicId })
+      .from(venues)
+      .where(eq(venues.slug, VENUE.slug))
+      .limit(1),
   )
-  const venueId =
-    existing?.id ??
-    (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug })).id
+  const venue =
+    existing ?? (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug }))
+  const venueId = venue.id
   const menu = await provisionMenu(pool, organizationId, venueId)
 
   // The document: created once, its values put back to the baseline every time.
@@ -246,7 +250,7 @@ async function seed(): Promise<void> {
   // publish (the other venues' files are left alone).
   const store = publishStoreConfig(process.env)
   if (store.kind !== 'local') throw new Error('the e2e publish store must be local')
-  await rm(path.join(store.dir, 'v', `${VENUE.slug}.json`), { force: true })
+  await rm(path.join(store.dir, 'v', `${venue.publicId}.json`), { force: true })
   await rm(path.join(store.dir, 'm', menu.id), { recursive: true, force: true })
 
   console.log(JSON.stringify({ level: 'info', event: 'seed_publish_e2e_done', organizationId }))

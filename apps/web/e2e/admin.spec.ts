@@ -44,7 +44,10 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   const cards = page.getByTestId('venue-card')
   await expect(cards).toHaveCount(1)
   await expect(cards.first()).toContainText(VENUE_NAME)
-  await expect(cards.first()).toContainText('#demo-club')
+  // The card names the menu address: the readable slug and the venue's random code (D68).
+  await expect(cards.first().getByTestId('venue-card-address')).toHaveText(
+    /^\/m\/demo-club-[a-z0-9]{12}$/,
+  )
   await expect(cards.first()).toContainText('BG')
   await expect(cards.first()).toContainText('EN')
 

@@ -40,6 +40,7 @@ import {
   loadCurrentSnapshot,
   provisionMenu,
   provisionVenue,
+  renameVenueSlug,
   rollbackTo,
   setSoldOutTonight,
 } from '@restro/core/apply'
@@ -51,7 +52,7 @@ import type { WorkerConfig } from '../src/config'
 import { createPublishJobs } from '../src/jobs/publish'
 import type { JobDefinition } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
-import { VenueAddressTakenError } from '../src/publish/files'
+import { VenueCodeTakenError } from '../src/publish/files'
 import { type LiveAsks, queueLiveRollovers, REASSERT_AFTER_MS } from '../src/publish/rollover'
 import { assetsWithoutVariants, renderVariant, runAssetVariants } from '../src/publish/variants'
 import { backfillVariants } from '../src/variants/backfill'
@@ -105,8 +106,9 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
   const fake = createFakeBarsy()
   let db: TestDatabase
   let world: World
-  /** The slug of the venue `createWorld` provisions (random: venue slugs are globally unique). */
+  /** The slug and the public code of the venue `createWorld` provisions. */
   let slug: string
+  let publicId: string
   let root: string
   let store: CountingStore
   let jobs: Map<string, JobDefinition>
@@ -210,6 +212,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
     store = new CountingStore(new LocalPublishStore({ rootDir: root }))
     world = await createWorld(fake, { database: db })
     slug = world.venueSlug
+    publicId = world.venuePublicId
     section = newId('nd')
     items = Array.from({ length: 5 }, () => newId('nd'))
     jobs = new Map(
@@ -269,7 +272,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
           snapshotFile,
           currentPath(scope().menuId, scope().venueId),
           livePath(scope().menuId, scope().venueId),
-          venueIndexPath(slug),
+          venueIndexPath(publicId),
         ].sort(),
       )
 
@@ -425,46 +428,74 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       })
     })
 
-    it('writes the slug index {venue_id, menu_id} with the first publish, and repairs it', async () => {
-      expect(await readVenueIndex(store, slug)).toBeNull()
+    it('writes the venue index {venue_id, menu_id, slug} under the public code with the first publish, and repairs it', async () => {
+      expect(await readVenueIndex(store, publicId)).toBeNull()
       await runJob(JOB_NAMES.publishMenu, publishPayload())
-      expect(await readJson(venueIndexPath(slug))).toEqual({
+      expect(venueIndexPath(publicId)).toBe(`v/${publicId}.json`)
+      expect(await readJson(venueIndexPath(publicId))).toEqual({
         venue_id: world.venueId,
         menu_id: world.menuId,
+        slug,
       })
+      // Nothing is filed under the slug.
+      expect(store.puts.filter((file) => file.startsWith('v/'))).toEqual([venueIndexPath(publicId)])
 
       store.puts.length = 0
       await runJob(JOB_NAMES.publishFiles, scopePayload())
       expect(store.puts).toEqual([])
 
-      await unlink(path.join(root, ...venueIndexPath(slug).split('/')))
+      await unlink(path.join(root, ...venueIndexPath(publicId).split('/')))
       await runJob(JOB_NAMES.publishFiles, scopePayload())
-      expect(store.puts).toEqual([venueIndexPath(slug)])
-      expect(await readVenueIndex(store, slug)).toEqual({
+      expect(store.puts).toEqual([venueIndexPath(publicId)])
+      expect(await readVenueIndex(store, publicId)).toEqual({
         venue_id: world.venueId,
         menu_id: world.menuId,
+        slug,
       })
     })
 
-    it('fails loudly, and never overwrites, when v/<slug>.json names another venue', async () => {
-      const other = { venue_id: newId('vn'), menu_id: newId('nd') }
+    it('writes the index again, at the same path, when the slug changed (a rename)', async () => {
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      store.puts.length = 0
+
+      const renamed = testSlug('renamed-club')
+      const result = await renameVenueSlug(world.pool, world.tenantId, world.venueId, renamed)
+      expect(result).toMatchObject({ slug: renamed, publicId, changed: true })
+
+      await runJob(JOB_NAMES.publishFiles, scopePayload())
+      // Only the index is written: the snapshot and the pointer are as they were.
+      expect(store.puts).toEqual([venueIndexPath(publicId)])
+      expect(await readVenueIndex(store, publicId)).toEqual({
+        venue_id: world.venueId,
+        menu_id: world.menuId,
+        slug: renamed,
+      })
+
+      // And again: nothing left to write.
+      store.puts.length = 0
+      await runJob(JOB_NAMES.publishFiles, scopePayload())
+      expect(store.puts).toEqual([])
+    })
+
+    it('fails loudly, and never overwrites, when v/<code>.json names another venue', async () => {
+      const other = { venue_id: newId('vn'), menu_id: newId('nd'), slug: 'someone-else' }
       await store.inner.put(
-        venueIndexPath(slug),
+        venueIndexPath(publicId),
         venueIndexBytes(other),
-        publishPutOptionsFor(venueIndexPath(slug)),
+        publishPutOptionsFor(venueIndexPath(publicId)),
       )
       store.puts.length = 0
       // The job throws a typed error (pg-boss marks it failed) ...
       await expect(runJob(JOB_NAMES.publishMenu, publishPayload())).rejects.toBeInstanceOf(
-        VenueAddressTakenError,
+        VenueCodeTakenError,
       )
       // ... the file of the other venue is untouched ...
-      expect(store.puts).not.toContain(venueIndexPath(slug))
-      expect(await readVenueIndex(store, slug)).toEqual(other)
+      expect(store.puts).not.toContain(venueIndexPath(publicId))
+      expect(await readVenueIndex(store, publicId)).toEqual(other)
       // ... the run is recorded as failed, with the reason ...
       const run = await lastRun('publish_menu')
       expect(run.status).toBe('failed')
-      expect(run.error_summary).toContain(`/m/${slug} belongs to another venue`)
+      expect(run.error_summary).toContain(`public code ${publicId} belongs to another venue`)
       // ... and the pointer had moved already: the database index (not this guard) is what keeps
       // the case from happening, so the guard fails the job instead of undoing the publish.
       expect(await loadCurrentSnapshot(world.pool, world.tenantId, scope())).toMatchObject({
@@ -473,22 +504,39 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
 
       // The repair job fails the same way until the file is fixed.
       await expect(runJob(JOB_NAMES.publishFiles, scopePayload())).rejects.toBeInstanceOf(
-        VenueAddressTakenError,
+        VenueCodeTakenError,
       )
       expect((await lastRun('publish_files')).status).toBe('failed')
-      expect(await readVenueIndex(store, slug)).toEqual(other)
+      expect(await readVenueIndex(store, publicId)).toEqual(other)
     })
 
-    it('replaces a slug index file that cannot be read', async () => {
+    it('replaces a venue index file that cannot be read', async () => {
       await store.inner.put(
-        venueIndexPath(slug),
+        venueIndexPath(publicId),
         new TextEncoder().encode('{broken'),
-        publishPutOptionsFor(venueIndexPath(slug)),
+        publishPutOptionsFor(venueIndexPath(publicId)),
       )
       await runJob(JOB_NAMES.publishMenu, publishPayload())
-      expect(await readVenueIndex(store, slug)).toEqual({
+      expect(await readVenueIndex(store, publicId)).toEqual({
         venue_id: world.venueId,
         menu_id: world.menuId,
+        slug,
+      })
+    })
+
+    it('replaces an index file of the older shape (no slug)', async () => {
+      await store.inner.put(
+        venueIndexPath(publicId),
+        new TextEncoder().encode(
+          JSON.stringify({ venue_id: world.venueId, menu_id: world.menuId }),
+        ),
+        publishPutOptionsFor(venueIndexPath(publicId)),
+      )
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      expect(await readVenueIndex(store, publicId)).toEqual({
+        venue_id: world.venueId,
+        menu_id: world.menuId,
+        slug,
       })
     })
 

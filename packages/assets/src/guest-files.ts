@@ -2,8 +2,8 @@
 // are in @restro/core (the guest page, which runs in the browser, reads them with the same
 // schemas); this is the store side:
 //
-//   v/<venue slug>.json      {venue_id, menu_id}        which menu `/m/<slug>` shows
-//   t/<table token>.json     {venue_slug, table_label}  what the QR code of a table means
+//   v/<venue public code>.json  {venue_id, menu_id, slug}  which menu `/m/<slug>-<code>` shows
+//   t/<table token>.json        {venue_public_id, venue_slug, table_label}  what the QR code of a table means
 //
 // The worker writes the first with every publish (apps/worker, writePublishFiles). The second is
 // written when a table gets a code and removed when it is retired, both by the worker's
@@ -22,7 +22,7 @@ import type { PublishStore } from './publish-store'
 
 const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
 
-/** The bytes of a slug index file. */
+/** The bytes of a venue index file. */
 export function venueIndexBytes(index: VenueIndex): Uint8Array {
   return encode(VenueIndexSchema.parse(index))
 }
@@ -41,12 +41,12 @@ export function parseGuestFile<S extends z.ZodType>(
   }
 }
 
-/** The slug index of a venue slug as the store holds it, or null (no file, or not valid). */
+/** The index of a venue's public code as the store holds it, or null (no file, or not valid). */
 export async function readVenueIndex(
   store: Pick<PublishStore, 'get'>,
-  slug: string,
+  publicId: string,
 ): Promise<VenueIndex | null> {
-  return parseGuestFile(VenueIndexSchema, await store.get(venueIndexPath(slug)))
+  return parseGuestFile(VenueIndexSchema, await store.get(venueIndexPath(publicId)))
 }
 
 /** What a table code means, or null for an unknown, retired or malformed token. */

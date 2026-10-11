@@ -186,20 +186,6 @@ describe('creating', () => {
     )
   })
 
-  it('shows a taken address next to the field and stays open', async () => {
-    vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error: 'slug_taken' })
-    const { user, onCreated, onOpenChange } = dialog()
-    await fill(user)
-    expect((await screen.findByTestId('new-venue-slug-error')).textContent).toBe(
-      'This address is already taken. Choose another one.',
-    )
-    expect(onCreated).not.toHaveBeenCalled()
-    expect(onOpenChange).not.toHaveBeenCalled()
-    // Typing a different address clears it.
-    await user.type(slug(), '-2')
-    expect(screen.queryByTestId('new-venue-slug-error')).toBeNull()
-  })
-
   it('says what went wrong for the other refusals', async () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],

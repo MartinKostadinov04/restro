@@ -1,10 +1,17 @@
 import { createPool, type DbPool, tenants, venues, withTenant } from '@restro/db'
+import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { newId } from '../ids'
 import * as core from '../index'
 import * as applyEntry from './index'
-import { ProvisionError, provisionTenant, provisionVenue } from './provision'
+import {
+  ProvisionError,
+  provisionMenu,
+  provisionTenant,
+  provisionVenue,
+  renameVenueSlug,
+} from './provision'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 /** A pool that is never used: the input checks run before any query. */
@@ -13,7 +20,12 @@ const unusedPool = {} as DbPool
 describe('module boundary', () => {
   it('is exported from @restro/core/apply, never from the pure @restro/core entry', () => {
     expect(Object.keys(applyEntry)).toEqual(
-      expect.arrayContaining(['provisionTenant', 'provisionVenue', 'ProvisionError']),
+      expect.arrayContaining([
+        'provisionTenant',
+        'provisionVenue',
+        'renameVenueSlug',
+        'ProvisionError',
+      ]),
     )
     expect(Object.keys(core)).not.toContain('provisionTenant')
     expect(Object.keys(core)).not.toContain('provisionVenue')
@@ -62,13 +74,35 @@ describe('input checks (no database needed)', () => {
       provisionVenue(unusedPool, 'tn_nope', { name: 'Club', slug: 'main' }),
     ).rejects.toMatchObject({ code: 'invalid_input' })
   })
+
+  it.each([
+    ['a slug in capitals', 'Main'],
+    ['a slug with a space', 'a b'],
+    ['a slug with a double dash', 'a--b'],
+    ['a slug that starts with a dash', '-a'],
+    ['an empty slug', ''],
+    ['a slug that is too long', 'a'.repeat(64)],
+  ])('renameVenueSlug refuses %s', async (_label, slug) => {
+    await expect(renameVenueSlug(unusedPool, newId('tn'), newId('vn'), slug)).rejects.toMatchObject(
+      { name: 'ProvisionError', code: 'invalid_input' },
+    )
+  })
+
+  it('renameVenueSlug refuses a malformed tenant or venue id', async () => {
+    await expect(renameVenueSlug(unusedPool, 'tn_nope', newId('vn'), 'main')).rejects.toMatchObject(
+      { code: 'invalid_input' },
+    )
+    await expect(
+      renameVenueSlug(unusedPool, newId('tn'), newId('nd'), 'main'),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+  })
 })
 
 describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app role)', () => {
   const tenantA = newId('tn')
   const tenantB = newId('tn')
   const tenantWithoutRow = newId('tn')
-  // Venue slugs are globally unique, so each run (and each parallel test file) uses its own.
+  // Slugs need not be unique (D68); a slug of its own per run tells this test's venues apart.
   const slugA = testSlug('demo-club')
   const slugB = testSlug('main')
   let app: DbPool
@@ -146,26 +180,107 @@ describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app 
     })
   })
 
-  it('provisionVenue reports a slug the tenant already uses as slug_taken', async () => {
-    await expect(
-      provisionVenue(app, tenantA, { name: 'Another', slug: slugA }),
-    ).rejects.toMatchObject({ name: 'ProvisionError', code: 'slug_taken' })
+  it('gives a venue a public code: 12 characters of a-z0-9, its own, and not made from its id', async () => {
+    const [first] = await withTenant(app, tenantA, (tx) =>
+      tx.select().from(venues).where(eq(venues.slug, slugA)),
+    )
+    if (!first) throw new Error('the first venue of tenantA should exist')
+    expect(first.publicId).toMatch(/^[a-z0-9]{12}$/)
+    // Rule 3: never derived from the internal id.
+    expect(first.id.toLowerCase()).not.toContain(first.publicId)
+
+    const more = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        provisionVenue(app, tenantB, { name: `Code ${i}`, slug: testSlug('code') }),
+      ),
+    )
+    const codes = [first.publicId, ...more.map((venue) => venue.publicId)]
+    expect(codes.every((code) => /^[a-z0-9]{12}$/.test(code))).toBe(true)
+    expect(new Set(codes).size).toBe(codes.length)
   })
 
-  it('a slug is a global public address: another tenant cannot take it either (slug_taken, not a raw database error)', async () => {
-    // tenantA holds slugA; tenantB cannot even see tenantA's venues (row-level security), so only
-    // the global unique index can tell it, and the error must still be the typed one.
-    const refusal = await provisionVenue(app, tenantB, { name: 'Intruder', slug: slugA }).then(
-      () => null,
-      (error: unknown) => error,
-    )
-    expect(refusal).toBeInstanceOf(ProvisionError)
-    expect(refusal).toMatchObject({ name: 'ProvisionError', code: 'slug_taken' })
-    // Nothing was created for tenantB under that slug, and tenantA still has its venue.
-    const seenByB = await withTenant(app, tenantB, (tx) => tx.select().from(venues))
-    expect(seenByB.map((venue) => venue.slug)).not.toContain(slugA)
+  it('lets any number of venues share a slug, in one tenant and across tenants (D68)', async () => {
+    // slugA is tenantA's already. A second venue of tenantA, one of tenantB: both fine.
+    const sameInA = await provisionVenue(app, tenantA, { name: 'Another', slug: slugA })
+    const sameInB = await provisionVenue(app, tenantB, { name: 'Intruder', slug: slugA })
+    expect(sameInA.slug).toBe(slugA)
+    expect(sameInB.slug).toBe(slugA)
+    // The public code is what tells them apart.
+    expect(new Set([sameInA.publicId, sameInB.publicId]).size).toBe(2)
     const seenByA = await withTenant(app, tenantA, (tx) => tx.select().from(venues))
-    expect(seenByA.map((venue) => venue.slug)).toEqual([slugA])
+    expect(seenByA.filter((venue) => venue.slug === slugA)).toHaveLength(2)
+  })
+
+  describe('renameVenueSlug', () => {
+    const readVenue = async (tenantId: string, venueId: string) =>
+      (
+        await withTenant(app, tenantId, (tx) =>
+          tx.select().from(venues).where(eq(venues.id, venueId)),
+        )
+      )[0]
+
+    it('changes the slug and leaves the public code and every other column alone', async () => {
+      const venue = await provisionVenue(app, tenantA, {
+        name: 'Renamed',
+        slug: testSlug('before'),
+      })
+      await provisionMenu(app, tenantA, venue.id)
+      const after = testSlug('after')
+      const result = await renameVenueSlug(app, tenantA, venue.id, after)
+      expect(result).toEqual({
+        venueId: venue.id,
+        slug: after,
+        publicId: venue.publicId,
+        changed: true,
+      })
+      const row = await readVenue(tenantA, venue.id)
+      expect(row).toMatchObject({
+        id: venue.id,
+        slug: after,
+        publicId: venue.publicId,
+        name: 'Renamed',
+        timezone: venue.timezone,
+        currency: venue.currency,
+        enabledLocales: venue.enabledLocales,
+        createdAt: venue.createdAt,
+      })
+    })
+
+    it('keeps the code through many renames, and writes nothing for the slug it already has', async () => {
+      const venue = await provisionVenue(app, tenantA, { name: 'Many', slug: testSlug('many') })
+      for (const slug of ['one', 'two', 'a', 'one']) {
+        const result = await renameVenueSlug(app, tenantA, venue.id, slug)
+        expect(result).toMatchObject({ slug, publicId: venue.publicId, changed: true })
+      }
+      const before = await readVenue(tenantA, venue.id)
+      const again = await renameVenueSlug(app, tenantA, venue.id, 'one')
+      expect(again).toMatchObject({ slug: 'one', publicId: venue.publicId, changed: false })
+      const afterwards = await readVenue(tenantA, venue.id)
+      expect(afterwards?.publicId).toBe(venue.publicId)
+      // No update happened, so the touch trigger did not move updated_at.
+      expect(afterwards?.updatedAt).toEqual(before?.updatedAt)
+    })
+
+    it('takes a slug another venue holds', async () => {
+      const venue = await provisionVenue(app, tenantA, { name: 'Twin', slug: testSlug('twin') })
+      const result = await renameVenueSlug(app, tenantA, venue.id, slugB)
+      expect(result).toMatchObject({ slug: slugB, changed: true })
+    })
+
+    it('does not see a venue of another tenant: venue_missing, nothing changed', async () => {
+      const theirs = await provisionVenue(app, tenantB, {
+        name: 'Theirs',
+        slug: testSlug('theirs'),
+      })
+      await expect(renameVenueSlug(app, tenantA, theirs.id, 'mine')).rejects.toMatchObject({
+        name: 'ProvisionError',
+        code: 'venue_missing',
+      })
+      expect((await readVenue(tenantB, theirs.id))?.slug).toBe(theirs.slug)
+      await expect(renameVenueSlug(app, tenantA, newId('vn'), 'mine')).rejects.toMatchObject({
+        code: 'venue_missing',
+      })
+    })
   })
 
   it('provisionVenue reports a tenant that has no row yet', async () => {

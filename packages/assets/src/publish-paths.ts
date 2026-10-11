@@ -8,14 +8,14 @@
 //   m/<nd_ id>/<vn_ id>/current.json   {snapshot_id, version, hash}: which snapshot is current
 //   m/<nd_ id>/<vn_ id>/live.json      the live overlay (sold-out marks)
 //   a/<as_ id>/w<width>.webp           a photo variant; never changes
-//   v/<venue slug>.json                {venue_id, menu_id}: which menu `/m/<slug>` shows (S3-03)
-//   t/<table token>.json               {venue_slug, table_label}: what a table's QR code means (S3-03)
+//   v/<venue public code>.json         {venue_id, menu_id, slug}: which menu `/m/<slug>-<code>` shows (S3-03, D68)
+//   t/<table token>.json               {venue_public_id, venue_slug, table_label}: what a table's QR code means
 //
 // Pure: no I/O.
 import {
   type AssetId,
   isId,
-  isVenueSlug,
+  isPublicId,
   type NodeId,
   type SnapshotId,
   TABLE_TOKEN_PATTERN,
@@ -37,7 +37,7 @@ export type ParsedPublishPath =
   | { readonly kind: 'current'; readonly menuId: NodeId; readonly venueId: VenueId }
   | { readonly kind: 'live'; readonly menuId: NodeId; readonly venueId: VenueId }
   | { readonly kind: 'variant'; readonly assetId: AssetId; readonly width: number }
-  | { readonly kind: 'venue_index'; readonly slug: string }
+  | { readonly kind: 'venue_index'; readonly publicId: string }
   | { readonly kind: 'table_token'; readonly token: string }
 
 /** Thrown for a path that is not one of the shapes. */
@@ -60,8 +60,10 @@ export function parsePublishPath(path: string): ParsedPublishPath | null {
     return null
   }
   if (parts.length === 2 && parts[0] === 'v') {
-    const slug = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
-    if (isVenueSlug(slug)) return { kind: 'venue_index', slug }
+    // The older `v/<slug>.json` files (test data) are no path of ours any more: a slug is not a
+    // public code, so they cannot be read, written or served.
+    const publicId = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
+    if (isPublicId(publicId)) return { kind: 'venue_index', publicId }
     return null
   }
   if (parts.length === 2 && parts[0] === 't') {
@@ -106,8 +108,8 @@ export const livePath = (menuId: NodeId, venueId: VenueId): string =>
 /** The path of a photo variant (`assetVariantFile` in core builds the same string). */
 export const variantPath = (assetId: AssetId, width: number): string =>
   `a/${assetId}/w${width}.webp`
-/** The path of the slug index of a venue: which menu `/m/<slug>` shows. */
-export const venueIndexPath = (slug: string): string => `v/${slug}.json`
+/** The path of the index of a venue, by its public code: which menu `/m/<slug>-<code>` shows. */
+export const venueIndexPath = (publicId: string): string => `v/${publicId}.json`
 /** The path of the file behind a table's QR code. */
 export const tableTokenPath = (token: string): string => `t/${token}.json`
 
@@ -115,7 +117,7 @@ const IMMUTABLE = 'public, max-age=31536000, immutable'
 
 /**
  * The `Cache-Control` of a file, by its path (doc "Files on the CDN"): snapshots and variants never
- * change under their path (a year, immutable); the pointer, the slug index and a table's file are
+ * change under their path (a year, immutable); the pointer, the venue index and a table's file are
  * read every 30 seconds; the live overlay every 15. Throws for a path that is not one of the shapes.
  */
 export function publishCacheControl(path: string): string {

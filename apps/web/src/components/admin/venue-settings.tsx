@@ -2,6 +2,9 @@ import type { Venue } from '@restro/db'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { Badge } from '@/components/ui/badge'
 import { FormSection } from '@/components/ui/form-section'
+import { canManageIntegration } from '@/server/roles'
+
+import { VenueAddress } from './venue-address'
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -12,8 +15,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-/** The venue's settings, read-only: editing them arrives with the composer (Stage 2). */
-export async function VenueSettings({ venue }: { venue: Venue }) {
+/**
+ * The venue's settings. The menu address can be renamed by an owner or admin (CF-14, D68); the
+ * rest is read-only: editing it arrives with the composer (Stage 2).
+ */
+export async function VenueSettings({ venue, role }: { venue: Venue; role: string }) {
   const t = await getTranslations('workspace.settings')
   const uiLocale = await getLocale()
   const languageNames = new Intl.DisplayNames([uiLocale], { type: 'language' })
@@ -25,8 +31,14 @@ export async function VenueSettings({ venue }: { venue: Venue }) {
     <FormSection title={t('title')} description={t('description')}>
       <dl className="grid gap-4">
         <Row label={t('name')}>{venue.name}</Row>
-        <Row label={t('slug')}>
-          <code className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">{venue.slug}</code>
+        <Row label={t('address')}>
+          <VenueAddress
+            venueId={venue.id}
+            venueName={venue.name}
+            slug={venue.slug}
+            publicId={venue.publicId}
+            canEdit={canManageIntegration(role)}
+          />
         </Row>
         <Row label={t('timezone')}>{venue.timezone}</Row>
         <Row label={t('serviceDayEnd')}>{venue.serviceDayEndsAt.slice(0, 5)}</Row>
