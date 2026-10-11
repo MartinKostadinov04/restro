@@ -2,6 +2,7 @@
 
 // "On guests' phones now": the version guests see, when and by whom it was published, and the link
 // to the guest page. Before the first publish it says so and offers the Publish button.
+import { menuPath } from '@restro/core'
 import { ExternalLinkIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -69,7 +70,7 @@ export function LiveCard({
       </div>
       <div>
         <a
-          href={`/m/${view.venueSlug}`}
+          href={menuPath({ slug: view.venueSlug, publicId: view.venuePublicId })}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"

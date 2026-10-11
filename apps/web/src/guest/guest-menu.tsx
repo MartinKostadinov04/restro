@@ -7,8 +7,14 @@
 // to the service day) and is fetched again at once with a cache-busting query. States: a loading
 // skeleton, and a friendly notice for an unknown venue, a menu that is not published yet, or a
 // failed load.
+//
+// The address is `/m/<slug>-<code>` (D68). Only the code finds the venue (`parseMenuParam`); the
+// slug is decoration. The venue index carries the current slug, and when the address bar says
+// something else (a renamed venue, a bare code, a mistyped slug) the page replaces it with the
+// canonical path through the History API, keeping `?t=`, `?lang=` and the rest. There is no
+// redirect and no server read: the page stays a static shell over published files (rule 4).
 
-import type { LiveOverlay, Locale } from '@restro/core'
+import { type LiveOverlay, type Locale, menuPath, parseMenuParam } from '@restro/core'
 import { bcp47, QrPhoneFace, QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -81,7 +87,10 @@ function useVisibleInterval(callback: () => void, ms: number, enabled: boolean):
   }, [ms, enabled])
 }
 
-export function GuestMenu({ slug }: { readonly slug: string }) {
+/** `venue` is the route parameter of `/m/[venue]`: `<slug>-<code>`, or the bare code. */
+export function GuestMenu({ venue }: { readonly venue: string }) {
+  // null for an address that names no venue.
+  const publicId = parseMenuParam(venue)
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   // The address and the browser are read after mount, so the first client render equals the server's.
   const [search, setSearch] = useState('')
@@ -102,9 +111,13 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` only restarts the load
   useEffect(() => {
     let cancelled = false
-    setPhase({ kind: 'loading' })
     refetchedFor.current = null
-    loadMenu(deps, slug).then(
+    if (publicId === null) {
+      setPhase({ kind: 'error', reason: 'unknown_venue' })
+      return
+    }
+    setPhase({ kind: 'loading' })
+    loadMenu(deps, publicId).then(
       (menu) => {
         if (!cancelled) setPhase({ kind: 'ready', menu })
       },
@@ -116,24 +129,36 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
     return () => {
       cancelled = true
     }
-  }, [deps, slug, attempt])
+  }, [deps, publicId, attempt])
+
+  // The address corrects itself: the venue index names the venue's current slug, and the address
+  // bar is replaced (not pushed, no redirect) when it shows another path.
+  const indexSlug = phase.kind === 'ready' ? phase.menu.index.slug : null
+  useEffect(() => {
+    if (publicId === null || indexSlug === null) return
+    const canonical = menuPath({ slug: indexSlug, publicId })
+    if (window.location.pathname === canonical) return
+    const url = new URL(window.location.href)
+    url.pathname = canonical
+    window.history.replaceState(null, '', url)
+  }, [publicId, indexSlug])
 
   // The code in the address is a claim until the published `t/<token>.json` answers for this venue.
   // The banner and the shell's context use the confirmed table only: an unknown code is no code.
   const requestedToken = readTableToken(search)
   useEffect(() => {
-    if (requestedToken === null) {
+    if (requestedToken === null || publicId === null) {
       setFoundTable(null)
       return
     }
     let cancelled = false
-    loadTableLabel(deps, requestedToken, slug).then((label) => {
+    loadTableLabel(deps, requestedToken, publicId).then((label) => {
       if (!cancelled) setFoundTable(label === null ? null : { token: requestedToken, label })
     })
     return () => {
       cancelled = true
     }
-  }, [deps, slug, requestedToken])
+  }, [deps, publicId, requestedToken])
   const table = confirmedTable(requestedToken, foundTable)
   const tableToken = table?.token ?? null
   const tableLabel = table?.label ?? null

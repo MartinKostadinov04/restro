@@ -20,22 +20,25 @@ import {
 } from './load'
 
 const BASE = '/cdn'
+/** The public code of the venue in these tests; the slug is only decoration (D68). */
+const CODE = 'k3x9p2m7qa1z'
 
 /** The published files of a fixture, by URL; anything else is a 404. */
-function publishedFiles(name = 'tags-dietary', slug = 'demo-club') {
+function publishedFiles(name = 'tags-dietary', code = CODE) {
   const { snapshot, overlay } = fixture(name)
   const index = VenueIndexSchema.parse({
     venue_id: snapshot.snapshot.venue_id,
     menu_id: snapshot.snapshot.menu_id,
+    slug: 'demo-club',
   })
   const pointer = CurrentPointerSchema.parse({
     snapshot_id: snapshot.snapshot.id,
     version: snapshot.snapshot.version,
     hash: snapshot.snapshot.hash,
   })
-  const table = { venue_slug: slug, table_label: '12' }
+  const table = { venue_public_id: code, venue_slug: 'demo-club', table_label: '12' }
   const bodies = new Map<string, unknown>([
-    [files.index(BASE, slug), index],
+    [files.index(BASE, code), index],
     [files.current(BASE, index), pointer],
     [files.snapshot(BASE, pointer), snapshot],
     [files.live(BASE, index), overlay ?? { version: pointer.version, items: {} }],
@@ -56,9 +59,9 @@ function publishedFiles(name = 'tags-dietary', slug = 'demo-club') {
 }
 
 describe('the guest loader follows the published files (rule 4)', () => {
-  it('goes slug index -> pointer -> snapshot -> overlay, and asks for nothing else', async () => {
+  it('goes venue index -> pointer -> snapshot -> overlay, and asks for nothing else', async () => {
     const f = publishedFiles()
-    const menu = await loadMenu(f.deps(), 'demo-club')
+    const menu = await loadMenu(f.deps(), CODE)
     expect(menu.index).toEqual(f.index)
     expect(menu.pointer).toEqual(f.pointer)
     expect(menu.snapshot.snapshot.id).toBe(f.pointer.snapshot_id)
@@ -66,29 +69,41 @@ describe('the guest loader follows the published files (rule 4)', () => {
     // Every request is under the CDN base and is one of the four files of the chain.
     expect(f.asked).toHaveLength(4)
     expect(f.asked.every((url) => url.startsWith(`${BASE}/`))).toBe(true)
-    expect(f.asked[0]).toBe(`${BASE}/v/demo-club.json`)
+    expect(f.asked[0]).toBe(`${BASE}/v/${CODE}.json`)
   })
 
-  it('says the venue is unknown when the slug index is missing', async () => {
+  it('carries the current slug in the venue index', async () => {
     const f = publishedFiles()
-    await expect(loadMenu(f.deps(), 'no-such-club')).rejects.toMatchObject({
+    expect((await loadVenueIndex(f.deps(), CODE)).slug).toBe('demo-club')
+  })
+
+  it('says the venue is unknown when the index of the code is missing', async () => {
+    const f = publishedFiles()
+    await expect(loadMenu(f.deps(), '000000000000')).rejects.toMatchObject({
       reason: 'unknown_venue',
     })
-    // A slug that cannot be one is unknown without asking anyone.
+    // Something that cannot be a public code is unknown without asking anyone.
     const before = f.asked.length
     await expect(loadVenueIndex(f.deps(), '../etc/passwd')).rejects.toMatchObject({
       reason: 'unknown_venue',
     })
     await expect(loadVenueIndex(f.deps(), 'Demo Club')).rejects.toBeInstanceOf(GuestLoadError)
+    // A slug alone is no code, and neither is a code in capitals.
+    await expect(loadVenueIndex(f.deps(), 'demo-club')).rejects.toMatchObject({
+      reason: 'unknown_venue',
+    })
+    await expect(loadVenueIndex(f.deps(), CODE.toUpperCase())).rejects.toMatchObject({
+      reason: 'unknown_venue',
+    })
     expect(f.asked.length).toBe(before)
   })
 
   it('says the menu is not published yet when the venue has no pointer', async () => {
     const f = publishedFiles()
     // The index names a menu nothing was published for: its pointer file does not exist.
-    const other = { venue_id: f.index.venue_id, menu_id: `nd_${'A'.repeat(22)}` }
-    const index = new Map<string, unknown>([[files.index(BASE, 'demo-club'), other]])
-    await expect(loadMenu(f.deps(index), 'demo-club')).rejects.toMatchObject({
+    const other = { venue_id: f.index.venue_id, menu_id: `nd_${'A'.repeat(22)}`, slug: 'demo-club' }
+    const index = new Map<string, unknown>([[files.index(BASE, CODE), other]])
+    await expect(loadMenu(f.deps(index), CODE)).rejects.toMatchObject({
       reason: 'not_published',
     })
   })
@@ -98,11 +113,11 @@ describe('the guest loader follows the published files (rule 4)', () => {
     const noLive = new Map<string, unknown>([
       [files.live(BASE, f.index), new Response(null, { status: 404 })],
     ])
-    expect((await loadMenu(f.deps(noLive), 'demo-club')).live).toBeNull()
+    expect((await loadMenu(f.deps(noLive), CODE)).live).toBeNull()
     const broken = new Map<string, unknown>([
       [files.live(BASE, f.index), new Response('nope', { status: 500 })],
     ])
-    expect((await loadMenu(f.deps(broken), 'demo-club')).live).toBeNull()
+    expect((await loadMenu(f.deps(broken), CODE)).live).toBeNull()
     await expect(loadLive(f.deps(broken), f.index)).rejects.toMatchObject({ reason: 'failed' })
   })
 
@@ -117,7 +132,7 @@ describe('the guest loader follows the published files (rule 4)', () => {
     const overrides = new Map<string, unknown>([[files.live(BASE, f.index), newer]])
     const live = await loadLive(f.deps(overrides), f.index)
     expect(live?.items).toEqual({ [first]: { sold_out: true } })
-    expect((await loadMenu(f.deps(overrides), 'demo-club')).live?.items).toEqual({
+    expect((await loadMenu(f.deps(overrides), CODE)).live?.items).toEqual({
       [first]: { sold_out: true },
     })
     // Inside `items` nothing is guessed: a mark of another shape is still a failed parse.
@@ -133,10 +148,12 @@ describe('the guest loader follows the published files (rule 4)', () => {
       ['server error', new Response(null, { status: 503 })],
       ['not json', new Response('<html>', { status: 200 })],
       ['wrong shape', { venue_id: 'vn_x' }],
+      // The older index, without the slug.
+      ['no slug', { venue_id: f.index.venue_id, menu_id: f.index.menu_id }],
     ]
     for (const [label, body] of cases) {
-      const overrides = new Map<string, unknown>([[files.index(BASE, 'demo-club'), body]])
-      await expect(loadMenu(f.deps(overrides), 'demo-club'), label).rejects.toMatchObject({
+      const overrides = new Map<string, unknown>([[files.index(BASE, CODE), body]])
+      await expect(loadMenu(f.deps(overrides), CODE), label).rejects.toMatchObject({
         reason: 'failed',
       })
     }
@@ -146,7 +163,7 @@ describe('the guest loader follows the published files (rule 4)', () => {
         throw new TypeError('network down')
       },
     }
-    await expect(loadMenu(offline, 'demo-club')).rejects.toMatchObject({ reason: 'failed' })
+    await expect(loadMenu(offline, CODE)).rejects.toMatchObject({ reason: 'failed' })
   })
 
   it('refuses a snapshot that fails the strict schema (e.g. one with a barsy id field)', async () => {
@@ -268,21 +285,23 @@ describe('the table banner', () => {
 
   it('reads the label from t/<token>.json', async () => {
     const f = publishedFiles()
-    expect(await loadTableLabel(f.deps(), token, 'demo-club')).toBe('12')
+    expect(await loadTableLabel(f.deps(), token, CODE)).toBe('12')
     expect(f.asked.at(-1)).toBe(`${BASE}/t/${token}.json`)
   })
 
   it('leaves the banner out for an unknown code, another venue, a bad token or a failure', async () => {
     const f = publishedFiles()
-    expect(await loadTableLabel(f.deps(), 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', 'demo-club')).toBeNull()
-    expect(await loadTableLabel(f.deps(), token, 'other-club')).toBeNull()
+    expect(await loadTableLabel(f.deps(), 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', CODE)).toBeNull()
+    // Another venue is told apart by its public code; the slug in the file proves nothing.
+    expect(await loadTableLabel(f.deps(), token, 'zzzzzzzzzzzz')).toBeNull()
+    expect(await loadTableLabel(f.deps(), token, 'demo-club')).toBeNull()
     const before = f.asked.length
-    expect(await loadTableLabel(f.deps(), '../x', 'demo-club')).toBeNull()
+    expect(await loadTableLabel(f.deps(), '../x', CODE)).toBeNull()
     expect(f.asked.length).toBe(before)
     const broken = new Map<string, unknown>([
       [files.table(BASE, token), new Response('x', { status: 500 })],
     ])
-    expect(await loadTableLabel(f.deps(broken), token, 'demo-club')).toBeNull()
+    expect(await loadTableLabel(f.deps(broken), token, CODE)).toBeNull()
   })
 })
 

@@ -6,8 +6,10 @@ import { ADMIN_PASSWORD, PUBLISH_OWNER_EMAIL } from './support'
 // A venue with no till (CF-01, D64, D66) on a production build with the REAL worker beside it:
 // an owner makes a venue from the list, makes its menu by hand (a section, an item with a price),
 // fills in the allergens in the item sheet, publishes, and the guest page shows the item and its
-// price. Then the other side of D66: a venue that HAS a till (the publish fixture has a barsy
-// venue mapped to it) offers no "New item"; and a plain member is not offered "New venue".
+// price. The readable part of its address is renamed in Settings and the old link still opens the
+// menu, with the address bar corrected (CF-14, D68). Then the other side of D66: a venue that HAS
+// a till (the publish fixture has a barsy venue mapped to it) offers no "New item"; and a plain
+// member is not offered "New venue".
 // The organisation is the fixture of scripts/seed-no-till-e2e.ts (no venue to start with); each
 // run makes a venue under an address of its own.
 test.describe.configure({ mode: 'serial' })
@@ -23,6 +25,8 @@ const WORKER_WAIT = { timeout: 45_000 }
 let owner: BrowserContext
 let page: Page
 let venueUrl = ''
+/** The venue's menu address as its page shows it: `/m/<slug>-<code>` (D68). */
+let guestPath = ''
 
 async function signIn(target: Page, email: string) {
   // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
@@ -99,17 +103,28 @@ test('venue with no till: create the venue from the list', async () => {
     'Create a section, or connect a till in the Integration tab.',
   )
 
-  // The list has it, and its address is taken now.
+  // The address is the slug and a random code of 12 characters.
+  const address = page.getByTestId('venue-header-address')
+  await expect(address).toHaveText(new RegExp(`^/m/${SLUG}-[a-z0-9]{12}$`))
+  guestPath = (await address.textContent()) ?? ''
+
+  // The list has it, with the same address.
   await page.goto('/venues')
-  await expect(page.getByTestId('venue-card').filter({ hasText: VENUE_NAME })).toBeVisible()
+  const card = page.getByTestId('venue-card').filter({ hasText: VENUE_NAME })
+  await expect(card).toBeVisible()
+  await expect(card.getByTestId('venue-card-address')).toHaveText(guestPath)
+
+  // The readable part does not have to be free (D68): the same slug again makes a second venue
+  // with a code of its own.
   await page.getByTestId('new-venue').click()
   await page.getByTestId('new-venue-name').fill('Same address again')
   await page.getByTestId('new-venue-slug').fill(SLUG)
   await page.getByTestId('new-venue-submit').click()
-  await expect(page.getByTestId('new-venue-slug-error')).toHaveText(
-    'This address is already taken. Choose another one.',
-  )
-  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
+  await expect(page.getByRole('heading', { name: 'Same address again', level: 1 })).toBeVisible()
+  const twin = (await page.getByTestId('venue-header-address').textContent()) ?? ''
+  expect(twin).toMatch(new RegExp(`^/m/${SLUG}-[a-z0-9]{12}$`))
+  expect(twin).not.toBe(guestPath)
 })
 
 test('venue with no till: a section, an item with a price, allergens in the item sheet', async () => {
@@ -170,11 +185,14 @@ test('venue with no till: publish, and the guest page shows the item and its pri
     WORKER_WAIT,
   )
 
+  // The Publish tab links to the guest page at the venue's address.
+  await expect(page.getByTestId('guest-link')).toHaveAttribute('href', guestPath)
+
   // A guest on a fresh browser: the menu at /m/<address> with the item and its euro price.
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
-    await guest.goto(`/m/${SLUG}?lang=en`)
+    await guest.goto(`${guestPath}?lang=en`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     const card = guest.locator('[data-item]').filter({ hasText: 'Mojito' })
     await expect(card).toHaveCount(1)
@@ -182,6 +200,67 @@ test('venue with no till: publish, and the guest page shows the item and its pri
   } finally {
     await context.close()
   }
+})
+
+test('Settings: the readable part of the address is renamed, and the old link still opens the menu', async ({
+  browser,
+}) => {
+  await page.goto(`${venueUrl}?tab=settings`)
+  const code = /^\/m\/.+-([a-z0-9]{12})$/.exec(guestPath)?.[1] ?? ''
+  expect(code).not.toBe('')
+  const link = page.getByTestId('venue-address')
+  await expect(link).toHaveText(guestPath)
+
+  // The suggestion follows the venue's name; the person types their own.
+  const renamed = `club-${RUN}`
+  await page.getByTestId('venue-slug-input').fill('something-else')
+  await page.getByTestId('venue-slug-suggest').click()
+  await expect(page.getByTestId('venue-slug-input')).toHaveValue(SLUG)
+  await page.getByTestId('venue-slug-input').fill(renamed)
+  await page.getByTestId('venue-slug-save').click()
+  const newPath = `/m/${renamed}-${code}`
+  await expect(link).toHaveText(newPath)
+  await expect(
+    page.getByText('Address saved. Guests see the new name within a minute.'),
+  ).toBeVisible()
+  // The venue's page names it too, after a reload; the code is the same.
+  await page.reload()
+  await expect(page.getByTestId('venue-header-address')).toHaveText(newPath)
+
+  // The worker (queued by the rename) writes the venue index again with the new slug: wait for it
+  // the way a CDN would show it, with a request that has no browser cache.
+  await expect
+    .poll(
+      async () =>
+        ((await (await page.request.get(`/cdn/v/${code}.json`)).json()) as { slug: string }).slug,
+      WORKER_WAIT,
+    )
+    .toBe(renamed)
+
+  // The old link still opens the menu, and the address bar shows the new slug (and keeps ?lang=).
+  const context = await browser.newContext()
+  try {
+    const guest = await context.newPage()
+    await guest.goto(`${guestPath}?lang=en`)
+    await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(1)
+    await expect.poll(() => new URL(guest.url()).pathname).toBe(newPath)
+    expect(new URL(guest.url()).search).toBe('?lang=en')
+
+    // The new link opens it as well, and is left as it is.
+    await guest.goto(`${newPath}?lang=en`)
+    await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(1)
+    expect(new URL(guest.url()).pathname).toBe(newPath)
+  } finally {
+    await context.close()
+  }
+
+  // A slug that is not one is refused in the field, before anything is sent.
+  await page.goto(`${venueUrl}?tab=settings`)
+  await page.getByTestId('venue-slug-input').fill('Not a slug!')
+  await expect(page.getByTestId('venue-slug-invalid')).toBeVisible()
+  await expect(page.getByTestId('venue-slug-save')).toBeDisabled()
+  guestPath = newPath
 })
 
 test('a venue with a till offers no New item: its items come from the till (D66)', async ({

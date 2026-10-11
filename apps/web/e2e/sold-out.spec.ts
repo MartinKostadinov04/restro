@@ -5,6 +5,7 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 import pg from 'pg'
 
 import { runScript } from './global-setup'
+import { addressOfVenue } from './menu-path'
 import { ADMIN_PASSWORD } from './support'
 
 // Sold out tonight, end to end on a production build with the REAL worker running beside it (brief
@@ -44,6 +45,8 @@ let page: Page
 let venueId = ''
 let menuId = ''
 let tenantId = ''
+/** The venue's guest address, `/m/<slug>-<code>` (D68). */
+let guestPath = ''
 let db: pg.Pool
 let ownerState: Awaited<ReturnType<BrowserContext['storageState']>>
 let memberState: Awaited<ReturnType<BrowserContext['storageState']>>
@@ -85,7 +88,7 @@ async function guestState(browser: Browser, name: string) {
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
-    await guest.goto(`/m/${SLUG}?lang=bg`)
+    await guest.goto(`${guestPath}?lang=bg`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     const card = guest
       .locator('[data-item]')
@@ -175,6 +178,9 @@ test.beforeAll(async ({ browser }) => {
   tenantId = rows[0]?.tenant_id ?? ''
   menuId = rows[0]?.menu_id ?? ''
   expect(tenantId).not.toBe('')
+  const address = await addressOfVenue({ venueId })
+  expect(address.slug).toBe(SLUG)
+  guestPath = address.path
   ownerState = await owner.storageState()
 
   const memberContext = await browser.newContext()
@@ -233,7 +239,7 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
   })
   try {
     const phone = await guest.newPage()
-    await phone.goto(`/m/${SLUG}?lang=bg`)
+    await phone.goto(`${guestPath}?lang=bg`)
     await expect(phone.getByRole('heading', { level: 1 })).toBeVisible()
     await phone.screenshot({ path: shotPath('bg-light-phone-guest-sold-out') })
   } finally {

@@ -27,31 +27,34 @@ const as = newId('as')
 const BYTES = Uint8Array.from([1, 2, 3])
 
 describe('publish paths', () => {
-  it('knows the slug index and the table token shapes (S3-03)', () => {
-    expect(parsePublishPath(venueIndexPath('demo-club'))).toEqual({
+  it('knows the venue index and the table token shapes (S3-03, D68)', () => {
+    expect(parsePublishPath(venueIndexPath('k3x9p2m7qa1z'))).toEqual({
       kind: 'venue_index',
-      slug: 'demo-club',
+      publicId: 'k3x9p2m7qa1z',
     })
     expect(parsePublishPath(tableTokenPath('tb_0123456789ABCDEFGHIJKL'))).toEqual({
       kind: 'table_token',
       token: 'tb_0123456789ABCDEFGHIJKL',
     })
-    expect(publishCacheControl(venueIndexPath('demo-club'))).toBe('public, max-age=30')
+    expect(publishCacheControl(venueIndexPath('k3x9p2m7qa1z'))).toBe('public, max-age=30')
     expect(publishCacheControl(tableTokenPath('abcdefgh'))).toBe('public, max-age=30')
-    expect(publishContentType(venueIndexPath('demo-club'))).toBe('application/json')
+    expect(publishContentType(venueIndexPath('k3x9p2m7qa1z'))).toBe('application/json')
   })
 
   it.each([
     'v/.json',
+    // The older v/<slug>.json files are no path any more: a slug is not a public code.
+    'v/demo-club.json',
+    'v/demo.json',
     'v/Demo-Club.json',
-    'v/demo_club.json',
-    'v/-demo.json',
-    'v/demo-.json',
-    'v/demo--club.json',
+    'v/K3X9P2M7QA1Z.json',
+    'v/k3x9p2m7qa1.json',
+    'v/k3x9p2m7qa1zz.json',
+    'v/k3x9p2m7qa1_.json',
     `v/${'a'.repeat(64)}.json`,
-    'v/demo-club.json/x',
-    'v/demo-club.JSON',
-    'v/demo/club.json',
+    'v/k3x9p2m7qa1z.json/x',
+    'v/k3x9p2m7qa1z.JSON',
+    'v/k3x9p2m7/qa1z.json',
     'v/../snap.json',
     't/short.json',
     't/with.dot12345.json',

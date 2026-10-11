@@ -122,9 +122,9 @@ function NewVenueForm({ onOpenChange, onCreated }: NewVenueDialogProps) {
     })
   }
 
-  const slugError =
-    error === 'slug_taken' ? t('slugTaken') : touched && !slugValid ? t('slugInvalid') : null
-  const generalError = error === null || error === 'slug_taken' ? null : t(`errors.${error}`)
+  // The readable part of the address need not be free: a random code is added to it (D68).
+  const slugError = touched && !slugValid ? t('slugInvalid') : null
+  const generalError = error === null ? null : t(`errors.${error}`)
 
   return (
     <DialogContent data-testid="new-venue-dialog">

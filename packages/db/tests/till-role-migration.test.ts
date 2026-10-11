@@ -39,13 +39,19 @@ function statements(path: string): string[] {
     .filter((part) => part.replace(/--[^\n]*/g, '').trim() !== '')
 }
 
-/** A migrations folder holding the migrations before 0014 only (the database before CF-03). */
-function foldersBefore0014(): string {
-  const folder = mkdtempSync(join(tmpdir(), 'restro-0013-'))
+/**
+ * A migrations folder holding the migrations before 0014 (the database before CF-03), or, with
+ * `through`, up to and including 0014. Later migrations (0015 on) are left out on purpose: this
+ * test is about 0014 and its reverse script, which forgets 0014 in Drizzle's journal.
+ */
+function migrationsFolder(through = false): string {
+  const folder = mkdtempSync(join(tmpdir(), 'restro-0014-'))
   mkdirSync(join(folder, 'meta'))
   const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'))
-  const entries = (journal as Journal).entries.filter((entry) => entry.tag < TAG)
-  expect(entries.map((entry) => entry.idx)).toEqual([...Array(14).keys()])
+  const entries = (journal as Journal).entries.filter((entry) =>
+    through ? entry.tag <= TAG : entry.tag < TAG,
+  )
+  expect(entries.map((entry) => entry.idx)).toEqual([...Array(through ? 15 : 14).keys()])
   writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }))
   for (const entry of entries) {
     cpSync(join(MIGRATIONS, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`))
@@ -114,6 +120,7 @@ describe.skipIf(!hasDatabase)('migration 0014 (till role) and its reverse script
   let admin: pg.Client
   let client: pg.Client
   let before0014: string
+  let through0014: string
   const db = () => drizzle({ client })
   const migrateTo = (folder: string) =>
     migrate(db(), {
@@ -147,7 +154,8 @@ describe.skipIf(!hasDatabase)('migration 0014 (till role) and its reverse script
     url.pathname = `/${database}`
     client = new pg.Client({ connectionString: url.toString() })
     await client.connect()
-    before0014 = foldersBefore0014()
+    before0014 = migrationsFolder()
+    through0014 = migrationsFolder(true)
     await migrateTo(before0014)
 
     // The rows a barsy pull, a person and the photo fetch wrote before CF-03.
@@ -303,6 +311,7 @@ describe.skipIf(!hasDatabase)('migration 0014 (till role) and its reverse script
   afterAll(async () => {
     await client?.end()
     if (before0014) rmSync(before0014, { recursive: true, force: true })
+    if (through0014) rmSync(through0014, { recursive: true, force: true })
     if (admin) {
       await admin.query(`drop database if exists ${database} with (force)`)
       await admin.end()
@@ -337,7 +346,7 @@ describe.skipIf(!hasDatabase)('migration 0014 (till role) and its reverse script
   it('0014 renames the till role in every row and keeps everything else', async () => {
     const tillCount = start.values.filter((row) => row.layer === 'barsy').length
     expect(tillCount).toBe(5)
-    await migrateTo(MIGRATIONS)
+    await migrateTo(through0014)
     const after = await snapshot()
     const sortBy = (key: (row: Row) => string) => (a: Row, b: Row) => compareText(key(a), key(b))
     expect(after.values).toEqual(start.values.map(renamedValue).sort(sortBy(valueKey)))
@@ -457,7 +466,7 @@ describe.skipIf(!hasDatabase)('migration 0014 (till role) and its reverse script
     )
     expect(rows[0]?.count).toBe(14)
 
-    await migrateTo(MIGRATIONS)
+    await migrateTo(through0014)
     expect(await snapshot()).toEqual(applied)
   })
 })

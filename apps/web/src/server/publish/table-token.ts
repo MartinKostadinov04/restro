@@ -1,12 +1,14 @@
 // /t/<token>: what a table's QR code does (brief S3-03, D61). It reads `t/<token>.json` from the
 // publish store (the local store directly, or the CDN when PUBLISH_STORE=r2), never the database,
-// and answers with a 302 to `/m/<venue slug>?t=<token>`. A token nobody knows (never made, retired,
-// mistyped) gets a small page that says so in Bulgarian and English and names no venue.
+// and answers with a 302 to `menuPath(...)?t=<token>` (`/m/<slug>-<code>?t=<token>`, D68; the slug
+// in the file may be stale after a rename, which the guest page corrects). A token nobody knows
+// (never made, retired, mistyped) gets a small page that says so in Bulgarian and English and
+// names no venue.
 //
 // The page's words are the admin message files (`tablePage`), so they are reviewed with the rest
 // of the interface wording (T44).
 import { type PublishStore, readTableTokenFile } from '@restro/assets'
-import { TABLE_TOKEN_PATTERN } from '@restro/core'
+import { menuPath, TABLE_TOKEN_PATTERN } from '@restro/core'
 
 import bg from '../../../messages/bg.json'
 import en from '../../../messages/en.json'
@@ -104,8 +106,9 @@ export async function tableTokenResponse(
     return inactivePage(503)
   }
   if (file === null) return inactivePage()
+  const menu = menuPath({ slug: file.venue_slug, publicId: file.venue_public_id })
   return new Response(null, {
     status: 302,
-    headers: { ...HEADERS, Location: `/m/${file.venue_slug}?t=${encodeURIComponent(token)}` },
+    headers: { ...HEADERS, Location: `${menu}?t=${encodeURIComponent(token)}` },
   })
 }

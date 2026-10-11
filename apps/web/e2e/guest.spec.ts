@@ -4,13 +4,32 @@ import { fileURLToPath } from 'node:url'
 import { devices, expect, type Page, test } from '@playwright/test'
 
 import { DEMO_ITEMS, DEMO_SECTIONS } from '../scripts/lib/demo-menu'
-import { GUEST_SLUG, GUEST_TABLE_LABEL, GUEST_TABLE_TOKEN, TAG_SLUG } from './support'
+import { addressOfVenue, type VenueAddress } from './menu-path'
+import {
+  GUEST_SLUG,
+  GUEST_TABLE_LABEL,
+  GUEST_TABLE_TOKEN,
+  TAG_PUBLIC_ID,
+  TAG_SLUG,
+} from './support'
 
 // The guest's phone page on a production build (brief S3-03): the demo venue's menu that
 // `scripts/seed-guest-e2e.ts` published into the e2e publish folder, read through `/cdn`, on a
 // Pixel 7 (and an iPhone 13 sized screen for one picture). No sign-in: the page is public. The
 // screenshots (BG and EN, light and dark) go to `.local/screenshots/s3/`.
+//
+// The address is `/m/<slug>-<code>` (CF-14, D68). The demo venue's code is random, so the specs read
+// it from the database (e2e/menu-path.ts) before they start.
 test.use({ ...devices['Pixel 7'] })
+
+/** The demo venue's address, read once before the tests. */
+let GUEST: VenueAddress
+/** The tagged fixture menu has no venue row: its code is a fixed one. */
+const TAG_PATH = `/m/${TAG_SLUG}-${TAG_PUBLIC_ID}`
+
+test.beforeAll(async () => {
+  GUEST = await addressOfVenue({ slug: GUEST_SLUG })
+})
 
 const SHOTS = fileURLToPath(new URL('../../../.local/screenshots/s3/', import.meta.url))
 mkdirSync(SHOTS, { recursive: true })
@@ -31,11 +50,11 @@ const sectionTitles = (page: Page) => page.locator('h2.rq-section-title').allTex
 const card = (page: Page, name: string) =>
   page.locator('[data-item]').filter({ has: page.getByRole('heading', { name, exact: true }) })
 
-test.describe('the menu of /m/demo-club', () => {
+test.describe('the menu of /m/demo-club-<code>', () => {
   test('shows the sections in order, a price, and the language switch BG <-> EN', async ({
     page,
   }) => {
-    await open(page, `/m/${GUEST_SLUG}?lang=bg`)
+    await open(page, `${GUEST.path}?lang=bg`)
     expect((await sectionTitles(page)).slice(0, 4)).toEqual(SECTIONS_BG)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
     // A price in the venue's money, formatted for Bulgarian.
@@ -55,7 +74,7 @@ test.describe('the menu of /m/demo-club', () => {
   })
 
   test('opens the allergen legend from a code, with the full names', async ({ page }) => {
-    await open(page, `/m/${GUEST_SLUG}?lang=bg`)
+    await open(page, `${GUEST.path}?lang=bg`)
     // Gluten is number 1 of the EU list; the beer has it.
     const beer = card(page, 'Загорка 500 мл')
     await beer.getByRole('button', { name: 'Глутен' }).click()
@@ -71,7 +90,7 @@ test.describe('the menu of /m/demo-club', () => {
   })
 
   test('filters by a dietary label, and back', async ({ page }) => {
-    await open(page, `/m/${GUEST_SLUG}?lang=bg`)
+    await open(page, `${GUEST.path}?lang=bg`)
     const before = await names(page)
     await page.getByRole('group', { name: 'Диета' }).getByRole('button', { name: 'Веган' }).click()
     await expect.poll(() => names(page)).toEqual(['Негрони', 'Пържени картофки'])
@@ -80,7 +99,7 @@ test.describe('the menu of /m/demo-club', () => {
   })
 
   test('jumps to a section from the sticky bar and highlights it', async ({ page }) => {
-    await open(page, `/m/${GUEST_SLUG}?lang=bg`)
+    await open(page, `${GUEST.path}?lang=bg`)
     const bar = page.getByRole('navigation', { name: 'Раздели на менюто' })
     await bar.getByRole('link', { name: 'Храна', exact: true }).click()
     await expect(bar.getByRole('link', { name: 'Храна', exact: true })).toHaveAttribute(
@@ -98,7 +117,7 @@ test.describe('the menu of /m/demo-club', () => {
   })
 
   test('keeps cards stable and controls tappable on a phone', async ({ page }) => {
-    await open(page, `/m/${GUEST_SLUG}?lang=bg`)
+    await open(page, `${GUEST.path}?lang=bg`)
     // No sideways scroll.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -145,7 +164,7 @@ test.describe('the menu of /m/demo-club', () => {
 
   test('gives less motion to a guest who asks for it', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await open(page, `/m/${GUEST_SLUG}`)
+    await open(page, GUEST.path)
     expect(
       await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior),
     ).toBe('auto')
@@ -156,9 +175,41 @@ test.describe('the menu of /m/demo-club', () => {
   })
 })
 
+test.describe('the address in the browser (D68)', () => {
+  test('a stale slug finds the menu, and the address bar is corrected, keeping ?t= and ?lang=', async ({
+    page,
+  }) => {
+    const search = `?lang=bg&t=${GUEST_TABLE_TOKEN}`
+    await page.goto(`/m/an-older-name-${GUEST.publicId}${search}`)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
+    await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST.path)
+    expect(new URL(page.url()).search).toBe(search)
+    // Replaced, not pushed: going back leaves the site, it does not return to the stale address.
+    expect(await page.evaluate(() => window.history.length)).toBe(1)
+    // The corrected address is the one that reloads.
+    await page.reload()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
+    expect(new URL(page.url()).pathname).toBe(GUEST.path)
+  })
+
+  test('a bare code finds the menu and gets its slug back', async ({ page }) => {
+    await page.goto(`/m/${GUEST.publicId}?lang=en`)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Club')
+    await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST.path)
+    expect(new URL(page.url()).search).toBe('?lang=en')
+  })
+
+  test('the canonical address is left as it is', async ({ page }) => {
+    await open(page, `${GUEST.path}?lang=bg`)
+    await page.waitForLoadState('networkidle')
+    expect(new URL(page.url()).pathname).toBe(GUEST.path)
+    expect(new URL(page.url()).search).toBe('?lang=bg')
+  })
+})
+
 test.describe('the tag filter', () => {
   test('filters a menu by tag, and "All" brings everything back', async ({ page }) => {
-    await open(page, `/m/${TAG_SLUG}?lang=bg`)
+    await open(page, `${TAG_PATH}?lang=bg`)
     await expect.poll(() => names(page)).toEqual(['Негрони', 'Хумус'])
     await page
       .getByRole('group', { name: 'Етикети' })
@@ -182,10 +233,10 @@ test.describe('the table code', () => {
   }) => {
     const redirect = await request.get(`/t/${GUEST_TABLE_TOKEN}`, { maxRedirects: 0 })
     expect(redirect.status()).toBe(302)
-    expect(redirect.headers().location).toBe(`/m/${GUEST_SLUG}?t=${GUEST_TABLE_TOKEN}`)
+    expect(redirect.headers().location).toBe(`${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
 
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
-    await page.waitForURL(`**/m/${GUEST_SLUG}?t=${GUEST_TABLE_TOKEN}`)
+    await page.waitForURL(`**${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     await expect(
       page.getByRole('status').filter({ hasText: `Маса ${GUEST_TABLE_LABEL}` }),
@@ -222,7 +273,7 @@ test.describe('the table code', () => {
   test('the menu and the table address send no referrer, so the code in the address stays here (A5-F5)', async ({
     request,
   }) => {
-    const menu = await request.get(`/m/${GUEST_SLUG}`)
+    const menu = await request.get(GUEST.path)
     expect(menu.status()).toBe(200)
     expect(menu.headers()['referrer-policy']).toBe('no-referrer')
 
@@ -246,6 +297,18 @@ test.describe('the table code', () => {
     await expect(page.getByText('Menu not found')).toBeVisible()
     await expect(page.getByRole('button')).toHaveCount(0)
   })
+
+  test('the older address, a slug alone, and a code nobody has are both just "not found"', async ({
+    page,
+  }) => {
+    await page.goto(`/m/${GUEST_SLUG}?lang=en`)
+    await expect(page.getByText('Menu not found')).toBeVisible()
+    await page.goto(`/m/${GUEST_SLUG}-000000000000?lang=en`)
+    await expect(page.getByText('Menu not found')).toBeVisible()
+    // Upper case is not part of a code.
+    await page.goto(`/m/${GUEST_SLUG}-${GUEST.publicId.toUpperCase()}?lang=en`)
+    await expect(page.getByText('Menu not found')).toBeVisible()
+  })
 })
 
 test.describe('what the page asks for (rule 4)', () => {
@@ -265,10 +328,10 @@ test.describe('what the page asks for (rule 4)', () => {
     const allowed = (pathname: string) =>
       pathname.startsWith('/cdn/') ||
       pathname.startsWith('/_next/') ||
-      pathname === `/m/${GUEST_SLUG}` ||
+      pathname === GUEST.path ||
       pathname === '/favicon.ico'
     expect(urls.filter((pathname) => !allowed(pathname))).toEqual([])
-    // The chain: slug index, pointer, snapshot, overlay, and the table's file.
+    // The chain: venue index (by public code), pointer, snapshot, overlay, and the table's file.
     for (const part of ['/cdn/v/', '/cdn/m/', '/cdn/snap/', '/cdn/t/']) {
       expect(
         urls.some((pathname) => pathname.startsWith(part)),
@@ -297,10 +360,17 @@ test.describe('what the page asks for (rule 4)', () => {
   test('/cdn ignores the cache-busting query of live.json when it looks the file up (S3-10)', async ({
     request,
   }) => {
-    const index = (await (await request.get(`/cdn/v/${GUEST_SLUG}.json`)).json()) as {
+    const indexResponse = await request.get(`/cdn/v/${GUEST.publicId}.json`)
+    expect(indexResponse.status()).toBe(200)
+    const index = (await indexResponse.json()) as {
       venue_id: string
       menu_id: string
+      slug: string
     }
+    // The index carries the venue's current slug (the page corrects its address from it) ...
+    expect(index.slug).toBe(GUEST.slug)
+    // ... and the older v/<slug>.json path leads nowhere.
+    expect((await request.get(`/cdn/v/${GUEST_SLUG}.json`)).status()).toBe(404)
     const live = `/cdn/m/${index.menu_id}/${index.venue_id}/live.json`
     const plain = await request.get(live)
     expect(plain.status()).toBe(200)
@@ -320,7 +390,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
     for (const lang of ['bg', 'en'] as const) {
       test(`${lang} ${scheme}`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: scheme })
-        await open(page, `/m/${GUEST_SLUG}?lang=${lang}&t=${GUEST_TABLE_TOKEN}`)
+        await open(page, `${GUEST.path}?lang=${lang}&t=${GUEST_TABLE_TOKEN}`)
         // The page follows the guest's screen: a dark page on a dark screen, a light one otherwise.
         const luminance = await page.evaluate(() => {
           const root = document.querySelector('.rq-root') as HTMLElement
@@ -340,7 +410,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
   test('iPhone 13 sized screen, bg light', async ({ browser }) => {
     const context = await browser.newContext({ ...devices['iPhone 13'], colorScheme: 'light' })
     const page = await context.newPage()
-    await open(page, `/m/${GUEST_SLUG}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST.path}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)

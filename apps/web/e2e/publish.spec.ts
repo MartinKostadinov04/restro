@@ -5,6 +5,7 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 import pg from 'pg'
 
 import { runScript } from './global-setup'
+import { addressOfVenue } from './menu-path'
 import { ADMIN_PASSWORD, PUBLISH_MEMBER_EMAIL, PUBLISH_OWNER_EMAIL, PUBLISH_SLUG } from './support'
 
 // The Publish tab on a production build with the REAL worker running beside it (brief S3-05). The
@@ -37,6 +38,8 @@ let page: Page
 let venueId = ''
 let db: pg.Pool
 let tenantId = ''
+/** The venue's guest address, `/m/<slug>-<code>` (D68), read once the venue is open. */
+let guestPath = ''
 let ownerState: Awaited<ReturnType<BrowserContext['storageState']>>
 let memberState: Awaited<ReturnType<BrowserContext['storageState']>>
 
@@ -84,7 +87,7 @@ async function guestPrice(browser: Browser, name: string): Promise<string | null
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
-    await guest.goto(`/m/${PUBLISH_SLUG}?lang=en`)
+    await guest.goto(`${guestPath}?lang=en`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     const card = guest
       .locator('[data-item]')
@@ -148,6 +151,11 @@ test.beforeAll(async ({ browser }) => {
   )
   tenantId = rows[0]?.tenant_id ?? ''
   expect(tenantId).not.toBe('')
+  const address = await addressOfVenue({ venueId })
+  expect(address.slug).toBe(PUBLISH_SLUG)
+  guestPath = address.path
+  // The same address is on the venue's page, under its name.
+  await expect(page.getByTestId('venue-header-address')).toHaveText(guestPath)
   // English from here on (the sign-in page was in Bulgarian, the default).
   await owner.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   ownerState = await owner.storageState()
@@ -174,7 +182,7 @@ test('before the first publish: nothing live, the whole menu waiting, Publish on
   expect(await snapshotRows()).toEqual([])
   // The guest page has nothing to show yet.
   const guest = await page.context().newPage()
-  await guest.goto(`/m/${PUBLISH_SLUG}?lang=en`)
+  await guest.goto(`${guestPath}?lang=en`)
   await expect(guest.getByText('Menu not found')).toBeVisible()
   await guest.close()
   await page.screenshot({ path: shotPath('en-light-desktop-empty'), fullPage: true })
@@ -200,7 +208,7 @@ test('Publish: "Version 1 is live", and the guest page shows the menu', async ({
     page.getByTestId('guest-link').click(),
   ])
   await guest.waitForLoadState()
-  expect(new URL(guest.url()).pathname).toBe(`/m/${PUBLISH_SLUG}`)
+  expect(new URL(guest.url()).pathname).toBe(guestPath)
   await expect(guest.getByRole('heading', { level: 1 })).toHaveText('Publish Club')
   await expect(guest.locator('[data-slot="item.name"]')).toHaveText([
     'Negroni',

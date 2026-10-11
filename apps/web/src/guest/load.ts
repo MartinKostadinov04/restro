@@ -1,10 +1,10 @@
 // The guest page's loader: it follows the published files and nothing else (rule 4).
 //
-//   v/<slug>.json                       -> {venue_id, menu_id}
+//   v/<public code>.json                -> {venue_id, menu_id, slug}
 //   m/<menu>/<venue>/current.json       -> {snapshot_id, version, hash}
 //   snap/<snapshot>.json                -> the snapshot (immutable, cached for a year)
 //   m/<menu>/<venue>/live.json          -> the sold-out marks
-//   t/<token>.json                      -> {venue_slug, table_label}
+//   t/<token>.json                      -> {venue_public_id, venue_slug, table_label}
 //
 // Every file is checked with the same schema the publisher wrote it with. Pure apart from the
 // `fetch` it is given, so the chain is tested without a browser.
@@ -12,7 +12,7 @@
 import {
   type CurrentPointer,
   CurrentPointerSchema,
-  isVenueSlug,
+  isPublicId,
   type LiveOverlay,
   LiveOverlaySchema,
   type MenuSnapshot,
@@ -71,7 +71,7 @@ export interface LiveCacheBust {
 
 /** The address of each published file. */
 export const files = {
-  index: (base: string, slug: string) => join(base, `v/${slug}.json`),
+  index: (base: string, publicId: string) => join(base, `v/${publicId}.json`),
   current: (base: string, index: IndexRef) =>
     join(base, `m/${index.menu_id}/${index.venue_id}/current.json`),
   live: (base: string, index: IndexRef, bust?: LiveCacheBust) => {
@@ -109,10 +109,13 @@ async function getFile<S extends z.ZodType>(
   return parsed.data
 }
 
-/** `v/<slug>.json`. An address that cannot be a slug is unknown without asking anyone. */
-export function loadVenueIndex(deps: LoadDeps, slug: string): Promise<VenueIndex> {
-  if (!isVenueSlug(slug)) return Promise.reject(new GuestLoadError('unknown_venue'))
-  return getFile(deps, files.index(deps.base, slug), VenueIndexSchema, 'unknown_venue')
+/**
+ * `v/<public code>.json`. Something that cannot be a public code is an unknown venue without
+ * asking anyone (the address parser, `parseMenuParam`, already hands over only codes).
+ */
+export function loadVenueIndex(deps: LoadDeps, publicId: string): Promise<VenueIndex> {
+  if (!isPublicId(publicId)) return Promise.reject(new GuestLoadError('unknown_venue'))
+  return getFile(deps, files.index(deps.base, publicId), VenueIndexSchema, 'unknown_venue')
 }
 
 /** `current.json`. No pointer means nothing was published yet. */
@@ -207,8 +210,8 @@ export interface LoadedMenu {
  * Follows the whole chain. The overlay is a refinement: if only it fails, the menu is shown
  * without sold-out marks and the next poll tries again.
  */
-export async function loadMenu(deps: LoadDeps, slug: string): Promise<LoadedMenu> {
-  const index = await loadVenueIndex(deps, slug)
+export async function loadMenu(deps: LoadDeps, publicId: string): Promise<LoadedMenu> {
+  const index = await loadVenueIndex(deps, publicId)
   const pointer = await loadPointer(deps, index)
   const [snapshot, live] = await Promise.all([
     loadSnapshot(deps, pointer),
@@ -219,12 +222,13 @@ export async function loadMenu(deps: LoadDeps, slug: string): Promise<LoadedMenu
 
 /**
  * The label of a table from its code, or null when the code is unknown, malformed, belongs to
- * another venue or cannot be read. A table banner is a nicety: any problem just leaves it out.
+ * another venue (its `venue_public_id` is not this venue's code) or cannot be read. A table banner
+ * is a nicety: any problem just leaves it out.
  */
 export async function loadTableLabel(
   deps: LoadDeps,
   token: string,
-  slug: string,
+  publicId: string,
 ): Promise<string | null> {
   if (!TABLE_TOKEN_PATTERN.test(token)) return null
   try {
@@ -234,7 +238,7 @@ export async function loadTableLabel(
       TableTokenFileSchema,
       'unknown_venue',
     )
-    return file.venue_slug === slug ? file.table_label : null
+    return file.venue_public_id === publicId ? file.table_label : null
   } catch {
     return null
   }
