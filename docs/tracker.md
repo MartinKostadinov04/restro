@@ -491,7 +491,7 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
   - SH-07 accessibility and visual audit with fixes, screenshots for Martin — Sonnet;
   - SH-08 docs and the designer guide v2 — Sonnet.
 
-  Order: SH-02 now; SH-01 after CF-03; then SH-03 + SH-04; then SH-05a + SH-05b + SH-06; then SH-07 + SH-08. At most 3 agents at once, one Opus.
+  Order: SH-02 now; SH-01 after CF-03; then SH-03 + SH-04; then SH-05a + SH-05b + SH-06; then SH-07 + SH-08. At most 2 agents at once since Martin approved the lean workflow on 10-11 (it was 3), one Opus.
 
   **Status 10-11:** SH-02 merged into `sh/foundation`.
   - **What it is:** `@restro/editorial-market`, browsing only. Zero contract failures on every fixture, no libraries, no literal colours, 90 tests.
