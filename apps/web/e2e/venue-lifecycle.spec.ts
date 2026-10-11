@@ -31,6 +31,8 @@ const BAR = 'Lifecycle Bar'
 const RENAMED = 'Lifecycle Lounge'
 const KEEPER = 'Lifecycle Keeper'
 const ITEM = 'Lifecycle Negroni'
+// The guest face writes item names in capitals: compare without case.
+const hasItem = (text: string) => text.toLowerCase().includes(ITEM.toLowerCase())
 
 interface Seed {
   readonly organizationId: string
@@ -154,7 +156,7 @@ test('the guest page and the table code work before the venue is deleted', async
   request,
 }) => {
   const text = await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)
-  expect(text).toContain(ITEM)
+  expect(hasItem(text)).toBe(true)
   const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
   expect(code.status()).toBe(302)
   expect(code.headers().location).toContain(
@@ -208,6 +210,8 @@ test('the owner deletes the venue: it leaves the admin and its page is a 404', a
   await expect(confirm).toBeDisabled()
   await typed.fill(RENAMED)
   await expect(confirm).toBeEnabled()
+  // The dialog fades in: take the picture once it has settled.
+  await page.waitForTimeout(600)
   await snapshot('delete-dialog.png')
   await confirm.click()
 
@@ -242,7 +246,7 @@ test('guests see that the menu is not available, and the table code does not ope
     )
     .toBe(true)
   const text = await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)
-  expect(text).not.toContain(ITEM)
+  expect(hasItem(text)).toBe(false)
   await expect
     .poll(async () => (await request.get(`/t/${seed.token}`, { maxRedirects: 0 })).status(), {
       timeout: 60_000,
@@ -295,14 +299,10 @@ test('the restored venue stays off for guests until it is published, then the sa
     timeout: 60_000,
   })
   await expect
-    .poll(
-      async () =>
-        (await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)).includes(ITEM),
-      {
-        timeout: 60_000,
-        intervals: [1_000, 2_000],
-      },
-    )
+    .poll(async () => hasItem(await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)), {
+      timeout: 60_000,
+      intervals: [1_000, 2_000],
+    })
     .toBe(true)
   // The page of the tab is up to date again.
   await page.reload()
