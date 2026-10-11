@@ -8,6 +8,7 @@ import {
   type Allergen,
   type AssetId,
   assetVariantPath,
+  CALL_WAITER_KINDS,
   DIETARY_LABELS,
   type DietaryLabel,
   type LiveOverlay,
@@ -82,6 +83,8 @@ export interface SnapshotSpec {
   tags?: Readonly<Record<string, LocalizedText>>
   fieldTypes?: MenuSnapshot['field_types']
   theme?: Partial<MenuSnapshot['theme']>
+  /** The venue's guest features (D71); absent = a snapshot published before them. */
+  features?: MenuSnapshot['features']
 }
 
 /** A deterministic id of the right shape: `nd_0000000000000000000042`. */
@@ -218,6 +221,7 @@ export function snapshotFromSpec(spec: SnapshotSpec): MenuSnapshot {
     modifier_groups: groups,
     options,
     tags,
+    ...(spec.features === undefined ? {} : { features: spec.features }),
   }
   return parseSnapshot({
     ...content,
@@ -550,6 +554,134 @@ function tagsAndDietary(): Fixture {
   }
 }
 
+/**
+ * Roles a venue chose by hand (D70): a green and cream light scheme and a deep green dark one.
+ * They are readable, and none of them is what the palette would give, so a face or a test can
+ * tell the published roles from the derived ones.
+ */
+export const CUSTOM_ROLES: NonNullable<MenuSnapshot['theme']['roles']> = {
+  light: {
+    background: '#f6f1e7',
+    surface: '#ffffff',
+    accent: '#1f6f5c',
+    on_accent: '#ffffff',
+    text: '#1d2a26',
+    muted: '#566660',
+    accent_text: '#1b5e4e',
+    border: '#d9d2c3',
+  },
+  dark: {
+    background: '#101a17',
+    surface: '#18251f',
+    accent: '#3fb59a',
+    on_accent: '#06201a',
+    text: '#eef3f0',
+    muted: '#a8b8b1',
+    accent_text: '#6fd3bb',
+    border: '#2a3b34',
+  },
+}
+
+function customRoles(): Fixture {
+  return {
+    name: 'custom-roles',
+    note: 'A venue with its own eight colour roles and a forced dark scheme; none equals what the palette would derive.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      theme: { roles: CUSTOM_ROLES, scheme: 'dark' },
+      sections: [
+        {
+          title: bgen('Вино', 'Wine'),
+          items: [
+            { name: bgen('Червено вино', 'Red wine'), allergens: ['sulphites'], price: 800 },
+            { name: bgen('Бяло вино', 'White wine'), allergens: ['sulphites'], price: 750 },
+          ],
+        },
+        {
+          title: bgen('Безалкохолно', 'Soft drinks'),
+          items: [{ name: bgen('Лимонада', 'Lemonade'), allergens: [], price: 450 }],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'en_US', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** The tags, dietary labels and sections the two feature fixtures share: there are chips to filter by. */
+function featureMenu(features: NonNullable<MenuSnapshot['features']>): MenuSnapshot {
+  const signature = fixtureId('tg', 1)
+  const spicy = fixtureId('tg', 2)
+  return snapshotFromSpec({
+    locales: BG_EN,
+    features,
+    tags: { [signature]: bgen('Фирмено', 'Signature'), [spicy]: { en_US: 'Spicy' } },
+    sections: [
+      {
+        title: bgen('Коктейли', 'Cocktails'),
+        items: [
+          {
+            name: bgen('Негрони', 'Negroni'),
+            allergens: ['sulphites'],
+            dietary: ['vegan'],
+            tags: [signature],
+            price: 1100,
+          },
+          { name: bgen('Мохито', 'Mojito'), allergens: [], tags: [spicy], price: 1000 },
+        ],
+      },
+      {
+        title: bgen('Храна', 'Food'),
+        items: [
+          { name: bgen('Хумус', 'Hummus'), allergens: ['sesame'], dietary: ['vegan'], price: 700 },
+          { name: bgen('Бутилка водка', 'Bottle of vodka'), price: 12000, askWaiter: true },
+        ],
+      },
+    ],
+  })
+}
+
+/** A table is confirmed, the platform supports every service and ordering is on for the venue. */
+const EVERYTHING_AVAILABLE = {
+  locale: 'en_US',
+  now: WEDNESDAY_EVENING,
+  orderingEnabled: true,
+  tableToken: 'fixture-table-token',
+  capabilities: { callWaiter: true, bill: true, ordering: true, pay: true },
+} as const
+
+function featuresOn(): Fixture {
+  return {
+    name: 'features-on',
+    note: 'Every guest feature switched on by the venue and supported by the platform, at a confirmed table with ordering on, on a menu that has filter chips.',
+    snapshot: featureMenu({
+      filters: true,
+      call_waiter: { enabled: true, kinds: [...CALL_WAITER_KINDS] },
+      bill: true,
+      ordering: true,
+      pay: true,
+    }),
+    overlay: null,
+    context: { ...EVERYTHING_AVAILABLE },
+  }
+}
+
+function featuresOff(): Fixture {
+  return {
+    name: 'features-off',
+    note: 'The venue switched filters and every service off, though the menu has filter chips and the platform supports every service at a confirmed table: no control may be drawn.',
+    snapshot: featureMenu({
+      filters: false,
+      call_waiter: { enabled: false, kinds: [] },
+      bill: false,
+      ordering: false,
+      pay: false,
+    }),
+    overlay: null,
+    context: { ...EVERYTHING_AVAILABLE },
+  }
+}
+
 /** All fixtures, freshly built. */
 export function fixtures(): Fixture[] {
   return [
@@ -563,6 +695,9 @@ export function fixtures(): Fixture[] {
     deepModifiers(),
     askWaiter(),
     tagsAndDietary(),
+    customRoles(),
+    featuresOn(),
+    featuresOff(),
   ]
 }
 

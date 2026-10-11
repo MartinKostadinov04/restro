@@ -13,10 +13,11 @@ import {
   MIN_TEXT_CONTRAST,
   relativeLuminance,
   resolvePalette,
+  type SemanticColours,
   semanticColours,
   semanticColoursDark,
 } from './palette'
-import type { SemanticColours, ViewModel } from './view-model'
+import type { ViewModel } from './view-model'
 
 const WEDNESDAY = '2026-10-07T20:30:00+03:00'
 
