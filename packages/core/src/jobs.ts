@@ -41,6 +41,11 @@ export const JOB_NAMES = {
   /** Download one barsy picture into the asset store. */
   assetFetch: 'asset-fetch',
   /**
+   * Read the tables of one mapped till venue (brief CF-16, T67). Needs no catalogue root: the
+   * minute tick queues it for a mapped venue whose tables were never read.
+   */
+  placesRead: 'places-read',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`
@@ -60,9 +65,16 @@ const venueId = idSchema('vn')
 export const BarsyConnectJobSchema = z.strictObject({ tenantId, integrationId })
 export type BarsyConnectJob = z.output<typeof BarsyConnectJobSchema>
 
+/**
+ * A job about one venue of an integration: the two pulls and the places read. `venueId` is OUR
+ * venue (`vn_`), never a till's own venue id.
+ */
+export const VenueSyncJobSchema = z.strictObject({ tenantId, integrationId, venueId })
+export type VenueSyncJob = z.output<typeof VenueSyncJobSchema>
+
 /** `barsy-full-pull` and `barsy-incremental`: `venueId` is OUR venue (`vn_`), never a barsy `bid`. */
-export const BarsyPullJobSchema = z.strictObject({ tenantId, integrationId, venueId })
-export type BarsyPullJob = z.output<typeof BarsyPullJobSchema>
+export const BarsyPullJobSchema = VenueSyncJobSchema
+export type BarsyPullJob = VenueSyncJob
 
 /**
  * `asset-fetch`: one picture of one article. `url` is the one the mapping built from barsy's
@@ -136,6 +148,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyFullPull]: BarsyPullJobSchema,
   [JOB_NAMES.barsyIncremental]: BarsyPullJobSchema,
   [JOB_NAMES.assetFetch]: AssetFetchJobSchema,
+  [JOB_NAMES.placesRead]: VenueSyncJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
@@ -165,6 +178,7 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.barsyIncremental,
   JOB_NAMES.assetFetch,
   JOB_NAMES.assetVariants,
+  JOB_NAMES.placesRead,
 ])
 
 /**
@@ -181,12 +195,13 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
 ])
 
 /**
- * The pg-boss singleton key of a job: one key per integration for connect and the two pulls, and
- * one picture is fetched once at a time. The `exclusive` policy applies per queue AND key, so it
- * only keeps two jobs of the SAME queue apart: a full pull and an incremental run of one
- * integration can both be active. What keeps pulls from overlapping is the worker's Postgres
- * advisory lock (apps/worker/src/sync/pull-lock.ts). Venue-level keys come with a second venue
- * per integration (tracker T50).
+ * The pg-boss singleton key of a job: one key per integration for connect; one per integration
+ * and venue for the two pulls and the places read (brief CF-16, T50), so a venue's pull is never
+ * dropped because another venue's is queued; one picture is fetched once at a time. The
+ * `exclusive` policy applies per queue AND key, so it only keeps two jobs of the SAME queue apart:
+ * a full pull and an incremental run can both be active. What keeps pulls from overlapping (one
+ * at a time per installation) is the worker's Postgres advisory lock
+ * (apps/worker/src/sync/pull-lock.ts).
  *
  * Publishing is keyed by menu + venue. An automatic publish has its own key, so a person's
  * "Publish" is never swallowed by an automatic one still waiting out its delay (their reasons
@@ -222,19 +237,25 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
         ? `${base}:auto`
         : `${base}:manual:${publish.approveHold ?? 'new'}`
     }
-    default:
-      return (data as { integrationId: string }).integrationId
+    default: {
+      // Connect carries no venue: one per integration. A venue job: one per integration and venue.
+      const keyed = data as { integrationId: string; venueId?: string }
+      return keyed.venueId === undefined
+        ? keyed.integrationId
+        : `${keyed.integrationId}:${keyed.venueId}`
+    }
   }
 }
 
 /**
- * The key for a pull that a running pull sends again for later (its integration was busy). The
- * running job still holds the plain key, and the `exclusive` policy would drop a second job with
- * it (`send` returns null), so the later copy carries a key of its own. The second makes it unique
- * per deferral: a copy that is busy again can send its own successor.
+ * The key for a pull that a running pull sends again for later (its integration was busy):
+ * `key` is the running job's own singleton key (integration and venue). The running job still
+ * holds that key, and the `exclusive` policy would drop a second job with it (`send` returns
+ * null), so the later copy carries a key of its own. The second makes it unique per deferral: a
+ * copy that is busy again can send its own successor.
  */
-export function deferredSingletonKey(integrationId: string, at: Date): string {
-  return `${integrationId}:later:${Math.floor(at.getTime() / 1000)}`
+export function deferredSingletonKey(key: string, at: Date): string {
+  return `${key}:later:${Math.floor(at.getTime() / 1000)}`
 }
 
 /**

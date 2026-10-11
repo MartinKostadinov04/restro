@@ -109,6 +109,17 @@ describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)
     expect(parseSyncSettings(config)).toEqual(SETTINGS)
   })
 
+  it('keeps a stored schedule time zone, which the form does not send (CF-16)', async () => {
+    await updateIntegration(app, tenant, integrationId, {
+      config: { schedule: { time_zone: 'Europe/London', stale_key: true } },
+    })
+    expect(await saveSyncSettingsConfig(app, tenant, integrationId, SETTINGS)).toBe(true)
+    expect((await configOf())?.schedule).toEqual({
+      ...SETTINGS.schedule,
+      time_zone: 'Europe/London',
+    })
+  })
+
   it('leaves publish.auto_paused alone, set or not set, and the other publish keys', async () => {
     await updateIntegration(app, tenant, integrationId, { config: { publish: null } })
     expect(await setAutoPublishPaused(app, tenant, integrationId, true)).toBe(true)

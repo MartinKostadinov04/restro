@@ -39,6 +39,11 @@ export const SyncStateSchema = z.object({
   last_incremental_queued_at: IsoInstant.optional(),
   /** The full-pull slot (an instant) the tick last queued a full pull for. */
   last_full_pull_slot: IsoInstant.optional(),
+  // The tables of the venue (brief CF-16, T67): read once the venue is mapped, root or not.
+  /** When the venue's tables were last read successfully (a full pull or a places read). */
+  places_read_at: IsoInstant.optional(),
+  /** When the tick last queued a places read (so a failed one is asked for again later, not every minute). */
+  places_queued_at: IsoInstant.optional(),
 })
 export type SyncState = z.output<typeof SyncStateSchema>
 
@@ -149,10 +154,20 @@ const storedPublish =
   then ${integrations.config} -> 'publish' else '{}'::jsonb end`
 
 /**
+ * The stored `config.schedule.time_zone`, as a one-key object to merge (or an empty one): the
+ * form does not send the zone (CF-09b will), so a save must not drop it.
+ */
+const storedTimeZone =
+  () => sql`case when jsonb_typeof(${integrations.config} #> '{schedule,time_zone}') = 'string'
+  then jsonb_build_object('time_zone', ${integrations.config} #> '{schedule,time_zone}')
+  else '{}'::jsonb end`
+
+/**
  * Saves the sync settings form (D59, Integration tab): `config.schedule` is replaced with the form's
- * schedule and the form's two publish settings (`after_sync`, `new_items`) are merged into
- * `config.publish`. The flat key `publish_after_sync` of S3-01b is removed (`publish.after_sync`
- * says it now). Returns whether the integration exists.
+ * schedule (keeping a stored `time_zone`, which the form does not show yet) and the form's two
+ * publish settings (`after_sync`, `new_items`) are merged into `config.publish`. The flat key
+ * `publish_after_sync` of S3-01b is removed (`publish.after_sync` says it now). Returns whether
+ * the integration exists.
  *
  * One atomic `UPDATE`, merged inside Postgres: `publish.auto_paused`, which the Publish tab sets
  * after a rollback and a manual publish clears, is never read or written here, so a pause set or
@@ -178,7 +193,7 @@ export async function saveSyncSettingsConfig(
       .update(integrations)
       .set({
         config: sql`(${integrations.config} || jsonb_build_object(
-            'schedule', ${schedule}::jsonb,
+            'schedule', ${schedule}::jsonb || ${storedTimeZone()},
             'publish', ${storedPublish()} || ${publishPatch}::jsonb)) - 'publish_after_sync'`,
       })
       .where(eq(integrations.id, integrationId))

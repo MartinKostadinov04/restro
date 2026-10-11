@@ -19,6 +19,7 @@ import {
   clearBarsyVenueChoices,
   mapBarsyVenue,
   setCatalogueRoot,
+  setVenuePriceSource,
   upsertBarsyVenues,
 } from './barsy-venues'
 import { buildJobRunDetails, finishJobRun, MAX_DETAIL_ENTRIES, startJobRun } from './job-runs'
@@ -192,6 +193,40 @@ describe.skipIf(!hasDatabase)('the Integration tab’s writers (as the restro_ap
       await expect(setCatalogueRoot(app, tenant, integrationId, 2, 1.5)).rejects.toMatchObject({
         code: 'invalid_input',
       })
+    })
+  })
+
+  describe('the catalogue and the price per venue (CF-16)', () => {
+    it('records the catalogue barsy reports, and keeps it when a later list says nothing', async () => {
+      await upsertBarsyVenues(app, tenant, integrationId, [
+        { bid: 1, name: 'First', catalogueId: 72 },
+        { bid: 2, name: 'Second', catalogueId: 1 },
+      ])
+      expect((await rowOf(1))?.catalogueId).toBe(72)
+      expect((await rowOf(2))?.catalogueId).toBe(1)
+      await upsertBarsyVenues(app, tenant, integrationId, [
+        { bid: 1, name: 'First renamed', catalogueId: 70 },
+        { bid: 2, name: 'Second' },
+      ])
+      expect(await rowOf(1)).toMatchObject({ name: 'First renamed', catalogueId: 70 })
+      expect((await rowOf(2))?.catalogueId).toBe(1)
+      await expect(
+        upsertBarsyVenues(app, tenant, integrationId, [{ bid: 1, name: 'x', catalogueId: -1 }]),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
+    })
+
+    it('stores the price source of one venue only, and refuses another tenant or a bad value', async () => {
+      expect(await setVenuePriceSource(app, tenant, integrationId, 1, 'current_price')).toBe(true)
+      expect((await rowOf(1))?.priceSource).toBe('current_price')
+      expect((await rowOf(2))?.priceSource).toBeNull()
+      expect(await setVenuePriceSource(app, tenant, integrationId, 99, 'actual_price')).toBe(false)
+      expect(await setVenuePriceSource(app, otherTenant, integrationId, 1, 'actual_price')).toBe(
+        false,
+      )
+      expect((await rowOf(1))?.priceSource).toBe('current_price')
+      await expect(
+        setVenuePriceSource(app, tenant, integrationId, 1, 'list_price' as never),
+      ).rejects.toMatchObject({ code: 'invalid_input' })
     })
   })
 

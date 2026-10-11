@@ -7,7 +7,9 @@ import {
   parseSyncSettings,
   publishesAfterSync,
   SYNC_DEFAULTS,
+  SYNC_TIME_ZONE_DEFAULT,
   SyncSettingsInputSchema,
+  syncTimeZone,
 } from './sync-settings'
 
 describe('parseSyncSettings', () => {
@@ -171,5 +173,19 @@ describe('SyncSettingsInputSchema (what the form sends)', () => {
     expect(bad((input) => ({ ...input, publish: { after_sync: 'auto' } }))).toBe(false)
     expect(bad((input) => ({ ...input, extra: 1 }))).toBe(false)
     expect(bad((input) => ({ ...input, schedule: { ...input.schedule, other: 1 } }))).toBe(false)
+  })
+})
+
+describe('syncTimeZone (CF-16, D73: one schedule per integration)', () => {
+  it('is Europe/Sofia unless the integration names a zone this runtime knows', () => {
+    expect(SYNC_TIME_ZONE_DEFAULT).toBe('Europe/Sofia')
+    expect(syncTimeZone(undefined)).toBe('Europe/Sofia')
+    expect(syncTimeZone({})).toBe('Europe/Sofia')
+    expect(syncTimeZone({ schedule: { full_pull_time: '12:00' } })).toBe('Europe/Sofia')
+    expect(syncTimeZone({ schedule: { time_zone: 'Europe/London' } })).toBe('Europe/London')
+    for (const junk of ['Mars/Olympus', '', 12, null, 'x'.repeat(65)]) {
+      expect(syncTimeZone({ schedule: { time_zone: junk } }), String(junk)).toBe('Europe/Sofia')
+    }
+    expect(syncTimeZone({ schedule: 'junk' })).toBe('Europe/Sofia')
   })
 })
