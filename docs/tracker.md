@@ -496,6 +496,14 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
     - **(1)** When the page colour and the panel colour sit on opposite sides of mid-grey, no text colour reads on both. Only then is the panel colour's lightness moved, keeping its hue and colour.
     - **(2)** After deploy, every venue's next publish makes a new snapshot once, because the new look fields are always written.
   - **Next:** SH-03 (shell rules) now; SH-04 after CF-14.
+  - **SH-03 merged:**
+    - **R13:** uses the published roles, re-checked; a failing role is repaired, and a scheme that still fails falls back to the derived colours.
+    - **R15 Features:** fail-closed. A service shows only when the venue switched it on, the platform supports it (context `capabilities`, all off in Stage 3), the channel is interactive and a confirmed table token is present.
+    - **Manifest:** `features` and `options`, with `group: 'feature' | 'look'`, and `resolveOptions`.
+    - **Harness:** `faceContractSuite`, `assertThemeOnlyCss`, and feature-slot checks both ways; three new fixtures.
+    - **Proof:** mutation-tested; the property test runs 500 times.
+  - **Running:** SH-04 (registry, guest page, fonts) and SH-06 (service screens; it starts early, since it needs nothing from SH-04).
+- [ ] T75. **Worker queue tests time out when the machine is busy.** `apps/worker/tests/worker.integration.test.ts` (`afterAll`, 60 s) and `sync-queue.test.ts` ("a job travels the queue end to end") failed a few times on 10-11 while 2–3 agents ran gates at once. Alone they pass in about 16 s. Check CI. If it shows the same, give these suites more time or a pool of their own. This is not a weakening: the assertions stay — Claude
   - Gate on `sh/foundation` after the merge: green. The worker integration suite's teardown once timed out (60 s) while three agents loaded the same local Postgres. Alone it passes in 19 s. Watch for it in CI.
 
   — Claude
