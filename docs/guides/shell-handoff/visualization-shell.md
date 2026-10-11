@@ -641,7 +641,7 @@ Every face ships a manifest that declares what it draws and how. Installing a fa
 
 **`features`.** List only what you really draw. A face that lists `ordering` must declare `ordering: true`. A feature that is not listed is never offered with this face.
 
-**`options`.** Each key is camelCase (a letter, then up to 31 letters or digits); a face has at most 16.
+**`options`.** Each key is camelCase (a lower-case letter, then up to 31 letters or digits); a face has at most 16.
 
 | Option field | Meaning |
 |---|---|
