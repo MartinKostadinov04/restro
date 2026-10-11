@@ -150,7 +150,8 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T60 Claude: photo variants: EXIF width/height, `variants:backfill --force`, CORS on the real CDN.
 - T62 Claude: catalogue-root safety (warn on root or venue change, hold above 30% missing); sync side partly in CF-02; before the pilot.
 - T67 Claude: read `Places_getlist` once a barsy venue is mapped; with T66 (CF-10).
-- T68 Claude: confirmed 10-11 (D73, D74); CF-09a navigation and CF-16 multi-venue sync (wave 1), then CF-09b Settings → Integrations (wave 2).
+- T68 Claude: built 10-11 (CF-09a, CF-16, CF-09b merged into `sh/foundation`); left: Martin's acceptance.
+- T76 Claude: the rollback pause (`publish.auto_paused`) moves from the integration to the venue, like `after_sync`.
 - T70 Claude: connector foundation; merged CF-01, 02, 03, 08a, 12, 14; remaining CF-04 to 07, rest of 08, 09, 10, 11, 13; staging migration 0014 needs Martin's OK.
 - T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; SH-01 to SH-08 all merged into `sh/foundation` on 10-11; left: acceptance with Martin, then the PRs; open points per step in the tracker.
 - T72 Claude: hand-made items need a venue (they show in another venue's Unsorted); fix in CF-05 with a test.
