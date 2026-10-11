@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { CHANGE_SET_OP_NAMES, type ChangeSet } from '../change-set'
 import { mergeDocumentParts } from '../document/merge'
+import { sha256Hex } from '../hash'
 import { type NodeId, newId } from '../ids'
 import { resolve } from '../resolve'
 import { sortKeyBetween } from '../sort-keys'
@@ -550,14 +551,57 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       expect(after.items[loose]?.issues.map((issue) => issue.code)).not.toContain('unplaced_item')
     })
 
-    it('counts an item placed only in another menu as unplaced here', async () => {
+    it('never lists an item another venue placed in its own menu (T72)', async () => {
       const there = await makeSection(secondMenu.id)
       const item = await makeItem('Другото меню')
+      // Placed nowhere yet: any venue may take it.
+      expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).toContain(item)
       await run([
         { op: 'setPlacement', item: { id: item }, section: { id: there }, sortKey: 'end' },
       ])
-      expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).toContain(item)
+      expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).not.toContain(item)
       expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).not.toContain(item)
+    })
+
+    it('lists a till item only in the venue the till read it for (T72)', async () => {
+      // As a pull leaves it: linked to the till, a price for the second venue only, placed nowhere.
+      const item = newId('nd')
+      const articleId = `${Date.now()}`
+      const record = newId('sr')
+      await withTenantWrite(app, tenant, (tx) =>
+        tx.execute(sql`
+          insert into restro.source_records
+            (id, tenant_id, integration_id, external_type, external_id, scope, content_hash, raw,
+             payload)
+          values (${record}, ${tenant}, ${integration}, 'article', ${articleId}, 'master',
+                  ${sha256Hex(record)}, '{}', '{}'::jsonb)`),
+      )
+      const result = await apply(
+        app,
+        tenant,
+        changeSet(`till:${integration}`, [
+          { op: 'createNode', id: item, nodeType: 'item', parent: null, status: 'active' },
+          {
+            op: 'linkSource',
+            node: { id: item },
+            link: { integration, externalType: 'article', externalId: articleId },
+          },
+          {
+            op: 'setField',
+            node: { id: item },
+            fieldKey: 'price',
+            layer: 'till',
+            scope: `venue:${secondVenueId}`,
+            value: { amount_minor: 450, currency: 'EUR' },
+            sourceRecordId: record,
+            mappingVersion: 1,
+          },
+        ]),
+      )
+      expect(result.rejected).toEqual([])
+      expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).toContain(item)
+      // The other venue never sees it, nameless and priceless, in its Unsorted.
+      expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).not.toContain(item)
     })
 
     it('refuses a menu the tenant does not have, and never returns another tenant’s items', async () => {
