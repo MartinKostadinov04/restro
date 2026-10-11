@@ -1,6 +1,8 @@
 // R4 Money: amounts arrive as integer minor units and leave as text for the locale and the
 // snapshot currency. The shell may format; it never computes a price (no sums, no products), and
 // it never turns minor units into a float (`formatMoney` hands Intl an exact decimal string).
+// The one sum it does is the guest's bag estimate (bag.ts), added up with core's money module
+// (D72); every other amount a face shows comes from the platform.
 
 import { type Currency, formatMoney, type Locale, type Money } from '@restro/core'
 
@@ -31,6 +33,11 @@ export function viewMoney(money: Money, currency: Currency, locale: Locale): Vie
     currency,
     text: formatMoney(money.amount_minor, currency, locale),
   }
+}
+
+/** An amount of integer minor units as shown. Throws (core's `MoneyError`) for anything that is not one. */
+export function viewMinor(minor: number, currency: Currency, locale: Locale): ViewMoney {
+  return { minor, currency, text: formatMoney(minor, currency, locale) }
 }
 
 /** An option's price delta, "+3,00 €". A delta of zero shows nothing (R8), and so does none. */

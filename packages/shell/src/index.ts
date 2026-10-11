@@ -4,6 +4,25 @@
 // The contract-test harness is in `@restro/shell/testing`.
 
 export type { Locale } from '@restro/core'
+export {
+  type BagAction,
+  type BagDraft,
+  type BagLine,
+  bagEstimate,
+  bagReducer,
+  groupValid,
+  lineKey,
+  needsChoices,
+  orderLines,
+  type ResolvedBag,
+  type ResolvedBagLine,
+  resolveBag,
+  type Selection,
+  selectedOptionIds,
+  selectionOf,
+  selectionValid,
+  toggleOption,
+} from './bag'
 export { buildViewModel } from './build'
 export {
   CapabilitiesSchema,
@@ -70,7 +89,34 @@ export {
   semanticColoursDark,
 } from './palette'
 export { type ScheduleStatus, scheduleStatus } from './schedule'
-export { type GuestStrings, type Strings, stringsFor } from './strings'
+export {
+  BILL_LINE_STATUSES,
+  type BillLineStatus,
+  type BillLineView,
+  type BillRoundView,
+  type BillView,
+  type CommandResult,
+  EMPTY_SERVICE_STATE,
+  type GuestCommand,
+  GuestCommandSchema,
+  type OrderLine,
+  PAY_METHODS,
+  PAY_SCOPES,
+  type PayMethod,
+  type PayQuote,
+  type PayScope,
+  RECEIPT_ACTIONS,
+  REQUEST_STATUSES,
+  type ReceiptAction,
+  type ReceiptView,
+  type RequestStatus,
+  type RequestView,
+  SERVICE_LIMITS,
+  type ServiceBinding,
+  type ServiceState,
+  type VatLine,
+} from './services'
+export { type GuestStrings, type ServiceStrings, type Strings, stringsFor } from './strings'
 export { fallbackChain, pickText } from './text'
 export {
   ITEM_STATES,

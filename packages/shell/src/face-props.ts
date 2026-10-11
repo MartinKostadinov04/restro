@@ -4,6 +4,7 @@
 
 import type { Locale } from '@restro/core'
 
+import type { ServiceBinding } from './services'
 import type { ViewModel } from './view-model'
 
 /** What every face receives from its host besides the view model. */
@@ -22,4 +23,10 @@ export interface FaceHostProps {
   readonly scheme?: 'auto' | 'light' | 'dark'
   /** The face's own presentation options as published (unvalidated; the face falls back to its defaults). */
   readonly options?: Readonly<Record<string, string | boolean>>
+  /**
+   * The services of the page (bag, bill, waiter, pay, receipt): the host's state to draw and the
+   * way to send a command (D72). A face draws a service control only when this is bound and the
+   * view model's `features` has the service on (R15). Not bound in Stage 3.
+   */
+  readonly services?: ServiceBinding
 }
