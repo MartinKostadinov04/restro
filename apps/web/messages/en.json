@@ -1366,6 +1366,7 @@
       "reset": "Reset to derived",
       "resetAria": "Reset {role}, {screen}, to the derived colour",
       "picker": "Pick a colour for {role}, {screen}",
+      "hex": "Colour code for {role}, {screen}",
       "invalid": "Enter a colour like #3366cc.",
       "adjusted": "Adjusted",
       "fromPreset": "From the preset",

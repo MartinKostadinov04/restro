@@ -18,6 +18,7 @@ export function HexField({
   disabled = false,
   invalid = false,
   describedBy,
+  label,
   className,
   placeholder,
 }: {
@@ -32,6 +33,8 @@ export function HexField({
   disabled?: boolean
   invalid?: boolean
   describedBy?: string
+  /** The accessible name of the text box, when no visible label points at it. */
+  label?: string
   className?: string
   placeholder?: string
 }) {
@@ -57,6 +60,7 @@ export function HexField({
         placeholder={placeholder}
         className="max-w-36 font-mono"
         aria-invalid={invalid}
+        aria-label={label}
         aria-describedby={describedBy}
       />
     </div>

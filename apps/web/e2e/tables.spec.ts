@@ -428,7 +428,7 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   for (let index = 0; index < 8; index += 1) {
     const card = cards.nth(index)
     // The card shows the venue's logo, with its name as the text alternative, or the name itself
-    // when the venue has no logo (the Appearance test may have taken the demo venue's logo away).
+    // when the venue has no logo (the demo venue has none unless a test has given it one).
     const logo = card.getByRole('img', { name: 'Demo Club Sofia' })
     await expect(logo.or(card.getByText('Demo Club Sofia', { exact: true }))).toBeVisible()
     if ((await logo.count()) > 0) {

@@ -7,7 +7,7 @@
 //   - A look is always saved WHOLE. The old Appearance card wrote only `{brand, logo_asset_id}`,
 //     which would have dropped every v2 field. `FullThemeSchema` refuses a theme without its font,
 //     corners, shadow and light/dark policy, so a partial theme cannot reach the database.
-//   - A template is checked against the registry before it is saved (core only checks the shape):
+//   - A template is checked against the catalogue before it is saved (core only checks the shape):
 //     it must be a VISIBLE entry, and its options go through `resolveOptions` with its manifest.
 //     The look options are the form's; the guest-feature options belong to the composer's panel
 //     (SH-05b) and are kept as they are.
@@ -35,7 +35,7 @@ import { assets, type DbPool, type Venue, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
 import { chooseableFace, mergeOptions } from '@/design/template-options'
-import { DEFAULT_FACE_ID } from '@/faces/registry'
+import { DEFAULT_FACE_ID } from '@/faces/catalog'
 
 import { logError } from '../log'
 import { canManageIntegration } from '../roles'

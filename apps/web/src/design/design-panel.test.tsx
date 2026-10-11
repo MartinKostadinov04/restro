@@ -304,7 +304,7 @@ describe('the derived colours', () => {
     expect(save().disabled).toBe(false)
     const text = row('light', 'text')
     await userEvent.click(within(text).getByRole('button', { name: 'Adjust Text, Light screen' }))
-    const box = within(text).getByRole('textbox')
+    const box = within(text).getByLabelText('Colour code for Text, Light screen')
     await userEvent.clear(box)
     await userEvent.type(box, '#f4efe6')
 
@@ -325,7 +325,7 @@ describe('the derived colours', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Botanical' }))
     const text = row('light', 'text')
     await userEvent.click(within(text).getByRole('button', { name: 'Adjust Text, Light screen' }))
-    const box = within(text).getByRole('textbox')
+    const box = within(text).getByLabelText('Colour code for Text, Light screen')
     await userEvent.clear(box)
     await userEvent.type(box, '#f4efe6')
     expect(save().disabled).toBe(true)

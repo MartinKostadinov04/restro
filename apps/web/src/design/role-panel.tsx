@@ -157,6 +157,7 @@ function RoleRow({
             value={state.overrides[mode][role] ?? colour}
             onChange={(text) => onChange(setOverride(state, mode, role, text))}
             pickerLabel={t('picker', { role: roleName, screen: screenName })}
+            label={t('hex', { role: roleName, screen: screenName })}
             fallback={colour}
             invalid={invalid}
             describedBy={invalid ? `${id}-invalid` : undefined}
@@ -235,7 +236,7 @@ export function RolePanel({
   const issueText = useIssueText()
 
   return (
-    <div className="grid gap-4" data-testid="design-roles">
+    <div className="@container grid gap-4" data-testid="design-roles">
       <div>
         <h4 className="text-sm font-medium">{t('title')}</h4>
         <p className="text-xs text-muted-foreground">{t('help')}</p>
@@ -259,7 +260,7 @@ export function RolePanel({
           </ul>
         </div>
       ) : null}
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 @xl:grid-cols-2">
         {ROLE_MODES.map((mode) => (
           <section key={mode} className="grid gap-2" aria-label={t(`screens.${mode}`)}>
             <h5 className="text-sm font-medium">{t(`screens.${mode}`)}</h5>
