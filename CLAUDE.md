@@ -137,6 +137,7 @@ At most about one page (400 words). The diff shows the details; the report says 
 - At most two agents run at once (Martin 10-11): more load the one PC until tests time out.
 - **CI runs the full check.** The lead pushes `cf/**` and `sh/**` after merging; CI runs the full gate there. Locally the lead runs only typecheck and the tests of the merged areas.
 - **Briefs say which decisions and doc sections to read**, by number, so agents do not read the tracker or the architecture doc whole.
+- **Every new decision or task goes in two places:** the tracker gets the full text, and `docs/decisions.md` gets its one line, in the same commit.
 - **Never enter plan mode while agents run.** It stops their edits too.
 
 ## Git
