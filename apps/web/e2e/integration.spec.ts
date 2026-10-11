@@ -512,9 +512,14 @@ test('"Change…" warns, and moves only after a confirmation', async () => {
   await expect(dialog.getByTestId('change-warning')).toContainText(
     'следващата пълна синхронизация решава кои от тях още съществуват',
   )
-  // The venue it serves is not offered; the one the other venue serves is shown, not offered.
-  await expect(dialog.getByTestId('till-venue-option')).toHaveCount(1)
+  // The venue it serves is not offered; the one the other venue serves is shown, not offered; the
+  // one set aside is offered, marked as such.
+  await expect(dialog.getByTestId('till-venue-option')).toHaveCount(2)
   await expect(dialog.getByRole('radio', { name: /Roof terrace/ })).toBeDisabled()
+  await expect(dialog.getByRole('radio', { name: /Shop/ })).toBeEnabled()
+  await expect(dialog.getByTestId('till-venue-option').filter({ hasText: 'Shop' })).toContainText(
+    'Отбелязано като неизползвано',
+  )
   await dialog.getByRole('button', { name: 'Отказ' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page.getByTestId('menu-source-venue')).toHaveText('Main bar')

@@ -63,11 +63,7 @@ function VenueRow({
   const editable = view.canManage
 
   return (
-    <li
-      className="grid gap-2 py-3 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4"
-      data-testid="till-venue"
-      data-state={row.state}
-    >
+    <li className="grid gap-2 py-3" data-testid="till-venue" data-state={row.state}>
       <div className="grid gap-0.5">
         <span className="flex flex-wrap items-center gap-2">
           <span className="font-medium" data-testid="till-venue-name">
