@@ -125,9 +125,12 @@ export function PaySheet() {
     if (quote === null || step.name === 'processing') return
     const key = `${quote.id}|${method}`
     // The same quote and method again (a retry) is the same payment; anything else is a new one.
-    const actionId = attempt.current?.key === key ? attempt.current.actionId : newActionId()
+    const retry = attempt.current?.key === key
+    const actionId = retry && attempt.current !== null ? attempt.current.actionId : newActionId()
     attempt.current = { key, actionId }
-    receiptBefore.current = state.receipt?.id ?? null
+    // The receipt that counts is one the host issues after this payment began: a retry of the same
+    // payment keeps the point it began at.
+    if (!retry) receiptBefore.current = state.receipt?.id ?? null
     setStep({ name: 'processing', method })
     let outcome: Outcome = { ok: false }
     try {

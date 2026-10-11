@@ -150,6 +150,28 @@ module.exports = {
       },
     },
 
+    // SH-06 (D72), the services of a face. A face's preview adapter (its `./preview` subpath, e.g.
+    // `@restro/editorial-market/preview`) is a make-believe host for the admin's preview: a guest
+    // page must never import it, or demo data could reach a venue's guests. And a face draws the
+    // amounts the host gives it without adding them up: the money arithmetic the shell exports for
+    // that adapter (`@restro/shell/money`) is for a face's `preview/` folder alone.
+    {
+      name: 'guest-never-imports-face-preview',
+      severity: 'error',
+      comment:
+        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import the ./preview subpath of any face (packages/faces/*/src/preview): it is the admin-only demo host, and a guest page binds real services or none (D72).',
+      from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
+      to: { path: ['^packages/faces/[^/]+/src/preview(/|$)', '^@restro/[^/]+/preview(/|$)'] },
+    },
+    {
+      name: 'faces-money-math-only-in-preview',
+      severity: 'error',
+      comment:
+        'Under packages/faces/, only a preview/ folder may import @restro/shell/money (packages/shell/src/money-math.ts): a face draws the amounts the host gives it and never adds them up (D72, rule 8).',
+      from: { path: '^packages/faces/', pathNot: '(^|/)preview/' },
+      to: { path: ['^packages/shell/src/money-math\\.ts$', '^@restro/shell/money(/|$)'] },
+    },
+
     // The guest page (rule 4): it reads published files and nothing else. Its code (app/m and
     // src/guest) never imports the database, apply(), the asset and publish stores, or the
     // server-only helpers of the web app; it calls no server action either.

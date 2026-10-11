@@ -383,6 +383,72 @@ describe('rule 6: no circular dependencies', () => {
   })
 })
 
+// SH-06 (D72): the services of a face.
+describe("a face's preview adapter and the shell's money arithmetic", () => {
+  const faceFiles: Files = {
+    ...base,
+    'packages/faces/qr-phone/src/preview/index.ts': 'export const demo = 1',
+    'packages/shell/src/money-math.ts': 'export const addMinor = 1',
+  }
+
+  it("rejects a face's ./preview subpath from the guest page and its route (by package name and by path)", async () => {
+    const lines = await expectRules(
+      {
+        ...faceFiles,
+        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/guest/relative.ts':
+          "import '../../../../packages/faces/qr-phone/src/preview/index'",
+        'apps/web/app/m/[venue]/page.ts': "import '@restro/editorial-market/preview'",
+        'apps/web/app/m/[venue]/relative.ts':
+          "import '../../../../../packages/faces/qr-phone/src/preview/index'",
+      },
+      ['guest-never-imports-face-preview'],
+    )
+    expect(lines).toHaveLength(4)
+  })
+
+  it('allows the face itself on the guest page, and the preview from the admin side of the web app', async () => {
+    await expectRules(
+      {
+        ...faceFiles,
+        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone'",
+        'apps/web/src/design/panel.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/design/relative.ts':
+          "import '../../../../packages/faces/qr-phone/src/preview/index'",
+        'packages/faces/qr-phone/src/face.ts': "import './preview/index'",
+      },
+      [],
+    )
+  })
+
+  it("rejects the shell's money arithmetic from a face outside its preview folder (by package name and by path)", async () => {
+    const lines = await expectRules(
+      {
+        ...faceFiles,
+        'packages/faces/qr-phone/src/bag.ts': "import '@restro/shell/money'",
+        'packages/faces/qr-phone/src/relative.ts': "import '../../../shell/src/money-math'",
+        'packages/faces/qr-phone/src/services/sum.test.ts': "import '@restro/shell/money'",
+      },
+      ['faces-money-math-only-in-preview'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it("allows the money arithmetic in a face's preview folder, and in the shell and the apps", async () => {
+    await expectRules(
+      {
+        ...faceFiles,
+        'packages/faces/qr-phone/src/preview/demo.ts': "import '@restro/shell/money'",
+        'packages/faces/qr-phone/src/preview/relative.ts':
+          "import '../../../../shell/src/money-math'",
+        'packages/shell/src/bag.ts': "import './money-math'",
+        'apps/web/src/design/sum.ts': "import '@restro/shell/money'",
+      },
+      [],
+    )
+  })
+})
+
 describe('packages/assets: storage only, no database or barsy', () => {
   it('rejects @restro/db, @restro/barsy and a relative path into packages/db', async () => {
     await expectRules(

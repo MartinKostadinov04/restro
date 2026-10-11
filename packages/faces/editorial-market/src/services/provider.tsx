@@ -309,6 +309,12 @@ function ActiveServices({
     setSend((now) => (now.status === 'rejected' || now.status === 'failed' ? IDLE : now))
   }, [bag])
 
+  // "Sent to the kitchen" is for the guest who is looking at the bag when the host says yes; it is
+  // gone once they leave the bag or start another one.
+  useEffect(() => {
+    if (send.status === 'sent' && (bag.length > 0 || sheet !== 'bag')) setSend(IDLE)
+  }, [send, bag, sheet])
+
   const edit = useCallback(
     (line: BagLine, opener: HTMLElement) => {
       setEditing(line)

@@ -8,7 +8,7 @@ import { type ReactNode, useEffect, useId, useRef } from 'react'
 import { BackIcon, CloseIcon } from './icons'
 
 const FOCUSABLE =
-  'button:not([disabled]), a[href], select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  'button:not([disabled]):not([tabindex="-1"]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
 export function Overlay({
   title,
