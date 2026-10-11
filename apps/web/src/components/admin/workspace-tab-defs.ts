@@ -4,6 +4,7 @@
 import {
   LayoutListIcon,
   type LucideIcon,
+  PaletteIcon,
   PlugIcon,
   QrCodeIcon,
   RocketIcon,
@@ -23,6 +24,7 @@ export const WORKSPACE_TAB_DEFS = [
   { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
   { value: 'publishing', labelKey: 'workspace.tabs.publishing', icon: RocketIcon },
+  { value: 'design', labelKey: 'workspace.tabs.design', icon: PaletteIcon },
   { value: 'integration', labelKey: 'workspace.tabs.integration', icon: PlugIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
 ] as const satisfies readonly WorkspaceTabDef[]

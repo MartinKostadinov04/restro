@@ -42,6 +42,7 @@ describe('WorkspaceTabs: tabs and the URL', () => {
       'Composer',
       'Tables & QR',
       'Publishing',
+      'Design',
       'Integration',
       'Settings',
     ])
