@@ -442,7 +442,20 @@ _Last updated: 2026-10-08 (v15, kickoff with the lead coding agent)_
       - **(b) Warnings are wiped.** A successful pull resets `statusDetail` to null, which would clear a currency warning at the next sync. Keep warning codes across pulls (CF-09).
       - **(c) Wording.** The new Integration strings say "the till" to keep the vendor-word wall. Move them under `connectors.barsy.*` if Martin wants "barsy" on that screen.
       - **(d) Item counts.** The cached category tree drops `child_articles_cnt`, so the picker shows no counts.
-  - **Running:** CF-03 neutral till role (Opus).
+  - **Merged 10-11 (later):** CF-03 neutral till role.
+    - **Core:** layer `till`, sources `till:<in_>`, owner `till`; the `import` layer is gone.
+    - **Connectors:** `packages/core/src/connectors/` holds the link types per kind; a node takes one till link only.
+    - **Migration 0014:**
+      - checks rewritten;
+      - stored values renamed, including link-event JSON;
+      - a pre-check (no `import` rows) and a post-check (no `barsy` left);
+      - RLS force and the `updated_at` triggers lifted only inside its own transaction;
+      - a tested reverse script.
+    - **Checks:** the published snapshot hash is unchanged after the migration; the rule-5 property tests now run over a till menu and a no-till menu; vendor words fell from 919 to 487.
+    - **Open:**
+      - applying 0014 to staging needs Martin's OK, with the worker stopped and the queue drained;
+      - the architecture mirror still names the `barsy` and `import` layers (CF-13).
+  - **Running (launched after the CF-03 merge):** CF-14 public address (Sonnet, migration 0015).
     - **Setback, 10-11:** while the lead planned T74 in plan mode, both agents were put into plan mode too. They stopped editing, and CF-03 was left with two uncommitted files.
     - CF-03 was resumed with its context and runs again. Lesson saved: no plan mode while agents run.
   - **Queued:**
