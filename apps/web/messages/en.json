@@ -399,10 +399,29 @@
     "description": "What is set once for the whole organisation, not for a single venue.",
     "sectionsLabel": "Settings sections",
     "sections": {
-      "integrations": "Integrations"
+      "integrations": "Integrations",
+      "deletedVenues": "Deleted venues"
     },
     "integrations": {
       "description": "The connection to your till and how its data is read. It is set once for the whole organisation and used by every venue."
+    },
+    "deletedVenues": {
+      "description": "Venues an owner deleted. Nothing is erased: restoring one brings it back with its menu, tables and codes, but without its till link and not published.",
+      "empty": {
+        "title": "No deleted venues",
+        "description": "A venue you delete appears here, and you can restore it."
+      },
+      "listLabel": "Deleted venues",
+      "deletedOn": "Deleted on {when}",
+      "restore": "Restore",
+      "restoring": "Restoring…",
+      "restored": "{name} is back. If it had a till, link it again in Settings › Integrations, then publish its menu.",
+      "restoredLate": "{name} is back. If it had a till, link it again in Settings › Integrations, then publish its menu. Its table codes come back with that publish.",
+      "errors": {
+        "not_allowed": "Only an owner can restore a venue.",
+        "invalid": "This venue could not be found.",
+        "failed": "Something went wrong. The venue was not restored, try again."
+      }
     }
   },
   "venues": {
@@ -704,6 +723,49 @@
       "defaultLanguage": "default",
       "currency": "Currency",
       "readOnly": "The other settings are read-only for now. Editing them arrives with the composer.",
+      "rename": {
+        "label": "Venue name",
+        "help": "Shown in the admin and on the guest menu. Guests see a new name after the next publish.",
+        "save": "Save name",
+        "saving": "Saving…",
+        "saved": "Saved. Guests see the new name after the next publish.",
+        "invalid": "Enter a name of 1 to 120 characters.",
+        "errors": {
+          "not_allowed": "Only an owner or admin can rename a venue.",
+          "invalid": "This name cannot be used. Check it and try again.",
+          "venue_archived": "This venue was deleted.",
+          "failed": "Something went wrong. The name was not changed, try again."
+        }
+      },
+      "danger": {
+        "title": "Danger zone",
+        "description": "Deleting a venue takes it off guests' phones and out of the admin. Nothing is erased.",
+        "button": "Delete venue…",
+        "dialog": {
+          "title": "Delete {name}?",
+          "description": "This is what happens when you delete this venue:",
+          "effects": {
+            "admin": "It disappears from the admin: the sidebar, the venue list and its pages.",
+            "guests": "Its guest page and its table QR codes stop working: guests see that the menu is not available.",
+            "till": "Its link to the till is released, so the till venue is free for another venue, and syncing and publishing stop.",
+            "kept": "Nothing is erased. Its menu, tables and settings are kept, and you can restore it from Settings › Deleted venues."
+          },
+          "confirmLabel": "Type the venue name to confirm: {name}",
+          "cancel": "Cancel",
+          "confirm": "Delete venue",
+          "deleting": "Deleting…",
+          "deleted": "{name} was deleted.",
+          "deletedLate": "{name} was deleted, but its guest page could not be switched off just now. Restore it from Settings › Deleted venues and delete it again in a moment.",
+          "seeDeleted": "Deleted venues",
+          "errors": {
+            "not_allowed": "Only an owner can delete a venue.",
+            "invalid": "This venue could not be found.",
+            "name_mismatch": "The name does not match. Type it exactly as shown.",
+            "venue_archived": "This venue was deleted.",
+            "failed": "Something went wrong. The venue was not deleted, try again."
+          }
+        }
+      },
       "slug": {
         "label": "Readable part of the address",
         "help": "Lower-case Latin letters, digits and single hyphens, for example demo-club. It only makes the address easier to read; it does not have to be unique.",

@@ -58,7 +58,7 @@ import {
   venues,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, ne, sql } from 'drizzle-orm'
 
 import {
   absenceHeldOf,
@@ -162,9 +162,12 @@ interface State {
  */
 async function loadState(scope: IntegrationScope, venueId?: string): Promise<State> {
   return withTenant(scope.pool, scope.tenantId, async (tx) => {
+    // Live venues only: a deleted venue (D76) is not offered in "Link to an existing venue", and
+    // its runs name no venue any more.
     const venueRows = await tx
       .select({ id: venues.id, name: venues.name })
       .from(venues)
+      .where(isNull(venues.archivedAt))
       .orderBy(asc(venues.name), asc(venues.id))
     const [linked] =
       venueId === undefined
@@ -886,11 +889,14 @@ export async function syncAll(
   services: IntegrationServices,
 ): Promise<IntegrationActionResult> {
   if (!scope.canManage) return fail('not_allowed')
-  const { integration, tillRows } = await loadState(scope)
+  const { integration, tillRows, venues: liveVenues } = await loadState(scope)
   if (integration === null) return fail('not_ready')
   const activeJob = await readActiveJob(scope.pool, scope.tenantId, integration.id)
+  // Only live venues (D76): a deleted venue's link is released with it, and this keeps one that a
+  // race left behind from ever being pulled.
+  const live = new Set(liveVenues.map((venue) => venue.id))
   const linked = tillRows.flatMap((row) =>
-    row.venueId === null ? [] : [{ ...row, venueId: row.venueId }],
+    row.venueId === null || !live.has(row.venueId) ? [] : [{ ...row, venueId: row.venueId }],
   )
   const pullable = linked.filter((row) => row.catalogueRootCatId !== null)
   const gate = syncAllGate({

@@ -1076,6 +1076,27 @@ describe.skipIf(!hasDatabase)(
           )
         })
 
+        it('never pulls a deleted venue, not even when a race left its link in place (D76)', async () => {
+          // Venue A is deleted without its link being released (what a race could leave behind).
+          await owner.query('update restro.venues set archived_at = now() where id = $1', [
+            venueA.id,
+          ])
+          try {
+            expect(await syncAll(orgScope(), services())).toEqual({
+              ok: false,
+              error: 'not_ready',
+            })
+            expect(sent).toEqual([])
+            // And it is not offered in "Link to an existing venue" or named in the list.
+            const view = await loadIntegrationView(orgScope(), services())
+            expect(view.linkableVenues.map((venue) => venue.id)).not.toContain(venueA.id)
+          } finally {
+            await owner.query('update restro.venues set archived_at = null where id = $1', [
+              venueA.id,
+            ])
+          }
+        })
+
         it('says so when every pull is waiting already, and when the queue is down', async () => {
           enqueueResult = null
           expect(await syncAll(orgScope(), services())).toEqual({

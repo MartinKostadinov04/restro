@@ -15,6 +15,18 @@ export function canManageIntegration(role: string | null | undefined): boolean {
 }
 
 /**
+ * True for an owner of the organisation: the only role that may delete a venue or restore a
+ * deleted one (D76). An admin renames and manages, but deleting is the owner's decision.
+ */
+export function canDeleteVenue(role: string | null | undefined): boolean {
+  if (typeof role !== 'string') return false
+  return role
+    .split(',')
+    .map((part) => part.trim().toLowerCase())
+    .some((part) => part === 'owner')
+}
+
+/**
  * True for the roles that may publish a menu, or roll it back to an earlier version (brief
  * S3-01b): an owner or admin, like the integration.
  */

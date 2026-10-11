@@ -5,6 +5,7 @@ import { FormSection } from '@/components/ui/form-section'
 import { canManageIntegration } from '@/server/roles'
 
 import { VenueAddress } from './venue-address'
+import { VenueName } from './venue-name'
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -16,8 +17,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /**
- * The venue's settings. The menu address can be renamed by an owner or admin (CF-14, D68); the
- * rest is read-only: editing it arrives with the composer (Stage 2).
+ * The venue's settings. The name (CF-18, D76) and the menu address (CF-14, D68) can be changed by an
+ * owner or admin; the rest is read-only: editing it arrives with the composer (Stage 2).
  */
 export async function VenueSettings({ venue, role }: { venue: Venue; role: string }) {
   const t = await getTranslations('workspace.settings')
@@ -30,7 +31,15 @@ export async function VenueSettings({ venue, role }: { venue: Venue; role: strin
   return (
     <FormSection title={t('title')} description={t('description')}>
       <dl className="grid gap-4">
-        <Row label={t('name')}>{venue.name}</Row>
+        <Row label={t('name')}>
+          {/* A new key when the name changes elsewhere, so the field starts from the saved name. */}
+          <VenueName
+            key={venue.name}
+            venueId={venue.id}
+            name={venue.name}
+            canEdit={canManageIntegration(role)}
+          />
+        </Row>
         <Row label={t('address')}>
           <VenueAddress
             venueId={venue.id}

@@ -9,18 +9,25 @@ import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 
-import { SETTINGS_SECTIONS, settingsSectionOf, settingsSectionPath } from './settings-sections'
+import {
+  type SettingsSectionDef,
+  settingsSectionOf,
+  settingsSectionPath,
+  visibleSettingsSections,
+} from './settings-sections'
 
-export function SettingsNav() {
+/** `isOwner`: the sections that are for owners only (Deleted venues, D76) are drawn too. */
+export function SettingsNav({ isOwner = false }: { readonly isOwner?: boolean }) {
   const t = useTranslations()
-  const open = settingsSectionOf(usePathname())
+  const open: SettingsSectionDef | undefined = settingsSectionOf(usePathname())
+  const sections = visibleSettingsSections(isOwner)
 
   return (
     <nav aria-label={t('settings.sectionsLabel')} data-testid="settings-nav">
       <ul className="flex flex-wrap gap-1 border-b">
-        {SETTINGS_SECTIONS.map((section) => {
+        {sections.map((section) => {
           const Icon = section.icon
-          const isOpen = section === open
+          const isOpen = section.value === open?.value
           return (
             <li key={section.value}>
               <Link
