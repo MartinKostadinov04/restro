@@ -383,16 +383,28 @@
     "signOut": "Sign out"
   },
   "nav": {
-    "manage": "Manage",
-    "venues": "Venues",
-    "breadcrumb": "Breadcrumb"
-  },
-  "venueSwitcher": {
-    "label": "Venue",
-    "choose": "Choose a venue",
     "venues": "Venues",
     "allVenues": "All venues",
-    "organization": "Organisation"
+    "newVenue": "New venue",
+    "organization": "Organisation",
+    "settings": "Settings",
+    "breadcrumb": "Breadcrumb"
+  },
+  "organizationSwitcher": {
+    "label": "Organisation",
+    "switchTo": "Switch organisation"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "What is set once for the whole organisation, not for a single venue.",
+    "sectionsLabel": "Settings sections",
+    "sections": {
+      "integrations": "Integrations"
+    },
+    "integrations": {
+      "description": "The connection to your till and how its data is read. It is set once for the whole organisation and used by every venue.",
+      "interim": "For now the connection is still set up in each venue’s Integration tab. It will move to this page."
+    }
   },
   "venues": {
     "title": "Venues",

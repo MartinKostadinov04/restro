@@ -1,14 +1,14 @@
 'use client'
 
-// The admin's frame: icon-collapse sidebar with navigation, the venue switcher and the user menu
-// in the footer. Ported from the Platform's SidebarLayout.jsx (134-224 menu, 226-332 footer).
-// The Platform left a "Lookup" collapsible hidden in the menu and logged to the console; neither
-// is ported.
-import { Building2Icon } from 'lucide-react'
+// The admin's frame: icon-collapse sidebar with the organisation's venues and its Settings, the
+// organisation and the user menu in the footer (D74). Ported from the Platform's SidebarLayout.jsx
+// (134-224 menu, 226-332 footer). The Platform left a "Lookup" collapsible hidden in the menu and
+// logged to the console; neither is ported.
+import { SettingsIcon } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { Suspense } from 'react'
+import { useEffect } from 'react'
 
 import {
   Sidebar,
@@ -20,51 +20,43 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarRail,
   SidebarSeparator,
+  useSidebar,
 } from '@/components/ui/sidebar'
 
+import { type OrganizationOption, OrganizationSwitcher } from './organization-switcher'
+import { SETTINGS_PATH } from './settings-sections'
 import { UserMenu } from './user-menu'
-import { type OrganizationOption, type VenueOption, VenueSwitcher } from './venue-switcher'
-import { DEFAULT_WORKSPACE_TAB, isWorkspaceTab, WORKSPACE_TAB_DEFS } from './workspace-tab-defs'
+import { VenueNav, type VenueOption } from './venue-nav'
 
 interface AppSidebarProps {
   venues: readonly VenueOption[]
   organizations: readonly OrganizationOption[]
   activeOrganizationId: string
+  /** Owners and admins may add venues; the "New venue" item is only drawn for them. */
+  canCreateVenue: boolean
   user: { name: string; email: string }
 }
 
-const VENUE_PATH = /^\/venues\/([^/]+)/
-
-/** The tabs of the open venue, under its entry in the menu; highlights the current one. */
-function VenueSubmenu({ venueId }: { venueId: string }) {
-  const t = useTranslations()
-  const requested = useSearchParams().get('tab')
-  const current = isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
-  return (
-    <SidebarMenuSub>
-      {WORKSPACE_TAB_DEFS.map(({ value, labelKey, icon: Icon }) => (
-        <SidebarMenuSubItem key={value}>
-          <SidebarMenuSubButton asChild isActive={value === current}>
-            <Link href={`/venues/${venueId}?tab=${value}`}>
-              <Icon aria-hidden />
-              <span>{t(labelKey)}</span>
-            </Link>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
-      ))}
-    </SidebarMenuSub>
-  )
-}
-
-export function AppSidebar({ venues, organizations, activeOrganizationId, user }: AppSidebarProps) {
+export function AppSidebar({
+  venues,
+  organizations,
+  activeOrganizationId,
+  canCreateVenue,
+  user,
+}: AppSidebarProps) {
   const t = useTranslations('nav')
   const pathname = usePathname()
-  const currentVenueId = VENUE_PATH.exec(pathname)?.[1] ?? null
+  const { setOpenMobile } = useSidebar()
+  const inSettings = pathname === SETTINGS_PATH || pathname.startsWith(`${SETTINGS_PATH}/`)
+
+  // On a phone the sidebar is a sheet over the page: close it once a link has taken the person
+  // elsewhere (it stays open when only the tab changes, which does not move the path).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `pathname` is the trigger, not an input
+  useEffect(() => {
+    setOpenMobile(false)
+  }, [pathname, setOpenMobile])
 
   return (
     <Sidebar collapsible="icon">
@@ -80,34 +72,29 @@ export function AppSidebar({ venues, organizations, activeOrganizationId, user }
         </Link>
         <SidebarSeparator />
       </SidebarHeader>
-      <SidebarContent>
+      {/* Many venues: the list scrolls, also when the sidebar is collapsed to icons. */}
+      <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
+        <VenueNav venues={venues} canCreateVenue={canCreateVenue} />
         <SidebarGroup>
-          <SidebarGroupLabel>{t('manage')}</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('organization')}</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                isActive={pathname.startsWith('/venues')}
-                tooltip={t('venues')}
-              >
-                <Link href="/venues">
-                  <Building2Icon aria-hidden />
-                  <span>{t('venues')}</span>
+              <SidebarMenuButton asChild isActive={inSettings} tooltip={t('settings')}>
+                <Link
+                  href={SETTINGS_PATH}
+                  aria-current={inSettings ? 'page' : undefined}
+                  data-testid="nav-settings"
+                >
+                  <SettingsIcon aria-hidden />
+                  <span>{t('settings')}</span>
                 </Link>
               </SidebarMenuButton>
-              {currentVenueId ? (
-                <Suspense fallback={null}>
-                  <VenueSubmenu venueId={currentVenueId} />
-                </Suspense>
-              ) : null}
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <VenueSwitcher
-          venues={venues}
-          currentVenueId={currentVenueId}
+        <OrganizationSwitcher
           organizations={organizations}
           activeOrganizationId={activeOrganizationId}
         />
