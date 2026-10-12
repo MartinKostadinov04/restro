@@ -69,7 +69,7 @@ Three layers, kept apart:
   - Instance: connection and status, allergen characteristic (barsy defines it once per installation), "Sync everything now", the history of all its venues.
   - Venue: main language, menu source and price, **sync mode: automatic or manual only**, with, when automatic, how often to check and the daily full-read time in the venue's own time zone; its own sync history and "Sync this venue"; publishing rules; the publish pause after a rollback (T76).
   - Moves from the connection to the venue: default language, sync schedule, rollback pause.
-- **Menu source card (venue Settings) is two parts:** a common part for every POS venue (instance and its venue, sync mode and schedule, Sync this venue, history, held-sync warning) and a part supplied by that POS's connector, shown only for its venues (barsy: menu category, Base vs Current price). A hand-made venue shows neither. No "Change…" (D87).
+- **Menu source card (venue Settings) is two parts:** a common part for every POS venue (instance and its venue, sync mode and schedule, Sync this venue, history, held-sync warning) and a part supplied by that POS's connector, shown only for its venues (barsy: Price shown, Base vs Current; the menu category is no longer a setting, D88). The allergen characteristic is a barsy instance setting, not a venue one. A hand-made venue shows neither. No "Change…" (D87).
 - **Sync history is collapsed** (instance and venue): one line shows the last run (time, result, changes); the full list opens under a dropdown, so the page never becomes a long scroll.
 - **Wording:** every settings text that mentions barsy will name the system by `{POS name}` inside its tab (the connector's label), never "barsy" hard-coded.
 
