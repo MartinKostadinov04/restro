@@ -151,18 +151,22 @@ describe.skipIf(!hasDatabase)('createVenueAction (as the restro_app role)', () =
     expect(revalidated).toEqual([])
   })
 
-  it('gives every venue its own public code, whatever its slug (slugs are free, D68)', async () => {
+  it('keeps a slug unique within the organisation and free across organisations (D84)', async () => {
     const slug = testSlug('shared')
     const first = await createVenueAction(valid({ slug }))
-    const second = await createVenueAction(valid({ slug, name: 'Second' }))
-    expect(first.ok && second.ok).toBe(true)
-    // The other organisation's venue may carry the same slug as well.
+    expect(first.ok).toBe(true)
+    // A second venue of this organisation with the same address name is refused, cleanly.
+    expect(await createVenueAction(valid({ slug, name: 'Second' }))).toEqual({
+      ok: false,
+      error: 'taken',
+    })
+    // The other organisation's venue may carry the same slug.
     await provisionVenue(getPool(), otherTenant, { name: 'Elsewhere', slug })
     const rows = await venueRows(slug)
-    expect(rows).toHaveLength(3)
+    expect(rows).toHaveLength(2)
     const codes = rows.map((row) => row.public_id)
     for (const code of codes) expect(code).toMatch(/^[a-z0-9]{12}$/)
-    expect(new Set(codes).size).toBe(3)
+    expect(new Set(codes).size).toBe(2)
   })
 
   it('refuses bad input as invalid and writes nothing', async () => {
@@ -302,7 +306,7 @@ describe.skipIf(!hasDatabase)('renameVenueSlugAction (as the restro_app role)', 
     ])
   })
 
-  it('lets any number of venues share a slug, also with another organisation', async () => {
+  it('refuses an address another venue of the organisation holds; another organisation may hold it (D84)', async () => {
     const mine = await makeVenue(tenant)
     const theirs = await makeVenue(otherTenant)
     const slug = testSlug('twin')
@@ -311,8 +315,11 @@ describe.skipIf(!hasDatabase)('renameVenueSlugAction (as the restro_app role)', 
     expect((await rowOf(mine.venue.id))?.slug).toBe(slug)
     expect((await rowOf(theirs.venue.id))?.slug).not.toBe(slug)
     const other = await makeVenue(tenant)
-    expect((await renameVenueSlugAction({ venueId: other.venue.id, slug })).ok).toBe(true)
-    expect((await rowOf(other.venue.id))?.slug).toBe(slug)
+    expect(await renameVenueSlugAction({ venueId: other.venue.id, slug })).toEqual({
+      ok: false,
+      error: 'taken',
+    })
+    expect((await rowOf(other.venue.id))?.slug).not.toBe(slug)
   })
 
   it('queues only the table files for a venue that has no menu yet', async () => {

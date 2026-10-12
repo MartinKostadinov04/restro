@@ -9,12 +9,11 @@ export const NEW_VENUE_CURRENCY = 'EUR'
 /**
  * - `not_allowed`: the person's role may not add a venue (owners and admins may);
  * - `invalid`: the request is malformed or asks for something the rules forbid;
+ * - `taken`: another venue of the organisation holds this address name (D84: one name per
+ *   organisation; another organisation may hold the same one);
  * - `failed`: something broke on the server (logged there).
- *
- * There is no "address taken": the readable part of the address does not have to be unique, a
- * random code in it finds the venue (D68).
  */
-export type CreateVenueError = 'not_allowed' | 'invalid' | 'failed'
+export type CreateVenueError = 'not_allowed' | 'invalid' | 'taken' | 'failed'
 
 /** The answer of `createVenueAction`; on success the new venue's id (`vn_…`). */
 export type CreateVenueResult =
@@ -26,9 +25,10 @@ export type CreateVenueResult =
  * - `not_allowed`: only owners and admins change a venue's address;
  * - `invalid`: the slug is not lower-case Latin letters, digits and single hyphens, or the venue
  *   is not one of this organisation's;
+ * - `taken`: another venue of the organisation holds this address name (D84);
  * - `failed`: something broke on the server (logged there).
  */
-export type RenameVenueSlugError = 'not_allowed' | 'invalid' | 'failed'
+export type RenameVenueSlugError = 'not_allowed' | 'invalid' | 'taken' | 'failed'
 
 /**
  * The answer of `renameVenueSlugAction`. On success the new slug and the new menu path (the code

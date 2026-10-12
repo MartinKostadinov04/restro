@@ -1,14 +1,14 @@
-// Migration 0016 and the first sync after it (brief CF-16): the demo venue's existing data — its
-// links, sections, items, placements, values and published snapshot — is the same after 0016 and
-// one full pull of today's sync.
+// The first sync after CF-16 (brief CF-16): the demo venue's existing data — its links, sections,
+// items, placements, values and published snapshot — is the same after one full pull of today's
+// sync.
 //
-// The database starts at 0015 (before CF-16) and holds what the pull before CF-16 wrote for the
-// one demo venue: the demo recordings read through the real reader, mapped with every section key
-// plain (that mapping is pinned against the one of b4ecbe1 in
-// packages/barsy/src/mapping/venues.test.ts), applied through the same `apply()` with the seen
-// marks and the records' hashes, then published. The integration's price setting is
-// `current_price`. Then 0016 runs (its backfill is checked), and one full pull of the new sync
-// runs through its real job handler, against the same recordings.
+// The database holds what the pull before CF-16 wrote for the one demo venue: the demo
+// recordings read through the real reader, mapped with every section key plain (that mapping is
+// pinned against the one of b4ecbe1 in packages/barsy/src/mapping/venues.test.ts), applied
+// through the same `apply()` with the seen marks and the records' hashes, then published. The
+// link table holds what migration 0016 leaves (the catalogue, the price per venue; its backfill
+// is pinned in packages/db/tests/venue-catalogue-migration.test.ts). Then one full pull of the
+// new sync runs through its real job handler, against the same recordings.
 import { randomUUID } from 'node:crypto'
 
 import {
@@ -56,7 +56,6 @@ import {
   allowSlowSetup,
   createTestDatabase,
   hasDatabase,
-  migrateTestDatabase,
   SETUP_TIMEOUT_MS,
   type TestDatabase,
   testSlug,
@@ -148,7 +147,7 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
   beforeAll(async () => {
     fake.listen()
     titleAll(fake.tree as Row)
-    db = await createTestDatabase({ through: '0015_venues_public_id' })
+    db = await createTestDatabase()
     pool = createPool(db.appUrl, { applicationName: 'restro-worker-0016-test', max: 2 })
     const pair = generateSealKeyPair()
     keys = {
@@ -156,10 +155,6 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
       privateKey: parseSealPrivateKey(pair.privateKey),
     }
 
-    // 0016 does not touch `venues`, but today's core writers read and write the column 0017 added
-    // to it (`archived_at`, CF-18): add that one column to this 0015 database by hand, so the
-    // writers below can run on it.
-    await query('alter table restro.venues add column archived_at timestamp with time zone')
     // The tenant, the demo venue and its integration, as before CF-16 (price: current_price).
     await provisionTenant(pool, { tenantId, name: 'Demo club' })
     const venue = await provisionVenue(pool, tenantId, {
@@ -181,11 +176,12 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
       status: 'connected',
       config: { price_source: 'current_price' },
     })
-    // The link table as 0015 has it (no catalogue, no price column yet).
+    // The link table as 0016 leaves it: the catalogue and the price per venue backfilled.
     await query(
       `insert into restro.barsy_venues
-         (tenant_id, integration_id, bid, name, venue_id, catalogue_root_cat_id)
-       values ($1, $2, $3, 'Bar & Dinner', $4, $5), ($1, $2, 102, 'Burgers', null, null)`,
+         (tenant_id, integration_id, bid, name, venue_id, catalogue_root_cat_id, catalogue_id, price_source)
+       values ($1, $2, $3, 'Bar & Dinner', $4, $5, 1, 'current_price'),
+              ($1, $2, 102, 'Burgers', null, null, 72, 'current_price')`,
       [tenantId, integrationId, DEMO_BID, venueId, DEMO_ROOT],
     )
     // What the connection check stored about the venues (tier 1), as it did before CF-16.
@@ -319,40 +315,6 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
     fake.close()
     await pool?.end()
     await db?.drop()
-  })
-
-  it('0016 adds the catalogue and the price per venue, from what is stored, and changes nothing else', async () => {
-    const links = () =>
-      query(
-        `select bid, name, venue_id, catalogue_root_cat_id, created_at, updated_at
-         from restro.barsy_venues where integration_id = $1`,
-        [integrationId],
-      )
-    const linksBefore = sorted(await links(), (row) => String(row.bid))
-    // Only up to 0016: the column 0017 adds to venues was put in by hand in beforeAll, and 0017
-    // has a test of its own (packages/db/tests/venue-archived-migration.test.ts).
-    await migrateTestDatabase(db, { through: '0016_venue_catalogue' })
-    const after = sorted(await links(), (row) => String(row.bid))
-    expect(after).toEqual(linksBefore)
-    const added = sorted(
-      await query(
-        'select bid, catalogue_id, price_source from restro.barsy_venues where integration_id = $1',
-        [integrationId],
-      ),
-      (row) => String(row.bid),
-    )
-    expect(added).toEqual([
-      { bid: DEMO_BID, catalogue_id: 1, price_source: 'current_price' },
-      { bid: 102, catalogue_id: 72, price_source: 'current_price' },
-    ])
-    expect(await state()).toEqual(before)
-    // Row-level security is forced again on the three tables the backfill read.
-    const forced = await query<{ relname: string; relforcerowsecurity: boolean }>(
-      `select relname, relforcerowsecurity from pg_class
-       where oid in ('restro.barsy_venues'::regclass, 'restro.integrations'::regclass,
-                     'restro.source_records'::regclass)`,
-    )
-    expect(forced.every((row) => row.relforcerowsecurity)).toBe(true)
   })
 
   it('one full pull of the new sync changes no link, section, item, placement, value or snapshot', async () => {

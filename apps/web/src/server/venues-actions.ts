@@ -95,6 +95,7 @@ export async function createVenueAction(input: unknown): Promise<CreateVenueResu
     if (error instanceof Error && 'digest' in error) throw error
     if (error instanceof ProvisionError) {
       if (error.code === 'invalid_input') return { ok: false, error: 'invalid' }
+      if (error.code === 'slug_taken') return { ok: false, error: 'taken' }
     }
     logError('venue_create_failed', error)
     return { ok: false, error: 'failed' }
@@ -158,6 +159,7 @@ export async function renameVenueSlugAction(input: unknown): Promise<RenameVenue
       if (error.code === 'invalid_input' || error.code === 'venue_missing') {
         return { ok: false, error: 'invalid' }
       }
+      if (error.code === 'slug_taken') return { ok: false, error: 'taken' }
     }
     logError('venue_slug_rename_failed', error)
     return { ok: false, error: 'failed' }
