@@ -50,6 +50,12 @@ Three layers, kept apart:
 - **D81** Organisation Settings › Integrations is source-agnostic, built now (the screen part of the parked plan comes forward).
   The design below. Removing an instance is refused while venues are linked to it; a system can't be unselected while it has instances; the chosen systems are saved for the organisation.
 
+- **D82** Settings ownership: the instance owns what's true for the whole connection, the venue owns what's true for that venue; neither edits the other's.
+  - Instance: connection and status, allergen characteristic (barsy defines it once per installation), "Sync everything now", the history of all its venues.
+  - Venue: main language, menu source and price, **sync mode: automatic or manual only**, with, when automatic, how often to check and the daily full-read time in the venue's own time zone; its own sync history and "Sync this venue"; publishing rules; the publish pause after a rollback (T76).
+  - Moves from the connection to the venue: default language, sync schedule, rollback pause.
+- **Wording:** every settings text that mentions barsy will name the system by `{POS name}` inside its tab (the connector's label), never "barsy" hard-coded.
+
 **Integrations screen (Martin's notes, 10-12)**
 - An owner may have several venues on one POS instance, several instances of the same POS, several POS systems, or no supported POS (by hand).
 - Organisation Settings › Integrations: choose your systems from the ones we support. Below that, one tab per chosen system, holding its connection forms (address, API key, password). "Add {POS name}" adds another instance.
