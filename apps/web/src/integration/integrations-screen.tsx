@@ -21,7 +21,10 @@ import { SystemsPicker } from './systems-picker'
 export function IntegrationsScreen({ view }: { view: IntegrationsView }) {
   const t = useTranslations('integration')
   const searchParams = useSearchParams()
-  const [asked, setAsked] = useState(searchParams.get('system'))
+  // The tab last picked here; until one is, the address says which is open (derived, never set
+  // while rendering: the Platform's tabs did that).
+  const [picked, setPicked] = useState<string | null>(null)
+  const asked = picked ?? searchParams.get('system')
 
   // A system has a tab when it is chosen, or still has instances (it cannot be left out then).
   const tabs = view.systems.filter(
@@ -30,7 +33,7 @@ export function IntegrationsScreen({ view }: { view: IntegrationsView }) {
   const current = tabs.find((system) => system.kind === asked)?.kind ?? tabs[0]?.kind
 
   function select(kind: string) {
-    setAsked(kind)
+    setPicked(kind)
     const url = new URL(window.location.href)
     url.searchParams.set('system', kind)
     window.history.replaceState(null, '', url)
@@ -47,12 +50,7 @@ export function IntegrationsScreen({ view }: { view: IntegrationsView }) {
           {t('readOnly')}
         </p>
       )}
-      <SystemsPicker
-        key={view.chosen.join(',')}
-        systems={view.systems}
-        chosen={view.chosen}
-        canManage={view.canManage}
-      />
+      <SystemsPicker systems={view.systems} chosen={view.chosen} canManage={view.canManage} />
 
       {current === undefined ? (
         <Empty className="min-h-48" data-testid="systems-empty">

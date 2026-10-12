@@ -70,6 +70,25 @@ describe('the systems picker', () => {
     expect(await screen.findByText('Systems saved.')).toBeTruthy()
   })
 
+  it('keeps its "saved" notice when the page catches up with the save (it is not rebuilt)', async () => {
+    const user = userEvent.setup()
+    actions.saveSystemsAction.mockResolvedValue({ ok: true })
+    const { rerender } = picker()
+    await user.click(screen.getByRole('checkbox', { name: /barsy/ }))
+    await user.click(screen.getByRole('button', { name: 'Save systems' }))
+    expect(await screen.findByText('Systems saved.')).toBeTruthy()
+    // The server's fresh data arrives: barsy is chosen now.
+    rerender(<SystemsPicker systems={SYSTEMS} chosen={['barsy']} canManage />)
+    expect(screen.getByText('Systems saved.')).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: /barsy/ }).getAttribute('aria-checked')).toBe(
+      'true',
+    )
+    // Nothing more to save.
+    expect(
+      (screen.getByRole('button', { name: 'Save systems' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
   it('does not offer to save when a change is undone', async () => {
     const user = userEvent.setup()
     picker({ chosen: ['barsy'] })

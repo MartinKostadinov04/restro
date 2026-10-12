@@ -26,25 +26,26 @@ export function SystemsPicker({
 }) {
   const t = useTranslations('integration.systems')
   const groupId = useId()
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set(chosen))
+  // What the person ticked or unticked on top of the saved choice. Kept as edits, not as a copy of
+  // the choice: when the page catches up with a save the edits simply agree with `chosen`, and the
+  // picker (with its "saved" notice) is never rebuilt.
+  const [edits, setEdits] = useState<Readonly<Record<string, boolean>>>({})
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [saved, setSaved] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const dirty = selected.size !== chosen.length || chosen.some((kind) => !selected.has(kind))
+  const isSelected = (kind: string) => edits[kind] ?? chosen.includes(kind)
+  const dirty = systems.some((system) => isSelected(system.kind) !== chosen.includes(system.kind))
   // The systems being left out that still have instances: the server will refuse, and the
   // sentence names them.
   const blocking = systems
-    .filter((system) => chosen.includes(system.kind) && !selected.has(system.kind))
+    .filter((system) => chosen.includes(system.kind) && !isSelected(system.kind))
     .filter((system) => system.instances > 0)
     .map((system) => system.label)
     .join(', ')
 
   function toggle(kind: string, on: boolean) {
-    const next = new Set(selected)
-    if (on) next.add(kind)
-    else next.delete(kind)
-    setSelected(next)
+    setEdits({ ...edits, [kind]: on })
     setSaved(false)
     setError(null)
   }
@@ -55,7 +56,7 @@ export function SystemsPicker({
     startTransition(async () => {
       // In the picker's own order, whatever the order of the clicks.
       const result = await saveSystemsAction({
-        systems: systems.filter((system) => selected.has(system.kind)).map((system) => system.kind),
+        systems: systems.filter((system) => isSelected(system.kind)).map((system) => system.kind),
       })
       if (result.ok) setSaved(true)
       else setError(result.error)
@@ -81,7 +82,7 @@ export function SystemsPicker({
             >
               <Checkbox
                 id={id}
-                checked={selected.has(system.kind)}
+                checked={isSelected(system.kind)}
                 onCheckedChange={(value) => toggle(system.kind, value === true)}
               />
               <label htmlFor={id} className="grid flex-1 gap-0.5">

@@ -24,7 +24,6 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { RunView } from '@/server/integration/view'
 
 import {
@@ -216,15 +215,15 @@ export function RunHistory({ runs, timeZone, connector, source, showVenue }: His
 
   if (last === undefined) {
     return (
-      <Empty className="min-h-32" data-testid="history-empty">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <HistoryIcon aria-hidden />
-          </EmptyMedia>
-          <EmptyTitle>{t('empty.title')}</EmptyTitle>
-          <EmptyDescription>{t('empty.description')}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      // One line, like the collapsed history: nothing to open yet.
+      <p
+        className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground"
+        data-testid="history-empty"
+      >
+        <HistoryIcon aria-hidden className="size-4 shrink-0" />
+        <span className="font-medium text-foreground">{t('empty.title')}</span>
+        <span>{t('empty.description')}</span>
+      </p>
     )
   }
 
