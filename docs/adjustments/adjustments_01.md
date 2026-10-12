@@ -94,8 +94,8 @@ Three layers, kept apart:
   Demo Club Sofia ended up linked to a production unit ("Кетъринг/Bakery/Тропс"), which isn't a place guests order from.
 - ~~P-03~~ became part of D87: barsy's public menu (`public_cat_id`) is the menu category, chosen automatically.
   barsy keeps several "menus" in one catalogue. Its "Публично меню" branch has proper guest names; the till's own branch mostly doesn't.
-- **P-04** Decide which barsy price guests see (`actual_price` or `current_price`).
-  barsy sends two prices that can differ: the demo espresso is 1.80 vs 1.17.
+- **P-04 → decided (Martin 10-12):** "Price shown" stays a barsy venue setting (the barsy part of Menu source): Base price (`actual_price`, default) or Current price (`current_price`, after barsy's price rules, can change during the day).
+  The demo espresso is 1.80 vs 1.17. Current price carries a warning that time-based rules (happy hour) may show late, until Lukanet confirms whether items count as changed when a rule starts (Q43).
 - **P-05** Save barsy's language list (`Languages_getlist`) on the connection, and count filled languages from barsy's guest-facing `_ml` fields (D77's report for barsy).
   barsy lists all 11 languages; in the demo only Bulgarian and English have text.
 
