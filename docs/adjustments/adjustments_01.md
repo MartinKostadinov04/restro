@@ -54,4 +54,12 @@ Session 10-11 to 10-12. Full decision texts: `docs/tracker.md` (search `| D77 |`
 - **P-07** Make a venue's languages, time zone and closing time editable (today read-only).
 - **P-08** Venue address names unique within an organisation, needed for `menu.group.bg/<venue>` (D80).
 
+## Connector: Martin's notes
+- **Integrations screen (Martin 10-12).** An owner may have several venues on one POS instance (as barsy does), several instances of barsy or of another POS that works the same way, or no supported POS (by hand).
+  - Organisation Settings › Integrations: choose your systems from the ones we support.
+  - Below that, one tab per chosen system. Each tab holds that system's connection forms (address, API key, password).
+  - "Add {POS name}" adds another instance (the form doubles).
+  - New venue: choose the POS, then the instance, then the venue from that instance. "By hand" skips all of that; the backend works the same way for both.
+  - *Lead:* this is the screen design for the parked connector plan (CF-05 named connections per system, CF-06 forms per POS, CF-09 connection screens). Today: one barsy connection, no system picker or tabs, and till venues are added only from the Integrations list ("Add as venue").
+
 ## Martin's notes
