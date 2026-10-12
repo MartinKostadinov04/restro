@@ -1,142 +1,256 @@
-# Adjustments 01
+# Adjustments 01: prompt for the implementing lead (Fable)
 
-Session 10-11 to 10-12. Full decision texts: `docs/tracker.md` (search `| D77 |` etc.).
+Decided by Martin (product owner, non-coder) with the previous lead in a Q&A session, 10-11 to 10-12. Full decision texts: `docs/tracker.md` (search `| D84 |` etc.); one-line index: `docs/decisions.md`. Where this file and the tracker differ, the tracker wins.
 
-Three layers, kept apart:
-1. **Platform:** everything after the data is in our own model; knows no POS.
-2. **Integration layer:** how any POS (or "by hand") plugs in; knows no specific POS.
-3. **barsy connector:** barsy's own fields and quirks only.
+## 0. Your job and how to work
+
+- **You are the lead for these adjustments.** First **plan**: work packages, order, dependencies, which files each package owns, model per package, and the migrations. Present the plan to Martin in plain language and wait for his OK. Then write briefs (`docs/agent-briefs/`), run the agents, review, merge, report.
+- **Read first:** `CLAUDE.md`, `docs/decisions.md`, this file. Look up decisions in the tracker by ID only; never read the tracker or `docs/architecture/data-architecture.md` whole.
+- **Branch:** create `ad/foundation` from `sh/foundation`; task branches `ad/<nn>-<slug>`. Martin allows pushing `cf/**`, `sh/**` and `ad/**` for CI; never push `main`. CI (`.github/workflows/ci.yml`) must be extended to `ad/**`.
+- **Process (Martin 10-11, 10-12):**
+  - At most two agents at once; the strongest model for genuinely complex packages only (D58).
+  - Agents run lint, typecheck, deps:check and only the tests of what they touched, plus a Playwright spec they wrote or changed. Never the full `pnpm test`, `pnpm build` or Playwright suite on the PC. Not yet in `CLAUDE.md`: state it in every brief.
+  - The lead pushes the task branch, waits for CI green, then merges.
+  - Briefs name the decisions and doc sections to read. Reports are at most one page.
+  - Never enter plan mode while agents run.
+- **Rules that bind every change:**
+  - The nine rules in `CLAUDE.md`.
+  - Guardrails only tighten (D67). One approved exception: D83's purge role.
+  - Vendor words ("barsy") only in a connector's package or the `connectors/` folders. CI enforces this with `scripts/vendor-words.test.ts`.
+  - Every new decision or task goes into the tracker and `docs/decisions.md` in the same commit.
+- **Acceptance:** Martin checks each wave on port 3000 (local database `restro_accept`; migrate it locally). Staging migrations need Martin's OK.
+- **Three layers, kept apart:**
+  1. **Platform** knows no POS.
+  2. **The integration layer** is how any POS, or "by hand", plugs in.
+  3. **The barsy connector** holds barsy's fields only.
+- **Already built (context, not to redo):**
+  - D75: barsy's own name stands in for a missing public name, and the composer warns (CF-17).
+  - D76: rename, archive and restore a venue (CF-18; `venues.archived_at`, migration 0017; core `apply/venue-lifecycle.ts`, `apply/venue-lock.ts`).
+- **Concluded:** the database stays one Postgres. JSON arrives from the till, rows hold the merged, layered model, and JSON snapshots go to guests. No second store.
 
 ## 1. Platform (source-agnostic)
 
-**Concluded**
-- **The database layer stays SQL (one Postgres).**
-  Data arrives as the till's JSON and leaves as the guest's JSON (the published snapshot). The rows in between are where sources (till, typed in Restro, per venue) are merged with history and rules, and where small frequent edits stay safe. Conversions run only on change, never per guest view. Analytics later reads from it (a separate reporting store only if volumes demand it).
+### V1 Venue bin and purge: D83, D90, D91
+- **Now:**
+  - Delete archives the venue and releases its till link; the worker withdraws `v/<code>.json` and the table files.
+  - Restore (Organisation › Settings › Deleted venues) brings it back without a till link.
+  - Nothing is ever erased: the app role has no DELETE (`packages/db/src/table-access.ts`).
+- **Change:**
+  - **Bin and purge:** a 30-day bin, then a worker purge job erases the venue's own data: menus, sections, venue-scoped values, tables and tokens, tags, snapshots and CDN files, events, job runs. "Delete permanently" (owners, typed name) purges at once.
+  - **What survives:** tombstones keep the public code and table tokens from ever being reissued. Data another venue uses stays. The purge also clears a removed POS instance's data and items no venue uses.
+  - **Restore** re-links the till venue if it's still free; otherwise it's refused, naming the venue that holds it.
+  - **Custom domains:** a domain on a deleted venue shows "not available" and is detached on purge.
+- **Guardrail (approved by Martin):** a dedicated database role with DELETE, used only by the purge job. The app role keeps no DELETE. Pin both with tests.
 
-**Built**
-- **D76** Rename, delete (archive) and restore a venue (CF-18).
-  Rename sits in the venue's Settings tab. Delete is owners only, after typing the name: the venue disappears, its guest page and QR codes stop working, and its till link is freed. Restore it from Settings › Deleted venues (for 30 days, then purged: D83).
-- **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
+### V2 Venue states and the All venues card: D86
+- **Now:** `app/(admin)/venues/page.tsx` with `components/admin/venue-card.tsx`. There are no states. Nothing unpublishes except deleting the venue.
+- **Change:**
+  - **States:** Draft (never published, or unpublished), Live (its live menu is published), Archived (in the bin).
+  - **An Unpublish action:** withdraws the guest files and returns the venue to Draft.
+  - **The card shows:** display name, state, POS instance (or "By hand"), the venue's name in that POS, and a link to the full menu preview (the whole menu, no table; its look is designed later).
 
-**Decided, to build**
-- **D97** Publishing moves into the venue's Settings.
-  The venue page has three tabs: Composer (Structure, Design), Tables & QR, Settings. Settings has sub-tabs General, Publish (automation) and Versioning (versions, restore, log). The Publish button stays top right; warnings that need action show under the header on every tab.
-- **D96** Publishing simplified.
-  - Versions: the live one plus up to 2 earlier ones can be restored; anything but the live version is purged after 30 days, even among the last 2. The change log is kept 2 months.
-  - A Publish button sits top right on every tab, greyed when nothing changed, with a change count and a confirmation listing the changes. With several menus it becomes a dropdown: each menu, its areas in brackets, and its number of changes. "Open the guest page" sits beside it.
-  - The Publishing tab loses "On guests' phones now" and "Changes waiting". "Rules" becomes Automation settings (POS venues only: sync mode and publish after sync). The "hold new till items" rule goes. Warnings (held publish, paused, address off) appear only when they apply.
-- **D95** Tables & QR: areas, tables and menu routing.
-  barsy venues: halls and tables come from barsy; rename, reorder, hide only; non-public places hidden by default. Other POS: decided after reading their docs. Restro venues: you make your own areas and tables. Menu routing for every venue: venue-wide menu → area menu overrides it → table menu overrides the area; one menu per level, no guest switch. The name field says it's the name guests see, with barsy's number beside it; each area shows its tables as a grid of cards.
-- **D94** Tables & QR: the codes' address is shown, not asked for.
-  The card stops asking for a base address or an "own link" pattern (the pre-domain workaround). It shows where the codes lead (your verified domain, else our address), links to Organisation › Domains, and keeps the test link and the printing warning. The local Wi-Fi testing address is developer configuration.
-- **D93** Colour system upgrades, from an audit against current practice (WCAG 2.2, CSS Color 4/5, Material 3, Radix, Tailwind 4).
-  The core is sound: perceptual OKLCH, gamut-safe, 4.5:1 text contrast, roles instead of raw colours, a proper dark transform. The gaps are at its edges. Built with the D92 designer work; every change is additive (old snapshots and templates keep working).
-  - **Must, part 1. One source of truth for every colour that carries text or meaning.** The template mixes about 40 shades itself (`color-mix(in srgb)`), unchecked and blended non-perceptually. The engine adds roles for what is missing:
-    - status: error, success and their text colours, for the service screens' rejected and accepted states;
-    - disabled and sold-out text, selected or soft-accent chip fills, the focus ring, the backdrop behind sheets, and a strong border for controls.
-    - Purely decorative tints may stay in the template, blended `in oklab`. A contract test checks every text-on-colour pair the template actually draws.
-  - **Must, part 2. Contrast for controls (WCAG 1.4.11, 3:1).**
-    - The strong border and the focus ring reach 3:1 against page and panels.
-    - When the chosen highlight colour sits too close to the page (below 3:1), it is kept as chosen, buttons get the strong outline, and the Design tab says why.
-  - **Must, part 3. Brand-first colour card** (fits D92's merge of "brand" and "custom").
-    - The card starts with "Your brand colour", which becomes the highlight (Tertiary). Page and panels are pre-filled as calm tints of it, through the monochrome suggestion, and stay editable.
-    - A warning appears if the page colour is strongly saturated, since it covers about 60% of the screen.
-    - Reason: an owner typing a bright brand colour as "Primary" gets a fully coloured page.
-  - **Should, part 4. Dark screen.** Strong accents are also toned down a little, not only lightened, so they don't "vibrate" on a dark page.
-  - **Should, part 5. Second readability check (APCA).** WCAG 2 stays the hard, legal rule. APCA (the perceptual method behind the WCAG 3 draft) is added as a second check: body text at least Lc 75, small secondary text at least Lc 60, both screens. If it fails, the colour is nudged further.
-    - Implemented in-house, like OKLCH, so no new dependency. Check APCA's licence terms before shipping.
-  - **Should, part 6. "Increase contrast".** A stronger variant (text 7:1, secondary text 4.5:1, borders 3:1) for phones set to `prefers-contrast: more`.
-  - **Not now:** wide-gamut (Display-P3) colours and Windows forced-colours mode.
-- **D92** Composer has two subtabs, Structure and Design; the designer is simplified.
-  - Structure: POS venues may create their own sections too, placed through the mapper (amends D90). Each section is vertical or horizontal (e.g. promotions, top picks as a row). Menu layout (list, one or two columns) is set here: a default, and whether guests may switch.
-  - Design: choose a template (stored shells, phone preview pop-up with the general menu preview). Cards in order: logo and menu header name → guest functions (own section) → font (dropdown), corners, shadow, screen → colours (only Primary, Secondary, Tertiary; no presets, no swatch palette). A sticky phone preview beside it.
-  - Template chooser at the top, collapsed by default. Header name per menu (defaults to the venue name). Computed colours and the dark screen are hidden under a collapsed "Advanced".
-  - Horizontal sections reuse the shell's delivered feature strip, now for any section the composer marks; the layout switch is the shell's own. A design change reaches guests on the next publish of the venue's menus.
-- **D91** Gaps closed after a user-side review.
-  Organisation › General (name and address name). The purge also clears data of removed POS instances and items no venue uses. A QR code on an unpublished menu falls back to the live menu. Hand-made venues' languages are the owner's choice. A domain on a deleted venue says "not available" and is detached on purge. Deleted menus go to a 30-day bin in the venue's settings. A POS venue may move items between sections. Roles (RBAC) are left for later.
-- **D90** Consistency fixes after reviewing the venue and menu decisions.
-  Restoring a deleted POS venue re-links its till venue if still free (else refused, naming who took it). A POS venue's structure is our own mapper (order) and dictionary (names), starting as a copy of the till's: reorder, rename, hide; own sections allowed through the mapper (D92); syncs never touch them. Each menu has its own draft and published version; the venue is Live when its live menu is published. One shell and design per venue, the same for all its menus.
-- **D89** Hand-made venues have full control; POS venues can hide but not delete.
-  Hand-made: create, edit and delete menus, sections and items. POS venue: hide, sold out, reorder, own name/description/photo over the till's, tags; never delete or create items or change prices, because the POS is the source and would bring them back. An item deleted in the POS leaves Restro after the next full read.
-- **D88** A venue holds several menus; exactly one is live.
-  Hand-made venue: add menus in Settings › Menus (each with ">" into the composer) or in the composer; pick the live menu in either place. barsy venue: its menus are what barsy designates for it, its public menu (live by default) and its till tree; other catalogue branches aren't its menus. Which menu a code opens is routed venue → area → table, one menu per code (D95). **Import menu** ("From other venue"): only between hand-made Restro venues, one-time copy; POS menus can't be copied (limitation for later).
-- **D86** Venue states and the All venues card.
-  States: Draft (not published yet, or unpublished), Live (published), Archived (in the organisation's bin until erased by the clock or by hand). The card shows the display name, the state, the POS connection (or "By hand"), the venue's name in that POS, and a link to the full menu preview. Needs an "Unpublish" action. The preview is the whole menu, not a table's view; its design is discussed with the design topic.
-- **D85** New venue asks only what no source can give.
-  From a POS: pick the instance and its venue, nothing to type; name, address and languages come from the source and can be edited later. By hand: name and languages; the address is generated from the name as an editable preview.
-- **D84** Clean guest addresses: `<our domain>/m/<organisation>/<venue>`, no visible codes.
-  Names are generated from the organisation's and venue's names (also for POS venues) and editable later; old names keep redirecting, so printed links never break. The venue name is unique within its organisation. With a custom domain (D80) the path parts it covers disappear (`menu.club.bg`, `menu.group.bg/club-sofia`). Path form chosen over subdomains as simpler to apply now.
-- **D83** A deleted venue is restorable for 30 days, then purged; or "Delete permanently" at once from Organisation › Deleted venues.
-  Chosen for scale: an unused venue shouldn't take space forever. The purge erases the venue's own data (menu, tables, published files, history); items another venue uses stay; its public and QR codes are never reused. Only the purge job may delete (its own database role). Amends D76.
-- **D77 (platform part)** One central source of a venue's menu languages.
-  One function in core works out a venue's languages from what the connector reports (about 20% coverage counts; a language the owner switched on is never removed; one main language per venue). Every step uses it: sync, new venue, settings, composer, checks, publishing.
-- **D87** A venue's source is fixed when it is created (supersedes D78).
-  Only the source is fixed; names, address and all other settings stay editable. Switching a hand-made menu to a POS is not supported in this version. No "Change…" on the venue: it confused. To use another till venue, another POS, or to go from hand-made to a POS, create a new venue from that source and delete the old one. Which menus a barsy venue has: D88. Which sections and items appear is the composer's job. (Demo Club Sofia's mixed 127 items: recreate the venue.)
-- **D80** Custom domains for the guest menu.
-  Per domain, the owner chooses: one venue (`menu.club.bg` opens its menu) or the whole organisation (`menu.group.bg/<venue>`). Subdomains only; only the guest menu and table codes are served there, never the admin. The owner sets it up in Settings › Domains: Restro shows the DNS record, checks it and turns HTTPS on (provider to confirm: Cloudflare for SaaS). QR codes then print with the domain; our address keeps working.
+### V3 Clean guest addresses: D84
+- **Now:**
+  - The address is `/m/<slug>-<code>` (D68). The slug is cosmetic and not unique; `venues.public_id` (12 characters) finds the venue.
+  - The CDN index is `v/<code>.json`; the route is `apps/web/app/m/[venue]/page.tsx`; core has `renameVenueSlug`.
+- **Change:**
+  - **The address** becomes `/m/<organisation>/<venue>`. The organisation part is its slug (Better Auth `auth_organization.slug`, unique platform-wide); the venue part is unique within the organisation.
+  - **Both parts** are generated from the names and editable; old names keep redirecting.
+  - **The public code** becomes an internal CDN key only, and old `/m/<slug>-<code>` links redirect.
+  - **`/t/<token>`** is unchanged.
 
-**Proposed**
-- **P-06** Venue profile: address, phone, opening hours, description, website.
-  A venue has none of these today. A till fills them when the venue is added; a person types them for a hand-made venue or over the till's values.
-- **P-07** Make a venue's languages, time zone and closing time editable (today read-only).
-- ~~P-08~~ became D84 (venue names unique within an organisation).
+### V4 New venue form: D85, D87
+- **Now:** `components/admin/new-venue-dialog.tsx` asks for name, slug and languages, and is for hand-made venues only. POS venues are created from Integrations' Till venues card ("Add as venue" or "Link to existing").
+- **Change:**
+  - **Step 1, the source:** an active POS instance, or "By hand".
+  - **From a POS:** pick the instance's venue (linked ones show "linked to …" and can't be picked). Nothing is typed: the name comes from the till, the address from the name, the languages from L1.
+  - **By hand:** name and languages; an editable address preview.
+  - **The source is fixed after creation:** no "Change" or re-link anywhere. Going from hand-made to a POS isn't supported.
 
-**Open**
-- ~~**T78**~~ Answered by D90/D91: a name typed for a POS item goes into the dictionary, which beats the till's stand-in.
-- **T77** Re-withdraw a deleted venue's guest files if the queue was down.
-  If the background queue is down at the moment of a delete, the guest page stays online until the venue is restored and deleted again.
-- Demo Club Sofia's first publish: who presses it.
-  Its guest page doesn't work at the new address until it's published once. Moot if the venue is recreated (D87).
+### V5 Organisation › General: D91
+- **Now:** Settings has only "Integrations" and "Deleted venues" (`components/admin/settings-sections.ts`). Renaming the organisation is disabled over HTTP (`DISABLED_HTTP_PATHS` in `apps/web/src/server/auth.ts`).
+- **Change:** a General section for the organisation's name and its address slug (V3), through a server action.
+
+### M1 Several menus per venue: D88, D90, D91, D92 (the foundation of M2, C1, P1)
+- **Now:**
+  - One menu per venue: `menus_venue_id_unique`; `provisionMenu` is idempotent; the app role has only SELECT and INSERT on `menus`.
+  - `snapshots` and `publish_pointers` are keyed by (menu, venue). The guest page loads the venue's one menu.
+- **Change:**
+  - **Many menus, exactly one live.** The live one is chosen in Settings › General › Menus (each row has a ">" into the composer) or in the composer.
+  - **Hand-made venues** add, rename and delete menus. A deleted menu goes to the venue's 30-day "Deleted menus" bin, then is purged.
+  - **barsy venues:** their menus come from barsy (see B3).
+  - **Versions:** each menu has its own draft and published versions. The venue is Live when its live menu is published.
+  - **Header name** per menu, defaulting to the venue's name.
+  - **Shared by all menus:** one template (shell), one design and one set of guest features per venue.
+  - **Import menu** ("From other venue"): hand-made to hand-made only, as a one-time copy.
+
+### M2 Menu routing: D95, D91 (depends on M1)
+- **Now:** a QR token finds its table (`places`), which finds the venue's one menu.
+- **Change:**
+  - **A dictionary:** the venue's live menu → an area menu overrides it → a table menu overrides the area. The most specific entry wins, and an unpublished menu falls back to the next level.
+  - **One menu per code,** with no guest switch.
+  - **Published so guests never need the database (rule 4):** resolved into the table files and the venue index.
+
+### C1 Composer › Structure: D89, D90, D91, D92 (depends on M1)
+- **Now:** `apps/web/src/composer/*`.
+  - Sections and placements use fractional sort keys.
+  - `venueHasTill` (D66) blocks new items on till venues.
+  - Names over the till's go to the override layer through the item sheet (`name` resolves source-first).
+  - The composer also holds the Guest features and Tags panels.
+- **Change:**
+  - **Subtabs:** Structure and Design. The venue's Design tab moves in (D1).
+  - **Hand-made venues:** full create, edit and delete of menus, sections and items.
+  - **POS venues, structure:** a mapper (placements and order, including own sections and moving items between sections) and a dictionary (our name, description and photo over the till's), plus hide, sold out and tags.
+  - **POS venues, never:** create or delete items or till sections, or change prices. Syncs rewrite only the till layer, and new till items land at the end of their category's section (D20).
+  - **Sections:** each is vertical or horizontal, published as a layout hint. The face draws a horizontal section with its delivered "feature strip" (`packages/faces/editorial-market/src/section.tsx`, `.is-feature` in `css.ts`), replacing the template option `featureFirstSection`.
+  - **Menu layout** (list, one or two columns): a default plus "guests may switch", replacing the template options `layout` and `layoutSwitch`.
+  - **Moves:** "Overrides to review" becomes a badge on the item. The Guest features panel moves to Design.
+
+### D1 Composer › Design: D92
+- **Now:** the venue's Design tab (`apps/web/src/design/**`).
+  - A template gallery.
+  - The colour picker:
+    - 4 preset chips plus Custom, and three pickers;
+    - "Suggest" with 5 harmony rules, and a colour-swatch palette;
+    - the 8 computed colours for light and dark, with overrides and contrast ratios.
+  - 6 fonts shown as cards; corner and shadow sliders; logo; light/dark policy; template look options.
+  - A live phone preview.
+- **Change:**
+  - **The template chooser** sits at the top, collapsed, with a phone preview pop-up (the general menu preview, no table).
+  - **The cards, in order:**
+    1. Logo and the menu's header name.
+    2. Guest functions, in their own section.
+    3. Font (a dropdown), corners, shadow, screen.
+    4. Colours: brand-first (D2), no presets, no swatch palette, the computed colours under a collapsed "Advanced".
+  - **A sticky phone-size preview** beside the cards; you decide how.
+  - **Design changes** reach guests on the next publish of the venue's menus.
+
+### D2 Colour system: D93 (with D1)
+- **Now:** `packages/core/src/theme/derive.ts` derives 8 roles in OKLCH, gamut-safe, with 4.5:1 text contrast and a hue-preserving dark transform. The face mixes about 40 colours of its own with `color-mix(in srgb)` (`css.ts`, `services/services-css.ts`), and none of them is checked.
+- **Change, must:**
+  - **New engine roles** for everything that carries text or meaning: error and success with their text colours, disabled and sold-out text, selected chip fill with its text, focus ring, sheet backdrop, a strong control border.
+  - **Decorative tints** may stay in the face, blended `in oklab`.
+  - **A contract test** checks every text-on-colour pair the face draws.
+  - **3:1 for controls:** the strong border and focus ring meet it. A highlight under 3:1 stays as chosen, but buttons get the strong outline and the Design tab explains why.
+  - **The colour card starts with "Your brand colour"** (Tertiary). Page and panels are pre-filled as calm tints and stay editable, with a warning when the page colour is strongly saturated.
+- **Change, should:**
+  - **Softer accents** on the dark screen.
+  - **APCA** as a second check (body text Lc 75, small secondary text Lc 60), built in-house; check its licence first.
+  - **A `prefers-contrast: more` variant.**
+- **Constraint:** all additive, so old snapshots and faces still work.
+
+### L1 Central menu languages: D77, D91
+- **Now:**
+  - `LOCALES` (`packages/core/src/locales.ts`) is a fixed list of barsy's 11 keys.
+  - An organisation-level `integrations.config.default_locale` sets the language of untagged till text (Integrations' mapping card).
+  - `venues.default_locale` and `enabled_locales` are chosen at creation and read-only afterwards; the resolver, publisher and composer use them.
+- **Change:**
+  - **One core function every workflow calls:** sync, new venue, settings lists (with coverage), composer tabs, resolver checks, publisher.
+  - **For POS venues:** a language counts from about 20% coverage of guest-facing texts, from the connector's report (I3). A language the owner switched on is never removed.
+  - **For hand-made venues:** the owner's choice.
+  - **One main language per venue.** The organisation-level setting goes.
+  - **A guardrail test** stops workflows reading `enabled_locales` directly.
+
+### T1 Tables & QR: D94, D95 (routing UI depends on M2)
+- **Now:**
+  - Tables exist only as barsy places: `places` (integration, bid, place_id, place_num, salon_name, is_public, qr_token, label).
+  - Halls are grouped by name, and every place gets a code, non-public ones included. Hand-made venues have no tables.
+  - The "Address in the codes" card asks for a base address or an own-link pattern (`venues.settings.qr`, D61). The page is a long list.
+- **Change:**
+  - **The address card is read-only:** your verified domain, otherwise our address, with a link to Organisation › Domains. The test link and the printing warning stay; the Wi-Fi testing address becomes developer config `PUBLIC_BASE_URL`.
+  - **Hand-made venues** create, rename and delete areas and tables.
+  - **barsy venues:** see B5.
+  - **Layout:** each area shows its tables as a grid of cards: name, number, code status, and the menu shown (marked when overridden).
+  - **The name field** is labelled as the name guests see, with "from barsy: N" beside it.
+  - **The routing UI** sets menus per venue, area and table (M2).
+
+### P1 Publishing and the venue page: D96, D97, T76 (depends on M1)
+- **Now:** the venue's Publishing tab (`apps/web/src/publish/*`, core `apply/publish.ts`, worker `publish/after-sync.ts`).
+  - **Its sections:** "On guests' phones now", "Changes waiting" (a diff summary), held-publish, paused and address-off banners, "Overrides to review", Versions, and a Rules card.
+  - **Versions:** all kept forever, 20 per page.
+  - **Rules:** `after_sync` auto/manual and `new_items` show/hold, stored in `venues.settings.publish`.
+  - **Elsewhere:** the rollback pause sits in `integrations.config.publish.auto_paused` (T76); the sync schedule in `integrations.config.schedule` (`packages/core/src/sync-settings.ts`).
+- **Change:**
+  - **Venue tabs:** Composer, Tables & QR, Settings. Settings gets sub-tabs General, Publish and Versioning; the Publishing tab goes.
+  - **A Publish button top right on every tab**, in both modes. It's greyed when nothing differs, shows the reason when blocked, carries a change count and opens a confirmation listing the changes. With several menus it becomes a dropdown: each menu, its areas in brackets, its change count. Per-area counts need new logic. "Open the guest page" sits beside it.
+  - **Settings › Publish = Automation settings**, POS venues only:
+    - sync mode, automatic (interval and daily full-read time in the venue's time zone) or manual;
+    - "publish automatically after a sync".
+  - **Removed:** the `new_items` rule, "On guests' phones now", "Changes waiting".
+  - **The rollback pause** becomes per venue.
+  - **Settings › Versioning:** the live version plus up to 2 restorable. Any non-live version is purged once older than 30 days, even among the last 2. The change log is kept 2 months.
+  - **Warnings that need action** (held publish, paused, address off) show under the venue header on every tab.
+
+### DM1 Custom domains: D80 (blocked: provider decision, section 4)
+- **Change:**
+  - **Organisation › Domains, self-service:** subdomains only; each domain serves one venue (`menu.club.bg`) or the organisation (`menu.group.bg/<venue>`); DNS verification and automatic HTTPS (proposal: Cloudflare for SaaS).
+  - **Only the guest menu and table codes** are served on a custom domain.
+  - **Routing never touches the database:** from a published `d/<host>.json`.
+  - **A host belongs to one tenant platform-wide.** Codes print with the domain.
 
 ## 2. Integration layer (any POS, or by hand)
 
-**Decided**
-- **D79** The pilot's till is Mistral; Mistral and the connector foundation are parked until after this phase.
-  We're finishing the platform first (data, features, UI). The general connector work (CF-05, 06, 07, 08) and the Mistral connector come later, once Mistral's API docs arrive. Exception: the Integrations screen and named connections (D81) are built now.
-- **D77 (integration part)** After each complete full read, a connector reports the languages its POS offers and how many guest-facing texts each one fills. The connector reports; core decides.
+### I1 Integrations screen, source-agnostic: D81
+- **Now:** `app/(admin)/settings/integrations/page.tsx` renders `IntegrationPanel` (`apps/web/src/integration/*`: ConnectCard, StatusCard, TillVenuesCard, MappingCard, SyncCard, RunHistoryCard). One barsy connection. The `integrations` table allows several rows but has no name (`kind` is checked as `'barsy'`).
+- **Change:**
+  - **A systems picker**, saved per organisation, and one tab per chosen system.
+  - **Named instances** ("barsy – Sofia") with "Add {system}". Each has its connection form, status, system settings, "Sync everything now" and a collapsed run history.
+  - **The Till venues card goes** (V4 replaces it).
+  - **Refusals:** removing an instance while venues link to it; unselecting a system while it has instances. Connections are never erased.
+  - **Wording:** every text uses `{POS name}`, never "barsy" hard-coded.
+  - **Migration:** a connection name and the chosen systems.
 
-- **D81** Organisation Settings › Integrations is source-agnostic, built now (the screen part of the parked plan comes forward).
-  The design below. Removing an instance is refused while venues are linked to it; a system can't be unselected while it has instances; the chosen systems are saved for the organisation.
+### I2 Settings ownership: D82
+- **Now:** the schedule, default language and rollback pause sit on the connection.
+- **Change:**
+  - **The instance owns what's true for the whole connection:** connection, status, system settings (barsy: the allergen characteristic), sync everything, all runs.
+  - **The venue owns what's true for that venue:** main language (L1), menu source, sync mode (P1), its own collapsed history, "Sync this venue", publishing rules, the rollback pause.
+  - **The venue's Menu source card** has a common part (instance and till venue, "Sync this venue", history, held-sync warning) and a part supplied by the connector, shown only for its venues. A hand-made venue shows neither.
 
-- **D82** Settings ownership: the instance owns what's true for the whole connection, the venue owns what's true for that venue; neither edits the other's.
-  - Instance: connection and status, allergen characteristic (barsy defines it once per installation), "Sync everything now", the history of all its venues.
-  - Venue: main language, menu source and price, **sync mode: automatic or manual only**, with, when automatic, how often to check and the daily full-read time in the venue's own time zone (shown in Settings › Publish, D96/D97); its own sync history and "Sync this venue"; publishing rules; the publish pause after a rollback (T76).
-  - Moves from the connection to the venue: default language, sync schedule, rollback pause.
-- **Menu source card (venue Settings) is two parts:** a common part for every POS venue (instance and its venue, Sync this venue, history, held-sync warning; the sync mode lives in Settings › Publish, D96) and a part supplied by that POS's connector, shown only for its venues (barsy: Price shown, Base vs Current; the menu category is no longer a setting, D88). The allergen characteristic is a barsy instance setting, not a venue one. A hand-made venue shows neither. No "Change…" (D87).
-- **Sync history is collapsed** (instance and venue): one line shows the last run (time, result, changes); the full list opens under a dropdown, so the page never becomes a long scroll.
-- **Wording:** every settings text that mentions barsy will name the system by `{POS name}` inside its tab (the connector's label), never "barsy" hard-coded.
+### I3 Connector language report: D77 (feeds L1)
+- After each complete full read, the connector reports the languages its POS offers and how many guest-facing texts each one fills. The connector reports; core decides.
 
-**Integrations screen (Martin's notes, 10-12)**
-- An owner may have several venues on one POS instance, several instances of the same POS, several POS systems, or no supported POS (by hand).
-- Organisation Settings › Integrations: choose your systems from the ones we support. Below that, one tab per chosen system, holding its connection forms (address, API key, password). "Add {POS name}" adds another instance.
-- Each instance has a name the owner types (e.g. "barsy – Sofia"); per-instance settings (sync schedule, run history, POS-specific options) sit in that instance's section.
-- New venue: choose the POS instance (only those with an active connection) or "By hand", then the venue from that instance. A venue already linked shows "linked to …" and can't be picked. "By hand" skips all of that; the backend works the same way.
-- No till-venue overview in the instance tabs and no "Not used": the New venue dropdown already shows them.
-- *Lead:* this is the screen design for the parked plan (CF-05 named connections, CF-06 forms per POS, CF-09 screens). Today: one barsy connection, no system picker or tabs, and till venues are added only from the Integrations list ("Add as venue").
+### Parked: D79
+- The pilot's till is Mistral (Zamboo), with no API docs yet. CF-05, 06, 07 and 08 (`docs/reviews/connector-architecture/readiness.md`) and the Mistral connector wait. Halls and tables for other POS systems stay undecided until their docs are read.
 
-## 3. barsy connector (barsy-specific)
+## 3. barsy connector
 
-**Built**
-- **D75 (barsy part)** barsy's own name stands in for a missing public name (CF-17).
-  barsy's guest name (`article_name_public`, `cat_name_public`) was empty for many items, so new venues showed nameless items. Now barsy's own name (`article_name`, `cat_name`, e.g. "Салата Цезар") is used, and the platform warns (see 1).
+### B2 Price shown: D91, P52 settled
+- **Now:** a Base/Current radio in the venue's Menu source (`barsy_venues.price_source`).
+- **Change:** it stays, as the barsy part of Menu source only. Base price (`actual_price`) is the default. Current price (`current_price`) carries a warning that time-based price rules may show late until Lukanet answers Q43.
 
-**Proposed**
-- **P-01** Allergen setting: show a sample value beside each barsy characteristic.
-  barsy has no allergen field, so the list shows every characteristic a venue defined ("Грамаж", "Годност в дни"…). A sample value makes the right one obvious.
-- **P-02** Offer only barsy sales venues ("Търговски"), not production or service units.
-  Demo Club Sofia ended up linked to a production unit ("Кетъринг/Bakery/Тропс"), which isn't a place guests order from.
-- ~~P-03~~ became part of D87: barsy's public menu (`public_cat_id`) is the menu category, chosen automatically.
-  barsy keeps several "menus" in one catalogue. Its "Публично меню" branch has proper guest names; the till's own branch mostly doesn't.
-- **P-04 → decided (Martin 10-12):** "Price shown" stays a barsy venue setting (the barsy part of Menu source): Base price (`actual_price`, default) or Current price (`current_price`, after barsy's price rules, can change during the day).
-  The demo espresso is 1.80 vs 1.17. Current price carries a warning that time-based rules (happy hour) may show late, until Lukanet confirms whether items count as changed when a rule starts (Q43).
-- **P-05** Save barsy's language list (`Languages_getlist`) on the connection, and count filled languages from barsy's guest-facing `_ml` fields (D77's report for barsy).
-  barsy lists all 11 languages; in the demo only Bulgarian and English have text.
+### B3 A barsy venue's menus: D88, D87 (with M1)
+- **Now:** each venue picks a catalogue root from the whole tree (`barsy_venues.catalogue_root_cat_id`). `public_cat_id` is only a hint (CF-12).
+- **Change:**
+  - **No root picker.** A barsy venue's menus are the roots barsy designates for it: its public menu (`public_cat_id`, live by default) and its till tree (`cat_id`), both from `Barsys_getlist`. Other branches aren't menus, and sub-branches are sections.
+  - **The sync reads both roots.**
+  - **Re-check barsy's doc wording** for these two fields (docs.lukanet.com needs Martin's sign-in).
 
-## Process
+### B5 barsy halls and tables: D95
+- **Now:** halls are grouped by `salon_name`, and non-public and "--" places get codes.
+- **Change:**
+  - **Keys and order:** halls keyed by `salon_id`, ordered by `salon_weight`.
+  - **Allowed:** rename (`places.label` is the dictionary), reorder, hide. Never create or delete.
+  - **Hidden by default:** non-public and placeholder places.
 
-- **Built:** agents run only their own tests; CI runs the full suite before a merge.
-  The full test round took 10–15 minutes per agent on the PC. Now GitHub runs it, and the lead merges only when it's green.
-- **Open:** write this into `CLAUDE.md` (needs Martin's OK).
-  The edit to the agents' rules file was blocked as a change to the agent's own instructions. Until then, each brief states the rule.
+### B6 Allergen characteristic: D82
+- It stays a barsy instance setting (barsy defines characteristics once per installation). Sample values wait on P-01.
+
+## 4. Not decided yet: don't build until Martin decides
+- **P-01** Show a sample value beside each barsy characteristic in the allergen setting.
+- **P-02** Offer only barsy sales venues ("Търговски"), not production or service units ("Производствен", "Услуги").
+- **P-05** Store barsy's `Languages_getlist` on the connection and count filled languages from guest-facing `_ml` fields. This is barsy's report for I3, so L1 needs it.
+- **P-06** A venue profile (address, phone, opening hours, description, website), filled by the till or typed by hand.
+- **P-07** Make a venue's languages, time zone and closing time editable.
+- **DM1's provider:** Cloudflare for SaaS (price to confirm), or leave domains for later.
+- **`CLAUDE.md`:** write the faster test process into it (Martin to say "update CLAUDE.md").
+- **Minor:** whether the composer hints that horizontal sections work best with photos.
+
+## 5. Blocked outside the code
+- Mistral API docs (T69, Martin).
+- Lukanet's answer to Q43 (price rules and `current_price`).
+- APCA licence check.
+- barsy doc wording for `public_cat_id` and `cat_id`.
+- **Test data:** Demo Club Sofia in `restro_accept` mixes 127 items from three till venues. Recreate it after B3 and M1 (D87).
 
 ## Martin's notes
