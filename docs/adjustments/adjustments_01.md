@@ -40,4 +40,8 @@ Session 10-11 to 10-12. Full decision texts: `docs/tracker.md` (search `| D77 |`
 - **T77** Re-withdraw a deleted venue's guest files if the queue was down.
   If the background queue is down at the moment of a delete, the guest page stays online until the venue is restored and deleted again.
 
+## Post-connector platform: concluded
+- **The database layer stays SQL (one Postgres).**
+  Data arrives as the till's JSON and leaves as the guest's JSON (the published snapshot). The rows in between are where sources (till, typed in Restro, per venue) are merged with history and rules, and where small frequent edits stay safe. Conversions run only on change, never per guest view. Analytics later reads from it (a separate reporting store only if volumes demand it).
+
 ## Martin's notes
