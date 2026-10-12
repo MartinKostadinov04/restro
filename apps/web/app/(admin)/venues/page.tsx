@@ -12,9 +12,10 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { getPool } from '@/server/db'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
-import { listVenues } from '@/server/venues'
+import { listVenueCards } from '@/server/venues'
 
 export async function generateMetadata() {
   const t = await getTranslations('venues')
@@ -24,9 +25,9 @@ export async function generateMetadata() {
 export default async function VenuesPage() {
   // The query runs inside withTenant: row-level security shows only this organisation's venues.
   const { organization } = await requireTenant()
-  const venues = await listVenues(organization.id)
+  const venues = await listVenueCards(getPool(), organization.id)
   const t = await getTranslations('venues')
-  // Owners and admins add venues (the action checks the role again).
+  // Owners and admins add and unpublish venues (the actions check the role again).
   const canCreate = canManageIntegration(organization.role)
 
   return (
@@ -63,7 +64,7 @@ export default async function VenuesPage() {
           <ul className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-2 xl:grid-cols-3">
             {venues.map((venue) => (
               <li key={venue.id}>
-                <VenueCard venue={venue} />
+                <VenueCard venue={venue} canManage={canCreate} />
               </li>
             ))}
           </ul>

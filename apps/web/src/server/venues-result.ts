@@ -8,17 +8,72 @@ export const NEW_VENUE_CURRENCY = 'EUR'
 
 /**
  * - `not_allowed`: the person's role may not add a venue (owners and admins may);
- * - `invalid`: the request is malformed or asks for something the rules forbid;
+ * - `invalid`: the request is malformed or asks for something the rules forbid (also a POS
+ *   instance, or a venue of it, that is not this organisation's or is not connected);
  * - `taken`: another venue of the organisation holds this address name (D84: one name per
- *   organisation; another organisation may hold the same one);
+ *   organisation; another organisation may hold the same one). Only a hand-made venue gets it:
+ *   a venue made from a POS finds a free name by itself;
+ * - `link_taken`: the POS venue serves another venue already, possibly since the dialog was
+ *   opened (D87: one POS venue serves one venue);
  * - `failed`: something broke on the server (logged there).
  */
-export type CreateVenueError = 'not_allowed' | 'invalid' | 'taken' | 'failed'
+export type CreateVenueError = 'not_allowed' | 'invalid' | 'taken' | 'link_taken' | 'failed'
 
 /** The answer of `createVenueAction`; on success the new venue's id (`vn_…`). */
 export type CreateVenueResult =
   | { readonly ok: true; readonly venueId: string }
   | { readonly ok: false; readonly error: CreateVenueError }
+
+/**
+ * A venue of a POS instance as the New venue dialog lists it (D85): the POS's own number (`bid`,
+ * which only travels between the admin and its server action, never to guests, rule 3), its name
+ * there, and the name of our venue it serves already (null = free to be picked).
+ */
+export interface NewVenueTillVenue {
+  readonly bid: number
+  readonly name: string
+  readonly linkedVenueName: string | null
+}
+
+/** An active POS instance of the organisation, with the venues it reports. */
+export interface NewVenueInstance {
+  /** The instance's `in_` id. */
+  readonly id: string
+  /** What the owner calls the instance (`integrations.name`); the `{source}` of the wording. */
+  readonly name: string
+  readonly tillVenues: readonly NewVenueTillVenue[]
+}
+
+/**
+ * What step 1 and 2 of the New venue dialog show: the active instances and, for a hand-made venue's
+ * address preview, the organisation's slug (null when the organisation row cannot be read).
+ */
+export interface NewVenueSources {
+  readonly organizationSlug: string | null
+  readonly instances: readonly NewVenueInstance[]
+}
+
+/**
+ * The answer of `loadNewVenueSourcesAction`: `not_allowed` for a person who may not add a venue
+ * (owners and admins may), `failed` when something broke on the server (logged there).
+ */
+export type NewVenueSourcesResult =
+  | { readonly ok: true; readonly sources: NewVenueSources }
+  | { readonly ok: false; readonly error: 'not_allowed' | 'failed' }
+
+/** What the venue cards show of a venue (D86); `listVenueCards` reads it. */
+export interface VenueCard {
+  readonly id: string
+  readonly name: string
+  /** Draft (never published, or unpublished) or Live; archived venues are not on the cards. */
+  readonly state: 'draft' | 'live'
+  /** The POS instance the venue's menu comes from (`integrations.name`), or null = made by hand. */
+  readonly instanceName: string | null
+  /** The venue's name in that POS, or null when it is not linked to one. */
+  readonly tillVenueName: string | null
+  /** `/m/<organisation>/<venue>` (D84); null only when the organisation's address is unknown. */
+  readonly guestPath: string | null
+}
 
 /**
  * What `renameVenueSlugAction` can refuse:
