@@ -23,7 +23,6 @@
   "apps/worker/src/sync/run.ts": 4,
   "packages/core/src/apply/barsy-venues.ts": 21,
   "packages/core/src/apply/index.ts": 1,
-  "packages/core/src/apply/tables.ts": 27,
   "packages/core/src/apply/test-database.ts": 1,
   "packages/core/src/jobs.ts": 23,
   "packages/core/src/seal/credentials.ts": 7,

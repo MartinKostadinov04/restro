@@ -13,7 +13,6 @@ export function row(overrides: Partial<TableRowView> & { id: string }): TableRow
     label: null,
     shownAs: null,
     isPublic: true,
-    state: 'active',
     token: null,
     address: null,
     qrSvg: null,
@@ -44,17 +43,26 @@ export function view(overrides: Partial<TablesView> = {}): TablesView {
     },
     halls: [
       {
+        id: 'ar_0000000000000000000001',
         name: 'Main hall',
+        isPublic: true,
         tables: [
           row({ id: 'tb_0000000000000000000004', number: 'VIP', shownAs: 'VIP', isPublic: false }),
           row({ id: 'tb_0000000000000000000009' }),
         ],
       },
       {
+        id: 'ar_0000000000000000000002',
         name: 'Terrace',
+        isPublic: true,
         tables: [coded, row({ id: 'tb_0000000000000000000010', number: '10', shownAs: '10' })],
       },
-      { name: null, tables: [row({ id: 'tb_0000000000000000000001', number: '1', shownAs: '1' })] },
+      {
+        id: 'ar_0000000000000000000003',
+        name: 'Tables',
+        isPublic: true,
+        tables: [row({ id: 'tb_0000000000000000000001', number: '1', shownAs: '1' })],
+      },
     ],
     total: 5,
     coded: 1,

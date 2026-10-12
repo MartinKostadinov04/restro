@@ -230,16 +230,16 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       expect(after).toMatchObject({ name: 'To delete', public_id: publicId, slug })
       // The till venue is free again.
       expect((await linkOf(till))?.venueId).toBeNull()
-      // Nothing was erased: the menu is still there, and so are the tables' codes (kept on the
-      // places, for a restore), though the venue can no longer find its tables.
+      // Nothing was erased: the menu is still there, and so are the tables and their codes (kept
+      // for a restore).
       const menu = await owner.query('select id from restro.menus where id = $1', [menuId])
       expect(menu.rowCount).toBe(1)
       const stored = await owner.query<{ qr_token: string }>(
-        'select qr_token from restro.places where integration_id = $1 and bid = $2',
-        [integrationId, till],
+        'select qr_token from restro.tables where venue_id = $1',
+        [venueId],
       )
       expect(stored.rows.map((row) => row.qr_token).sort()).toEqual([...codes].sort())
-      expect(await listVenueTables(app, tenant, venueId)).toEqual([])
+      expect(await listVenueTables(app, tenant, venueId)).toHaveLength(codes.length)
       // The token job sees a deleted venue.
       await expect(loadTokenFiles(app, tenant, venueId)).resolves.toMatchObject({
         archived: true,
@@ -590,12 +590,12 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       await expect(applyEntry.retireTableToken(app, tenant, tableId)).resolves.toMatchObject(
         refused,
       )
-      await expect(applyEntry.setTableLabel(app, tenant, tableId, 'Booth')).resolves.toMatchObject(
+      await expect(applyEntry.setTableName(app, tenant, tableId, 'Booth')).resolves.toMatchObject(
         refused,
       )
       // The code is untouched.
       const stored = await owner.query<{ qr_token: string }>(
-        'select qr_token from restro.places where id = $1',
+        'select qr_token from restro.tables where id = $1',
         [tableId],
       )
       expect(stored.rows[0]?.qr_token).toBe(issued.table.token)

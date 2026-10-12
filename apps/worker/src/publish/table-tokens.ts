@@ -25,6 +25,7 @@ import {
   tableTokenBytes,
   tableTokenPath,
 } from '@restro/assets'
+import type { NodeId } from '@restro/core'
 import { loadTokenFiles } from '@restro/core/apply'
 import type { DbPool } from '@restro/db'
 
@@ -93,12 +94,13 @@ export async function writeTableTokenFiles(
 
   let written = 0
   let unchanged = 0
-  for (const { token, tableLabel } of wanted.files) {
+  for (const { token, tableLabel, menuId } of wanted.files) {
     const path = tableTokenPath(token)
     const bytes = tableTokenBytes({
       venue_public_id: wanted.venuePublicId,
       venue_slug: wanted.venueSlug,
       table_label: tableLabel,
+      ...(menuId === null ? {} : { menu_id: menuId as NodeId }),
     })
     if (sameBytes(await deps.store.get(path), bytes)) {
       unchanged += 1

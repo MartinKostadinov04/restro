@@ -122,15 +122,10 @@ export function TablesPanel({ view }: { view: TablesView }) {
 
       <div className="space-y-6">
         {view.halls.map((hall) => (
-          <section
-            key={hall.name ?? '__none'}
-            className="space-y-2"
-            data-testid="hall"
-            aria-label={hall.name ?? t('halls.none')}
-          >
+          <section key={hall.id} className="space-y-2" data-testid="hall" aria-label={hall.name}>
             <div className="flex items-baseline justify-between gap-2">
               <h3 className="text-sm font-semibold" data-testid="hall-name">
-                {hall.name ?? t('halls.none')}
+                {hall.name}
               </h3>
               <span className="text-xs text-muted-foreground">
                 {t('halls.count', { count: hall.tables.length })}

@@ -126,7 +126,17 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
   afterAll(async () => {
     if (owner) {
       const tenants = [tenant, otherTenant]
-      for (const table of ['places', 'barsy_venues', 'integrations', 'menus', 'nodes', 'venues']) {
+      for (const table of [
+        'places',
+        'barsy_venues',
+        'integrations',
+        'menu_routes',
+        'tables',
+        'areas',
+        'menus',
+        'nodes',
+        'venues',
+      ]) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
       }
       await owner.query('delete from restro.tenants where id = any($1)', [tenants])
@@ -261,8 +271,8 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
         (await owner.query('select id from restro.menus where venue_id = $1', [venue.id])).rowCount,
       ).toBe(1)
       const stored = await owner.query<{ qr_token: string }>(
-        'select qr_token from restro.places where integration_id = $1 and bid = $2',
-        [integrationId, till],
+        'select qr_token from restro.tables where venue_id = $1',
+        [venue.id],
       )
       expect(stored.rows.map((row) => row.qr_token).sort()).toEqual([...codes].sort())
     })
@@ -377,13 +387,19 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       bid += 1
       await upsertBarsyVenues(getPool(), tenant, integrationId, [{ bid, name: `Many ${bid}` }])
       await mapBarsyVenue(getPool(), tenant, integrationId, bid, venue.id)
+      const area = `ar_many${randomUUID().replaceAll('-', '').slice(0, 15)}`
       await owner.query(
-        `insert into restro.places
-           (id, tenant_id, integration_id, bid, place_id, place_num, is_public, state, qr_token)
-         select 'tb_many' || lpad(n::text, 15, '0'), $1, $2, $3, 'many' || n, n::text, true, 'active',
+        `insert into restro.areas (id, tenant_id, venue_id, name, sort_key)
+         values ($1, $2, $3, 'Hall', 'a0')`,
+        [area, tenant, venue.id],
+      )
+      await owner.query(
+        `insert into restro.tables
+           (id, tenant_id, venue_id, area_id, number, sort_key, qr_token)
+         select 'tb_many' || lpad(n::text, 15, '0'), $1, $2, $3, n::text, 'a' || lpad(n::text, 3, '0'),
                 $4 || lpad(n::text, 8, '0')
          from generate_series(1, 501) as n`,
-        [tenant, integrationId, bid, randomUUID().replaceAll('-', '').slice(0, 14)],
+        [tenant, venue.id, area, randomUUID().replaceAll('-', '').slice(0, 14)],
       )
       expect(
         await deleteVenueAction({ venueId: venue.id, confirmName: 'Many tables' }),

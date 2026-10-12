@@ -1,8 +1,11 @@
 // Writers of the barsy side-tables (brief S2-03b): the venues of an installation (`barsy_venues`)
-// and its places (`places`, the tables). Neither is the menu document, so they do not go through
-// apply(); only this folder may import the write side of the database.
+// and its places (`places`). Neither is the menu document, so they do not go through apply();
+// only this folder may import the write side of the database.
 //
-// barsy ids (`bid`, `place_id`) stay in these tables (rule 3).
+// barsy ids (`bid`, `place_id`) stay in these tables (rule 3). The places are the till layer
+// under the platform's areas and tables (D95): whenever they change, or a till venue is linked to
+// a venue of ours, the mirror (`till-tables.ts`) brings that venue's areas and tables in line, in
+// the same transaction, and each place points at its table (`places.table_id`).
 
 import {
   type BarsyVenue,
@@ -11,7 +14,7 @@ import {
   type Venue,
   barsyVenues as venueLinks,
 } from '@restro/db'
-import { withTenantWrite } from '@restro/db/write'
+import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, eq, sql } from 'drizzle-orm'
 
 import type { LinkStateName } from '../change-set'
@@ -25,7 +28,50 @@ import {
   provisionMenuIn,
   provisionVenueIn,
 } from './provision'
+import { mirrorTillTables } from './till-tables'
 import { lockLiveVenue } from './venue-lock'
+
+/**
+ * Mirrors the stored places of one till venue into the areas and tables of the venue it serves
+ * (D95), and points each place at its table. Nothing happens for a till venue that serves no
+ * venue. Returns the tokens of the tables the mirror archived (their files must go).
+ */
+async function mirrorIn(
+  tx: WriteTx,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  now: Date,
+): Promise<readonly string[]> {
+  const [link] = await tx
+    .select({ venueId: venueLinks.venueId })
+    .from(venueLinks)
+    .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
+  if (link === undefined || link.venueId === null) return []
+  const rows = await tx
+    .select()
+    .from(places)
+    .where(and(eq(places.integrationId, integrationId), eq(places.bid, bid)))
+  const mirrored = await mirrorTillTables(tx, {
+    tenantId,
+    venueId: link.venueId,
+    now,
+    places: rows.map((row) => ({
+      id: row.id,
+      placeNum: row.placeNum,
+      salonId: row.salonId,
+      salonWeight: row.salonWeight,
+      salonName: row.salonName,
+      isPublic: row.isPublic,
+      state: row.state as LinkStateName,
+      tableId: row.tableId,
+    })),
+  })
+  for (const [placeId, tableId] of mirrored.linked) {
+    await tx.update(places).set({ tableId }).where(eq(places.id, placeId))
+  }
+  return mirrored.retiredTokens
+}
 
 function checked(tenantId: string, integrationId: string): void {
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
@@ -183,6 +229,8 @@ export async function mapBarsyVenue(
       .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
       .returning()
     if (!updated) return { ok: false, error: 'barsy_venue_missing' } as const
+    // The venue's tables are the till venue's places from now on (D95).
+    await mirrorIn(tx, tenantId, integrationId, bid, new Date())
     return { ok: true, row: updated } as const
   })
 }
@@ -226,6 +274,8 @@ export async function addVenueFromTillVenue(
       .update(venueLinks)
       .set({ venueId: venue.id, updatedAt: new Date() })
       .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
+    // Places read before the venue existed become its areas and tables now (D95).
+    await mirrorIn(tx, tenantId, integrationId, bid, new Date())
     return { ok: true, venue } as const
   })
 }
@@ -319,6 +369,9 @@ export interface PlaceInput {
   readonly placeId: string
   readonly placeNum: string | null
   readonly salonName: string | null
+  /** The till's hall id and its order among halls (D95). Absent or null: not reported. */
+  readonly salonId?: string | null
+  readonly salonWeight?: number | null
   readonly isPublic: boolean
 }
 
@@ -336,8 +389,9 @@ export interface UpsertPlacesResult {
   /** False when a page failed: no place was concluded missing or deleted (rule 6). */
   readonly complete: boolean
   /**
-   * The QR tokens of the places concluded `deleted` by this run, taken off those places (S3-07).
-   * The caller queues the token job so their files `t/<token>.json` are removed too.
+   * The QR tokens of the tables this run archived (D95): those of places concluded `deleted`,
+   * and those the till venue's places no longer point to. The caller queues the token job so
+   * their files `t/<token>.json` are removed too.
    */
   readonly retiredTokens: readonly string[]
   /**
@@ -355,8 +409,9 @@ export interface UpsertPlacesResult {
  * Even then a read that lists no place, or would mark more than 30% (and at least 5) of the
  * active ones missing, is held (`absenceHold`): no place goes `missing` or `deleted`, no token is
  * retired, and `held` says why. Listed places are still stored and brought back to `active`.
- * A place's own `qr_token` and `label` are never touched, except that a place concluded `deleted`
- * loses its token (returned in `retiredTokens`; S3-07), since its sticker must stop working.
+ * The venue's areas and tables follow in the same transaction (`mirrorIn`, D95): a place
+ * concluded `deleted` archives its table and loses its code (returned in `retiredTokens`), since
+ * its sticker must stop working.
  *
  * `places` has no `state_changed_at`; a row is written only when something about it changes, so
  * `updated_at` of a missing place is when it went missing.
@@ -390,6 +445,8 @@ export async function upsertPlaces(
       if (seen.has(place.placeId)) continue
       seen.add(place.placeId)
       const row = byPlaceId.get(place.placeId)
+      const salonId = place.salonId ?? null
+      const salonWeight = place.salonWeight ?? null
       if (!row) {
         await tx.insert(places).values({
           id: newId('tb'),
@@ -399,6 +456,8 @@ export async function upsertPlaces(
           placeId: place.placeId,
           placeNum: place.placeNum,
           salonName: place.salonName,
+          salonId,
+          salonWeight,
           isPublic: place.isPublic,
         })
         created += 1
@@ -407,6 +466,8 @@ export async function upsertPlaces(
       const same =
         row.placeNum === place.placeNum &&
         row.salonName === place.salonName &&
+        row.salonId === salonId &&
+        row.salonWeight === salonWeight &&
         row.isPublic === place.isPublic &&
         row.state === 'active'
       if (same) {
@@ -420,6 +481,8 @@ export async function upsertPlaces(
         .set({
           placeNum: place.placeNum,
           salonName: place.salonName,
+          salonId,
+          salonWeight,
           isPublic: place.isPublic,
           state: 'active',
           updatedAt: now,
@@ -450,26 +513,18 @@ export async function upsertPlaces(
 
     let missing = 0
     let deleted = 0
-    const retiredTokens: string[] = []
     for (const change of conclusion.changes) {
       if (change.to === 'active') continue // listed again: handled above
       if (held !== null) continue // held: nothing goes missing or deleted, no token is retired
       const row = byPlaceId.get(change.key)
       if (!row) continue
-      if (change.to === 'deleted') {
-        // A table barsy deleted no longer exists: its sticker must stop leading anywhere (S3-07).
-        // A merely `missing` table keeps its code, since it may be listed again.
-        await tx
-          .update(places)
-          .set({ state: 'deleted', qrToken: null, updatedAt: now })
-          .where(eq(places.id, row.id))
-        if (row.qrToken !== null) retiredTokens.push(row.qrToken)
-        deleted += 1
-        continue
-      }
+      // A table barsy deleted no longer exists: the mirror archives it and its sticker stops
+      // leading anywhere. A merely `missing` table keeps its code, since it may be listed again.
       await tx.update(places).set({ state: change.to, updatedAt: now }).where(eq(places.id, row.id))
-      missing += 1
+      if (change.to === 'deleted') deleted += 1
+      else missing += 1
     }
+    const retiredTokens = await mirrorIn(tx, tenantId, integrationId, bid, now)
     return {
       created,
       updated,

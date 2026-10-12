@@ -59,7 +59,7 @@ export const VenueIndexSchema = z.strictObject({
 /** The content of `v/<public code>.json`. */
 export type VenueIndex = z.output<typeof VenueIndexSchema>
 
-/** `t/<token>.json`: the venue a table code belongs to and how its table is called. */
+/** `t/<token>.json`: the venue a table code belongs to, how its table is called, and which menu it shows. */
 export const TableTokenFileSchema = z.strictObject({
   /** The venue's public code: what `/t/<token>` and the guest page match the table against. */
   venue_public_id: PublicIdSchema,
@@ -67,6 +67,11 @@ export const TableTokenFileSchema = z.strictObject({
   venue_slug: VenueSlugSchema,
   /** Shown in the guest page's banner: "12", "VIP 3". */
   table_label: z.string().trim().min(1).max(40),
+  /**
+   * The menu this table shows (D95: the table's own, else its area's, else the venue's live menu;
+   * resolved by the publisher). Absent in files from before the routing: the live menu then.
+   */
+  menu_id: idSchema('nd').optional(),
 })
 /** The content of `t/<token>.json`. */
 export type TableTokenFile = z.output<typeof TableTokenFileSchema>

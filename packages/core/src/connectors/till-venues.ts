@@ -1,7 +1,5 @@
-// The table that links a till's venues to ours, under the till role's name (D67): core outside
-// this folder speaks of the till, never of a vendor. Today the only till connector is barsy, whose
-// venues live in `barsy_venues`; a later connector kit (CF-06) gives each connector kind its own.
-//
-// Server-only: it re-exports database schema. It is not part of `./index.ts`, which stays pure
-// and safe in the browser.
-export { barsyVenues as tillVenueLinks } from '@restro/db'
+// The integration layer's names for the first connector's link tables (brief CF-03, D82): a venue
+// of ours serves one till venue (`tillVenueLinks`), and a till venue's places are mirrored into
+// the platform's `tables` (`tillPlaces`, D95). Platform code reads them under these names, so no
+// vendor word reaches it; the columns are the connector package's own.
+export { barsyVenues as tillVenueLinks, places as tillPlaces } from '@restro/db'

@@ -116,7 +116,15 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     spy?.mockRestore()
     await app?.end()
     if (owner) {
-      for (const table of ['places', 'barsy_venues', 'integrations', 'venues']) {
+      for (const table of [
+        'places',
+        'barsy_venues',
+        'integrations',
+        'menu_routes',
+        'tables',
+        'areas',
+        'venues',
+      ]) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [
           [tenant, otherTenant],
         ])
@@ -135,11 +143,13 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
   }
 
   describe('what the tab reads', () => {
-    it('groups the tables by hall (no hall last), numbers in natural order, with no barsy id anywhere', async () => {
+    it('groups the tables by area (tables in no hall last), numbers in number order, with no till id anywhere', async () => {
       const read = await view()
-      expect(read.halls.map((hall) => hall.name)).toEqual(['Main hall', 'Terrace', null])
+      expect(read.halls.map((hall) => hall.name)).toEqual(['Main hall', 'Terrace', 'Tables'])
+      expect(read.halls.every((hall) => /^ar_[0-9A-Za-z]{22}$/.test(hall.id))).toBe(true)
       expect(read.halls[1]?.tables.map((row) => row.number)).toEqual(['2', '10'])
-      expect(read.halls[0]?.tables.map((row) => row.number)).toEqual(['4', 'VIP', null])
+      // A place with no number shows a dash and starts hidden (D95).
+      expect(read.halls[0]?.tables.map((row) => row.number)).toEqual(['4', 'VIP', '—'])
       expect(read.total).toBe(6)
       expect(read.coded).toBe(0)
       expect(read.sample).toBeNull()
@@ -156,7 +166,6 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(json).not.toContain('placeId')
       expect(read.halls[1]?.tables[0]).toMatchObject({
         isPublic: true,
-        state: 'active',
         token: null,
         address: null,
         qrSvg: null,
@@ -164,6 +173,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         shownAs: '2',
       })
       expect(read.halls[0]?.tables[0]).toMatchObject({ number: '4', isPublic: false })
+      expect(read.halls[0]?.tables[2]).toMatchObject({ number: '—', isPublic: false })
     })
 
     it("another organisation's tab is empty, and a member who may not manage reads without acting", async () => {
@@ -178,9 +188,9 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
   })
 
   describe('the actions', () => {
-    it('create all: codes the named tables, skips the nameless one, queues the files, and drew the codes', async () => {
+    it('create all: codes the shown tables, not the hidden ones, queues the files, and drew the codes', async () => {
       const result = await createAllCodes(await scope(), services)
-      expect(result).toEqual({ ok: true, queued: true, issued: 5, skippedNoLabel: 1 })
+      expect(result).toEqual({ ok: true, queued: true, issued: 4, skippedNoLabel: 0 })
       expect(sent).toEqual([
         {
           name: JOB_NAMES.publishTableTokens,
@@ -188,21 +198,23 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         },
       ])
       const read = await view()
-      expect(read.coded).toBe(5)
-      const first = read.halls[0]?.tables[0]
+      expect(read.coded).toBe(4)
+      // The hidden table (4) has no code; the first shown one is the sample.
+      expect(read.halls[0]?.tables[0]).toMatchObject({ number: '4', token: null })
+      const first = read.halls[0]?.tables[1]
       expect(first?.token).toMatch(/^[0-9A-Za-z]{22}$/)
       expect(first?.address).toBe(`${DEFAULT_BASE}/t/${first?.token}`)
       expect(first?.qrSvg).toBe(`<svg>${first?.address}</svg>`)
-      expect(read.sample).toEqual({ token: first?.token, shownAs: '4' })
-      // The nameless table has no code and the hall it is in still lists it.
-      expect(read.halls[0]?.tables.at(-1)).toMatchObject({ number: null, token: null })
+      expect(read.sample).toEqual({ token: first?.token, shownAs: 'VIP' })
+      // The nameless table has no code and the area it is in still lists it.
+      expect(read.halls[0]?.tables.at(-1)).toMatchObject({ number: '—', token: null })
 
       // Asking again changes nothing and queues nothing.
       sent.length = 0
       expect(await createAllCodes(await scope(), services)).toMatchObject({
         ok: true,
         issued: 0,
-        skippedNoLabel: 1,
+        skippedNoLabel: 0,
       })
       expect(sent).toEqual([])
     })
@@ -254,10 +266,10 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         queued: true,
       })
       expect(sent).toEqual([])
-      expect(await issueCode(await scope(), services, nameless.id)).toMatchObject({ ok: true })
-      expect(await renameTable(await scope(), services, nameless.id, '')).toEqual({
+      // It is hidden (no number from the till): no code until it is shown.
+      expect(await issueCode(await scope(), services, nameless.id)).toEqual({
         ok: false,
-        error: 'no_label',
+        error: 'hidden',
       })
       expect(await renameTable(await scope(), services, coded.id, 'x'.repeat(41))).toEqual({
         ok: false,

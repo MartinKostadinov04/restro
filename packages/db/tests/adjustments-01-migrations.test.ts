@@ -32,17 +32,18 @@ const byId = (a: Row, b: Row) => compareText(String(a.id), String(b.id))
 
 /**
  * A migrations folder holding the migrations before 0018 only (the database before T79), or,
- * with `through`, up to and including 0023. Later migrations are left out on purpose: this test
- * is about what these six did.
+ * with `through`, up to and including `last` (0023 by default). Later migrations are left out on
+ * purpose: this test is about what these did.
  */
-function foldersBefore0018(through = false): string {
+function foldersBefore0018(through = false, last = LAST_TAG): string {
   const folder = mkdtempSync(join(tmpdir(), 'restro-0017-'))
   mkdirSync(join(folder, 'meta'))
   const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'))
   const entries = (journal as Journal).entries.filter((entry) =>
-    through ? entry.tag <= LAST_TAG : entry.tag < FIRST_TAG,
+    through ? entry.tag <= last : entry.tag < FIRST_TAG,
   )
-  expect(entries.map((entry) => entry.idx)).toEqual([...Array(through ? 24 : 18).keys()])
+  const count = through ? Number(last.slice(0, 4)) + 1 : 18
+  expect(entries.map((entry) => entry.idx)).toEqual([...Array(count).keys()])
   writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }))
   for (const entry of entries) {
     cpSync(join(MIGRATIONS, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`))
@@ -74,6 +75,7 @@ describe.skipIf(!hasDatabase)('migrations 0018–0023 (adjustments 01)', () => {
   let client: pg.Client
   let before0018: string
   let through0023: string
+  let through0025: string | undefined
 
   const rows = async (query: string, params: unknown[] = []): Promise<Row[]> => {
     const result = await client.query<{ row: Row }>(query, params)
@@ -167,6 +169,7 @@ describe.skipIf(!hasDatabase)('migrations 0018–0023 (adjustments 01)', () => {
     await client?.end()
     if (before0018) rmSync(before0018, { recursive: true, force: true })
     if (through0023) rmSync(through0023, { recursive: true, force: true })
+    if (through0025) rmSync(through0025, { recursive: true, force: true })
     if (admin) {
       await admin.query(`drop database if exists ${database} with (force)`)
       await admin.end()
@@ -286,6 +289,35 @@ describe.skipIf(!hasDatabase)('migrations 0018–0023 (adjustments 01)', () => {
   it('0023: the purge’s records exist and are empty', async () => {
     expect(await rows('select to_jsonb(t) as row from restro.tombstones t')).toEqual([])
     expect(await rows('select to_jsonb(l) as row from restro.purge_log l')).toEqual([])
+  })
+
+  it('0025: what code wrote on the places after 0020 moves to the tables, then the columns go', async () => {
+    // Between the two migrations the old code gave the window table a new code and cleared its
+    // name, and named the nameless one; the till-side copies are the truth one last time.
+    const tokenLater = `tok${randomUUID().replaceAll('-', '')}`.slice(0, 22)
+    await client.query('update restro.places set qr_token = $2, label = null where id = $1', [
+      placeIds.window,
+      tokenLater,
+    ])
+    await client.query("update restro.places set label = 'Bar' where id = $1", [placeIds.nameless])
+    through0025 = foldersBefore0018(true, '0025_places_drop_tokens')
+    await migrate(drizzle({ client }), {
+      migrationsFolder: through0025,
+      migrationsSchema: 'drizzle',
+      migrationsTable: '__drizzle_migrations',
+    })
+
+    const tables = await rows('select to_jsonb(t) as row from restro.tables t')
+    const byTableId = Object.fromEntries(tables.map((table) => [String(table.id), table]))
+    expect(byTableId[placeIds.window]).toMatchObject({ name: null, qr_token: tokenLater })
+    expect(byTableId[placeIds.nameless]).toMatchObject({ name: 'Bar', number: '—' })
+    expect(byTableId[placeIds.placeholder]).toMatchObject({ name: null, qr_token: null })
+    const { rows: columns } = await client.query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+        where table_schema = 'restro' and table_name = 'places'
+          and column_name in ('qr_token', 'label')`,
+    )
+    expect(columns).toEqual([])
   })
 
   it('forces row-level security on every new tenant table, with the tenant policies', async () => {

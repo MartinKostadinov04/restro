@@ -1,16 +1,15 @@
 // The life of a venue after it exists (brief CF-18, D76): rename it, delete it, bring it back.
 //
 // Deleting a venue ARCHIVES it. Nothing is erased: history is append-only (rule 2) and the app
-// role has no DELETE on `venues`. The row, its menu, tables, tags, snapshots and settings stay, and
-// so do its public code and its tables' QR tokens, so a restore brings the same addresses back.
-// What a deletion does:
+// role has no DELETE on `venues`. The row, its menus, areas, tables, tags, snapshots and settings
+// stay, and so do its public code and its tables' QR tokens, so a restore brings the same
+// addresses back. What a deletion does:
 //   - sets `venues.archived_at`;
 //   - releases the venue's till link in the same transaction (the till venue's `venue_id` goes back to
-//     null, so the till venue is free for another venue of ours; the tables' codes belong to the
-//     till venue's places and stay with them);
-//   - reports the QR tokens of the venue's tables, because the link is gone by the time the
-//     worker's table-files job runs and the venue can no longer find its tables then. The caller
-//     hands them to that job as the files to withdraw (the tokens themselves are NOT retired).
+//     null, so the till venue is free for another venue of ours);
+//   - reports the QR tokens of the venue's tables (all of them, hidden ones too). The caller hands
+//     them to the worker's table-files job as the files to withdraw (the tokens themselves are NOT
+//     retired: the tables keep them for a restore).
 // Everything else follows from the flag: `lockLiveVenue` makes every other writer refuse an
 // archived venue, the admin reads leave it out, and the worker's jobs withdraw its guest files and
 // stop syncing and publishing it.
@@ -23,9 +22,9 @@
 // delete wait for the save. Like the other writers of a venue's own settings, none of the three
 // writes an `events` row: that changelog is about nodes and their values.
 
-import { type DbPool, places, venues } from '@restro/db'
+import { type DbPool, venues, venueTables } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { and, asc, eq, isNotNull, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { tillVenueLinks } from '../connectors/till-venues'
 import { isId } from '../ids'
@@ -122,26 +121,19 @@ export async function archiveVenue(
         tableTokens: [],
       }
     }
-    // The tokens first: once the link is released the venue can no longer find its tables.
+    // The tokens of every table that is not deleted, hidden ones included (a withdrawn file that
+    // is not there is no harm).
     const tokenRows = await tx
-      .select({ token: places.qrToken })
-      .from(places)
-      .innerJoin(
-        tillVenueLinks,
-        and(
-          eq(places.tenantId, tillVenueLinks.tenantId),
-          eq(places.integrationId, tillVenueLinks.integrationId),
-          eq(places.bid, tillVenueLinks.bid),
-        ),
-      )
+      .select({ token: venueTables.qrToken })
+      .from(venueTables)
       .where(
         and(
-          eq(tillVenueLinks.venueId, venueId),
-          ne(places.state, 'deleted'),
-          isNotNull(places.qrToken),
+          eq(venueTables.venueId, venueId),
+          isNull(venueTables.archivedAt),
+          isNotNull(venueTables.qrToken),
         ),
       )
-      .orderBy(asc(places.qrToken))
+      .orderBy(asc(venueTables.qrToken))
     const tableTokens = tokenRows.flatMap((row) => (row.token === null ? [] : [row.token]))
 
     const [archived] = await tx

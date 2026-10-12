@@ -336,8 +336,8 @@ describe.skipIf(!hasDatabase)('barsy sync safety (CF-02)', () => {
       Number(
         (
           await world.query<{ n: string }>(
-            'select count(*) as n from restro.places where integration_id = $1 and qr_token is not null',
-            [world.integrationId],
+            'select count(*) as n from restro.tables where venue_id = $1 and qr_token is not null',
+            [world.venueId],
           )
         )[0]?.n,
       )

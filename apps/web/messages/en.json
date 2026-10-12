@@ -1407,6 +1407,8 @@
       "forbidden": "Only owners and admins can do this.",
       "not_found": "This table or venue is not there any more. Reload the page.",
       "no_label": "This table has no number from barsy. Give it a name first.",
+      "hidden": "A hidden table gets no code. Show it first.",
+      "from_till": "This venue's areas and tables come from its till.",
       "failed": "Something went wrong. Try again."
     },
     "print": {
