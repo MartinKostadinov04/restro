@@ -391,10 +391,12 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       })
       expect(await files(tokens)).toEqual([null, null])
 
-      // Restore: the venue comes back as a Draft (D86, unpublished), so nothing is served until
-      // it is published; the tables are the venue's own (D95), so the publish brings the same
-      // files back.
-      await restoreVenue(world.pool, tenantId(), world.venueId)
+      // Restore: the venue comes back as a Draft (D86, unpublished) with its till venue linked
+      // again (adjustments V1), so nothing is served until it is published; the tables are the
+      // venue's own (D95), so the publish brings the same files back.
+      expect(await restoreVenue(world.pool, tenantId(), world.venueId)).toMatchObject({
+        relinked: true,
+      })
       await runJob(JOB_NAMES.publishTableTokens, {
         tenantId: world.tenantId,
         venueId: world.venueId,

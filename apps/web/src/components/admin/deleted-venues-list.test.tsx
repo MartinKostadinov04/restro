@@ -11,7 +11,7 @@ import { renderWithIntl } from '@/test-utils'
 import { DeletedVenuesList } from './deleted-venues-list'
 
 vi.mock('@/server/venues-actions', () => ({ restoreVenueAction: vi.fn() }))
-const toasts = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn() }))
+const toasts = vi.hoisted(() => ({ success: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toasts }))
 
 const VENUES = [
@@ -32,10 +32,9 @@ beforeEach(() => {
   vi.mocked(restoreVenueAction).mockResolvedValue({
     ok: true,
     name: 'Neon Cellar',
-    filesQueued: true,
+    relinked: false,
   })
   toasts.success.mockReset()
-  toasts.warning.mockReset()
 })
 
 describe('the deleted venues', () => {
@@ -59,23 +58,38 @@ describe('the deleted venues', () => {
     expect(toasts.success).toHaveBeenCalledTimes(1)
     const message = toasts.success.mock.calls[0]?.[0] as string
     expect(message).toContain('Neon Cellar is back')
-    expect(message).toContain('link it again in Settings › Integrations')
-    expect(message).toContain('publish')
+    expect(message).not.toContain('till')
+    expect(message).toContain('Publish its menu')
     expect(within(items()[0] as HTMLElement).getByTestId('deleted-venue-name').textContent).toBe(
       'Roof Terrace',
     )
   })
 
-  it('warns, with the same instructions, when the table files could not be queued', async () => {
+  it('says the till is linked again when the restore linked it (adjustments V1)', async () => {
     vi.mocked(restoreVenueAction).mockResolvedValue({
       ok: true,
       name: 'Neon Cellar',
-      filesQueued: false,
+      relinked: true,
     })
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
-    await waitFor(() => expect(toasts.warning).toHaveBeenCalledTimes(1))
-    expect(toasts.warning.mock.calls[0]?.[0]).toContain('table codes come back')
+    await waitFor(() => expect(toasts.success).toHaveBeenCalledTimes(1))
+    expect(toasts.success.mock.calls[0]?.[0]).toContain('with its till linked again')
+  })
+
+  it('names the venue that holds the till when the restore is refused for it', async () => {
+    vi.mocked(restoreVenueAction).mockResolvedValue({
+      ok: false,
+      error: 'till_taken',
+      holder: 'Roof Terrace',
+    })
+    const user = list()
+    await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
+    expect((await screen.findByTestId('restore-error')).textContent).toBe(
+      'Not restored: the till venue it served is linked to “Roof Terrace” now.',
+    )
+    expect(items()).toHaveLength(2)
+    expect(toasts.success).not.toHaveBeenCalled()
   })
 
   it.each([

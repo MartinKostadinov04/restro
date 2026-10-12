@@ -279,10 +279,10 @@ export async function deleteVenueAction(input: unknown): Promise<DeleteVenueResu
 const RestoreVenueInput = z.strictObject({ venueId: idSchema('vn') })
 
 /**
- * Brings a deleted venue back. Owners only. It comes back without a till link and unpublished (the
- * owner links the till again in Settings > Integrations and publishes); its public code and table
- * codes are the ones it had. The table files job is queued so the codes come back as soon as the
- * venue is linked and published again.
+ * Brings a deleted venue back. Owners only. It comes back unpublished (D86), with the till venue
+ * it served linked again when that is still free (adjustments V1; `till_taken` names the venue
+ * that holds it now, and nothing changes); its public code and table codes are the ones it had,
+ * and the publish brings them back to guests, so no file job is queued here.
  */
 export async function restoreVenueAction(input: unknown): Promise<RestoreVenueResult> {
   const parsed = RestoreVenueInput.safeParse(input)
@@ -293,27 +293,18 @@ export async function restoreVenueAction(input: unknown): Promise<RestoreVenueRe
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
-    await restoreVenue(getPool(), organization.id, venueId)
-
-    let filesQueued = true
-    try {
-      await enqueueJob(JOB_NAMES.publishTableTokens, {
-        tenantId: organization.id as TenantId,
-        venueId: venueId as VenueId,
-        retired: [],
-      })
-    } catch (error) {
-      logError('venue_restore_files_not_queued', error)
-      filesQueued = false
-    }
+    const restored = await restoreVenue(getPool(), organization.id, venueId)
 
     revalidatePath('/', 'layout')
-    return { ok: true, name: venue.name, filesQueued }
+    return { ok: true, name: venue.name, relinked: restored.relinked }
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error
     if (error instanceof ProvisionError) {
       if (error.code === 'invalid_input' || error.code === 'venue_missing') {
         return { ok: false, error: 'invalid' }
+      }
+      if (error.code === 'till_taken') {
+        return { ok: false, error: 'till_taken', holder: error.details.holder ?? '' }
       }
     }
     logError('venue_restore_failed', error)

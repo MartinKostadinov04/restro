@@ -39,15 +39,24 @@ export type ProvisionErrorCode =
   | 'venue_archived'
   /** Another venue of the organisation holds this address name (D84; one name per organisation). */
   | 'slug_taken'
+  /** A restore is refused: another venue serves the till venue this one had (adjustments V1). */
+  | 'till_taken'
 
 /** Thrown by the provisioning and venue-lifecycle writers for input or state they refuse. */
 export class ProvisionError extends Error {
   override name = 'ProvisionError'
   readonly code: ProvisionErrorCode
+  /** What the refusal names, for the caller's wording (`till_taken`: `holder`, the venue's name). */
+  readonly details: Readonly<Record<string, string>>
 
-  constructor(code: ProvisionErrorCode, message: string, options?: ErrorOptions) {
+  constructor(
+    code: ProvisionErrorCode,
+    message: string,
+    options?: ErrorOptions & { readonly details?: Readonly<Record<string, string>> },
+  ) {
     super(message, options)
     this.code = code
+    this.details = options?.details ?? {}
   }
 }
 

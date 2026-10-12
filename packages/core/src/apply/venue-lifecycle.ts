@@ -6,7 +6,8 @@
 // addresses back. What a deletion does:
 //   - sets `venues.archived_at`;
 //   - releases the venue's till link in the same transaction (the till venue's `venue_id` goes back to
-//     null, so the till venue is free for another venue of ours);
+//     null, so the till venue is free for another venue of ours) and remembers it
+//     (`settings.till_before_delete`), so a restore can link it again (adjustments V1);
 //   - reports the QR tokens of the venue's tables (all of them, hidden ones too). The caller hands
 //     them to the worker's table-files job as the files to withdraw (the tokens themselves are NOT
 //     retired: the tables keep them for a restore).
@@ -14,8 +15,9 @@
 // archived venue, the admin reads leave it out, and the worker's jobs withdraw its guest files and
 // stop syncing and publishing it.
 //
-// Restoring clears the flag. It does not link the till again and it does not publish: the owner
-// does both, the way a new venue starts.
+// Restoring clears the flag, links the till venue the venue served again when it is still free
+// (refused when another venue holds it, adjustments V1) and leaves the venue unpublished: the
+// owner publishes, the way a new venue starts.
 //
 // Rule 1 keeps these writes here. Each is one transaction with the venue row locked `FOR UPDATE`,
 // which makes a concurrent save (a `FOR SHARE` lock, ./venue-lock.ts) wait for the delete or the
@@ -26,7 +28,12 @@ import { type DbPool, venues, venueTables } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 
-import { tillVenueLinks } from '../connectors/till-venues'
+import {
+  isTillLink,
+  relinkTillVenue,
+  type TillLink,
+  tillVenueLinks,
+} from '../connectors/till-venues'
 import { isId } from '../ids'
 import { ProvisionError } from './provision'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
@@ -160,7 +167,17 @@ export async function archiveVenue(
       .update(tillVenueLinks)
       .set({ venueId: null, updatedAt: new Date() })
       .where(eq(tillVenueLinks.venueId, venueId))
-      .returning({ bid: tillVenueLinks.bid })
+      .returning({ bid: tillVenueLinks.bid, integrationId: tillVenueLinks.integrationId })
+    const [link] = released
+    if (link !== undefined) {
+      const remembered: TillLink = { integration_id: link.integrationId, bid: link.bid }
+      await tx
+        .update(venues)
+        .set({
+          settings: sql`${venues.settings} || jsonb_build_object('till_before_delete', ${JSON.stringify(remembered)}::jsonb)`,
+        })
+        .where(eq(venues.id, venueId))
+    }
     return {
       venueId,
       changed: true,
@@ -176,14 +193,18 @@ export interface RestoredVenue {
   readonly venueId: string
   /** False when the venue was live already (nothing was written). */
   readonly changed: boolean
+  /** True when the till venue it served before was linked to it again (adjustments V1). */
+  readonly relinked: boolean
 }
 
 /**
  * Brings a deleted venue back: clears `archived_at` and marks the venue unpublished (D86: a
  * restored venue is a Draft until someone publishes it; its guest files stay withdrawn till
- * then). It does not link the till again; the venue's public code and table codes are the ones it
- * always had, so the publish brings the same addresses back. Restoring a live venue changes
- * nothing. Refuses a venue the tenant does not have (`venue_missing`).
+ * then). The till venue it served before is linked to it again when it is still free (its tables
+ * come back with it); when another venue serves it now the restore is refused (`till_taken`,
+ * naming that venue), and nothing changes (adjustments V1). The venue's public code and table
+ * codes are the ones it always had, so the publish brings the same addresses back. Restoring a
+ * live venue changes nothing. Refuses a venue the tenant does not have (`venue_missing`).
  */
 export async function restoreVenue(
   pool: DbPool,
@@ -196,12 +217,30 @@ export async function restoreVenue(
     if (venue === undefined) {
       throw new ProvisionError('venue_missing', venueRefusalText(venueId, 'venue_missing'))
     }
-    if (venue.archivedAt === null) return { venueId, changed: false }
+    if (venue.archivedAt === null) return { venueId, changed: false, relinked: false }
     await tx
       .update(venues)
-      .set({ archivedAt: null, unpublishedAt: sql`now()` })
+      .set({
+        archivedAt: null,
+        unpublishedAt: sql`now()`,
+        settings: sql`${venues.settings} - 'till_before_delete'`,
+      })
       .where(eq(venues.id, venueId))
-    return { venueId, changed: true }
+    // The venue is live again before its tables are mirrored; a refusal rolls all of it back.
+    const remembered = (venue.settings as { till_before_delete?: unknown }).till_before_delete
+    let relinked = false
+    if (isTillLink(remembered)) {
+      const outcome = await relinkTillVenue(tx, tenantId, venueId, remembered)
+      if (outcome.status === 'taken') {
+        throw new ProvisionError(
+          'till_taken',
+          `the till venue this venue served is linked to "${outcome.holder.name}" now`,
+          { details: { holder: outcome.holder.name } },
+        )
+      }
+      relinked = outcome.status === 'linked'
+    }
+    return { venueId, changed: true, relinked }
   })
 }
 

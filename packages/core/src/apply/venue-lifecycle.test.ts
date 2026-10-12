@@ -327,7 +327,16 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
   })
 
   describe('restoreVenue', () => {
-    it('brings the venue back without a till link, with the same address and table codes', async () => {
+    /** The venue's settings as stored. */
+    const settingsOf = async (venueId: string) =>
+      (
+        await owner.query<{ settings: Record<string, unknown> }>(
+          'select settings from restro.venues where id = $1',
+          [venueId],
+        )
+      ).rows[0]?.settings
+
+    it('brings the venue back with its till linked again, the same address and table codes', async () => {
       const { venueId, publicId, slug } = await liveVenue('Back again')
       const till = await linkTill(venueId)
       await upsertPlaces(app, tenant, integrationId, till, [place('r1', '1')], { pagesOk: [true] })
@@ -335,21 +344,24 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       const issued = await issueTableToken(app, tenant, table?.id ?? '')
       if (!issued.ok) throw new Error(issued.reason)
       await archiveVenue(app, tenant, venueId)
+      // The delete released the till venue and remembered it (adjustments V1).
+      expect((await linkOf(till))?.venueId).toBeNull()
+      expect((await settingsOf(venueId))?.till_before_delete).toEqual({
+        integration_id: integrationId,
+        bid: till,
+      })
 
       const result = await restoreVenue(app, tenant, venueId)
-      expect(result).toEqual({ venueId, changed: true })
+      expect(result).toEqual({ venueId, changed: true, relinked: true })
       expect(await rowOf(venueId)).toMatchObject({
         archived_at: null,
         public_id: publicId,
         slug,
         name: 'Back again',
       })
-      // Not linked again, and nothing was published or queued by the writer.
-      expect((await linkOf(till))?.venueId).toBeNull()
-      // Linking the same till venue again brings the same table code back.
-      expect(await mapBarsyVenue(app, tenant, integrationId, till, venueId)).toMatchObject({
-        ok: true,
-      })
+      // Linked again, the memory of it gone, and the same table code back; nothing was published.
+      expect((await linkOf(till))?.venueId).toBe(venueId)
+      expect((await settingsOf(venueId))?.till_before_delete).toBeUndefined()
       const back = await listVenueTables(app, tenant, venueId)
       expect(back.map((row) => row.token)).toEqual([issued.table.token])
       // The venue is live for the writers again.
@@ -358,9 +370,51 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       })
     })
 
+    it('is refused, and changes nothing, when another venue serves the till venue now', async () => {
+      const { venueId } = await liveVenue('First owner')
+      const till = await linkTill(venueId)
+      await archiveVenue(app, tenant, venueId)
+      const holder = await liveVenue('Holder of the till')
+      expect(await mapBarsyVenue(app, tenant, integrationId, till, holder.venueId)).toMatchObject({
+        ok: true,
+      })
+
+      await expect(restoreVenue(app, tenant, venueId)).rejects.toMatchObject({
+        code: 'till_taken',
+        details: { holder: 'Holder of the till' },
+      })
+      expect((await rowOf(venueId))?.archived_at).toBeInstanceOf(Date)
+      expect((await linkOf(till))?.venueId).toBe(holder.venueId)
+      expect((await settingsOf(venueId))?.till_before_delete).toEqual({
+        integration_id: integrationId,
+        bid: till,
+      })
+    })
+
+    it('comes back without a link when the till venue it served is not listed any more', async () => {
+      const { venueId } = await liveVenue('Till gone')
+      const till = await linkTill(venueId)
+      await archiveVenue(app, tenant, venueId)
+      await owner.query('delete from restro.barsy_venues where integration_id = $1 and bid = $2', [
+        integrationId,
+        till,
+      ])
+      expect(await restoreVenue(app, tenant, venueId)).toEqual({
+        venueId,
+        changed: true,
+        relinked: false,
+      })
+      expect((await rowOf(venueId))?.archived_at).toBeNull()
+      expect((await settingsOf(venueId))?.till_before_delete).toBeUndefined()
+    })
+
     it('is idempotent, and refuses what the tenant does not have', async () => {
       const { venueId } = await liveVenue('Live already')
-      expect(await restoreVenue(app, tenant, venueId)).toEqual({ venueId, changed: false })
+      expect(await restoreVenue(app, tenant, venueId)).toEqual({
+        venueId,
+        changed: false,
+        relinked: false,
+      })
       await expect(restoreVenue(app, tenant, otherTenantVenue)).rejects.toMatchObject({
         code: 'venue_missing',
       })

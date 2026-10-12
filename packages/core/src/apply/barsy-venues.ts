@@ -36,7 +36,7 @@ import { lockLiveVenue } from './venue-lock'
  * (D95), and points each place at its table. Nothing happens for a till venue that serves no
  * venue. Returns the tokens of the tables the mirror archived (their files must go).
  */
-async function mirrorIn(
+export async function mirrorTillVenueIn(
   tx: WriteTx,
   tenantId: string,
   integrationId: string,
@@ -230,7 +230,7 @@ export async function mapBarsyVenue(
       .returning()
     if (!updated) return { ok: false, error: 'barsy_venue_missing' } as const
     // The venue's tables are the till venue's places from now on (D95).
-    await mirrorIn(tx, tenantId, integrationId, bid, new Date())
+    await mirrorTillVenueIn(tx, tenantId, integrationId, bid, new Date())
     return { ok: true, row: updated } as const
   })
 }
@@ -275,7 +275,7 @@ export async function addVenueFromTillVenue(
       .set({ venueId: venue.id, updatedAt: new Date() })
       .where(and(eq(venueLinks.integrationId, integrationId), eq(venueLinks.bid, bid)))
     // Places read before the venue existed become its areas and tables now (D95).
-    await mirrorIn(tx, tenantId, integrationId, bid, new Date())
+    await mirrorTillVenueIn(tx, tenantId, integrationId, bid, new Date())
     return { ok: true, venue } as const
   })
 }
@@ -524,7 +524,7 @@ export async function upsertPlaces(
       if (change.to === 'deleted') deleted += 1
       else missing += 1
     }
-    const retiredTokens = await mirrorIn(tx, tenantId, integrationId, bid, now)
+    const retiredTokens = await mirrorTillVenueIn(tx, tenantId, integrationId, bid, now)
     return {
       created,
       updated,
