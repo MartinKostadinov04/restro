@@ -48,6 +48,7 @@ const TABLES = [
   'barsy_venues',
   'assets',
   'integrations',
+  'venue_slug_history',
   'venues',
 ] as const
 

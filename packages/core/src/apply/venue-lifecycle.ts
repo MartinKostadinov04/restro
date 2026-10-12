@@ -179,10 +179,11 @@ export interface RestoredVenue {
 }
 
 /**
- * Brings a deleted venue back: clears `archived_at`. It does not link the till again and does not
- * publish; the venue comes back as a new one would, and its public code and table codes are the
- * ones it always had. Restoring a live venue changes nothing. Refuses a venue the tenant does not
- * have (`venue_missing`).
+ * Brings a deleted venue back: clears `archived_at` and marks the venue unpublished (D86: a
+ * restored venue is a Draft until someone publishes it; its guest files stay withdrawn till
+ * then). It does not link the till again; the venue's public code and table codes are the ones it
+ * always had, so the publish brings the same addresses back. Restoring a live venue changes
+ * nothing. Refuses a venue the tenant does not have (`venue_missing`).
  */
 export async function restoreVenue(
   pool: DbPool,
@@ -196,7 +197,10 @@ export async function restoreVenue(
       throw new ProvisionError('venue_missing', venueRefusalText(venueId, 'venue_missing'))
     }
     if (venue.archivedAt === null) return { venueId, changed: false }
-    await tx.update(venues).set({ archivedAt: null }).where(eq(venues.id, venueId))
+    await tx
+      .update(venues)
+      .set({ archivedAt: null, unpublishedAt: sql`now()` })
+      .where(eq(venues.id, venueId))
     return { venueId, changed: true }
   })
 }
