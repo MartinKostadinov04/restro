@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D89** Hand-made venues have full control; POS venues can hide but not delete.
+  Hand-made: create, edit and delete menus, sections and items. POS venue: hide, sold out, reorder, own name/description/photo over the till's, tags; never delete or create items or change prices, because the POS is the source and would bring them back. An item deleted in the POS leaves Restro after the next full read.
 - **D88** A venue holds several menus; exactly one is live.
   Hand-made venue: add menus in Settings › Menus (each with ">" into the composer) or in the composer; pick the live menu in either place. barsy venue: its menus are what barsy designates for it, its public menu (live by default) and its till tree; other catalogue branches aren't its menus. Showing several menus at once is set per QR code or hall (to detail with Tables & QR). **Import menu** ("From other venue"): only between hand-made Restro venues, one-time copy; POS menus can't be copied (limitation for later).
 - **D86** Venue states and the All venues card.
