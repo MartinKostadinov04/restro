@@ -226,6 +226,9 @@ test('New venue from the sidebar: the new venue opens and is in the list at once
   await newVenueItem(page).click()
   const dialog = page.getByTestId('new-venue-dialog')
   await expect(dialog).toBeVisible()
+  // Step 1 (D85): where the menu comes from; this organisation has no POS, so by hand.
+  await dialog.getByTestId('new-venue-source-hand').click()
+  await dialog.getByTestId('new-venue-next').click()
   await dialog.getByTestId('new-venue-name').fill(CREATED_VENUE)
   await dialog.getByTestId('new-venue-submit').click()
 
@@ -246,6 +249,8 @@ test('a venue made with the button on the overview is in the sidebar too', async
   await expect(page).toHaveURL(/\/venues$/)
   await page.getByTestId('new-venue').click()
   const dialog = page.getByTestId('new-venue-dialog')
+  await dialog.getByTestId('new-venue-source-hand').click()
+  await dialog.getByTestId('new-venue-next').click()
   await dialog.getByTestId('new-venue-name').fill(SECOND_CREATED_VENUE)
   await dialog.getByTestId('new-venue-submit').click()
 

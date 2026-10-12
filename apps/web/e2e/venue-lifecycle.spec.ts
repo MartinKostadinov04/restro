@@ -164,6 +164,94 @@ test('the guest page and the table code work before the venue is deleted', async
   )
 })
 
+const venueCard = (target: Page, name: string) =>
+  target.getByTestId('venue-card').filter({ hasText: name })
+
+test('the cards show each venue’s state, its guest address and where its menu comes from (D86)', async () => {
+  await page.goto('/venues')
+  // A live venue whose menu comes from a till venue: the instance and the venue in it are named.
+  const bar = venueCard(page, RENAMED)
+  await expect(bar.getByTestId('venue-card-state')).toHaveText('Live')
+  await expect(bar.getByTestId('venue-card-address')).toHaveText(
+    `/m/lifecycle-club/${seed.barSlug}`,
+  )
+  await expect(bar.getByTestId('venue-card-source')).toContainText('lifecycle.barsyonline.com')
+  await expect(bar.getByTestId('venue-card-till-venue')).toHaveText('Lifecycle till')
+  const preview = bar.getByRole('link', { name: 'Preview menu' })
+  await expect(preview).toHaveAttribute('href', `/m/lifecycle-club/${seed.barSlug}`)
+  await expect(preview).toHaveAttribute('target', '_blank')
+  await expect(bar.getByTestId('unpublish-venue-open')).toBeVisible()
+
+  // A venue made by hand that was never published: a Draft, with no preview to open.
+  const keeper = venueCard(page, KEEPER)
+  await expect(keeper.getByTestId('venue-card-state')).toHaveText('Draft')
+  await expect(keeper.getByTestId('venue-card-source')).toHaveText('By hand')
+  await expect(keeper.getByTestId('venue-card-preview')).toBeDisabled()
+  await expect(keeper.getByTestId('venue-card-preview-hint')).toBeVisible()
+  await expect(keeper.getByTestId('unpublish-venue-open')).toHaveCount(0)
+  await snapshot('venue-cards.png')
+})
+
+test('an owner unpublishes the venue from its card: guests lose the menu; publishing brings it back', async ({
+  browser,
+  request,
+}) => {
+  await page.goto('/venues')
+  const bar = venueCard(page, RENAMED)
+  await bar.getByTestId('unpublish-venue-open').click()
+  const dialog = page.getByTestId('unpublish-venue-dialog')
+  await expect(dialog).toBeVisible()
+  await expect(page.getByTestId('unpublish-venue-effects')).toContainText(
+    'guests see that the menu is not available',
+  )
+  await expect(page.getByTestId('unpublish-venue-effects')).toContainText('Nothing is deleted')
+  // The dialog fades in: take the picture once it has settled.
+  await page.waitForTimeout(600)
+  await snapshot('unpublish-dialog.png')
+  await dialog.getByTestId('unpublish-venue-confirm').click()
+
+  // The card turns into a Draft at once; there is nothing to preview or to unpublish any more.
+  await expect(page.getByText(`${RENAMED} was unpublished.`)).toBeVisible()
+  await expect(bar.getByTestId('venue-card-state')).toHaveText('Draft')
+  await expect(bar.getByTestId('venue-card-preview')).toBeDisabled()
+  await expect(bar.getByTestId('unpublish-venue-open')).toHaveCount(0)
+
+  // The worker takes the venue's files out a moment later: its address says the menu is not
+  // available. The table's QR code still leads to that address, so it says the same.
+  await expect
+    .poll(
+      async () =>
+        (await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)).includes(
+          'This menu is not available',
+        ),
+      { timeout: 60_000, intervals: [1_000, 2_000] },
+    )
+    .toBe(true)
+  const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
+  expect(code.status()).toBe(302)
+  const qrAddress = code.headers().location ?? ''
+  expect(await guestText(browser, qrAddress)).toContain('This menu is not available')
+
+  // Publishing is the word to serve the venue again, even with nothing new in the menu.
+  await page.goto(`/venues/${seed.barId}?tab=publishing`)
+  await expect(page.getByTestId('address-off-banner')).toBeVisible()
+  const publish = page.getByTestId('publish-button').first()
+  await expect(publish).toBeEnabled()
+  await publish.click()
+  await expect(page.getByTestId('publish-outcome-title')).toContainText('Nothing new to publish', {
+    timeout: 60_000,
+  })
+  await expect
+    .poll(async () => hasItem(await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)), {
+      timeout: 60_000,
+      intervals: [1_000, 2_000],
+    })
+    .toBe(true)
+  expect(hasItem(await guestText(browser, qrAddress))).toBe(true)
+  await page.goto('/venues')
+  await expect(venueCard(page, RENAMED).getByTestId('venue-card-state')).toHaveText('Live')
+})
+
 test('an admin renames but cannot delete; a member sees the name as text only', async ({
   browser,
 }) => {
