@@ -398,7 +398,7 @@ describe('the guest context', () => {
 describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens (D95)', () => {
   const ORG = 'night-group'
   const SECOND_MENU = `nd_${'B'.repeat(22)}`
-  const TOKEN = 'tb_0123456789ABCDEFGHIJKL'
+  const TABLE_CODE = 'tb_0123456789ABCDEFGHIJKL'
 
   /** The published files with the organisation's index and a second published menu. */
   function organizationFiles() {
@@ -421,7 +421,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     f.bodies.set(files.organization(BASE, 'old-group'), { redirect_to: ORG })
     f.bodies.set(files.current(BASE, secondIndex), secondPointer)
     f.bodies.set(files.live(BASE, secondIndex), { version: f.pointer.version, items: {} })
-    f.bodies.set(files.table(BASE, TOKEN), {
+    f.bodies.set(files.table(BASE, TABLE_CODE), {
       venue_public_id: CODE,
       venue_slug: 'demo-club',
       organization_slug: ORG,
@@ -479,32 +479,32 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
 
   it('a table’s code may name the menu it opens: that menu’s files are read, and the table is confirmed', async () => {
     const f = organizationFiles()
-    const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' }, TOKEN)
+    const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' }, TABLE_CODE)
     expect(menu.index.menu_id).toBe(SECOND_MENU)
-    expect(menu.table).toEqual({ token: TOKEN, label: '7' })
-    expect(f.asked).toContain(files.table(BASE, TOKEN))
+    expect(menu.table).toEqual({ token: TABLE_CODE, label: '7' })
+    expect(f.asked).toContain(files.table(BASE, TABLE_CODE))
     expect(f.asked).toContain(
       files.current(BASE, { venue_id: f.index.venue_id, menu_id: SECOND_MENU }),
     )
     // The address of before honours the table's menu too.
-    const legacy = await loadMenu(f.deps(), CODE, TOKEN)
+    const legacy = await loadMenu(f.deps(), CODE, TABLE_CODE)
     expect(legacy.index.menu_id).toBe(SECOND_MENU)
-    expect(legacy.table).toEqual({ token: TOKEN, label: '7' })
+    expect(legacy.table).toEqual({ token: TABLE_CODE, label: '7' })
     // A code of another venue, or one with no menu, leaves the live menu.
     const foreign = new Map<string, unknown>([
       [
-        files.table(BASE, TOKEN),
+        files.table(BASE, TABLE_CODE),
         { venue_public_id: '000000000000', venue_slug: 'x', table_label: '1' },
       ],
     ])
     const stranger = await loadMenuAt(
       f.deps(foreign),
       { organization: ORG, venue: 'demo-club' },
-      TOKEN,
+      TABLE_CODE,
     )
     expect(stranger.index.menu_id).toBe(f.index.menu_id)
     expect(stranger.table).toBeNull()
-    expect(await loadTableFile(f.deps(foreign), TOKEN, CODE)).toBeNull()
+    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toBeNull()
   })
 
   it('the address of before moves to the new one when the venue’s file names the organisation', async () => {
