@@ -19,6 +19,24 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D93** Colour system upgrades, from an audit against current practice (WCAG 2.2, CSS Color 4/5, Material 3, Radix, Tailwind 4).
+  The core is sound: perceptual OKLCH, gamut-safe, 4.5:1 text contrast, roles instead of raw colours, a proper dark transform. The gaps are at its edges. Built with the D92 designer work; every change is additive (old snapshots and templates keep working).
+  - **Must, part 1. One source of truth for every colour that carries text or meaning.** The template mixes about 40 shades itself (`color-mix(in srgb)`), unchecked and blended non-perceptually. The engine adds roles for what is missing:
+    - status: error, success and their text colours, for the service screens' rejected and accepted states;
+    - disabled and sold-out text, selected or soft-accent chip fills, the focus ring, the backdrop behind sheets, and a strong border for controls.
+    - Purely decorative tints may stay in the template, blended `in oklab`. A contract test checks every text-on-colour pair the template actually draws.
+  - **Must, part 2. Contrast for controls (WCAG 1.4.11, 3:1).**
+    - The strong border and the focus ring reach 3:1 against page and panels.
+    - When the chosen highlight colour sits too close to the page (below 3:1), it is kept as chosen, buttons get the strong outline, and the Design tab says why.
+  - **Must, part 3. Brand-first colour card** (fits D92's merge of "brand" and "custom").
+    - The card starts with "Your brand colour", which becomes the highlight (Tertiary). Page and panels are pre-filled as calm tints of it, through the monochrome suggestion, and stay editable.
+    - A warning appears if the page colour is strongly saturated, since it covers about 60% of the screen.
+    - Reason: an owner typing a bright brand colour as "Primary" gets a fully coloured page.
+  - **Should, part 4. Dark screen.** Strong accents are also toned down a little, not only lightened, so they don't "vibrate" on a dark page.
+  - **Should, part 5. Second readability check (APCA).** WCAG 2 stays the hard, legal rule. APCA (the perceptual method behind the WCAG 3 draft) is added as a second check: body text at least Lc 75, small secondary text at least Lc 60, both screens. If it fails, the colour is nudged further.
+    - Implemented in-house, like OKLCH, so no new dependency. Check APCA's licence terms before shipping.
+  - **Should, part 6. "Increase contrast".** A stronger variant (text 7:1, secondary text 4.5:1, borders 3:1) for phones set to `prefers-contrast: more`.
+  - **Not now:** wide-gamut (Display-P3) colours and Windows forced-colours mode.
 - **D92** Composer has two subtabs, Structure and Design; the designer is simplified.
   - Structure: POS venues may create their own sections too, placed through the mapper (amends D90). Each section is vertical or horizontal (e.g. promotions, top picks as a row). Menu layout (list, one or two columns) is set here: a default, and whether guests may switch.
   - Design: choose a template (stored shells, phone preview pop-up with the general menu preview). Cards in order: logo and menu header name → guest functions (own section) → font (dropdown), corners, shadow, screen → colours (only Primary, Secondary, Tertiary; no presets, no swatch palette). A sticky phone preview beside it.
