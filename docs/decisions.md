@@ -1,5 +1,5 @@
-# Decisions index (from `docs/tracker.md`, 2026-10-11)
-This file lists every decision in force (D1–D72), the open questions and the open tasks, one line each. Read it instead of the whole tracker.
+# Decisions index (from `docs/tracker.md`, 2026-10-12)
+This file lists every decision in force (D1–D97), the open questions and the open tasks, one line each. Read it instead of the whole tracker.
 `docs/tracker.md` holds the full text and wins on any difference. Look up `| D<n> |` or `T<n>.` there when your brief names one.
 
 ## Decisions in force

@@ -10,7 +10,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
   - **Hand it to simpler agents** when it's well specified once the foundations exist: screens and forms (V2, V4, V5, D1, T1, P1, I1), wording, small connector changes (B2, B5). Use Sonnet by default and Haiku for exact, mechanical tasks (D58), each with a brief that pins the interfaces you built.
   - **Review every diff** yourself before it merges, whoever wrote it.
 - **Read first:** `CLAUDE.md`, `docs/decisions.md`, this file. Look up decisions in the tracker by ID only; never read the tracker or `docs/architecture/data-architecture.md` whole.
-- **Branch:** create `ad/foundation` from `sh/foundation`; task branches `ad/<nn>-<slug>`. Martin allows pushing `cf/**`, `sh/**` and `ad/**` for CI; never push `main`. CI (`.github/workflows/ci.yml`) must be extended to `ad/**`.
+- **Branch:** create `ad/foundation` from `sh/foundation`; task branches `ad/<nn>-<slug>`. Martin allows pushing `cf/**`, `sh/**` and `ad/**` for CI; never push `main`. CI (`.github/workflows/ci.yml`) runs on `ad/**` (done 10-12).
 - **Process (Martin 10-11, 10-12):**
   - At most two agents at once; the strongest model for genuinely complex packages only (D58).
   - Agents run lint, typecheck, deps:check and only the tests of what they touched, plus a Playwright spec they wrote or changed. Never the full `pnpm test`, `pnpm build` or Playwright suite on the PC (now in `CLAUDE.md`, together with the three layers and the purge-role exception).
@@ -38,7 +38,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **Now:**
   - Delete archives the venue and releases its till link; the worker withdraws `v/<code>.json` and the table files.
   - Restore (Organisation › Settings › Deleted venues) brings it back without a till link.
-  - Nothing is ever erased: the app role has no DELETE (`packages/db/src/table-access.ts`).
+  - Nothing is ever erased: no venue, menu, node, snapshot or event is ever deleted. The app role holds DELETE only where the row's removal is the action itself (placements, field values, source links: unplace, clear a field, unlink) and on two auth tables (`packages/db/src/table-access.ts`).
 - **Change:**
   - **Bin and purge:** a 30-day bin, then a worker purge job erases the venue's own data: menus, sections, venue-scoped values, tables and tokens, tags, snapshots and CDN files, events, job runs. "Delete permanently" (owners, typed name) purges at once.
   - **What survives:** tombstones keep the public code and table tokens from ever being reissued. Data another venue uses stays. The purge also clears a removed POS instance's data and items no venue uses.
@@ -47,7 +47,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **Guardrail (approved by Martin):** a dedicated database role with DELETE, used only by the purge job. The app role keeps no DELETE. Pin both with tests.
 
 ### V2 Venue states and the All venues card: D86
-- **Now:** `app/(admin)/venues/page.tsx` with `components/admin/venue-card.tsx`. There are no states. Nothing unpublishes except deleting the venue.
+- **Now:** `apps/web/app/(admin)/venues/page.tsx` with `apps/web/src/components/admin/venue-card.tsx`. There are no states. Nothing unpublishes except deleting the venue.
 - **Change:**
   - **States:** Draft (never published, or unpublished), Live (its live menu is published), Archived (in the bin).
   - **An Unpublish action:** withdraws the guest files and returns the venue to Draft.
@@ -64,7 +64,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
   - **`/t/<token>`** is unchanged.
 
 ### V4 New venue form: D85, D87
-- **Now:** `components/admin/new-venue-dialog.tsx` asks for name, slug and languages, and is for hand-made venues only. POS venues are created from Integrations' Till venues card ("Add as venue" or "Link to existing").
+- **Now:** `apps/web/src/components/admin/new-venue-dialog.tsx` asks for name, slug and languages, and is for hand-made venues only. POS venues are created from Integrations' Till venues card ("Add as venue" or "Link to existing").
 - **Change:**
   - **Step 1, the source:** an active POS instance, or "By hand".
   - **From a POS:** pick the instance's venue (linked ones show "linked to …" and can't be picked). Nothing is typed: the name comes from the till, the address from the name, the languages from L1.
@@ -72,7 +72,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
   - **The source is fixed after creation:** no "Change" or re-link anywhere. Going from hand-made to a POS isn't supported.
 
 ### V5 Organisation › General: D91
-- **Now:** Settings has only "Integrations" and "Deleted venues" (`components/admin/settings-sections.ts`). Renaming the organisation is disabled over HTTP (`DISABLED_HTTP_PATHS` in `apps/web/src/server/auth.ts`).
+- **Now:** Settings has only "Integrations" and "Deleted venues" (`apps/web/src/components/admin/settings-sections.ts`). Renaming the organisation is disabled over HTTP (`DISABLED_HTTP_PATHS` in `apps/web/src/server/auth.ts`).
 - **Change:** a General section for the organisation's name and its address slug (V3), through a server action.
 
 ### M1 Several menus per venue: D88, D90, D91, D92 (the foundation of M2, C1, P1)
@@ -80,7 +80,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
   - One menu per venue: `menus_venue_id_unique`; `provisionMenu` is idempotent; the app role has only SELECT and INSERT on `menus`.
   - `snapshots` and `publish_pointers` are keyed by (menu, venue). The guest page loads the venue's one menu.
 - **Change:**
-  - **Many menus, exactly one live.** The live one is chosen in Settings › General › Menus (each row has a ">" into the composer) or in the composer.
+  - **Many menus, exactly one live.** The live one is chosen in Settings › General › Menus (each row has a ">" into the composer) or in the composer. Switching the live menu publishes it (D90).
   - **Hand-made venues** add, rename and delete menus. A deleted menu goes to the venue's 30-day "Deleted menus" bin, then is purged.
   - **barsy venues:** their menus come from barsy (see B3).
   - **Versions:** each menu has its own draft and published versions. The venue is Live when its live menu is published.
@@ -245,7 +245,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **P-02** Offer only barsy sales venues ("Търговски"), not production or service units ("Производствен", "Услуги").
 - **P-05** Store barsy's `Languages_getlist` on the connection and count filled languages from guest-facing `_ml` fields. This is barsy's report for I3, so L1 needs it.
 - **P-06** A venue profile (address, phone, opening hours, description, website), filled by the till or typed by hand.
-- **P-07** Make a venue's languages, time zone and closing time editable.
+- **P-07** Make a venue's time zone and closing time editable (its languages are editable already: D85, D97, L1).
 - **DM1's provider:** Cloudflare for SaaS (price to confirm), or leave domains for later.
 - **Minor:** whether the composer hints that horizontal sections work best with photos.
 
