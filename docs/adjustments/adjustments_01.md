@@ -13,7 +13,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **Branch:** create `ad/foundation` from `sh/foundation`; task branches `ad/<nn>-<slug>`. Martin allows pushing `cf/**`, `sh/**` and `ad/**` for CI; never push `main`. CI (`.github/workflows/ci.yml`) must be extended to `ad/**`.
 - **Process (Martin 10-11, 10-12):**
   - At most two agents at once; the strongest model for genuinely complex packages only (D58).
-  - Agents run lint, typecheck, deps:check and only the tests of what they touched, plus a Playwright spec they wrote or changed. Never the full `pnpm test`, `pnpm build` or Playwright suite on the PC. Not yet in `CLAUDE.md`: state it in every brief.
+  - Agents run lint, typecheck, deps:check and only the tests of what they touched, plus a Playwright spec they wrote or changed. Never the full `pnpm test`, `pnpm build` or Playwright suite on the PC (now in `CLAUDE.md`, together with the three layers and the purge-role exception).
   - The lead pushes the task branch, waits for CI green, then merges.
   - Briefs name the decisions and doc sections to read. Reports are at most one page.
   - Never enter plan mode while agents run.
@@ -247,7 +247,6 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **P-06** A venue profile (address, phone, opening hours, description, website), filled by the till or typed by hand.
 - **P-07** Make a venue's languages, time zone and closing time editable.
 - **DM1's provider:** Cloudflare for SaaS (price to confirm), or leave domains for later.
-- **`CLAUDE.md`:** write the faster test process into it (Martin to say "update CLAUDE.md").
 - **Minor:** whether the composer hints that horizontal sections work best with photos.
 
 ## 5. Blocked outside the code
