@@ -36,6 +36,7 @@ import { z } from 'zod'
 import { parseAssetVariants } from '../asset-variants'
 import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
+import { venueLanguages } from '../languages'
 import { isLocale, type Locale, type LocalizedText, LocalizedTextSchema } from '../locales'
 import { CURRENCIES, type Currency } from '../money'
 import { compareVisibility, V11_MAX_HIDDEN_SHARE } from '../resolve/compare-visibility'
@@ -460,14 +461,13 @@ async function resolveForVenue(
   }
   const doc = await readMenuDocument(tx, menuId)
 
-  // Context: the venue's languages (default first), its service day and time zone.
-  const defaultLocale = venue.defaultLocale as Locale
-  const locales = [
-    defaultLocale,
-    ...venue.enabledLocales.filter((locale) => locale !== defaultLocale),
-  ].filter(isLocale)
+  // Context: the venue's languages (the one source every workflow uses, D77: its main language
+  // first), its service day and time zone.
+  const languages = venueLanguages(venue)
+  const defaultLocale = languages.main
+  const locales = [...languages.all]
   const currency = venue.currency as Currency
-  if (!isLocale(defaultLocale) || !(CURRENCIES as readonly string[]).includes(currency)) {
+  if (!isLocale(venue.defaultLocale) || !(CURRENCIES as readonly string[]).includes(currency)) {
     throw new PublishError('menu_blocked', `venue ${venueId} has an unknown locale or currency`)
   }
   const day = serviceDate(now, venue.timezone, venue.serviceDayEndsAt)

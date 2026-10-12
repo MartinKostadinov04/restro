@@ -70,6 +70,7 @@ import {
   type ApplyRejection,
   appendSourceRecords,
   provisionMenu,
+  recordLanguageReport,
   storeCachedTree,
   updateSyncState,
   upsertPlaces,
@@ -756,6 +757,18 @@ async function syncFetched(
   const photos = await queuePhotos(ctx, mapping, before, hashes)
   counters.photos_queued = photos.queued
   counters.photos_elsewhere = photos.elsewhere
+  // The language report (D77, I3): after a complete full read, which languages the till offers
+  // and how many guest-facing texts it fills in each. Core decides which of them count.
+  if (mode === 'full' && complete) {
+    const languages = await recordLanguageReport(env.pool, tenantId, target.venueId, {
+      reported_at: startIso,
+      offered: [...mapping.languages.offered],
+      filled: mapping.languages.filled,
+      total: mapping.languages.total,
+    })
+    counters.texts_total = mapping.languages.total
+    counters.languages_from_till = languages.fromTill.length
+  }
   return { counters, notes, deletionCheckSkipped, absenceHeld, totals, complete }
 }
 

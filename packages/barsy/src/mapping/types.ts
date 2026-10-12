@@ -179,6 +179,19 @@ export interface CatalogueCounts {
   readonly outsideCatalogue: number
 }
 
+/**
+ * The connector's language report (D77, adjustments I3): the languages the installation offers
+ * (`Languages_getlist`, as our locale keys; all of ours when it lists none) and how many of the
+ * guest-facing texts this mapping wrote (names and descriptions of sections, items, option
+ * groups and options) hold text in each, out of how many such texts there were. The worker
+ * records it on the venue after a complete full read; core decides which languages count.
+ */
+export interface MappedLanguages {
+  readonly offered: readonly Locale[]
+  readonly filled: Readonly<Partial<Record<Locale, number>>>
+  readonly total: number
+}
+
 /** The result of mapping one venue's catalogue. */
 export interface CatalogueMapping {
   /** For `apply()`; null when there is nothing to apply (an empty catalogue). */
@@ -189,6 +202,7 @@ export interface CatalogueMapping {
   readonly linkStates: readonly LinkStateIntent[]
   readonly warnings: readonly MappingWarning[]
   readonly counts: CatalogueCounts
+  readonly languages: MappedLanguages
 }
 
 /** One barsy place, ready to be stored in `places` (the table QR token is S2-03/Stage 3). */
