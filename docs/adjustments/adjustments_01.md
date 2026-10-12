@@ -5,6 +5,10 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 ## 0. Your job and how to work
 
 - **You are the lead for these adjustments.** First **plan**: work packages, order, dependencies, which files each package owns, model per package, and the migrations. Present the plan to Martin in plain language and wait for his OK. Then write briefs (`docs/agent-briefs/`), run the agents, review, merge, report.
+- **Decide what you code yourself and what you hand to simpler agents.** Your plan says, per package, who builds it and why.
+  - **Code it yourself** when it's complex or cross-cutting and a mistake is costly: data-model changes and migrations (M1, the purge role in V1), routing and snapshot resolution (M2), core rules every workflow depends on (L1, the D2 colour engine), and anything that changes a guardrail.
+  - **Hand it to simpler agents** when it's well specified once the foundations exist: screens and forms (V2, V4, V5, D1, T1, P1, I1), wording, small connector changes (B2, B5). Use Sonnet by default and Haiku for exact, mechanical tasks (D58), each with a brief that pins the interfaces you built.
+  - **Review every diff** yourself before it merges, whoever wrote it.
 - **Read first:** `CLAUDE.md`, `docs/decisions.md`, this file. Look up decisions in the tracker by ID only; never read the tracker or `docs/architecture/data-architecture.md` whole.
 - **Branch:** create `ad/foundation` from `sh/foundation`; task branches `ad/<nn>-<slug>`. Martin allows pushing `cf/**`, `sh/**` and `ad/**` for CI; never push `main`. CI (`.github/workflows/ci.yml`) must be extended to `ad/**`.
 - **Process (Martin 10-11, 10-12):**
