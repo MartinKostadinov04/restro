@@ -15,10 +15,12 @@ Three layers, kept apart:
 
 **Built**
 - **D76** Rename, delete (archive) and restore a venue (CF-18).
-  Rename sits in the venue's Settings tab. Delete is owners only, after typing the name: the venue disappears, its guest page and QR codes stop working, and its till link is freed. Nothing is erased; restore it from Settings › Deleted venues.
+  Rename sits in the venue's Settings tab. Delete is owners only, after typing the name: the venue disappears, its guest page and QR codes stop working, and its till link is freed. Restore it from Settings › Deleted venues (for 30 days, then purged: D83).
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D83** A deleted venue is restorable for 30 days, then purged; or "Delete permanently" at once from Organisation › Deleted venues.
+  Chosen for scale: an unused venue shouldn't take space forever. The purge erases the venue's own data (menu, tables, published files, history); items another venue uses stay; its public and QR codes are never reused. Only the purge job may delete (its own database role). Amends D76.
 - **D77 (platform part)** One central source of a venue's menu languages.
   One function in core works out a venue's languages from what the connector reports (about 20% coverage counts; a language the owner switched on is never removed; one main language per venue). Every step uses it: sync, new venue, settings, composer, checks, publishing.
 - **D78** Changing a venue's menu source archives its old menu (restorable 30 days).
