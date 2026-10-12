@@ -148,6 +148,17 @@ describe.skipIf(!hasDatabase)('a deleted venue and the sync (CF-18)', () => {
       await archiveVenue(world.pool, world.tenantId, world.venueId)
       expect(await tick()).toEqual([])
     })
+
+    it('never queues anything of a removed instance (D81), and queues again if it is not removed', async () => {
+      await world.query('update restro.integrations set removed_at = now() where id = $1', [
+        world.integrationId,
+      ])
+      expect(await tick()).toEqual([])
+      await world.query('update restro.integrations set removed_at = null where id = $1', [
+        world.integrationId,
+      ])
+      expect((await tick()).map((job) => job.name)).toContain(JOB_NAMES.barsyFullPull)
+    })
   })
 
   describe('a till venue released by a deletion and linked to another venue (CF-16 keys)', () => {

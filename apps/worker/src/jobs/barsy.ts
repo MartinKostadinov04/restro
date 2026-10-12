@@ -721,6 +721,8 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             and(
               eq(integrations.kind, 'barsy'),
               eq(integrations.status, 'connected'),
+              // A removed instance (Settings › Integrations, D81) is never synced.
+              isNull(integrations.removedAt),
               isNotNull(venueLinks.venueId),
               // A deleted venue is never scheduled (D76); its link is released with it, this is
               // the second line.
