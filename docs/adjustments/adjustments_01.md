@@ -44,4 +44,14 @@ Session 10-11 to 10-12. Full decision texts: `docs/tracker.md` (search `| D77 |`
 - **The database layer stays SQL (one Postgres).**
   Data arrives as the till's JSON and leaves as the guest's JSON (the published snapshot). The rows in between are where sources (till, typed in Restro, per venue) are merged with history and rules, and where small frequent edits stay safe. Conversions run only on change, never per guest view. Analytics later reads from it (a separate reporting store only if volumes demand it).
 
+## Post-connector platform: decided, to build
+- **D80** Custom domains for the guest menu.
+  Per domain, the owner chooses: one venue (`menu.club.bg` opens its menu) or the whole organisation (`menu.group.bg/<venue>`). Subdomains only; only the guest menu and table codes are served there, never the admin. The owner sets it up in Settings › Domains: Restro shows the DNS record, checks it and turns HTTPS on (provider to confirm: Cloudflare for SaaS). QR codes then print with the domain; our address keeps working.
+
+## Post-connector platform: proposed
+- **P-06** Venue profile: address, phone, opening hours, description, website.
+  A venue has none of these today, so a connector can't fill them and a person can't type them. A till fills them when the venue is added; a person types them for a hand-made venue or over the till's values.
+- **P-07** Make a venue's languages, time zone and closing time editable (today read-only).
+- **P-08** Venue address names unique within an organisation, needed for `menu.group.bg/<venue>` (D80).
+
 ## Martin's notes
