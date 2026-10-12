@@ -4,14 +4,27 @@
 // (`organization_slug_history`, a system table), so an old address keeps leading to the new one
 // through the published redirect file `o/<old slug>.json` (the worker writes it from this table).
 // Only this folder may import the write side of the database (rule 1's door).
+//
+// Also here: the organisation's other settings (`tenants.settings`), today the POS systems it
+// chose in Settings › Integrations (`setOrganizationSystems`, D81).
 
 import type { ReadTx } from '@restro/db'
-import { authOrganization, type DbPool, organizationSlugHistory, withTenant } from '@restro/db'
+import {
+  authOrganization,
+  type DbPool,
+  integrations,
+  organizationSlugHistory,
+  tenants,
+  withTenant,
+} from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, isNull, sql } from 'drizzle-orm'
+import { z } from 'zod'
 
+import { INTEGRATION_KINDS, type IntegrationKind } from '../connectors'
 import { isOrganizationSlug } from '../guest-files'
 import { isId } from '../ids'
+import { lockTenantDocument } from './lock'
 import { ProvisionError } from './provision'
 
 /** The organisation's address parts as the files carry them. */
@@ -134,5 +147,91 @@ export async function organizationSlugIsFree(
       .from(organizationSlugHistory)
       .where(eq(organizationSlugHistory.slug, slug))
     return earlier === undefined || earlier.organizationId === organizationId
+  })
+}
+
+// --- the systems the organisation chose (adjustments I1, D81) ---------------------------------
+
+/**
+ * The POS systems an organisation chose in Settings › Integrations, stored as connector kinds in
+ * `tenants.settings.systems`. Each chosen system gets its tab; an instance can only be added for a
+ * chosen system, and a system that still has instances cannot be unchosen.
+ */
+const SystemsInput = z
+  .array(z.enum(INTEGRATION_KINDS))
+  .refine((list) => new Set(list).size === list.length)
+
+/** The kinds in the order core lists them (`INTEGRATION_KINDS`), without duplicates. */
+function canonicalSystems(kinds: Iterable<string>): IntegrationKind[] {
+  const wanted = new Set(kinds)
+  return INTEGRATION_KINDS.filter((kind) => wanted.has(kind))
+}
+
+/**
+ * The systems the organisation chose, in core's order. A stored list that is not an array, or
+ * names a kind this build does not know, counts for what it does hold (the known kinds), so a
+ * hand-edited setting never breaks the page.
+ */
+export async function readOrganizationSystems(
+  pool: DbPool,
+  tenantId: string,
+): Promise<IntegrationKind[]> {
+  if (!isId('tn', tenantId)) return []
+  return withTenant(pool, tenantId, async (tx) => {
+    const [row] = await tx.select({ settings: tenants.settings }).from(tenants)
+    const systems = row?.settings.systems
+    return Array.isArray(systems)
+      ? canonicalSystems(systems.filter((kind): kind is string => typeof kind === 'string'))
+      : []
+  })
+}
+
+/** Why `setOrganizationSystems` refused. */
+export type OrganizationSystemsError =
+  /** Not a list of known system kinds without duplicates. */
+  | 'invalid_input'
+  /** A system that still has instances (not removed ones) cannot be left out. */
+  | 'has_instances'
+
+/** What `setOrganizationSystems` answers. */
+export type OrganizationSystemsSaved =
+  | { readonly ok: true; readonly systems: readonly IntegrationKind[] }
+  | { readonly ok: false; readonly error: OrganizationSystemsError }
+
+/**
+ * Saves the systems the organisation uses (`tenants.settings.systems`, a merge: the other settings
+ * stay). Strict: only known connector kinds, each once. Leaving out a system that still has an
+ * instance, one that is not removed, is refused (`has_instances`): remove the instances first.
+ * The answer carries the saved list in core's order.
+ */
+export async function setOrganizationSystems(
+  pool: DbPool,
+  tenantId: string,
+  systems: readonly string[],
+): Promise<OrganizationSystemsSaved> {
+  if (!isId('tn', tenantId)) {
+    throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  }
+  const parsed = SystemsInput.safeParse(systems)
+  if (!parsed.success) return { ok: false, error: 'invalid_input' }
+  const chosen = canonicalSystems(parsed.data)
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const inUse = await tx
+      .selectDistinct({ kind: integrations.kind })
+      .from(integrations)
+      .where(isNull(integrations.removedAt))
+    if (inUse.some((row) => !chosen.includes(row.kind as IntegrationKind))) {
+      return { ok: false, error: 'has_instances' } as const
+    }
+    const updated = await tx
+      .update(tenants)
+      .set({ settings: sql`${tenants.settings} || ${JSON.stringify({ systems: chosen })}::jsonb` })
+      .where(eq(tenants.id, tenantId))
+      .returning({ id: tenants.id })
+    if (updated.length === 0) {
+      throw new ProvisionError('tenant_missing', `there is no organisation ${tenantId}`)
+    }
+    return { ok: true, systems: chosen } as const
   })
 }
