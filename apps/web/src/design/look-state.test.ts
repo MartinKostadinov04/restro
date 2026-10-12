@@ -121,7 +121,8 @@ describe('starting points', () => {
     // The designer's own values read, and the tab shows exactly them.
     const view = themeOf(state)
     expect(view.issues).toEqual([])
-    expect(view.roles).toEqual(preset.overrides)
+    // The designer's eight roles exactly; the extended roles of D93 are derived around them.
+    expect(view.roles).toMatchObject(preset.overrides)
     for (const role of ROLE_NAMES) expect(isFromPreset(state, 'light', role)).toBe(true)
   })
 

@@ -338,7 +338,8 @@ describe.skipIf(!hasDatabase)('the venue theme against Postgres (as the restro_a
       },
     })
     const published = await publish(50)
-    expect(published.snapshot.body?.theme.roles).toEqual(midnight.overrides)
+    // The designer's eight roles as chosen; the extended roles of D93 are published with them.
+    expect(published.snapshot.body?.theme.roles).toMatchObject(midnight.overrides)
     expect(published.snapshot.body?.theme).toMatchObject({ radius: 6, font: 'Inter', shadow: 1 })
   })
 

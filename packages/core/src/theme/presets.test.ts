@@ -24,8 +24,9 @@ describe('THEME_PRESETS', () => {
     '%s passes every required pair in both schemes',
     (_id, preset) => {
       expect(validateRoles(preset.overrides)).toEqual([])
-      // Through deriveRoles too: every role is an override, so the designer's colours stand.
-      expect(deriveRoles(preset.colours, preset.overrides)).toEqual(preset.overrides)
+      // Through deriveRoles too: every base role is an override, so the designer's colours stand
+      // (the extended roles of D93 are derived around them).
+      expect(deriveRoles(preset.colours, preset.overrides)).toMatchObject(preset.overrides)
     },
   )
 

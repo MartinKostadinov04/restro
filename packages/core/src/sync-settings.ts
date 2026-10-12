@@ -1,15 +1,18 @@
-// The sync settings (brief S3-04, decision D59): when barsy is read and whether a sync goes live by
-// itself. Since CF-09b (D73) they live in two places:
+// The sync settings (brief S3-04, decisions D59, D82, D96): when the till is read and whether a
+// sync goes live by itself. Since D82 the venue owns them:
 //
-//   the integration's `config.schedule`, one schedule for the whole installation:
-//     incremental_enabled, incremental_minutes, full_pull_enabled, full_pull_time,
-//     time_zone (CF-16: the zone of the daily full read; default Europe/Sofia)
-//   the venue's `settings.publish`, the publishing rules of each venue:
-//     after_sync (auto | manual), new_items (show | hold)
+//   the venue's `settings.sync`, its sync mode (T79 ad/05):
+//     mode (auto | manual), incremental_minutes, full_pull_time (in the VENUE's time zone)
+//   the venue's `settings.publish`, its publishing rules:
+//     after_sync (auto | manual); auto_paused (true after a rollback, until a person publishes, T76)
+//   the integration's `config.schedule`, the schedule of before D82 (one per installation):
+//     incremental_enabled, incremental_minutes, full_pull_enabled, full_pull_time, time_zone
 //
-// A venue that has no value of its own reads the integration's `config.publish` of before CF-09b
-// (and, below that, the old flat key and the defaults), so nothing changes for a venue until
-// someone saves its rules; the integration's copy is never written any more.
+// A venue that has no value of its own reads the integration's (`config.schedule` for the sync,
+// `config.publish` for the rules, the old flat key and the defaults below those), so nothing
+// changes for a venue until someone saves its own; the integration's copies are never written
+// any more. The `new_items` rule (show | hold) is gone (D96): new till items go live without
+// review; a stored value is read and ignored.
 //
 // The web app writes them (Settings -> Integrations, the venue's Publishing tab) and the worker
 // reads them, both through this module, so a value can never mean two things. Reading is
@@ -31,9 +34,16 @@ export type IncrementalMinutes = (typeof INCREMENTAL_MINUTES)[number]
 export const AFTER_SYNC_MODES = ['auto', 'manual'] as const
 export type AfterSyncMode = (typeof AFTER_SYNC_MODES)[number]
 
-/** New items from barsy: shown at once (`show`) or hidden until a manager shows them (`hold`). */
+/**
+ * New items from the till: shown at once (`show`) or hidden until a manager shows them (`hold`).
+ * Retired by D96: the setting is still read for old rows and always treated as `show`.
+ */
 export const NEW_ITEMS_MODES = ['show', 'hold'] as const
 export type NewItemsMode = (typeof NEW_ITEMS_MODES)[number]
+
+/** A venue's sync mode (D82): by itself on its schedule (`auto`), or only when a person asks (`manual`). */
+export const SYNC_MODES = ['auto', 'manual'] as const
+export type SyncMode = (typeof SYNC_MODES)[number]
 
 /** `HH:mm`, 24-hour, venue local time. */
 export const CLOCK_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/
@@ -97,12 +107,33 @@ export const SyncSettingsInputSchema = z.strictObject({
 })
 export type SyncSettingsInput = z.output<typeof SyncSettingsInputSchema>
 
-/** What the venue's Rules card sends: both rules, each from its list. Unknown keys are refused. */
+/**
+ * What the venue's publishing form sends: the rule, from its list. `new_items` is accepted while
+ * the old form still sends it and ignored (D96). Unknown keys are refused.
+ */
 export const VenuePublishRulesSchema = z.strictObject({
   after_sync: AfterSyncSchema,
-  new_items: NewItemsSchema,
+  new_items: NewItemsSchema.optional(),
 })
 export type VenuePublishRules = z.output<typeof VenuePublishRulesSchema>
+
+/**
+ * What the venue's Automation settings send (D82, D96): the mode and, for `auto`, the change-check
+ * interval and the daily full-read time in the venue's own time zone. Unknown keys are refused.
+ */
+export const VenueSyncSettingsSchema = z.strictObject({
+  mode: z.enum(SYNC_MODES),
+  incremental_minutes: IncrementalMinutesSchema,
+  full_pull_time: ClockTimeSchema,
+})
+export type VenueSyncSettings = z.output<typeof VenueSyncSettingsSchema>
+
+/** What a venue runs on when it never saved a sync mode: the integration's schedule of before. */
+export const VENUE_SYNC_DEFAULTS: VenueSyncSettings = {
+  mode: 'auto',
+  incremental_minutes: SYNC_DEFAULTS.schedule.incremental_minutes,
+  full_pull_time: SYNC_DEFAULTS.schedule.full_pull_time,
+}
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -228,17 +259,88 @@ export function venuePublishesAfterSync(
   return venuePublishRules(venueSettings, integrationConfig).after_sync === 'auto'
 }
 
-/** Whether new items from the till are hidden in this venue until a manager shows them. */
-export function venueHoldsNewItems(venueSettings: unknown, integrationConfig: unknown): boolean {
-  return venuePublishRules(venueSettings, integrationConfig).new_items === 'hold'
+/**
+ * Whether new items from the till are hidden in this venue until a manager shows them. Always
+ * false since D96 retired the rule: in automatic mode new till items go live without review (the
+ * >30% hold of a publish stays). Kept so the readers of before need no change.
+ */
+export function venueHoldsNewItems(_venueSettings: unknown, _integrationConfig: unknown): boolean {
+  return false
 }
 
 /**
- * Whether automatic publishing is paused (brief S3-05): `config.publish.auto_paused` is `true`
- * after someone returned the menu to an older version, and until a person publishes again. It is
- * not a setting of the form (the sync settings form never writes it, and keeps it when it saves);
- * the Publish tab sets it and a manual publish clears it. Anything but `true` means not paused.
+ * Whether automatic publishing is paused on the INTEGRATION (brief S3-05, before T76):
+ * `config.publish.auto_paused` is `true` after someone returned a menu to an older version, and
+ * until a person published again. Nothing writes it any more; it is what a venue without a flag
+ * of its own inherits (`venueAutoPublishPaused`). Anything but `true` means not paused.
  */
 export function autoPublishPaused(config: unknown): boolean {
   return record(record(config).publish).auto_paused === true
+}
+
+/**
+ * The venue's own pause flag (`settings.publish.auto_paused`, T76): true or false when the venue
+ * has one, null when it never had a rollback (or a resume) of its own.
+ */
+export function venueOwnAutoPublishPaused(venueSettings: unknown): boolean | null {
+  const value = record(record(venueSettings).publish).auto_paused
+  return typeof value === 'boolean' ? value : null
+}
+
+/**
+ * Whether automatic publishing of THIS venue is paused (T76, D82): its own flag when it has one,
+ * else the integration's old flag, so a venue paused before the flag moved stays paused until a
+ * person publishes it. A rollback sets the venue's flag, a person's publish clears it.
+ */
+export function venueAutoPublishPaused(
+  venueSettings: unknown,
+  integrationConfig: unknown,
+): boolean {
+  return venueOwnAutoPublishPaused(venueSettings) ?? autoPublishPaused(integrationConfig)
+}
+
+/**
+ * The venue's own sync settings (`settings.sync`, D82), or null when it never saved a mode (or
+ * what it saved is not readable). Never throws.
+ */
+export function venueOwnSyncSettings(venueSettings: unknown): VenueSyncSettings | null {
+  const parsed = VenueSyncSettingsSchema.safeParse(record(venueSettings).sync)
+  return parsed.success ? parsed.data : null
+}
+
+/**
+ * The schedule this venue's syncs run on (D82): its own mode, interval and full-read time when it
+ * saved them (`manual` switches both loops off; "Sync this venue" still works), else the
+ * integration's schedule of before, so nothing changes for a venue until someone saves. The time
+ * zone the full read is timed in is the VENUE's own (`venues.timezone`), not the integration's.
+ * Never throws.
+ */
+export function venueSyncSchedule(
+  venueSettings: unknown,
+  integrationConfig: unknown,
+): ScheduleSettings {
+  const own = venueOwnSyncSettings(venueSettings)
+  if (own === null) return parseSyncSettings(integrationConfig).schedule
+  const on = own.mode === 'auto'
+  return {
+    incremental_enabled: on,
+    incremental_minutes: own.incremental_minutes,
+    full_pull_enabled: on,
+    full_pull_time: own.full_pull_time,
+  }
+}
+
+/** The venue's sync settings as the Automation form shows them: its own, else the integration's as a mode. */
+export function venueSyncSettings(
+  venueSettings: unknown,
+  integrationConfig: unknown,
+): VenueSyncSettings {
+  const own = venueOwnSyncSettings(venueSettings)
+  if (own !== null) return own
+  const inherited = parseSyncSettings(integrationConfig).schedule
+  return {
+    mode: inherited.incremental_enabled || inherited.full_pull_enabled ? 'auto' : 'manual',
+    incremental_minutes: inherited.incremental_minutes,
+    full_pull_time: inherited.full_pull_time,
+  }
 }

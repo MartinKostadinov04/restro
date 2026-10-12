@@ -7,7 +7,7 @@
 //       (`options`), each with a type, a default and a label, so the admin can build a form from it.
 // A face that declares an optional required slot, or none at all, cannot be installed.
 
-import { MAX_PRESENTATION_OPTIONS } from '@restro/core'
+import { EXTENDED_ROLE_NAMES, MAX_PRESENTATION_OPTIONS, ROLE_NAMES } from '@restro/core'
 import { z } from 'zod'
 
 import { CHANNELS, IMAGE_VARIANTS, type ImageVariant, INTERACTIVE_CHANNELS } from './context'
@@ -55,15 +55,34 @@ export const COLOUR_NAMES = [
   'border',
 ] as const
 
-/** Every token name a manifest may list. */
+/** Every token name a manifest may list; the extended colours (D93) are tokens too. */
 export const TOKEN_NAMES: readonly string[] = [
   ...PALETTE_STEPS.map((step) => `palette.${step}`),
   ...COLOUR_NAMES.map((name) => `color.${name}`),
+  ...EXTENDED_ROLE_NAMES.map((name) => `color.${name}`),
   'font',
   'radius',
   'shadow',
   'logo',
 ]
+
+/** Any colour role a face may name in a pair: the eight base roles and the ten of D93. */
+export const PAIR_ROLE_NAMES = [...ROLE_NAMES, ...EXTENDED_ROLE_NAMES] as const
+
+/**
+ * One text-on-colour (or control-on-colour) pair a face draws (D93): `fg` sits on `bg`. The
+ * contract test checks the pair in both schemes of every fixture's theme, at `min` (4.5:1 by
+ * default: text; a face says 3 for a control's border or ring). A pair on an extended role is
+ * skipped for a theme that has none (a snapshot from before D93).
+ */
+const ColourPairSchema = z.strictObject({
+  fg: z.enum(PAIR_ROLE_NAMES),
+  bg: z.enum(PAIR_ROLE_NAMES),
+  min: z.number().min(1).max(21).optional(),
+})
+
+/** One pair a face declares. */
+export type ColourPair = z.output<typeof ColourPairSchema>
 
 /** The guest features a face can draw controls for (R15, D71). */
 export const FEATURE_NAMES = ['filters', 'call_waiter', 'bill', 'ordering', 'pay'] as const
@@ -152,6 +171,12 @@ export const FaceManifestSchema = z.strictObject({
   /** Null = the face scrolls. */
   paging: PagingSchema.nullable(),
   tokens: z.array(z.enum(TOKEN_NAMES as [string, ...string[]])),
+  /**
+   * Every pair of colours the face puts one on the other (D93): the contract test holds each to
+   * its contrast in both schemes of every fixture. A face that lists none is checked on the base
+   * pairs the engine guarantees anyway, and the test says so.
+   */
+  colour_pairs: z.array(ColourPairSchema).default([]),
   /** The guest features this face has controls for (R15). A feature the face does not list is never offered. */
   features: z.array(z.enum(FEATURE_NAMES)).default([]),
   /** The options a venue may set, by key (camelCase). Core's presentation allows as many. */

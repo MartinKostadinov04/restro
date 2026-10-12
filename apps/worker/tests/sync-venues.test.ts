@@ -436,7 +436,7 @@ describe.skipIf(!hasDatabase)('several venues on one barsy account (CF-16)', () 
       expect(publishes()).toEqual([venueB])
     })
 
-    it('new items are held by the rule of the venue whose pull creates them', async () => {
+    it('no venue holds new items any more, whatever its stored rule says (D96)', async () => {
       const heldArticles = async () =>
         (
           await world.query<{ external_id: string }>(
@@ -455,9 +455,8 @@ describe.skipIf(!hasDatabase)('several venues on one barsy account (CF-16)', () 
       advance(MINUTE)
       // A's pull creates the food, which is new: A holds new items, so only those are held.
       await pullA()
-      const held = await heldArticles()
-      expect(held).toContain('7405')
-      expect(held).not.toContain('7409')
+      // A stored `hold` no longer holds anything: the rule is retired (D96).
+      expect(await heldArticles()).toEqual([])
     })
   })
 

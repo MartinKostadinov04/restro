@@ -29,11 +29,10 @@ import {
   deferredSingletonKey,
   dueSyncs,
   JOB_NAMES,
-  parseSyncSettings,
   prepareJob,
-  syncTimeZone,
   type VenueSyncJob,
   VenueSyncJobSchema,
+  venueSyncSchedule,
 } from '@restro/core'
 import {
   appendSourceRecords,
@@ -697,6 +696,9 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
       bid: number
       hasRoot: boolean
       config: unknown
+      /** The venue's own settings (its sync mode, D82) and time zone. */
+      venueSettings: unknown
+      venueTimeZone: string
     }[] = []
     for (const organisation of organisations) {
       const rows = await withTenant(context.pool, organisation.id, (tx) =>
@@ -709,6 +711,8 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             publicRoot: venueLinks.publicCatId,
             treeRoot: venueLinks.treeCatId,
             config: integrations.config,
+            venueSettings: ourVenues.settings,
+            venueTimeZone: ourVenues.timezone,
           })
           .from(integrations)
           .innerJoin(venueLinks, eq(venueLinks.integrationId, integrations.id))
@@ -733,6 +737,8 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             bid: row.bid,
             hasRoot: rootsOf(row.publicRoot, row.treeRoot, row.root).length > 0,
             config: row.config,
+            venueSettings: row.venueSettings,
+            venueTimeZone: row.venueTimeZone,
           })
         }
       }
@@ -741,11 +747,11 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
   }
 
   /**
-   * The one schedule of the sync (S3-04, D59; one per integration, D73): every minute it asks
+   * The one schedule of the sync (S3-04, D59; per venue since D82): every minute it asks
    * `dueSyncs` of each mapped venue with a catalogue root whether a change check or a full pull is
-   * due under the integration's settings, in the integration's time zone (Europe/Sofia unless it
-   * says otherwise), and queues what is; a mapped venue whose tables were never read gets a
-   * places read (CF-16, T67). The queued time (a change check) or slot (a full pull) is written
+   * due under the VENUE's sync mode (`venueSyncSchedule`: its own, else the integration's schedule
+   * of before), timed in the venue's own time zone, and queues what is; a mapped venue whose
+   * tables were never read gets a places read (CF-16, T67). The queued time (a change check) or slot (a full pull) is written
    * to the sync state, so the interval is counted from the last attempt, and a pull that failed
    * is not asked for again every minute. With the settings at their defaults this is what the two
    * fixed schedules did: a change check every 5 minutes and a full pull daily at 12:00 (D41,
@@ -795,8 +801,8 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             }
           }
           if (!target.hasRoot) continue
-          const settings = parseSyncSettings(target.config)
-          const due = dueSyncs(now, syncTimeZone(target.config), settings.schedule, state)
+          const schedule = venueSyncSchedule(target.venueSettings, target.config)
+          const due = dueSyncs(now, target.venueTimeZone, schedule, state)
           if (due.incremental) {
             const job = prepareJob(JOB_NAMES.barsyIncremental, payload)
             const id = await context.queue.send(JOB_NAMES.barsyIncremental, job.data, {

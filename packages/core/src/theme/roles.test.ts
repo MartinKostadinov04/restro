@@ -65,7 +65,10 @@ describe('roles', () => {
       'dark on_accent/accent',
     ])
     for (const issue of issues) {
-      const exact = contrastRatio(set[issue.mode][issue.fg], set[issue.mode][issue.bg])
+      const exact = contrastRatio(
+        set[issue.mode][issue.fg] ?? '#000000',
+        set[issue.mode][issue.bg] ?? '#000000',
+      )
       expect(issue.ratio).toBeLessThanOrEqual(exact)
       expect(exact - issue.ratio).toBeLessThan(0.01)
       expect(issue.min).toBe(4.5)

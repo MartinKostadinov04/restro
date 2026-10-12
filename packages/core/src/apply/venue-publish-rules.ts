@@ -22,7 +22,12 @@ import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
-import { type VenuePublishRules, VenuePublishRulesSchema } from '../sync-settings'
+import {
+  type VenuePublishRules,
+  VenuePublishRulesSchema,
+  type VenueSyncSettings,
+  VenueSyncSettingsSchema,
+} from '../sync-settings'
 import { ProvisionError } from './provision'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
@@ -67,5 +72,77 @@ export async function setVenuePublishRules(
       throw new ProvisionError('venue_missing', `this tenant has no venue ${venueId}`)
     }
     return rules
+  })
+}
+
+const SyncInputSchema = z.strictObject({
+  venueId: idSchema('vn'),
+  sync: VenueSyncSettingsSchema,
+})
+
+/** What `setVenueSyncSettings` needs. */
+export type SetVenueSyncSettingsInput = z.input<typeof SyncInputSchema>
+
+/**
+ * Saves the venue's sync mode (D82, D96: Settings › Publish, "Automation settings"): `auto` with
+ * the change-check interval and the daily full-read time in the venue's own time zone, or
+ * `manual`. `settings.sync` is replaced by exactly these three keys. Refuses malformed input
+ * (`invalid_input`), a venue the tenant does not have (`venue_missing`) and a deleted one
+ * (`venue_archived`). The worker's tick reads it on its next minute.
+ */
+export async function setVenueSyncSettings(
+  pool: DbPool,
+  tenantId: string,
+  input: SetVenueSyncSettingsInput,
+): Promise<VenueSyncSettings> {
+  const parsed = SyncInputSchema.safeParse(input)
+  if (!parsed.success) throw new ProvisionError('invalid_input', z.prettifyError(parsed.error))
+  const { venueId, sync } = parsed.data
+  const value = JSON.stringify(sync)
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
+    }
+    await tx
+      .update(venues)
+      .set({ settings: sql`${venues.settings} || jsonb_build_object('sync', ${value}::jsonb)` })
+      .where(eq(venues.id, venueId))
+    return sync
+  })
+}
+
+/**
+ * Sets or clears the venue's pause of automatic publishing (T76, brief S3-05): `true` after a
+ * rollback, `false` once a person published again. Kept inside `settings.publish` next to
+ * `after_sync`, which it never touches. A deleted venue is refused (`venue_archived`); the flag
+ * is written on the venue even when it inherited the integration's old one, so from then on only
+ * the venue's own counts.
+ */
+export async function setVenueAutoPublishPaused(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  paused: boolean,
+): Promise<boolean> {
+  if (!idSchema('vn').safeParse(venueId).success) {
+    throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
+    }
+    const rows = await tx
+      .update(venues)
+      .set({
+        settings: sql`${venues.settings} || jsonb_build_object('publish',
+          (case when jsonb_typeof(${venues.settings} -> 'publish') = 'object'
+            then ${venues.settings} -> 'publish' else '{}'::jsonb end)
+          || jsonb_build_object('auto_paused', ${paused}::boolean))`,
+      })
+      .where(eq(venues.id, venueId))
+      .returning({ id: venues.id })
+    return rows.length > 0
   })
 }

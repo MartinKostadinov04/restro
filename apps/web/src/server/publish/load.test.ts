@@ -3,7 +3,6 @@
 // pausing automatic publishing; approving and rejecting a held publish; the preview; who may do
 // what; and another organisation seeing none of it. The queue is a fake.
 import {
-  autoPublishPaused,
   type ChangeSet,
   JOB_NAMES,
   type NodeId,
@@ -23,7 +22,7 @@ import {
   provisionTenant,
   provisionVenue,
   publishMenu,
-  setAutoPublishPaused,
+  setVenueAutoPublishPaused,
   startJobRun,
   upsertBarsyVenues,
 } from '@restro/core/apply'
@@ -34,7 +33,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { saveSyncSettings } from '../integration/service'
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
-import { loadHistoryPage, loadPublishView, type ViewDeps, type ViewScope } from './load'
+import { loadHistoryPage, loadPublishView, readPaused, type ViewDeps, type ViewScope } from './load'
 import {
   approveHeld,
   type PublishScope,
@@ -126,7 +125,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       },
       { now: new Date(Date.parse('2026-10-09T18:00:00Z') + minutes * 60_000) },
     )
-  const configOf = async () =>
+  const _configOf = async () =>
     (
       await withTenant(app, tenant, (tx) =>
         tx.select().from(integrations).where(eq(integrations.id, integrationId)),
@@ -240,7 +239,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         ok: false,
         error: 'nothing_published',
       })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
     })
   })
 
@@ -332,13 +331,13 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
   describe('returning to an earlier version', () => {
     it('moves the live version back, pauses automatic publishing, and queues the files', async () => {
       sent.length = 0
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
       expect(await rollback(scope(), services, snapshotIds.v1 as string)).toEqual({
         ok: true,
         queued: true,
       })
       expect((await current())?.id).toBe(snapshotIds.v1)
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
       expect(sent).toEqual([
         { name: JOB_NAMES.publishFiles, data: { tenantId: tenant, menuId: menu.id, venueId } },
       ])
@@ -381,7 +380,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         },
       )
       expect(result).toEqual({ ok: true })
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 
     it('does not pause again, or change the pause, when the version is current already', async () => {
@@ -391,32 +390,32 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         queued: false,
       })
       expect(sent).toEqual([])
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 
     it('takes a pause it set off again when the return fails; leaves an earlier pause alone', async () => {
-      await setAutoPublishPaused(app, tenant, integrationId, false)
+      await setVenueAutoPublishPaused(app, tenant, venueId, false)
       expect(await rollback(scope(), services, newId('sn'))).toEqual({
         ok: false,
         error: 'not_restorable',
       })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
 
-      await setAutoPublishPaused(app, tenant, integrationId, true)
+      await setVenueAutoPublishPaused(app, tenant, venueId, true)
       expect(await rollback(scope(), services, newId('sn'))).toEqual({
         ok: false,
         error: 'not_restorable',
       })
       // It was paused before this call: still paused.
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 
     it('is for owners and admins only, and changes nothing for anyone else', async () => {
-      await setAutoPublishPaused(app, tenant, integrationId, false)
+      await setVenueAutoPublishPaused(app, tenant, venueId, false)
       expect(
         await rollback(scope({ canPublish: false }), services, snapshotIds.v2 as string),
       ).toEqual({ ok: false, error: 'not_allowed' })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
       expect((await current())?.id).toBe(snapshotIds.v1)
     })
 
@@ -426,8 +425,8 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         queued: true,
       })
       expect((await current())?.id).toBe(snapshotIds.v2)
-      expect(autoPublishPaused(await configOf())).toBe(true)
-      await setAutoPublishPaused(app, tenant, integrationId, false)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
+      await setVenueAutoPublishPaused(app, tenant, venueId, false)
     })
 
     it('pauses nothing for a venue with no barsy integration', async () => {
@@ -469,7 +468,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(
         await rollback(scope({ venueId: lone }), services, first.snapshot.id as string),
       ).toEqual({ ok: true, queued: true })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
     })
   })
 

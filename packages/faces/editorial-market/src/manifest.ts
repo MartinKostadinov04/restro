@@ -41,6 +41,19 @@ const CANDIDATE = {
   // The guest controls this face draws (R15): the filter button, and the services: the waiter, the
   // bill, the bag (ordering) and the pay entry.
   features: ['filters', 'call_waiter', 'bill', 'ordering', 'pay'],
+  // What this face puts on what (D93; checked by the contract test in both schemes): body and
+  // secondary text on the page and the panels, the accent as text, text on the accent fill, and
+  // the venue bar, which is the page's colour on the ink.
+  colour_pairs: [
+    { fg: 'text', bg: 'background' },
+    { fg: 'text', bg: 'surface' },
+    { fg: 'muted', bg: 'background' },
+    { fg: 'muted', bg: 'surface' },
+    { fg: 'accent_text', bg: 'background' },
+    { fg: 'accent_text', bg: 'surface' },
+    { fg: 'on_accent', bg: 'accent' },
+    { fg: 'background', bg: 'text' },
+  ],
   options: {
     // How the items of a section are laid out when the guest has not chosen another.
     layout: {

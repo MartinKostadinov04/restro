@@ -11,12 +11,12 @@
 //   busy/run   a publish or a files job of this menu is queued or running; how the last publish run ended
 import { readVenueIndex } from '@restro/assets'
 import {
-  autoPublishPaused,
   diffSnapshots,
   JOB_NAMES,
   type MenuSnapshot,
   type NodeId,
   parseSnapshot,
+  venueAutoPublishPaused,
   venueOwnPublishRules,
   venuePublishRules,
 } from '@restro/core'
@@ -439,14 +439,21 @@ async function integrationConfigOf(
   return row?.config ?? null
 }
 
-/** The pause flag of the integration this venue is mapped to; false when it has none. */
+/**
+ * Whether this venue's automatic publishing is paused (T76): its own flag, else the old one of the
+ * integration it is mapped to; false when it has no integration.
+ */
 export async function readPaused(
   pool: DbPool,
   tenantId: string,
   venueId: string,
 ): Promise<boolean> {
   const config = await integrationConfigOf(pool, tenantId, venueId)
-  return config !== null && autoPublishPaused(config)
+  if (config === null) return false
+  const [venue] = await withTenant(pool, tenantId, (tx) =>
+    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)),
+  )
+  return venueAutoPublishPaused(venue?.settings ?? {}, config)
 }
 
 /**

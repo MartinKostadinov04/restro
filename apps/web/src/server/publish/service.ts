@@ -15,7 +15,6 @@
 // then fails, the pause is taken off again. A manual publish clears it (the worker does that).
 import {
   type Actor,
-  autoPublishPaused,
   idSchema,
   JOB_NAMES,
   type JobPayload,
@@ -25,6 +24,7 @@ import {
   type SnapshotId,
   type TenantId,
   type VenueId,
+  venueAutoPublishPaused,
 } from '@restro/core'
 import {
   loadDraft,
@@ -32,10 +32,10 @@ import {
   PublishError,
   rejectHeld,
   rollbackTo,
-  setAutoPublishPaused,
+  setVenueAutoPublishPaused,
   setVenuePublishRules,
 } from '@restro/core/apply'
-import { barsyVenues, type DbPool, integrations, withTenant } from '@restro/db'
+import { barsyVenues, type DbPool, integrations, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
 import { logError } from '../log'
@@ -185,17 +185,25 @@ export async function rejectHeldPublish(
 
 // --- returning to an earlier version -------------------------------------------------------------
 
-/** The barsy integration this venue is mapped to and whether its automatic publishing is paused. */
-async function pauseOf(scope: PublishScope) {
-  const [row] = await withTenant(scope.pool, scope.tenantId, (tx) =>
-    tx
-      .select({ id: integrations.id, config: integrations.config })
+/**
+ * Whether this venue's automatic publishing is paused (T76: the venue's own flag, else the old one
+ * of the integration it is mapped to); null for a venue with no integration (nothing to pause).
+ */
+async function pauseOf(scope: PublishScope): Promise<{ paused: boolean } | null> {
+  return withTenant(scope.pool, scope.tenantId, async (tx) => {
+    const [row] = await tx
+      .select({ config: integrations.config })
       .from(barsyVenues)
       .innerJoin(integrations, eq(integrations.id, barsyVenues.integrationId))
       .where(eq(barsyVenues.venueId, scope.venueId))
-      .limit(1),
-  )
-  return row === undefined ? null : { integrationId: row.id, paused: autoPublishPaused(row.config) }
+      .limit(1)
+    if (row === undefined) return null
+    const [venue] = await tx
+      .select({ settings: venues.settings })
+      .from(venues)
+      .where(eq(venues.id, scope.venueId))
+    return { paused: venueAutoPublishPaused(venue?.settings ?? {}, row.config) }
+  })
 }
 
 /**
@@ -214,21 +222,21 @@ export async function rollback(
   if (menuId === null) return fail('no_menu')
 
   // Pause first (see the file header); remember whether this call is the one that did.
-  let pausedHere: string | null = null
+  let pausedHere = false
   try {
     const pause = await pauseOf(scope)
     if (pause !== null && !pause.paused) {
-      await setAutoPublishPaused(scope.pool, scope.tenantId, pause.integrationId, true)
-      pausedHere = pause.integrationId
+      await setVenueAutoPublishPaused(scope.pool, scope.tenantId, scope.venueId, true)
+      pausedHere = true
     }
   } catch (error) {
     logError('rollback_pause_failed', error)
     return fail('failed')
   }
   const undoPause = async () => {
-    if (pausedHere === null) return
+    if (!pausedHere) return
     try {
-      await setAutoPublishPaused(scope.pool, scope.tenantId, pausedHere, false)
+      await setVenueAutoPublishPaused(scope.pool, scope.tenantId, scope.venueId, false)
     } catch (error) {
       logError('rollback_pause_not_undone', error)
     }

@@ -129,14 +129,23 @@ describe('which versions go (D96)', () => {
         const decision = versionsToPurge({ now: NOW, currentSnapshotId: current, rows })
         const purged = new Set(decision.purge)
         if (current !== null) expect(purged.has(current)).toBe(false)
-        // Every purged row is 30 days old or older, or beyond the restorable two.
-        const restorableKept = rows.filter(
-          (r) => !purged.has(r.id) && r.id !== current && r.status === 'published' && r.hasBody,
-        )
-        const young = restorableKept.filter((r) => !isDue(r.createdAt, NOW, VERSION_PURGE_DAYS))
-        expect(young.length).toBeLessThanOrEqual(
-          VERSIONS_KEPT + rows.filter((r) => r.restoresSnapshotId !== null).length,
-        )
+        // The two newest restorable versions (besides the live one) stay while young.
+        const restorable = rows
+          .filter((r) => r.id !== current && r.status === 'published' && r.hasBody)
+          .sort((a, b) => b.version - a.version)
+          .slice(0, VERSIONS_KEPT)
+        for (const r of restorable) {
+          if (!isDue(r.createdAt, NOW, VERSION_PURGE_DAYS)) expect(purged.has(r.id)).toBe(false)
+        }
+        // Everything purged is old, or a restorable version beyond the newest two.
+        const newestTwo = new Set(restorable.map((r) => r.id))
+        for (const r of rows) {
+          if (!purged.has(r.id)) continue
+          const old = isDue(r.createdAt, NOW, VERSION_PURGE_DAYS)
+          const beyond = r.status === 'published' && r.hasBody && !newestTwo.has(r.id)
+          expect(old || beyond).toBe(true)
+        }
+        // A kept rollback record keeps its target.
         for (const r of rows) {
           if (purged.has(r.id)) continue
           if (r.restoresSnapshotId !== null) expect(purged.has(r.restoresSnapshotId)).toBe(false)

@@ -22,7 +22,13 @@ import {
   type Oklch,
   oklchToHex,
 } from './colour'
-import { contrastRatio, MIN_TEXT_CONTRAST, readableOn, readsOnAll } from './contrast'
+import {
+  contrastRatio,
+  MIN_CONTROL_CONTRAST,
+  MIN_TEXT_CONTRAST,
+  readableOn,
+  readsOnAll,
+} from './contrast'
 import {
   ROLE_NAMES,
   type RoleMode,
@@ -108,6 +114,26 @@ export interface SemanticColours {
   readonly accentText: string
   /** Dividers and card outlines. */
   readonly border: string
+  // The roles D93 added, present when the snapshot's publisher wrote them (see theme/roles.ts).
+  /** Status: error as a fill. */
+  readonly error?: string
+  /** Error as text; reads on `background` and `surface`. */
+  readonly errorText?: string
+  /** Status: success as a fill. */
+  readonly success?: string
+  /** Success as text; reads on `background` and `surface`. */
+  readonly successText?: string
+  /** Disabled and sold-out text; 3:1 on `background` and `surface`. */
+  readonly disabledText?: string
+  /** A soft accent fill (a selected chip); `selectedText` reads on it. */
+  readonly selected?: string
+  readonly selectedText?: string
+  /** The focus ring; 3:1 on `background` and `surface`. */
+  readonly focus?: string
+  /** Behind a sheet; a face blends it with alpha. */
+  readonly backdrop?: string
+  /** A control border that stands out 3:1 on `background` and `surface`. */
+  readonly borderStrong?: string
 }
 
 /** The semantic colours of a palette, each pair checked for contrast (R13). */
@@ -166,8 +192,13 @@ export function semanticColoursDark(palette: Palette): SemanticColours {
   }
 }
 
-/** The shell's camelCase colours as snake_case roles (lower-cased). */
+/** The shell's camelCase colours as snake_case roles (lower-cased); the extended ones when present. */
 export function rolesFromSemantic(colours: SemanticColours): ThemeRoles {
+  const lower = (value: string | undefined) =>
+    value === undefined ? {} : { lower: value.toLowerCase() }
+  const optional = <K extends string>(key: K, value: string | undefined) =>
+    value === undefined ? {} : ({ [key]: value.toLowerCase() } as { [P in K]: string })
+  void lower
   return {
     background: colours.background.toLowerCase(),
     surface: colours.surface.toLowerCase(),
@@ -177,6 +208,42 @@ export function rolesFromSemantic(colours: SemanticColours): ThemeRoles {
     muted: colours.muted.toLowerCase(),
     accent_text: colours.accentText.toLowerCase(),
     border: colours.border.toLowerCase(),
+    ...optional('error', colours.error),
+    ...optional('error_text', colours.errorText),
+    ...optional('success', colours.success),
+    ...optional('success_text', colours.successText),
+    ...optional('disabled_text', colours.disabledText),
+    ...optional('selected', colours.selected),
+    ...optional('selected_text', colours.selectedText),
+    ...optional('focus', colours.focus),
+    ...optional('backdrop', colours.backdrop),
+    ...optional('border_strong', colours.borderStrong),
+  }
+}
+
+/** The snake_case roles as the shell's camelCase colours; the extended ones when present. */
+export function semanticFromRoles(roles: ThemeRoles): SemanticColours {
+  const optional = <K extends string>(key: K, value: string | undefined) =>
+    value === undefined ? {} : ({ [key]: value } as { [P in K]: string })
+  return {
+    background: roles.background,
+    surface: roles.surface,
+    accent: roles.accent,
+    onAccent: roles.on_accent,
+    text: roles.text,
+    muted: roles.muted,
+    accentText: roles.accent_text,
+    border: roles.border,
+    ...optional('error', roles.error),
+    ...optional('errorText', roles.error_text),
+    ...optional('success', roles.success),
+    ...optional('successText', roles.success_text),
+    ...optional('disabledText', roles.disabled_text),
+    ...optional('selected', roles.selected),
+    ...optional('selectedText', roles.selected_text),
+    ...optional('focus', roles.focus),
+    ...optional('backdrop', roles.backdrop),
+    ...optional('borderStrong', roles.border_strong),
   }
 }
 
@@ -225,6 +292,16 @@ const DARK_CHROMA_SHARE = 0.5
 const ACCENT_STANDS_OUT = 3
 /** How much of the ink the border takes (a quiet line: 12–18%). */
 const BORDER_SHARE = 0.15
+/** How much of the accent the selected fill takes over the panels (a soft tint, D93). */
+const SELECTED_SHARE = 0.16
+/** The status hues (OKLCH degrees) and chroma: a red and a green that read as such on any theme. */
+const ERROR_HUE = 25
+const SUCCESS_HUE = 145
+const STATUS_CHROMA = 0.15
+/** Where a status fill starts in lightness, light and dark scheme. */
+const STATUS_FILL_L = { light: 0.58, dark: 0.68 } as const
+/** How much black the sheet backdrop carries (a face adds alpha), light and dark scheme. */
+const BACKDROP_SHARE = { light: 0.72, dark: 0.55 } as const
 /** Step of every lightness search in OKLCH. */
 const L_STEP = 0.005
 
@@ -320,12 +397,64 @@ function reconcileSurface(background: string, surface: string, prefer: 'dark' | 
  * background: as quiet as secondary text can be while staying readable. `base` itself when no
  * blend does.
  */
-function softestBlend(base: string, background: string, backgrounds: readonly string[]): string {
+function softestBlend(
+  base: string,
+  background: string,
+  backgrounds: readonly string[],
+  min = MIN_TEXT_CONTRAST,
+): string {
   for (let share = 100; share > 0; share--) {
     const hex = mixOklab(base, background, share / 100)
-    if (readsOnAll(hex, backgrounds)) return hex
+    if (readsOnAll(hex, backgrounds, min)) return hex
   }
   return base
+}
+
+/**
+ * The quietest blend of `ink` into `background` that still stands out 3:1 on every background
+ * (D93: a control border); the ink itself when no blend does.
+ */
+function strongLine(ink: string, background: string, backgrounds: readonly string[]): string {
+  for (let share = 20; share <= 100; share += 2) {
+    const hex = mixOklab(background, ink, share / 100)
+    if (readsOnAll(hex, backgrounds, MIN_CONTROL_CONTRAST)) return hex
+  }
+  return ink
+}
+
+/**
+ * `colour` when it stands out 3:1 on every background (D93: a focus ring, a status fill), else
+ * its hue and chroma moved in lightness toward the ink's side until it does; `fallback` when
+ * nothing along that line does.
+ */
+function standsOut(
+  colour: string,
+  backgrounds: readonly string[],
+  prefer: 'dark' | 'light',
+  fallback: string,
+): string {
+  if (readsOnAll(colour, backgrounds, MIN_CONTROL_CONTRAST)) return colour
+  const side = inkSide(backgrounds, prefer)
+  if (side === null) return fallback
+  const moved = alongLightness(hexToOklch(colour), side, backgrounds, MIN_CONTROL_CONTRAST)
+  return readsOnAll(moved, backgrounds, MIN_CONTROL_CONTRAST) ? moved : fallback
+}
+
+/** A status colour (a red or a green) as a fill that stands out, and as text that reads. */
+function status(
+  hue: number,
+  base: Base,
+  backgrounds: readonly string[],
+  readableText: string,
+): { readonly fill: string; readonly text: string } {
+  const start = oklchToHex({
+    l: STATUS_FILL_L[base.prefer === 'dark' ? 'light' : 'dark'],
+    c: STATUS_CHROMA,
+    h: hue,
+  })
+  const fill = standsOut(start, backgrounds, base.prefer, readableText)
+  const text = accentAsText(start, backgrounds, base.prefer, readableText)
+  return { fill, text }
 }
 
 /** The accent as text: its hue and chroma, lightness moved until it reads; else `fallback`. */
@@ -374,6 +503,15 @@ function completeScheme(base: Base, own: Partial<ThemeRoles>): ThemeRoles {
   const onAccent =
     own.on_accent ?? readableOn([accent], [background, text, WHITE, BLACK], MIN_TEXT_CONTRAST)
   const border = own.border ?? mixOklab(background, text, BORDER_SHARE)
+
+  // The extended roles (D93), derived from readable colours only.
+  const error = status(ERROR_HUE, base, both, readableText)
+  const success = status(SUCCESS_HUE, base, both, readableText)
+  const selected = mixOklab(surface, accent, SELECTED_SHARE)
+  const readableAccentText = readsOnAll(accentText, both) ? accentText : readableText
+  const selectedText = readsOnAll(readableAccentText, [selected])
+    ? readableAccentText
+    : accentAsText(accent, [selected], prefer, readableOn([selected], [readableText, BLACK, WHITE]))
   return {
     background,
     surface,
@@ -383,6 +521,16 @@ function completeScheme(base: Base, own: Partial<ThemeRoles>): ThemeRoles {
     muted,
     accent_text: accentText,
     border,
+    error: error.fill,
+    error_text: error.text,
+    success: success.fill,
+    success_text: success.text,
+    disabled_text: softestBlend(readableText, background, both, MIN_CONTROL_CONTRAST),
+    selected,
+    selected_text: selectedText,
+    focus: standsOut(accent, both, prefer, readableText),
+    backdrop: mixOklab(background, BLACK, BACKDROP_SHARE[prefer === 'dark' ? 'light' : 'dark']),
+    border_strong: strongLine(readableText, background, both),
   }
 }
 
