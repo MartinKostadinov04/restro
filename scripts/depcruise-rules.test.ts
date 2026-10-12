@@ -597,6 +597,53 @@ describe('a face imports only react and the shell (SH-04)', () => {
   })
 })
 
+describe('the purge role: only the worker purge job imports @restro/db/purge (D83)', () => {
+  const withPurge: Files = {
+    ...base,
+    'packages/db/src/purge/index.ts': 'export const purge = 1',
+  }
+
+  it('rejects @restro/db/purge from the web app, core, and the worker outside its purge job', async () => {
+    const lines = await expectRules(
+      {
+        ...withPurge,
+        'apps/web/app/action.ts': "import '@restro/db/purge'",
+        'packages/core/src/apply/erase.ts': "import '@restro/db/purge'",
+        'apps/worker/src/jobs/barsy.ts': "import '@restro/db/purge'",
+        'apps/worker/src/sync/run.ts': "import '../../../../packages/db/src/purge/index'",
+      },
+      ['db-purge-only-from-worker-purge-job'],
+    )
+    expect(lines).toHaveLength(4)
+  })
+
+  it('allows the worker purge job, by package name and by path, and the purge side itself', async () => {
+    await expectRules(
+      {
+        ...withPurge,
+        'packages/db/src/internal/pool.ts': 'export const pool = 1',
+        'packages/db/src/purge/index.ts':
+          "import { pool } from '../internal/pool'\nexport const purge = pool",
+        'apps/worker/src/jobs/purge.ts': "import '@restro/db/purge'",
+        'apps/worker/src/jobs/purge-venue.ts': "import '../../../../packages/db/src/purge/index'",
+      },
+      [],
+    )
+  })
+
+  it('the read side never imports the purge side either', async () => {
+    const lines = await expectRules(
+      {
+        ...withPurge,
+        'packages/db/src/index.ts':
+          "import { purge } from './purge/index'\nexport const db = purge",
+      },
+      ['db-read-side-no-write'],
+    )
+    expect(lines).toHaveLength(1)
+  })
+})
+
 describe('coverage of the rule set', () => {
   it('has a case above for every forbidden rule in the config', () => {
     const configured = (config.forbidden ?? []).map((rule) => rule.name).sort()

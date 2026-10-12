@@ -454,6 +454,7 @@
       "errors": {
         "not_allowed": "Only an owner or admin can create a venue.",
         "invalid": "Check the name, the address and the languages, then try again.",
+        "taken": "Another venue of yours already has this address. Choose another one.",
         "failed": "Something went wrong. The venue was not created, try again."
       }
     }
@@ -783,6 +784,7 @@
         "errors": {
           "not_allowed": "Only an owner or admin can change the address.",
           "invalid": "This address cannot be used. Check it and try again.",
+          "taken": "Another venue of yours already has this address. Choose another one.",
           "failed": "Something went wrong. The address was not changed, try again."
         }
       }
