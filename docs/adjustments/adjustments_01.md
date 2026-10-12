@@ -54,6 +54,7 @@ Three layers, kept apart:
   - Instance: connection and status, allergen characteristic (barsy defines it once per installation), "Sync everything now", the history of all its venues.
   - Venue: main language, menu source and price, **sync mode: automatic or manual only**, with, when automatic, how often to check and the daily full-read time in the venue's own time zone; its own sync history and "Sync this venue"; publishing rules; the publish pause after a rollback (T76).
   - Moves from the connection to the venue: default language, sync schedule, rollback pause.
+- **Sync history is collapsed** (instance and venue): one line shows the last run (time, result, changes); the full list opens under a dropdown, so the page never becomes a long scroll.
 - **Wording:** every settings text that mentions barsy will name the system by `{POS name}` inside its tab (the connector's label), never "barsy" hard-coded.
 
 **Integrations screen (Martin's notes, 10-12)**
