@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D97** Publishing moves into the venue's Settings.
+  The venue page has three tabs: Composer (Structure, Design), Tables & QR, Settings. Settings has sub-tabs General, Publish (automation) and Versioning (versions, restore, log). The Publish button stays top right; warnings that need action show under the header on every tab.
 - **D96** Publishing simplified.
   - Versions: the live one plus up to 2 earlier ones can be restored; anything but the live version is purged after 30 days, even among the last 2. The change log is kept 2 months.
   - A Publish button sits top right on every tab, greyed when nothing changed, with a change count and a confirmation listing the changes. With several menus it becomes a dropdown: each menu, its areas in brackets, and its number of changes. "Open the guest page" sits beside it.
