@@ -44,8 +44,11 @@ Three layers, kept apart:
 
 **Decided**
 - **D79** The pilot's till is Mistral; Mistral and the connector foundation are parked until after this phase.
-  We're finishing the platform first (data, features, UI). The general connector work (CF-05, 06, 07, 08) and the Mistral connector come later, once Mistral's API docs arrive.
+  We're finishing the platform first (data, features, UI). The general connector work (CF-05, 06, 07, 08) and the Mistral connector come later, once Mistral's API docs arrive. Exception: the Integrations screen and named connections (D81) are built now.
 - **D77 (integration part)** After each complete full read, a connector reports the languages its POS offers and how many guest-facing texts each one fills. The connector reports; core decides.
+
+- **D81** Organisation Settings › Integrations is source-agnostic, built now (the screen part of the parked plan comes forward).
+  The design below. Removing an instance is refused while venues are linked to it; a system can't be unselected while it has instances; the chosen systems are saved for the organisation.
 
 **Integrations screen (Martin's notes, 10-12)**
 - An owner may have several venues on one POS instance, several instances of the same POS, several POS systems, or no supported POS (by hand).
