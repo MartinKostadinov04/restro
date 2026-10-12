@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D91** Gaps closed after a user-side review.
+  Organisation › General (name and address name). The purge also clears data of removed POS instances and items no venue uses. A QR code on an unpublished menu falls back to the live menu. Hand-made venues' languages are the owner's choice. A domain on a deleted venue says "not available" and is detached on purge. Deleted menus go to a 30-day bin in the venue's settings. A POS venue may move items between sections. Roles (RBAC) are left for later.
 - **D90** Consistency fixes after reviewing the venue and menu decisions.
   Restoring a deleted POS venue re-links its till venue if still free (else refused, naming who took it). A POS venue's structure is our own mapper (order) and dictionary (names), starting as a copy of the till's: reorder, rename, hide; no own sections; syncs never touch them. Each menu has its own draft and published version; the venue is Live when its live menu is published. One shell and design per venue, the same for all its menus.
 - **D89** Hand-made venues have full control; POS venues can hide but not delete.
@@ -47,8 +49,7 @@ Three layers, kept apart:
 - ~~P-08~~ became D84 (venue names unique within an organisation).
 
 **Open**
-- **T78** Should a name typed in Restro beat the till's stand-in name?
-  Today the till's stand-in wins over a name typed in Restro's base layer. A name typed in the item sheet still wins. None of the current data is affected.
+- ~~**T78**~~ Answered by D90/D91: a name typed for a POS item goes into the dictionary, which beats the till's stand-in.
 - **T77** Re-withdraw a deleted venue's guest files if the queue was down.
   If the background queue is down at the moment of a delete, the guest page stays online until the venue is restored and deleted again.
 - Demo Club Sofia's first publish: who presses it.
