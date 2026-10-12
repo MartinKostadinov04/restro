@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D95** Tables & QR: areas, tables and menu routing.
+  barsy venues: halls and tables come from barsy; rename, reorder, hide only; non-public places hidden by default. Other POS: decided after reading their docs. Restro venues: you make your own areas and tables. Menu routing for every venue: venue-wide menu → area menu overrides it → table menu overrides the area; one menu per level, no guest switch. The name field says it's the name guests see, with barsy's number beside it; each area shows its tables as a grid of cards.
 - **D94** Tables & QR: the codes' address is shown, not asked for.
   The card stops asking for a base address or an "own link" pattern (the pre-domain workaround). It shows where the codes lead (your verified domain, else our address), links to Organisation › Domains, and keeps the test link and the printing warning. The local Wi-Fi testing address is developer configuration.
 - **D93** Colour system upgrades, from an audit against current practice (WCAG 2.2, CSS Color 4/5, Material 3, Radix, Tailwind 4).
