@@ -76,6 +76,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     const policy = { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] }
     const config: WorkerConfig = {
       databaseUrl: db.appUrl,
+      purgeDatabaseUrl: null,
       workerId: 'sync-queue-test',
       healthPort: 0,
       logLevel: 'silent',

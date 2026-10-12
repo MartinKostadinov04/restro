@@ -27,13 +27,19 @@ interface Journal {
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
-/** A migrations folder holding the migrations before 0017 only (the database before CF-18). */
-function foldersBefore0017(): string {
+/**
+ * A migrations folder holding the migrations before 0017 only (the database before CF-18), or,
+ * with `through`, up to and including 0017. Later migrations are left out on purpose: this test
+ * is about what 0017 did to a venue row, and later ones add columns of their own.
+ */
+function foldersBefore0017(through = false): string {
   const folder = mkdtempSync(join(tmpdir(), 'restro-0016-'))
   mkdirSync(join(folder, 'meta'))
   const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'))
-  const entries = (journal as Journal).entries.filter((entry) => entry.tag < TAG)
-  expect(entries.map((entry) => entry.idx)).toEqual([...Array(17).keys()])
+  const entries = (journal as Journal).entries.filter((entry) =>
+    through ? entry.tag <= TAG : entry.tag < TAG,
+  )
+  expect(entries.map((entry) => entry.idx)).toEqual([...Array(through ? 18 : 17).keys()])
   writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }))
   for (const entry of entries) {
     cpSync(join(MIGRATIONS, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`))
@@ -48,6 +54,7 @@ describe.skipIf(!hasDatabase)('migration 0017 (a venue can be archived)', () => 
   let admin: pg.Client
   let client: pg.Client
   let before0017: string
+  let through0017: string
   const venueRows = async (): Promise<Row[]> => {
     const { rows } = await client.query<{ row: Row }>(
       'select to_jsonb(v) as row from restro.venues v',
@@ -84,6 +91,7 @@ describe.skipIf(!hasDatabase)('migration 0017 (a venue can be archived)', () => 
   afterAll(async () => {
     await client?.end()
     if (before0017) rmSync(before0017, { recursive: true, force: true })
+    if (through0017) rmSync(through0017, { recursive: true, force: true })
     if (admin) {
       await admin.query(`drop database if exists ${database} with (force)`)
       await admin.end()
@@ -96,8 +104,9 @@ describe.skipIf(!hasDatabase)('migration 0017 (a venue can be archived)', () => 
   })
 
   it('leaves every venue live and changes nothing else', async () => {
+    through0017 = foldersBefore0017(true)
     await migrate(drizzle({ client }), {
-      migrationsFolder: MIGRATIONS,
+      migrationsFolder: through0017,
       migrationsSchema: 'drizzle',
       migrationsTable: '__drizzle_migrations',
     })

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { isTenantId } from './internal/pool'
 import * as schema from './schema'
-import { APP_SCHEMA, TABLE_ACCESS, type TableAccess } from './table-access'
+import { APP_DELETE_TABLES, APP_SCHEMA, TABLE_ACCESS, type TableAccess } from './table-access'
 
 const tables = (Object.values(schema) as unknown[])
   .filter((value): value is PgTable => value instanceof PgTable)
@@ -34,6 +34,58 @@ describe('table access list', () => {
 
   it('never grants the app role UPDATE or DELETE on templates (immutable rows)', () => {
     expect(TABLE_ACCESS.templates.app).toEqual(['SELECT', 'INSERT'])
+  })
+
+  // D83, made precise by Martin 10-12: the app role deletes only the three row kinds apply()
+  // removes as the action itself, plus Better Auth's session and verification rows. Widening
+  // this list is a guardrail change (D67): stop and ask.
+  it('lets the app role DELETE only from the five tables D83 names', () => {
+    const deletable = Object.entries(access)
+      .filter(([, table]) => table.app.includes('DELETE'))
+      .map(([name]) => name)
+      .sort()
+    expect(deletable).toEqual([...APP_DELETE_TABLES].sort())
+  })
+
+  it('gives the purge role DELETE only on tenant data, INSERT only on its own records, never UPDATE', () => {
+    for (const [name, table] of Object.entries(access)) {
+      const purge: readonly string[] = table.purge ?? []
+      expect(purge.includes('UPDATE'), `${name}: the purge role never updates`).toBe(false)
+      if (purge.includes('DELETE')) {
+        expect(table.tenancy, `${name}: the purge role deletes tenant data only`).toBe('tenant')
+      }
+      if (purge.includes('INSERT')) {
+        expect(
+          ['tombstones', 'purge_log'],
+          `${name}: the purge role writes only its records`,
+        ).toContain(name)
+      }
+      if (name.startsWith('auth_') || name === 'templates' || name === 'worker_heartbeats') {
+        expect(purge, `${name}: the purge role never touches it`).toEqual([])
+      }
+    }
+    // What a purge erases must be erasable: every venue-owned table.
+    for (const name of [
+      'venues',
+      'menus',
+      'nodes',
+      'placements',
+      'field_values',
+      'source_records',
+      'source_links',
+      'events',
+      'job_runs',
+      'snapshots',
+      'publish_pointers',
+      'item_first_published',
+      'tags',
+      'areas',
+      'tables',
+      'menu_routes',
+      'venue_slug_history',
+    ]) {
+      expect(access[name]?.purge, name).toContain('DELETE')
+    }
   })
 })
 

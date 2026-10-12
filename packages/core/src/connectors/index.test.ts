@@ -25,9 +25,10 @@ describe('connector kinds', () => {
       expect(connectorLabel(kind)).toBe(CONNECTOR_LABELS[kind])
       expect(connectorLabel(kind).length).toBeGreaterThan(0)
     }
-    // The menu and specials never mirror a till object.
+    // A menu mirrors one of the roots the till designates (D88); specials never mirror a till
+    // object.
     for (const kind of INTEGRATION_KINDS) {
-      expect(TILL_LINK_TYPES[kind].menu).toEqual([])
+      expect(TILL_LINK_TYPES[kind].menu).toEqual(['menu_root'])
       expect(TILL_LINK_TYPES[kind].special).toEqual([])
     }
   })
@@ -40,7 +41,10 @@ describe('tillLinkTypeProblem', () => {
     expect(tillLinkTypeProblem('barsy', 'item', 'category')).toBe(
       'a item links to a article, not a category',
     )
-    expect(tillLinkTypeProblem('barsy', 'menu', 'article')).toBe('a menu takes no till link')
+    expect(tillLinkTypeProblem('barsy', 'menu', 'article')).toBe(
+      'a menu links to a menu_root, not a article',
+    )
+    expect(tillLinkTypeProblem('barsy', 'special', 'article')).toBe('a special takes no till link')
   })
 
   it('refuses a kind that declares no link types', () => {

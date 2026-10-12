@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./write": "./src/write/index.ts"
+    "./write": "./src/write/index.ts",
+    "./purge": "./src/purge/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

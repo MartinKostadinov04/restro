@@ -235,11 +235,11 @@ describe.skipIf(!hasDatabase)('a deleted venue and the sync (CF-18)', () => {
       await world.run(JOB_NAMES.barsyFullPull, payload(venueB))
       expect((await runs()).filter((run) => run.status === 'failed')).toEqual([])
 
-      // B has sections of its own: the keys are qualified by B, they hang under B's menu and are
-      // other nodes than A's.
+      // B has sections of its own: the keys are qualified by B's menu (D88), they hang under B's
+      // menu and are other nodes than A's.
       const ofB = await sections(menuB as NodeId)
       expect(ofB.length).toBe(ofA.length)
-      expect(ofB.every((section) => section.external_id.endsWith(`@${venueB}`))).toBe(true)
+      expect(ofB.every((section) => section.external_id.endsWith(`@${menuB}`))).toBe(true)
       expect(new Set(ofB.map((section) => section.node_id))).not.toEqual(new Set(nodesA))
       for (const id of ofB.map((section) => section.node_id)) expect(nodesA).not.toContain(id)
 

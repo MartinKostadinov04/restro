@@ -70,11 +70,13 @@ export interface CatalogueInput {
   /** `Languages_getlist`: the languages the installation holds. */
   readonly languages: readonly Language[]
   /**
-   * Categories whose section in this venue is linked under the venue-qualified key
-   * (`<catId>@<vn_ id>`, ./venues.ts `qualifiedSections`). Absent or empty: every section uses the
-   * plain key, as before several venues shared a catalogue (CF-16).
+   * Categories whose section in this menu is linked under a qualified key
+   * (`<catId>@<qualifier>`, ./venues.ts `qualifiedSections`): a map of category to qualifier (the
+   * menu's id, or the venue's for a link from before D88), or, as before D88, a set of categories
+   * qualified by the venue's id. Absent or empty: every section uses the plain key, as before
+   * several venues shared a catalogue (CF-16).
    */
-  readonly qualifiedSections?: ReadonlySet<number> | undefined
+  readonly qualifiedSections?: ReadonlySet<number> | ReadonlyMap<number, string> | undefined
   /** Articles (ids as text) this venue had hidden, outside its root: cleared when mapped (CF-16). */
   readonly venueHiddenArticles?: ReadonlySet<string> | undefined
 }
@@ -179,6 +181,19 @@ export interface CatalogueCounts {
   readonly outsideCatalogue: number
 }
 
+/**
+ * The connector's language report (D77, adjustments I3): the languages the installation offers
+ * (`Languages_getlist`, as our locale keys; all of ours when it lists none) and how many of the
+ * guest-facing texts this mapping wrote (names and descriptions of sections, items, option
+ * groups and options) hold text in each, out of how many such texts there were. The worker
+ * records it on the venue after a complete full read; core decides which languages count.
+ */
+export interface MappedLanguages {
+  readonly offered: readonly Locale[]
+  readonly filled: Readonly<Partial<Record<Locale, number>>>
+  readonly total: number
+}
+
 /** The result of mapping one venue's catalogue. */
 export interface CatalogueMapping {
   /** For `apply()`; null when there is nothing to apply (an empty catalogue). */
@@ -189,6 +204,7 @@ export interface CatalogueMapping {
   readonly linkStates: readonly LinkStateIntent[]
   readonly warnings: readonly MappingWarning[]
   readonly counts: CatalogueCounts
+  readonly languages: MappedLanguages
 }
 
 /** One barsy place, ready to be stored in `places` (the table QR token is S2-03/Stage 3). */

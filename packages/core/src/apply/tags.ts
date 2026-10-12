@@ -21,7 +21,8 @@ import { z } from 'zod'
 import { ActorSchema, type ChangeSet, type ChangeSetOp } from '../change-set'
 import { canonicalJson } from '../hash'
 import { idSchema, type NodeId, newId, type TagId, type VenueId } from '../ids'
-import { isLocale, type Locale, type LocalizedText } from '../locales'
+import { venueLanguages } from '../languages'
+import type { Locale, LocalizedText } from '../locales'
 import type { TagVocabularyEntry } from '../snapshot/build'
 import { sortKeyBetween } from '../sort-keys'
 import {
@@ -145,12 +146,9 @@ async function inVenue(
         venueRefusalText(venueId, locked.refused),
       )
     }
-    const { venue } = locked
-    const enabled = venue.enabledLocales.filter(isLocale)
-    const defaultLocale = isLocale(venue.defaultLocale)
-      ? venue.defaultLocale
-      : (enabled[0] ?? 'bg_BG')
-    return run(tx, { defaultLocale, enabledLocales: enabled })
+    // The venue's menu languages, from the one source every workflow uses (D77).
+    const languages = venueLanguages(locked.venue)
+    return run(tx, { defaultLocale: languages.main, enabledLocales: languages.all })
   })
 }
 

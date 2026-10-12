@@ -1,5 +1,5 @@
-// Static checks of the package's shape (no database needed): the read/write split cannot be
-// undone by a re-export, and only the two entry points are importable.
+// Static checks of the package's shape (no database needed): the read/write/purge split cannot
+// be undone by a re-export, and only the three entry points are importable.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 const packageRoot = fileURLToPath(new URL('..', import.meta.url))
 const srcRoot = join(packageRoot, 'src')
 const writeRoot = join(srcRoot, 'write')
+const purgeRoot = join(srcRoot, 'purge')
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -29,29 +30,36 @@ function specifiers(file: string): string[] {
 }
 
 describe('@restro/db package boundaries', () => {
-  it('exports exactly two entry points: the read side and the write side', () => {
+  it('exports exactly three entry points: the read side, the write side and the purge side', () => {
     const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
       exports: Record<string, string>
     }
     expect(manifest.exports).toEqual({
       '.': './src/index.ts',
       './write': './src/write/index.ts',
+      './purge': './src/purge/index.ts',
     })
   })
 
-  it('nothing outside src/write imports the write side (so @restro/db never re-exports it)', () => {
-    const offenders: string[] = []
-    for (const file of sourceFiles(srcRoot)) {
-      if (file.startsWith(writeRoot)) continue
-      for (const specifier of specifiers(file)) {
-        const target = specifier.startsWith('.') ? resolve(file, '..', specifier) : specifier
-        if (target.startsWith(writeRoot) || /@restro\/db\/write/.test(specifier)) {
-          offenders.push(`${relative(packageRoot, file)} -> ${specifier}`)
+  it.each([
+    ['write', writeRoot, /@restro\/db\/write/],
+    ['purge', purgeRoot, /@restro\/db\/purge/],
+  ])(
+    'nothing outside src/%s imports that side (so @restro/db never re-exports it)',
+    (_side, root, bare) => {
+      const offenders: string[] = []
+      for (const file of sourceFiles(srcRoot)) {
+        if (file.startsWith(root)) continue
+        for (const specifier of specifiers(file)) {
+          const target = specifier.startsWith('.') ? resolve(file, '..', specifier) : specifier
+          if (target.startsWith(root) || bare.test(specifier)) {
+            offenders.push(`${relative(packageRoot, file)} -> ${specifier}`)
+          }
         }
       }
-    }
-    expect(offenders).toEqual([])
-  })
+      expect(offenders).toEqual([])
+    },
+  )
 
   it('src never imports scripts/ (owner-only code) and keeps extensionless relative imports', () => {
     const offenders: string[] = []

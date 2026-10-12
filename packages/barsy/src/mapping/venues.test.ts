@@ -85,8 +85,9 @@ describe('section keys', () => {
   it('formats and reads plain and venue-qualified ids', () => {
     expect(sectionLinkId(1100, null)).toBe('1100')
     expect(sectionLinkId(1100, VENUE_ID)).toBe(`1100@${VENUE_ID}`)
-    expect(parseSectionLinkId('1100')).toEqual({ catId: 1100, venueId: null })
-    expect(parseSectionLinkId(`1100@${VENUE_ID}`)).toEqual({ catId: 1100, venueId: VENUE_ID })
+    expect(parseSectionLinkId('1100')).toEqual({ catId: 1100, qualifier: null })
+    expect(parseSectionLinkId(`1100@${VENUE_ID}`)).toEqual({ catId: 1100, qualifier: VENUE_ID })
+    expect(parseSectionLinkId(`1100@${MENU_ID}`)).toEqual({ catId: 1100, qualifier: MENU_ID })
     for (const bad of ['', 'x', '1100@', '1100@tn_x', '-1', '1.5', '1100@vn_x@vn_y']) {
       expect(parseSectionLinkId(bad), bad).toBeNull()
     }
@@ -101,14 +102,28 @@ describe('section keys', () => {
       { externalId: `310@${OTHER_VENUE}`, menuId: OTHER_MENU }, // the other's qualified key
       { externalId: 'junk', menuId: MENU_ID },
     ]
-    expect([...qualifiedSections(VENUE_ID, MENU_ID, links)].sort()).toEqual([1100, 1101, 1102])
+    // 1100's plain key is the other menu's, 1102's belongs to no menu that can be found: both get
+    // this menu's own key; 1101 keeps the venue-qualified key it has from before D88.
+    expect(qualifiedSections(VENUE_ID, MENU_ID, links)).toEqual(
+      new Map([
+        [1100, MENU_ID],
+        [1101, VENUE_ID],
+        [1102, MENU_ID],
+      ]),
+    )
     expect([...sectionLinksOfMenu(MENU_ID, links)].sort()).toEqual([
       '1',
       `1101@${VENUE_ID}`,
       'junk',
     ])
     // The other venue: 1100 is its own; plain 1101 is free (the first venue's link is qualified).
-    expect([...qualifiedSections(OTHER_VENUE, OTHER_MENU, links)].sort()).toEqual([1, 1102, 310])
+    expect(qualifiedSections(OTHER_VENUE, OTHER_MENU, links)).toEqual(
+      new Map([
+        [1, OTHER_MENU],
+        [310, OTHER_VENUE],
+        [1102, OTHER_MENU],
+      ]),
+    )
   })
 
   it('qualified sections get their own links and node ids, nested parents and placements follow', () => {

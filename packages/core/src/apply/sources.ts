@@ -52,9 +52,29 @@ function checkedDetail(value: string | null): string | null {
     : value
 }
 
+/** Most characters in an instance's name (`integrations.name`). */
+export const MAX_INTEGRATION_NAME_LENGTH = 80
+
+/** Refuses an empty, blank or overlong instance name; returns it trimmed. */
+function checkedInstanceName(value: string): string {
+  const name = value.trim()
+  if (name === '' || name.length > MAX_INTEGRATION_NAME_LENGTH) {
+    throw new ProvisionError(
+      'invalid_input',
+      `the instance name must be 1 to ${MAX_INTEGRATION_NAME_LENGTH} characters`,
+    )
+  }
+  return name
+}
+
 /** What `createIntegration` needs. */
 export interface CreateIntegrationInput {
   readonly kind: IntegrationKind
+  /**
+   * The instance's name in the admin (D81): what the owner calls this connection. Default:
+   * "<kind> – <host>".
+   */
+  readonly name?: string
   /** The installation's host, e.g. `demo.barsyonline.com`. Bare: no scheme, path or user info. */
   readonly host: string
   /**
@@ -70,6 +90,7 @@ export interface CreatedIntegration {
   /** The `in_` id that till sources name (`till:<id>`). */
   readonly id: string
   readonly kind: IntegrationKind
+  readonly name: string
   readonly host: string
   readonly created: boolean
 }
@@ -95,23 +116,28 @@ export async function createIntegration(
   }
   const sealed =
     input.credentialsSealed === undefined ? null : checkedSealed(input.credentialsSealed)
+  const name = checkedInstanceName(input.name ?? `${input.kind} – ${host}`)
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
     const [existing] = await tx
-      .select({ id: integrations.id })
+      .select({ id: integrations.id, name: integrations.name })
       .from(integrations)
       .where(and(eq(integrations.kind, input.kind), eq(integrations.host, host)))
-    if (existing) return { id: existing.id, kind: input.kind, host, created: false }
+    if (existing) {
+      return { id: existing.id, kind: input.kind, name: existing.name, host, created: false }
+    }
     const id = input.id ?? newId('in')
     await tx
       .insert(integrations)
-      .values({ id, tenantId, kind: input.kind, host, credentialsSealed: sealed })
-    return { id, kind: input.kind, host, created: true }
+      .values({ id, tenantId, kind: input.kind, name, host, credentialsSealed: sealed })
+    return { id, kind: input.kind, name, host, created: true }
   })
 }
 
 /** What `updateIntegration` may change; a field that is left out stays as it is. */
 export interface UpdateIntegrationInput {
+  /** The instance's name in the admin (D81). */
+  readonly name?: string
   /** Changing the host invalidates the sealed credentials (they are bound to it): seal again. */
   readonly host?: string
   /** A new sealed envelope, or null to forget the credentials. */
@@ -148,6 +174,7 @@ export async function updateIntegration(
     )
   }
   const set: Record<string, unknown> = {}
+  if (patch.name !== undefined) set.name = checkedInstanceName(patch.name)
   if (patch.host !== undefined) set.host = checkedHost(patch.host)
   if (patch.credentialsSealed !== undefined) {
     set.credentialsSealed =

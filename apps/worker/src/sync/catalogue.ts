@@ -26,14 +26,18 @@
 import {
   type Article,
   type ArticleDetailsGroup,
+  type AssetRequest,
   BarsyAuthError as AuthRefused,
   type CatalogueMapping,
   type CategoryTreeNode,
   DEFAULT_MAPPING_LOCALE,
-  inMenuOf,
+  hasCategory,
+  inMenuOfAny,
   type Language,
+  type LinkStateIntent,
   BARSY_MAPPING_VERSION as MAPPING_VERSION,
   type MappingConfig,
+  type MappingWarning,
   type Modificator,
   mapCatalogue,
   mapModificators,
@@ -56,6 +60,7 @@ import {
   type IntegrationId,
   isLocale,
   JOB_NAMES,
+  type Locale,
   MAX_RETIRED_TOKENS,
   type NodeId,
   prepareJob,
@@ -69,8 +74,10 @@ import {
 import {
   type ApplyRejection,
   appendSourceRecords,
-  provisionMenu,
+  ensureTillMenus,
+  recordLanguageReport,
   storeCachedTree,
+  tillMenuRootId,
   updateSyncState,
   upsertPlaces,
 } from '@restro/core/apply'
@@ -135,8 +142,10 @@ interface Fetched {
   /** One entry per article page, supplement call and modificator page. */
   readonly pagesOk: boolean[]
   readonly articlePages: number
-  /** True when the articles are the venue's whole catalogue (`menu_id`), not only its root. */
+  /** True when the articles are the venue's whole catalogue (`menu_id`), not only its roots. */
   readonly wholeCatalogue: boolean
+  /** The roots the till designates that are in the tree, in order (D88): one menu each. */
+  readonly roots: readonly number[]
 }
 
 const isFlagSet = (value: unknown) => value === 1 || value === true
@@ -180,11 +189,12 @@ export function cachedTreeOf(tree: CategoryTreeNode, fetchedAt: Date) {
 function mappingSettings(
   session: IntegrationSession,
   target: VenueTarget,
+  rootCatId: number,
 ): Omit<MappingConfig, 'jobId' | 'actor' | 'observedAt'> {
   const config = session.integration.config
   return {
     integrationId: session.integration.id as IntegrationId,
-    catalogueRootCatId: target.catalogueRootCatId,
+    catalogueRootCatId: rootCatId,
     priceSource: priceSourceOf(target, config),
     mappingVersion: MAPPING_VERSION,
     includeServices: false,
@@ -193,9 +203,9 @@ function mappingSettings(
   }
 }
 
-function mappingConfig(ctx: PullContext): MappingConfig {
+function mappingConfig(ctx: PullContext, rootCatId: number): MappingConfig {
   return {
-    ...mappingSettings(ctx.session, ctx.target),
+    ...mappingSettings(ctx.session, ctx.target, rootCatId),
     jobId: ctx.runId,
     actor: `integration:${ctx.session.integration.id}`,
     observedAt: ctx.start.toISOString(),
@@ -211,11 +221,11 @@ function mappingConfig(ctx: PullContext): MappingConfig {
  * default language applied, so an unset language and an explicit default hash alike.
  */
 export function scopeHashOf(session: IntegrationSession, target: VenueTarget): string {
-  const settings = mappingSettings(session, target)
+  const settings = mappingSettings(session, target, target.roots[0] ?? 0)
   return sha256Hex(
     canonicalJson({
       bid: target.bid,
-      catalogueRootCatId: settings.catalogueRootCatId,
+      roots: [...target.roots],
       priceSource: settings.priceSource,
       allergenKey: settings.allergenDetailKey ?? null,
       defaultLocale: settings.defaultLocale ?? DEFAULT_MAPPING_LOCALE,
@@ -270,30 +280,49 @@ async function fetchCatalogue(
   // A full pull reads the whole catalogue the venue sells from (CF-16): only a complete read of
   // it may conclude that an item is gone. Without a known catalogue it reads the venue's root.
   const catalogueId = options.full ? target.catalogueId : null
-  const scope = catalogueId !== null ? { catalogueId } : { rootCatId: target.catalogueRootCatId }
-  // The menu test first: a root that is not in the tree fails before anything else is read.
-  const inMenu = inMenuOf(options.tree, target.catalogueRootCatId)
+  // The menu test first: a root that is not in the tree is left out (the till may have changed
+  // it); with none left there is nothing to read.
+  const roots = target.roots.filter((root) => hasCategory(options.tree, root))
+  if (roots.length === 0) {
+    throw new SyncError(
+      'venue_not_mapped',
+      'None of the menu roots the till designates for this venue is in its category tree.',
+    )
+  }
+  const inMenu = inMenuOfAny(options.tree, roots)
   const details = (await session.reader.getArticleDetailsTree()).data
   const languages = (await session.reader.getLanguages()).data
-  const articleRead = await readPages({
-    what: 'articles',
-    startLength: ARTICLE_PAGE_LENGTH,
-    minLength: ARTICLE_PAGE_FLOOR,
-    log: env.log,
-    signal: env.signal,
-    fetchPage: async (offset, length) =>
-      (
-        await session.reader.getArticlesPage(bid, {
-          ...scope,
-          offset,
-          length,
-          ...(options.lastUpdateAfter ? { lastUpdateAfter: options.lastUpdateAfter } : {}),
-        })
-      ).data,
-  })
+  // The whole catalogue in one read (CF-16), or, without a known catalogue, each root's subtree.
+  const scopes =
+    catalogueId !== null ? [{ catalogueId }] : roots.map((rootCatId) => ({ rootCatId }))
+  const byId = new Map<number, Article>()
+  const articlePagesOk: boolean[] = []
+  for (const scope of scopes) {
+    const read = await readPages({
+      what: 'articles',
+      startLength: ARTICLE_PAGE_LENGTH,
+      minLength: ARTICLE_PAGE_FLOOR,
+      log: env.log,
+      signal: env.signal,
+      fetchPage: async (offset, length) =>
+        (
+          await session.reader.getArticlesPage(bid, {
+            ...scope,
+            offset,
+            length,
+            ...(options.lastUpdateAfter ? { lastUpdateAfter: options.lastUpdateAfter } : {}),
+          })
+        ).data,
+    })
+    for (const article of read.items) {
+      if (!byId.has(article.article_id)) byId.set(article.article_id, article)
+    }
+    articlePagesOk.push(...read.pagesOk)
+  }
+  const articles = [...byId.values()]
   // Only the combos this venue maps: another venue's combos are read in its own context.
-  const supplements = await readSupplements(ctx, articleRead.items.filter(inMenu))
-  const pagesOk = [...articleRead.pagesOk, ...supplements.pagesOk]
+  const supplements = await readSupplements(ctx, articles.filter(inMenu))
+  const pagesOk = [...articlePagesOk, ...supplements.pagesOk]
   let modificators: Modificator[] = []
   if (options.full) {
     const read = await readPages({
@@ -312,12 +341,13 @@ async function fetchCatalogue(
     tree: options.tree,
     details,
     languages,
-    articles: articleRead.items,
+    articles,
     supplements: supplements.byArticle,
     modificators,
     pagesOk,
-    articlePages: articleRead.pagesOk.length,
+    articlePages: articlePagesOk.length,
     wholeCatalogue: catalogueId !== null,
+    roots,
   }
 }
 
@@ -477,33 +507,60 @@ async function syncFetched(
   let absenceHeld: AbsenceHeld | undefined
   const counters: Record<string, number> = {}
 
-  const menu = await provisionMenu(env.pool, tenantId, target.venueId)
-  const menuId = menu.rootNodeId as string
-  // Which section keys this venue uses, and which sections are its own (CF-16).
+  // One menu per root the till designates for the venue (D88): its public menu, its till tree.
+  // A venue mapped before D88 keeps the menu the picker filled for the root it chose.
+  const tillMenus = await ensureTillMenus(env.pool, tenantId, {
+    venueId: target.venueId,
+    integrationId,
+    roots: fetched.roots.map((root) => ({ externalId: tillMenuRootId(root, target.venueId) })),
+    adoptFor:
+      target.catalogueRootCatId === null
+        ? undefined
+        : tillMenuRootId(target.catalogueRootCatId, target.venueId),
+    jobId: ctx.runId,
+    now: start,
+  })
+  const menuIds = tillMenus.menus.map((menu) => menu.menuId as string)
+  // Which section keys each menu uses, and which sections are the venue's own (CF-16, D88).
   const owners = await readSectionOwners(env, tenantId, integrationId)
-  const qualified = qualifiedSections(target.venueId, menuId, owners)
-  const ownSections = sectionLinksOfMenu(menuId, owners)
-  // What the venue's menu showed before this run (for the absence of items in this venue).
+  const ownSections = new Set<string>()
+  for (const menuId of menuIds) {
+    for (const id of sectionLinksOfMenu(menuId, owners)) ownSections.add(id)
+  }
+  // What the venue's menus showed before this run (for the absence of items in this venue).
   const hidden = await readVenueHidden(env, tenantId, integrationId, target.venueId)
   const onMenu =
-    mode === 'full' ? await readMenuArticles(env, tenantId, integrationId, menuId) : null
+    mode === 'full' ? await readMenuArticles(env, tenantId, integrationId, menuIds) : null
   const before = await readLinks(env, tenantId, integrationId)
 
-  const mapping = mapCatalogue(
-    {
-      venueId: target.venueId as VenueId,
-      bid: target.bid,
-      menuId: menu.rootNodeId as NodeId,
-      tree: fetched.tree,
-      articles: fetched.articles,
-      supplementsByArticle: fetched.supplements,
-      detailsTree: fetched.details,
-      languages: fetched.languages,
-      qualifiedSections: qualified,
-      venueHiddenArticles: hidden,
-    },
-    mappingConfig(ctx),
-  )
+  // Each root into its menu. The sections one mapping links are that menu's for the next one's
+  // keys, so two menus of one venue never claim the same plain key in one run.
+  const mappings: CatalogueMapping[] = []
+  const claimed = [...owners]
+  for (const [index, root] of fetched.roots.entries()) {
+    const menuId = menuIds[index]
+    if (menuId === undefined) continue
+    const one = mapCatalogue(
+      {
+        venueId: target.venueId as VenueId,
+        bid: target.bid,
+        menuId: menuId as NodeId,
+        tree: fetched.tree,
+        articles: fetched.articles,
+        supplementsByArticle: fetched.supplements,
+        detailsTree: fetched.details,
+        languages: fetched.languages,
+        qualifiedSections: qualifiedSections(target.venueId, menuId, claimed),
+        venueHiddenArticles: hidden,
+      },
+      mappingConfig(ctx, root),
+    )
+    mappings.push(one)
+    for (const intent of one.linkStates) {
+      if (intent.linkType === 'category') claimed.push({ externalId: intent.externalId, menuId })
+    }
+  }
+  const mapping = mergeMappings(mappings)
 
   // Tier 1 first: every barsy write cites one of these records.
   const descriptors: SourceRecordDescriptor[] = [...mapping.sourceRecords]
@@ -529,13 +586,15 @@ async function syncFetched(
   // The venue's rule `new_items = hold` (CF-09b; a venue with none reads the integration's): the
   // items this run creates are hidden for a manager to review.
   const holding = venueHoldsNewItems(target.venueSettings, session.integration.config)
-  await applyMapped(
-    env,
-    tenantId,
-    mapping.changeSet,
-    totals,
-    holding ? { runId: ctx.runId, observedAt: startIso } : undefined,
-  )
+  for (const one of mappings) {
+    await applyMapped(
+      env,
+      tenantId,
+      one.changeSet,
+      totals,
+      holding ? { runId: ctx.runId, observedAt: startIso } : undefined,
+    )
+  }
 
   // Mark what this run saw. Only links that exist can be marked (a `delete_flag` article that
   // was never linked has none).
@@ -736,6 +795,7 @@ async function syncFetched(
   }
   await applyOps(env, tenantId, base, [...seenOps, ...moves, ...hideOps], totals)
 
+  counters.menus = mappings.length
   counters.categories_seen = mapping.counts.sections
   counters.articles_seen = fetched.articles.length
   counters.items_mapped = mapping.counts.items
@@ -756,7 +816,77 @@ async function syncFetched(
   const photos = await queuePhotos(ctx, mapping, before, hashes)
   counters.photos_queued = photos.queued
   counters.photos_elsewhere = photos.elsewhere
+  // The language report (D77, I3): after a complete full read, which languages the till offers
+  // and how many guest-facing texts it fills in each. Core decides which of them count.
+  if (mode === 'full' && complete) {
+    const languages = await recordLanguageReport(env.pool, tenantId, target.venueId, {
+      reported_at: startIso,
+      offered: [...mapping.languages.offered],
+      filled: mapping.languages.filled,
+      total: mapping.languages.total,
+    })
+    counters.texts_total = mapping.languages.total
+    counters.languages_from_till = languages.fromTill.length
+  }
   return { counters, notes, deletionCheckSkipped, absenceHeld, totals, complete }
+}
+
+/**
+ * The mappings of a venue's roots as one (D88): the records, links, photos and warnings of all,
+ * each once (an item two menus share is one link), the counts added up where they are per menu
+ * and counted once where they are per item, and the language report of the whole. The change
+ * sets stay apart: they are applied one by one.
+ */
+function mergeMappings(mappings: readonly CatalogueMapping[]): CatalogueMapping {
+  const first = mappings[0]
+  if (first === undefined) throw new Error('a venue has at least one root')
+  if (mappings.length === 1) return first
+  const records = new Map<string, SourceRecordDescriptor>()
+  const links = new Map<string, LinkStateIntent>()
+  const assets = new Map<string, AssetRequest>()
+  const warnings: MappingWarning[] = []
+  const filled: Partial<Record<Locale, number>> = {}
+  let total = 0
+  let sections = 0
+  let placements = 0
+  for (const one of mappings) {
+    for (const record of one.sourceRecords) records.set(record.id, record)
+    for (const intent of one.linkStates) {
+      const key = `${intent.linkType}:${intent.externalId}`
+      const previous = links.get(key)
+      if (previous === undefined || intent.state === 'deleted') links.set(key, intent)
+    }
+    for (const request of one.assetRequests) assets.set(request.articleExternalId, request)
+    warnings.push(...one.warnings)
+    sections += one.counts.sections
+    placements += one.counts.placements
+    for (const [locale, count] of Object.entries(one.languages.filled)) {
+      filled[locale as Locale] = (filled[locale as Locale] ?? 0) + (count ?? 0)
+    }
+    total += one.languages.total
+  }
+  const active = (type: string) =>
+    [...links.values()].filter((intent) => intent.linkType === type && intent.state === 'active')
+      .length
+  return {
+    changeSet: null,
+    sourceRecords: [...records.values()],
+    assetRequests: [...assets.values()],
+    linkStates: [...links.values()],
+    warnings,
+    counts: {
+      sections,
+      items: active('article'),
+      modifierGroups: active('supplement_group'),
+      options: active('supplement'),
+      placements,
+      deletedArticles: Math.max(...mappings.map((one) => one.counts.deletedArticles)),
+      skippedServices: Math.max(...mappings.map((one) => one.counts.skippedServices)),
+      // Outside every root of the venue.
+      outsideCatalogue: Math.min(...mappings.map((one) => one.counts.outsideCatalogue)),
+    },
+    languages: { offered: first.languages.offered, filled, total },
+  }
 }
 
 /** The first article of each id, in id order (as the mapping reads a list). */

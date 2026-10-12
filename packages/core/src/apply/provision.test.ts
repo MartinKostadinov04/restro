@@ -199,16 +199,15 @@ describe.skipIf(!hasDatabase)('provisioning against Postgres (as the restro_app 
     expect(new Set(codes).size).toBe(codes.length)
   })
 
-  it('lets any number of venues share a slug, in one tenant and across tenants (D68)', async () => {
-    // slugA is tenantA's already. A second venue of tenantA, one of tenantB: both fine.
-    const sameInA = await provisionVenue(app, tenantA, { name: 'Another', slug: slugA })
-    const sameInB = await provisionVenue(app, tenantB, { name: 'Intruder', slug: slugA })
-    expect(sameInA.slug).toBe(slugA)
+  it('keeps a slug unique within an organisation and free across organisations (D84)', async () => {
+    // slugA is tenantA's already. A second venue of tenantA is refused; one of tenantB is fine.
+    await expect(
+      provisionVenue(app, tenantA, { name: 'Another', slug: slugA }),
+    ).rejects.toMatchObject({ code: 'slug_taken' })
+    const sameInB = await provisionVenue(app, tenantB, { name: 'Twin', slug: slugA })
     expect(sameInB.slug).toBe(slugA)
-    // The public code is what tells them apart.
-    expect(new Set([sameInA.publicId, sameInB.publicId]).size).toBe(2)
     const seenByA = await withTenant(app, tenantA, (tx) => tx.select().from(venues))
-    expect(seenByA.filter((venue) => venue.slug === slugA)).toHaveLength(2)
+    expect(seenByA.filter((venue) => venue.slug === slugA)).toHaveLength(1)
   })
 
   describe('renameVenueSlug', () => {

@@ -105,22 +105,33 @@ module.exports = {
       to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
     },
     {
+      name: 'db-purge-only-from-worker-purge-job',
+      severity: 'error',
+      comment:
+        'Only the worker purge job (apps/worker/src/jobs/purge*) may import @restro/db/purge: the purge role is the only one with DELETE on venue data (D83), and nothing else may erase anything.',
+      from: { pathNot: ['^apps/worker/src/jobs/purge', '^packages/db/'] },
+      to: { path: ['^packages/db/src/purge(/|\\.|$)', '^@restro/db/purge(/|$)'] },
+    },
+    {
       name: 'db-entry-points-only',
       severity: 'error',
       comment:
-        'Outside packages/db, import the database package only through its two entry points, @restro/db and @restro/db/write (packages/db/src/index.ts and packages/db/src/write/index.ts). Anything else under packages/db/src, such as the connection pool, would let code run queries outside a tenant-scoped transaction.',
+        'Outside packages/db, import the database package only through its three entry points, @restro/db, @restro/db/write and @restro/db/purge (packages/db/src/index.ts, packages/db/src/write/index.ts and packages/db/src/purge/index.ts). Anything else under packages/db/src, such as the connection pool, would let code run queries outside a tenant-scoped transaction.',
       from: { pathNot: '^packages/db/' },
       to: {
-        path: ['^packages/db/src/(?!(index|write/index)\\.ts$)', '^@restro/db/src(/|$)'],
+        path: [
+          '^packages/db/src/(?!(index|write/index|purge/index)\\.ts$)',
+          '^@restro/db/src(/|$)',
+        ],
       },
     },
     {
       name: 'db-read-side-no-write',
       severity: 'error',
       comment:
-        'Inside packages/db/src, only files under packages/db/src/write/ may import packages/db/src/write: the read side (the @restro/db entry, the pool, the schema) must never reach the write side, or the read-only entry point could end up exposing a write transaction.',
-      from: { path: '^packages/db/src/', pathNot: '^packages/db/src/write/' },
-      to: { path: '^packages/db/src/write(/|\\.|$)' },
+        'Inside packages/db/src, only files under packages/db/src/write/ or packages/db/src/purge/ may import packages/db/src/write or packages/db/src/purge: the read side (the @restro/db entry, the pool, the schema) must never reach them, or the read-only entry point could end up exposing a write or purge transaction.',
+      from: { path: '^packages/db/src/', pathNot: '^packages/db/src/(write|purge)/' },
+      to: { path: '^packages/db/src/(write|purge)(/|\\.|$)' },
     },
 
     // 3 and 4. barsy is read by the worker only (CLAUDE.md "Never": web never calls barsy).

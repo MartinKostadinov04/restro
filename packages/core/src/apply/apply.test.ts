@@ -45,9 +45,9 @@ describe('module boundary', () => {
     }
   })
 
-  it('links items to articles, sections to categories, groups to supplement groups, options to modificators or supplements', () => {
+  it('links menus to roots, items to articles, sections to categories, groups to supplement groups, options to modificators or supplements', () => {
     expect(TILL_LINK_TYPES.barsy).toEqual({
-      menu: [],
+      menu: ['menu_root'],
       section: ['category'],
       item: ['article'],
       modifier_group: ['supplement_group'],

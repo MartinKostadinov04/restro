@@ -756,6 +756,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       })
       const config: WorkerConfig = {
         databaseUrl: db.appUrl,
+        purgeDatabaseUrl: null,
         workerId: 'publish-merge-test',
         healthPort: 0,
         logLevel: 'silent',

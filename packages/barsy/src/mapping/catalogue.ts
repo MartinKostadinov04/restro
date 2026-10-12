@@ -34,6 +34,8 @@ import {
   canonicalJson,
   decimalToMinor,
   type FieldWrite,
+  LOCALES,
+  type Locale,
   type LocalizedText,
   MoneyError,
   type NodeRef,
@@ -56,6 +58,7 @@ import {
   localizedText,
   type NameText,
   nameText,
+  normaliseLocaleKey,
   type TextContext,
 } from './text.ts'
 import {
@@ -89,6 +92,8 @@ interface Run {
   readonly sourceRecords: SourceRecordDescriptor[]
   readonly linkStates: LinkStateIntent[]
   readonly assetRequests: AssetRequest[]
+  /** The language report's counts: every guest-facing text written or cleared, and per language. */
+  readonly texts: { total: number; readonly filled: Map<Locale, number> }
 }
 
 function linkOf(run: Run, externalType: LinkType, externalId: string): SourceLink {
@@ -144,12 +149,27 @@ function writeText(
   value: LocalizedText,
   record: SourceRecordDescriptor,
 ): boolean {
+  // Every guest-facing text counts for the language report (D77), filled or not.
+  run.texts.total += 1
+  for (const locale of Object.keys(value) as Locale[]) {
+    run.texts.filled.set(locale, (run.texts.filled.get(locale) ?? 0) + 1)
+  }
   if (isEmptyText(value)) {
     clear(run, link, fieldKey, 'master')
     return false
   }
   write(run, link, fieldKey, 'master', value, record)
   return true
+}
+
+/** The languages the installation offers, as our locale keys (all of ours when it lists none). */
+function offeredLocales(languages: CatalogueInput['languages']): Locale[] {
+  const found = new Set<Locale>()
+  for (const language of languages) {
+    const locale = normaliseLocaleKey(language.lang_id)
+    if (locale !== null) found.add(locale)
+  }
+  return LOCALES.filter((locale) => found.size === 0 || found.has(locale))
 }
 
 function warn(
@@ -182,10 +202,18 @@ function money(minor: number): { amount_minor: number; currency: typeof CURRENCY
 
 // --- sections -----------------------------------------------------------------------------
 
-/** The section link of a category in this venue (plain, or qualified by the venue; CF-16). */
+/** The section link of a category in this menu (plain, or qualified by the menu or the venue; CF-16, D88). */
 function sectionLinkOf(run: Run, catId: number): SourceLink {
-  const qualified = run.input.qualifiedSections?.has(catId) === true
-  return linkOf(run, 'category', sectionLinkId(catId, qualified ? run.input.venueId : null))
+  const qualified = run.input.qualifiedSections
+  const qualifier =
+    qualified === undefined
+      ? null
+      : qualified instanceof Map
+        ? (qualified.get(catId) ?? null)
+        : qualified.has(catId)
+          ? run.input.venueId
+          : null
+  return linkOf(run, 'category', sectionLinkId(catId, qualifier))
 }
 
 function mapSections(run: Run, plan: SectionsPlan): void {
@@ -492,6 +520,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     sourceRecords: [],
     linkStates: [],
     assetRequests: [],
+    texts: { total: 0, filled: new Map() },
   }
 
   const plan = planSections(input.tree, cfg.catalogueRootCatId, run.warnings)
@@ -631,6 +660,11 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     skippedServices,
     outsideCatalogue,
   }
+  const filled: Partial<Record<Locale, number>> = {}
+  for (const locale of LOCALES) {
+    const count = run.texts.filled.get(locale)
+    if (count !== undefined) filled[locale] = count
+  }
   return {
     changeSet: buildChangeSet(run),
     sourceRecords: run.sourceRecords,
@@ -638,6 +672,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     linkStates: run.linkStates,
     warnings: run.warnings,
     counts,
+    languages: { offered: offeredLocales(input.languages), filled, total: run.texts.total },
   }
 }
 

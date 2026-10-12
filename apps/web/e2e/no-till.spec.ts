@@ -114,16 +114,21 @@ test('venue with no till: create the venue from the list', async () => {
   await expect(card).toBeVisible()
   await expect(card.getByTestId('venue-card-address')).toHaveText(guestPath)
 
-  // The readable part does not have to be free (D68): the same slug again makes a second venue
-  // with a code of its own.
+  // One address name per organisation (D84): the same slug again is refused, with the reason;
+  // another slug makes a second venue with a code of its own.
   await page.getByTestId('new-venue').click()
   await page.getByTestId('new-venue-name').fill('Same address again')
   await page.getByTestId('new-venue-slug').fill(SLUG)
   await page.getByTestId('new-venue-submit').click()
+  await expect(page.getByTestId('new-venue-error')).toHaveText(
+    'Another venue of yours already has this address. Choose another one.',
+  )
+  await page.getByTestId('new-venue-slug').fill(`${SLUG}-2`)
+  await page.getByTestId('new-venue-submit').click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   await expect(page.getByRole('heading', { name: 'Same address again', level: 1 })).toBeVisible()
   const twin = (await page.getByTestId('venue-header-address').textContent()) ?? ''
-  expect(twin).toMatch(new RegExp(`^/m/${SLUG}-[a-z0-9]{12}$`))
+  expect(twin).toMatch(new RegExp(`^/m/${SLUG}-2-[a-z0-9]{12}$`))
   expect(twin).not.toBe(guestPath)
 })
 

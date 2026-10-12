@@ -118,6 +118,7 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
     db = await createTestDatabase()
     config = {
       databaseUrl: db.appUrl,
+      purgeDatabaseUrl: null,
       workerId: WORKER_ID,
       healthPort: 0,
       logLevel: 'debug',
