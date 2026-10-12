@@ -19,6 +19,10 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D96** Publishing simplified.
+  - Versions: the live one plus up to 2 earlier ones can be restored; anything but the live version is purged after 30 days, even among the last 2. The change log is kept 2 months.
+  - A Publish button sits top right on every tab, greyed when nothing changed, with a change count and a confirmation listing the changes. With several menus it becomes a dropdown: each menu, its areas in brackets, and its number of changes. "Open the guest page" sits beside it.
+  - The Publishing tab loses "On guests' phones now" and "Changes waiting". "Rules" becomes Automation settings (POS venues only: sync mode and publish after sync). The "hold new till items" rule goes. Warnings (held publish, paused, address off) appear only when they apply.
 - **D95** Tables & QR: areas, tables and menu routing.
   barsy venues: halls and tables come from barsy; rename, reorder, hide only; non-public places hidden by default. Other POS: decided after reading their docs. Restro venues: you make your own areas and tables. Menu routing for every venue: venue-wide menu → area menu overrides it → table menu overrides the area; one menu per level, no guest switch. The name field says it's the name guests see, with barsy's number beside it; each area shows its tables as a grid of cards.
 - **D94** Tables & QR: the codes' address is shown, not asked for.
