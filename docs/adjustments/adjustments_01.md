@@ -62,7 +62,7 @@ Session 10-11 to 10-12. Full decision texts: `docs/tracker.md` (search `| D77 |`
   - New venue: choose the POS, then the instance, then the venue from that instance. "By hand" skips all of that; the backend works the same way for both.
   - Each instance has a name the owner types (e.g. "barsy – Sofia"); that name is what you pick under New venue (Martin: yes).
   - Per-instance settings (allergen characteristic, sync schedule, run history) sit inside that instance's section in its tab (Martin: yes).
-  - Open: each instance's tab also shows its till venues as an overview (Linked to … / Free / Not used), where "Not used" hides a till venue from the New venue picker; venues are created only through New venue (lead's recommendation).
+  - No till-venue overview in the instance tabs and no "Not used" (Martin: the New venue dropdown already shows them). In that dropdown, a till venue already linked shows "linked to …" and can't be picked; production and service units are left out if P-02 is accepted.
   - *Lead:* this is the screen design for the parked connector plan (CF-05 named connections per system, CF-06 forms per POS, CF-09 connection screens). Today: one barsy connection, no system picker or tabs, and till venues are added only from the Integrations list ("Add as venue").
 
 ## Martin's notes
