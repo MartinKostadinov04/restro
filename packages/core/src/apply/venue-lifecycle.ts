@@ -187,3 +187,44 @@ export async function restoreVenue(
     return { venueId, changed: true }
   })
 }
+
+/** What `unpublishVenue` did. */
+export interface UnpublishedVenue {
+  readonly venueId: string
+  /** False when the venue was unpublished already (nothing was written). */
+  readonly changed: boolean
+  /** When the venue was unpublished (now, or when it was before). */
+  readonly unpublishedAt: Date
+}
+
+/**
+ * Takes a venue off guests' phones without deleting anything (D86: back to Draft): sets
+ * `venues.unpublished_at`. The worker's file jobs then withdraw its address and table files; the
+ * next publish of any of its menus clears the flag (`publishMenu`) and the files come back.
+ * Nothing else changes: menus, versions, tables and codes stay as they are. Unpublishing an
+ * unpublished venue changes nothing. Refuses a venue the tenant does not have (`venue_missing`)
+ * and a deleted one (`venue_archived`).
+ */
+export async function unpublishVenue(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<UnpublishedVenue> {
+  checkedIds(tenantId, venueId)
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const locked = await lockLiveVenue(tx, venueId, 'update')
+    if (locked.refused !== null) {
+      throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
+    }
+    if (locked.venue.unpublishedAt !== null) {
+      return { venueId, changed: false, unpublishedAt: locked.venue.unpublishedAt }
+    }
+    const [row] = await tx
+      .update(venues)
+      .set({ unpublishedAt: sql`now()` })
+      .where(eq(venues.id, venueId))
+      .returning({ unpublishedAt: venues.unpublishedAt })
+    if (row?.unpublishedAt == null) throw new Error('the venue could not be unpublished')
+    return { venueId, changed: true, unpublishedAt: row.unpublishedAt }
+  })
+}

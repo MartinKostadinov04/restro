@@ -31,6 +31,7 @@ import { authMember, authOrganization } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 import pg from 'pg'
 import { writeLiveOverlay, writePublishFiles } from '../../worker/src/publish/files'
+import { writeOrganizationIndex } from '../../worker/src/publish/organization-index'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
@@ -228,6 +229,8 @@ async function seed(): Promise<void> {
   const scope = { tenantId: organizationId, menuId: barMenu.id, venueId: bar.id as never }
   await writePublishFiles(deps, scope)
   await writeLiveOverlay(deps, scope)
+  // The organisation's index (D84), as the publish job writes it after the files.
+  await writeOrganizationIndex(deps, organizationId)
   await writeTableTokenFile(publishStore, token, {
     venue_public_id: bar.publicId,
     venue_slug: bar.slug,

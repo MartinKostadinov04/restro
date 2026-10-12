@@ -343,6 +343,7 @@ describe('buildJobs', () => {
       JOB_NAMES.publishLiveTick,
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
+      JOB_NAMES.publishOrganizationIndex,
     ])
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('SEAL_PUBLIC_KEY')
@@ -374,6 +375,7 @@ describe('buildJobs', () => {
       JOB_NAMES.publishLiveTick,
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
+      JOB_NAMES.publishOrganizationIndex,
     ])
   })
 })

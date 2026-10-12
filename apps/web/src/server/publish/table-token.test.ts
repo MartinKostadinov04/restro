@@ -38,6 +38,13 @@ describe('/t/<token> (no database)', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
+  it('redirects to /m/<organisation>/<venue> when the file names the organisation (D84)', async () => {
+    await writeTableTokenFile(store, TOKEN, { ...FILE, organization_slug: 'night-group' })
+    const response = await tableTokenResponse(TOKEN, store)
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe(`/m/night-group/demo-club?t=${TOKEN}`)
+  })
+
   it('redirects with the slug the file holds; a renamed venue is corrected by the guest page', async () => {
     await writeTableTokenFile(store, TOKEN, { ...FILE, venue_slug: 'old-name' })
     const response = await tableTokenResponse(TOKEN, store)

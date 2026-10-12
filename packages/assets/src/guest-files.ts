@@ -10,6 +10,8 @@
 // `publish-table-tokens` job (S3-07; `writeTableTokenFile`, `deleteTableTokenFile`). The web app
 // reads both, never the database (rule 4), and never writes the store.
 import {
+  type OrganizationFile,
+  OrganizationFileSchema,
   type TableTokenFile,
   TableTokenFileSchema,
   type VenueIndex,
@@ -17,7 +19,12 @@ import {
 } from '@restro/core'
 import type { z } from 'zod'
 
-import { publishPutOptions, tableTokenPath, venueIndexPath } from './publish-paths'
+import {
+  organizationIndexPath,
+  publishPutOptions,
+  tableTokenPath,
+  venueIndexPath,
+} from './publish-paths'
 import type { PublishStore } from './publish-store'
 
 const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
@@ -25,6 +32,19 @@ const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.str
 /** The bytes of a venue index file. */
 export function venueIndexBytes(index: VenueIndex): Uint8Array {
   return encode(VenueIndexSchema.parse(index))
+}
+
+/** The bytes of an organisation's `o/<slug>.json`: its index, or a redirect from an old slug (D84). */
+export function organizationFileBytes(file: OrganizationFile): Uint8Array {
+  return encode(OrganizationFileSchema.parse(file))
+}
+
+/** What `o/<slug>.json` holds, or null (no file, or not valid). */
+export async function readOrganizationFile(
+  store: Pick<PublishStore, 'get'>,
+  slug: string,
+): Promise<OrganizationFile | null> {
+  return parseGuestFile(OrganizationFileSchema, await store.get(organizationIndexPath(slug)))
 }
 
 /** Parses the bytes of a file into `schema`; null for anything that does not fit. */

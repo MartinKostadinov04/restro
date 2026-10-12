@@ -142,9 +142,10 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     expect(coded.length).toBeGreaterThan(0)
     expect(store.puts).toHaveLength(coded.length)
     for (const table of coded) {
-      expect(await readTableTokenFile(store, table.token as string)).toEqual({
+      expect(await readTableTokenFile(store, table.token as string)).toMatchObject({
         venue_public_id: world.venuePublicId,
         venue_slug: world.venueSlug,
+        organization_slug: expect.stringMatching(/^sync-/),
         table_label: tableLabel(table),
       })
     }

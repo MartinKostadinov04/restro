@@ -27,6 +27,7 @@ import {
   renameVenue,
   renameVenueSlug,
   restoreVenue,
+  unpublishVenue,
 } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -46,6 +47,7 @@ import {
   type RenameVenueResult,
   type RenameVenueSlugResult,
   type RestoreVenueResult,
+  type UnpublishVenueResult,
 } from './venues-result'
 
 const CreateVenueInput = z
@@ -314,6 +316,61 @@ export async function restoreVenueAction(input: unknown): Promise<RestoreVenueRe
       }
     }
     logError('venue_restore_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+const UnpublishVenueInput = z.strictObject({ venueId: idSchema('vn') })
+
+/**
+ * Takes a venue off guests' phones (D86: back to Draft). Owners and admins only. Nothing is
+ * deleted: the next publish of any of its menus brings it back. The worker withdraws its guest
+ * files: the venue index and its place in the organisation's index (`publish-files`, for its
+ * live menu) and the table files (`publish-table-tokens`).
+ */
+export async function unpublishVenueAction(input: unknown): Promise<UnpublishVenueResult> {
+  const parsed = UnpublishVenueInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  const { venueId } = parsed.data
+  try {
+    const { organization } = await requireTenant()
+    if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    const pool = getPool()
+    const venue = await getVenueInAnyState(organization.id, venueId)
+    if (venue === null) return { ok: false, error: 'invalid' }
+    if (venue.archivedAt !== null) return { ok: false, error: 'venue_archived' }
+    await unpublishVenue(pool, organization.id, venueId)
+
+    let filesQueued = true
+    try {
+      const tenantId = organization.id as TenantId
+      const menuId = await menuOfVenue(pool, organization.id, venueId)
+      if (menuId !== null) {
+        await enqueueJob(JOB_NAMES.publishFiles, { tenantId, menuId, venueId: venueId as VenueId })
+      } else {
+        await enqueueJob(JOB_NAMES.publishOrganizationIndex, { tenantId })
+      }
+      await enqueueJob(JOB_NAMES.publishTableTokens, {
+        tenantId,
+        venueId: venueId as VenueId,
+        retired: [],
+      })
+    } catch (error) {
+      logError('venue_unpublish_files_not_queued', error)
+      filesQueued = false
+    }
+
+    revalidatePath('/', 'layout')
+    return { ok: true, name: venue.name, filesQueued }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    if (error instanceof ProvisionError) {
+      if (error.code === 'venue_archived') return { ok: false, error: 'venue_archived' }
+      if (error.code === 'invalid_input' || error.code === 'venue_missing') {
+        return { ok: false, error: 'invalid' }
+      }
+    }
+    logError('venue_unpublish_failed', error)
     return { ok: false, error: 'failed' }
   }
 }

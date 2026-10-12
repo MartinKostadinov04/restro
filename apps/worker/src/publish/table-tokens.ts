@@ -8,8 +8,8 @@
 // the store already holds the same bytes, and removes the files of the codes named in `retired`.
 // A code that is active again (it cannot be: tokens are random and never reused) is never removed.
 //
-// A DELETED venue (D76, `venues.archived_at`) has no files: the job withdraws them, so `/t/<token>`
-// says the code is not active. The venue's till link is released when it is deleted, so it can no
+// A DELETED venue (D76, `venues.archived_at`) or an UNPUBLISHED one (D86, `venues.unpublished_at`)
+// has no files: the job withdraws them, so `/t/<token>` says the code is not active. The venue's till link is released when it is deleted, so it can no
 // longer find its tables; the tokens to withdraw arrive in `retired` (core's `archiveVenue`
 // reports them and the delete action hands them over). The tokens themselves are NOT retired: they
 // stay on the tables in the database, and restoring the venue, linking its till again and running
@@ -29,7 +29,7 @@ import type { NodeId } from '@restro/core'
 import { loadTokenFiles } from '@restro/core/apply'
 import type { DbPool } from '@restro/db'
 
-import { venueState } from './venue-state'
+import { filesWithdrawn, venueState } from './venue-state'
 
 export interface TableTokenDeps {
   readonly pool: DbPool
@@ -88,7 +88,7 @@ export async function writeTableTokenFiles(
 ): Promise<TableTokensResult> {
   const wanted = await loadTokenFiles(deps.pool, job.tenantId, job.venueId)
   if (wanted === null) return { status: 'unknown_venue' }
-  if (wanted.archived) {
+  if (wanted.archived || wanted.unpublished) {
     return { status: 'withdrawn', removed: await withdraw(deps, wanted.venuePublicId, job.retired) }
   }
 
@@ -99,6 +99,7 @@ export async function writeTableTokenFiles(
     const bytes = tableTokenBytes({
       venue_public_id: wanted.venuePublicId,
       venue_slug: wanted.venueSlug,
+      ...(wanted.organizationSlug === null ? {} : { organization_slug: wanted.organizationSlug }),
       table_label: tableLabel,
       ...(menuId === null ? {} : { menu_id: menuId as NodeId }),
     })
@@ -120,7 +121,7 @@ export async function writeTableTokenFiles(
 
   // Deleted while the files were written: take back what this run put there (and the retired
   // ones), so the last run leaves what the database says.
-  if ((await venueState(deps.pool, job.tenantId, job.venueId)) === 'archived') {
+  if (filesWithdrawn(await venueState(deps.pool, job.tenantId, job.venueId))) {
     const taken = await withdraw(deps, wanted.venuePublicId, [...active, ...job.retired])
     return { status: 'withdrawn', removed: taken }
   }

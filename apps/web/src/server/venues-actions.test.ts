@@ -87,7 +87,7 @@ describe.skipIf(!hasDatabase)('createVenueAction (as the restro_app role)', () =
   afterAll(async () => {
     if (owner) {
       const tenants = [tenant, otherTenant]
-      for (const table of ['menus', 'nodes', 'venues']) {
+      for (const table of ['menus', 'nodes', 'venue_slug_history', 'venues']) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
       }
       await owner.query('delete from restro.tenants where id = any($1)', [tenants])
@@ -249,7 +249,7 @@ describe.skipIf(!hasDatabase)('renameVenueSlugAction (as the restro_app role)', 
   afterAll(async () => {
     if (owner) {
       const tenants = [tenant, otherTenant]
-      for (const table of ['menus', 'nodes', 'venues']) {
+      for (const table of ['menus', 'nodes', 'venue_slug_history', 'venues']) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
       }
       await owner.query('delete from restro.tenants where id = any($1)', [tenants])

@@ -30,7 +30,7 @@ import {
   withTenant,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, desc, eq, getTableColumns, inArray, isNull, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { parseAssetVariants } from '../asset-variants'
@@ -341,6 +341,15 @@ async function movePointer(
       target: [publishPointers.menuId, publishPointers.venueId],
       set: { currentSnapshotId: snapshotId },
     })
+  await serveVenueAgain(tx, venueId)
+}
+
+/** A publish is the word to serve the venue again after an Unpublish (D86: Draft → Live). */
+async function serveVenueAgain(tx: WriteTx, venueId: string): Promise<void> {
+  await tx
+    .update(venues)
+    .set({ unpublishedAt: null })
+    .where(and(eq(venues.id, venueId), isNotNull(venues.unpublishedAt)))
 }
 
 /** Records `at` as the first-published date of every item of `body` that has none yet. */
@@ -702,6 +711,8 @@ export async function publishMenu(
     }
 
     if (previous !== null && previous.hash === hash) {
+      // Nothing new to publish, but "Publish" was said: an unpublished venue is served again.
+      await serveVenueAgain(tx, venueId)
       return { status: 'unchanged', snapshot: previous, previous }
     }
 

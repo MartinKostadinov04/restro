@@ -176,7 +176,9 @@ describe.skipIf(!hasDatabase)('loadItemDocument against Postgres', () => {
     })
     // Nothing of the placed item is duplicated, and no external id travels with the links.
     expect(doc.values.filter((value) => value.nodeId === placed)).toHaveLength(1)
-    expect(JSON.stringify(doc)).not.toContain('a1"')
+    expect(doc.links.every((link) => !('externalId' in link))).toBe(true)
+    // The whole value, so the id cannot hide in a nested field (a random id may end in `a1`).
+    expect(JSON.stringify(doc)).not.toContain('"a1"')
   })
 
   it('gives the resolver what it needs to resolve the unplaced item', async () => {

@@ -24,8 +24,10 @@ import {
 // it from the database (e2e/menu-path.ts) before they start.
 test.use({ ...devices['Pixel 7'] })
 
-/** The demo venue's address, read once before the tests. */
+/** The demo venue's address of before (`/m/<slug>-<code>`, D68), read once before the tests. */
 let GUEST: VenueAddress
+/** The address the page corrects to (D84): the demo organisation's slug and the venue's. */
+const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 /** The tagged fixture menu has no venue row: its code is a fixed one. */
 const TAG_PATH = `/m/${TAG_SLUG}-${TAG_PUBLIC_ID}`
 /** The look fixture (SH-04): the reference template, the dark scheme forced, Playfair Display. */
@@ -327,7 +329,7 @@ test.describe('the dish page in the address bar', () => {
     await expect(dishOf(fresh)).toBeHidden()
     await expect(fresh.getByRole('heading', { level: 1 })).toBeVisible()
     expect(new URL(fresh.url()).hash).toBe('')
-    expect(new URL(fresh.url()).pathname).toBe(GUEST.path)
+    expect(new URL(fresh.url()).pathname).toBe(GUEST_PATH)
     await fresh.close()
   })
 
@@ -339,7 +341,7 @@ test.describe('the dish page in the address bar', () => {
     const fresh = await page.context().newPage()
     await fresh.goto(`/m/an-older-name-${GUEST.publicId}?lang=bg#item-${mojito}`)
     await expect(dishOf(fresh)).toBeVisible()
-    await expect.poll(() => new URL(fresh.url()).pathname).toBe(GUEST.path)
+    await expect.poll(() => new URL(fresh.url()).pathname).toBe(GUEST_PATH)
     // The hash survived the correction, and the dish page is still the open one.
     expect(new URL(fresh.url()).hash).toBe(`#item-${mojito}`)
     await expect(dishOf(fresh)).toBeVisible()
@@ -475,12 +477,12 @@ test.describe('the address in the browser (D68)', () => {
     const search = `?lang=bg&t=${GUEST_TABLE_TOKEN}`
     await page.goto(`/m/an-older-name-${GUEST.publicId}${search}`)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
-    await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST.path)
+    await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST_PATH)
     expect(new URL(page.url()).search).toBe(search)
     // The corrected address is the one that reloads.
     await page.reload()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
-    expect(new URL(page.url()).pathname).toBe(GUEST.path)
+    expect(new URL(page.url()).pathname).toBe(GUEST_PATH)
     // Replaced, not pushed: going back leaves the site, it does not return to the stale address.
     await page.goBack()
     expect(page.url()).toBe('about:blank')
@@ -489,14 +491,14 @@ test.describe('the address in the browser (D68)', () => {
   test('a bare code finds the menu and gets its slug back', async ({ page }) => {
     await page.goto(`/m/${GUEST.publicId}?lang=en`)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Club')
-    await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST.path)
+    await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST_PATH)
     expect(new URL(page.url()).search).toBe('?lang=en')
   })
 
   test('the canonical address is left as it is', async ({ page }) => {
-    await open(page, `${GUEST.path}?lang=bg`)
+    await open(page, `${GUEST_PATH}?lang=bg`)
     await page.waitForLoadState('networkidle')
-    expect(new URL(page.url()).pathname).toBe(GUEST.path)
+    expect(new URL(page.url()).pathname).toBe(GUEST_PATH)
     expect(new URL(page.url()).search).toBe('?lang=bg')
   })
 })
@@ -530,10 +532,10 @@ test.describe('the table code', () => {
   }) => {
     const redirect = await request.get(`/t/${GUEST_TABLE_TOKEN}`, { maxRedirects: 0 })
     expect(redirect.status()).toBe(302)
-    expect(redirect.headers().location).toBe(`${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
+    expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
 
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
-    await page.waitForURL(`**${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
+    await page.waitForURL(`**${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     // The Editorial Market shows the table in the bar at the top, next to the language switch.
     await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
@@ -618,19 +620,20 @@ test.describe('what the page asks for (rule 4)', () => {
         bodies.push({ url: url.pathname, text: await response.text() })
       }
     })
-    await open(page, `${GUEST.path}?t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
     await page.waitForLoadState('networkidle')
 
     const allowed = (pathname: string) =>
       pathname.startsWith('/cdn/') ||
       pathname.startsWith('/_next/') ||
       pathname === GUEST.path ||
+      pathname === GUEST_PATH ||
       pathname === '/favicon.ico'
     expect(urls.filter((pathname) => !allowed(pathname))).toEqual([])
     // Nothing from another host: not the files, not the fonts, not the template's code.
     expect([...hosts]).toEqual([new URL(page.url()).host])
-    // The chain: venue index (by public code), pointer, snapshot, overlay, and the table's file.
-    for (const part of ['/cdn/v/', '/cdn/m/', '/cdn/snap/', '/cdn/t/']) {
+    // The chain (D84): the organisation's index, pointer, snapshot, overlay, and the table's file.
+    for (const part of ['/cdn/o/', '/cdn/m/', '/cdn/snap/', '/cdn/t/']) {
       expect(
         urls.some((pathname) => pathname.startsWith(part)),
         part,

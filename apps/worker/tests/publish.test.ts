@@ -15,6 +15,7 @@ import {
   currentPath,
   LocalPublishStore,
   livePath,
+  organizationIndexPath,
   type PublishPutOptions,
   type PublishStore,
   publishPutOptions as publishPutOptionsFor,
@@ -186,6 +187,14 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
     if (!row) throw new Error(`no ${kind} run`)
     return row
   }
+  /** The path of the organisation's index (D84), written after every publish. */
+  const organizationIndex = async () => {
+    const [organization] = await world.query<{ slug: string }>(
+      'select slug from restro.auth_organization where id = $1',
+      [world.tenantId],
+    )
+    return organizationIndexPath(organization?.slug ?? '')
+  }
   const readJson = async (file: string) => {
     const bytes = await store.get(file)
     return bytes === null ? null : (JSON.parse(new TextDecoder().decode(bytes)) as unknown)
@@ -273,6 +282,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
           currentPath(scope().menuId, scope().venueId),
           livePath(scope().menuId, scope().venueId),
           venueIndexPath(publicId),
+          await organizationIndex(),
         ].sort(),
       )
 
@@ -436,6 +446,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         venue_id: world.venueId,
         menu_id: world.menuId,
         slug,
+        organization: expect.stringMatching(/^sync-/),
       })
       // Nothing is filed under the slug.
       expect(store.puts.filter((file) => file.startsWith('v/'))).toEqual([venueIndexPath(publicId)])
@@ -451,6 +462,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         venue_id: world.venueId,
         menu_id: world.menuId,
         slug,
+        organization: expect.stringMatching(/^sync-/),
       })
     })
 
@@ -463,12 +475,14 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       expect(result).toMatchObject({ slug: renamed, publicId, changed: true })
 
       await runJob(JOB_NAMES.publishFiles, scopePayload())
-      // Only the index is written: the snapshot and the pointer are as they were.
-      expect(store.puts).toEqual([venueIndexPath(publicId)])
+      // Only the indexes are written (the organisation's gains the old name): the snapshot and
+      // the pointer are as they were.
+      expect(store.puts).toEqual([venueIndexPath(publicId), await organizationIndex()])
       expect(await readVenueIndex(store, publicId)).toEqual({
         venue_id: world.venueId,
         menu_id: world.menuId,
         slug: renamed,
+        organization: expect.stringMatching(/^sync-/),
       })
 
       // And again: nothing left to write.
@@ -521,6 +535,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         venue_id: world.venueId,
         menu_id: world.menuId,
         slug,
+        organization: expect.stringMatching(/^sync-/),
       })
     })
 
@@ -537,12 +552,13 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         venue_id: world.venueId,
         menu_id: world.menuId,
         slug,
+        organization: expect.stringMatching(/^sync-/),
       })
     })
 
-    it('has nothing to write before the first publish', async () => {
+    it('has nothing to write before the first publish, but the organisation’s (empty) index', async () => {
       await runJob(JOB_NAMES.publishFiles, scopePayload())
-      expect(store.puts).toEqual([])
+      expect(store.puts).toEqual([await organizationIndex()])
       expect((await lastRun('publish_files')).details?.notes).toEqual([
         'nothing is published for this menu yet',
       ])

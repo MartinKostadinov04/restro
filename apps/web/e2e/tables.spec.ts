@@ -60,8 +60,10 @@ let page: Page
 let tabUrl: string
 let venueUrl: string
 let origin: string
-/** The demo venue's address: `/m/<slug>-<code>` (D68). */
+/** The demo venue's address of before, `/m/<slug>-<code>` (D68); its files know the organisation. */
 let venue: VenueAddress
+/** The address a table's code leads to (D84): the demo organisation's slug and the venue's. */
+const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 
 // --- helpers ---------------------------------------------------------------------------------
 const rows = () => page.getByTestId('table-row')
@@ -248,19 +250,20 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 
   const redirect = await page.request.get(`/t/${token}`, { maxRedirects: 0 })
   expect(redirect.status()).toBe(302)
-  expect(redirect.headers().location).toBe(`${venue.path}?t=${token}`)
+  expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${token}`)
   const file = await page.request.get(`/cdn/t/${token}.json`)
   // The file also says which menu the code opens (D95): the venue's live menu, published.
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
+    organization_slug: 'demo-club',
     table_label: '1',
     menu_id: expect.stringMatching(/^nd_[0-9A-Za-z]{22}$/),
   })
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)
-  await guest.waitForURL(`**${venue.path}?t=${token}`)
+  await guest.waitForURL(`**${GUEST_PATH}?t=${token}`)
   await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(guest.getByText('Маса 1', { exact: true })).toBeVisible()
   await guest.screenshot({ path: shot('guest-table-1-bg') })
@@ -283,6 +286,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
+    organization_slug: 'demo-club',
     table_label: 'Тераса Е5',
     menu_id: expect.stringMatching(/^nd_[0-9A-Za-z]{22}$/),
   })

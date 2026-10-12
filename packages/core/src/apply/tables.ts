@@ -20,6 +20,7 @@
 import {
   type AreaRow as Area,
   areas,
+  authOrganization,
   type DbPool,
   type VenueTableRow as Table,
   venues,
@@ -253,11 +254,15 @@ export async function findVenueTable(
 export interface TokenFiles {
   readonly venuePublicId: string
   readonly venueSlug: string
+  /** The organisation's slug (D84: `/t/<token>` leads to `/m/<organisation>/<venue>`), or null when unknown. */
+  readonly organizationSlug: string | null
   /**
    * The venue was deleted (D76): it should have no files at all (`files` is empty, whatever its
    * tables hold). The job withdraws the files it is told about (`retired`) instead.
    */
   readonly archived: boolean
+  /** The venue was unpublished (D86): no files either, until the next publish. */
+  readonly unpublished: boolean
   readonly files: readonly {
     readonly token: string
     readonly tableLabel: string
@@ -279,13 +284,27 @@ export async function loadTokenFiles(
   if (!isId('vn', venueId)) return null
   return withTenant(pool, tenantId, async (tx) => {
     const [venue] = await tx
-      .select({ slug: venues.slug, publicId: venues.publicId, archivedAt: venues.archivedAt })
+      .select({
+        slug: venues.slug,
+        publicId: venues.publicId,
+        archivedAt: venues.archivedAt,
+        unpublishedAt: venues.unpublishedAt,
+      })
       .from(venues)
       .where(eq(venues.id, venueId))
     if (venue === undefined) return null
-    if (venue.archivedAt !== null) {
-      return { venuePublicId: venue.publicId, venueSlug: venue.slug, archived: true, files: [] }
+    const [organization] = await tx
+      .select({ slug: authOrganization.slug })
+      .from(authOrganization)
+      .where(eq(authOrganization.id, tenantId))
+    const head = {
+      venuePublicId: venue.publicId,
+      venueSlug: venue.slug,
+      organizationSlug: organization?.slug ?? null,
+      archived: venue.archivedAt !== null,
+      unpublished: venue.unpublishedAt !== null,
     }
+    if (head.archived || head.unpublished) return { ...head, files: [] }
     const rows = await tx
       .select({ table: venueTables })
       .from(venueTables)
@@ -310,7 +329,7 @@ export async function loadTokenFiles(
         menuId: routes.tables.get(table.id as TableId) ?? null,
       })
     }
-    return { venuePublicId: venue.publicId, venueSlug: venue.slug, archived: false, files }
+    return { ...head, files }
   })
 }
 

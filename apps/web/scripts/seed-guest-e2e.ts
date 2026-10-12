@@ -46,6 +46,7 @@ import { authOrganization, sourceLinks, venues, withTenant } from '@restro/db'
 import { fixture } from '@restro/shell/testing'
 import { and, eq, inArray } from 'drizzle-orm'
 import { writeLiveOverlay, writePublishFiles } from '../../worker/src/publish/files'
+import { writeOrganizationIndex } from '../../worker/src/publish/organization-index'
 import { runAssetVariants } from '../../worker/src/publish/variants'
 import {
   GUEST_BRAND,
@@ -216,9 +217,13 @@ async function main(): Promise<void> {
   const scope = { tenantId, menuId: menu.id, venueId: venue.id as never }
   const files = await writePublishFiles(deps, scope)
   await writeLiveOverlay(deps, scope)
+  // The organisation's index (D84), as the publish job writes it after the files.
+  await writeOrganizationIndex(deps, tenantId)
   await writeTableTokenFile(publishStore, GUEST_TABLE_TOKEN, {
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
+    // The demo organisation's slug (D84): `/t/<token>` leads to `/m/demo-club/<venue>`.
+    organization_slug: 'demo-club',
     table_label: GUEST_TABLE_LABEL,
   })
 

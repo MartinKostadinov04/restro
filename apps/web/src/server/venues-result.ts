@@ -100,3 +100,21 @@ export type RestoreVenueError = 'not_allowed' | 'invalid' | 'failed'
 export type RestoreVenueResult =
   | { readonly ok: true; readonly name: string; readonly filesQueued: boolean }
   | { readonly ok: false; readonly error: RestoreVenueError }
+
+/**
+ * What `unpublishVenueAction` can refuse:
+ * - `not_allowed`: only owners and admins unpublish a venue;
+ * - `invalid`: the request is malformed, or the venue is not one of this organisation's;
+ * - `venue_archived`: the venue is in the bin;
+ * - `failed`: something broke on the server (logged there).
+ */
+export type UnpublishVenueError = 'not_allowed' | 'invalid' | 'venue_archived' | 'failed'
+
+/**
+ * The answer of `unpublishVenueAction` (D86): the venue's name, for the message. `filesQueued` is
+ * false when the jobs that withdraw its guest files could not be queued (the venue is unpublished
+ * in the database; the next job for it withdraws them).
+ */
+export type UnpublishVenueResult =
+  | { readonly ok: true; readonly name: string; readonly filesQueued: boolean }
+  | { readonly ok: false; readonly error: UnpublishVenueError }

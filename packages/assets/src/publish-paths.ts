@@ -8,13 +8,16 @@
 //   m/<nd_ id>/<vn_ id>/current.json   {snapshot_id, version, hash}: which snapshot is current
 //   m/<nd_ id>/<vn_ id>/live.json      the live overlay (sold-out marks)
 //   a/<as_ id>/w<width>.webp           a photo variant; never changes
-//   v/<venue public code>.json         {venue_id, menu_id, slug}: which menu `/m/<slug>-<code>` shows (S3-03, D68)
-//   t/<table token>.json               {venue_public_id, venue_slug, table_label}: what a table's QR code means
+//   o/<organisation slug>.json         the organisation's venues by address name, or a redirect
+//                                      from an old organisation name: where `/m/<organisation>/<venue>` starts (D84)
+//   v/<venue public code>.json         {venue_id, menu_id, slug, organization}: what the old address `/m/<slug>-<code>` shows (S3-03, D68)
+//   t/<table token>.json               {venue_public_id, venue_slug, organization_slug, table_label, menu_id}: what a table's QR code means
 //
 // Pure: no I/O.
 import {
   type AssetId,
   isId,
+  isOrganizationSlug,
   isPublicId,
   type NodeId,
   type SnapshotId,
@@ -28,6 +31,7 @@ export type PublishPathKind =
   | 'current'
   | 'live'
   | 'variant'
+  | 'organization_index'
   | 'venue_index'
   | 'table_token'
 
@@ -37,6 +41,7 @@ export type ParsedPublishPath =
   | { readonly kind: 'current'; readonly menuId: NodeId; readonly venueId: VenueId }
   | { readonly kind: 'live'; readonly menuId: NodeId; readonly venueId: VenueId }
   | { readonly kind: 'variant'; readonly assetId: AssetId; readonly width: number }
+  | { readonly kind: 'organization_index'; readonly slug: string }
   | { readonly kind: 'venue_index'; readonly publicId: string }
   | { readonly kind: 'table_token'; readonly token: string }
 
@@ -64,6 +69,11 @@ export function parsePublishPath(path: string): ParsedPublishPath | null {
     // public code, so they cannot be read, written or served.
     const publicId = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
     if (isPublicId(publicId)) return { kind: 'venue_index', publicId }
+    return null
+  }
+  if (parts.length === 2 && parts[0] === 'o') {
+    const slug = /^(.+)\.json$/.exec(parts[1] ?? '')?.[1]
+    if (isOrganizationSlug(slug)) return { kind: 'organization_index', slug }
     return null
   }
   if (parts.length === 2 && parts[0] === 't') {
@@ -110,6 +120,8 @@ export const variantPath = (assetId: AssetId, width: number): string =>
   `a/${assetId}/w${width}.webp`
 /** The path of the index of a venue, by its public code: which menu `/m/<slug>-<code>` shows. */
 export const venueIndexPath = (publicId: string): string => `v/${publicId}.json`
+/** The path of an organisation's index (or redirect) by its slug: where `/m/<organisation>/<venue>` starts. */
+export const organizationIndexPath = (slug: string): string => `o/${slug}.json`
 /** The path of the file behind a table's QR code. */
 export const tableTokenPath = (token: string): string => `t/${token}.json`
 
@@ -126,6 +138,7 @@ export function publishCacheControl(path: string): string {
     case 'variant':
       return IMMUTABLE
     case 'current':
+    case 'organization_index':
     case 'venue_index':
     case 'table_token':
       return 'public, max-age=30'

@@ -20,6 +20,8 @@ import {
   JOB_NAMES,
   type PublishMenuJob,
   PublishMenuJobSchema,
+  type PublishOrganizationIndexJob,
+  PublishOrganizationIndexJobSchema,
   type PublishScopeJob,
   PublishScopeJobSchema,
   type PublishTableTokensJob,
@@ -32,6 +34,7 @@ import type { z } from 'zod'
 
 import { autoPublishIsPaused, queuePublishForAsset, resumeAutoPublish } from '../publish/after-sync'
 import { type PublishFilesDeps, writeLiveOverlay, writePublishFiles } from '../publish/files'
+import { writeOrganizationIndex } from '../publish/organization-index'
 import { type LiveAsks, queueLiveRollovers } from '../publish/rollover'
 import { writeTableTokenFiles } from '../publish/table-tokens'
 import { runAssetVariants } from '../publish/variants'
@@ -79,6 +82,22 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
       await writeLiveOverlay(filesDeps(context), scope)
     } catch (error) {
       context.log.warn({ err: error }, 'live.json could not be written after a publish')
+    }
+  }
+
+  /**
+   * The organisation's index after a publish or a withdrawal (D84): the venue joins or leaves
+   * `o/<organisation>.json`. Idempotent; a failure is logged and does not fail the publish, and
+   * the next publish or the index job repairs it.
+   */
+  async function refreshOrganizationIndex(context: WorkerContext, tenantId: string): Promise<void> {
+    try {
+      await writeOrganizationIndex({ pool: context.pool, store: deps.publishStore }, tenantId)
+    } catch (error) {
+      context.log.warn(
+        { err: error },
+        'the organisation index could not be written after a publish',
+      )
     }
   }
 
@@ -205,6 +224,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
             // `unchanged` writes files too: they are normally there already (nothing is written
             // then), and a publish whose files failed halfway is repaired by the next one.
             const files = await writePublishFiles(filesDeps(context), { tenantId, menuId, venueId })
+            await refreshOrganizationIndex(context, tenantId)
             if (files.status === 'withdrawn') {
               // Deleted while this publish ran: the snapshot is stored, and the address is not out.
               return {
@@ -260,6 +280,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
           { tenantId: payload.tenantId, kind: 'publish_files' },
           async (): Promise<RunReport> => {
             const result = await writePublishFiles(filesDeps(context), payload)
+            await refreshOrganizationIndex(context, payload.tenantId)
             if (result.status === 'nothing_published') {
               return { notes: ['nothing is published for this menu yet'] }
             }
@@ -414,5 +435,44 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     },
   })
 
-  return [publish, files, live, liveTick, variants, tableTokens] as JobDefinition[]
+  // --- publish-organization-index ------------------------------------------------------
+
+  const organizationIndex = defineJob<PublishOrganizationIndexJob>({
+    name: JOB_NAMES.publishOrganizationIndex,
+    options: {
+      policy: 'stately',
+      queue: {
+        retryLimit: 2,
+        retryDelay: 30,
+        retryBackoff: true,
+        expireInSeconds: 5 * 60,
+        deleteAfterSeconds: 24 * 60 * 60,
+      },
+      work: { pollingIntervalSeconds: 2 },
+    },
+    async handler(jobs, context) {
+      for (const job of jobs) {
+        const payload = parsePayload(
+          PublishOrganizationIndexJobSchema,
+          job,
+          JOB_NAMES.publishOrganizationIndex,
+        )
+        const result = await writeOrganizationIndex(
+          { pool: context.pool, store: deps.publishStore },
+          payload.tenantId,
+        )
+        context.log.info({ tenantId: payload.tenantId, ...result }, 'organisation index')
+      }
+    },
+  })
+
+  return [
+    publish,
+    files,
+    live,
+    liveTick,
+    variants,
+    tableTokens,
+    organizationIndex,
+  ] as JobDefinition[]
 }
