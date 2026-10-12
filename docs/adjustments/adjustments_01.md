@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D84** Clean guest addresses: `<our domain>/m/<organisation>/<venue>`, no visible codes.
+  Names are generated from the organisation's and venue's names (also for POS venues) and editable later; old names keep redirecting, so printed links never break. The venue name is unique within its organisation. With a custom domain (D80) the path parts it covers disappear (`menu.club.bg`, `menu.group.bg/club-sofia`). Path form chosen over subdomains as simpler to apply now.
 - **D83** A deleted venue is restorable for 30 days, then purged; or "Delete permanently" at once from Organisation › Deleted venues.
   Chosen for scale: an unused venue shouldn't take space forever. The purge erases the venue's own data (menu, tables, published files, history); items another venue uses stay; its public and QR codes are never reused. Only the purge job may delete (its own database role). Amends D76.
 - **D77 (platform part)** One central source of a venue's menu languages.
@@ -32,7 +34,7 @@ Three layers, kept apart:
 - **P-06** Venue profile: address, phone, opening hours, description, website.
   A venue has none of these today. A till fills them when the venue is added; a person types them for a hand-made venue or over the till's values.
 - **P-07** Make a venue's languages, time zone and closing time editable (today read-only).
-- **P-08** Venue address names unique within an organisation, needed for `menu.group.bg/<venue>` (D80).
+- ~~P-08~~ became D84 (venue names unique within an organisation).
 
 **Open**
 - **T78** Should a name typed in Restro beat the till's stand-in name?
