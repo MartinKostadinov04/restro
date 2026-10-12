@@ -250,10 +250,12 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
   expect(redirect.status()).toBe(302)
   expect(redirect.headers().location).toBe(`${venue.path}?t=${token}`)
   const file = await page.request.get(`/cdn/t/${token}.json`)
+  // The file also says which menu the code opens (D95): the venue's live menu, published.
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
     table_label: '1',
+    menu_id: expect.stringMatching(/^nd_[0-9A-Za-z]{22}$/),
   })
 
   const guest = await guestPhone(context)
@@ -282,6 +284,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
     table_label: 'Тераса Е5',
+    menu_id: expect.stringMatching(/^nd_[0-9A-Za-z]{22}$/),
   })
 
   const guest = await guestPhone(context)
