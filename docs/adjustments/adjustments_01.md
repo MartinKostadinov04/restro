@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D90** Consistency fixes after reviewing the venue and menu decisions.
+  Restoring a deleted POS venue re-links its till venue if still free (else refused, naming who took it). A POS venue's structure is our own mapper (order) and dictionary (names), starting as a copy of the till's: reorder, rename, hide; no own sections; syncs never touch them. Each menu has its own draft and published version; the venue is Live when its live menu is published. One shell and design per venue, the same for all its menus.
 - **D89** Hand-made venues have full control; POS venues can hide but not delete.
   Hand-made: create, edit and delete menus, sections and items. POS venue: hide, sold out, reorder, own name/description/photo over the till's, tags; never delete or create items or change prices, because the POS is the source and would bring them back. An item deleted in the POS leaves Restro after the next full read.
 - **D88** A venue holds several menus; exactly one is live.
