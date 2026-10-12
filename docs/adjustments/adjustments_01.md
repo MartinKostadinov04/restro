@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D85** New venue asks only what no source can give.
+  From a POS: pick the instance and its venue, nothing to type; name, address and languages come from the source and can be edited later. By hand: name and languages; the address is generated from the name as an editable preview.
 - **D84** Clean guest addresses: `<our domain>/m/<organisation>/<venue>`, no visible codes.
   Names are generated from the organisation's and venue's names (also for POS venues) and editable later; old names keep redirecting, so printed links never break. The venue name is unique within its organisation. With a custom domain (D80) the path parts it covers disappear (`menu.club.bg`, `menu.group.bg/club-sofia`). Path form chosen over subdomains as simpler to apply now.
 - **D83** A deleted venue is restorable for 30 days, then purged; or "Delete permanently" at once from Organisation › Deleted venues.
