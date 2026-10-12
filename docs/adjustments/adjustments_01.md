@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D86** Venue states and the All venues card.
+  States: Draft (not published yet, or unpublished), Live (published), Archived (in the organisation's bin until erased by the clock or by hand). The card shows the display name, the state, the POS connection (or "By hand"), the venue's name in that POS, and a link to the full menu preview. Needs an "Unpublish" action. The preview is the whole menu, not a table's view; its design is discussed with the design topic.
 - **D85** New venue asks only what no source can give.
   From a POS: pick the instance and its venue, nothing to type; name, address and languages come from the source and can be edited later. By hand: name and languages; the address is generated from the name as an editable preview.
 - **D84** Clean guest addresses: `<our domain>/m/<organisation>/<venue>`, no visible codes.
