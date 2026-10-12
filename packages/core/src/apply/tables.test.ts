@@ -522,7 +522,8 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       const rows = await withTenant(app, tenant, (tx) =>
         tx.select().from(venueTables).where(eq(venueTables.id, two.id)),
       )
-      expect(rows[0]).toMatchObject({ qrToken: null })
+      // The token stays on the archived row (the purge tombstones it, D83); its file is gone.
+      expect(rows[0]).toMatchObject({ qrToken: token })
       expect(rows[0]?.archivedAt).toBeInstanceOf(Date)
       expect((await tablesOf(venue)).map((table) => table.number)).toEqual(['1'])
       expect((await loadTokenFiles(app, tenant, venue))?.files).toHaveLength(1)

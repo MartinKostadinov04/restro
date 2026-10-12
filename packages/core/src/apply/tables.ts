@@ -23,6 +23,7 @@ import {
   authOrganization,
   type DbPool,
   type VenueTableRow as Table,
+  tombstones,
   venues,
   venueTables,
   withTenant,
@@ -417,6 +418,22 @@ async function updatedArea(tx: WriteTx, areaId: string, set: Partial<Area>): Pro
   return row
 }
 
+/**
+ * A token no purged table ever had (D83: a tombstoned token is never reissued, so an old sticker
+ * can never lead to another table). Drawn again on the rare hit.
+ */
+async function freshToken(tx: WriteTx): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const token = newTableToken()
+    const [taken] = await tx
+      .select({ value: tombstones.value })
+      .from(tombstones)
+      .where(and(eq(tombstones.kind, 'table_token'), eq(tombstones.value, token)))
+    if (taken === undefined) return token
+  }
+  throw new Error('could not draw a table code that was never purged')
+}
+
 /** The tokens of the area's live tables (their files go when the area is hidden or deleted). */
 async function tokensOfArea(tx: WriteTx, areaId: string): Promise<string[]> {
   const rows = await tx
@@ -458,7 +475,7 @@ export async function issueTableToken(
     if (found.table.hidden || found.area.hidden) {
       return refusal('hidden', 'a hidden table gets no code')
     }
-    const updated = await updatedTable(tx, found.table.id, { qrToken: newTableToken() })
+    const updated = await updatedTable(tx, found.table.id, { qrToken: await freshToken(tx) })
     return {
       ok: true,
       venueId: found.table.venueId as VenueId,
@@ -774,7 +791,10 @@ export async function createTable(
   })
 }
 
-/** Deletes a table of a venue that has no till (D95): it is archived and its code retired. */
+/**
+ * Deletes a table of a venue that has no till (D95): it is archived and its code retired (its
+ * file goes; the token stays on the row so the purge can tombstone it, D83).
+ */
 export async function deleteTable(
   pool: DbPool,
   tenantId: string,
@@ -786,10 +806,7 @@ export async function deleteTable(
     if (await servesTill(tx, found.table.venueId)) {
       return refusal('from_till', 'the tables of this venue come from its till')
     }
-    const updated = await updatedTable(tx, found.table.id, {
-      archivedAt: new Date(),
-      qrToken: null,
-    })
+    const updated = await updatedTable(tx, found.table.id, { archivedAt: new Date() })
     return {
       ok: true,
       venueId: found.table.venueId as VenueId,
@@ -815,7 +832,7 @@ export async function deleteArea(
     const now = new Date()
     await tx
       .update(venueTables)
-      .set({ archivedAt: now, qrToken: null })
+      .set({ archivedAt: now })
       .where(and(eq(venueTables.areaId, area.id), isNull(venueTables.archivedAt)))
     const updated = await updatedArea(tx, area.id, { archivedAt: now })
     return { ok: true, venueId: area.venueId as VenueId, area: toArea(updated), retired } as const
@@ -875,7 +892,7 @@ export async function issueAllTableTokens(
     for (const row of rows) {
       await tx
         .update(venueTables)
-        .set({ qrToken: newTableToken() })
+        .set({ qrToken: await freshToken(tx) })
         .where(eq(venueTables.id, row.id))
     }
     return {

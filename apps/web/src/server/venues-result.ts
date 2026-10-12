@@ -118,3 +118,22 @@ export type UnpublishVenueError = 'not_allowed' | 'invalid' | 'venue_archived' |
 export type UnpublishVenueResult =
   | { readonly ok: true; readonly name: string; readonly filesQueued: boolean }
   | { readonly ok: false; readonly error: UnpublishVenueError }
+
+/**
+ * What `purgeVenueAction` ("Delete permanently", D83) can refuse:
+ * - `not_allowed`: only owners erase a venue;
+ * - `invalid`: the request is malformed, or the venue is not one of this organisation's;
+ * - `not_deleted`: the venue is not in the bin (delete it first);
+ * - `name_mismatch`: the typed name is not the venue's;
+ * - `failed`: something broke on the server (logged there).
+ */
+export type PurgeVenueError = 'not_allowed' | 'invalid' | 'not_deleted' | 'name_mismatch' | 'failed'
+
+/**
+ * The answer of `purgeVenueAction`: the venue's name, for the message. The erasing itself is the
+ * worker's purge job; `queued` is false when it could not be queued (the daily purge erases the
+ * venue 30 days after its deletion anyway).
+ */
+export type PurgeVenueResult =
+  | { readonly ok: true; readonly name: string; readonly queued: boolean }
+  | { readonly ok: false; readonly error: PurgeVenueError }

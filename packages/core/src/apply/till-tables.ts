@@ -10,7 +10,8 @@
 //   move it to another area, and the manager everything else (name, order, hidden). A
 //   non-public or placeholder ("--") place starts hidden (D95); the manager may show it;
 // - a place the till deleted (concluded after a complete read, rule 6) archives its table and
-//   retires its code; one listed again brings the table back, without a code;
+//   retires its code (the token stays on the archived row, for the purge's tombstone, D83); one
+//   listed again brings the table back, without a code;
 // - a table of the venue that none of the till venue's places points to (it came from a till
 //   venue the venue served before, or was made by hand before the till was linked) is archived
 //   and its code retired: on a venue that serves a till, the till's places are the tables (D95);
@@ -175,10 +176,7 @@ export async function mirrorTillTables(
   const pointedTo = new Set(input.places.map((place) => place.tableId))
   for (const table of existingTables) {
     if (table.archivedAt !== null || pointedTo.has(table.id)) continue
-    await tx
-      .update(venueTables)
-      .set({ archivedAt: now, qrToken: null })
-      .where(eq(venueTables.id, table.id))
+    await tx.update(venueTables).set({ archivedAt: now }).where(eq(venueTables.id, table.id))
     if (table.qrToken !== null) retiredTokens.push(table.qrToken)
   }
 
@@ -188,10 +186,7 @@ export async function mirrorTillTables(
     const table = place.tableId === null ? undefined : tableById.get(place.tableId)
     if (place.state === 'deleted') {
       if (table !== undefined && table.archivedAt === null) {
-        await tx
-          .update(venueTables)
-          .set({ archivedAt: now, qrToken: null })
-          .where(eq(venueTables.id, table.id))
+        await tx.update(venueTables).set({ archivedAt: now }).where(eq(venueTables.id, table.id))
         if (table.qrToken !== null) retiredTokens.push(table.qrToken)
       }
       continue
@@ -223,11 +218,15 @@ export async function mirrorTillTables(
       continue
     }
     // The till's number and hall follow the till; the manager's name, order and hidden stay.
-    const changes: Partial<{ number: string; areaId: string; archivedAt: null }> = {}
+    const changes: Partial<{ number: string; areaId: string; archivedAt: null; qrToken: null }> = {}
     const wantedNumber = number ?? (table.name === null ? '—' : table.number)
     if (wantedNumber !== null && wantedNumber !== table.number) changes.number = wantedNumber
     if (table.areaId !== area.id) changes.areaId = area.id
-    if (table.archivedAt !== null) changes.archivedAt = null
+    // Listed again: the table comes back without a code (its old sticker was retired).
+    if (table.archivedAt !== null) {
+      changes.archivedAt = null
+      changes.qrToken = null
+    }
     if (Object.keys(changes).length > 0) {
       await tx.update(venueTables).set(changes).where(eq(venueTables.id, table.id))
     }

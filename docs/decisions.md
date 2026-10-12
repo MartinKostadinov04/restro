@@ -160,7 +160,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents.
-- T79 Claude: Adjustments 01 (`docs/adjustments/adjustments_01.md`, plan `adjustments_01-plan.md` approved 10-12); wave 0 done; ad/01 (schema, roles), ad/02 (menus, languages, barsy roots) ad/03a (areas, tables, menu routes) and ad/03b (guest addresses, venue states, Unpublish) built 10-12, CI pending; ad/04–ad/05 next, then screens in pairs A–D, then the purge rehearsal.
+- T79 Claude: Adjustments 01 (`docs/adjustments/adjustments_01.md`, plan `adjustments_01-plan.md` approved 10-12); wave 0 done; ad/01 (schema, roles), ad/02 (menus, languages, barsy roots) ad/03a (areas, tables, menu routes) and ad/03b (guest addresses, venue states, Unpublish) built 10-12, ad/04 (purge, versions) built 10-13, CI pending; ad/05 next, then screens in pairs A–D, then the purge rehearsal.
 - T45 Claude: deploy pipeline re-runs the freeze-window check; at the Stage 3 deploy.
 - T44 Martin: review Bulgarian wording in `apps/web/messages/bg.json` (S3 namespaces listed in the tracker).
 - T47 Claude: "dismissed link" marker so sync does not re-link or re-place after unlink or unplace; before the unlink UI.

@@ -345,9 +345,11 @@ describe('buildJobs', () => {
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
     ])
-    expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('SEAL_PUBLIC_KEY')
-    expect(warnings[0]).not.toMatch(/[A-Za-z0-9_-]{40,}/)
+    // One warning per missing setting: the sealing keys, and the purge connection (D83).
+    expect(warnings).toHaveLength(2)
+    expect(warnings.some((warning) => warning.includes('SEAL_PUBLIC_KEY'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(true)
+    for (const warning of warnings) expect(warning).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
   it('with the keys it adds the five sync jobs and the one tick to the publish jobs', async () => {
@@ -377,5 +379,22 @@ describe('buildJobs', () => {
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
     ])
+  })
+
+  it('with DATABASE_URL_PURGE it adds the two purge jobs (D83); without it, nothing is ever erased', async () => {
+    const { loadConfig } = await import('../src/config')
+    const config = loadConfig({
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      DATABASE_URL_PURGE: 'postgres://restro_purge:x@localhost:54329/restro',
+    })
+    const warnings: string[] = []
+    const jobs = await buildJobs(config, {
+      warn: (message: string) => warnings.push(message),
+    } as never)
+    expect(jobs.map((job) => job.name).slice(-2)).toEqual([
+      JOB_NAMES.purgeVenue,
+      JOB_NAMES.purgeTick,
+    ])
+    expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(false)
   })
 })

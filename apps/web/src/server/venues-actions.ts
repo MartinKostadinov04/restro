@@ -44,6 +44,7 @@ import {
   type DeleteVenueResult,
   NEW_VENUE_CURRENCY,
   NEW_VENUE_TIMEZONE,
+  type PurgeVenueResult,
   type RenameVenueResult,
   type RenameVenueSlugResult,
   type RestoreVenueResult,
@@ -371,6 +372,47 @@ export async function unpublishVenueAction(input: unknown): Promise<UnpublishVen
       }
     }
     logError('venue_unpublish_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+const PurgeVenueInput = z.strictObject({
+  venueId: idSchema('vn'),
+  confirmName: z.string().max(MAX_VENUE_NAME_LENGTH + 10),
+})
+
+/**
+ * "Delete permanently" (D83): queues the purge of a venue that is in the bin, for an owner who
+ * typed its name. The web app erases nothing itself (the app role cannot delete venue data);
+ * the worker's purge job does, through its own role, and tombstones the public code and the
+ * table tokens. Without this, the daily purge erases the venue 30 days after its deletion.
+ */
+export async function purgeVenueAction(input: unknown): Promise<PurgeVenueResult> {
+  const parsed = PurgeVenueInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  const { venueId, confirmName } = parsed.data
+  try {
+    const { organization } = await requireTenant()
+    if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
+    const venue = await getVenueInAnyState(organization.id, venueId)
+    if (venue === null) return { ok: false, error: 'invalid' }
+    if (venue.archivedAt === null) return { ok: false, error: 'not_deleted' }
+    if (confirmName.trim() !== venue.name) return { ok: false, error: 'name_mismatch' }
+    let queued = true
+    try {
+      await enqueueJob(JOB_NAMES.purgeVenue, {
+        tenantId: organization.id as TenantId,
+        venueId: venueId as VenueId,
+      })
+    } catch (error) {
+      logError('venue_purge_not_queued', error)
+      queued = false
+    }
+    revalidatePath('/', 'layout')
+    return { ok: true, name: venue.name, queued }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('venue_purge_failed', error)
     return { ok: false, error: 'failed' }
   }
 }

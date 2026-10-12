@@ -1245,11 +1245,14 @@ export const places = restro.table(
       columns: [t.tenantId, t.integrationId, t.bid],
       foreignColumns: [barsyVenues.tenantId, barsyVenues.integrationId, barsyVenues.bid],
     }),
+    // A purged table (D83) leaves the place without one; the next read makes a new table if the
+    // place's till venue serves a venue (in the database: `ON DELETE SET NULL (table_id)`,
+    // written by hand in migration 0026, since a plain SET NULL would null the tenant too).
     foreignKey({
       name: 'places_table_fk',
       columns: [t.tenantId, t.tableId],
       foreignColumns: [venueTables.tenantId, venueTables.id],
-    }),
+    }).onDelete('set null'),
     check('places_id_format', sql`${t.id} ~ '^tb_[0-9A-Za-z]+$'`),
     check('places_state', sql`${t.state} in ('active', 'missing', 'deleted')`),
   ],

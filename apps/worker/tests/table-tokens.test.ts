@@ -285,7 +285,8 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
          where t.id = $1`,
         [gone.id],
       )
-      expect(stored).toEqual({ state: 'deleted', qr_token: null, archived: true })
+      // The token stays on the archived row, for the purge's tombstone (D83); its file is gone.
+      expect(stored).toEqual({ state: 'deleted', qr_token: goneToken, archived: true })
 
       // The sync queued the job for the venue, naming the token.
       expect(tableJobs()).toHaveLength(1)

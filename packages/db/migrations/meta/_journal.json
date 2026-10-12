@@ -183,6 +183,13 @@
       "when": 1791829537565,
       "tag": "0025_places_drop_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791838401645,
+      "tag": "0026_places_table_set_null",
+      "breakpoints": true
     }
   ]
 }

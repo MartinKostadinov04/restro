@@ -11,6 +11,7 @@ import {
   menus,
   nodes,
   tenants,
+  tombstones,
   type Venue,
   venueSlugHistory,
   venues,
@@ -219,10 +220,26 @@ function checkedVenue(tenantId: string, input: ProvisionVenueInput): CheckedVenu
 }
 
 /** Inserts the venue row, with a fresh id and a fresh public code. */
+/**
+ * A public code no purged venue ever had (D83: a tombstoned code is never reissued, so an old
+ * sticker or link can never open another venue's menu). Drawn again on the rare hit.
+ */
+async function freshPublicId(tx: WriteTx): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = newPublicId()
+    const [taken] = await tx
+      .select({ value: tombstones.value })
+      .from(tombstones)
+      .where(and(eq(tombstones.kind, 'public_code'), eq(tombstones.value, code)))
+    if (taken === undefined) return code
+  }
+  throw new Error('could not draw a public code that was never purged')
+}
+
 async function insertVenueRow(tx: WriteTx, tenantId: string, venue: CheckedVenue): Promise<Venue> {
   const [row] = await tx
     .insert(venues)
-    .values({ id: newId('vn'), tenantId, publicId: newPublicId(), ...venue })
+    .values({ id: newId('vn'), tenantId, publicId: await freshPublicId(tx), ...venue })
     .returning()
   if (!row) throw new ProvisionError('invalid_input', 'the venue row was not created')
   return row

@@ -23,7 +23,7 @@
 // writes an `events` row: that changelog is about nodes and their values.
 
 import { type DbPool, venues, venueTables } from '@restro/db'
-import { withTenantWrite } from '@restro/db/write'
+import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { tillVenueLinks } from '../connectors/till-venues'
@@ -33,6 +33,19 @@ import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** The longest venue name (the same limit as creating a venue). */
 export const MAX_VENUE_NAME_LENGTH = 120
+
+/**
+ * True when the venue serves a till venue (its menus come from a POS). Inside a transaction the
+ * caller owns; the purge asks before erasing a venue (a deletion releases the link, D76).
+ */
+export async function venueServesTill(tx: WriteTx, venueId: string): Promise<boolean> {
+  const [link] = await tx
+    .select({ bid: tillVenueLinks.bid })
+    .from(tillVenueLinks)
+    .where(eq(tillVenueLinks.venueId, venueId))
+    .limit(1)
+  return link !== undefined
+}
 
 function checkedIds(tenantId: string, venueId: string): void {
   if (!isId('tn', tenantId)) throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
