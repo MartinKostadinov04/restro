@@ -19,6 +19,9 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D92** Composer has two subtabs, Structure and Design; the designer is simplified.
+  - Structure: POS venues may create their own sections too, placed through the mapper (amends D90). Each section is vertical or horizontal (e.g. promotions, top picks as a row). Menu layout (list, one or two columns) is set here: a default, and whether guests may switch.
+  - Design: choose a template (stored shells, phone preview pop-up with the general menu preview). Cards in order: logo and menu header name → guest functions (own section) → font (dropdown), corners, shadow, screen → colours (only Primary, Secondary, Tertiary; no presets, no swatch palette). A sticky phone preview beside it.
 - **D91** Gaps closed after a user-side review.
   Organisation › General (name and address name). The purge also clears data of removed POS instances and items no venue uses. A QR code on an unpublished menu falls back to the live menu. Hand-made venues' languages are the owner's choice. A domain on a deleted venue says "not available" and is detached on purge. Deleted menus go to a 30-day bin in the venue's settings. A POS venue may move items between sections. Roles (RBAC) are left for later.
 - **D90** Consistency fixes after reviewing the venue and menu decisions.
