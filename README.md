@@ -32,7 +32,7 @@ Copy `.env.example` to `.env.local` when a task needs settings. The default `DAT
 Needs the database, its tables, the app role and a demo owner. With `pnpm db:local` running and `.env.local` copied from `.env.example`:
 
 ```
-pnpm db:migrate && pnpm db:roles    # DATABASE_URL_OWNER and DATABASE_APP_PASSWORD from .env.local; set them in your shell first (the db scripts do not read .env files)
+pnpm db:migrate && pnpm db:roles    # DATABASE_URL_OWNER, DATABASE_APP_PASSWORD and DATABASE_PURGE_PASSWORD from .env.local; set them in your shell first (the db scripts do not read .env files)
 pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club, with its own random public code: the guest address is printed) + its demo menu
 pnpm dev                            # http://localhost:3000 → sign in with DEV_ADMIN_EMAIL / DEV_ADMIN_PASSWORD
 ```
@@ -63,6 +63,7 @@ The worker's `dev` script loads the root `.env.local` and then `.env.worker.loca
 | Variable | Meaning | Default |
 |---|---|---|
 | `DATABASE_URL` | `restro_app` connection string. The role carries a 30 s `statement_timeout` and a 60 s `idle_in_transaction_session_timeout` (set by `pnpm db:roles`, so they also hold behind Supabase's session pooler); the worker keeps five connections at most | required |
+| `DATABASE_URL_PURGE` | `restro_purge` connection string (D83): the only role with DELETE on venue data, used by the purge job alone; `pnpm db:roles` creates it with `DATABASE_PURGE_PASSWORD`. Without it the worker registers no purge job | unset |
 | `WORKER_ID` | Name of this process in `worker_heartbeats` | the host name |
 | `WORKER_HEALTH_PORT` | Port of `GET /health` | `8081` |
 | `LOG_LEVEL` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent` | `info` |

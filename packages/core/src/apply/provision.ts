@@ -8,7 +8,7 @@
 
 import { type DbPool, menus, nodes, tenants, type Venue, venues } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import { isVenueSlug } from '../guest-files'
 import { isId, type NodeId, newId } from '../ids'
@@ -28,6 +28,8 @@ export type ProvisionErrorCode =
   | 'venue_missing'
   /** The venue was deleted (archived, D76): every writer of one venue refuses it (`lockLiveVenue`). */
   | 'venue_archived'
+  /** Another venue of the organisation holds this address name (D84; one name per organisation). */
+  | 'slug_taken'
 
 /** Thrown by the provisioning and venue-lifecycle writers for input or state they refuse. */
 export class ProvisionError extends Error {
@@ -224,6 +226,21 @@ function isPublicIdClash(error: unknown): boolean {
   return code === '23505' && constraint === 'venues_public_id_unique'
 }
 
+/** Whether `error` is the clash of an address name with another venue of the organisation (D84). */
+function isSlugClash(error: unknown): boolean {
+  const { code, constraint } = pgErrorOf(error)
+  return code === '23505' && constraint === 'venues_tenant_id_slug_unique'
+}
+
+/** The refusal for a taken address name. */
+function slugTaken(slug: string, cause: unknown): ProvisionError {
+  return new ProvisionError(
+    'slug_taken',
+    `another venue of the organisation already has the address name ${JSON.stringify(slug)}`,
+    { cause },
+  )
+}
+
 /**
  * Creates a venue (a club) for an existing tenant, with a fresh `vn_` id and a fresh public code,
  * and returns the row. Refuses a malformed name, slug, time zone, currency or locale list before
@@ -254,6 +271,7 @@ export async function provisionVenue(
     }
   } catch (error) {
     if (error instanceof ProvisionError) throw error
+    if (isSlugClash(error)) throw slugTaken(checked.slug, error)
     const { code } = pgErrorOf(error)
     if (code === '23503') {
       throw new ProvisionError('tenant_missing', 'the tenant has no row yet: provision it first', {
@@ -281,6 +299,7 @@ export async function provisionVenueIn(
   try {
     return await attempt()
   } catch (error) {
+    if (isSlugClash(error)) throw slugTaken(checked.slug, error)
     if (!isPublicIdClash(error)) throw error
     return await attempt()
   }
@@ -322,6 +341,9 @@ export async function renameVenueSlug(
     if (venue.slug === slug) return { venueId, slug, publicId: venue.publicId, changed: false }
     await tx.update(venues).set({ slug }).where(eq(venues.id, venueId))
     return { venueId, slug, publicId: venue.publicId, changed: true }
+  }).catch((error: unknown) => {
+    if (isSlugClash(error)) throw slugTaken(slug, error)
+    throw error
   })
 }
 
@@ -365,8 +387,14 @@ export async function provisionMenuIn(
   if (locked.refused !== null) {
     throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
   }
-  const [existing] = await tx.select().from(menus).where(eq(menus.venueId, venueId))
+  const [existing] = await tx
+    .select()
+    .from(menus)
+    .where(and(eq(menus.venueId, venueId), isNull(menus.deletedAt)))
+    .orderBy(menus.sortKey, menus.id)
+    .limit(1)
   if (existing) {
+    await adoptLiveMenu(tx, venueId, existing.id)
     return {
       id: existing.id as NodeId,
       venueId: existing.venueId,
@@ -386,5 +414,17 @@ export async function provisionMenuIn(
     rootNodeId,
   }
   await tx.insert(menus).values({ ...menu, tenantId })
+  await adoptLiveMenu(tx, venueId, rootNodeId)
   return { ...menu, created: true }
+}
+
+/**
+ * Makes `menuId` the venue's live menu when it has none yet (`venues.live_menu_id`, D88): a
+ * venue's first menu is live by default. A venue that already chose one is left alone.
+ */
+async function adoptLiveMenu(tx: WriteTx, venueId: string, menuId: string): Promise<void> {
+  await tx
+    .update(venues)
+    .set({ liveMenuId: menuId })
+    .where(and(eq(venues.id, venueId), isNull(venues.liveMenuId)))
 }

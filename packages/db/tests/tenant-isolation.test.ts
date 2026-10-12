@@ -136,30 +136,31 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     ).toMatch(RLS_VIOLATION)
   })
 
-  it('2. slugs are free: any number of venues, of any tenant, may share one (D68)', async () => {
-    // Both tenants' venues were created with the slug `main`; a third one in tenant B too.
+  it('2. a slug is unique within an organisation and free across organisations (D84)', async () => {
+    // Both tenants' venues were created with the slug `main`: fine across organisations.
     const [held] = await withTenant(app, tenantA, (tx) =>
       tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, venueA)),
     )
     expect(held?.slug).toBe('main')
-    // A second venue of tenant B with the same slug; rolled back so other tests see one venue.
-    const slugsInTransaction: string[] = []
-    await expect(
-      withTenantWrite(app, tenantB, async (tx) => {
-        await tx.insert(venues).values({
-          id: testId('vn'),
-          tenantId: tenantB,
-          name: 'Third',
-          slug: 'main',
-          publicId: testPublicId(),
-        })
-        for (const row of await tx.select({ slug: venues.slug }).from(venues)) {
-          slugsInTransaction.push(row.slug)
-        }
-        throw new Error('roll back')
-      }),
-    ).rejects.toThrow('roll back')
-    expect(slugsInTransaction).toEqual(['main', 'main'])
+    const [other] = await withTenant(app, tenantB, (tx) =>
+      tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, venueB)),
+    )
+    expect(other?.slug).toBe('main')
+    // A second venue of tenant B with the same slug is refused by the per-organisation rule
+    // (migration 0022); the failed transaction leaves the one venue as it was.
+    expect(
+      await databaseError(
+        withTenantWrite(app, tenantB, (tx) =>
+          tx.insert(venues).values({
+            id: testId('vn'),
+            tenantId: tenantB,
+            name: 'Third',
+            slug: 'main',
+            publicId: testPublicId(),
+          }),
+        ),
+      ),
+    ).toMatch(/venues_tenant_id_slug_unique/)
   })
 
   it('2. a venue public code is global: the database refuses it for a second tenant too', async () => {

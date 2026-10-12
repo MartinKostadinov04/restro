@@ -6,7 +6,8 @@ import { z } from 'zod'
 /**
  * Id kinds: `nd` node, `as` asset, `sn` snapshot, `tb` table, `tn` tenant, `vn` venue,
  * `tp` template, `cs` change set, `ev` event, `jb` job run, `in` integration, `us` user,
- * `sr` source record, `tg` tag (a venue-defined tag of the guest menu, D60).
+ * `sr` source record, `tg` tag (a venue-defined tag of the guest menu, D60), `ar` area (a hall
+ * or other group of tables, D95).
  */
 export const ID_KINDS = [
   'nd',
@@ -23,6 +24,7 @@ export const ID_KINDS = [
   'us',
   'sr',
   'tg',
+  'ar',
 ] as const
 
 /** One of the id kind prefixes. */
@@ -37,8 +39,10 @@ export type NodeId = Id<'nd'>
 export type AssetId = Id<'as'>
 /** Id of a published snapshot. */
 export type SnapshotId = Id<'sn'>
-/** Id of a table (barsy place) — never the barsy `place_id`. */
+/** Id of a table of a venue (`tables`); never a till's own id for it (rule 3). */
 export type TableId = Id<'tb'>
+/** Id of an area of a venue (`areas`, D95): a hall or any other group of tables. */
+export type AreaId = Id<'ar'>
 /** Id of a tenant (= the auth organisation). */
 export type TenantId = Id<'tn'>
 /** Id of a venue. */

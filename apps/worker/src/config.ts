@@ -31,6 +31,12 @@ const MAX_WORKER_ID_LENGTH = 128
 export interface WorkerConfig {
   /** Connection string of the app role `restro_app` (never the migration owner). */
   readonly databaseUrl: string
+  /**
+   * Connection string of the purge role `restro_purge` (D83), the only role with DELETE on venue
+   * data, or null when DATABASE_URL_PURGE is not set: the purge job is then not registered.
+   * Never the app role, never the owner.
+   */
+  readonly purgeDatabaseUrl: string | null
   /** Identifies this process in `restro.worker_heartbeats`. */
   readonly workerId: string
   /** TCP port of `GET /health`. `0` picks a free port (tests only; the environment cannot set it). */
@@ -158,6 +164,10 @@ function environmentSchema(defaultWorkerId: () => string) {
         .trim()
         .min(1, { error: NOT_SET, abort: true })
         .refine(isPostgresUrl, { error: NOT_A_POSTGRES_URL }),
+      DATABASE_URL_PURGE: z.preprocess(
+        unsetWhenBlank,
+        z.string().trim().refine(isPostgresUrl, { error: NOT_A_POSTGRES_URL }).optional(),
+      ),
       WORKER_ID: z
         .string()
         .optional()
@@ -276,6 +286,7 @@ function environmentSchema(defaultWorkerId: () => string) {
       }
       return {
         databaseUrl: env.DATABASE_URL,
+        purgeDatabaseUrl: env.DATABASE_URL_PURGE ?? null,
         workerId: env.WORKER_ID,
         healthPort: env.WORKER_HEALTH_PORT,
         logLevel: env.LOG_LEVEL,
@@ -306,6 +317,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | Variable | Meaning | Default |
  * |---|---|---|
  * | `DATABASE_URL` | postgres:// URL of the app role `restro_app` | required |
+ * | `DATABASE_URL_PURGE` | postgres:// URL of the purge role `restro_purge` (D83); without it no purge job runs | unset |
  * | `WORKER_ID` | name of this process in `worker_heartbeats` | the host name |
  * | `WORKER_HEALTH_PORT` | port of `GET /health` | 8081 |
  * | `LOG_LEVEL` | fatal, error, warn, info, debug, trace or silent | info |

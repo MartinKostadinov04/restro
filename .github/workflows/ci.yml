@@ -53,6 +53,8 @@ jobs:
       # Migration owner: used by db:migrate, db:roles and the integration tests' set-up only.
       DATABASE_URL_OWNER: postgres://postgres:postgres@localhost:5432/restro
       DATABASE_APP_PASSWORD: ci-only-not-a-secret
+      # The purge role (D83), created by `pnpm db:roles` and used by the purge-role tests.
+      DATABASE_PURGE_PASSWORD: ci-only-purge-not-a-secret
       NEXT_TELEMETRY_DISABLED: '1'
 
     steps:

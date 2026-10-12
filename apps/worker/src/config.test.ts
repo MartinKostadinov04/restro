@@ -23,6 +23,7 @@ describe('loadConfig', () => {
   it('applies the defaults', () => {
     expect(loadConfig({ DATABASE_URL: URL }, () => 'my-host')).toEqual({
       databaseUrl: URL,
+      purgeDatabaseUrl: null,
       workerId: 'my-host',
       healthPort: DEFAULT_HEALTH_PORT,
       logLevel: 'info',
@@ -41,6 +42,7 @@ describe('loadConfig', () => {
     expect(
       loadConfig({
         DATABASE_URL: ` ${URL} `,
+        DATABASE_URL_PURGE: ' postgres://restro_purge:secret@localhost:5432/restro ',
         WORKER_ID: ' worker-a ',
         WORKER_HEALTH_PORT: '9090',
         LOG_LEVEL: 'DEBUG',
@@ -55,6 +57,7 @@ describe('loadConfig', () => {
       }),
     ).toEqual({
       databaseUrl: URL,
+      purgeDatabaseUrl: 'postgres://restro_purge:secret@localhost:5432/restro',
       workerId: 'worker-a',
       healthPort: 9090,
       logLevel: 'debug',

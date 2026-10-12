@@ -28,13 +28,19 @@ interface Journal {
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
-/** A migrations folder holding the migrations before 0015 only (the database before CF-14). */
-function foldersBefore0015(): string {
+/**
+ * A migrations folder holding the migrations before 0015 only (the database before CF-14), or,
+ * with `through`, up to and including 0015. Later migrations are left out on purpose: this test
+ * is about what 0015 did (0022 makes the slug unique per organisation again, D84).
+ */
+function foldersBefore0015(through = false): string {
   const folder = mkdtempSync(join(tmpdir(), 'restro-0014-'))
   mkdirSync(join(folder, 'meta'))
   const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'))
-  const entries = (journal as Journal).entries.filter((entry) => entry.tag < TAG)
-  expect(entries.map((entry) => entry.idx)).toEqual([...Array(15).keys()])
+  const entries = (journal as Journal).entries.filter((entry) =>
+    through ? entry.tag <= TAG : entry.tag < TAG,
+  )
+  expect(entries.map((entry) => entry.idx)).toEqual([...Array(through ? 16 : 15).keys()])
   writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }))
   for (const entry of entries) {
     cpSync(join(MIGRATIONS, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`))
@@ -56,6 +62,7 @@ describe.skipIf(!hasDatabase)('migration 0015 (public code of a venue)', () => {
   let admin: pg.Client
   let client: pg.Client
   let before0015: string
+  let through0015: string
   const migrateTo = (folder: string) =>
     migrate(drizzle({ client }), {
       migrationsFolder: folder,
@@ -68,9 +75,7 @@ describe.skipIf(!hasDatabase)('migration 0015 (public code of a venue)', () => {
     )
     return rows.map((r) => r.row).sort((a, b) => compareText(String(a.id), String(b.id)))
   }
-  // The test applies every migration after 0014; the columns added to `venues` by later ones
-  // (0017: `archived_at`, null for every venue) are not part of what 0015 did.
-  const withoutCode = ({ public_id: _code, archived_at: _archived, ...rest }: Row): Row => rest
+  const withoutCode = ({ public_id: _code, ...rest }: Row): Row => rest
   let start: Row[]
 
   beforeAll(async () => {
@@ -109,6 +114,7 @@ describe.skipIf(!hasDatabase)('migration 0015 (public code of a venue)', () => {
   afterAll(async () => {
     await client?.end()
     if (before0015) rmSync(before0015, { recursive: true, force: true })
+    if (through0015) rmSync(through0015, { recursive: true, force: true })
     if (admin) {
       await admin.query(`drop database if exists ${database} with (force)`)
       await admin.end()
@@ -121,11 +127,8 @@ describe.skipIf(!hasDatabase)('migration 0015 (public code of a venue)', () => {
   })
 
   it('gives every venue its own code of 12 characters a-z0-9 and changes nothing else', async () => {
-    await migrate(drizzle({ client }), {
-      migrationsFolder: MIGRATIONS,
-      migrationsSchema: 'drizzle',
-      migrationsTable: '__drizzle_migrations',
-    })
+    through0015 = foldersBefore0015(true)
+    await migrateTo(through0015)
     const after = await venueRows()
     expect(after).toHaveLength(start.length)
 
