@@ -123,7 +123,7 @@ docs/               tracker, decisions index, adjustments, architecture mirrors,
 - Use floats for money or bypass the money module.
 - Bypass `apply()`.
 - Use the database owner role, `BYPASSRLS`, or disable RLS in app code.
-- Delete rows from app code. One approved exception (D83): the worker's purge job may delete, only through its own dedicated database role.
+- Delete rows from app code, except the three row kinds `apply()` removes as the action itself (`placements`, `field_values`, `source_links`) and Better Auth's session and verification rows. Erasing venue data, or anything in bulk, is only the purge job's, through its dedicated role `restro_purge` (D83).
 - Enable or use the Supabase Data API / anon keys.
 - Commit secrets or `.env*` files (only `.env.example`).
 - Push to `main`, merge your own pull request, or deploy anywhere.

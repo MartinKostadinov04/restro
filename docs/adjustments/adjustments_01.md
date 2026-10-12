@@ -44,7 +44,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
   - **What survives:** tombstones keep the public code and table tokens from ever being reissued. Data another venue uses stays. The purge also clears a removed POS instance's data and items no venue uses.
   - **Restore** re-links the till venue if it's still free; otherwise it's refused, naming the venue that holds it.
   - **Custom domains:** a domain on a deleted venue shows "not available" and is detached on purge.
-- **Guardrail (approved by Martin):** a dedicated database role with DELETE, used only by the purge job. The app role keeps no DELETE. Pin both with tests.
+- **Guardrail (approved by Martin, made precise 10-12):** a dedicated database role `restro_purge` with DELETE, used only by the purge job. The app role may DELETE only `placements`, `field_values` and `source_links` through `apply()`, plus Better Auth's session and verification rows; never venue data, never in bulk. Pin both with tests.
 
 ### V2 Venue states and the All venues card: D86
 - **Now:** `apps/web/app/(admin)/venues/page.tsx` with `apps/web/src/components/admin/venue-card.tsx`. There are no states. Nothing unpublishes except deleting the venue.
@@ -152,7 +152,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
   - **One core function every workflow calls:** sync, new venue, settings lists (with coverage), composer tabs, resolver checks, publisher.
   - **For POS venues:** a language counts from about 20% coverage of guest-facing texts, from the connector's report (I3). A language the owner switched on is never removed.
   - **For hand-made venues:** the owner's choice.
-  - **One main language per venue.** The organisation-level setting goes.
+  - **One main language per venue,** on the venue. The language of untagged till text stays a barsy instance setting (`integrations.config.default_locale`, default `bg_BG`, D82; Martin 10-12); barsy's `lang_id` is P-09.
   - **A guardrail test** stops workflows reading `enabled_locales` directly.
 
 ### T1 Tables & QR: D94, D95 (routing UI depends on M2)
@@ -246,6 +246,7 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **P-05** Store barsy's `Languages_getlist` on the connection and count filled languages from guest-facing `_ml` fields. This is barsy's report for I3, so L1 needs it.
 - **P-06** A venue profile (address, phone, opening hours, description, website), filled by the till or typed by hand.
 - **P-07** Make a venue's time zone and closing time editable (its languages are editable already: D85, D97, L1).
+- **P-09** Use barsy's per-venue `lang_id` (`Barsys_getlist`, null in the demo) as the language of untagged till text, once the docs say what it means.
 - **DM1's provider:** Cloudflare for SaaS (price to confirm), or leave domains for later.
 - **Minor:** whether the composer hints that horizontal sections work best with photos.
 
@@ -257,3 +258,4 @@ Decided by Martin (product owner, non-coder) with the previous lead in a Q&A ses
 - **Test data:** Demo Club Sofia in `restro_accept` mixes 127 items from three till venues. Recreate it after B3 and M1 (D87).
 
 ## Martin's notes
+- **10-12, plan review:** the plan is `adjustments_01-plan.md` (tracker T79). Settled there: the precise DELETE rule (V1), the untagged-text language stays on the barsy instance (L1), one published index per organisation with redirects for renamed organisations (V3), `venues.live_menu_id` and the design copied into every menu's snapshot (M1), manual sync mode still receives shared item changes from other venues' reads (I2, P1), and the purge never removes a snapshot a kept rollback row points to, keeps a content-free log, and frees the address name but never the code or tokens (V1, P1).

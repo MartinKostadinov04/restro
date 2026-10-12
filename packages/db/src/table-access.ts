@@ -55,9 +55,10 @@ export const TABLE_ACCESS = {
   worker_heartbeats: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
 
   // The menu document and its sources (brief S2-01). Every one is tenant-scoped with FORCE RLS
-  // (migration 0004). Nothing here is ever deleted by the app except the rows whose removal is
-  // the action itself: a placement (take an item out of a section), a field value (clearField,
-  // unlink) and a source link (unlink).
+  // (migration 0004). The app role may DELETE only `placements`, `field_values` and
+  // `source_links`, through `apply()`, as the action itself (unplace, clear a field, unlink).
+  // Erasing venue data, or anything in bulk, is only the purge job's, through its dedicated
+  // role (D83, made precise by Martin 10-12).
   // Status and last check change; credentials are replaced; never deleted (disable instead).
   integrations: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
   // Renamed, mapped to one of our venues, catalogue root chosen.
