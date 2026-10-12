@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D88** A venue holds several menus; exactly one is live.
+  Hand-made venue: add menus in Settings › Menus (each with ">" into the composer) or in the composer; pick the live menu in either place. barsy venue: its menus are what barsy designates for it, its public menu (live by default) and its till tree; other catalogue branches aren't its menus. Showing several menus at once is set per QR code or hall (to detail with Tables & QR). **Import menu** ("From other venue"): only between hand-made Restro venues, one-time copy; POS menus can't be copied (limitation for later).
 - **D86** Venue states and the All venues card.
   States: Draft (not published yet, or unpublished), Live (published), Archived (in the organisation's bin until erased by the clock or by hand). The card shows the display name, the state, the POS connection (or "By hand"), the venue's name in that POS, and a link to the full menu preview. Needs an "Unpublish" action. The preview is the whole menu, not a table's view; its design is discussed with the design topic.
 - **D85** New venue asks only what no source can give.
@@ -30,7 +32,7 @@ Three layers, kept apart:
 - **D77 (platform part)** One central source of a venue's menu languages.
   One function in core works out a venue's languages from what the connector reports (about 20% coverage counts; a language the owner switched on is never removed; one main language per venue). Every step uses it: sync, new venue, settings, composer, checks, publishing.
 - **D87** A venue's source is fixed when it is created (supersedes D78).
-  Only the source is fixed; names, address and all other settings stay editable. Switching a hand-made menu to a POS is not supported in this version. No "Change…" on the venue: it confused. To use another till venue, another POS, or to go from hand-made to a POS, create a new venue from that source and delete the old one. The menu category is picked automatically when the POS marks a public menu; you're asked only if it doesn't and there are several. Which sections and items appear is the composer's job. (Demo Club Sofia's mixed 127 items: recreate the venue.)
+  Only the source is fixed; names, address and all other settings stay editable. Switching a hand-made menu to a POS is not supported in this version. No "Change…" on the venue: it confused. To use another till venue, another POS, or to go from hand-made to a POS, create a new venue from that source and delete the old one. Which menus a barsy venue has: D88. Which sections and items appear is the composer's job. (Demo Club Sofia's mixed 127 items: recreate the venue.)
 - **D80** Custom domains for the guest menu.
   Per domain, the owner chooses: one venue (`menu.club.bg` opens its menu) or the whole organisation (`menu.group.bg/<venue>`). Subdomains only; only the guest menu and table codes are served there, never the admin. The owner sets it up in Settings › Domains: Restro shows the DNS record, checks it and turns HTTPS on (provider to confirm: Cloudflare for SaaS). QR codes then print with the domain; our address keeps working.
 
