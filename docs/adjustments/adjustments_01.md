@@ -19,6 +19,8 @@ Three layers, kept apart:
 - **D75 (platform part)** The composer warns "Menu name missing in {source}" when a name is the till's stand-in (see 3).
 
 **Decided, to build**
+- **D94** Tables & QR: the codes' address is shown, not asked for.
+  The card stops asking for a base address or an "own link" pattern (the pre-domain workaround). It shows where the codes lead (your verified domain, else our address), links to Organisation › Domains, and keeps the test link and the printing warning. The local Wi-Fi testing address is developer configuration.
 - **D93** Colour system upgrades, from an audit against current practice (WCAG 2.2, CSS Color 4/5, Material 3, Radix, Tailwind 4).
   The core is sound: perceptual OKLCH, gamut-safe, 4.5:1 text contrast, roles instead of raw colours, a proper dark transform. The gaps are at its edges. Built with the D92 designer work; every change is additive (old snapshots and templates keep working).
   - **Must, part 1. One source of truth for every colour that carries text or meaning.** The template mixes about 40 shades itself (`color-mix(in srgb)`), unchecked and blended non-perceptually. The engine adds roles for what is missing:
