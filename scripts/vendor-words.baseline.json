@@ -1,10 +1,6 @@
 {
-  "apps/web/messages/bg.json": 52,
-  "apps/web/messages/en.json": 52,
-  "apps/web/src/integration/format.ts": 3,
-  "apps/web/src/integration/test-view.ts": 2,
-  "apps/web/src/server/integration/host.ts": 1,
-  "apps/web/src/server/integration/service.ts": 33,
+  "apps/web/messages/bg.json": 17,
+  "apps/web/messages/en.json": 17,
   "apps/web/src/server/publish/load.ts": 4,
   "apps/web/src/server/publish/service.ts": 4,
   "apps/web/src/server/venues.ts": 4,

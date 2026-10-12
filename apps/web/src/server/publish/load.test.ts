@@ -22,6 +22,7 @@ import {
   provisionTenant,
   provisionVenue,
   publishMenu,
+  saveSyncSettingsConfig,
   setVenueAutoPublishPaused,
   startJobRun,
   upsertBarsyVenues,
@@ -31,7 +32,6 @@ import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { saveSyncSettings } from '../integration/service'
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { loadHistoryPage, loadPublishView, readPaused, type ViewDeps, type ViewScope } from './load'
 import {
@@ -367,19 +367,16 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(after.history.entries[0]).toMatchObject({ restoresVersion: 1, counts: null })
     })
 
-    it('keeps the pause when the form saves the sync settings (they do not own it)', async () => {
-      const result = await saveSyncSettings(
-        { pool: app, tenantId: tenant, canManage: true },
-        {
-          schedule: {
-            incremental_enabled: true,
-            incremental_minutes: 5,
-            full_pull_enabled: true,
-            full_pull_time: '12:00',
-          },
+    it('keeps the pause when the sync settings are saved (they do not own it)', async () => {
+      const saved = await saveSyncSettingsConfig(app, tenant, integrationId, {
+        schedule: {
+          incremental_enabled: true,
+          incremental_minutes: 5,
+          full_pull_enabled: true,
+          full_pull_time: '12:00',
         },
-      )
-      expect(result).toEqual({ ok: true })
+      })
+      expect(saved).toBe(true)
       expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 

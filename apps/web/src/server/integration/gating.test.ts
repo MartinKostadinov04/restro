@@ -5,13 +5,13 @@ import { type SyncAllGateInput, type SyncGateInput, syncAllGate, syncGate } from
 const ready: SyncGateInput = {
   canManage: true,
   integration: { hasCredentials: true, status: 'connected' },
-  venueMapped: true,
-  rootChosen: true,
+  venueLinked: true,
+  menuKnown: true,
   activeJob: null,
 }
 
 describe('syncGate', () => {
-  it('opens when connected, both pickers are set and nothing is running', () => {
+  it('opens when connected, the venue is linked and nothing is running', () => {
     expect(syncGate(ready)).toEqual({ enabled: true })
   })
 
@@ -33,8 +33,8 @@ describe('syncGate', () => {
       { integration: { hasCredentials: true, status: 'error' } },
       'not_connected',
     ],
-    ['no till venue chosen', { venueMapped: false }, 'no_till_venue'],
-    ['no catalogue root chosen', { rootChosen: false }, 'no_root'],
+    ['a venue that is not linked', { venueLinked: false }, 'no_till_venue'],
+    ['menus the system has not reported', { menuKnown: false }, 'no_menu'],
     ['a pull that is queued or running', { activeJob: 'pull' }, 'busy'],
     ['a connection check that is queued or running', { activeJob: 'connect' }, 'checking'],
   ] as const)('is closed for %s', (_name, change, reason) => {
@@ -45,8 +45,8 @@ describe('syncGate', () => {
     const nothingDone: SyncGateInput = {
       canManage: true,
       integration: null,
-      venueMapped: false,
-      rootChosen: false,
+      venueLinked: false,
+      menuKnown: false,
       activeJob: null,
     }
     expect(syncGate(nothingDone)).toEqual({ enabled: false, reason: 'no_credentials' })
@@ -69,11 +69,11 @@ describe('syncAllGate ("Sync everything now")', () => {
     canManage: true,
     integration: { hasCredentials: true, status: 'connected' },
     linkedVenues: 2,
-    linkedWithCategory: 1,
+    pullableVenues: 1,
     activeJob: null,
   }
 
-  it('opens when connected and at least one linked venue has its menu category', () => {
+  it('opens when connected and at least one linked venue can be read', () => {
     expect(syncAllGate(ready)).toEqual({ enabled: true })
   })
 
@@ -85,8 +85,8 @@ describe('syncAllGate ("Sync everything now")', () => {
       { integration: { hasCredentials: true, status: 'new' } },
       'not_connected',
     ],
-    ['no venue linked', { linkedVenues: 0, linkedWithCategory: 0 }, 'no_till_venue'],
-    ['linked venues without a menu category', { linkedWithCategory: 0 }, 'no_root'],
+    ['no venue linked', { linkedVenues: 0, pullableVenues: 0 }, 'no_till_venue'],
+    ['linked venues whose menus are not reported', { pullableVenues: 0 }, 'no_menu'],
     ['a pull that is queued or running', { activeJob: 'pull' }, 'busy'],
     ['a connection check that is queued or running', { activeJob: 'connect' }, 'checking'],
   ] as const)('is closed for %s', (_name, change, reason) => {

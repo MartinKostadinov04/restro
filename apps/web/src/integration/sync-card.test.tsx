@@ -2,37 +2,38 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-import type { SyncBlock } from '@/server/integration/view'
+import { INSTANCE_ID, instanceView } from '@/connectors/test-view'
+import type { InstanceView, SyncBlock } from '@/server/integration/view'
 import { renderWithIntl } from '@/test-utils'
 import { SyncCard } from './sync-card'
-import { integrationView } from './test-view'
 
-const actions = vi.hoisted(() => ({ syncAllAction: vi.fn(), saveSyncSettingsAction: vi.fn() }))
+const actions = vi.hoisted(() => ({ syncAllAction: vi.fn() }))
 vi.mock('@/server/integration/actions', () => actions)
 
 beforeEach(() => {
   actions.syncAllAction.mockReset()
-  actions.saveSyncSettingsAction.mockReset()
 })
 
-describe('the Automatic sync card: "Sync everything now"', () => {
+const card = (change: Partial<InstanceView> = {}) =>
+  renderWithIntl(<SyncCard instance={instanceView(change)} />)
+
+describe('the "Sync everything" card of an instance', () => {
   it('presses it when the gate is open, and says how many syncs are queued', async () => {
     const user = userEvent.setup()
     actions.syncAllAction.mockResolvedValue({ ok: true, pulls: 2 })
-    renderWithIntl(<SyncCard view={integrationView()} />)
+    card()
     const button = screen.getByRole('button', { name: 'Sync everything now' }) as HTMLButtonElement
     expect(button.disabled).toBe(false)
     expect(screen.queryByTestId('sync-blocked')).toBeNull()
     await user.click(button)
-    expect(actions.syncAllAction).toHaveBeenCalledWith()
+    expect(actions.syncAllAction).toHaveBeenCalledWith({ integrationId: INSTANCE_ID })
     expect(await screen.findByText('2 syncs are queued.')).toBeTruthy()
   })
 
   it('says "1 sync" for one linked venue', async () => {
     const user = userEvent.setup()
     actions.syncAllAction.mockResolvedValue({ ok: true, pulls: 1 })
-    renderWithIntl(<SyncCard view={integrationView()} />)
+    card()
     await user.click(screen.getByRole('button', { name: 'Sync everything now' }))
     expect(await screen.findByText('1 sync is queued.')).toBeTruthy()
   })
@@ -42,12 +43,12 @@ describe('the Automatic sync card: "Sync everything now"', () => {
     ['no_credentials', 'Save the barsy credentials first.'],
     ['checking', 'The connection is being checked. Wait until it finishes.'],
     ['not_connected', 'The connection to barsy has to work first. See the status above.'],
-    ['no_till_venue', 'Link a venue in barsy to a venue first.'],
-    ['no_root', 'Choose a menu category in a linked venue first.'],
+    ['no_till_venue', 'No venue uses this connection yet.'],
+    ['no_menu', 'barsy has not reported the menus of its venues yet. Check the connection again.'],
     ['busy', 'A sync is already queued or running.'],
   ] as [SyncBlock, string][])('is off for "%s" and says why', async (reason, text) => {
     const user = userEvent.setup()
-    renderWithIntl(<SyncCard view={integrationView({ gate: { enabled: false, reason } })} />)
+    card({ gate: { enabled: false, reason } })
     const button = screen.getByRole('button', { name: 'Sync everything now' }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
     expect(screen.getByTestId('sync-blocked').textContent).toBe(text)
@@ -58,40 +59,40 @@ describe('the Automatic sync card: "Sync everything now"', () => {
   it('drops the "queued" notice once the pulls it was about have finished', async () => {
     const user = userEvent.setup()
     actions.syncAllAction.mockResolvedValue({ ok: true, pulls: 2 })
-    const { rerender } = renderWithIntl(<SyncCard view={integrationView()} />)
+    const { rerender } = card()
     await user.click(screen.getByRole('button', { name: 'Sync everything now' }))
     expect(await screen.findByText('2 syncs are queued.')).toBeTruthy()
     // The page catches up: a pull is waiting, then it is done.
     rerender(
       <SyncCard
-        view={integrationView({ activeJob: 'pull', gate: { enabled: false, reason: 'busy' } })}
+        instance={instanceView({ activeJob: 'pull', gate: { enabled: false, reason: 'busy' } })}
       />,
     )
     expect(screen.getByText('2 syncs are queued.')).toBeTruthy()
-    rerender(<SyncCard view={integrationView()} />)
+    rerender(<SyncCard instance={instanceView()} />)
     expect(screen.queryByText('2 syncs are queued.')).toBeNull()
   })
 
   it('shows why the press was refused', async () => {
     const user = userEvent.setup()
     actions.syncAllAction.mockResolvedValue({ ok: false, error: 'already_running' })
-    renderWithIntl(<SyncCard view={integrationView()} />)
+    card()
     await user.click(screen.getByRole('button', { name: 'Sync everything now' }))
     expect((await screen.findByRole('alert')).textContent).toBe(
       'A sync is already queued or running.',
     )
   })
 
-  it('names the schedule’s clock, and has no publishing rules (they are each venue’s)', () => {
-    renderWithIntl(<SyncCard view={integrationView()} />)
-    expect(screen.getByText('Counted in Sofia time.')).toBeTruthy()
-    expect(screen.queryByText('After a sync')).toBeNull()
+  it('is an action only: no schedule here (each venue has its own, D82)', () => {
+    card()
+    expect(screen.queryByText(/Counted in/)).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.getByText(/Each venue sets its own automatic syncing/)).toBeTruthy()
   })
 
   it('speaks Bulgarian', () => {
-    renderWithIntl(<SyncCard view={integrationView()} />, { locale: 'bg' })
+    renderWithIntl(<SyncCard instance={instanceView()} />, { locale: 'bg' })
     expect(screen.getByRole('button', { name: 'Синхронизирай всичко сега' })).toBeTruthy()
-    expect(screen.getByText('Брои се по софийско време.')).toBeTruthy()
   })
 })

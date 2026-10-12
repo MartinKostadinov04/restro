@@ -1,17 +1,17 @@
 'use server'
 
-// The server actions of Settings -> Integrations and of a venue's Menu source card (briefs S2-05
-// and CF-09b): thin wrappers. Each checks who is asking (`requireTenant`: the tenant is the
-// person's organisation, never the request's), for the venue's card that the venue is theirs, and
-// whether their role may manage the integration, checks the input with Zod, and calls service.ts.
-// After a write the pages that show it are revalidated, so the client gets the fresh page in the
-// same round trip.
+// The server actions of Settings -> Integrations and of a venue's Menu source card (adjustments I1
+// and I2): thin wrappers. Each checks who is asking (`requireTenant`: the tenant is the person's
+// organisation, never the request's), for the venue's card that the venue is theirs, and whether
+// their role may manage the integration, checks the input with Zod, and calls service.ts. After a
+// write the pages that show it are revalidated, so the client gets the fresh page in the same
+// round trip.
 //
-// The password: it arrives in `saveConnectionAction`'s input, is handed to the service to be
-// sealed, and goes no further. It is never logged (errors are logged through `logError`, which
-// prints an error's class and message, and nothing here puts input in a message), never
-// returned, and never stored in the clear.
-import { idSchema, SyncSettingsInputSchema } from '@restro/core'
+// The password: it arrives in `addInstanceAction`'s and `saveConnectionAction`'s input, is handed
+// to the service to be sealed, and goes no further. It is never logged (errors are logged through
+// `logError`, which prints an error's class and message, and nothing here puts input in a
+// message), never returned, and never stored in the clear.
+import { idSchema } from '@restro/core'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -23,18 +23,16 @@ import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
 import { getVenue } from '../venues'
 import {
-  addTillVenueAsVenue,
+  addInstance,
   checkConnection,
-  chooseCatalogueRoot,
-  chooseTillVenue,
   type IntegrationScope,
   type IntegrationServices,
-  linkTillVenue,
-  markTillVenue,
+  removeInstance,
+  renameInstance,
   saveConnection,
-  saveMappingSettings,
-  saveSyncSettings,
-  saveVenuePrice,
+  saveInstanceSettings,
+  saveSystems,
+  saveVenueSource,
   syncAll,
   syncNow,
   type VenueScope,
@@ -42,29 +40,28 @@ import {
 import type { IntegrationActionResult } from './view'
 
 const venueId = idSchema('vn')
-const tillVenue = z.int().min(0)
+const integrationId = idSchema('in')
 
-const Connect = z.strictObject({
+const Credentials = {
   host: z.string().min(1).max(300),
   user: z.string().min(1).max(256),
   password: z.string().min(1).max(1024),
+}
+const Systems = z.strictObject({ systems: z.array(z.string().min(1).max(64)).max(32) })
+const NewInstance = z.strictObject({
+  kind: z.string().min(1).max(64),
+  name: z.string().max(200).optional(),
+  ...Credentials,
 })
-const Mapping = z.strictObject({
-  allergenKey: z.string().min(1).max(128).nullable(),
-  defaultLocale: z.string().min(1).max(16),
-})
-const SyncSettings = z.strictObject({ schedule: SyncSettingsInputSchema.shape.schedule })
-const TillVenueOnly = z.strictObject({ bid: tillVenue })
-const LinkTillVenue = z.strictObject({ bid: tillVenue, venueId })
-const MarkTillVenue = z.strictObject({ bid: tillVenue, notUsed: z.boolean() })
-
+const Connect = z.strictObject({ integrationId, ...Credentials })
+const Rename = z.strictObject({ integrationId, name: z.string().min(1).max(200) })
+const InstanceOnly = z.strictObject({ integrationId })
+// What a connector's settings card sends: the connector checks it (its own Zod schema), the action
+// only bounds its size.
+const Settings = z.record(z.string().max(64), z.unknown())
+const InstanceSettings = z.strictObject({ integrationId, settings: Settings })
 const VenueOnly = z.strictObject({ venueId })
-const ChooseTillVenue = z.strictObject({ venueId, bid: tillVenue })
-const ChooseRoot = z.strictObject({ venueId, catId: z.int().min(0) })
-const VenuePrice = z.strictObject({
-  venueId,
-  priceSource: z.enum(['actual_price', 'current_price']),
-})
+const VenueSource = z.strictObject({ venueId, settings: Settings })
 
 const INVALID: IntegrationActionResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: IntegrationActionResult = { ok: false, error: 'not_found' }
@@ -74,9 +71,10 @@ const services = (): IntegrationServices => ({
   enqueue: enqueueJob,
 })
 
-/** What an organisation-wide write changes on screen: the Settings page and the venues it names. */
+/** What an organisation-wide write changes on screen: the Settings page and the pages that list instances. */
 function revalidateOrganisation(): void {
   revalidatePath('/settings/integrations')
+  revalidatePath('/venues')
   revalidatePath('/venues/[venueId]', 'page')
 }
 
@@ -132,85 +130,72 @@ async function performVenue(
 
 // --- Settings -> Integrations (the organisation) ---------------------------------------------
 
-/** Seals and stores the address and API user, and queues the connection check. */
+/** Saves the systems the organisation uses; one with instances cannot be left out. */
+export async function saveSystemsAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = Systems.safeParse(input)
+  if (!parsed.success) return INVALID
+  return performOrganisation((scope) => saveSystems(scope, parsed.data.systems))
+}
+
+/** "Add {source}": a new instance with its sealed credentials; queues the connection check. */
+export async function addInstanceAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = NewInstance.safeParse(input)
+  if (!parsed.success) return INVALID
+  return performOrganisation((scope, deps) => addInstance(scope, deps, parsed.data))
+}
+
+/** Seals and stores the address and API user of an instance, and queues the connection check. */
 export async function saveConnectionAction(input: unknown): Promise<IntegrationActionResult> {
   const parsed = Connect.safeParse(input)
   if (!parsed.success) return INVALID
   return performOrganisation((scope, deps) => saveConnection(scope, deps, parsed.data))
 }
 
-/** Queues the connection check again. */
-export async function checkConnectionAction(): Promise<IntegrationActionResult> {
-  return performOrganisation((scope, deps) => checkConnection(scope, deps))
-}
-
-/** Saves how the data is read: the allergen characteristic and the language of the till's texts. */
-export async function saveMappingSettingsAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = Mapping.safeParse(input)
+/** Renames an instance. */
+export async function renameInstanceAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = Rename.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope) => saveMappingSettings(scope, parsed.data))
+  return performOrganisation((scope) => renameInstance(scope, parsed.data))
 }
 
-/** Saves the automatic sync: the schedule of the change check and the daily full read. */
-export async function saveSyncSettingsAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = SyncSettings.safeParse(input)
+/** Removes an instance; refused while a venue uses it. */
+export async function removeInstanceAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = InstanceOnly.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope) => saveSyncSettings(scope, parsed.data))
+  return performOrganisation((scope) => removeInstance(scope, parsed.data))
 }
 
-/** Queues a full pull of every linked venue that has a menu category. */
-export async function syncAllAction(): Promise<IntegrationActionResult> {
-  return performOrganisation((scope, deps) => syncAll(scope, deps))
-}
-
-/** "Add as venue": makes a venue of ours for a till venue and links it; answers with the new venue's id. */
-export async function addTillVenueAsVenueAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = TillVenueOnly.safeParse(input)
+/** Queues the connection check of an instance again. */
+export async function checkConnectionAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = InstanceOnly.safeParse(input)
   if (!parsed.success) return INVALID
-  const result = await performOrganisation((scope) => addTillVenueAsVenue(scope, parsed.data))
-  // A new venue appears in the sidebar of every page.
-  if (result.ok) revalidatePath('/', 'layout')
-  return result
+  return performOrganisation((scope, deps) =>
+    checkConnection(scope, deps, parsed.data.integrationId),
+  )
 }
 
-/** "Link to an existing venue": gives a venue that has no till venue to a till venue that has no venue. */
-export async function linkTillVenueAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = LinkTillVenue.safeParse(input)
+/** Saves the system settings of an instance (the connector checks what its card sent). */
+export async function saveInstanceSettingsAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = InstanceSettings.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope) => linkTillVenue(scope, parsed.data))
+  return performOrganisation((scope) => saveInstanceSettings(scope, parsed.data))
 }
 
-/** "Not used": sets a till venue aside (or takes it back). */
-export async function markTillVenueAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = MarkTillVenue.safeParse(input)
+/** Queues a full pull of every venue that uses the instance and that its system can read. */
+export async function syncAllAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = InstanceOnly.safeParse(input)
   if (!parsed.success) return INVALID
-  return performOrganisation((scope) => markTillVenue(scope, parsed.data))
+  return performOrganisation((scope, deps) => syncAll(scope, deps, parsed.data.integrationId))
 }
 
 // --- a venue's Menu source -------------------------------------------------------------------
 
-/** Gives this venue a till venue, or moves it to another one (a deliberate change). */
-export async function chooseTillVenueAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = ChooseTillVenue.safeParse(input)
+/** Saves the connector's part of this venue's Menu source (the connector checks what its card sent). */
+export async function saveVenueSourceAction(input: unknown): Promise<IntegrationActionResult> {
+  const parsed = VenueSource.safeParse(input)
   if (!parsed.success) return INVALID
-  const { venueId: venue, ...choice } = parsed.data
-  return performVenue(venue, (scope) => chooseTillVenue(scope, choice))
-}
-
-/** Chooses the menu category of this venue. */
-export async function chooseCatalogueRootAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = ChooseRoot.safeParse(input)
-  if (!parsed.success) return INVALID
-  const { venueId: venue, ...choice } = parsed.data
-  return performVenue(venue, (scope) => chooseCatalogueRoot(scope, choice))
-}
-
-/** Saves which price this venue's menu shows. */
-export async function saveVenuePriceAction(input: unknown): Promise<IntegrationActionResult> {
-  const parsed = VenuePrice.safeParse(input)
-  if (!parsed.success) return INVALID
-  const { venueId: venue, ...choice } = parsed.data
-  return performVenue(venue, (scope) => saveVenuePrice(scope, choice))
+  const { venueId: venue, settings } = parsed.data
+  return performVenue(venue, (scope) => saveVenueSource(scope, { settings }))
 }
 
 /** Queues a full pull of this venue. */

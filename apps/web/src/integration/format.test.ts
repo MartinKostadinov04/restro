@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   deletionCheckSkipped,
   isKnownRefusalCode,
-  isKnownRunKind,
   listedCounters,
   runDurationMs,
   splitDuration,
@@ -87,10 +86,8 @@ describe('deletionCheckSkipped', () => {
   })
 })
 
-describe('known kinds and codes', () => {
-  it('knows what it can label', () => {
-    expect(isKnownRunKind('barsy_full_pull')).toBe(true)
-    expect(isKnownRunKind('asset_fetch')).toBe(false)
+describe('known refusal codes', () => {
+  it('knows what it can explain', () => {
     expect(isKnownRefusalCode('less_cautious')).toBe(true)
     expect(isKnownRefusalCode('something_new')).toBe(false)
   })

@@ -1,18 +1,14 @@
 // @vitest-environment jsdom
-import { screen, waitFor, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-
+import { barsyVenueSource, linkedMenuSource, run, VENUE_ID } from '@/connectors/test-view'
 import type { MenuSourceView, SyncBlock } from '@/server/integration/view'
 import { renderWithIntl } from '@/test-utils'
-
 import { MenuSourceCard } from './menu-source-card'
-import { linkedMenuSource, VENUE_ID } from './test-view'
 
 const actions = vi.hoisted(() => ({
-  chooseTillVenueAction: vi.fn(),
-  chooseCatalogueRootAction: vi.fn(),
-  saveVenuePriceAction: vi.fn(),
+  saveVenueSourceAction: vi.fn(),
   syncNowAction: vi.fn(),
 }))
 vi.mock('@/server/integration/actions', () => actions)
@@ -25,112 +21,33 @@ beforeEach(() => {
 const card = (view: MenuSourceView, locale: 'en' | 'bg' = 'en') =>
   renderWithIntl(<MenuSourceCard venueId={VENUE_ID} view={view} />, { locale })
 
-describe('the Menu source card, linked', () => {
-  it('shows its venue in barsy read-only, its menu category and the price it shows', () => {
+describe('the Menu source card of a venue made by hand', () => {
+  it('shows neither part: no card at all', () => {
+    const { container } = card({ state: 'none' })
+    expect(container.innerHTML).toBe('')
+    expect(screen.queryByTestId('menu-source')).toBeNull()
+  })
+})
+
+describe('the Menu source card of a POS venue: the common part', () => {
+  it('names the instance and the venue in the system, read-only (a source never changes, D87)', () => {
     card(linkedMenuSource())
+    expect(screen.getByRole('heading', { name: 'Menu source' })).toBeTruthy()
+    expect(screen.getByTestId('menu-source-instance').textContent).toBe('barsy – Sofia')
     expect(screen.getByTestId('menu-source-venue').textContent).toBe('Main bar')
-    // The venue is not a form field: it can only be changed through "Change…".
-    expect(within(screen.getByTestId('menu-source')).queryByRole('textbox')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Change…' })).toBeTruthy()
-    expect((screen.getByRole('radio', { name: /Публично меню/ }) as HTMLInputElement).checked).toBe(
-      true,
-    )
-    expect((screen.getByRole('radio', { name: /Base price/ }) as HTMLInputElement).checked).toBe(
-      true,
-    )
-    expect(
-      screen.getByText("Current price follows barsy's price rules for this venue."),
-    ).toBeTruthy()
+    expect(screen.getByText('Venue in barsy')).toBeTruthy()
+    // Nothing to change it with: no "Change…", no picker, no category tree.
+    const root = screen.getByTestId('menu-source')
+    expect(within(root).queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Change|Link/ })).toBeNull()
+    expect(screen.queryByTestId('catalogue-tree')).toBeNull()
+    expect(screen.queryByText(/Menu category/)).toBeNull()
   })
 
-  it('shows the venue’s own current price when that is what it saved', () => {
-    card(linkedMenuSource({ priceSource: 'current_price' }))
-    expect((screen.getByRole('radio', { name: /Current price/ }) as HTMLInputElement).checked).toBe(
-      true,
-    )
-  })
-
-  describe('"Change…" is deliberate (T62, CF-02)', () => {
-    it('warns, offers the other venues of the till, and moves only after a confirmation', async () => {
-      const user = userEvent.setup()
-      actions.chooseTillVenueAction.mockResolvedValue({ ok: true })
-      card(linkedMenuSource())
-      await user.click(screen.getByRole('button', { name: 'Change…' }))
-
-      const dialog = await screen.findByTestId('change-dialog')
-      expect(within(dialog).getByTestId('change-warning').textContent).toContain(
-        'Choosing another venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist.',
-      )
-      // The venue it serves now is not offered; one that serves another venue is shown, not offered.
-      const options = within(dialog).getAllByTestId('till-venue-option')
-      expect(options.map((option) => option.textContent)).toEqual([
-        'Roof terrace',
-        'GardenUsed by Venue B',
-        'ShopMarked as not used',
-      ])
-      expect(
-        (within(options[1] as HTMLElement).getByRole('radio') as HTMLInputElement).disabled,
-      ).toBe(true)
-      expect(actions.chooseTillVenueAction).not.toHaveBeenCalled()
-
-      const confirm = within(dialog).getByRole('button', { name: 'Change' }) as HTMLButtonElement
-      expect(confirm.disabled).toBe(true)
-      await user.click(within(dialog).getByRole('radio', { name: /Roof terrace/ }))
-      await user.click(confirm)
-      expect(actions.chooseTillVenueAction).toHaveBeenCalledWith({ venueId: VENUE_ID, bid: 2 })
-      await waitFor(() => expect(screen.queryByTestId('change-dialog')).toBeNull())
-    })
-
-    it('cancel closes it and changes nothing', async () => {
-      const user = userEvent.setup()
-      card(linkedMenuSource())
-      await user.click(screen.getByRole('button', { name: 'Change…' }))
-      const dialog = await screen.findByTestId('change-dialog')
-      await user.click(within(dialog).getByRole('radio', { name: /Roof terrace/ }))
-      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-      await waitFor(() => expect(screen.queryByTestId('change-dialog')).toBeNull())
-      expect(actions.chooseTillVenueAction).not.toHaveBeenCalled()
-    })
-
-    it('keeps the dialog open and says why when the move was refused', async () => {
-      const user = userEvent.setup()
-      actions.chooseTillVenueAction.mockResolvedValue({ ok: false, error: 'till_venue_taken' })
-      card(linkedMenuSource())
-      await user.click(screen.getByRole('button', { name: 'Change…' }))
-      const dialog = await screen.findByTestId('change-dialog')
-      await user.click(within(dialog).getByRole('radio', { name: /Roof terrace/ }))
-      await user.click(within(dialog).getByRole('button', { name: 'Change' }))
-      expect((await within(dialog).findByRole('alert')).textContent).toBe(
-        'That venue in the till already belongs to another venue.',
-      )
-    })
-  })
-
-  it('stores the menu category the manager picks', async () => {
-    const user = userEvent.setup()
-    actions.chooseCatalogueRootAction.mockResolvedValue({ ok: true })
-    card(linkedMenuSource())
-    await user.click(screen.getByRole('radio', { name: /Каса Kiosk/ }))
-    expect(actions.chooseCatalogueRootAction).toHaveBeenCalledWith({
-      venueId: VENUE_ID,
-      catId: 1091,
-    })
-  })
-
-  it('saves the price for this venue only, and only after a change', async () => {
-    const user = userEvent.setup()
-    actions.saveVenuePriceAction.mockResolvedValue({ ok: true })
-    card(linkedMenuSource())
-    const save = screen.getByRole('button', { name: 'Save price' }) as HTMLButtonElement
-    expect(save.disabled).toBe(true)
-    await user.click(screen.getByRole('radio', { name: /Current price/ }))
-    expect(save.disabled).toBe(false)
-    await user.click(save)
-    expect(actions.saveVenuePriceAction).toHaveBeenCalledWith({
-      venueId: VENUE_ID,
-      priceSource: 'current_price',
-    })
-    expect(await screen.findByText('Saved. It applies from the next sync.')).toBeTruthy()
+  it('uses the system’s name where the card names it', () => {
+    card(linkedMenuSource({ source: 'Another POS' }))
+    expect(screen.getByText('Venue in Another POS')).toBeTruthy()
+    expect(screen.getByText(/the Another POS connection and the venue in it/)).toBeTruthy()
   })
 
   describe('"Sync this venue"', () => {
@@ -148,13 +65,13 @@ describe('the Menu source card, linked', () => {
 
     it.each([
       ['not_manager', 'Only owners and admins can start a sync.'],
-      ['no_credentials', 'Save the till credentials first.'],
+      ['no_credentials', 'Save the barsy credentials first, in Settings → Integrations.'],
       ['checking', 'The connection is being checked. Wait until it finishes.'],
+      ['not_connected', 'The connection to barsy has to work first. See Settings → Integrations.'],
       [
-        'not_connected',
-        'The connection to the till has to work first. See Settings → Integrations.',
+        'no_menu',
+        'barsy has not reported the menus of this venue yet. Check the connection again.',
       ],
-      ['no_root', 'Choose the menu category first.'],
       ['busy', 'A sync is already queued or running.'],
     ] as [SyncBlock, string][])('is off for "%s" and says why', async (reason, text) => {
       const user = userEvent.setup()
@@ -198,7 +115,7 @@ describe('the Menu source card, linked', () => {
       expect(warning.getAttribute('data-reason')).toBe('too_many_missing')
       expect(warning.textContent).toContain('The last full sync was held back')
       expect(warning.textContent).toContain('it would have hidden 61 of 65 items.')
-      expect(warning.textContent).toContain('Check the menu category and the venue in the till.')
+      expect(warning.textContent).toContain('Check the venue and its menus in barsy.')
       expect(within(warning).queryByRole('button')).toBeNull()
     })
 
@@ -215,15 +132,29 @@ describe('the Menu source card, linked', () => {
     })
   })
 
+  describe('the venue’s own history, collapsed', () => {
+    it('says there is no sync yet', () => {
+      card(linkedMenuSource())
+      expect(screen.getByTestId('history-empty').textContent).toContain('No sync yet')
+    })
+
+    it('shows the last run on one line and opens the list under a button, without a venue column', async () => {
+      const user = userEvent.setup()
+      card(linkedMenuSource({ runs: [run({ id: 'jb_a' }), run({ id: 'jb_b' })] }))
+      expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full sync/)
+      expect(screen.queryAllByTestId('run-row')).toHaveLength(0)
+      await user.click(screen.getByTestId('history-toggle'))
+      expect(screen.getAllByTestId('run-row')).toHaveLength(2)
+      expect(screen.queryByTestId('run-venue')).toBeNull()
+    })
+  })
+
   it('is read-only for someone who cannot manage: what is set, nothing to press', () => {
     card(linkedMenuSource({ canManage: false, gate: { enabled: false, reason: 'not_manager' } }))
     expect(screen.getByTestId('read-only').textContent).toContain('Only owners and admins')
     expect(screen.getByTestId('menu-source-venue').textContent).toBe('Main bar')
-    expect(screen.queryByRole('button', { name: 'Change…' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Save price' })).toBeNull()
-    expect((screen.getByRole('radio', { name: /Каса Kiosk/ }) as HTMLInputElement).disabled).toBe(
-      true,
-    )
+    expect(screen.getByRole('radio', { name: /Base price/ }).matches(':disabled')).toBe(true)
     expect(
       (screen.getByRole('button', { name: 'Sync this venue' }) as HTMLButtonElement).disabled,
     ).toBe(true)
@@ -232,88 +163,79 @@ describe('the Menu source card, linked', () => {
   it('speaks Bulgarian', () => {
     card(linkedMenuSource(), 'bg')
     expect(screen.getByRole('heading', { name: 'Източник на менюто' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Смени…' })).toBeTruthy()
+    expect(screen.getByText('Заведение в barsy')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Синхронизирай това заведение' })).toBeTruthy()
-    expect(
-      screen.getByText('Текущата цена следва ценовите правила на barsy за това заведение.'),
-    ).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /Базова цена/ })).toBeTruthy()
   })
 })
 
-describe('the Menu source card, not linked', () => {
-  const unlinked = (overrides: Partial<Extract<MenuSourceView, { state: 'unlinked' }>> = {}) =>
-    ({
-      state: 'unlinked',
-      canManage: true,
-      options: [
-        { key: 2, name: 'Roof terrace', usedBy: null, notUsed: false, address: 'Sofia, Vitosha' },
-        { key: 4, name: 'Shop', usedBy: null, notUsed: true },
-      ],
-      ...overrides,
-    }) satisfies MenuSourceView
-
-  it('offers "Link a barsy venue" with the venues that have none, and warns', async () => {
-    const user = userEvent.setup()
-    actions.chooseTillVenueAction.mockResolvedValue({ ok: true })
-    card(unlinked())
-    expect(screen.getByText('This venue is not linked to a venue in the till yet.')).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Link a barsy venue' })).toBeTruthy()
-    const options = screen.getAllByTestId('till-venue-option')
-    expect(options.map((option) => option.querySelector('.font-medium')?.textContent)).toEqual([
-      'Roof terrace',
-      'Shop',
-    ])
-    expect(screen.getByTestId('venue-address').textContent).toBe('Sofia, Vitosha')
-    expect(screen.getByText(/Linking reads this venue's menu from the till/)).toBeTruthy()
-
-    const link = screen.getByRole('button', { name: 'Link' }) as HTMLButtonElement
-    expect(link.disabled).toBe(true)
-    await user.click(screen.getByRole('radio', { name: /Roof terrace/ }))
-    await user.click(link)
-    expect(actions.chooseTillVenueAction).toHaveBeenCalledWith({ venueId: VENUE_ID, bid: 2 })
-  })
-
-  it('says so when every venue in barsy is linked already', () => {
-    card(unlinked({ options: [] }))
-    expect(screen.getByTestId('link-none').textContent).toBe(
-      'Every venue in the till is linked to a venue already.',
+describe('the Menu source card of a POS venue: the connector’s part (barsy: the price shown)', () => {
+  it('shows the price the venue shows, Base by default', () => {
+    card(linkedMenuSource())
+    expect(screen.getByText('Price shown')).toBeTruthy()
+    expect((screen.getByRole('radio', { name: /Base price/ }) as HTMLInputElement).checked).toBe(
+      true,
     )
-    expect(screen.queryByRole('button', { name: 'Link' })).toBeNull()
+    expect(screen.getByText('(default)')).toBeTruthy()
+    expect(screen.queryByTestId('price-warning')).toBeNull()
   })
 
-  it('shows the refusal', async () => {
-    const user = userEvent.setup()
-    actions.chooseTillVenueAction.mockResolvedValue({ ok: false, error: 'till_venue_taken' })
-    card(unlinked())
-    await user.click(screen.getByRole('radio', { name: /Roof terrace/ }))
-    await user.click(screen.getByRole('button', { name: 'Link' }))
-    expect((await screen.findByRole('alert')).textContent).toContain('already belongs')
-  })
-
-  it('is read-only for someone who cannot manage', () => {
-    card(unlinked({ canManage: false }))
-    expect(screen.queryByRole('button', { name: 'Link' })).toBeNull()
-    expect(
-      (screen.getByRole('radio', { name: /Roof terrace/ }) as HTMLInputElement).matches(
-        ':disabled',
-      ),
-    ).toBe(true)
-  })
-})
-
-describe('the Menu source card, with no integration', () => {
-  it('says so and links to Settings → Integrations', () => {
-    card({ state: 'no_integration', canManage: true })
-    expect(screen.getByTestId('menu-source-none').textContent).toContain(
-      'not connected to a till yet',
+  it('shows the venue’s own current price when that is what it saved, with the warning', () => {
+    card(linkedMenuSource({ connector: barsyVenueSource({ priceSource: 'current_price' }) }))
+    expect((screen.getByRole('radio', { name: /Current price/ }) as HTMLInputElement).checked).toBe(
+      true,
     )
-    const link = screen.getByRole('link', { name: 'Open Settings → Integrations' })
-    expect(link.getAttribute('href')).toBe('/settings/integrations')
-    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.getByTestId('price-warning').textContent).toContain(
+      'Time-based rules, such as a happy hour, may show late in the menu until Lukanet confirms',
+    )
   })
 
-  it('speaks Bulgarian', () => {
-    card({ state: 'no_integration', canManage: true }, 'bg')
-    expect(screen.getByRole('link', { name: 'Отвори Настройки → Интеграции' })).toBeTruthy()
+  it('warns as soon as Current price is picked, before it is saved', async () => {
+    const user = userEvent.setup()
+    card(linkedMenuSource())
+    expect(screen.queryByTestId('price-warning')).toBeNull()
+    await user.click(screen.getByRole('radio', { name: /Current price/ }))
+    expect(screen.getByTestId('price-warning')).toBeTruthy()
+    await user.click(screen.getByRole('radio', { name: /Base price/ }))
+    expect(screen.queryByTestId('price-warning')).toBeNull()
+  })
+
+  it('saves the price for this venue only, through the generic action, and only after a change', async () => {
+    const user = userEvent.setup()
+    actions.saveVenueSourceAction.mockResolvedValue({ ok: true })
+    card(linkedMenuSource())
+    const save = screen.getByRole('button', { name: 'Save price' }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    await user.click(screen.getByRole('radio', { name: /Current price/ }))
+    expect(save.disabled).toBe(false)
+    await user.click(save)
+    expect(actions.saveVenueSourceAction).toHaveBeenCalledWith({
+      venueId: VENUE_ID,
+      settings: { priceSource: 'current_price' },
+    })
+    expect(await screen.findByText('Saved. It applies from the next sync.')).toBeTruthy()
+  })
+
+  it('shows a refusal from the server', async () => {
+    const user = userEvent.setup()
+    actions.saveVenueSourceAction.mockResolvedValue({ ok: false, error: 'not_allowed' })
+    card(linkedMenuSource())
+    await user.click(screen.getByRole('radio', { name: /Current price/ }))
+    await user.click(screen.getByRole('button', { name: 'Save price' }))
+    expect((await screen.findByTestId('integration-error')).textContent).toBe(
+      'Only owners and admins can do this.',
+    )
+  })
+
+  it('is not drawn for a kind of connector that supplies no part', () => {
+    card(
+      linkedMenuSource({
+        source: 'Another POS',
+        // A connector this build does not know supplies nothing, and the common part still shows.
+        connector: { kind: 'unknown' } as never,
+      }),
+    )
+    expect(screen.queryByText('Price shown')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sync this venue' })).toBeTruthy()
   })
 })
