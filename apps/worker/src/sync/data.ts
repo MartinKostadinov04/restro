@@ -19,8 +19,12 @@ import { SyncError } from './errors'
 export interface MappedVenue {
   readonly venueId: string
   readonly bid: number
-  /** The menu category it reads (D56); null until chosen. */
+  /** The menu category the picker of before D88 chose (D56); null when none was. Only the hint
+   * for which menu an older venue keeps; the roots below are what the sync reads. */
   readonly catalogueRootCatId: number | null
+  /** The roots the till designates (D88): the public menu's category and the till tree's. */
+  readonly publicCatId: number | null
+  readonly treeCatId: number | null
   /** The catalogue the till venue sells from (CF-16); null until the venue list was read. */
   readonly catalogueId: number | null
   /** Its own price setting (D73); null: the integration's. */
@@ -34,9 +38,26 @@ export interface MappedVenue {
   readonly venueSettings: unknown
 }
 
-/** A mapped venue with a catalogue root: what a pull reads. */
+/** A mapped venue with its roots: what a pull reads, one menu per root (D88). */
 export interface VenueTarget extends MappedVenue {
-  readonly catalogueRootCatId: number
+  /** The roots in order: the public menu first (live by default), then the till tree. */
+  readonly roots: readonly number[]
+}
+
+/**
+ * The roots of a venue, the public menu first, each once; without any, the picker's choice of
+ * before D88 (a venue mapped before the venue list was read again).
+ */
+export function rootsOf(
+  publicCatId: number | null,
+  treeCatId: number | null,
+  legacyRoot: number | null,
+): number[] {
+  const roots = [
+    ...new Set([publicCatId, treeCatId].filter((root): root is number => root !== null)),
+  ]
+  if (roots.length === 0 && legacyRoot !== null) return [legacyRoot]
+  return roots
 }
 
 /** Why a queued sync is skipped instead of run: the venue is gone, deleted, or no longer linked. */
@@ -89,6 +110,8 @@ export async function loadMappedVenue(
       .select({
         bid: venueLinks.bid,
         root: venueLinks.catalogueRootCatId,
+        publicCatId: venueLinks.publicCatId,
+        treeCatId: venueLinks.treeCatId,
         catalogueId: venueLinks.catalogueId,
         priceSource: venueLinks.priceSource,
         timezone: venues.timezone,
@@ -113,6 +136,8 @@ export async function loadMappedVenue(
     venueId,
     bid: row.bid,
     catalogueRootCatId: row.root,
+    publicCatId: row.publicCatId,
+    treeCatId: row.treeCatId,
     catalogueId: row.catalogueId,
     priceSource: row.priceSource,
     timezone: row.timezone,
@@ -127,14 +152,14 @@ export async function loadVenueTarget(
   venueId: string,
 ): Promise<VenueTarget> {
   const mapped = await loadMappedVenue(env, tenantId, integrationId, venueId)
-  const root = mapped.catalogueRootCatId
-  if (root === null) {
+  const roots = rootsOf(mapped.publicCatId, mapped.treeCatId, mapped.catalogueRootCatId)
+  if (roots.length === 0) {
     throw new SyncError(
       'venue_not_mapped',
-      'This venue is not mapped to a barsy venue with a catalogue root.',
+      'This venue is mapped to a barsy venue whose menu roots are not known yet (the venue list has not been read).',
     )
   }
-  return { ...mapped, catalogueRootCatId: root }
+  return { ...mapped, roots }
 }
 
 /** Our venues mapped to till venues of this integration that sell from `catalogueId`. */
@@ -217,28 +242,32 @@ export async function readArticleCatalogues(
   return catalogues
 }
 
-/** The articles (external ids) whose items are placed in a section of this menu. */
+/** The articles (external ids) whose items are placed in a section of any of these menus. */
 export async function readMenuArticles(
   env: SyncEnvironment,
   tenantId: string,
   integrationId: string,
-  menuId: string,
+  menuIds: readonly string[],
 ): Promise<Set<string>> {
-  const result = await withTenant(env.pool, tenantId, (tx) =>
-    tx.execute<{ external_id: string }>(sql`
-      with recursive sections as (
-        select n.id from restro.nodes n where n.parent_id = ${menuId} and n.node_type = 'section'
-        union
-        select n.id from restro.nodes n join sections s on n.parent_id = s.id
-        where n.node_type = 'section'
-      )
-      select distinct l.external_id
-      from restro.source_links l
-      join restro.placements p on p.item_id = l.node_id
-      join sections s on s.id = p.section_id
-      where l.integration_id = ${integrationId} and l.external_type = 'article'`),
-  )
-  return new Set(result.rows.map((row) => row.external_id))
+  const found = new Set<string>()
+  for (const menuId of menuIds) {
+    const result = await withTenant(env.pool, tenantId, (tx) =>
+      tx.execute<{ external_id: string }>(sql`
+        with recursive sections as (
+          select n.id from restro.nodes n where n.parent_id = ${menuId} and n.node_type = 'section'
+          union
+          select n.id from restro.nodes n join sections s on n.parent_id = s.id
+          where n.node_type = 'section'
+        )
+        select distinct l.external_id
+        from restro.source_links l
+        join restro.placements p on p.item_id = l.node_id
+        join sections s on s.id = p.section_id
+        where l.integration_id = ${integrationId} and l.external_type = 'article'`),
+    )
+    for (const row of result.rows) found.add(row.external_id)
+  }
+  return found
 }
 
 /** The articles this venue hides (till `visible = false` at its scope: outside its root, CF-16). */

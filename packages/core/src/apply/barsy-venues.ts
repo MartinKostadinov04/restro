@@ -43,6 +43,13 @@ export interface BarsyVenueInput {
    * catalogue stored earlier is kept.
    */
   readonly catalogueId?: number | null
+  /**
+   * The roots the till designates for the venue's menus (D88): its public menu's category
+   * (`public_cat_id`) and its till tree's (`cat_id`). Null or absent: not reported, and a root
+   * stored earlier is kept.
+   */
+  readonly publicCatId?: number | null
+  readonly treeCatId?: number | null
 }
 
 /**
@@ -62,9 +69,14 @@ export async function upsertBarsyVenues(
     if (!Number.isSafeInteger(venue.bid) || venue.bid < 0 || venue.name.trim() === '') {
       throw new ProvisionError('invalid_input', 'a barsy venue needs a non-negative bid and a name')
     }
-    const catalogue = venue.catalogueId
-    if (catalogue != null && (!Number.isSafeInteger(catalogue) || catalogue < 0)) {
-      throw new ProvisionError('invalid_input', 'a catalogue id is a non-negative integer')
+    for (const [name, value] of [
+      ['catalogue', venue.catalogueId],
+      ['public root', venue.publicCatId],
+      ['tree root', venue.treeCatId],
+    ] as const) {
+      if (value != null && (!Number.isSafeInteger(value) || value < 0)) {
+        throw new ProvisionError('invalid_input', `a ${name} id is a non-negative integer`)
+      }
     }
   }
   if (venues.length === 0) return []
@@ -78,6 +90,8 @@ export async function upsertBarsyVenues(
           bid: venue.bid,
           name: venue.name.trim(),
           catalogueId: venue.catalogueId ?? null,
+          publicCatId: venue.publicCatId ?? null,
+          treeCatId: venue.treeCatId ?? null,
         })),
       )
       .onConflictDoUpdate({
@@ -85,6 +99,8 @@ export async function upsertBarsyVenues(
         set: {
           name: sql`excluded.name`,
           catalogueId: sql`coalesce(excluded.catalogue_id, ${venueLinks.catalogueId})`,
+          publicCatId: sql`coalesce(excluded.public_cat_id, ${venueLinks.publicCatId})`,
+          treeCatId: sql`coalesce(excluded.tree_cat_id, ${venueLinks.treeCatId})`,
         },
       })
       .returning(),

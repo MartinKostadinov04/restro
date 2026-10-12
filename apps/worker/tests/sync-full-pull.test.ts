@@ -152,8 +152,14 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     expect(all.filter((l) => l.external_type === 'category')).toHaveLength(11)
     expect(all.filter((l) => l.external_type === 'article')).toHaveLength(58)
     expect(all.every((l) => l.state === 'active')).toBe(true)
-    // Every link has the hash of the record it was last seen in.
-    expect(all.every((l) => /^[0-9a-f]{64}$/.test(l.last_hash ?? ''))).toBe(true)
+    // Every link has the hash of the record it was last seen in (the menu's own link to the root
+    // it mirrors, D88, names no record).
+    expect(
+      all
+        .filter((l) => l.external_type !== 'menu_root')
+        .every((l) => /^[0-9a-f]{64}$/.test(l.last_hash ?? '')),
+    ).toBe(true)
+    expect(all.filter((l) => l.external_type === 'menu_root')).toHaveLength(1)
 
     // Money is integer minor units, from the decimal text (0.97 -> 97), in the venue scope.
     const [price] = await world.query<{ value: { amount_minor: number; currency: string } }>(

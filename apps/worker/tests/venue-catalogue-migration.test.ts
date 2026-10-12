@@ -107,18 +107,21 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
 
   /** What must not change: every link, node, placement and value of the tenant. */
   const state = async () => ({
+    // The one link the new sync adds is the menu's own, to the root it mirrors (D88): it ties the
+    // menu the picker filled to the till tree and changes nothing in the menu itself.
     links: sorted(
       await query(
         `select external_type, external_id, node_id, state, state_changed_at, first_seen_at, last_hash
-         from restro.source_links where tenant_id = $1`,
+         from restro.source_links where tenant_id = $1 and external_type <> 'menu_root'`,
         [tenantId],
       ),
       (row) => `${row.external_type}:${row.external_id}`,
     ),
+    // The menu's root node is left out: its new `menu_root` link bumps its revision (and only that).
     nodes: sorted(
       await query(
         `select id, node_type, parent_id, sort_key, status, revision, updated_at
-         from restro.nodes where tenant_id = $1`,
+         from restro.nodes where tenant_id = $1 and node_type <> 'menu'`,
         [tenantId],
       ),
       (row) => String(row.id),
@@ -146,6 +149,13 @@ describe.skipIf(!hasDatabase)('migration 0016 and the first sync after it (CF-16
 
   beforeAll(async () => {
     fake.listen()
+    // One root only, as the venue was mapped before D88: without a public menu, the pull adopts
+    // the venue's one menu for the till tree, and nothing is created.
+    fake.venues = fake.venues.map((venue) =>
+      (venue as { barsy_id?: unknown }).barsy_id === DEMO_BID
+        ? { ...(venue as Record<string, unknown>), public_cat_id: null }
+        : venue,
+    )
     titleAll(fake.tree as Row)
     db = await createTestDatabase()
     pool = createPool(db.appUrl, { applicationName: 'restro-worker-0016-test', max: 2 })

@@ -229,15 +229,14 @@ describe.skipIf(!hasDatabase)('several venues on one barsy account (CF-16)', () 
     // A food item has no price in B: B does not sell from that part of the menu.
     expect(await tillValue('7405', 'price', venueB)).toBeUndefined()
 
-    // Sections: A has the plain keys under its menu; B its own, qualified, under its own menu.
+    // Sections: A has the plain keys under its menu; B its own, qualified by its menu (D88),
+    // under its own menu.
     const ofA = await sectionParents(world.menuId)
     const ofB = await sectionParents(menuB)
     expect(ofA.map((s) => s.external_id)).toContain(String(C72_FOOD))
     expect(ofA.every((s) => !s.external_id.includes('@'))).toBe(true)
     expect(ofB.map((s) => s.external_id).sort()).toEqual(
-      ['1140', '1142', '1143', '1144', '1154', '1155', '1156']
-        .map((id) => `${id}@${venueB}`)
-        .sort(),
+      ['1140', '1142', '1143', '1144', '1154', '1155', '1156'].map((id) => `${id}@${menuB}`).sort(),
     )
     expect(ofB.every((s) => s.parent_id === menuB)).toBe(true)
     // 7409 sits in both menus (food 1131 in A, drinks 1142 in both).

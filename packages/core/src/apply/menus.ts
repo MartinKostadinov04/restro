@@ -203,8 +203,8 @@ const unknownMenu = (id: string) => failure('unknown_menu', `the venue has no me
 const tillVenue = () =>
   failure('till_venue', 'a venue fed by a till gets its menus from the till (D88)')
 
-/** The venue's menus in use, in order. */
-async function venueOrder(tx: WriteTx, venueId: string) {
+/** The venue's menus in use, in order. Shared with the integration layer's till-menus writer. */
+export async function venueMenuOrder(tx: WriteTx, venueId: string) {
   return tx
     .select({ id: menus.id, sortKey: menus.sortKey })
     .from(menus)
@@ -226,8 +226,11 @@ function keyAt(
   return sortKeyBetween(others[index - 1]?.sortKey ?? null, next.sortKey)
 }
 
-/** Makes `menuId` the venue's live menu when it has none (a venue's first menu is live). */
-async function adoptLiveMenu(tx: WriteTx, venueId: string, menuId: string): Promise<string> {
+/**
+ * Makes `menuId` the venue's live menu when it has none (a venue's first menu is live). Shared
+ * with the integration layer's till-menus writer.
+ */
+export async function adoptLiveMenu(tx: WriteTx, venueId: string, menuId: string): Promise<string> {
   const [row] = await tx
     .update(venues)
     .set({ liveMenuId: menuId })
@@ -236,8 +239,11 @@ async function adoptLiveMenu(tx: WriteTx, venueId: string, menuId: string): Prom
   return row?.liveMenuId ?? menuId
 }
 
-/** Inserts a menu's root node and its row; returns the row. */
-async function insertMenu(
+/**
+ * Inserts a menu's root node and its row; returns the row. Shared with the integration layer's
+ * till-menus writer (the caller holds the locks).
+ */
+export async function insertMenuRow(
   tx: WriteTx,
   tenantId: string,
   venueId: string,
@@ -287,9 +293,9 @@ export async function createMenu(
   if (!position.success) return failure('invalid_input', 'position is not valid')
   return inVenue(pool, tenantId, input.venueId, async (tx, venue) => {
     if (venue.tillFed) return tillVenue()
-    const sortKey = keyAt(await venueOrder(tx, input.venueId), position.data, null)
+    const sortKey = keyAt(await venueMenuOrder(tx, input.venueId), position.data, null)
     if (sortKey === null) return unknownMenu(positionId(position.data))
-    const row = await insertMenu(tx, tenantId, input.venueId, name.name, sortKey)
+    const row = await insertMenuRow(tx, tenantId, input.venueId, name.name, sortKey)
     const liveMenuId =
       venue.liveMenuId === null ? await adoptLiveMenu(tx, input.venueId, row.id) : venue.liveMenuId
     return { ok: true, menu: toSummary(row, liveMenuId) }
@@ -344,7 +350,7 @@ export async function moveMenu(
     if (position.data !== 'end' && position.data.before === input.menuId) {
       return { ok: true, menu: toSummary(row, venue.liveMenuId) }
     }
-    const sortKey = keyAt(await venueOrder(tx, input.venueId), position.data, input.menuId)
+    const sortKey = keyAt(await venueMenuOrder(tx, input.venueId), position.data, input.menuId)
     if (sortKey === null) return unknownMenu(positionId(position.data))
     const [updated] = await tx
       .update(menus)
@@ -568,9 +574,9 @@ export async function importMenu(
       }
       const doc = await readMenuDocument(tx, input.fromMenuId)
 
-      const sortKey = keyAt(await venueOrder(tx, input.toVenueId), 'end', null)
+      const sortKey = keyAt(await venueMenuOrder(tx, input.toVenueId), 'end', null)
       if (sortKey === null) return failure('invalid_input', 'no position for the new menu')
-      const row = await insertMenu(
+      const row = await insertMenuRow(
         tx,
         tenantId,
         input.toVenueId,

@@ -541,6 +541,15 @@ export const barsyVenues = restro.table(
      * because prices differ per venue (D73). Null: the integration's `config.price_source`.
      */
     priceSource: text('price_source'),
+    /**
+     * The menu roots the till designates for this venue (D88; migration 0024): the category its
+     * public menu starts at (`public_cat_id`) and the one its till tree starts at (`cat_id`), as
+     * the venue list reports them; null until read, or when the till has none. The sync keeps one
+     * menu per root that is in the tree (`menu_root` links). `catalogue_root_cat_id` above is the
+     * picker of before (D56), no longer read by the sync; it goes with the picker.
+     */
+    publicCatId: integer('public_cat_id'),
+    treeCatId: integer('tree_cat_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -570,6 +579,8 @@ export const barsyVenues = restro.table(
       sql`${t.priceSource} is null or ${t.priceSource} in ('actual_price', 'current_price')`,
     ),
     check('till_venue_catalogue_id', sql`${t.catalogueId} is null or ${t.catalogueId} >= 0`),
+    check('till_venue_public_cat_id', sql`${t.publicCatId} is null or ${t.publicCatId} >= 0`),
+    check('till_venue_tree_cat_id', sql`${t.treeCatId} is null or ${t.treeCatId} >= 0`),
   ],
 )
 

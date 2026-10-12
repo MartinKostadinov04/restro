@@ -23,7 +23,9 @@ export {
   type SourceRecordDescriptor,
 } from './types.ts'
 export {
+  hasCategory,
   inMenuOf,
+  inMenuOfAny,
   parseSectionLinkId,
   qualifiedSections,
   type SectionLinkOwner,

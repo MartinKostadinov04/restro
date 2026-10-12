@@ -70,11 +70,13 @@ export interface CatalogueInput {
   /** `Languages_getlist`: the languages the installation holds. */
   readonly languages: readonly Language[]
   /**
-   * Categories whose section in this venue is linked under the venue-qualified key
-   * (`<catId>@<vn_ id>`, ./venues.ts `qualifiedSections`). Absent or empty: every section uses the
-   * plain key, as before several venues shared a catalogue (CF-16).
+   * Categories whose section in this menu is linked under a qualified key
+   * (`<catId>@<qualifier>`, ./venues.ts `qualifiedSections`): a map of category to qualifier (the
+   * menu's id, or the venue's for a link from before D88), or, as before D88, a set of categories
+   * qualified by the venue's id. Absent or empty: every section uses the plain key, as before
+   * several venues shared a catalogue (CF-16).
    */
-  readonly qualifiedSections?: ReadonlySet<number> | undefined
+  readonly qualifiedSections?: ReadonlySet<number> | ReadonlyMap<number, string> | undefined
   /** Articles (ids as text) this venue had hidden, outside its root: cleared when mapped (CF-16). */
   readonly venueHiddenArticles?: ReadonlySet<string> | undefined
 }

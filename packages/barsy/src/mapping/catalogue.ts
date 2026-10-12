@@ -202,10 +202,18 @@ function money(minor: number): { amount_minor: number; currency: typeof CURRENCY
 
 // --- sections -----------------------------------------------------------------------------
 
-/** The section link of a category in this venue (plain, or qualified by the venue; CF-16). */
+/** The section link of a category in this menu (plain, or qualified by the menu or the venue; CF-16, D88). */
 function sectionLinkOf(run: Run, catId: number): SourceLink {
-  const qualified = run.input.qualifiedSections?.has(catId) === true
-  return linkOf(run, 'category', sectionLinkId(catId, qualified ? run.input.venueId : null))
+  const qualified = run.input.qualifiedSections
+  const qualifier =
+    qualified === undefined
+      ? null
+      : qualified instanceof Map
+        ? (qualified.get(catId) ?? null)
+        : qualified.has(catId)
+          ? run.input.venueId
+          : null
+  return linkOf(run, 'category', sectionLinkId(catId, qualifier))
 }
 
 function mapSections(run: Run, plan: SectionsPlan): void {

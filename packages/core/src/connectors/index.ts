@@ -29,12 +29,14 @@ export type TillLinkTypes = Readonly<Record<string, TillLinkTypesOfKind>>
  * The external types a till link may have, per connector kind and node type (doc "Barsy to
  * canonical mapping" for barsy): an item mirrors an article, a section a category, a modifier
  * group a supplement group of one combo article (`<articleId>:<groupId>`), an option a
- * modificator or a supplement article (`<articleId>:<groupId>:<optionArticleId>`). The menu and
- * specials take no till link. `apply()` checks every link against this map.
+ * modificator or a supplement article (`<articleId>:<groupId>:<optionArticleId>`). A menu mirrors
+ * one of the roots the till designates for the venue (`menu_root`, `<catId>@<vn_ id>`: the
+ * public menu or the till tree, D88); specials take no till link. `apply()` checks every link
+ * against this map.
  */
 export const TILL_LINK_TYPES: { readonly [K in IntegrationKind]: TillLinkTypesOfKind } = {
   barsy: {
-    menu: [],
+    menu: ['menu_root'],
     section: ['category'],
     item: ['article'],
     modifier_group: ['supplement_group'],

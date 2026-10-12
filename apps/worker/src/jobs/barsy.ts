@@ -77,6 +77,7 @@ import {
   fullPullStartedWithin,
   loadMappedVenue,
   loadVenueTarget,
+  rootsOf,
   SYNC_SKIP_TEXT,
   syncSkipReason,
   type VenueTarget,
@@ -193,14 +194,18 @@ async function recordVenueList(
       bid: venue.barsy_id,
       name: venue.name,
       catalogueId: venue.menu_id ?? null,
+      // The roots the till designates for the venue's menus (D88): its public menu, its tree.
+      publicCatId: venue.public_cat_id ?? null,
+      treeCatId: venue.cat_id ?? null,
     })),
   )
   return { venues, live }
 }
 
 /**
- * The catalogue the venue sells from, as the venue list says now (CF-16), and a note when the list
- * could not be read (the stored one is used then). Wrong credentials are thrown.
+ * The catalogue the venue sells from and the roots of its menus, as the venue list says now
+ * (CF-16, D88), and a note when the list could not be read (the stored ones are used then).
+ * Wrong credentials are thrown.
  */
 async function refreshCatalogue(
   env: SyncEnvironment,
@@ -212,7 +217,14 @@ async function refreshCatalogue(
     const { live } = await recordVenueList(env, payload, session.reader)
     const own = live.find((venue) => venue.barsy_id === target.bid)
     const catalogueId = own?.menu_id ?? target.catalogueId
-    return { target: { ...target, catalogueId }, notes: [] }
+    const roots =
+      own === undefined
+        ? target.roots
+        : rootsOf(own.public_cat_id ?? null, own.cat_id ?? null, target.catalogueRootCatId)
+    return {
+      target: { ...target, catalogueId, roots: roots.length === 0 ? target.roots : roots },
+      notes: [],
+    }
   } catch (error) {
     if (error instanceof AuthRefused) throw error
     env.log.warn({ err: error }, 'the venue list could not be read')
@@ -694,6 +706,8 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             venueId: venueLinks.venueId,
             bid: venueLinks.bid,
             root: venueLinks.catalogueRootCatId,
+            publicRoot: venueLinks.publicCatId,
+            treeRoot: venueLinks.treeCatId,
             config: integrations.config,
           })
           .from(integrations)
@@ -717,7 +731,7 @@ export function createBarsyJobs(deps: BarsyJobDeps): JobDefinition[] {
             integrationId: row.integrationId,
             venueId: row.venueId,
             bid: row.bid,
-            hasRoot: row.root !== null,
+            hasRoot: rootsOf(row.publicRoot, row.treeRoot, row.root).length > 0,
             config: row.config,
           })
         }
