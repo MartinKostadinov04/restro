@@ -29,8 +29,8 @@ Three layers, kept apart:
   Chosen for scale: an unused venue shouldn't take space forever. The purge erases the venue's own data (menu, tables, published files, history); items another venue uses stay; its public and QR codes are never reused. Only the purge job may delete (its own database role). Amends D76.
 - **D77 (platform part)** One central source of a venue's menu languages.
   One function in core works out a venue's languages from what the connector reports (about 20% coverage counts; a language the owner switched on is never removed; one main language per venue). Every step uses it: sync, new venue, settings, composer, checks, publishing.
-- **D78** Changing a venue's menu source archives its old menu (restorable 30 days).
-  Any change of source: by hand → a till, one till venue → another, or another menu category. A dialog warns first; the old menu stays restorable for 30 days. Found when Demo Club Sofia piled up 127 items from three till venues.
+- **D87** A venue's source is fixed when it is created (supersedes D78).
+  No "Change…" on the venue: it confused. To use another till venue, another POS, or to go from hand-made to a POS, create a new venue from that source and delete the old one. The menu category is picked automatically when the POS marks a public menu; you're asked only if it doesn't and there are several. Which sections and items appear is the composer's job. (Demo Club Sofia's mixed 127 items: recreate the venue.)
 - **D80** Custom domains for the guest menu.
   Per domain, the owner chooses: one venue (`menu.club.bg` opens its menu) or the whole organisation (`menu.group.bg/<venue>`). Subdomains only; only the guest menu and table codes are served there, never the admin. The owner sets it up in Settings › Domains: Restro shows the DNS record, checks it and turns HTTPS on (provider to confirm: Cloudflare for SaaS). QR codes then print with the domain; our address keeps working.
 
@@ -46,7 +46,7 @@ Three layers, kept apart:
 - **T77** Re-withdraw a deleted venue's guest files if the queue was down.
   If the background queue is down at the moment of a delete, the guest page stays online until the venue is restored and deleted again.
 - Demo Club Sofia's first publish: who presses it.
-  Its guest page doesn't work at the new address until it's published once. Best after D78 cleans up its menu.
+  Its guest page doesn't work at the new address until it's published once. Moot if the venue is recreated (D87).
 
 ## 2. Integration layer (any POS, or by hand)
 
@@ -62,7 +62,7 @@ Three layers, kept apart:
   - Instance: connection and status, allergen characteristic (barsy defines it once per installation), "Sync everything now", the history of all its venues.
   - Venue: main language, menu source and price, **sync mode: automatic or manual only**, with, when automatic, how often to check and the daily full-read time in the venue's own time zone; its own sync history and "Sync this venue"; publishing rules; the publish pause after a rollback (T76).
   - Moves from the connection to the venue: default language, sync schedule, rollback pause.
-- **Menu source card (venue Settings) is two parts:** a common part for every POS venue (instance and its venue, sync mode and schedule, Sync this venue, history, held-sync warning) and a part supplied by that POS's connector, shown only for its venues (barsy: menu category, Base vs Current price). A hand-made venue shows neither. "Change…" becomes "Change source" under D78.
+- **Menu source card (venue Settings) is two parts:** a common part for every POS venue (instance and its venue, sync mode and schedule, Sync this venue, history, held-sync warning) and a part supplied by that POS's connector, shown only for its venues (barsy: menu category, Base vs Current price). A hand-made venue shows neither. No "Change…" (D87).
 - **Sync history is collapsed** (instance and venue): one line shows the last run (time, result, changes); the full list opens under a dropdown, so the page never becomes a long scroll.
 - **Wording:** every settings text that mentions barsy will name the system by `{POS name}` inside its tab (the connector's label), never "barsy" hard-coded.
 
@@ -85,7 +85,7 @@ Three layers, kept apart:
   barsy has no allergen field, so the list shows every characteristic a venue defined ("Грамаж", "Годност в дни"…). A sample value makes the right one obvious.
 - **P-02** Offer only barsy sales venues ("Търговски"), not production or service units.
   Demo Club Sofia ended up linked to a production unit ("Кетъринг/Bakery/Тропс"), which isn't a place guests order from.
-- **P-03** Default menu category = barsy's public menu (`public_cat_id`).
+- ~~P-03~~ became part of D87: barsy's public menu (`public_cat_id`) is the menu category, chosen automatically.
   barsy keeps several "menus" in one catalogue. Its "Публично меню" branch has proper guest names; the till's own branch mostly doesn't.
 - **P-04** Decide which barsy price guests see (`actual_price` or `current_price`).
   barsy sends two prices that can differ: the demo espresso is 1.80 vs 1.17.
