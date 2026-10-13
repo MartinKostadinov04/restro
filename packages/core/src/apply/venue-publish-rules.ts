@@ -42,8 +42,8 @@ export type SetVenuePublishRulesInput = z.input<typeof InputSchema>
 /**
  * Saves the venue's publishing rules and returns them. Refuses malformed input
  * (`invalid_input`) and a venue the tenant does not have (`venue_missing`) before or without
- * writing. Idempotent. `settings.publish` is replaced by exactly the two rules, so a stray key in
- * it cannot linger.
+ * writing. Idempotent. The rules in `settings.publish` are replaced (an old `new_items` goes,
+ * D96); the pause after a return (`auto_paused`, T76), which lives next to them, stays.
  */
 export async function setVenuePublishRules(
   pool: DbPool,
@@ -64,7 +64,7 @@ export async function setVenuePublishRules(
     const rows = await tx
       .update(venues)
       .set({
-        settings: sql`${venues.settings} || jsonb_build_object('publish', ${value}::jsonb)`,
+        settings: sql`${venues.settings} || jsonb_build_object('publish', (coalesce(${venues.settings}->'publish', '{}'::jsonb) - 'after_sync' - 'new_items') || ${value}::jsonb)`,
       })
       .where(eq(venues.id, venueId))
       .returning({ id: venues.id })
