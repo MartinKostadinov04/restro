@@ -6,7 +6,16 @@
 // This module is exported as `@restro/core/apply`, never from `@restro/core` itself: it pulls in
 // the database driver, and pure consumers (the shell, the faces, client components) must not.
 
-import { type DbPool, menus, nodes, tenants, type Venue, venues } from '@restro/db'
+import {
+  type DbPool,
+  menus,
+  nodes,
+  tenants,
+  tombstones,
+  type Venue,
+  venueSlugHistory,
+  venues,
+} from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, eq, isNull } from 'drizzle-orm'
 
@@ -30,15 +39,24 @@ export type ProvisionErrorCode =
   | 'venue_archived'
   /** Another venue of the organisation holds this address name (D84; one name per organisation). */
   | 'slug_taken'
+  /** A restore is refused: another venue serves the till venue this one had (adjustments V1). */
+  | 'till_taken'
 
 /** Thrown by the provisioning and venue-lifecycle writers for input or state they refuse. */
 export class ProvisionError extends Error {
   override name = 'ProvisionError'
   readonly code: ProvisionErrorCode
+  /** What the refusal names, for the caller's wording (`till_taken`: `holder`, the venue's name). */
+  readonly details: Readonly<Record<string, string>>
 
-  constructor(code: ProvisionErrorCode, message: string, options?: ErrorOptions) {
+  constructor(
+    code: ProvisionErrorCode,
+    message: string,
+    options?: ErrorOptions & { readonly details?: Readonly<Record<string, string>> },
+  ) {
     super(message, options)
     this.code = code
+    this.details = options?.details ?? {}
   }
 }
 
@@ -211,10 +229,26 @@ function checkedVenue(tenantId: string, input: ProvisionVenueInput): CheckedVenu
 }
 
 /** Inserts the venue row, with a fresh id and a fresh public code. */
+/**
+ * A public code no purged venue ever had (D83: a tombstoned code is never reissued, so an old
+ * sticker or link can never open another venue's menu). Drawn again on the rare hit.
+ */
+async function freshPublicId(tx: WriteTx): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = newPublicId()
+    const [taken] = await tx
+      .select({ value: tombstones.value })
+      .from(tombstones)
+      .where(and(eq(tombstones.kind, 'public_code'), eq(tombstones.value, code)))
+    if (taken === undefined) return code
+  }
+  throw new Error('could not draw a public code that was never purged')
+}
+
 async function insertVenueRow(tx: WriteTx, tenantId: string, venue: CheckedVenue): Promise<Venue> {
   const [row] = await tx
     .insert(venues)
-    .values({ id: newId('vn'), tenantId, publicId: newPublicId(), ...venue })
+    .values({ id: newId('vn'), tenantId, publicId: await freshPublicId(tx), ...venue })
     .returning()
   if (!row) throw new ProvisionError('invalid_input', 'the venue row was not created')
   return row
@@ -237,8 +271,20 @@ function slugTaken(slug: string, cause: unknown): ProvisionError {
   return new ProvisionError(
     'slug_taken',
     `another venue of the organisation already has the address name ${JSON.stringify(slug)}`,
-    { cause },
+    cause === null ? undefined : { cause },
   )
+}
+
+/**
+ * The venue the organisation's address-name history reserves `slug` for (an earlier name of
+ * that venue, D84), or null when no venue was called so before.
+ */
+async function reservedBy(tx: WriteTx, slug: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ venueId: venueSlugHistory.venueId })
+    .from(venueSlugHistory)
+    .where(eq(venueSlugHistory.slug, slug))
+  return row?.venueId ?? null
 }
 
 /**
@@ -259,7 +305,11 @@ export async function provisionVenue(
 ): Promise<Venue> {
   const checked = checkedVenue(tenantId, input)
   const insertVenue = () =>
-    withTenantWrite(pool, tenantId, (tx) => insertVenueRow(tx, tenantId, checked))
+    withTenantWrite(pool, tenantId, async (tx) => {
+      // An earlier name of a venue of the organisation keeps redirecting to it (D84).
+      if ((await reservedBy(tx, checked.slug)) !== null) throw slugTaken(checked.slug, null)
+      return insertVenueRow(tx, tenantId, checked)
+    })
 
   try {
     try {
@@ -295,6 +345,9 @@ export async function provisionVenueIn(
   input: ProvisionVenueInput,
 ): Promise<Venue> {
   const checked = checkedVenue(tenantId, input)
+  // An address name a venue of the organisation was called before keeps redirecting to that
+  // venue (D84): it is not free for a new one.
+  if ((await reservedBy(tx, checked.slug)) !== null) throw slugTaken(checked.slug, null)
   const attempt = () => tx.transaction((inner) => insertVenueRow(inner, tenantId, checked))
   try {
     return await attempt()
@@ -316,10 +369,13 @@ export interface RenamedVenueSlug {
 }
 
 /**
- * Changes the readable part of a venue's public address (D68). The public code stays, so every
- * link ever printed or shared keeps finding the menu; the published index file carries the new
- * slug after the next `publish-files` job. Refuses a malformed slug (`invalid_input`) and a venue
- * the tenant does not have (`venue_missing`); the same slug again writes nothing.
+ * Changes a venue's address name (D84; before D68's readable part). The public code stays, so
+ * every link ever printed or shared keeps finding the menu, and the old name is remembered
+ * (`venue_slug_history`), so `/m/<organisation>/<old name>` leads to the new one once the
+ * organisation's index is written again (the caller queues it). Refuses a malformed slug
+ * (`invalid_input`), a venue the tenant does not have (`venue_missing`), a deleted one
+ * (`venue_archived`) and a name another venue of the organisation has or had (`slug_taken`); a
+ * venue may take one of its own earlier names back. The same slug again writes nothing.
  */
 export async function renameVenueSlug(
   pool: DbPool,
@@ -339,7 +395,15 @@ export async function renameVenueSlug(
     }
     const { venue } = locked
     if (venue.slug === slug) return { venueId, slug, publicId: venue.publicId, changed: false }
+    const reserved = await reservedBy(tx, slug)
+    if (reserved !== null && reserved !== venueId) throw slugTaken(slug, null)
     await tx.update(venues).set({ slug }).where(eq(venues.id, venueId))
+    // The old name redirects to this venue from now on. A name the venue held before is in the
+    // history for it already (no other venue can hold or reserve it): nothing to add then.
+    await tx
+      .insert(venueSlugHistory)
+      .values({ tenantId, venueId, slug: venue.slug })
+      .onConflictDoNothing({ target: [venueSlugHistory.tenantId, venueSlugHistory.slug] })
     return { venueId, slug, publicId: venue.publicId, changed: true }
   }).catch((error: unknown) => {
     if (isSlugClash(error)) throw slugTaken(slug, error)

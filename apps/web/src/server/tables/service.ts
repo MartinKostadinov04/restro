@@ -18,11 +18,13 @@ import {
 import {
   issueAllTableTokens,
   issueTableToken,
+  listVenueAreas,
   listVenueTables,
   retireTableToken,
-  setTableLabel,
+  setTableName,
   setVenueQrSettings,
   type TableWriteRefusal,
+  tableLabel,
   type VenueTable,
 } from '@restro/core/apply'
 import type { DbPool, Venue } from '@restro/db'
@@ -57,8 +59,6 @@ export interface TablesServices {
 
 // --- reading ------------------------------------------------------------------------------------
 
-const collator = new Intl.Collator(['bg', 'en'], { numeric: true, sensitivity: 'base' })
-
 async function toRow(
   table: VenueTable,
   address: (token: string) => string | null,
@@ -67,73 +67,49 @@ async function toRow(
   const text = table.token === null ? null : address(table.token)
   return {
     id: table.id,
-    number: table.placeNum,
-    label: table.label,
-    shownAs: table.label?.trim() || table.placeNum?.trim() || null,
-    isPublic: table.isPublic,
-    state: table.state,
+    number: table.number,
+    label: table.name,
+    shownAs: tableLabel(table),
+    isPublic: !table.hidden,
     token: table.token,
     address: text,
     qrSvg: text === null ? null : await render(text),
   }
 }
 
-/** A table row with the hall it is grouped under (the hall is the group's name, not a field). */
-type Row = TableRowView & { readonly salonName: string | null }
-
-/** Halls by name (no hall last), tables in a hall by their number or name, numbers in order. */
-function sortedHalls(rows: readonly Row[]): { name: string | null; tables: Row[] }[] {
-  const halls = new Map<string | null, Row[]>()
-  for (const row of rows) {
-    const name = row.salonName
-    const list = halls.get(name) ?? []
-    list.push(row)
-    halls.set(name, list)
-  }
-  return [...halls.entries()]
-    .sort(([a], [b]) => {
-      if (a === b) return 0
-      if (a === null) return 1
-      if (b === null) return -1
-      return collator.compare(a, b)
-    })
-    .map(([name, tables]) => ({
-      name,
-      // A table with neither a number nor a name is last in its hall.
-      tables: tables.sort((a, b) => {
-        if (a.shownAs === null || b.shownAs === null) {
-          return Number(a.shownAs === null) - Number(b.shownAs === null) || a.id.localeCompare(b.id)
-        }
-        return collator.compare(a.shownAs, b.shownAs) || a.id.localeCompare(b.id)
-      }),
-    }))
-}
-
 /**
- * Reads the tab: the venue's tables by hall with their codes drawn, and the address setting with
- * its defaults. `defaultBaseUrl` is the app's own address from the environment; `render` makes the
- * SVG of a code (tests pass a plain function).
+ * Reads the tab: the venue's tables by area, in the areas' and the tables' order, with their
+ * codes drawn, and the address setting with its defaults. `defaultBaseUrl` is the app's own
+ * address from the environment; `render` makes the SVG of a code (tests pass a plain function).
  */
 export async function loadTablesView(
   scope: TablesScope,
   defaultBaseUrl: string | null,
   render: (text: string) => Promise<string> = qrSvg,
 ): Promise<TablesView> {
-  const tables = await listVenueTables(scope.pool, scope.tenantId, scope.venue.id)
+  const [areas, tables] = await Promise.all([
+    listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
+    listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
+  ])
   const qr = readVenueQr(scope.venue.settings, defaultBaseUrl)
   const address = (token: string) => qrAddress(qr, token)
-  const rows: Row[] = await Promise.all(
-    tables.map(async (table) => ({
-      ...(await toRow(table, address, render)),
-      salonName: table.salonName,
-    })),
-  )
-  const halls: HallView[] = sortedHalls(rows).map((hall) => ({
-    name: hall.name,
-    tables: hall.tables.map(({ salonName: _hall, ...row }): TableRowView => row),
+  const rows = await Promise.all(tables.map((table) => toRow(table, address, render)))
+  const rowsByArea = new Map<string, TableRowView[]>()
+  tables.forEach((table, index) => {
+    const row = rows[index]
+    if (row === undefined) return
+    const list = rowsByArea.get(table.areaId) ?? []
+    list.push(row)
+    rowsByArea.set(table.areaId, list)
+  })
+  const halls: HallView[] = areas.map((area) => ({
+    id: area.id,
+    name: area.name,
+    isPublic: !area.hidden,
+    tables: rowsByArea.get(area.id) ?? [],
   }))
   const coded = rows.filter((row) => row.token !== null).length
-  const first = halls.flatMap((hall) => hall.tables).find((row) => row.token !== null)
+  const first = rows.find((row) => row.token !== null)
   return {
     venueId: scope.venue.id,
     venueName: scope.venue.name,
@@ -165,7 +141,10 @@ const REFUSALS: Record<TableWriteRefusal['error'], TablesErrorCode> = {
   // A deleted venue (D76) is gone to this screen; its page is a 404 already.
   venue_archived: 'not_found',
   unknown_table: 'not_found',
+  unknown_area: 'not_found',
   no_label: 'no_label',
+  hidden: 'hidden',
+  from_till: 'from_till',
 }
 
 function refused(refusal: TableWriteRefusal): TablesActionResult {
@@ -243,14 +222,14 @@ export async function renameTable(
   label: string | null,
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
-  const result = await setTableLabel(scope.pool, scope.tenantId, tableId, label)
+  const result = await setTableName(scope.pool, scope.tenantId, tableId, label)
   if (!result.ok) return refused(result)
   // Only a table with a code has a file that says its name.
   if (result.table.token === null) return { ok: true, queued: true }
   return { ok: true, queued: await queueTokenFiles(scope, services, result.venueId, []) }
 }
 
-/** Gives every active table that has none a code. */
+/** Gives every shown table that has none a code. */
 export async function createAllCodes(
   scope: TablesScope,
   services: TablesServices,

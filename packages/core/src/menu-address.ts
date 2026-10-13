@@ -1,23 +1,44 @@
-// The public address of a venue's menu (D68, brief CF-14): `/m/<slug>-<code>`, the pattern Claude's
-// artifacts and Notion use. The code (`public-id.ts`) finds the venue; the slug in front of it is
-// readable decoration that may change or be missing. `menuPath` is the only place that builds the
-// string and `parseMenuParam` the only one that reads it, so no other code assembles or splits an
-// address by hand. Pure: no I/O.
+// The public address of a venue's menu. Since D84 it is `/m/<organisation>/<venue>`: the
+// organisation's slug (unique platform-wide) and the venue's address name (unique in its
+// organisation), both readable, both renameable with the old names redirecting. The address of
+// before, `/m/<slug>-<code>` (D68), keeps working: its code (`public-id.ts`) finds the venue and
+// the page moves to the new address. `guestMenuPath` and `menuPath` are the only places that
+// build the strings and `parseMenuParam` the only one that reads the old one, so no other code
+// assembles or splits an address by hand. Pure: no I/O.
 
-import { isVenueSlug } from './guest-files'
+import { isOrganizationSlug, isVenueSlug } from './guest-files'
 import { isPublicId, PUBLIC_ID_LENGTH, PUBLIC_ID_PATTERN } from './public-id'
 
-/** The parts of a venue its public address is made of. */
+/** The parts of a venue's address (D84): its organisation's slug and its own. */
+export interface GuestAddressParts {
+  readonly organization: string
+  readonly venue: string
+}
+
+/**
+ * The canonical path of a venue's menu: `/m/<organisation>/<venue>` (D84). The query string
+ * (`?t=`, `?lang=`) is the caller's to add. Parts that are not slugs cannot come from our
+ * writers and throw.
+ */
+export function guestMenuPath(address: GuestAddressParts): string {
+  if (!isOrganizationSlug(address.organization) || !isVenueSlug(address.venue)) {
+    throw new TypeError('a guest address is made of an organisation slug and a venue slug')
+  }
+  return `/m/${address.organization}/${address.venue}`
+}
+
+/** The parts of a venue its public address of before D84 is made of. */
 export interface MenuAddressParts {
   readonly slug: string
   readonly publicId: string
 }
 
 /**
- * The canonical path of a venue's menu: `/m/<slug>-<publicId>`. The query string (`?t=`, `?lang=`)
- * is the caller's to add. A public code that is not one is a bug and throws. A slug that is not a
- * slug (it cannot happen through our writers) is left out, giving `/m/<publicId>`, which still
- * finds the menu: the slug is decoration.
+ * The path of a venue's menu as it was before D84: `/m/<slug>-<publicId>`. Still built for the
+ * files and links of before (a printed code of 2026 leads here and the page moves on). The query
+ * string (`?t=`, `?lang=`) is the caller's to add. A public code that is not one is a bug and
+ * throws. A slug that is not a slug (it cannot happen through our writers) is left out, giving
+ * `/m/<publicId>`, which still finds the menu: the slug is decoration.
  */
 export function menuPath(venue: MenuAddressParts): string {
   if (!isPublicId(venue.publicId)) {

@@ -7,6 +7,9 @@ import { hexToRgb } from './colour'
 /** WCAG AA contrast for normal text. */
 export const MIN_TEXT_CONTRAST = 4.5
 
+/** WCAG 1.4.11 contrast for controls and their parts against what they sit on (D93). */
+export const MIN_CONTROL_CONTRAST = 3
+
 const BLACK = '#000000'
 
 /** WCAG relative luminance of a `#rrggbb` colour (0 black … 1 white). */

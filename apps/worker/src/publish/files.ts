@@ -34,7 +34,7 @@ import {
 } from '@restro/assets'
 import type { NodeId, VenueId } from '@restro/core'
 import { loadCurrentSnapshot, loadLiveOverlay, PublishError } from '@restro/core/apply'
-import { type DbPool, publishPointers, venues, withTenant } from '@restro/db'
+import { authOrganization, type DbPool, publishPointers, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
 export interface PublishFilesDeps {
@@ -115,30 +115,49 @@ async function pointerId(deps: PublishFilesDeps, scope: PublishScope): Promise<s
   return row?.id ?? null
 }
 
-/** The public code and the slug of the venue (the address `/m/<slug>-<code>` is made of them). */
-async function addressOf(
-  deps: PublishFilesDeps,
-  scope: PublishScope,
-): Promise<{ readonly publicId: string; readonly slug: string }> {
-  const [row] = await withTenant(deps.pool, scope.tenantId, (tx) =>
-    tx
-      .select({ publicId: venues.publicId, slug: venues.slug })
-      .from(venues)
-      .where(eq(venues.id, scope.venueId)),
-  )
-  if (row === undefined) throw new Error(`there is no venue ${scope.venueId} to publish`)
-  return row
+/** What the venue's address is made of: its public code, its slug and its organisation's slug (D84). */
+interface VenueAddress {
+  readonly publicId: string
+  readonly slug: string
+  readonly organization: string | null
 }
 
-/** The public code of the venue when it was deleted (archived, D76); null when it is live or missing. */
-async function archivedCodeOf(deps: PublishFilesDeps, scope: PublishScope): Promise<string | null> {
+/** The venue's address parts (the old address `/m/<slug>-<code>` and the new `/m/<organisation>/<slug>`). */
+async function addressOf(deps: PublishFilesDeps, scope: PublishScope): Promise<VenueAddress> {
+  return withTenant(deps.pool, scope.tenantId, async (tx) => {
+    const [row] = await tx
+      .select({ publicId: venues.publicId, slug: venues.slug })
+      .from(venues)
+      .where(eq(venues.id, scope.venueId))
+    if (row === undefined) throw new Error(`there is no venue ${scope.venueId} to publish`)
+    const [organization] = await tx
+      .select({ slug: authOrganization.slug })
+      .from(authOrganization)
+      .where(eq(authOrganization.id, scope.tenantId))
+    return { ...row, organization: organization?.slug ?? null }
+  })
+}
+
+/**
+ * The public code of the venue when its files must not be out: deleted (archived, D76) or
+ * unpublished (D86); null when it is live or missing.
+ */
+async function withdrawnCodeOf(
+  deps: PublishFilesDeps,
+  scope: PublishScope,
+): Promise<string | null> {
   const [row] = await withTenant(deps.pool, scope.tenantId, (tx) =>
     tx
-      .select({ publicId: venues.publicId, archivedAt: venues.archivedAt })
+      .select({
+        publicId: venues.publicId,
+        archivedAt: venues.archivedAt,
+        unpublishedAt: venues.unpublishedAt,
+      })
       .from(venues)
       .where(eq(venues.id, scope.venueId)),
   )
-  return row !== undefined && row.archivedAt !== null ? row.publicId : null
+  if (row === undefined) return null
+  return row.archivedAt !== null || row.unpublishedAt !== null ? row.publicId : null
 }
 
 /**
@@ -178,7 +197,7 @@ async function withdrawVenueIndex(
 async function writeVenueIndex(
   deps: PublishFilesDeps,
   scope: PublishScope,
-  address: { readonly publicId: string; readonly slug: string },
+  address: VenueAddress,
 ): Promise<VenueIndexStatus> {
   const existing = await readVenueIndex(deps.store, address.publicId)
   if (existing !== null && existing.venue_id !== scope.venueId) {
@@ -189,6 +208,7 @@ async function writeVenueIndex(
     venue_id: scope.venueId,
     menu_id: scope.menuId,
     slug: address.slug,
+    ...(address.organization === null ? {} : { organization: address.organization }),
   })
   if (sameBytes(await deps.store.get(file), bytes)) return 'unchanged'
   await deps.store.put(file, bytes, publishPutOptions(file))
@@ -214,8 +234,8 @@ export async function writePublishFiles(
 ): Promise<PublishFilesResult> {
   const written: string[] = []
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    // A deleted venue has no files: withdraw before anything is written (D76).
-    const deletedBefore = await archivedCodeOf(deps, scope)
+    // A deleted or unpublished venue has no files: withdraw before anything is written (D76, D86).
+    const deletedBefore = await withdrawnCodeOf(deps, scope)
     if (deletedBefore !== null) return withdrawVenueIndex(deps, scope, deletedBefore)
 
     const current = await loadCurrentSnapshot(deps.pool, scope.tenantId, {
@@ -252,7 +272,7 @@ export async function writePublishFiles(
 
     // The venue may have been deleted while the files were written: the index goes again, so the
     // last run leaves what the database says, whichever job it was (D76).
-    const deletedAfter = await archivedCodeOf(deps, scope)
+    const deletedAfter = await withdrawnCodeOf(deps, scope)
     if (deletedAfter !== null) return withdrawVenueIndex(deps, scope, deletedAfter)
 
     if ((await pointerId(deps, scope)) === current.id) {

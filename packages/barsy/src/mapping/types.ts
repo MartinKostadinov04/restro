@@ -213,6 +213,9 @@ export interface PlaceDescriptor {
   readonly placeId: string
   /** barsy's `place_num` as text ("VIP", "Бар", "12"). */
   readonly placeNum: string | null
+  /** The hall's id as text and its order among halls (D95); null when barsy sends none. */
+  readonly salonId: string | null
+  readonly salonWeight: number | null
   readonly salonName: string | null
   readonly isPublic: boolean
   readonly sourceRecord: SourceRecordDescriptor

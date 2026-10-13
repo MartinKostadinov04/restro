@@ -39,6 +39,7 @@ import {
   listVenueTables,
   mapBarsyVenue,
   restoreVenue,
+  unpublishVenue,
   upsertPlaces,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
@@ -378,8 +379,8 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       expect(await files(tokens)).toEqual([null, null])
       // The codes were not retired: they are still on the tables.
       const stored = await world.query<{ qr_token: string }>(
-        'select qr_token from restro.places where integration_id = $1 and bid = $2',
-        [world.integrationId, DEMO_BID],
+        'select qr_token from restro.tables where venue_id = $1',
+        [world.venueId],
       )
       expect(stored.map((row) => row.qr_token).sort()).toEqual([...tokens].sort())
 
@@ -391,14 +392,29 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       })
       expect(await files(tokens)).toEqual([null, null])
 
-      // Restore: still nothing until the till is linked again; then the same files come back.
-      await restoreVenue(world.pool, tenantId(), world.venueId)
+      // Restore: the venue comes back as a Draft (D86, unpublished) with its till venue linked
+      // again (adjustments V1), so nothing is served until it is published; the tables are the
+      // venue's own (D95), so the publish brings the same files back.
+      expect(await restoreVenue(world.pool, tenantId(), world.venueId)).toMatchObject({
+        relinked: true,
+      })
       await runJob(JOB_NAMES.publishTableTokens, {
         tenantId: world.tenantId,
         venueId: world.venueId,
         retired: [],
       })
       expect(await files(tokens)).toEqual([null, null])
+      // What a publish does to the flag (the world's menu has no items to publish, V10).
+      await world.query('update restro.venues set unpublished_at = null where id = $1', [
+        world.venueId,
+      ])
+      await runJob(JOB_NAMES.publishTableTokens, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        retired: [],
+      })
+      const bytesAfter = await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))
+      expect(bytesAfter).toEqual(bytesBefore)
       const linked = await mapBarsyVenue(
         world.pool,
         world.tenantId,
@@ -407,13 +423,40 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
         world.venueId,
       )
       expect(linked.ok).toBe(true)
+      expect(await listVenueTables(world.pool, world.tenantId, world.venueId)).toHaveLength(2)
       await runJob(JOB_NAMES.publishTableTokens, {
         tenantId: world.tenantId,
         venueId: world.venueId,
         retired: [],
       })
-      const bytesAfter = await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))
-      expect(bytesAfter).toEqual(bytesBefore)
+      expect(await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))).toEqual(
+        bytesBefore,
+      )
+    })
+
+    it('withdraws the files of an unpublished venue (D86), and a publish brings them back', async () => {
+      const tokens = await twoTables()
+      const bytesBefore = await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))
+      const unpublished = await unpublishVenue(world.pool, tenantId(), world.venueId)
+      expect([...unpublished.tableTokens].sort()).toEqual([...tokens].sort())
+      await runJob(JOB_NAMES.publishTableTokens, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        retired: unpublished.tableTokens,
+      })
+      expect(await files(tokens)).toEqual([null, null])
+      // What a publish does to the flag (the world's menu has no items to publish, V10).
+      await world.query('update restro.venues set unpublished_at = null where id = $1', [
+        world.venueId,
+      ])
+      await runJob(JOB_NAMES.publishTableTokens, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        retired: [],
+      })
+      expect(await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))).toEqual(
+        bytesBefore,
+      )
     })
 
     it('leaves alone a file that meanwhile belongs to another venue', async () => {

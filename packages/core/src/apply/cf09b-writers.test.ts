@@ -280,7 +280,8 @@ describe.skipIf(!hasDatabase)('the writers of CF-09b (as the restro_app role)', 
       const config = await configOf()
       // Venue B never saved: it reads the integration's rule. Venue A saved 'auto', 'show'.
       expect(venuePublishesAfterSync(await settingsOf(tenant, venueB), config)).toBe(false)
-      expect(venueHoldsNewItems(await settingsOf(tenant, venueB), config)).toBe(true)
+      // The new-items rule is retired (D96): a stored `hold` holds nothing.
+      expect(venueHoldsNewItems(await settingsOf(tenant, venueB), config)).toBe(false)
       expect(venuePublishesAfterSync(await settingsOf(tenant, venueA), config)).toBe(true)
       expect(venueHoldsNewItems(await settingsOf(tenant, venueA), config)).toBe(false)
 
@@ -311,7 +312,6 @@ describe.skipIf(!hasDatabase)('the writers of CF-09b (as the restro_app role)', 
       expect(await settingsOf(otherTenant, otherTenantVenue)).toEqual({})
       for (const bad of [
         { venueId: venueA, rules: { after_sync: 'later', new_items: 'hold' } },
-        { venueId: venueA, rules: { after_sync: 'auto' } },
         { venueId: venueA, rules: { ...rules, auto_paused: true } },
         { venueId: 'nope', rules },
       ]) {

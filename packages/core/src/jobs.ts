@@ -32,6 +32,23 @@ export const JOB_NAMES = {
   assetVariants: 'asset-variants',
   /** Write the `t/<token>.json` files of a venue's table codes and remove the retired ones (S3-07). */
   publishTableTokens: 'publish-table-tokens',
+  /**
+   * Write an organisation's index `o/<slug>.json` and the redirect files of its earlier slugs
+   * (D84): after a rename of the organisation, a venue, or a change of a venue's state. The
+   * publish jobs write the index themselves after a publish.
+   */
+  publishOrganizationIndex: 'publish-organization-index',
+  /**
+   * Erase one deleted venue now (D83: "Delete permanently"): its own rows, files, codes and
+   * tokens (tombstoned). Only the worker's purge job, through the role `restro_purge`.
+   */
+  purgeVenue: 'purge-venue',
+  /**
+   * Scheduled, daily (D83, D96): purges what is due in every organisation: venues 30 days in the
+   * bin, binned menus, deleted areas and tables, old versions, the change log past two months.
+   * Not sent by anyone else.
+   */
+  purgeTick: 'purge-tick',
   /** Test the credentials and read what the installation holds (venues, languages, tree). */
   barsyConnect: 'barsy-connect',
   /** The full pull of one venue (collection path C). The only job that may conclude absence. */
@@ -142,6 +159,14 @@ export const PublishTableTokensJobSchema = z.strictObject({
 })
 export type PublishTableTokensJob = z.output<typeof PublishTableTokensJobSchema>
 
+/** `publish-organization-index`: one organisation. */
+export const PublishOrganizationIndexJobSchema = z.strictObject({ tenantId })
+export type PublishOrganizationIndexJob = z.output<typeof PublishOrganizationIndexJobSchema>
+
+/** `purge-venue`: one deleted venue, erased now. */
+export const PurgeVenueJobSchema = z.strictObject({ tenantId, venueId })
+export type PurgeVenueJob = z.output<typeof PurgeVenueJobSchema>
+
 /** The payload schema of each job that carries one. */
 export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyConnect]: BarsyConnectJobSchema,
@@ -154,6 +179,8 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
   [JOB_NAMES.assetVariants]: AssetVariantsJobSchema,
   [JOB_NAMES.publishTableTokens]: PublishTableTokensJobSchema,
+  [JOB_NAMES.publishOrganizationIndex]: PublishOrganizationIndexJobSchema,
+  [JOB_NAMES.purgeVenue]: PurgeVenueJobSchema,
 } as const
 
 /** The jobs a producer may send (the ticks are only ever created by the scheduler). */
@@ -192,6 +219,8 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishFiles,
   JOB_NAMES.publishLive,
   JOB_NAMES.publishTableTokens,
+  JOB_NAMES.publishOrganizationIndex,
+  JOB_NAMES.purgeVenue,
 ])
 
 /**
@@ -225,6 +254,10 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
         ? tokens.venueId
         : `${tokens.venueId}:${sha256Hex(retired).slice(0, 16)}`
     }
+    case JOB_NAMES.publishOrganizationIndex:
+      return (data as PublishOrganizationIndexJob).tenantId
+    case JOB_NAMES.purgeVenue:
+      return (data as PurgeVenueJob).venueId
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
       const scope = data as PublishScopeJob

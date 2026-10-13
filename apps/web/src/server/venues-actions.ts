@@ -27,6 +27,7 @@ import {
   renameVenue,
   renameVenueSlug,
   restoreVenue,
+  unpublishVenue,
 } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -43,9 +44,11 @@ import {
   type DeleteVenueResult,
   NEW_VENUE_CURRENCY,
   NEW_VENUE_TIMEZONE,
+  type PurgeVenueResult,
   type RenameVenueResult,
   type RenameVenueSlugResult,
   type RestoreVenueResult,
+  type UnpublishVenueResult,
 } from './venues-result'
 
 const CreateVenueInput = z
@@ -276,10 +279,10 @@ export async function deleteVenueAction(input: unknown): Promise<DeleteVenueResu
 const RestoreVenueInput = z.strictObject({ venueId: idSchema('vn') })
 
 /**
- * Brings a deleted venue back. Owners only. It comes back without a till link and unpublished (the
- * owner links the till again in Settings > Integrations and publishes); its public code and table
- * codes are the ones it had. The table files job is queued so the codes come back as soon as the
- * venue is linked and published again.
+ * Brings a deleted venue back. Owners only. It comes back unpublished (D86), with the till venue
+ * it served linked again when that is still free (adjustments V1; `till_taken` names the venue
+ * that holds it now, and nothing changes); its public code and table codes are the ones it had,
+ * and the publish brings them back to guests, so no file job is queued here.
  */
 export async function restoreVenueAction(input: unknown): Promise<RestoreVenueResult> {
   const parsed = RestoreVenueInput.safeParse(input)
@@ -290,17 +293,63 @@ export async function restoreVenueAction(input: unknown): Promise<RestoreVenueRe
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
-    await restoreVenue(getPool(), organization.id, venueId)
+    const restored = await restoreVenue(getPool(), organization.id, venueId)
+
+    revalidatePath('/', 'layout')
+    return { ok: true, name: venue.name, relinked: restored.relinked }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    if (error instanceof ProvisionError) {
+      if (error.code === 'invalid_input' || error.code === 'venue_missing') {
+        return { ok: false, error: 'invalid' }
+      }
+      if (error.code === 'till_taken') {
+        return { ok: false, error: 'till_taken', holder: error.details.holder ?? '' }
+      }
+    }
+    logError('venue_restore_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+const UnpublishVenueInput = z.strictObject({ venueId: idSchema('vn') })
+
+/**
+ * Takes a venue off guests' phones (D86: back to Draft). Owners and admins only. Nothing is
+ * deleted: the next publish of any of its menus brings it back. The worker withdraws its guest
+ * files: the venue index and its place in the organisation's index (`publish-files`, for its
+ * live menu) and the table files (`publish-table-tokens`).
+ */
+export async function unpublishVenueAction(input: unknown): Promise<UnpublishVenueResult> {
+  const parsed = UnpublishVenueInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  const { venueId } = parsed.data
+  try {
+    const { organization } = await requireTenant()
+    if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    const pool = getPool()
+    const venue = await getVenueInAnyState(organization.id, venueId)
+    if (venue === null) return { ok: false, error: 'invalid' }
+    if (venue.archivedAt !== null) return { ok: false, error: 'venue_archived' }
+    const unpublished = await unpublishVenue(pool, organization.id, venueId)
 
     let filesQueued = true
     try {
+      const tenantId = organization.id as TenantId
+      const menuId = await menuOfVenue(pool, organization.id, venueId)
+      if (menuId !== null) {
+        await enqueueJob(JOB_NAMES.publishFiles, { tenantId, menuId, venueId: venueId as VenueId })
+      } else {
+        await enqueueJob(JOB_NAMES.publishOrganizationIndex, { tenantId })
+      }
+      // The table files go too (D86): the job withdraws the codes the writer reported.
       await enqueueJob(JOB_NAMES.publishTableTokens, {
-        tenantId: organization.id as TenantId,
+        tenantId,
         venueId: venueId as VenueId,
-        retired: [],
+        retired: [...unpublished.tableTokens],
       })
     } catch (error) {
-      logError('venue_restore_files_not_queued', error)
+      logError('venue_unpublish_files_not_queued', error)
       filesQueued = false
     }
 
@@ -309,11 +358,53 @@ export async function restoreVenueAction(input: unknown): Promise<RestoreVenueRe
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error
     if (error instanceof ProvisionError) {
+      if (error.code === 'venue_archived') return { ok: false, error: 'venue_archived' }
       if (error.code === 'invalid_input' || error.code === 'venue_missing') {
         return { ok: false, error: 'invalid' }
       }
     }
-    logError('venue_restore_failed', error)
+    logError('venue_unpublish_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+const PurgeVenueInput = z.strictObject({
+  venueId: idSchema('vn'),
+  confirmName: z.string().max(MAX_VENUE_NAME_LENGTH + 10),
+})
+
+/**
+ * "Delete permanently" (D83): queues the purge of a venue that is in the bin, for an owner who
+ * typed its name. The web app erases nothing itself (the app role cannot delete venue data);
+ * the worker's purge job does, through its own role, and tombstones the public code and the
+ * table tokens. Without this, the daily purge erases the venue 30 days after its deletion.
+ */
+export async function purgeVenueAction(input: unknown): Promise<PurgeVenueResult> {
+  const parsed = PurgeVenueInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  const { venueId, confirmName } = parsed.data
+  try {
+    const { organization } = await requireTenant()
+    if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
+    const venue = await getVenueInAnyState(organization.id, venueId)
+    if (venue === null) return { ok: false, error: 'invalid' }
+    if (venue.archivedAt === null) return { ok: false, error: 'not_deleted' }
+    if (confirmName.trim() !== venue.name) return { ok: false, error: 'name_mismatch' }
+    let queued = true
+    try {
+      await enqueueJob(JOB_NAMES.purgeVenue, {
+        tenantId: organization.id as TenantId,
+        venueId: venueId as VenueId,
+      })
+    } catch (error) {
+      logError('venue_purge_not_queued', error)
+      queued = false
+    }
+    revalidatePath('/', 'layout')
+    return { ok: true, name: venue.name, queued }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('venue_purge_failed', error)
     return { ok: false, error: 'failed' }
   }
 }

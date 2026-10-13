@@ -161,12 +161,15 @@ describe('the guest menu page', () => {
     visit(`?t=${TOKEN}`)
     render(<GuestMenu venue={PARAM} />)
 
-    // The menu is drawn while the lookup is still out: the shell has not been given the code.
-    expect(await screen.findByText('Негрони')).toBeTruthy()
-    expect(tableTokensGiven().length).toBeGreaterThan(0)
-    expect(tableTokensGiven().every((token) => token === null)).toBe(true)
+    // The table's file may name the menu the code opens (D95), so the page waits for it: while
+    // the lookup is out nothing is drawn and the shell has not been given the code.
+    await waitFor(() => expect(requested).toContain(tableFile))
+    await new Promise((done) => setTimeout(done, 50))
+    expect(screen.queryByText('Негрони')).toBeNull()
+    expect(tableTokensGiven()).toEqual([])
 
     release()
+    expect(await screen.findByText('Негрони')).toBeTruthy()
     expect(await screen.findByText('Маса 12')).toBeTruthy()
     expect(tableTokensGiven().at(-1)).toBe(TOKEN)
   })

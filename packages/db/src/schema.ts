@@ -1229,17 +1229,9 @@ export const places = restro.table(
     isPublic: boolean('is_public').notNull(),
     state: text('state').notNull().default('active'),
     /**
-     * The QR code's random token (brief S3-07): 22 base62 characters from `crypto`, never derived
-     * from a barsy id; null = no code. `/t/<token>` leads to the menu with this table's name.
-     * Since migration 0020 the platform table (`tables.qr_token`) holds the same token; this copy
-     * stays until the code reads tokens from `tables` only, then goes.
-     */
-    qrToken: text('qr_token'),
-    /** What the guest page calls the table when a manager has chosen a name; else `place_num`. */
-    label: text('label'),
-    /**
      * The platform table this place is mirrored into (`tables`, migration 0020); null while the
-     * place's till venue serves no venue of ours.
+     * place's till venue serves no venue of ours. The table holds the QR token and the name the
+     * manager chose (migration 0025 moved them there from this row).
      */
     tableId: text('table_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1247,30 +1239,22 @@ export const places = restro.table(
   },
   (t) => [
     unique('places_integration_id_bid_place_id_unique').on(t.integrationId, t.bid, t.placeId),
-    unique('places_qr_token_unique').on(t.qrToken),
     unique('places_table_id_unique').on(t.tableId),
     foreignKey({
       name: 'places_barsy_venue_fk',
       columns: [t.tenantId, t.integrationId, t.bid],
       foreignColumns: [barsyVenues.tenantId, barsyVenues.integrationId, barsyVenues.bid],
     }),
+    // A purged table (D83) leaves the place without one; the next read makes a new table if the
+    // place's till venue serves a venue (in the database: `ON DELETE SET NULL (table_id)`,
+    // written by hand in migration 0026, since a plain SET NULL would null the tenant too).
     foreignKey({
       name: 'places_table_fk',
       columns: [t.tenantId, t.tableId],
       foreignColumns: [venueTables.tenantId, venueTables.id],
-    }),
+    }).onDelete('set null'),
     check('places_id_format', sql`${t.id} ~ '^tb_[0-9A-Za-z]+$'`),
     check('places_state', sql`${t.state} in ('active', 'missing', 'deleted')`),
-    // The token file (`t/<token>.json`) holds a label of 1 to 40 characters.
-    check(
-      'places_label_length',
-      sql`${t.label} is null or (char_length(${t.label}) between 1 and 40 and ${t.label} = btrim(${t.label}))`,
-    ),
-    // A token is URL-safe and opaque: the same shape as `TABLE_TOKEN_PATTERN` in @restro/core.
-    check(
-      'places_qr_token_format',
-      sql`${t.qrToken} is null or ${t.qrToken} ~ '^[A-Za-z0-9_-]{8,128}$'`,
-    ),
   ],
 )
 

@@ -1,23 +1,22 @@
 // What the Tables & QR tab and the print sheet are drawn from (brief S3-07), and what its actions
 // answer. Plain data, no I/O, so the client components can import the types.
 //
-// Nothing here carries a barsy id (rule 3): a table is its `tb_` id, its number as barsy shows it
-// to people ("12", "VIP"), its hall's name, and its QR token (the admin may read its own tokens).
+// Nothing here carries a till id (rule 3): a table is its `tb_` id, its number as the till or
+// the owner gave it ("12", "VIP"), its area, and its QR token (the admin may read its own tokens).
 import type { QrAddressProblem, QrMode } from '@restro/core'
 
 /** One table of the venue as the tab shows it. */
 export interface TableRowView {
   /** `tb_…`: the id the actions take. */
   readonly id: string
-  /** The number or name barsy gives the table, or null. */
+  /** The number the till (or the owner) gives the table, or null. */
   readonly number: string | null
   /** The name the manager gave it, or null. */
   readonly label: string | null
-  /** What the guest page calls it: the manager's name, else barsy's number; null = nothing. */
+  /** What the guest page calls it: the manager's name, else the number; null = nothing. */
   readonly shownAs: string | null
+  /** False for a hidden table (D95): no code, no guest page. */
   readonly isPublic: boolean
-  /** `missing`: barsy did not list it in the last full pull (its code still works). */
-  readonly state: 'active' | 'missing'
   /** The QR token, or null when the table has no code. */
   readonly token: string | null
   /** The address the code carries, or null (no code, or "our link" has no base address yet). */
@@ -26,10 +25,13 @@ export interface TableRowView {
   readonly qrSvg: string | null
 }
 
-/** The tables of one hall. */
+/** The tables of one area (D95), in the area's order. */
 export interface HallView {
-  /** The hall's name; null = tables barsy puts in no hall (shown last). */
-  readonly name: string | null
+  /** `ar_…`: the area's id. */
+  readonly id: string
+  readonly name: string
+  /** False for a hidden area (D95): its tables have no codes and no guest page. */
+  readonly isPublic: boolean
   readonly tables: readonly TableRowView[]
 }
 
@@ -68,10 +70,14 @@ export type TablesErrorCode =
   | 'invalid'
   /** Only owners and admins may do this. */
   | 'forbidden'
-  /** The table or venue is not there (any more). */
+  /** The table, area or venue is not there (any more). */
   | 'not_found'
-  /** The table has neither a number from barsy nor a name of its own. */
+  /** The table has neither a number nor a name of its own. */
   | 'no_label'
+  /** The table or its area is hidden: it gets no code (D95). */
+  | 'hidden'
+  /** The venue's areas and tables come from its till: not created, deleted or renumbered here. */
+  | 'from_till'
   | 'failed'
 
 /** What an action answers. */

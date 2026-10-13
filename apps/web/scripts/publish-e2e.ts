@@ -8,6 +8,7 @@ import { authOrganization, menus, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
 import { writeLiveOverlay, writePublishFiles } from '../../worker/src/publish/files'
+import { writeOrganizationIndex } from '../../worker/src/publish/organization-index'
 import { getAuthDb, getPool } from '../src/server/db'
 import { assertDevEnvironment } from './lib/guard'
 
@@ -44,6 +45,8 @@ async function main(): Promise<void> {
   const scope = { tenantId, menuId: menu.id as never, venueId: venue.id as never }
   await writePublishFiles(deps, scope)
   await writeLiveOverlay(deps, scope)
+  // The organisation's index (D84), as the publish job writes it after the files.
+  await writeOrganizationIndex(deps, tenantId)
   console.log(
     JSON.stringify({
       status: published.status,

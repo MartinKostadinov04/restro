@@ -8,12 +8,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { newId } from '../ids'
 import type { ApplyRejection } from './apply'
-import { upsertBarsyVenues, upsertPlaces } from './barsy-venues'
+import { mapBarsyVenue, upsertBarsyVenues, upsertPlaces } from './barsy-venues'
 import { describeRefused, finishJobRun, scrubSummary, startJobRun } from './job-runs'
-import { provisionTenant } from './provision'
+import { provisionTenant, provisionVenue } from './provision'
 import { createIntegration, updateIntegration } from './sources'
 import { readCachedTree, readSyncState, storeCachedTree, updateSyncState } from './sync-config'
-import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool } from './test-database'
+import { issueAllTableTokens } from './tables'
+import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -101,7 +102,6 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
       expect(first).toMatchObject({ created: 2, updated: 0, unchanged: 0, missing: 0 })
       const token = await stateOf('1')
       expect(token?.id).toMatch(/^tb_/)
-      expect(token?.qrToken).toBeNull()
 
       const second = await upsertPlaces(
         app,
@@ -197,10 +197,14 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
           },
         )
         expect(created).toMatchObject({ created: 10, held: null })
-        await owner.query(
-          `update restro.places set qr_token = 'T' || lpad(place_id, 21, '0') where integration_id = $1 and bid = $2`,
-          [integrationId, BID],
-        )
+        // The till venue serves a venue, so the places have tables; give each a code.
+        const heldVenue = (
+          await provisionVenue(app, tenant, { name: 'Held', slug: testSlug('held-venue') })
+        ).id
+        expect(await mapBarsyVenue(app, tenant, integrationId, BID, heldVenue)).toMatchObject({
+          ok: true,
+        })
+        expect(await issueAllTableTokens(app, tenant, heldVenue)).toMatchObject({ issued: 10 })
 
         const empty = await upsertPlaces(app, tenant, integrationId, BID, [], { pagesOk: [true] })
         expect(empty).toMatchObject({
@@ -224,7 +228,10 @@ describe.skipIf(!hasDatabase)('sync writers (as the restro_app role)', () => {
         })
         expect(await stateCounts()).toEqual({ active: 10 })
         const coded = await owner.query(
-          'select count(*)::int as n from restro.places where integration_id = $1 and bid = $2 and qr_token is not null',
+          `select count(*)::int as n from restro.tables t
+             join restro.places p on p.table_id = t.id
+            where p.integration_id = $1 and p.bid = $2 and t.qr_token is not null
+              and t.archived_at is null`,
           [integrationId, BID],
         )
         expect(coded.rows[0]?.n).toBe(10)

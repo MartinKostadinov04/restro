@@ -101,7 +101,8 @@ describe('the venue theme v2', () => {
         },
       })
       expect(stored?.colors).toEqual(preset.colours)
-      expect(themeRolesOf(stored)).toEqual(preset.overrides)
+      // The eight base roles as the preset says; the extended roles (D93) come with them.
+      expect(themeRolesOf(stored)).toMatchObject(preset.overrides)
     }
   })
 })

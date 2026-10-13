@@ -15,6 +15,7 @@ import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '
 import type { Logger } from '../logger'
 import { createBarsyJobs } from './barsy'
 import { createPublishJobs } from './publish'
+import { createPurgeJobs } from './purge'
 import type { JobDefinition } from './types'
 import { workerHeartbeat } from './worker-heartbeat'
 
@@ -27,6 +28,14 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const assetStore = await createAssetStore(config.assets, randomBytes(32).toString('hex'))
   const publishStore = await createPublishStore(config.publish)
   const publishJobs = createPublishJobs({ publishStore, assetStore })
+  // The purge (D83) runs only where the purge role's connection is set; without it nothing is
+  // ever erased, and the log says so once.
+  const purgeDatabaseUrl = config.purgeDatabaseUrl ?? null
+  const purgeJobs =
+    purgeDatabaseUrl === null ? [] : createPurgeJobs({ purgeDatabaseUrl, publishStore })
+  if (purgeDatabaseUrl === null) {
+    log.warn('DATABASE_URL_PURGE is not set: the purge jobs are not registered (nothing is erased)')
+  }
 
   let keys: SealKeys
   try {
@@ -36,11 +45,12 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     log.warn(
       'SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY are not set: the barsy sync jobs are not registered',
     )
-    return [...jobs, ...publishJobs]
+    return [...jobs, ...publishJobs, ...purgeJobs]
   }
   return [
     ...jobs,
     ...createBarsyJobs({ keys, policy: config.barsy, store: assetStore }),
     ...publishJobs,
+    ...purgeJobs,
   ]
 }

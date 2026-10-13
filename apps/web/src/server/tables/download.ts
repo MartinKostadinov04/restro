@@ -3,7 +3,7 @@
 // A route handler (app/api/tables/[tableId]/qr/route.ts) calls this with the tenant it found; the
 // tenant is never taken from the request. Nothing is fetched.
 import { qrAddress, readVenueQr } from '@restro/core'
-import { findVenueTable } from '@restro/core/apply'
+import { findVenueTable, tableLabel } from '@restro/core/apply'
 import { type DbPool, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
@@ -53,7 +53,7 @@ export async function buildQrDownload(
   if (!venue) return { ok: false }
   const address = qrAddress(readVenueQr(venue.settings, deps.defaultBaseUrl), found.table.token)
   if (address === null) return { ok: false }
-  const name = `restro-table-${fileNamePart(found.table.label ?? found.table.placeNum)}`
+  const name = `restro-table-${fileNamePart(tableLabel(found.table))}`
   return format === 'svg'
     ? {
         ok: true,

@@ -110,15 +110,13 @@ async function seed(): Promise<void> {
   const store = await createPublishStore(publishStoreConfig(process.env))
   try {
     const old = await owner.query<{ qr_token: string }>(
-      'select qr_token from restro.places where tenant_id = $1 and qr_token is not null',
+      'select qr_token from restro.tables where tenant_id = $1 and qr_token is not null',
       [tenantId],
     )
     for (const { qr_token } of old.rows) await store.delete(tableTokenPath(qr_token))
-    await owner.query(
-      `update restro.places set qr_token = null, label = null
-       where tenant_id = $1 and integration_id = $2 and bid = $3`,
-      [tenantId, integrationId, bid],
-    )
+    await owner.query('update restro.tables set qr_token = null, name = null where venue_id = $1', [
+      venueId,
+    ])
     await owner.query(`update restro.venues set settings = settings - 'qr' where id = $1`, [
       venueId,
     ])

@@ -183,6 +183,9 @@ export const articleDetailsTreeSchema = z.array(articleDetailsGroupSchema)
 export const placeSchema = z.looseObject({
   place_id: z.int(),
   place_num: z.union([z.string(), z.int()]).nullish(),
+  /** The hall: its id and order among halls (D95: keyed by id, ordered by weight), and its name. */
+  salon_id: z.union([z.int(), z.string()]).nullish(),
+  salon_weight: z.union([z.int(), z.string()]).nullish(),
   salon_name: z.string().nullish(),
   is_public: flagSchema.nullish(),
 })

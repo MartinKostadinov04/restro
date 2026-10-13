@@ -13,11 +13,14 @@ import {
   type LoadDeps,
   loadLive,
   loadMenu,
+  loadMenuAt,
   loadPointer,
   loadSnapshot,
+  loadTableFile,
   loadTableLabel,
   loadVenueIndex,
   refetchLiveForSnapshot,
+  resolveGuestAddress,
 } from './load'
 
 const BASE = '/cdn'
@@ -388,6 +391,131 @@ describe('the guest context', () => {
     }
     expect(buildContext({ ...input, manifest: wide }).images).toEqual({
       item: { variant: 'full', density: 1 },
+    })
+  })
+})
+
+describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens (D95)', () => {
+  const ORG = 'night-group'
+  const SECOND_MENU = `nd_${'B'.repeat(22)}`
+  const TABLE_CODE = 'tb_0123456789ABCDEFGHIJKL'
+
+  /** The published files with the organisation's index and a second published menu. */
+  function organizationFiles() {
+    const f = publishedFiles()
+    const organization = {
+      organization_id: `tn_${'C'.repeat(22)}`,
+      slug: ORG,
+      venues: {
+        'demo-club': {
+          venue_id: f.index.venue_id,
+          menu_id: f.index.menu_id,
+          public_id: CODE,
+        },
+      },
+      old_names: { 'old-club': 'demo-club' },
+    }
+    const secondIndex = { venue_id: f.index.venue_id, menu_id: SECOND_MENU }
+    const secondPointer = { ...f.pointer }
+    f.bodies.set(files.organization(BASE, ORG), organization)
+    f.bodies.set(files.organization(BASE, 'old-group'), { redirect_to: ORG })
+    f.bodies.set(files.current(BASE, secondIndex), secondPointer)
+    f.bodies.set(files.live(BASE, secondIndex), { version: f.pointer.version, items: {} })
+    f.bodies.set(files.table(BASE, TABLE_CODE), {
+      venue_public_id: CODE,
+      venue_slug: 'demo-club',
+      organization_slug: ORG,
+      table_label: '7',
+      menu_id: SECOND_MENU,
+    })
+    return { ...f, organization }
+  }
+
+  it('starts from the organisation’s file and ends at the venue’s live menu', async () => {
+    const f = organizationFiles()
+    const resolved = await resolveGuestAddress(f.deps(), { organization: ORG, venue: 'demo-club' })
+    expect(resolved).toEqual({
+      index: { ...f.index, organization: ORG },
+      publicId: CODE,
+      canonical: { organization: ORG, venue: 'demo-club' },
+    })
+    const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' })
+    expect(menu.index.menu_id).toBe(f.index.menu_id)
+    expect(menu.publicId).toBe(CODE)
+    expect(menu.table).toBeNull()
+    expect(menu.canonical).toEqual({ organization: ORG, venue: 'demo-club' })
+    expect(f.asked[0]).toBe(`${BASE}/o/${ORG}.json`)
+  })
+
+  it('follows a renamed organisation and a renamed venue, and says the address to show', async () => {
+    const f = organizationFiles()
+    const menu = await loadMenuAt(f.deps(), { organization: 'old-group', venue: 'old-club' })
+    expect(menu.canonical).toEqual({ organization: ORG, venue: 'demo-club' })
+    expect(menu.index.slug).toBe('demo-club')
+    expect(f.asked.slice(0, 2)).toEqual([`${BASE}/o/old-group.json`, `${BASE}/o/${ORG}.json`])
+  })
+
+  it('is an unknown venue for an unknown organisation, an unlisted venue, or a malformed part', async () => {
+    const f = organizationFiles()
+    for (const address of [
+      { organization: 'nobody', venue: 'demo-club' },
+      { organization: ORG, venue: 'nobody' },
+      { organization: 'Not A Slug', venue: 'demo-club' },
+      { organization: ORG, venue: '../x' },
+    ]) {
+      await expect(loadMenuAt(f.deps(), address)).rejects.toMatchObject({
+        reason: 'unknown_venue',
+      })
+    }
+    // A redirect that loops leads nowhere.
+    const loop = new Map<string, unknown>([
+      [files.organization(BASE, 'a-loop'), { redirect_to: 'b-loop' }],
+      [files.organization(BASE, 'b-loop'), { redirect_to: 'a-loop' }],
+    ])
+    await expect(
+      loadMenuAt(f.deps(loop), { organization: 'a-loop', venue: 'demo-club' }),
+    ).rejects.toMatchObject({ reason: 'unknown_venue' })
+  })
+
+  it('a table’s code may name the menu it opens: that menu’s files are read, and the table is confirmed', async () => {
+    const f = organizationFiles()
+    const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' }, TABLE_CODE)
+    expect(menu.index.menu_id).toBe(SECOND_MENU)
+    expect(menu.table).toEqual({ token: TABLE_CODE, label: '7' })
+    expect(f.asked).toContain(files.table(BASE, TABLE_CODE))
+    expect(f.asked).toContain(
+      files.current(BASE, { venue_id: f.index.venue_id, menu_id: SECOND_MENU }),
+    )
+    // The address of before honours the table's menu too.
+    const legacy = await loadMenu(f.deps(), CODE, TABLE_CODE)
+    expect(legacy.index.menu_id).toBe(SECOND_MENU)
+    expect(legacy.table).toEqual({ token: TABLE_CODE, label: '7' })
+    // A code of another venue, or one with no menu, leaves the live menu.
+    const foreign = new Map<string, unknown>([
+      [
+        files.table(BASE, TABLE_CODE),
+        { venue_public_id: '000000000000', venue_slug: 'x', table_label: '1' },
+      ],
+    ])
+    const stranger = await loadMenuAt(
+      f.deps(foreign),
+      { organization: ORG, venue: 'demo-club' },
+      TABLE_CODE,
+    )
+    expect(stranger.index.menu_id).toBe(f.index.menu_id)
+    expect(stranger.table).toBeNull()
+    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toBeNull()
+  })
+
+  it('the address of before moves to the new one when the venue’s file names the organisation', async () => {
+    const f = publishedFiles()
+    expect((await loadMenu(f.deps(), CODE)).canonical).toBeNull()
+    const withOrganization = new Map<string, unknown>([
+      [files.index(BASE, CODE), { ...f.index, organization: ORG }],
+    ])
+    expect((await loadMenu(f.deps(withOrganization), CODE)).canonical).toEqual({
+      organization: ORG,
+      venue: 'demo-club',
     })
   })
 })

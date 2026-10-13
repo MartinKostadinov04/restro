@@ -42,9 +42,13 @@ const TABLES = [
   'source_records',
   'job_runs',
   'places',
+  'menu_routes',
+  'tables',
+  'areas',
   'barsy_venues',
   'assets',
   'integrations',
+  'venue_slug_history',
   'venues',
 ] as const
 

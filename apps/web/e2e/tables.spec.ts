@@ -60,8 +60,10 @@ let page: Page
 let tabUrl: string
 let venueUrl: string
 let origin: string
-/** The demo venue's address: `/m/<slug>-<code>` (D68). */
+/** The demo venue's address of before, `/m/<slug>-<code>` (D68); its files know the organisation. */
 let venue: VenueAddress
+/** The address a table's code leads to (D84): the demo organisation's slug and the venue's. */
+const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 
 // --- helpers ---------------------------------------------------------------------------------
 const rows = () => page.getByTestId('table-row')
@@ -170,8 +172,9 @@ test('lists the barsy tables by hall and creates a code for every one', async ()
   const halls = page.getByTestId('hall-name')
   await expect(halls).toHaveCount(4)
   const names = await halls.allTextContents()
-  expect(names.at(-1)).toBe('Без салон')
-  expect([...names].sort()).toEqual(['VIP зона', 'Без салон', 'Главна зала', 'Тераса'].sort())
+  // Tables the till puts in no hall land in an area called "Tables", last (D95).
+  expect(names.at(-1)).toBe('Tables')
+  expect([...names].sort()).toEqual(['VIP зона', 'Tables', 'Главна зала', 'Тераса'].sort())
   await expect(rows()).toHaveCount(8)
   await expect(page.getByTestId('code-status').filter({ hasText: 'Няма код' })).toHaveCount(8)
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 0 с код')
@@ -185,12 +188,13 @@ test('lists the barsy tables by hall and creates a code for every one', async ()
   await act(() => page.getByRole('button', { name: 'Запиши адреса' }).click())
   await expect(page.getByTestId('address-unsaved')).toBeHidden()
 
+  // The hidden table (4) gets no code (D95): seven of the eight.
   await act(() => page.getByTestId('create-all').click())
-  await toast('Създадени са 8 кода.')
+  await toast('Създадени са 7 кода.')
   await expect(page.getByTestId('code-status').filter({ hasText: 'Кодът е активен' })).toHaveCount(
-    8,
+    7,
   )
-  await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 8 с код')
+  await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
   await expect(page.getByTestId('print-sheet-link')).toHaveAttribute(
     'href',
     `${new URL(venueUrl).pathname}/tables/print`,
@@ -205,6 +209,8 @@ test('the code in each row encodes <base>/t/<token>, black on white, error corre
   const seen = new Set<string>()
   for (let index = 0; index < count; index += 1) {
     const row = rows().nth(index)
+    // The hidden table has no code (D95).
+    if ((await row.getByTestId('code-status').textContent()) === 'Няма код') continue
     const address = await addressOf(row)
     const token = address.split('/').at(-1) ?? ''
     expect(address).toBe(`${origin}/t/${token}`)
@@ -220,7 +226,7 @@ test('the code in each row encodes <base>/t/<token>, black on white, error corre
     const modules = QRCode.create(address, { errorCorrectionLevel: 'M' }).modules.size
     expect(svg).toContain(`viewBox="0 0 ${modules + 4} ${modules + 4}"`)
   }
-  expect(seen.size).toBe(8)
+  expect(seen.size).toBe(7)
 
   // A token holds nothing of the barsy place ids (9001 … 9008).
   for (const token of seen) expect(token).not.toMatch(/900[1-8]/)
@@ -240,21 +246,24 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
   // The real worker may take quick edits as one job or several: check what the last one left.
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.at(-1)?.result.status).toBe('done')
-  expect(jobs.at(-1)?.result.written).toBe(8)
+  expect(jobs.at(-1)?.result.written).toBe(7)
 
   const redirect = await page.request.get(`/t/${token}`, { maxRedirects: 0 })
   expect(redirect.status()).toBe(302)
-  expect(redirect.headers().location).toBe(`${venue.path}?t=${token}`)
+  expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${token}`)
   const file = await page.request.get(`/cdn/t/${token}.json`)
+  // The file also says which menu the code opens (D95): the venue's live menu, published.
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
+    organization_slug: 'demo-club',
     table_label: '1',
+    menu_id: expect.stringMatching(/^nd_[0-9A-Za-z]{22}$/),
   })
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)
-  await guest.waitForURL(`**${venue.path}?t=${token}`)
+  await guest.waitForURL(`**${GUEST_PATH}?t=${token}`)
   await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(guest.getByText('Маса 1', { exact: true })).toBeVisible()
   await guest.screenshot({ path: shot('guest-table-1-bg') })
@@ -277,7 +286,9 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
+    organization_slug: 'demo-club',
     table_label: 'Тераса Е5',
+    menu_id: expect.stringMatching(/^nd_[0-9A-Za-z]{22}$/),
   })
 
   const guest = await guestPhone(context)
@@ -416,16 +427,16 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   const sheets = sheetPage.getByTestId('print-sheet')
   await expect(sheets).toHaveCount(2)
   const cards = sheetPage.getByTestId('print-card')
-  await expect(cards).toHaveCount(8)
+  await expect(cards).toHaveCount(7)
   expect(await sheets.evaluateAll((all) => all.map((sheet) => sheet.dataset.cards))).toEqual([
     '6',
-    '2',
+    '1',
   ])
-  await expect(sheetPage.getByTestId('print-pages')).toHaveText('8 кода на 2 страници')
+  await expect(sheetPage.getByTestId('print-pages')).toHaveText('7 кода на 2 страници')
 
   // Every card: the venue, "Маса / Table", the table, the code, the address as text, the scan line.
   const host = origin.replace(/^https?:\/\//, '')
-  for (let index = 0; index < 8; index += 1) {
+  for (let index = 0; index < 7; index += 1) {
     const card = cards.nth(index)
     // The card shows the venue's logo, with its name as the text alternative, or the name itself
     // when the venue has no logo (the demo venue has none unless a test has given it one).
@@ -531,7 +542,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   )
   await expect(row.getByTestId('code-status')).toHaveText('Няма код')
   await expect(row.getByTestId('create-code')).toBeVisible()
-  await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
+  await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
 
   const jobs = runWorker()
   expect(jobs.find((job) => job.retired.includes(token))?.retired).toEqual([token])
@@ -549,7 +560,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
 test('screenshots: English, dark, and a phone', async () => {
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: origin }])
   await page.goto(tabUrl)
-  await expect(page.getByTestId('tables-summary')).toHaveText('8 tables, 8 with a code')
+  await expect(page.getByTestId('tables-summary')).toHaveText('8 tables, 7 with a code')
   await expect(page.getByText('Address in the codes')).toBeVisible()
   await page.screenshot({ path: shot('tables-en-light'), fullPage: true })
 
@@ -572,5 +583,5 @@ test('screenshots: English, dark, and a phone', async () => {
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'bg', url: origin }])
   await page.setViewportSize({ width: 1280, height: 1100 })
   await page.reload()
-  await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 8 с код')
+  await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
 })

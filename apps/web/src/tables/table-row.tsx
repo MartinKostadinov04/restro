@@ -123,7 +123,6 @@ export function TableRow({ row, canManage }: { row: TableRowView; canManage: boo
           <Badge variant={hasCode ? 'success' : 'outline'} data-testid="code-status">
             {hasCode ? t('row.codeActive') : t('row.codeNone')}
           </Badge>
-          {row.state === 'missing' ? <Badge variant="warning">{t('row.missing')}</Badge> : null}
         </div>
       </div>
 

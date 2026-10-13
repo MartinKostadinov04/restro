@@ -36,6 +36,14 @@ export function mapPlaces(places: readonly Place[], context: PlacesContext): Pla
     placeId: String(place.place_id),
     placeNum:
       place.place_num === null || place.place_num === undefined ? null : String(place.place_num),
+    salonId:
+      place.salon_id === null || place.salon_id === undefined ? null : String(place.salon_id),
+    salonWeight:
+      place.salon_weight === null || place.salon_weight === undefined
+        ? null
+        : Number.isSafeInteger(Number(place.salon_weight))
+          ? Number(place.salon_weight)
+          : null,
     salonName: text(place.salon_name),
     isPublic: flagOf(place.is_public) === true,
     sourceRecord: describeSource(

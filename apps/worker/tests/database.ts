@@ -106,6 +106,11 @@ export interface TestDatabase {
   readonly name: string
   /** Connection string of the app role `restro_app` for the new database. */
   readonly appUrl: string
+  /**
+   * Connection string of the purge role `restro_purge` (D83) for the new database, or null when
+   * DATABASE_PURGE_PASSWORD (or DATABASE_URL_PURGE) is not set: the purge tests then skip.
+   */
+  readonly purgeUrl: string | null
   /** Connection string of the migration owner for the new database (set-up and inspection). */
   readonly ownerUrl: string
   /** Drops the database, closing whatever is still connected to it. */
@@ -189,6 +194,18 @@ export async function createTestDatabase(
     parsed.password = encodeURIComponent(password ?? '')
     appUrl = parsed.toString()
   }
+  const explicitPurgeUrl = process.env.DATABASE_URL_PURGE
+  const purgePassword = process.env.DATABASE_PURGE_PASSWORD
+  let purgeUrl: string | null = null
+  if (explicitPurgeUrl) {
+    assertLocal(explicitPurgeUrl, 'DATABASE_URL_PURGE')
+    purgeUrl = withDatabase(explicitPurgeUrl, name)
+  } else if (purgePassword) {
+    const parsed = new URL(newOwnerUrl)
+    parsed.username = 'restro_purge'
+    parsed.password = encodeURIComponent(purgePassword)
+    purgeUrl = parsed.toString()
+  }
 
   const drop = async () => {
     await withOwnerClient(ownerUrl, (client) =>
@@ -227,5 +244,5 @@ export async function createTestDatabase(
     await drop().catch(() => undefined)
     throw error
   }
-  return { name, appUrl, ownerUrl: newOwnerUrl, drop }
+  return { name, appUrl, purgeUrl, ownerUrl: newOwnerUrl, drop }
 }

@@ -23,7 +23,8 @@ import {
   listVenueTables,
   renameVenueSlug,
   retireTableToken,
-  setTableLabel,
+  setTableName,
+  tableLabel,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -141,10 +142,11 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     expect(coded.length).toBeGreaterThan(0)
     expect(store.puts).toHaveLength(coded.length)
     for (const table of coded) {
-      expect(await readTableTokenFile(store, table.token as string)).toEqual({
+      expect(await readTableTokenFile(store, table.token as string)).toMatchObject({
         venue_public_id: world.venuePublicId,
         venue_slug: world.venueSlug,
-        table_label: table.placeNum,
+        organization_slug: expect.stringMatching(/^sync-/),
+        table_label: tableLabel(table),
       })
     }
 
@@ -166,7 +168,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     // A manager's name replaces barsy's number on the guest page, and only that file changes.
     const first = coded[0]
     if (!first) throw new Error('no coded table')
-    await setTableLabel(world.pool, world.tenantId, first.id, 'VIP 3')
+    await setTableName(world.pool, world.tenantId, first.id, 'VIP 3')
     await runTokenJob()
     expect(store.puts).toEqual([`t/${first.token}.json`])
     expect(await readTableTokenFile(store, first.token as string)).toMatchObject({
@@ -252,25 +254,39 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
       const goneToken = gone.token as string
       // barsy stops listing that table (its place_id is the one we mapped it from).
       const [row] = await world.query<{ place_id: string }>(
-        'select place_id from restro.places where id = $1',
+        'select place_id from restro.places where table_id = $1',
         [gone.id],
       )
       fake.places = fake.places.filter((place) => String(place.place_id) !== row?.place_id)
 
       world.enqueued.length = 0
       await pull()
+      // Missing: the table stays, with its code; only the place knows it was not listed.
       const missing = (await tables()).find((table) => table.id === gone.id)
-      expect(missing).toMatchObject({ state: 'missing', token: goneToken })
+      expect(missing).toMatchObject({ token: goneToken })
+      expect(
+        await world.query<{ state: string }>(
+          'select state from restro.places where table_id = $1',
+          [gone.id],
+        ),
+      ).toEqual([{ state: 'missing' }])
       expect(tableJobs()).toEqual([])
 
       world.clock = new Date(Date.now() + 8 * DAY)
       await pull()
       expect((await tables()).find((table) => table.id === gone.id)).toBeUndefined()
-      const [stored] = await world.query<{ state: string; qr_token: string | null }>(
-        'select state, qr_token from restro.places where id = $1',
+      const [stored] = await world.query<{
+        state: string
+        qr_token: string | null
+        archived: boolean
+      }>(
+        `select p.state, t.qr_token, t.archived_at is not null as archived
+         from restro.places p join restro.tables t on t.id = p.table_id
+         where t.id = $1`,
         [gone.id],
       )
-      expect(stored).toEqual({ state: 'deleted', qr_token: null })
+      // The token stays on the archived row, for the purge's tombstone (D83); its file is gone.
+      expect(stored).toEqual({ state: 'deleted', qr_token: goneToken, archived: true })
 
       // The sync queued the job for the venue, naming the token.
       expect(tableJobs()).toHaveLength(1)
@@ -296,7 +312,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
       const target = coded[0]
       if (!target) throw new Error('no coded table')
       const [row] = await world.query<{ place_id: string }>(
-        'select place_id from restro.places where id = $1',
+        'select place_id from restro.places where table_id = $1',
         [target.id],
       )
       fake.places = fake.places.map((place) =>

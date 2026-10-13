@@ -54,12 +54,12 @@ beforeEach(() => {
 })
 
 describe('the Tables & QR tab', () => {
-  it('lists the tables by hall, the hall with no name last, with the counts', () => {
+  it('lists the tables by area, in the areas’ order, with the counts', () => {
     renderWithIntl(<TablesPanel view={view()} />)
     expect(screen.getAllByTestId('hall-name').map((element) => element.textContent)).toEqual([
       'Main hall',
       'Terrace',
-      'No hall',
+      'Tables',
     ])
     expect(screen.getByTestId('tables-summary').textContent).toBe('5 tables, 1 with a code')
     const terrace = screen.getAllByTestId('hall')[1] as HTMLElement
@@ -271,6 +271,6 @@ describe('in Bulgarian', () => {
         .getAllByTestId('hall-name')
         .map((e) => e.textContent)
         .at(-1),
-    ).toBe('Без салон')
+    ).toBe('Tables')
   })
 })

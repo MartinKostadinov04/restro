@@ -19,6 +19,7 @@ import {
   REQUIRED_PAIRS,
   type RoleMode,
   type RoleName,
+  semanticFromRoles,
   type ThemeRoleSet,
   type ThemeRoles,
   validateRoles,
@@ -37,24 +38,16 @@ import {
 const BLACK = '#000000'
 const WHITE = '#ffffff'
 
-/** The roles as the camelCase colours a face reads (`on_accent` is `onAccent`). */
-function toColours(roles: ThemeRoles): SemanticColours {
-  return {
-    background: roles.background,
-    surface: roles.surface,
-    accent: roles.accent,
-    onAccent: roles.on_accent,
-    text: roles.text,
-    muted: roles.muted,
-    accentText: roles.accent_text,
-    border: roles.border,
-  }
-}
+/** The roles as the camelCase colours a face reads (`on_accent` is `onAccent`), the extended ones too. */
+const toColours = (roles: ThemeRoles): SemanticColours => semanticFromRoles(roles)
 
-/** The pairs a foreground role takes part in, in the required list's order. */
+/** The base pairs a foreground role takes part in, in the required list's order. */
 function pairsOf(fg: RoleName) {
   return REQUIRED_PAIRS.filter((pair) => pair.fg === fg)
 }
+
+/** True for one of the eight base roles (the shell repairs those; the extended ones pass through). */
+const BASE_ROLES = new Set<string>(REQUIRED_PAIRS.flatMap((pair) => [pair.fg, pair.bg]))
 
 /**
  * The palette steps nearest in lightness to `colour` first (ties keep the palette's own order),
@@ -76,10 +69,12 @@ function repaired(set: ThemeRoleSet, mode: RoleMode, palette: Palette): ThemeRol
   const roles = set[mode]
   const failing = new Set(
     validateRoles(set)
-      .filter((issue) => issue.mode === mode)
-      .map((issue) => issue.fg),
+      .filter((issue) => issue.mode === mode && BASE_ROLES.has(issue.fg))
+      .map((issue) => issue.fg as RoleName),
   )
-  const out: { -readonly [R in RoleName]: string } = { ...roles }
+  const out: { -readonly [R in RoleName]: string } & {
+    [R in Exclude<keyof ThemeRoles, RoleName>]?: string
+  } = { ...roles }
   for (const fg of failing) {
     const pairs = pairsOf(fg)
     out[fg] = readableOn(
@@ -91,9 +86,24 @@ function repaired(set: ThemeRoleSet, mode: RoleMode, palette: Palette): ThemeRol
   return out
 }
 
-/** Whether one scheme of a role set passes every required pair. */
+/** Whether one scheme of a role set passes every base pair (an extended role that fails is dropped). */
 function reads(set: ThemeRoleSet, mode: RoleMode): boolean {
-  return validateRoles(set).every((issue) => issue.mode !== mode)
+  return validateRoles(set).every((issue) => issue.mode !== mode || !BASE_ROLES.has(issue.fg))
+}
+
+/** The scheme without any extended role that does not read: a face then falls back to its base roles. */
+function withoutFailingExtended(set: ThemeRoleSet, mode: RoleMode): ThemeRoles {
+  const failing = new Set(
+    validateRoles(set)
+      .filter((issue) => issue.mode === mode && !BASE_ROLES.has(issue.fg))
+      .map((issue) => issue.fg),
+  )
+  if (failing.size === 0) return set[mode]
+  const kept: Record<string, string> = {}
+  for (const [role, value] of Object.entries(set[mode])) {
+    if (value !== undefined && !failing.has(role as never)) kept[role] = value
+  }
+  return kept as unknown as ThemeRoles
 }
 
 /** The light and dark colours of a face's theme (R13). */
@@ -116,7 +126,11 @@ export function themeColours(published: ThemeRoleSet | undefined, palette: Palet
     dark: repaired(published, 'dark', palette),
   }
   return {
-    colors: reads(fixed, 'light') ? toColours(fixed.light) : semanticColours(palette),
-    colorsDark: reads(fixed, 'dark') ? toColours(fixed.dark) : semanticColoursDark(palette),
+    colors: reads(fixed, 'light')
+      ? toColours(withoutFailingExtended(fixed, 'light'))
+      : semanticColours(palette),
+    colorsDark: reads(fixed, 'dark')
+      ? toColours(withoutFailingExtended(fixed, 'dark'))
+      : semanticColoursDark(palette),
   }
 }

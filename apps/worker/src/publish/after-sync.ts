@@ -13,13 +13,19 @@
 // reason `auto_sync`, a 30 s delay and a singleton key per menu + venue (core/jobs.ts), so syncs
 // and pictures that arrive close together are published once, with everything they changed.
 //
-// The rollback pause (S3-05, `config.publish.auto_paused`) stops exactly these publishes, since
-// every automatic publish is `auto_sync`: neither trigger queues one while the flag is set, and the
-// publish-menu job checks it again when an `auto_sync` job runs (`autoPublishIsPaused`), because
-// a job queued before the rollback, or by a sync that read its config before it, would otherwise
-// undo the rollback. A person's publish resumes automatic publishing (`resumeAutoPublish`).
-import { autoPublishPaused, JOB_NAMES, prepareJob, venuePublishesAfterSync } from '@restro/core'
-import { loadMenusUsingAsset, setAutoPublishPaused } from '@restro/core/apply'
+// The rollback pause (S3-05; per venue since T76, `venues.settings.publish.auto_paused`, with
+// the integration's old flag as the fallback) stops exactly these publishes, since every automatic
+// publish is `auto_sync`: neither trigger queues one while the flag is set, and the publish-menu
+// job checks it again when an `auto_sync` job runs (`autoPublishIsPaused`), because a job queued
+// before the rollback, or by a sync that read its settings before it, would otherwise undo the
+// rollback. A person's publish resumes automatic publishing (`resumeAutoPublish`).
+import {
+  JOB_NAMES,
+  prepareJob,
+  venueAutoPublishPaused,
+  venuePublishesAfterSync,
+} from '@restro/core'
+import { loadMenusUsingAsset, setVenueAutoPublishPaused } from '@restro/core/apply'
 import { assets, barsyVenues, integrations, menus, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
@@ -111,7 +117,7 @@ async function decide(
     if (!venuePublishesAfterSync(settings, target.config)) {
       return 'publish after sync is off for this venue: nothing was queued'
     }
-    if (autoPublishPaused(target.config)) return PAUSED_NOTE
+    if (venueAutoPublishPaused(settings, target.config)) return PAUSED_NOTE
     const [menu] = await withTenant(env.pool, target.tenantId, (tx) =>
       tx.select({ id: menus.id }).from(menus).where(eq(menus.venueId, target.venueId)),
     )
@@ -173,16 +179,12 @@ export async function queuePublishForAsset(
     const notes: string[] = []
     for (const { menuId, venueId } of using) {
       const integration = await integrationOfVenue(env, target.tenantId, venueId)
+      const settings = await venueSettingsOf(env, target.tenantId, venueId)
       if (integration === null) {
         notes.push('a menu that uses this picture has no barsy integration: nothing was queued')
-      } else if (
-        !venuePublishesAfterSync(
-          await venueSettingsOf(env, target.tenantId, venueId),
-          integration.config,
-        )
-      ) {
+      } else if (!venuePublishesAfterSync(settings, integration.config)) {
         notes.push('publish after sync is off for this venue: nothing was queued')
-      } else if (autoPublishPaused(integration.config)) {
+      } else if (venueAutoPublishPaused(settings, integration.config)) {
         notes.push(PAUSED_NOTE)
       } else {
         notes.push(
@@ -203,29 +205,32 @@ export async function queuePublishForAsset(
 }
 
 /**
- * Whether automatic publishing of this venue is paused (a rollback, S3-05): the flag in the config
- * of the integration the venue is mapped to. A venue with no integration has no automatic
- * publishing to pause. Read when an `auto_sync` publish runs, not when it was queued. Throws on a
- * database failure: the job then fails and is retried, rather than publishing when unsure.
+ * Whether automatic publishing of this venue is paused (a rollback, S3-05; per venue, T76): the
+ * venue's own flag, else the old flag in the config of the integration it is mapped to. A venue
+ * with no integration has no automatic publishing to pause. Read when an `auto_sync` publish
+ * runs, not when it was queued. Throws on a database failure: the job then fails and is retried,
+ * rather than publishing when unsure.
  */
 export async function autoPublishIsPaused(
   env: Pick<PublishEnvironment, 'pool'>,
   target: { readonly tenantId: string; readonly venueId: string },
 ): Promise<boolean> {
   const integration = await integrationOfVenue(env, target.tenantId, target.venueId)
-  return integration !== null && autoPublishPaused(integration.config)
+  if (integration === null) return false
+  const settings = await venueSettingsOf(env, target.tenantId, target.venueId)
+  return venueAutoPublishPaused(settings, integration.config)
 }
 
 /**
  * A person's publish went through: automatic publishing resumes. Returns whether it had been
- * paused. Leaves the config alone when it was not paused.
+ * paused. Writes the venue's own flag (false), so an old pause on the integration no longer
+ * reaches this venue either; leaves everything alone when it was not paused.
  */
 export async function resumeAutoPublish(
   env: Pick<PublishEnvironment, 'pool'>,
   target: { readonly tenantId: string; readonly venueId: string },
 ): Promise<boolean> {
-  const integration = await integrationOfVenue(env, target.tenantId, target.venueId)
-  if (integration === null || !autoPublishPaused(integration.config)) return false
-  await setAutoPublishPaused(env.pool, target.tenantId, integration.id, false)
+  if (!(await autoPublishIsPaused(env, target))) return false
+  await setVenueAutoPublishPaused(env.pool, target.tenantId, target.venueId, false)
   return true
 }

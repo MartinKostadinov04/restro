@@ -5,7 +5,9 @@
 //   - names appear whole (R9) and in their own language (`lang`, R3);
 //   - the state is on the page (`data-state`, R5);
 //   - allergens are reachable the way the manifest says (R6);
-//   - only `nd_`, `as_` and `tg_` ids appear (rule 3).
+//   - only `nd_`, `as_` and `tg_` ids appear (rule 3);
+//   - every colour pair the manifest declares reads in both schemes of the fixture's theme, and
+//     the markup paints no colour of its own inline (R13, D93).
 // The face renders a view model to an HTML string (`renderToStaticMarkup` in S3-03). It marks each
 // item placement with `data-item="<nd_ id>"` and each slot with `data-slot="item.name"` etc.
 // Menu-level slots used here: `menu.allergen_legend` (numbered legend) and `menu.allergen_info`
@@ -16,11 +18,23 @@
 //     manifest declares (a hidden control must not be in the page at all);
 //   - when the manifest declares the feature and the view model has it on, the slot must exist.
 
-import { localeToBcp47 } from '@restro/core'
+import {
+  contrastRatio,
+  localeToBcp47,
+  MIN_TEXT_CONTRAST,
+  rolesFromSemantic,
+  type SemanticColours,
+  semanticFromRoles,
+} from '@restro/core'
 
 import { buildViewModel } from '../src/build'
 import type { Channel } from '../src/context'
-import { type FaceManifest, type FeatureName, imageSlotsFor } from '../src/manifest'
+import {
+  type ColourPair,
+  type FaceManifest,
+  type FeatureName,
+  imageSlotsFor,
+} from '../src/manifest'
 import type { ViewItem, ViewModel, ViewSection } from '../src/view-model'
 import { fixtures as allFixtures, type Fixture } from './fixtures'
 import {
@@ -90,6 +104,45 @@ function featureOn(view: ViewModel, feature: FeatureName): boolean {
       return view.features.ordering
     case 'pay':
       return view.features.pay
+  }
+}
+
+/** An inline style that paints a colour of its own (a raw value, not a variable): R13 forbids it. */
+const INLINE_RAW_COLOUR =
+  /style="[^"]*(?:^|;)\s*(?:background(?:-color)?|color|border(?:-color)?|outline(?:-color)?)\s*:\s*(?:#[0-9a-f]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\()/i
+
+/** The colour of a role in one scheme's colours, by its snake_case name; undefined when absent. */
+function roleColour(colours: SemanticColours, role: ColourPair['fg']): string | undefined {
+  const roles = rolesFromSemantic(colours)
+  return roles[role]
+}
+
+/** D93: every pair the manifest declares reads (text 4.5:1, a control 3:1) in both schemes. */
+function checkColourPairs(
+  view: ViewModel,
+  manifest: FaceManifest,
+  fail: (rule: string, message: string) => void,
+): void {
+  for (const [scheme, colours] of [
+    ['light', view.theme.colors],
+    ['dark', view.theme.colorsDark],
+  ] as const) {
+    // The shell keeps the colours as the roles the publisher wrote; re-reading them through the
+    // roles keeps the check honest to what a face receives.
+    const seen = semanticFromRoles(rolesFromSemantic(colours))
+    for (const pair of manifest.colour_pairs) {
+      const fg = roleColour(seen, pair.fg)
+      const bg = roleColour(seen, pair.bg)
+      if (fg === undefined || bg === undefined) continue
+      const min = pair.min ?? MIN_TEXT_CONTRAST
+      const ratio = contrastRatio(fg, bg)
+      if (ratio < min) {
+        fail(
+          'R13',
+          `${scheme}: ${pair.fg} on ${pair.bg} reads at ${(Math.floor(ratio * 100) / 100).toFixed(2)}:1, below ${min}:1`,
+        )
+      }
+    }
   }
 }
 
@@ -248,6 +301,15 @@ function checkDocument(
     ) {
       fail('R6', 'an info-link or info-QR face must draw menu.allergen_info')
     }
+  }
+
+  // R13, D93: the declared colour pairs read, and nothing is painted with a raw colour inline.
+  checkColourPairs(view, manifest, fail)
+  if (INLINE_RAW_COLOUR.test(html)) {
+    fail(
+      'R13',
+      'an element paints a raw colour inline; a face paints with the theme variables only',
+    )
   }
 
   // R15: feature controls appear only when the view model has the feature on.

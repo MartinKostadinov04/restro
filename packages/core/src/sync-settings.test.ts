@@ -138,7 +138,8 @@ describe('parseSyncSettings', () => {
     expect(venuePublishesAfterSync({}, { publish: { after_sync: 'manual' } })).toBe(false)
     expect(venueHoldsNewItems({}, {})).toBe(false)
     expect(venueHoldsNewItems({}, { publish: { new_items: 'show' } })).toBe(false)
-    expect(venueHoldsNewItems({}, { publish: { new_items: 'hold' } })).toBe(true)
+    // D96 retired the rule: a stored `hold` no longer holds anything.
+    expect(venueHoldsNewItems({}, { publish: { new_items: 'hold' } })).toBe(false)
   })
 })
 
@@ -181,10 +182,11 @@ describe('the publishing rules of a venue (CF-09b, CF-04, D73)', () => {
     const manualIntegration = { publish: { after_sync: 'manual', new_items: 'hold' } }
     expect(venuePublishesAfterSync(venue({ after_sync: 'auto' }), manualIntegration)).toBe(true)
     expect(venuePublishesAfterSync({}, manualIntegration)).toBe(false)
+    // The new-items rule is retired (D96): nothing is held, whatever was stored.
     expect(venueHoldsNewItems(venue({ new_items: 'show' }), manualIntegration)).toBe(false)
-    expect(venueHoldsNewItems({}, manualIntegration)).toBe(true)
+    expect(venueHoldsNewItems({}, manualIntegration)).toBe(false)
     expect(venuePublishesAfterSync(venue({ after_sync: 'manual' }), {})).toBe(false)
-    expect(venueHoldsNewItems(venue({ new_items: 'hold' }), {})).toBe(true)
+    expect(venueHoldsNewItems(venue({ new_items: 'hold' }), {})).toBe(false)
   })
 
   it('ignores an unknown or mistyped own value and never throws on junk', () => {
@@ -213,9 +215,10 @@ describe('the publishing rules of a venue (CF-09b, CF-04, D73)', () => {
       after_sync: 'manual',
       new_items: 'hold',
     })
+    // `new_items` may be left out since D96 retired it.
+    expect(VenuePublishRulesSchema.safeParse({ after_sync: 'auto' }).success).toBe(true)
     for (const bad of [
       { after_sync: 'later', new_items: 'hold' },
-      { after_sync: 'auto' },
       { after_sync: 'auto', new_items: 'show', auto_paused: true },
       {},
     ]) {
