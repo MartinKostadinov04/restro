@@ -723,3 +723,68 @@ describe('every language the shell can be asked for', () => {
     }
   })
 })
+
+describe('layouts (D92)', () => {
+  it('passes each section’s layout hint through; a section without one is vertical', () => {
+    const snapshot = tiny({
+      sections: [
+        { title: bgen('Топ', 'Top'), layout: 'horizontal', items: [{ name: bgen('А', 'A') }] },
+        { title: bgen('Бар', 'Bar'), layout: 'vertical', items: [{ name: bgen('Б', 'B') }] },
+        { title: bgen('Кухня', 'Kitchen'), items: [{ name: bgen('В', 'C') }] },
+      ],
+    })
+    const view = buildViewModel(snapshot, null, { locale: 'en_US', now: WEDNESDAY })
+    expect(view.sections.map((section) => section.hints.layout)).toEqual([
+      'horizontal',
+      'vertical',
+      'vertical',
+    ])
+  })
+
+  it('a sub-section carries its own layout', () => {
+    const base = tiny({
+      sections: [
+        { title: bgen('Храна', 'Food'), items: [{ name: bgen('А', 'A') }] },
+        { title: bgen('Топ', 'Top'), layout: 'horizontal', items: [{ name: bgen('Б', 'B') }] },
+      ],
+    })
+    const [food, top] = base.menu.sections
+    if (food === undefined || top === undefined) throw new Error('the fixture lost a section')
+    const foodSection = base.sections[food]
+    if (foodSection === undefined) throw new Error('the fixture lost its food section')
+    const nested = {
+      ...base,
+      menu: { ...base.menu, sections: [food] },
+      sections: { ...base.sections, [food]: { ...foodSection, sections: [top] } },
+    }
+    const view = buildViewModel(nested, null, { locale: 'en_US', now: WEDNESDAY })
+    expect(view.sections[0]?.hints.layout).toBe('vertical')
+    expect(view.sections[0]?.sections[0]?.hints.layout).toBe('horizontal')
+  })
+
+  it('gives the menu’s layout and guest switch', () => {
+    const view = buildViewModel(tiny({ layout: { default: 'one', guest_switch: true } }), null, {
+      locale: 'en_US',
+      now: WEDNESDAY,
+    })
+    expect(view.layout).toEqual({ default: 'one', guestSwitch: true })
+  })
+
+  it('reads a snapshot without a layout as a list, and guests cannot switch', () => {
+    const view = buildViewModel(tiny(), null, { locale: 'en_US', now: WEDNESDAY })
+    expect(view.layout).toEqual({ default: 'list', guestSwitch: false })
+  })
+
+  it('offers the switch only on an interactive channel', () => {
+    const snapshot = tiny({ layout: { default: 'two', guest_switch: true } })
+    for (const [channel, guestSwitch] of [
+      ['qr', true],
+      ['kiosk', true],
+      ['print', false],
+      ['tv', false],
+    ] as const) {
+      const view = buildViewModel(snapshot, null, { locale: 'en_US', now: WEDNESDAY, channel })
+      expect(view.layout, channel).toEqual({ default: 'two', guestSwitch })
+    }
+  })
+})

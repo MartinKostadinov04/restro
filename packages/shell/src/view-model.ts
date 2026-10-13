@@ -13,6 +13,8 @@ import type {
   Locale,
   MeasurementUnit,
   NodeId,
+  SectionLayout,
+  SnapshotMenuLayout,
   TagId,
   ThemeScheme,
 } from '@restro/core'
@@ -151,6 +153,11 @@ export interface ViewSection {
     /** A text colour that reads on `color`. */
     readonly onColor: string | null
     readonly icon: string | null
+    /**
+     * D92: `horizontal` is a row the guest scrolls sideways (the face's feature strip, for any
+     * section the composer marks); `vertical` is the usual list. A snapshot without it: vertical.
+     */
+    readonly layout: SectionLayout
   }
   readonly sections: readonly ViewSection[]
   readonly items: readonly ViewItem[]
@@ -174,6 +181,16 @@ export interface ViewTheme {
   readonly shadow: number
   /** The venue logo, or null. */
   readonly logo: ViewImage | null
+}
+
+/** The menu's layout (D92): the one the page starts in, and whether the guest may switch it. */
+export interface ViewLayout {
+  readonly default: SnapshotMenuLayout
+  /**
+   * Draw the layout switch: the venue lets guests switch, on an interactive channel. A snapshot
+   * without a layout: a list, no switch.
+   */
+  readonly guestSwitch: boolean
 }
 
 /** The whole view model of one menu for one context. */
@@ -201,6 +218,8 @@ export interface ViewModel {
   readonly ordering: { readonly enabled: boolean }
   /** R15: which guest controls the face may draw. Everything not switched on is off. */
   readonly features: ViewFeatures
+  /** D92: the menu's layout, a setting of the menu in the composer (no longer a face option). */
+  readonly layout: ViewLayout
   readonly theme: ViewTheme
 }
 

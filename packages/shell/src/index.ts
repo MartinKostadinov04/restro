@@ -132,6 +132,7 @@ export {
   type ViewId,
   type ViewImage,
   type ViewItem,
+  type ViewLayout,
   type ViewModel,
   type ViewModifierGroup,
   type ViewMoney,

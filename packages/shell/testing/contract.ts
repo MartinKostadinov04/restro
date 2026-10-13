@@ -17,6 +17,10 @@
 //   - when the view model has the feature off, no element with that slot may exist, whatever the
 //     manifest declares (a hidden control must not be in the page at all);
 //   - when the manifest declares the feature and the view model has it on, the slot must exist.
+//
+// D92, fail-closed the same way: the guest's layout switch carries `menu.layout_switch`, and no
+// element with that slot may exist when the view model's `layout.guestSwitch` is off (the menu
+// does not let guests switch, or the channel is not interactive).
 
 import {
   contrastRatio,
@@ -90,6 +94,9 @@ export const FEATURE_SLOTS: readonly { readonly slot: string; readonly feature: 
   { slot: 'menu.bag', feature: 'ordering' },
   { slot: 'menu.pay', feature: 'pay' },
 ]
+
+/** The slot of the guest's layout switch (D92). */
+export const LAYOUT_SWITCH_SLOT = 'menu.layout_switch'
 
 /** Whether the view model has the feature on. */
 function featureOn(view: ViewModel, feature: FeatureName): boolean {
@@ -322,6 +329,11 @@ function checkDocument(
     if (on && !drawn && manifest.features.includes(feature)) {
       fail('R15', `the manifest declares ${feature} and it is on, but ${slot} is not drawn`)
     }
+  }
+
+  // D92: the layout switch only where the menu lets guests switch.
+  if (!view.layout.guestSwitch && documentSlots.has(LAYOUT_SWITCH_SLOT)) {
+    fail('D92', `${LAYOUT_SWITCH_SLOT} is drawn while the menu does not let guests switch`)
   }
   return expected.length
 }

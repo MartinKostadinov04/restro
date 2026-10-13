@@ -317,6 +317,7 @@ function viewSections(env: Env, ids: readonly string[], seen: Set<string>): View
         color,
         onColor: color === null ? null : textOn(color, env.palette),
         icon: section.hints.icon,
+        layout: section.hints.layout ?? 'vertical',
       },
       sections,
       items,
@@ -446,6 +447,10 @@ export function buildViewModel(
       chips: filters.tags.length + filters.dietary.length,
       orderingEnabled: env.orderingActive,
     }),
+    layout: {
+      default: snapshot.layout?.default ?? 'list',
+      guestSwitch: (snapshot.layout?.guest_switch ?? false) && env.interactive,
+    },
     theme: viewTheme(env, title),
   }
 }
