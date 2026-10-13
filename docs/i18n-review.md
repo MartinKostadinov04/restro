@@ -508,7 +508,7 @@ _No further sentences: everything under this screen is in T44's list._
 
 **Changed in S8 (new wording, check it):**
 
-- `tables.empty.description` — Зоните и масите идват от {source} при следващото четене. Заведение без каса добавя свои зони и маси. — Areas and tables come from {source} with its next read. A venue without a till adds its own areas and tables.
+- `tables.empty.description` — Зоните и масите идват от {source}. Появяват се при следващото четене. Заведение без каса добавя свои зони и маси. — Areas and tables come from {source}. They appear at its next read. A venue without a till adds its own areas and tables.
 
 _The whole `tables` and `tablePage` namespaces are in T44's list; the items below are the T44 wording to check, plus the one sentence this pass changed._
 
