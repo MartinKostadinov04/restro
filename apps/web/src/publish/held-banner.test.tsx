@@ -1,13 +1,30 @@
 // @vitest-environment jsdom
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { HeldView } from '@/server/publish/view'
+import type { BusyView, HeldView } from '@/server/publish/view'
 import { renderWithIntl } from '@/test-utils'
 import { HELD_NAMES_SHOWN, HeldBanner } from './held-banner'
-import { publishView } from './test-view'
+import { PublisherProvider } from './publisher-context'
+import { VENUE_ID } from './test-view'
 
+const actions = vi.hoisted(() => ({
+  approveHeldAction: vi.fn(),
+  rejectHeldAction: vi.fn(),
+  publishNowAction: vi.fn(),
+}))
+vi.mock('@/server/publish/actions', () => actions)
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+
+beforeEach(() => {
+  for (const action of Object.values(actions)) {
+    action.mockReset()
+    action.mockResolvedValue({ ok: true, queued: true })
+  }
+})
+
+const MENU = 'nd_heldMenuForTests'
 const names = ['Mojito', 'Spritz', 'Negroni']
 const held = (overrides: Partial<HeldView> = {}): HeldView => ({
   snapshotId: 'sn_held1',
@@ -22,24 +39,26 @@ const held = (overrides: Partial<HeldView> = {}): HeldView => ({
 
 function render(
   banner: HeldView,
-  options: { canPublish?: boolean; busy?: boolean } = {},
-  handlers = { onApprove: vi.fn(), onReject: vi.fn(), onPublish: vi.fn() },
+  options: { canPublish?: boolean; busy?: BusyView; menu?: string | null; locale?: 'bg' } = {},
 ) {
   renderWithIntl(
-    <HeldBanner
-      held={banner}
-      view={publishView({ canPublish: options.canPublish ?? true, held: banner })}
-      busy={options.busy ?? false}
-      {...handlers}
-    />,
+    <PublisherProvider venueId={VENUE_ID} state={{ lastRun: null, busy: options.busy ?? null }}>
+      <HeldBanner
+        held={banner}
+        menuId={MENU}
+        menu={options.menu ?? null}
+        canPublish={options.canPublish ?? true}
+        canPublishNow
+      />
+    </PublisherProvider>,
+    options.locale === undefined ? {} : { locale: options.locale },
   )
-  return handlers
 }
 
 describe('the held-publish banner (V11)', () => {
   it('says how many items an automatic publish would hide, which, and offers Approve and Reject', async () => {
     const user = userEvent.setup()
-    const handlers = render(held())
+    render(held())
     expect(
       screen.getByText('An automatic publish was held: it would hide 3 of 5 items (60%)'),
     ).toBeTruthy()
@@ -48,10 +67,15 @@ describe('the held-publish banner (V11)', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Approve and publish' }))
-    expect(handlers.onApprove).toHaveBeenCalledWith('sn_held1')
+    expect(actions.approveHeldAction).toHaveBeenCalledWith(VENUE_ID, 'sn_held1')
+    expect(actions.publishNowAction).not.toHaveBeenCalled()
+  })
+
+  it('Reject turns the hold down', async () => {
+    const user = userEvent.setup()
+    render(held())
     await user.click(screen.getByRole('button', { name: 'Reject' }))
-    expect(handlers.onReject).toHaveBeenCalledWith('sn_held1')
-    expect(handlers.onPublish).not.toHaveBeenCalled()
+    expect(actions.rejectHeldAction).toHaveBeenCalledWith(VENUE_ID, 'sn_held1')
   })
 
   it('names the first few and counts the rest, from the whole count', () => {
@@ -73,19 +97,23 @@ describe('the held-publish banner (V11)', () => {
     expect(screen.getByText(/would hide 3 of 5 items/)).toBeTruthy()
   })
 
-  it('when the menu has changed since the hold, says so and offers a plain Publish instead of Approve', async () => {
+  it('when the menu has changed since the hold, offers to publish that menu as it is now instead of Approve', async () => {
     const user = userEvent.setup()
-    const handlers = render(held({ outdated: true }))
+    render(held({ outdated: true }))
     expect(screen.getByText(/The menu has changed since this publish was held/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Approve and publish' })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Publish the menu as it is now' }))
-    expect(handlers.onPublish).toHaveBeenCalledTimes(1)
-    await user.click(screen.getByRole('button', { name: 'Reject' }))
-    expect(handlers.onReject).toHaveBeenCalledWith('sn_held1')
+    expect(actions.publishNowAction).toHaveBeenCalledWith(VENUE_ID, MENU)
+  })
+
+  it('names the menu when the venue has several', () => {
+    render(held(), { menu: 'Terrace' })
+    expect(screen.getByTestId('held-banner').textContent).toContain('Terrace')
+    expect(screen.getByTestId('held-banner').getAttribute('data-menu')).toBe(MENU)
   })
 
   it('stops the buttons while something is already happening', () => {
-    render(held(), { busy: true })
+    render(held(), { busy: 'publish' })
     expect(
       (screen.getByRole('button', { name: 'Approve and publish' }) as HTMLButtonElement).disabled,
     ).toBe(true)
@@ -101,17 +129,7 @@ describe('the held-publish banner (V11)', () => {
   })
 
   it('speaks Bulgarian', () => {
-    renderWithIntl(
-      <HeldBanner
-        held={held()}
-        view={publishView({ held: held() })}
-        busy={false}
-        onApprove={vi.fn()}
-        onReject={vi.fn()}
-        onPublish={vi.fn()}
-      />,
-      { locale: 'bg' },
-    )
+    render(held(), { locale: 'bg' })
     expect(
       screen.getByText('Автоматична публикация е задържана: щеше да скрие 3 от 5 артикула (60%)'),
     ).toBeTruthy()

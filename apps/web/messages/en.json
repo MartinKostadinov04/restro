@@ -817,13 +817,18 @@
   },
   "workspace": {
     "switchTab": "Switch tab",
+    "switchSection": "Switch section",
     "comingInStage": "Coming in Stage {stage}",
     "tabs": {
       "composer": "Composer",
       "tables": "Tables & QR",
-      "publishing": "Publishing",
       "design": "Design",
       "settings": "Settings"
+    },
+    "settingsSections": {
+      "general": "General",
+      "publish": "Publish",
+      "versioning": "Versioning"
     },
     "composer": {
       "title": "Menu composer",
@@ -909,43 +914,63 @@
     }
   },
   "publish": {
-    "readOnly": "You can see what is published. Only an owner or admin can publish, approve a held publish or return to an earlier version.",
-    "noMenu": {
-      "title": "No menu to publish yet",
-      "description": "Add items in the composer, or connect barsy, and the menu can be published from here."
-    },
     "actor": {
       "sync": "barsy sync",
       "system": "the system",
       "person": "a team member"
     },
+    "bar": {
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "choose": "Choose the menu to publish",
+      "venueAddress": "venue address",
+      "count": "{count, plural, one {# change} other {# changes}}",
+      "waiting": "{count, plural, one {# change waiting} other {# changes waiting}}",
+      "minor": "Small changes waiting",
+      "firstPublish": "Not published yet: guests see nothing until you publish.",
+      "pausedSame": "Nothing new; publishing resumes automatic publishing.",
+      "addressOffSame": "Nothing new; publishing switches the menu address back on.",
+      "openGuest": "Open the guest page",
+      "guestOff": "The menu address is switched off. Publish to put it back.",
+      "guestNothing": "Nothing is published yet.",
+      "reason": {
+        "role": "Only an owner or admin can publish.",
+        "busy": "Waiting for the publisher…",
+        "up_to_date": "Up to date: guests see the latest version.",
+        "allUpToDate": "Up to date: every menu is published as it is.",
+        "noMenu": "This venue has no menu yet.",
+        "no_visible_items": "Nothing visible to publish: show at least one item in the composer.",
+        "menu_blocked": "The menu cannot be published yet. Check the composer.",
+        "held_outdated": "The menu has changed since the publish was held.",
+        "held_not_found": "The held publish was already decided.",
+        "unsafe_snapshot": "The draft was refused by the safety check.",
+        "other": "The draft could not be prepared. Reload the page to try again."
+      }
+    },
+    "publishConfirm": {
+      "title": "Publish the menu?",
+      "titleMenu": "Publish {name}?",
+      "description": "Guests see these changes as soon as it is published.",
+      "notLive": "{name} is not the live menu. Guests see it in: {areas}.",
+      "notLiveUnrouted": "{name} is not the live menu and no area shows it, so guests do not see it yet.",
+      "same": "Nothing in the menu changed.",
+      "samePaused": "Nothing in the menu changed. Publishing resumes automatic publishing.",
+      "sameAddressOff": "Nothing in the menu changed. Publishing switches the menu address back on.",
+      "preview": "Preview",
+      "cancel": "Cancel"
+    },
     "live": {
-      "title": "On guests' phones now",
-      "description": "What guests see when they scan a table code or open the menu link.",
-      "version": "Version {version}",
-      "badge": "Live",
       "reason": {
         "manual": "Published by hand",
         "auto_sync": "Published automatically after a sync"
       },
-      "meta": "{reason}, {when}, by {who}",
-      "returned": "Returned to this version on {when} by {who}.",
-      "open": "Open the guest page",
-      "nothingTitle": "Nothing published yet",
-      "nothingText": "Guests see nothing until you publish. {count, plural, one {# item is ready.} other {# items are ready.}}",
-      "nothingTextPlain": "Guests see nothing until you publish."
+      "returned": "Returned to this version on {when} by {who}."
     },
     "changes": {
-      "title": "Changes waiting",
-      "description": "What would change on guests' phones if you published now.",
-      "upToDate": "Up to date",
-      "upToDateText": "The live menu is the same as the draft.",
       "allNew": "Everything is new: {count, plural, one {# item} other {# items}} will go live with the first publish.",
       "waiting": "{count, plural, one {# change waiting} other {# changes waiting}}",
       "minor": "Small changes waiting",
       "minorText": "The live menu differs from the draft in small details.",
-      "show": "Show the changes",
-      "hide": "Hide the changes",
       "summary": {
         "added": "{count} added",
         "hidden": "{count} hidden or removed",
@@ -971,31 +996,10 @@
       },
       "arrow": "{from} → {to}",
       "noPrice": "no price",
-      "unnamed": "(no name)",
-      "blocked": {
-        "title": "The menu cannot be published yet",
-        "text": "Something blocks the whole menu, such as a missing language. Check the composer."
-      },
-      "nothingVisible": {
-        "title": "Nothing visible to publish",
-        "text": "Every item is hidden. Show at least one item in the composer, then publish."
-      },
-      "unavailable": {
-        "title": "The draft could not be prepared",
-        "text": "Reload the page to try again."
-      }
+      "unnamed": "(no name)"
     },
-    "stale": {
-      "title": "Overrides to review",
-      "text": "These items have your own value over barsy's, and barsy has changed since. Check them before you publish.",
-      "open": "Open {name}"
-    },
-    "publish": "Publish",
-    "publishing": "Publishing…",
-    "preview": "Preview",
     "dismiss": "Dismiss",
     "updatingFiles": "Updating what guests see…",
-    "nothingToPublish": "Nothing to publish",
     "outcome": {
       "published": "Version {version} is live",
       "publishedText": "Guests see it now.",
@@ -1031,16 +1035,18 @@
       "publishNow": "Publish the menu as it is now"
     },
     "addressOff": {
-      "title": "The menu address is switched off. Publish to switch it on.",
-      "text": "Guests who open the menu or scan a table code see that the menu is not available. This is how a venue comes back after it was deleted and restored."
+      "title": "The menu address is switched off. Publish to put it back.",
+      "text": "Guests who open the menu or scan a table code see that the menu is not available. This happens after the venue was unpublished, or deleted and restored."
     },
     "paused": {
-      "title": "Automatic publishing is paused because you returned to an older version. Publish to resume.",
-      "text": "Until then, changes from barsy wait in the draft and guests keep seeing the version above."
+      "title": "Automatic publishing is paused because you returned to an older version.",
+      "text": "Until you publish or resume it, changes from the till wait in the draft and guests keep seeing the version you returned to.",
+      "resume": "Resume automatic publishing",
+      "resuming": "Resuming…"
     },
     "history": {
       "title": "Versions",
-      "description": "Every publish and every return to an earlier version, newest first.",
+      "description": "The version guests see now and up to {kept} earlier ones you can return to, newest first.",
       "empty": "Nothing has been published yet.",
       "version": "Version {version}",
       "live": "Live",
@@ -1050,13 +1056,12 @@
       "first": "First version",
       "noChange": "No visible change",
       "heldText": "Would have hidden {hidden} of {total} items",
-      "returnedTo": "Returned to version {version}",
-      "returnedToUnknown": "Returned to an earlier version",
       "return": "Return to this version",
-      "more": "Show older versions",
-      "loading": "Loading…",
-      "loadFailed": "Older versions could not be loaded. Try again.",
-      "listLabel": "Version history"
+      "listLabel": "Version history",
+      "liveMenu": "Live menu",
+      "noMenu": "This venue has no menu yet.",
+      "readOnly": "Only an owner or admin can return to an earlier version.",
+      "purge": "Earlier versions are erased {days} days after they were made (the live one never is), and the log of changes is kept for {logDays} days."
     },
     "confirm": {
       "title": "Return to version {version}?",
@@ -1080,27 +1085,105 @@
       "dark": "Dark",
       "frame": "Phone preview of the draft"
     },
-    "rules": {
-      "title": "Rules",
-      "description": "What happens when this venue's menu changes in the till. These rules are for this venue only and apply from its next sync.",
+    "automation": {
+      "title": "Automation",
+      "description": "How this venue reads its menu from {source}, and whether a sync goes live by itself. These settings are for this venue only.",
+      "sync": {
+        "legend": "Reading the menu from {source}",
+        "auto": "Automatically",
+        "autoHelp": "Checks {source} for changes on a schedule, and reads the whole menu once a day.",
+        "manual": "Only when I ask",
+        "manualHelp": "This venue is not read on a schedule: read it with “Sync this venue” in General. Items it shares with other venues can still change when those are read.",
+        "interval": "Check for changes every",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "fullRead": "Read the whole menu daily at",
+        "timeInvalid": "Enter a time as HH:MM, for example 12:00."
+      },
       "afterSync": {
         "legend": "After a sync",
         "auto": "Publish automatically",
-        "autoHelp": "Guests see changes from the till within about a minute.",
+        "autoHelp": "Guests see changes from {source} within about a minute. A sync that would hide more than 30% of the menu still waits for you.",
         "manual": "Wait until I press Publish",
-        "manualHelp": "Changes from the till wait until you publish them here."
+        "manualHelp": "Changes from {source} wait until you publish them."
       },
-      "newItems": {
-        "legend": "New items from the till",
-        "show": "Show them on the menu",
-        "showHelp": "A new item is on the menu with the next publish.",
-        "hold": "Keep them hidden until I review them",
-        "holdHelp": "New items stay hidden in the composer until you show them."
-      },
-      "inherited": "These are the settings the connection had before the rules moved to the venue. Saving makes them this venue's own.",
-      "save": "Save rules",
+      "inherited": "These are the settings the connection had before they moved to the venue. Saving makes them this venue’s own.",
+      "save": "Save",
       "saving": "Saving…",
-      "saved": "Saved. The rules apply from the next sync of this venue."
+      "saved": "Saved. The settings apply from the next sync of this venue."
+    }
+  },
+  "venueMenus": {
+    "title": "Menus",
+    "description": "The venue’s menus. The live one is at the venue’s address; an area or a table can show another one (Tables & QR).",
+    "descriptionTill": "The menus come from the till: you can rename them, change their order and choose the live one.",
+    "live": "Live",
+    "venueNameNote": "(the venue’s name)",
+    "open": "Open {name} in the composer",
+    "up": "Move up",
+    "down": "Move down",
+    "rename": {
+      "open": "Rename",
+      "label": "Menu name",
+      "save": "Save"
+    },
+    "delete": "Delete",
+    "deleteLive": "The live menu cannot be deleted: make another menu live first.",
+    "deleted": "Moved to Deleted menus.",
+    "restored": "Restored.",
+    "added": "Menu added.",
+    "imported": "Menu imported.",
+    "cancel": "Cancel",
+    "empty": "No menus yet. Add one.",
+    "emptyTill": "No menus yet: they appear after the first sync.",
+    "add": {
+      "open": "Add menu",
+      "label": "Name of the new menu",
+      "placeholder": "Name (empty = {name})",
+      "submit": "Add"
+    },
+    "setLive": {
+      "open": "Set live",
+      "title": "Make {name} the live menu?",
+      "description": "It is published now, and guests at the venue’s address and at tables without a menu of their own see it.",
+      "confirm": "Set live and publish",
+      "done": "It is the live menu now. Publishing it…",
+      "notQueued": "It is the live menu now, but it could not be published just now. Publish it from the top of the page."
+    },
+    "import": {
+      "open": "Import from another venue",
+      "title": "Import a menu",
+      "description": "Copies a menu of another venue made by hand into this one, once. Later changes to either menu stay apart.",
+      "loading": "Loading the venues…",
+      "loadFailed": "The venues could not be loaded. Close and try again.",
+      "none": "No other venue made by hand has a menu to import.",
+      "venue": "Venue",
+      "venuePlaceholder": "Choose a venue",
+      "menu": "Menu",
+      "menuPlaceholder": "Choose a menu",
+      "name": "Name of the copy",
+      "namePlaceholder": "Empty = the menu’s name",
+      "cancel": "Cancel",
+      "submit": "Import",
+      "importing": "Importing…"
+    },
+    "bin": {
+      "title": "{count, plural, one {Deleted menus (#)} other {Deleted menus (#)}}",
+      "description": "A deleted menu can be restored for {days} days; then it is erased.",
+      "when": "Deleted {deleted} · erased on {erased}",
+      "restore": "Restore"
+    },
+    "errors": {
+      "invalid_input": "That name or choice cannot be used. Check it and try again.",
+      "unknown_venue": "This venue was not found.",
+      "venue_archived": "This venue was deleted.",
+      "unknown_menu": "That menu was not found. Reload the page.",
+      "menu_deleted": "That menu is in Deleted menus. Restore it first.",
+      "menu_live": "The live menu cannot be deleted: make another menu live first.",
+      "till_venue": "This venue’s menus come from the till: they cannot be added, deleted or imported here.",
+      "unknown_source": "That menu cannot be imported any more. Choose another one.",
+      "not_allowed": "Only an owner or admin can change the menus.",
+      "invalid": "That request was not understood. Reload the page and try again.",
+      "failed": "Something went wrong. Nothing was changed; try again."
     }
   },
   "integration": {

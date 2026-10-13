@@ -31,9 +31,12 @@ type Preview =
 
 export function PreviewDialog({
   venueId,
+  menuId,
   children,
 }: {
   venueId: string
+  /** The menu to preview; default: the venue's live menu. */
+  menuId?: string
   /** The button that opens it. */
   children: ReactNode
 }) {
@@ -49,7 +52,9 @@ export function PreviewDialog({
     if (!open) return
     let cancelled = false
     setPreview({ state: 'loading' })
-    previewDraftAction(venueId).then(
+    const load =
+      menuId === undefined ? previewDraftAction(venueId) : previewDraftAction(venueId, menuId)
+    load.then(
       (result) => {
         if (cancelled) return
         setPreview(
@@ -65,7 +70,7 @@ export function PreviewDialog({
     return () => {
       cancelled = true
     }
-  }, [open, venueId, attempt])
+  }, [open, venueId, menuId, attempt])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

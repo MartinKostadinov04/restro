@@ -66,11 +66,11 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   await expect(page.getByTestId('composer')).toBeVisible()
 
   // --- tabs live in the URL ------------------------------------------------------------------
-  await page.getByRole('tab', { name: 'Публикуване' }).click()
-  await expect(page).toHaveURL(/\?tab=publishing$/)
-  // The Publish tab is real (its own spec tests it in depth): it reads the venue's versions.
-  await expect(page.getByTestId('publish-panel')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Версии' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Маси и QR' }).click()
+  await expect(page).toHaveURL(/\?tab=tables$/)
+  // No Publishing tab (D97): the Publish button heads every tab (its own spec tests it in depth).
+  await expect(page.getByRole('tab', { name: 'Публикуване' })).toHaveCount(0)
+  await expect(page.getByTestId('publish-button')).toBeVisible()
 
   await page.getByRole('tab', { name: 'Настройки' }).click()
   await expect(page).toHaveURL(/\?tab=settings$/)

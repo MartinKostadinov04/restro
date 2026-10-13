@@ -1,14 +1,17 @@
 // The tabs of a venue workspace, declared once. The tab bar (large screens) and the select (small
 // screens) are both rendered from this list; the sidebar lists venues, not their tabs (D74). The
 // Platform (PassportEdit.jsx) wrote the tab list twice and let it drift; here a new tab is one
-// entry.
+// entry. The Settings tab has sections of its own (D97), declared the same way and kept in the
+// URL as `?tab=settings&section=…`.
 import {
+  CloudUploadIcon,
+  HistoryIcon,
   LayoutListIcon,
   type LucideIcon,
   PaletteIcon,
   QrCodeIcon,
-  RocketIcon,
   SettingsIcon,
+  SlidersHorizontalIcon,
 } from 'lucide-react'
 
 /** What a tab is, without its content (the page supplies the content per value). */
@@ -20,10 +23,14 @@ export interface WorkspaceTabDef {
   readonly icon: LucideIcon
 }
 
+/**
+ * The venue page's tabs (D97): Composer, Tables & QR, Settings. Design stays a tab of its own until
+ * it moves under the composer (S6). The Publishing tab is gone: the Publish button is in the
+ * header on every tab, and its settings are Settings › Publish and › Versioning.
+ */
 export const WORKSPACE_TAB_DEFS = [
   { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
-  { value: 'publishing', labelKey: 'workspace.tabs.publishing', icon: RocketIcon },
   { value: 'design', labelKey: 'workspace.tabs.design', icon: PaletteIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
 ] as const satisfies readonly WorkspaceTabDef[]
@@ -39,11 +46,40 @@ export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
 }
 
 /**
- * The tab a `?tab=` value opens. The venue's Integration tab is gone (CF-09b, D73: the connection
- * is the organisation's, the venue's part is the Menu source card in its Settings tab), so an old
- * link `?tab=integration` opens Settings; anything else unknown opens the default tab.
+ * The tab a `?tab=` value opens. Tabs that are gone open Settings, where their content went: the
+ * venue's Integration tab (CF-09b, D73: the venue's part is the Menu source card) and the
+ * Publishing tab (D97: Settings › Publish and › Versioning). Anything else unknown opens the
+ * default tab.
  */
 export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
-  if (requested === 'integration') return 'settings'
+  if (requested === 'integration' || requested === 'publishing') return 'settings'
   return isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
+}
+
+/**
+ * The sections of the Settings tab (D97): General (name, address, languages, menus, menu source,
+ * danger zone), Publish (Automation settings, only for a venue with a till) and Versioning.
+ */
+export const SETTINGS_SECTION_DEFS = [
+  { value: 'general', labelKey: 'workspace.settingsSections.general', icon: SlidersHorizontalIcon },
+  { value: 'publish', labelKey: 'workspace.settingsSections.publish', icon: CloudUploadIcon },
+  { value: 'versioning', labelKey: 'workspace.settingsSections.versioning', icon: HistoryIcon },
+] as const satisfies readonly WorkspaceTabDef[]
+
+export type SettingsSectionValue = (typeof SETTINGS_SECTION_DEFS)[number]['value']
+
+/** The section shown when `?section=` is absent, unknown, or not the venue's. */
+export const DEFAULT_SETTINGS_SECTION: SettingsSectionValue = 'general'
+
+/** The sections a venue has: Publish only with a till (its settings are about syncing). */
+export function settingsSectionsOf(hasTill: boolean): readonly SettingsSectionValue[] {
+  return SETTINGS_SECTION_DEFS.map((section) => section.value).filter(
+    (value) => hasTill || value !== 'publish',
+  )
+}
+
+/** The section a `?section=` value opens for a venue with or without a till. */
+export function settingsSectionOf(requested: unknown, hasTill: boolean): SettingsSectionValue {
+  const sections = settingsSectionsOf(hasTill)
+  return sections.find((section) => section === requested) ?? DEFAULT_SETTINGS_SECTION
 }
