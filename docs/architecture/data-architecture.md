@@ -1,6 +1,6 @@
 # Menu Engine Data Architecture
 
-Oct 8, 2026 · @Martin
+Oct 8, 2026 · @Martin · mirror brought up to date for Adjustments 01 on Oct 13, 2026 (D77–D97)
 
 Every menu value enters through one of four collection paths (manual editor, Barsy full pull, Barsy webhook, Barsy reconciliation). Each lands as a typed, sourced value in its own layer of one internal data source. It reaches a screen only through a deterministic resolver and an immutable snapshot, which every face renders under the same population rules. Faces differ in look only.
 
@@ -10,17 +10,22 @@ Every menu value enters through one of four collection paths (manual editor, Bar
 
 Every source, the manual editor included, enters through `apply()`. Only the publisher writes what a shell reads, and orders leave through the outbox back to Barsy.
 
+**Adjustments 01 (Oct 12–13, 2026; T79)** changed the supporting tables, the venue, menu and table model, the guest addresses and published files, the purge and the snapshot's layout and colour fields. It did not touch node types, field types, layers and resolution, the validation gates V1–V12, the population rules R1–R12, R14 and R15, or the outbound outline. A section that changed names the decisions (D77–D97) it follows.
+
 ## Vocabulary
 
 Every later section uses these terms in exactly this sense.
 
 | Term | Meaning |
 | --- | --- |
-| Tenant | A restaurant group or club operator: one account, one or more venues |
-| Venue | One physical outlet. Maps 1:1 to a Barsy venue (`bid`) on one Barsy installation (host) |
-| Integration | A configured connection to one Barsy installation: host, API user, venues, webhook subscriptions, cursors |
+| Tenant | A restaurant group or club operator: one account, one or more venues. The venue admin calls it the organisation; its id is the organisation's |
+| Venue | One physical outlet. Either served by one Barsy venue (`bid`) of one Barsy instance, or made by hand; the source is fixed when the venue is created (D87). Has several menus, exactly one of them live, and an address name guests see |
+| Integration | A named instance of a connection to one POS installation (today Barsy): name, host, API user, venues, webhook subscriptions, cursors. An organisation can have several, also of one system (D81) |
 | Template | A versioned schema tree: which node types exist, how they nest, which fields each carries |
-| Menu | One instance of a template owned by a tenant ("Dinner", "Cocktails") |
+| Menu | One instance of a template belonging to a venue ("Dinner", "Cocktails"). A venue has several; exactly one is live (D88) |
+| Area | A hall, terrace or other group of a venue's tables (D95) |
+| Table | One table, seat or bar spot of an area, with a QR code. In a Barsy venue it mirrors a Barsy place; `places` is the Barsy layer under it (D95) |
+| Menu route | Which menu an area or a table opens. The most specific entry wins (D95) |
 | Node | One element of a menu: Menu, Section, Item, Modifier group, Option, Special |
 | Placement | The fact that an Item appears inside a Section at a sort position. One Item can have several placements |
 | Field definition | A typed slot on a node type: key, type, required, constraints, owner |
@@ -138,21 +143,32 @@ The internal data source has four tiers, and data only ever moves down them: raw
 
 | Table | Key | Holds |
 | --- | --- | --- |
-| `tenants`, `venues` | id | Venue → integration, Barsy `bid`, timezone, currency, enabled languages |
-| `integrations` | id | Barsy host, API user, credential reference (secret store, never in the database), status, webhook secrets, sync cursors |
+| `tenants` | id | The organisation: name and `settings`, whose `systems` lists the POS systems it chose in Settings › Integrations (D81, D91) |
+| `venues` | id | One row per venue: name, the address name `slug` (unique within the organisation, D84), the internal public code `public_id`, timezone, currency, `default_locale` (the main language) and `enabled_locales` (read only through the one languages function, D77), `live_menu_id`, `unpublished_at`, `archived_at` and `settings` (see Settings kept as JSON). It holds no link to a till; that link is `barsy_venues.venue_id` |
+| `integrations` | id | One row per named instance (D81): `kind`, `name` (1–80 characters), Barsy host, API user, credentials sealed so only the worker can open them (D55), status, webhook secrets, sync cursors, `config`, and `removed_at` (set when the instance is removed: it is hidden and never synced, but the row, its credentials and what it synced stay until the purge clears them, D91) |
+| `barsy_venues` | (integration, `bid`) | The venues of an instance as the till lists them: name, `venue_id` (the one venue of ours it serves; at most one), its catalogue, the price source, and the menu roots the till designates for it, `public_cat_id` and `tree_cat_id` (D88) |
 | `pos_registrations` | venue\_id | The Barsy `pos_key` for that venue. Exactly one writer, because re-registering a POS silently deregisters the previous one |
-| `templates`, `menus`, `nodes`, `placements` | id | The schema tree, menu instances, nodes (with `parent_id`, `node_type`, `status`) and Item-in-Section placements |
+| `templates`, `nodes`, `placements` | id | The schema tree, nodes (with `parent_id`, `node_type`, `status`) and Item-in-Section placements |
+| `menus` | id (the menu's root node id) | One row per menu of a venue: venue, template and version, `name` (the header name; null = the venue's name), `sort_key`, `settings` = `{layout, layout_switch}` (D92) and `deleted_at` (the menu bin, D91). Several per venue; `venues.live_menu_id` names the live one. A menu's venue, template and root node are pinned once it exists |
 | `source_links` | (integration, external\_type, external\_id) | Internal node id ↔ external id, with state (`active`, `missing`, `deleted`), first and last seen, last hash |
 | `overrides` | id | Explicit replacements of source-owned values: value, the source value at the time (basis), author, reason, state |
 | `assets` | id | Images and files: origin (upload or Barsy), origin reference, checksum, CDN variants |
-| `tables` | id | Barsy places synced per venue: `place_id`, `place_num`, salon, zone, opaque QR token |
+| `areas` | id | A venue's halls and groups of tables: name, `sort_key`, `hidden`, `source_key` (the till's hall id; null for the owner's own areas), `archived_at` (D95) |
+| `tables` | id | A venue's tables: `area_id`, `name` (ours; shown to guests when set), `number` (the till's or the owner's), `sort_key`, `hidden`, `qr_token` (opaque; unique across all organisations), `archived_at` (D95) |
+| `places` | id | The Barsy layer under `tables`: `place_id`, `place_num`, hall (`salon_id`, name, weight), public flag, state; `table_id` points to the platform table it is mirrored into. Carries no token and no label |
+| `menu_routes` | one row per area or table | Which menu an area or a table opens: exactly one of `area_id` and `table_id`, and `menu_id` (null = no choice of its own) (D95) |
+| `venue_slug_history`, `organization_slug_history` | (organisation, slug), slug | Earlier address names of venues (per organisation) and of organisations (platform-wide). They keep redirecting and stay reserved (D84) |
+| `tombstones` | (kind, value) | Public codes and table tokens of purged venues; never issued again. Only the purge writes it (D83) |
+| `purge_log` | sequence | What each purge erased, without content: kind (`venue`, `menu`, `instance`, `versions`, `tables`), the subject's id and rows deleted per table (D83) |
 | `jobs` | id | Every pull and reconciliation run: type, status, counters, error log |
 | `webhook_inbox` | `X-Webhook-ID` | Every webhook received: payload, signature check result, processing state |
-| `events` | sequence | Append-only changelog: node, field, layer, old → new, source, actor, job |
+| `events` | sequence | Append-only changelog: node, field, layer, old → new, source, actor, job. The app role cannot delete it; only the purge erases rows (older than two months, and a purged venue's own, D96) |
 | `review_queue` | id | Proposed changes waiting for a person: new Barsy items, stale overrides, conflicts |
 | `outbox` | id | Outbound order commands to Barsy (see Outbound) |
 
-**Venue lifecycle (D76).** Owners and admins rename a venue; only an owner deletes it, after typing its name. Deleting **archives** it (`venues.archived_at`, null = live) and erases nothing, because history is append-only. One transaction sets the flag and releases the till link (`barsy_venues.venue_id` goes back to null, so the till venue is free for another venue); the venue's public code, menu, tables and QR tokens stay. Every core writer of one venue first locks its row (`FOR SHARE`, the delete takes `FOR UPDATE`) and refuses an archived one (`venue_archived`), so a save and a delete never interleave; `apply()` refuses writes into an archived venue's menu and its `venue:` scope. The admin's reads, the sync and its schedule, and the publish jobs leave an archived venue out. The worker withdraws the guest files by **removing** them (the venue index `v/<code>.json` and the table files `t/<token>.json`; no marker), keeping the QR tokens so a restore brings the same codes back, and whichever job runs last leaves what the database says. A restore clears the flag: the venue comes back without a till link and unpublished, the owner links the till again and publishes, and the same addresses work again. Erasing a venue for good is an operator task, never a button.
+**Venue lifecycle (D76, D83, D86).** Owners and admins rename a venue; only an owner deletes it, after typing its name. Deleting **archives** it (`venues.archived_at`, null = live): the venue goes to the bin and nothing is erased yet; it stays restorable for 30 days and is then purged (see Deletion and the purge). One transaction sets the flag, releases the till link (`barsy_venues.venue_id` goes back to null, so the till venue is free for another venue) and remembers the till venue it served in `settings.till_before_delete` (`{integration_id, bid}`); the venue's public code, menus, tables and QR tokens stay. Every core writer of one venue first locks its row (`FOR SHARE`, the delete takes `FOR UPDATE`) and refuses an archived one (`venue_archived`), so a save and a delete never interleave; `apply()` refuses writes into an archived venue's menus and its `venue:` scope. The admin's reads, the sync and its schedule, and the publish jobs leave an archived venue out. The worker withdraws the guest files by **removing** them (the venue index `v/<code>.json` and the table files `t/<token>.json`; no marker; the venue also drops out of the organisation's index `o/<organisation>.json`), keeping the QR tokens so a restore brings the same codes back, and whichever job runs last leaves what the database says. A restore clears the flag and links the remembered till venue again when it is still free; when another venue serves it now, the restore is refused (`till_taken`, naming that venue) and nothing changes. A restored venue comes back unpublished: its guest files, the table pages included, return with the next publish, and the same addresses work again. **Venue states (D86):** Draft (never published, or unpublished by the owner, `unpublished_at`, which any publish clears), Live (its live menu has a published version) and Archived (in the bin); one core function, `venueStateOf`, decides it for every screen and job.
+
+**Settings kept as JSON (D77, D81, D82, T76).** `tenants.settings.systems`: the connector kinds the organisation chose; an instance can only be added for a chosen system, and a system with instances cannot be unchosen. `venues.settings`: `sync` = `{mode: auto | manual, incremental_minutes, full_pull_time}` (the venue's sync mode, in its own time zone); `publish` = `{after_sync: auto | manual, auto_paused}` (the publishing rules and the pause after a rollback); `languages_report` (the connector's last report, see Barsy to canonical mapping); `till_before_delete` (above); and the look and guest-function settings of D69–D71, unchanged. A venue with no `sync` or `publish` of its own reads its integration's `config` of before D82, so nothing changes until someone saves.
 
 One row in `field_values` looks like this:
 
@@ -189,6 +205,25 @@ No adapter writes to tiers 2–4. Each adapter produces a change set and hands i
 
 Recommended storage: Postgres with `jsonb` for tiers 2–3 and the supporting tables, because change sets need transactions and placements and links need joins. Snapshots and assets go to object storage behind a CDN.
 
+### Menus, areas, tables and menu routing (D88, D90, D92, D95)
+
+Field values, links and events still enter only through `apply(change_set)`. The tables below are side tables of the model, not field values: they are written by core's own writers inside `core/apply`, the only importer of the write side of `db`, like `places` and `tags`.
+
+- **Several menus, one live.** A venue has any number of menus (`menus`, in `sort_key` order); `venues.live_menu_id` names the one guests see at the venue's address and wherever no route says otherwise. The pointer is a composite key to a menu of the same venue, and purging that menu clears it. Each menu has its own draft and published versions (`snapshots` and `publish_pointers` are per menu and venue). The venue's template, design and guest functions are shared by all its menus; the design is copied into each menu's snapshot when that menu is published. A menu's `settings` hold its layout and whether guests may switch it (D92); `name` is its header name; `deleted_at` puts it in the venue's bin (D91): a binned menu is never the live one and is left out of every list.
+- **Where menus come from.** A hand-made venue: the owner adds, renames, reorders, bins and restores menus, and may import a menu of another hand-made venue once, as a copy (tags are left out: a venue's tags are its own, D88). A Barsy venue: one menu per root the till designates for it, its public menu and its till tree (`barsy_venues.public_cat_id`, `tree_cat_id`; D88); the public menu is live by default. A menu is tied to its root by a `menu_root` link on its root node (external id `<root>@<vn_ id>`, qualified by the venue because venues share catalogues). Items are shared between the venue's menus, and absence is concluded over all of them. A root the till changes re-points that menu; its old sections go missing by the usual rules.
+- **What a Barsy venue may change.** Its structure is our mapper (order) and dictionary (names) over a copy of the till's: reorder, rename over the till's text, hide, move items between sections (D90, D91) and add its own sections (D92). Own sections and moved items live in our layout layer; a new till item still lands in its own category's section; own sections can be deleted, the till's only hidden. Sections are vertical or horizontal (D92). A hand-made venue has full control (D89).
+- **Areas and tables** are the platform's own model of where guests sit: a venue has areas, an area has tables. In a venue without a till the owner creates, renames, renumbers and deletes them (deleted ones are marked `archived_at` and purged after 30 days). In a Barsy venue the mirror turns the stored `places` into areas, keyed by the till's hall id in `areas.source_key` and kept in the till's order (places in no hall go to an area called "Tables", last), and into tables, with the place's number; a non-public, `--` placeholder or numberless place starts hidden. The manager's name, order and hidden flag survive later reads; the number and the hall follow the till; a deleted place archives its table and retires its code. Restro renames, reorders and hides; the till is never written to. A hidden table or area gets no code and no `t/<token>.json`; its token is kept for when it is shown again.
+- **Menu routing (D95).** `menu_routes` holds one entry per area or table. Three levels: the venue (its live menu), an area, a table; the most specific entry wins and a level with no entry inherits. One code always opens exactly one menu, with no guest switch. An unpublished menu falls back to the next level up, and a binned menu cannot be chosen. The publisher resolves the dictionary into each table file (`menu_id`); guests never read `menu_routes` (rule 4). A purged menu clears its routes' `menu_id` only.
+
+### Deletion and the purge (D83, D91, D96)
+
+- **What the app role may delete.** Only the three row kinds `apply()` removes as the action itself (`placements` when an item is unplaced, `field_values` when a field is cleared, `source_links` when an item is unlinked) and Better Auth's session and verification rows. Everything else is archived, binned or marked (`archived_at`, `deleted_at`, `removed_at`, a node's `status`). The list of what each role may do is `packages/db/src/table-access.ts`, and a test pins the delete list: widening it is a guardrail change.
+- **What only the purge erases.** The worker's purge job connects through its own database role, `restro_purge` (`DATABASE_URL_PURGE`; only that job imports it). The role has SELECT and DELETE on the venue-scoped tables (`venues`, `integrations`, `barsy_venues`, `menus`, `nodes`, `placements`, `field_values`, `source_records`, `source_links`, `events`, `job_runs`, `places`, `assets`, `areas`, `tables`, `menu_routes`, `venue_slug_history`, `snapshots`, `publish_pointers`, `item_first_published`, `tags`), INSERT on `tombstones` and `purge_log`, SELECT on `tenants`, and no UPDATE anywhere. It is held to row-level security like the app role: every purge is one transaction scoped to one organisation and ends with a content-free `purge_log` row. Files leave the CDN after the transaction committed.
+- **The bins.** A deleted venue stays in the bin 30 days (Organisation › Deleted venues), then the daily purge (04:30 Europe/Sofia) erases it; an owner can erase it at once with "Delete permanently" (typed name; a venue that is not in the bin, or is still linked to a till venue, is refused). A binned menu goes after 30 days, and so does a deleted area or table (D95).
+- **What a venue purge erases.** Its areas, tables, routes, menus with their sections, the items only its menus placed, its own values and change log, tags, versions, address names and the venue row. Items the till or another venue still uses stay. Its public code and table tokens are written to `tombstones` and never issued again (old codes say "not available"); its address name may be used again inside its organisation. The organisation's index is written again.
+- **Versions (D96).** Per menu and venue: the live version is never purged; the two newest earlier published versions stay restorable while they are younger than 30 days; every other row of the history (older versions, held and rejected publishes, rollback records) goes once it is 30 days old; a snapshot a kept rollback record points to stays as long as the record does. The snapshot file goes with the row. The change log (`events`) is kept two months, then erased.
+- **Removed POS instances (D91).** Removing an instance marks it (`integrations.removed_at`) and hides it. Clearing a removed instance's data, and the unused items, is the purge's job and is not built yet; `purge_log` already has the kind `instance` for it.
+
 ## Collection path A: the manual editor
 
 The manual editor is a form generated from the template. Every save becomes a change set with source `manual` and goes through the one write path.
@@ -218,11 +253,11 @@ Each field shows its state, so the person always knows who controls it:
 | Linked to Barsy | Barsy-owned and not overridable (price when orderable) | Nothing. Refused with "Change this in Barsy" |
 | Any, inside a venue or service edition | fields the edition allows (hidden here, sold out today, featured) | `edition:<id>` layer |
 
-Translations (decided 2026-10-08): a language Barsy lacks is added by hand in the editor's translations tab and saved per locale to the `manual` layer. It is not an override. `localized_text` resolves per locale: Barsy's value where Barsy holds that locale, ours where it doesn't. A menu's languages are the ones Barsy holds for it plus the ones added here. When Barsy's name for an item changes, our hand-added translations of it are flagged for review in the admin; they stay live meanwhile. A venue may later opt in to push our translations into its Barsy, if the API allows it; that would be an explicit, venue-approved exception to "sync never writes into Barsy" and is not researched yet.
+Translations (decided 2026-10-08): a language Barsy lacks is added by hand in the editor's translations tab and saved per locale to the `manual` layer. It is not an override. `localized_text` resolves per locale: Barsy's value where Barsy holds that locale, ours where it doesn't. A venue's menu languages are the ones the till fills enough plus the ones its owner switches on (D77, see Shared transforms). When Barsy's name for an item changes, our hand-added translations of it are flagged for review in the admin; they stay live meanwhile. A venue may later opt in to push our translations into its Barsy, if the API allows it; that would be an explicit, venue-approved exception to "sync never writes into Barsy" and is not researched yet.
 
 ### Creating structure by hand
 
-People can add Sections with no Barsy counterpart, such as a curated "Signature cocktails" section; sections are layout. Items, Modifier groups and Options are made by hand only in a venue without a till (D64). In a venue with a till, the till is the only source of items, because nothing made here can reach the POS (D66); the venue enriches those items with photos, descriptions and tags. Hand-made nodes have no source link and are display-only: `orderable` is false. Display-only items in a till venue may come back later as an explicit setting.
+People can add Sections with no Barsy counterpart, such as a curated "Signature cocktails" section; sections are layout. Items, Modifier groups and Options are made by hand only in a venue without a till (D64). In a venue with a till, the till is the only source of items, because nothing made here can reach the POS (D66); the venue enriches those items with photos, descriptions and tags. A venue's source is fixed when the venue is created (D87), and what a Barsy venue may do with the till's structure is listed under Menus, areas, tables and menu routing: hide, rename, reorder, move items between sections and add own sections (D89–D92), never create, delete or re-price a till item or section. Hand-made nodes have no source link and are display-only: `orderable` is false. Display-only items in a till venue may come back later as an explicit setting.
 
 ### Linking and unlinking
 
@@ -246,9 +281,9 @@ Onboarding connects one Barsy installation once; the full pull then copies its c
 
 1. **API user.** The venue's Barsy admin creates a dedicated API user for us; only they can. Rights: view articles, list categories, list modifiers, webhook subscription, and later the account and client-order rights for ordering. Use one API user per integration per environment, because Barsy allows one webhook subscription per user per event type, so staging and production cannot share a user.
 2. **Credentials.** Store host, username and password in the secret store. Test with `Misc_ping` and then `Misc_ping_user`; both return `1`.
-3. **Venues.** `Barsys_getlist` lists the installation's venues. The admin maps each to one of our venues, which records its `bid`.
-4. **Settings to discover.** `Languages_getlist` (which locales exist), `Currencies_getlist`, `Articledetails_gettree` (which characteristic keys exist, so the admin can map one to allergens and another to calories), `Places_getlist` (tables and salons, for ordering later).
-5. **Scope.** Choose the catalog root category (`cat_id`), public articles only (recommended), placement mode (mirror the Barsy category tree, or curate our own), and the price context used for display (venue plus Barsy client).
+3. **Venues.** `Barsys_getlist` lists the instance's venues. A new venue is made from an instance by picking one of its till venues; nothing is typed, and the name, address name and languages are derived and editable later (D85). The link records the `bid` and is fixed for the venue's life (D87): another till venue is a new venue. The same read reports the menu roots the till designates for each venue (D88).
+4. **Settings to discover.** `Languages_getlist` (which locales exist), `Currencies_getlist`, `Articledetails_gettree` (which characteristic keys exist, so the admin can map one to allergens and another to calories), `Places_getlist` (halls and tables: they become the venue's areas and tables, D95, and serve ordering later).
+5. **Scope.** The catalog roots are the ones the till designates for each venue, one menu per root (D88); the earlier choice of a single root (D56) is no longer read by the sync. Public articles only (recommended), placement mode (mirror the Barsy category tree, or curate our own), and the price context used for display (venue plus Barsy client).
 6. **Ordering, later.** `Poses_register` once per venue; store the `pos_key` in `pos_registrations` with a single writer.
 7. **Start.** Run the first full pull, subscribe the webhooks (path D), start the reconciliation schedule (path E).
 
@@ -257,13 +292,13 @@ Onboarding connects one Barsy installation once; the full pull then copies its c
 All calls carry `?bid=<venue>`, because prices and for-sale flags depend on the venue. Every call must finish within Barsy's 30-second limit, so pages are sized to stay well under it.
 
 1. **Job.** Create a `barsy_full` job.
-2. **Structure.** `Categories_getalltree` with `cat_id` = root and `only_public` = 1. Large catalogs use `articles_lazy_load_mode` = 2 so the tree comes back without every article. Store each category, and the tree itself, as source records.
+2. **Structure.** `Categories_getalltree` with `cat_id` = root (for each root the venue has) and `only_public` = 1. Large catalogs use `articles_lazy_load_mode` = 2 so the tree comes back without every article. Store each category, and the tree itself, as source records.
 3. **Articles.** `Articles_getlist`, paged with `offset` and `length` (at most 1000; smaller if a page nears 30 s). `extra_properties`: `ml_data`, `description_public`, `picture_url`, `article_details`, `categories`, `has_supplements`, `supplements`, `slug`. Each article is a source record with its hash.
 4. **Combos.** For articles with supplements, `Articlesupplements_get`. Several go in one multi-method request to `POST /endpoints/json/`.
 5. **Modifiers.** `Modificators_getlist`.
 6. **Map.** Turn every changed source record into change-set writes (see Barsy to canonical mapping) and apply them in chunks through `apply()`, all tagged with the job id.
 7. **Images.** Queue a download for each new or changed `picture`. Images are fetched in the background and never block the pull.
-8. **Deletions.** Only if every page succeeded: source links that are `active` but absent from this pull become `missing`, and their nodes are hidden. A pull with any failed page skips this step entirely.
+8. **Deletions.** Only if every page succeeded: source links that are `active` but absent from this pull become `missing`, and their nodes are hidden. A pull with any failed page skips this step entirely. Absence is concluded over all of the venue's menus (one per root), not per menu.
 9. **Close.** Record counters (categories and articles seen, created, updated, unchanged, missing, failed), mark the job complete, queue a resolve. The publisher ignores a menu while its pull job is still running.
 
 Barsy publishes no rate limit beyond the 30-second limit per call. Keep at most two concurrent requests per installation, and prefer one multi-method request over many small calls.
@@ -323,10 +358,14 @@ Reconciliation is the safety net under webhooks. It re-reads Barsy on a schedule
 | Loop | How often | Barsy call | Catches |
 | --- | --- | --- | --- |
 | Tree check | Every 10 min per venue | `Categories_getalltree` with the last `checksum` | Any structural change; skips all work when the checksum is unchanged |
-| Incremental articles | Every 10 min per venue | `Articles_getlist` with `filters.last_update = ">" + cursor` | Changed articles whose webhook was lost or delayed |
+| Incremental articles | Every `incremental_minutes` per venue (default 5; 1, 5, 10, 15 or 30) | `Articles_getlist` with `filters.last_update = ">" + cursor` | Changed articles whose webhook was lost or delayed |
 | Stock (optional) | Every 5 min per venue, only if the venue wants stock-based sold out | `Articles_getlist` with `amount_last_update` and `has_amount` | Items that ran out |
-| Nightly full pull | Once a day at the venue's quiet hour (configurable; clubs close late) | Path C in full | Deletions with no webhook, category moves, modifier changes, anything else |
+| Nightly full pull | Once a day at the venue's `full_pull_time` (default 12:00, in the venue's time zone; clubs close late) | Path C in full | Deletions with no webhook, category moves, modifier changes, anything else |
 | Subscription health | Daily | `Webhooks_get_subscriptions`, `Webhooks_get_events` | Deactivated subscriptions (see path D) |
+
+### Per venue (D82)
+
+The change check and the full read run per venue under the venue's own sync settings (`venues.settings.sync`): `mode` is `auto` (on its schedule) or `manual` (both loops off; "Sync this venue" still works), with `incremental_minutes` and `full_pull_time` as in the table. One worker tick a minute asks each mapped venue whether a check or a read is due. A venue that never saved a sync mode runs on its integration's schedule of before D82. In manual mode a venue still receives item changes that other venues' reads of the same catalogue write, because items are shared; only its own reads, its venue-scoped values and its publishing are manual (T79 plan review). Instance settings hold the whole connection (the connection itself, the allergen characteristic, a sync of everything, all runs, and the language of untagged till text, D77); venue settings hold that venue's own (main language, menu source, sync mode, history, publishing rules, the rollback pause). Neither edits the other's (D82).
 
 ### Cursor rules
 
@@ -388,7 +427,9 @@ The mapping is versioned configuration per integration, not code paths scattered
 
 ### Shared transforms
 
-- Barsy language keys (`bg_BG`, `en_US`, `de_DE`, `es_ES`, `fr_FR`, `ro_RO`) map one-to-one to our locales. Every language Barsy holds for the menu's items is taken in; more languages are added by hand in the editor's translations tab (manual layer, per locale).
+- Barsy language keys (`bg_BG`, `en_US`, `de_DE`, `es_ES`, `fr_FR`, `ro_RO`) map one-to-one to our locales.
+- **Menu languages (D77).** A venue's menu languages are decided in one place, core's `venueLanguages`; every workflow asks it (the sync's text language, a new venue's list, the settings lists, the composer's language tabs, the resolver's checks, the publisher's `locales`), and no new code reads `venues.enabled_locales` on its own (a guardrail test refuses new readers; the older ones are being moved to the function). The rule: the venue has one main language (`default_locale`, on the venue); a language its owner switched on is never removed; a language the till offers counts as a menu language when the till fills it for about 20% or more of the guest-facing texts (names and descriptions of sections, items and options). After every complete full read the connector reports which languages the till offers and how many texts it fills in each (`venues.settings.languages_report`; the report replaces the previous one). A hand-made venue has no report, so its languages are its owner's (D91). More languages are added by hand in the editor's translations tab (manual layer, per locale).
+- **Untagged till text (D77).** Text the till sends without a language tag is stored in the language of the instance's `default_locale` setting (`integrations.config`): an instance setting, not the venue's main language.
 - Currency is the installation's system currency (EUR). The price formula matches Barsy's own rounding, so displayed and billed amounts agree to the cent.
 - Every write records `mapping_version`, so a replay can tell which values a mapping change will affect.
 
