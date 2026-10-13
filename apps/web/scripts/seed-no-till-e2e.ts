@@ -59,8 +59,12 @@ const TENANT_TABLES = [
   'events',
   'placements',
   'field_values',
+  'menu_routes',
   'menus',
   'nodes',
+  'tables',
+  'areas',
+  'venue_slug_history',
   'venues',
 ] as const
 

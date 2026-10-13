@@ -242,20 +242,22 @@ test('Settings: the readable part of the address is renamed, and the old link st
     )
     .toBe(renamed)
 
-  // The old link still opens the menu, and the address bar shows the new slug (and keeps ?lang=).
+  // The old link still opens the menu, and the address bar moves to the venue's address of
+  // D84, `/m/<organisation>/<new name>` (and keeps ?lang=).
+  const guestNewPath = `/m/no-till-club/${renamed}`
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
     await guest.goto(`${guestPath}?lang=en`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(1)
-    await expect.poll(() => new URL(guest.url()).pathname).toBe(newPath)
+    await expect.poll(() => new URL(guest.url()).pathname).toBe(guestNewPath)
     expect(new URL(guest.url()).search).toBe('?lang=en')
 
-    // The new link opens it as well, and is left as it is.
+    // The address of before with the new name opens it as well, and moves the same way.
     await guest.goto(`${newPath}?lang=en`)
     await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(1)
-    expect(new URL(guest.url()).pathname).toBe(newPath)
+    await expect.poll(() => new URL(guest.url()).pathname).toBe(guestNewPath)
   } finally {
     await context.close()
   }

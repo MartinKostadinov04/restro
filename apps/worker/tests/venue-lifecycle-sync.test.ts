@@ -106,19 +106,15 @@ describe.skipIf(!hasDatabase)('a deleted venue and the sync (CF-18)', () => {
       expect(fake.calls).toHaveLength(0)
     })
 
-    it('after a restore the same sync is unlinked, and skipped for that reason, until the till is linked again', async () => {
+    it('after a restore the till venue is linked again (adjustments V1), so the same sync runs', async () => {
       await archiveVenue(world.pool, world.tenantId, world.venueId)
-      await restoreVenue(world.pool, world.tenantId, world.venueId)
+      expect(await restoreVenue(world.pool, world.tenantId, world.venueId)).toMatchObject({
+        relinked: true,
+      })
       world.logLines.length = 0
       await world.run(JOB_NAMES.barsyFullPull, payload())
-      expect(await runs()).toEqual([])
-      expect(fake.calls).toHaveLength(0)
-      expect(world.logLines.join('\n')).toContain('not linked')
-
-      // Linked again, it runs.
-      await mapBarsyVenue(world.pool, world.tenantId, world.integrationId, DEMO_BID, world.venueId)
-      await world.run(JOB_NAMES.barsyFullPull, payload())
       expect((await runs()).map((run) => run.status)).toEqual(['completed'])
+      expect(fake.calls.length).toBeGreaterThan(0)
     })
   })
 

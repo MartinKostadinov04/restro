@@ -406,7 +406,7 @@
       "description": "The systems you use, their connections and how each one is read. Set once for the whole organisation and used by every venue."
     },
     "deletedVenues": {
-      "description": "Venues an owner deleted. Nothing is erased: restoring one brings it back with its menu, tables and codes, but without its till link and not published.",
+      "description": "Venues an owner deleted. Nothing is erased: restoring one brings it back as a draft with its menu, tables and codes, and links its till again unless another venue serves it now.",
       "empty": {
         "title": "No deleted venues",
         "description": "A venue you delete appears here, and you can restore it."
@@ -415,11 +415,12 @@
       "deletedOn": "Deleted on {when}",
       "restore": "Restore",
       "restoring": "Restoring…",
-      "restored": "{name} is back. If it had a till, link it again in Settings › Integrations, then publish its menu.",
-      "restoredLate": "{name} is back. If it had a till, link it again in Settings › Integrations, then publish its menu. Its table codes come back with that publish.",
+      "restored": "{name} is back as a draft. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
+      "restoredLinked": "{name} is back as a draft, with its till linked again. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
       "errors": {
         "not_allowed": "Only an owner can restore a venue.",
         "invalid": "This venue could not be found.",
+        "till_taken": "Not restored: the till venue it served is linked to “{holder}” now.",
         "failed": "Something went wrong. The venue was not restored, try again."
       }
     }
