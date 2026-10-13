@@ -26,7 +26,7 @@
 
 import { type DbPool, venues, venueTables } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import {
   isTillLink,
@@ -61,8 +61,9 @@ function checkedIds(tenantId: string, venueId: string): void {
 
 /**
  * The QR tokens of every table of the venue that is not deleted, hidden ones included (a withdrawn
- * file that is not there is no harm), sorted. What a delete or an unpublish hands to the worker's
- * table-files job as the files to withdraw; the tokens themselves stay on the tables.
+ * file that is not there is no harm), sorted here in code point order (never by the database:
+ * its collation differs between CI and a local machine, CLAUDE.md). What a delete or an unpublish
+ * hands to the worker's table-files job as the files to withdraw; the tokens stay on the tables.
  */
 async function tableTokensOf(tx: WriteTx, venueId: string): Promise<string[]> {
   const rows = await tx
@@ -75,8 +76,7 @@ async function tableTokensOf(tx: WriteTx, venueId: string): Promise<string[]> {
         isNotNull(venueTables.qrToken),
       ),
     )
-    .orderBy(asc(venueTables.qrToken))
-  return rows.flatMap((row) => (row.token === null ? [] : [row.token]))
+  return rows.flatMap((row) => (row.token === null ? [] : [row.token])).sort()
 }
 
 /** What `renameVenue` did. */

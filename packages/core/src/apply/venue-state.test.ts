@@ -110,9 +110,16 @@ describe.skipIf(!hasDatabase)('unpublishVenue (as the restro_app role)', () => {
     const first = await unpublishVenue(app, tenant, venueId)
     expect(first.changed).toBe(true)
     expect(first.unpublishedAt).toBeInstanceOf(Date)
+    // No tables here: nothing to withdraw (the lifecycle test covers a venue with codes).
+    expect(first.tableTokens).toEqual([])
     expect(await unpublishedAt(venueId)).toEqual(first.unpublishedAt)
     const again = await unpublishVenue(app, tenant, venueId)
-    expect(again).toEqual({ venueId, changed: false, unpublishedAt: first.unpublishedAt })
+    expect(again).toEqual({
+      venueId,
+      changed: false,
+      unpublishedAt: first.unpublishedAt,
+      tableTokens: [],
+    })
 
     // Publishing (even "nothing changed") is the word to serve the venue again.
     const published = await publishMenu(app, tenant, {
