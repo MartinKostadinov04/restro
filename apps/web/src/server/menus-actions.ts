@@ -21,6 +21,7 @@ import {
   renameMenu,
   restoreMenu,
   setLiveMenu,
+  setMenuSettings,
 } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -121,6 +122,31 @@ export async function moveMenuAction(input: unknown): Promise<MenuActionResult> 
   const { venueId: venue, menuId: menu, position } = parsed.data
   return run<Success>('menu_move_failed', venue, async (tenantId) => {
     const result = await moveMenu(getPool(), tenantId, { venueId: venue, menuId: menu, position })
+    return result.ok ? summary(result) : result
+  })
+}
+
+const SettingsInput = z.strictObject({
+  venueId,
+  menuId,
+  // Checked by core (`MenuSettingsSchema`): an unknown key or value is refused there.
+  settings: z.record(z.string(), z.unknown()),
+})
+
+/**
+ * Sets a menu's layout and whether guests may switch it (D92: the composer's "Menu layout", brief
+ * S6). Every venue's, a till venue's too; it reaches guests with the menu's next publish.
+ */
+export async function setMenuSettingsAction(input: unknown): Promise<MenuActionResult> {
+  const parsed = SettingsInput.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  const { venueId: venue, menuId: menu, settings } = parsed.data
+  return run<Success>('menu_settings_failed', venue, async (tenantId) => {
+    const result = await setMenuSettings(getPool(), tenantId, {
+      venueId: venue,
+      menuId: menu,
+      settings,
+    })
     return result.ok ? summary(result) : result
   })
 }

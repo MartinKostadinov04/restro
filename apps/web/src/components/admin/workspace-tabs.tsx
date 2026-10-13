@@ -27,9 +27,10 @@ import {
 /**
  * The tab a URL parameter names, and the way to choose another. The current tab is *derived* from
  * the URL (the Platform set it while rendering); a choice shows at once (`useOptimistic`) while
- * `router.replace` writes the parameter, keeping the others, and the page catches up.
+ * `router.replace` writes the parameter, keeping the others, and the page catches up. Exported for
+ * the composer's subtabs (`?sub=`, brief S6).
  */
-function useUrlTab<V extends string>(
+export function useUrlTab<V extends string>(
   param: string,
   resolve: (requested: string | null) => V,
   isValue: (value: string) => value is V,
@@ -62,7 +63,7 @@ function useUrlTab<V extends string>(
 }
 
 /** A tab bar (large screens) and a select (small screens) drawn from one list, and the panels. */
-function UrlTabs<V extends string>({
+export function UrlTabs<V extends string>({
   defs,
   current,
   select,

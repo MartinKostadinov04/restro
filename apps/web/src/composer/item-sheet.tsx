@@ -16,8 +16,9 @@
 // The venue comes from the page's route (`/venues/[venueId]`), or from the `venueId` prop where
 // there is no such route (the development harness).
 import type { Locale, LocalizedText } from '@restro/core'
+import { AlertTriangleIcon } from 'lucide-react'
 import { useParams } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -32,7 +33,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { type EnvironmentTag, FieldEnvironmentProvider, type TagDraft } from '@/fields/environment'
+import { pickLocalized } from '@/fields/localized'
 import { TillLabelProvider } from '@/fields/till-label'
+import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import {
   keepItemOverrideAction,
   loadItemSheetAction,
@@ -75,6 +78,44 @@ type TabId = (typeof TABS)[number]
 
 function isTab(value: string): value is TabId {
   return (TABS as readonly string[]).includes(value)
+}
+
+/**
+ * "Overrides to review" (V12, brief S6: the badge on the item's row, and this note): the till
+ * changed a value since our override of it was made. The fields are named; Details offers "Keep
+ * mine" or the till's value for each. Nothing when there is none.
+ */
+function ReviewNotice({ data }: { data: ItemSheetData }) {
+  const t = useTranslations('itemSheet.review')
+  const uiLanguage = useLocale()
+  const dataLocale: Locale = toDataLocale(isAdminLocale(uiLanguage) ? uiLanguage : 'bg')
+  const keys = [
+    ...new Set(
+      data.issues
+        .filter((issue) => issue.code === 'stale_override')
+        .map((issue) => issue.fieldKey ?? ''),
+    ),
+  ]
+  if (keys.length === 0) return null
+  const fields = keys.map((key) => {
+    const definition = data.fields.find((field) => field.key === key)?.definition
+    return definition ? (pickLocalized(definition.label, dataLocale) ?? definition.key) : key
+  })
+  return (
+    <section
+      aria-label={t('title')}
+      data-testid="review-notice"
+      className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+    >
+      <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+      <div className="grid gap-0.5">
+        <p className="font-medium">{t('title')}</p>
+        <p className="text-muted-foreground">
+          {t('text', { source: data.tillLabel, fields: fields.join(', ') })}
+        </p>
+      </div>
+    </section>
+  )
 }
 
 export function ItemSheet({
@@ -239,6 +280,8 @@ export function ItemSheet({
             {t(loaded.status === 'missing' ? 'missing' : 'loadError')}
           </p>
         ) : null}
+
+        {data ? <ReviewNotice data={data} /> : null}
 
         {data ? (
           <TillLabelProvider label={data.tillLabel}>

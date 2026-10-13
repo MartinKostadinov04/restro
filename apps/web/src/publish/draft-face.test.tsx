@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The draft preview draws the template the draft names (brief SH-04): the registry's default when
-// it names none, `faceId` over the draft's own, the draft's options only for the template they
-// belong to, and the preview's scheme over the snapshot's. The template is loaded on first use.
+// it names none, `faceId` over the draft's own, the menu's layout whichever template draws it
+// (D92), and the preview's scheme over the snapshot's. The template is loaded on first use.
 import type { MenuSnapshot } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { screen, waitFor } from '@testing-library/react'
@@ -16,10 +16,17 @@ afterEach(() => {
 
 const OVERLAY = { version: 1, items: {} }
 
-/** The fixture menu with a venue's chosen template (or none). */
-function snapshotWith(presentation: MenuSnapshot['presentation']): MenuSnapshot {
+/** The fixture menu with a venue's chosen template (or none), and a menu layout (or none). */
+function snapshotWith(
+  presentation: MenuSnapshot['presentation'],
+  layout?: MenuSnapshot['layout'],
+): MenuSnapshot {
   const { snapshot } = fixture('no-images')
-  return presentation === undefined ? snapshot : { ...snapshot, presentation }
+  return {
+    ...snapshot,
+    ...(presentation === undefined ? {} : { presentation }),
+    ...(layout === undefined ? {} : { layout }),
+  }
 }
 
 /** The root of a template once its code has loaded (the skeleton shows until then). */
@@ -36,7 +43,8 @@ describe('the draft face', () => {
       <DraftFace snapshot={snapshotWith(undefined)} overlay={OVERLAY} scheme="light" />,
     )
     expect(screen.getByTestId('menu-skeleton')).toBeTruthy()
-    expect((await faceRoot(container, 'editorial-market')).dataset.layout).toBe('two')
+    // No menu layout in the draft (D92): a list.
+    expect((await faceRoot(container, 'editorial-market')).dataset.layout).toBe('list')
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 
@@ -52,13 +60,13 @@ describe('the draft face', () => {
     expect(container.querySelector('[data-face="editorial-market"]')).toBeNull()
   })
 
-  it('draws the template of faceId instead, and the draft’s options only for their own template', async () => {
-    const draft = snapshotWith({
-      face: 'editorial-market',
-      options: { layout: 'list', layoutSwitch: false },
-    })
+  it('draws the template of faceId instead, in the menu’s layout whichever template it is', async () => {
+    const draft = snapshotWith(
+      { face: 'editorial-market', options: {} },
+      { default: 'one', guest_switch: false },
+    )
     const own = renderWithIntl(<DraftFace snapshot={draft} overlay={OVERLAY} scheme="light" />)
-    expect((await faceRoot(own.container, 'editorial-market')).dataset.layout).toBe('list')
+    expect((await faceRoot(own.container, 'editorial-market')).dataset.layout).toBe('one')
     own.unmount()
 
     // Another template is asked for: the options of the first one do not follow it.
@@ -68,11 +76,14 @@ describe('the draft face', () => {
     await faceRoot(other.container, 'qr-phone')
     other.unmount()
 
-    // And back: the draft names qr-phone with options, the override asks for the Editorial Market,
-    // which starts from its own defaults.
+    // And back: the draft names qr-phone, the override asks for the Editorial Market, which draws
+    // the menu's layout: a setting of the menu (D92), not of a template.
     const back = renderWithIntl(
       <DraftFace
-        snapshot={snapshotWith({ face: 'qr-phone', options: { layout: 'list' } })}
+        snapshot={snapshotWith(
+          { face: 'qr-phone', options: { layout: 'list' } },
+          { default: 'two', guest_switch: true },
+        )}
         overlay={OVERLAY}
         scheme="light"
         faceId="editorial-market"

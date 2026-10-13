@@ -326,6 +326,10 @@
       "empty": "No changes yet.",
       "error": "The history could not be loaded.",
       "loadMore": "Show older"
+    },
+    "review": {
+      "title": "Overrides to review",
+      "text": "{source} changed {fields} after you replaced it here. In Details, keep yours or take {source}’s."
     }
   },
   "devItemSheet": {
@@ -628,11 +632,13 @@
       "newFromTill": "New from {source}, hidden until you show it",
       "nameFromTill": "Menu name missing in {source}: its own name is shown",
       "nameFromTillHelp": "Fill in the public name in {source}, or type a name here.",
-      "nameFromTillHelpSection": "Fill in the public name in {source}.",
+      "nameFromTillHelpSection": "Fill in the public name in {source}, or rename the section here.",
       "soldOutTonight": "Sold out tonight",
       "offSaleTill": "Not on sale in {source}",
       "offSaleOther": "Not on sale",
-      "issues": "{count, plural, one {# issue} other {# issues}}"
+      "issues": "{count, plural, one {# issue} other {# issues}}",
+      "review": "{count, plural, one {# override to review} other {# overrides to review}}",
+      "reviewHelp": "{source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s."
     },
     "soldOut": {
       "mark": "Sold out tonight",
@@ -662,7 +668,10 @@
       "collapse": "Collapse {name}",
       "dragItem": "Drag {name}",
       "dragSection": "Drag {name}",
-      "removeFromSection": "Move to Unsorted"
+      "removeFromSection": "Move to Unsorted",
+      "rename": "Rename",
+      "deleteSection": "Delete section…",
+      "deleteItem": "Delete item…"
     },
     "dnd": {
       "instructions": "Press space to pick up, the arrow keys to move, space to drop, escape to cancel.",
@@ -707,9 +716,10 @@
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
       "not_allowed": "Only an owner or admin can do this.",
-      "till_venue": "This venue gets its items from the till, so items cannot be created here.",
+      "till_venue": "This venue gets its items from the till: items cannot be created, renamed in the list or deleted here.",
       "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
-      "failed": "Something went wrong. The change was not saved, try again."
+      "failed": "Something went wrong. The change was not saved, try again.",
+      "till_section": "This section comes from {source}: it can be hidden, not deleted."
     },
     "issues": {
       "fallback": "Needs attention.",
@@ -755,7 +765,6 @@
       "restoreShort": "Restore"
     },
     "guestFeatures": {
-      "open": "Guest features",
       "title": "Guest features",
       "description": "What guests can use on the menu on their phone. Changes reach guests with the next publish.",
       "groups": {
@@ -813,6 +822,49 @@
     "chips": {
       "moreTags": "More tags: {names}",
       "moreDietary": "More dietary labels: {names}"
+    },
+    "subtabs": {
+      "label": "Composer view",
+      "structure": "Structure",
+      "design": "Design"
+    },
+    "menuBar": {
+      "label": "Menu and its layout",
+      "menu": "Menu",
+      "live": "Live",
+      "manage": "Manage menus",
+      "layout": "Menu layout",
+      "layouts": {
+        "list": "List",
+        "one_column": "One column",
+        "two_columns": "Two columns"
+      },
+      "guestSwitch": "Guests may switch the layout",
+      "saved": "Saved. Guests see it after the next publish"
+    },
+    "layout": {
+      "horizontal": "Horizontal row"
+    },
+    "rename": {
+      "save": "Save the name",
+      "cancel": "Cancel",
+      "section": "Rename {name}",
+      "sectionLabel": "Title of {name}",
+      "item": "Rename {name}",
+      "itemLabel": "Name of {name}"
+    },
+    "delete": {
+      "cancel": "Cancel",
+      "section": {
+        "title": "Delete {name}?",
+        "description": "The section and the sections inside it leave the menu. Their items move to Unsorted unless they are in another section too. The history keeps a record.",
+        "confirm": "Delete section"
+      },
+      "item": {
+        "title": "Delete {name}?",
+        "description": "The item leaves every menu of the venue and the composer. The history keeps a record.",
+        "confirm": "Delete item"
+      }
     }
   },
   "workspace": {

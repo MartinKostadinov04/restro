@@ -113,91 +113,14 @@ describe('the template gallery', () => {
 })
 
 describe('the template’s look options', () => {
-  it('are drawn from the manifest: an enum as a segmented control, a boolean as a switch', () => {
+  it('draws none for the Editorial Market: its layout options are the menu’s settings now (D92)', () => {
+    // `layout`, `featureFirstSection` and `layoutSwitch` moved to the composer (brief S6): the
+    // menu's layout and each section's layout are set in Structure. The form is still drawn from
+    // a template's manifest (template-options.test.ts); this template declares nothing.
     setup()
-    const options = screen.getByTestId('design-look-options')
-    const layout = within(options).getByRole('group', { name: 'Menu layout' })
-    expect(
-      within(layout)
-        .getAllByRole('button')
-        .map((b) => b.textContent),
-    ).toEqual(['List', 'One column', 'Two columns'])
-    expect(
-      within(layout).getByRole('button', { name: 'Two columns' }).getAttribute('aria-pressed'),
-    ).toBe('true')
-    const strip = within(options).getByRole('switch', { name: 'Photo strip for the first section' })
-    expect(strip.getAttribute('aria-checked')).toBe('true')
-    // The guest-feature option belongs to the composer’s panel, not here.
-    expect(within(options).queryByText('Guests can change the layout')).toBeNull()
-  })
-
-  it('take the saved values, and the manifest’s labels in Bulgarian', () => {
-    renderWithIntl(
-      <DesignPanel
-        venueId={VENUE}
-        initial={{
-          ...NONE,
-          presentation: {
-            face: 'editorial-market',
-            options: { layout: 'list', featureFirstSection: false },
-          },
-        }}
-      />,
-      { locale: 'bg' },
-    )
-    const options = screen.getByTestId('design-look-options')
-    const layout = within(options).getByRole('group', { name: 'Подредба на менюто' })
-    expect(
-      within(layout).getByRole('button', { name: 'Списък' }).getAttribute('aria-pressed'),
-    ).toBe('true')
-    expect(
-      within(options)
-        .getByRole('switch', { name: 'Първата секция като лента със снимки' })
-        .getAttribute('aria-checked'),
-    ).toBe('false')
-  })
-
-  it('save as soon as they are changed, with the same toast', async () => {
-    setup()
-    const options = screen.getByTestId('design-look-options')
-    await userEvent.click(within(options).getByRole('button', { name: 'One column' }))
-    await waitFor(() =>
-      expect(actions.chooseTemplateAction).toHaveBeenCalledWith({
-        venueId: VENUE,
-        face: 'editorial-market',
-        lookOptions: { layout: 'one', featureFirstSection: true },
-      }),
-    )
-    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe(
-      'Saved. Guests see it after the next publish.',
-    )
-
-    // The controls rest while a change is on its way to the server, then take the next one.
-    const strip = within(options).getByRole('switch', { name: 'Photo strip for the first section' })
-    await waitFor(() => expect((strip as HTMLButtonElement).disabled).toBe(false))
-    await userEvent.click(strip)
-    await waitFor(() =>
-      expect(actions.chooseTemplateAction).toHaveBeenLastCalledWith({
-        venueId: VENUE,
-        face: 'editorial-market',
-        lookOptions: { layout: 'one', featureFirstSection: false },
-      }),
-    )
-  })
-
-  it('go back to what they were, and say so, when the server refuses', async () => {
-    actions.chooseTemplateAction.mockResolvedValue({ ok: false, error: 'failed' })
-    setup()
-    const options = screen.getByTestId('design-look-options')
-    await userEvent.click(within(options).getByRole('button', { name: 'List' }))
-    expect((await screen.findByTestId('design-template-error')).textContent).toBe(
-      'Something went wrong. Try again.',
-    )
-    expect(
-      within(options).getByRole('button', { name: 'Two columns' }).getAttribute('aria-pressed'),
-    ).toBe('true')
-    expect(toast.success).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('design-look-options')).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Photo strip for the first section' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Menu layout' })).toBeNull()
   })
 })
 
@@ -372,7 +295,8 @@ describe('the live preview', () => {
   it('draws the chosen template in a phone frame from the draft, once', async () => {
     setup()
     const root = await previewRoot()
-    expect(root.dataset.layout).toBe('two')
+    // The draft's menu layout (D92): a snapshot without one starts as a list.
+    expect(root.dataset.layout).toBe('list')
     expect(actions.previewDraftAction).toHaveBeenCalledTimes(1)
     expect(actions.previewDraftAction).toHaveBeenCalledWith(VENUE)
   })
@@ -405,13 +329,9 @@ describe('the live preview', () => {
     )
   })
 
-  it('applies a look option of the template, and the light/dark switch', async () => {
+  it('applies the light/dark switch', async () => {
     setup()
     await previewRoot()
-    await userEvent.click(
-      within(screen.getByTestId('design-look-options')).getByRole('button', { name: 'List' }),
-    )
-    await waitFor(async () => expect((await previewRoot()).dataset.layout).toBe('list'))
     await userEvent.click(
       within(screen.getByTestId('design-preview')).getByRole('button', { name: 'Dark' }),
     )
@@ -623,13 +543,6 @@ describe('someone who may not change the design', () => {
     expect(hex('Primary').disabled).toBe(true)
     expect(hex('Primary').value).toBe('#f5f1ea')
     expect((screen.getByLabelText('Corners') as HTMLInputElement).disabled).toBe(true)
-    expect(
-      (
-        screen.getByRole('switch', {
-          name: 'Photo strip for the first section',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true)
     expect((screen.getByRole('button', { name: 'Midnight' }) as HTMLButtonElement).disabled).toBe(
       true,
     )

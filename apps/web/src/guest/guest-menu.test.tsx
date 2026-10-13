@@ -411,22 +411,24 @@ describe('the template the venue chose (SH-04)', () => {
     render(<GuestMenu venue={PARAM} />)
     const root = await faceRoot('editorial-market')
     expect(root.dataset.scheme).toBe('auto')
-    expect(root.dataset.layout).toBe('two')
+    // A snapshot without the menu's layout (D92) starts as a list.
+    expect(root.dataset.layout).toBe('list')
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 
-  it('draws the template the snapshot names, with the options it carries', async () => {
+  it('draws the template the snapshot names, in the menu layout it carries (D92)', async () => {
     serve(
       published({
-        presentation: {
-          face: 'editorial-market',
-          options: { layout: 'list', layoutSwitch: false },
-        },
+        presentation: { face: 'editorial-market', options: {} },
+        layout: { default: 'one', guest_switch: false },
       }),
     )
     visit('', ['en-GB'])
     render(<GuestMenu venue={PARAM} />)
-    expect((await faceRoot('editorial-market')).dataset.layout).toBe('list')
+    const root = await faceRoot('editorial-market')
+    expect(root.dataset.layout).toBe('one')
+    // The menu does not let guests switch: no switch on the page.
+    expect(root.querySelector('[data-slot="menu.layout_switch"]')).toBeNull()
   })
 
   it('draws another template when the snapshot names it', async () => {

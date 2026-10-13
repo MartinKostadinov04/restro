@@ -5,7 +5,14 @@
 // move to another section.
 import { Droppable } from '@hello-pangea/dnd'
 import type { NodeId } from '@restro/core'
-import { FilterXIcon, InboxIcon, LayoutListIcon, ListChecksIcon, PlusIcon } from 'lucide-react'
+import {
+  FilterXIcon,
+  InboxIcon,
+  LayoutListIcon,
+  ListChecksIcon,
+  PencilIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +34,7 @@ import { UNSORTED_KEY } from './dnd'
 import { ItemRow } from './item-row'
 import { ItemToolbar } from './item-toolbar'
 import { sectionTitle } from './labels'
+import { RenameField } from './rename-field'
 import { SectionMenu } from './row-menus'
 import { SoldOutChip } from './sold-out-chip'
 import { filterByTags } from './tag-filter'
@@ -133,17 +141,43 @@ function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly 
 
 function SectionHeader({ sectionId }: { sectionId: NodeId }) {
   const t = useTranslations('composer')
-  const { view, toggleSectionHidden } = useComposer()
+  const { view, toggleSectionHidden, setSectionLayout, renaming, startRename, renameSection } =
+    useComposer()
   const section = view.sections[sectionId]
   if (!section) return null
   const title = sectionTitle(view, sectionId, t('untitledSection'))
   const count = view.placements[sectionId]?.length ?? 0
+  const editing = renaming?.kind === 'section' && renaming.id === sectionId
+  const horizontal = section.layout === 'horizontal'
   return (
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="grid min-w-0 gap-1.5">
-        <h2 className="truncate text-lg font-semibold tracking-tight" data-testid="pane-title">
-          {title}
-        </h2>
+        {editing ? (
+          <RenameField
+            initial={section.title}
+            label={t('rename.sectionLabel', { name: title })}
+            onSave={(next) => renameSection(sectionId, next)}
+            onCancel={() => startRename(null)}
+            testId="section-rename-field"
+          />
+        ) : (
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="truncate text-lg font-semibold tracking-tight" data-testid="pane-title">
+              {title}
+            </h2>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0 text-muted-foreground"
+              aria-label={t('rename.section', { name: title })}
+              onClick={() => startRename({ kind: 'section', id: sectionId })}
+              data-testid="section-rename-start"
+            >
+              <PencilIcon aria-hidden />
+            </Button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           <OriginBadge origin={section.origin} />
           {section.nameFromTill ? <NameFromTillBadge target="section" /> : null}
@@ -163,6 +197,18 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
             data-testid="section-visible"
           />
           <span className="hidden sm:inline">{t('visibility.toggleSection')}</span>
+        </div>
+        {/* D92: a horizontal section is a row guests scroll sideways (the guest page's strip). */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Switch
+            checked={horizontal}
+            onCheckedChange={(checked) =>
+              setSectionLayout(sectionId, checked ? 'horizontal' : 'vertical')
+            }
+            aria-label={t('layout.horizontal')}
+            data-testid="section-layout"
+          />
+          <span className="hidden sm:inline">{t('layout.horizontal')}</span>
         </div>
         <SectionMenu sectionId={sectionId} />
       </div>

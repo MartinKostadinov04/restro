@@ -70,6 +70,28 @@ describe('ItemSheet', () => {
     )
   })
 
+  it('notes the overrides to review (V12): what the till changed since ours was written', async () => {
+    A.loadItemSheetAction.mockResolvedValue(
+      sheetData({
+        issues: [
+          { code: 'stale_override', severity: 'warning', fieldKey: 'name' },
+          { code: 'V4', severity: 'warning', fieldKey: 'allergens' },
+        ],
+      }),
+    )
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" />, { locale: 'en' })
+    const notice = await screen.findByTestId('review-notice')
+    expect(notice.textContent).toContain('Overrides to review')
+    expect(notice.textContent).toContain('barsy changed Name after you replaced it here.')
+  })
+
+  it('has no such note when nothing waits for review', async () => {
+    A.loadItemSheetAction.mockResolvedValue(sheetData())
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" />)
+    await screen.findByTestId('item-sheet-title')
+    expect(screen.queryByTestId('review-notice')).toBeNull()
+  })
+
   it('does not load anything while closed', () => {
     renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" open={false} />)
     expect(A.loadItemSheetAction).not.toHaveBeenCalled()
