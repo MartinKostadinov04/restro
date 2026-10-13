@@ -73,11 +73,12 @@ async function snapshotRows() {
   )
   return rows
 }
+/** The rollback pause is the venue's own since ad/05 (T76, D82): `venues.settings.publish.auto_paused`. */
 async function pauseFlag() {
   const { rows } = await db.query<{ paused: boolean }>(
-    `select coalesce((config #>> '{publish,auto_paused}')::boolean, false) as paused
-     from restro.integrations where tenant_id = $1`,
-    [tenantId],
+    `select coalesce((settings #>> '{publish,auto_paused}')::boolean, false) as paused
+     from restro.venues where id = $1`,
+    [venueId],
   )
   return rows[0]?.paused
 }
