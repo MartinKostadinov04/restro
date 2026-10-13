@@ -1,9 +1,12 @@
 'use client'
 
-// The Tables & QR tab (brief S3-07, D61): the venue's barsy tables by hall, each with its code,
-// and the card that says which address the codes carry. Owners and admins create, change and turn
-// off codes; everyone else reads and prints. The data comes from the server component
-// (tables-tab.tsx); every change is a server action that refreshes it.
+// The Tables & QR tab (briefs S3-07, S5; D94, D95): the venue's areas as sections, each with its
+// tables as a grid of cards, the menu each area and table shows, and the card that says where the
+// codes lead. Owners and admins create, change and turn off codes and edit areas, tables and
+// menus; everyone else reads and prints. On a venue with a till the areas and tables are the
+// till's (renamed, reordered and hidden here); on a venue made by hand the owner makes them. The
+// data comes from the server component (tables-tab.tsx); every change is a server action that
+// refreshes it.
 import { PrinterIcon, QrCodeIcon, TableIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -11,7 +14,6 @@ import { useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Empty,
   EmptyContent,
@@ -20,19 +22,29 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { TillLabelProvider } from '@/fields/till-label'
 import { createAllCodesAction } from '@/server/tables/actions'
 import type { TablesView } from '@/server/tables/view'
 
+import { AddAreaForm } from './add-area-form'
+import { AreaSection } from './area-section'
 import { QrAddressCard } from './qr-address-card'
-import { TableRow } from './table-row'
 import { useFailureText } from './use-failure-text'
 
 export function TablesPanel({ view }: { view: TablesView }) {
+  return (
+    <TillLabelProvider label={view.sourceLabel}>
+      <Panel view={view} />
+    </TillLabelProvider>
+  )
+}
+
+function Panel({ view }: { view: TablesView }) {
   const t = useTranslations('tables')
   const failureText = useFailureText()
   const [pending, startTransition] = useTransition()
 
-  if (view.total === 0) {
+  if (view.fromTill && view.total === 0) {
     return (
       <Empty className="min-h-72" data-testid="tables-empty">
         <EmptyHeader>
@@ -40,7 +52,9 @@ export function TablesPanel({ view }: { view: TablesView }) {
             <TableIcon aria-hidden />
           </EmptyMedia>
           <EmptyTitle>{t('empty.title')}</EmptyTitle>
-          <EmptyDescription>{t('empty.description')}</EmptyDescription>
+          <EmptyDescription>
+            {t('empty.description', { source: view.sourceLabel })}
+          </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
           <Button asChild variant="outline">
@@ -69,12 +83,26 @@ export function TablesPanel({ view }: { view: TablesView }) {
     })
   }
 
+  const areas = view.halls.map((hall) => ({
+    id: hall.id,
+    name: hall.name,
+    tableCount: hall.tables.length,
+  }))
+  const live = view.menus.find((menu) => menu.live)
+  const canAddAreas = view.canManage && !view.fromTill
+
   return (
     <div className="space-y-8" data-testid="tables-tab">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h2 className="text-lg font-medium">{t('title')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{t('intro')}</p>
+          <p className="mt-1 text-sm text-muted-foreground" data-testid="tables-source-note">
+            {view.fromTill ? t('introTill', { source: view.sourceLabel }) : t('introHand')}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground" data-testid="venue-menu">
+            {live === undefined ? t('venueMenuNone') : t('venueMenu', { menu: live.name })}
+          </p>
           <p className="mt-2 text-sm font-medium" data-testid="tables-summary">
             {t('summary', { total: view.total, coded: view.coded })}
           </p>
@@ -85,7 +113,7 @@ export function TablesPanel({ view }: { view: TablesView }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {view.canManage ? (
+          {view.canManage && view.total > 0 ? (
             <Button type="button" disabled={pending} onClick={createAll} data-testid="create-all">
               <QrCodeIcon aria-hidden />
               {pending ? t('createAllWorking') : t('createAll')}
@@ -120,29 +148,30 @@ export function TablesPanel({ view }: { view: TablesView }) {
 
       <QrAddressCard view={view} />
 
-      <div className="space-y-6">
-        {view.halls.map((hall) => (
-          <section key={hall.id} className="space-y-2" data-testid="hall" aria-label={hall.name}>
-            <div className="flex items-baseline justify-between gap-2">
-              <h3 className="text-sm font-semibold" data-testid="hall-name">
-                {hall.name}
-              </h3>
-              <span className="text-xs text-muted-foreground">
-                {t('halls.count', { count: hall.tables.length })}
-              </span>
-            </div>
-            <Card className="py-0">
-              <CardContent className="px-4">
-                <ul className="divide-y">
-                  {hall.tables.map((row) => (
-                    <TableRow key={row.id} row={row} canManage={view.canManage} />
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </section>
-        ))}
-      </div>
+      {view.halls.length === 0 ? (
+        <div className="space-y-1" data-testid="areas-empty">
+          <p className="font-medium">{t('emptyHand.title')}</p>
+          <p className="text-sm text-muted-foreground">{t('emptyHand.description')}</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {view.halls.map((hall, index) => (
+            <AreaSection
+              key={hall.id}
+              hall={hall}
+              index={index}
+              count={view.halls.length}
+              venueId={view.venueId}
+              canManage={view.canManage}
+              fromTill={view.fromTill}
+              menus={view.menus}
+              areas={areas}
+            />
+          ))}
+        </div>
+      )}
+
+      {canAddAreas ? <AddAreaForm venueId={view.venueId} /> : null}
     </div>
   )
 }
