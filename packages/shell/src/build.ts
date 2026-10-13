@@ -447,9 +447,10 @@ export function buildViewModel(
       chips: filters.tags.length + filters.dietary.length,
       orderingEnabled: env.orderingActive,
     }),
+    // A snapshot published before D92 looks as it did: two columns, and guests may switch.
     layout: {
-      default: snapshot.layout?.default ?? 'list',
-      guestSwitch: (snapshot.layout?.guest_switch ?? false) && env.interactive,
+      default: snapshot.layout?.default ?? 'two',
+      guestSwitch: (snapshot.layout?.guest_switch ?? true) && env.interactive,
     },
     theme: viewTheme(env, title),
   }

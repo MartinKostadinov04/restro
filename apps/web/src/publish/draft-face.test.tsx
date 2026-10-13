@@ -43,8 +43,8 @@ describe('the draft face', () => {
       <DraftFace snapshot={snapshotWith(undefined)} overlay={OVERLAY} scheme="light" />,
     )
     expect(screen.getByTestId('menu-skeleton')).toBeTruthy()
-    // No menu layout in the draft (D92): a list.
-    expect((await faceRoot(container, 'editorial-market')).dataset.layout).toBe('list')
+    // No menu layout in the draft (D92): the look from before, two columns.
+    expect((await faceRoot(container, 'editorial-market')).dataset.layout).toBe('two')
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 
@@ -81,15 +81,15 @@ describe('the draft face', () => {
     const back = renderWithIntl(
       <DraftFace
         snapshot={snapshotWith(
-          { face: 'qr-phone', options: { layout: 'list' } },
-          { default: 'two', guest_switch: true },
+          { face: 'qr-phone', options: { layout: 'two' } },
+          { default: 'list', guest_switch: true },
         )}
         overlay={OVERLAY}
         scheme="light"
         faceId="editorial-market"
       />,
     )
-    expect((await faceRoot(back.container, 'editorial-market')).dataset.layout).toBe('two')
+    expect((await faceRoot(back.container, 'editorial-market')).dataset.layout).toBe('list')
   })
 
   it('gives the default template for a name the registry does not know', async () => {

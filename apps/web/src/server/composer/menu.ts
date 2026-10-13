@@ -4,6 +4,7 @@
 // shows only the signed-in organisation's rows).
 import type { NodeId } from '@restro/core'
 import { listMenus, type MenuSummary } from '@restro/core/apply'
+import type { DbPool } from '@restro/db'
 
 import { getPool } from '@/server/db'
 
@@ -35,14 +36,24 @@ export async function composerMenusOf(
 }
 
 /**
- * The menu a composer write names, when it is one of the venue's menus in use (not binned, not
- * another venue's or organisation's); null otherwise.
+ * The menu a composer write (or the item sheet) names, when it is one of the venue's menus in use
+ * (not binned, not another venue's or organisation's); null otherwise.
  */
 export async function menuInUse(
   tenantId: string,
   venueId: string,
   menuId: string,
+  pool: DbPool = getPool(),
 ): Promise<NodeId | null> {
-  const menus = await listMenus(getPool(), tenantId, venueId)
+  const menus = await listMenus(pool, tenantId, venueId)
   return menus.find((menu) => menu.id === menuId)?.id ?? null
+}
+
+/** The venue's live menu (else its first in use), or null when it has none. */
+export async function liveMenuOf(
+  tenantId: string,
+  venueId: string,
+  pool: DbPool = getPool(),
+): Promise<NodeId | null> {
+  return pickMenu(await listMenus(pool, tenantId, venueId), undefined)?.id ?? null
 }

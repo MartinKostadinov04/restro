@@ -295,8 +295,8 @@ describe('the live preview', () => {
   it('draws the chosen template in a phone frame from the draft, once', async () => {
     setup()
     const root = await previewRoot()
-    // The draft's menu layout (D92): a snapshot without one starts as a list.
-    expect(root.dataset.layout).toBe('list')
+    // The draft's menu layout (D92): a snapshot without one looks as before, two columns.
+    expect(root.dataset.layout).toBe('two')
     expect(actions.previewDraftAction).toHaveBeenCalledTimes(1)
     expect(actions.previewDraftAction).toHaveBeenCalledWith(VENUE)
   })

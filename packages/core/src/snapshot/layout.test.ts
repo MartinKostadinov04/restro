@@ -93,33 +93,39 @@ describe('section layout (hints.layout)', () => {
 })
 
 describe('menu layout (layout)', () => {
-  it('a menu that set nothing is a list without the guest switch', () => {
-    expect(DEFAULT_MENU_LAYOUT).toEqual({ default: 'list', guest_switch: false })
-    expect(snapshotOf(menu()).layout).toEqual({ default: 'list', guest_switch: false })
+  it('a menu that set nothing looks as before D92: two columns, and guests may switch', () => {
+    expect(DEFAULT_MENU_LAYOUT).toEqual({ default: 'two', guest_switch: true })
+    expect(snapshotOf(menu()).layout).toEqual({ default: 'two', guest_switch: true })
     expect(snapshotOf(menu(), context({ layout: null })).layout).toEqual(DEFAULT_MENU_LAYOUT)
   })
 
   it('carries the menu’s layout and guest switch', () => {
-    const snapshot = snapshotOf(menu(), context({ layout: { default: 'two', guest_switch: true } }))
-    expect(snapshot.layout).toEqual({ default: 'two', guest_switch: true })
+    const snapshot = snapshotOf(
+      menu(),
+      context({ layout: { default: 'one', guest_switch: false } }),
+    )
+    expect(snapshot.layout).toEqual({ default: 'one', guest_switch: false })
   })
 
   it('menuLayoutOf names the stored layouts the snapshot’s way, with defaults for unset keys', () => {
-    expect(menuLayoutOf(undefined)).toEqual({ default: 'list', guest_switch: false })
-    expect(menuLayoutOf({})).toEqual({ default: 'list', guest_switch: false })
-    expect(menuLayoutOf({ layout: 'list' })).toEqual({ default: 'list', guest_switch: false })
-    expect(menuLayoutOf({ layout: 'one_column' })).toEqual({ default: 'one', guest_switch: false })
+    expect(menuLayoutOf(undefined)).toEqual({ default: 'two', guest_switch: true })
+    expect(menuLayoutOf({})).toEqual({ default: 'two', guest_switch: true })
+    expect(menuLayoutOf({ layout: 'list' })).toEqual({ default: 'list', guest_switch: true })
+    expect(menuLayoutOf({ layout: 'one_column', layout_switch: false })).toEqual({
+      default: 'one',
+      guest_switch: false,
+    })
     expect(menuLayoutOf({ layout: 'two_columns', layout_switch: true })).toEqual({
       default: 'two',
       guest_switch: true,
     })
-    expect(menuLayoutOf({ layout_switch: true })).toEqual({ default: 'list', guest_switch: true })
+    expect(menuLayoutOf({ layout_switch: false })).toEqual({ default: 'two', guest_switch: false })
   })
 
   it('changes the content hash, so a new layout is a new snapshot', () => {
-    const list = snapshotOf(menu())
-    const two = snapshotOf(menu(), context({ layout: { default: 'two', guest_switch: false } }))
-    expect(two.snapshot.hash).not.toBe(list.snapshot.hash)
+    const unset = snapshotOf(menu())
+    const list = snapshotOf(menu(), context({ layout: { default: 'list', guest_switch: true } }))
+    expect(list.snapshot.hash).not.toBe(unset.snapshot.hash)
   })
 })
 

@@ -816,6 +816,7 @@ export function Composer({
           <ItemSheet
             key={openItemId}
             itemId={openItemId}
+            menuId={menuId}
             tags={sheetTags}
             onCreateTag={createSheetTag}
             onOpenChange={(open) => {

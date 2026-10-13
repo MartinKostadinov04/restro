@@ -8,7 +8,8 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
 // The composer on a production build, in Bulgarian, against the demo menu that `pnpm db:seed:dev`
 // builds (four sections, 20 items, one hidden by barsy, two unsorted). One sign-in, one page, the
 // tests in order. Every change a test makes is undone before it ends (moves go back, switches
-// flip back, the menu layout goes back to a list, the section a test creates is deleted again).
+// flip back, the menu layout goes back to two columns with the switch, the section a test creates
+// is deleted again).
 // Brief S6 (D92): the composer has two subtabs, Structure and Design (`?sub=`), and works on the
 // menu its URL names (`?menu=`). With SCREENSHOT_DIR set, the last tests save the screenshots of
 // the brief (BG light, EN dark, mobile) there.
@@ -345,39 +346,39 @@ test('lays a section out as a horizontal row (D92); the choice survives a reload
 test('sets the menu layout and whether guests may switch it (D92); it survives a reload', async () => {
   const layout = () => page.getByTestId('menu-layout')
   const guestSwitch = () => page.getByTestId('menu-layout-switch')
-  await layout().getByRole('button', { name: 'Две колони' }).click()
+  await layout().getByRole('button', { name: 'Една колона' }).click()
   await expect(toast().first()).toContainText('Запазено')
-  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
+  await expect(layout().getByRole('button', { name: 'Една колона' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
   await expect(guestSwitch()).toBeEnabled()
-  if ((await guestSwitch().getAttribute('aria-checked')) !== 'true') await guestSwitch().click()
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
+  if ((await guestSwitch().getAttribute('aria-checked')) !== 'false') await guestSwitch().click()
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
   await settle()
   await page.reload()
-  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
+  await expect(layout().getByRole('button', { name: 'Една колона' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
 
-  // Back to a list without the switch, what the demo menu had.
-  await layout().getByRole('button', { name: 'Списък' }).click()
-  await expect(layout().getByRole('button', { name: 'Списък' })).toHaveAttribute(
+  // Back to two columns with the switch: the look of a menu that set none.
+  await layout().getByRole('button', { name: 'Две колони' }).click()
+  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
   await expect(guestSwitch()).toBeEnabled()
   await guestSwitch().click()
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
   await settle()
   await page.reload()
-  await expect(layout().getByRole('button', { name: 'Списък' })).toHaveAttribute(
+  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
 })
 
 test('a section or item of the till is never deleted here; an item made here can be', async () => {

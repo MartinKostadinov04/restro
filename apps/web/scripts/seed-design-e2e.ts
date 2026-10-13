@@ -188,7 +188,7 @@ async function seed(): Promise<void> {
       `update restro.venues set settings = settings - 'theme' - 'presentation' where id = $1`,
       [venue.id],
     )
-    // The menu's layout is the composer's (D92, brief S6): a list without the guest switch.
+    // The menu's layout is the composer's (D92, brief S6): none set (two columns, with the switch).
     await owner.query(`update restro.menus set settings = '{}'::jsonb where venue_id = $1`, [
       venue.id,
     ])

@@ -260,11 +260,11 @@ describe('the S6 fixtures (D92)', () => {
     expect(layouts(view)).toEqual(['horizontal', 'vertical'])
   })
 
-  it('a fixture published before D92 reads as a list without the switch, every section vertical', () => {
+  it('a fixture published before D92 reads as it looked: two columns with the switch, sections vertical', () => {
     const f = fixture('long-names')
     expect(f.snapshot).not.toHaveProperty('layout')
     const view = viewOf('long-names')
-    expect(view.layout).toEqual({ default: 'list', guestSwitch: false })
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
     expect(layouts(view)).toEqual(['vertical'])
   })
 })
@@ -617,13 +617,9 @@ describe('runFaceContract: the layout switch (D92, fail-closed)', () => {
       manifest,
     )
     expect(rules(report)).toEqual(['D92'])
-    // Every fixture but the one whose menu lets guests switch.
-    expect([...new Set(report.failures.map((failure) => failure.fixture))].sort()).toEqual(
-      fixtures()
-        .map((f) => f.name)
-        .filter((name) => name !== 'horizontal-sections')
-        .sort(),
-    )
+    // Only where the menu says no: one-column (the others let guests switch, explicitly or as the
+    // look from before D92).
+    expect([...new Set(report.failures.map((failure) => failure.fixture))]).toEqual(['one-column'])
   })
 
   it('a non-interactive channel never gets the switch', async () => {

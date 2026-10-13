@@ -44,8 +44,12 @@ export interface MenuChoice {
 /** The query parameter that names the composer's menu. */
 export const MENU_PARAM = 'menu'
 
-/** The layout a menu that set none starts in, and whether guests may switch it (core's default). */
-const DEFAULT_LAYOUT: MenuLayout = 'list'
+/**
+ * The layout a menu that set none starts in, and whether guests may switch it: core's
+ * `DEFAULT_MENU_LAYOUT` (two columns, with the switch: the look from before D92).
+ */
+const DEFAULT_LAYOUT: MenuLayout = 'two_columns'
+const DEFAULT_SWITCH = true
 
 export function MenuBar({
   venueId,
@@ -75,7 +79,7 @@ export function MenuBar({
   const [pending, startSaving] = useTransition()
   const saved = {
     layout: settings.layout ?? DEFAULT_LAYOUT,
-    layoutSwitch: settings.layout_switch ?? false,
+    layoutSwitch: settings.layout_switch ?? DEFAULT_SWITCH,
   }
   // What the controls show: the saved settings until a change, then the change (and back to the
   // saved ones if it fails).

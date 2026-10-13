@@ -411,8 +411,8 @@ describe('the template the venue chose (SH-04)', () => {
     render(<GuestMenu venue={PARAM} />)
     const root = await faceRoot('editorial-market')
     expect(root.dataset.scheme).toBe('auto')
-    // A snapshot without the menu's layout (D92) starts as a list.
-    expect(root.dataset.layout).toBe('list')
+    // A snapshot without the menu's layout (D92) looks as before: two columns.
+    expect(root.dataset.layout).toBe('two')
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 

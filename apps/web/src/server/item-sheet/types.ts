@@ -4,6 +4,12 @@
 // no storage keys, no internal names beyond the template's own `internal_note` field (rule 3).
 import type { FieldDefinition, Locale, LocalizedText } from '@restro/core'
 
+/**
+ * Where the item sheet's actions look: the venue (its live menu), or the venue and the menu the
+ * composer has open (brief S6).
+ */
+export type SheetTarget = string | { readonly venueId: string; readonly menuId: string }
+
 /** Who controls a value as the sheet shows it (the resolver's `Provenance`). */
 export type SheetProvenance = 'till' | 'owned' | 'overridden' | 'stale' | 'locked' | 'none'
 

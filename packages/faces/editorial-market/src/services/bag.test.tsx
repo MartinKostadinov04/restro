@@ -108,9 +108,10 @@ describe('what is drawn, and what is not (test 1)', () => {
     ]
     for (const [name, on, slots] of cases) {
       const { unmount } = drawFace(fakeHost(), { ...view, features: { ...only, ...on } })
-      const drawn = [...document.querySelectorAll('[data-slot^="menu."]')].map((e) =>
-        e.getAttribute('data-slot'),
-      )
+      // The service controls only: the layout switch is the menu's (D92), not a service.
+      const drawn = [
+        ...document.querySelectorAll('[data-slot^="menu."]:not([data-slot="menu.layout_switch"])'),
+      ].map((e) => e.getAttribute('data-slot'))
       expect(drawn, name).toEqual(slots)
       // The quick add belongs to ordering alone.
       expect(screen.queryAllByRole('button', { name: /^Add / }).length > 0, name).toBe(

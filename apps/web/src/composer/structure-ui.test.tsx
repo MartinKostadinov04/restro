@@ -146,20 +146,20 @@ describe('the menu switcher and the menu layout', () => {
     expect(url.searchParams.has('item')).toBe(false)
   })
 
-  it('shows a list without the switch for a menu that set nothing, and saves a change at once', async () => {
+  it('shows two columns with the switch for a menu that set none (the look before D92), and saves a change at once', async () => {
     vi.mocked(setMenuSettingsAction).mockResolvedValue({ ok: true } as never)
     bar()
     const layout = screen.getByTestId('menu-layout')
-    expect(within(layout).getByRole('button', { name: 'List' }).getAttribute('aria-pressed')).toBe(
-      'true',
-    )
-    expect(screen.getByTestId('menu-layout-switch').getAttribute('aria-checked')).toBe('false')
-    await userEvent.click(within(layout).getByRole('button', { name: 'Two columns' }))
+    expect(
+      within(layout).getByRole('button', { name: 'Two columns' }).getAttribute('aria-pressed'),
+    ).toBe('true')
+    expect(screen.getByTestId('menu-layout-switch').getAttribute('aria-checked')).toBe('true')
+    await userEvent.click(within(layout).getByRole('button', { name: 'List' }))
     await waitFor(() =>
       expect(setMenuSettingsAction).toHaveBeenCalledWith({
         venueId: VENUE,
         menuId: LIVE,
-        settings: { layout: 'two_columns', layout_switch: false },
+        settings: { layout: 'list', layout_switch: true },
       }),
     )
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
@@ -168,7 +168,7 @@ describe('the menu switcher and the menu layout', () => {
       expect(setMenuSettingsAction).toHaveBeenLastCalledWith({
         venueId: VENUE,
         menuId: LIVE,
-        settings: { layout: 'two_columns', layout_switch: true },
+        settings: { layout: 'list', layout_switch: false },
       }),
     )
   })

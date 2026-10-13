@@ -46,7 +46,7 @@ import {
   setItemImageAction,
   setItemSoldOutAction,
 } from '@/server/item-sheet/actions'
-import type { ItemSheetData, SheetResult } from '@/server/item-sheet/types'
+import type { ItemSheetData, SheetResult, SheetTarget } from '@/server/item-sheet/types'
 
 import { ItemSheetDetailsTab } from './item-sheet-details-tab'
 import { ItemSheetHistoryTab } from './item-sheet-history-tab'
@@ -58,6 +58,8 @@ export interface ItemSheetProps {
   itemId: string
   /** The venue (`vn_…`); defaults to the `venueId` of the page's route. */
   venueId?: string
+  /** The menu the composer has open (brief S6); absent = the venue's live menu. */
+  menuId?: string
   /** Open or closed; open when omitted. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -121,6 +123,7 @@ function ReviewNotice({ data }: { data: ItemSheetData }) {
 export function ItemSheet({
   itemId,
   venueId: venueIdProp,
+  menuId,
   open = true,
   onOpenChange,
   tags,
@@ -129,6 +132,12 @@ export function ItemSheet({
   const t = useTranslations('itemSheet')
   const params = useParams<{ venueId?: string }>()
   const venueId = venueIdProp ?? (typeof params.venueId === 'string' ? params.venueId : undefined)
+  // Where the actions look: the venue, and the composer's menu when there is one.
+  const target = useMemo<SheetTarget | undefined>(
+    () =>
+      venueId === undefined ? undefined : menuId === undefined ? venueId : { venueId, menuId },
+    [venueId, menuId],
+  )
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' })
   const [tab, setTab] = useState<TabId>('details')
   const [busy, setBusy] = useState(false)
@@ -143,14 +152,14 @@ export function ItemSheet({
   // Fetch the item's data whenever the sheet opens for an item.
   useEffect(() => {
     if (!open) return
-    if (venueId === undefined) {
+    if (target === undefined) {
       setLoaded({ status: 'error' })
       return
     }
     let cancelled = false
     setLoaded({ status: 'loading' })
     setTab('details')
-    loadItemSheetAction(venueId, itemId)
+    loadItemSheetAction(target, itemId)
       .then((data) => {
         if (!cancelled) setLoaded(data ? { status: 'ready', data } : { status: 'missing' })
       })
@@ -160,7 +169,7 @@ export function ItemSheet({
     return () => {
       cancelled = true
     }
-  }, [open, venueId, itemId])
+  }, [open, target, itemId])
 
   // The name of the item's till: `{source}` in "From {source}" and the like (brief CF-03).
   const source = loaded.status === 'ready' ? loaded.data.tillLabel : ''
@@ -195,43 +204,41 @@ export function ItemSheet({
   )
 
   const saveField = (fieldKey: string, value: unknown | null) =>
-    venueId
-      ? run(saveItemFieldAction(venueId, itemId, fieldKey, value), t('saved'))
+    target
+      ? run(saveItemFieldAction(target, itemId, fieldKey, value), t('saved'))
       : Promise.resolve(false)
   const revertField = (fieldKey: string) =>
-    venueId
-      ? run(revertItemFieldAction(venueId, itemId, fieldKey), t('reverted', { source }))
+    target
+      ? run(revertItemFieldAction(target, itemId, fieldKey), t('reverted', { source }))
       : Promise.resolve(false)
   const keepField = (fieldKey: string) =>
-    venueId
-      ? run(keepItemOverrideAction(venueId, itemId, fieldKey), t('kept'))
+    target
+      ? run(keepItemOverrideAction(target, itemId, fieldKey), t('kept'))
       : Promise.resolve(false)
   const setSoldOut = (soldOut: boolean) =>
-    venueId
+    target
       ? run(
-          setItemSoldOutAction(venueId, itemId, soldOut),
+          setItemSoldOutAction(target, itemId, soldOut),
           t(soldOut ? 'soldOutSaved' : 'backOnSale'),
         )
       : Promise.resolve(false)
   const saveTranslation = (fieldKey: string, locale: Locale, text: string | null) =>
-    venueId
-      ? run(saveItemTranslationAction(venueId, itemId, fieldKey, locale, text), t('saved'))
+    target
+      ? run(saveItemTranslationAction(target, itemId, fieldKey, locale, text), t('saved'))
       : Promise.resolve(false)
   const attachImage = (assetId: string) =>
-    venueId
+    target
       ? run(
-          setItemImageAction(venueId, itemId, assetId, data?.image?.alt ?? {}, null),
+          setItemImageAction(target, itemId, assetId, data?.image?.alt ?? {}, null),
           t('imageSaved'),
         )
       : Promise.resolve(false)
   const saveImageDetails = (alt: LocalizedText, focal: { x: number; y: number } | null) =>
-    venueId && data?.image
-      ? run(setItemImageAction(venueId, itemId, data.image.assetId, alt, focal), t('saved'))
+    target && data?.image
+      ? run(setItemImageAction(target, itemId, data.image.assetId, alt, focal), t('saved'))
       : Promise.resolve(false)
   const removeImage = () =>
-    venueId
-      ? run(removeItemImageAction(venueId, itemId), t('imageRemoved'))
-      : Promise.resolve(false)
+    target ? run(removeItemImageAction(target, itemId), t('imageRemoved')) : Promise.resolve(false)
 
   const title = data ? data.title || t('untitled') : t('loadingTitle')
 

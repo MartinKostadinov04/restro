@@ -30,12 +30,23 @@ import {
   saveTranslation,
   setImage,
 } from './service'
-import type { HistoryPage, ItemSheetData, SheetErrorCode, SheetResult } from './types'
+import type { HistoryPage, ItemSheetData, SheetErrorCode, SheetResult, SheetTarget } from './types'
 
 const Ids = z.object({
   venueId: z.string().refine((id) => isId('vn', id), 'expected a venue id'),
   itemId: z.string().refine((id) => isId('nd', id), 'expected an item id'),
+  // The menu the composer has open (brief S6); absent = the venue's live menu.
+  menuId: z
+    .string()
+    .refine((id) => isId('nd', id), 'expected a menu id')
+    .optional(),
 })
+
+/** The ids of a request: the target (a venue id, or the venue and its open menu) and the item. */
+function idsOf(target: SheetTarget, itemId: string) {
+  const where = typeof target === 'string' ? { venueId: target } : target
+  return Ids.safeParse(typeof where === 'object' && where !== null ? { ...where, itemId } : null)
+}
 const FieldKey = z.string().regex(FIELD_KEY_PATTERN)
 // A language of the 11 barsy keys; whether the venue enabled it is checked by the service.
 const LocaleKey = z.enum(LOCALES)
@@ -98,12 +109,15 @@ async function save(
   }
 }
 
-/** The data of the item sheet; null when the item is not in this venue of the person's tenant. */
+/**
+ * The data of the item sheet; null when the item is not in this venue of the person's tenant, or
+ * the menu named is not one of the venue's menus in use.
+ */
 export async function loadItemSheetAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
 ): Promise<ItemSheetData | null> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   if (!ids.success) return null
   const { scope, services } = await session(ids.data)
   return loadItemSheet(scope, services)
@@ -111,11 +125,11 @@ export async function loadItemSheetAction(
 
 /** The next page of the item's history, newest first (`before` = the last `seq` already shown). */
 export async function loadItemHistoryAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   before?: number,
 ): Promise<HistoryPage> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const cursor = z.int().positive().optional().safeParse(before)
   if (!ids.success || !cursor.success) return { entries: [], nextBefore: null }
   const { scope, services } = await session(ids.data)
@@ -124,12 +138,12 @@ export async function loadItemHistoryAction(
 
 /** Saves the whole value of a field from the field editor (`null` = cleared). */
 export async function saveItemFieldAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   fieldKey: string,
   value: unknown,
 ): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const key = FieldKey.safeParse(fieldKey)
   if (!ids.success || !key.success) return BAD_REQUEST
   return save(ids.data, ({ scope, services, actor }) =>
@@ -139,11 +153,11 @@ export async function saveItemFieldAction(
 
 /** Removes our override of a field: revert, or take the till's value instead of ours. */
 export async function revertItemFieldAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   fieldKey: string,
 ): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const key = FieldKey.safeParse(fieldKey)
   if (!ids.success || !key.success) return BAD_REQUEST
   return save(ids.data, ({ scope, services, actor }) =>
@@ -153,11 +167,11 @@ export async function revertItemFieldAction(
 
 /** Keeps our override although the till changed since. */
 export async function keepItemOverrideAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   fieldKey: string,
 ): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const key = FieldKey.safeParse(fieldKey)
   if (!ids.success || !key.success) return BAD_REQUEST
   return save(ids.data, ({ scope, services, actor }) =>
@@ -167,13 +181,13 @@ export async function keepItemOverrideAction(
 
 /** Saves one language of a localized field from the Translations grid. */
 export async function saveItemTranslationAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   fieldKey: string,
   locale: string,
   text: string | null,
 ): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const key = FieldKey.safeParse(fieldKey)
   const language = LocaleKey.safeParse(locale)
   const value = z.string().max(5000).nullable().safeParse(text)
@@ -189,13 +203,13 @@ export async function saveItemTranslationAction(
 
 /** Attaches an uploaded asset as the item's picture, or updates its alt text and focal point. */
 export async function setItemImageAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   assetId: string,
   alt: unknown,
   focal: unknown,
 ): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const asset = z
     .string()
     .refine((id) => isId('as', id))
@@ -214,11 +228,11 @@ export async function setItemImageAction(
  * and nothing else (rule 5). The sheet comes back refreshed.
  */
 export async function setItemSoldOutAction(
-  venueId: string,
+  target: SheetTarget,
   itemId: string,
   soldOut: boolean,
 ): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+  const ids = idsOf(target, itemId)
   const flag = z.boolean().safeParse(soldOut)
   if (!ids.success || !flag.success) return BAD_REQUEST
   return save(ids.data, async ({ scope, services, actor }) => {
@@ -248,8 +262,11 @@ export async function setItemSoldOutAction(
 }
 
 /** Takes our own picture off the item. */
-export async function removeItemImageAction(venueId: string, itemId: string): Promise<SheetResult> {
-  const ids = Ids.safeParse({ venueId, itemId })
+export async function removeItemImageAction(
+  target: SheetTarget,
+  itemId: string,
+): Promise<SheetResult> {
+  const ids = idsOf(target, itemId)
   if (!ids.success) return BAD_REQUEST
   return save(ids.data, ({ scope, services, actor }) => removeImage(scope, services, actor))
 }

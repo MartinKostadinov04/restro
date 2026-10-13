@@ -31,14 +31,15 @@ import {
   VENUE_MENU_TEMPLATE,
 } from '@restro/core'
 import { apply, ItemNotFoundError, loadItemDocument } from '@restro/core/apply'
-import { assets, type DbPool, events, menus, venues, withTenant } from '@restro/db'
+import { assets, type DbPool, events, venues, withTenant } from '@restro/db'
 import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 
 import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
 import { tillTextShown } from '@/fields/name-fallback'
-
+import { liveMenuOf, menuInUse } from '@/server/composer/menu'
 import { logError } from '../log'
 import { loadTillLabels, tillLabelOf } from '../till-label'
+
 import { type LayerView, layerMap, layerView } from './layers'
 import {
   fieldAccess,
@@ -69,6 +70,11 @@ export interface SheetScope {
   readonly tenantId: string
   readonly venueId: string
   readonly itemId: string
+  /**
+   * The menu the composer has open (brief S6: a venue has several, D88); absent = the venue's live
+   * menu. A menu that is not one of the venue's menus in use finds no item.
+   */
+  readonly menuId?: string
   /** The person may mark the item sold out tonight (owner or admin, D46); default: no. */
   readonly canMarkSoldOut?: boolean
 }
@@ -127,13 +133,14 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
       .where(and(eq(venues.id, venueId), isNull(venues.archivedAt))),
   )
   if (!venue) return null
-  const [menu] = await withTenant(pool, tenantId, (tx) =>
-    tx.select({ id: menus.id }).from(menus).where(eq(menus.venueId, venueId)),
-  )
-  if (!menu) return null
+  const menuId =
+    scope.menuId === undefined
+      ? await liveMenuOf(tenantId, venueId, pool)
+      : await menuInUse(tenantId, venueId, scope.menuId, pool)
+  if (!menuId) return null
   let doc: ItemState['doc']
   try {
-    doc = await loadItemDocument(pool, tenantId, menu.id, itemId)
+    doc = await loadItemDocument(pool, tenantId, menuId, itemId)
   } catch (error) {
     if (error instanceof ItemNotFoundError) return null
     throw error

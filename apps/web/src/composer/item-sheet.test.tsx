@@ -49,6 +49,15 @@ describe('ItemSheet', () => {
     ])
   })
 
+  it('reads and saves in the menu the composer has open (S6), when it names one', async () => {
+    A.loadItemSheetAction.mockResolvedValue(sheetData())
+    A.saveItemFieldAction.mockResolvedValue({ ok: true, data: sheetData() })
+    const MENU = 'nd_menu000000000000000000'
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" menuId={MENU} />)
+    await screen.findByTestId('item-sheet-title')
+    expect(A.loadItemSheetAction).toHaveBeenCalledWith({ venueId: 'vn_x', menuId: MENU }, ITEM)
+  })
+
   it("takes the venue from the page's route when no venue is given", async () => {
     A.loadItemSheetAction.mockResolvedValue(sheetData())
     renderWithIntl(<ItemSheet itemId={ITEM} />)

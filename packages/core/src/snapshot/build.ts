@@ -108,10 +108,13 @@ export interface SnapshotContext {
   readonly layout?: SnapshotLayout | null
 }
 
-/** The layout of a menu that set none (D92): a list, and guests do not switch it. */
+/**
+ * The layout of a menu that set none (D92): the look it had before the layout became a menu
+ * setting (the Editorial Market's old option defaults), two columns, and guests may switch it.
+ */
 export const DEFAULT_MENU_LAYOUT: SnapshotLayout = Object.freeze({
-  default: 'list',
-  guest_switch: false,
+  default: 'two',
+  guest_switch: true,
 })
 
 /** A menu's stored layout (`menus.settings.layout`) as the snapshot names it. */

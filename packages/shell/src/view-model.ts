@@ -188,7 +188,7 @@ export interface ViewLayout {
   readonly default: SnapshotMenuLayout
   /**
    * Draw the layout switch: the venue lets guests switch, on an interactive channel. A snapshot
-   * without a layout: a list, no switch.
+   * without a layout looks as it did before D92: two columns, with the switch.
    */
   readonly guestSwitch: boolean
 }

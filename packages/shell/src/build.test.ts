@@ -770,9 +770,15 @@ describe('layouts (D92)', () => {
     expect(view.layout).toEqual({ default: 'one', guestSwitch: true })
   })
 
-  it('reads a snapshot without a layout as a list, and guests cannot switch', () => {
+  it('reads a snapshot without a layout as it looked before D92: two columns, with the switch', () => {
     const view = buildViewModel(tiny(), null, { locale: 'en_US', now: WEDNESDAY })
-    expect(view.layout).toEqual({ default: 'list', guestSwitch: false })
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
+    const print = buildViewModel(tiny(), null, {
+      locale: 'en_US',
+      now: WEDNESDAY,
+      channel: 'print',
+    })
+    expect(print.layout).toEqual({ default: 'two', guestSwitch: false })
   })
 
   it('offers the switch only on an interactive channel', () => {

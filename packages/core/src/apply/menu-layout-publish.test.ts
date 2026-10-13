@@ -84,10 +84,10 @@ describe.skipIf(!hasDatabase)('the menu and section layouts in a publish', () =>
     await app?.end()
   })
 
-  it('publishes a list without the guest switch and vertical sections while nothing is set', async () => {
+  it('publishes two columns with the guest switch (the look before D92) and vertical sections while nothing is set', async () => {
     const first = await publish(0)
     expect(first.status).toBe('published')
-    expect(first.snapshot.body?.layout).toEqual({ default: 'list', guest_switch: false })
+    expect(first.snapshot.body?.layout).toEqual({ default: 'two', guest_switch: true })
     expect(first.snapshot.body?.sections[picks]?.hints.layout).toBe('vertical')
     expect(first.snapshot.body?.sections[drinks]?.hints.layout).toBe('vertical')
   })
@@ -96,14 +96,14 @@ describe.skipIf(!hasDatabase)('the menu and section layouts in a publish', () =>
     const saved = await setMenuSettings(app, tenant, {
       venueId,
       menuId: menu.id,
-      settings: { layout: 'two_columns', layout_switch: true },
+      settings: { layout: 'list', layout_switch: false },
     })
     expect(saved.ok).toBe(true)
     await change([manual(drinks, 'layout', 'horizontal')])
 
     const second = await publish(10)
     expect(second.status).toBe('published')
-    expect(second.snapshot.body?.layout).toEqual({ default: 'two', guest_switch: true })
+    expect(second.snapshot.body?.layout).toEqual({ default: 'list', guest_switch: false })
     expect(second.snapshot.body?.sections[picks]?.hints.layout).toBe('vertical')
     expect(second.snapshot.body?.sections[drinks]?.hints.layout).toBe('horizontal')
     // Nothing else changed: the same content is no new version.
