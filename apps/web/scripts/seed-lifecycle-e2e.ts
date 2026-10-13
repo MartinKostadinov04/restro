@@ -90,6 +90,7 @@ const TENANT_TABLES = [
   'integrations',
   'menus',
   'nodes',
+  'venue_slug_history',
   'venues',
 ] as const
 

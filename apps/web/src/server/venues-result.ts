@@ -144,17 +144,20 @@ export type DeleteVenueResult =
  * What `restoreVenueAction` can refuse:
  * - `not_allowed`: only owners restore a venue;
  * - `invalid`: the request is malformed, or the venue is not one of this organisation's;
+ * - `till_taken`: another venue serves the till venue this one had (adjustments V1); `holder`
+ *   is that venue's name, and nothing changed;
  * - `failed`: something broke on the server (logged there).
  */
-export type RestoreVenueError = 'not_allowed' | 'invalid' | 'failed'
+export type RestoreVenueError = 'not_allowed' | 'invalid' | 'till_taken' | 'failed'
 
 /**
- * The answer of `restoreVenueAction`: the venue's name, for the message. `filesQueued` is false
- * when the table files job could not be queued (the next publish queues it again).
+ * The answer of `restoreVenueAction`: the venue's name, for the message, and whether its till was
+ * linked again (`relinked`). The venue comes back unpublished (D86); the publish brings its
+ * address and table codes back.
  */
 export type RestoreVenueResult =
-  | { readonly ok: true; readonly name: string; readonly filesQueued: boolean }
-  | { readonly ok: false; readonly error: RestoreVenueError }
+  | { readonly ok: true; readonly name: string; readonly relinked: boolean }
+  | { readonly ok: false; readonly error: RestoreVenueError; readonly holder?: string }
 
 /**
  * What `unpublishVenueAction` can refuse:

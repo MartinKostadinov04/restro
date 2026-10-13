@@ -355,9 +355,9 @@ test('Settings > Deleted venues lists it with the day it was deleted, and Restor
   await snapshot('deleted-venues.png')
 
   await row.getByTestId('restore-venue').click()
-  await expect(page.getByText(`${RENAMED} is back.`)).toBeVisible()
+  // Its till venue was free, so the restore linked it again (adjustments V1).
   await expect(
-    page.getByText('link it again in Settings › Integrations', { exact: false }),
+    page.getByText(`${RENAMED} is back as a draft, with its till linked again`, { exact: false }),
   ).toBeVisible()
   await expect(page.getByTestId('deleted-venue')).toHaveCount(0)
   await expect(page.getByTestId('deleted-venues-empty')).toBeVisible()
@@ -397,9 +397,9 @@ test('the restored venue stays off for guests until it is published, then the sa
   await expect(page.getByTestId('address-off-banner')).toHaveCount(0)
   await expect(page.getByTestId('publish-button').first()).toBeDisabled()
 
-  // Its till was released with the delete and is not linked again: no table file, so the QR
-  // address stays closed until the till is linked and the menu published again.
-  expect((await request.get(`/t/${seed.token}`, { maxRedirects: 0 })).status()).toBe(404)
+  // The tables kept their codes through the delete (D86) and the till came back with the restore
+  // (V1), so the publish wrote the table file again: the QR address opens the menu.
+  expect((await request.get(`/t/${seed.token}`, { maxRedirects: 0 })).status()).toBe(302)
 })
 
 test('with every venue deleted the sidebar and the list show the way to add one', async () => {

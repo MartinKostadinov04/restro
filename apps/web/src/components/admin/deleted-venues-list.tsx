@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { restoreVenueAction } from '@/server/venues-actions'
-import type { RestoreVenueError } from '@/server/venues-result'
+import type { RestoreVenueError, RestoreVenueResult } from '@/server/venues-result'
 
 /** The time zone the deletion date is shown in: the one every venue is created with. */
 const DISPLAY_TIME_ZONE = 'Europe/Sofia'
@@ -61,7 +61,10 @@ function DeletedVenueItem({
   const t = useTranslations('settings.deletedVenues')
   const format = useFormatter()
   const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<RestoreVenueError | null>(null)
+  const [error, setError] = useState<{
+    readonly error: RestoreVenueError
+    readonly holder?: string
+  } | null>(null)
 
   const when = format.dateTime(new Date(venue.deletedAt), {
     dateStyle: 'medium',
@@ -73,17 +76,15 @@ function DeletedVenueItem({
     if (pending) return
     setError(null)
     startTransition(async () => {
-      const result = await restoreVenueAction({ venueId: venue.id }).catch(
+      const result: RestoreVenueResult = await restoreVenueAction({ venueId: venue.id }).catch(
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (!result.ok) {
-        setError(result.error)
+        setError({ error: result.error, holder: result.holder })
         return
       }
       onRestored()
-      const message = t(result.filesQueued ? 'restored' : 'restoredLate', { name: result.name })
-      if (result.filesQueued) toast.success(message)
-      else toast.warning(message)
+      toast.success(t(result.relinked ? 'restoredLinked' : 'restored', { name: result.name }))
     })
   }
 
@@ -99,7 +100,7 @@ function DeletedVenueItem({
           </span>
           {error !== null ? (
             <span className="text-sm text-destructive" role="alert" data-testid="restore-error">
-              {t(`errors.${error}`)}
+              {t(`errors.${error.error}`, { holder: error.holder ?? '' })}
             </span>
           ) : null}
         </div>

@@ -24,7 +24,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { getPool } from './db'
 import { hasDatabase, openOwnerPool, testSlug, useTestServerEnvironment } from './test-database'
 import { getVenue, getVenueInAnyState, listArchivedVenues, listVenues } from './venues'
-import { deleteVenueAction, renameVenueAction, restoreVenueAction } from './venues-actions'
+import {
+  deleteVenueAction,
+  renameVenueAction,
+  restoreVenueAction,
+  unpublishVenueAction,
+} from './venues-actions'
 
 const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
 const revalidated = vi.hoisted(() => [] as string[])
@@ -410,8 +415,8 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
   })
 
   describe('restoreVenueAction', () => {
-    it('restores a deleted venue for an owner, unlinked, and queues the table files', async () => {
-      const { venue, bid: till } = await tillVenueWithCodes()
+    it('restores a deleted venue for an owner, with its till linked again, and queues nothing', async () => {
+      const { venue, bid: till, codes } = await tillVenueWithCodes()
       await deleteVenueAction({ venueId: venue.id, confirmName: 'Till Club' })
       queue.jobs.length = 0
       revalidated.length = 0
@@ -419,26 +424,37 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       expect(await restoreVenueAction({ venueId: venue.id })).toEqual({
         ok: true,
         name: 'Till Club',
-        filesQueued: true,
+        relinked: true,
       })
       expect((await rowOf(venue.id))?.archived_at).toBeNull()
-      // Not linked again: that is for the owner to do in Integrations.
-      expect(await linkedBid(venue.id)).toBeUndefined()
-      expect(queue.jobs).toEqual([
-        {
-          name: JOB_NAMES.publishTableTokens,
-          data: { tenantId: tenant, venueId: venue.id, retired: [] },
-        },
-      ])
-      expect(revalidated).toEqual(['/'])
-      expect((await getVenue(tenant, venue.id))?.name).toBe('Till Club')
-      // Linking the same till venue again brings the same table codes back.
-      expect(await mapBarsyVenue(getPool(), tenant, integrationId, till, venue.id)).toMatchObject({
-        ok: true,
-      })
+      // Linked again (adjustments V1), with the same table codes; the publish brings the files
+      // back (D86), so no job is queued here.
+      expect(await linkedBid(venue.id)).toBe(till)
       expect(
         (await listVenueTables(getPool(), tenant, venue.id)).map((table) => table.token).sort(),
-      ).toHaveLength(2)
+      ).toEqual([...codes].sort())
+      expect(queue.jobs).toEqual([])
+      expect(revalidated).toEqual(['/'])
+      expect((await getVenue(tenant, venue.id))?.name).toBe('Till Club')
+    })
+
+    it('refuses the restore, naming the venue, when another one serves its till venue now', async () => {
+      const { venue, bid: till } = await tillVenueWithCodes()
+      await deleteVenueAction({ venueId: venue.id, confirmName: 'Till Club' })
+      const holder = await makeVenue(tenant, 'Holder Club')
+      expect(
+        await mapBarsyVenue(getPool(), tenant, integrationId, till, holder.venue.id),
+      ).toMatchObject({ ok: true })
+      queue.jobs.length = 0
+
+      expect(await restoreVenueAction({ venueId: venue.id })).toEqual({
+        ok: false,
+        error: 'till_taken',
+        holder: 'Holder Club',
+      })
+      expect((await rowOf(venue.id))?.archived_at).toBeInstanceOf(Date)
+      expect(await linkedBid(holder.venue.id)).toBe(till)
+      expect(queue.jobs).toEqual([])
     })
 
     it('refuses an admin and a member, and restores nothing', async () => {
@@ -469,16 +485,33 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       expect(await restoreVenueAction({ venueId: 'nope' })).toEqual({ ok: false, error: 'invalid' })
     })
 
-    it('restores the venue even when the queue is down', async () => {
+    it('restores a venue without a till even when the queue is down (it needs no job)', async () => {
       const { venue } = await makeVenue(tenant, 'Restore late')
       await deleteVenueAction({ venueId: venue.id, confirmName: 'Restore late' })
       queue.failing = true
       expect(await restoreVenueAction({ venueId: venue.id })).toEqual({
         ok: true,
         name: 'Restore late',
-        filesQueued: false,
+        relinked: false,
       })
       expect((await rowOf(venue.id))?.archived_at).toBeNull()
+    })
+  })
+
+  describe('unpublishVenueAction', () => {
+    it('takes a live venue off the phones and hands its table codes to the files job (D86)', async () => {
+      const { venue, codes } = await tillVenueWithCodes()
+      queue.jobs.length = 0
+      expect(await unpublishVenueAction({ venueId: venue.id })).toMatchObject({
+        ok: true,
+        name: 'Till Club',
+        filesQueued: true,
+      })
+      const tokensJob = queue.jobs.find((job) => job.name === JOB_NAMES.publishTableTokens)
+      expect([...((tokensJob?.data.retired as string[] | undefined) ?? [])].sort()).toEqual(
+        [...codes].sort(),
+      )
+      expect((await getVenue(tenant, venue.id))?.unpublishedAt).toBeInstanceOf(Date)
     })
   })
 
