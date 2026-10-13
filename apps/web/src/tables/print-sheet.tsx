@@ -1,6 +1,7 @@
-// The print sheet of the table codes (brief S3-07): A4 pages, 2 columns by 3 rows = 6 cards per page.
-// Each card has the venue's logo (else its name), the table's name, the code, the address as text
-// and "Сканирайте за менюто / Scan for the menu". No PDF library: the page is plain HTML with a
+// The print sheet of the table codes (briefs S3-07, S5): A4 pages, 2 columns by 3 rows = 6 cards per
+// page, the cards in the order of the venue's areas and tables (hidden ones are left out by the
+// page). Each card has the venue's logo (else its name), the table's name and its area, the code,
+// the address as text and "Сканирайте за менюто / Scan for the menu". No PDF library: the page is plain HTML with a
 // print stylesheet (`@page` A4, a page break after every sheet), and the browser's "Print / Save as
 // PDF" turns it into the file. The cards are always black on white (a code must scan whatever the
 // admin's theme is) and always in both languages (it is printed matter, not interface).
@@ -17,6 +18,8 @@ export interface PrintCard {
   readonly id: string
   /** What the table is called. */
   readonly label: string
+  /** The area the table is in. */
+  readonly area: string
   /** The address in the code. */
   readonly address: string
   readonly qrSvg: string
@@ -56,6 +59,7 @@ body { background: #fff; color: #000; }
 .pc-table { display: grid; gap: 0.5mm; justify-items: center; max-width: 100%; }
 .pc-caption { font: 600 8pt/1 system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #52525b; }
 .pc-label { font: 800 30pt/1.05 system-ui, sans-serif; overflow-wrap: anywhere; max-width: 85mm; }
+.pc-area { font: 600 9pt/1.1 system-ui, sans-serif; color: #52525b; overflow-wrap: anywhere; max-width: 85mm; }
 .pc-qr { width: 42mm; height: 42mm; display: block; background: #fff; }
 .pc-address { font: 6.5pt/1.25 ui-monospace, Consolas, monospace; color: #3f3f46; overflow-wrap: anywhere; max-width: 86mm; max-height: 9mm; overflow: hidden; }
 .pc-scan { margin: 0; font: 600 10pt/1.15 system-ui, sans-serif; }
@@ -108,6 +112,9 @@ export function PrintSheets({
                 >
                   {card.label}
                 </strong>
+                <span className="pc-area" data-testid="print-area">
+                  {card.area}
+                </span>
               </div>
               <QrPicture
                 svg={card.qrSvg}

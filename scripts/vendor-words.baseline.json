@@ -1,6 +1,6 @@
 {
-  "apps/web/messages/bg.json": 17,
-  "apps/web/messages/en.json": 17,
+  "apps/web/messages/bg.json": 8,
+  "apps/web/messages/en.json": 8,
   "apps/web/src/server/publish/load.ts": 4,
   "apps/web/src/server/publish/service.ts": 4,
   "apps/web/src/server/venues.ts": 1,

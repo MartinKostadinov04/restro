@@ -1,13 +1,20 @@
-// The Tables & QR tab's service against a real Postgres, as the restro_app role (brief S3-07): what
-// the tab reads (tables by hall, codes drawn from the venue's address setting, the default base
-// address), what the actions do and queue (a new code names the old token to remove), who may do
-// what, and the file downloads. The queue is a fake.
-import { JOB_NAMES, newId } from '@restro/core'
+// The Tables & QR tab's service against a real Postgres, as the restro_app role (briefs S3-07 and
+// S5): what the tab reads (tables by area, codes drawn from the installation's address, the menu
+// each area and table shows), what the actions do and queue (a job only when a public file must
+// go, come or change), who may do what, a till's areas and tables against a venue made by hand,
+// the menu routes, and the file downloads. The queue is a fake.
+import { type ChangeSet, JOB_NAMES, newId } from '@restro/core'
 import {
+  apply,
   createIntegration,
+  createMenu,
+  deleteMenu,
+  loadTokenFiles,
   mapBarsyVenue,
+  provisionMenu,
   provisionTenant,
   provisionVenue,
+  publishMenu,
   setVenueQrSettings,
   upsertBarsyVenues,
   upsertPlaces,
@@ -20,11 +27,21 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { buildQrDownload, fileNamePart, parseFormat } from './download'
 import {
+  addArea,
+  addTable,
+  chooseMenu,
   createAllCodes,
+  hideArea,
+  hideTable,
   issueCode,
   loadTablesView,
+  moveAreaOf,
+  moveTableOf,
+  removeArea,
+  removeTable,
+  renameAreaOf,
   renameTable,
-  saveQrSettings,
+  renumberTable,
   type TablesScope,
   type TablesServices,
   turnOffCode,
@@ -37,7 +54,13 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
   const otherTenant = newId('tn')
   let app: DbPool
   let owner: pg.Pool
+  /** The venue with a till (its areas and tables are the till's). */
   let venue: Venue
+  /** The venue made by hand, with three menus: live and published, published, never published. */
+  let hand: Venue
+  let liveMenu: string
+  let cocktails: string
+  let brunch: string
   let integrationId: string
 
   const sent: { name: string; data: Record<string, unknown> }[] = []
@@ -68,6 +91,57 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
   })
   const view = async (overrides: Partial<TablesScope> = {}) =>
     loadTablesView(await scope(overrides), DEFAULT_BASE, async (text) => `<svg>${text}</svg>`)
+  const handScope = (overrides: Partial<TablesScope> = {}): TablesScope => ({
+    pool: app,
+    tenantId: tenant,
+    venue: { id: hand.id, name: hand.name },
+    canManage: true,
+    ...overrides,
+  })
+  const handView = (overrides: Partial<TablesScope> = {}) =>
+    loadTablesView(handScope(overrides), DEFAULT_BASE, async (text) => `<svg>${text}</svg>`)
+  const ok = <T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> => {
+    if (!result.ok) throw new Error(`refused: ${JSON.stringify(result)}`)
+    return result as Extract<T, { ok: true }>
+  }
+
+  /** Gives a menu a section with one priced item, so it can be published. */
+  async function fill(menuId: string, name: string): Promise<void> {
+    const section = newId('nd')
+    const item = newId('nd')
+    const manual = (node: string, fieldKey: string, value: unknown) => ({
+      op: 'setField',
+      node: { id: node },
+      fieldKey,
+      layer: 'manual',
+      scope: 'master',
+      value,
+    })
+    const result = await apply(app, tenant, {
+      id: newId('cs'),
+      source: 'manual',
+      jobId: newId('jb'),
+      actor: 'user:us_test',
+      observedAt: new Date().toISOString(),
+      ops: [
+        {
+          op: 'createNode',
+          id: section,
+          nodeType: 'section',
+          parent: { id: menuId },
+          status: 'active',
+          sortKey: 'end',
+        },
+        manual(section, 'title', { bg_BG: name, en_US: name }),
+        { op: 'createNode', id: item, nodeType: 'item', parent: null, status: 'active' },
+        manual(item, 'name', { bg_BG: `${name} 1`, en_US: `${name} 1` }),
+        manual(item, 'price', { amount_minor: 900, currency: 'EUR' }),
+        manual(item, 'allergens', []),
+        { op: 'setPlacement', item: { id: item }, section: { id: section }, sortKey: 'end' },
+      ],
+    } as ChangeSet)
+    expect(result.rejected).toEqual([])
+  }
 
   beforeAll(async () => {
     spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
@@ -105,6 +179,22 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       ],
       { pagesOk: [true] },
     )
+
+    hand = await provisionVenue(app, tenant, { name: 'Hand venue', slug: testSlug('tables-hand') })
+    liveMenu = (await provisionMenu(app, tenant, hand.id)).id
+    cocktails = ok(await createMenu(app, tenant, { venueId: hand.id, name: 'Cocktails' })).menu.id
+    brunch = ok(await createMenu(app, tenant, { venueId: hand.id, name: 'Brunch' })).menu.id
+    await fill(liveMenu, 'Main')
+    await fill(cocktails, 'Cocktails')
+    await fill(brunch, 'Brunch')
+    for (const menuId of [liveMenu, cocktails]) {
+      await publishMenu(app, tenant, {
+        menuId,
+        venueId: hand.id,
+        reason: 'manual',
+        actor: 'user:us_test',
+      })
+    }
   })
 
   afterEach(() => {
@@ -117,12 +207,27 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     await app?.end()
     if (owner) {
       for (const table of [
-        'places',
-        'barsy_venues',
-        'integrations',
+        'item_first_published',
+        'publish_pointers',
+        'snapshots',
+        'events',
+        'field_values',
+        'placements',
+        'source_links',
         'menu_routes',
+        'menus',
+        'nodes',
+        'source_records',
+        'job_runs',
+        'places',
         'tables',
         'areas',
+        'venue_slug_history',
+        'purge_log',
+        'barsy_venues',
+        'assets',
+        'integrations',
+        'tags',
         'venues',
       ]) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [
@@ -154,13 +259,11 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(read.coded).toBe(0)
       expect(read.sample).toBeNull()
       expect(read.canManage).toBe(true)
-      expect(read.qr).toMatchObject({
-        mode: 'ours',
-        baseUrl: DEFAULT_BASE,
-        baseIsDefault: true,
-        defaultBaseUrl: DEFAULT_BASE,
-        ownPattern: null,
-      })
+      // The venue is served by a till: its areas and tables are the till's, which {source} names.
+      expect(read).toMatchObject({ fromTill: true, sourceLabel: 'barsy', baseUrl: DEFAULT_BASE })
+      // It has no menu of its own yet, so nothing is shown for any table.
+      expect(read.menus).toEqual([])
+      expect(read.halls[1]?.tables[0]).toMatchObject({ menu: null, routeMenuId: null })
       const json = JSON.stringify(read)
       expect(json).not.toContain('place_id')
       expect(json).not.toContain('placeId')
@@ -290,6 +393,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
 
     it('only owners and admins act: a member is refused and nothing changes or is queued', async () => {
       const row = await rowByNumber('2')
+      const areaId = (await view()).halls[1]?.id ?? ''
       const member = await scope({ canManage: false })
       sent.length = 0
       for (const result of [
@@ -297,7 +401,17 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         await issueCode(member, services, row.id),
         await turnOffCode(member, services, row.id),
         await renameTable(member, services, row.id, 'Hacked'),
-        await saveQrSettings(member, { mode: 'ours', baseUrl: null, ownPattern: null }),
+        await addArea(member, 'Hacked'),
+        await renameAreaOf(member, areaId, 'Hacked'),
+        await hideArea(member, services, areaId, true),
+        await moveAreaOf(member, areaId, 0),
+        await removeArea(member, services, areaId),
+        await addTable(member, areaId, { number: '99', name: null }),
+        await renumberTable(member, services, row.id, '99'),
+        await hideTable(member, services, row.id, true),
+        await moveTableOf(member, services, row.id, undefined, 0),
+        await removeTable(member, services, row.id),
+        await chooseMenu(member, services, { tableId: row.id as never }, null),
       ]) {
         expect(result).toEqual({ ok: false, error: 'forbidden' })
       }
@@ -319,65 +433,37 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     })
   })
 
-  describe('the address setting', () => {
-    it('saves a base address, then the own pattern; the codes on the tab follow the saved mode', async () => {
-      expect(
-        await saveQrSettings(await scope(), {
-          mode: 'ours',
-          baseUrl: 'http://192.168.1.20:3000/',
-          ownPattern: null,
-        }),
-      ).toEqual({ ok: true, queued: true })
-      let read = await view()
-      expect(read.qr).toMatchObject({
-        mode: 'ours',
-        baseUrl: 'http://192.168.1.20:3000',
-        baseIsDefault: false,
-      })
-      expect(read.sample?.token).toBeDefined()
-      const sample = read.halls.flatMap((hall) => hall.tables).find((row) => row.token !== null)
-      expect(sample?.address).toBe(`http://192.168.1.20:3000/t/${sample?.token}`)
-
-      expect(
-        await saveQrSettings(await scope(), {
-          mode: 'own',
-          baseUrl: 'http://192.168.1.20:3000',
-          ownPattern: 'https://menu.club.bg/t/{token}',
-        }),
-      ).toEqual({ ok: true, queued: true })
-      read = await view()
-      expect(read.qr.mode).toBe('own')
-      const own = read.halls.flatMap((hall) => hall.tables).find((row) => row.token !== null)
-      expect(own?.address).toBe(`https://menu.club.bg/t/${own?.token}`)
-      // The QR is drawn from the venue's own address, nothing was fetched.
-      expect(own?.qrSvg).toBe(`<svg>${own?.address}</svg>`)
-    })
-
-    it('refuses a bad address and says which field and why', async () => {
-      expect(
-        await saveQrSettings(await scope(), {
-          mode: 'own',
-          baseUrl: null,
-          ownPattern: 'https://menu.club.bg/t/',
-        }),
-      ).toEqual({ ok: false, error: 'invalid', field: 'ownPattern', problem: 'missing_token' })
-      expect(
-        await saveQrSettings(await scope(), {
-          mode: 'ours',
-          baseUrl: 'http://club.bg',
-          ownPattern: null,
-        }),
-      ).toEqual({ ok: false, error: 'invalid', field: 'baseUrl', problem: 'not_https' })
-    })
-
-    it('the setting kept by the writer is what the core reader sees', async () => {
+  describe('the address of the codes (D94)', () => {
+    it("is this installation's address; an own link a venue saved before is not read", async () => {
+      // An earlier build let a venue save its own link: core keeps the writer, the tab ignores it.
       await setVenueQrSettings(app, tenant, {
         venueId: venue.id as never,
-        mode: 'ours',
+        mode: 'own',
         baseUrl: null,
-        ownPattern: null,
+        ownPattern: 'https://menu.club.bg/t/{token}',
       })
-      expect((await view()).qr).toMatchObject({ mode: 'ours', baseUrl: DEFAULT_BASE })
+      const read = await view()
+      expect(read.baseUrl).toBe(DEFAULT_BASE)
+      const sample = read.halls.flatMap((hall) => hall.tables).find((row) => row.token !== null)
+      expect(sample?.address).toBe(`${DEFAULT_BASE}/t/${sample?.token}`)
+      // The QR is drawn from that address; nothing was fetched.
+      expect(sample?.qrSvg).toBe(`<svg>${sample?.address}</svg>`)
+    })
+
+    it('is tidied, and an address that cannot be used leaves the codes undrawn', async () => {
+      const render = async (text: string) => `<svg>${text}</svg>`
+      const venueScope = await scope()
+      expect((await loadTablesView(venueScope, 'http://192.168.1.20:3000/', render)).baseUrl).toBe(
+        'http://192.168.1.20:3000',
+      )
+      for (const unusable of [null, 'club.bg', 'http://club.bg']) {
+        const read = await loadTablesView(venueScope, unusable, render)
+        expect(read.baseUrl).toBeNull()
+        const rows = read.halls.flatMap((hall) => hall.tables)
+        expect(rows.every((row) => row.address === null && row.qrSvg === null)).toBe(true)
+        // The codes exist; they just have no address to carry yet.
+        expect(rows.some((row) => row.token !== null)).toBe(true)
+      }
     })
   })
 
@@ -421,6 +507,459 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(parseFormat('png')).toBe('png')
       expect(parseFormat('exe')).toBe('png')
       expect(parseFormat(null)).toBe('png')
+    })
+  })
+
+  describe("a venue with a till: the till's areas and tables (D95)", () => {
+    const rows = async () => (await view()).halls.flatMap((hall) => hall.tables)
+    const tokensOf = async (...numbers: string[]) =>
+      (await rows())
+        .filter((row) => numbers.includes(row.number ?? ''))
+        .map((row) => row.token as string)
+        .sort()
+
+    it('renames, reorders and hides an area; never creates or deletes one', async () => {
+      const halls = (await view()).halls
+      const terrace = halls.find((hall) => hall.name === 'Terrace')
+      if (!terrace) throw new Error('no terrace')
+
+      expect(await renameAreaOf(await scope(), terrace.id, '  Roof   terrace ')).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect((await view()).halls.find((hall) => hall.id === terrace.id)?.name).toBe('Roof terrace')
+      // A rename touches no public file.
+      expect(sent).toEqual([])
+
+      expect(await moveAreaOf(await scope(), terrace.id, 0)).toEqual({ ok: true, queued: true })
+      expect((await view()).halls[0]?.id).toBe(terrace.id)
+      expect(await moveAreaOf(await scope(), terrace.id, 1)).toEqual({ ok: true, queued: true })
+      expect((await view()).halls[1]?.id).toBe(terrace.id)
+      expect(sent).toEqual([])
+
+      // Hiding takes the files of its tables away (their tokens stay); showing brings them back.
+      const tokens = await tokensOf('2', '10')
+      expect(tokens).toHaveLength(2)
+      const codedBefore = (await view()).coded
+      expect(await hideArea(await scope(), services, terrace.id, true)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent.at(-1)).toEqual({
+        name: JOB_NAMES.publishTableTokens,
+        data: { tenantId: tenant, venueId: venue.id, retired: tokens },
+      })
+      const hidden = (await view()).halls.find((hall) => hall.id === terrace.id)
+      expect(hidden?.isPublic).toBe(false)
+      // The codes are paused: the tokens stay on the rows, but they lead nowhere now.
+      expect(hidden?.tables.map((row) => row.token).sort()).toEqual(tokens)
+      expect(hidden?.tables.every((row) => row.address === null && row.qrSvg === null)).toBe(true)
+      expect((await view()).coded).toBe(codedBefore - 2)
+      sent.length = 0
+      expect(await hideArea(await scope(), services, terrace.id, false)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent).toEqual([
+        { name: JOB_NAMES.publishTableTokens, data: expect.objectContaining({ retired: [] }) },
+      ])
+      expect((await view()).coded).toBe(codedBefore)
+
+      // The till's halls are the till's.
+      expect(await addArea(await scope(), 'Mine')).toEqual({ ok: false, error: 'from_till' })
+      expect(await removeArea(await scope(), services, terrace.id)).toEqual({
+        ok: false,
+        error: 'from_till',
+      })
+      expect(await addTable(await scope(), terrace.id, { number: '99', name: null })).toEqual({
+        ok: false,
+        error: 'from_till',
+      })
+      expect((await view()).halls).toHaveLength(3)
+    })
+
+    it('renames, reorders and hides a table; never creates, deletes, renumbers or moves it to another area', async () => {
+      const two = await rowByNumber('2')
+      const ten = await rowByNumber('10')
+      const terraceId = (await view()).halls.find((hall) =>
+        hall.tables.some((r) => r.id === two.id),
+      )?.id as string
+      sent.length = 0
+
+      // Order within the hall: 10 goes before 2.
+      expect(await moveTableOf(await scope(), services, ten.id, undefined, 0)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(
+        (await view()).halls.find((hall) => hall.id === terraceId)?.tables.map((r) => r.number),
+      ).toEqual(['10', '2'])
+      expect(sent).toEqual([])
+      await moveTableOf(await scope(), services, ten.id, undefined, 1)
+      expect(
+        (await view()).halls.find((hall) => hall.id === terraceId)?.tables.map((r) => r.number),
+      ).toEqual(['2', '10'])
+
+      // Hiding a table with a code takes its file away; showing brings it back.
+      expect(await hideTable(await scope(), services, two.id, true)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent.at(-1)?.data.retired).toEqual([two.token])
+      expect(await rowByNumber('2')).toMatchObject({ isPublic: false, token: two.token })
+      sent.length = 0
+      expect(await hideTable(await scope(), services, two.id, false)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent).toHaveLength(1)
+      expect(sent[0]?.data.retired).toEqual([])
+      expect(await rowByNumber('2')).toMatchObject({ isPublic: true })
+
+      // The rest is the till's.
+      const mainHall = (await view()).halls.find((hall) => hall.name === 'Main hall')
+      expect(await removeTable(await scope(), services, two.id)).toEqual({
+        ok: false,
+        error: 'from_till',
+      })
+      expect(await renumberTable(await scope(), services, two.id, '99')).toEqual({
+        ok: false,
+        error: 'from_till',
+      })
+      expect(await moveTableOf(await scope(), services, two.id, mainHall?.id, 0)).toEqual({
+        ok: false,
+        error: 'from_till',
+      })
+      expect((await rowByNumber('2')).number).toBe('2')
+    })
+  })
+
+  describe('a venue made by hand', () => {
+    let hall = ''
+    let patio = ''
+    let one = ''
+    let two = ''
+    let three = ''
+    const named = async () => (await handView()).halls
+    const idsIn = async (areaId: string) =>
+      (await named()).find((candidate) => candidate.id === areaId)?.tables.map((r) => r.id)
+    const tokenOf = async (tableId: string) =>
+      (await named()).flatMap((candidate) => candidate.tables).find((r) => r.id === tableId)
+        ?.token as string
+
+    it('adds areas and tables, which touch no public file', async () => {
+      expect(await addArea(handScope(), '  Main   hall ')).toEqual({ ok: true, queued: true })
+      expect(await addArea(handScope(), 'Patio')).toEqual({ ok: true, queued: true })
+      expect(await addArea(handScope(), '   ')).toEqual({ ok: false, error: 'invalid' })
+      expect(await addArea(handScope(), 'x'.repeat(61))).toEqual({ ok: false, error: 'invalid' })
+      const read = await handView()
+      expect(read).toMatchObject({ fromTill: false, sourceLabel: '', total: 0 })
+      expect(read.halls.map((h) => h.name)).toEqual(['Main hall', 'Patio'])
+      hall = read.halls[0]?.id as string
+      patio = read.halls[1]?.id as string
+
+      expect(await addTable(handScope(), hall, { number: '1', name: null })).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await addTable(handScope(), hall, { number: '2', name: null })).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await addTable(handScope(), patio, { number: '3', name: ' Corner ' })).toEqual({
+        ok: true,
+        queued: true,
+      })
+      // A table needs a name or a number, and an area of this venue.
+      expect(await addTable(handScope(), hall, { number: null, name: '  ' })).toEqual({
+        ok: false,
+        error: 'no_label',
+      })
+      const tillArea = (await view()).halls[0]?.id as string
+      expect(await addTable(handScope(), tillArea, { number: '9', name: null })).toEqual({
+        ok: false,
+        error: 'not_found',
+      })
+      expect(await addTable(handScope(), 'ar_nope', { number: '9', name: null })).toEqual({
+        ok: false,
+        error: 'not_found',
+      })
+      expect(sent).toEqual([])
+
+      const tables = (await handView()).halls.map((h) => h.tables)
+      expect(tables.map((list) => list.map((r) => r.shownAs))).toEqual([['1', '2'], ['Corner']])
+      one = tables[0]?.[0]?.id as string
+      two = tables[0]?.[1]?.id as string
+      three = tables[1]?.[0]?.id as string
+    })
+
+    it('hands out codes, then a number or a name is queued only for a table that has one', async () => {
+      expect(await createAllCodes(handScope(), services)).toEqual({
+        ok: true,
+        queued: true,
+        issued: 3,
+        skippedNoLabel: 0,
+      })
+      expect(sent).toHaveLength(1)
+      sent.length = 0
+
+      // A table with a code: its file says its label, so the job is queued.
+      expect(await renumberTable(handScope(), services, one, ' 11 ')).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent).toHaveLength(1)
+      sent.length = 0
+      expect((await handView()).halls[0]?.tables[0]).toMatchObject({ number: '11', shownAs: '11' })
+      // The table "Corner" has a name and a number: a number it loses is fine, its name stays.
+      expect(await renumberTable(handScope(), services, three, null)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      // But a table with neither is refused.
+      expect(await renameTable(handScope(), services, three, null)).toEqual({
+        ok: false,
+        error: 'no_label',
+      })
+      sent.length = 0
+
+      // A table without a code has no file: nothing is queued.
+      expect(await addTable(handScope(), hall, { number: '4', name: null })).toEqual({
+        ok: true,
+        queued: true,
+      })
+      const four = (await handView()).halls[0]?.tables.at(-1)?.id as string
+      expect(await renumberTable(handScope(), services, four, '44')).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await hideTable(handScope(), services, four, true)).toEqual({ ok: true, queued: true })
+      expect(await hideTable(handScope(), services, four, false)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent).toEqual([])
+      // A hidden table gets no code (D95).
+      await hideTable(handScope(), services, four, true)
+      expect(await issueCode(handScope(), services, four)).toEqual({ ok: false, error: 'hidden' })
+      expect(await removeTable(handScope(), services, four)).toEqual({ ok: true, queued: true })
+      expect(sent).toEqual([])
+    })
+
+    it('hides and shows a table and an area; only a file that must go or come is queued', async () => {
+      const token = await tokenOf(one)
+      expect(await hideTable(handScope(), services, one, true)).toEqual({ ok: true, queued: true })
+      expect(sent.at(-1)?.data.retired).toEqual([token])
+      const hidden = (await handView()).halls[0]?.tables[0]
+      expect(hidden).toMatchObject({ isPublic: false, token, address: null, qrSvg: null })
+      expect((await handView()).coded).toBe(2)
+      sent.length = 0
+      await hideTable(handScope(), services, one, false)
+      expect(sent).toEqual([
+        {
+          name: JOB_NAMES.publishTableTokens,
+          data: { tenantId: tenant, venueId: hand.id, retired: [] },
+        },
+      ])
+      sent.length = 0
+
+      const patioToken = await tokenOf(three)
+      expect(await hideArea(handScope(), services, patio, true)).toEqual({ ok: true, queued: true })
+      expect(sent.at(-1)?.data.retired).toEqual([patioToken])
+      expect(await issueCode(handScope(), services, three)).toEqual({ ok: false, error: 'hidden' })
+      sent.length = 0
+      await hideArea(handScope(), services, patio, false)
+      expect(sent).toHaveLength(1)
+      expect(sent[0]?.data.retired).toEqual([])
+    })
+
+    it('moves a table inside its area (no file changes) and to another area (its menu may)', async () => {
+      sent.length = 0
+      expect(await moveTableOf(handScope(), services, one, undefined, 1)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await idsIn(hall)).toEqual([two, one])
+      expect(sent).toEqual([])
+      // A position beyond the end is the end; a negative one cannot be asked for.
+      expect(await moveTableOf(handScope(), services, one, undefined, 99)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await idsIn(hall)).toEqual([two, one])
+
+      expect(await moveTableOf(handScope(), services, three, hall, 0)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(await idsIn(hall)).toEqual([three, two, one])
+      expect(await idsIn(patio)).toEqual([])
+      expect(sent).toHaveLength(1)
+      expect(sent[0]?.data.retired).toEqual([])
+
+      // An area of another venue is not there for this one.
+      const tillArea = (await view()).halls[0]?.id as string
+      expect(await moveTableOf(handScope(), services, one, tillArea, 0)).toEqual({
+        ok: false,
+        error: 'not_found',
+      })
+      // Nor is a table of another venue.
+      const tillTable = await rowByNumber('2')
+      sent.length = 0
+      for (const result of [
+        await hideTable(handScope(), services, tillTable.id, true),
+        await renumberTable(handScope(), services, tillTable.id, '5'),
+        await moveTableOf(handScope(), services, tillTable.id, hall, 0),
+        await removeTable(handScope(), services, tillTable.id),
+        await renameAreaOf(handScope(), tillArea, 'Mine'),
+        await hideArea(handScope(), services, tillArea, true),
+        await moveAreaOf(handScope(), tillArea, 0),
+        await removeArea(handScope(), services, tillArea),
+      ]) {
+        expect(result).toEqual({ ok: false, error: 'not_found' })
+      }
+      expect((await rowByNumber('2')).isPublic).toBe(true)
+      expect(sent).toEqual([])
+
+      // Areas: renamed and reordered without a job.
+      expect(await renameAreaOf(handScope(), patio, 'Garden')).toEqual({ ok: true, queued: true })
+      expect(await moveAreaOf(handScope(), patio, 0)).toEqual({ ok: true, queued: true })
+      expect((await handView()).halls.map((h) => h.name)).toEqual(['Garden', 'Main hall'])
+      expect(sent).toEqual([])
+    })
+
+    it('deletes a table and an area; their codes are named for removal', async () => {
+      const threeToken = await tokenOf(three)
+      expect(await removeTable(handScope(), services, three)).toEqual({ ok: true, queued: true })
+      expect(sent.at(-1)?.data.retired).toEqual([threeToken])
+      expect(await idsIn(hall)).toEqual([two, one])
+      sent.length = 0
+
+      const tokens = [await tokenOf(one), await tokenOf(two)].sort()
+      expect(await removeArea(handScope(), services, hall)).toEqual({ ok: true, queued: true })
+      expect(sent.at(-1)?.data.retired).toEqual(tokens)
+      expect((await handView()).halls.map((h) => h.name)).toEqual(['Garden'])
+      expect((await handView()).total).toBe(0)
+      sent.length = 0
+
+      // An empty area has no file to remove.
+      expect(await removeArea(handScope(), services, patio)).toEqual({ ok: true, queued: true })
+      expect(sent).toEqual([])
+      expect((await handView()).halls).toEqual([])
+    })
+  })
+
+  describe('the menu each area and table shows (D95, M2)', () => {
+    let bar = ''
+    let lounge = ''
+    let barTable = ''
+    let loungeTable = ''
+    const read = async () => handView()
+    const hallOf = async (areaId: string) =>
+      (await read()).halls.find((candidate) => candidate.id === areaId)
+    const rowOf = async (tableId: string) =>
+      (await read()).halls.flatMap((h) => h.tables).find((r) => r.id === tableId)
+
+    it('starts with the venue’s live menu everywhere, and lists the menus in use', async () => {
+      await addArea(handScope(), 'Bar')
+      await addArea(handScope(), 'Lounge')
+      const halls = (await handView()).halls
+      bar = halls.at(-2)?.id as string
+      lounge = halls.at(-1)?.id as string
+      await addTable(handScope(), bar, { number: 'B1', name: null })
+      await addTable(handScope(), lounge, { number: 'L1', name: null })
+      barTable = (await hallOf(bar))?.tables[0]?.id as string
+      loungeTable = (await hallOf(lounge))?.tables[0]?.id as string
+      await createAllCodes(handScope(), services)
+
+      const current = await read()
+      // A menu with no header name of its own is listed by the venue's name.
+      expect(current.menus).toEqual([
+        { id: liveMenu, name: 'Hand venue', live: true },
+        { id: cocktails, name: 'Cocktails', live: false },
+        { id: brunch, name: 'Brunch', live: false },
+      ])
+      const live = { id: liveMenu, name: 'Hand venue', level: 'venue' }
+      expect(await hallOf(bar)).toMatchObject({ menu: live, routeMenuId: null })
+      expect(await rowOf(barTable)).toMatchObject({ menu: live, routeMenuId: null })
+    })
+
+    it('an area’s choice overrides the venue’s, a table’s overrides its area’s, and each queues the files', async () => {
+      sent.length = 0
+      expect(await chooseMenu(handScope(), services, { areaId: bar as never }, cocktails)).toEqual({
+        ok: true,
+        queued: true,
+      })
+      expect(sent).toEqual([
+        {
+          name: JOB_NAMES.publishTableTokens,
+          data: { tenantId: tenant, venueId: hand.id, retired: [] },
+        },
+      ])
+      const cocktailsFromBar = { id: cocktails, name: 'Cocktails', level: 'area' }
+      expect(await hallOf(bar)).toMatchObject({ menu: cocktailsFromBar, routeMenuId: cocktails })
+      expect(await rowOf(barTable)).toMatchObject({ menu: cocktailsFromBar, routeMenuId: null })
+      // The other area still shows the live menu.
+      expect((await hallOf(lounge))?.menu).toMatchObject({ id: liveMenu, level: 'venue' })
+
+      await chooseMenu(handScope(), services, { tableId: barTable as never }, liveMenu)
+      expect(await rowOf(barTable)).toMatchObject({
+        menu: { id: liveMenu, level: 'table' },
+        routeMenuId: liveMenu,
+      })
+      // The file of the code carries the menu it opens.
+      const files = await loadTokenFiles(app, tenant, hand.id)
+      expect(files?.files.find((file) => file.tableLabel === 'B1')?.menuId).toBe(liveMenu)
+      expect(files?.files.find((file) => file.tableLabel === 'L1')?.menuId).toBe(liveMenu)
+
+      // Taking the choice away goes back to the next level up.
+      await chooseMenu(handScope(), services, { tableId: barTable as never }, null)
+      expect(await rowOf(barTable)).toMatchObject({
+        menu: { id: cocktails, level: 'area' },
+        routeMenuId: null,
+      })
+      await chooseMenu(handScope(), services, { areaId: bar as never }, null)
+      expect(await hallOf(bar)).toMatchObject({ menu: { level: 'venue' }, routeMenuId: null })
+    })
+
+    it('a menu that is not published falls back to the next level up, and says it was chosen', async () => {
+      await chooseMenu(handScope(), services, { tableId: loungeTable as never }, brunch)
+      expect(await rowOf(loungeTable)).toMatchObject({
+        menu: { id: liveMenu, level: 'venue' },
+        routeMenuId: brunch,
+      })
+      await chooseMenu(handScope(), services, { tableId: loungeTable as never }, null)
+    })
+
+    it('refuses what is not the venue’s: a menu in the bin or of nobody, a table of another venue', async () => {
+      const tillTable = await rowByNumber('2')
+      sent.length = 0
+      expect(
+        await chooseMenu(handScope(), services, { areaId: bar as never }, newId('nd')),
+      ).toEqual({ ok: false, error: 'unknown_menu' })
+      expect(
+        await chooseMenu(handScope(), services, { tableId: tillTable.id as never }, cocktails),
+      ).toEqual({ ok: false, error: 'not_found' })
+      // The binned menu is no longer offered, and an entry that names it counts as none.
+      await chooseMenu(handScope(), services, { areaId: lounge as never }, brunch)
+      sent.length = 0
+      ok(await deleteMenu(app, tenant, { venueId: hand.id, menuId: brunch }))
+      expect((await read()).menus.map((menu) => menu.id)).toEqual([liveMenu, cocktails])
+      expect((await hallOf(lounge))?.routeMenuId).toBeNull()
+      expect(await chooseMenu(handScope(), services, { areaId: bar as never }, brunch)).toEqual({
+        ok: false,
+        error: 'unknown_menu',
+      })
+      expect(sent).toEqual([])
+    })
+
+    it('a queue that is down is told, not hidden', async () => {
+      enqueueFails = true
+      expect(await chooseMenu(handScope(), services, { areaId: bar as never }, cocktails)).toEqual({
+        ok: true,
+        queued: false,
+      })
+      expect((await hallOf(bar))?.routeMenuId).toBe(cocktails)
     })
   })
 })
