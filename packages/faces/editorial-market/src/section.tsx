@@ -11,7 +11,7 @@ import { Item } from './item'
 import { type Filters, hasVisibleItems, isFiltering, isStrip, sectionDomId } from './model'
 import { type PageContext, Photo, Text } from './parts'
 
-/** The first items of a strip at the top are the first thing on the page: load their photos now. */
+/** The first photos of the first section are the first thing on the page: load them now. */
 const EAGER_PHOTOS = 3
 
 export function SectionBlock({
@@ -27,7 +27,7 @@ export function SectionBlock({
   readonly filters: Filters
   /** The heading level of the title: 2 for a section, 3 for a sub-section. */
   readonly level?: 2 | 3
-  /** The first section of the page: the photos of a strip there load at once. */
+  /** The first section of the page: its first photos load at once, whatever its layout (D92). */
   readonly first?: boolean
   /** Controls that belong under the title (the layout switch). */
   readonly tools?: ReactNode
@@ -63,7 +63,7 @@ export function SectionBlock({
             key={item.id}
             item={item}
             ctx={ctx}
-            priority={feature && first && index < EAGER_PHOTOS}
+            priority={first && index < EAGER_PHOTOS}
             strip={feature}
             nameLevel={level === 2 ? 3 : 4}
           />
