@@ -30,9 +30,8 @@ export default async function SettingsGeneralPage() {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('general.description')}</p>
       </div>
-      {/* A new key when a save (or another tab) changed the values, so the fields start from them. */}
+      {/* The form keeps what it saved itself; the values here are where it starts from. */}
       <OrganizationGeneral
-        key={`${address.name}\n${address.slug}`}
         name={address.name}
         slug={address.slug}
         canEdit={canManageOrganization(organization.role)}

@@ -89,7 +89,15 @@ async function queueAddressFiles(tenantId: string): Promise<boolean> {
     }
   }
   await attempt('index', () => enqueueJob(JOB_NAMES.publishOrganizationIndex, { tenantId: tenant }))
-  for (const venue of await listVenues(tenantId)) {
+  let live: Awaited<ReturnType<typeof listVenues>> = []
+  try {
+    live = await listVenues(tenantId)
+  } catch (error) {
+    // The change is saved: not reading the venues is a late file, not a failed save.
+    logError('organization_venues_not_read', error)
+    allQueued = false
+  }
+  for (const venue of live) {
     const venueId = venue.id as VenueId
     // The table files carry the organisation's name; the venue's index and menu files do too.
     await attempt('table_files', () =>
