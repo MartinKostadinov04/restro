@@ -3,7 +3,8 @@ import { type Browser, expect, type Page, test } from '@playwright/test'
 import { addressOfVenue } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG, VENUE_NAME } from './support'
 
-// The composer's "Guest features" panel (brief SH-05b, D71) on a production build, with the REAL
+// The composer's "Guest features" card (brief SH-05b, D71; on the Design subtab since S6, D92) on a
+// production build, with the REAL
 // worker beside it, in English. The demo venue's "Filters (diet and tags)" switch is turned off and
 // saved, the menu is published the real way with the Publish button, and a fresh browser then finds
 // no filter control on the guest page (data-slot="menu.filters"). The switch goes back on and is
@@ -32,11 +33,9 @@ async function guestFilterControls(browser: Browser): Promise<number> {
   }
 }
 
-/** Sets the filters switch in the composer's panel, saves it, and closes the panel. */
+/** Sets the filters switch in the composer's Guest features card (Design subtab) and saves it. */
 async function saveFiltersSwitch(on: boolean) {
-  await page.goto(`/venues/${venueId}`)
-  await expect(page.getByTestId('composer')).toBeVisible()
-  await page.getByTestId('open-guest-features').click()
+  await page.goto(`/venues/${venueId}?tab=composer&sub=design`)
   const panel = page.getByTestId('guest-features-panel')
   await expect(panel).toBeVisible()
   const filters = panel.getByRole('switch', { name: FILTERS })
@@ -44,8 +43,6 @@ async function saveFiltersSwitch(on: boolean) {
   await panel.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText(SAVED)).toBeVisible()
   await expect(filters).toHaveAttribute('aria-checked', String(on))
-  await page.keyboard.press('Escape')
-  await expect(panel).toBeHidden()
 }
 
 /** Publishes the menu with the Publish button of the venue header; the worker publishes it. */

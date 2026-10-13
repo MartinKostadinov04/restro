@@ -9,15 +9,16 @@ import { ADMIN_PASSWORD } from './support'
 
 // The Design tab on a production build, with the REAL worker running beside it (brief SH-05a). The
 // venue is the fixture of scripts/seed-design-e2e.ts: three drinks, no look, no template, nothing
-// published. In English unless a step says otherwise. Steps:
+// published. In English unless a step says otherwise. Since brief S6 (D92) it is the composer's
+// Design subtab, and the menu's layout is set in the composer's Structure. Steps:
 //
-//   the tab sits after Publishing, and Settings no longer holds the Appearance card
+//   Design is the composer's subtab, and Settings no longer holds the Appearance card
 //   the phone preview draws the template from the draft, and the admin page keeps its scrollbar
 //   Midnight is chosen -> the preview shows its colours at once -> Save is on
 //   a colour set by hand that does not read -> Save is off, the pair is named (screenshot)
-//   the layout option is chosen -> it saves by itself
+//   the menu layout is chosen in Structure (another page) -> it saves by itself
 //   Save look -> reload -> the look is still Midnight
-//   Publishing -> Publish -> the guest page carries Midnight's page colour and the chosen layout
+//   Publish -> the guest page carries Midnight's page colour and the chosen layout
 //   the same tab at phone width (screenshot), and in Bulgarian
 //
 // The screenshots go to `E2E_SHOTS_DIR`, else to `.local/screenshots/sh/`.
@@ -61,7 +62,7 @@ async function signIn(target: Page, email: string) {
   throw new Error(`could not sign in as ${email}`)
 }
 
-const designUrl = () => `/venues/${venueId}?tab=design`
+const designUrl = () => `/venues/${venueId}?tab=composer&sub=design`
 const panel = () => page.getByTestId('design-panel')
 const save = () => page.getByRole('button', { name: 'Save look' })
 const toast = () => page.locator('[data-sonner-toast]')
@@ -96,12 +97,21 @@ test.afterAll(async () => {
   await owner?.close()
 })
 
-test('the Design tab follows Tables & QR, and Settings no longer holds the Appearance card', async () => {
+test('Design is the composer’s subtab, and Settings no longer holds the Appearance card', async () => {
   await page.goto(`/venues/${venueId}`)
-  // No Publishing tab (D97): the Publish button heads every tab.
-  await expect(page.getByRole('tab')).toHaveText(['Composer', 'Tables & QR', 'Design', 'Settings'])
+  // No Publishing tab (D97): the Publish button heads every tab. No Design tab (D92): it is the
+  // composer's second subtab.
+  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
+    'Composer',
+    'Tables & QR',
+    'Settings',
+  ])
   await page.getByRole('tab', { name: 'Design' }).click()
-  await expect(page).toHaveURL(/tab=design/)
+  await expect(page).toHaveURL(/[?&]sub=design/)
+  await expect(panel()).toBeVisible()
+  // An old link to the Design tab lands on the subtab.
+  await page.goto(`/venues/${venueId}?tab=design`)
+  await expect(page).toHaveURL(/[?&]tab=composer&sub=design/)
   await expect(panel()).toBeVisible()
 
   await page.getByRole('tab', { name: 'Settings' }).click()
@@ -185,10 +195,25 @@ test('a colour set by hand that does not read turns Save off and names the pair'
   await expect(save()).toBeEnabled()
 })
 
-test('the template’s layout option saves by itself', async () => {
-  await page.getByTestId('design-look-options').getByRole('button', { name: 'One column' }).click()
-  await expect(toast()).toContainText('Saved. Guests see it after the next publish.')
-  await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
+test('the menu layout is chosen in the composer’s Structure, and saves by itself (D92)', async () => {
+  // Another page of the same person: this one keeps the unsaved look of the steps above.
+  const structure = await owner.newPage()
+  try {
+    await structure.goto(`/venues/${venueId}?tab=composer&sub=structure`)
+    const layout = structure.getByTestId('menu-layout')
+    await layout.getByRole('button', { name: 'One column' }).click()
+    await expect(structure.locator('[data-sonner-toast]').first()).toContainText(
+      'Saved. Guests see it after the next publish',
+    )
+    await expect(layout.getByRole('button', { name: 'One column' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    // The Design tab draws no layout option any more: the template declares none.
+    await expect(page.getByTestId('design-look-options')).toHaveCount(0)
+  } finally {
+    await structure.close()
+  }
 })
 
 test('Save look keeps the whole look: it is still Midnight after a reload', async () => {
@@ -203,9 +228,8 @@ test('Save look keeps the whole look: it is still Midnight after a reload', asyn
     'true',
   )
   await expect(page.getByLabel('Primary', { exact: true })).toHaveValue(MIDNIGHT_PAGE)
-  await expect(
-    page.getByTestId('design-look-options').getByRole('button', { name: 'One column' }),
-  ).toHaveAttribute('aria-pressed', 'true')
+  // The draft carries the menu layout chosen in Structure (D92).
+  await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
   await expect(save()).toBeDisabled()
 })
 
