@@ -14,7 +14,7 @@ import {
   SettingsSectionSkeleton,
   VersioningSection,
 } from '@/publish/settings-sections'
-import { VenueHeader, VenueHeaderSkeleton } from '@/publish/venue-header'
+import { VenueHeader } from '@/publish/venue-header'
 import { getPool } from '@/server/db'
 import { guestPathOf } from '@/server/publish/summary'
 import { canPublishMenu } from '@/server/roles'
@@ -77,15 +77,13 @@ export default async function VenueWorkspacePage({
       <AdminHeader trail={[{ label: tNav('venues'), href: '/venues' }]} current={venue.name} />
       <div className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         {/* The Publish bar top right and the warnings under the header, on every tab (D96, D97). */}
-        <Suspense fallback={<VenueHeaderSkeleton title={title} />}>
-          <VenueHeader
-            tenantId={organization.id}
-            venueId={venue.id}
-            guestPath={guestPath}
-            canPublish={canPublishMenu(organization.role)}
-            title={title}
-          />
-        </Suspense>
+        <VenueHeader
+          tenantId={organization.id}
+          venueId={venue.id}
+          guestPath={guestPath}
+          canPublish={canPublishMenu(organization.role)}
+          title={title}
+        />
         <WorkspaceTabs
           contents={{
             composer: composerOpen ? (

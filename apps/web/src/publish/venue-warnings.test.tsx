@@ -21,6 +21,14 @@ const actions = vi.hoisted(() => ({
 }))
 vi.mock('@/server/publish/actions', () => actions)
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+// The server component's own words come from the real English messages.
+vi.mock('next-intl/server', async () => {
+  const { MESSAGES } = await import('@/test-utils')
+  return {
+    getTranslations: async (namespace: string) => (key: string) =>
+      (MESSAGES.en as unknown as Record<string, Record<string, string>>)[namespace]?.[key] ?? key,
+  }
+})
 
 beforeEach(() => {
   summary.venuePublishState.mockReset()
@@ -101,5 +109,11 @@ describe('the warnings under the venue header', () => {
     expect(screen.getByTestId('address-off-banner').textContent).toContain(
       'The menu address is switched off. Publish to put it back.',
     )
+  })
+
+  it('says the files are being written after a return, and nothing more', async () => {
+    await render({ menus: [menu({ busy: 'files' })] })
+    expect(screen.getByTestId('publish-files').textContent).toBe('Updating what guests see…')
+    expect(screen.queryByTestId('paused-banner')).toBeNull()
   })
 })

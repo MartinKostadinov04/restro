@@ -1,6 +1,7 @@
 import { type Browser, type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
+import { addressOfVenue } from './menu-path'
 import { ADMIN_PASSWORD, PUBLISH_OWNER_EMAIL } from './support'
 
 // A venue with no till (CF-01, D64, D66) on a production build with the REAL worker beside it:
@@ -25,7 +26,7 @@ const WORKER_WAIT = { timeout: 45_000 }
 let owner: BrowserContext
 let page: Page
 let venueUrl = ''
-/** The venue's menu address as its page shows it: `/m/<slug>-<code>` (D68). */
+/** The venue's menu address of before D84, `/m/<slug>-<code>` (D68): it still opens the menu. */
 let guestPath = ''
 
 async function signIn(target: Page, email: string) {
@@ -108,10 +109,13 @@ test('venue with no till: create the venue from the list', async () => {
     'Create a section, or connect a till in Settings → Integrations.',
   )
 
-  // The address is the slug and a random code of 12 characters.
+  // The page shows the guest address of D84, `/m/<organisation>/<venue>`; the address of before,
+  // the slug and a random code of 12 characters, still opens the menu.
   const address = page.getByTestId('venue-header-address')
-  await expect(address).toHaveText(new RegExp(`^/m/${SLUG}-[a-z0-9]{12}$`))
-  guestPath = (await address.textContent()) ?? ''
+  await expect(address).toHaveText(`/m/no-till-club/${SLUG}`)
+  const venueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(venueUrl)?.[1] ?? ''
+  guestPath = (await addressOfVenue({ venueId })).path
+  expect(guestPath).toMatch(new RegExp(`^/m/${SLUG}-[a-z0-9]{12}$`))
 
   // The list has it: a Draft (nothing is published yet) made by hand, with its guest address
   // (D84, D86); Preview menu is off until it is published, and says why.
@@ -140,9 +144,7 @@ test('venue with no till: create the venue from the list', async () => {
   await page.getByTestId('new-venue-submit').click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   await expect(page.getByRole('heading', { name: 'Same address again', level: 1 })).toBeVisible()
-  const twin = (await page.getByTestId('venue-header-address').textContent()) ?? ''
-  expect(twin).toMatch(new RegExp(`^/m/${SLUG}-2-[a-z0-9]{12}$`))
-  expect(twin).not.toBe(guestPath)
+  await expect(page.getByTestId('venue-header-address')).toHaveText(`/m/no-till-club/${SLUG}-2`)
 })
 
 test('venue with no till: a section, an item with a price, allergens in the item sheet', async () => {
@@ -195,16 +197,20 @@ test('venue with no till: a section, an item with a price, allergens in the item
 test('venue with no till: publish, and the guest page shows the item and its price', async ({
   browser,
 }) => {
-  await page.goto(`${venueUrl}?tab=publishing`)
-  await expect(page.getByTestId('publish-panel')).toBeVisible()
-  await page.getByTestId('live-nothing').getByRole('button', { name: 'Publish' }).click()
+  // The Publish button heads every tab (D96); it asks first, listing what goes live.
+  await page.goto(venueUrl)
+  // Streamed parts wait in hidden containers until React shows them: wait until it has.
+  await expect(page.locator('[hidden][id*="S:"]')).toHaveCount(0)
+  await page.getByTestId('publish-button').click()
+  await expect(page.getByTestId('changes-all-new')).toContainText('1 item will go live')
+  await page.getByTestId('publish-confirm').click()
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(
     'Version 1 is live',
     WORKER_WAIT,
   )
 
-  // The Publish tab links to the guest page at the venue's address.
-  await expect(page.getByTestId('guest-link')).toHaveAttribute('href', guestPath)
+  // "Open the guest page" beside it leads to the venue's address (D84).
+  await expect(page.getByTestId('guest-link')).toHaveAttribute('href', `/m/no-till-club/${SLUG}`)
 
   // A guest on a fresh browser: the menu at /m/<address> with the item and its euro price.
   const context = await browser.newContext()
@@ -252,9 +258,9 @@ test('Settings: the readable part of the address is renamed, and the old link st
   await expect(
     page.getByText('Address saved. Guests see the new name within a minute.'),
   ).toBeVisible()
-  // The venue's page names it too, after a reload; the code is the same.
+  // The venue's page names it too, after a reload, at the address of D84.
   await page.reload()
-  await expect(page.getByTestId('venue-header-address')).toHaveText(newPath)
+  await expect(page.getByTestId('venue-header-address')).toHaveText(`/m/no-till-club/${renamed}`)
 
   // The worker (queued by the rename) writes the venue index again with the new slug: wait for it
   // the way a CDN would show it, with a request that has no browser cache.

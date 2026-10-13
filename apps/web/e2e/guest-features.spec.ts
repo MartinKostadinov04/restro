@@ -5,7 +5,7 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG, VENUE_NAME } from './support'
 
 // The composer's "Guest features" panel (brief SH-05b, D71) on a production build, with the REAL
 // worker beside it, in English. The demo venue's "Filters (diet and tags)" switch is turned off and
-// saved, the menu is published the real way from the Publishing tab, and a fresh browser then finds
+// saved, the menu is published the real way with the Publish button, and a fresh browser then finds
 // no filter control on the guest page (data-slot="menu.filters"). The switch goes back on and is
 // published again, so the specs that read the demo menu afterwards find it as they left it.
 test.describe.configure({ mode: 'serial' })
@@ -48,11 +48,12 @@ async function saveFiltersSwitch(on: boolean) {
   await expect(panel).toBeHidden()
 }
 
-/** Publishes the menu from the Publishing tab; the worker publishes it. */
+/** Publishes the menu with the Publish button of the venue header; the worker publishes it. */
 async function publishFromTab() {
-  await page.goto(`/venues/${venueId}?tab=publishing`)
-  await expect(page.getByTestId('publish-panel')).toBeVisible()
-  await page.getByRole('button', { name: 'Publish', exact: true }).click()
+  await page.goto(`/venues/${venueId}`)
+  await expect(page.locator('[hidden][id*="S:"]')).toHaveCount(0)
+  await page.getByTestId('publish-button').click()
+  await page.getByTestId('publish-confirm').click()
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(/is live/, WORKER_WAIT)
 }
 
@@ -102,7 +103,7 @@ test('Filters off in the Guest features panel, saved', async () => {
   await saveFiltersSwitch(false)
 })
 
-test('published from the Publishing tab, the guest page has no filter control', async ({
+test('published with the Publish button, the guest page has no filter control', async ({
   browser,
 }) => {
   await publishFromTab()

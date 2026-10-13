@@ -96,15 +96,10 @@ test.afterAll(async () => {
   await owner?.close()
 })
 
-test('the Design tab follows Publishing, and Settings no longer holds the Appearance card', async () => {
+test('the Design tab follows Tables & QR, and Settings no longer holds the Appearance card', async () => {
   await page.goto(`/venues/${venueId}`)
-  await expect(page.getByRole('tab')).toHaveText([
-    'Composer',
-    'Tables & QR',
-    'Publishing',
-    'Design',
-    'Settings',
-  ])
+  // No Publishing tab (D97): the Publish button heads every tab.
+  await expect(page.getByRole('tab')).toHaveText(['Composer', 'Tables & QR', 'Design', 'Settings'])
   await page.getByRole('tab', { name: 'Design' }).click()
   await expect(page).toHaveURL(/tab=design/)
   await expect(panel()).toBeVisible()
@@ -217,9 +212,11 @@ test('Save look keeps the whole look: it is still Midnight after a reload', asyn
 test('after Publish the guest page carries Midnight’s page colour and the chosen layout', async ({
   browser,
 }) => {
-  await page.goto(`/venues/${venueId}?tab=publishing`)
-  await expect(page.getByTestId('publish-panel')).toBeVisible()
-  await page.getByTestId('live-nothing').getByRole('button', { name: 'Publish' }).click()
+  // The Publish button heads every tab (D96); it asks first.
+  await page.goto(`/venues/${venueId}?tab=design`)
+  await expect(page.locator('[hidden][id*="S:"]')).toHaveCount(0)
+  await page.getByTestId('publish-button').click()
+  await page.getByTestId('publish-confirm').click()
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(
     'Version 1 is live',
     WORKER_WAIT,

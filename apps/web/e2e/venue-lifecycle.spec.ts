@@ -15,8 +15,9 @@ import { ADMIN_PASSWORD } from './support'
 //   guests     the worker withdraws the guest files: the menu address says "not available" and the
 //              table's QR address does not open
 //   restore    Settings > Deleted venues lists it with the day it was deleted; Restore brings it back
-//   publish    the restored venue's address stays off until it is published (the Publish tab says so
-//              and keeps its button on); then the same address shows the menu again
+//   publish    the restored venue's address stays off until it is published (the warning under the
+//              venue header says so and the Publish button stays on); then the same address shows
+//              the menu again
 //   no venues  with every venue deleted the sidebar and /venues show the way to add one
 //
 // The organisation is the fixture of scripts/seed-lifecycle-e2e.ts. With SCREENSHOT_DIR set, the
@@ -145,9 +146,9 @@ test('an owner renames the venue; the sidebar and the page follow', async () => 
   await expect(sidebarItem(page, RENAMED)).toBeVisible()
   await expect(sidebarItem(page, BAR)).toHaveCount(0)
   await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
-  // The address did not change.
+  // The address did not change (D84: `/m/<organisation>/<venue>`).
   await expect(page.getByTestId('venue-header-address')).toHaveText(
-    `/m/${seed.barSlug}-${seed.barPublicId}`,
+    `/m/lifecycle-club/${seed.barSlug}`,
   )
 })
 
@@ -234,12 +235,19 @@ test('an owner unpublishes the venue from its card: guests lose the menu; publis
     })
     .toBe(404)
 
-  // Publishing is the word to serve the venue again, even with nothing new in the menu.
-  await page.goto(`/venues/${seed.barId}?tab=publishing`)
+  // Publishing is the word to serve the venue again, even with nothing new in the menu: the
+  // warning under the header says so on every tab (D97).
+  await page.goto(`/venues/${seed.barId}`)
+  // Streamed parts wait in hidden containers until React shows them: wait until it has.
+  await expect(page.locator('[hidden][id*="S:"]')).toHaveCount(0)
   await expect(page.getByTestId('address-off-banner')).toBeVisible()
-  const publish = page.getByTestId('publish-button').first()
+  const publish = page.getByTestId('publish-button')
   await expect(publish).toBeEnabled()
   await publish.click()
+  await expect(page.getByTestId('changes-same')).toContainText(
+    'Publishing switches the menu address back on.',
+  )
+  await page.getByTestId('publish-confirm').click()
   await expect(page.getByTestId('publish-outcome-title')).toContainText('Nothing new to publish', {
     timeout: 60_000,
   })
@@ -382,10 +390,11 @@ test('the restored venue stays off for guests until it is published, then the sa
   browser,
   request,
 }) => {
-  await page.goto(`/venues/${seed.barId}?tab=publishing`)
+  await page.goto(`/venues/${seed.barId}?tab=settings`)
+  await expect(page.locator('[hidden][id*="S:"]')).toHaveCount(0)
   await expect(page.getByTestId('address-off-banner')).toBeVisible()
   // The menu is the same as the live one, yet Publish is on: that is how the address comes back.
-  const publish = page.getByTestId('publish-button').first()
+  const publish = page.getByTestId('publish-button')
   await expect(publish).toBeEnabled()
   // Still not available to guests.
   expect(await guestText(browser, `/m/${seed.barSlug}-${seed.barPublicId}`)).toContain(
@@ -393,6 +402,7 @@ test('the restored venue stays off for guests until it is published, then the sa
   )
 
   await publish.click()
+  await page.getByTestId('publish-confirm').click()
   await expect(page.getByTestId('publish-outcome-title')).toContainText('Nothing new to publish', {
     timeout: 60_000,
   })
@@ -402,10 +412,11 @@ test('the restored venue stays off for guests until it is published, then the sa
       intervals: [1_000, 2_000],
     })
     .toBe(true)
-  // The page of the tab is up to date again.
+  // The page is up to date again: no warning, and nothing to publish.
   await page.reload()
+  await expect(page.locator('[hidden][id*="S:"]')).toHaveCount(0)
   await expect(page.getByTestId('address-off-banner')).toHaveCount(0)
-  await expect(page.getByTestId('publish-button').first()).toBeDisabled()
+  await expect(page.getByTestId('publish-button')).toBeDisabled()
 
   // The tables kept their codes through the delete (D86) and the till came back with the restore
   // (V1), so the publish wrote the table file again: the QR address opens the menu.

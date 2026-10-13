@@ -117,7 +117,7 @@ test('the sidebar lists the venues by name, then All venues, New venue and Setti
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
 
   // The venues' sections are the tabs of a venue's page: the sidebar lists none of them.
-  for (const section of ['Composer', 'Tables & QR', 'Publishing', 'Design']) {
+  for (const section of ['Composer', 'Tables & QR', 'Design']) {
     await expect(page.locator('[data-sidebar="sidebar"]').getByText(section)).toHaveCount(0)
   }
   // One organisation: its name, nothing to switch; and no venue switcher in the footer.
@@ -135,22 +135,29 @@ test('open a venue from the sidebar, then swap to another on the same tab', asyn
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
   await expect(page.getByTestId('venue-nav-all')).not.toHaveAttribute('aria-current', 'page')
 
+  // The venue's tabs (D97): no Publishing tab; the Publish button heads every tab instead.
+  await expect(page.getByRole('tab')).toHaveText(['Composer', 'Tables & QR', 'Design', 'Settings'])
+  await expect(page.getByTestId('publish-button')).toBeVisible()
+
   // Another tab; the venue's links in the sidebar now carry it.
-  await page.getByRole('tab', { name: 'Publishing' }).click()
-  await expect(page).toHaveURL(/\?tab=publishing$/)
-  await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute('href', /\?tab=publishing$/)
-  await expect(page.getByTestId('publish-panel')).toBeVisible()
+  await page.getByRole('tab', { name: 'Settings' }).click()
+  await expect(page).toHaveURL(/\?tab=settings$/)
+  await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute('href', /\?tab=settings$/)
+  await expect(page.getByTestId('settings-general')).toBeVisible()
+  await expect(page.getByTestId('publish-button')).toBeVisible()
   await snapshot('cf-09a-venue-desktop.png')
 
   await venueItem(page, 'Aurora Bar').click()
-  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}\?tab=publishing$/)
+  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}\?tab=settings$/)
   await expect(page.getByRole('heading', { name: 'Aurora Bar', level: 1 })).toBeVisible()
-  await expect(page.getByRole('tab', { name: 'Publishing' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
+  await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true')
   await expect(venueItem(page, 'Aurora Bar')).toHaveAttribute('aria-current', 'page')
   await expect(venueItem(page, 'Boulevard Club')).not.toHaveAttribute('aria-current', 'page')
+
+  // An old link to the Publishing tab opens Settings, where its settings went (D97).
+  await page.goto(`${new URL(page.url()).pathname}?tab=publishing`)
+  await expect(page.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true')
 
   // "All venues" is the overview, with a card for each.
   await page.getByTestId('venue-nav-all').click()

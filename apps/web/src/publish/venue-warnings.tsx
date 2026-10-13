@@ -1,9 +1,12 @@
 // The warnings that need action, under the venue header on every tab (D97), a server component:
 // a publish V11 held (approve or reject, one banner per menu that has one), the pause after a
 // return to an older version ("Resume"), and the address switched off (D86: "publish to put it
-// back"). Only what applies is shown (D96). It reads the page's one publish state
+// back"). Only what applies is shown (D96); while the files of a return are written it says so.
+// It reads the page's one publish state
 // (`venuePublishState`: the held rows, the pause and the address check), which the Publish bar
 // shares; its buttons press through the header's publisher.
+import { getTranslations } from 'next-intl/server'
+
 import { venuePublishState } from '@/server/publish/summary'
 import { publishBlock, targetOf } from '@/server/publish/view'
 
@@ -26,9 +29,19 @@ export async function VenueWarnings({
   const held = state.menus.flatMap((menu) =>
     menu.held === null ? [] : [{ menu, held: menu.held }],
   )
-  if (held.length === 0 && !state.paused && state.addressServed) return null
+  // Files being written after a return to an earlier version (no person's publish waiting).
+  const files =
+    state.menus.some((menu) => menu.busy === 'files') &&
+    !state.menus.some((menu) => menu.busy === 'publish')
+  if (held.length === 0 && !state.paused && state.addressServed && !files) return null
+  const t = await getTranslations('publish')
   return (
     <div className="grid gap-3" data-testid="venue-warnings">
+      {files ? (
+        <p role="status" className="text-sm text-muted-foreground" data-testid="publish-files">
+          {t('updatingFiles')}
+        </p>
+      ) : null}
       {held.map(({ menu, held: hold }) => (
         <HeldBanner
           key={hold.snapshotId}
