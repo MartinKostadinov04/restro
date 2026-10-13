@@ -18,6 +18,9 @@ import { ADMIN_PASSWORD } from './support'
 //   publish    the restored venue's address stays off until it is published (the Publish tab says so
 //              and keeps its button on); then the same address shows the menu again
 //   no venues  with every venue deleted the sidebar and /venues show the way to add one
+//   purge      Settings > Deleted venues shows when each venue is erased; "Delete permanently" asks
+//              for the venue's name and takes the row off the list (the erasing is the worker's
+//              purge job, tested with it)
 //
 // The organisation is the fixture of scripts/seed-lifecycle-e2e.ts. With SCREENSHOT_DIR set, the
 // test saves the two screenshots of the brief there.
@@ -30,6 +33,7 @@ const MEMBER_EMAIL = 'lifecycle-member@demo-club.test'
 const BAR = 'Lifecycle Bar'
 const RENAMED = 'Lifecycle Lounge'
 const KEEPER = 'Lifecycle Keeper'
+const PURGED = 'Lifecycle Purge'
 const ITEM = 'Lifecycle Negroni'
 // The guest face writes item names in capitals: compare without case.
 const hasItem = (text: string) => text.toLowerCase().includes(ITEM.toLowerCase())
@@ -149,6 +153,14 @@ test('an owner renames the venue; the sidebar and the page follow', async () => 
   await expect(page.getByTestId('venue-header-address')).toHaveText(
     `/m/${seed.barSlug}-${seed.barPublicId}`,
   )
+  // The address row (D84): the organisation's name is the fixed start, the venue's is the field,
+  // and the whole address opens in a new tab.
+  await expect(page.getByTestId('venue-slug-prefix')).toHaveText('/m/lifecycle-club/')
+  await expect(page.getByTestId('venue-slug-input')).toHaveValue(seed.barSlug)
+  await expect(page.getByTestId('venue-address')).toHaveText(`/m/lifecycle-club/${seed.barSlug}`)
+  const open = page.getByTestId('venue-address-open')
+  await expect(open).toHaveAttribute('href', `/m/lifecycle-club/${seed.barSlug}`)
+  await expect(open).toHaveAttribute('target', '_blank')
 })
 
 test('the guest page and the table code work before the venue is deleted', async ({
@@ -273,6 +285,11 @@ test('an admin renames but cannot delete; a member sees the name as text only', 
     await expect(admin.target.getByTestId('delete-venue-open')).toHaveCount(0)
     // Settings has no "Deleted venues" for an admin, and the page is not there.
     await admin.target.goto('/settings')
+    // It opens General, where an admin sees the organisation's values as text (owners change them).
+    await expect(admin.target).toHaveURL(/\/settings\/general$/)
+    await expect(admin.target.getByTestId('general-name-text')).toHaveText('Lifecycle Club')
+    await expect(admin.target.getByTestId('general-name-input')).toHaveCount(0)
+    await expect(admin.target.getByTestId('general-slug-input')).toHaveCount(0)
     await expect(admin.target.getByTestId('settings-nav-integrations')).toBeVisible()
     await expect(admin.target.getByTestId('settings-nav-deleted-venues')).toHaveCount(0)
     const response = await admin.target.goto('/settings/deleted-venues')
@@ -430,4 +447,58 @@ test('with every venue deleted the sidebar and the list show the way to add one'
   }
   await expect(sidebarItem(page, RENAMED)).toBeVisible()
   await expect(sidebarItem(page, KEEPER)).toBeVisible()
+})
+
+test('Delete permanently: the dialog says what goes and asks for the name, then the venue leaves the list', async () => {
+  // A venue of its own, so the two above stay for the specs that follow.
+  await page.goto('/venues')
+  await page.getByTestId('new-venue').click()
+  const creating = page.getByTestId('new-venue-dialog')
+  await creating.getByTestId('new-venue-source-hand').click()
+  await creating.getByTestId('new-venue-next').click()
+  await creating.getByTestId('new-venue-name').fill(PURGED)
+  await creating.getByTestId('new-venue-submit').click()
+  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
+  const venueId = new URL(page.url()).pathname.split('/').pop() ?? ''
+  await deleteVenue(page, venueId, PURGED)
+
+  // The bin says when it erases the venue by itself (30 days after the deletion).
+  await page.goto('/settings/deleted-venues')
+  const row = page.getByTestId('deleted-venue').filter({ hasText: PURGED })
+  await expect(row).toBeVisible()
+  await expect(row.getByTestId('deleted-venue-date')).toContainText('Deleted on')
+  await expect(row.getByTestId('deleted-venue-date')).toContainText('erased on')
+
+  await row.getByTestId('purge-venue-open').click()
+  const dialog = page.getByTestId('purge-venue-dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('heading')).toHaveText(`Delete ${PURGED} permanently?`)
+  const effects = page.getByTestId('purge-venue-effects')
+  await expect(effects).toContainText('menus, sections and items')
+  await expect(effects).toContainText('tables and QR codes')
+  await expect(effects).toContainText('The codes never come back')
+  await expect(effects).toContainText('address name is freed')
+
+  // Only the venue's exact name opens the button.
+  const confirm = page.getByTestId('purge-venue-confirm')
+  const typed = page.getByTestId('purge-venue-confirm-input')
+  await expect(confirm).toBeDisabled()
+  await typed.fill(KEEPER)
+  await expect(confirm).toBeDisabled()
+  await typed.fill(PURGED)
+  await expect(confirm).toBeEnabled()
+  // The dialog fades in: take the picture once it has settled.
+  if (process.env.SCREENSHOT_DIR) await page.waitForTimeout(600)
+  await snapshot('purge-dialog.png')
+  await confirm.click()
+
+  // The row leaves the list at once. The toast is the success one when the worker has the purge
+  // job (its connection to the purge role is set), the warning one when it has not, as in CI:
+  // the daily purge then erases the venue on its day.
+  await expect(
+    page.getByText(new RegExp(`${PURGED} (is being erased|could not be sent to be erased)`)),
+  ).toBeVisible()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('deleted-venue')).toHaveCount(0)
+  await expect(page.getByTestId('deleted-venues-empty')).toBeVisible()
 })

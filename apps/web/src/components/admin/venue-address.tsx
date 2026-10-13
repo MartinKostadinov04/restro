@@ -1,11 +1,13 @@
 'use client'
 
-// The menu address of a venue in its Settings tab (brief CF-14, D68): `/m/<slug>-<code>`. The code
-// at the end is random and permanent; the readable part before it is the venue's to rename. An
-// owner or admin gets a field with a suggestion from the venue's name; everyone else sees the
-// address. The rules are the server action's (`renameVenueSlugAction`): this only collects the
-// slug, checks its shape with core's `isVenueSlug` while it is typed, and shows the answer.
-import { isVenueSlug, menuPath } from '@restro/core'
+// The menu address of a venue in its Settings tab (brief CF-14 and S3, D84): `/m/<organisation>/
+// <venue>`. The organisation part is the organisation's (Settings › General) and is shown as a
+// fixed prefix; the venue part, the venue's address name, is the field. An old address name keeps
+// redirecting. An owner or admin gets the field with a suggestion from the venue's name; everyone
+// else sees the address. The rules are the server action's (`renameVenueSlugAction`): this only
+// collects the name, checks its shape with core's `isVenueSlug` while it is typed, previews the
+// address with core's `guestMenuPath`, and shows the answer.
+import { guestMenuPath, isOrganizationSlug, isVenueSlug, MAX_VENUE_SLUG_LENGTH } from '@restro/core'
 import { ExternalLinkIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type FormEvent, useId, useState, useTransition } from 'react'
@@ -21,13 +23,29 @@ import type { RenameVenueSlugError } from '@/server/venues-result'
 interface VenueAddressProps {
   readonly venueId: string
   readonly venueName: string
+  /** The venue's address name as saved. */
   readonly slug: string
-  readonly publicId: string
+  /** The organisation's address name (the fixed prefix), or null when it cannot be read. */
+  readonly organizationSlug: string | null
   /** Owner or admin: may rename. Decided again by the action. */
   readonly canEdit: boolean
 }
 
-export function VenueAddress({ venueId, venueName, slug, publicId, canEdit }: VenueAddressProps) {
+/** The address of a venue, `/m/<organisation>/<venue>`, with "…" for a part that is not known. */
+function addressOf(organization: string | null, venue: string): string {
+  if (isOrganizationSlug(organization) && isVenueSlug(venue)) {
+    return guestMenuPath({ organization, venue })
+  }
+  return `/m/${organization ?? '…'}/${venue === '' ? '…' : venue}`
+}
+
+export function VenueAddress({
+  venueId,
+  venueName,
+  slug,
+  organizationSlug,
+  canEdit,
+}: VenueAddressProps) {
   const t = useTranslations('workspace.settings')
   const formId = useId()
   const [saved, setSaved] = useState(slug)
@@ -35,10 +53,14 @@ export function VenueAddress({ venueId, venueName, slug, publicId, canEdit }: Ve
   const [error, setError] = useState<RenameVenueSlugError | null>(null)
   const [pending, startTransition] = useTransition()
 
-  const path = menuPath({ slug: saved, publicId })
   const valid = isVenueSlug(value)
   const dirty = value !== saved
   const suggestion = suggestSlug(venueName)
+  const prefix = `/m/${organizationSlug ?? '…'}/`
+  // The address as it will be once saved: it follows what is typed. Only a saved address can be
+  // opened, so the link waits until the typed name is the saved one.
+  const preview = addressOf(organizationSlug, value)
+  const canOpen = isOrganizationSlug(organizationSlug) && valid && !dirty
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -61,39 +83,58 @@ export function VenueAddress({ venueId, venueName, slug, publicId, canEdit }: Ve
 
   return (
     <div className="grid gap-3">
-      <a
-        href={path}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex w-fit max-w-full items-center gap-1.5 text-primary underline-offset-4 hover:underline"
-        data-testid="venue-address"
-        title={t('slug.open')}
-      >
-        <code className="break-all rounded-md bg-muted px-2 py-0.5 font-mono text-xs">{path}</code>
-        <ExternalLinkIcon aria-hidden className="size-3.5 shrink-0" />
-      </a>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <code
+          className="break-all rounded-md bg-muted px-2 py-0.5 font-mono text-xs"
+          data-testid="venue-address"
+        >
+          {preview}
+        </code>
+        {canOpen ? (
+          <a
+            href={preview}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+            title={t('slug.openTitle')}
+            data-testid="venue-address-open"
+          >
+            {t('slug.open')}
+            <ExternalLinkIcon aria-hidden className="size-3.5 shrink-0" />
+          </a>
+        ) : null}
+      </div>
 
       {canEdit ? (
         <form onSubmit={submit} className="grid gap-2" noValidate data-testid="venue-slug-form">
           <Label htmlFor={`${formId}-slug`}>{t('slug.label')}</Label>
           <div className="flex flex-wrap items-center gap-2">
-            <Input
-              id={`${formId}-slug`}
-              value={value}
-              onChange={(event) => {
-                // Lower-case as typed, and a space becomes a hyphen.
-                setValue(event.target.value.toLowerCase().replace(/\s+/g, '-'))
-                setError(null)
-              }}
-              maxLength={63}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className="w-full max-w-xs"
-              aria-invalid={!valid || error !== null || undefined}
-              aria-describedby={`${formId}-slug-help`}
-              data-testid="venue-slug-input"
-            />
+            <div className="flex w-full max-w-md items-center gap-1">
+              <span
+                className="max-w-[60%] shrink-0 truncate font-mono text-sm text-muted-foreground"
+                title={prefix}
+                data-testid="venue-slug-prefix"
+              >
+                {prefix}
+              </span>
+              <Input
+                id={`${formId}-slug`}
+                value={value}
+                onChange={(event) => {
+                  // Lower-case as typed, and a space becomes a hyphen.
+                  setValue(event.target.value.toLowerCase().replace(/\s+/g, '-'))
+                  setError(null)
+                }}
+                maxLength={MAX_VENUE_SLUG_LENGTH}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="min-w-0 flex-1 font-mono"
+                aria-invalid={!valid || error !== null || undefined}
+                aria-describedby={`${formId}-slug-help`}
+                data-testid="venue-slug-input"
+              />
+            </div>
             <Button
               type="button"
               variant="outline"

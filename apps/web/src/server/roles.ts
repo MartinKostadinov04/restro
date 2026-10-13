@@ -27,6 +27,15 @@ export function canDeleteVenue(role: string | null | undefined): boolean {
 }
 
 /**
+ * True for an owner of the organisation: the only role that may change the organisation's name
+ * and its address name (Settings › General, D91). Both reach every guest address, so it is the
+ * owner's decision, like deleting a venue; admins and members see the values.
+ */
+export function canManageOrganization(role: string | null | undefined): boolean {
+  return canDeleteVenue(role)
+}
+
+/**
  * True for the roles that may publish a menu, or roll it back to an earlier version (brief
  * S3-01b): an owner or admin, like the integration.
  */

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { canDeleteVenue, canManageIntegration, canMarkSoldOut, canPublishMenu } from './roles'
+import {
+  canDeleteVenue,
+  canManageIntegration,
+  canManageOrganization,
+  canMarkSoldOut,
+  canPublishMenu,
+} from './roles'
 
 describe('canDeleteVenue', () => {
   it('is for owners only, also among several roles', () => {
@@ -21,6 +27,17 @@ describe('canDeleteVenue', () => {
       undefined,
     ]) {
       expect(canDeleteVenue(role), String(role)).toBe(false)
+    }
+  })
+})
+
+describe('canManageOrganization', () => {
+  it('is for owners only, also among several roles (Settings › General, D91)', () => {
+    for (const role of ['owner', ' Owner ', 'member,owner', 'admin,OWNER']) {
+      expect(canManageOrganization(role), role).toBe(true)
+    }
+    for (const role of ['admin', 'member', 'member,admin', 'owners', '', null, undefined]) {
+      expect(canManageOrganization(role), String(role)).toBe(false)
     }
   })
 })
