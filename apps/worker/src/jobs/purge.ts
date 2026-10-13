@@ -8,7 +8,10 @@
 //                 CDN and the organisation's index written again. Items the till or another
 //                 venue still uses stay.
 //   purge-tick    daily: what is due in every organisation: venues 30 days in the bin, binned
-//                 menus, deleted areas and tables, versions past the rule in ../../core's
+//                 menus, POS instances removed 30 days ago (D91: their till layer, records and
+//                 links, the items that came only from them and no menu places, their sections
+//                 that sit in no menu any more),
+//                 deleted areas and tables, versions past the rule in ../../core's
 //                 `versionsToPurge`, the change log past two months.
 //
 // Every purge is one transaction on the purge role, scoped to the tenant (row-level security
@@ -30,6 +33,7 @@ import {
 import {
   CHANGE_LOG_DAYS,
   cutoff,
+  INSTANCE_BIN_DAYS,
   isDue,
   JOB_NAMES,
   MENU_BIN_DAYS,
@@ -38,6 +42,7 @@ import {
   PurgeVenueJobSchema,
   type SnapshotId,
   TABLE_BIN_DAYS,
+  tillSource,
   VENUE_BIN_DAYS,
   type VenueId,
   type VersionRow,
@@ -51,15 +56,19 @@ import {
   type DbPool,
   events,
   fieldValues,
+  integrations,
   itemFirstPublished,
+  jobRuns,
   menuRoutes,
   menus,
   nodes,
   placements,
+  places,
   publishPointers,
   purgeLog,
   snapshots,
   sourceLinks,
+  sourceRecords,
   tags,
   tombstones,
   venueSlugHistory,
@@ -69,10 +78,11 @@ import {
   withTenant,
 } from '@restro/db'
 import { type PurgeTx, withTenantPurge } from '@restro/db/purge'
-import { and, eq, inArray, isNotNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, lte, notExists, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
+import { tillVenueLinks } from '../connectors'
 import { writeOrganizationIndex } from '../publish/organization-index'
 import { type RunReport, trackedRun } from '../sync/run'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
@@ -469,6 +479,221 @@ export async function purgeMenu(
   return { status: 'purged', counts: erased.counts }
 }
 
+/**
+ * The instance's items that no section places (D91): roots for `instanceTrees`. Each goes with its
+ * modifier groups and options.
+ */
+const UNPLACED_ITEMS = sql`
+  select n.id from restro.nodes n join only_this o on o.id = n.id
+  where n.node_type = 'item'
+    and not exists (select 1 from restro.placements p where p.item_id = n.id)`
+
+/**
+ * The instance's sections that sit in no menu any more: roots for `instanceTrees`. A section's
+ * chain of parents ends at a menu's root node; while that menu exists (a binned one too, until
+ * its own purge, which takes its sections with it) the section stays, empty or not, and loses
+ * only its link. Each goes with everything under it.
+ */
+const DETACHED_SECTIONS = sql`
+  with recursive up as (
+    select n.id as start, n.id as at, n.parent_id from restro.nodes n
+    join only_this o on o.id = n.id
+    where n.node_type = 'section'
+    union all
+    select u.start, p.id, p.parent_id from up u join restro.nodes p on p.id = u.parent_id
+  )
+  select u.start as id from up u
+  where u.parent_id is null
+    and not exists (select 1 from restro.menus m where m.root_node_id = u.at)`
+
+/**
+ * The nodes under `roots` (one of the two above), roots included, that a removed instance leaves
+ * and nobody uses (D91), as one list for `deleteNodes`. A node is the instance's (`only_this`)
+ * when every till link and every till value it has names the instance; a root stays, with all
+ * under it, when anything under it came from another instance too. Till values count as well as
+ * links: a node kept on an earlier run lost its link but keeps the till values that cite the
+ * instance's records, and goes on the first run after nothing uses it, which frees those records.
+ * Menus are never roots: a menu goes with its venue or its bin.
+ */
+async function instanceTrees(
+  tx: PurgeTx,
+  integrationId: string,
+  roots: typeof UNPLACED_ITEMS,
+): Promise<string[]> {
+  const source = tillSource(integrationId)
+  const result = await tx.execute<{ id: string }>(sql`
+    with recursive
+    origin as (
+      select node_id, 'till:' || integration_id as source from restro.source_links
+      union all
+      select node_id, source from restro.field_values where layer = 'till'
+    ),
+    only_this as (
+      select node_id as id from origin
+      where node_id in (select node_id from origin where source = ${source})
+      group by node_id
+      having bool_and(source = ${source})
+    ),
+    roots as (${roots}),
+    tree as (
+      select r.id as root, r.id from roots r
+      union all
+      select t.root, c.id from restro.nodes c join tree t on c.parent_id = t.id
+    )
+    select t.id from tree t
+    where t.root not in (
+      select k.root from tree k join origin g on g.node_id = k.id where g.source <> ${source}
+    )`)
+  return result.rows.map((row) => row.id)
+}
+
+export type PurgeInstanceResult =
+  /** The tenant has no such instance (never had, or it was purged already). */
+  | { readonly status: 'missing' }
+  | {
+      readonly status: 'skipped'
+      /**
+       * Nothing was erased. `not_removed`: the instance is in use (a purge follows a removal,
+       * D81). `has_venues`: a venue of ours links to it (removal and restore refuse that, so
+       * only a race leaves one). `in_use`: all that is left is the instance row and the records
+       * that till values of kept items cite (see `instanceErased`).
+       */
+      readonly skipped: 'not_removed' | 'has_venues' | 'in_use'
+    }
+  | {
+      readonly status: 'purged'
+      readonly counts: Counts
+      /**
+       * False when the instance row stayed: an item a menu still places keeps its till values,
+       * and these cite the instance's records (a foreign key), so those records and the row
+       * they hang on stay until no menu uses the item; a later run erases them.
+       */
+      readonly instanceErased: boolean
+    }
+
+/**
+ * Erases a removed POS instance (D91 point 2, D83): its till layer (places, the till venues it
+ * lists, its job runs), the items that came only from it and no section places, its sections that
+ * sit in no menu any more, the rest of its links, its records and the instance row with its
+ * credentials. Data a venue still uses stays: a placed item, and any section inside a menu, keeps
+ * its values and loses only its link to the instance. Refused while a venue of ours links to the
+ * instance. One transaction on the purge role; a till venue linked in between is not deleted, and
+ * the instance row's foreign keys then roll the whole purge back. No files: the instance
+ * published none.
+ */
+export async function purgeInstance(
+  deps: { readonly purgePool: DbPool },
+  input: { readonly tenantId: string; readonly integrationId: string },
+): Promise<PurgeInstanceResult> {
+  const { tenantId, integrationId } = input
+  return withTenantPurge(deps.purgePool, tenantId, async (tx) => {
+    const [instance] = await tx
+      .select({ removedAt: integrations.removedAt })
+      .from(integrations)
+      .where(eq(integrations.id, integrationId))
+    if (instance === undefined) return { status: 'missing' } as const
+    if (instance.removedAt === null) return { status: 'skipped', skipped: 'not_removed' } as const
+    const [linked] = await tx
+      .select({ venueId: tillVenueLinks.venueId })
+      .from(tillVenueLinks)
+      .where(
+        and(eq(tillVenueLinks.integrationId, integrationId), isNotNull(tillVenueLinks.venueId)),
+      )
+      .limit(1)
+    if (linked !== undefined) return { status: 'skipped', skipped: 'has_venues' } as const
+
+    const counts: Counts = {}
+    // The till layer: places first (they hang on their till venue), then the till venues.
+    count(
+      counts,
+      'places',
+      await tx
+        .delete(places)
+        .where(eq(places.integrationId, integrationId))
+        .returning({ id: places.id }),
+    )
+    count(
+      counts,
+      'till_venue_links',
+      await tx
+        .delete(tillVenueLinks)
+        .where(and(eq(tillVenueLinks.integrationId, integrationId), isNull(tillVenueLinks.venueId)))
+        .returning({ bid: tillVenueLinks.bid }),
+    )
+    count(
+      counts,
+      'job_runs',
+      await tx
+        .delete(jobRuns)
+        .where(eq(jobRuns.integrationId, integrationId))
+        .returning({ id: jobRuns.id }),
+    )
+    // Sections in no menu first, with their placements (no menu shows them), so an item only they
+    // placed counts as unplaced next.
+    const detached = await instanceTrees(tx, integrationId, DETACHED_SECTIONS)
+    if (detached.length > 0) {
+      count(
+        counts,
+        'placements',
+        await tx
+          .delete(placements)
+          .where(inArray(placements.sectionId, detached))
+          .returning({ id: placements.itemId }),
+      )
+    }
+    await deleteNodes(tx, detached, counts)
+    await deleteNodes(tx, await instanceTrees(tx, integrationId, UNPLACED_ITEMS), counts)
+    count(
+      counts,
+      'source_links',
+      await tx
+        .delete(sourceLinks)
+        .where(eq(sourceLinks.integrationId, integrationId))
+        .returning({ id: sourceLinks.nodeId }),
+    )
+    // A record that a kept node's till value cites stays (and so does the row it hangs on).
+    count(
+      counts,
+      'source_records',
+      await tx
+        .delete(sourceRecords)
+        .where(
+          and(
+            eq(sourceRecords.integrationId, integrationId),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(fieldValues)
+                .where(eq(fieldValues.sourceRecordId, sourceRecords.id)),
+            ),
+          ),
+        )
+        .returning({ id: sourceRecords.id }),
+    )
+    const [cited] = await tx
+      .select({ id: sourceRecords.id })
+      .from(sourceRecords)
+      .where(eq(sourceRecords.integrationId, integrationId))
+      .limit(1)
+    const instanceErased = cited === undefined
+    if (instanceErased) {
+      count(
+        counts,
+        'integrations',
+        await tx
+          .delete(integrations)
+          .where(eq(integrations.id, integrationId))
+          .returning({ id: integrations.id }),
+      )
+    }
+    if (Object.values(counts).every((rows) => rows === 0)) {
+      return { status: 'skipped', skipped: 'in_use' } as const
+    }
+    await logPurge(tx, tenantId, 'instance', integrationId, counts)
+    return { status: 'purged', counts, instanceErased } as const
+  })
+}
+
 /** Applies the versions rule (D96) to one menu + venue: the rows go, then their files. */
 export async function purgeVersions(
   deps: { readonly purgePool: DbPool; readonly store: PublishStore },
@@ -609,11 +834,23 @@ async function dueIn(pool: DbPool, tenantId: string, now: Date) {
         .from(menus)
         .where(isNotNull(menus.deletedAt))
     ).filter((row) => isDue(row.deletedAt, now, MENU_BIN_DAYS))
+    const removedInstances = (
+      await tx
+        .select({ id: integrations.id, removedAt: integrations.removedAt })
+        .from(integrations)
+        .where(isNotNull(integrations.removedAt))
+    ).filter((row) => isDue(row.removedAt, now, INSTANCE_BIN_DAYS))
     const scopes = await tx
       .select({ menuId: publishPointers.menuId, venueId: publishPointers.venueId })
       .from(publishPointers)
     const venuesWithTables = await tx.selectDistinct({ id: venues.id }).from(venues)
-    return { binnedVenues, binnedMenus, scopes, venueIds: venuesWithTables.map((row) => row.id) }
+    return {
+      binnedVenues,
+      binnedMenus,
+      removedInstances,
+      scopes,
+      venueIds: venuesWithTables.map((row) => row.id),
+    }
   })
 }
 
@@ -703,6 +940,7 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
               const counters: Record<string, number> = {
                 venues: 0,
                 menus: 0,
+                instances: 0,
                 versions: 0,
                 tables: 0,
                 areas: 0,
@@ -720,6 +958,16 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
                   menuId: menu.id,
                 })
                 if (result.status === 'purged') counters.menus = (counters.menus ?? 0) + 1
+              }
+              // After the venues and menus: what they placed is free by now.
+              for (const instance of due.removedInstances) {
+                const result = await purgeInstance(scoped, {
+                  tenantId,
+                  integrationId: instance.id,
+                })
+                if (result.status === 'purged' && result.instanceErased) {
+                  counters.instances = (counters.instances ?? 0) + 1
+                }
               }
               for (const scope of due.scopes) {
                 const result = await purgeVersions(scoped, { tenantId, ...scope, now })

@@ -4,7 +4,8 @@
 //
 //   - A deleted venue (D76, `venues.archived_at`) is purged 30 days later, or at once on "Delete
 //     permanently". A binned menu (D91, `menus.deleted_at`) and a deleted area or table of a
-//     hand-made venue (D95, `archived_at`) go the same way after 30 days.
+//     hand-made venue (D95, `archived_at`) go the same way after 30 days, and so does a removed
+//     POS instance's synced data (D91, `integrations.removed_at`).
 //   - Versions (D96): per menu and venue, the live version is never purged; of the earlier
 //     published versions the newest two stay restorable while they are younger than 30 days;
 //     every other row of the history (older restorable ones, held and rejected publishes, the
@@ -20,6 +21,8 @@ export const VENUE_BIN_DAYS = 30
 export const MENU_BIN_DAYS = 30
 /** Days a deleted area or table of a hand-made venue stays before the purge. */
 export const TABLE_BIN_DAYS = 30
+/** Days a removed POS instance (D81, `integrations.removed_at`) waits before the purge (D91). */
+export const INSTANCE_BIN_DAYS = 30
 /** How many earlier published versions stay restorable besides the live one (D96). */
 export const VERSIONS_KEPT = 2
 /** Days after which any version other than the live one is purged (D96). */

@@ -15,7 +15,7 @@ import { apply } from './apply'
 import { mapBarsyVenue, type PlaceInput, upsertBarsyVenues, upsertPlaces } from './barsy-venues'
 import * as applyEntry from './index'
 import { ProvisionError, provisionMenu, provisionTenant, provisionVenue } from './provision'
-import { createIntegration } from './sources'
+import { createIntegration, removeIntegration } from './sources'
 import { issueTableToken, listVenueTables, loadTokenFiles } from './tables'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 import {
@@ -411,6 +411,28 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
         relinked: false,
       })
       expect((await rowOf(venueId))?.archived_at).toBeNull()
+      expect((await settingsOf(venueId))?.till_before_delete).toBeUndefined()
+    })
+
+    it('comes back without a link when the instance of its till venue was removed (D81)', async () => {
+      const removed = (
+        await createIntegration(app, tenant, { kind: 'barsy', host: 'cf18-removed.test' })
+      ).id
+      bid += 1
+      const till = bid
+      await upsertBarsyVenues(app, tenant, removed, [{ bid: till, name: `Till ${till}` }])
+      const { venueId } = await liveVenue('Instance gone')
+      expect(await mapBarsyVenue(app, tenant, removed, till, venueId)).toMatchObject({ ok: true })
+      await archiveVenue(app, tenant, venueId)
+      expect(await removeIntegration(app, tenant, removed)).toEqual({ ok: true })
+
+      expect(await restoreVenue(app, tenant, venueId)).toEqual({
+        venueId,
+        changed: true,
+        relinked: false,
+      })
+      expect((await rowOf(venueId))?.archived_at).toBeNull()
+      expect((await linkOf(till))?.venueId).toBeNull()
       expect((await settingsOf(venueId))?.till_before_delete).toBeUndefined()
     })
 
