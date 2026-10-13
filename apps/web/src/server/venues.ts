@@ -95,16 +95,16 @@ export function listVenueCards(pool: DbPool, tenantId: string): Promise<VenueCar
 
 /**
  * What step 1 and 2 of the New venue dialog offer (D85, D87): the organisation's active POS
- * instances (the connected ones; S1's removed instances will be left out here too) with the venues
- * each reports and the venue of ours each already serves, and the organisation's slug for a
- * hand-made venue's address preview. Two queries and the slug, whatever the number of instances.
+ * instances (connected and not removed, D81) with the venues each reports and the venue of ours
+ * each already serves, and the organisation's slug for a hand-made venue's address preview. Two
+ * queries and the slug, whatever the number of instances.
  */
 export function listNewVenueSources(pool: DbPool, tenantId: string): Promise<NewVenueSources> {
   return withTenant(pool, tenantId, async (tx) => {
     const instances = await tx
       .select({ id: integrations.id, name: integrations.name })
       .from(integrations)
-      .where(eq(integrations.status, 'connected'))
+      .where(and(eq(integrations.status, 'connected'), isNull(integrations.removedAt)))
       .orderBy(asc(integrations.name), asc(integrations.id))
     const tillVenues = await tx
       .select({
@@ -142,9 +142,10 @@ export interface TillVenueToAdd {
 }
 
 /**
- * One venue of one connected POS instance of the tenant, or null (no such instance, one that is
- * not connected, or a venue it does not report; also another tenant's, which row-level security
- * hides). The instance's language is `config.default_locale`, Bulgarian when it has none.
+ * One venue of one connected, not removed POS instance of the tenant, or null (no such instance,
+ * one that is not connected or was removed, or a venue it does not report; also another tenant's,
+ * which row-level security hides). The instance's language is `config.default_locale`, Bulgarian
+ * when it has none.
  */
 export async function loadTillVenueToAdd(
   pool: DbPool,
@@ -173,6 +174,7 @@ export async function loadTillVenueToAdd(
           eq(tillVenueLinks.integrationId, integrationId),
           eq(tillVenueLinks.bid, bid),
           eq(integrations.status, 'connected'),
+          isNull(integrations.removedAt),
         ),
       )
       .limit(1),
