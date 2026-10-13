@@ -1,12 +1,16 @@
 'use server'
 
-// Adding a venue to the organisation (CF-01, D64): the first production path that creates one.
-// A server action in the shape of the composer's (../composer/actions.ts): Zod first, then
-// `requireTenant()` (the tenant is the person's organisation, never the request's), then the
-// role (owners and admins), then core's writers `provisionVenue` and `provisionMenu` (rule 1:
-// no SQL here). The slug is the readable part of the public menu address; a permanent random
-// code is added to it (D68, brief CF-14). `renameVenueSlugAction` changes that readable part
-// later: the code, and so every link ever shared, stays.
+// Adding a venue to the organisation (CF-01, D64; two steps since D85): the first production path
+// that creates one. A server action in the shape of the composer's (../composer/actions.ts): Zod
+// first, then `requireTenant()` (the tenant is the person's organisation, never the request's),
+// then the role (owners and admins), then core's writers (rule 1: no SQL here). The source is
+// fixed here for good (D87): a connected POS instance and one of its venues, or by hand.
+//   - From a POS nothing is typed: the name is the POS venue's, the address is made from it
+//     (`addVenueFromTillVenue` makes the venue, its menu and the link in one transaction), the
+//     main language is the instance's. The languages then follow the next reads (D77).
+//   - By hand: name, address name and languages come from the form (`provisionVenue` and
+//     `provisionMenu`). The address name is the venue part of `/m/<organisation>/<venue>` (D84).
+// `renameVenueSlugAction` changes the address name later; the old one keeps redirecting.
 import {
   idSchema,
   isVenueSlug,
@@ -19,6 +23,7 @@ import {
   type VenueId,
 } from '@restro/core'
 import {
+  addVenueFromTillVenue,
   archiveVenue,
   MAX_VENUE_NAME_LENGTH,
   ProvisionError,
@@ -32,18 +37,21 @@ import {
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
+import { suggestSlug } from '@/lib/slug'
+
 import { getPool } from './db'
 import { enqueueJob } from './jobs'
 import { logError } from './log'
 import { menuOfVenue } from './publish/load'
 import { canDeleteVenue, canManageIntegration } from './roles'
 import { requireTenant } from './session'
-import { getVenueInAnyState } from './venues'
+import { getVenueInAnyState, listNewVenueSources, loadTillVenueToAdd } from './venues'
 import {
   type CreateVenueResult,
   type DeleteVenueResult,
   NEW_VENUE_CURRENCY,
   NEW_VENUE_TIMEZONE,
+  type NewVenueSourcesResult,
   type PurgeVenueResult,
   type RenameVenueResult,
   type RenameVenueSlugResult,
@@ -51,23 +59,117 @@ import {
   type UnpublishVenueResult,
 } from './venues-result'
 
-const CreateVenueInput = z
+const CreateVenueSource = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('instance'),
+    integrationId: idSchema('in'),
+    bid: z.int().nonnegative(),
+  }),
+  z.strictObject({ kind: z.literal('hand') }),
+])
+
+const CreateVenueLanguages = z
   .strictObject({
-    name: z.string().trim().min(1).max(120),
-    slug: z.string().refine(isVenueSlug),
-    defaultLocale: LocaleSchema,
-    enabledLocales: z.array(LocaleSchema).min(1).max(LOCALES.length),
+    main: LocaleSchema,
+    enabled: z.array(LocaleSchema).min(1).max(LOCALES.length),
   })
   .refine(
-    (input) =>
-      new Set(input.enabledLocales).size === input.enabledLocales.length &&
-      input.enabledLocales.includes(input.defaultLocale),
+    (languages) =>
+      new Set(languages.enabled).size === languages.enabled.length &&
+      languages.enabled.includes(languages.main),
     'the main language must be one of the chosen languages, each at most once',
   )
 
+const CreateVenueInput = z
+  .strictObject({
+    source: CreateVenueSource,
+    name: z.string().trim().min(1).max(MAX_VENUE_NAME_LENGTH).optional(),
+    slug: z.string().refine(isVenueSlug).optional(),
+    languages: CreateVenueLanguages.optional(),
+  })
+  .refine(
+    (input) =>
+      input.source.kind === 'hand'
+        ? input.name !== undefined && input.slug !== undefined && input.languages !== undefined
+        : input.name === undefined && input.slug === undefined && input.languages === undefined,
+    'a hand-made venue needs a name, an address name and languages; one made from a POS takes none of them',
+  )
+
+type CreateVenueData = z.output<typeof CreateVenueInput>
+
+/** Another address name to try when the one made from a POS venue's name is taken (-2, -3, …). */
+const MAX_ADDRESS_ATTEMPTS = 20
+
+/** A hand-made venue and its empty menu; the address name is the person's. */
+async function createByHand(tenantId: string, data: CreateVenueData): Promise<CreateVenueResult> {
+  const { name, slug, languages } = data
+  if (name === undefined || slug === undefined || languages === undefined) {
+    return { ok: false, error: 'invalid' }
+  }
+  const pool = getPool()
+  const venue = await provisionVenue(pool, tenantId, {
+    name,
+    slug,
+    timezone: NEW_VENUE_TIMEZONE,
+    currency: NEW_VENUE_CURRENCY,
+    defaultLocale: languages.main,
+    enabledLocales: languages.enabled,
+  })
+  try {
+    await provisionMenu(pool, tenantId, venue.id)
+  } catch (error) {
+    // The venue exists and a retry would make a second one. The composer offers "Create the
+    // menu" on a venue without one, so send the person there.
+    logError('venue_menu_create_failed', error)
+  }
+  return { ok: true, venueId: venue.id }
+}
+
 /**
- * Creates a venue and its (empty) menu for the signed-in person's organisation, and answers with
- * the venue's id; the dialog then opens it. Only owners and admins.
+ * A venue made from a venue of a connected POS instance (D85): its name, its address name made
+ * from that name (the next free one when it is taken: nothing is typed), its main language the
+ * instance's; the languages the POS offers join it after the next read. The venue, its menu and
+ * the link are one transaction, so a POS venue that got linked meanwhile (`link_taken`) leaves
+ * nothing behind.
+ */
+async function createFromTillVenue(
+  tenantId: string,
+  source: { readonly integrationId: string; readonly bid: number },
+): Promise<CreateVenueResult> {
+  const pool = getPool()
+  const till = await loadTillVenueToAdd(pool, tenantId, source.integrationId, source.bid)
+  if (till === null) return { ok: false, error: 'invalid' }
+  if (till.linked) return { ok: false, error: 'link_taken' }
+  const name = Array.from(till.name.trim()).slice(0, MAX_VENUE_NAME_LENGTH).join('').trim()
+  const base = suggestSlug(name) || 'venue'
+  for (let attempt = 1; attempt <= MAX_ADDRESS_ATTEMPTS; attempt += 1) {
+    try {
+      const added = await addVenueFromTillVenue(pool, tenantId, source.integrationId, source.bid, {
+        name,
+        slug: attempt === 1 ? base : `${base}-${attempt}`,
+        timezone: NEW_VENUE_TIMEZONE,
+        currency: NEW_VENUE_CURRENCY,
+        defaultLocale: till.defaultLocale,
+        enabledLocales: [till.defaultLocale],
+      })
+      if (!added.ok) {
+        return { ok: false, error: added.error === 'link_taken' ? 'link_taken' : 'invalid' }
+      }
+      return { ok: true, venueId: added.venue.id }
+    } catch (error) {
+      // The transaction was rolled back: try the next name.
+      if (error instanceof ProvisionError && error.code === 'slug_taken') continue
+      throw error
+    }
+  }
+  return { ok: false, error: 'taken' }
+}
+
+/**
+ * Creates a venue and its (empty) menu for the signed-in person's organisation, from a connected
+ * POS instance's venue or by hand (D85), and answers with the venue's id; the dialog then opens
+ * it. Only owners and admins. A venue made from a POS takes no name, address name or languages:
+ * sending them is refused.
  */
 export async function createVenueAction(input: unknown): Promise<CreateVenueResult> {
   const parsed = CreateVenueInput.safeParse(input)
@@ -75,24 +177,13 @@ export async function createVenueAction(input: unknown): Promise<CreateVenueResu
   try {
     const { organization } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
-    const pool = getPool()
-    const venue = await provisionVenue(pool, organization.id, {
-      name: parsed.data.name,
-      slug: parsed.data.slug,
-      timezone: NEW_VENUE_TIMEZONE,
-      currency: NEW_VENUE_CURRENCY,
-      defaultLocale: parsed.data.defaultLocale,
-      enabledLocales: parsed.data.enabledLocales,
-    })
-    try {
-      await provisionMenu(pool, organization.id, venue.id)
-    } catch (error) {
-      // The venue exists and a retry would make a second one. The composer offers "Create the
-      // menu" on a venue without one, so send the person there.
-      logError('venue_menu_create_failed', error)
-    }
-    revalidatePath('/venues')
-    return { ok: true, venueId: venue.id }
+    const { source } = parsed.data
+    const created =
+      source.kind === 'instance'
+        ? await createFromTillVenue(organization.id, source)
+        : await createByHand(organization.id, parsed.data)
+    if (created.ok) revalidatePath('/venues')
+    return created
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
@@ -101,6 +192,24 @@ export async function createVenueAction(input: unknown): Promise<CreateVenueResu
       if (error.code === 'slug_taken') return { ok: false, error: 'taken' }
     }
     logError('venue_create_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+/**
+ * What the New venue dialog lists when it opens (D85): the organisation's active POS instances
+ * with their venues, and the organisation's address name for the preview. Only owners and
+ * admins, who are the ones who can create a venue.
+ */
+export async function loadNewVenueSourcesAction(): Promise<NewVenueSourcesResult> {
+  try {
+    const { organization } = await requireTenant()
+    if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    return { ok: true, sources: await listNewVenueSources(getPool(), organization.id) }
+  } catch (error) {
+    // redirect() and notFound() are control flow, not failures.
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('venue_sources_failed', error)
     return { ok: false, error: 'failed' }
   }
 }

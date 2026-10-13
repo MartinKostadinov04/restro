@@ -34,8 +34,6 @@ const ALLOWED = new Set([
 
 /** Readers from before `venueLanguages`, to be moved to it (the list only shrinks). */
 const RATCHET = new Set([
-  'apps/web/src/components/admin/new-venue-dialog.tsx',
-  'apps/web/src/components/admin/venue-card.tsx',
   'apps/web/src/components/admin/venue-settings.tsx',
   'apps/web/src/composer/actions.ts',
   'apps/web/src/composer/composer-tab.tsx',

@@ -3,7 +3,7 @@
   "apps/web/messages/en.json": 17,
   "apps/web/src/server/publish/load.ts": 4,
   "apps/web/src/server/publish/service.ts": 4,
-  "apps/web/src/server/venues.ts": 4,
+  "apps/web/src/server/venues.ts": 1,
   "apps/worker/src/config.ts": 27,
   "apps/worker/src/jobs/barsy.ts": 39,
   "apps/worker/src/jobs/index.ts": 5,

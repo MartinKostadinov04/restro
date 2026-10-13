@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { switchOrganization } from '@/server/actions'
-import { createVenueAction } from '@/server/venues-actions'
+import { createVenueAction, loadNewVenueSourcesAction } from '@/server/venues-actions'
 import { renderWithIntl } from '@/test-utils'
 
 import { AppSidebar } from './app-sidebar'
@@ -28,7 +28,10 @@ vi.mock('next/navigation', () => ({
 }))
 // Server actions and the sign-in client are not what these tests are about.
 vi.mock('@/server/actions', () => ({ switchOrganization: vi.fn() }))
-vi.mock('@/server/venues-actions', () => ({ createVenueAction: vi.fn() }))
+vi.mock('@/server/venues-actions', () => ({
+  createVenueAction: vi.fn(),
+  loadNewVenueSourcesAction: vi.fn(),
+}))
 vi.mock('@/i18n/actions', () => ({ setAdminLocale: vi.fn() }))
 vi.mock('@/lib/auth-client', () => ({ authClient: { signOut: vi.fn() } }))
 
@@ -83,6 +86,12 @@ const venueNamed = (name: string) => {
 beforeEach(() => {
   navigation.push.mockReset()
   vi.mocked(switchOrganization).mockReset()
+  // The New venue dialog asks for its sources when it opens: none connected, so By hand.
+  vi.mocked(loadNewVenueSourcesAction).mockReset()
+  vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
+    ok: true,
+    sources: { organizationSlug: 'night-group', instances: [] },
+  })
 })
 
 describe('the Venues group', () => {
@@ -168,6 +177,9 @@ describe('the Venues group', () => {
     vi.mocked(createVenueAction).mockResolvedValue({ ok: true, venueId: 'vn_new' })
     renderSidebar({ canCreateVenue: true })
     await userEvent.click(screen.getByRole('button', { name: 'New venue' }))
+    // Step 1: no POS is connected, so By hand is chosen already; step 2 asks for the name.
+    await screen.findByTestId('new-venue-sources')
+    await userEvent.click(screen.getByTestId('new-venue-next'))
     await userEvent.type(await screen.findByTestId('new-venue-name'), 'Sea Bar')
     await userEvent.click(screen.getByTestId('new-venue-submit'))
     await waitFor(() => expect(navigation.push).toHaveBeenCalledWith('/venues/vn_new'))

@@ -428,34 +428,92 @@
   "venues": {
     "title": "Venues",
     "description": "The venues of {organization}.",
-    "languages": "Languages",
     "open": "Open",
+    "preview": "Preview menu",
+    "previewDraft": "A draft has no guest page yet. Publish the venue to preview its menu.",
+    "state": {
+      "draft": "Draft",
+      "live": "Live"
+    },
+    "source": "Source",
+    "byHand": "By hand",
+    "venueIn": "Venue in {source}",
     "empty": {
       "title": "No venues yet",
       "description": "Create your first venue with the New venue button.",
       "descriptionReadOnly": "An owner or admin of the organisation can create the first venue."
     },
+    "unpublish": {
+      "button": "Unpublish…",
+      "dialog": {
+        "title": "Unpublish {name}?",
+        "description": "This is what guests will see once you unpublish this venue:",
+        "effects": {
+          "guests": "Its guest page and its table QR codes stop showing the menu: guests see that the menu is not available.",
+          "draft": "The venue goes back to Draft. Nothing is deleted: its menus, tables and settings stay.",
+          "again": "Publish a menu of the venue again to put it back on guests’ phones."
+        },
+        "cancel": "Cancel",
+        "confirm": "Unpublish",
+        "working": "Unpublishing…",
+        "done": "{name} was unpublished.",
+        "doneLate": "{name} was unpublished, but its guest files could not be withdrawn just now. They are withdrawn with the next job; if guests still see the menu in a few minutes, unpublish again.",
+        "errors": {
+          "not_allowed": "Only an owner or admin can unpublish a venue.",
+          "invalid": "This venue could not be found.",
+          "venue_archived": "This venue was deleted.",
+          "failed": "Something went wrong. The venue was not unpublished, try again."
+        }
+      }
+    },
     "new": {
       "button": "New venue",
       "title": "New venue",
-      "description": "A venue has its own menu, languages and public address.",
+      "description": "Where does the venue’s menu come from? This cannot be changed after the venue is created.",
+      "back": "Back",
+      "next": "Next",
+      "cancel": "Cancel",
+      "create": "Create venue",
+      "creating": "Creating…",
+      "sources": {
+        "legend": "Menu source",
+        "loading": "Loading…",
+        "failed": "The sources could not be loaded. Try again.",
+        "retry": "Try again",
+        "hand": "By hand",
+        "handHelp": "You write the menu yourself: sections, items and prices.",
+        "venueCount": "{count, plural, one {# venue} other {# venues}}",
+        "none": "No point-of-sale system is connected yet.",
+        "connect": "Connect one in Settings › Integrations"
+      },
+      "instance": {
+        "title": "New venue from {source}",
+        "description": "Nothing to type: the name, the address and the languages come from {source}. You can change them later in the venue’s settings.",
+        "legend": "Venues in {source}",
+        "linkedTo": "linked to {venue}",
+        "noVenues": "{source} has not reported any venues yet. Check the connection in Settings › Integrations.",
+        "allLinked": "Every venue in {source} is linked to a venue already."
+      },
+      "hand": {
+        "title": "New venue by hand",
+        "description": "A venue you build yourself, with its own menu, languages and address."
+      },
       "name": "Name",
       "nameRequired": "Enter a name.",
-      "slug": "Public address",
-      "slugHelp": "The readable part of the menu’s web address. A short unique code is added to it automatically.",
+      "slug": "Address name",
+      "slugHelp": "The venue part of the menu’s web address. No other venue of yours may use it.",
+      "address": "Guests will open",
       "slugInvalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
       "languages": "Languages",
       "languagesHelp": "The languages the menu can be written in. Each item can be translated later.",
       "defaultLanguage": "Main language",
       "defaultLanguageHelp": "Every item and section needs a name in this language.",
       "defaults": "Time zone: {timeZone} · Currency: {currency}",
-      "create": "Create venue",
-      "creating": "Creating…",
-      "cancel": "Cancel",
       "errors": {
         "not_allowed": "Only an owner or admin can create a venue.",
         "invalid": "Check the name, the address and the languages, then try again.",
         "taken": "Another venue of yours already has this address. Choose another one.",
+        "link_taken": "This venue of {source} was linked to another venue in the meantime. Pick another one.",
         "failed": "Something went wrong. The venue was not created, try again."
       }
     }

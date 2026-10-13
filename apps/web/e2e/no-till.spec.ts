@@ -82,12 +82,17 @@ test('venue with no till: create the venue from the list', async () => {
   const dialog = page.getByTestId('new-venue-dialog')
   await expect(dialog).toBeVisible()
 
-  // The address follows the name; the line under it says what it is.
+  // Step 1 (D85): no POS is connected here, so the only way is by hand (and it is chosen).
+  await expect(dialog.getByTestId('new-venue-no-instances')).toContainText(
+    'No point-of-sale system is connected yet.',
+  )
+  await expect(dialog.getByTestId('new-venue-source-hand')).toBeChecked()
+  await dialog.getByTestId('new-venue-next').click()
+
+  // The address follows the name; the preview under it shows the guest address (D84).
   await dialog.getByTestId('new-venue-name').fill(VENUE_NAME)
   await expect(dialog.getByTestId('new-venue-slug')).toHaveValue(SLUG)
-  await expect(dialog.getByTestId('new-venue-address')).toHaveText(
-    'The readable part of the menu’s web address. A short unique code is added to it automatically.',
-  )
+  await expect(dialog.getByTestId('new-venue-address')).toHaveText(`/m/no-till-club/${SLUG}`)
   await expect(dialog.getByTestId('new-venue-defaults')).toHaveText(
     'Time zone: Europe/Sofia · Currency: EUR',
   )
@@ -108,15 +113,23 @@ test('venue with no till: create the venue from the list', async () => {
   await expect(address).toHaveText(new RegExp(`^/m/${SLUG}-[a-z0-9]{12}$`))
   guestPath = (await address.textContent()) ?? ''
 
-  // The list has it, with the same address.
+  // The list has it: a Draft (nothing is published yet) made by hand, with its guest address
+  // (D84, D86); Preview menu is off until it is published, and says why.
   await page.goto('/venues')
   const card = page.getByTestId('venue-card').filter({ hasText: VENUE_NAME })
   await expect(card).toBeVisible()
-  await expect(card.getByTestId('venue-card-address')).toHaveText(guestPath)
+  await expect(card.getByTestId('venue-card-address')).toHaveText(`/m/no-till-club/${SLUG}`)
+  await expect(card.getByTestId('venue-card-state')).toHaveText('Draft')
+  await expect(card.getByTestId('venue-card-source')).toHaveText('By hand')
+  await expect(card.getByTestId('venue-card-preview')).toBeDisabled()
+  await expect(card.getByTestId('venue-card-preview-hint')).toBeVisible()
+  await expect(card.getByTestId('unpublish-venue-open')).toHaveCount(0)
 
   // One address name per organisation (D84): the same slug again is refused, with the reason;
   // another slug makes a second venue with a code of its own.
   await page.getByTestId('new-venue').click()
+  await page.getByTestId('new-venue-source-hand').click()
+  await page.getByTestId('new-venue-next').click()
   await page.getByTestId('new-venue-name').fill('Same address again')
   await page.getByTestId('new-venue-slug').fill(SLUG)
   await page.getByTestId('new-venue-submit').click()
@@ -205,6 +218,17 @@ test('venue with no till: publish, and the guest page shows the item and its pri
   } finally {
     await context.close()
   }
+
+  // The venue's card says Live now; Preview menu opens the guest address, and Unpublish is there
+  // for the owner (D86). (Unpublishing is tried in venue-lifecycle.spec.ts.)
+  await page.goto('/venues')
+  const venueCard = page.getByTestId('venue-card').filter({ hasText: VENUE_NAME })
+  await expect(venueCard.getByTestId('venue-card-state')).toHaveText('Live')
+  await expect(venueCard.getByRole('link', { name: 'Preview menu' })).toHaveAttribute(
+    'href',
+    `/m/no-till-club/${SLUG}`,
+  )
+  await expect(venueCard.getByTestId('unpublish-venue-open')).toBeVisible()
 })
 
 test('Settings: the readable part of the address is renamed, and the old link still opens the menu', async ({
@@ -251,13 +275,22 @@ test('Settings: the readable part of the address is renamed, and the old link st
     await guest.goto(`${guestPath}?lang=en`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(1)
-    await expect.poll(() => new URL(guest.url()).pathname).toBe(guestNewPath)
+    // The bar shows the address of today, /m/<organisation>/<venue> (D84), with the new name.
+    await expect.poll(() => new URL(guest.url()).pathname, WORKER_WAIT).toBe(guestNewPath)
     expect(new URL(guest.url()).search).toBe('?lang=en')
 
     // The address of before with the new name opens it as well, and moves the same way.
     await guest.goto(`${newPath}?lang=en`)
     await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(1)
-    await expect.poll(() => new URL(guest.url()).pathname).toBe(guestNewPath)
+    await expect.poll(() => new URL(guest.url()).pathname, WORKER_WAIT).toBe(guestNewPath)
+
+    // The address of today opens it as well, and is left as it is.
+    await guest.goto(`${guestNewPath}?lang=en`)
+    await expect(guest.locator('[data-item]').filter({ hasText: 'Mojito' })).toHaveCount(
+      1,
+      WORKER_WAIT,
+    )
+    expect(new URL(guest.url()).pathname).toBe(guestNewPath)
   } finally {
     await context.close()
   }

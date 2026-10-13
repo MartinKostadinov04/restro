@@ -44,12 +44,15 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   const cards = page.getByTestId('venue-card')
   await expect(cards).toHaveCount(1)
   await expect(cards.first()).toContainText(VENUE_NAME)
-  // The card names the menu address: the readable slug and the venue's random code (D68).
-  await expect(cards.first().getByTestId('venue-card-address')).toHaveText(
-    /^\/m\/demo-club-[a-z0-9]{12}$/,
-  )
-  await expect(cards.first()).toContainText('BG')
-  await expect(cards.first()).toContainText('EN')
+  // The card names the guest address (the organisation's and the venue's address names, D84), the
+  // venue's state (the global setup publishes the demo menu), where its menu comes from (this
+  // venue has no till) and a Preview menu that opens the guest address in a new tab (D86).
+  await expect(cards.first().getByTestId('venue-card-address')).toHaveText('/m/demo-club/demo-club')
+  await expect(cards.first().getByTestId('venue-card-state')).toHaveText('На живо')
+  await expect(cards.first().getByTestId('venue-card-source')).toHaveText('На ръка')
+  const preview = cards.first().getByRole('link', { name: 'Преглед на менюто' })
+  await expect(preview).toHaveAttribute('href', '/m/demo-club/demo-club')
+  await expect(preview).toHaveAttribute('target', '_blank')
 
   // --- open the venue ------------------------------------------------------------------------
   await cards.first().getByRole('link', { name: 'Отвори' }).click()
