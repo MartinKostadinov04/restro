@@ -122,10 +122,10 @@ describe('the Venues group', () => {
   })
 
   it('links each venue to its page, and does not list a venue’s sections', () => {
-    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=publishing' })
-    expect(venueNamed('Beta Bar').getAttribute('href')).toBe('/venues/vn_beta?tab=publishing')
+    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=tables' })
+    expect(venueNamed('Beta Bar').getAttribute('href')).toBe('/venues/vn_beta?tab=tables')
     // The sections are the tabs at the top of the venue page: nothing of them is in the sidebar.
-    for (const section of ['Composer', 'Tables & QR', 'Publishing', 'Design', 'Integration']) {
+    for (const section of ['Composer', 'Tables & QR', 'Design', 'Integration']) {
       expect(screen.queryByRole('link', { name: section })).toBeNull()
     }
   })

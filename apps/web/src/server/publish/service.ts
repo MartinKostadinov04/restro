@@ -1,6 +1,10 @@
-// "Publish now", "Approve", "Reject", "Return to a version" and the preview (briefs S3-01b and
-// S3-05), as plain functions the server actions wrap (actions.ts) so they can be tested without a
-// request.
+// "Publish now", "Approve", "Reject", "Return to a version", the preview and the Automation
+// settings (briefs S3-01b, S3-05, S4), as plain functions the server actions wrap (actions.ts) so
+// they can be tested without a request.
+//
+// A venue has several menus, each with its own versions (D88, D90). "Publish now" and the preview
+// take the menu (default: the live one); approving, rejecting and returning name a snapshot, and
+// act on the menu that snapshot belongs to.
 //
 // Publishing is the worker's job: "Publish now" and "Approve" only queue `publish-menu` (reason
 // `manual`, the person as actor; an approval names the held snapshot), and the run's outcome
@@ -9,22 +13,24 @@
 // `publish-files`, which writes `current.json` for the snapshot the pointer names. Rejecting a
 // held publish is a database change too (`rejectHeld`).
 //
-// A return pauses automatic publishing (`config.publish.auto_paused` of the integration the venue
-// is mapped to): otherwise the next sync would publish the document again and undo it. The pause
+// A return pauses automatic publishing (the venue's `settings.publish.auto_paused`, T76):
+// otherwise the next sync would publish the document again and undo it. The pause
 // is set BEFORE the pointer moves, so no automatic publish can slip in between; if the return
 // then fails, the pause is taken off again. A manual publish clears it (the worker does that).
 import {
   type Actor,
+  type AfterSyncMode,
   idSchema,
   JOB_NAMES,
   type JobPayload,
   type LiveOverlay,
   type MenuSnapshot,
+  type NodeId,
   type ProducedJobName,
   type SnapshotId,
   type TenantId,
   type VenueId,
-  venueAutoPublishPaused,
+  type VenueSyncSettings,
 } from '@restro/core'
 import {
   loadDraft,
@@ -34,12 +40,19 @@ import {
   rollbackTo,
   setVenueAutoPublishPaused,
   setVenuePublishRules,
+  setVenueSyncSettings,
 } from '@restro/core/apply'
-import { barsyVenues, type DbPool, integrations, venues, withTenant } from '@restro/db'
-import { eq } from 'drizzle-orm'
+import type { DbPool } from '@restro/db'
 
 import { logError } from '../log'
-import { loadHeldRows, menuOfVenue } from './load'
+import {
+  loadHeldRows,
+  menuOfSnapshot,
+  menuOfVenue,
+  menuOfVenueById,
+  readOwnPause,
+  readPauseState,
+} from './load'
 
 /** Who is asking, for which venue. `canPublish` comes from the organisation role. */
 export interface PublishScope {
@@ -89,14 +102,50 @@ export type PublishActionResult =
 
 const fail = (error: PublishActionError): PublishActionResult => ({ ok: false, error })
 
-/** Queues a manual publish of the venue's menu. */
+/**
+ * The menu an action is about: `menuId` when given (it must be a menu of the venue in use, else
+ * `no_menu`; a malformed id is `invalid`), else the venue's live menu.
+ */
+async function targetMenu(
+  scope: Pick<PublishScope, 'pool' | 'tenantId' | 'venueId'>,
+  menuId: string | undefined,
+): Promise<{ readonly menuId: NodeId } | { readonly error: 'invalid' | 'no_menu' }> {
+  if (menuId === undefined) {
+    const live = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
+    return live === null ? { error: 'no_menu' } : { menuId: live }
+  }
+  if (!idSchema('nd').safeParse(menuId).success) return { error: 'invalid' }
+  const found = await menuOfVenueById(scope.pool, scope.tenantId, scope.venueId, menuId)
+  return found === null ? { error: 'no_menu' } : { menuId: found }
+}
+
+/**
+ * The menu a decision about `snapshotId` acts on: the menu the snapshot belongs to, or (an id this
+ * venue has no snapshot under) the live menu, which then answers that it has no such version.
+ */
+async function menuOfDecision(
+  scope: Pick<PublishScope, 'pool' | 'tenantId' | 'venueId'>,
+  snapshotId: string,
+): Promise<NodeId | null> {
+  return (
+    (await menuOfSnapshot(scope.pool, scope.tenantId, scope.venueId, snapshotId)) ??
+    (await menuOfVenue(scope.pool, scope.tenantId, scope.venueId))
+  )
+}
+
+/**
+ * Queues a manual publish of one of the venue's menus: `menuId`, else the live one. Publishing a
+ * menu that is not live publishes that menu; it does not make it live (`setLiveMenu` does).
+ */
 export async function publishNow(
   scope: PublishScope,
   services: PublishServices,
+  menu?: string,
 ): Promise<PublishActionResult> {
   if (!scope.canPublish) return fail('not_allowed')
-  const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
-  if (menuId === null) return fail('no_menu')
+  const target = await targetMenu(scope, menu)
+  if ('error' in target) return fail(target.error)
+  const { menuId } = target
   try {
     await services.enqueue(JOB_NAMES.publishMenu, {
       tenantId: scope.tenantId as TenantId,
@@ -126,7 +175,7 @@ export async function approveHeld(
   if (!scope.canPublish) return fail('not_allowed')
   const held = idSchema('sn').safeParse(snapshotId)
   if (!held.success) return fail('invalid')
-  const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
+  const menuId = await menuOfDecision(scope, held.data)
   if (menuId === null) return fail('no_menu')
   const rows = await loadHeldRows(scope.pool, scope.tenantId, { menuId, venueId: scope.venueId })
   if (!rows.some((row) => row.id === held.data)) return fail('held_not_found')
@@ -158,7 +207,7 @@ export async function rejectHeldPublish(
   if (!scope.canPublish) return fail('not_allowed')
   const held = idSchema('sn').safeParse(snapshotId)
   if (!held.success) return fail('invalid')
-  const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
+  const menuId = await menuOfDecision(scope, held.data)
   if (menuId === null) return fail('no_menu')
   const rows = await loadHeldRows(scope.pool, scope.tenantId, { menuId, venueId: scope.venueId })
   if (!rows.some((row) => row.id === held.data)) return fail('held_not_found')
@@ -187,28 +236,15 @@ export async function rejectHeldPublish(
 
 /**
  * Whether this venue's automatic publishing is paused (T76: the venue's own flag, else the old one
- * of the integration it is mapped to); null for a venue with no integration (nothing to pause).
+ * of the integration it is mapped to); null for a venue with no till (nothing to pause).
  */
-async function pauseOf(scope: PublishScope): Promise<{ paused: boolean } | null> {
-  return withTenant(scope.pool, scope.tenantId, async (tx) => {
-    const [row] = await tx
-      .select({ config: integrations.config })
-      .from(barsyVenues)
-      .innerJoin(integrations, eq(integrations.id, barsyVenues.integrationId))
-      .where(eq(barsyVenues.venueId, scope.venueId))
-      .limit(1)
-    if (row === undefined) return null
-    const [venue] = await tx
-      .select({ settings: venues.settings })
-      .from(venues)
-      .where(eq(venues.id, scope.venueId))
-    return { paused: venueAutoPublishPaused(venue?.settings ?? {}, row.config) }
-  })
+function pauseOf(scope: PublishScope): Promise<{ readonly paused: boolean } | null> {
+  return readPauseState(scope.pool, scope.tenantId, scope.venueId)
 }
 
 /**
- * Moves the menu back to an earlier published snapshot, pauses automatic publishing, and queues
- * the files for it. A venue with no barsy integration has no automatic publishing to pause.
+ * Moves the snapshot's menu back to that earlier published snapshot, pauses automatic publishing,
+ * and queues the files for it. A venue with no till has no automatic publishing to pause.
  */
 export async function rollback(
   scope: PublishScope,
@@ -218,7 +254,7 @@ export async function rollback(
   if (!scope.canPublish) return fail('not_allowed')
   const snapshot = idSchema('sn').safeParse(snapshotId)
   if (!snapshot.success) return fail('invalid')
-  const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
+  const menuId = await menuOfDecision(scope, snapshot.data)
   if (menuId === null) return fail('no_menu')
 
   // Pause first (see the file header); remember whether this call is the one that did.
@@ -289,15 +325,18 @@ export type PreviewResult =
     }
 
 /**
- * The draft snapshot for the preview: built in memory with the publisher's own builder, schema and
- * leak guard, and never written as files. Anyone in the organisation may look (it publishes
- * nothing).
+ * The draft snapshot of a menu (`menu`, else the live one) for the preview: built in memory with
+ * the publisher's own builder, schema and leak guard, and never written as files. Anyone in the
+ * organisation may look (it publishes nothing).
  */
 export async function previewDraft(
   scope: Pick<PublishScope, 'pool' | 'tenantId' | 'venueId'>,
+  menu?: string,
 ): Promise<PreviewResult> {
-  const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
-  if (menuId === null) return { ok: false, error: 'no_menu' }
+  const target = await targetMenu(scope, menu)
+  if ('error' in target)
+    return { ok: false, error: target.error === 'invalid' ? 'failed' : 'no_menu' }
+  const { menuId } = target
   try {
     const draft = await loadDraft(scope.pool, scope.tenantId, { menuId, venueId: scope.venueId })
     return { ok: true, snapshot: draft.snapshot, overlay: draft.overlay }
@@ -311,32 +350,71 @@ export async function previewDraft(
   }
 }
 
-// --- the venue's publishing rules --------------------------------------------------------------
+// --- the venue's Automation settings ---------------------------------------------------------------
+
+/** What the Automation settings save (D82, D96): the sync mode and the rule after a sync. */
+export interface AutomationInput {
+  readonly sync: VenueSyncSettings
+  readonly afterSync: AfterSyncMode
+}
 
 /**
- * Saves the venue's publishing rules (the Rules card, CF-09b, D73): after a sync, publish by
- * itself or wait for a person; new items from the till, shown or kept hidden until a manager has
- * looked. Both are written as the venue's own, so from then on the venue no longer follows the
- * integration's old setting. Owners and admins, like publishing itself. It applies from the next
- * sync of this venue; nothing is published or hidden by the save.
+ * Saves the venue's Automation settings (Settings › Publish, D82, D96): the sync mode with its
+ * schedule (`setVenueSyncSettings`) and whether a sync publishes by itself
+ * (`setVenuePublishRules`). Both become the venue's own. Owners and admins, like publishing. A
+ * venue without a till has nothing to automate (`not_found`). Nothing is synced or published by
+ * the save.
+ *
+ * `setVenuePublishRules` rewrites the whole of `settings.publish`, which also holds the rollback
+ * pause (T76); the pause the venue had is written back right after, so a save never resumes or
+ * starts automatic publishing by itself.
  */
-export async function savePublishRules(
+export async function saveAutomation(
   scope: PublishScope,
-  input: { readonly afterSync: string; readonly newItems: string },
+  input: AutomationInput,
 ): Promise<PublishActionResult> {
   if (!scope.canPublish) return fail('not_allowed')
   try {
+    if ((await pauseOf(scope)) === null) return fail('not_found')
+    const pause = await readOwnPause(scope.pool, scope.tenantId, scope.venueId)
+    await setVenueSyncSettings(scope.pool, scope.tenantId, {
+      venueId: scope.venueId,
+      sync: input.sync,
+    })
     await setVenuePublishRules(scope.pool, scope.tenantId, {
       venueId: scope.venueId,
-      rules: { after_sync: input.afterSync as 'auto', new_items: input.newItems as 'show' },
+      rules: { after_sync: input.afterSync },
     })
-    // Nothing is queued by a save of the rules; `queued: true` is only "nothing went wrong".
+    if (pause !== null) {
+      await setVenueAutoPublishPaused(scope.pool, scope.tenantId, scope.venueId, pause)
+    }
+    // Nothing is queued by a save; `queued: true` is only "nothing went wrong".
     return { ok: true, queued: true }
   } catch (error) {
     if (error instanceof ProvisionError) {
-      return fail(error.code === 'venue_missing' ? 'not_found' : 'invalid')
+      return fail(
+        error.code === 'venue_missing' || error.code === 'venue_archived' ? 'not_found' : 'invalid',
+      )
     }
-    logError('save_publish_rules_failed', error)
+    logError('save_automation_failed', error)
+    return fail('failed')
+  }
+}
+
+/**
+ * "Resume automatic publishing" after a return to an earlier version (D96): takes the venue's
+ * pause off without publishing, so the next sync publishes again. Owners and admins.
+ */
+export async function resumeAutoPublish(scope: PublishScope): Promise<PublishActionResult> {
+  if (!scope.canPublish) return fail('not_allowed')
+  try {
+    await setVenueAutoPublishPaused(scope.pool, scope.tenantId, scope.venueId, false)
+    return { ok: true, queued: false }
+  } catch (error) {
+    if (error instanceof ProvisionError) {
+      return fail(error.code === 'invalid_input' ? 'invalid' : 'not_found')
+    }
+    logError('resume_auto_publish_failed', error)
     return fail('failed')
   }
 }

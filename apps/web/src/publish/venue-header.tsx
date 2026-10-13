@@ -1,0 +1,98 @@
+// The venue page's header (D96, D97): the venue's name and guest address (the page's), the
+// Publish bar top right, the answer to the last press, and the warnings that need action, the
+// same on every tab. The bar and the warnings read the page's one publish state, which builds
+// every menu's draft: they stream in under Suspense boundaries of their own, so the name, the
+// address and the tabs never wait for them, and are drawn once.
+import { type ReactNode, Suspense } from 'react'
+
+import { Skeleton } from '@/components/ui/skeleton'
+import { venuePublishState } from '@/server/publish/summary'
+import type { PublishBarView } from '@/server/publish/view'
+
+import { PublishBar } from './publish-bar'
+import { PublisherProvider, PublisherStateSync, PublishOutcome } from './publisher-context'
+import { VenueWarnings } from './venue-warnings'
+
+/** The bar, with the publish state the header's publisher follows (a server component). */
+async function HeaderBar({
+  tenantId,
+  venueId,
+  guestPath,
+  canPublish,
+}: {
+  tenantId: string
+  venueId: string
+  guestPath: string | null
+  canPublish: boolean
+}) {
+  const state = await venuePublishState(tenantId, venueId)
+  const view: PublishBarView = {
+    venueId,
+    canPublish,
+    addressServed: state.addressServed,
+    paused: state.paused,
+    guestPath,
+    lastRun: state.lastRun,
+    menus: state.menus.map(({ held: _held, ...menu }) => menu),
+  }
+  // A person's publish of any menu waiting for the worker, else files being written after a return.
+  const busy =
+    state.menus.find((menu) => menu.busy === 'publish')?.busy ??
+    state.menus.find((menu) => menu.busy !== null)?.busy ??
+    null
+  return (
+    <>
+      <PublisherStateSync state={{ lastRun: state.lastRun, busy }} />
+      <PublishBar view={view} />
+    </>
+  )
+}
+
+/** The bar's place while the publish state is read. */
+function BarSkeleton() {
+  return (
+    <div className="flex gap-2" aria-hidden data-testid="publish-bar-skeleton">
+      <Skeleton className="h-9 w-40" />
+      <Skeleton className="h-9 w-28" />
+    </div>
+  )
+}
+
+export function VenueHeader({
+  tenantId,
+  venueId,
+  guestPath,
+  canPublish,
+  title,
+}: {
+  tenantId: string
+  venueId: string
+  /** The guest address `/m/<organisation>/<venue>` (D84), or null. */
+  guestPath: string | null
+  /** Owner or admin. */
+  canPublish: boolean
+  /** The venue's name and address, drawn by the page. */
+  title: ReactNode
+}) {
+  return (
+    <PublisherProvider venueId={venueId}>
+      <div className="grid gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">{title}</div>
+          <Suspense fallback={<BarSkeleton />}>
+            <HeaderBar
+              tenantId={tenantId}
+              venueId={venueId}
+              guestPath={guestPath}
+              canPublish={canPublish}
+            />
+          </Suspense>
+        </div>
+        <PublishOutcome />
+        <Suspense fallback={null}>
+          <VenueWarnings tenantId={tenantId} venueId={venueId} canPublish={canPublish} />
+        </Suspense>
+      </div>
+    </PublisherProvider>
+  )
+}

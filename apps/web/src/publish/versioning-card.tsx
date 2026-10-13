@@ -1,8 +1,10 @@
 'use client'
 
-// "Versions": every publish and every return to an earlier version, newest first, 20 to a page,
-// with when, why, by whom and what it changed. Each version that can be returned to has a button
-// that asks first ("Return to version N?"); the live one is marked.
+// Settings › Versioning (D96), from the old Versions card: per menu, the version on guests'
+// phones and up to two earlier ones to return to, each with when, why, by whom and what it
+// changed; held and rejected publishes while they exist. "Return to this version" asks first.
+// Older versions are erased by the purge, and the sentence under the list says when.
+import { CHANGE_LOG_DAYS, VERSION_PURGE_DAYS, VERSIONS_KEPT } from '@restro/core'
 import { UndoIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState, useTransition } from 'react'
@@ -19,20 +21,24 @@ import {
 } from '@/components/ui/dialog'
 import { FormSection } from '@/components/ui/form-section'
 import { useMoment } from '@/integration/use-moment'
-import { loadHistoryPageAction } from '@/server/publish/actions'
+import { rollbackAction } from '@/server/publish/actions'
 import {
-  type HistoryPage,
   isLiveEntry,
   isReturnable,
-  type PublishView,
   type VersionCounts,
   type VersionEntry,
+  type VersioningMenu,
+  type VersioningView,
 } from '@/server/publish/view'
+
 import { useActorLabel } from './names'
+import { OutcomeNote } from './outcome-note'
+import type { Outcome } from './use-publisher'
 
 /** The change counts of a version in words: "1 with a new price, 2 added". */
 function CountsText({ counts }: { counts: VersionCounts }) {
   const t = useTranslations('publish.changes.summary')
+  const empty = useTranslations('publish.history')('noChange')
   const parts = [
     counts.added > 0 ? t('added', { count: counts.added }) : null,
     counts.hidden > 0 ? t('hidden', { count: counts.hidden }) : null,
@@ -41,36 +47,35 @@ function CountsText({ counts }: { counts: VersionCounts }) {
     counts.otherChanged > 0 ? t('other', { count: counts.otherChanged }) : null,
     counts.areas > 0 ? t('areas', { count: counts.areas }) : null,
   ].filter((part): part is string => part !== null)
-  const empty = useTranslations('publish.history')('noChange')
   return <>{parts.length > 0 ? parts.join(', ') : empty}</>
 }
 
 function EntryRow({
   entry,
-  view,
+  menu,
+  timeZone,
+  canReturn,
   busy,
   onReturn,
 }: {
   entry: VersionEntry
-  view: PublishView
+  menu: VersioningMenu
+  timeZone: string
+  canReturn: boolean
   busy: boolean
   onReturn: (entry: VersionEntry) => void
 }) {
   const t = useTranslations('publish.history')
   const tLive = useTranslations('publish.live')
-  const moment = useMoment(view.timeZone)
+  const moment = useMoment(timeZone)
   const actorLabel = useActorLabel()
-  const liveVersion = view.live?.version ?? null
+  const liveVersion = menu.liveVersion?.version ?? null
   const live = isLiveEntry(entry, liveVersion)
-  const returnable = view.canPublish && isReturnable(entry, liveVersion)
+  const returnable = canReturn && isReturnable(entry, liveVersion)
+  const returned = live ? (menu.liveVersion?.returned ?? null) : null
 
-  let what: React.ReactNode
-  if (entry.reason === 'rollback') {
-    what =
-      entry.restoresVersion === null
-        ? t('returnedToUnknown')
-        : t('returnedTo', { version: entry.restoresVersion })
-  } else if (entry.status === 'held' || entry.status === 'rejected') {
+  let what: React.ReactNode = null
+  if (entry.status === 'held' || entry.status === 'rejected') {
     what = entry.held
       ? t('heldText', { hidden: entry.held.hidden, total: entry.held.previouslyVisible })
       : null
@@ -78,8 +83,6 @@ function EntryRow({
     what = <CountsText counts={entry.counts} />
   } else if (entry.first) {
     what = t('first')
-  } else {
-    what = null
   }
 
   return (
@@ -99,7 +102,7 @@ function EntryRow({
             </Badge>
           ) : null}
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground" data-testid="history-meta">
           {[
             moment(entry.at),
             entry.reason === 'rollback' ? null : tLive(`reason.${entry.reason}`),
@@ -111,6 +114,14 @@ function EntryRow({
         {what !== null && what !== '' ? (
           <p className="text-sm" data-testid="history-what">
             {what}
+          </p>
+        ) : null}
+        {returned !== null ? (
+          <p className="text-sm text-muted-foreground" data-testid="live-returned">
+            {tLive('returned', {
+              when: moment(returned.at) ?? '',
+              who: actorLabel(returned.actor),
+            })}
           </p>
         ) : null}
       </div>
@@ -132,84 +143,101 @@ function EntryRow({
   )
 }
 
-export function HistoryCard({
+function MenuVersions({
+  menu,
   view,
+  several,
   busy,
-  returnTo,
+  onReturn,
 }: {
-  view: PublishView
+  menu: VersioningMenu
+  view: VersioningView
+  several: boolean
   busy: boolean
-  returnTo: (snapshotId: string, version: number) => Promise<boolean>
+  onReturn: (entry: VersionEntry) => void
 }) {
   const t = useTranslations('publish.history')
-  const tConfirm = useTranslations('publish.confirm')
-  const [older, setOlder] = useState<HistoryPage | null>(null)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [loading, startLoading] = useTransition()
-  const [asking, setAsking] = useState<VersionEntry | null>(null)
-  const [returning, setReturning] = useState(false)
-
-  // The first page comes with the tab and is fresh on every refresh; the older pages the person
-  // asked for are kept, and follow the live version, which `isLiveEntry` takes from the view.
-  const shown = view.history.entries
-  const olderEntries = (older?.entries ?? []).filter(
-    (entry) => !shown.some((known) => known.id === entry.id),
-  )
-  const cursor = older === null ? view.history.nextBeforeVersion : older.nextBeforeVersion
-
-  function loadOlder() {
-    if (cursor === null) return
-    setLoadFailed(false)
-    startLoading(async () => {
-      const result = await loadHistoryPageAction(view.venueId, cursor)
-      if (!result.ok) {
-        setLoadFailed(true)
-        return
-      }
-      setOlder((previous) => ({
-        entries: [...(previous?.entries ?? []), ...result.page.entries],
-        nextBeforeVersion: result.page.nextBeforeVersion,
-      }))
-    })
-  }
-
-  async function confirmReturn() {
-    if (asking === null) return
-    setReturning(true)
-    try {
-      await returnTo(asking.id, asking.version)
-    } finally {
-      setReturning(false)
-      setAsking(null)
-    }
-  }
-
-  const entries = [...shown, ...olderEntries]
   return (
-    <FormSection title={t('title')} description={t('description')}>
-      {entries.length === 0 ? (
+    <div className="grid gap-1" data-testid="versioning-menu" data-menu={menu.menuId}>
+      {several ? (
+        <h4 className="flex items-center gap-2 text-sm font-medium">
+          {menu.name}
+          {menu.live ? <Badge variant="outline">{t('liveMenu')}</Badge> : null}
+        </h4>
+      ) : null}
+      {menu.entries.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="history-empty">
           {t('empty')}
         </p>
       ) : (
         <ol className="divide-y" aria-label={t('listLabel')} data-testid="history">
-          {entries.map((entry) => (
-            <EntryRow key={entry.id} entry={entry} view={view} busy={busy} onReturn={setAsking} />
+          {menu.entries.map((entry) => (
+            <EntryRow
+              key={entry.id}
+              entry={entry}
+              menu={menu}
+              timeZone={view.timeZone}
+              canReturn={view.canPublish}
+              busy={busy}
+              onReturn={onReturn}
+            />
           ))}
         </ol>
       )}
-      {cursor !== null ? (
-        <div>
-          <Button type="button" variant="outline" onClick={loadOlder} disabled={loading}>
-            {loading ? t('loading') : t('more')}
-          </Button>
-        </div>
-      ) : null}
-      {loadFailed ? (
-        <p role="alert" className="text-sm text-destructive">
-          {t('loadFailed')}
+    </div>
+  )
+}
+
+export function VersioningCard({ view }: { view: VersioningView }) {
+  const t = useTranslations('publish.history')
+  const tConfirm = useTranslations('publish.confirm')
+  const [asking, setAsking] = useState<VersionEntry | null>(null)
+  const [outcome, setOutcome] = useState<Outcome | null>(null)
+  const [returning, startReturn] = useTransition()
+  const several = view.menus.length > 1
+
+  function confirmReturn() {
+    const entry = asking
+    if (entry === null) return
+    setOutcome(null)
+    startReturn(async () => {
+      const result = await rollbackAction(view.venueId, entry.id)
+      setOutcome(
+        result.ok
+          ? { kind: 'returned', version: entry.version }
+          : { kind: 'error', error: result.error },
+      )
+      setAsking(null)
+    })
+  }
+
+  return (
+    <FormSection title={t('title')} description={t('description', { kept: VERSIONS_KEPT })}>
+      <OutcomeNote outcome={outcome} slow={false} onDismiss={() => setOutcome(null)} />
+      {view.canPublish ? null : (
+        <p className="text-sm text-muted-foreground" data-testid="read-only">
+          {t('readOnly')}
         </p>
-      ) : null}
+      )}
+      {view.menus.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="history-empty">
+          {t('noMenu')}
+        </p>
+      ) : (
+        view.menus.map((menu) => (
+          <MenuVersions
+            key={menu.menuId}
+            menu={menu}
+            view={view}
+            several={several}
+            busy={returning}
+            onReturn={setAsking}
+          />
+        ))
+      )}
+      <p className="text-xs text-muted-foreground" data-testid="versioning-purge">
+        {t('purge', { days: VERSION_PURGE_DAYS, logDays: CHANGE_LOG_DAYS })}
+      </p>
 
       <Dialog open={asking !== null} onOpenChange={(open) => (open ? null : setAsking(null))}>
         <DialogContent>
