@@ -217,7 +217,7 @@ test('an owner unpublishes the venue from its card: guests lose the menu; publis
   await expect(bar.getByTestId('unpublish-venue-open')).toHaveCount(0)
 
   // The worker takes the venue's files out a moment later: its address says the menu is not
-  // available. The table's QR code still leads to that address, so it says the same.
+  // available, and the table's QR code is not active until the venue is published again (D86).
   await expect
     .poll(
       async () =>
@@ -227,10 +227,12 @@ test('an owner unpublishes the venue from its card: guests lose the menu; publis
       { timeout: 60_000, intervals: [1_000, 2_000] },
     )
     .toBe(true)
-  const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
-  expect(code.status()).toBe(302)
-  const qrAddress = code.headers().location ?? ''
-  expect(await guestText(browser, qrAddress)).toContain('This menu is not available')
+  await expect
+    .poll(async () => (await request.get(`/t/${seed.token}`, { maxRedirects: 0 })).status(), {
+      timeout: 60_000,
+      intervals: [1_000, 2_000],
+    })
+    .toBe(404)
 
   // Publishing is the word to serve the venue again, even with nothing new in the menu.
   await page.goto(`/venues/${seed.barId}?tab=publishing`)
@@ -247,7 +249,15 @@ test('an owner unpublishes the venue from its card: guests lose the menu; publis
       intervals: [1_000, 2_000],
     })
     .toBe(true)
-  expect(hasItem(await guestText(browser, qrAddress))).toBe(true)
+  // The table code opens the menu again once the files job has run.
+  await expect
+    .poll(async () => (await request.get(`/t/${seed.token}`, { maxRedirects: 0 })).status(), {
+      timeout: 60_000,
+      intervals: [1_000, 2_000],
+    })
+    .toBe(302)
+  const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
+  expect(hasItem(await guestText(browser, code.headers().location ?? ''))).toBe(true)
   await page.goto('/venues')
   await expect(venueCard(page, RENAMED).getByTestId('venue-card-state')).toHaveText('Live')
 })
