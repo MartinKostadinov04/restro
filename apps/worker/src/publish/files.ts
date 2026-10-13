@@ -51,7 +51,8 @@ export interface PublishScope {
 }
 
 /** What happened to the venue index `v/<public code>.json`. */
-export type VenueIndexStatus = 'written' | 'unchanged'
+/** `not_live`: the published menu is not the venue's live one (D88), so the index was left alone. */
+export type VenueIndexStatus = 'written' | 'unchanged' | 'not_live'
 
 /**
  * `v/<public code>.json` names another venue, so this venue's code is not its own. The database
@@ -120,13 +121,15 @@ interface VenueAddress {
   readonly publicId: string
   readonly slug: string
   readonly organization: string | null
+  /** The venue's live menu (D88): the only menu the venue index names. */
+  readonly liveMenuId: string | null
 }
 
 /** The venue's address parts (the old address `/m/<slug>-<code>` and the new `/m/<organisation>/<slug>`). */
 async function addressOf(deps: PublishFilesDeps, scope: PublishScope): Promise<VenueAddress> {
   return withTenant(deps.pool, scope.tenantId, async (tx) => {
     const [row] = await tx
-      .select({ publicId: venues.publicId, slug: venues.slug })
+      .select({ publicId: venues.publicId, slug: venues.slug, liveMenuId: venues.liveMenuId })
       .from(venues)
       .where(eq(venues.id, scope.venueId))
     if (row === undefined) throw new Error(`there is no venue ${scope.venueId} to publish`)
@@ -267,7 +270,12 @@ export async function writePublishFiles(
     }
 
     const address = await addressOf(deps, scope)
-    const venueIndex = await writeVenueIndex(deps, scope, address)
+    // The venue index names the LIVE menu (D88): a publish of another menu (the Publish bar
+    // publishes any menu, D90) writes its own snapshot and pointer and leaves the index alone.
+    const venueIndex =
+      address.liveMenuId !== null && address.liveMenuId !== scope.menuId
+        ? 'not_live'
+        : await writeVenueIndex(deps, scope, address)
     if (venueIndex === 'written') written.push(venueIndexPath(address.publicId))
 
     // The venue may have been deleted while the files were written: the index goes again, so the

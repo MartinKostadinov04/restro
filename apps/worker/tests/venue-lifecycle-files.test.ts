@@ -30,6 +30,7 @@ import {
   type NodeId,
   newId,
   prepareJob,
+  VENUE_MENU_TEMPLATE,
   type VenueId,
 } from '@restro/core'
 import {
@@ -234,6 +235,43 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       // Restore, then publish: the same address answers again.
       await restoreVenue(world.pool, tenantId(), world.venueId)
       await runJob(JOB_NAMES.publishMenu, publishPayload())
+      expect(await indexNow()).toMatchObject({ venue_id: world.venueId, menu_id: world.menuId })
+    })
+
+    it('leaves the index to the live menu: a publish of another menu writes no index (D88)', async () => {
+      await runJob(JOB_NAMES.publishMenu, publishPayload())
+      expect(await indexNow()).toMatchObject({ venue_id: world.venueId, menu_id: world.menuId })
+      // Another menu (its row only) becomes the venue's live one.
+      const other = newId('nd')
+      await world.query(
+        `insert into restro.nodes (id, tenant_id, node_type, parent_id) values ($1, $2, 'menu', null)`,
+        [other, world.tenantId],
+      )
+      await world.query(
+        `insert into restro.menus (id, tenant_id, venue_id, template_key, template_version, root_node_id, name, sort_key)
+         values ($1, $2, $3, $4, $5, $1, 'Other', 'z')`,
+        [
+          other,
+          world.tenantId,
+          world.venueId,
+          VENUE_MENU_TEMPLATE.key,
+          VENUE_MENU_TEMPLATE.version,
+        ],
+      )
+      await world.query('update restro.venues set live_menu_id = $2 where id = $1', [
+        world.venueId,
+        other,
+      ])
+      await store.delete(venueIndexPath(world.venuePublicId))
+      // The world's menu is not the live one any more: its files are written, the index is not.
+      await runJob(JOB_NAMES.publishFiles, scopePayload())
+      expect(await indexNow()).toBeNull()
+      // Back as the live menu, the index follows again.
+      await world.query('update restro.venues set live_menu_id = $2 where id = $1', [
+        world.venueId,
+        world.menuId,
+      ])
+      await runJob(JOB_NAMES.publishFiles, scopePayload())
       expect(await indexNow()).toMatchObject({ venue_id: world.venueId, menu_id: world.menuId })
     })
 

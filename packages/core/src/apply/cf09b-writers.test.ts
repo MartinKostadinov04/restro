@@ -257,7 +257,14 @@ describe.skipIf(!hasDatabase)('the writers of CF-09b (as the restro_app role)', 
       expect(await settingsOf(tenant, venueB)).toEqual(bBefore)
     })
 
-    it('a save writes both rules, replaces the old ones and is idempotent', async () => {
+    it('a save writes both rules, replaces the old ones, keeps the pause (T76) and is idempotent', async () => {
+      // The pause after a return sits next to the rules (ad/05): a save of the rules keeps it.
+      await owner.query(
+        `update restro.venues
+         set settings = settings || '{"publish": {"after_sync": "manual", "new_items": "hold", "auto_paused": true}}'::jsonb
+         where id = $1`,
+        [venueA],
+      )
       await setVenuePublishRules(app, tenant, {
         venueId: venueA,
         rules: { after_sync: 'auto', new_items: 'show' },
@@ -270,6 +277,7 @@ describe.skipIf(!hasDatabase)('the writers of CF-09b (as the restro_app role)', 
       expect((settings as { publish: unknown }).publish).toEqual({
         after_sync: 'auto',
         new_items: 'show',
+        auto_paused: true,
       })
     })
 
