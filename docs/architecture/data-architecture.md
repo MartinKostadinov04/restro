@@ -429,7 +429,7 @@ The mapping is versioned configuration per integration, not code paths scattered
 
 - Barsy language keys (`bg_BG`, `en_US`, `de_DE`, `es_ES`, `fr_FR`, `ro_RO`) map one-to-one to our locales.
 - **Menu languages (D77).** A venue's menu languages are decided in one place, core's `venueLanguages`; every workflow asks it (the sync's text language, a new venue's list, the settings lists, the composer's language tabs, the resolver's checks, the publisher's `locales`), and no new code reads `venues.enabled_locales` on its own (a guardrail test refuses new readers; the older ones are being moved to the function). The rule: the venue has one main language (`default_locale`, on the venue); a language its owner switched on is never removed; a language the till offers counts as a menu language when the till fills it for about 20% or more of the guest-facing texts (names and descriptions of sections, items and options). After every complete full read the connector reports which languages the till offers and how many texts it fills in each (`venues.settings.languages_report`; the report replaces the previous one). A hand-made venue has no report, so its languages are its owner's (D91). More languages are added by hand in the editor's translations tab (manual layer, per locale).
-- **Untagged till text (D77).** Text the till sends without a language tag is stored in the language of the instance's `default_locale` setting (`integrations.config`): an instance setting, not the venue's main language.
+- **Untagged till text (D77).** Text the till sends without a language tag is stored in the language of the instance's `default_locale` setting (`integrations.config.default_locale`, default `bg_BG`): an instance setting, not the venue's main language. The guest-side language fallback (R3) is unchanged.
 - Currency is the installation's system currency (EUR). The price formula matches Barsy's own rounding, so displayed and billed amounts agree to the cent.
 - Every write records `mapping_version`, so a replay can tell which values a mapping change will affect.
 
@@ -439,7 +439,7 @@ Our own ids are the only ids the model, the snapshots and the shell use. Externa
 
 ### Rules
 
-- **Internal ids** are opaque and prefixed by kind: `nd_` node, `as_` asset, `sn_` snapshot, `tb_` table.
+- **Internal ids** are opaque and prefixed by kind: `nd_` node, `as_` asset, `sn_` snapshot, `ar_` area, `tb_` table. A menu's id is its root node's `nd_` id.
 - **Items belong to the tenant's catalog, not to a menu.** Menus and Sections hold placements that point to catalog Items. The same Barsy article on the Dinner menu and the Bar menu is one Item with one set of photos and copy, placed twice.
 - **Link key** = (integration, external type, external id). Barsy ids are unique per installation, and all venues on that installation share the catalog. So one article = one Item; what differs per venue (price, for sale) is stored per venue: those barsy-layer rows carry scope venue:\<id> instead of master.
 - **One link per source per node.** A node has at most one Barsy link.
@@ -471,7 +471,7 @@ Staff often delete a Barsy article and create a new one instead of editing it, w
 
 ### Tables
 
-A table is identified by (integration, venue, `place_id`). Its QR code carries a random 128-bit token mapped to the table, never the `place_id`, so a guest cannot edit a URL to order onto another table. Tokens can be rotated without reprinting the Barsy setup.
+A table is the platform's own row (`tables`, a `tb_` id) in an area of a venue (D95). In a Barsy venue it mirrors a Barsy place, which `places` identifies by (integration, venue `bid`, `place_id`), and its area mirrors the place's hall, identified by the hall id (`areas.source_key`), never by name: halls can share a name. Its QR code carries a random 128-bit token (`tables.qr_token`, 22 characters, unique across all organisations) mapped to the table, never the `place_id` or the table id, so a guest cannot edit a URL to order onto another table. Tokens can be rotated without reprinting the Barsy setup. A purged venue's tokens are tombstoned and never issued again (D83).
 
 ## Layers, ownership and resolution
 
@@ -567,11 +567,13 @@ The shell never reads the database. It reads one immutable snapshot per menu and
 | Barsy hides an Item or takes it off sale | Publish automatically (the safe direction) |
 | Barsy puts an Item back on sale | Publish automatically |
 | Barsy deletes an Item | Hide and publish automatically |
-| New Item from Barsy | Publish automatically (decided 2026-10-08; hold for review or publish hidden stay configurable) |
+| New Item from Barsy | Publish automatically (decided 2026-10-08). The "hold for review" and "publish hidden" options were removed (D96): new till items go live without review |
 | Hand edit in the editor | Published when someone presses Publish |
 | Any change set that trips V11 | Hold for review whatever its type |
 
 Automatic publishes within a 30-second window are merged into one snapshot.
+
+These defaults hold while the venue's publishing rule `settings.publish.after_sync` is `auto` (the default); with `manual`, a sync changes the draft and a person presses Publish (D96: own edits always need publishing, in both modes). After a rollback, automatic publishing pauses for that venue (`settings.publish.auto_paused`) until a person publishes (T76). Publishing is per menu: each menu has its own draft and its own published version (D90), and the venue is Live when its live menu is published. Unpublish withdraws a venue's guest files and makes it a Draft until the next publish (D86).
 
 ### Files on the CDN
 
@@ -581,8 +583,15 @@ Automatic publishes within a 30-second window are merged into one snapshot.
 | `/m/<menu>/<venue>/current.json` | `{snapshot_id, version, hash}` | 30 seconds, or pushed over SSE to always-on screens |
 | `/m/<menu>/<venue>/live.json` | Live overlay: `{version, items: {"nd_x": {"sold_out": true}}}` from the service edition | 15 seconds |
 | `/a/<asset_id>/<variant>.webp` | Image variants | Immutable |
+| `/o/<organisation>.json` | The organisation's index (D84): its live venues (D86) by address name, each with `venue_id`, its live `menu_id` and its internal public code, and an `old_names` map from an earlier venue name to the current one. Under an earlier organisation name the file is only `{redirect_to}` | 30 seconds |
+| `/v/<code>.json` | `{venue_id, menu_id, slug, organization}`: the venue's live menu only (D88), for the older address `/m/<slug>-<code>` | 30 seconds |
+| `/t/<token>.json` | `{venue_public_id, venue_slug, organization_slug, table_label, menu_id}`: what a table's code means and the menu it opens, resolved by the publisher from the routes (D95) | 30 seconds |
 
-Rollback is moving the pointer back to an earlier snapshot. The overlay lets bar staff mark items sold out ten times a night without publishing ten snapshots.
+Rollback is moving the pointer back to an earlier snapshot. Per menu and venue the live version and up to two earlier published ones can be restored; any other version is purged (see Deletion and the purge, D96). The overlay lets bar staff mark items sold out ten times a night without publishing ten snapshots.
+
+#### Guest addresses (D84)
+
+A venue's menu is at `<our domain>/m/<organisation>/<venue>`: the organisation's address name (`auth_organization.slug`, unique platform-wide) and the venue's address name (`venues.slug`, unique within its organisation); both are generated from names and editable. The page is a static shell. It reads `o/<organisation>.json`, follows an earlier venue name (`old_names`) or an earlier organisation name (`redirect_to`), corrects the address bar, then reads the live menu's files; a table file may name another menu (D95), so the page waits for it. It never reads the database (rule 4). The venue's random public code (`venues.public_id`, 12 characters) is internal: the key of `v/<code>.json` and what a table file names. The older address `/m/<slug>-<code>` keeps working and moves to the new address once its `v/` file names the organisation, and `/t/<token>` leads to the new address. Earlier names stay reserved (`venue_slug_history`, `organization_slug_history`): nobody else can take them, a venue may take its own earlier name back, and a purged venue's names are free again inside its organisation. The CDN keeps these small files 30 seconds, so a rename reaches a guest who typed the old address within that time through the redirect entries. The path parts that custom domains drop (D80) are not built yet (DM1).
 
 ### Snapshot shape
 
@@ -612,7 +621,7 @@ Normalised by id, with ordering carried by the id arrays:
             "sections": ["nd_s1"] },
   "sections": {
     "nd_s1": { "title": { "en_US": "Cocktails" }, "description": {}, "image": null,
-                "hints": { "color": null, "icon": null }, "sections": [], "items": ["nd_i1"] }
+                "hints": { "color": null, "icon": null, "layout": "vertical" }, "sections": [], "items": ["nd_i1"] }
   },
   "items": {
     "nd_i1": {
@@ -628,26 +637,31 @@ Normalised by id, with ordering carried by the id arrays:
   },
   "modifier_groups": { "nd_g1": { "name": { "en_US": "Gin" }, "min": 0, "max": 1, "options": ["nd_o1"] } },
   "options": { "nd_o1": { "name": { "en_US": "Premium gin" }, "price_delta": { "amount_minor": 300, "currency": "EUR" } } },
-  "presentation": { "face": "editorial-market", "options": { "layout": "two", "featureFirstSection": true } },
+  "presentation": { "face": "editorial-market", "options": {} },
   "features": { "filters": true, "call_waiter": { "enabled": false, "kinds": [] },
-                "bill": false, "ordering": false, "pay": false }
+                "bill": false, "ordering": false, "pay": false },
+  "layout": { "default": "two", "guest_switch": true }
 }
 ```
 
-Each item also carries `order_mode` (`orderable` or `ask_waiter`); `hidden` items are left out of the snapshot (decided 2026-10-08).
+Each item also carries `order_mode` (`orderable` or `ask_waiter`); `hidden` items are left out of the snapshot (decided 2026-10-08). `locales.default` is the venue's main language and `locales.available` its menu languages (D77).
 
-#### The look, the template and the guest services (D69–D71)
+#### The look, the template, the layout and the guest services (D69–D71, D92, D93)
 
-Four fields were added to `menu-snapshot/1` after it first shipped. All are optional, and all come from venue settings, not from the menu document:
+Six fields were added to `menu-snapshot/1` after it first shipped. All are optional. The look, the template and the guest services come from venue settings; the layout comes from the menu's own settings and from a field of each section (D92). The schema stays `menu-snapshot/1`; the additions are additive.
 
 | Field | Holds |
 | --- | --- |
-| `theme.roles` | The eight colour roles (`background`, `surface`, `accent`, `on_accent`, `text`, `muted`, `accent_text`, `border`), each a lower-case `#rrggbb`, for a `light` and a `dark` screen. The publisher always writes it (see The theme, R13) |
+| `theme.roles` | The eight colour roles (`background`, `surface`, `accent`, `on_accent`, `text`, `muted`, `accent_text`, `border`), each a lower-case `#rrggbb`, for a `light` and a `dark` screen, and, when the roles are derived from the venue's three colours, the ten roles of D93 (see The theme, R13), each optional. The publisher always writes it |
 | `theme.scheme` | The venue's light/dark policy: `auto` (follow the guest's phone), `light` or `dark`. Always written |
-| `presentation` | `{face, options}`: the template the venue chose and its options (short lower-case tokens or switches, never id-shaped). Written only when the venue chose a template; without it the default template applies |
+| `presentation` | `{face, options}`: the template the venue chose and its options (short lower-case tokens or switches, never id-shaped). Written only when the venue chose a template; without it the default template applies. The Editorial Market declares no options since D92 |
 | `features` | The guest services the venue switched on: `filters`, `call_waiter` (`enabled` and the request `kinds`), `bill`, `ordering`, `pay`. Always written; a venue that has set nothing gets filters on and every service off |
+| `layout` | `{default, guest_switch}`: how the menu starts (`list`, `one` column or `two` columns) and whether guests may switch it. From the menu's `settings` (`layout`: `list`, `one_column` or `two_columns`; `layout_switch`). The publisher always writes it; a menu that set neither publishes `two` with the switch on, as before D92. Replaces the face options `layout` and `layoutSwitch` |
+| `sections.<id>.hints.layout` | `vertical` or `horizontal` (drawn as a row, the face's photo strip). Set per section in the composer; the publisher always writes it, and a snapshot without it reads as `vertical`. Replaces the face option `featureFirstSection` |
 
-**Optional forever, parser-first after deploy.** Inside `menu-snapshot/1` a new field is optional forever, so a snapshot published before it still parses (no `roles`: the shell derives them from the palette as it always did; no `features`: the defaults; no `presentation`: the default template). After the first deploy, a new field ships in the reader one deploy before the publisher writes it. A phone still running an older reader keeps its current menu on screen until it reloads, because the pointer poll ignores a snapshot it cannot parse. The live overlay's top level ignores keys it does not know; the snapshot itself stays strict for unknown keys. A breaking change needs a new schema version. One consequence of the new fields: the first publish of each venue after the deploy makes a new snapshot, because the look fields are always written.
+The menu's header name (`menus.name`, D92) is not in the snapshot yet; `menu.title` still comes from the menu node (a T79 follow-up).
+
+**Optional forever, parser-first after deploy.** Inside `menu-snapshot/1` a new field is optional forever, so a snapshot published before it still parses (no `roles`: the shell derives them from the palette as it always did; no `features`: the defaults; no `presentation`: the default template; no `layout`: the shell reads `two` columns with the guest switch on, and sections as `vertical`). After the first deploy, a new field ships in the reader one deploy before the publisher writes it. A phone still running an older reader keeps its current menu on screen until it reloads, because the pointer poll ignores a snapshot it cannot parse. The live overlay's top level ignores keys it does not know; the snapshot itself stays strict for unknown keys. A breaking change needs a new schema version. One consequence of the new fields: the first publish of each venue after the deploy makes a new snapshot, because the look fields are always written.
 
 ### What a snapshot never contains
 
@@ -682,13 +696,13 @@ The same snapshot, overlay and context always produce the same view model, so th
 | R10 Images | The shell picks the asset variant from the face's declared slot size and pixel density, crops around the focal point, and uses the face's declared no-image layout when there is no image |
 | R11 Ordering controls | Shown only if the Item is `orderable` and its order\_mode is orderable, ordering is on for the venue, the channel supports ordering, and a valid table token is present. An ask\_waiter Item shows its price and an "Ask your waiter" action instead |
 | R12 Custom fields | Rendered through `field_types` with one renderer per field type, in template order, into one `extra_fields` slot |
-| R13 Theme | Faces use theme tokens only, never hard-coded colours. The snapshot carries the venue's eight colour roles for a light and a dark screen (`theme.roles`); every text-on-colour pair reads at 4.5:1 or better. The shell checks the published roles again, repairs a failing text colour with the nearest readable one, and derives the roles from the palette when a snapshot has none. `theme.scheme` is the venue's light/dark policy, passed on to the face |
+| R13 Theme | Faces use theme tokens only, never hard-coded colours. The snapshot carries the venue's eight colour roles for a light and a dark screen (`theme.roles`), and, when derived from the venue's three colours, the ten more of D93 for status, disabled, selected, focus, backdrop and strong border, so a face never improvises them; every text-on-colour pair reads at 4.5:1 or better, and a control outline or ring at 3:1. The shell checks the published roles again, repairs a failing text colour with the nearest readable one (it drops a failing D93 role instead of repairing it), and derives the roles from the palette when a snapshot has none. `theme.scheme` is the venue's light/dark policy, passed on to the face. A face declares the pairs it paints (`colour_pairs` in its manifest), and the contract tests check each one in both schemes |
 | R14 Determinism | No rule reads anything outside the snapshot, the overlay and the context |
 | R15 Features | Fail-closed. A control for a guest feature (filters, call a waiter with its request kinds, the bill, ordering, pay) is allowed only when the venue switched it on, the platform supports it, the channel is interactive (`qr`, `kiosk`) and a confirmed table token is present; filters need the venue's switch and at least one tag or dietary chip on the menu, not a table. A missing, unreadable or unknown input means off. Allergen information is not a feature and has no switch (R6). The face marks each control with its `menu.*` slot, and a control that is off is not in the page at all |
 
 ### The theme (R13)
 
-A venue chooses three colours in the Design tab: a **primary** (about 60%: the page), a **secondary** (about 30%: the panels behind photos, the header) and a **tertiary** (about 10%: badges, buttons, highlights). The publisher works out the eight roles for both schemes in OKLCH and never stores them, so a better derivation reaches every venue with its next publish.
+A venue chooses three colours in the composer's Design subtab (D92): a **primary** (about 60%: the page), a **secondary** (about 30%: the panels behind photos, the header) and a **tertiary** (about 10%: badges, buttons, highlights). The colour card is brand-first: it starts with the brand colour (the tertiary), and the page and the panels start as calm tints of it and stay editable. The publisher works out the roles for both schemes in OKLCH (the eight below and the ten of D93, after the list) and never stores them, so a better derivation reaches every venue with its next publish.
 
 | Role | Light screen | Dark screen |
 | --- | --- | --- |
@@ -701,9 +715,23 @@ A venue chooses three colours in the Design tab: a **primary** (about 60%: the p
 | `on_accent` | The first of page, ink, white and black that reads on the accent | Same rule |
 | `border` | 15% of the ink in the page | Same rule |
 
+**Ten more roles (D93).** Faces no longer choose their own status, disabled, selected, focus, overlay or strong-border colours; the engine derives them for both schemes, with decorative mixes in OKLab. All are optional in stored and published JSON, so a snapshot from before still parses.
+
+| Role | Holds | Must read |
+| --- | --- | --- |
+| `error`, `error_text` | A status fill, and the same colour as text | `error_text` 4.5:1 on page and panels |
+| `success`, `success_text` | A status fill, and the same colour as text | `success_text` 4.5:1 on page and panels |
+| `disabled_text` | Text of a disabled control | 3:1 on page and panels |
+| `selected`, `selected_text` | A soft accent fill for a selected item, and its text | `selected_text` 4.5:1 on `selected` |
+| `focus` | The focus ring | 3:1 on page and panels |
+| `backdrop` | The colour behind a sheet (a face blends it with alpha) | none |
+| `border_strong` | A control's outline | 3:1 on page and panels |
+
+Text pairs read at 4.5:1 and controls at 3:1 (WCAG 1.4.11); a scheme is checked on a D93 pair only when it has both of its roles. Still to come under D93: softer dark accents, an APCA second check and an increase-contrast variant.
+
 - **Readable for any three colours.** The seven pairs (`text`, `muted` and `accent_text` on `background` and on `surface`; `on_accent` on `accent`) read at 4.5:1 (WCAG AA). Where colour theory cannot reach it the ink falls back to black, white or the grey between. When the page and the panels sit on opposite sides of mid-grey, no colour reads on both, and only then the panels move in lightness (hue and chroma kept).
-- **Overrides.** Any role of either scheme can be set by hand and is kept as set. A theme with a pair that does not read cannot be saved.
-- **Presets and suggestions.** Four starting points exactly as the designer delivered them (Botanical, Midnight, Nordic, Terracotta), and colour-theory suggestions (complementary, analogous, triadic, split-complementary, monochrome) that turn one colour into three.
+- **Overrides.** Under a collapsed "Advanced", any of the eight base roles of either scheme can be set by hand and is kept as set. A theme with a pair that does not read cannot be saved. The ten D93 roles are derived only for now; Advanced shows them read-only (a T79 follow-up).
+- **Suggestions, no presets.** Colour-theory suggestions (complementary, analogous, triadic, split-complementary, monochrome) turn one colour into three. The Design subtab no longer offers theme presets or a swatch palette (D92); the designer's four starting points (Botanical, Midnight, Nordic, Terracotta) remain in core, and the Design form never saves one.
 - **Fonts, corners, shadow.** Six families with Cyrillic letters (Inter, Manrope, Montserrat, Playfair Display, Lora, Unbounded), served by the web app itself so a guest's phone never calls a font host; corner radius 0–32 px; shadow 0–5.
 - **Older venues.** A venue that only set a brand colour, or nothing, publishes as before: its roles come from its palette.
 
@@ -735,21 +763,21 @@ Each face ships a manifest. Installing a face validates the manifest against R6,
   "ordering": true,
   "paging": null,
   "features": ["filters", "call_waiter", "bill", "ordering", "pay"],
-  "options": {
-    "layout": { "type": "enum", "values": ["list", "one", "two"], "default": "two", "group": "look",
-                "label": { "bg": "Подредба на менюто", "en": "Menu layout" } },
-    "featureFirstSection": { "type": "boolean", "default": true, "group": "look",
-                             "label": { "bg": "Първата секция като лента със снимки", "en": "Photo strip for the first section" } },
-    "layoutSwitch": { "type": "boolean", "default": true, "group": "feature",
-                      "label": { "bg": "Гостите могат да сменят подредбата", "en": "Guests can change the layout" } }
-  },
+  "colour_pairs": [
+    { "fg": "text", "bg": "background" }, { "fg": "text", "bg": "surface" },
+    { "fg": "muted", "bg": "background" }, { "fg": "muted", "bg": "surface" },
+    { "fg": "accent_text", "bg": "background" }, { "fg": "accent_text", "bg": "surface" },
+    { "fg": "on_accent", "bg": "accent" }, { "fg": "background", "bg": "text" }
+  ],
+  "options": {},
   "tokens": ["color.background", "color.surface", "color.accent", "color.on_accent", "color.text",
              "color.muted", "color.accent_text", "color.border", "font", "radius", "shadow", "logo"]
 }
 ```
 
 - **`features`** lists the guest features the face has controls for. A feature the face does not list is never offered; one it lists is drawn only when R15 allows it. A face that lists `ordering` must declare `ordering: true`.
-- **`options`** are the settings a venue may change, by camelCase key, each with a `type` (`enum` with its `values`, or `boolean`), a `default` and a `label` in Bulgarian and English, so the admin builds its form from the manifest. A `group` of `look` puts the option in the Design tab; `feature` puts it in the composer's Guest features panel. The shell's `resolveOptions` keeps a published value only where it fits the declaration and falls back to the default otherwise; the face keeps no defaults of its own.
+- **`options`** are the settings a venue may change, by camelCase key, each with a `type` (`enum` with its `values`, or `boolean`), a `default` and a `label` in Bulgarian and English, so the admin builds its form from the manifest. A `group` of `look` puts the option in the Design tab; `feature` puts it in the composer's Guest features panel. The shell's `resolveOptions` keeps a published value only where it fits the declaration and falls back to the default otherwise; the face keeps no defaults of its own. Since D92 the Editorial Market declares none (`options: {}`): the menu's layout, whether guests may switch it and which sections are drawn as the photo strip are menu and section settings, published as `layout` and `hints.layout` (see Snapshot shape), not face options.
+- **`colour_pairs`** lists what the face puts on what (a foreground role on a background role). The contract tests check each pair in both schemes of every fixture, and a face with a raw inline colour fails (R13).
 - **Tokens.** The face lists the theme tokens its CSS reads (`palette.50` to `palette.950`, `color.<role>`, `font`, `radius`, `shadow`, `logo`).
 - **Host props.** Every face receives the same props from its host: the view model, the asset base URL, the menu's languages and a language callback, the table label, the font stacks, the colour scheme, the venue's `options` and the `services` binding.
 
@@ -760,7 +788,7 @@ A venue's template is the `presentation.face` of its snapshot. Templates are cod
 - `faces/manifests.ts` holds what is known without loading a template: its manifest, its names in Bulgarian and English, its picture and whether it is hidden. Server code reads this one (the Design tab's actions check that a template is real and visible, and what its options are).
 - `faces/registry.ts` is built from it and adds `load()`, a lazy import of the template's components. Only client code imports it: a server module that imports the registry makes the build follow `load()` into the components and fail.
 
-The default is `editorial-market`. A hidden template (`qr-phone`, kept for tests) is never offered, but a venue that already uses it keeps its menu; a name the registry does not know falls back to the default and is logged once. A guest downloads only the template its venue chose, as a separate chunk. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the Design tab, which previews the unsaved look on a phone frame, with the template's `look` options; the composer's Guest features panel holds the `feature` options and the service switches.
+The default is `editorial-market`. A hidden template (`qr-phone`, kept for tests) is never offered, but a venue that already uses it keeps its menu; a name the registry does not know falls back to the default and is logged once. A guest downloads only the template its venue chose, as a separate chunk. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the composer's Design subtab (D92), which previews the unsaved look on a phone frame; the guest functions (the service switches) are their own card there. A template's own options, if it declares any, are `look` or `feature` options as above; the layout is not one of them.
 
 ### Guest services: the face side of Stage 4 (D71, D72)
 
@@ -856,7 +884,7 @@ The face half of this path is built (D71, D72): see Guest services under The vis
 This section is an outline, not a spec. The orders and payments spec is still to be written once Lukanet answers (tracker T29): table sessions, orders, order lines (price shown and price billed), payment shares, payments, refunds, a payment inbox and an append-only money-events table, each with its state machine, plus a failure table per payment route.
 
 1. **The shell sends a cart, never prices:** `{table_token, client_uuid, items: [{node_id, qty, options: [node_id]}]}`. In the face's `order.send` command the lines are `{itemId, optionIds, qty, note}` and the key is its `actionId`; how that key maps onto the order API's own key is for Stage 4 to settle.
-2. **The order API resolves the context.** Token → table → venue, `bid` and `place_id`. Each `nd_` id → its active Barsy link; Options → supplements or modifiers. Items that are not `orderable` in the latest snapshot and overlay are refused.
+2. **The order API resolves the context.** Token → table → venue, and, for a Barsy venue, its `bid` and `place_id` through `places`. Each `nd_` id → its active Barsy link; Options → supplements or modifiers. Items that are not `orderable` in the latest snapshot and overlay are refused.
 3. **It builds one `Accounts_place` call:** `account.uuid` = our server-generated order id (Barsy's official deduplication key; never the client's id, because Barsy would refuse a corrected cart retried under it after the guest has paid), `place_id`, `external_source` tagging our app, `lang_id` = the guest's language, `flag_close_account` = 0 (whether 1 creates and closes the account in one call is Q47). Rows carry `article_id`, `amount`, modifiers and supplements, and no price, so Barsy prices them.
 4. **Outbox.** The command is stored first, then sent by a worker with the venue's `pos_key`, because creating accounts requires a registered POS. On a timeout it retries with the same UUID; Barsy refuses a second account with that UUID.
 5. **Rounds.** v0 is pay per order (decided 2026-10-08): an order can hold many items and is paid when placed, and the guest app shows the table's orders together like a tab. Open (Q21): does each paid order become its own Barsy account, created and closed, or a round on one table account? In the round model, later orders call `Accounts_place` with the stored `account_id`.
@@ -885,10 +913,10 @@ The full stack design, costs, environments and how CI enforces the nine rules ar
 
 - [x] Placement: decided 2026-10-08. Our own section map, generated from the Barsy category tree as the default composition and editable per venue. A new Barsy item lands at the end of the section its Barsy category maps to.
 - [ ] Display price: Barsy's base price plus promotion badges, or the live current price?
-- [x] New Barsy Items: decided 2026-10-08. Publish automatically; V11 still blocks mass changes.
+- [x] New Barsy Items: decided 2026-10-08. Publish automatically; V11 still blocks mass changes. The show/hold rule was removed (D96).
 - [ ] Allergens: which Barsy characteristic key holds them for each client, or are they entered in our editor? First check what Bulgarian law requires (and re-check per country before any expansion), then whether pilot venues hold allergens in Barsy.
-- [x] Languages: decided 2026-10-08. Per menu: every language Barsy holds for it, plus any added by hand in our translations tab; BG + EN for the pilot. Open: should our translations later be written back to Barsy? That would need a change to rule 7 (sync never writes into Barsy).
-- [ ] Nightly pull time per venue (clubs close late).
+- [x] Languages: decided 2026-10-08, refined 2026-10-12 (D77). Per venue, from one core function: one main language, the languages its owner switched on, and the languages the till fills for about 20% of the texts or more; more are added by hand in our translations tab; BG + EN for the pilot. Open: should our translations later be written back to Barsy? That would need a change to rule 7 (sync never writes into Barsy).
+- [x] Nightly pull time per venue (clubs close late): decided 2026-10-12 (D82). A venue setting, `full_pull_time` in the venue's time zone, default 12:00.
 - [x] Sold-out Items: decided 2026-10-08. Shown greyed out, with no order button.
 - [ ] Card payment: which Barsy flow prints exactly one fiscal receipt (ask Lukanet)? Preferred route (2026-10-08): Barsy's payment link, if it supports Apple/Google Pay and split payments and prints exactly one fiscal receipt; Stripe Connect is the fallback.
 - [ ] Service day: the hour a venue's day ends (proposed 07:00), used for sold-out resets, table tabs, stats and money reconciliation. Service editions are named by service day, not calendar date.
@@ -898,7 +926,7 @@ The full stack design, costs, environments and how CI enforces the nine rules ar
 - [ ] Sold out: Barsy's for-sale flag or stock as the source, with our toggle for managers only, or our toggle for waiters too (trace 4 assumes waiters use our editor, which conflicts with "no separate device").
 - [ ] Default order\_mode for items published automatically.
 - [ ] Call waiter and request bill in v0: only if Barsy's API can message staff (Q48).
-- [ ] Which menu each table or zone shows.
+- [x] Which menu each table or zone shows: decided 2026-10-12 (D95). Menu routes: venue (its live menu), area, table; the most specific published menu wins; one menu per code.
 - [ ] Allergens on drinks: check V4 covers "food" only and no field marks an item as food; EU rules may cover drinks too (legal check, Q42).
 
 ## Sources
