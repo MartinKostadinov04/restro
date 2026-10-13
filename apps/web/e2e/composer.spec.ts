@@ -92,9 +92,11 @@ async function keyboardDrag(handleName: string, key: 'ArrowUp' | 'ArrowDown', ti
     await page.keyboard.press(key)
     await page.waitForTimeout(250)
   }
-  // Every keyboard drag here moves something, so a save always follows the drop; wait for its
-  // answer (network-idle alone can pass before the drop animation starts the save).
-  const saved = page.waitForResponse(isServerAction)
+  // Every keyboard drag here moves something, so a save follows the drop; wait for its answer
+  // (network-idle alone can pass before the drop animation starts the save). When the save landed
+  // before the drop was seen (T75: it happens under load), go on: the reload that follows every
+  // drag checks what was kept.
+  const saved = page.waitForResponse(isServerAction, { timeout: 10_000 }).catch(() => null)
   await page.keyboard.press('Space')
   await saved
   await settle()
@@ -311,6 +313,12 @@ test('Unsorted holds the items in no section, one of them made here', async () =
 })
 
 test('reorders a section among its siblings with the keyboard', async () => {
+  // An earlier attempt that timed out mid-way (T75) leaves the section moved: put it back first,
+  // so a retry, and the guest page's seed after this file, see the demo order.
+  if ((await topSections())[2] === 'Храна') {
+    await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
+    await page.reload()
+  }
   const before = (await topSections()).slice(0, 4)
   expect(before).toEqual(SECTIONS)
   await keyboardDrag('Плъзни Храна', 'ArrowUp', 1)
