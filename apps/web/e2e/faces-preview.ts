@@ -14,6 +14,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { THEME_PRESETS } from '@restro/core'
 import pg from 'pg'
 
 import { dialogs, settled, withAudit } from './faces-audit'
@@ -131,14 +132,21 @@ export async function openPreview(
   await expect(page.locator(`${PREVIEW_FACE} .ro-payentry`)).toBeVisible()
 }
 
-/** Sets the look of the preview: a preset by its button, or the three colours of the custom theme. */
+/**
+ * Sets the look of the preview through the three colour boxes (the Design subtab is brand-first
+ * since S7, D93: no preset buttons): a designer preset's three colours from core, or the custom
+ * theme's. The brand colour goes first, since it pre-fills the page and the panels.
+ */
 export async function chooseTheme(page: Page, theme: VisualTheme): Promise<void> {
-  await page.locator(`[data-preset="${theme.id}"]`).click()
-  if (theme.id !== 'custom') return
+  const preset = THEME_PRESETS.find((candidate) => candidate.id === theme.id)
+  if (theme.id !== 'custom' && preset === undefined) {
+    throw new Error(`there is no preset ${theme.id} in core`)
+  }
+  const colours = preset?.colours ?? CUSTOM_COLOURS
   for (const [label, value] of [
-    ['Primary', CUSTOM_COLOURS.primary],
-    ['Secondary', CUSTOM_COLOURS.secondary],
-    ['Tertiary', CUSTOM_COLOURS.tertiary],
+    ['Your brand colour', colours.tertiary],
+    ['Page', colours.primary],
+    ['Panels', colours.secondary],
   ] as const) {
     await page.getByLabel(label, { exact: true }).fill(value)
   }

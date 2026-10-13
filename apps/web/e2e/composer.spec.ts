@@ -41,6 +41,13 @@ test.beforeAll(async ({ browser }) => {
 })
 
 test.afterAll(async () => {
+  // A keyboard reorder that failed mid-way (T75) leaves "Храна" moved; put it back, best effort,
+  // so the guest page's seed, which runs after this file, publishes the demo order.
+  try {
+    if ((await topSections())[2] === 'Храна') await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
+  } catch {
+    // The page may be gone after a timeout; the next run's seed starts clean anyway.
+  }
   await page.close()
 })
 
@@ -324,9 +331,12 @@ test('reorders a section among its siblings with the keyboard', async () => {
   await keyboardDrag('Плъзни Храна', 'ArrowUp', 1)
   expect((await topSections()).slice(0, 4)).toEqual(['Коктейли', 'Бира', 'Храна', 'Безалкохолни'])
   await page.reload()
+  await settle()
   expect((await topSections()).slice(0, 4)).toEqual(['Коктейли', 'Бира', 'Храна', 'Безалкохолни'])
+  // Settled: a drag right after the reload, before the tree is interactive, moves nothing (T75).
   await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
   await page.reload()
+  await settle()
   expect((await topSections()).slice(0, 4)).toEqual(SECTIONS)
 })
 
