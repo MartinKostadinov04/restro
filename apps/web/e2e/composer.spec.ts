@@ -8,9 +8,11 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
 // The composer on a production build, in Bulgarian, against the demo menu that `pnpm db:seed:dev`
 // builds (four sections, 20 items, one hidden by barsy, two unsorted). One sign-in, one page, the
 // tests in order. Every change a test makes is undone before it ends (moves go back, switches
-// flip back), except the section it creates, which stays (a section cannot be deleted from the
-// composer, only hidden) under a name that is new on each run. With SCREENSHOT_DIR set, the last
-// tests save the screenshots of the brief (BG light, EN dark, mobile) there.
+// flip back, the menu layout goes back to two columns with the switch, the section a test creates
+// is deleted again).
+// Brief S6 (D92): the composer has two subtabs, Structure and Design (`?sub=`), and works on the
+// menu its URL names (`?menu=`). With SCREENSHOT_DIR set, the last tests save the screenshots of
+// the brief (BG light, EN dark, mobile) there.
 test.describe.configure({ mode: 'serial' })
 
 let page: Page
@@ -18,9 +20,9 @@ let page: Page
 const SECTIONS = ['Коктейли', 'Бира', 'Безалкохолни', 'Храна']
 
 test.beforeAll(async ({ browser }) => {
-  // Tall enough that a whole section of the demo menu is on screen: a mouse drag can only start
-  // on a handle that is inside the viewport.
-  page = await browser.newPage({ viewport: { width: 1280, height: 1100 } })
+  // Tall enough that a whole section of the demo menu is on screen, under the subtabs and the menu
+  // bar (S6): a mouse drag can only start on a handle that is inside the viewport.
+  page = await browser.newPage({ viewport: { width: 1280, height: 1300 } })
   // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.goto('/venues')
@@ -39,6 +41,13 @@ test.beforeAll(async ({ browser }) => {
 })
 
 test.afterAll(async () => {
+  // A keyboard reorder that failed mid-way (T75) leaves "Храна" moved; put it back, best effort,
+  // so the guest page's seed, which runs after this file, publishes the demo order.
+  try {
+    if ((await topSections())[2] === 'Храна') await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
+  } catch {
+    // The page may be gone after a timeout; the next run's seed starts clean anyway.
+  }
   await page.close()
 })
 
@@ -90,9 +99,11 @@ async function keyboardDrag(handleName: string, key: 'ArrowUp' | 'ArrowDown', ti
     await page.keyboard.press(key)
     await page.waitForTimeout(250)
   }
-  // Every keyboard drag here moves something, so a save always follows the drop; wait for its
-  // answer (network-idle alone can pass before the drop animation starts the save).
-  const saved = page.waitForResponse(isServerAction)
+  // Every keyboard drag here moves something, so a save follows the drop; wait for its answer
+  // (network-idle alone can pass before the drop animation starts the save). When the save landed
+  // before the drop was seen (T75: it happens under load), go on: the reload that follows every
+  // drag checks what was kept.
+  const saved = page.waitForResponse(isServerAction, { timeout: 10_000 }).catch(() => null)
   await page.keyboard.press('Space')
   await saved
   await settle()
@@ -127,8 +138,20 @@ async function snapshot(fileName: string, target: Page = page) {
   await target.screenshot({ path: path.join(dir, fileName), fullPage: true })
 }
 
+/** The path of the venue's page (the demo venue). */
+const venuePath = () => new URL(page.url()).pathname
+
+/** A toast of the composer. */
+const toast = () => page.locator('[data-sonner-toast]')
+
 // --- tests -----------------------------------------------------------------------------------
 test('opens on the Composer tab with the demo menu: sections, items, badges', async () => {
+  // D92: the composer opens on its Structure subtab, on the venue's live menu.
+  await expect(page.getByRole('tab', { name: 'Структура' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByTestId('menu-switcher')).toContainText('Demo Club Sofia')
   expect((await topSections()).slice(0, 4)).toEqual(SECTIONS)
   await expect(page.getByTestId('pane-title')).toHaveText('Коктейли')
   expect((await itemNames()).slice(0, 2)).toEqual(['Негрони', 'Аперол Шприц'])
@@ -140,6 +163,45 @@ test('opens on the Composer tab with the demo menu: sections, items, badges', as
   // The open section is in the URL.
   await expect(page.getByTestId('section-row').first()).toHaveAttribute('data-selected', 'true')
   await snapshot('composer-bg-light-desktop.png')
+})
+
+test('the Design subtab holds the Design tab and the guest features; an old Design link lands there', async () => {
+  // The tab bar has no Design tab any more (D92): Design is the composer's second subtab.
+  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
+    'Композитор',
+    'Маси и QR',
+    'Настройки',
+  ])
+  await page.getByRole('tab', { name: 'Дизайн' }).click()
+  await expect(page).toHaveURL(/[?&]sub=design/)
+  await expect(page.getByTestId('design-panel')).toBeVisible()
+  await expect(page.getByTestId('guest-features-panel')).toBeVisible()
+  // Structure no longer opens the Guest features panel.
+  await page.goto(`${venuePath()}?tab=design`)
+  await expect(page).toHaveURL(/[?&]tab=composer&sub=design/)
+  await expect(page.getByTestId('design-panel')).toBeVisible()
+  await page.getByRole('tab', { name: 'Структура' }).click()
+  await expect(page).toHaveURL(/[?&]sub=structure/)
+  await expect(page.getByTestId('composer')).toBeVisible()
+  await expect(page.getByTestId('open-guest-features')).toHaveCount(0)
+})
+
+test('a menu’s ">" in Settings opens it in the composer, named in the URL', async () => {
+  await page.goto(`${venuePath()}?tab=settings&section=general`)
+  const open = page.locator('a[href*="tab=composer&menu=nd_"]').first()
+  const href = (await open.getAttribute('href')) ?? ''
+  const menuId = /menu=(nd_[0-9A-Za-z]{22})/.exec(href)?.[1]
+  expect(menuId).toBeTruthy()
+  await open.click()
+  await expect(page).toHaveURL(new RegExp(`[?&]menu=${menuId}`))
+  await expect(page.getByTestId('composer')).toBeVisible()
+  // The switcher lists the venue's menus, the live one marked.
+  await page.getByTestId('menu-switcher').click()
+  const options = page.getByTestId('menu-option')
+  await expect(options.first()).toContainText('Demo Club Sofia')
+  await expect(page.getByRole('listbox').getByTestId('menu-live')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  expect((await topSections()).slice(0, 4)).toEqual(SECTIONS)
 })
 
 test('the item barsy hides cannot be shown from the composer', async () => {
@@ -258,15 +320,103 @@ test('Unsorted holds the items in no section, one of them made here', async () =
 })
 
 test('reorders a section among its siblings with the keyboard', async () => {
+  // An earlier attempt that timed out mid-way (T75) leaves the section moved: put it back first,
+  // so a retry, and the guest page's seed after this file, see the demo order.
+  if ((await topSections())[2] === 'Храна') {
+    await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
+    await page.reload()
+  }
   const before = (await topSections()).slice(0, 4)
   expect(before).toEqual(SECTIONS)
   await keyboardDrag('Плъзни Храна', 'ArrowUp', 1)
   expect((await topSections()).slice(0, 4)).toEqual(['Коктейли', 'Бира', 'Храна', 'Безалкохолни'])
   await page.reload()
+  await settle()
   expect((await topSections()).slice(0, 4)).toEqual(['Коктейли', 'Бира', 'Храна', 'Безалкохолни'])
+  // Settled: a drag right after the reload, before the tree is interactive, moves nothing (T75).
   await keyboardDrag('Плъзни Храна', 'ArrowDown', 1)
   await page.reload()
+  await settle()
   expect((await topSections()).slice(0, 4)).toEqual(SECTIONS)
+})
+
+test('lays a section out as a horizontal row (D92); the choice survives a reload', async () => {
+  await openSection('Безалкохолни')
+  const toggle = page.getByTestId('section-layout')
+  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  await expect(treeRow('Безалкохолни').getByTestId('section-horizontal')).toBeVisible()
+  await settle()
+  await page.reload()
+  await openSection('Безалкохолни')
+  await expect(page.getByTestId('section-layout')).toHaveAttribute('aria-checked', 'true')
+
+  // And back.
+  await page.getByTestId('section-layout').click()
+  await expect(treeRow('Безалкохолни').getByTestId('section-horizontal')).toHaveCount(0)
+  await settle()
+  await page.reload()
+  await openSection('Безалкохолни')
+  await expect(page.getByTestId('section-layout')).toHaveAttribute('aria-checked', 'false')
+})
+
+test('sets the menu layout and whether guests may switch it (D92); it survives a reload', async () => {
+  const layout = () => page.getByTestId('menu-layout')
+  const guestSwitch = () => page.getByTestId('menu-layout-switch')
+  await layout().getByRole('button', { name: 'Една колона' }).click()
+  await expect(toast().first()).toContainText('Запазено')
+  await expect(layout().getByRole('button', { name: 'Една колона' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(guestSwitch()).toBeEnabled()
+  if ((await guestSwitch().getAttribute('aria-checked')) !== 'false') await guestSwitch().click()
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
+  await settle()
+  await page.reload()
+  await expect(layout().getByRole('button', { name: 'Една колона' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
+
+  // Back to two columns with the switch: the look of a menu that set none.
+  await layout().getByRole('button', { name: 'Две колони' }).click()
+  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(guestSwitch()).toBeEnabled()
+  await guestSwitch().click()
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
+  await settle()
+  await page.reload()
+  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
+})
+
+test('a section or item of the till is never deleted here; an item made here can be', async () => {
+  await openSection('Бира')
+  await page.getByTestId('item-pane').getByTestId('section-menu').click()
+  await expect(page.getByTestId('section-rename')).toBeVisible()
+  await expect(page.getByTestId('section-delete')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  await itemRow('Гинес 440 мл').getByTestId('item-menu').click()
+  await expect(page.getByRole('menuitem', { name: /^Отвори/ })).toBeVisible()
+  await expect(page.getByTestId('item-rename')).toHaveCount(0)
+  await expect(page.getByTestId('item-delete')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  await openUnsorted()
+  await itemRow('Лимонада на къщата').getByTestId('item-menu').click()
+  await expect(page.getByTestId('item-rename')).toBeVisible()
+  await expect(page.getByTestId('item-delete')).toBeVisible()
+  await page.keyboard.press('Escape')
 })
 
 const newSectionName = `Тест ${Date.now()}`
@@ -320,6 +470,27 @@ test('creates a section of our own, nests it under another and hides it', async 
   await settle()
   await page.reload()
   await expect(page.getByTestId('hidden-badge')).toHaveText('Скрито')
+
+  // Rename it in place.
+  const renamed = `${newSectionName} нов`
+  await page.getByTestId('section-rename-start').click()
+  const field = page.getByTestId('section-rename-field-input')
+  await field.fill(renamed)
+  await field.press('Enter')
+  await expect(page.getByTestId('pane-title')).toHaveText(renamed)
+  await settle()
+  await page.reload()
+  await openSection(renamed)
+
+  // And delete it again (D92: a section of the venue's own can be deleted, after a question).
+  await page.getByTestId('item-pane').getByTestId('section-menu').click()
+  await page.getByTestId('section-delete').click()
+  await expect(page.getByTestId('delete-dialog')).toContainText(renamed)
+  await page.getByTestId('delete-confirm').click()
+  await expect(treeRow(renamed)).toHaveCount(0)
+  await settle()
+  await page.reload()
+  expect(await topSections()).not.toContain(renamed)
 })
 
 test('saves the screenshots of the brief when SCREENSHOT_DIR is set', async ({ browser }) => {

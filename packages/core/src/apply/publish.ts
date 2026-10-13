@@ -38,6 +38,7 @@ import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
 import { venueLanguages } from '../languages'
 import { isLocale, type Locale, type LocalizedText, LocalizedTextSchema } from '../locales'
+import { menuSettingsOf } from '../menus'
 import { CURRENCIES, type Currency } from '../money'
 import { compareVisibility, V11_MAX_HIDDEN_SHARE } from '../resolve/compare-visibility'
 import { resolve } from '../resolve/resolve'
@@ -47,6 +48,7 @@ import {
   type AssetVariantWidths,
   buildSnapshot,
   DEFAULT_THEME,
+  menuLayoutOf,
   type SnapshotAssetInput,
 } from '../snapshot/build'
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
@@ -56,7 +58,7 @@ import {
   lookPublicStrings,
 } from '../snapshot/leak-guard'
 import { buildLiveOverlay } from '../snapshot/overlay'
-import type { LiveOverlay, MenuSnapshot, SnapshotTheme } from '../snapshot/schema'
+import type { LiveOverlay, MenuSnapshot, SnapshotLayout, SnapshotTheme } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import {
   fontFamilyOf,
@@ -442,6 +444,8 @@ interface Resolution {
   readonly presentation: Presentation | null
   /** The guest services (`venues.settings.guest_features`); the defaults when unset. */
   readonly features: GuestFeatures
+  /** The menu's layout and guest switch (`menus.settings`, D92); the defaults when unset. */
+  readonly layout: SnapshotLayout
 }
 
 /**
@@ -512,6 +516,7 @@ async function resolveForVenue(
     theme: readVenueTheme(venue.settings),
     presentation: readPresentation(venue.settings),
     features: readGuestFeatures(venue.settings),
+    layout: menuLayoutOf(menuSettingsOf(menu.settings)),
   }
 }
 
@@ -540,6 +545,7 @@ async function prepareSnapshot(
     theme: venueTheme,
     presentation,
     features,
+    layout,
   } = await resolveForVenue(tx, scope, now)
   const blocking = [
     ...new Set(
@@ -628,6 +634,7 @@ async function prepareSnapshot(
     tagVocabulary,
     presentation,
     features,
+    layout,
   })
   const forbidden = collectForbiddenValues({
     template: TEMPLATE,

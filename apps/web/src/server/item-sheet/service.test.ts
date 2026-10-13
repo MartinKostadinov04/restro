@@ -7,7 +7,9 @@ import { type ChangeSet, newId } from '@restro/core'
 import {
   apply,
   archiveTag,
+  createMenu,
   createTag,
+  deleteMenu,
   type ProvisionedMenu,
   provisionMenu,
   provisionTenant,
@@ -756,6 +758,52 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
     it("shows nothing of another tenant's item", async () => {
       const page = await loadHistory(scopeOf(linked, { tenantId: otherTenant }), services)
       expect(page.entries).toEqual([])
+    })
+  })
+
+  describe('the menu the composer has open (brief S6)', () => {
+    it('reads the item in the menu named, a second menu of the venue too; never one not in use', async () => {
+      const second = await createMenu(app, tenant, { venueId, name: 'Brunch' })
+      if (!second.ok) throw new Error(second.reason)
+      const brunch = newId('nd')
+      const pancake = newId('nd')
+      const manual = (node: string, fieldKey: string, value: unknown) => ({
+        op: 'setField',
+        node: { id: node },
+        fieldKey,
+        layer: 'manual',
+        scope: 'master',
+        value,
+      })
+      const result = await apply(
+        app,
+        tenant,
+        changeSet('manual', [
+          {
+            op: 'createNode',
+            id: brunch,
+            nodeType: 'section',
+            parent: { id: second.menu.id },
+            status: 'active',
+          },
+          manual(brunch, 'title', { bg_BG: 'Брънч' }),
+          { op: 'createNode', id: pancake, nodeType: 'item', parent: null, status: 'active' },
+          manual(pancake, 'name', { bg_BG: 'Палачинка' }),
+          { op: 'setPlacement', item: { id: pancake }, section: { id: brunch }, sortKey: 'end' },
+        ]),
+      )
+      expect(result.rejected).toEqual([])
+
+      const data = await loadItemSheet(scopeOf(pancake, { menuId: second.menu.id }), services)
+      expect(data?.title).toBe('Палачинка')
+      // Read in its own menu, the item is placed there: not a loose item.
+      expect(data?.issues.map((issue) => issue.code)).not.toContain('unplaced_item')
+      // No menu named: the venue's live menu, as before.
+      expect((await loadItemSheet(scopeOf(linked), services))?.linkedToTill).toBe(true)
+      // A menu that is not one of the venue's menus in use finds nothing.
+      expect(await loadItemSheet(scopeOf(pancake, { menuId: newId('nd') }), services)).toBeNull()
+      expect((await deleteMenu(app, tenant, { venueId, menuId: second.menu.id })).ok).toBe(true)
+      expect(await loadItemSheet(scopeOf(pancake, { menuId: second.menu.id }), services)).toBeNull()
     })
   })
 })

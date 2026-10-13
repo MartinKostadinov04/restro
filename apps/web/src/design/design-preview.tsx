@@ -1,52 +1,138 @@
 'use client'
 
-// The live phone preview of the Design tab (brief SH-05a): the same phone frame and the same face
-// as the publish preview, drawn from the draft snapshot with the form's UNSAVED look laid over it
-// (`previewSnapshot`), so it always shows the current form. The draft is asked for once when the
-// tab opens, and again when "Refresh" is pressed (the menu may have changed in the composer). A
-// venue with no menu, or nothing visible, gets the publish preview's own message.
+// The live phone preview of the Design tab (briefs SH-05a and S7): the same phone frame and the same
+// face as the publish preview, drawn from the draft snapshot of the OPEN menu with the form's
+// UNSAVED look laid over it (`previewSnapshot`), so it always shows the current form. The draft
+// comes from `usePreviewDraft` (asked for when the tab opens and on "Refresh"). A venue with no
+// menu, or nothing visible, gets the publish preview's own message.
 //
-// "Preview guest services" (D71) draws the service screens the venue switched on in the composer
-// with demo data (`DraftFace`'s `servicesPreview`), so the owner sees them before the platform
-// supports them. It is off when the tab opens.
+// The tab keeps it beside the form (sticky) on wide screens and below it at phone width.
+//
+// "Preview guest services" (D71) draws the service screens the venue switched on with demo data
+// (`DraftFace`'s `servicesPreview`), so the owner sees them before the platform supports them. It
+// is off when the tab opens.
 import {
   DEFAULT_GUEST_FEATURES,
   type GuestFeatures,
-  type LiveOverlay,
   type MenuSnapshot,
   type VenueTheme,
 } from '@restro/core'
 import { RefreshCwIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react'
+import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { DraftFace, type PreviewScheme } from '@/publish/draft-face'
 import { PhoneFrame } from '@/publish/phone-frame'
-import { previewDraftAction } from '@/server/publish/actions'
 
+import type { Draft } from './preview-draft'
 import { previewSnapshot } from './preview-snapshot'
 import type { OptionValues } from './template-options'
 
-type Draft =
-  | { readonly state: 'loading' }
-  | { readonly state: 'ready'; readonly snapshot: MenuSnapshot; readonly overlay: LiveOverlay }
-  | {
-      readonly state: 'error'
-      readonly error: 'no_menu' | 'nothing_visible' | 'blocked' | 'failed'
-    }
+/** The two buttons that light or darken the phone in the preview. */
+export function SchemeSwitch({
+  scheme,
+  onScheme,
+}: {
+  scheme: PreviewScheme
+  onScheme: (scheme: PreviewScheme) => void
+}) {
+  const t = useTranslations('publish.previewDialog')
+  return (
+    <fieldset
+      className="m-0 flex items-center justify-center gap-2 border-0 p-0"
+      aria-label={t('scheme')}
+    >
+      {(['light', 'dark'] as const).map((value) => (
+        <Button
+          key={value}
+          type="button"
+          size="sm"
+          variant={scheme === value ? 'default' : 'outline'}
+          aria-pressed={scheme === value}
+          onClick={() => onScheme(value)}
+        >
+          {t(value)}
+        </Button>
+      ))}
+    </fieldset>
+  )
+}
+
+/** What stands in the phone's place while the draft is loading or cannot be shown. */
+export function DraftMessage({
+  draft,
+  onRetry,
+  testId,
+}: {
+  draft: Exclude<Draft, { state: 'ready' }>
+  onRetry: () => void
+  testId?: string
+}) {
+  const t = useTranslations('publish.previewDialog')
+  if (draft.state === 'loading') {
+    return (
+      <p role="status" className="py-12 text-center text-sm text-muted-foreground">
+        {t('loading')}
+      </p>
+    )
+  }
+  return (
+    <div className="grid justify-items-center gap-3 py-8 text-center">
+      <p role="alert" className="text-sm" data-testid={testId}>
+        {t(draft.error)}
+      </p>
+      {draft.error === 'failed' ? (
+        <Button type="button" variant="outline" onClick={onRetry}>
+          {t('retry')}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * The draft with the form's unsaved look laid over it, for the template `look.face`; null while
+ * the draft is not ready, or when there is no look to draw (a closed pop-up).
+ */
+export function usePreviewLook(
+  draft: Draft,
+  look: {
+    readonly theme: VenueTheme
+    readonly face: string
+    readonly options: OptionValues
+  } | null,
+): MenuSnapshot | null {
+  const theme = look?.theme
+  const face = look?.face
+  const options = look?.options
+  return useMemo(
+    () =>
+      draft.state === 'ready' && theme !== undefined && face !== undefined && options !== undefined
+        ? previewSnapshot(draft.snapshot, { theme, face, options })
+        : null,
+    [draft, theme, face, options],
+  )
+}
 
 export function DesignPreview({
-  venueId,
+  draft,
+  refreshing,
+  onRefresh,
+  menuName,
   theme,
   face,
   options,
   scheme,
   onScheme,
 }: {
-  venueId: string
+  draft: Draft
+  refreshing: boolean
+  onRefresh: () => void
+  /** The open menu's name, or null when the venue has none. */
+  menuName: string | null
   /** The form's look, whole. */
   theme: VenueTheme
   /** The chosen template, and its options as the preview should draw them. */
@@ -57,59 +143,26 @@ export function DesignPreview({
 }) {
   const t = useTranslations('design.preview')
   const tPublish = useTranslations('publish.previewDialog')
-  const [draft, setDraft] = useState<Draft>({ state: 'loading' })
-  const [attempt, setAttempt] = useState(0)
-  const [refreshing, setRefreshing] = useState(false)
   const [services, setServices] = useState(false)
   const servicesId = useId()
 
   // Dragging a slider or typing a colour must stay smooth: the face is redrawn a moment later.
   const lookNow = useDeferredValue({ theme, face, options })
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` only restarts the load
-  useEffect(() => {
-    let cancelled = false
-    setRefreshing(true)
-    previewDraftAction(venueId).then(
-      (result) => {
-        if (cancelled) return
-        setRefreshing(false)
-        setDraft(
-          result.ok
-            ? { state: 'ready', snapshot: result.snapshot, overlay: result.overlay }
-            : { state: 'error', error: result.error },
-        )
-      },
-      () => {
-        if (cancelled) return
-        setRefreshing(false)
-        setDraft({ state: 'error', error: 'failed' })
-      },
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [venueId, attempt])
-
-  const snapshot = useMemo(
-    () => (draft.state === 'ready' ? previewSnapshot(draft.snapshot, lookNow) : null),
-    [draft, lookNow],
-  )
+  const snapshot = usePreviewLook(draft, lookNow)
 
   return (
     <div className="grid gap-3" data-testid="design-preview">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-medium">{t('title')}</h3>
           <p className="text-xs text-muted-foreground">{t('hint')}</p>
+          {menuName === null ? null : (
+            <p className="truncate text-xs text-muted-foreground" data-testid="design-preview-menu">
+              {t('menu', { name: menuName })}
+            </p>
+          )}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={refreshing}
-          onClick={() => setAttempt((n) => n + 1)}
-        >
+        <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={onRefresh}>
           <RefreshCwIcon aria-hidden className={refreshing ? 'animate-spin' : undefined} />
           {t('refresh')}
         </Button>
@@ -117,23 +170,7 @@ export function DesignPreview({
 
       {draft.state === 'ready' && snapshot !== null ? (
         <>
-          <fieldset
-            className="m-0 flex items-center justify-center gap-2 border-0 p-0"
-            aria-label={tPublish('scheme')}
-          >
-            {(['light', 'dark'] as const).map((value) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={scheme === value ? 'default' : 'outline'}
-                aria-pressed={scheme === value}
-                onClick={() => onScheme(value)}
-              >
-                {tPublish(value)}
-              </Button>
-            ))}
-          </fieldset>
+          <SchemeSwitch scheme={scheme} onScheme={onScheme} />
           <div className="grid gap-1">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={servicesId}>{t('services')}</Label>
@@ -160,21 +197,8 @@ export function DesignPreview({
             />
           </PhoneFrame>
         </>
-      ) : draft.state === 'loading' ? (
-        <p role="status" className="py-12 text-center text-sm text-muted-foreground">
-          {tPublish('loading')}
-        </p>
-      ) : draft.state === 'error' ? (
-        <div className="grid justify-items-center gap-3 py-8 text-center">
-          <p role="alert" className="text-sm" data-testid="design-preview-error">
-            {tPublish(draft.error)}
-          </p>
-          {draft.error === 'failed' ? (
-            <Button type="button" variant="outline" onClick={() => setAttempt((n) => n + 1)}>
-              {tPublish('retry')}
-            </Button>
-          ) : null}
-        </div>
+      ) : draft.state !== 'ready' ? (
+        <DraftMessage draft={draft} onRetry={onRefresh} testId="design-preview-error" />
       ) : null}
     </div>
   )

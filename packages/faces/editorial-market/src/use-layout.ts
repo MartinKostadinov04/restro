@@ -1,5 +1,6 @@
-// The layout the menu is drawn in. It starts as the venue's option; a guest who has chosen one
-// keeps it for the visit (`sessionStorage`), and that choice wins while the switch is shown. The
+// The layout the menu is drawn in. It starts as the menu's layout (D92: `view.layout.default`, set
+// in the composer); a guest who has chosen one keeps it for the visit (`sessionStorage`), and that
+// choice wins while the switch is shown (`view.layout.guestSwitch`). The
 // storage is read after the first render, never during it, and may be missing (a private window).
 
 import { useCallback, useEffect, useState } from 'react'

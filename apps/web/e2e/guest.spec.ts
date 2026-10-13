@@ -48,7 +48,24 @@ const SECTIONS_EN = ['Cocktails', 'Beer', 'Soft drinks', 'Food']
 async function open(page: Page, url: string) {
   await page.goto(url)
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-  await page.waitForFunction(() => [...document.images].every((image) => image.complete))
+  // Lay the whole page out once before a test measures anything: a lazy photo does not start
+  // until it comes near the screen, and the face lets the browser skip the layout of sections off
+  // screen (`content-visibility`), so a page read only from the top keeps settling. A walk down
+  // the page, one screen at a time, brings every section and photo near once; then back to the
+  // top. The wait for the photos is soft: a photo the walk never brought near stays lazy.
+  await page.evaluate(async () => {
+    const step = window.innerHeight
+    for (let y = 0; y <= document.documentElement.scrollHeight; y += step) {
+      window.scrollTo(0, y)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+    window.scrollTo(0, 0)
+  })
+  await page
+    .waitForFunction(() => [...document.images].every((image) => image.complete), undefined, {
+      timeout: 10_000,
+    })
+    .catch(() => undefined)
 }
 
 // The Editorial Market keeps a filtered-out item in the page (`hidden`), so the names are those of
@@ -292,23 +309,23 @@ test.describe('the dish page in the address bar', () => {
       .getByRole('button', { name: /Пържени картофки/ })
       .first()
     // The guest reads down to the dish, which sits in the middle of the screen (away from the
-    // sticky bar). The place is where the dish is on the screen, not the page's scroll offset: the
-    // face lets the browser skip the layout of items that are off screen (`content-visibility`), so
-    // the page's height, and with it the offset, settles a little as the guest reads and the
-    // browser keeps the content where it is. It is therefore taken once the dish page is open (the
-    // menu stays laid out behind it) and compared with where the dish is after Back.
+    // sticky bar). The place is where the dish is on the screen, not the page's scroll offset
+    // (`open` laid the whole page out, so it no longer settles while the guest reads). It is taken
+    // before the dish page opens, since the page behind an open dish page can be laid out a little
+    // differently (no scrollbar), and compared with where the dish is after Back.
     await fries.evaluate((element) =>
       element.scrollIntoView({ block: 'center', behavior: 'instant' }),
     )
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(300)
+    await page.waitForTimeout(300)
+    const placeBefore = (await fries.boundingBox())?.y ?? Number.NaN
     await fries.click()
     await expect(page.getByRole('dialog', { name: 'Пържени картофки' })).toBeVisible()
     await page.waitForTimeout(500)
-    const placeOpen = (await fries.boundingBox())?.y ?? Number.NaN
     await page.goBack()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect
-      .poll(async () => Math.abs(((await fries.boundingBox())?.y ?? Number.NaN) - placeOpen))
+      .poll(async () => Math.abs(((await fries.boundingBox())?.y ?? Number.NaN) - placeBefore))
       .toBeLessThan(8)
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(300)
   })

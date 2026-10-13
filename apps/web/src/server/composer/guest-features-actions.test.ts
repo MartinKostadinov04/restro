@@ -28,6 +28,18 @@ vi.mock('@/server/session', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidated.push(path) }))
 
+// The Editorial Market declares no option since D92 (brief S6: its layouts are the menu's settings).
+// These tests are about how a template's options are saved and kept apart, so the template gets
+// back the three it had.
+vi.mock('@restro/editorial-market/manifest', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@restro/editorial-market/manifest')>()
+  const { OPTIONS_BEFORE_D92 } = await import('@/faces/test-options')
+  return {
+    ...real,
+    EDITORIAL_MARKET_MANIFEST: { ...real.EDITORIAL_MARKET_MANIFEST, options: OPTIONS_BEFORE_D92 },
+  }
+})
+
 const ALL_OFF = {
   filters: true,
   call_waiter: { enabled: false, kinds: [] },

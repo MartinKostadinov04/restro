@@ -1,14 +1,14 @@
 'use client'
 
-// Font, corners, shadow and the light/dark policy of the Design tab (brief SH-05a, D70).
-//   - Font: the short list of six fonts with Cyrillic letters (`THEME_FONTS`), each name drawn in
-//     its own font (`FONT_STACKS`: our own files, guests' phones never call Google) beside a
-//     sample line in both alphabets.
+// Font, corners, shadow and the light/dark policy of the Design tab (briefs SH-05a and S7, D70, D92).
+//   - Font: a dropdown of the short list of six fonts with Cyrillic letters (`THEME_FONTS`), each
+//     name drawn in its own font (`FONT_STACKS`: our own files, guests' phones never call Google),
+//     with a sample line in both alphabets under it.
 //   - Corners 0-24 px and shadow 0-5: sliders with the number beside them. The corner radius is
 //     the face's base radius (the handover §10: photo frames, sheets and buttons scale from it);
 //     the shadow is the menu column's shadow on larger screens, not an elevation scale.
-//   - Light / dark: follow the guest's phone (default), always light or always dark. The policy
-//     only chooses between the two role sets; it never generates one.
+//   - Screen: follow the guest's phone (default), always light or always dark. The policy only
+//     chooses between the two role sets; it never generates one.
 import {
   THEME_FONTS,
   THEME_SCHEMES,
@@ -19,8 +19,15 @@ import {
 import { useTranslations } from 'next-intl'
 import { useId } from 'react'
 
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { FONT_STACKS } from '@/fonts'
-import { cn } from '@/lib/utils'
 
 import { Segmented } from './segmented'
 
@@ -52,48 +59,47 @@ export function StylePanel({
   const id = useId()
   // A radius saved above the slider's range (core allows 32) keeps its place on the slider.
   const radiusMax = Math.max(RADIUS_MAX, radius)
+  const chosen = THEME_FONTS.find((entry) => entry.id === font) ?? THEME_FONTS[0]
 
   return (
     <div className="grid gap-6" data-testid="design-style">
-      <fieldset className="m-0 grid min-w-0 gap-2 border-0 p-0" disabled={!canEdit}>
-        <legend className="mb-1 text-sm font-medium">{t('font')}</legend>
+      <div className="grid gap-2">
+        <Label htmlFor={`${id}-font`}>{t('font')}</Label>
+        <Select
+          value={font}
+          onValueChange={(next) => onFont(next as ThemeFontId)}
+          disabled={!canEdit}
+        >
+          <SelectTrigger
+            id={`${id}-font`}
+            className="w-full sm:w-72"
+            style={{ fontFamily: FONT_STACKS[chosen.family] }}
+            data-testid="design-font-select"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent position="popper" data-testid="design-fonts">
+            {THEME_FONTS.map((entry) => (
+              <SelectItem
+                key={entry.id}
+                value={entry.id}
+                data-font={entry.id}
+                style={{ fontFamily: FONT_STACKS[entry.family] }}
+              >
+                {entry.family}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p
+          className="text-sm text-muted-foreground"
+          style={{ fontFamily: FONT_STACKS[chosen.family] }}
+          data-testid="design-font-sample"
+        >
+          {t('sample')} · {t(`kinds.${chosen.kind}`)}
+        </p>
         <p className="text-xs text-muted-foreground">{t('fontHelp')}</p>
-        <ul className="grid gap-2 sm:grid-cols-2" data-testid="design-fonts">
-          {THEME_FONTS.map((entry) => {
-            const chosen = entry.id === font
-            return (
-              <li key={entry.id}>
-                <button
-                  type="button"
-                  aria-pressed={chosen}
-                  data-font={entry.id}
-                  onClick={() => onFont(entry.id)}
-                  className={cn(
-                    'grid w-full gap-0.5 rounded-lg border p-3 text-left transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60',
-                    chosen
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                      : 'hover:bg-muted/60',
-                  )}
-                >
-                  <span
-                    className="text-lg leading-tight font-semibold"
-                    style={{ fontFamily: FONT_STACKS[entry.family] }}
-                  >
-                    {entry.family}
-                  </span>
-                  <span
-                    className="text-sm text-muted-foreground"
-                    style={{ fontFamily: FONT_STACKS[entry.family] }}
-                  >
-                    {t('sample')}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{t(`kinds.${entry.kind}`)}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      </fieldset>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">

@@ -142,15 +142,15 @@ describe('the Venues group', () => {
   })
 
   it('keeps the open tab when another venue is chosen', () => {
-    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=design' })
-    expect(venueNamed('zebra Lounge').getAttribute('href')).toBe('/venues/vn_zebra?tab=design')
-    expect(venueNamed('Alpha Club').getAttribute('href')).toBe('/venues/vn_alpha?tab=design')
+    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=tables' })
+    expect(venueNamed('zebra Lounge').getAttribute('href')).toBe('/venues/vn_zebra?tab=tables')
+    expect(venueNamed('Alpha Club').getAttribute('href')).toBe('/venues/vn_alpha?tab=tables')
   })
 
   it('carries no tab from the overview, from Settings, or when the tab is unknown', () => {
     for (const options of [
-      { pathname: '/venues', search: 'tab=design' },
-      { pathname: '/settings/integrations', search: 'tab=design' },
+      { pathname: '/venues', search: 'tab=tables' },
+      { pathname: '/settings/integrations', search: 'tab=tables' },
       { pathname: '/venues/vn_alpha', search: 'tab=nonsense' },
       { pathname: '/venues/vn_alpha', search: '' },
     ]) {

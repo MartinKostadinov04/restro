@@ -8,7 +8,9 @@
  * - `not_allowed`: the person's role may not do this (marking sold out, or making an item, is for
  *   owners and admins);
  * - `till_venue`: the venue has a till, which is where its items come from (D66): items made by
- *   hand are for venues without one;
+ *   hand are for venues without one, and only those can be renamed inline or deleted (D89);
+ * - `till_section`: the section mirrors a category of the till: it can be hidden, never deleted
+ *   (D92; the venue's own sections can be);
  * - `rejected`: apply() refused an op (for example a move that would nest sections too deep);
  * - `failed`: something broke on the server (logged there).
  */
@@ -17,6 +19,7 @@ export type ActionErrorCode =
   | 'invalid'
   | 'not_allowed'
   | 'till_venue'
+  | 'till_section'
   | 'rejected'
   | 'failed'
 

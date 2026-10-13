@@ -16,6 +16,7 @@ import {
   type LocalizedText,
   type MenuSnapshot,
   parseSnapshot,
+  type SectionLayout,
   snapshotContentHash,
 } from '@restro/core'
 
@@ -63,6 +64,8 @@ export interface SectionSpec {
   description?: LocalizedText
   image?: string
   color?: string
+  /** D92: the section's layout hint; absent = a snapshot published before it (vertical). */
+  layout?: SectionLayout
   items: readonly ItemSpec[]
 }
 
@@ -85,6 +88,8 @@ export interface SnapshotSpec {
   theme?: Partial<MenuSnapshot['theme']>
   /** The venue's guest features (D71); absent = a snapshot published before them. */
   features?: MenuSnapshot['features']
+  /** The menu's layout and guest switch (D92); absent = a snapshot published before them. */
+  layout?: MenuSnapshot['layout']
 }
 
 /** A deterministic id of the right shape: `nd_0000000000000000000042`. */
@@ -192,7 +197,11 @@ export function snapshotFromSpec(spec: SnapshotSpec): MenuSnapshot {
       title: sectionSpec.title,
       description: sectionSpec.description ?? {},
       image: sectionSpec.image ?? null,
-      hints: { color: sectionSpec.color ?? null, icon: null },
+      hints: {
+        color: sectionSpec.color ?? null,
+        icon: null,
+        ...(sectionSpec.layout === undefined ? {} : { layout: sectionSpec.layout }),
+      },
       sections: [],
       items: itemIds,
     }
@@ -222,6 +231,7 @@ export function snapshotFromSpec(spec: SnapshotSpec): MenuSnapshot {
     options,
     tags,
     ...(spec.features === undefined ? {} : { features: spec.features }),
+    ...(spec.layout === undefined ? {} : { layout: spec.layout }),
   }
   return parseSnapshot({
     ...content,
@@ -682,6 +692,78 @@ function featuresOff(): Fixture {
   }
 }
 
+/**
+ * D92: sections laid out as a row (horizontal, the face's strip) beside vertical ones, a second
+ * section marked horizontal and the first not, photos in the row, a menu that starts in two
+ * columns and lets the guest switch.
+ */
+function horizontalSections(): Fixture {
+  const photo = fixtureId('as', 1)
+  return {
+    name: 'horizontal-sections',
+    note: 'A horizontal section that is not the first, between a vertical one and one published without a layout; two columns, with the guest switch.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      layout: { default: 'two', guest_switch: true },
+      assets: { [photo]: { w: 1600, h: 1200, alt: { en_US: 'Negroni on ice' } } },
+      sections: [
+        {
+          title: bgen('Коктейли', 'Cocktails'),
+          layout: 'vertical',
+          items: [
+            { name: bgen('Мохито', 'Mojito'), allergens: [] },
+            { name: bgen('Дайкири', 'Daiquiri'), allergens: ['eggs'] },
+          ],
+        },
+        {
+          title: bgen('Препоръчваме', 'Top picks'),
+          layout: 'horizontal',
+          items: [
+            { name: bgen('Негрони', 'Negroni'), image: photo, allergens: ['sulphites'] },
+            { name: bgen('Шприц', 'Spritz'), allergens: ['sulphites'], price: 900 },
+            { name: bgen('Вода', 'Water'), allergens: [], price: 250 },
+          ],
+        },
+        {
+          title: bgen('Храна', 'Food'),
+          items: [{ name: bgen('Хумус', 'Hummus'), allergens: ['sesame'], price: 700 }],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'en_US', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** D92: the first section as a row, a menu that starts in one column, and no guest switch. */
+function oneColumn(): Fixture {
+  return {
+    name: 'one-column',
+    note: 'The first section horizontal, the rest vertical; one column, and the guest may not switch.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      layout: { default: 'one', guest_switch: false },
+      sections: [
+        {
+          title: bgen('Промоции', 'Promotions'),
+          layout: 'horizontal',
+          items: [
+            { name: bgen('Два за едно', 'Two for one'), allergens: [], price: 1000 },
+            { name: bgen('Шот', 'Shot'), allergens: [], price: 300 },
+          ],
+        },
+        {
+          title: bgen('Бира', 'Beer'),
+          layout: 'vertical',
+          items: [{ name: bgen('Светла бира', 'Lager'), allergens: ['gluten'], price: 450 }],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'bg_BG', now: WEDNESDAY_EVENING },
+  }
+}
+
 /** All fixtures, freshly built. */
 export function fixtures(): Fixture[] {
   return [
@@ -698,6 +780,8 @@ export function fixtures(): Fixture[] {
     customRoles(),
     featuresOn(),
     featuresOff(),
+    horizontalSections(),
+    oneColumn(),
   ]
 }
 

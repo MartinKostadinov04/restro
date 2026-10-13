@@ -1,33 +1,43 @@
 'use client'
 
-// The eight colour roles, worked out for a light and a dark screen and shown side by side (brief
-// SH-05a, D70; the designer's handover §10 says what each role paints). Each role has a swatch,
-// its name in plain words, the contrast of every pair it is part of (`REQUIRED_PAIRS`), "Adjust"
-// to set it by hand and "Reset to derived" to hand it back. A colour set by hand that does not
-// read is shown in red with the pair that fails, and the tab blocks Save while any pair fails.
+// "Advanced" in the colour card (briefs SH-05a and S7; D70, D93; the designer's handover §10 says
+// what each role paints): the colours worked out for the guest, for a light and a dark screen side
+// by side, collapsed until the person wants them. Each has a swatch, its name in plain words, the
+// contrast of every pair it is part of, "Adjust" to set it by hand and "Reset" to hand it back. A
+// colour set by hand that does not read is shown in red with the pair that fails, and the tab
+// blocks Save while any pair fails. The light screen's page, panels and highlight are the three
+// pickers above, so their cells are not repeated here; the dark screen's are.
+//
+// The ten roles D93 added (status, disabled text, the selected fill, the focus ring, the sheet
+// backdrop, the strong border) are shown with their contrast and cannot be set by hand: core's
+// look takes overrides of the eight base roles only.
 import {
   contrastRatio,
+  EXTENDED_ROLE_NAMES,
+  type ExtendedRoleName,
   type PairIssue,
   ROLE_MODES,
-  ROLE_NAMES,
   type RoleMode,
   type RoleName,
   type ThemeRoleSet,
 } from '@restro/core'
+import { ChevronDownIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useId, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { resolveAdminLocale } from '@/i18n/locales'
 import { cn } from '@/lib/utils'
 
 import { HexField } from './hex-field'
 import {
+  clearAllOverrides,
   clearOverride,
-  isFromPreset,
   isOverridden,
   type LookState,
+  pairsOfExtendedRole,
   pairsOfRole,
   setOverride,
   shownRatio,
@@ -57,6 +67,48 @@ export function useIssueText(): (issue: PairIssue) => string {
     })
 }
 
+/** The roles that can be set by hand, in the order Advanced lists them. */
+const ADJUSTABLE_ROLES = [
+  'text',
+  'muted',
+  'on_accent',
+  'accent_text',
+  'border',
+  'background',
+  'surface',
+  'accent',
+] as const satisfies readonly RoleName[]
+
+/** The roles whose light screen colour is one of the three pickers above, not repeated here. */
+const PICKED_ROLES: ReadonlySet<RoleName> = new Set(['background', 'surface', 'accent'])
+
+/** What the alert says when pairs do not read: shown in the colour card, open or collapsed. */
+export function UnreadableAlert({ issues }: { issues: readonly PairIssue[] }) {
+  const t = useTranslations('design.roles')
+  const issueText = useIssueText()
+  if (issues.length === 0) return null
+  return (
+    <div
+      role="alert"
+      className="grid gap-1 rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive"
+      data-testid="design-unreadable"
+    >
+      <p className="font-medium">{t('unreadableTitle')}</p>
+      <ul className="list-disc pl-5">
+        {issues.map((issue) => (
+          <li
+            key={`${issue.mode}-${issue.fg}-${issue.bg}`}
+            data-issue={`${issue.mode}:${issue.fg}-on-${issue.bg}`}
+          >
+            {issueText(issue)}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs">{t('unreadableHelp')}</p>
+    </div>
+  )
+}
+
 /** One role on one screen: its colour, the contrast of its pairs, and the way to set it by hand. */
 function RoleCell({
   mode,
@@ -67,16 +119,19 @@ function RoleCell({
   issues,
   invalid,
   canEdit,
+  adjustable,
   onChange,
 }: {
   mode: RoleMode
-  role: RoleName
+  role: RoleName | ExtendedRoleName
   state: LookState
   roles: ThemeRoleSet
   derived: ThemeRoleSet
   issues: readonly PairIssue[]
   invalid: boolean
   canEdit: boolean
+  /** False for the roles D93 added: shown, not set by hand. */
+  adjustable: boolean
   onChange: (next: LookState) => void
 }) {
   const t = useTranslations('design.roles')
@@ -84,9 +139,14 @@ function RoleCell({
   const id = useId()
   const [editing, setEditing] = useState(false)
   const colour = roles[mode][role]
-  const overridden = isOverridden(state, mode, role)
-  const pairs = pairsOfRole(role).map((pair) => {
-    const value = contrastRatio(roles[mode][pair.fg], roles[mode][pair.bg])
+  if (colour === undefined) return null
+  const base = adjustable ? (role as RoleName) : null
+  const overridden = base !== null && isOverridden(state, mode, base)
+  const list = base !== null ? pairsOfRole(base) : pairsOfExtendedRole(role as ExtendedRoleName)
+  const pairs = list.map((pair) => {
+    const own = roles[mode][pair.fg]
+    const other = roles[mode][pair.bg]
+    const value = own !== undefined && other !== undefined ? contrastRatio(own, other) : null
     return {
       ...pair,
       value,
@@ -94,7 +154,7 @@ function RoleCell({
     }
   })
   const failing = pairs.some((pair) => !pair.ok)
-  const showEditor = canEdit && (editing || invalid)
+  const showEditor = canEdit && base !== null && (editing || invalid)
   const roleName = t(`${role}.name`)
   const screenName = t(`screens.${mode}`)
 
@@ -121,7 +181,7 @@ function RoleCell({
           <code className="font-mono text-xs">{colour}</code>
           {overridden ? (
             <Badge variant="outline" data-testid="role-adjusted">
-              {isFromPreset(state, mode, role) ? t('fromPreset') : t('adjusted')}
+              {t('adjusted')}
             </Badge>
           ) : null}
         </div>
@@ -141,7 +201,9 @@ function RoleCell({
                   : 'border-destructive font-medium text-destructive',
               )}
             >
-              {t('pair', { other: t(`${pair.other}.name`), ratio: ratio(pair.value) })}
+              {pair.value === null
+                ? t(`${pair.other}.name`)
+                : t('pair', { other: t(`${pair.other}.name`), ratio: ratio(pair.value) })}
               {pair.ok ? null : ` · ${t('needs', { min: ratio(pair.min) })}`}
             </li>
           ))}
@@ -150,12 +212,12 @@ function RoleCell({
         <p className="text-xs text-muted-foreground">{t('noPairs')}</p>
       )}
 
-      {showEditor ? (
+      {showEditor && base !== null ? (
         <div className="grid gap-1">
           <HexField
             id={`${id}-hex`}
-            value={state.overrides[mode][role] ?? colour}
-            onChange={(text) => onChange(setOverride(state, mode, role, text))}
+            value={state.overrides[mode][base] ?? colour}
+            onChange={(text) => onChange(setOverride(state, mode, base, text))}
             pickerLabel={t('picker', { role: roleName, screen: screenName })}
             label={t('hex', { role: roleName, screen: screenName })}
             fallback={colour}
@@ -170,7 +232,7 @@ function RoleCell({
         </div>
       ) : null}
 
-      {canEdit ? (
+      {canEdit && base !== null ? (
         <div className="flex flex-wrap gap-2">
           {editing || invalid ? null : (
             <Button
@@ -196,7 +258,7 @@ function RoleCell({
               aria-label={t('resetAria', { role: roleName, screen: screenName })}
               onClick={() => {
                 setEditing(false)
-                onChange(clearOverride(state, mode, role))
+                onChange(clearOverride(state, mode, base))
               }}
             >
               {t('reset')}
@@ -204,16 +266,16 @@ function RoleCell({
           ) : null}
         </div>
       ) : null}
-      {overridden && derived[mode][role] !== colour ? (
+      {overridden && base !== null && derived[mode][base] !== colour ? (
         <p className="text-xs text-muted-foreground">
-          {t('derivedWas', { colour: derived[mode][role] })}
+          {t('derivedWas', { colour: derived[mode][base] })}
         </p>
       ) : null}
     </div>
   )
 }
 
-export function RolePanel({
+export function AdvancedColours({
   state,
   roles,
   derived,
@@ -233,65 +295,114 @@ export function RolePanel({
   onChange: (next: LookState) => void
 }) {
   const t = useTranslations('design.roles')
-  const issueText = useIssueText()
+  const [open, setOpen] = useState(false)
+  // A pair that does not read keeps the list open: that is where it is named and fixed.
+  const shown = open || issues.length > 0
+  const anyOverride = ROLE_MODES.some((mode) => Object.keys(state.overrides[mode]).length > 0)
+  const withExtended = roles.light.error !== undefined || roles.dark.error !== undefined
 
   return (
-    <div className="@container grid gap-4" data-testid="design-roles">
-      <div>
-        <h4 className="text-sm font-medium">{t('title')}</h4>
-        <p className="text-xs text-muted-foreground">{t('help')}</p>
-      </div>
-      {issues.length > 0 ? (
-        <div
-          role="alert"
-          className="grid gap-1 rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive"
-          data-testid="design-unreadable"
-        >
-          <p className="font-medium">{t('unreadableTitle')}</p>
-          <ul className="list-disc pl-5">
-            {issues.map((issue) => (
-              <li
-                key={`${issue.mode}-${issue.fg}-${issue.bg}`}
-                data-issue={`${issue.mode}:${issue.fg}-on-${issue.bg}`}
-              >
-                {issueText(issue)}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {/* One row per role, the light and the dark screen side by side (one under the other on a
-          narrow panel). */}
-      <ul className="grid gap-3">
-        {ROLE_NAMES.map((role) => (
-          <li
-            key={role}
-            className="grid gap-2 rounded-lg border p-3"
-            data-testid={`design-role-${role}`}
+    <Collapsible open={shown} onOpenChange={setOpen} data-testid="design-advanced">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <CollapsibleTrigger asChild>
+          <Button type="button" variant="outline" size="sm" data-testid="design-advanced-toggle">
+            {t('advanced')}
+            <ChevronDownIcon aria-hidden className={shown ? 'rotate-180' : undefined} />
+          </Button>
+        </CollapsibleTrigger>
+        {shown && canEdit && anyOverride ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange(clearAllOverrides(state))}
           >
-            <div>
-              <p className="text-sm font-medium">{t(`${role}.name`)}</p>
-              <p className="text-xs text-muted-foreground">{t(`${role}.help`)}</p>
+            {t('resetAll')}
+          </Button>
+        ) : null}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{t('help')}</p>
+      <CollapsibleContent>
+        <div className="@container mt-4 grid gap-4" data-testid="design-roles">
+          <ul className="grid gap-3">
+            {ADJUSTABLE_ROLES.map((role) => {
+              const modes = PICKED_ROLES.has(role) ? (['dark'] as const) : ROLE_MODES
+              return (
+                <li
+                  key={role}
+                  className="grid gap-2 rounded-lg border p-3"
+                  data-testid={`design-role-${role}`}
+                >
+                  <div>
+                    <p className="text-sm font-medium">{t(`${role}.name`)}</p>
+                    <p className="text-xs text-muted-foreground">{t(`${role}.help`)}</p>
+                    {PICKED_ROLES.has(role) ? (
+                      <p className="text-xs text-muted-foreground">{t('lightFromPickers')}</p>
+                    ) : null}
+                  </div>
+                  <div className="grid gap-2 @md:grid-cols-2">
+                    {modes.map((mode) => (
+                      <RoleCell
+                        key={mode}
+                        mode={mode}
+                        role={role}
+                        state={state}
+                        roles={roles}
+                        derived={derived}
+                        issues={issues}
+                        invalid={invalid.includes(`${mode}.${role}`)}
+                        canEdit={canEdit}
+                        adjustable
+                        onChange={onChange}
+                      />
+                    ))}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          {withExtended ? (
+            <div className="grid gap-3" data-testid="design-more-roles">
+              <div>
+                <h4 className="text-sm font-medium">{t('more.title')}</h4>
+                <p className="text-xs text-muted-foreground">{t('more.help')}</p>
+              </div>
+              <ul className="grid gap-3">
+                {EXTENDED_ROLE_NAMES.map((role) => (
+                  <li
+                    key={role}
+                    className="grid gap-2 rounded-lg border p-3"
+                    data-testid={`design-role-${role}`}
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{t(`${role}.name`)}</p>
+                      <p className="text-xs text-muted-foreground">{t(`${role}.help`)}</p>
+                    </div>
+                    <div className="grid gap-2 @md:grid-cols-2">
+                      {ROLE_MODES.map((mode) => (
+                        <RoleCell
+                          key={mode}
+                          mode={mode}
+                          role={role}
+                          state={state}
+                          roles={roles}
+                          derived={derived}
+                          issues={issues}
+                          invalid={false}
+                          canEdit={canEdit}
+                          adjustable={false}
+                          onChange={onChange}
+                        />
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="grid gap-2 @md:grid-cols-2">
-              {ROLE_MODES.map((mode) => (
-                <RoleCell
-                  key={mode}
-                  mode={mode}
-                  role={role}
-                  state={state}
-                  roles={roles}
-                  derived={derived}
-                  issues={issues}
-                  invalid={invalid.includes(`${mode}.${role}`)}
-                  canEdit={canEdit}
-                  onChange={onChange}
-                />
-              ))}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+          ) : null}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

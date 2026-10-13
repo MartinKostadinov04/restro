@@ -84,9 +84,8 @@ export function SaleBadge({
 }
 
 /**
- * The way out of a name that is the till's own: fill in the public name in the till, or (an item)
- * type a name here, in its sheet. A section cannot be renamed in the composer, so its line names
- * the till only.
+ * The way out of a name that is the till's own: fill in the public name in the till, or type a
+ * name here (an item in its sheet, a section in its header, brief S6).
  */
 const helpKey = (target: 'item' | 'section') =>
   target === 'section' ? 'nameFromTillHelpSection' : 'nameFromTillHelp'
@@ -133,6 +132,32 @@ export function NameFromTillNotice() {
         <p className="text-muted-foreground">{t('nameFromTillHelp', { source })}</p>
       </div>
     </section>
+  )
+}
+
+/**
+ * "Overrides to review" (V12): the till changed a value we wrote over since we wrote it, and a
+ * person should keep ours or take the till's (in the item's sheet). Hover or focus says so.
+ */
+export function ReviewBadge({ count }: { count: number }) {
+  const t = useTranslations('composer.badges')
+  const source = useTillLabel()
+  return (
+    <HoverCard openDelay={150}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          data-testid="review-badge"
+          data-count={count}
+        >
+          <Badge variant="warning">{t('review', { count })}</Badge>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-72 text-sm">
+        <p data-testid="review-help">{t('reviewHelp', { source })}</p>
+      </HoverCardContent>
+    </HoverCard>
   )
 }
 

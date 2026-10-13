@@ -9,6 +9,11 @@
 // Layout and interaction are ported from the Platform's builder (tree + side sheet + drag-and-drop
 // lists, Ontology/Show.jsx and RenderGraph.jsx); the layout lives apart from the schema here
 // (placements and sort keys), where the Platform freezes it inside the ontology.
+//
+// It is the Structure subtab of the venue's composer (D92) and edits one menu, the one in the URL
+// (`?menu=`, brief S6): every action names it. What a venue may do depends on its source (D89,
+// D90, D92): one without a till creates, renames and deletes sections and items; one with a till
+// moves, reorders, hides, renames over the till's text and has sections of its own.
 import {
   DragDropContext,
   type DragStart,
@@ -18,15 +23,15 @@ import {
 } from '@hello-pangea/dnd'
 import {
   type Currency,
-  type GuestFeatures,
   isId,
   type Locale,
   type LocalizedText,
   type NodeId,
   newId,
+  type SectionLayout,
   type TagId,
 } from '@restro/core'
-import { PlusIcon, SlidersHorizontalIcon, TagsIcon } from 'lucide-react'
+import { PlusIcon, TagsIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react'
@@ -48,17 +53,24 @@ import type { ActionResult } from './action-result'
 import {
   createItemAction,
   createSectionAction,
+  deleteItemAction,
+  deleteSectionAction,
   moveSectionAction,
   placeItemAction,
+  renameItemAction,
+  renameSectionAction,
   setItemHiddenAction,
   setSectionHiddenAction,
+  setSectionLayoutAction,
 } from './actions'
 import {
   type ComposerActions,
   ComposerProvider,
+  type RenameTarget,
   type Selection,
   type TagDraft,
 } from './composer-context'
+import { DeleteDialog } from './delete-dialog'
 import {
   DROP_TARGET_ATTR,
   parseDraggable,
@@ -68,7 +80,6 @@ import {
   resolvePointerDrop,
   UNSORTED_KEY,
 } from './dnd'
-import { GuestFeaturesPanel, type TemplateFeatureOptions } from './guest-features-panel'
 import { ItemPane } from './item-pane'
 import {
   clearOpenItem,
@@ -105,6 +116,8 @@ import type {
 
 interface ComposerProps {
   readonly venueId: string
+  /** The menu the composer edits (`?menu=`, brief S6): every action names it. */
+  readonly menuId: NodeId
   readonly view: ComposerView
   readonly defaultLocale: Locale
   readonly enabledLocales: readonly Locale[]
@@ -116,12 +129,8 @@ interface ComposerProps {
   readonly canCreateItem: boolean
   /** The venue has a till: its items come from the till only, none are made by hand (D66). */
   readonly hasTill: boolean
-  /** The guest services the venue switched on (the "Guest features" panel, D71). */
-  readonly guestFeatures: GuestFeatures
-  /** The template's own feature switches: what it declares, and the venue's values. */
-  readonly featureOptions: TemplateFeatureOptions
-  /** The person may change the guest features (owner or admin); otherwise the panel is read-only. */
-  readonly canEditFeatures: boolean
+  /** The person may delete sections of the venue's own and items made by hand (owner or admin). */
+  readonly canDelete: boolean
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -133,6 +142,7 @@ function initialSelection(view: ComposerView, requested: string | null): Selecti
 
 export function Composer({
   venueId,
+  menuId,
   view: serverView,
   defaultLocale,
   enabledLocales,
@@ -140,9 +150,7 @@ export function Composer({
   canMarkSoldOut,
   canCreateItem,
   hasTill,
-  guestFeatures,
-  featureOptions,
-  canEditFeatures,
+  canDelete,
 }: ComposerProps) {
   const t = useTranslations('composer')
   const uiLocale = useLocale()
@@ -181,7 +189,11 @@ export function Composer({
   const [ticked, setTicked] = useState<ReadonlySet<NodeId>>(new Set())
   const [filterIds, setFilterIds] = useState<ReadonlySet<TagId>>(new Set())
   const [tagsOpen, setTagsOpen] = useState(false)
-  const [featuresOpen, setFeaturesOpen] = useState(false)
+  // The name being edited in place, and what waits for "Delete?" to be confirmed.
+  const [renaming, setRenaming] = useState<RenameTarget | null>(null)
+  const [deleting, setDeleting] = useState<RenameTarget | null>(null)
+  // A rename writes the language the composer shows; one the venue does not use is its main one.
+  const renameLocale = enabledLocales.includes(locale) ? locale : defaultLocale
   // Only items and tags that still exist and are active count.
   const selected = useMemo(
     () => new Set([...ticked].filter((id) => view.items[id] !== undefined)),
@@ -207,7 +219,7 @@ export function Composer({
         } catch {
           result = { ok: false, error: 'failed' }
         }
-        if (!result.ok) toast.error(t(`errors.${result.error}`))
+        if (!result.ok) toast.error(t(`errors.${result.error}`, { source: view.tillLabel }))
         else if (result.warning === 'live_not_queued') toast.warning(t('soldOut.liveLater'))
         resolve(result.ok)
       })
@@ -249,7 +261,7 @@ export function Composer({
   ) {
     const keys = toSectionId === null ? [] : itemKeys(toSectionId, itemId, index)
     mutate({ type: 'placeItem', itemId, fromSectionId, toSectionId, keys }, () =>
-      placeItemAction({ venueId, itemId, fromSectionId, toSectionId, keys }),
+      placeItemAction({ venueId, menuId, itemId, fromSectionId, toSectionId, keys }),
     )
   }
 
@@ -262,7 +274,7 @@ export function Composer({
         ? [{ id: sectionId, key: keyAtEnd(others) }]
         : planKeys(others, sectionId, index)
     mutate({ type: 'moveSection', sectionId, parentId, keys }, () =>
-      moveSectionAction({ venueId, sectionId, parentId, keys }),
+      moveSectionAction({ venueId, menuId, sectionId, parentId, keys }),
     )
     if (parentId !== null) {
       setCollapsed((current) => {
@@ -291,9 +303,10 @@ export function Composer({
       childIds: [],
       issues: [],
       nameFromTill: false,
+      layout: 'vertical',
     }
     mutate({ type: 'addSection', section }, () =>
-      createSectionAction({ venueId, id, parentId, title, sortKey }),
+      createSectionAction({ venueId, menuId, id, parentId, title, sortKey }),
     )
     select(id)
     if (parentId !== null) {
@@ -352,10 +365,12 @@ export function Composer({
       soldOutTonight: false,
       offSale: null,
       nameFromTill: false,
+      reviewFields: [],
     }
     void mutate({ type: 'addItem', item, sectionId, sortKey, locale }, () =>
       createItemAction({
         venueId,
+        menuId,
         id,
         sectionId,
         name,
@@ -382,7 +397,7 @@ export function Composer({
       if (!item || item.hiddenBy === 'till' || item.hiddenBy === 'other') return
       const hidden = item.hiddenBy === null
       mutate({ type: 'setItemHidden', itemId, hidden }, () =>
-        setItemHiddenAction({ venueId, itemId, hidden }),
+        setItemHiddenAction({ venueId, menuId, itemId, hidden }),
       )
     },
     toggleSectionHidden: (sectionId) => {
@@ -390,8 +405,34 @@ export function Composer({
       if (!section) return
       const hidden = !section.hidden
       mutate({ type: 'setSectionHidden', sectionId, hidden }, () =>
-        setSectionHiddenAction({ venueId, sectionId, hidden }),
+        setSectionHiddenAction({ venueId, menuId, sectionId, hidden }),
       )
+    },
+    setSectionLayout: (sectionId, layout: SectionLayout) => {
+      const section = view.sections[sectionId]
+      if (!section || section.layout === layout) return
+      mutate({ type: 'setSectionLayout', sectionId, layout }, () =>
+        setSectionLayoutAction({ venueId, menuId, sectionId, layout }),
+      )
+    },
+    startRename: setRenaming,
+    renameSection: (sectionId, title) => {
+      setRenaming(null)
+      mutate({ type: 'renameSection', sectionId, title }, () =>
+        renameSectionAction({ venueId, menuId, sectionId, title: { [renameLocale]: title } }),
+      )
+    },
+    renameItem: (itemId, name) => {
+      setRenaming(null)
+      mutate({ type: 'renameItem', itemId, name }, () =>
+        renameItemAction({ venueId, menuId, itemId, name: { [renameLocale]: name } }),
+      )
+    },
+    deleteSection: (sectionId) => {
+      if (view.sections[sectionId]) setDeleting({ kind: 'section', id: sectionId })
+    },
+    deleteItem: (itemId) => {
+      if (view.items[itemId]) setDeleting({ kind: 'item', id: itemId })
     },
     moveItemToSection: (itemId, fromSectionId, toSectionId) =>
       placeItem(itemId, fromSectionId, toSectionId),
@@ -636,6 +677,23 @@ export function Composer({
 
   const sectionOptions = flattenSections(view)
 
+  /** Deletes what the dialog asked about, once it is confirmed. */
+  function confirmDelete() {
+    const target = deleting
+    setDeleting(null)
+    if (target === null) return
+    if (target.kind === 'section') {
+      mutate({ type: 'deleteSection', sectionId: target.id }, () =>
+        deleteSectionAction({ venueId, menuId, sectionId: target.id }),
+      )
+      return
+    }
+    if (openItemId === target.id) clearOpenItem()
+    mutate({ type: 'deleteItem', itemId: target.id }, () =>
+      deleteItemAction({ venueId, menuId, itemId: target.id }),
+    )
+  }
+
   return (
     <TillLabelProvider label={view.tillLabel}>
       <ComposerProvider
@@ -651,6 +709,8 @@ export function Composer({
           canMarkSoldOut,
           canCreateItem: mayCreateItem,
           hasTill,
+          canDelete,
+          renaming,
         }}
       >
         <DragDropContext
@@ -688,18 +748,6 @@ export function Composer({
                 <span className="ml-auto text-muted-foreground" data-testid="tag-count">
                   {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
                 </span>
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="justify-start"
-                onClick={() => setFeaturesOpen(true)}
-                data-testid="open-guest-features"
-              >
-                <SlidersHorizontalIcon aria-hidden />
-                {t('guestFeatures.open')}
               </Button>
 
               {/* Small screens: a picker instead of the tree (its drops need room). */}
@@ -746,19 +794,29 @@ export function Composer({
           defaultLocale={defaultLocale}
           enabledLocales={enabledLocales}
         />
-        <GuestFeaturesPanel
-          open={featuresOpen}
-          onOpenChange={setFeaturesOpen}
-          venueId={venueId}
-          features={guestFeatures}
-          options={featureOptions}
-          canEdit={canEditFeatures}
+        <DeleteDialog
+          target={
+            deleting === null
+              ? null
+              : {
+                  kind: deleting.kind,
+                  name:
+                    deleting.kind === 'section'
+                      ? sectionTitle(view, deleting.id, t('untitledSection'))
+                      : itemName(view, deleting.id, t('unnamedItem')),
+                }
+          }
+          onConfirm={confirmDelete}
+          onOpenChange={(open) => {
+            if (!open) setDeleting(null)
+          }}
         />
 
         {openItemId ? (
           <ItemSheet
             key={openItemId}
             itemId={openItemId}
+            menuId={menuId}
             tags={sheetTags}
             onCreateTag={createSheetTag}
             onOpenChange={(open) => {

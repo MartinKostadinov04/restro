@@ -43,13 +43,9 @@ describe('WorkspaceTabs: tabs and the URL', () => {
   it('draws the tab bar and the small-screen select from the one declared list', () => {
     renderTabs()
     const tabs = screen.getAllByRole('tab')
-    // D97: no Publishing tab (the Publish button is in the header on every tab).
-    expect(tabs.map((tab) => tab.textContent)).toEqual([
-      'Composer',
-      'Tables & QR',
-      'Design',
-      'Settings',
-    ])
+    // D97: no Publishing tab (the Publish button is in the header on every tab). D92: Design is
+    // the composer's subtab, not a tab of its own.
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Composer', 'Tables & QR', 'Settings'])
     // The select has one entry per declared tab, labelled from the same keys.
     expect(screen.getByRole('combobox', { name: 'Switch tab' })).toBeTruthy()
     expect(tabs).toHaveLength(WORKSPACE_TAB_DEFS.length)
@@ -77,6 +73,14 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     expect(screen.getByRole('tab', { name: 'Settings' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.queryByRole('tab', { name: 'Publishing' })).toBeNull()
     expect(workspaceTabOf('publishing')).toBe('settings')
+  })
+
+  it('opens the composer for an old ?tab=design link: Design is its subtab now (D92)', () => {
+    expect(workspaceTabOf('design')).toBe('composer')
+    navigation.search = 'tab=design'
+    renderTabs()
+    expect(screen.getByRole('tab', { name: 'Composer' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.queryByRole('tab', { name: 'Design' })).toBeNull()
   })
 
   it('opens Settings for an old ?tab=integration link: the Integration tab is gone (CF-09b)', () => {

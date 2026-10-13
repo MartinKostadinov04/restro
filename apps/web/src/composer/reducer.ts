@@ -7,7 +7,7 @@
 // The reducer never decides what is allowed: the UI only offers legal moves (./tree.ts) and
 // `apply()` refuses the rest. It only has to show a legal move correctly.
 
-import type { Locale, NodeId, TagId } from '@restro/core'
+import type { Locale, NodeId, SectionLayout, TagId } from '@restro/core'
 
 import type { KeyedId } from './plan'
 import type {
@@ -70,6 +70,23 @@ export type ComposerOp =
       readonly itemIds: readonly NodeId[]
       readonly soldOut: boolean
     }
+  /** A section is laid out as a vertical list or a horizontal row (D92). */
+  | {
+      readonly type: 'setSectionLayout'
+      readonly sectionId: NodeId
+      readonly layout: SectionLayout
+    }
+  /** A section's title in the interface language changes. */
+  | { readonly type: 'renameSection'; readonly sectionId: NodeId; readonly title: string }
+  /** An item's name in the interface language changes. */
+  | { readonly type: 'renameItem'; readonly itemId: NodeId; readonly name: string }
+  /**
+   * A section and the sections under it leave the menu; their items leave them too, and an item
+   * that is then placed nowhere goes to Unsorted (the end of the list until the server sorts it).
+   */
+  | { readonly type: 'deleteSection'; readonly sectionId: NodeId }
+  /** An item leaves the menu: every list it was in. */
+  | { readonly type: 'deleteItem'; readonly itemId: NodeId }
 
 const byKeyThenId = (a: { sortKey: string; id: string }, b: { sortKey: string; id: string }) =>
   a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
@@ -266,9 +283,116 @@ function setSoldOut(view: ComposerView, op: Extract<ComposerOp, { type: 'setSold
   return { ...view, items }
 }
 
+function setSectionLayout(
+  view: ComposerView,
+  op: Extract<ComposerOp, { type: 'setSectionLayout' }>,
+) {
+  const section = view.sections[op.sectionId]
+  if (!section) return view
+  return {
+    ...view,
+    sections: { ...view.sections, [op.sectionId]: { ...section, layout: op.layout } },
+  }
+}
+
+function renameSection(view: ComposerView, op: Extract<ComposerOp, { type: 'renameSection' }>) {
+  const section = view.sections[op.sectionId]
+  if (!section) return view
+  // A name typed here replaces the till's own (D75): the warning goes with it.
+  const next: ComposerSection = { ...section, title: op.title, nameFromTill: false }
+  return { ...view, sections: { ...view.sections, [op.sectionId]: next } }
+}
+
+function renameItem(view: ComposerView, op: Extract<ComposerOp, { type: 'renameItem' }>) {
+  const item = view.items[op.itemId]
+  if (!item) return view
+  return {
+    ...view,
+    items: { ...view.items, [op.itemId]: { ...item, name: op.name, nameFromTill: false } },
+  }
+}
+
+/** The section and every section under it. */
+function subtreeOf(view: ComposerView, sectionId: NodeId): Set<NodeId> {
+  const out = new Set<NodeId>()
+  const visit = (id: NodeId) => {
+    if (out.has(id)) return
+    out.add(id)
+    for (const child of view.sections[id]?.childIds ?? []) visit(child)
+  }
+  visit(sectionId)
+  return out
+}
+
+function deleteSection(view: ComposerView, op: Extract<ComposerOp, { type: 'deleteSection' }>) {
+  const removed = view.sections[op.sectionId]
+  if (!removed) return view
+  const gone = subtreeOf(view, op.sectionId)
+  const sections: Record<NodeId, ComposerSection> = {}
+  for (const [id, section] of Object.entries(view.sections) as [NodeId, ComposerSection][]) {
+    if (!gone.has(id)) sections[id] = section
+  }
+  const parent = removed.parentId === null ? undefined : sections[removed.parentId]
+  if (parent) {
+    sections[parent.id] = {
+      ...parent,
+      childIds: parent.childIds.filter((id) => id !== op.sectionId),
+    }
+  }
+  const placements: Record<NodeId, readonly ComposerPlacement[]> = {}
+  const freed = new Set<NodeId>()
+  for (const [id, list] of Object.entries(view.placements) as [
+    NodeId,
+    readonly ComposerPlacement[],
+  ][]) {
+    if (gone.has(id)) for (const placement of list) freed.add(placement.itemId)
+    else placements[id] = list
+  }
+  const stillPlaced = new Set(
+    Object.values(placements).flatMap((list) => list.map((placement) => placement.itemId)),
+  )
+  const unsorted = [...freed].filter((id) => !stillPlaced.has(id) && !view.unsortedIds.includes(id))
+  return {
+    ...view,
+    sections,
+    rootIds: view.rootIds.filter((id) => id !== op.sectionId),
+    placements,
+    unsortedIds: [...view.unsortedIds, ...unsorted],
+  }
+}
+
+function deleteItem(view: ComposerView, op: Extract<ComposerOp, { type: 'deleteItem' }>) {
+  if (!view.items[op.itemId]) return view
+  const items: Record<NodeId, ComposerItem> = { ...view.items }
+  delete items[op.itemId]
+  const placements: Record<NodeId, readonly ComposerPlacement[]> = {}
+  for (const [id, list] of Object.entries(view.placements) as [
+    NodeId,
+    readonly ComposerPlacement[],
+  ][]) {
+    placements[id] = list.filter((placement) => placement.itemId !== op.itemId)
+  }
+  return {
+    ...view,
+    items,
+    placements,
+    unsortedIds: view.unsortedIds.filter((id) => id !== op.itemId),
+  }
+}
+
 /** The view after one change. */
 export function reduceView(view: ComposerView, op: ComposerOp): ComposerView {
   switch (op.type) {
+    case 'setSectionLayout':
+      return setSectionLayout(view, op)
+    case 'renameSection':
+      return renameSection(view, op)
+    case 'renameItem':
+      return renameItem(view, op)
+    case 'deleteSection':
+      return deleteSection(view, op)
+    case 'deleteItem':
+      return deleteItem(view, op)
     case 'setSoldOut':
       return setSoldOut(view, op)
     case 'setItemTags':

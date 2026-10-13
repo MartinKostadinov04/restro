@@ -211,6 +211,7 @@ describe('reduceView: hiding and creating', () => {
       childIds: [],
       issues: [],
       nameFromTill: false,
+      layout: 'vertical',
     }
     const next = reduceView(view, { type: 'addSection', section })
     expect(next.sections[ids.cocktails]?.childIds).toEqual([ids.classics, section.id])
@@ -239,6 +240,7 @@ describe('reduceView: a new item made by hand', () => {
     soldOutTonight: false,
     offSale: null,
     nameFromTill: false,
+    reviewFields: [],
     ...extra,
   })
 
@@ -352,5 +354,85 @@ describe('reduceView: tags (S3-06)', () => {
     const end = reduceView(view, { type: 'moveTag', tagId: ids.signature, beforeId: null })
     expect(end.tagIds).toEqual([ids.spicy, ids.local, ids.old, ids.signature])
     expect(view.tagIds).toEqual([ids.signature, ids.spicy, ids.local, ids.old])
+  })
+})
+
+describe('reduceView: the structure edits of S6 (D89, D92)', () => {
+  it('lays a section out as a row, and back', () => {
+    const { view, ids } = makeTestView()
+    const row = reduceView(view, {
+      type: 'setSectionLayout',
+      sectionId: ids.beer,
+      layout: 'horizontal',
+    })
+    expect(row.sections[ids.beer]?.layout).toBe('horizontal')
+    expect(view.sections[ids.beer]?.layout).toBe('vertical')
+    const back = reduceView(row, {
+      type: 'setSectionLayout',
+      sectionId: ids.beer,
+      layout: 'vertical',
+    })
+    expect(back.sections[ids.beer]?.layout).toBe('vertical')
+    // A section that is gone changes nothing.
+    expect(
+      reduceView(view, { type: 'setSectionLayout', sectionId: newId('nd'), layout: 'horizontal' }),
+    ).toBe(view)
+  })
+
+  it('renames a section and an item, and a typed name takes the till-name warning away', () => {
+    const { view, ids } = makeTestView()
+    const before = {
+      ...view,
+      sections: {
+        ...view.sections,
+        [ids.beer]: { ...(view.sections[ids.beer] as ComposerSection), nameFromTill: true },
+      },
+    }
+    const renamed = reduceView(before, {
+      type: 'renameSection',
+      sectionId: ids.beer,
+      title: 'Beers',
+    })
+    expect(renamed.sections[ids.beer]).toMatchObject({ title: 'Beers', nameFromTill: false })
+    const item = reduceView(view, { type: 'renameItem', itemId: ids.water, name: 'Still water' })
+    expect(item.items[ids.water]?.name).toBe('Still water')
+  })
+
+  it('deletes a section with the sections inside it; their items go to Unsorted', () => {
+    const { view, ids } = makeTestView()
+    const next = reduceView(view, { type: 'deleteSection', sectionId: ids.cocktails })
+    for (const gone of [ids.cocktails, ids.classics, ids.stirred]) {
+      expect(next.sections[gone]).toBeUndefined()
+      expect(next.placements[gone]).toBeUndefined()
+    }
+    expect(next.rootIds).toEqual([ids.beer])
+    expect(next.unsortedIds).toEqual([ids.water, ids.negroni, ids.spritz, ids.daiquiri])
+    // The items themselves stay.
+    expect(next.items[ids.negroni]).toBeDefined()
+  })
+
+  it('a deleted sub-section leaves its parent; an item placed elsewhere too stays out of Unsorted', () => {
+    const { view, ids } = makeTestView()
+    const twice = {
+      ...view,
+      placements: {
+        ...view.placements,
+        [ids.beer]: [...(view.placements[ids.beer] ?? []), { itemId: ids.daiquiri, sortKey: 'a2' }],
+      },
+    }
+    const next = reduceView(twice, { type: 'deleteSection', sectionId: ids.classics })
+    expect(next.sections[ids.cocktails]?.childIds).toEqual([])
+    expect(next.sections[ids.stirred]).toBeUndefined()
+    expect(next.unsortedIds).toEqual([ids.water])
+  })
+
+  it('deletes an item from every list', () => {
+    const { view, ids } = makeTestView()
+    const placed = reduceView(view, { type: 'deleteItem', itemId: ids.lager })
+    expect(placed.items[ids.lager]).toBeUndefined()
+    expect(placed.placements[ids.beer]?.map((p) => p.itemId)).toEqual([ids.stout])
+    const loose = reduceView(view, { type: 'deleteItem', itemId: ids.water })
+    expect(loose.unsortedIds).toEqual([])
+    expect(reduceView(view, { type: 'deleteItem', itemId: newId('nd') })).toBe(view)
   })
 })

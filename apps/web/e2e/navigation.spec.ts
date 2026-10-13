@@ -138,8 +138,13 @@ test('open a venue from the sidebar, then swap to another on the same tab', asyn
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
   await expect(page.getByTestId('venue-nav-all')).not.toHaveAttribute('aria-current', 'page')
 
-  // The venue's tabs (D97): no Publishing tab; the Publish button heads every tab instead.
-  await expect(page.getByRole('tab')).toHaveText(['Composer', 'Tables & QR', 'Design', 'Settings'])
+  // The venue's tabs (D97): no Publishing tab; the Publish button heads every tab instead. Design
+  // is the composer's subtab (D92), drawn in a tab list of its own under the composer.
+  await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
+    'Composer',
+    'Tables & QR',
+    'Settings',
+  ])
   await expect(page.getByTestId('publish-button')).toBeVisible()
 
   // Another tab; the venue's links in the sidebar now carry it.

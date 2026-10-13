@@ -229,15 +229,16 @@ describe('the leak guard and the new words', () => {
   })
 
   it('still refuses an internal note that is not a public word', () => {
-    const doc = bar(['two']).build()
-    // Without the presentation's strings, "two" is an internal value like any other.
+    // "two" became a word of the snapshot itself (the menu layout, D92); an option key is not.
+    const doc = bar(['compact']).build()
+    // Without the presentation's strings, "compact" is an internal value like any other.
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
       doc,
       externalIds: [],
       publicStrings: lookPublicStrings(DEFAULT_THEME, null),
     })
-    expect(forbidden.get('two')).toBe('internal_value')
+    expect(forbidden.get('compact')).toBe('internal_value')
     const snapshot = buildSnapshot(resolve(VENUE_MENU_TEMPLATE, doc, CONTEXT), {
       ...context({ presentation: PRESENTATION }),
     })

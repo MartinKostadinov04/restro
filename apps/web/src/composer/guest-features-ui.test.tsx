@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// The composer's "Guest features" panel (brief SH-05b, D71): the menu switches, the service at the
-// table with its request kinds, the allergen line that has no switch (R6), the one Save button, and
-// the read-only view for a person who may not change the venue.
+// The composer's "Guest features" card (brief SH-05b, D71; on the Design subtab since S6): the menu
+// switches, the service at the table with its request kinds, the allergen line that has no switch
+// (R6), the one Save button, and the read-only view for a person who may not change the venue.
 
 import type { GuestFeatures } from '@restro/core'
 import { screen, waitFor, within } from '@testing-library/react'
@@ -15,7 +15,7 @@ import {
 } from '@/server/composer/guest-features-actions'
 import { renderWithIntl } from '@/test-utils'
 
-import { GuestFeaturesPanel, type TemplateFeatureOptions } from './guest-features-panel'
+import { GuestFeaturesCard, type TemplateFeatureOptions } from './guest-features-panel'
 
 vi.mock('@/server/composer/guest-features-actions', () => ({
   saveGuestFeaturesAction: vi.fn(),
@@ -34,7 +34,10 @@ const FEATURES: GuestFeatures = {
   pay: false,
 }
 
-/** The editorial-market face's one feature switch (its look options are not here). */
+/**
+ * A template's own feature switch, as a template may declare one (Editorial Market's layout switch
+ * was one until D92 made it a menu setting).
+ */
 const OPTIONS: TemplateFeatureOptions = {
   declared: [
     {
@@ -57,14 +60,7 @@ function setup({
   canEdit?: boolean
 } = {}) {
   renderWithIntl(
-    <GuestFeaturesPanel
-      open
-      onOpenChange={vi.fn()}
-      venueId={VENUE}
-      features={features}
-      options={options}
-      canEdit={canEdit}
-    />,
+    <GuestFeaturesCard venueId={VENUE} features={features} options={options} canEdit={canEdit} />,
     { locale: 'en' },
   )
 }

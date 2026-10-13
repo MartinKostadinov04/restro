@@ -5,9 +5,15 @@ import { EDITORIAL_MARKET_MANIFEST } from '@restro/editorial-market/manifest'
 import type { FaceManifest } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
+import { OPTIONS_BEFORE_D92 } from '@/faces/test-options'
+
 import { chooseableFace, lookOptionsOf, mergeOptions, optionKeys } from './template-options'
 
-const MARKET = EDITORIAL_MARKET_MANIFEST
+/**
+ * A template with options: the Editorial Market as it was until D92 made its layout options the
+ * menu's settings (brief S6). The option machinery is generic, and these tests keep it honest.
+ */
+const MARKET: FaceManifest = { ...EDITORIAL_MARKET_MANIFEST, options: OPTIONS_BEFORE_D92 }
 
 /** The Editorial Market with another set of options, standing in for a second template. */
 const OTHER: FaceManifest = {
@@ -27,7 +33,7 @@ const OTHER: FaceManifest = {
 }
 
 describe('which options belong to which group', () => {
-  it('lists the Editorial Market’s look options and its feature option apart', () => {
+  it('lists a template’s look options and its feature option apart', () => {
     expect(optionKeys(MARKET, 'look')).toEqual(['layout', 'featureFirstSection'])
     expect(optionKeys(MARKET, 'feature')).toEqual(['layoutSwitch'])
   })
@@ -114,5 +120,17 @@ describe('which templates can be chosen', () => {
     expect(chooseableFace('qr-phone')).toBeUndefined()
     expect(chooseableFace('no-such-template')).toBeUndefined()
     expect(chooseableFace('')).toBeUndefined()
+  })
+})
+
+describe('the Editorial Market (D92)', () => {
+  it('declares no option any more: its form is empty and nothing is saved for it', () => {
+    expect(optionKeys(EDITORIAL_MARKET_MANIFEST, 'look')).toEqual([])
+    expect(optionKeys(EDITORIAL_MARKET_MANIFEST, 'feature')).toEqual([])
+    const saved = {
+      face: 'editorial-market',
+      options: { layout: 'two', featureFirstSection: true, layoutSwitch: false },
+    }
+    expect(mergeOptions(EDITORIAL_MARKET_MANIFEST, saved, { layout: 'one' })).toEqual({})
   })
 })

@@ -14,7 +14,13 @@
 //   of that section. Unsorted is such a target too (dropping there takes the item out).
 import { Draggable, Droppable } from '@hello-pangea/dnd'
 import type { NodeId } from '@restro/core'
-import { AlertTriangleIcon, ChevronRightIcon, EyeOffIcon, GripVerticalIcon } from 'lucide-react'
+import {
+  AlertTriangleIcon,
+  ChevronRightIcon,
+  EyeOffIcon,
+  GalleryHorizontalIcon,
+  GripVerticalIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
@@ -114,6 +120,15 @@ function SectionNode({ id, index }: { id: NodeId; index: number }) {
                     role="img"
                     aria-label={t('badges.nameFromTill', { source: view.tillLabel })}
                     data-testid="section-name-from-till"
+                  />
+                ) : null}
+                {section.layout === 'horizontal' ? (
+                  // D92: a row on the guest page (its strip).
+                  <GalleryHorizontalIcon
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    role="img"
+                    aria-label={t('layout.horizontal')}
+                    data-testid="section-horizontal"
                   />
                 ) : null}
                 {section.hidden ? (

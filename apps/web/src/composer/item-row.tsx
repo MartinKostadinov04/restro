@@ -5,16 +5,25 @@ import { Draggable } from '@hello-pangea/dnd'
 // its badges, the price, the shown-to-guests switch and the "more" menu. The switch follows
 // rule 5: an item the till hides cannot be shown from here, and the row says so.
 import { formatMoney, type NodeId } from '@restro/core'
-import { GripVerticalIcon } from 'lucide-react'
+import { GripVerticalIcon, PencilIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
+import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
-import { HiddenBadge, IssuesBadge, NameFromTillBadge, OriginBadge, SaleBadge } from './badges'
+import {
+  HiddenBadge,
+  IssuesBadge,
+  NameFromTillBadge,
+  OriginBadge,
+  ReviewBadge,
+  SaleBadge,
+} from './badges'
 import { useComposer } from './composer-context'
 import { ItemChips } from './item-chips'
 import { itemName } from './labels'
+import { RenameField } from './rename-field'
 import { ItemMenu } from './row-menus'
 import type { ComposerItem } from './view-model'
 
@@ -36,8 +45,19 @@ export function ItemRow({
   index: number
 }) {
   const t = useTranslations('composer')
-  const { view, locale, openItem, toggleItemHidden, selected, toggleSelected, tagFilter } =
-    useComposer()
+  const {
+    view,
+    locale,
+    openItem,
+    toggleItemHidden,
+    selected,
+    toggleSelected,
+    tagFilter,
+    hasTill,
+    renaming,
+    startRename,
+    renameItem,
+  } = useComposer()
   const item = view.items[itemId]
   if (!item) return null
   const name = itemName(view, itemId, t('unnamedItem'))
@@ -46,6 +66,9 @@ export function ItemRow({
   const hidden = item.hiddenBy !== null
   const isSelected = selected.has(itemId)
   const selecting = selected.size > 0
+  // Items made by hand are renamed in place (D89); a till's item is named in its sheet.
+  const renamable = !hasTill && item.origin === 'owned'
+  const editing = renamable && renaming?.kind === 'item' && renaming.id === itemId
 
   return (
     // Reordering a filtered list would compute its places from a partial list: off while filtered.
@@ -89,17 +112,45 @@ export function ItemRow({
           </div>
 
           <div className={cn('grid min-w-0 flex-1 gap-1', hidden && 'opacity-70')}>
-            <button
-              type="button"
-              onClick={() => openItem(itemId)}
-              className="min-w-0 truncate rounded-sm text-left text-sm font-medium hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-              data-testid="item-open"
-            >
-              {name}
-            </button>
+            {editing ? (
+              <RenameField
+                initial={item.name}
+                label={t('rename.itemLabel', { name })}
+                onSave={(next) => renameItem(itemId, next)}
+                onCancel={() => startRename(null)}
+                testId="item-rename-field"
+              />
+            ) : (
+              <div className="flex min-w-0 items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => openItem(itemId)}
+                  className="min-w-0 truncate rounded-sm text-left text-sm font-medium hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                  data-testid="item-open"
+                >
+                  {name}
+                </button>
+                {renamable ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                    aria-label={t('rename.item', { name })}
+                    onClick={() => startRename({ kind: 'item', id: itemId })}
+                    data-testid="item-rename-start"
+                  >
+                    <PencilIcon aria-hidden />
+                  </Button>
+                ) : null}
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
               <OriginBadge origin={item.origin} />
               {item.nameFromTill ? <NameFromTillBadge /> : null}
+              {item.reviewFields.length > 0 ? (
+                <ReviewBadge count={item.reviewFields.length} />
+              ) : null}
               {item.hiddenBy !== null ? <HiddenBadge hiddenBy={item.hiddenBy} /> : null}
               <SaleBadge soldOutTonight={item.soldOutTonight} offSale={item.offSale} />
               <IssuesBadge issues={item.issues} />

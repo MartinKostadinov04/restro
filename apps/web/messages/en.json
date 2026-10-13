@@ -326,6 +326,10 @@
       "empty": "No changes yet.",
       "error": "The history could not be loaded.",
       "loadMore": "Show older"
+    },
+    "review": {
+      "title": "Overrides to review",
+      "text": "{source} changed {fields} after you replaced it here. In Details, keep yours or take {source}’s."
     }
   },
   "devItemSheet": {
@@ -628,11 +632,13 @@
       "newFromTill": "New from {source}, hidden until you show it",
       "nameFromTill": "Menu name missing in {source}: its own name is shown",
       "nameFromTillHelp": "Fill in the public name in {source}, or type a name here.",
-      "nameFromTillHelpSection": "Fill in the public name in {source}.",
+      "nameFromTillHelpSection": "Fill in the public name in {source}, or rename the section here.",
       "soldOutTonight": "Sold out tonight",
       "offSaleTill": "Not on sale in {source}",
       "offSaleOther": "Not on sale",
-      "issues": "{count, plural, one {# issue} other {# issues}}"
+      "issues": "{count, plural, one {# issue} other {# issues}}",
+      "review": "{count, plural, one {# override to review} other {# overrides to review}}",
+      "reviewHelp": "{source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s."
     },
     "soldOut": {
       "mark": "Sold out tonight",
@@ -662,7 +668,10 @@
       "collapse": "Collapse {name}",
       "dragItem": "Drag {name}",
       "dragSection": "Drag {name}",
-      "removeFromSection": "Move to Unsorted"
+      "removeFromSection": "Move to Unsorted",
+      "rename": "Rename",
+      "deleteSection": "Delete section…",
+      "deleteItem": "Delete item…"
     },
     "dnd": {
       "instructions": "Press space to pick up, the arrow keys to move, space to drop, escape to cancel.",
@@ -675,7 +684,7 @@
     },
     "new": {
       "title": "New section",
-      "description": "Create a section of your own that does not come from barsy, for example “Tonight’s cocktails”.",
+      "description": "Create a section of your own, for example “Tonight’s cocktails”.",
       "parent": "Where",
       "topLevel": "Top level",
       "names": "Section name",
@@ -707,9 +716,10 @@
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
       "not_allowed": "Only an owner or admin can do this.",
-      "till_venue": "This venue gets its items from the till, so items cannot be created here.",
+      "till_venue": "This venue gets its items from the till: items cannot be created, renamed in the list or deleted here.",
       "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
-      "failed": "Something went wrong. The change was not saved, try again."
+      "failed": "Something went wrong. The change was not saved, try again.",
+      "till_section": "This section comes from {source}: it can be hidden, not deleted."
     },
     "issues": {
       "fallback": "Needs attention.",
@@ -755,7 +765,6 @@
       "restoreShort": "Restore"
     },
     "guestFeatures": {
-      "open": "Guest features",
       "title": "Guest features",
       "description": "What guests can use on the menu on their phone. Changes reach guests with the next publish.",
       "groups": {
@@ -813,6 +822,49 @@
     "chips": {
       "moreTags": "More tags: {names}",
       "moreDietary": "More dietary labels: {names}"
+    },
+    "subtabs": {
+      "label": "Composer view",
+      "structure": "Structure",
+      "design": "Design"
+    },
+    "menuBar": {
+      "label": "Menu and its layout",
+      "menu": "Menu",
+      "live": "Live",
+      "manage": "Manage menus",
+      "layout": "Menu layout",
+      "layouts": {
+        "list": "List",
+        "one_column": "One column",
+        "two_columns": "Two columns"
+      },
+      "guestSwitch": "Guests may switch the layout",
+      "saved": "Saved. Guests see it after the next publish"
+    },
+    "layout": {
+      "horizontal": "Horizontal row"
+    },
+    "rename": {
+      "save": "Save the name",
+      "cancel": "Cancel",
+      "section": "Rename {name}",
+      "sectionLabel": "Title of {name}",
+      "item": "Rename {name}",
+      "itemLabel": "Name of {name}"
+    },
+    "delete": {
+      "cancel": "Cancel",
+      "section": {
+        "title": "Delete {name}?",
+        "description": "The section and the sections inside it leave the menu. Their items move to Unsorted unless they are in another section too. The history keeps a record.",
+        "confirm": "Delete section"
+      },
+      "item": {
+        "title": "Delete {name}?",
+        "description": "The item leaves every menu of the venue and the composer. The history keeps a record.",
+        "confirm": "Delete item"
+      }
     }
   },
   "workspace": {
@@ -829,14 +881,6 @@
       "general": "General",
       "publish": "Publish",
       "versioning": "Versioning"
-    },
-    "composer": {
-      "title": "Menu composer",
-      "description": "Arrange the menu that comes from barsy here: move items between sections, reorder them, and add images, descriptions and translations."
-    },
-    "tables": {
-      "title": "Tables & QR codes",
-      "description": "Every table from barsy gets its own QR code here, ready to print."
     },
     "settings": {
       "title": "Venue settings",
@@ -1472,7 +1516,7 @@
     "venueMenuNone": "This venue has no menu yet. An area or a table shows the live menu once the venue has one.",
     "empty": {
       "title": "No tables yet",
-      "description": "Areas and tables come from {source}. Connect {source} in Settings → Integrations and choose this venue's {source} venue in the Menu source card of its Settings tab. The tables appear after the next full sync.",
+      "description": "Areas and tables come from {source}. They appear at its next read. A venue without a till adds its own areas and tables.",
       "action": "Go to the Menu source"
     },
     "emptyHand": {
@@ -1654,7 +1698,6 @@
     "save": "Save look",
     "saving": "Saving…",
     "saved": "Saved. Guests see it after the next publish.",
-    "goPublishing": "Go to Publishing",
     "status": {
       "clean": "Nothing to save.",
       "unsaved": "Unsaved changes. The preview already shows them.",
@@ -1677,7 +1720,15 @@
       "use": "Use this template",
       "useNamed": "Use this template: {name}",
       "thumbnailAlt": "Picture of the {name} template",
-      "hiddenInUse": "This venue uses a technical test template that is not offered to venues. Choose a template below to switch."
+      "hiddenInUse": "This venue uses a technical test template that is not offered to venues. Choose a template below to switch.",
+      "current": "Template: {name}",
+      "change": "Change",
+      "browse": "See templates",
+      "close": "Close",
+      "preview": "Preview",
+      "previewNamed": "Preview the template {name}",
+      "previewTitle": "Preview: {name}",
+      "previewDescription": "Your menu in this template, with the look you are editing, saved or not. No table is chosen, so only the menu shows."
     },
     "lookOptions": {
       "title": "How this template looks",
@@ -1688,38 +1739,43 @@
         "two": "Two columns"
       }
     },
+    "logoName": {
+      "title": "Logo and name",
+      "description": "The logo and the name guests see at the top of this menu."
+    },
+    "headerName": {
+      "label": "Name at the top of the menu",
+      "help": "Guests see it as the title of this menu. Leave it empty to use the venue's name ({venue}).",
+      "save": "Save name",
+      "saving": "Saving…",
+      "saved": "Name saved. Guests see it after the next publish.",
+      "noMenu": "This venue has no menu yet. Add one in Structure to give it a name."
+    },
     "colours": {
       "title": "Colours",
-      "description": "Choose three colours. Every other colour is worked out from them, so text always stays easy to read.",
-      "startingPoint": "Starting point",
-      "startingPointHelp": "Begin from a ready-made look, from your brand colour or from your own three colours.",
-      "fromBrand": "From my brand colour",
-      "custom": "Custom",
-      "proportionLabel": "The three colours in proportion: 60% primary, 30% secondary, 10% tertiary",
+      "description": "Start with your brand colour. The page and the panels are filled in from it and you can change them. Every other colour is worked out for you, so text stays easy to read.",
       "invalid": "Enter a colour like #3366cc.",
+      "tertiary": {
+        "name": "Your brand colour",
+        "help": "The colour of your brand: buttons, badges and highlights. About 10% of what guests see. The page and the panels below are filled in from it.",
+        "picker": "Pick your brand colour",
+        "placeholder": "Not chosen yet"
+      },
       "primary": {
-        "name": "Primary",
-        "help": "The page: the background of the whole menu. About 60% of what guests see.",
-        "picker": "Pick the primary colour"
+        "name": "Page",
+        "help": "The background of the whole menu. A calm tint of your brand colour until you change it.",
+        "picker": "Pick the page colour"
       },
       "secondary": {
-        "name": "Secondary",
-        "help": "The panels: behind photos and in the header. About 30%.",
-        "picker": "Pick the secondary colour"
+        "name": "Panels",
+        "help": "Behind photos, cards and the header. Filled in from your brand colour until you change it.",
+        "picker": "Pick the panels colour"
       },
-      "tertiary": {
-        "name": "Tertiary",
-        "help": "The highlights: badges, buttons and small accents. About 10%.",
-        "picker": "Pick the tertiary colour"
-      },
-      "brand": "Brand colour",
-      "brandPicker": "Pick the brand colour",
-      "brandHelp": "One colour for the highlights; the page, the panels and the text are worked out from it. Leave it empty for the neutral grey.",
-      "brandPlaceholder": "Neutral grey",
-      "clearBrand": "Use the neutral grey",
-      "swatches": "Suggested colours",
+      "followBrand": "Use tints of my brand colour again",
+      "saturated": "This page colour is strongly saturated. A calm, light tint usually looks best behind photos and text.",
+      "paleHighlight": "Your brand colour stands out less than 3:1 against the page ({screens}), so it stays as you chose it.",
       "suggest": "Suggest with colour theory",
-      "suggestHelp": "Works out the primary and secondary colours from the highlight (tertiary) colour, which stays as it is.",
+      "suggestHelp": "Works out the page and the panels from your brand colour, which stays as it is.",
       "rules": {
         "complementary": {
           "name": "Complementary",
@@ -1744,8 +1800,7 @@
       }
     },
     "roles": {
-      "title": "The colours guests will see",
-      "help": "Worked out from your colours for a light and for a dark phone screen. Contrast is how well text reads on the colour it sits on; 4.5 or more is easy to read. You can adjust any colour.",
+      "help": "The colours worked out for you, for a light and a dark phone screen, with how well text reads on each. Change one only if you need to: a colour that is hard to read cannot be saved.",
       "screens": {
         "light": "Light screen",
         "dark": "Dark screen"
@@ -1796,13 +1851,60 @@
       "hex": "Colour code for {role}, {screen}",
       "invalid": "Enter a colour like #3366cc.",
       "adjusted": "Adjusted",
-      "fromPreset": "From the preset",
       "derivedWas": "Derived colour: {colour}",
       "unreadableTitle": "These colours are hard to read",
-      "unreadableItem": "{screen}: {fg} on {bg} reads at {ratio}:1, needs {min}:1."
+      "unreadableItem": "{screen}: {fg} on {bg} reads at {ratio}:1, needs {min}:1.",
+      "advanced": "Advanced",
+      "resetAll": "Reset all adjusted colours",
+      "lightFromPickers": "The light screen's one is set above.",
+      "more": {
+        "title": "More colours worked out for you",
+        "help": "Status colours, disabled text, selected options, the focus ring, the sheet backdrop and the strong border. They follow from the colours above and cannot be adjusted yet."
+      },
+      "unreadableHelp": "Adjust or reset the colours marked in red under Advanced.",
+      "error": {
+        "name": "Error colour",
+        "help": "Error marks and warnings."
+      },
+      "error_text": {
+        "name": "Error text",
+        "help": "Error messages written as text."
+      },
+      "success": {
+        "name": "Success colour",
+        "help": "Confirmation marks."
+      },
+      "success_text": {
+        "name": "Success text",
+        "help": "Confirmations written as text."
+      },
+      "disabled_text": {
+        "name": "Disabled text",
+        "help": "Sold-out and switched-off items."
+      },
+      "selected": {
+        "name": "Selected option",
+        "help": "The soft fill behind a chosen filter or option."
+      },
+      "selected_text": {
+        "name": "Text on selected",
+        "help": "Writing on the selected fill."
+      },
+      "focus": {
+        "name": "Focus ring",
+        "help": "The outline around what the keyboard is on."
+      },
+      "backdrop": {
+        "name": "Sheet backdrop",
+        "help": "The dimmed colour behind a sheet."
+      },
+      "border_strong": {
+        "name": "Strong border",
+        "help": "Outlines of buttons and fields, clear against the page and the panels."
+      }
     },
     "style": {
-      "title": "Font, corners and screen",
+      "title": "Font, corners, shadow and screen",
       "description": "How the menu is lettered and shaped, and when it is light or dark.",
       "font": "Font",
       "fontHelp": "Six fonts with Bulgarian letters. One font is used for the whole menu.",
@@ -1841,7 +1943,8 @@
       "refresh": "Refresh",
       "services": "Preview guest services",
       "servicesHint": "Shows the bag, the bill, calling a waiter and paying with made-up data, the way guests will see them once they are connected. Nothing is sent.",
-      "servicesNoneOn": "No service is switched on. Switch them on in the Composer, under Guest features, then press Refresh."
+      "servicesNoneOn": "No service is switched on. Switch them on in Guest features above, then press Refresh.",
+      "menu": "Menu: {name}"
     }
   }
 }

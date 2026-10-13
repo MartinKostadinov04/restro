@@ -1,13 +1,23 @@
-// The Composer tab, a server component (U4): it reads the menu document and the items that sit in
-// no section (core/apply, read side), resolves it for this venue and hands the client component a
-// plain view. Nothing here writes: the writes are the server actions in ./actions.ts.
+// The Composer tab, a server component (U4), with its two subtabs (D92, brief S6):
+//
+// - Structure: the menu the URL names (`?menu=`, else the live one; one of the venue's several,
+//   D88), with the menu switcher and its layout on top. It reads the menu document and the items
+//   that sit in no section (core/apply, read side), resolves it for this venue and hands the client
+//   component a plain view.
+// - Design: the venue's Design tab (D92, brief S7): the template chooser, then the cards (logo and
+//   header name, guest features, font and screen, colours) beside a sticky phone preview of the
+//   open menu. It reads its own data.
+//
+// Only the open subtab reads its data; the other shows its skeleton until it is chosen. Nothing here
+// writes: the writes are the server actions in ./actions.ts, `@/server/menus-actions` and the Design
+// tab's own.
 import {
   CurrencySchema,
   type Locale,
   liveEditions,
+  menuSettingsOf,
   mergeDocumentParts,
-  readGuestFeatures,
-  readPresentation,
+  type NodeId,
   resolve,
   serviceDate,
   VENUE_MENU_TEMPLATE,
@@ -17,31 +27,78 @@ import {
   loadHeldNewItemIds,
   loadMenuDocument,
   loadUnplacedItems,
+  type MenuSummary,
 } from '@restro/core/apply'
 import { type Venue, withTenant } from '@restro/db'
-import { resolveOptions } from '@restro/shell'
 import { getLocale } from 'next-intl/server'
+import { Suspense } from 'react'
 import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
-import { manifestOf } from '@/faces/manifests'
+import { DesignSkeleton } from '@/design/design-skeleton'
+import { DesignTab } from '@/design/design-tab'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
+import { composerMenusOf } from '@/server/composer/menu'
 import { getPool } from '@/server/db'
-import { getVenueMenuId } from '@/server/menus'
 import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
-import { requireTenant } from '@/server/session'
 import { loadTillLabels, tillLabelOf } from '@/server/till-label'
 import { venueHasTill } from '@/server/venues'
 
 import { Composer } from './composer'
-import type { FeatureOptionDeclaration, TemplateFeatureOptions } from './guest-features-panel'
+import { ComposerSkeleton } from './composer-skeleton'
+import { ComposerSubtabs } from './composer-subtabs'
+import { MenuBar } from './menu-bar'
 import { NoMenu } from './no-menu'
+import { type ComposerSubtab, composerSubtabOf } from './subtabs'
 import { buildComposerView } from './view-model'
 
-export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue: Venue }) {
-  const menuId = await getVenueMenuId(tenantId, venue.id)
-  if (!menuId) {
-    const { organization } = await requireTenant()
-    return <NoMenu venueId={venue.id} canCreate={canManageIntegration(organization.role)} />
+interface ComposerTabProps {
+  readonly tenantId: string
+  /** The person's role in the organisation: who may change what. */
+  readonly role: string | null | undefined
+  readonly venue: Venue
+  /** `?menu=`: the menu to open (else the live one). */
+  readonly menu?: unknown
+  /** `?sub=`: the subtab to open (else Structure). */
+  readonly sub?: unknown
+}
+
+export function ComposerTab({ tenantId, role, venue, menu, sub }: ComposerTabProps) {
+  const open: ComposerSubtab = composerSubtabOf(sub)
+  return (
+    <ComposerSubtabs
+      contents={{
+        structure:
+          open === 'structure' ? (
+            <Suspense fallback={<ComposerSkeleton />}>
+              <StructureSubtab tenantId={tenantId} role={role} venue={venue} menu={menu} />
+            </Suspense>
+          ) : (
+            <ComposerSkeleton />
+          ),
+        design:
+          open === 'design' ? (
+            <Suspense fallback={<DesignSkeleton />}>
+              <DesignTab tenantId={tenantId} role={role} venue={venue} menu={menu} />
+            </Suspense>
+          ) : (
+            <DesignSkeleton />
+          ),
+      }}
+    />
+  )
+}
+
+/** Structure: the menu switcher and layout, then the section tree and the items. */
+async function StructureSubtab({
+  tenantId,
+  role,
+  venue,
+  menu: requested,
+}: Omit<ComposerTabProps, 'sub'>) {
+  const { menus, current } = await composerMenusOf(tenantId, venue.id, requested)
+  if (current === null) {
+    return <NoMenu venueId={venue.id} canCreate={canManageIntegration(role)} />
   }
+  const menuId = current.id as NodeId
 
   const pool = getPool()
   const [document, unplaced, heldNewIds, tags, hasTill, tillLabels, nameFallbackIds] =
@@ -75,33 +132,9 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
     locales: [defaultLocale, ...enabledLocales.filter((locale) => locale !== defaultLocale)],
     now: now.toISOString(),
   })
-  // The page is only reached signed in; the role decides who sees the sold-out controls (D46).
-  const { organization } = await requireTenant()
-
-  // The guest services the venue switched on, and the template's own feature switches (SH-05b):
-  // the template is the venue's, or the registry default; its options are the stored values or the
-  // face's defaults, for the options the face declares with group `feature` only.
-  const guestFeatures = readGuestFeatures(venue.settings)
-  const presentation = readPresentation(venue.settings)
-  const manifest = manifestOf(presentation?.face)
-  const featureValues = resolveOptions(manifest, presentation?.options)
-  const declared = Object.entries(manifest.options).flatMap(([key, option]) => {
-    if (option.group !== 'feature') return []
-    const base = { key, default: option.default, label: option.label }
-    const declaration: FeatureOptionDeclaration =
-      option.type === 'enum'
-        ? { ...base, type: 'enum', values: option.values }
-        : { ...base, type: 'boolean' }
-    return [declaration]
-  })
-  const featureOptions: TemplateFeatureOptions = {
-    declared,
-    values: Object.fromEntries(
-      declared.map((option) => [option.key, featureValues[option.key] ?? option.default] as const),
-    ),
-  }
 
   const uiLocale = await getLocale()
+  // One read gives the view, its badges and the "Overrides to review" of each item (V12).
   const view = buildComposerView({
     doc: merged,
     resolved,
@@ -111,20 +144,38 @@ export async function ComposerTab({ tenantId, venue }: { tenantId: string; venue
     tillLabel: tillLabelOf(merged.links, tillLabels),
     nameFallbackIds,
   })
+  const manager = canManageIntegration(role)
 
   return (
-    <Composer
-      venueId={venue.id}
-      view={view}
-      defaultLocale={defaultLocale}
-      enabledLocales={enabledLocales}
-      currency={currency}
-      canMarkSoldOut={canMarkSoldOut(organization.role)}
-      canCreateItem={canManageIntegration(organization.role)}
-      hasTill={hasTill}
-      guestFeatures={guestFeatures}
-      featureOptions={featureOptions}
-      canEditFeatures={canManageIntegration(organization.role)}
-    />
+    <div className="grid gap-4">
+      <MenuBar
+        // A new menu starts from its own saved settings.
+        key={`bar:${menuId}`}
+        venueId={venue.id}
+        venueName={venue.name}
+        menus={menus.map(menuChoice)}
+        currentId={menuId}
+        settings={menuSettingsOf(current.settings)}
+        canEdit={manager}
+      />
+      <Composer
+        // Another menu is another document: nothing of the last one's screen state carries over.
+        key={`composer:${menuId}`}
+        venueId={venue.id}
+        menuId={menuId}
+        view={view}
+        defaultLocale={defaultLocale}
+        enabledLocales={enabledLocales}
+        currency={currency}
+        canMarkSoldOut={canMarkSoldOut(role)}
+        canCreateItem={manager}
+        hasTill={hasTill}
+        canDelete={manager}
+      />
+    </div>
   )
+}
+
+function menuChoice(menu: MenuSummary) {
+  return { id: menu.id, name: menu.name, live: menu.live }
 }

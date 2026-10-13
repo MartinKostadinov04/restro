@@ -19,7 +19,7 @@ import { LOCALES } from '../locales'
 import { CURRENCIES } from '../money'
 import type { NodeType } from '../node-types'
 import type { Template } from '../template'
-import { ORDER_MODES } from '../templates/venue-menu'
+import { ORDER_MODES, SECTION_LAYOUTS } from '../templates/venue-menu'
 import {
   CALL_WAITER_KINDS,
   GuestFeaturesSchema,
@@ -32,8 +32,10 @@ import {
   type MenuSnapshot,
   NEW_BADGE,
   SNAPSHOT_ITEM_STATES,
+  SNAPSHOT_MENU_LAYOUTS,
   SNAPSHOT_ORDER_MODES,
   SNAPSHOT_SCHEMA,
+  SnapshotLayoutSchema,
   type SnapshotTheme,
 } from './schema'
 
@@ -71,6 +73,11 @@ const SNAPSHOT_VOCABULARY: readonly string[] = [
   ...Object.keys(GuestFeaturesSchema.shape),
   ...Object.keys(GuestFeaturesSchema.shape.call_waiter.shape),
   ...CALL_WAITER_KINDS,
+  // D92: the menu's layout and the sections' layout hints, keys and fixed values.
+  'layout',
+  ...Object.keys(SnapshotLayoutSchema.shape),
+  ...SNAPSHOT_MENU_LAYOUTS,
+  ...SECTION_LAYOUTS,
 ]
 
 /**

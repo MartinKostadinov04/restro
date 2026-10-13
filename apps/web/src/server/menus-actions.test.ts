@@ -28,6 +28,7 @@ import {
   renameMenuAction,
   restoreMenuAction,
   setLiveMenuAction,
+  setMenuSettingsAction,
 } from './menus-actions'
 import { hasDatabase, openOwnerPool, testSlug, useTestServerEnvironment } from './test-database'
 
@@ -203,6 +204,55 @@ describe.skipIf(!hasDatabase)('the menu actions (as the restro_app role)', () =>
         ok: false,
         error: 'unknown_venue',
       })
+    })
+  })
+
+  describe('Menu layout (D92, the composer’s Structure, brief S6)', () => {
+    it('saves the layout and the guest switch of any venue’s menu, a till venue’s too', async () => {
+      for (const [venueId, menuId] of [
+        [handMade, liveMenu],
+        [tillVenue, tillMenu],
+      ] as const) {
+        const result = await setMenuSettingsAction({
+          venueId,
+          menuId,
+          settings: { layout: 'two_columns', layout_switch: true },
+        })
+        expect(result).toMatchObject({
+          ok: true,
+          menu: { id: menuId, settings: { layout: 'two_columns', layout_switch: true } },
+        })
+        expect(revalidated).toContain(`/venues/${venueId}`)
+        const stored = await owner.query<{ settings: unknown }>(
+          'select settings from restro.menus where id = $1',
+          [menuId],
+        )
+        expect(stored.rows[0]?.settings).toEqual({ layout: 'two_columns', layout_switch: true })
+      }
+    })
+
+    it('refuses a member, a setting that is not one, and another venue’s menu', async () => {
+      asked.role = 'member'
+      expect(
+        await setMenuSettingsAction({
+          venueId: handMade,
+          menuId: liveMenu,
+          settings: { layout: 'list' },
+        }),
+      ).toEqual({ ok: false, error: 'not_allowed' })
+      asked.role = 'owner'
+      for (const settings of [{ layout: 'grid' }, { layout_switch: 'yes' }, { colour: 'red' }]) {
+        expect(
+          await setMenuSettingsAction({ venueId: handMade, menuId: liveMenu, settings }),
+          JSON.stringify(settings),
+        ).toEqual({ ok: false, error: 'invalid_input' })
+      }
+      expect(
+        await setMenuSettingsAction({ venueId: handMade, menuId: liveMenu, settings: 'list' }),
+      ).toEqual({ ok: false, error: 'invalid' })
+      expect(
+        await setMenuSettingsAction({ venueId: handMade, menuId: tillMenu, settings: {} }),
+      ).toEqual({ ok: false, error: 'unknown_menu' })
     })
   })
 

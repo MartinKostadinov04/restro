@@ -21,6 +21,8 @@ import {
   type ResolvedField,
   type ResolvedMenu,
   type ResolvedSection,
+  SECTION_LAYOUTS,
+  type SectionLayout,
   saleStateOf,
   type Tag,
   type TagColor,
@@ -59,6 +61,11 @@ export interface ComposerSection {
   readonly issues: readonly ComposerIssue[]
   /** The title shown is the till's own name: it has no public one (D75). Warns; never blocks. */
   readonly nameFromTill: boolean
+  /**
+   * How guests see its items (D92): a vertical list, or a horizontal row (the guest page's strip).
+   * Ours on every venue, set in the composer.
+   */
+  readonly layout: SectionLayout
 }
 
 /** Why an item is not shown to guests, as far as the composer can tell and act on. */
@@ -105,6 +112,11 @@ export interface ComposerItem {
   readonly offSale: ItemOffSale | null
   /** The name shown is the till's own name: it has no public one (D75). Warns; never blocks. */
   readonly nameFromTill: boolean
+  /**
+   * "Overrides to review" (V12): the fields whose override the till's value has outgrown since it
+   * was made (`stale_override`), waiting for a person to keep ours or take the till's. Empty = none.
+   */
+  readonly reviewFields: readonly string[]
 }
 
 /** A venue tag as the composer shows and edits it (D60). */
@@ -189,6 +201,23 @@ const issuesOf = (issues: readonly ComposerIssue[]): ComposerIssue[] =>
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
+/** A section's layout as resolved (its field, or the template's default); vertical if unknown. */
+function layoutOf(field: ResolvedField | undefined): SectionLayout {
+  return SECTION_LAYOUTS.find((layout) => layout === field?.value) ?? 'vertical'
+}
+
+/**
+ * The fields with a stale override (V12, the resolver's `stale_override`), in the order the
+ * resolver found them: the same list `loadDraft` reports as `staleOverrides`, read from the
+ * composer's own resolution, so it costs no second read.
+ */
+function reviewFieldsOf(issues: readonly ComposerIssue[]): string[] {
+  const keys = issues
+    .filter((issue) => issue.code === 'stale_override')
+    .map((issue) => issue.fieldKey ?? '')
+  return [...new Set(keys)]
+}
+
 /**
  * True if guests are shown the till's own name for this node (D75): the stored name was mapped
  * from a record with no public name (`fallbackIds`), and the resolved name still takes its text
@@ -267,6 +296,7 @@ export function buildComposerView({
       childIds: section.children.map((child) => child.id),
       issues: issuesOf(section.issues),
       nameFromTill: ownNameShown(section.id, ownNames, section.fields.title),
+      layout: layoutOf(section.fields.layout),
     }
     for (const child of section.children) addSection(child, section.id)
   }
@@ -315,6 +345,7 @@ export function buildComposerView({
       dietary: listOf(item.fields.dietary),
       ...saleStateOf(item.fields.for_sale),
       nameFromTill: ownNameShown(id, ownNames, item.fields.name),
+      reviewFields: reviewFieldsOf(item.issues),
     }
   }
 

@@ -14,6 +14,19 @@ export const ORDER_MODES = ['orderable', 'ask_waiter', 'hidden'] as const
 /** One of the ordering modes. */
 export type OrderMode = (typeof ORDER_MODES)[number]
 
+/**
+ * How a section lays out its items on the guest page (D92): a vertical list, or a horizontal row
+ * (promotions, top picks: the face's feature strip). Ours on every venue, own and till sections
+ * alike; a section that never set it is vertical.
+ */
+export const SECTION_LAYOUTS = ['vertical', 'horizontal'] as const
+
+/** One section layout. */
+export type SectionLayout = (typeof SECTION_LAYOUTS)[number]
+
+/** The layout of a section that has none set. */
+export const DEFAULT_SECTION_LAYOUT: SectionLayout = 'vertical'
+
 function label(bg: string, en: string): LocalizedText {
   return { bg_BG: bg, en_US: en }
 }
@@ -192,6 +205,15 @@ const sectionFields: FieldDefinition[] = [
     type: 'short_text',
     label: label('Икона', 'Icon'),
     constraints: { max_length: 64 },
+    ...BUILDER,
+  }),
+  // A layout hint like the two above (D92): the snapshot's `hints.layout`, which the face draws.
+  field({
+    key: 'layout',
+    type: 'enum',
+    label: label('Подредба', 'Layout'),
+    options: [...SECTION_LAYOUTS],
+    default: DEFAULT_SECTION_LAYOUT,
     ...BUILDER,
   }),
 ]

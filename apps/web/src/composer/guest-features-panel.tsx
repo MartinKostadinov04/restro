@@ -1,7 +1,8 @@
 'use client'
 
-// The composer's "Guest features" panel (brief SH-05b, D71), opened from the button under "Tags":
-// the guest services the venue switches on and off. Menu: the filters, the template's own feature
+// The "Guest features" card (brief SH-05b, D71): the guest services the venue switches on and off.
+// It is card 2 of the Design subtab (D92; brief S7 restyled it to sit with the other cards, with
+// its own Save: it saves apart from "Save look"). Menu: the filters, the template's own feature
 // switches, and the allergen line, which is never a switch (R6). Service at the table: calling a
 // waiter with its request kinds, the bill, ordering and paying from the phone. A switch says what
 // the venue wants; a guest sees a service only when the platform supports it, the channel is
@@ -14,15 +15,16 @@ import { type ReactNode, useId, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import {
   saveFeatureOptionsAction,
@@ -46,9 +48,7 @@ export interface TemplateFeatureOptions {
   readonly values: Readonly<Record<string, string | boolean>>
 }
 
-export interface GuestFeaturesPanelProps {
-  readonly open: boolean
-  readonly onOpenChange: (open: boolean) => void
+export interface GuestFeaturesCardProps {
   readonly venueId: string
   readonly features: GuestFeatures
   readonly options: TemplateFeatureOptions
@@ -62,32 +62,23 @@ interface Settings {
   readonly values: Readonly<Record<string, string | boolean>>
 }
 
-export function GuestFeaturesPanel({ open, onOpenChange, ...props }: GuestFeaturesPanelProps) {
+/** The guest features as a card of their own on the Design subtab (D92). */
+export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-full gap-0 p-0 sm:max-w-md"
-        data-testid="guest-features-panel"
-      >
-        <SheetHeader className="border-b pr-12">
-          <SheetTitle>{t('title')}</SheetTitle>
-          <SheetDescription>{t('description')}</SheetDescription>
-        </SheetHeader>
-        {/* Mounted only while the sheet is open: each opening starts from what is saved. */}
-        <FeaturesForm {...props} />
-      </SheetContent>
-    </Sheet>
+    <Card data-testid="guest-features-panel">
+      <CardHeader>
+        <CardTitle>
+          <h3 className="text-base font-semibold">{t('title')}</h3>
+        </CardTitle>
+        <CardDescription>{t('description')}</CardDescription>
+      </CardHeader>
+      <FeaturesForm {...props} />
+    </Card>
   )
 }
 
-function FeaturesForm({
-  venueId,
-  features,
-  options,
-  canEdit,
-}: Omit<GuestFeaturesPanelProps, 'open' | 'onOpenChange'>) {
+function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   const lang = useLocale() === 'en' ? 'en' : 'bg'
   const ids = useId()
@@ -172,21 +163,21 @@ function FeaturesForm({
 
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="grid gap-6"
       onSubmit={(event) => {
         event.preventDefault()
         if (dirty && canEdit && !noKinds) save()
       }}
       data-testid="guest-features-form"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <CardContent>
         <div className="grid gap-6">
           {canEdit ? null : <p className="text-sm text-muted-foreground">{t('readOnly')}</p>}
 
           <section aria-labelledby={`${ids}-menu`} className="grid gap-4">
-            <h3 id={`${ids}-menu`} className="text-sm font-semibold text-muted-foreground">
+            <h4 id={`${ids}-menu`} className="text-sm font-semibold text-muted-foreground">
               {t('groups.menu')}
-            </h3>
+            </h4>
             <SwitchRow
               id={`${ids}-filters`}
               label={t('filters')}
@@ -216,9 +207,9 @@ function FeaturesForm({
           </section>
 
           <section aria-labelledby={`${ids}-service`} className="grid gap-4">
-            <h3 id={`${ids}-service`} className="text-sm font-semibold text-muted-foreground">
+            <h4 id={`${ids}-service`} className="text-sm font-semibold text-muted-foreground">
               {t('groups.service')}
-            </h3>
+            </h4>
             <SwitchRow
               id={`${ids}-call`}
               label={t('callWaiter')}
@@ -288,9 +279,9 @@ function FeaturesForm({
             </SwitchRow>
           </section>
         </div>
-      </div>
+      </CardContent>
 
-      <div className="flex justify-end border-t p-4">
+      <CardFooter className="justify-end">
         <Button
           type="submit"
           disabled={locked || !dirty || noKinds}
@@ -298,7 +289,7 @@ function FeaturesForm({
         >
           {t('save')}
         </Button>
-      </div>
+      </CardFooter>
     </form>
   )
 }

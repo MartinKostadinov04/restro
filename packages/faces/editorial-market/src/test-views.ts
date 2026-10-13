@@ -22,7 +22,11 @@ const both = (en: string, bg: string) => ({ en_US: en, bg_BG: bg })
 export const SIGNATURE_TAG = fixtureId('tg', 1)
 export const SPICY_TAG = fixtureId('tg', 2)
 
-/** The test menu as a contract fixture: three sections, eight items. */
+/**
+ * The test menu as a contract fixture: three sections, eight items. The menu starts in two
+ * columns and lets guests switch; the first section is marked horizontal (the photo-led strip),
+ * the others vertical (D92).
+ */
 export function richFixture(locale: Locale = 'en_US'): Fixture {
   const photo = fixtureId('as', 1)
   return {
@@ -33,6 +37,7 @@ export function richFixture(locale: Locale = 'en_US'): Fixture {
       // who asks for French reads every text in English, marked as such.
       locales: { default: 'en_US', available: ['en_US', 'bg_BG', 'fr_FR'] },
       menuTitle: both('Late Menu', 'Късно меню'),
+      layout: { default: 'two', guest_switch: true },
       assets: { [photo]: { w: 1600, h: 1200, alt: { en_US: 'A plate of food' } } },
       tags: {
         [SIGNATURE_TAG]: both('Signature', 'Фирмено'),
@@ -41,6 +46,7 @@ export function richFixture(locale: Locale = 'en_US'): Fixture {
       sections: [
         {
           title: both('Starters', 'Предястия'),
+          layout: 'horizontal',
           items: [
             {
               name: both('Hummus', 'Хумус'),
@@ -70,6 +76,7 @@ export function richFixture(locale: Locale = 'en_US'): Fixture {
         },
         {
           title: both('Mains', 'Основни'),
+          layout: 'vertical',
           items: [
             {
               name: both('Burger', 'Бургер'),
@@ -98,6 +105,7 @@ export function richFixture(locale: Locale = 'en_US'): Fixture {
         },
         {
           title: both('Desserts', 'Десерти'),
+          layout: 'vertical',
           items: [
             {
               name: both('Cheesecake', 'Чийзкейк'),

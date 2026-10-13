@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
 import { AdminHeader } from '@/components/admin/admin-header'
@@ -7,8 +7,6 @@ import { settingsSectionOf, workspaceTabOf } from '@/components/admin/workspace-
 import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
-import { DesignSkeleton } from '@/design/design-skeleton'
-import { DesignTab } from '@/design/design-tab'
 import {
   PublishSettingsSection,
   SettingsSectionSkeleton,
@@ -43,11 +41,20 @@ export default async function VenueWorkspacePage({
   // shows the skeleton at once when someone switches to it, and the page streams the rest in).
   // The same holds for the Settings sections (`?section=`, D97).
   const query = await searchParams
+  // The Design tab is the composer's Design subtab now (D92): an old link lands there.
+  if (query.tab === 'design') {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (typeof value === 'string' && key !== 'tab' && key !== 'sub') params.set(key, value)
+    }
+    params.set('tab', 'composer')
+    params.set('sub', 'design')
+    redirect(`/venues/${venue.id}?${params.toString()}`)
+  }
   const openTab = workspaceTabOf(query.tab)
   const composerOpen = openTab === 'composer'
   const settingsOpen = openTab === 'settings'
   const tablesOpen = openTab === 'tables'
-  const designOpen = openTab === 'design'
   const [hasTill, guestPath] = await Promise.all([
     venueHasTill(organization.id, venue.id),
     guestPathOf(getPool(), organization.id, venue.slug),
@@ -88,7 +95,13 @@ export default async function VenueWorkspacePage({
           contents={{
             composer: composerOpen ? (
               <Suspense fallback={<ComposerSkeleton />}>
-                <ComposerTab tenantId={organization.id} venue={venue} />
+                <ComposerTab
+                  tenantId={organization.id}
+                  role={organization.role}
+                  venue={venue}
+                  menu={query.menu}
+                  sub={query.sub}
+                />
               </Suspense>
             ) : (
               <ComposerSkeleton />
@@ -99,13 +112,6 @@ export default async function VenueWorkspacePage({
               </Suspense>
             ) : (
               <TablesSkeleton />
-            ),
-            design: designOpen ? (
-              <Suspense fallback={<DesignSkeleton />}>
-                <DesignTab tenantId={organization.id} role={organization.role} venue={venue} />
-              </Suspense>
-            ) : (
-              <DesignSkeleton />
             ),
             settings: (
               <SettingsSections

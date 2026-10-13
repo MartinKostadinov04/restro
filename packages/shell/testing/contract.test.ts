@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { buildViewModel } from '../src/build'
 import { type FaceManifest, validateManifest } from '../src/manifest'
 import type { ViewItem, ViewModel, ViewSection } from '../src/view-model'
-import { FEATURE_SLOTS, type RenderFn, runFaceContract } from './contract'
+import { FEATURE_SLOTS, LAYOUT_SWITCH_SLOT, type RenderFn, runFaceContract } from './contract'
 import { CUSTOM_ROLES, fixture, fixtureId, fixtures } from './fixtures'
 import { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
 import { faceContractSuite } from './suite'
@@ -145,7 +145,7 @@ describe('fixtures', () => {
     expect(a?.snapshot).not.toBe(b?.snapshot)
   })
 
-  it('keep the ten fixtures of S3-02 first and in order, and add the three of SH-03 after them', () => {
+  it('keep the ten fixtures of S3-02 first and in order, then the three of SH-03 and the two of S6', () => {
     expect(fixtures().map((f) => f.name)).toEqual([
       'long-names',
       'six-languages',
@@ -160,6 +160,8 @@ describe('fixtures', () => {
       'custom-roles',
       'features-on',
       'features-off',
+      'horizontal-sections',
+      'one-column',
     ])
   })
 
@@ -231,6 +233,39 @@ describe('the SH-03 fixtures', () => {
       ordering: false,
       pay: false,
     })
+  })
+})
+
+describe('the S6 fixtures (D92)', () => {
+  const viewOf = (name: string): ViewModel => {
+    const f = fixture(name)
+    return buildViewModel(f.snapshot, f.overlay, f.context)
+  }
+  const layouts = (view: ViewModel) => view.sections.map((section) => section.hints.layout)
+
+  it('horizontal-sections: a horizontal section that is not the first; two columns, guests may switch', () => {
+    const f = fixture('horizontal-sections')
+    expect(f.snapshot.layout).toEqual({ default: 'two', guest_switch: true })
+    const sections = f.snapshot.menu.sections.map((id) => f.snapshot.sections[id]?.hints.layout)
+    // The third section is published without a layout, as a snapshot made before D92 is.
+    expect(sections).toEqual(['vertical', 'horizontal', undefined])
+    const view = viewOf('horizontal-sections')
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
+    expect(layouts(view)).toEqual(['vertical', 'horizontal', 'vertical'])
+  })
+
+  it('one-column: the first section horizontal; one column, no switch', () => {
+    const view = viewOf('one-column')
+    expect(view.layout).toEqual({ default: 'one', guestSwitch: false })
+    expect(layouts(view)).toEqual(['horizontal', 'vertical'])
+  })
+
+  it('a fixture published before D92 reads as it looked: two columns with the switch, sections vertical', () => {
+    const f = fixture('long-names')
+    expect(f.snapshot).not.toHaveProperty('layout')
+    const view = viewOf('long-names')
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
+    expect(layouts(view)).toEqual(['vertical'])
   })
 })
 
@@ -550,6 +585,47 @@ describe('runFaceContract: R15 feature slots (fail-closed)', () => {
       { fixtures: fixtures().filter((f) => f.name === 'features-off') },
     )
     expect(rules(report)).toEqual(['R15'])
+  })
+})
+
+describe('runFaceContract: the layout switch (D92, fail-closed)', () => {
+  /** The reference face with the layout switch drawn when `draw` says so. */
+  const switchFace = (draw: (view: ViewModel) => boolean): RenderFn => {
+    const base = referenceFace()
+    return async (view) => {
+      const html = await base(view)
+      return draw(view)
+        ? html.replace(
+            '<body>',
+            `<body><div role="radiogroup" data-slot="${LAYOUT_SWITCH_SLOT}"></div>`,
+          )
+        : html
+    }
+  }
+
+  it('passes a face that draws the switch exactly where the menu lets guests switch', async () => {
+    const report = await runFaceContract(
+      switchFace((view) => view.layout.guestSwitch),
+      manifest,
+    )
+    expect(report.failures).toEqual([])
+  })
+
+  it('catches a face that draws the switch where the menu does not let guests switch', async () => {
+    const report = await runFaceContract(
+      switchFace(() => true),
+      manifest,
+    )
+    expect(rules(report)).toEqual(['D92'])
+    // Only where the menu says no: one-column (the others let guests switch, explicitly or as the
+    // look from before D92).
+    expect([...new Set(report.failures.map((failure) => failure.fixture))]).toEqual(['one-column'])
+  })
+
+  it('a non-interactive channel never gets the switch', async () => {
+    const f = fixture('horizontal-sections')
+    const view = buildViewModel(f.snapshot, f.overlay, { ...f.context, channel: 'print' })
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: false })
   })
 })
 

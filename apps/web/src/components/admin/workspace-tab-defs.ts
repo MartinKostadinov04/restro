@@ -8,7 +8,6 @@ import {
   HistoryIcon,
   LayoutListIcon,
   type LucideIcon,
-  PaletteIcon,
   QrCodeIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
@@ -24,14 +23,13 @@ export interface WorkspaceTabDef {
 }
 
 /**
- * The venue page's tabs (D97): Composer, Tables & QR, Settings. Design stays a tab of its own until
- * it moves under the composer (S6). The Publishing tab is gone: the Publish button is in the
- * header on every tab, and its settings are Settings › Publish and › Versioning.
+ * The venue page's tabs (D97): Composer, Tables & QR, Settings. Design is the composer's second
+ * subtab (D92, brief S6). The Publishing tab is gone: the Publish button is in the header on
+ * every tab, and its settings are Settings › Publish and › Versioning.
  */
 export const WORKSPACE_TAB_DEFS = [
   { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
-  { value: 'design', labelKey: 'workspace.tabs.design', icon: PaletteIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
 ] as const satisfies readonly WorkspaceTabDef[]
 
@@ -46,13 +44,14 @@ export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
 }
 
 /**
- * The tab a `?tab=` value opens. Tabs that are gone open Settings, where their content went: the
- * venue's Integration tab (CF-09b, D73: the venue's part is the Menu source card) and the
- * Publishing tab (D97: Settings › Publish and › Versioning). Anything else unknown opens the
- * default tab.
+ * The tab a `?tab=` value opens. Tabs that are gone open where their content went: the venue's
+ * Integration tab (CF-09b, D73: the venue's part is the Menu source card) and the Publishing tab
+ * (D97: Settings › Publish and › Versioning) open Settings; the Design tab (D92) opens the
+ * composer, whose Design subtab the page then shows. Anything else unknown opens the default tab.
  */
 export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
   if (requested === 'integration' || requested === 'publishing') return 'settings'
+  if (requested === 'design') return 'composer'
   return isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
 }
 

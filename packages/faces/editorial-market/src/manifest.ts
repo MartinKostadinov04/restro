@@ -5,9 +5,10 @@
 // paying and the receipt. It declares `ordering: true` and the five guest features it has controls
 // for; a control is still drawn only when the venue switched the feature on, the platform supports
 // it and the host bound its services (R15, D72).
-// The manifest is also where the face's options are declared, with their defaults: the face reads
-// them through `resolveOptions(EDITORIAL_MARKET_MANIFEST, props.options)` and keeps no defaults of
-// its own, and the admin builds its form from the same declaration (brief SH-05b).
+// The face declares no options of its own any more (brief S6, D92): the menu's layout, whether
+// guests may switch it and which sections are drawn as the photo-led strip are menu settings in the
+// composer, published in the snapshot and read from the view model (`view.layout`, a section's
+// `hints.layout`). They were the options `layout`, `layoutSwitch` and `featureFirstSection`.
 
 import { type FaceManifest, validateManifest } from '@restro/shell'
 
@@ -54,33 +55,7 @@ const CANDIDATE = {
     { fg: 'on_accent', bg: 'accent' },
     { fg: 'background', bg: 'text' },
   ],
-  options: {
-    // How the items of a section are laid out when the guest has not chosen another.
-    layout: {
-      type: 'enum',
-      values: ['list', 'one', 'two'],
-      default: 'two',
-      group: 'look',
-      label: { bg: 'Подредба на менюто', en: 'Menu layout' },
-    },
-    // The first section as a photo-led strip.
-    featureFirstSection: {
-      type: 'boolean',
-      default: true,
-      group: 'look',
-      label: {
-        bg: 'Първата секция като лента със снимки',
-        en: 'Photo strip for the first section',
-      },
-    },
-    // The three-button layout switch the guest sees under a section title.
-    layoutSwitch: {
-      type: 'boolean',
-      default: true,
-      group: 'feature',
-      label: { bg: 'Гостите могат да сменят подредбата', en: 'Guests can change the layout' },
-    },
-  },
+  options: {},
   tokens: [
     'color.background',
     'color.surface',

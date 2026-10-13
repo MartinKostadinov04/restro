@@ -65,6 +65,18 @@ export function canMoveSection(
   return depth + heightOf(view, sectionId) <= MAX_SECTION_DEPTH
 }
 
+/**
+ * True if a section may be deleted (D89, D92): it and every section under it are the venue's own.
+ * A section that mirrors a category of the till is only hidden; on a venue without a till every
+ * section is its own. The server checks it again (`till_section`).
+ */
+export function canDeleteSection(view: ComposerView, id: NodeId): boolean {
+  if (!view.sections[id]) return false
+  return [id, ...descendantsOf(view, id)].every(
+    (section) => view.sections[section]?.origin === 'owned',
+  )
+}
+
 /** One place a section could go, for the "Move to" menu. */
 export interface MoveTarget {
   /** `null` = top level (the menu). */

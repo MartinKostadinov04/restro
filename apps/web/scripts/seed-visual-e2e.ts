@@ -130,9 +130,14 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
       ordering: false,
       pay: false,
     },
+    // The menu starts in two columns and guests may switch it; the cocktails are the photo-led
+    // strip (D92: a menu setting and a section marked horizontal in the composer, brief S6), so
+    // the audit sees every layout and the strip.
+    layout: { default: 'two', guest_switch: true },
     sections: [
       {
         title: bgen('Коктейли', 'Cocktails'),
+        layout: 'horizontal',
         description: bgen('Авторски коктейли от нашия бар.', 'Signature cocktails from our bar.'),
         items: [
           {

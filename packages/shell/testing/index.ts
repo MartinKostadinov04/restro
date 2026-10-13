@@ -10,6 +10,7 @@ export {
   type ContractReport,
   FEATURE_SLOTS,
   ITEM_ATTRIBUTE,
+  LAYOUT_SWITCH_SLOT,
   type RenderFn,
   runFaceContract,
   SLOT_ATTRIBUTE,
