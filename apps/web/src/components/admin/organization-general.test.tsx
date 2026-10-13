@@ -27,11 +27,11 @@ function general(
   return userEvent.setup({ delay: null })
 }
 
-const nameInput = () => screen.getByTestId('organization-name-input') as HTMLInputElement
-const nameSave = () => screen.getByTestId('organization-name-save') as HTMLButtonElement
-const slugInput = () => screen.getByTestId('organization-slug-input') as HTMLInputElement
-const slugSave = () => screen.getByTestId('organization-slug-save') as HTMLButtonElement
-const preview = () => screen.getByTestId('organization-slug-preview').textContent
+const nameInput = () => screen.getByTestId('general-name-input') as HTMLInputElement
+const nameSave = () => screen.getByTestId('general-name-save') as HTMLButtonElement
+const slugInput = () => screen.getByTestId('general-slug-input') as HTMLInputElement
+const slugSave = () => screen.getByTestId('general-slug-save') as HTMLButtonElement
+const preview = () => screen.getByTestId('general-slug-preview').textContent
 
 beforeEach(() => {
   vi.mocked(updateOrganizationAction).mockReset()
@@ -60,13 +60,13 @@ describe('Settings › General for an owner', () => {
     expect(slugInput().value).toBe('night-group')
     expect(nameSave().disabled).toBe(true)
     expect(slugSave().disabled).toBe(true)
-    expect(screen.queryByTestId('organization-read-only')).toBeNull()
+    expect(screen.queryByTestId('general-read-only')).toBeNull()
   })
 
   it('previews the whole address, follows what is typed, and says the old address keeps working', async () => {
     const user = general()
     expect(preview()).toBe('/m/night-group/your-venue')
-    expect(screen.getByTestId('organization-slug-keep').textContent).toContain(
+    expect(screen.getByTestId('general-slug-keep').textContent).toContain(
       'The old address keeps working',
     )
     await user.clear(slugInput())
@@ -80,24 +80,24 @@ describe('Settings › General for an owner', () => {
     await user.type(slugInput(), 'My Own')
     expect(slugInput().value).toBe('my-own')
     expect(slugSave().disabled).toBe(false)
-    expect(screen.queryByTestId('organization-slug-invalid')).toBeNull()
+    expect(screen.queryByTestId('general-slug-invalid')).toBeNull()
 
     await user.clear(slugInput())
     await user.type(slugInput(), 'Not_a_slug!')
-    expect(await screen.findByTestId('organization-slug-invalid')).toBeTruthy()
+    expect(await screen.findByTestId('general-slug-invalid')).toBeTruthy()
     expect(slugSave().disabled).toBe(true)
     // The preview does not show an address nobody could use.
     expect(preview()).toBe('/m/night-group/your-venue')
 
     await user.clear(slugInput())
-    expect(screen.getByTestId('organization-slug-invalid')).toBeTruthy()
+    expect(screen.getByTestId('general-slug-invalid')).toBeTruthy()
     expect(slugSave().disabled).toBe(true)
     expect(updateOrganizationAction).not.toHaveBeenCalled()
   })
 
   it('suggests an address name from the typed name, in Latin letters', async () => {
     const user = general()
-    const suggest = screen.getByTestId('organization-slug-suggest') as HTMLButtonElement
+    const suggest = screen.getByTestId('general-slug-suggest') as HTMLButtonElement
     // "Нощна група" is transliterated.
     expect(suggest.disabled).toBe(false)
     await user.click(suggest)
@@ -115,7 +115,7 @@ describe('Settings › General for an owner', () => {
   it('refuses an empty or blank name before anything is sent', async () => {
     const user = general()
     await user.clear(nameInput())
-    expect(await screen.findByTestId('organization-name-invalid')).toBeTruthy()
+    expect(await screen.findByTestId('general-name-invalid')).toBeTruthy()
     expect(nameSave().disabled).toBe(true)
     await user.type(nameInput(), '   ')
     expect(nameSave().disabled).toBe(true)
@@ -199,11 +199,11 @@ describe('Settings › General for an owner', () => {
       await user.clear(slugInput())
       await user.type(slugInput(), 'day-group')
       await user.click(slugSave())
-      expect((await screen.findByTestId('organization-slug-error')).textContent, error).toBe(text)
+      expect((await screen.findByTestId('general-slug-error')).textContent, error).toBe(text)
       expect(slugInput().value).toBe('day-group')
       // The address shown is still the saved one's; typing clears the message.
       await user.type(slugInput(), '2')
-      expect(screen.queryByTestId('organization-slug-error')).toBeNull()
+      expect(screen.queryByTestId('general-slug-error')).toBeNull()
       cleanup()
     }
   })
@@ -213,12 +213,10 @@ describe('Settings › General for an owner', () => {
     const user = general()
     await user.type(nameInput(), '2')
     await user.click(nameSave())
-    expect((await screen.findByTestId('organization-name-error')).textContent).toContain(
-      'Only an owner',
-    )
+    expect((await screen.findByTestId('general-name-error')).textContent).toContain('Only an owner')
     expect(toasts.success).not.toHaveBeenCalled()
     // The other field has no message of its own.
-    expect(screen.queryByTestId('organization-slug-error')).toBeNull()
+    expect(screen.queryByTestId('general-slug-error')).toBeNull()
   })
 
   it('treats a failing call like a failed save', async () => {
@@ -227,7 +225,7 @@ describe('Settings › General for an owner', () => {
     await user.clear(slugInput())
     await user.type(slugInput(), 'day-group')
     await user.click(slugSave())
-    expect((await screen.findByTestId('organization-slug-error')).textContent).toBe(
+    expect((await screen.findByTestId('general-slug-error')).textContent).toBe(
       'Something went wrong. Nothing was changed, try again.',
     )
   })
@@ -236,17 +234,15 @@ describe('Settings › General for an owner', () => {
 describe('Settings › General for an admin or a member', () => {
   it('shows the name and the address name as text, with no field and no Save', () => {
     general({ canEdit: false })
-    expect(screen.getByTestId('organization-name').textContent).toBe('Нощна група')
-    expect(screen.getByTestId('organization-slug').textContent).toBe('night-group')
+    expect(screen.getByTestId('general-name-text').textContent).toBe('Нощна група')
+    expect(screen.getByTestId('general-slug-text').textContent).toBe('night-group')
     expect(preview()).toBe('/m/night-group/your-venue')
     expect(screen.queryByRole('textbox')).toBeNull()
-    expect(screen.queryByTestId('organization-name-save')).toBeNull()
-    expect(screen.queryByTestId('organization-slug-save')).toBeNull()
-    expect(screen.queryByTestId('organization-slug-suggest')).toBeNull()
+    expect(screen.queryByTestId('general-name-save')).toBeNull()
+    expect(screen.queryByTestId('general-slug-save')).toBeNull()
+    expect(screen.queryByTestId('general-slug-suggest')).toBeNull()
     expect(
-      within(screen.getByTestId('organization-name-form')).getByText(
-        'Only an owner can change this.',
-      ),
+      within(screen.getByTestId('general-name-form')).getByText('Only an owner can change this.'),
     ).toBeTruthy()
     expect(updateOrganizationAction).not.toHaveBeenCalled()
   })

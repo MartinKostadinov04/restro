@@ -99,7 +99,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
 
   return (
     <div className="grid gap-8" data-testid="organization-general">
-      <form onSubmit={submitName} noValidate data-testid="organization-name-form">
+      <form onSubmit={submitName} noValidate data-testid="general-name-form">
         <FormSection
           title={t('name.title')}
           description={t('name.description')}
@@ -108,7 +108,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
               <Button
                 type="submit"
                 disabled={namePending || !nameValid || !nameDirty}
-                data-testid="organization-name-save"
+                data-testid="general-name-save"
               >
                 {namePending ? t('name.saving') : t('name.save')}
               </Button>
@@ -128,13 +128,13 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
                 maxLength={MAX_NAME_LENGTH}
                 autoComplete="organization"
                 aria-invalid={!nameValid || nameError !== null || undefined}
-                data-testid="organization-name-input"
+                data-testid="general-name-input"
               />
               {!nameValid ? (
                 <p
                   className="text-sm text-destructive"
                   role="alert"
-                  data-testid="organization-name-invalid"
+                  data-testid="general-name-invalid"
                 >
                   {t('name.invalid')}
                 </p>
@@ -143,7 +143,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
                 <p
                   className="text-sm text-destructive"
                   role="alert"
-                  data-testid="organization-name-error"
+                  data-testid="general-name-error"
                 >
                   {t(`errors.${nameError}`)}
                 </p>
@@ -151,10 +151,10 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
             </div>
           ) : (
             <div className="grid gap-1">
-              <p className="text-sm font-medium" data-testid="organization-name">
+              <p className="text-sm font-medium" data-testid="general-name-text">
                 {saved.name}
               </p>
-              <p className="text-xs text-muted-foreground" data-testid="organization-read-only">
+              <p className="text-xs text-muted-foreground" data-testid="general-read-only">
                 {t('readOnly')}
               </p>
             </div>
@@ -162,7 +162,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         </FormSection>
       </form>
 
-      <form onSubmit={submitSlug} noValidate data-testid="organization-slug-form">
+      <form onSubmit={submitSlug} noValidate data-testid="general-slug-form">
         <FormSection
           title={t('address.title')}
           description={t('address.description')}
@@ -171,7 +171,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
               <Button
                 type="submit"
                 disabled={slugPending || !slugValid || !slugDirty}
-                data-testid="organization-slug-save"
+                data-testid="general-slug-save"
               >
                 {slugPending ? t('address.saving') : t('address.save')}
               </Button>
@@ -201,7 +201,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
                     className="min-w-0 flex-1 font-mono"
                     aria-invalid={!slugValid || slugError !== null || undefined}
                     aria-describedby={`${formId}-slug-help`}
-                    data-testid="organization-slug-input"
+                    data-testid="general-slug-input"
                   />
                 </div>
                 <Button
@@ -212,7 +212,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
                     setSlugValue(suggestion)
                     setSlugError(null)
                   }}
-                  data-testid="organization-slug-suggest"
+                  data-testid="general-slug-suggest"
                 >
                   {t('address.suggest')}
                 </Button>
@@ -221,7 +221,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
                 <p
                   className="text-sm text-destructive"
                   role="alert"
-                  data-testid="organization-slug-invalid"
+                  data-testid="general-slug-invalid"
                 >
                   {t('address.invalid')}
                 </p>
@@ -230,7 +230,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
                 <p
                   className="text-sm text-destructive"
                   role="alert"
-                  data-testid="organization-slug-error"
+                  data-testid="general-slug-error"
                 >
                   {t(`errors.${slugError}`)}
                 </p>
@@ -240,7 +240,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
               </p>
             </div>
           ) : (
-            <p className="font-mono text-sm font-medium" data-testid="organization-slug">
+            <p className="font-mono text-sm font-medium" data-testid="general-slug-text">
               {saved.slug}
             </p>
           )}
@@ -249,17 +249,17 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
             {t('address.example')}
             <code
               className="break-all rounded-md bg-muted px-2 py-1 font-mono text-foreground ring-1 ring-border"
-              data-testid="organization-slug-preview"
+              data-testid="general-slug-preview"
             >
               {preview}
             </code>
           </p>
           {canEdit ? (
-            <p className="text-xs text-muted-foreground" data-testid="organization-slug-keep">
+            <p className="text-xs text-muted-foreground" data-testid="general-slug-keep">
               {t('address.keep')}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground" data-testid="organization-slug-read-only">
+            <p className="text-xs text-muted-foreground" data-testid="general-slug-read-only">
               {t('readOnly')}
             </p>
           )}
