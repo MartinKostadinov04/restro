@@ -243,8 +243,11 @@ test('Settings: the readable part of the address is renamed, and the old link st
   await page.goto(`${venueUrl}?tab=settings`)
   const code = /^\/m\/.+-([a-z0-9]{12})$/.exec(guestPath)?.[1] ?? ''
   expect(code).not.toBe('')
+  // The address row shows the address of D84, /m/<organisation>/<venue>; the header above still
+  // shows the one of before (/m/<slug>-<code>).
   const link = page.getByTestId('venue-address')
-  await expect(link).toHaveText(guestPath)
+  await expect(page.getByTestId('venue-slug-prefix')).toHaveText('/m/no-till-club/')
+  await expect(link).toHaveText(`/m/no-till-club/${SLUG}`)
 
   // The suggestion follows the venue's name; the person types their own.
   const renamed = `club-${RUN}`
@@ -254,7 +257,7 @@ test('Settings: the readable part of the address is renamed, and the old link st
   await page.getByTestId('venue-slug-input').fill(renamed)
   await page.getByTestId('venue-slug-save').click()
   const newPath = `/m/${renamed}-${code}`
-  await expect(link).toHaveText(newPath)
+  await expect(link).toHaveText(`/m/no-till-club/${renamed}`)
   await expect(
     page.getByText('Address saved. Guests see the new name within a minute.'),
   ).toBeVisible()

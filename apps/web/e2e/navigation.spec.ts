@@ -13,10 +13,13 @@ import { ADMIN_PASSWORD } from './support'
 //   the list      three venues by name (a lower-case name is not put last), no tab links
 //   open a venue  from the sidebar; the open one is lit
 //   swap venues   on the same tab: ?tab= is carried over
-//   Settings      /settings opens Integrations; the breadcrumb reads "Settings > Integrations"
+//   Settings      /settings opens General; the breadcrumb reads "Settings > General"; Integrations
+//                 is the next section
+//   General       the owner renames the organisation (the sidebar follows); the address name is
+//                 checked while typed and refused when another organisation has it (S3, D91)
 //   collapsed     each venue shows its initial and, hovered, its name
 //   New venue     from the sidebar; the new venue is in the list without a reload
-//   a member      sees the venues and Settings, not "New venue"
+//   a member      sees the venues and Settings, not "New venue"; General shows the values as text
 //   a phone       the sidebar is a sheet that closes once a venue is chosen
 //
 // The organisation is the fixture of scripts/seed-navigation-e2e.ts. With SCREENSHOT_DIR set, the
@@ -170,39 +173,96 @@ test('open a venue from the sidebar, then swap to another on the same tab', asyn
   )
 })
 
-test('Settings opens Integrations; the breadcrumb reads "Settings > Integrations"', async () => {
+test('Settings opens General; the breadcrumb reads "Settings > General"', async () => {
   await settingsItem(page).click()
-  await expect(page).toHaveURL(/\/settings\/integrations$/)
+  await expect(page).toHaveURL(/\/settings\/general$/)
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Integrations', level: 2 })).toBeVisible()
-  // The page holds the connection itself now (CF-09b): no note about a venue's Integration tab.
-  await expect(page.getByTestId('integration-panel')).toBeVisible()
-  await expect(page.getByTestId('settings-integrations-interim')).toHaveCount(0)
-  // The sub-navigation lights its section; the sidebar lights Settings and no venue.
-  await expect(page.getByTestId('settings-nav-integrations')).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
+  await expect(page.getByRole('heading', { name: 'General', level: 2 })).toBeVisible()
+  // The organisation's name and address name, each in a field (the owner edits).
+  await expect(page.getByTestId('organization-general')).toBeVisible()
+  await expect(page.getByTestId('general-name-input')).toHaveValue('Navigation Club')
+  await expect(page.getByTestId('general-slug-input')).toHaveValue('navigation-club')
+  await expect(page.getByTestId('general-slug-preview')).toHaveText('/m/navigation-club/your-venue')
+  // The sub-navigation lights its section, with General first; the sidebar lights Settings and
+  // no venue.
+  await expect(page.getByTestId('settings-nav').getByRole('link')).toHaveText([
+    'General',
+    'Integrations',
+    'Deleted venues',
+  ])
+  await expect(page.getByTestId('settings-nav-general')).toHaveAttribute('aria-current', 'page')
   await expect(settingsItem(page)).toHaveAttribute('aria-current', 'page')
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(0)
-  // The breadcrumb: Settings (a link to /settings) then Integrations (the page).
+  // The breadcrumb: Settings (a link to /settings) then General (the page).
   await expect(trail(page).getByRole('link', { name: 'Settings' })).toHaveAttribute(
     'href',
     '/settings',
   )
-  await expect(trail(page).getByText('Integrations')).toHaveAttribute('aria-current', 'page')
-  await expect(page).toHaveTitle(/Integrations/)
+  await expect(trail(page).getByText('General')).toHaveAttribute('aria-current', 'page')
+  await expect(page).toHaveTitle(/General/)
   await snapshot('cf-09a-settings-desktop.png')
 
   // /settings itself opens the first section.
   await page.goto('/settings')
+  await expect(page).toHaveURL(/\/settings\/general$/)
+
+  // Integrations is the next section.
+  await page.getByTestId('settings-nav-integrations').click()
   await expect(page).toHaveURL(/\/settings\/integrations$/)
+  await expect(page.getByRole('heading', { name: 'Integrations', level: 2 })).toBeVisible()
+  // The page holds the connection itself now (CF-09b): no note about a venue's Integration tab.
+  await expect(page.getByTestId('integration-panel')).toBeVisible()
+  await expect(page.getByTestId('settings-integrations-interim')).toHaveCount(0)
+  await expect(page.getByTestId('settings-nav-integrations')).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await expect(trail(page).getByText('Integrations')).toHaveAttribute('aria-current', 'page')
+  await expect(page).toHaveTitle(/Integrations/)
 
   // And back to a venue from Settings: no tab to carry, the venue is lit.
   await venueItem(page, 'Boulevard Club').click()
   await expect(page.getByRole('heading', { name: 'Boulevard Club', level: 1 })).toBeVisible()
   await expect(venueItem(page, 'Boulevard Club')).toHaveAttribute('aria-current', 'page')
   await expect(settingsItem(page)).not.toHaveAttribute('aria-current', 'page')
+})
+
+test('General: the owner renames the organisation; an address name another organisation has is refused', async () => {
+  await page.goto('/settings/general')
+  const nameInput = page.getByTestId('general-name-input')
+  const nameSave = page.getByTestId('general-name-save')
+  await expect(nameSave).toBeDisabled()
+
+  // The name: saved, and the sidebar, which shows it, follows without a reload.
+  await nameInput.fill('Navigation Club Group')
+  await nameSave.click()
+  await expect(page.getByText('Name saved.')).toBeVisible()
+  await expect(page.getByTestId('organization-name')).toHaveText(/Navigation Club Group/)
+  await expect(nameSave).toBeDisabled()
+  // Put back, so the other tests (and the next run) find the organisation as it was.
+  await nameInput.fill('Navigation Club')
+  await nameSave.click()
+  await expect(page.getByTestId('organization-name')).not.toHaveText(/Group/)
+  await expect(page.getByTestId('organization-name')).toHaveText(/Navigation Club/)
+
+  // The address name: a shape that cannot be one is stopped in the field.
+  const slugInput = page.getByTestId('general-slug-input')
+  const slugSave = page.getByTestId('general-slug-save')
+  await slugInput.fill('Not a slug!')
+  await expect(page.getByTestId('general-slug-invalid')).toBeVisible()
+  await expect(slugSave).toBeDisabled()
+
+  // A name another organisation has (the demo organisation's) is refused by the server.
+  await slugInput.fill('demo-club')
+  await expect(page.getByTestId('general-slug-preview')).toHaveText('/m/demo-club/your-venue')
+  await slugSave.click()
+  await expect(page.getByTestId('general-slug-error')).toHaveText(
+    'Another organisation has this address name, or had it before. Choose another one.',
+  )
+  await snapshot('s3-general-desktop.png')
+  // Nothing was changed.
+  await page.reload()
+  await expect(page.getByTestId('general-slug-input')).toHaveValue('navigation-club')
 })
 
 test('collapsed to icons, each venue shows its initial and, hovered, its name', async () => {
@@ -285,8 +345,20 @@ test('a plain member sees the venues and Settings, but is not offered New venue'
     await expect(newVenueItem(target)).toHaveCount(0)
     await expect(target.getByRole('button', { name: 'New venue' })).toHaveCount(0)
 
-    // Everyone in the organisation may open Settings.
+    // Everyone in the organisation may open Settings. It opens General, where a member sees the
+    // values as text: only an owner changes them.
     await settingsItem(target).click()
+    await expect(target).toHaveURL(/\/settings\/general$/)
+    await expect(target.getByRole('heading', { name: 'General', level: 2 })).toBeVisible()
+    await expect(target.getByTestId('general-name-text')).toHaveText('Navigation Club')
+    await expect(target.getByTestId('general-slug-text')).toHaveText('navigation-club')
+    await expect(target.getByTestId('general-name-input')).toHaveCount(0)
+    await expect(target.getByTestId('general-slug-input')).toHaveCount(0)
+    await expect(target.getByTestId('general-name-save')).toHaveCount(0)
+    await expect(target.getByTestId('general-slug-save')).toHaveCount(0)
+    // Integrations is one click away, and Deleted venues is not offered.
+    await expect(target.getByTestId('settings-nav-deleted-venues')).toHaveCount(0)
+    await target.getByTestId('settings-nav-integrations').click()
     await expect(target).toHaveURL(/\/settings\/integrations$/)
     await expect(target.getByRole('heading', { name: 'Integrations', level: 2 })).toBeVisible()
   } finally {

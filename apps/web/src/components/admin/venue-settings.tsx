@@ -1,7 +1,9 @@
+import { organizationAddress } from '@restro/core/apply'
 import type { Venue } from '@restro/db'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { Badge } from '@/components/ui/badge'
 import { FormSection } from '@/components/ui/form-section'
+import { getPool } from '@/server/db'
 import { canManageIntegration } from '@/server/roles'
 
 import { VenueAddress } from './venue-address'
@@ -17,12 +19,14 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /**
- * The venue's settings. The name (CF-18, D76) and the menu address (CF-14, D68) can be changed by an
- * owner or admin; the rest is read-only: editing it arrives with the composer (Stage 2).
+ * The venue's settings. The name (CF-18, D76) and the menu address (D84: the organisation's address
+ * name as a fixed prefix, the venue's own as the field) can be changed by an owner or admin; the
+ * rest is read-only: editing it arrives with the composer (Stage 2).
  */
 export async function VenueSettings({ venue, role }: { venue: Venue; role: string }) {
   const t = await getTranslations('workspace.settings')
   const uiLocale = await getLocale()
+  const organization = await organizationAddress(getPool(), venue.tenantId)
   const languageNames = new Intl.DisplayNames([uiLocale], { type: 'language' })
   // The language only (`en`), not the dialect (`en-US`): "английски", not "американски английски".
   const languageName = (locale: string) =>
@@ -45,7 +49,7 @@ export async function VenueSettings({ venue, role }: { venue: Venue; role: strin
             venueId={venue.id}
             venueName={venue.name}
             slug={venue.slug}
-            publicId={venue.publicId}
+            organizationSlug={organization?.slug ?? null}
             canEdit={canManageIntegration(role)}
           />
         </Row>

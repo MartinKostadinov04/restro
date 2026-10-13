@@ -8,8 +8,14 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { newId } from '../ids'
-import { organizationAddress, organizationSlugIsFree, recordOrganizationSlug } from './organization'
-import { provisionTenant } from './provision'
+import {
+  MAX_ORGANIZATION_NAME_LENGTH,
+  organizationAddress,
+  organizationSlugIsFree,
+  recordOrganizationSlug,
+  renameTenant,
+} from './organization'
+import { ProvisionError, provisionTenant } from './provision'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 describe.skipIf(!hasDatabase)('the organisation’s address names (as the restro_app role)', () => {
@@ -82,6 +88,50 @@ describe.skipIf(!hasDatabase)('the organisation’s address names (as the restro
     expect(await organizationSlugIsFree(app, tenant, otherSlug)).toBe(false)
     expect(await organizationSlugIsFree(app, tenant, testSlug('fresh'))).toBe(true)
     expect(await organizationSlugIsFree(app, tenant, 'Not A Slug')).toBe(false)
+  })
+
+  describe('renameTenant', () => {
+    const nameOf = async (id: string) =>
+      (await owner.query<{ name: string }>('select name from restro.tenants where id = $1', [id]))
+        .rows[0]?.name
+
+    it('renames the tenant row, trimmed, and says nothing changed for the same name again', async () => {
+      expect(await renameTenant(app, tenant, '  Night group & friends  ')).toEqual({
+        ok: true,
+        changed: true,
+      })
+      expect(await nameOf(tenant)).toBe('Night group & friends')
+      expect(await renameTenant(app, tenant, 'Night group & friends')).toEqual({
+        ok: true,
+        changed: false,
+      })
+      // Only this organisation's row changed.
+      expect(await nameOf(other)).toBe('Day group')
+    })
+
+    it('refuses an empty, a blank or a too long name, and a bad id, and writes nothing', async () => {
+      const before = await nameOf(tenant)
+      for (const name of ['', '   ', 'x'.repeat(MAX_ORGANIZATION_NAME_LENGTH + 1)]) {
+        await expect(renameTenant(app, tenant, name)).rejects.toMatchObject({
+          name: 'ProvisionError',
+          code: 'invalid_input',
+        })
+      }
+      // 200 characters is the longest allowed.
+      expect(await renameTenant(app, tenant, 'y'.repeat(MAX_ORGANIZATION_NAME_LENGTH))).toEqual({
+        ok: true,
+        changed: true,
+      })
+      await renameTenant(app, tenant, before ?? 'Night group')
+      await expect(renameTenant(app, 'nope', 'Fine')).rejects.toBeInstanceOf(ProvisionError)
+      expect(await nameOf(tenant)).toBe(before)
+    })
+
+    it('says there is no such tenant for an id without a row', async () => {
+      await expect(renameTenant(app, newId('tn'), 'Ghost')).rejects.toMatchObject({
+        code: 'tenant_missing',
+      })
+    })
   })
 
   it('refuses malformed ids and slugs', async () => {

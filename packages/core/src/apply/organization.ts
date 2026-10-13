@@ -18,7 +18,7 @@ import {
   withTenant,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { INTEGRATION_KINDS, type IntegrationKind } from '../connectors'
@@ -147,6 +147,57 @@ export async function organizationSlugIsFree(
       .from(organizationSlugHistory)
       .where(eq(organizationSlugHistory.slug, slug))
     return earlier === undefined || earlier.organizationId === organizationId
+  })
+}
+
+// --- the organisation's name (adjustments V5, D91) -------------------------------------------
+
+/** The longest organisation name (the same limit as every name in the model). */
+export const MAX_ORGANIZATION_NAME_LENGTH = 200
+
+/** What `renameTenant` answers; `changed` is false when the tenant already had this name. */
+export interface TenantRenamed {
+  readonly ok: true
+  readonly changed: boolean
+}
+
+/**
+ * Keeps `restro.tenants.name` in step with the organisation's name. The name itself is Better
+ * Auth's (`auth_organization.name`, changed by the Organisation › General action); the tenant row
+ * holds a copy made at creation, so this follows it in the same action. Trimmed, 1 to 200
+ * characters (`invalid_input` otherwise); the same name again writes nothing. A tenant without a
+ * row is `tenant_missing`.
+ */
+export async function renameTenant(
+  pool: DbPool,
+  tenantId: string,
+  name: string,
+): Promise<TenantRenamed> {
+  if (!isId('tn', tenantId)) {
+    throw new ProvisionError('invalid_input', 'tenantId must be a tn_ id')
+  }
+  const trimmed = typeof name === 'string' ? name.trim() : ''
+  if (trimmed === '') {
+    throw new ProvisionError('invalid_input', 'the organisation name must not be empty')
+  }
+  if ([...trimmed].length > MAX_ORGANIZATION_NAME_LENGTH) {
+    throw new ProvisionError(
+      'invalid_input',
+      `the organisation name is longer than ${MAX_ORGANIZATION_NAME_LENGTH} characters`,
+    )
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const updated = await tx
+      .update(tenants)
+      .set({ name: trimmed })
+      .where(and(eq(tenants.id, tenantId), ne(tenants.name, trimmed)))
+      .returning({ id: tenants.id })
+    if (updated.length > 0) return { ok: true, changed: true } as const
+    const [row] = await tx.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tenantId))
+    if (row === undefined) {
+      throw new ProvisionError('tenant_missing', `there is no organisation ${tenantId}`)
+    }
+    return { ok: true, changed: false } as const
   })
 }
 

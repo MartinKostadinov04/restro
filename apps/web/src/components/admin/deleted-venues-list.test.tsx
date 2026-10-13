@@ -1,17 +1,21 @@
 // @vitest-environment jsdom
-// The list of Settings > Deleted venues (CF-18, D76): each deleted venue with the day it was
-// deleted in Sofia time and a Restore button, and what happens with the server's answers.
+// The list of Settings > Deleted venues (CF-18, S3, D76, D83): each deleted venue with the day it
+// was deleted and the day the bin erases it, in Sofia time, a Restore button and a Delete
+// permanently button, and what happens with the server's answers.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { restoreVenueAction } from '@/server/venues-actions'
+import { purgeVenueAction, restoreVenueAction } from '@/server/venues-actions'
 import { renderWithIntl } from '@/test-utils'
 
 import { DeletedVenuesList } from './deleted-venues-list'
 
-vi.mock('@/server/venues-actions', () => ({ restoreVenueAction: vi.fn() }))
-const toasts = vi.hoisted(() => ({ success: vi.fn() }))
+vi.mock('@/server/venues-actions', () => ({
+  restoreVenueAction: vi.fn(),
+  purgeVenueAction: vi.fn(),
+}))
+const toasts = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toasts }))
 
 const VENUES = [
@@ -34,7 +38,10 @@ beforeEach(() => {
     name: 'Neon Cellar',
     relinked: false,
   })
+  vi.mocked(purgeVenueAction).mockReset()
+  vi.mocked(purgeVenueAction).mockResolvedValue({ ok: true, name: 'Neon Cellar', queued: true })
   toasts.success.mockReset()
+  toasts.warning.mockReset()
 })
 
 describe('the deleted venues', () => {
@@ -48,6 +55,20 @@ describe('the deleted venues', () => {
     expect(date).toContain('Oct 11, 2026')
     expect(date).toContain('1:30')
     expect(within(first).getByTestId('restore-venue').textContent).toBe('Restore')
+    expect(within(first).getByTestId('purge-venue-open').textContent).toBe('Delete permanently')
+  })
+
+  it('says when the bin erases each one: 30 days after the deletion, in Sofia time', () => {
+    list()
+    // 22:30 UTC on 10 October + 30 days = 22:30 UTC on 9 November, which is the 10th in Sofia
+    // (winter time, UTC+2, from 25 October).
+    expect(within(items()[0] as HTMLElement).getByTestId('deleted-venue-date').textContent).toBe(
+      'Deleted on Oct 11, 2026, 1:30 AM · erased on Nov 10, 2026',
+    )
+    // 10:00 UTC on 1 March + 30 days is the 31st in Sofia (summer time from 29 March).
+    expect(within(items()[1] as HTMLElement).getByTestId('deleted-venue-date').textContent).toBe(
+      'Deleted on Mar 1, 2026, 12:00 PM · erased on Mar 31, 2026',
+    )
   })
 
   it('restores one, tells what is left to do, and takes it off the list', async () => {
@@ -114,10 +135,62 @@ describe('the deleted venues', () => {
     )
   })
 
+  it('opens the Delete permanently dialog for the venue, and erases it only after its name is typed', async () => {
+    const user = list()
+    await user.click(within(items()[1] as HTMLElement).getByTestId('purge-venue-open'))
+    // The dialog is about the venue of that row, and names the day the bin would erase it.
+    const dialog = screen.getByTestId('purge-venue-dialog')
+    expect(within(dialog).getByText('Delete Roof Terrace permanently?')).toBeTruthy()
+    expect(dialog.textContent).toContain('without waiting until Mar 31, 2026')
+    expect((screen.getByTestId('purge-venue-confirm') as HTMLButtonElement).disabled).toBe(true)
+    expect(purgeVenueAction).not.toHaveBeenCalled()
+
+    await user.type(screen.getByTestId('purge-venue-confirm-input'), 'Roof Terrace')
+    await user.click(screen.getByTestId('purge-venue-confirm'))
+
+    // The row leaves the list at once; the other stays.
+    await waitFor(() => expect(items()).toHaveLength(1))
+    expect(purgeVenueAction).toHaveBeenCalledWith({
+      venueId: VENUES[1]?.id,
+      confirmName: 'Roof Terrace',
+    })
+    expect(within(items()[0] as HTMLElement).getByTestId('deleted-venue-name').textContent).toBe(
+      'Neon Cellar',
+    )
+    expect(toasts.success).toHaveBeenCalledTimes(1)
+    expect(restoreVenueAction).not.toHaveBeenCalled()
+  })
+
+  it('warns, and still takes the row off, when the erase could not be queued', async () => {
+    vi.mocked(purgeVenueAction).mockResolvedValue({ ok: true, name: 'Neon Cellar', queued: false })
+    const user = list()
+    await user.click(within(items()[0] as HTMLElement).getByTestId('purge-venue-open'))
+    await user.type(screen.getByTestId('purge-venue-confirm-input'), 'Neon Cellar')
+    await user.click(screen.getByTestId('purge-venue-confirm'))
+    await waitFor(() => expect(items()).toHaveLength(1))
+    expect(toasts.warning).toHaveBeenCalledTimes(1)
+    expect(String(toasts.warning.mock.calls[0]?.[0])).toContain('erased by itself on Nov 10, 2026')
+    expect(toasts.success).not.toHaveBeenCalled()
+  })
+
+  it('keeps the row when the server refuses the erase', async () => {
+    vi.mocked(purgeVenueAction).mockResolvedValue({ ok: false, error: 'name_mismatch' })
+    const user = list()
+    await user.click(within(items()[0] as HTMLElement).getByTestId('purge-venue-open'))
+    await user.type(screen.getByTestId('purge-venue-confirm-input'), 'Neon Cellar')
+    await user.click(screen.getByTestId('purge-venue-confirm'))
+    expect((await screen.findByTestId('purge-venue-error')).textContent).toContain('does not match')
+    expect(items()).toHaveLength(2)
+  })
+
   it('is in Bulgarian when the interface is', () => {
     list('bg')
     const first = items()[0] as HTMLElement
     expect(within(first).getByTestId('restore-venue').textContent).toBe('Върни')
+    expect(within(first).getByTestId('purge-venue-open').textContent).toBe('Изтрий завинаги')
     expect(within(first).getByTestId('deleted-venue-date').textContent).toContain('Изтрито на')
+    expect(within(first).getByTestId('deleted-venue-date').textContent).toContain(
+      'ще бъде изтрито окончателно на',
+    )
   })
 })

@@ -1,7 +1,7 @@
 // The sections of the organisation's Settings area (D73, D74), declared once. The sub-navigation
 // and the breadcrumb are both drawn from this list, and `/settings` opens the first entry. A new
 // section (members, billing) is one entry here plus its page under `app/(admin)/settings/`.
-import { ArchiveRestoreIcon, type LucideIcon, PlugIcon } from 'lucide-react'
+import { ArchiveRestoreIcon, Building2Icon, type LucideIcon, PlugIcon } from 'lucide-react'
 
 /** What a section is, without its content (each section is a page of its own). */
 export interface SettingsSectionDef {
@@ -18,6 +18,8 @@ export interface SettingsSectionDef {
 }
 
 export const SETTINGS_SECTIONS = [
+  // The first section: `/settings` opens it (D91: the organisation's name and address name).
+  { value: 'general', labelKey: 'settings.sections.general', icon: Building2Icon },
   { value: 'integrations', labelKey: 'settings.sections.integrations', icon: PlugIcon },
   {
     value: 'deleted-venues',
