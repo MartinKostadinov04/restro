@@ -48,7 +48,10 @@ const SECTIONS_EN = ['Cocktails', 'Beer', 'Soft drinks', 'Food']
 async function open(page: Page, url: string) {
   await page.goto(url)
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-  await page.waitForFunction(() => [...document.images].every((image) => image.complete))
+  // The photos of the first screen load at once; a lazy one far down the page may never start.
+  await page.waitForFunction(() =>
+    [...document.images].every((image) => image.loading === 'lazy' || image.complete),
+  )
 }
 
 // The Editorial Market keeps a filtered-out item in the page (`hidden`), so the names are those of
