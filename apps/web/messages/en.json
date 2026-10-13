@@ -399,22 +399,80 @@
     "description": "What is set once for the whole organisation, not for a single venue.",
     "sectionsLabel": "Settings sections",
     "sections": {
+      "general": "General",
       "integrations": "Integrations",
       "deletedVenues": "Deleted venues"
+    },
+    "general": {
+      "description": "The organisation's name and the first part of every guest address.",
+      "readOnly": "Only an owner can change this.",
+      "name": {
+        "title": "Organisation name",
+        "description": "Shown in the admin, in the sidebar and wherever the organisation is named.",
+        "label": "Name",
+        "save": "Save name",
+        "saving": "Saving…",
+        "saved": "Name saved.",
+        "invalid": "Enter a name of 1 to 200 characters."
+      },
+      "address": {
+        "title": "Address name",
+        "description": "The first part of every guest address, the part after /m/. No other organisation can have the same one.",
+        "label": "Address name",
+        "help": "Lower-case Latin letters, digits and single hyphens, up to 63 characters, for example night-group.",
+        "example": "Your venues will have addresses like",
+        "keep": "The old address keeps working: guests who open it are taken to the new one, so printed and shared links never break.",
+        "suggest": "Suggest from the name",
+        "save": "Save address name",
+        "saving": "Saving…",
+        "saved": "Address name saved. Guests who open the old address are taken to the new one within a minute.",
+        "savedLate": "Address name saved. The guest files could not be updated just now: publish a menu to bring them up to date.",
+        "invalid": "Use lower-case Latin letters, digits and single hyphens, for example night-group."
+      },
+      "errors": {
+        "not_allowed": "Only an owner can change the organisation's name or address name.",
+        "invalid": "This cannot be used. Check it and try again.",
+        "taken": "Another organisation has this address name, or had it before. Choose another one.",
+        "failed": "Something went wrong. Nothing was changed, try again."
+      }
     },
     "integrations": {
       "description": "The systems you use, their connections and how each one is read. Set once for the whole organisation and used by every venue."
     },
     "deletedVenues": {
-      "description": "Venues an owner deleted. Nothing is erased: restoring one brings it back as a draft with its menu, tables and codes, and links its till again unless another venue serves it now.",
+      "description": "Venues an owner deleted. Restore one within {days} days and it comes back as a draft with its menu, tables and codes, and its till is linked again unless another venue serves it now. After that, or at once with Delete permanently, a venue is erased for good.",
       "empty": {
         "title": "No deleted venues",
         "description": "A venue you delete appears here, and you can restore it."
       },
       "listLabel": "Deleted venues",
-      "deletedOn": "Deleted on {when}",
+      "dates": "Deleted on {when} · erased on {erasedOn}",
       "restore": "Restore",
       "restoring": "Restoring…",
+      "purge": "Delete permanently",
+      "purgeDialog": {
+        "title": "Delete {name} permanently?",
+        "description": "{name} is erased now, without waiting until {erasedOn}. This cannot be undone. This is what goes:",
+        "effects": {
+          "menus": "Its menus, sections and items, every published version and its change log.",
+          "tables": "Its tables and QR codes. The codes never come back: printed codes stop working for good.",
+          "address": "Its address name is freed, so another venue can take it. Its public code is never used again.",
+          "kept": "Items that the till or another venue still uses stay."
+        },
+        "confirmLabel": "Type the venue name to confirm: {name}",
+        "cancel": "Cancel",
+        "confirm": "Delete permanently",
+        "deleting": "Deleting…",
+        "deleted": "{name} is being erased. It leaves this list now.",
+        "deletedLate": "{name} could not be sent to be erased just now. It is erased by itself on {erasedOn}.",
+        "errors": {
+          "not_allowed": "Only an owner can delete a venue permanently.",
+          "invalid": "This venue could not be found.",
+          "not_deleted": "This venue is not in the deleted venues. Delete it first.",
+          "name_mismatch": "The name does not match. Type it exactly as shown.",
+          "failed": "Something went wrong. The venue was not deleted, try again."
+        }
+      },
       "restored": "{name} is back as a draft. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
       "restoredLinked": "{name} is back as a draft, with its till linked again. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
       "errors": {
@@ -830,20 +888,21 @@
         }
       },
       "slug": {
-        "label": "Readable part of the address",
-        "help": "Lower-case Latin letters, digits and single hyphens, for example demo-club. It only makes the address easier to read; it does not have to be unique.",
-        "keep": "Links that are already shared or printed keep working: the code at the end of the address (12 characters) never changes.",
+        "label": "Address name",
+        "help": "Lower-case Latin letters, digits and single hyphens, for example demo-club. It must differ from the address names of your other venues.",
+        "keep": "Links that are already shared or printed keep working: guests who open an old address are taken to the new one.",
         "suggest": "Suggest from the name",
         "save": "Save address",
         "saving": "Saving…",
         "saved": "Address saved. Guests see the new name within a minute.",
         "savedLate": "Address saved. The published files could not be updated just now: publish the menu to bring them up to date.",
         "invalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
-        "open": "Open the menu in a new tab",
+        "open": "Open",
+        "openTitle": "Open the menu in a new tab",
         "errors": {
           "not_allowed": "Only an owner or admin can change the address.",
           "invalid": "This address cannot be used. Check it and try again.",
-          "taken": "Another venue of yours already has this address. Choose another one.",
+          "taken": "Another venue of yours already has this address name. Choose another one.",
           "failed": "Something went wrong. The address was not changed, try again."
         }
       }

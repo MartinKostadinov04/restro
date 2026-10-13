@@ -1,9 +1,12 @@
 'use client'
 
-// The list of Settings > Deleted venues (brief CF-18, D76): each deleted venue with the day it was
-// deleted (in the venue's country time, Europe/Sofia) and a Restore button. Owners only; the page
-// draws it for an owner and the action checks the role again. After a restore the toast says what
-// is left to do: link its till again in Integrations if it had one, then publish.
+// The list of Settings > Deleted venues (brief CF-18 and S3, D76, D83): each deleted venue with the
+// day it was deleted and the day the bin erases it (in the venue's country time, Europe/Sofia),
+// a Restore button and a "Delete permanently" button that erases it now after its name is typed
+// (`purge-venue-dialog.tsx`). Owners only; the page draws it for an owner and the actions check
+// the role again. After a restore the toast says what is left to do: link its till again in
+// Integrations if it had one, then publish.
+import { VENUE_BIN_DAYS } from '@restro/core'
 import { useFormatter, useTranslations } from 'next-intl'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -13,8 +16,12 @@ import { Card, CardContent } from '@/components/ui/card'
 import { restoreVenueAction } from '@/server/venues-actions'
 import type { RestoreVenueError, RestoreVenueResult } from '@/server/venues-result'
 
+import { PurgeVenueDialog } from './purge-venue-dialog'
+
 /** The time zone the deletion date is shown in: the one every venue is created with. */
 const DISPLAY_TIME_ZONE = 'Europe/Sofia'
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 export interface DeletedVenueRow {
   readonly id: string
@@ -25,9 +32,10 @@ export interface DeletedVenueRow {
 
 export function DeletedVenuesList({ venues }: { readonly venues: readonly DeletedVenueRow[] }) {
   const t = useTranslations('settings.deletedVenues')
-  // Venues restored here leave the list at once, before the page has been read again.
-  const [restored, setRestored] = useState<ReadonlySet<string>>(new Set())
-  const shown = venues.filter((venue) => !restored.has(venue.id))
+  // Venues restored or erased here leave the list at once, before the page has been read again
+  // (an erased one is still a row until the worker's purge job has run).
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set())
+  const shown = venues.filter((venue) => !gone.has(venue.id))
 
   if (shown.length === 0) {
     return (
@@ -43,7 +51,7 @@ export function DeletedVenuesList({ venues }: { readonly venues: readonly Delete
         <li key={venue.id}>
           <DeletedVenueItem
             venue={venue}
-            onRestored={() => setRestored((previous) => new Set(previous).add(venue.id))}
+            onGone={() => setGone((previous) => new Set(previous).add(venue.id))}
           />
         </li>
       ))}
@@ -53,10 +61,11 @@ export function DeletedVenuesList({ venues }: { readonly venues: readonly Delete
 
 function DeletedVenueItem({
   venue,
-  onRestored,
+  onGone,
 }: {
   readonly venue: DeletedVenueRow
-  readonly onRestored: () => void
+  /** The venue was restored or is being erased: the row leaves the list. */
+  readonly onGone: () => void
 }) {
   const t = useTranslations('settings.deletedVenues')
   const format = useFormatter()
@@ -66,9 +75,17 @@ function DeletedVenueItem({
     readonly holder?: string
   } | null>(null)
 
-  const when = format.dateTime(new Date(venue.deletedAt), {
+  const [purgeOpen, setPurgeOpen] = useState(false)
+
+  const deletedAt = new Date(venue.deletedAt)
+  const when = format.dateTime(deletedAt, {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: DISPLAY_TIME_ZONE,
+  })
+  // The day the daily purge erases it (it runs once a day, so within that day).
+  const erasedOn = format.dateTime(new Date(deletedAt.getTime() + VENUE_BIN_DAYS * DAY_MS), {
+    dateStyle: 'medium',
     timeZone: DISPLAY_TIME_ZONE,
   })
 
@@ -83,7 +100,7 @@ function DeletedVenueItem({
         setError({ error: result.error, holder: result.holder })
         return
       }
-      onRestored()
+      onGone()
       toast.success(t(result.relinked ? 'restoredLinked' : 'restored', { name: result.name }))
     })
   }
@@ -96,7 +113,7 @@ function DeletedVenueItem({
             {venue.name}
           </span>
           <span className="text-sm text-muted-foreground" data-testid="deleted-venue-date">
-            {t('deletedOn', { when })}
+            {t('dates', { when, erasedOn })}
           </span>
           {error !== null ? (
             <span className="text-sm text-destructive" role="alert" data-testid="restore-error">
@@ -104,16 +121,36 @@ function DeletedVenueItem({
             </span>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending}
-          onClick={restore}
-          data-testid="restore-venue"
-        >
-          {pending ? t('restoring') : t('restore')}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={restore}
+            data-testid="restore-venue"
+          >
+            {pending ? t('restoring') : t('restore')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            disabled={pending}
+            onClick={() => setPurgeOpen(true)}
+            data-testid="purge-venue-open"
+          >
+            {t('purge')}
+          </Button>
+        </div>
       </CardContent>
+      <PurgeVenueDialog
+        open={purgeOpen}
+        onOpenChange={setPurgeOpen}
+        venueId={venue.id}
+        venueName={venue.name}
+        erasedOn={erasedOn}
+        onPurged={onGone}
+      />
     </Card>
   )
 }

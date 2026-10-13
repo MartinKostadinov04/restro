@@ -1,3 +1,4 @@
+import { VENUE_BIN_DAYS } from '@restro/core'
 import { ArchiveRestoreIcon } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
@@ -13,9 +14,10 @@ export async function generateMetadata() {
   return { title: t('sections.deletedVenues') }
 }
 
-// Settings -> Deleted venues (D76): the venues an owner deleted, each with the day it was deleted
-// and a Restore button. Owners only: for anyone else the page does not exist. Restoring brings a
-// venue back as it was, without its till link and unpublished.
+// Settings -> Deleted venues (D76, D83): the venues an owner deleted, each with the day it was
+// deleted, the day the bin erases it, a Restore button and "Delete permanently". Owners only: for
+// anyone else the page does not exist. Restoring brings a venue back unpublished, with its till
+// linked again when that is still free.
 export default async function SettingsDeletedVenuesPage() {
   const { organization } = await requireTenant()
   if (!canDeleteVenue(organization.role)) notFound()
@@ -28,7 +30,9 @@ export default async function SettingsDeletedVenuesPage() {
         <h2 id="settings-deleted-venues-heading" className="text-lg font-semibold tracking-tight">
           {t('sections.deletedVenues')}
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t('deletedVenues.description')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('deletedVenues.description', { days: VENUE_BIN_DAYS })}
+        </p>
       </div>
       {archived.length === 0 ? (
         <Empty data-testid="deleted-venues-empty">

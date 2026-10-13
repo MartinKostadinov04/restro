@@ -21,8 +21,9 @@ const navigation = vi.hoisted(() => ({ pathname: '/settings/integrations' }))
 vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }))
 
 describe('the Settings sections', () => {
-  it('start with Integrations, at /settings/integrations, then Deleted venues (D76)', () => {
+  it('start with General, at /settings/general, then Integrations and Deleted venues (D91, D76)', () => {
     expect(SETTINGS_SECTIONS.map(settingsSectionPath)).toEqual([
+      '/settings/general',
       '/settings/integrations',
       '/settings/deleted-venues',
     ])
@@ -30,13 +31,18 @@ describe('the Settings sections', () => {
 
   it('keep Deleted venues for owners: everyone else is not offered it', () => {
     expect(visibleSettingsSections(true).map((section) => section.value)).toEqual([
+      'general',
       'integrations',
       'deleted-venues',
     ])
-    expect(visibleSettingsSections(false).map((section) => section.value)).toEqual(['integrations'])
+    expect(visibleSettingsSections(false).map((section) => section.value)).toEqual([
+      'general',
+      'integrations',
+    ])
   })
 
   it('own their path and anything below it, and nothing else', () => {
+    expect(settingsSectionOf('/settings/general')?.value).toBe('general')
     expect(settingsSectionOf('/settings/integrations')?.value).toBe('integrations')
     expect(settingsSectionOf('/settings/integrations/barsy')?.value).toBe('integrations')
     expect(settingsSectionOf('/settings')).toBeUndefined()
@@ -50,9 +56,11 @@ describe('SettingsNav', () => {
     renderWithIntl(<SettingsNav />)
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['Integrations'])
-    expect(links[0]?.getAttribute('href')).toBe('/settings/integrations')
-    expect(links[0]?.getAttribute('aria-current')).toBe('page')
+    expect(links.map((link) => link.textContent)).toEqual(['General', 'Integrations'])
+    expect(links[0]?.getAttribute('href')).toBe('/settings/general')
+    expect(links[0]?.getAttribute('aria-current')).toBeNull()
+    expect(links[1]?.getAttribute('href')).toBe('/settings/integrations')
+    expect(links[1]?.getAttribute('aria-current')).toBe('page')
   })
 
   it('draws Deleted venues for an owner only', () => {
@@ -60,9 +68,13 @@ describe('SettingsNav', () => {
     const { unmount } = renderWithIntl(<SettingsNav isOwner />)
     const nav = screen.getByRole('navigation', { name: 'Settings sections' })
     const links = within(nav).getAllByRole('link')
-    expect(links.map((link) => link.textContent)).toEqual(['Integrations', 'Deleted venues'])
-    expect(links[1]?.getAttribute('href')).toBe('/settings/deleted-venues')
-    expect(links[1]?.getAttribute('aria-current')).toBe('page')
+    expect(links.map((link) => link.textContent)).toEqual([
+      'General',
+      'Integrations',
+      'Deleted venues',
+    ])
+    expect(links[2]?.getAttribute('href')).toBe('/settings/deleted-venues')
+    expect(links[2]?.getAttribute('aria-current')).toBe('page')
     unmount()
 
     renderWithIntl(<SettingsNav />)
@@ -88,6 +100,7 @@ describe('SettingsNav', () => {
     renderWithIntl(<SettingsNav />, { locale: 'bg' })
     expect(screen.getByRole('navigation', { name: 'Раздели на настройките' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Интеграции' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Общи' })).toBeTruthy()
   })
 })
 
@@ -108,6 +121,16 @@ describe('SettingsHeader', () => {
       '/settings',
     )
     expect(within(trail).getByText('Integrations').getAttribute('aria-current')).toBe('page')
+  })
+
+  it('shows "Settings › General" on the General page', () => {
+    navigation.pathname = '/settings/general'
+    header()
+    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(within(trail).getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe(
+      '/settings',
+    )
+    expect(within(trail).getByText('General').getAttribute('aria-current')).toBe('page')
   })
 
   it('shows "Settings › Deleted venues" on that page', () => {
