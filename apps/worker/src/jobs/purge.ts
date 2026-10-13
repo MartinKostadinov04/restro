@@ -9,7 +9,8 @@
 //                 venue still uses stay.
 //   purge-tick    daily: what is due in every organisation: venues 30 days in the bin, binned
 //                 menus, POS instances removed 30 days ago (D91: their till layer, records and
-//                 links, the items and sections that came only from them and no venue uses),
+//                 links, the items that came only from them and no menu places, their sections
+//                 that sit in no menu any more),
 //                 deleted areas and tables, versions past the rule in ../../core's
 //                 `versionsToPurge`, the change log past two months.
 //
@@ -479,19 +480,46 @@ export async function purgeMenu(
 }
 
 /**
- * The nodes a removed instance leaves that no menu uses (D91), as one list for `deleteNodes`.
- * A node counts as the instance's when every till link and every till value it has names the
- * instance (`only_this`); of those:
- * - an item no section places goes with its modifier groups and options, unless one of those
- *   came from another instance too;
- * - a section goes when it holds no item and everything under it is such a section (an own
- *   section, a special or another source's section under it keeps it).
- * Menus never go here (a menu goes with its venue or its bin), nor anything under an item that
- * stays. Till values count as well as links: a node kept on an earlier run lost its link to the
- * instance but keeps the till values that cite the instance's records, and goes on the first run
- * after no menu uses it any more, which frees those records.
+ * The instance's items that no section places (D91): roots for `instanceTrees`. Each goes with its
+ * modifier groups and options.
  */
-async function unusedNodesOf(tx: PurgeTx, integrationId: string): Promise<string[]> {
+const UNPLACED_ITEMS = sql`
+  select n.id from restro.nodes n join only_this o on o.id = n.id
+  where n.node_type = 'item'
+    and not exists (select 1 from restro.placements p where p.item_id = n.id)`
+
+/**
+ * The instance's sections that sit in no menu any more: roots for `instanceTrees`. A section's
+ * chain of parents ends at a menu's root node; while that menu exists (a binned one too, until
+ * its own purge, which takes its sections with it) the section stays, empty or not, and loses
+ * only its link. Each goes with everything under it.
+ */
+const DETACHED_SECTIONS = sql`
+  with recursive up as (
+    select n.id as start, n.id as at, n.parent_id from restro.nodes n
+    join only_this o on o.id = n.id
+    where n.node_type = 'section'
+    union all
+    select u.start, p.id, p.parent_id from up u join restro.nodes p on p.id = u.parent_id
+  )
+  select u.start as id from up u
+  where u.parent_id is null
+    and not exists (select 1 from restro.menus m where m.root_node_id = u.at)`
+
+/**
+ * The nodes under `roots` (one of the two above), roots included, that a removed instance leaves
+ * and nobody uses (D91), as one list for `deleteNodes`. A node is the instance's (`only_this`)
+ * when every till link and every till value it has names the instance; a root stays, with all
+ * under it, when anything under it came from another instance too. Till values count as well as
+ * links: a node kept on an earlier run lost its link but keeps the till values that cite the
+ * instance's records, and goes on the first run after nothing uses it, which frees those records.
+ * Menus are never roots: a menu goes with its venue or its bin.
+ */
+async function instanceTrees(
+  tx: PurgeTx,
+  integrationId: string,
+  roots: typeof UNPLACED_ITEMS,
+): Promise<string[]> {
   const source = tillSource(integrationId)
   const result = await tx.execute<{ id: string }>(sql`
     with recursive
@@ -506,33 +534,16 @@ async function unusedNodesOf(tx: PurgeTx, integrationId: string): Promise<string
       group by node_id
       having bool_and(source = ${source})
     ),
-    item_tree as (
-      select n.id as root, n.id from restro.nodes n join only_this o on o.id = n.id
-      where n.node_type = 'item'
-        and not exists (select 1 from restro.placements p where p.item_id = n.id)
+    roots as (${roots}),
+    tree as (
+      select r.id as root, r.id from roots r
       union all
-      select t.root, c.id from restro.nodes c join item_tree t on c.parent_id = t.id
-    ),
-    section_tree as (
-      select n.id as root, n.id from restro.nodes n join only_this o on o.id = n.id
-      where n.node_type = 'section'
-      union all
-      select t.root, c.id from restro.nodes c join section_tree t on c.parent_id = t.id
-    ),
-    unused_sections as (
-      select t.root from section_tree t
-      join restro.nodes n on n.id = t.id
-      left join only_this o on o.id = t.id
-      left join restro.placements p on p.section_id = t.id
-      group by t.root
-      having bool_and(n.node_type = 'section' and o.id is not null and p.section_id is null)
+      select t.root, c.id from restro.nodes c join tree t on c.parent_id = t.id
     )
-    select t.id from item_tree t
+    select t.id from tree t
     where t.root not in (
-      select k.root from item_tree k join origin g on g.node_id = k.id where g.source <> ${source}
-    )
-    union
-    select t.id from section_tree t where t.root in (select root from unused_sections)`)
+      select k.root from tree k join origin g on g.node_id = k.id where g.source <> ${source}
+    )`)
   return result.rows.map((row) => row.id)
 }
 
@@ -543,9 +554,9 @@ export type PurgeInstanceResult =
       readonly status: 'skipped'
       /**
        * Nothing was erased. `not_removed`: the instance is in use (a purge follows a removal,
-       * D81). `has_venues`: a venue of ours links to it (a restored venue links its till venue
-       * again, D90). `in_use`: all that is left is the instance row and the records that till
-       * values of kept items cite (see `instanceErased`).
+       * D81). `has_venues`: a venue of ours links to it (removal and restore refuse that, so
+       * only a race leaves one). `in_use`: all that is left is the instance row and the records
+       * that till values of kept items cite (see `instanceErased`).
        */
       readonly skipped: 'not_removed' | 'has_venues' | 'in_use'
     }
@@ -562,12 +573,13 @@ export type PurgeInstanceResult =
 
 /**
  * Erases a removed POS instance (D91 point 2, D83): its till layer (places, the till venues it
- * lists, its job runs), the items and sections that came only from it and no menu uses, the rest
- * of its links, its records and the instance row with its credentials. Data a venue still uses
- * stays: a placed item or a section holding one keeps its values and loses only its link to the
- * instance. Refused while a venue of ours links to the instance. One transaction on the purge
- * role; a till venue linked in between (a restore) is not deleted, and the instance row's
- * foreign keys then roll the whole purge back. No files: the instance published none.
+ * lists, its job runs), the items that came only from it and no section places, its sections that
+ * sit in no menu any more, the rest of its links, its records and the instance row with its
+ * credentials. Data a venue still uses stays: a placed item, and any section inside a menu, keeps
+ * its values and loses only its link to the instance. Refused while a venue of ours links to the
+ * instance. One transaction on the purge role; a till venue linked in between is not deleted, and
+ * the instance row's foreign keys then roll the whole purge back. No files: the instance
+ * published none.
  */
 export async function purgeInstance(
   deps: { readonly purgePool: DbPool },
@@ -616,7 +628,21 @@ export async function purgeInstance(
         .where(eq(jobRuns.integrationId, integrationId))
         .returning({ id: jobRuns.id }),
     )
-    await deleteNodes(tx, await unusedNodesOf(tx, integrationId), counts)
+    // Sections in no menu first, with their placements (no menu shows them), so an item only they
+    // placed counts as unplaced next.
+    const detached = await instanceTrees(tx, integrationId, DETACHED_SECTIONS)
+    if (detached.length > 0) {
+      count(
+        counts,
+        'placements',
+        await tx
+          .delete(placements)
+          .where(inArray(placements.sectionId, detached))
+          .returning({ id: placements.itemId }),
+      )
+    }
+    await deleteNodes(tx, detached, counts)
+    await deleteNodes(tx, await instanceTrees(tx, integrationId, UNPLACED_ITEMS), counts)
     count(
       counts,
       'source_links',

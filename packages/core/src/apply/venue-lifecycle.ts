@@ -209,9 +209,11 @@ export interface RestoredVenue {
  * restored venue is a Draft until someone publishes it; its guest files stay withdrawn till
  * then). The till venue it served before is linked to it again when it is still free (its tables
  * come back with it); when another venue serves it now the restore is refused (`till_taken`,
- * naming that venue), and nothing changes (adjustments V1). The venue's public code and table
- * codes are the ones it always had, so the publish brings the same addresses back. Restoring a
- * live venue changes nothing. Refuses a venue the tenant does not have (`venue_missing`).
+ * naming that venue), and nothing changes (adjustments V1); a till venue that is not listed any
+ * more, or whose instance was removed (D81), is not linked: the venue comes back unlinked. The
+ * venue's public code and table codes are the ones it always had, so the publish brings the same
+ * addresses back. Restoring a live venue changes nothing. Refuses a venue the tenant does not
+ * have (`venue_missing`).
  */
 export async function restoreVenue(
   pool: DbPool,

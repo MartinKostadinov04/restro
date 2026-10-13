@@ -2,7 +2,7 @@
 // of ours serves one till venue (`tillVenueLinks`), and a till venue's places are mirrored into
 // the platform's `tables` (`tillPlaces`, D95). Platform code reads them under these names, so no
 // vendor word reaches it; the columns are the connector package's own.
-import { barsyVenues, venues } from '@restro/db'
+import { barsyVenues, integrations, venues } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
 import { mirrorTillVenueIn } from '../apply/barsy-venues'
@@ -30,13 +30,19 @@ export type RelinkOutcome =
   | { readonly status: 'linked' }
   /** Another venue of ours serves the till venue now; its name for the refusal. */
   | { readonly status: 'taken'; readonly holder: { readonly id: string; readonly name: string } }
-  /** The till venue is not listed any more (its instance changed or went): nothing to link. */
+  /**
+   * The till venue is not listed any more (its instance changed or went), or its instance was
+   * removed (D81; its data waits for the purge, D91): nothing to link.
+   */
   | { readonly status: 'missing' }
 
 /**
  * Links a restored venue to the till venue it served before (adjustments V1), inside the
  * caller's transaction: when the till venue is still free the link is made and its places are
  * mirrored again; when another venue holds it the caller refuses the restore, naming that venue.
+ * A removed instance is never linked again: the venue comes back unlinked, as for a till venue
+ * that is not listed any more. The instance row is held `FOR SHARE` until the caller commits, so
+ * a removal already under way is waited for and seen.
  */
 export async function relinkTillVenue(
   tx: Parameters<typeof mirrorTillVenueIn>[0],
@@ -44,6 +50,12 @@ export async function relinkTillVenue(
   venueId: string,
   link: TillLink,
 ): Promise<RelinkOutcome> {
+  const [instance] = await tx
+    .select({ removedAt: integrations.removedAt })
+    .from(integrations)
+    .where(eq(integrations.id, link.integration_id))
+    .for('share')
+  if (instance === undefined || instance.removedAt !== null) return { status: 'missing' }
   const [row] = await tx
     .select({ venueId: barsyVenues.venueId })
     .from(barsyVenues)

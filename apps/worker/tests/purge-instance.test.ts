@@ -1,7 +1,8 @@
 // The purge of a removed POS instance (D91 point 2, D83): Postgres with both roles, the real
 // `purgeInstance` and the daily tick. A removed instance's till layer, records and links go with
-// the items and sections that came only from it and no menu uses; an item a live venue places
-// stays without its link (when it carries the instance's till values, the records they cite and
+// the items that came only from it and no menu places and its sections that sit in no menu; an
+// item a live venue places, and a section in a menu, stay without their link (when an item
+// carries the instance's till values, the records they cite and
 // the instance row stay until no menu uses it); an instance a venue links to is skipped; the
 // tick picks an instance removed 31 days ago and leaves one removed yesterday. Skipped without a
 // database or the purge role.
@@ -15,6 +16,7 @@ import {
   appendSourceRecords,
   apply,
   createIntegration,
+  createMenu,
   provisionMenu,
   provisionVenue,
   removeIntegration,
@@ -184,7 +186,7 @@ describe.skipIf(!hasPurge)('the purge of a removed POS instance (as the restro_p
     await rm(root, { recursive: true, force: true })
   })
 
-  it('erases a removed instance and the items no menu uses; a placed item stays, unlinked', async () => {
+  it('erases a removed instance and what no menu uses; placed items and menu sections stay, unlinked', async () => {
     const instance = await newInstance()
     const till = tillSource(instance.id)
     // The till layer: a till venue with two places, and a run.
@@ -215,14 +217,27 @@ describe.skipIf(!hasPurge)('the purge of a removed POS instance (as the restro_p
     ])
     // A live venue places one of the instance's items, in a section that came from the instance;
     // an empty section of the instance sits next to it; the other item (with a modifier group)
-    // is placed nowhere.
+    // is placed nowhere. A second menu's section of the instance holds a third item, and that
+    // menu's row is gone (what a purge that stopped half-way could leave): the section sits in no
+    // menu any more.
     const live = await liveVenue('Live')
     const placed = newId('nd')
     const unplaced = newId('nd')
     const group = newId('nd')
     const holding = newId('nd')
     const empty = newId('nd')
+    const created = await createMenu(world.pool, world.tenantId, {
+      venueId: live.venueId,
+      name: 'Gone',
+    })
+    if (!created.ok) throw new Error('no second menu')
+    const stray = newId('nd')
+    const strayed = newId('nd')
     await change(till, [
+      node(stray, 'section', created.menu.id),
+      link(stray, instance.id, 'category', '902'),
+      node(strayed, 'item', null),
+      link(strayed, instance.id, 'article', '504'),
       node(placed, 'item', null),
       link(placed, instance.id, 'article', '501'),
       node(unplaced, 'item', null),
@@ -236,7 +251,8 @@ describe.skipIf(!hasPurge)('the purge of a removed POS instance (as the restro_p
       node(empty, 'section', live.menuId),
       link(empty, instance.id, 'category', '901'),
     ])
-    await change('manual', [place(placed, holding)])
+    await change('manual', [place(placed, holding), place(strayed, stray)])
+    await asOwner('delete from restro.menus where id = $1', [created.menu.id])
     expect(await removeIntegration(world.pool, world.tenantId, instance.id)).toEqual({ ok: true })
 
     const result = await purge(instance.id)
@@ -246,19 +262,22 @@ describe.skipIf(!hasPurge)('the purge of a removed POS instance (as the restro_p
       places: 2,
       till_venue_links: 1,
       job_runs: 1,
-      nodes: 3,
-      source_links: 5,
+      nodes: 4,
+      placements: 1,
+      source_links: 7,
       source_records: 3,
       integrations: 1,
     })
 
-    // The placed item and the section holding it stay, placed, with no link to the instance.
-    expect(await countOf('nodes', 'id = any($1)', [[placed, holding]])).toBe(2)
+    // The placed item, the section holding it and the empty section stay (their menu exists),
+    // with no link to the instance.
+    expect(await countOf('nodes', 'id = any($1)', [[placed, holding, empty]])).toBe(3)
     expect(await countOf('placements', 'item_id = $1 and section_id = $2', [placed, holding])).toBe(
       1,
     )
-    // The unplaced item, its group and the empty section are gone, with their values.
-    expect(await countOf('nodes', 'id = any($1)', [[unplaced, group, empty]])).toBe(0)
+    // The unplaced item and its group are gone with their values, and so are the section in no
+    // menu and the item only it placed.
+    expect(await countOf('nodes', 'id = any($1)', [[unplaced, group, stray, strayed]])).toBe(0)
     expect(await countOf('field_values', 'node_id = any($1)', [[unplaced, group]])).toBe(0)
     // Nothing of the instance is left; the live venue's menu is untouched otherwise.
     for (const table of ['source_links', 'source_records', 'places', 'barsy_venues', 'job_runs']) {
