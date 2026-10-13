@@ -4,8 +4,9 @@
 //   D88), with the menu switcher and its layout on top. It reads the menu document and the items
 //   that sit in no section (core/apply, read side), resolves it for this venue and hands the client
 //   component a plain view.
-// - Design: the venue's Design tab as it was (template, look, logo; S7 restyles it), and the Guest
-//   features card that used to open from Structure.
+// - Design: the venue's Design tab (D92, brief S7): the template chooser, then the cards (logo and
+//   header name, guest features, font and screen, colours) beside a sticky phone preview of the
+//   open menu. It reads its own data.
 //
 // Only the open subtab reads its data; the other shows its skeleton until it is chosen. Nothing here
 // writes: the writes are the server actions in ./actions.ts, `@/server/menus-actions` and the Design
@@ -17,8 +18,6 @@ import {
   menuSettingsOf,
   mergeDocumentParts,
   type NodeId,
-  readGuestFeatures,
-  readPresentation,
   resolve,
   serviceDate,
   VENUE_MENU_TEMPLATE,
@@ -31,13 +30,11 @@ import {
   type MenuSummary,
 } from '@restro/core/apply'
 import { type Venue, withTenant } from '@restro/db'
-import { resolveOptions } from '@restro/shell'
 import { getLocale } from 'next-intl/server'
 import { Suspense } from 'react'
 import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
 import { DesignSkeleton } from '@/design/design-skeleton'
 import { DesignTab } from '@/design/design-tab'
-import { manifestOf } from '@/faces/manifests'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import { composerMenusOf } from '@/server/composer/menu'
 import { getPool } from '@/server/db'
@@ -48,11 +45,6 @@ import { venueHasTill } from '@/server/venues'
 import { Composer } from './composer'
 import { ComposerSkeleton } from './composer-skeleton'
 import { ComposerSubtabs } from './composer-subtabs'
-import {
-  type FeatureOptionDeclaration,
-  GuestFeaturesCard,
-  type TemplateFeatureOptions,
-} from './guest-features-panel'
 import { MenuBar } from './menu-bar'
 import { NoMenu } from './no-menu'
 import { type ComposerSubtab, composerSubtabOf } from './subtabs'
@@ -85,7 +77,7 @@ export function ComposerTab({ tenantId, role, venue, menu, sub }: ComposerTabPro
         design:
           open === 'design' ? (
             <Suspense fallback={<DesignSkeleton />}>
-              <DesignSubtab tenantId={tenantId} role={role} venue={venue} />
+              <DesignTab tenantId={tenantId} role={role} venue={venue} menu={menu} />
             </Suspense>
           ) : (
             <DesignSkeleton />
@@ -186,41 +178,4 @@ async function StructureSubtab({
 
 function menuChoice(menu: MenuSummary) {
   return { id: menu.id, name: menu.name, live: menu.live }
-}
-
-/** Design: the venue's Design tab and the Guest features card (D92). */
-async function DesignSubtab({ tenantId, role, venue }: Omit<ComposerTabProps, 'menu' | 'sub'>) {
-  // The guest services the venue switched on, and the template's own feature switches (SH-05b):
-  // the template is the venue's, or the registry default; its options are the stored values or the
-  // face's defaults, for the options the face declares with group `feature` only.
-  const guestFeatures = readGuestFeatures(venue.settings)
-  const presentation = readPresentation(venue.settings)
-  const manifest = manifestOf(presentation?.face)
-  const featureValues = resolveOptions(manifest, presentation?.options)
-  const declared = Object.entries(manifest.options).flatMap(([key, option]) => {
-    if (option.group !== 'feature') return []
-    const base = { key, default: option.default, label: option.label }
-    const declaration: FeatureOptionDeclaration =
-      option.type === 'enum'
-        ? { ...base, type: 'enum', values: option.values }
-        : { ...base, type: 'boolean' }
-    return [declaration]
-  })
-  const featureOptions: TemplateFeatureOptions = {
-    declared,
-    values: Object.fromEntries(
-      declared.map((option) => [option.key, featureValues[option.key] ?? option.default] as const),
-    ),
-  }
-  return (
-    <div className="grid gap-6">
-      <DesignTab tenantId={tenantId} role={role} venue={venue} />
-      <GuestFeaturesCard
-        venueId={venue.id}
-        features={guestFeatures}
-        options={featureOptions}
-        canEdit={canManageIntegration(role)}
-      />
-    </div>
-  )
 }

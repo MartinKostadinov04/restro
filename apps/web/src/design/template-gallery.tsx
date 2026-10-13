@@ -1,22 +1,29 @@
 'use client'
 
-// The template gallery: one card per template a venue may choose (the registry's visible entries,
-// D69), with its picture, name and description in the interface language, an "In use" badge on the
-// template the venue has, and a button for the others. Only one template exists today; the
-// gallery is still a gallery, so a second one is a registry entry and nothing here changes.
-import { CheckIcon } from 'lucide-react'
+// The template chooser at the top of the Design tab (D69, D92, brief S7): collapsed to one line,
+// "Template: <name>" with "Change". Open, it is the gallery: one card per template a venue may
+// choose (the registry's visible entries), each with its picture, name and description in the
+// interface language, an "In use" badge on the template the venue has, "Preview" (a phone pop-up
+// with the venue's own menu, the tab opens it) and a button to use the others. Only one template
+// exists today; the chooser is still a gallery, so a second one is a registry entry and nothing
+// here changes.
+import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
+import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { type FaceEntry, visibleFaces } from '@/faces/registry'
+import { Card, CardContent } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { type FaceEntry, faceEntry, visibleFaces } from '@/faces/registry'
 import { resolveAdminLocale } from '@/i18n/locales'
 
-export function TemplateGallery({
+export function TemplateChooser({
   current,
   canEdit,
   pending,
   onChoose,
+  onPreview,
 }: {
   /** The id of the template the venue has. */
   current: string
@@ -24,65 +31,104 @@ export function TemplateGallery({
   /** A template is being saved. */
   pending: boolean
   onChoose: (entry: FaceEntry) => void
+  /** Opens the phone pop-up of a template. */
+  onPreview: (entry: FaceEntry) => void
 }) {
   const t = useTranslations('design.templates')
   const locale = resolveAdminLocale(useLocale())
+  const [open, setOpen] = useState(false)
   const faces = visibleFaces()
   const hiddenInUse = !faces.some((entry) => entry.id === current)
 
   return (
-    <div className="grid gap-3">
-      {hiddenInUse ? (
-        <p className="text-sm text-muted-foreground" data-testid="design-hidden-template">
-          {t('hiddenInUse')}
-        </p>
-      ) : null}
-      <ul className="grid gap-4 sm:grid-cols-2" data-testid="design-gallery">
-        {faces.map((entry) => {
-          const inUse = entry.id === current
-          return (
-            <li
-              key={entry.id}
-              className="flex flex-col overflow-hidden rounded-xl border bg-card"
-              data-testid={`template-${entry.id}`}
-            >
-              {/* biome-ignore lint/performance/noImgElement: a fixed picture of the template, served from public/ */}
-              <img
-                src={entry.thumbnail}
-                alt={t('thumbnailAlt', { name: entry.name[locale] })}
-                loading="lazy"
-                className="aspect-[4/3] w-full bg-muted object-cover object-top"
-              />
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <div className="grid gap-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-base font-semibold">{entry.name[locale]}</h4>
-                    {inUse ? (
-                      <Badge variant="success" data-testid="template-in-use">
-                        <CheckIcon aria-hidden />
-                        {t('inUse')}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <p className="text-sm text-muted-foreground">{entry.description[locale]}</p>
-                </div>
-                {canEdit ? (
-                  <Button
-                    type="button"
-                    variant={inUse ? 'secondary' : 'default'}
-                    className="mt-auto w-fit"
-                    disabled={inUse || pending}
-                    onClick={() => onChoose(entry)}
-                    aria-label={inUse ? undefined : t('useNamed', { name: entry.name[locale] })}
+    <Card className="py-4" data-testid="design-templates">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardContent className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-base font-semibold" data-testid="design-template-current">
+              {t('current', { name: faceEntry(current).name[locale] })}
+            </h3>
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="design-template-change"
+              >
+                {open ? t('close') : canEdit ? t('change') : t('browse')}
+                <ChevronDownIcon aria-hidden className={open ? 'rotate-180' : undefined} />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+          {hiddenInUse ? (
+            <p className="text-sm text-muted-foreground" data-testid="design-hidden-template">
+              {t('hiddenInUse')}
+            </p>
+          ) : null}
+          <CollapsibleContent className="grid gap-3">
+            <p className="text-sm text-muted-foreground">{t('description')}</p>
+            <ul className="grid gap-4 sm:grid-cols-2" data-testid="design-gallery">
+              {faces.map((entry) => {
+                const inUse = entry.id === current
+                const name = entry.name[locale]
+                return (
+                  <li
+                    key={entry.id}
+                    className="flex flex-col overflow-hidden rounded-xl border bg-card"
+                    data-testid={`template-${entry.id}`}
                   >
-                    {inUse ? t('inUse') : t('use')}
-                  </Button>
-                ) : null}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+                    {/* biome-ignore lint/performance/noImgElement: a fixed picture of the template, served from public/ */}
+                    <img
+                      src={entry.thumbnail}
+                      alt={t('thumbnailAlt', { name })}
+                      loading="lazy"
+                      className="aspect-[4/3] w-full bg-muted object-cover object-top"
+                    />
+                    <div className="flex flex-1 flex-col gap-3 p-4">
+                      <div className="grid gap-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-base font-semibold">{name}</h4>
+                          {inUse ? (
+                            <Badge variant="success" data-testid="template-in-use">
+                              <CheckIcon aria-hidden />
+                              {t('inUse')}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{entry.description[locale]}</p>
+                      </div>
+                      <div className="mt-auto flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onPreview(entry)}
+                          aria-label={t('previewNamed', { name })}
+                        >
+                          {t('preview')}
+                        </Button>
+                        {canEdit ? (
+                          <Button
+                            type="button"
+                            variant={inUse ? 'secondary' : 'default'}
+                            disabled={inUse || pending}
+                            onClick={() => {
+                              onChoose(entry)
+                              setOpen(false)
+                            }}
+                            aria-label={inUse ? undefined : t('useNamed', { name })}
+                          >
+                            {inUse ? t('inUse') : t('use')}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </CollapsibleContent>
+        </CardContent>
+      </Collapsible>
+    </Card>
   )
 }

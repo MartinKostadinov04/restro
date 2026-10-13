@@ -1,16 +1,23 @@
 'use client'
 
-// The colour part of the Design tab (brief SH-05a, D70): where a look starts (one of the designer's
-// four presets, one brand colour, or the venue's own three colours), the three colours with what
-// each one paints (primary ~60% the page, secondary ~30% the panels, tertiary ~10% the highlights),
-// and "Suggest with colour theory", which fills the three from the tertiary by a harmony rule.
+// The colour part of the Design tab (briefs SH-05a and S7; D70, D92, D93): brand-first. The card
+// starts with "Your brand colour" (the engine's Tertiary: buttons, badges and highlights, ~10%).
+// The page (Primary, ~60%) and the panels (Secondary, ~30%) are pre-filled as calm tints of it and
+// stay editable; once the person sets one, the brand colour stops filling it, and "Use tints of my
+// brand colour again" hands it back. One set of three pickers: no presets, no swatch palette, no
+// "where a look starts" choice. A page that is strongly saturated gets a warning. When the
+// highlight stands out less than 3:1 against the page it stays as chosen and the card says the
+// buttons get the strong outline (D93 point 2). "Suggest with colour theory" is a small link that
+// fills the page and the panels by a harmony rule. The colours worked out from these three are
+// under "Advanced" (role-panel.tsx).
 //
 // Ported from the Platform's Design page (`Pages/Design/Index.jsx` 167-180: one colour input and
-// eleven swatches). Changed: three colours instead of one, a hex box beside each picker, presets
-// and harmony suggestions as starting points, and the derived roles in role-panel.tsx.
-import { FALLBACK_BRAND, HARMONY_RULES, THEME_PRESETS } from '@restro/core'
+// eleven swatches). Changed: the one colour is the brand colour and the rest of the palette is
+// two editable tints instead of eleven swatches, a hex box beside each picker, a harmony menu,
+// and the derived roles (role-panel.tsx) as semantic tokens with a contrast check.
+import { HARMONY_RULES, type PairIssue, type ThemeRoleSet } from '@restro/core'
 import { ChevronDownIcon, SparklesIcon } from 'lucide-react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { useId } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -21,209 +28,119 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
-import { resolveAdminLocale } from '@/i18n/locales'
 import { cn } from '@/lib/utils'
-import { BRAND_SWATCHES, normaliseHex } from './hex'
+
 import { HexField } from './hex-field'
 import {
   applyHarmony,
-  COLOUR_KEYS,
   type ColourKey,
+  followBrand,
+  hasOwnTints,
+  isStronglySaturated,
   type LookState,
   type LookView,
+  paleHighlightScreens,
   setColour,
-  startCustom,
-  startFromBrand,
-  startFromPreset,
 } from './look-state'
+import { AdvancedColours, UnreadableAlert } from './role-panel'
 
-/** The colours of a look shown as a 60 / 30 / 10 bar. */
-function ProportionBar({ state }: { state: LookState }) {
-  const t = useTranslations('design.colours')
-  const colour = (key: ColourKey) => normaliseHex(state.colours[key]) ?? 'transparent'
-  return (
-    <div
-      className="flex h-3 overflow-hidden rounded-full border"
-      role="img"
-      aria-label={t('proportionLabel')}
-    >
-      <span style={{ width: '60%', backgroundColor: colour('primary') }} />
-      <span style={{ width: '30%', backgroundColor: colour('secondary') }} />
-      <span style={{ width: '10%', backgroundColor: colour('tertiary') }} />
-    </div>
-  )
-}
+/** The three pickers, brand colour first. */
+const PICKERS: readonly ColourKey[] = ['tertiary', 'primary', 'secondary']
+
+/** What the picker shows while its box holds half a colour. */
+const PICKER_FALLBACK = { tertiary: '#6b7280', primary: '#f8f8f9', secondary: '#ffffff' } as const
 
 export function ColourPanel({
   state,
   view,
+  roles,
+  derived,
+  issues,
   canEdit,
   onChange,
 }: {
   state: LookState
   view: LookView
+  /** The roles to draw (the last whole look's, while a box holds half a colour). */
+  roles: ThemeRoleSet
+  derived: ThemeRoleSet
+  issues: readonly PairIssue[]
   canEdit: boolean
   onChange: (next: LookState) => void
 }) {
   const t = useTranslations('design.colours')
-  const locale = resolveAdminLocale(useLocale())
+  const tRoles = useTranslations('design.roles')
   const id = useId()
-  const custom = state.source === 'colours' && state.preset === null
-  const brandInvalid = view.invalid.includes('brand')
+  const saturated = isStronglySaturated(state.colours.primary)
+  const pale = paleHighlightScreens(roles)
 
   return (
     <div className="grid gap-6" data-testid="design-colours">
-      <div className="grid gap-2">
-        <p className="text-sm font-medium" id={`${id}-start`}>
-          {t('startingPoint')}
-        </p>
-        <p className="text-xs text-muted-foreground">{t('startingPointHelp')}</p>
-        <ul className="flex flex-wrap gap-2" aria-labelledby={`${id}-start`}>
-          {THEME_PRESETS.map((preset) => {
-            const pressed = state.source === 'colours' && state.preset === preset.id
-            return (
-              <li key={preset.id}>
-                <Button
-                  type="button"
-                  variant={pressed ? 'default' : 'outline'}
-                  size="sm"
-                  aria-pressed={pressed}
-                  disabled={!canEdit}
-                  data-preset={preset.id}
-                  onClick={() => onChange(startFromPreset(state, preset.id))}
+      <div className="grid gap-4" data-testid="design-three-colours">
+        {PICKERS.map((key) => {
+          const invalid = view.invalid.includes(key)
+          const warn = key === 'primary' && saturated && !invalid
+          const describedBy = `${id}-${key}-help`
+          return (
+            <div key={key} className="grid gap-1.5" data-colour={key}>
+              <Label htmlFor={`${id}-${key}`}>{t(`${key}.name`)}</Label>
+              <HexField
+                id={`${id}-${key}`}
+                value={state.colours[key]}
+                onChange={(text) => onChange(setColour(state, key, text))}
+                pickerLabel={t(`${key}.picker`)}
+                fallback={PICKER_FALLBACK[key]}
+                disabled={!canEdit}
+                invalid={invalid}
+                describedBy={describedBy}
+                placeholder={key === 'tertiary' ? t('tertiary.placeholder') : undefined}
+              />
+              <p
+                id={describedBy}
+                className={cn('text-xs', invalid ? 'text-destructive' : 'text-muted-foreground')}
+                role={invalid ? 'alert' : undefined}
+              >
+                {invalid ? t('invalid') : t(`${key}.help`)}
+              </p>
+              {warn ? (
+                <p
+                  role="note"
+                  className="text-xs font-medium text-warning"
+                  data-testid="design-saturation-warning"
                 >
-                  <span className="flex" aria-hidden>
-                    {(['primary', 'secondary', 'tertiary'] as const).map((key) => (
-                      <span
-                        key={key}
-                        className="-ml-1 size-4 rounded-full border first:ml-0"
-                        style={{ backgroundColor: preset.colours[key] }}
-                      />
-                    ))}
-                  </span>
-                  {preset.label[locale]}
-                </Button>
-              </li>
-            )
-          })}
-          <li>
-            <Button
-              type="button"
-              variant={state.source === 'brand' ? 'default' : 'outline'}
-              size="sm"
-              aria-pressed={state.source === 'brand'}
-              disabled={!canEdit}
-              data-preset="brand"
-              onClick={() => onChange(startFromBrand(state))}
-            >
-              {t('fromBrand')}
-            </Button>
-          </li>
-          <li>
-            <Button
-              type="button"
-              variant={custom ? 'default' : 'outline'}
-              size="sm"
-              aria-pressed={custom}
-              disabled={!canEdit}
-              data-preset="custom"
-              onClick={() => onChange(startCustom(state))}
-            >
-              {t('custom')}
-            </Button>
-          </li>
-        </ul>
+                  {t('saturated')}
+                </p>
+              ) : null}
+            </div>
+          )
+        })}
+        {canEdit && hasOwnTints(state) ? (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="h-auto w-fit p-0"
+            data-testid="design-follow-brand"
+            onClick={() => onChange(followBrand(state))}
+          >
+            {t('followBrand')}
+          </Button>
+        ) : null}
       </div>
 
-      {state.source === 'brand' ? (
-        <div className="grid gap-2" data-testid="design-brand">
-          <Label htmlFor={`${id}-brand`}>{t('brand')}</Label>
-          <div className="flex flex-wrap items-center gap-2">
-            <HexField
-              id={`${id}-brand`}
-              value={state.brand}
-              onChange={(text) => onChange({ ...state, brand: text })}
-              pickerLabel={t('brandPicker')}
-              fallback={FALLBACK_BRAND}
-              disabled={!canEdit}
-              invalid={brandInvalid}
-              describedBy={`${id}-brand-help`}
-              placeholder={t('brandPlaceholder')}
-            />
-            {canEdit && state.brand !== '' ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onChange({ ...state, brand: '' })}
-              >
-                {t('clearBrand')}
-              </Button>
-            ) : null}
-          </div>
-          <p
-            id={`${id}-brand-help`}
-            className={cn('text-xs', brandInvalid ? 'text-destructive' : 'text-muted-foreground')}
-            role={brandInvalid ? 'alert' : undefined}
-          >
-            {brandInvalid ? t('invalid') : t('brandHelp')}
-          </p>
-          <ul className="flex flex-wrap gap-2" aria-label={t('swatches')}>
-            {BRAND_SWATCHES.map((swatch) => (
-              <li key={swatch}>
-                <button
-                  type="button"
-                  className="size-8 rounded-full border-2 ring-offset-2 focus-visible:ring-2 disabled:opacity-50"
-                  style={{
-                    backgroundColor: swatch,
-                    borderColor:
-                      normaliseHex(state.brand) === swatch ? 'currentColor' : 'transparent',
-                  }}
-                  aria-label={swatch}
-                  aria-pressed={normaliseHex(state.brand) === swatch}
-                  disabled={!canEdit}
-                  onClick={() => onChange({ ...state, brand: swatch })}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <div className="grid gap-4" data-testid="design-three-colours">
-          <ProportionBar state={state} />
-          {COLOUR_KEYS.map((key) => {
-            const invalid = view.invalid.includes(key)
-            return (
-              <div key={key} className="grid gap-1.5" data-colour={key}>
-                <Label htmlFor={`${id}-${key}`}>{t(`${key}.name`)}</Label>
-                <HexField
-                  id={`${id}-${key}`}
-                  value={state.colours[key]}
-                  onChange={(text) => onChange(setColour(state, key, text))}
-                  pickerLabel={t(`${key}.picker`)}
-                  fallback={FALLBACK_BRAND}
-                  disabled={!canEdit}
-                  invalid={invalid}
-                  describedBy={`${id}-${key}-help`}
-                />
-                <p
-                  id={`${id}-${key}-help`}
-                  className={cn('text-xs', invalid ? 'text-destructive' : 'text-muted-foreground')}
-                  role={invalid ? 'alert' : undefined}
-                >
-                  {invalid ? t('invalid') : t(`${key}.help`)}
-                </p>
-              </div>
-            )
+      {pale.length > 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="design-pale-highlight">
+          {t('paleHighlight', {
+            screens: pale.map((mode) => tRoles(`screens.${mode}`)).join(', '),
           })}
-        </div>
-      )}
+        </p>
+      ) : null}
 
       {canEdit ? (
-        <div className="grid gap-1.5">
+        <div className="grid gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" className="w-fit">
+              <Button type="button" variant="link" size="sm" className="h-auto w-fit p-0">
                 <SparklesIcon aria-hidden />
                 {t('suggest')}
                 <ChevronDownIcon aria-hidden />
@@ -246,6 +163,18 @@ export function ColourPanel({
           <p className="text-xs text-muted-foreground">{t('suggestHelp')}</p>
         </div>
       ) : null}
+
+      <UnreadableAlert issues={issues} />
+
+      <AdvancedColours
+        state={state}
+        roles={roles}
+        derived={derived}
+        issues={issues}
+        invalid={view.invalid}
+        canEdit={canEdit}
+        onChange={onChange}
+      />
     </div>
   )
 }

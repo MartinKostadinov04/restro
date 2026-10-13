@@ -1,7 +1,8 @@
 'use client'
 
-// The composer's "Guest features" card (brief SH-05b, D71; on the Design subtab since D92, brief
-// S6, until S7 restyles it): the guest services the venue switches on and off. Menu: the filters, the template's own feature
+// The "Guest features" card (brief SH-05b, D71): the guest services the venue switches on and off.
+// It is card 2 of the Design subtab (D92; brief S7 restyled it to sit with the other cards, with
+// its own Save: it saves apart from "Save look"). Menu: the filters, the template's own feature
 // switches, and the allergen line, which is never a switch (R6). Service at the table: calling a
 // waiter with its request kinds, the bill, ordering and paying from the phone. A switch says what
 // the venue wants; a guest sees a service only when the platform supports it, the channel is
@@ -14,7 +15,14 @@ import { type ReactNode, useId, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -58,9 +66,11 @@ interface Settings {
 export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   return (
-    <Card className="gap-0 py-0" data-testid="guest-features-panel">
-      <CardHeader className="border-b py-4">
-        <CardTitle>{t('title')}</CardTitle>
+    <Card data-testid="guest-features-panel">
+      <CardHeader>
+        <CardTitle>
+          <h3 className="text-base font-semibold">{t('title')}</h3>
+        </CardTitle>
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <FeaturesForm {...props} />
@@ -153,21 +163,21 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
 
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="grid gap-6"
       onSubmit={(event) => {
         event.preventDefault()
         if (dirty && canEdit && !noKinds) save()
       }}
       data-testid="guest-features-form"
     >
-      <div className="p-4">
+      <CardContent>
         <div className="grid gap-6">
           {canEdit ? null : <p className="text-sm text-muted-foreground">{t('readOnly')}</p>}
 
           <section aria-labelledby={`${ids}-menu`} className="grid gap-4">
-            <h3 id={`${ids}-menu`} className="text-sm font-semibold text-muted-foreground">
+            <h4 id={`${ids}-menu`} className="text-sm font-semibold text-muted-foreground">
               {t('groups.menu')}
-            </h3>
+            </h4>
             <SwitchRow
               id={`${ids}-filters`}
               label={t('filters')}
@@ -197,9 +207,9 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
           </section>
 
           <section aria-labelledby={`${ids}-service`} className="grid gap-4">
-            <h3 id={`${ids}-service`} className="text-sm font-semibold text-muted-foreground">
+            <h4 id={`${ids}-service`} className="text-sm font-semibold text-muted-foreground">
               {t('groups.service')}
-            </h3>
+            </h4>
             <SwitchRow
               id={`${ids}-call`}
               label={t('callWaiter')}
@@ -269,9 +279,9 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
             </SwitchRow>
           </section>
         </div>
-      </div>
+      </CardContent>
 
-      <div className="flex justify-end border-t p-4">
+      <CardFooter className="justify-end">
         <Button
           type="submit"
           disabled={locked || !dirty || noKinds}
@@ -279,7 +289,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
         >
           {t('save')}
         </Button>
-      </div>
+      </CardFooter>
     </form>
   )
 }
