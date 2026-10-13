@@ -502,6 +502,14 @@ export const integrations = restro.table(
     statusDetail: text('status_detail'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     config: jsonb('config').$type<IntegrationConfig>().notNull().default({}),
+    /**
+     * When the instance was removed in Settings › Integrations (adjustments I1, D81; migration
+     * 0027); null = in use. A removed instance is hidden from the admin and never synced, but the
+     * row, its credentials and what it synced stay (nothing is erased from app code; the purge
+     * job clears a removed instance's data later, D91). Core's `removeIntegration` is the only
+     * writer, and refuses while a venue still links to the instance.
+     */
+    removedAt: timestamp('removed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

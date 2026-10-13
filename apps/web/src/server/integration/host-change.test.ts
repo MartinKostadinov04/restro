@@ -1,12 +1,21 @@
-// Changing the barsy address of a connection that already holds a menu (brief CF-02, B1-F14):
-// barsy ids are unique only per installation, so another installation's article 11 would land on
-// our old item 11 and keep its photo and copy. The change is refused, before anything is written;
-// with no menu yet it still resets the connection as before; the same address with new
-// credentials is not a change. As the restro_app role, on a real Postgres.
+// Changing the address of an instance that already serves a venue or holds a menu (brief CF-02,
+// B1-F14; D87): a system's ids are unique only per installation, so another installation's
+// article 11 would land on our old item 11 and keep its photo and copy, and a venue's source never
+// changes. The change is refused, before anything is written; with nothing depending on the
+// instance it still resets the connection as before; the same address with new credentials is not
+// a change. As the restro_app role, on a real Postgres.
 import { generateKeyPairSync } from 'node:crypto'
 
 import { type ChangeSet, newId } from '@restro/core'
-import { apply, provisionMenu, provisionTenant, provisionVenue } from '@restro/core/apply'
+import {
+  apply,
+  createIntegration,
+  mapBarsyVenue,
+  provisionMenu,
+  provisionTenant,
+  provisionVenue,
+  upsertBarsyVenues,
+} from '@restro/core/apply'
 import { createPool, type DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -15,7 +24,7 @@ import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-da
 import {
   type IntegrationScope,
   type IntegrationServices,
-  loadIntegrationView,
+  loadIntegrationsView,
   saveConnection,
 } from './service'
 
@@ -37,14 +46,16 @@ describe.skipIf(!hasDatabase)('changing the host of a connection that holds a me
       return 'job-1'
     },
   }
-  const connect = (host: string, password = PASSWORD) =>
-    saveConnection(scope, services, { host, user: API_USER, password })
+  let instanceId = ''
+  let venueId = ''
+  const connect = (host: string, password = PASSWORD, integrationId = instanceId) =>
+    saveConnection(scope, services, { integrationId, host, user: API_USER, password })
 
-  const integrationRow = async () =>
+  const integrationRow = async (id = instanceId) =>
     (
       await owner.query(
-        'select id, host, status, credentials_sealed, config from restro.integrations where tenant_id = $1',
-        [tenant],
+        'select id, host, status, credentials_sealed, config from restro.integrations where id = $1',
+        [id],
       )
     ).rows[0] as {
       id: string
@@ -84,6 +95,10 @@ describe.skipIf(!hasDatabase)('changing the host of a connection that holds a me
       slug: testSlug('host-change'),
     })
     await provisionMenu(app, tenant, venue.id)
+    venueId = venue.id
+    instanceId = (
+      await createIntegration(app, tenant, { kind: 'barsy', host: 'first.barsyonline.com' })
+    ).id
     scope = { pool: app, tenantId: tenant, canManage: true }
   })
 
@@ -110,7 +125,7 @@ describe.skipIf(!hasDatabase)('changing the host of a connection that holds a me
     }
   })
 
-  it('with no menu yet the host can be changed, as before', async () => {
+  it('with nothing depending on it the host can be changed, as before', async () => {
     expect(await connect('first.barsyonline.com')).toEqual({ ok: true, queued: true })
     const before = await integrationRow()
     expect(before.host).toBe('first.barsyonline.com')
@@ -190,8 +205,37 @@ describe.skipIf(!hasDatabase)('changing the host of a connection that holds a me
     expect((await integrationRow()).host).toBe('second.barsyonline.com')
   })
 
-  it('the view still loads for a connection whose change was refused', async () => {
-    const view = await loadIntegrationView(scope, services)
-    expect(view.integration?.host).toBe('second.barsyonline.com')
+  it('refuses a different host once a venue is linked to the instance, even before anything was pulled', async () => {
+    const other = await createIntegration(app, tenant, {
+      kind: 'barsy',
+      host: 'venuelink.barsyonline.com',
+    })
+    await upsertBarsyVenues(app, tenant, other.id, [{ bid: 5, name: 'Main bar' }])
+    // A till venue nobody uses does not stand in the way ...
+    expect(await connect('venuelink-new.barsyonline.com', PASSWORD, other.id)).toEqual({
+      ok: true,
+      queued: true,
+    })
+    // ... a venue that serves one does: its source never changes.
+    expect((await mapBarsyVenue(app, tenant, other.id, 5, venueId)).ok).toBe(true)
+    const before = await integrationRow(other.id)
+    expect(await connect('venuelink-other.barsyonline.com', PASSWORD, other.id)).toEqual({
+      ok: false,
+      error: 'host_change_blocked',
+    })
+    expect(await integrationRow(other.id)).toEqual(before)
+    // The venue is still linked: nothing was forgotten.
+    const link = await owner.query(
+      'select venue_id from restro.barsy_venues where integration_id = $1 and bid = 5',
+      [other.id],
+    )
+    expect(link.rows[0]?.venue_id).toBe(venueId)
+  })
+
+  it('the view still loads for an instance whose change was refused', async () => {
+    const view = await loadIntegrationsView(scope, services)
+    expect(view.instances.find((instance) => instance.id === instanceId)?.host).toBe(
+      'second.barsyonline.com',
+    )
   })
 })

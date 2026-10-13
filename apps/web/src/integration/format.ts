@@ -60,18 +60,6 @@ export function deletionCheckSkipped(run: Pick<RunView, 'details' | 'errorSummar
   return run.errorSummary !== null && pattern.test(run.errorSummary)
 }
 
-/** The kinds the history labels; anything else is "Other". */
-export const KNOWN_RUN_KINDS = [
-  'barsy_connect',
-  'barsy_full_pull',
-  'barsy_incremental',
-  'places_read',
-] as const
-
-export function isKnownRunKind(kind: string): kind is (typeof KNOWN_RUN_KINDS)[number] {
-  return (KNOWN_RUN_KINDS as readonly string[]).includes(kind)
-}
-
 /** The refusal codes the history explains in words; others are shown as "Refused" plus the code. */
 export const KNOWN_REFUSAL_CODES = [
   'less_cautious',

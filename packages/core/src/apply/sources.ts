@@ -8,9 +8,10 @@
 
 import { type DbPool, type Integration, integrations, sourceRecords } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { isScope, type Scope } from '../change-set'
 import type { IntegrationKind } from '../connectors'
+import { tillVenueLinks } from '../connectors/till-venues'
 import { sha256Hex } from '../hash'
 import { isId, newId } from '../ids'
 import { lockTenantDocument } from './lock'
@@ -97,8 +98,9 @@ export interface CreatedIntegration {
 
 /**
  * Creates the tenant's integration for a host, or returns the one it has (matched by kind and
- * host; an existing row is not changed, `updateIntegration` does that). The row starts with
- * status `new`.
+ * host among the instances that are not removed; an existing row is not changed,
+ * `updateIntegration` does that). The row starts with status `new`. An instance that was removed
+ * (`removeIntegration`) stays as it was: adding the same host again makes a new instance.
  *
  * Sealing binds the credentials to the integration id, so a caller that has the credentials
  * generates the id first: pass `id` (an `in_` id from `newId('in')`) together with the sealed
@@ -122,7 +124,13 @@ export async function createIntegration(
     const [existing] = await tx
       .select({ id: integrations.id, name: integrations.name })
       .from(integrations)
-      .where(and(eq(integrations.kind, input.kind), eq(integrations.host, host)))
+      .where(
+        and(
+          eq(integrations.kind, input.kind),
+          eq(integrations.host, host),
+          isNull(integrations.removedAt),
+        ),
+      )
     if (existing) {
       return { id: existing.id, kind: input.kind, name: existing.name, host, created: false }
     }
@@ -210,6 +218,58 @@ export async function updateIntegration(
       .where(eq(integrations.id, integrationId))
       .returning()
     return row ?? null
+  })
+}
+
+/** Why `removeIntegration` refused. */
+export type RemoveIntegrationError =
+  /** The tenant has no such instance, or it was removed already. */
+  | 'unknown_integration'
+  /** A venue still links to the instance (D81): move or delete those venues first. */
+  | 'has_venues'
+
+/** What `removeIntegration` answers. */
+export type IntegrationRemoved =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: RemoveIntegrationError }
+
+/**
+ * Removes an instance from Settings › Integrations (D81): sets `removed_at`, nothing else. The row
+ * and its credentials are never erased (a removed instance's data is the purge job's later, D91),
+ * it is hidden from the admin and the worker leaves it alone. Refused while any venue of ours
+ * links to the instance (`has_venues`; a deleted venue has released its link, D76). The link check
+ * and the update run in one transaction under the tenant's document lock, the same lock that
+ * "Add as venue" and linking take, so a venue cannot be linked in between.
+ */
+export async function removeIntegration(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+): Promise<IntegrationRemoved> {
+  checkedTenant(tenantId)
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const [instance] = await tx
+      .select({ id: integrations.id })
+      .from(integrations)
+      .where(and(eq(integrations.id, integrationId), isNull(integrations.removedAt)))
+    if (instance === undefined) return { ok: false, error: 'unknown_integration' } as const
+    const [linked] = await tx
+      .select({ venueId: tillVenueLinks.venueId })
+      .from(tillVenueLinks)
+      .where(
+        and(eq(tillVenueLinks.integrationId, integrationId), isNotNull(tillVenueLinks.venueId)),
+      )
+      .limit(1)
+    if (linked !== undefined) return { ok: false, error: 'has_venues' } as const
+    await tx
+      .update(integrations)
+      .set({ removedAt: new Date() })
+      .where(eq(integrations.id, integrationId))
+    return { ok: true } as const
   })
 }
 

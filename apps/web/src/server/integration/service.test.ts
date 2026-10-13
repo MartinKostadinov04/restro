@@ -1,28 +1,36 @@
 // Settings -> Integrations and the venue's Menu source card, against a real Postgres, as the
-// restro_app role (briefs S2-05 and CF-09b): saving the connection (sealed with a public key
-// generated here, host rules, the password never stored, returned or logged), the list of venues
-// in the till and what can be done with each (Add as venue, Link to an existing venue, Not used,
-// Change…), the venue's menu category and price, how the data is read, the automatic sync and its
-// gates ("Sync everything now", "Sync this venue"), the run history with its venue column, who may
-// do what, and another tenant's integration being invisible. The queue is a fake except in the
-// last block, which uses a real pg-boss.
+// restro_app role (adjustments I1 and I2, D81, D82): the systems an organisation chose, named
+// instances (adding one with sealed credentials, saving its connection, renaming, removing it
+// under the has_venues refusal), the system settings a connector supplies, the run history per
+// instance and per venue, the gates of "Sync everything now" and "Sync this venue", who may do
+// what, and another tenant's instances being invisible. The queue is a fake except in the last
+// block, which uses a real pg-boss.
 import { generateKeyPairSync } from 'node:crypto'
 
-import { autoPublishPaused, JOB_NAMES, newId, parseSyncSettings } from '@restro/core'
+import { JOB_NAMES, newId } from '@restro/core'
 import {
   appendSourceRecords,
+  archiveVenue,
+  createIntegration,
   finishJobRun,
+  mapBarsyVenue,
   provisionTenant,
   provisionVenue,
-  setAutoPublishPaused,
+  readOrganizationSystems,
   startJobRun,
-  storeCachedTree,
   updateIntegration,
   updateSyncState,
   upsertBarsyVenues,
 } from '@restro/core/apply'
 import { sealKeyId } from '@restro/core/seal'
-import { barsyVenues, createPool, type DbPool, integrations, venues, withTenant } from '@restro/db'
+import {
+  barsyVenues,
+  createPool,
+  type DbPool,
+  type Integration,
+  integrations,
+  withTenant,
+} from '@restro/db'
 import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { PgBoss } from 'pg-boss'
@@ -31,27 +39,25 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { enqueueJob } from '../jobs'
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import {
-  addTillVenueAsVenue,
+  addInstance,
   checkConnection,
-  chooseCatalogueRoot,
-  chooseTillVenue,
   HISTORY_LENGTH,
   type IntegrationScope,
   type IntegrationServices,
-  linkTillVenue,
-  loadIntegrationView,
+  loadIntegrationsView,
   loadMenuSourceView,
-  markTillVenue,
   readActiveJob,
+  removeInstance,
+  renameInstance,
   saveConnection,
-  saveMappingSettings,
-  saveSyncSettings,
-  saveVenuePrice,
+  saveInstanceSettings,
+  saveSystems,
+  saveVenueSource,
   syncAll,
   syncNow,
   type VenueScope,
 } from './service'
-import type { LinkedMenuSource, MenuSourceView } from './view'
+import type { InstanceView, LinkedMenuSource, MenuSourceView } from './view'
 
 const keys = generateKeyPairSync('x25519')
 const PUBLIC_KEY = keys.publicKey.export({ type: 'spki', format: 'der' }).toString('base64url')
@@ -67,6 +73,7 @@ describe.skipIf(!hasDatabase)(
     let owner: pg.Pool
     let venueA: { id: string; name: string; timezone: string }
     let venueB: { id: string; name: string; timezone: string }
+    let venueC: { id: string; name: string; timezone: string }
     let foreignVenue: { id: string; name: string; timezone: string }
 
     const sent: { name: string; data: object }[] = []
@@ -94,6 +101,7 @@ describe.skipIf(!hasDatabase)(
       overrides: Partial<VenueScope> = {},
     ): VenueScope => ({ pool: app, tenantId: tenant, venue, canManage: true, ...overrides })
     const connection = { host: 'https://Club.BarsyOnline.com/', user: API_USER, password: PASSWORD }
+    const newInstance = { kind: 'barsy', ...connection }
 
     // Everything the server code prints, to check that no secret is in it.
     const logged: string[] = []
@@ -103,23 +111,60 @@ describe.skipIf(!hasDatabase)(
       return (await owner.query('select * from restro.integrations where tenant_id = $1', [tenant]))
         .rows as {
         id: string
+        name: string
         host: string
         status: string
         credentials_sealed: string | null
         config: Record<string, unknown>
+        removed_at: Date | null
       }[]
     }
-    const venueCount = async () =>
-      (await withTenant(app, tenant, (tx) => tx.select({ id: venues.id }).from(venues))).length
-    const linkOf = async (bid: number) =>
-      (
-        await withTenant(app, tenant, (tx) =>
-          tx.select().from(barsyVenues).where(eq(barsyVenues.bid, bid)),
-        )
-      )[0]
+    const rowOfHost = async (host: string) => (await integrationRows()).find((r) => r.host === host)
+    const stored = (row: { id: string } | undefined) => row?.id ?? ''
+    const viewOf = async (scope: IntegrationScope = orgScope()) =>
+      loadIntegrationsView(scope, services())
+    const instanceOf = async (id: string, scope: IntegrationScope = orgScope()) => {
+      const found = (await viewOf(scope)).instances.find((instance) => instance.id === id)
+      if (!found) throw new Error(`the view has no instance ${id}`)
+      return found as InstanceView
+    }
     const linked = (view: MenuSourceView): LinkedMenuSource => {
       if (view.state !== 'linked') throw new Error(`the card is ${view.state}, not linked`)
       return view
+    }
+    const linkOf = async (integrationId: string, bid: number) =>
+      (
+        await withTenant(app, tenant, (tx) =>
+          tx.select().from(barsyVenues).where(eq(barsyVenues.integrationId, integrationId)),
+        )
+      ).find((row) => row.bid === bid)
+
+    /** A connected instance with its credentials (as a connection check leaves it). */
+    async function connectedInstance(host: string, name?: string): Promise<string> {
+      const created = await createIntegration(app, tenant, {
+        kind: 'barsy',
+        host,
+        ...(name ? { name } : {}),
+        credentialsSealed: 'rs1.AAAA.BBBB.CCCC.DDDD',
+      })
+      await updateIntegration(app, tenant, created.id, {
+        status: 'connected',
+        lastCheckedAt: new Date('2026-10-09T10:00:00.000Z'),
+      })
+      return created.id
+    }
+    /** Gives one till venue of an instance to a venue of ours, with menu roots as the venue list reports. */
+    async function giveVenue(
+      integrationId: string,
+      bid: number,
+      venue: { id: string },
+      roots: { publicCatId?: number | null; treeCatId?: number | null } = { publicCatId: 1171 },
+    ) {
+      await upsertBarsyVenues(app, tenant, integrationId, [
+        { bid, name: `Till venue ${bid}`, ...roots },
+      ])
+      const mapped = await mapBarsyVenue(app, tenant, integrationId, bid, venue.id)
+      expect(mapped.ok).toBe(true)
     }
 
     beforeAll(async () => {
@@ -138,6 +183,7 @@ describe.skipIf(!hasDatabase)(
       }
       venueA = await make(tenant, 'Venue A', 'venue-a')
       venueB = await make(tenant, 'Venue B', 'venue-b')
+      venueC = await make(tenant, 'Venue C', 'venue-c')
       foreignVenue = await make(otherTenant, 'Foreign', 'foreign')
     })
 
@@ -169,97 +215,130 @@ describe.skipIf(!hasDatabase)(
       }
     })
 
-    describe('before anything is connected', () => {
-      it('shows an empty page, closed "Sync everything now", and whether the sync keys are set up', async () => {
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view).toMatchObject({
+    describe('before anything is chosen or connected', () => {
+      it('shows the systems we support, none chosen, no instance, and whether the sync keys are set up', async () => {
+        const view = await viewOf()
+        expect(view).toEqual({
           canManage: true,
           sealReady: true,
-          timeZone: 'Europe/Sofia',
-          integration: null,
-          activeJob: null,
-          tillVenues: [],
-          heldSyncs: [],
-          runs: [],
-          gate: { enabled: false, reason: 'no_credentials' },
-          mapping: { allergenKey: null, defaultLocale: 'bg_BG' },
-          // The defaults are what ran before the settings existed; nothing is scheduled yet.
-          syncSettings: {
-            incrementalEnabled: true,
-            incrementalMinutes: 5,
-            fullPullEnabled: true,
-            fullPullTime: '12:00',
-            scheduleActive: false,
-            nextIncrementalAt: null,
-            nextFullPullAt: null,
-          },
+          systems: [{ kind: 'barsy', label: 'barsy', instances: 0 }],
+          chosen: [],
+          instances: [],
         })
-        // Both venues of ours wait for a till venue.
-        expect(view.linkableVenues.map((venue) => venue.name)).toEqual(['Venue A', 'Venue B'])
-        const without = await loadIntegrationView(orgScope(), { sealPublicKey: undefined } as never)
+        const without = await loadIntegrationsView(orgScope(), { sealPublicKey: undefined })
         expect(without.sealReady).toBe(false)
-        const broken = await loadIntegrationView(orgScope(), {
-          sealPublicKey: 'not-a-key',
-        } as never)
+        const broken = await loadIntegrationsView(orgScope(), { sealPublicKey: 'not-a-key' })
         expect(broken.sealReady).toBe(false)
+        expect(
+          (await loadIntegrationsView(orgScope({ canManage: false }), services())).canManage,
+        ).toBe(false)
       })
 
-      it('a venue’s Menu source says there is no integration, and links nothing', async () => {
-        expect(await loadMenuSourceView(venueScope(venueA))).toEqual({
-          state: 'no_integration',
-          canManage: true,
-        })
-        expect(await chooseTillVenue(venueScope(venueA), { bid: 1 })).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
+      it('a venue made by hand has no Menu source, and nothing to sync', async () => {
+        expect(await loadMenuSourceView(venueScope(venueA))).toEqual({ state: 'none' })
         expect(await syncNow(venueScope(venueA), services())).toEqual({
           ok: false,
           error: 'not_ready',
         })
-        expect(await syncAll(orgScope(), services())).toEqual({ ok: false, error: 'not_ready' })
+        expect(
+          await saveVenueSource(venueScope(venueA), { settings: { priceSource: 'current_price' } }),
+        ).toEqual({
+          ok: false,
+          error: 'not_ready',
+        })
+        expect(await syncAll(orgScope(), services(), newId('in'))).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
       })
     })
 
-    describe('saveConnection', () => {
+    describe('the systems an organisation uses', () => {
+      it('refuses everyone but owners and admins, and unknown systems', async () => {
+        expect(await saveSystems(orgScope({ canManage: false }), ['barsy'])).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        expect(await saveSystems(orgScope(), ['nope'])).toEqual({ ok: false, error: 'invalid' })
+        expect(await saveSystems(orgScope(), ['barsy', 'barsy'])).toEqual({
+          ok: false,
+          error: 'invalid',
+        })
+        expect(await readOrganizationSystems(app, tenant)).toEqual([])
+      })
+
+      it('saves the choice, and the page shows it', async () => {
+        expect(await saveSystems(orgScope(), ['barsy'])).toEqual({ ok: true })
+        expect((await viewOf()).chosen).toEqual(['barsy'])
+        expect(await saveSystems(orgScope(), [])).toEqual({ ok: true })
+        expect((await viewOf()).chosen).toEqual([])
+        await saveSystems(orgScope(), ['barsy'])
+      })
+
+      it('another organisation’s choice is its own', async () => {
+        expect((await viewOf(orgScope({ tenantId: otherTenant }))).chosen).toEqual([])
+      })
+    })
+
+    describe('adding an instance', () => {
       it('refuses everyone but owners and admins, and writes nothing', async () => {
-        const result = await saveConnection(orgScope({ canManage: false }), services(), connection)
+        const result = await addInstance(orgScope({ canManage: false }), services(), newInstance)
         expect(result).toEqual({ ok: false, error: 'not_allowed' })
         expect(await integrationRows()).toEqual([])
         expect(sent).toEqual([])
       })
 
-      it('checks the address, the keys and the credentials before touching anything', async () => {
-        const save = (input: Partial<typeof connection>, over?: Partial<IntegrationServices>) =>
-          saveConnection(orgScope(), services(over), { ...connection, ...input })
-        expect(await save({ host: 'http://club.barsyonline.com' })).toEqual({
+      it('checks the system, the address, the keys, the name and the credentials before touching anything', async () => {
+        const add = (input: object, over?: Partial<IntegrationServices>) =>
+          addInstance(orgScope(), services(over), { ...newInstance, ...input })
+        expect(await add({ kind: 'nope' })).toEqual({ ok: false, error: 'invalid' })
+        expect(await add({ host: 'http://club.barsyonline.com' })).toEqual({
           ok: false,
           error: 'invalid_host',
         })
-        expect(await save({ host: 'https://club.barsyonline.com:8443' })).toEqual({
+        expect(await add({ host: 'https://club.barsyonline.com:8443' })).toEqual({
           ok: false,
           error: 'invalid_host',
         })
-        expect(await save({}, { sealPublicKey: undefined })).toEqual({
+        expect(await add({}, { sealPublicKey: undefined })).toEqual({
           ok: false,
           error: 'sync_keys_missing',
         })
-        expect(await save({}, { sealPublicKey: 'definitely-not-a-key' })).toEqual({
+        expect(await add({}, { sealPublicKey: 'definitely-not-a-key' })).toEqual({
           ok: false,
           error: 'sync_keys_missing',
         })
-        expect(await save({ password: '' })).toEqual({ ok: false, error: 'invalid' })
-        expect(await save({ user: '' })).toEqual({ ok: false, error: 'invalid' })
+        expect(await add({ name: 'x'.repeat(81) })).toEqual({ ok: false, error: 'invalid' })
+        expect(await add({ password: '' })).toEqual({ ok: false, error: 'invalid' })
+        expect(await add({ user: '' })).toEqual({ ok: false, error: 'invalid' })
         expect(await integrationRows()).toEqual([])
         expect(sent).toEqual([])
       })
 
-      it('seals the credentials for the key, stores only the envelope, and queues the check', async () => {
-        const result = await saveConnection(orgScope(), services(), connection)
-        expect(result).toEqual({ ok: true, queued: true })
+      it('needs a system the organisation chose', async () => {
+        await saveSystems(orgScope(), [])
+        expect(await addInstance(orgScope(), services(), newInstance)).toEqual({
+          ok: false,
+          error: 'system_not_chosen',
+        })
+        expect(await integrationRows()).toEqual([])
+        await saveSystems(orgScope(), ['barsy'])
+      })
 
+      it('seals the credentials for the key, stores only the envelope, names the instance and queues the check', async () => {
+        const result = await addInstance(orgScope(), services(), {
+          ...newInstance,
+          name: '  barsy – Sofia ',
+        })
+        expect(result).toMatchObject({ ok: true, queued: true })
         const [row] = await integrationRows()
-        expect(row).toMatchObject({ host: 'club.barsyonline.com', status: 'new' })
+        expect(row).toMatchObject({
+          host: 'club.barsyonline.com',
+          name: 'barsy – Sofia',
+          status: 'new',
+          removed_at: null,
+        })
+        expect(result.ok && result.integrationId).toBe(row?.id)
         // An rs1 envelope addressed to our key: <version>.<key id>.<ephemeral>.<nonce>.<sealed>.
         const parts = row?.credentials_sealed?.split('.') ?? []
         expect(parts).toHaveLength(5)
@@ -271,81 +350,363 @@ describe.skipIf(!hasDatabase)(
         )
         expect(everything).not.toContain(PASSWORD)
         expect(everything).not.toContain(API_USER)
-
         expect(sent).toEqual([
           { name: JOB_NAMES.barsyConnect, data: { tenantId: tenant, integrationId: row?.id } },
         ])
-        // The payload carries no secret.
         expect(JSON.stringify(sent)).not.toContain(PASSWORD)
       })
 
       it('shows the saved credentials as a fact, never as a value', async () => {
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.integration).toMatchObject({
+        const view = await viewOf()
+        const [instance] = view.instances
+        expect(view.instances).toHaveLength(1)
+        expect(instance).toMatchObject({
+          kind: 'barsy',
+          source: 'barsy',
+          name: 'barsy – Sofia',
           host: 'club.barsyonline.com',
           hasCredentials: true,
           status: 'new',
+          venues: [],
+          gate: { enabled: false, reason: 'not_connected' },
         })
-        const [row] = await integrationRows()
+        expect(view.systems).toEqual([{ kind: 'barsy', label: 'barsy', instances: 1 }])
         const json = JSON.stringify(view)
+        const row = await rowOfHost('club.barsyonline.com')
         expect(json).not.toContain(PASSWORD)
         expect(json).not.toContain(API_USER)
         expect(json).not.toContain(row?.credentials_sealed ?? 'missing')
-        expect(view.gate).toEqual({ enabled: false, reason: 'not_connected' })
       })
 
-      it('saving again on the same host replaces the envelope, resets the status, keeps one row', async () => {
-        const [before] = await integrationRows()
-        await updateIntegration(app, tenant, before?.id ?? '', {
-          status: 'error',
-          statusDetail: 'Wrong user or password',
+      it('names an instance after the system and the address when no name is given', async () => {
+        const result = await addInstance(orgScope(), services(), {
+          ...newInstance,
+          host: 'plovdiv.barsyonline.com',
         })
-        const result = await saveConnection(orgScope(), services(), connection)
-        expect(result).toEqual({ ok: true, queued: true })
-        const rows = await integrationRows()
-        expect(rows).toHaveLength(1)
-        expect(rows[0]?.id).toBe(before?.id)
-        expect(rows[0]?.status).toBe('new')
-        expect(rows[0]?.credentials_sealed).not.toBe(before?.credentials_sealed)
-        const [detail] = (
-          await owner.query('select status_detail from restro.integrations where id = $1', [
-            before?.id,
-          ])
-        ).rows
-        expect(detail.status_detail).toBeNull()
+        expect(result.ok).toBe(true)
+        expect((await rowOfHost('plovdiv.barsyonline.com'))?.name).toBe(
+          'barsy – plovdiv.barsyonline.com',
+        )
+      })
+
+      it('lists several instances of one system, oldest first', async () => {
+        const names = (await viewOf()).instances.map((instance) => instance.name)
+        expect(names).toEqual(['barsy – Sofia', 'barsy – plovdiv.barsyonline.com'])
+        expect((await viewOf()).systems[0]?.instances).toBe(2)
+      })
+
+      it('refuses an address another instance of the system uses already', async () => {
+        const result = await addInstance(orgScope(), services(), newInstance)
+        expect(result).toEqual({ ok: false, error: 'host_in_use' })
+        expect(await integrationRows()).toHaveLength(2)
       })
 
       it('still saves when the queue cannot be reached, and says the check was not queued', async () => {
         enqueueFails = true
-        const result = await saveConnection(orgScope(), services(), connection)
-        expect(result).toEqual({ ok: true, queued: false })
+        const result = await addInstance(orgScope(), services(), {
+          ...newInstance,
+          host: 'varna.barsyonline.com',
+        })
+        expect(result).toMatchObject({ ok: true, queued: false })
         expect(logged.some((line) => line.includes('integration_connect_not_queued'))).toBe(true)
       })
     })
 
-    describe('what the worker would have cached (simulated through the writers)', () => {
-      let integrationId = ''
+    describe('saving the connection of an instance', () => {
+      let id = ''
       beforeAll(async () => {
-        integrationId = (await integrationRows())[0]?.id ?? ''
-        await updateIntegration(app, tenant, integrationId, {
-          status: 'connected',
-          statusDetail: null,
-          lastCheckedAt: new Date(),
+        id = stored(await rowOfHost('club.barsyonline.com'))
+      })
+
+      it('refuses everyone but owners and admins, and unknown, foreign or malformed instances', async () => {
+        const save = (scope: IntegrationScope, integrationId: string) =>
+          saveConnection(scope, services(), { ...connection, integrationId })
+        expect(await save(orgScope({ canManage: false }), id)).toEqual({
+          ok: false,
+          error: 'not_allowed',
         })
-        await upsertBarsyVenues(app, tenant, integrationId, [
-          { bid: 1, name: 'Main bar' },
-          { bid: 2, name: 'Roof' },
-          { bid: 3, name: 'Shop' },
-          { bid: 4, name: 'Catering' },
+        expect(await save(orgScope(), newId('in'))).toEqual({ ok: false, error: 'not_found' })
+        expect(await save(orgScope(), 'nope')).toEqual({ ok: false, error: 'not_found' })
+        // Another organisation's person cannot reach this organisation's instance.
+        expect(await save(orgScope({ tenantId: otherTenant }), id)).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        expect(sent).toEqual([])
+      })
+
+      it('checks the address, the keys and the credentials before touching anything', async () => {
+        const before = await rowOfHost('club.barsyonline.com')
+        const save = (input: Partial<typeof connection>, over?: Partial<IntegrationServices>) =>
+          saveConnection(orgScope(), services(over), { ...connection, integrationId: id, ...input })
+        expect(await save({ host: 'ftp://x' })).toEqual({ ok: false, error: 'invalid_host' })
+        expect(await save({}, { sealPublicKey: undefined })).toEqual({
+          ok: false,
+          error: 'sync_keys_missing',
+        })
+        expect(await save({ password: '' })).toEqual({ ok: false, error: 'invalid' })
+        expect(await save({ user: '' })).toEqual({ ok: false, error: 'invalid' })
+        expect((await rowOfHost('club.barsyonline.com'))?.credentials_sealed).toBe(
+          before?.credentials_sealed,
+        )
+        expect(sent).toEqual([])
+      })
+
+      it('on the same host replaces the envelope, resets the status, keeps the instance, and queues the check', async () => {
+        const before = await rowOfHost('club.barsyonline.com')
+        await updateIntegration(app, tenant, id, {
+          status: 'error',
+          statusDetail: 'Wrong user or password',
+        })
+        const result = await saveConnection(orgScope(), services(), {
+          ...connection,
+          integrationId: id,
+        })
+        expect(result).toEqual({ ok: true, queued: true })
+        const after = await rowOfHost('club.barsyonline.com')
+        expect(after).toMatchObject({ id, status: 'new', name: 'barsy – Sofia' })
+        expect(after?.credentials_sealed).not.toBe(before?.credentials_sealed)
+        const [detail] = (
+          await owner.query('select status_detail from restro.integrations where id = $1', [id])
+        ).rows
+        expect(detail.status_detail).toBeNull()
+        expect(sent).toEqual([
+          { name: JOB_NAMES.barsyConnect, data: { tenantId: tenant, integrationId: id } },
         ])
-        await storeCachedTree(app, tenant, integrationId, 1, {
-          fetched_at: '2026-10-09T10:00:00.000Z',
-          categories: [
-            { cat_id: 1171, parent_id: null, name: 'Публично меню' },
-            { cat_id: 1172, parent_id: 1171, name: 'Коктейли' },
-            { cat_id: 1091, parent_id: null, name: 'Каса Kiosk' },
-          ],
+      })
+
+      it('moves to another address when nothing depends on the old one, forgetting what was cached for it', async () => {
+        await updateIntegration(app, tenant, id, {
+          config: {
+            default_locale: 'en_US',
+            catalogue_trees: { '1': { fetched_at: '2026-10-09T10:00:00.000Z', categories: [] } },
+            not_used: [3],
+          },
         })
+        await updateSyncState(app, tenant, id, 1, { last_full_pull_at: '2026-10-09T10:00:00.000Z' })
+        const result = await saveConnection(orgScope(), services(), {
+          ...connection,
+          host: 'https://sofia-new.barsyonline.com',
+          integrationId: id,
+        })
+        expect(result).toEqual({ ok: true, queued: true })
+        const row = await rowOfHost('sofia-new.barsyonline.com')
+        expect(row).toMatchObject({ id, status: 'new' })
+        // What belongs to the old installation is gone; the instance's own settings stay.
+        expect(row?.config).toEqual({ default_locale: 'en_US' })
+      })
+
+      it('refuses an address that another instance uses', async () => {
+        const result = await saveConnection(orgScope(), services(), {
+          ...connection,
+          host: 'https://plovdiv.barsyonline.com',
+          integrationId: id,
+        })
+        expect(result).toEqual({ ok: false, error: 'host_in_use' })
+        expect((await rowOfHost('sofia-new.barsyonline.com'))?.id).toBe(id)
+      })
+
+      it('refuses to change the address of an instance that serves a venue (a venue’s source never changes)', async () => {
+        const instance = await connectedInstance('serves.barsyonline.com')
+        await giveVenue(instance, 1, venueC)
+        const result = await saveConnection(orgScope(), services(), {
+          ...connection,
+          host: 'https://serves-new.barsyonline.com',
+          integrationId: instance,
+        })
+        expect(result).toEqual({ ok: false, error: 'host_change_blocked' })
+        expect((await rowOfHost('serves.barsyonline.com'))?.id).toBe(instance)
+        expect((await linkOf(instance, 1))?.venueId).toBe(venueC.id)
+        // The same address with new credentials is not a change.
+        expect(
+          await saveConnection(orgScope(), services(), {
+            ...connection,
+            host: 'https://serves.barsyonline.com',
+            integrationId: instance,
+          }),
+        ).toEqual({ ok: true, queued: true })
+      })
+    })
+
+    describe('checking the connection again', () => {
+      it('queues the check of this instance for managers only, and says why not when it cannot', async () => {
+        const id = stored(await rowOfHost('plovdiv.barsyonline.com'))
+        expect(await checkConnection(orgScope({ canManage: false }), services(), id)).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        expect(await checkConnection(orgScope(), services(), newId('in'))).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        expect(await checkConnection(orgScope(), services(), id)).toEqual({
+          ok: true,
+          queued: true,
+        })
+        expect(sent).toEqual([
+          { name: JOB_NAMES.barsyConnect, data: { tenantId: tenant, integrationId: id } },
+        ])
+        enqueueFails = true
+        expect(await checkConnection(orgScope(), services(), id)).toEqual({
+          ok: false,
+          error: 'queue_unavailable',
+        })
+      })
+
+      it('needs credentials first', async () => {
+        const bare = await createIntegration(app, tenant, {
+          kind: 'barsy',
+          host: 'bare.barsyonline.com',
+        })
+        expect(await checkConnection(orgScope(), services(), bare.id)).toEqual({
+          ok: false,
+          error: 'not_ready',
+        })
+        await owner.query('update restro.integrations set removed_at = now() where id = $1', [
+          bare.id,
+        ])
+      })
+    })
+
+    describe('renaming an instance', () => {
+      it('renames it, trimmed, and refuses an empty or overlong name, a stranger and a non-manager', async () => {
+        const id = stored(await rowOfHost('plovdiv.barsyonline.com'))
+        expect(
+          await renameInstance(orgScope(), { integrationId: id, name: ' barsy – Plovdiv ' }),
+        ).toEqual({
+          ok: true,
+        })
+        expect((await instanceOf(id)).name).toBe('barsy – Plovdiv')
+        for (const name of ['', '   ', 'x'.repeat(81)]) {
+          expect(await renameInstance(orgScope(), { integrationId: id, name })).toEqual({
+            ok: false,
+            error: 'invalid',
+          })
+        }
+        expect(
+          await renameInstance(orgScope({ canManage: false }), { integrationId: id, name: 'x' }),
+        ).toEqual({ ok: false, error: 'not_allowed' })
+        expect(await renameInstance(orgScope(), { integrationId: newId('in'), name: 'x' })).toEqual(
+          { ok: false, error: 'not_found' },
+        )
+        expect(
+          await renameInstance(orgScope({ tenantId: otherTenant }), {
+            integrationId: id,
+            name: 'x',
+          }),
+        ).toEqual({ ok: false, error: 'not_found' })
+        expect((await instanceOf(id)).name).toBe('barsy – Plovdiv')
+      })
+    })
+
+    describe('removing an instance', () => {
+      it('is refused while a venue links to it, and the instance stays', async () => {
+        const id = await connectedInstance('linked-remove.barsyonline.com', 'barsy – Linked')
+        await giveVenue(id, 1, venueB)
+        expect(await removeInstance(orgScope(), { integrationId: id })).toEqual({
+          ok: false,
+          error: 'has_venues',
+        })
+        expect((await instanceOf(id)).venues).toEqual([{ id: venueB.id, name: 'Venue B' }])
+        expect((await rowOfHost('linked-remove.barsyonline.com'))?.removed_at).toBeNull()
+      })
+
+      it('refuses everyone but owners and admins, and strangers', async () => {
+        const id = stored(await rowOfHost('plovdiv.barsyonline.com'))
+        expect(await removeInstance(orgScope({ canManage: false }), { integrationId: id })).toEqual(
+          {
+            ok: false,
+            error: 'not_allowed',
+          },
+        )
+        expect(await removeInstance(orgScope(), { integrationId: newId('in') })).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        expect(await removeInstance(orgScope(), { integrationId: 'nope' })).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        expect(
+          await removeInstance(orgScope({ tenantId: otherTenant }), { integrationId: id }),
+        ).toEqual({ ok: false, error: 'not_found' })
+        expect((await rowOfHost('plovdiv.barsyonline.com'))?.removed_at).toBeNull()
+      })
+
+      it('hides the instance everywhere, never erases it, and syncs nothing of it', async () => {
+        const id = stored(await rowOfHost('plovdiv.barsyonline.com'))
+        const before = await rowOfHost('plovdiv.barsyonline.com')
+        expect(await removeInstance(orgScope(), { integrationId: id })).toEqual({ ok: true })
+        const after = await rowOfHost('plovdiv.barsyonline.com')
+        expect(after?.removed_at).toBeInstanceOf(Date)
+        // The row and its credentials are kept.
+        expect(after).toMatchObject({ id, name: before?.name })
+        expect(after?.credentials_sealed).toBe(before?.credentials_sealed)
+
+        const view = await viewOf()
+        expect(view.instances.map((instance) => instance.id)).not.toContain(id)
+        expect(view.systems[0]?.instances).toBe(view.instances.length)
+        // Nothing can be done to it any more.
+        expect(await removeInstance(orgScope(), { integrationId: id })).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        expect(await syncAll(orgScope(), services(), id)).toEqual({ ok: false, error: 'not_found' })
+        expect(await checkConnection(orgScope(), services(), id)).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        expect(
+          await saveConnection(orgScope(), services(), { ...connection, integrationId: id }),
+        ).toEqual({ ok: false, error: 'not_found' })
+        expect(
+          await saveInstanceSettings(orgScope(), {
+            integrationId: id,
+            settings: { allergenKey: null, defaultLocale: 'en_US' },
+          }),
+        ).toEqual({ ok: false, error: 'not_found' })
+        expect(sent).toEqual([])
+      })
+
+      it('lets the same address be added again as a new instance', async () => {
+        const result = await addInstance(orgScope(), services(), {
+          ...newInstance,
+          host: 'plovdiv.barsyonline.com',
+          name: 'barsy – Plovdiv again',
+        })
+        expect(result).toMatchObject({ ok: true })
+        const rows = (await integrationRows()).filter(
+          (row) => row.host === 'plovdiv.barsyonline.com',
+        )
+        expect(rows).toHaveLength(2)
+        expect(rows.filter((row) => row.removed_at === null)).toHaveLength(1)
+      })
+
+      it('lets a system with no instance left be unselected, and refuses it before', async () => {
+        expect(await saveSystems(orgScope(), [])).toEqual({ ok: false, error: 'has_instances' })
+        for (const instance of (await viewOf()).instances) {
+          // Free the venues of the instances still in the way, as deleting the venues would.
+          await owner.query(
+            'update restro.barsy_venues set venue_id = null where integration_id = $1',
+            [instance.id],
+          )
+          expect(await removeInstance(orgScope(), { integrationId: instance.id })).toEqual({
+            ok: true,
+          })
+        }
+        expect((await viewOf()).instances).toEqual([])
+        expect(await saveSystems(orgScope(), [])).toEqual({ ok: true })
+        expect((await viewOf()).systems[0]?.instances).toBe(0)
+        await saveSystems(orgScope(), ['barsy'])
+      })
+    })
+
+    describe('an instance as the screen reads it', () => {
+      let id = ''
+      beforeAll(async () => {
+        id = await connectedInstance('read.barsyonline.com', 'barsy – Reads')
+        await giveVenue(id, 1, venueA)
+        await giveVenue(id, 2, venueB, { publicCatId: null })
         const payload = [
           {
             group_id: 1,
@@ -353,7 +714,7 @@ describe.skipIf(!hasDatabase)(
             details: { k102: { detail_name: 'Алергени' }, k103: { detail_name: 'Грамаж' } },
           },
         ]
-        await appendSourceRecords(app, tenant, integrationId, [
+        await appendSourceRecords(app, tenant, id, [
           {
             externalType: 'article_details',
             externalId: 'tree',
@@ -364,968 +725,396 @@ describe.skipIf(!hasDatabase)(
         ])
       })
 
-      it('lists every venue of the till by name, all still to do, and the venues that could take one', async () => {
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.integration?.status).toBe('connected')
-        expect(view.tillVenues).toEqual([
-          { key: 4, name: 'Catering', state: 'unlinked', venue: null, hasMenuCategory: false },
-          { key: 1, name: 'Main bar', state: 'unlinked', venue: null, hasMenuCategory: false },
-          { key: 2, name: 'Roof', state: 'unlinked', venue: null, hasMenuCategory: false },
-          { key: 3, name: 'Shop', state: 'unlinked', venue: null, hasMenuCategory: false },
-        ])
-        expect(view.linkableVenues.map((venue) => venue.name)).toEqual(['Venue A', 'Venue B'])
-        expect(view.gate).toEqual({ enabled: false, reason: 'no_till_venue' })
+      it('shows the connection, the status, the venues that use it and the clock', async () => {
+        const instance = await instanceOf(id)
+        expect(instance).toMatchObject({
+          name: 'barsy – Reads',
+          source: 'barsy',
+          host: 'read.barsyonline.com',
+          hasCredentials: true,
+          status: 'connected',
+          lastCheckedAt: '2026-10-09T10:00:00.000Z',
+          timeZone: 'Europe/Sofia',
+          activeJob: null,
+        })
+        expect(instance.venues.map((venue) => venue.name)).toEqual(['Venue A', 'Venue B'])
       })
 
-      it('"Link to an existing venue" links a venue that has no link, and refuses the rest', async () => {
-        const link = (scope: IntegrationScope, bid: number, venueId: string) =>
-          linkTillVenue(scope, { bid, venueId })
-        expect(await link(orgScope({ canManage: false }), 1, venueA.id)).toEqual({
-          ok: false,
-          error: 'not_allowed',
-        })
-        expect(await link(orgScope(), 1, venueA.id)).toEqual({ ok: true })
-        expect((await linkOf(1))?.venueId).toBe(venueA.id)
-        // One till venue per venue: venue B cannot take what venue A has ...
-        expect(await link(orgScope(), 1, venueB.id)).toEqual({
-          ok: false,
-          error: 'till_venue_taken',
-        })
-        // ... and a venue that has a link cannot be given a second one (moving is "Change…").
-        expect(await link(orgScope(), 2, venueA.id)).toEqual({
-          ok: false,
-          error: 'venue_already_linked',
-        })
-        expect((await linkOf(1))?.venueId).toBe(venueA.id)
-        expect((await linkOf(2))?.venueId).toBeNull()
-        // Unknown till venue, unknown venue, another organisation's venue.
-        expect(await link(orgScope(), 99, venueB.id)).toEqual({ ok: false, error: 'not_found' })
-        expect(await link(orgScope(), 2, newId('vn'))).toEqual({ ok: false, error: 'not_found' })
-        expect(await link(orgScope(), 2, foreignVenue.id)).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
-        expect((await linkOf(2))?.venueId).toBeNull()
-      })
-
-      it('the list shows the link, and the venue’s card shows its tree and what is left to choose', async () => {
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.tillVenues.find((row) => row.key === 1)).toEqual({
-          key: 1,
-          name: 'Main bar',
-          state: 'linked',
-          venue: { id: venueA.id, name: 'Venue A' },
-          hasMenuCategory: false,
-        })
-        expect(view.linkableVenues.map((venue) => venue.name)).toEqual(['Venue B'])
-        // "Sync everything now" needs a linked venue with a menu category.
-        expect(view.gate).toEqual({ enabled: false, reason: 'no_root' })
-
-        const card = linked(await loadMenuSourceView(venueScope(venueA)))
-        expect(card).toMatchObject({
-          tillVenueName: 'Main bar',
-          rootCatId: null,
-          priceSource: 'actual_price',
-          lastSyncedAt: null,
-          heldSync: null,
-          gate: { enabled: false, reason: 'no_root' },
-          tree: [
-            {
-              id: 1171,
-              name: 'Публично меню',
-              children: [{ id: 1172, name: 'Коктейли', children: [] }],
-            },
-            { id: 1091, name: 'Каса Kiosk', children: [] },
+      it('supplies the connector’s system settings: the allergen characteristics and the language', async () => {
+        expect((await instanceOf(id)).settings).toEqual({
+          kind: 'barsy',
+          allergenKey: null,
+          allergenDetected: { key: 'k102', name: 'Алергени' },
+          allergenOptions: [
+            { key: 'k102', name: 'Алергени' },
+            { key: 'k103', name: 'Грамаж' },
           ],
-          treeFetchedAt: '2026-10-09T10:00:00.000Z',
+          defaultLocale: 'bg_BG',
         })
-        // The other venues of the till are offered for "Change…", the venue it serves is not.
-        expect(card.options.map((option) => [option.name, option.usedBy])).toEqual([
-          ['Catering', null],
-          ['Roof', null],
-          ['Shop', null],
-        ])
       })
 
-      it('a venue with no link gets the venues of the till that serve none', async () => {
-        const card = await loadMenuSourceView(venueScope(venueB))
-        expect(card).toMatchObject({ state: 'unlinked', canManage: true })
-        if (card.state !== 'unlinked') throw new Error('expected an unlinked card')
-        expect(card.options.map((option) => option.name)).toEqual(['Catering', 'Roof', 'Shop'])
-      })
-
-      it('hints at the public address and menu from the stored record of each venue, and suggests its public category (B1-Q6)', async () => {
-        const venueRecord = (bid: number, payload: Record<string, unknown>) => ({
-          externalType: 'barsy_venue',
-          externalId: String(bid),
-          scope: 'master' as const,
-          raw: JSON.stringify(payload),
-          payload,
+      it('saves the allergen characteristic and the language, and checks both', async () => {
+        const save = (settings: unknown, scope: IntegrationScope = orgScope()) =>
+          saveInstanceSettings(scope, { integrationId: id, settings })
+        expect(await save({ allergenKey: 'k103', defaultLocale: 'en_US' })).toEqual({ ok: true })
+        expect((await instanceOf(id)).settings).toMatchObject({
+          allergenKey: 'k103',
+          defaultLocale: 'en_US',
         })
-        const before = await loadIntegrationView(orgScope(), services())
-        const cardBefore = linked(await loadMenuSourceView(venueScope(venueA)))
-        // An older record of venue 1 and a newer one: the newer one speaks.
-        await appendSourceRecords(app, tenant, integrationId, [
-          venueRecord(1, { barsy_id: 1, name: 'Main bar', public_address: 'Old street 1' }),
-        ])
-        await appendSourceRecords(app, tenant, integrationId, [
-          venueRecord(1, {
-            barsy_id: 1,
-            name: 'Main bar',
-            public_address: '  Sofia, 108 Vitosha Blvd ',
-            public_cat_id: 1171,
-          }),
-          // Venue 2 has a record that says nothing: no hint at all.
-          venueRecord(2, { barsy_id: 2, name: 'Roof', public_address: null, public_cat_id: null }),
-        ])
-        try {
-          const view = await loadIntegrationView(orgScope(), services())
-          expect(view.tillVenues.find((row) => row.key === 1)).toMatchObject({
-            address: 'Sofia, 108 Vitosha Blvd',
-            publicMenuSetUp: true,
-          })
-          expect(view.tillVenues.find((row) => row.key === 2)).not.toHaveProperty('address')
-          const card = linked(await loadMenuSourceView(venueScope(venueA)))
-          // The venue's public category is suggested in its own tree, and nothing else is.
-          expect(card.tree).toEqual([
-            {
-              id: 1171,
-              name: 'Публично меню',
-              suggested: true,
-              children: [{ id: 1172, name: 'Коктейли', children: [] }],
-            },
-            { id: 1091, name: 'Каса Kiosk', children: [] },
-          ])
-          // Hints only: what was chosen stays chosen, and no number or field name of the till reaches the view.
-          expect(card.rootCatId).toBe(cardBefore.rootCatId)
-          expect(JSON.stringify([view, card])).not.toContain('public_cat_id')
-          // Another venue sees the hints of the venues, but no tree of this one.
-          const asB = await loadMenuSourceView(venueScope(venueB))
-          expect(asB.state).toBe('unlinked')
-        } finally {
-          await owner.query(
-            `delete from restro.source_records where tenant_id = $1 and external_type = 'barsy_venue'`,
-            [tenant],
-          )
-        }
-        const after = await loadIntegrationView(orgScope(), services())
-        expect(after.tillVenues).toEqual(before.tillVenues)
-      })
-
-      it('chooses the menu category only from the cached tree', async () => {
-        expect(await chooseCatalogueRoot(venueScope(venueA), { catId: 5555 })).toEqual({
+        // Back to detection: the key is removed from the config.
+        expect(await save({ allergenKey: null, defaultLocale: 'en_US' })).toEqual({ ok: true })
+        expect((await rowOfHost('read.barsyonline.com'))?.config).not.toHaveProperty(
+          'allergen_detail_key',
+        )
+        // A characteristic the till never listed, a language we do not know, other keys, nobody.
+        expect(await save({ allergenKey: 'k999', defaultLocale: 'en_US' })).toEqual({
           ok: false,
           error: 'invalid',
         })
+        expect(await save({ allergenKey: null, defaultLocale: 'xx_XX' })).toEqual({
+          ok: false,
+          error: 'invalid',
+        })
+        expect(await save({ allergenKey: null, defaultLocale: 'en_US', extra: 1 })).toEqual({
+          ok: false,
+          error: 'invalid',
+        })
+        expect(await save({})).toEqual({ ok: false, error: 'invalid' })
         expect(
-          await chooseCatalogueRoot(venueScope(venueA, { canManage: false }), { catId: 1171 }),
-        ).toEqual({ ok: false, error: 'not_allowed' })
-        // Venue B has no till venue yet, so it has no tree to choose from.
-        expect(await chooseCatalogueRoot(venueScope(venueB), { catId: 1171 })).toEqual({
+          await save({ allergenKey: null, defaultLocale: 'bg_BG' }, orgScope({ canManage: false })),
+        ).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        expect(
+          await save(
+            { allergenKey: null, defaultLocale: 'bg_BG' },
+            orgScope({ tenantId: otherTenant }),
+          ),
+        ).toEqual({ ok: false, error: 'not_found' })
+        // The sync schedule is not an instance setting any more: nothing here writes it.
+        expect((await rowOfHost('read.barsyonline.com'))?.config).not.toHaveProperty('schedule')
+        await save({ allergenKey: null, defaultLocale: 'bg_BG' })
+      })
+
+      it('keeps another organisation out', async () => {
+        const view = await viewOf(orgScope({ tenantId: otherTenant }))
+        expect(view.instances).toEqual([])
+        expect(view.systems[0]?.instances).toBe(0)
+      })
+    })
+
+    describe('"Sync everything now" and "Sync this venue"', () => {
+      let id = ''
+      beforeAll(async () => {
+        id = await connectedInstance('sync.barsyonline.com', 'barsy – Sync')
+        // Venue A and B are on other instances; give this instance two other venues.
+        await owner.query(
+          'update restro.barsy_venues set venue_id = null where venue_id = any($1)',
+          [[venueA.id, venueB.id, venueC.id]],
+        )
+      })
+
+      it('is closed until a venue uses the instance, then until the system reported its menus', async () => {
+        expect((await instanceOf(id)).gate).toEqual({ enabled: false, reason: 'no_till_venue' })
+        expect(await syncAll(orgScope(), services(), id)).toEqual({ ok: false, error: 'not_ready' })
+        await giveVenue(id, 1, venueA, { publicCatId: null })
+        expect((await instanceOf(id)).gate).toEqual({ enabled: false, reason: 'no_menu' })
+        expect(await syncAll(orgScope(), services(), id)).toEqual({ ok: false, error: 'not_ready' })
+        expect(sent).toEqual([])
+      })
+
+      it('queues one pull for every live venue of the instance whose menus are known, and no secret', async () => {
+        await owner.query(
+          'update restro.barsy_venues set public_cat_id = 1171 where integration_id = $1 and bid = 1',
+          [id],
+        )
+        await giveVenue(id, 2, venueB, { treeCatId: 1091 })
+        await giveVenue(id, 3, venueC, { publicCatId: null })
+        expect((await instanceOf(id)).gate).toEqual({ enabled: true })
+        const result = await syncAll(orgScope(), services(), id)
+        // C is linked but cannot be read yet: it is left out, A and B are queued.
+        expect(result).toEqual({ ok: true, pulls: 2 })
+        expect(
+          sent.map((job) => [job.name, (job.data as { venueId: string }).venueId]).sort(),
+        ).toEqual(
+          [
+            [JOB_NAMES.barsyFullPull, venueA.id],
+            [JOB_NAMES.barsyFullPull, venueB.id],
+          ].sort(),
+        )
+        for (const job of sent) {
+          expect(Object.keys(job.data).sort()).toEqual(['integrationId', 'tenantId', 'venueId'])
+          expect((job.data as { integrationId: string }).integrationId).toBe(id)
+        }
+        expect(JSON.stringify(sent)).not.toContain(PASSWORD)
+      })
+
+      it('refuses non-managers, strangers, a broken queue and a pull that is already waiting', async () => {
+        expect(await syncAll(orgScope({ canManage: false }), services(), id)).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        expect(await syncAll(orgScope({ tenantId: otherTenant }), services(), id)).toEqual({
+          ok: false,
+          error: 'not_found',
+        })
+        enqueueFails = true
+        expect(await syncAll(orgScope(), services(), id)).toEqual({
+          ok: false,
+          error: 'queue_unavailable',
+        })
+        enqueueFails = false
+        // The queue says an identical pull is waiting for each: nothing new was queued.
+        enqueueResult = null
+        expect(await syncAll(orgScope(), services(), id)).toEqual({
+          ok: false,
+          error: 'already_running',
+        })
+      })
+
+      it('leaves a deleted venue out', async () => {
+        await archiveVenue(app, tenant, venueB.id)
+        sent.length = 0
+        const result = await syncAll(orgScope(), services(), id)
+        expect(result).toEqual({ ok: true, pulls: 1 })
+        expect(sent.map((job) => (job.data as { venueId: string }).venueId)).toEqual([venueA.id])
+        expect((await instanceOf(id)).venues.map((venue) => venue.name)).not.toContain('Venue B')
+      })
+
+      it('"Sync this venue" queues one pull of this venue under the same gate', async () => {
+        expect(await syncNow(venueScope(venueA, { canManage: false }), services())).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        expect(await syncNow(venueScope(venueA), services())).toEqual({ ok: true })
+        expect(sent).toEqual([
+          {
+            name: JOB_NAMES.barsyFullPull,
+            data: { tenantId: tenant, integrationId: id, venueId: venueA.id },
+          },
+        ])
+        // Venue C is linked but its menus are not known yet.
+        sent.length = 0
+        expect(linked(await loadMenuSourceView(venueScope(venueC))).gate).toEqual({
+          enabled: false,
+          reason: 'no_menu',
+        })
+        expect(await syncNow(venueScope(venueC), services())).toEqual({
           ok: false,
           error: 'not_ready',
         })
-        expect(await chooseCatalogueRoot(venueScope(venueA), { catId: 1171 })).toEqual({ ok: true })
-        expect(linked(await loadMenuSourceView(venueScope(venueA))).rootCatId).toBe(1171)
-        expect((await linkOf(1))?.catalogueRootCatId).toBe(1171)
-        // The list now knows venue A has its category, and "Sync everything now" opens.
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.tillVenues.find((row) => row.key === 1)?.hasMenuCategory).toBe(true)
-        expect(view.gate).toEqual({ enabled: true })
+        expect(sent).toEqual([])
+        enqueueFails = true
+        expect(await syncNow(venueScope(venueA), services())).toEqual({
+          ok: false,
+          error: 'queue_unavailable',
+        })
+        enqueueFails = false
+        enqueueResult = null
+        expect(await syncNow(venueScope(venueA), services())).toEqual({
+          ok: false,
+          error: 'already_running',
+        })
       })
 
-      it('"Change…" moves a venue to another till venue, freeing the first; a taken one is refused', async () => {
-        expect(await chooseTillVenue(venueScope(venueA, { canManage: false }), { bid: 2 })).toEqual(
-          {
-            ok: false,
-            error: 'not_allowed',
-          },
-        )
-        expect(await chooseTillVenue(venueScope(venueA), { bid: 2 })).toEqual({ ok: true })
-        expect((await linkOf(1))?.venueId).toBeNull()
-        expect((await linkOf(2))?.venueId).toBe(venueA.id)
-        // Venue B can take the freed one, but not the one venue A has now.
-        expect(await chooseTillVenue(venueScope(venueB), { bid: 2 })).toEqual({
+      it('is closed while the connection is not working', async () => {
+        await updateIntegration(app, tenant, id, { status: 'error' })
+        expect((await instanceOf(id)).gate).toEqual({ enabled: false, reason: 'not_connected' })
+        expect(await syncAll(orgScope(), services(), id)).toEqual({ ok: false, error: 'not_ready' })
+        expect(await syncNow(venueScope(venueA), services())).toEqual({
           ok: false,
-          error: 'till_venue_taken',
+          error: 'not_ready',
         })
-        expect(await chooseTillVenue(venueScope(venueB), { bid: 99 })).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
-        expect(await chooseTillVenue(venueScope(venueB), { bid: 1 })).toEqual({ ok: true })
-        const asB = linked(await loadMenuSourceView(venueScope(venueB)))
-        expect(asB.tillVenueName).toBe('Main bar')
-        expect(asB.options.find((option) => option.name === 'Roof')).toMatchObject({
-          usedBy: 'Venue A',
-        })
-        // Put things back for the next tests: A on bid 1 with its category, B on nothing.
-        await owner.query('update restro.barsy_venues set venue_id = null where tenant_id = $1', [
-          tenant,
+        await updateIntegration(app, tenant, id, { status: 'connected' })
+      })
+    })
+
+    describe('a venue’s Menu source: the common part and the connector’s', () => {
+      let id = ''
+      beforeAll(async () => {
+        id = await connectedInstance('source.barsyonline.com', 'barsy – Source')
+        // Venue B was deleted above: restore it for these cases by using venue A and a fresh venue.
+        await owner.query('update restro.barsy_venues set venue_id = null where venue_id = $1', [
+          venueA.id,
         ])
-        expect(await chooseTillVenue(venueScope(venueA), { bid: 1 })).toEqual({ ok: true })
+        await giveVenue(id, 7, venueA)
       })
 
-      describe('"Not used"', () => {
-        it('round-trips, and is kept in the integration’s config', async () => {
-          expect(
-            await markTillVenue(orgScope({ canManage: false }), { bid: 3, notUsed: true }),
-          ).toEqual({
-            ok: false,
-            error: 'not_allowed',
-          })
-          expect(await markTillVenue(orgScope(), { bid: 3, notUsed: true })).toEqual({ ok: true })
-          expect((await integrationRows())[0]?.config).toMatchObject({ not_used: { '3': true } })
-          const view = await loadIntegrationView(orgScope(), services())
-          expect(view.tillVenues.find((row) => row.key === 3)?.state).toBe('not_used')
-          // A venue set aside is not left to do, and the venue's own picker still shows it, marked.
-          expect(
-            view.tillVenues.filter((row) => row.state === 'unlinked').map((row) => row.key),
-          ).toEqual([4, 2])
-          const card = linked(await loadMenuSourceView(venueScope(venueA)))
-          expect(card.options.find((option) => option.name === 'Shop')).toMatchObject({
-            notUsed: true,
-          })
-
-          expect(await markTillVenue(orgScope(), { bid: 3, notUsed: false })).toEqual({ ok: true })
-          const back = await loadIntegrationView(orgScope(), services())
-          expect(back.tillVenues.find((row) => row.key === 3)?.state).toBe('unlinked')
-          expect((await integrationRows())[0]?.config.not_used).toEqual({})
+      it('shows the instance, the venue’s name in the system, and nothing it cannot change', async () => {
+        const card = linked(await loadMenuSourceView(venueScope(venueA)))
+        expect(card).toMatchObject({
+          canManage: true,
+          timeZone: 'Europe/Sofia',
+          source: 'barsy',
+          instanceName: 'barsy – Source',
+          tillVenueName: 'Till venue 7',
+          lastSyncedAt: null,
+          heldSync: null,
+          activeJob: null,
+          gate: { enabled: true },
+          runs: [],
+          connector: { kind: 'barsy', priceSource: 'actual_price' },
         })
-
-        it('refuses a venue that serves a venue, and one that does not exist', async () => {
-          expect(await markTillVenue(orgScope(), { bid: 1, notUsed: true })).toEqual({
-            ok: false,
-            error: 'till_venue_linked',
-          })
-          expect(await markTillVenue(orgScope(), { bid: 99, notUsed: true })).toEqual({
-            ok: false,
-            error: 'not_found',
-          })
-          expect((await integrationRows())[0]?.config.not_used).toEqual({})
-        })
-
-        it('linking a venue that was set aside takes the mark off', async () => {
-          await markTillVenue(orgScope(), { bid: 3, notUsed: true })
-          expect(await linkTillVenue(orgScope(), { bid: 3, venueId: venueB.id })).toEqual({
-            ok: true,
-          })
-          const view = await loadIntegrationView(orgScope(), services())
-          expect(view.tillVenues.find((row) => row.key === 3)).toMatchObject({
-            state: 'linked',
-            venue: { id: venueB.id },
-          })
-          expect((await integrationRows())[0]?.config.not_used).toEqual({})
-          await owner.query(
-            'update restro.barsy_venues set venue_id = null where tenant_id = $1 and bid = 3',
-            [tenant],
-          )
-        })
+        // No picker, no category tree, no options to move to another venue (D87, D88).
+        expect(Object.keys(card).sort()).toEqual([
+          'activeJob',
+          'canManage',
+          'connector',
+          'gate',
+          'heldSync',
+          'instanceName',
+          'lastSyncedAt',
+          'runs',
+          'source',
+          'state',
+          'tillVenueName',
+          'timeZone',
+        ])
       })
 
-      describe('"Add as venue"', () => {
-        it('creates exactly one venue and one link, named after the till venue, and answers with it', async () => {
-          const before = await venueCount()
-          const result = await addTillVenueAsVenue(orgScope(), { bid: 4 })
-          expect(result).toMatchObject({ ok: true, venueId: expect.stringMatching(/^vn_/) })
-          if (!result.ok || !result.venueId) return
-          expect(await venueCount()).toBe(before + 1)
-
-          const [venue] = await withTenant(app, tenant, (tx) =>
-            tx
-              .select()
-              .from(venues)
-              .where(eq(venues.id, result.venueId as string)),
-          )
-          expect(venue).toMatchObject({
-            name: 'Catering',
-            slug: 'catering',
-            timezone: 'Europe/Sofia',
-            currency: 'EUR',
-            defaultLocale: 'bg_BG',
-            enabledLocales: ['bg_BG', 'en_US'],
-          })
-          expect(venue?.publicId).toMatch(/^[a-z0-9]{12}$/)
-          expect((await linkOf(4))?.venueId).toBe(result.venueId)
-          const { rows: menus } = await owner.query(
-            'select id from restro.menus where venue_id = $1',
-            [result.venueId],
-          )
-          expect(menus).toHaveLength(1)
-
-          // The new venue's card is ready for the category.
-          const card = linked(
-            await loadMenuSourceView(
-              venueScope({ id: venue?.id ?? '', name: 'Catering', timezone: 'Europe/Sofia' }),
-            ),
-          )
-          expect(card).toMatchObject({ tillVenueName: 'Catering', rootCatId: null })
+      it('saves the price for this venue only, through the connector, and checks it', async () => {
+        const save = (settings: unknown, scope: VenueScope = venueScope(venueA)) =>
+          saveVenueSource(scope, { settings })
+        expect(await save({ priceSource: 'current_price' })).toEqual({ ok: true })
+        expect(linked(await loadMenuSourceView(venueScope(venueA))).connector).toEqual({
+          kind: 'barsy',
+          priceSource: 'current_price',
         })
-
-        it('makes no second venue for a till venue that has one already', async () => {
-          const before = await venueCount()
-          expect(await addTillVenueAsVenue(orgScope(), { bid: 4 })).toEqual({
-            ok: false,
-            error: 'till_venue_taken',
-          })
-          expect(await addTillVenueAsVenue(orgScope(), { bid: 1 })).toEqual({
-            ok: false,
-            error: 'till_venue_taken',
-          })
-          expect(await venueCount()).toBe(before)
-        })
-
-        it('is for owners and admins, needs a till venue that exists, and makes nothing otherwise', async () => {
-          const before = await venueCount()
-          expect(await addTillVenueAsVenue(orgScope({ canManage: false }), { bid: 3 })).toEqual({
-            ok: false,
-            error: 'not_allowed',
-          })
-          expect(await addTillVenueAsVenue(orgScope(), { bid: 99 })).toEqual({
-            ok: false,
-            error: 'not_found',
-          })
-          expect(await venueCount()).toBe(before)
-          expect((await linkOf(3))?.venueId).toBeNull()
-        })
-
-        it('gives a name made of letters the address cannot use a generic one, and still works', async () => {
-          await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 5, name: '日本の店' }])
-          const result = await addTillVenueAsVenue(orgScope(), { bid: 5 })
-          expect(result.ok).toBe(true)
-          const [venue] = await withTenant(app, tenant, (tx) =>
-            tx.select().from(venues).where(eq(venues.name, '日本の店')),
-          )
-          expect(venue?.slug).toBe('venue')
-        })
-
-        it('"Add as venue" of a till venue that was set aside takes the mark off', async () => {
-          await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 6, name: 'Bakery' }])
-          await markTillVenue(orgScope(), { bid: 6, notUsed: true })
-          expect(await addTillVenueAsVenue(orgScope(), { bid: 6 })).toMatchObject({ ok: true })
-          expect((await integrationRows())[0]?.config.not_used).toEqual({})
-        })
-      })
-
-      it('saves how the data is read and shows it back (no price: it is the venue’s)', async () => {
-        const before = await loadIntegrationView(orgScope(), services())
-        expect(before.mapping).toMatchObject({
-          allergenKey: null,
-          allergenDetected: { key: 'k102', name: 'Алергени' },
-          defaultLocale: 'bg_BG',
-        })
-        expect(before.mapping.allergenOptions.map((option) => option.key)).toEqual(['k102', 'k103'])
-
-        expect(
-          await saveMappingSettings(orgScope(), { allergenKey: 'k103', defaultLocale: 'en_US' }),
-        ).toEqual({ ok: true })
-        const after = await loadIntegrationView(orgScope(), services())
-        expect(after.mapping).toMatchObject({ allergenKey: 'k103', defaultLocale: 'en_US' })
-        const [row] = await integrationRows()
-        expect(row?.config).toMatchObject({ allergen_detail_key: 'k103', default_locale: 'en_US' })
-        // The price is not the integration's any more: nothing here wrote it.
-        expect(row?.config).not.toHaveProperty('price_source')
-
-        // Automatic again: the key goes away, the rest stays.
-        await saveMappingSettings(orgScope(), { allergenKey: null, defaultLocale: 'bg_BG' })
-        const [auto] = await integrationRows()
-        expect(auto?.config).not.toHaveProperty('allergen_detail_key')
-        expect(auto?.config).toHaveProperty('catalogue_trees')
-      })
-
-      it('refuses settings that are not valid or not allowed', async () => {
-        const valid = { allergenKey: null, defaultLocale: 'bg_BG' }
-        expect(await saveMappingSettings(orgScope({ canManage: false }), valid)).toEqual({
-          ok: false,
-          error: 'not_allowed',
-        })
-        expect(await saveMappingSettings(orgScope(), { ...valid, allergenKey: 'k999' })).toEqual({
+        expect((await linkOf(id, 7))?.priceSource).toBe('current_price')
+        expect(await save({ priceSource: 'list_price' })).toEqual({ ok: false, error: 'invalid' })
+        expect(await save({ priceSource: 'actual_price', extra: true })).toEqual({
           ok: false,
           error: 'invalid',
         })
-        expect(await saveMappingSettings(orgScope(), { ...valid, defaultLocale: 'xx_XX' })).toEqual(
-          {
-            ok: false,
-            error: 'invalid',
-          },
-        )
+        expect(
+          await save({ priceSource: 'actual_price' }, venueScope(venueA, { canManage: false })),
+        ).toEqual({
+          ok: false,
+          error: 'not_allowed',
+        })
+        // The price is the venue's own: another venue of the same instance is untouched.
+        await giveVenue(id, 8, venueC)
+        expect(linked(await loadMenuSourceView(venueScope(venueC))).connector).toEqual({
+          kind: 'barsy',
+          priceSource: 'actual_price',
+        })
+        await save({ priceSource: 'actual_price' })
       })
 
-      describe('the price of a venue (D73)', () => {
-        it('is written on that venue’s link only, and shown back', async () => {
-          expect(linked(await loadMenuSourceView(venueScope(venueA))).priceSource).toBe(
-            'actual_price',
-          )
-          expect(
-            await saveVenuePrice(venueScope(venueA), { priceSource: 'current_price' }),
-          ).toEqual({ ok: true })
-          expect(linked(await loadMenuSourceView(venueScope(venueA))).priceSource).toBe(
-            'current_price',
-          )
-          const { rows } = await owner.query<{ bid: number; price_source: string | null }>(
-            'select bid, price_source from restro.barsy_venues where tenant_id = $1 order by bid',
-            [tenant],
-          )
-          expect(rows.find((link) => link.bid === 1)?.price_source).toBe('current_price')
-          expect(
-            rows.filter((link) => link.bid !== 1).every((link) => link.price_source === null),
-          ).toBe(true)
-          // Not the integration's: its config is not touched.
-          expect((await integrationRows())[0]?.config).not.toHaveProperty('price_source')
-          await saveVenuePrice(venueScope(venueA), { priceSource: 'actual_price' })
+      it('uses the instance’s old default price for a venue that never saved its own', async () => {
+        await updateIntegration(app, tenant, id, { config: { price_source: 'current_price' } })
+        expect(linked(await loadMenuSourceView(venueScope(venueC))).connector).toMatchObject({
+          priceSource: 'current_price',
         })
-
-        it('falls back to the integration’s old default until the venue saves its own', async () => {
-          await updateIntegration(app, tenant, integrationId, {
-            config: { price_source: 'current_price' },
-          })
-          expect(linked(await loadMenuSourceView(venueScope(venueA))).priceSource).toBe(
-            'actual_price',
-          )
-          await owner.query(
-            'update restro.barsy_venues set price_source = null where tenant_id = $1 and bid = 1',
-            [tenant],
-          )
-          expect(linked(await loadMenuSourceView(venueScope(venueA))).priceSource).toBe(
-            'current_price',
-          )
-          await updateIntegration(app, tenant, integrationId, { config: { price_source: null } })
-        })
-
-        it('is refused for someone who may not manage, a venue with no link and a price that is not one', async () => {
-          expect(
-            await saveVenuePrice(venueScope(venueA, { canManage: false }), {
-              priceSource: 'current_price',
-            }),
-          ).toEqual({ ok: false, error: 'not_allowed' })
-          expect(
-            await saveVenuePrice(venueScope(venueB), { priceSource: 'current_price' }),
-          ).toEqual({
-            ok: false,
-            error: 'not_ready',
-          })
-          expect(
-            await saveVenuePrice(venueScope(venueA), { priceSource: 'cost_price' as never }),
-          ).toEqual({ ok: false, error: 'invalid' })
-        })
+        await updateIntegration(app, tenant, id, { config: { price_source: null } })
       })
 
-      it('reads the last sync time of a venue from the sync state', async () => {
-        await updateSyncState(app, tenant, integrationId, 1, {
+      it('shows when it last synced, from the venue’s own sync state', async () => {
+        await updateSyncState(app, tenant, id, 7, {
           last_full_pull_at: '2026-10-09T09:00:00.000Z',
           last_incremental_at: '2026-10-09T09:30:00.000Z',
         })
         expect(linked(await loadMenuSourceView(venueScope(venueA))).lastSyncedAt).toBe(
           '2026-10-09T09:30:00.000Z',
         )
+        expect(linked(await loadMenuSourceView(venueScope(venueC))).lastSyncedAt).toBeNull()
       })
 
-      describe('the automatic sync (D59, D73)', () => {
-        const DEFAULTS = {
-          schedule: {
-            incremental_enabled: true,
-            incremental_minutes: 5,
-            full_pull_enabled: true,
-            full_pull_time: '12:00',
-          },
-        } as const
-        // 12:07:20 in Sofia (summer time).
-        const NOW = new Date('2026-10-10T09:07:20Z')
-        const configOf = async () => (await integrationRows())[0]?.config ?? {}
-
-        afterEach(async () => {
-          // Back to a clean slate for the next test: no settings, no planned-run marks.
-          await owner.query(
-            `update restro.integrations set config = config - 'schedule' - 'publish' - 'publish_after_sync'
-           where tenant_id = $1`,
-            [tenant],
-          )
-          await owner.query(
-            `update restro.integrations set config = jsonb_set(config, '{sync,1}', (config #> '{sync,1}')
-             - 'last_incremental_queued_at' - 'last_full_pull_slot')
-           where tenant_id = $1 and config #> '{sync,1}' is not null`,
-            [tenant],
-          )
-        })
-
-        it('shows the defaults and when the next syncs are planned, in the integration’s clock', async () => {
-          const view = await loadIntegrationView(orgScope(), services(), NOW)
-          expect(view.syncSettings).toMatchObject({
-            incrementalEnabled: true,
-            incrementalMinutes: 5,
-            fullPullEnabled: true,
-            fullPullTime: '12:00',
-            scheduleActive: true,
-          })
-          expect(view.timeZone).toBe('Europe/Sofia')
-          // Both are overdue (the last runs are from yesterday): they start at the next tick.
-          expect(view.syncSettings.nextIncrementalAt).toBe('2026-10-10T09:08:00.000Z')
-          expect(view.syncSettings.nextFullPullAt).toBe('2026-10-10T09:08:00.000Z')
-
-          // After the tick queued them: five minutes on, and tomorrow's noon (09:00 UTC).
-          await updateSyncState(app, tenant, integrationId, 1, {
-            last_incremental_queued_at: '2026-10-10T09:05:00.200Z',
-            last_full_pull_slot: '2026-10-10T09:00:00.000Z',
-          })
-          const planned = (await loadIntegrationView(orgScope(), services(), NOW)).syncSettings
-          expect(planned.nextIncrementalAt).toBe('2026-10-10T09:10:00.000Z')
-          expect(planned.nextFullPullAt).toBe('2026-10-11T09:00:00.000Z')
-        })
-
-        it('names the integration’s own time zone when it has one', async () => {
-          await updateIntegration(app, tenant, integrationId, {
-            config: { schedule: { time_zone: 'Europe/London' } },
-          })
-          expect((await loadIntegrationView(orgScope(), services(), NOW)).timeZone).toBe(
-            'Europe/London',
-          )
-        })
-
-        it('names no times for what is switched off, or while nothing is scheduled', async () => {
-          await saveSyncSettings(orgScope(), {
-            schedule: {
-              ...DEFAULTS.schedule,
-              incremental_enabled: false,
-              full_pull_enabled: false,
-            },
-          })
-          const off = (await loadIntegrationView(orgScope(), services(), NOW)).syncSettings
-          expect(off).toMatchObject({
-            incrementalEnabled: false,
-            fullPullEnabled: false,
-            scheduleActive: true,
-            nextIncrementalAt: null,
-            nextFullPullAt: null,
-          })
-          // No linked venue has a category: the worker's tick would skip them all.
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = null where tenant_id = $1',
-            [tenant],
-          )
-          const idle = (await loadIntegrationView(orgScope(), services(), NOW)).syncSettings
-          expect(idle).toMatchObject({
-            scheduleActive: false,
-            nextIncrementalAt: null,
-            nextFullPullAt: null,
-          })
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = 1171 where tenant_id = $1 and bid = 1',
-            [tenant],
-          )
-        })
-
-        it('plans the earliest of the venues’ runs', async () => {
-          // Venue B takes the Roof and its own category, and is slower than A.
-          await chooseTillVenue(venueScope(venueB), { bid: 2 })
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = 1171 where tenant_id = $1 and bid = 2',
-            [tenant],
-          )
-          await updateSyncState(app, tenant, integrationId, 1, {
-            last_incremental_queued_at: '2026-10-10T09:05:00.200Z',
-            last_full_pull_slot: '2026-10-10T09:00:00.000Z',
-          })
-          await updateSyncState(app, tenant, integrationId, 2, {
-            last_incremental_queued_at: '2026-10-10T09:06:00.200Z',
-            last_full_pull_slot: '2026-10-10T09:00:00.000Z',
-          })
-          const planned = (await loadIntegrationView(orgScope(), services(), NOW)).syncSettings
-          expect(planned.nextIncrementalAt).toBe('2026-10-10T09:10:00.000Z')
-          await owner.query(
-            'update restro.barsy_venues set venue_id = null, catalogue_root_cat_id = null where tenant_id = $1 and bid = 2',
-            [tenant],
-          )
-        })
-
-        it('saves the schedule whole, shows it back, and leaves the old publishing rule alone', async () => {
-          await updateIntegration(app, tenant, integrationId, {
-            config: {
-              publish_after_sync: false,
-              publish: { after_sync: 'manual', new_items: 'hold' },
-            },
-          })
-          const input = {
-            schedule: {
-              incremental_enabled: false,
-              incremental_minutes: 15,
-              full_pull_enabled: true,
-              full_pull_time: '03:30',
-            },
-          } as const
-          expect(await saveSyncSettings(orgScope(), input)).toEqual({ ok: true })
-
-          const view = await loadIntegrationView(orgScope(), services(), NOW)
-          expect(view.syncSettings).toMatchObject({
-            incrementalEnabled: false,
-            incrementalMinutes: 15,
-            fullPullEnabled: true,
-            fullPullTime: '03:30',
-          })
-          const config = await configOf()
-          expect(config).toMatchObject(input)
-          // The publishing rules are the venues' now: what a venue inherits stays as it was.
-          expect(config).toMatchObject({
-            publish_after_sync: false,
-            publish: { after_sync: 'manual', new_items: 'hold' },
-          })
-          expect(config).toHaveProperty('catalogue_trees')
-          expect(config).toHaveProperty('sync')
-          expect(parseSyncSettings(config).schedule).toEqual(input.schedule)
-          await updateIntegration(app, tenant, integrationId, {
-            config: { publish_after_sync: null, publish: null },
-          })
-        })
-
-        it('keeps the pause a return to an older version set (the form does not own it)', async () => {
-          await setAutoPublishPaused(app, tenant, integrationId, true)
-          expect(await saveSyncSettings(orgScope(), DEFAULTS)).toEqual({ ok: true })
-          expect(autoPublishPaused(await configOf())).toBe(true)
-          expect(parseSyncSettings(await configOf()).schedule).toEqual(DEFAULTS.schedule)
-          await setAutoPublishPaused(app, tenant, integrationId, false)
-          expect(await saveSyncSettings(orgScope(), DEFAULTS)).toEqual({ ok: true })
-          expect(autoPublishPaused(await configOf())).toBe(false)
-        })
-
-        it('a pause set after the form was loaded is still set after the save (S3-10)', async () => {
-          await setAutoPublishPaused(app, tenant, integrationId, false)
-          await loadIntegrationView(orgScope(), services(), NOW) // the form is open ...
-          await setAutoPublishPaused(app, tenant, integrationId, true) // ... a return to an older version lands
-          const input = { schedule: { ...DEFAULTS.schedule, incremental_minutes: 10 } } as const
-          expect(await saveSyncSettings(orgScope(), input)).toEqual({ ok: true })
-          expect(autoPublishPaused(await configOf())).toBe(true)
-          expect(parseSyncSettings(await configOf()).schedule).toEqual(input.schedule)
-          await setAutoPublishPaused(app, tenant, integrationId, false)
-        })
-
-        it('a pause cleared after the form was loaded is still cleared after the save (S3-10)', async () => {
-          await setAutoPublishPaused(app, tenant, integrationId, true)
-          await loadIntegrationView(orgScope(), services(), NOW) // the form is open ...
-          await setAutoPublishPaused(app, tenant, integrationId, false) // ... a manual publish resumes
-          expect(await saveSyncSettings(orgScope(), DEFAULTS)).toEqual({ ok: true })
-          expect(autoPublishPaused(await configOf())).toBe(false)
-        })
-
-        it('puts the defaults back when they are saved again', async () => {
-          await saveSyncSettings(orgScope(), {
-            schedule: { ...DEFAULTS.schedule, incremental_minutes: 30 },
-          })
-          expect(await saveSyncSettings(orgScope(), DEFAULTS)).toEqual({ ok: true })
-          expect(parseSyncSettings(await configOf()).schedule).toEqual(DEFAULTS.schedule)
-        })
-
-        it('is for owners and admins only, and refuses anything outside the lists', async () => {
-          expect(await saveSyncSettings(orgScope({ canManage: false }), DEFAULTS)).toEqual({
-            ok: false,
-            error: 'not_allowed',
-          })
-          const invalid = (patch: Record<string, unknown>) =>
-            saveSyncSettings(orgScope(), { ...DEFAULTS, ...patch } as never)
-          for (const patch of [
-            { schedule: { ...DEFAULTS.schedule, incremental_minutes: 7 } },
-            { schedule: { ...DEFAULTS.schedule, incremental_minutes: '5' } },
-            { schedule: { ...DEFAULTS.schedule, full_pull_time: '24:00' } },
-            { schedule: { ...DEFAULTS.schedule, full_pull_time: '9:00' } },
-            { schedule: { ...DEFAULTS.schedule, incremental_enabled: 'yes' } },
-            { schedule: { incremental_minutes: 5 } },
-            // The publishing rules are per venue: this form takes none.
-            { publish: { after_sync: 'auto', new_items: 'show' } },
-            { extra: true },
-          ]) {
-            expect(await invalid(patch), JSON.stringify(patch)).toEqual({
-              ok: false,
-              error: 'invalid',
-            })
-          }
-          // Nothing was written by any of them.
-          expect(await configOf()).not.toHaveProperty('schedule')
-          expect(await configOf()).not.toHaveProperty('publish')
-        })
-      })
-
-      describe('"Sync everything now"', () => {
-        it('queues a full pull of every linked venue that has a menu category, and no other', async () => {
-          // A has its category; the new Catering venue is linked without one.
-          expect(await syncAll(orgScope({ canManage: false }), services())).toEqual({
-            ok: false,
-            error: 'not_allowed',
-          })
-          expect(sent).toEqual([])
-          expect(await syncAll(orgScope(), services())).toEqual({ ok: true, pulls: 1 })
-          expect(sent).toEqual([
-            {
-              name: JOB_NAMES.barsyFullPull,
-              data: { tenantId: tenant, integrationId, venueId: venueA.id },
-            },
-          ])
-        })
-
-        it('queues one per venue when several are ready, in the order of the list', async () => {
-          const catering = await linkOf(4)
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = 1171 where tenant_id = $1 and bid = 4',
-            [tenant],
-          )
-          expect(await syncAll(orgScope(), services())).toEqual({ ok: true, pulls: 2 })
-          expect(sent.map((job) => (job.data as { venueId: string }).venueId).sort()).toEqual(
-            [venueA.id, catering?.venueId ?? ''].sort(),
-          )
-          expect(new Set(sent.map((job) => job.name))).toEqual(new Set([JOB_NAMES.barsyFullPull]))
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = null where tenant_id = $1 and bid = 4',
-            [tenant],
-          )
-        })
-
-        it('never pulls a deleted venue, not even when a race left its link in place (D76)', async () => {
-          // Venue A is deleted without its link being released (what a race could leave behind).
-          await owner.query('update restro.venues set archived_at = now() where id = $1', [
-            venueA.id,
-          ])
-          try {
-            expect(await syncAll(orgScope(), services())).toEqual({
-              ok: false,
-              error: 'not_ready',
-            })
-            expect(sent).toEqual([])
-            // And it is not offered in "Link to an existing venue" or named in the list.
-            const view = await loadIntegrationView(orgScope(), services())
-            expect(view.linkableVenues.map((venue) => venue.id)).not.toContain(venueA.id)
-          } finally {
-            await owner.query('update restro.venues set archived_at = null where id = $1', [
-              venueA.id,
-            ])
-          }
-        })
-
-        it('says so when every pull is waiting already, and when the queue is down', async () => {
-          enqueueResult = null
-          expect(await syncAll(orgScope(), services())).toEqual({
-            ok: false,
-            error: 'already_running',
-          })
-          enqueueFails = true
-          expect(await syncAll(orgScope(), services())).toEqual({
-            ok: false,
-            error: 'queue_unavailable',
-          })
-        })
-
-        it('is closed when no linked venue has a category, and when the connection does not work', async () => {
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = null where tenant_id = $1 and bid = 1',
-            [tenant],
-          )
-          expect(await syncAll(orgScope(), services())).toEqual({ ok: false, error: 'not_ready' })
-          expect((await loadIntegrationView(orgScope(), services())).gate).toEqual({
-            enabled: false,
-            reason: 'no_root',
-          })
-          await owner.query(
-            'update restro.barsy_venues set catalogue_root_cat_id = 1171 where tenant_id = $1 and bid = 1',
-            [tenant],
-          )
-          await updateIntegration(app, tenant, integrationId, {
-            status: 'error',
-            statusDetail: 'x',
-          })
-          expect(await syncAll(orgScope(), services())).toEqual({ ok: false, error: 'not_ready' })
-          expect((await loadIntegrationView(orgScope(), services())).gate).toEqual({
-            enabled: false,
-            reason: 'not_connected',
-          })
-          await updateIntegration(app, tenant, integrationId, { status: 'connected' })
-        })
-      })
-
-      it('"Sync this venue" queues a full pull of that venue only when its gate is open', async () => {
-        expect(await syncNow(venueScope(venueA, { canManage: false }), services())).toEqual({
-          ok: false,
-          error: 'not_allowed',
-        })
-        // Venue B has no till venue.
-        expect(await syncNow(venueScope(venueB), services())).toEqual({
-          ok: false,
-          error: 'not_ready',
-        })
-        expect(sent).toEqual([])
-
-        expect(await syncNow(venueScope(venueA), services())).toEqual({ ok: true })
-        expect(sent).toEqual([
-          {
-            name: JOB_NAMES.barsyFullPull,
-            data: { tenantId: tenant, integrationId, venueId: venueA.id },
-          },
-        ])
-      })
-
-      it('"Sync this venue" says so when a pull is already waiting, and when the queue is down', async () => {
-        enqueueResult = null
-        expect(await syncNow(venueScope(venueA), services())).toEqual({
-          ok: false,
-          error: 'already_running',
-        })
-        enqueueFails = true
-        expect(await syncNow(venueScope(venueA), services())).toEqual({
-          ok: false,
-          error: 'queue_unavailable',
-        })
-      })
-
-      it('"Sync this venue" is closed again when the integration is not connected', async () => {
-        await updateIntegration(app, tenant, integrationId, { status: 'error', statusDetail: 'x' })
-        expect(await syncNow(venueScope(venueA), services())).toEqual({
-          ok: false,
-          error: 'not_ready',
-        })
-        expect(linked(await loadMenuSourceView(venueScope(venueA))).gate).toEqual({
-          enabled: false,
-          reason: 'not_connected',
-        })
-        await updateIntegration(app, tenant, integrationId, { status: 'connected' })
-      })
-
-      it('"Check again" queues the connection check for managers only', async () => {
-        expect(await checkConnection(orgScope({ canManage: false }), services())).toEqual({
-          ok: false,
-          error: 'not_allowed',
-        })
-        expect(await checkConnection(orgScope(), services())).toEqual({ ok: true, queued: true })
-        expect(sent.at(-1)).toEqual({
-          name: JOB_NAMES.barsyConnect,
-          data: { tenantId: tenant, integrationId },
-        })
-        enqueueFails = true
-        expect(await checkConnection(orgScope(), services())).toEqual({
-          ok: false,
-          error: 'queue_unavailable',
-        })
-      })
-
-      it('another organisation sees none of this, and cannot change any of it', async () => {
-        const foreign = orgScope({ tenantId: otherTenant })
-        const foreignVenueScope = venueScope(foreignVenue, { tenantId: otherTenant })
-        const view = await loadIntegrationView(foreign, services())
-        expect(view.integration).toBeNull()
-        expect(view.tillVenues).toEqual([])
-        expect(view.linkableVenues.map((venue) => venue.name)).toEqual(['Foreign'])
-        expect(view.runs).toEqual([])
-        expect(await loadMenuSourceView(foreignVenueScope)).toEqual({
-          state: 'no_integration',
-          canManage: true,
-        })
-        expect(await linkTillVenue(foreign, { bid: 2, venueId: foreignVenue.id })).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
-        expect(await addTillVenueAsVenue(foreign, { bid: 2 })).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
-        expect(await markTillVenue(foreign, { bid: 2, notUsed: true })).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
-        expect(await chooseTillVenue(foreignVenueScope, { bid: 2 })).toEqual({
-          ok: false,
-          error: 'not_found',
-        })
-        expect(await chooseCatalogueRoot(foreignVenueScope, { catId: 1171 })).toEqual({
-          ok: false,
-          error: 'not_ready',
-        })
-        expect(await saveVenuePrice(foreignVenueScope, { priceSource: 'current_price' })).toEqual({
-          ok: false,
-          error: 'not_ready',
-        })
-        expect(await syncNow(foreignVenueScope, services())).toEqual({
-          ok: false,
-          error: 'not_ready',
-        })
-        expect(await syncAll(foreign, services())).toEqual({ ok: false, error: 'not_ready' })
+      it('keeps another organisation’s venue and a hand-made venue out', async () => {
         expect(
-          await saveMappingSettings(foreign, { allergenKey: null, defaultLocale: 'bg_BG' }),
-        ).toEqual({ ok: false, error: 'not_found' })
-        expect(
-          await saveSyncSettings(foreign, {
-            schedule: {
-              incremental_enabled: true,
-              incremental_minutes: 5,
-              full_pull_enabled: true,
-              full_pull_time: '12:00',
-            },
+          await loadMenuSourceView({
+            pool: app,
+            tenantId: otherTenant,
+            venue: foreignVenue,
+            canManage: true,
           }),
-        ).toEqual({ ok: false, error: 'not_found' })
-        // Their own save creates their own integration; ours is untouched.
-        const saved = await saveConnection(foreign, services(), {
-          ...connection,
-          host: 'other.barsyonline.com',
+        ).toEqual({ state: 'none' })
+        // This organisation's person asking about a venue that belongs to nobody they can see.
+        expect(await loadMenuSourceView({ ...venueScope(foreignVenue), canManage: true })).toEqual({
+          state: 'none',
         })
-        expect(saved).toEqual({ ok: true, queued: true })
-        const mine = (await integrationRows()).map((row) => row.host)
-        expect(mine).toEqual(['club.barsyonline.com'])
+      })
+
+      it('gives a venue its own history, with its runs only, newest first', async () => {
+        const run = async (venue: { id: string } | null, kind = 'barsy_full_pull') => {
+          const started = await startJobRun(app, tenant, {
+            kind,
+            integrationId: id,
+            ...(venue ? { venueId: venue.id } : {}),
+          })
+          await finishJobRun(app, tenant, started.id, {
+            status: 'completed',
+            counters: { created: 3 },
+            ...(venue ? { venueId: venue.id } : {}),
+          })
+        }
+        await run(venueC)
+        await run(venueA, 'barsy_incremental')
+        await run(venueA)
+        await run(null, 'barsy_connect')
+        const photo = await startJobRun(app, tenant, {
+          kind: 'asset_fetch',
+          integrationId: id,
+          venueId: venueA.id,
+        })
+        await finishJobRun(app, tenant, photo.id, { status: 'completed', venueId: venueA.id })
+
+        const card = linked(await loadMenuSourceView(venueScope(venueA)))
+        expect(card.runs.map((r) => r.kind)).toEqual(['barsy_full_pull', 'barsy_incremental'])
+        expect(card.runs.every((r) => r.venue?.id === venueA.id)).toBe(true)
+        expect(JSON.stringify(card.runs)).not.toContain('nd_')
+      })
+
+      it('shows the held sync of this venue only', async () => {
+        const held = await startJobRun(app, tenant, {
+          kind: 'barsy_full_pull',
+          integrationId: id,
+          venueId: venueA.id,
+        })
+        await finishJobRun(app, tenant, held.id, {
+          status: 'completed',
+          venueId: venueA.id,
+          counters: { articles_seen: 4, failed_pages: 0 },
+          deletionCheckSkipped: true,
+          absenceHeld: { reason: 'too_many_missing', wouldHide: 61, active: 65 },
+          summary: 'deletion check skipped',
+        })
+        expect(linked(await loadMenuSourceView(venueScope(venueA))).heldSync).toMatchObject({
+          reason: 'too_many_missing',
+          wouldHide: 61,
+          active: 65,
+        })
+        expect(linked(await loadMenuSourceView(venueScope(venueC))).heldSync).toBeNull()
+        // The screen names the venue the warning concerns.
+        const warnings = (await instanceOf(id)).heldSyncs
+        expect(warnings).toHaveLength(1)
+        expect(warnings[0]?.venue).toEqual({ id: venueA.id, name: 'Venue A' })
       })
     })
 
-    describe('changing the host', () => {
-      it('is a new installation: status new, caches, marks and choices forgotten, credentials sealed again', async () => {
-        await markTillVenue(orgScope(), { bid: 3, notUsed: true })
-        const [before] = await integrationRows()
-        expect(before?.config).toHaveProperty('not_used')
-        const result = await saveConnection(orgScope(), services(), {
-          ...connection,
-          host: 'https://second.barsyonline.com',
-        })
-        expect(result).toEqual({ ok: true, queued: true })
-
-        const [after] = await integrationRows()
-        expect(after).toMatchObject({
-          id: before?.id,
-          host: 'second.barsyonline.com',
-          status: 'new',
-        })
-        expect(after?.credentials_sealed).not.toBe(before?.credentials_sealed)
-        expect(after?.config).not.toHaveProperty('catalogue_trees')
-        expect(after?.config).not.toHaveProperty('sync')
-        expect(after?.config).not.toHaveProperty('not_used')
-        // The settings the manager chose for the integration are not about the host: they stay.
-        expect(after?.config).toHaveProperty('default_locale')
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.tillVenues.every((row) => row.venue === null)).toBe(true)
-        expect(view.gate).toEqual({ enabled: false, reason: 'not_connected' })
-        expect(await loadMenuSourceView(venueScope(venueA))).toMatchObject({ state: 'unlinked' })
-      })
-
-      it('refuses a host another integration of the organisation already uses', async () => {
+    describe('the run history of an instance', () => {
+      let id = ''
+      beforeAll(async () => {
+        id = await connectedInstance('history.barsyonline.com', 'barsy – History')
         await owner.query(
-          `insert into restro.integrations (id, tenant_id, kind, host) values ($1, $2, 'barsy', 'taken.barsyonline.com')`,
-          [newId('in'), tenant],
+          'update restro.barsy_venues set venue_id = null where venue_id = any($1)',
+          [[venueA.id, venueC.id]],
         )
-        const result = await saveConnection(orgScope(), services(), {
-          ...connection,
-          host: 'taken.barsyonline.com',
-        })
-        expect(result).toEqual({ ok: false, error: 'host_in_use' })
-        const hosts = (await integrationRows()).map((row) => row.host).sort()
-        expect(hosts).toEqual(['second.barsyonline.com', 'taken.barsyonline.com'])
+        await giveVenue(id, 1, venueA)
       })
-    })
 
-    describe('the run history', () => {
-      const secondIntegration = async () =>
-        (await integrationRows()).find((row) => row.host === 'second.barsyonline.com')?.id ?? ''
-
-      it('lists the latest runs of the integration, newest first, without photo downloads', async () => {
-        const integrationId = await secondIntegration()
+      it('lists the latest runs of the instance, newest first, without photo downloads', async () => {
         // 25 photo downloads, then a connection check, then a pull with refusals.
         for (let i = 0; i < 25; i += 1) {
-          const photo = await startJobRun(app, tenant, { kind: 'asset_fetch', integrationId })
+          const photo = await startJobRun(app, tenant, { kind: 'asset_fetch', integrationId: id })
           await finishJobRun(app, tenant, photo.id, { status: 'completed' })
         }
-        const check = await startJobRun(app, tenant, { kind: 'barsy_connect', integrationId })
+        const check = await startJobRun(app, tenant, { kind: 'barsy_connect', integrationId: id })
         await finishJobRun(app, tenant, check.id, { status: 'completed', counters: { venues: 2 } })
         const pull = await startJobRun(app, tenant, {
           kind: 'barsy_full_pull',
-          integrationId,
+          integrationId: id,
           venueId: venueA.id,
         })
         await finishJobRun(app, tenant, pull.id, {
@@ -1343,21 +1132,24 @@ describe.skipIf(!hasDatabase)(
             },
           ],
         })
-        const legacy = await startJobRun(app, tenant, { kind: 'barsy_incremental', integrationId })
+        const legacy = await startJobRun(app, tenant, {
+          kind: 'barsy_incremental',
+          integrationId: id,
+        })
         // A run recorded before details existed: text only.
         await owner.query(
           `update restro.job_runs set status = 'failed', error_summary = 'barsy refused the credentials', finished_at = now(), details = null where id = $1`,
           [legacy.id],
         )
 
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.runs.length).toBeLessThanOrEqual(HISTORY_LENGTH)
-        expect(view.runs.map((run) => run.kind)).toEqual([
+        const instance = await instanceOf(id)
+        expect(instance.runs.length).toBeLessThanOrEqual(HISTORY_LENGTH)
+        expect(instance.runs.map((run) => run.kind)).toEqual([
           'barsy_incremental',
           'barsy_full_pull',
           'barsy_connect',
         ])
-        const [legacyRun, pullRun, checkRun] = view.runs
+        const [legacyRun, pullRun, checkRun] = instance.runs
         expect(legacyRun).toMatchObject({
           status: 'failed',
           errorSummary: 'barsy refused the credentials',
@@ -1366,7 +1158,6 @@ describe.skipIf(!hasDatabase)(
         })
         expect(pullRun).toMatchObject({
           status: 'completed',
-          // The venue column: the run knows the venue it was for, by name.
           venue: { id: venueA.id, name: 'Venue A' },
           counters: { articles_seen: 58, created: 58, failed_pages: 1, refused_writes: 1 },
           details: {
@@ -1376,225 +1167,78 @@ describe.skipIf(!hasDatabase)(
         })
         expect(checkRun?.counters).toEqual({ venues: 2 })
         expect(checkRun?.venue).toBeNull()
-        // No node id and no till id reaches the view.
-        expect(JSON.stringify(view.runs)).not.toContain('nd_')
-      })
-
-      it('shows the runs of every venue together, each with its own', async () => {
-        const integrationId = await secondIntegration()
-        for (const venue of [venueB, venueA]) {
-          const run = await startJobRun(app, tenant, {
-            kind: 'barsy_incremental',
-            integrationId,
-            venueId: venue.id,
-          })
-          await finishJobRun(app, tenant, run.id, { status: 'completed', venueId: venue.id })
-        }
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.runs.slice(0, 2).map((run) => run.venue?.name)).toEqual(['Venue A', 'Venue B'])
+        expect(JSON.stringify(instance.runs)).not.toContain('nd_')
       })
 
       it('shows only the latest twenty', async () => {
-        const integrationId = await secondIntegration()
         for (let i = 0; i < 25; i += 1) {
-          const run = await startJobRun(app, tenant, { kind: 'barsy_incremental', integrationId })
+          const run = await startJobRun(app, tenant, {
+            kind: 'barsy_incremental',
+            integrationId: id,
+          })
           await finishJobRun(app, tenant, run.id, { status: 'completed' })
         }
-        const view = await loadIntegrationView(orgScope(), services())
-        expect(view.runs).toHaveLength(HISTORY_LENGTH)
+        expect((await instanceOf(id)).runs).toHaveLength(HISTORY_LENGTH)
       })
 
-      describe('a held full sync (CF-02), per venue', () => {
-        const fullPull = async (
-          venue: { id: string } | null,
-          finish: Parameters<typeof finishJobRun>[3],
-        ): Promise<void> => {
-          const integrationId = await secondIntegration()
-          const pull = await startJobRun(app, tenant, {
-            kind: 'barsy_full_pull',
-            integrationId,
-            ...(venue ? { venueId: venue.id } : {}),
-          })
-          await finishJobRun(app, tenant, pull.id, {
-            ...finish,
-            ...(venue ? { venueId: venue.id } : {}),
-          })
-        }
-        const heldViews = async () => (await loadIntegrationView(orgScope(), services())).heldSyncs
-        const linkVenueToSecond = async () => {
-          // Venue A serves a till venue of the second installation, as the warning needs a link to name.
-          const integrationId = await secondIntegration()
-          await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 1, name: 'Main bar' }])
-          await chooseTillVenue(venueScope(venueA), { bid: 1 })
-        }
-
-        it('is not held when no full pull read everything (the one so far skipped a failed page)', async () => {
-          expect(await heldViews()).toEqual([])
-        })
-
-        it('carries the held conclusion of a complete full pull into the run and the warning, naming the venue', async () => {
-          await linkVenueToSecond()
-          await fullPull(venueA, {
-            status: 'completed',
-            counters: { articles_seen: 4, failed_pages: 0, missing: 0 },
-            deletionCheckSkipped: true,
-            absenceHeld: { reason: 'too_many_missing', wouldHide: 61, active: 65 },
-            summary: 'deletion check skipped: the read would have hidden 61 of 65 items',
-          })
-          const view = await loadIntegrationView(orgScope(), services())
-          expect(view.heldSyncs).toHaveLength(1)
-          expect(view.heldSyncs[0]).toMatchObject({
-            reason: 'too_many_missing',
-            wouldHide: 61,
-            active: 65,
-            venue: { id: venueA.id, name: 'Venue A' },
-          })
-          expect(view.heldSyncs[0]?.finishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-          expect(view.runs[0]?.details?.absenceHeld).toEqual({
-            reason: 'too_many_missing',
-            wouldHide: 61,
-            active: 65,
-          })
-          // A run that held nothing has no such field.
-          expect(view.runs.slice(1).every((run) => run.details?.absenceHeld === undefined)).toBe(
-            true,
-          )
-          // The venue's own card shows it too; another venue's does not.
-          expect(linked(await loadMenuSourceView(venueScope(venueA))).heldSync).toMatchObject({
-            reason: 'too_many_missing',
-            wouldHide: 61,
-          })
-        })
-
-        it('stays after more than twenty later runs have pushed the held run out of the history', async () => {
-          const integrationId = await secondIntegration()
-          for (let i = 0; i < 25; i += 1) {
-            const run = await startJobRun(app, tenant, { kind: 'barsy_incremental', integrationId })
-            await finishJobRun(app, tenant, run.id, { status: 'completed' })
-          }
-          const view = await loadIntegrationView(orgScope(), services())
-          expect(view.runs).toHaveLength(HISTORY_LENGTH)
-          expect(view.runs.some((run) => run.details?.absenceHeld !== undefined)).toBe(false)
-          expect(view.heldSyncs).toHaveLength(1)
-          expect(view.heldSyncs[0]).toMatchObject({ reason: 'too_many_missing', wouldHide: 61 })
-        })
-
-        it('is not changed by a later full pull that read nothing conclusive: a failed page, or one queued again', async () => {
-          await fullPull(venueA, {
-            status: 'completed',
-            counters: { articles_seen: 30, failed_pages: 2 },
-            deletionCheckSkipped: true,
-          })
-          // A full pull that found another pull running and queued itself again records no counters.
-          await fullPull(venueA, {
-            status: 'completed',
-            notes: ['another pull is running; this full pull was queued again to start in 60 s'],
-          })
-          // A failed run says nothing either.
-          await fullPull(venueA, { status: 'failed', summary: 'timeout' })
-          expect((await heldViews())[0]).toMatchObject({
-            reason: 'too_many_missing',
-            wouldHide: 61,
-          })
-        })
-
-        it('holds are per venue: another venue’s clean pull does not clear this one’s', async () => {
-          await fullPull(venueB, {
-            status: 'completed',
-            counters: { articles_seen: 65, failed_pages: 0, missing: 0 },
-          })
-          const held = await heldViews()
-          expect(held.map((entry) => entry.venue?.name)).toEqual(['Venue A'])
-        })
-
-        it('shows the newest complete full pull of the venue: a new hold replaces the old, a clean one clears it', async () => {
-          await fullPull(venueA, {
-            status: 'completed',
-            counters: { articles_seen: 0, failed_pages: 0 },
-            deletionCheckSkipped: true,
-            absenceHeld: { reason: 'empty_read', wouldHide: 65, active: 65 },
-          })
-          expect((await heldViews())[0]).toMatchObject({
-            reason: 'empty_read',
-            wouldHide: 65,
-            active: 65,
-          })
-
-          await fullPull(venueA, {
-            status: 'completed',
-            counters: { articles_seen: 65, failed_pages: 0, missing: 0 },
-          })
-          expect(await heldViews()).toEqual([])
-          expect(linked(await loadMenuSourceView(venueScope(venueA))).heldSync).toBeNull()
-        })
-
-        it('an old run that names no venue is read as the only linked venue’s, until a named pull replaces it', async () => {
-          await fullPull(null, {
-            status: 'completed',
-            counters: { articles_seen: 4, failed_pages: 0 },
-            absenceHeld: { reason: 'empty_read', wouldHide: 3, active: 3 },
-            deletionCheckSkipped: true,
-          })
-          const shift = (interval: string) =>
-            owner.query(
-              `update restro.job_runs set created_at = created_at + $2::interval
-             where tenant_id = $1 and kind = 'barsy_full_pull' and details ->> 'venue_id' is null
-               and details -> 'absence_held' is not null`,
-              [tenant, interval],
-            )
-          // Older than the named pulls above it: old news.
-          await shift('-2 hours')
-          expect(await heldViews()).toEqual([])
-          // Newer than every named pull: it counts, for the only linked venue.
-          await shift('4 hours')
-          const held = await heldViews()
-          expect(held).toHaveLength(1)
-          expect(held[0]).toMatchObject({ venue: { name: 'Venue A' }, reason: 'empty_read' })
-          await shift('-2 hours')
-        })
-
-        it('is not shown for an organisation without an integration', async () => {
-          const view = await loadIntegrationView(orgScope({ tenantId: otherTenant }), services())
-          expect(view.heldSyncs).toEqual([])
-        })
+      it('keeps one instance’s runs apart from another’s', async () => {
+        const other = await connectedInstance('history-other.barsyonline.com')
+        expect((await instanceOf(other)).runs).toEqual([])
+        expect((await instanceOf(id)).runs.length).toBeGreaterThan(0)
       })
 
       it('another organisation’s runs are invisible', async () => {
-        const view = await loadIntegrationView(orgScope({ tenantId: otherTenant }), services())
-        expect(view.runs).toEqual([])
+        const view = await viewOf(orgScope({ tenantId: otherTenant }))
+        expect(view.instances).toEqual([])
       })
     })
 
     describe('the password stays out of results and logs', () => {
       it('is in no result, no log line and no stored row, whatever happened', async () => {
-        // Every way a save can end, with the password in the input each time (on the current host).
-        const here = { ...connection, host: 'https://second.barsyonline.com' }
+        const id = stored(await rowOfHost('read.barsyonline.com'))
+        const here = { ...connection, host: 'https://read.barsyonline.com', integrationId: id }
         const results = [
           await saveConnection(orgScope({ canManage: false }), services(), here),
           await saveConnection(orgScope(), services(), { ...here, host: 'ftp://x' }),
           await saveConnection(orgScope(), services({ sealPublicKey: 'bad' }), here),
           await saveConnection(orgScope(), services(), { ...here, user: '' }),
           await saveConnection(orgScope(), services(), here),
+          await addInstance(orgScope({ canManage: false }), services(), newInstance),
+          await addInstance(orgScope(), services(), { ...newInstance, host: 'ftp://x' }),
+          await addInstance(orgScope(), services(), {
+            ...newInstance,
+            host: 'secret.barsyonline.com',
+          }),
         ]
         enqueueFails = true
         results.push(await saveConnection(orgScope(), services(), here))
         expect(JSON.stringify(results)).not.toContain(PASSWORD)
         expect(logged.join('\n')).not.toContain(PASSWORD)
         expect(logged.join('\n')).not.toContain(API_USER)
-        const stored = JSON.stringify(
+        const storedRows = JSON.stringify(
           (await owner.query('select to_jsonb(i) as j from restro.integrations i')).rows,
         )
-        expect(stored).not.toContain(PASSWORD)
+        expect(storedRows).not.toContain(PASSWORD)
+        expect(storedRows).not.toContain(API_USER)
       })
     })
 
     describe('queued and running jobs (a real pg-boss)', () => {
       let boss: PgBoss
-      let integrationId = ''
+      let id = ''
+      let instance: Integration
 
       beforeAll(async () => {
-        integrationId =
-          (await integrationRows()).find((row) => row.host === 'second.barsyonline.com')?.id ?? ''
+        id = await connectedInstance('queue.barsyonline.com', 'barsy – Queue')
+        instance = (
+          await withTenant(app, tenant, (tx) =>
+            tx.select().from(integrations).where(eq(integrations.id, id)),
+          )
+        )[0] as Integration
+        await owner.query(
+          'update restro.barsy_venues set venue_id = null where venue_id = any($1)',
+          [[venueA.id, venueC.id]],
+        )
         boss = new PgBoss({
           connectionString: appDatabaseUrl(),
           schema: 'pgboss',
@@ -1619,49 +1263,44 @@ describe.skipIf(!hasDatabase)(
         }
       })
 
-      it('knows a connection check and a full pull of this integration are waiting', async () => {
-        expect(await readActiveJob(app, tenant, integrationId)).toBeNull()
+      it('knows a connection check and a full pull of this instance are waiting', async () => {
+        expect(await readActiveJob(app, tenant, instance)).toBeNull()
 
         const connectId = await enqueueJob(
           JOB_NAMES.barsyConnect,
-          { tenantId: tenant as never, integrationId: integrationId as never },
+          { tenantId: tenant as never, integrationId: id as never },
           boss,
         )
         expect(connectId).toEqual(expect.any(String))
-        expect(await readActiveJob(app, tenant, integrationId)).toBe('connect')
+        expect(await readActiveJob(app, tenant, instance)).toBe('connect')
 
         const pullPayload = {
           tenantId: tenant as never,
-          integrationId: integrationId as never,
+          integrationId: id as never,
           venueId: venueA.id as never,
         }
         const pullId = await enqueueJob(JOB_NAMES.barsyFullPull, pullPayload, boss)
         expect(pullId).toEqual(expect.any(String))
-        expect(await readActiveJob(app, tenant, integrationId)).toBe('pull')
-        // The queue is exclusive per integration and venue: a second press for A is not queued.
+        expect(await readActiveJob(app, tenant, instance)).toBe('pull')
+        // The queue is exclusive per instance and venue: a second press for A is not queued.
         expect(await enqueueJob(JOB_NAMES.barsyFullPull, pullPayload, boss)).toBeNull()
 
-        // Another organisation's view of the same integration id sees nothing.
-        expect(await readActiveJob(app, otherTenant, integrationId)).toBeNull()
+        // Another organisation's view of the same instance id sees nothing.
+        expect(await readActiveJob(app, otherTenant, instance)).toBeNull()
+        // A kind this build does not know has no job to look for.
+        expect(await readActiveJob(app, tenant, { id, kind: 'nope' })).toBeNull()
 
         await boss.cancel(JOB_NAMES.barsyFullPull, pullId as string)
-        expect(await readActiveJob(app, tenant, integrationId)).toBe('connect')
+        expect(await readActiveJob(app, tenant, instance)).toBe('connect')
         await boss.cancel(JOB_NAMES.barsyConnect, connectId as string)
-        expect(await readActiveJob(app, tenant, integrationId)).toBeNull()
+        expect(await readActiveJob(app, tenant, instance)).toBeNull()
       })
 
       it('a pull of one venue keeps its own button shut, not another venue’s', async () => {
         const real = services({ enqueue: (name, data) => enqueueJob(name, data, boss) })
-        await owner.query(`update restro.integrations set status = 'connected' where id = $1`, [
-          integrationId,
-        ])
-        // Venue A serves till venue 1 of this installation with its category; venue B serves 2.
-        await upsertBarsyVenues(app, tenant, integrationId, [{ bid: 2, name: 'Roof' }])
-        await chooseTillVenue(venueScope(venueB), { bid: 2 })
-        await owner.query(
-          `update restro.barsy_venues set catalogue_root_cat_id = 1171 where integration_id = $1 and bid in (1, 2)`,
-          [integrationId],
-        )
+        // Venue A and venue C use this instance, both with their menus known.
+        await giveVenue(id, 1, venueA)
+        await giveVenue(id, 2, venueC)
         expect(linked(await loadMenuSourceView(venueScope(venueA))).gate).toEqual({ enabled: true })
 
         expect(await syncNow(venueScope(venueA), real)).toEqual({ ok: true })
@@ -1673,42 +1312,34 @@ describe.skipIf(!hasDatabase)(
           ok: false,
           error: 'already_running',
         })
-        // Venue B is not held up by A's pull ...
-        const cardB = linked(await loadMenuSourceView(venueScope(venueB)))
-        expect(cardB.activeJob).toBeNull()
-        expect(cardB.gate).toEqual({ enabled: true })
-        // ... but the page shows that something is running, and "Sync everything now" waits for it.
-        const view = await loadIntegrationView(orgScope(), real)
-        expect(view.activeJob).toBe('pull')
-        expect(view.gate).toEqual({ enabled: false, reason: 'busy' })
-        expect(await syncAll(orgScope(), real)).toEqual({ ok: false, error: 'already_running' })
+        // Venue C is not held up by A's pull ...
+        const cardC = linked(await loadMenuSourceView(venueScope(venueC)))
+        expect(cardC.activeJob).toBeNull()
+        expect(cardC.gate).toEqual({ enabled: true })
+        // ... but the instance shows that something is running, and "Sync everything now" waits for it.
+        const shown = await instanceOf(id)
+        expect(shown.activeJob).toBe('pull')
+        expect(shown.gate).toEqual({ enabled: false, reason: 'busy' })
+        expect(await syncAll(orgScope(), real, id)).toEqual({ ok: false, error: 'already_running' })
 
         const rows = await owner.query(
           `select name, state, data ->> 'venueId' as venue from pgboss.job
          where data ->> 'integrationId' = $1 and state <> 'cancelled'`,
-          [integrationId],
+          [id],
         )
         expect(rows.rows).toEqual([
           { name: JOB_NAMES.barsyFullPull, state: 'created', venue: venueA.id },
         ])
 
-        // Now venue B's press queues its own, and A's is still the one waiting.
-        expect(await syncNow(venueScope(venueB), real)).toEqual({ ok: true })
+        // Now venue C's press queues its own, and A's is still the one waiting.
+        expect(await syncNow(venueScope(venueC), real)).toEqual({ ok: true })
         const both = await owner.query(
           `select data ->> 'venueId' as venue from pgboss.job
          where data ->> 'integrationId' = $1 and state <> 'cancelled' order by venue`,
-          [integrationId],
+          [id],
         )
-        expect(both.rows.map((row) => row.venue).sort()).toEqual([venueA.id, venueB.id].sort())
+        expect(both.rows.map((row) => row.venue).sort()).toEqual([venueA.id, venueC.id].sort())
       })
-    })
-
-    it('the integration table keeps one row per host and is reachable for the owner', async () => {
-      const rows = await withTenant(app, tenant, (tx) => tx.select().from(integrations))
-      expect(rows.map((row) => row.host).sort()).toEqual([
-        'second.barsyonline.com',
-        'taken.barsyonline.com',
-      ])
     })
   },
 )

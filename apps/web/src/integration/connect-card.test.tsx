@@ -2,13 +2,14 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-
+import { INSTANCE_ID, instanceView, newInstanceView } from '@/connectors/test-view'
 import { renderWithIntl } from '@/test-utils'
-
 import { ConnectCard } from './connect-card'
-import { emptyView, integrationView } from './test-view'
 
-const actions = vi.hoisted(() => ({ saveConnectionAction: vi.fn() }))
+const actions = vi.hoisted(() => ({
+  saveConnectionAction: vi.fn(),
+  renameInstanceAction: vi.fn(),
+}))
 vi.mock('@/server/integration/actions', () => actions)
 
 const PASSWORD = 'p4ssw0rd-never-shown-again'
@@ -25,30 +26,43 @@ async function fill(
 
 beforeEach(() => {
   actions.saveConnectionAction.mockReset()
+  actions.renameInstanceAction.mockReset()
 })
 
-describe('the Connection card', () => {
-  it('asks for the address, the API user and the password', () => {
-    renderWithIntl(<ConnectCard view={emptyView()} />)
+const fresh = (canManage = true, sealReady = true) =>
+  renderWithIntl(
+    <ConnectCard instance={newInstanceView()} canManage={canManage} sealReady={sealReady} />,
+  )
+const saved = (canManage = true, sealReady = true) =>
+  renderWithIntl(
+    <ConnectCard instance={instanceView()} canManage={canManage} sealReady={sealReady} />,
+  )
+
+describe('the Connection card of an instance', () => {
+  it('asks for the address, the API user and the password, in the words of the system', () => {
+    fresh()
     expect(screen.getByLabelText('barsy address')).toBeTruthy()
     expect(screen.getByLabelText('API user')).toBeTruthy()
     const password = screen.getByLabelText('Password') as HTMLInputElement
     expect(password.type).toBe('password')
     expect(password.autocomplete).toBe('new-password')
     expect(screen.getByRole('button', { name: 'Save and check' })).toHaveProperty('disabled', true)
+    // The example in the hint comes from the connector's own messages.
+    expect(screen.getByText(/for example https:\/\/club\.barsyonline\.com/)).toBeTruthy()
   })
 
-  it('sends the three values once, empties the password at once, and shows "Credentials saved"', async () => {
+  it('sends the instance and the three values once, empties the password at once, and shows "Credentials saved"', async () => {
     const user = userEvent.setup()
     let finish: (value: unknown) => void = () => undefined
     actions.saveConnectionAction.mockReturnValue(new Promise((resolve) => (finish = resolve)))
-    renderWithIntl(<ConnectCard view={emptyView()} />)
+    fresh()
 
     await fill(user)
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
 
     expect(actions.saveConnectionAction).toHaveBeenCalledTimes(1)
     expect(actions.saveConnectionAction).toHaveBeenCalledWith({
+      integrationId: INSTANCE_ID,
       host: 'https://club.barsyonline.com',
       user: 'api-user',
       password: PASSWORD,
@@ -68,7 +82,7 @@ describe('the Connection card', () => {
   it('says when the credentials were saved but the check could not be queued', async () => {
     const user = userEvent.setup()
     actions.saveConnectionAction.mockResolvedValue({ ok: true, queued: false })
-    renderWithIntl(<ConnectCard view={emptyView()} />)
+    fresh()
     await fill(user)
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
     expect(await screen.findByText(/could not be queued/)).toBeTruthy()
@@ -77,34 +91,36 @@ describe('the Connection card', () => {
   it('shows the reason an address or a save was refused, and keeps the form', async () => {
     const user = userEvent.setup()
     actions.saveConnectionAction.mockResolvedValue({ ok: false, error: 'invalid_host' })
-    renderWithIntl(<ConnectCard view={emptyView()} />)
+    fresh()
     await fill(user, 'http://club.barsyonline.com')
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('https address')
+    expect(alert.textContent).toBe(
+      'Enter the https address of the barsy installation, without a port or a path.',
+    )
     expect(screen.getByLabelText('API user')).toBeTruthy()
     // The password was cleared even though the save failed.
     expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('')
     expect(document.body.innerHTML).not.toContain(PASSWORD)
   })
 
-  it('says why a new address was refused while the connection holds a menu (host_change_blocked)', async () => {
+  it('says why a new address was refused while the instance serves venues or holds a menu', async () => {
     const user = userEvent.setup()
     actions.saveConnectionAction.mockResolvedValue({ ok: false, error: 'host_change_blocked' })
-    renderWithIntl(<ConnectCard view={integrationView()} />)
+    saved()
     await user.click(screen.getByRole('button', { name: 'Change credentials' }))
     await fill(user, 'https://other.barsyonline.com')
     await user.click(screen.getByRole('button', { name: 'Save and check' }))
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toBe(
-      'This connection already holds a menu from another barsy installation. Changing the address would mix the two menus.',
+      'This connection already serves venues or holds a menu from another installation. Changing the address would mix the two. Add another barsy connection instead.',
     )
     expect(document.body.innerHTML).not.toContain(PASSWORD)
   })
 
   it('shows saved credentials as a fact, with a way to change them that asks for both again', async () => {
     const user = userEvent.setup()
-    renderWithIntl(<ConnectCard view={integrationView()} />)
+    saved()
     expect(screen.getByText('Credentials saved')).toBeTruthy()
     expect(screen.getByText('Address: demo.barsyonline.com')).toBeTruthy()
     expect(screen.queryByLabelText('Password')).toBeNull()
@@ -122,7 +138,7 @@ describe('the Connection card', () => {
   })
 
   it('explains that the operator has to set up the sync keys, without a form', () => {
-    renderWithIntl(<ConnectCard view={emptyView({ sealReady: false })} />)
+    fresh(true, false)
     const note = screen.getByTestId('seal-keys-missing')
     expect(note.textContent).toContain('The sync keys are not set up')
     expect(note.textContent).toContain('operator')
@@ -132,18 +148,61 @@ describe('the Connection card', () => {
   })
 
   it('is read-only for someone who cannot manage', () => {
-    renderWithIntl(<ConnectCard view={integrationView({ canManage: false })} />)
+    saved(false)
     expect(screen.getByText('Credentials saved')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Change credentials' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
     expect(screen.queryByLabelText('Password')).toBeNull()
+  })
 
-    renderWithIntl(<ConnectCard view={emptyView({ canManage: false })} />)
+  it('says so when a read-only person looks at an instance without credentials', () => {
+    fresh(false)
     expect(screen.getByText('No credentials yet.')).toBeTruthy()
   })
 
   it('speaks Bulgarian', () => {
-    renderWithIntl(<ConnectCard view={integrationView()} />, { locale: 'bg' })
+    renderWithIntl(<ConnectCard instance={instanceView()} canManage sealReady />, {
+      locale: 'bg',
+    })
     expect(screen.getByText('Данните за достъп са запазени')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Смени данните за достъп' })).toBeTruthy()
+  })
+})
+
+describe('the name of an instance', () => {
+  it('shows the name and renames it without asking for the credentials', async () => {
+    const user = userEvent.setup()
+    actions.renameInstanceAction.mockResolvedValue({ ok: true })
+    saved()
+    expect(screen.getByTestId('instance-name').textContent).toBe('barsy – Sofia')
+
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    const field = screen.getByLabelText('Name') as HTMLInputElement
+    expect(field.value).toBe('barsy – Sofia')
+    await user.clear(field)
+    await user.type(field, 'barsy – Plovdiv')
+    await user.click(screen.getByRole('button', { name: 'Save name' }))
+
+    expect(actions.renameInstanceAction).toHaveBeenCalledWith({
+      integrationId: INSTANCE_ID,
+      name: 'barsy – Plovdiv',
+    })
+    // The credentials form never opened.
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    await waitFor(() => expect(screen.queryByTestId('rename-form')).toBeNull())
+  })
+
+  it('does not save an empty name and shows a refusal', async () => {
+    const user = userEvent.setup()
+    actions.renameInstanceAction.mockResolvedValue({ ok: false, error: 'invalid' })
+    saved()
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    const field = screen.getByLabelText('Name') as HTMLInputElement
+    await user.clear(field)
+    expect(screen.getByRole('button', { name: 'Save name' })).toHaveProperty('disabled', true)
+    await user.type(field, 'x')
+    await user.click(screen.getByRole('button', { name: 'Save name' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('That input is not valid.')
+    expect(screen.getByTestId('rename-form')).toBeTruthy()
   })
 })

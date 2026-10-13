@@ -190,6 +190,13 @@
       "when": 1791838401645,
       "tag": "0026_places_table_set_null",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791843367151,
+      "tag": "0027_integrations_removed_at",
+      "breakpoints": true
     }
   ]
 }
