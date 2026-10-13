@@ -10,6 +10,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import {
   DEMO_BARSY_HOST,
   DEMO_OWNED_ITEM,
+  DEMO_SECTIONS,
   demoManualChangeSet,
   demoOwnedItemChangeSet,
   demoPullChangeSet,
@@ -87,6 +88,57 @@ export async function seedDemoMenu(
   if (manual) {
     const written = await apply(pool, tenantId, manual)
     if (written.rejected.length > 0) throw new Error('the demo descriptions were refused')
+  }
+
+  // The first section is the photo-led strip (D92: a section's layout is the composer's; the
+  // demo keeps the look it had while the face drew its first section that way on its own).
+  const [firstSection] = await withTenant(pool, tenantId, (tx) =>
+    tx
+      .select({ nodeId: sourceLinks.nodeId })
+      .from(sourceLinks)
+      .where(
+        and(
+          eq(sourceLinks.integrationId, integration.id),
+          eq(sourceLinks.externalType, 'category'),
+          eq(sourceLinks.externalId, DEMO_SECTIONS[0]?.externalId ?? ''),
+        ),
+      )
+      .limit(1),
+  )
+  if (firstSection) {
+    const [laidOut] = await withTenant(pool, tenantId, (tx) =>
+      tx
+        .select({ nodeId: fieldValues.nodeId })
+        .from(fieldValues)
+        .where(
+          and(
+            eq(fieldValues.nodeId, firstSection.nodeId),
+            eq(fieldValues.fieldKey, 'layout'),
+            eq(fieldValues.layer, 'manual'),
+          ),
+        )
+        .limit(1),
+    )
+    if (!laidOut) {
+      const strip = await apply(pool, tenantId, {
+        id: newId('cs'),
+        source: 'manual',
+        jobId: newId('jb'),
+        actor: `user:${userId}`,
+        observedAt: new Date().toISOString(),
+        ops: [
+          {
+            op: 'setField',
+            node: { id: firstSection.nodeId as NodeId },
+            fieldKey: 'layout',
+            layer: 'manual',
+            scope: 'master',
+            value: 'horizontal',
+          },
+        ],
+      })
+      if (strip.rejected.length > 0) throw new Error('the demo strip was refused')
+    }
   }
 
   const [existing] = await withTenant(pool, tenantId, (tx) =>

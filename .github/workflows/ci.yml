@@ -55,6 +55,9 @@ jobs:
       DATABASE_APP_PASSWORD: ci-only-not-a-secret
       # The purge role (D83), created by `pnpm db:roles` and used by the purge-role tests.
       DATABASE_PURGE_PASSWORD: ci-only-purge-not-a-secret
+      # The purge role's own connection, for the worker the e2e run starts: without it the worker
+      # registers no purge job and a "Delete permanently" is never queued (D83).
+      DATABASE_URL_PURGE: postgres://restro_purge:ci-only-purge-not-a-secret@localhost:5432/restro
       NEXT_TELEMETRY_DISABLED: '1'
 
     steps:
