@@ -1,0 +1,41 @@
+# Brief S7: Composer › Design, brand-first (D1, D92, D93 points 2 and 3)
+
+- **Model:** Sonnet 5.5.
+- **Branch:** `ad/s7-design`, in your own worktree, cut from `ad/foundation` (it holds ad/01–ad/05 and pairs A, B and C). Commit as you go; never push, never merge.
+- **Read first (only this):**
+  - `CLAUDE.md`, then `docs/decisions.md`. Look up by number in `docs/tracker.md` (search `| D92 |`): D92 (the Design subtab paragraph), D93 (points 1–3; 4–6 are not yours), D69, D70, D71, D88.
+  - `docs/adjustments/adjustments_01.md` → sections **D1, D2**, and Martin's notes at the end.
+  - `docs/platform-reference.md` → the Design row (one brand colour, tokens); say what you ported.
+  - The code you own (below) and the interfaces listed under "Interfaces".
+
+## Goal
+The Design subtab of the composer (S6 put it there) is rebuilt in Martin's order: a collapsed template chooser at the top with a pop-up phone preview per template; then the cards (1) logo and the menu's header name, (2) guest functions, (3) font as a dropdown, corners, shadow and screen, (4) colours, brand-first: "Your brand colour" is the Tertiary, the page and the panels are pre-filled as calm tints of it and editable, no presets and no swatch palette, one set of three pickers, a warning when the page colour is strongly saturated, and the computed colours under a collapsed "Advanced" where each can be overridden and is still contrast-checked. A sticky phone-size preview stays beside the form at all times.
+
+## What the foundation already gives you (do not redo)
+- The Design tab as it is (`apps/web/src/design/*`): `design-panel.tsx` (form state, Save look), `template-gallery.tsx`, `colour-panel.tsx` (presets, brand or three colours, "Suggest with colour theory"), `role-panel.tsx` (the eight roles light and dark, Adjust / Reset, the contrast of every pair), `style-panel.tsx` (font cards, corners, shadow, light/dark policy), `logo-field.tsx`, `look-options.tsx` (the manifest's remaining `look` options; S6 removed `layout`, `layoutSwitch` and `featureFirstSection`), `design-preview.tsx` (the phone preview from the draft with the unsaved look laid over), `preview-snapshot.ts`, `look-state.ts`. Server: `loadDesign` → `DesignView { theme, presentation, logo, canEdit }`, `saveLookAction` (`FullThemeSchema`: `colors` + `preset` or `brand`, `overrides`, `font`, `radius`, `shadow`, `scheme`, `logo`; answers `unreadable` with the failing pairs), `chooseTemplateAction`.
+- The engine (`packages/core/src/theme/*`, D93 done in ad/05): `generatePalette(brand)`, `semanticColours` / `semanticColoursDark` (page, panels and the rest from a palette: the monochrome suggestion), `deriveRoles(colours, overrides)`, `validateRoles` with `REQUIRED_PAIRS` (text, 4.5:1) and `EXTENDED_PAIRS` (the ten roles of D93: status, disabled, selected, focus ring, backdrop, strong border; controls 3:1), `ROLE_NAMES`, `EXTENDED_ROLE_NAMES`, `THEME_FONTS` / `FONT_STACKS` (six fonts with Cyrillic), `THEME_RADIUS`, `THEME_SHADOW`, `THEME_SCHEMES`. `THEME_PRESETS` stay in core so a saved look that names one still loads; the form shows such a look as its three colours.
+- Guest features: the panel S6 moved under Design (`composer/guest-features-panel.tsx`, actions in `server/composer/guest-features-actions.ts`); you restyle it as card (2) in place.
+- The header name per menu (D92): `menus.name` (null = the venue's name), edited with S4's `renameMenuAction({ venueId, menuId, name })`; the open menu comes from the URL (`?menu=`, S6).
+- The face contract test (`packages/shell/testing/contract.ts`) already holds every declared colour pair; nothing to add there.
+
+## Do
+1. **Template chooser** (`template-gallery.tsx` → collapsed by default, one line "Template: <name>" with "Change"; open: the registry's templates, each with "Preview" opening a phone pop-up filled with the venue's general menu preview, no table, from `previewSnapshot`): choosing saves as today.
+2. **Cards in order** (`design-panel.tsx` composing them): (1) `logo-field.tsx` + a header-name field for the open menu (empty = the venue's name; saves with `renameMenuAction`, apart from Save look); (2) the guest functions card; (3) `style-panel.tsx`: font as a dropdown (`Select`, each name drawn in its own font), corners, shadow, screen (light, dark, automatic); (4) the colour card.
+3. **Colour card, brand-first** (`colour-panel.tsx` rewritten, `role-panel.tsx` folded into "Advanced"): three pickers Page, Panels, Your brand colour (Primary, Secondary, Tertiary of the engine). Typing or picking the brand colour pre-fills Page and Panels with `semanticColours(generatePalette(brand)).background` and `.surface` unless the person edited them; a saturation warning when the page colour's chroma is high (pick the threshold from the engine's harmony helpers and say which in the report). No presets, no swatch palette, no "where a look starts" choice: a saved `brand` look or a `preset` look loads as its three colours. "Suggest with colour theory" stays as a small link. **Advanced** (collapsed): the computed colours in both screens (text, secondary text, button text, borders, the dark screen's page and panels, and the D93 roles), each with Adjust / Reset and its pairs' contrast; a failing pair blocks Save and is named (as today). D93 point 2: when a highlight (accent) reads below 3:1 against the page it stays as chosen, buttons get the strong outline, and the card says so in one sentence.
+4. **Sticky preview** (`design-preview.tsx`): beside the form at all times on wide screens (sticky), below it at phone width; "Refresh" stays; the preview shows the open menu.
+5. **Saving:** the form always saves `colors` with `preset: null` and the overrides (never `brand`); the rest of `saveLookAction` as it is.
+6. **Wording:** BG + EN through next-intl (`design.*`).
+7. **Tests:** component tests (the collapsed chooser and its pop-up, the header-name field, the font dropdown, the brand-first pre-fill and the saturation warning, Advanced with a failing pair), `template-options` and `look-state` tests kept green, `apps/web/e2e/design.spec.ts` rewritten: the Midnight cases become "a brand colour fills the page and the panels", "an Advanced override that does not read turns Save off and names the pair"; keep the preview, the publish round trip, the phone width and the Bulgarian cases.
+
+## Interfaces (pinned)
+- `saveLookAction` and `chooseTemplateAction`: unchanged. `DesignView`: unchanged.
+- `renameMenuAction` from S4's `apps/web/src/server/menus-actions.ts` for the header name.
+
+## Testing (two tiers, CLAUDE.md)
+While you work: `pnpm vitest run --project apps/web <paths> --reporter=dot`; database tests need `CI=true` and your own database on the running Postgres 54329 (`createdb restro_s7`, `pnpm db:migrate`, `pnpm db:roles` with `DATABASE_URL_OWNER=postgres://postgres:postgres@localhost:54329/restro_s7`, `DATABASE_URL=postgres://restro_app:local-only-not-a-secret@localhost:54329/restro_s7`, `DATABASE_APP_PASSWORD=local-only-not-a-secret`, `DATABASE_PURGE_PASSWORD=local-only-purge-not-a-secret`). Never touch `restro_accept` or `.env.local`. At the end, once: `pnpm lint && pnpm typecheck && pnpm deps:check`, the vitest projects you touched, and the Playwright spec you changed: build first with `pnpm --filter @restro/web exec next build` (WITHOUT `NODE_ENV=development`: it breaks the build), then `pnpm --filter @restro/web exec playwright test e2e/design.spec.ts --reporter=line` with `NODE_ENV=development` and the `DATABASE_URL*` variables exported; delete `apps/web/.next/dev/types/validator.ts` first if a stale route type blocks the build. Never run the full suite.
+
+## Never / scope
+- Scope: `apps/web/src/design/**`, `apps/web/src/server/design/**`, `apps/web/src/composer/guest-features-panel.tsx` (style only), `apps/web/messages/*.json` (`design.*`, `composer.guestFeatures.*`), `apps/web/e2e/design.spec.ts`. Nothing else without asking: the engine in `packages/core/src/theme` and the faces are the lead's (D93 points 4–6 are later lead work); the Structure subtab is S6's.
+- No new dependency; no change to the snapshot or the shell; colours stay `#rrggbb` lower case as the schema says.
+- Secrets: never read `.env.local`.
+- Report as in `docs/agent-briefs/_template.md`, at most a page, in your final message.
