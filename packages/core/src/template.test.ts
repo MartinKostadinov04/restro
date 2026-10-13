@@ -104,7 +104,14 @@ describe('venue-menu@1', () => {
   it('has the Section, Menu, Modifier group and Option fields', () => {
     const keys = (type: keyof Template['nodeTypes']) =>
       (VENUE_MENU_TEMPLATE.nodeTypes[type]?.fields ?? []).map((field) => field.key)
-    expect(keys('section')).toEqual(['title', 'description', 'image', 'hint_color', 'hint_icon'])
+    expect(keys('section')).toEqual([
+      'title',
+      'description',
+      'image',
+      'hint_color',
+      'hint_icon',
+      'layout',
+    ])
     expect(keys('menu')).toEqual(['title', 'intro', 'availability'])
     expect(keys('modifier_group')).toEqual(['name', 'min', 'max'])
     expect(keys('option')).toEqual(['name', 'price_delta'])

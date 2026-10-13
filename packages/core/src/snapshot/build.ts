@@ -20,6 +20,7 @@ import {
 import { canonicalJson, sha256Hex } from '../hash'
 import type { AssetId, NodeId, SnapshotId, TagId, VenueId } from '../ids'
 import type { Locale, LocalizedText } from '../locales'
+import type { MenuLayout, MenuSettings } from '../menus'
 import { type Currency, type Money, MoneySchema } from '../money'
 import type { NodeType } from '../node-types'
 import type {
@@ -32,6 +33,11 @@ import type {
 } from '../resolve/types'
 import type { TagColor } from '../tags'
 import type { Template } from '../template'
+import {
+  DEFAULT_SECTION_LAYOUT,
+  SECTION_LAYOUTS,
+  type SectionLayout,
+} from '../templates/venue-menu'
 import { DEFAULT_PALETTE, PALETTE_STEPS, paletteRoles } from '../theme/derive'
 import {
   canonicalFeatures,
@@ -46,6 +52,8 @@ import {
   SNAPSHOT_FIELD_TYPES,
   SNAPSHOT_SCHEMA,
   type SnapshotItem,
+  type SnapshotLayout,
+  type SnapshotMenuLayout,
   type SnapshotTheme,
 } from './schema'
 
@@ -96,6 +104,40 @@ export interface SnapshotContext {
   readonly presentation?: Presentation | null
   /** The venue's guest services (D71); null or absent = `DEFAULT_GUEST_FEATURES`. */
   readonly features?: GuestFeatures | null
+  /** The menu's layout (D92, from `menuLayoutOf`); null or absent = `DEFAULT_MENU_LAYOUT`. */
+  readonly layout?: SnapshotLayout | null
+}
+
+/** The layout of a menu that set none (D92): a list, and guests do not switch it. */
+export const DEFAULT_MENU_LAYOUT: SnapshotLayout = Object.freeze({
+  default: 'list',
+  guest_switch: false,
+})
+
+/** A menu's stored layout (`menus.settings.layout`) as the snapshot names it. */
+const SNAPSHOT_LAYOUT_OF: Readonly<Record<MenuLayout, SnapshotMenuLayout>> = {
+  list: 'list',
+  one_column: 'one',
+  two_columns: 'two',
+}
+
+/**
+ * The snapshot's `layout` of a menu's settings (D92): the stored layout in the snapshot's words,
+ * and the guest switch; a key the menu never set takes `DEFAULT_MENU_LAYOUT`'s value.
+ */
+export function menuLayoutOf(settings: MenuSettings | null | undefined): SnapshotLayout {
+  return {
+    default:
+      settings?.layout === undefined
+        ? DEFAULT_MENU_LAYOUT.default
+        : SNAPSHOT_LAYOUT_OF[settings.layout],
+    guest_switch: settings?.layout_switch ?? DEFAULT_MENU_LAYOUT.guest_switch,
+  }
+}
+
+/** A stored section layout, or the default when the value is not one. */
+function sectionLayoutOf(value: unknown): SectionLayout {
+  return SECTION_LAYOUTS.find((layout) => layout === value) ?? DEFAULT_SECTION_LAYOUT
 }
 
 const DEFAULT_ROLES = paletteRoles(DEFAULT_PALETTE)
@@ -350,6 +392,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
         color:
           typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : null,
         icon: typeof icon === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(icon) ? icon : null,
+        layout: sectionLayoutOf(read('section', section.fields, 'layout')),
       },
       sections: childIds,
       items: itemIds,
@@ -394,6 +437,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
           },
         }
   const features = canonicalFeatures(ctx.features ?? DEFAULT_GUEST_FEATURES)
+  const layout = ctx.layout ?? DEFAULT_MENU_LAYOUT
 
   const content: Omit<MenuSnapshot, 'snapshot'> = {
     schema: SNAPSHOT_SCHEMA,
@@ -435,6 +479,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       ordering: features.ordering,
       pay: features.pay,
     },
+    layout: { default: layout.default, guest_switch: layout.guest_switch },
   }
 
   const { schema, ...rest } = content

@@ -16,6 +16,7 @@ import { FIELD_TYPE_NAMES, FIELD_VALUE_SCHEMAS, type FieldType } from '../field-
 import { LocaleSchema, LocalizedTextSchema } from '../locales'
 import { CurrencySchema, MoneySchema } from '../money'
 import { TagColorSchema } from '../tags'
+import { SECTION_LAYOUTS } from '../templates/venue-menu'
 import { GuestFeaturesSchema, PresentationSchema } from '../theme/presentation'
 import { THEME_SCHEMES, ThemeRolesSchema } from '../theme/roles'
 
@@ -80,6 +81,27 @@ export const SNAPSHOT_ITEM_STATES = ['available', 'sold_out'] as const
 
 /** How a guest orders an item that is shown (hidden items are not in the snapshot). */
 export const SNAPSHOT_ORDER_MODES = ['orderable', 'ask_waiter'] as const
+
+/**
+ * The layouts a menu can start in on the guest page (D92): a list, one column of cards, or two
+ * columns. The menu's own setting, published as `layout.default`.
+ */
+export const SNAPSHOT_MENU_LAYOUTS = ['list', 'one', 'two'] as const
+
+/** One menu layout of a snapshot. */
+export type SnapshotMenuLayout = (typeof SNAPSHOT_MENU_LAYOUTS)[number]
+
+/**
+ * The menu's layout (D92): the one guests see first and whether they may switch it. Optional
+ * forever (a snapshot published before it still parses); the publisher always writes it.
+ */
+export const SnapshotLayoutSchema = z.strictObject({
+  default: z.enum(SNAPSHOT_MENU_LAYOUTS),
+  guest_switch: z.boolean(),
+})
+
+/** The menu's layout in a snapshot. */
+export type SnapshotLayout = z.output<typeof SnapshotLayoutSchema>
 
 /** The badge the publisher adds: an item first published under 14 days ago. */
 export const NEW_BADGE = 'new'
@@ -161,6 +183,9 @@ const SectionSchema = z.strictObject({
       .string()
       .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
       .nullable(),
+    // D92: `horizontal` is drawn as a row (the face's feature strip). Optional forever: a snapshot
+    // published before it still parses, and reads as `vertical`. The publisher always writes it.
+    layout: z.enum(SECTION_LAYOUTS).optional(),
   }),
   sections: z.array(NodeIdSchema),
   items: z.array(NodeIdSchema),
@@ -228,6 +253,8 @@ const SnapshotShape = z.strictObject({
   presentation: PresentationSchema.optional(),
   /** The guest services the venue switched on (D71); the publisher always writes it. */
   features: GuestFeaturesSchema.optional(),
+  /** The menu's layout and whether guests may switch it (D92); the publisher always writes it. */
+  layout: SnapshotLayoutSchema.optional(),
 })
 
 type Shape = z.output<typeof SnapshotShape>
@@ -404,8 +431,8 @@ export type SnapshotItem = MenuSnapshot['items'][string]
  *
  * The snapshot (`MenuSnapshotSchema`) works differently. It stays strict for unknown keys, and it
  * gains known, optional fields in place (`theme.roles`, `theme.scheme`, `presentation`,
- * `features`: D69–D71). After the first deploy, a new field ships in the reader one deploy before
- * the producer writes it. A phone still running an older reader keeps its current menu on screen
+ * `features`: D69–D71; `layout` and the sections' `hints.layout`: D92). After the first deploy,
+ * a new field ships in the reader one deploy before the producer writes it. A phone still running an older reader keeps its current menu on screen
  * until it reloads, because the pointer poll ignores a snapshot it cannot parse.
  */
 export const LiveOverlaySchema = z.looseObject({
