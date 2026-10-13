@@ -6,9 +6,13 @@
 //   draft      the document resolved and built exactly as a publish would (`loadDraft`), compared with
 //              the live snapshot (`diffSnapshots`): the changes waiting, and V12's stale overrides
 //   held       the newest automatic publish V11 held, with the names of what it would hide
-//   paused     the integration's `publish.auto_paused` (set by a return to an older version)
+//   paused     the venue's `publish.auto_paused` (set by a return to an older version, T76)
 //   history    the versions, newest first, 20 to a page, each with what it changed
 //   busy/run   a publish or a files job of this menu is queued or running; how the last publish run ended
+//
+// A venue has several menus (D88, D90), each with its own versions: the view is of one menu, the
+// live one unless the caller names another. The Publish bar's summary of every menu is
+// summary.ts; the Automation settings (D96) are read here too (`readAutomation`).
 import { readVenueIndex } from '@restro/assets'
 import {
   diffSnapshots,
@@ -18,10 +22,13 @@ import {
   parseSnapshot,
   venueAutoPublishPaused,
   venueOwnPublishRules,
+  venueOwnSyncSettings,
   venuePublishRules,
+  venueSyncSettings,
 } from '@restro/core'
 import {
   type Draft,
+  listMenus,
   listSnapshots,
   loadCurrentSnapshot,
   loadDraft,
@@ -40,25 +47,28 @@ import {
   venues,
   withTenant,
 } from '@restro/db'
-import { and, desc, eq, getTableColumns, inArray, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, lt, sql } from 'drizzle-orm'
 
 import { getAuthDb } from '../db'
+import { tillLabelOfKind } from '../till-label'
 import { getTokenSource } from './table-token'
 import {
   type ActorView,
+  type AutomationView,
   type BusyView,
   type ChangesView,
   type DraftView,
   type HeldView,
   type HistoryPage,
+  keptEntries,
   type LiveView,
   type NamedItem,
-  type PublishRulesView,
   type PublishView,
   percentOf,
   toPublishRunView,
   type VersionCounts,
   type VersionEntry,
+  type VersioningView,
   type VersionReason,
 } from './view'
 
@@ -87,7 +97,10 @@ export interface ViewScope {
  * cannot be read at all (no store configured, the CDN not answering) the address counts as served,
  * so the tab behaves as it did before this check existed.
  */
-async function venueIndexServed(venue: { readonly id: string; readonly publicId: string }) {
+export async function venueIndexServed(venue: {
+  readonly id: string
+  readonly publicId: string
+}): Promise<boolean> {
   try {
     const source = await getTokenSource()
     if (source === null) return true
@@ -161,23 +174,78 @@ async function resolveNames(
   }
 }
 
-/** The venue's menu (its root node's id), or null before it has one. */
+/**
+ * The venue's live menu (`venues.live_menu_id`, D88), its root node's id; a venue that has menus
+ * but no live one yet answers its first menu in use; null before it has one.
+ */
 export async function menuOfVenue(
   pool: DbPool,
   tenantId: string,
   venueId: string,
 ): Promise<NodeId | null> {
+  return withTenant(pool, tenantId, async (tx) => {
+    const [venue] = await tx
+      .select({ liveMenuId: venues.liveMenuId })
+      .from(venues)
+      .where(eq(venues.id, venueId))
+    if (venue === undefined) return null
+    if (venue.liveMenuId !== null) return venue.liveMenuId as NodeId
+    const [first] = await tx
+      .select({ id: menus.id })
+      .from(menus)
+      .where(and(eq(menus.venueId, venueId), isNull(menus.deletedAt)))
+      .orderBy(asc(menus.sortKey), asc(menus.id))
+      .limit(1)
+    return (first?.id as NodeId | undefined) ?? null
+  })
+}
+
+/**
+ * `menuId` when it is a menu of this venue that is not in the bin, else null (another venue's
+ * menu, a binned one, a made-up id). What an action checks before it publishes a named menu.
+ */
+export async function menuOfVenueById(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  menuId: string,
+): Promise<NodeId | null> {
   const [row] = await withTenant(pool, tenantId, (tx) =>
-    tx.select({ id: menus.id }).from(menus).where(eq(menus.venueId, venueId)).limit(1),
+    tx
+      .select({ id: menus.id })
+      .from(menus)
+      .where(and(eq(menus.id, menuId), eq(menus.venueId, venueId), isNull(menus.deletedAt)))
+      .limit(1),
   )
   return (row?.id as NodeId | undefined) ?? null
+}
+
+/**
+ * The menu a snapshot of this venue belongs to, or null (another venue's snapshot, a made-up id).
+ * Approving, rejecting and returning name a snapshot; its menu is what they act on (D90: every
+ * menu has its own versions).
+ */
+export async function menuOfSnapshot(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  snapshotId: string,
+): Promise<NodeId | null> {
+  const [row] = await withTenant(pool, tenantId, (tx) =>
+    tx
+      .select({ menuId: snapshots.menuId })
+      .from(snapshots)
+      .where(and(eq(snapshots.id, snapshotId), eq(snapshots.venueId, venueId)))
+      .limit(1),
+  )
+  return (row?.menuId as NodeId | undefined) ?? null
 }
 
 const iso = (date: Date | null) => (date === null ? null : date.toISOString())
 
 // --- the draft and its changes -------------------------------------------------------------------
 
-function changesOf(live: MenuSnapshot | null, draft: MenuSnapshot): ChangesView {
+export function changesOf(live: MenuSnapshot | null, draft: MenuSnapshot): ChangesView {
   const diff = diffSnapshots(live, draft)
   const named = (item: { id: string; name: NamedItem['name'] }): NamedItem => ({
     id: item.id,
@@ -199,16 +267,22 @@ function changesOf(live: MenuSnapshot | null, draft: MenuSnapshot): ChangesView 
   }
 }
 
-type DraftOutcome =
+export type DraftOutcome =
   | { readonly kind: 'built'; readonly draft: Draft }
   | { readonly kind: 'refused'; readonly view: DraftView }
 
-async function buildDraft(scope: ViewScope, menuId: NodeId, deps: ViewDeps): Promise<DraftOutcome> {
+/** The menu's draft as a publish would build it now, or why it cannot be built. */
+export async function buildDraft(
+  pool: DbPool,
+  tenantId: string,
+  target: { readonly menuId: NodeId; readonly venueId: string },
+  deps: ViewDeps,
+): Promise<DraftOutcome> {
   try {
     const draft = await loadDraft(
-      scope.pool,
-      scope.tenantId,
-      { menuId, venueId: scope.venue.id },
+      pool,
+      tenantId,
+      target,
       deps.now === undefined ? {} : { now: deps.now },
     )
     return { kind: 'built', draft }
@@ -248,7 +322,7 @@ export async function loadHeldRows(
   )
 }
 
-function heldViewOf(
+export function heldViewOf(
   row: Omit<SnapshotRow, 'body'>,
   live: MenuSnapshot | null,
   draftHash: string | null,
@@ -422,21 +496,21 @@ export async function loadHistoryPage(
 
 // --- the integration's pause, the queue, the last run --------------------------------------------
 
-/** The config of the integration this venue is mapped to; null when it has none. */
-async function integrationConfigOf(
+/** The integration this venue is mapped to (its config and kind); null when it has none. */
+async function integrationOf(
   pool: DbPool,
   tenantId: string,
   venueId: string,
-): Promise<unknown> {
+): Promise<{ readonly config: unknown; readonly kind: string } | null> {
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx
-      .select({ config: integrations.config })
+      .select({ config: integrations.config, kind: integrations.kind })
       .from(barsyVenues)
       .innerJoin(integrations, eq(integrations.id, barsyVenues.integrationId))
       .where(eq(barsyVenues.venueId, venueId))
       .limit(1),
   )
-  return row?.config ?? null
+  return row ?? null
 }
 
 /**
@@ -448,34 +522,69 @@ export async function readPaused(
   tenantId: string,
   venueId: string,
 ): Promise<boolean> {
-  const config = await integrationConfigOf(pool, tenantId, venueId)
-  if (config === null) return false
-  const [venue] = await withTenant(pool, tenantId, (tx) =>
-    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)),
-  )
-  return venueAutoPublishPaused(venue?.settings ?? {}, config)
+  return (await readPauseState(pool, tenantId, venueId))?.paused ?? false
 }
 
 /**
- * The venue's publishing rules as they apply now (CF-09b): its own value for each, else the
- * current setting of the integration it is linked to (what ran before the rules moved to the
- * venue), else the defaults.
+ * Like `readPaused`, but null for a venue with no till: it has no automatic publishing to pause
+ * (a return to an earlier version then pauses nothing).
  */
-export async function readPublishRules(
+export async function readPauseState(
   pool: DbPool,
   tenantId: string,
   venueId: string,
-): Promise<PublishRulesView> {
+): Promise<{ readonly paused: boolean } | null> {
+  const integration = await integrationOf(pool, tenantId, venueId)
+  if (integration === null) return null
+  return {
+    paused: venueAutoPublishPaused(await settingsOf(pool, tenantId, venueId), integration.config),
+  }
+}
+
+/** The venue's `settings` (an empty object for a venue the tenant does not have). */
+async function settingsOf(pool: DbPool, tenantId: string, venueId: string): Promise<unknown> {
   const [venue] = await withTenant(pool, tenantId, (tx) =>
     tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, venueId)),
   )
-  const settings = venue?.settings ?? {}
-  const rules = venuePublishRules(settings, await integrationConfigOf(pool, tenantId, venueId))
-  const own = venueOwnPublishRules(settings)
+  return venue?.settings ?? {}
+}
+
+/**
+ * The venue's own pause flag as stored (`settings.publish.auto_paused`), or null when it has none.
+ * Saving the Automation settings rewrites `settings.publish`; the flag is written back after it.
+ */
+export async function readOwnPause(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<boolean | null> {
+  const settings = (await settingsOf(pool, tenantId, venueId)) as {
+    readonly publish?: { readonly auto_paused?: unknown }
+  }
+  const flag = settings.publish?.auto_paused
+  return typeof flag === 'boolean' ? flag : null
+}
+
+/**
+ * The venue's Automation settings (D82, D96, Settings › Publish), or null for a venue without a
+ * till (it has nothing to sync, so nothing to automate). Each value is the venue's own, else what
+ * the connection it is linked to said before the settings moved to the venue, else the default.
+ */
+export async function readAutomation(
+  pool: DbPool,
+  tenantId: string,
+  venue: { readonly id: string; readonly timezone: string },
+): Promise<AutomationView | null> {
+  const integration = await integrationOf(pool, tenantId, venue.id)
+  if (integration === null) return null
+  const settings = await settingsOf(pool, tenantId, venue.id)
   return {
-    afterSync: rules.after_sync,
-    newItems: rules.new_items,
-    inherited: own.after_sync === null || own.new_items === null,
+    source: tillLabelOfKind(integration.kind),
+    timeZone: venue.timezone,
+    sync: venueSyncSettings(settings, integration.config),
+    syncInherited: venueOwnSyncSettings(settings) === null,
+    afterSync: venuePublishRules(settings, integration.config).after_sync,
+    afterSyncInherited: venueOwnPublishRules(settings).after_sync === null,
   }
 }
 
@@ -532,7 +641,7 @@ export async function readLastRun(pool: DbPool, tenantId: string) {
 
 // --- the view ------------------------------------------------------------------------------------
 
-async function liveViewOf(
+export async function liveViewOf(
   scope: ViewScope,
   deps: ViewDeps,
   menuId: NodeId,
@@ -571,8 +680,18 @@ async function liveViewOf(
   }
 }
 
-/** Everything the Publish tab shows. */
-export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Promise<PublishView> {
+/** What `loadPublishView` can be asked. */
+export interface ViewOptions {
+  /** The menu to show (a menu of the venue); default: the venue's live menu. */
+  readonly menuId?: NodeId
+}
+
+/** Everything about one menu's publishing: the live one unless `options.menuId` names another. */
+export async function loadPublishView(
+  scope: ViewScope,
+  deps: ViewDeps = {},
+  options: ViewOptions = {},
+): Promise<PublishView> {
   const base = {
     venueId: scope.venue.id,
     venueSlug: scope.venue.slug,
@@ -580,8 +699,10 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
     timeZone: scope.venue.timezone,
     canPublish: scope.canPublish,
   }
-  const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venue.id)
-  const rules = await readPublishRules(scope.pool, scope.tenantId, scope.venue.id)
+  const menuId =
+    options.menuId === undefined
+      ? await menuOfVenue(scope.pool, scope.tenantId, scope.venue.id)
+      : await menuOfVenueById(scope.pool, scope.tenantId, scope.venue.id, options.menuId)
   if (menuId === null) {
     return {
       ...base,
@@ -591,7 +712,6 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
       held: null,
       paused: false,
       addressServed: true,
-      rules,
       history: { entries: [], nextBeforeVersion: null },
       busy: null,
       lastRun: null,
@@ -601,7 +721,7 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
   const current = await loadCurrentSnapshot(scope.pool, scope.tenantId, target)
   const [outcome, heldRows, history, paused, busy, lastRun, live, addressServed] =
     await Promise.all([
-      buildDraft(scope, menuId, deps),
+      buildDraft(scope.pool, scope.tenantId, target, deps),
       loadHeldRows(scope.pool, scope.tenantId, target),
       loadHistoryPage(scope, menuId, {}, deps),
       readPaused(scope.pool, scope.tenantId, scope.venue.id),
@@ -639,9 +759,47 @@ export async function loadPublishView(scope: ViewScope, deps: ViewDeps = {}): Pr
     held: newestHeld ? heldViewOf(newestHeld, current?.body ?? null, draftHash) : null,
     paused,
     addressServed,
-    rules,
     history,
     busy,
     lastRun,
+  }
+}
+
+// --- Settings › Versioning -----------------------------------------------------------------------
+
+/**
+ * Every menu's versions for Settings › Versioning (D96), in the venue's menu order: the version
+ * guests have (and when it was returned to), and `keptEntries` of the newest page of its history.
+ * `venueName` names a menu without a header name.
+ */
+export async function loadVersioningView(
+  scope: ViewScope & { readonly venueName: string },
+  deps: ViewDeps = {},
+): Promise<VersioningView> {
+  const menus = await listMenus(scope.pool, scope.tenantId, scope.venue.id)
+  const now = deps.now ?? new Date()
+  const entries = await Promise.all(
+    menus.map(async (menu) => {
+      const target = { menuId: menu.id, venueId: scope.venue.id }
+      const [current, history] = await Promise.all([
+        loadCurrentSnapshot(scope.pool, scope.tenantId, target),
+        loadHistoryPage(scope, menu.id, {}, deps),
+      ])
+      const liveVersion =
+        current === null ? null : await liveViewOf(scope, deps, menu.id, current)
+      return {
+        menuId: menu.id,
+        name: menu.name ?? scope.venueName,
+        live: menu.live,
+        liveVersion,
+        entries: keptEntries(history.entries, liveVersion?.version ?? null, now),
+      }
+    }),
+  )
+  return {
+    venueId: scope.venue.id,
+    canPublish: scope.canPublish,
+    timeZone: scope.venue.timezone,
+    menus: entries,
   }
 }

@@ -1,9 +1,9 @@
 'use client'
 
-// A venue that was deleted and restored (D76) has a published menu but no guest address: the worker
-// took the venue index out when it was deleted, and a restore does not put it back (it comes back
-// unpublished). The banner says guests see "not available" and what ends it: Publish, which stays
-// on even when the menu is the same as the live one.
+// A venue that was unpublished (D86), or deleted and restored (D76), has a published menu but no
+// guest address: the worker took the venue index out, and only a publish puts it back. The banner
+// says guests see "not available" and what ends it: Publish, which stays on even when the menu is
+// the same as the live one.
 import { WifiOffIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 

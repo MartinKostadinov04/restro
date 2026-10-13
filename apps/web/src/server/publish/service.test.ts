@@ -1,6 +1,7 @@
 // "Publish now" and "Roll back" against a real Postgres, as the restro_app role (brief S3-01b):
-// who may do what, what is queued with which payload, a rollback moving the pointer, and the
-// refusals. The queue is a fake; the worker side is tested in apps/worker.
+// who may do what, what is queued with which payload (also for a menu that is not the live one,
+// S4), a rollback moving the pointer, the refusals, and the Automation settings (D82, D96). The
+// queue is a fake; the worker side is tested in apps/worker.
 import {
   type ChangeSet,
   JOB_NAMES,
@@ -11,25 +12,29 @@ import {
 } from '@restro/core'
 import {
   apply,
+  createMenu,
+  deleteMenu,
   loadCurrentSnapshot,
   type ProvisionedMenu,
   provisionMenu,
   provisionTenant,
   provisionVenue,
   publishMenu,
+  setVenueAutoPublishPaused,
 } from '@restro/core/apply'
 import { createPool, type DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
-import { readPublishRules } from './load'
+import { readAutomation, readOwnPause, readPaused } from './load'
 import {
   type PublishScope,
   type PublishServices,
   publishNow,
+  resumeAutoPublish,
   rollback,
-  savePublishRules,
+  saveAutomation,
 } from './service'
 
 describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)', () => {
@@ -208,6 +213,48 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
         error: 'no_menu',
       })
     })
+
+    it('publishes the menu it is given, also one that is not live (S4); refuses one that is not the venue’s in use', async () => {
+      const brunch = await createMenu(app, tenant, { venueId, name: 'Brunch' })
+      if (!brunch.ok) throw new Error(brunch.reason)
+      expect(brunch.menu.live).toBe(false)
+      sent.length = 0
+      expect(await publishNow(scope(), services, brunch.menu.id)).toEqual({ ok: true, queued: true })
+      expect(sent).toEqual([
+        {
+          name: JOB_NAMES.publishMenu,
+          data: {
+            tenantId: tenant,
+            menuId: brunch.menu.id,
+            venueId,
+            reason: 'manual',
+            actor: 'user:us_publisher',
+          },
+        },
+      ])
+
+      sent.length = 0
+      // Another venue's menu, a made-up one, a malformed id, a binned one: nothing is queued.
+      const otherVenue = (
+        await provisionVenue(app, tenant, { name: 'Other', slug: testSlug('other') })
+      ).id
+      const other = await provisionMenu(app, tenant, otherVenue)
+      expect(await publishNow(scope(), services, other.id)).toEqual({ ok: false, error: 'no_menu' })
+      expect(await publishNow(scope(), services, newId('nd'))).toEqual({
+        ok: false,
+        error: 'no_menu',
+      })
+      expect(await publishNow(scope(), services, 'not-an-id')).toEqual({
+        ok: false,
+        error: 'invalid',
+      })
+      expect((await deleteMenu(app, tenant, { venueId, menuId: brunch.menu.id })).ok).toBe(true)
+      expect(await publishNow(scope(), services, brunch.menu.id)).toEqual({
+        ok: false,
+        error: 'no_menu',
+      })
+      expect(sent).toEqual([])
+    })
   })
 
   describe('rollback', () => {
@@ -280,20 +327,25 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
     })
   })
 
-  describe('the venue’s publishing rules (CF-09b)', () => {
-    const rules = (mode: string, newItems: string) => ({ afterSync: mode, newItems })
+  describe('the venue’s Automation settings (D82, D96)', () => {
+    const sync = { mode: 'auto', incremental_minutes: 5, full_pull_time: '12:00' } as const
 
-    it('start as what the integration says, or the defaults when it says nothing', async () => {
-      expect(await readPublishRules(app, tenant, venueId)).toEqual({
-        afterSync: 'auto',
-        newItems: 'show',
-        inherited: true,
-      })
-      // A venue linked to an integration that has its own old rule follows it, and says so.
+    it('refuses a venue without a till: it has nothing to sync', async () => {
+      expect(await readAutomation(app, tenant, { id: emptyVenueId, timezone: 'Europe/Sofia' })).toBe(
+        null,
+      )
+      expect(
+        await saveAutomation(scope({ venueId: emptyVenueId }), { sync, afterSync: 'auto' }),
+      ).toEqual({ ok: false, error: 'not_found' })
+    })
+
+    it('start as what the connection said, and say they are inherited', async () => {
+      // A venue linked to a connection that has its own old schedule and rule follows them.
       const integration = newId('in')
       await owner.query(
         `insert into restro.integrations (id, tenant_id, kind, host, config)
-         values ($1, $2, 'barsy', 'rules.test', '{"publish":{"after_sync":"manual","new_items":"hold"}}')`,
+         values ($1, $2, 'barsy', 'rules.test',
+           '{"publish":{"after_sync":"manual","new_items":"hold"},"schedule":{"incremental_enabled":true,"incremental_minutes":10,"full_pull_enabled":true,"full_pull_time":"06:30"}}')`,
         [integration, tenant],
       )
       await owner.query(
@@ -301,26 +353,32 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
          values ($1, $2, 1, 'Main bar', $3)`,
         [tenant, integration, venueId],
       )
-      expect(await readPublishRules(app, tenant, venueId)).toEqual({
+      expect(await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' })).toEqual({
+        source: expect.any(String),
+        timeZone: 'Europe/Sofia',
+        sync: { mode: 'auto', incremental_minutes: 10, full_pull_time: '06:30' },
+        syncInherited: true,
         afterSync: 'manual',
-        newItems: 'hold',
-        inherited: true,
+        afterSyncInherited: true,
       })
     })
 
-    it('saves both rules as the venue’s own, which then win over the integration’s', async () => {
-      expect(await savePublishRules(scope(), rules('auto', 'show'))).toEqual({
-        ok: true,
-        queued: true,
-      })
-      expect(await readPublishRules(app, tenant, venueId)).toEqual({
+    it('saves both as the venue’s own, which then win over the connection’s', async () => {
+      sent.length = 0
+      expect(
+        await saveAutomation(scope(), {
+          sync: { mode: 'manual', incremental_minutes: 15, full_pull_time: '04:00' },
+          afterSync: 'auto',
+        }),
+      ).toEqual({ ok: true, queued: true })
+      expect(await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' })).toMatchObject({
+        sync: { mode: 'manual', incremental_minutes: 15, full_pull_time: '04:00' },
+        syncInherited: false,
         afterSync: 'auto',
-        newItems: 'show',
-        inherited: false,
+        afterSyncInherited: false,
       })
-      // Only this venue: the other one still follows the (unlinked) defaults.
-      expect(await readPublishRules(app, tenant, emptyVenueId)).toMatchObject({ inherited: true })
-      // The integration's rule is not rewritten.
+      // Nothing is queued or published by a save, and the connection's settings are not rewritten.
+      expect(sent).toEqual([])
       const { rows } = await owner.query(
         `select config -> 'publish' as publish from restro.integrations where tenant_id = $1`,
         [tenant],
@@ -328,46 +386,41 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
       expect(rows[0]?.publish).toEqual({ after_sync: 'manual', new_items: 'hold' })
     })
 
-    it('queues nothing and publishes nothing by itself', async () => {
-      sent.length = 0
-      await savePublishRules(scope(), rules('manual', 'hold'))
-      expect(sent).toEqual([])
-      expect(await readPublishRules(app, tenant, venueId)).toMatchObject({
-        afterSync: 'manual',
-        newItems: 'hold',
+    it('keeps the rollback pause the venue had (the save rewrites the publish settings)', async () => {
+      await setVenueAutoPublishPaused(app, tenant, venueId, true)
+      expect(await saveAutomation(scope(), { sync, afterSync: 'manual' })).toEqual({
+        ok: true,
+        queued: true,
       })
+      expect(await readOwnPause(app, tenant, venueId)).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
+    })
+
+    it('"Resume automatic publishing" takes the pause off and publishes nothing', async () => {
+      sent.length = 0
+      expect(await resumeAutoPublish(scope({ canPublish: false }))).toEqual({
+        ok: false,
+        error: 'not_allowed',
+      })
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
+      expect(await resumeAutoPublish(scope())).toEqual({ ok: true, queued: false })
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
+      expect(sent).toEqual([])
     })
 
     it('is for owners and admins only, and writes nothing for anyone else', async () => {
-      await savePublishRules(scope(), rules('auto', 'show'))
-      expect(await savePublishRules(scope({ canPublish: false }), rules('manual', 'hold'))).toEqual(
-        {
-          ok: false,
-          error: 'not_allowed',
-        },
-      )
-      expect(await readPublishRules(app, tenant, venueId)).toMatchObject({
-        afterSync: 'auto',
-        newItems: 'show',
+      expect(
+        await saveAutomation(scope({ canPublish: false }), { sync, afterSync: 'auto' }),
+      ).toEqual({ ok: false, error: 'not_allowed' })
+      expect(await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' })).toMatchObject({
+        afterSync: 'manual',
       })
     })
 
-    it('refuses a value outside the lists and a venue of another organisation', async () => {
-      expect(await savePublishRules(scope(), rules('later', 'hold'))).toEqual({
-        ok: false,
-        error: 'invalid',
-      })
-      expect(await savePublishRules(scope(), rules('auto', 'hide'))).toEqual({
-        ok: false,
-        error: 'invalid',
-      })
+    it('refuses a venue of another organisation', async () => {
       expect(
-        await savePublishRules(scope({ tenantId: otherTenant }), rules('manual', 'hold')),
+        await saveAutomation(scope({ tenantId: otherTenant }), { sync, afterSync: 'auto' }),
       ).toEqual({ ok: false, error: 'not_found' })
-      expect(await readPublishRules(app, tenant, venueId)).toMatchObject({
-        afterSync: 'auto',
-        newItems: 'show',
-      })
     })
   })
 })

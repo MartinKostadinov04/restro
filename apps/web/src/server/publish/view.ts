@@ -6,7 +6,16 @@
 //
 // Pure, apart from the types: also imported by the client components (types only) and tested alone.
 
-import type { AfterSyncMode, DiffArea, LocalizedText, Money, NewItemsMode } from '@restro/core'
+import {
+  type AfterSyncMode,
+  type DiffArea,
+  isDue,
+  type LocalizedText,
+  type Money,
+  VERSION_PURGE_DAYS,
+  VERSIONS_KEPT,
+  type VenueSyncSettings,
+} from '@restro/core'
 
 /** Who did it, without ever carrying an id: a person (named when we still know them), the sync, or the system. */
 export type ActorView =
@@ -138,6 +147,50 @@ export function isReturnable(entry: VersionEntry, liveVersion: number | null): b
   )
 }
 
+/**
+ * The versions Settings › Versioning shows (D96): the live one, the newest `VERSIONS_KEPT` earlier
+ * published ones that can be returned to while they are younger than `VERSION_PURGE_DAYS` (what
+ * the purge keeps), and held or rejected publishes while they exist. The records of returns are
+ * left out: the live version says when it was returned to. Newest first, as given.
+ */
+export function keptEntries(
+  entries: readonly VersionEntry[],
+  liveVersion: number | null,
+  now: Date,
+): VersionEntry[] {
+  let returnable = 0
+  return entries.filter((entry) => {
+    if (isLiveEntry(entry, liveVersion)) return true
+    if (entry.status === 'held' || entry.status === 'rejected') return true
+    if (!isReturnable(entry, liveVersion)) return false
+    if (returnable >= VERSIONS_KEPT || isDue(entry.at, now, VERSION_PURGE_DAYS)) return false
+    returnable += 1
+    return true
+  })
+}
+
+/** One menu's versions in Settings › Versioning. */
+export interface VersioningMenu {
+  readonly menuId: string
+  /** The header name, else the venue's name. */
+  readonly name: string
+  /** The venue's live menu. */
+  readonly live: boolean
+  /** The published version guests have of this menu, or null before its first publish. */
+  readonly liveVersion: LiveView | null
+  /** `keptEntries` of its history. */
+  readonly entries: readonly VersionEntry[]
+}
+
+/** Settings › Versioning: every menu's versions (D90, D96: each menu has its own). */
+export interface VersioningView {
+  readonly venueId: string
+  /** Owner or admin: may return to a version. */
+  readonly canPublish: boolean
+  readonly timeZone: string
+  readonly menus: readonly VersioningMenu[]
+}
+
 export interface HistoryPage {
   readonly entries: readonly VersionEntry[]
   /** Pass to load the next, older page; null on the last page. */
@@ -166,14 +219,20 @@ export interface PublishRunView {
 export type BusyView = 'publish' | 'files' | null
 
 /**
- * The venue's publishing rules (CF-09b, CF-04, D73): what happens after a sync of the till, and
- * what happens to the items the till adds. `inherited` is true while at least one of them is not
- * the venue's own yet and follows the integration's old setting; saving makes both the venue's.
+ * The venue's Automation settings (D82, D96; Settings › Publish, POS venues only): the sync mode
+ * with its schedule, and whether a sync publishes by itself. Each says whether it is the venue's
+ * own or still the value the connection had before the settings moved to the venue (`inherited`):
+ * saving makes both the venue's own. The `new_items` rule is retired (D96) and not shown.
  */
-export interface PublishRulesView {
+export interface AutomationView {
+  /** The name of the POS (`{source}`), from its connector. */
+  readonly source: string
+  /** The venue's time zone: the daily full read is at a time of this zone. */
+  readonly timeZone: string
+  readonly sync: VenueSyncSettings
+  readonly syncInherited: boolean
   readonly afterSync: AfterSyncMode
-  readonly newItems: NewItemsMode
-  readonly inherited: boolean
+  readonly afterSyncInherited: boolean
 }
 
 export interface PublishView {
@@ -199,11 +258,111 @@ export interface PublishView {
    * nothing is published yet, and when the files cannot be read (nothing then changes).
    */
   readonly addressServed: boolean
-  /** The venue's publishing rules (the Rules card). */
-  readonly rules: PublishRulesView
   readonly history: HistoryPage
   readonly busy: BusyView
   readonly lastRun: PublishRunView | null
+}
+
+// --- the venue page's Publish bar (brief S4, D96) ---------------------------------------------
+
+/** One menu of the venue as the Publish bar lists it (`loadPublishSummary`). */
+export interface PublishSummaryMenu {
+  readonly menuId: string
+  /** The menu's header name, or the venue's name when it has none (D92). */
+  readonly name: string
+  /** The venue's live menu: the one at the venue's address (D88). */
+  readonly live: boolean
+  /** The names of the areas whose route names this menu (D95), in the areas' order. */
+  readonly areas: readonly string[]
+  /** What a publish would change (items and parts outside them); null when it is blocked. */
+  readonly changes: number | null
+  /** The draft has exactly the content of the menu's published version. */
+  readonly identical: boolean
+  /** Why the draft cannot be published, or null. */
+  readonly blocked: RefusalCode | null
+}
+
+/** Every menu of the venue, for the Publish bar (D96). */
+export interface PublishSummary {
+  /**
+   * A publish would do something for at least one menu: one that is not blocked and differs from
+   * its published version, or was never published, or (the live menu) brings back a switched-off
+   * address. False greys the button. Who may press it is the role's, not this.
+   */
+  readonly canPublish: boolean
+  /** The venue's address is served (see `PublishView.addressServed`). */
+  readonly addressServed: boolean
+  readonly menus: readonly PublishSummaryMenu[]
+}
+
+/** A menu row of the bar, with what its confirmation lists and whether a job of it is running. */
+export interface PublishBarMenu extends PublishSummaryMenu {
+  /** The menu has a published version. */
+  readonly published: boolean
+  /** The changes the confirmation lists; null when the draft is blocked. */
+  readonly list: ChangesView | null
+  readonly busy: BusyView
+}
+
+/** What the Publish bar and the warnings under the venue header need. */
+export interface PublishBarView {
+  readonly venueId: string
+  /** Owner or admin: may publish, approve, reject and resume. */
+  readonly canPublish: boolean
+  readonly addressServed: boolean
+  /** Automatic publishing is paused after a return to an older version. */
+  readonly paused: boolean
+  /** The guest address `/m/<organisation>/<venue>` (D84), or null when it cannot be made. */
+  readonly guestPath: string | null
+  readonly lastRun: PublishRunView | null
+  readonly menus: readonly PublishBarMenu[]
+}
+
+/** What decides whether one menu can be published now. */
+export interface PublishTarget {
+  /** The person's role may publish. */
+  readonly canPublish: boolean
+  readonly blocked: RefusalCode | null
+  readonly published: boolean
+  readonly identical: boolean
+  /** A pause a publish would lift (the live menu's row). */
+  readonly paused: boolean
+  /** False when a publish would switch the address back on (the live menu's row). */
+  readonly addressServed: boolean
+}
+
+/** Why a Publish button is off. */
+export type PublishBlock = 'role' | 'busy' | 'draft' | 'up_to_date'
+
+/**
+ * Why a menu cannot be published now, or null when it can. Up to date and nothing paused:
+ * publishing would find nothing new. (A pause is lifted by a publish even when the menu is the
+ * same, so then it stays on. So does a withdrawn address: a publish writes it again, which is how
+ * a restored or unpublished venue goes live, D76, D86.)
+ */
+export function publishBlock(target: PublishTarget, busy: boolean): PublishBlock | null {
+  if (!target.canPublish) return 'role'
+  if (busy) return 'busy'
+  if (target.blocked !== null) return 'draft'
+  if (target.published && target.identical && !target.paused && target.addressServed) {
+    return 'up_to_date'
+  }
+  return null
+}
+
+/** A summary row as a publish target: the live menu carries the venue's pause and address. */
+export function targetOf(
+  menu: Pick<PublishSummaryMenu, 'live' | 'blocked' | 'identical'> & { readonly published: boolean },
+  venue: { readonly canPublish: boolean; readonly paused: boolean; readonly addressServed: boolean },
+): PublishTarget {
+  return {
+    canPublish: venue.canPublish,
+    blocked: menu.blocked,
+    published: menu.published,
+    identical: menu.identical,
+    paused: menu.live && venue.paused,
+    addressServed: !menu.live || venue.addressServed,
+  }
 }
 
 // --- reading a publish run ---------------------------------------------------------------------

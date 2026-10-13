@@ -1,23 +1,19 @@
 'use client'
 
-// What the Publish tab's buttons share: pressing Publish, Approve, Reject or "Return to this
-// version", the pending state while the worker does it, and the outcome to show afterwards.
+// What the venue page's publish buttons share (the Publish bar, the held banner): pressing Publish
+// (of one menu), Approve or Reject, the pending state while the worker does it, and the outcome
+// to show afterwards. A return to an earlier version (Settings › Versioning) has its own answer:
+// it is done when the action comes back; only its files are late.
 //
 // Publishing is the worker's job. "Publish" and "Approve" only queue it, so the action coming back
-// does not mean it happened: the hook waits until the tab's data shows a publish run newer than the
-// one that was there when the button was pressed, and words how that run ended ("Version 3 is
+// does not mean it happened: the hook waits until the page's data shows a publish run newer than
+// the one that was there when the button was pressed, and words how that run ended ("Version 3 is
 // live", or why it was refused). The page keeps itself fresh while `busy` (LiveRefresh).
-// A return to an earlier version is done when the action comes back; only its files are late.
 import { useEffect, useState, useTransition } from 'react'
 
-import {
-  approveHeldAction,
-  publishNowAction,
-  rejectHeldAction,
-  rollbackAction,
-} from '@/server/publish/actions'
+import { approveHeldAction, publishNowAction, rejectHeldAction } from '@/server/publish/actions'
 import type { PublishActionError, PublishActionResult } from '@/server/publish/service'
-import type { PublishRunView, PublishView, RefusalCode } from '@/server/publish/view'
+import type { BusyView, PublishRunView, RefusalCode } from '@/server/publish/view'
 
 /** How the last thing the person did turned out. */
 export type Outcome =
@@ -54,15 +50,20 @@ export interface Publisher {
   /** A queued publish has had no answer for a long time. */
   readonly slow: boolean
   readonly outcome: Outcome | null
-  readonly publish: () => void
+  /** Publishes a menu of the venue: `menuId`, else the live one. */
+  readonly publish: (menuId?: string) => void
   readonly approve: (snapshotId: string) => void
   readonly reject: (snapshotId: string) => void
-  /** Returns to a version; resolves to whether it worked (the dialog closes then). */
-  readonly returnTo: (snapshotId: string, version: number) => Promise<boolean>
   readonly dismiss: () => void
 }
 
-export function usePublisher(venueId: string, view: PublishView): Publisher {
+/** What the hook follows in the page's data: the last publish run, and whether a job is waiting. */
+export interface PublisherState {
+  readonly lastRun: PublishRunView | null
+  readonly busy: BusyView
+}
+
+export function usePublisher(venueId: string, view: PublisherState): Publisher {
   const [pending, startTransition] = useTransition()
   // Set once a publish is queued: the run that was the latest then, so a newer one is the answer.
   const [waiting, setWaiting] = useState<{ readonly baseline: string | null } | null>(null)
@@ -101,7 +102,8 @@ export function usePublisher(venueId: string, view: PublishView): Publisher {
     busy: pending || waiting !== null || view.busy !== null,
     slow,
     outcome,
-    publish: () => queue(() => publishNowAction(venueId)),
+    publish: (menuId) =>
+      queue(() => (menuId === undefined ? publishNowAction(venueId) : publishNowAction(venueId, menuId))),
     approve: (snapshotId) => queue(() => approveHeldAction(venueId, snapshotId)),
     reject: (snapshotId) => {
       setOutcome(null)
@@ -111,17 +113,6 @@ export function usePublisher(venueId: string, view: PublishView): Publisher {
         if (!result.ok) setOutcome({ kind: 'error', error: result.error })
       })
     },
-    returnTo: (snapshotId, version) =>
-      new Promise<boolean>((resolve) => {
-        setOutcome(null)
-        startTransition(async () => {
-          const result = await rollbackAction(venueId, snapshotId)
-          setOutcome(
-            result.ok ? { kind: 'returned', version } : { kind: 'error', error: result.error },
-          )
-          resolve(result.ok)
-        })
-      }),
     dismiss: () => setOutcome(null),
   }
 }
