@@ -3,7 +3,7 @@
 // into the composer, rename, move, "Set live" that publishes after a confirmation, and for a
 // hand-made venue add, delete (never the live one), import and the bin; a POS venue has none of
 // the three.
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -67,6 +67,12 @@ function render(
 
 const rows = () => screen.getAllByTestId('menu-row')
 const row = (index: number) => rows()[index] as HTMLElement
+/** A row's button once the action before it has come back (the buttons wait while one runs). */
+async function ready(index: number, testId: string): Promise<HTMLButtonElement> {
+  const button = within(row(index)).getByTestId(testId) as HTMLButtonElement
+  await waitFor(() => expect(button.disabled).toBe(false))
+  return button
+}
 
 describe('the Menus card', () => {
   it('lists the menus in order: the venue’s name for a menu without one, the Live badge, ">" into the composer', () => {
@@ -108,19 +114,19 @@ describe('the Menus card', () => {
     render()
     expect((within(row(0)).getByTestId('menu-up') as HTMLButtonElement).disabled).toBe(true)
     expect((within(row(2)).getByTestId('menu-down') as HTMLButtonElement).disabled).toBe(true)
-    await user.click(within(row(2)).getByTestId('menu-up'))
+    await user.click(await ready(2, 'menu-up'))
     expect(actions.moveMenuAction).toHaveBeenLastCalledWith({
       venueId: VENUE,
       menuId: 'nd_late',
       position: { before: 'nd_brunch' },
     })
-    await user.click(within(row(0)).getByTestId('menu-down'))
+    await user.click(await ready(0, 'menu-down'))
     expect(actions.moveMenuAction).toHaveBeenLastCalledWith({
       venueId: VENUE,
       menuId: 'nd_main',
       position: { before: 'nd_late' },
     })
-    await user.click(within(row(1)).getByTestId('menu-down'))
+    await user.click(await ready(1, 'menu-down'))
     expect(actions.moveMenuAction).toHaveBeenLastCalledWith({
       venueId: VENUE,
       menuId: 'nd_brunch',
