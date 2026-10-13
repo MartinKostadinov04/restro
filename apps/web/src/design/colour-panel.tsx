@@ -6,8 +6,8 @@
 // stay editable; once the person sets one, the brand colour stops filling it, and "Use tints of my
 // brand colour again" hands it back. One set of three pickers: no presets, no swatch palette, no
 // "where a look starts" choice. A page that is strongly saturated gets a warning. When the
-// highlight stands out less than 3:1 against the page it stays as chosen and the card says the
-// buttons get the strong outline (D93 point 2). "Suggest with colour theory" is a small link that
+// highlight stands out less than 3:1 against the page it stays as chosen and the card says so
+// (D93 point 2). "Suggest with colour theory" is a small link that
 // fills the page and the panels by a harmony rule. The colours worked out from these three are
 // under "Advanced" (role-panel.tsx).
 //
@@ -128,6 +128,8 @@ export function ColourPanel({
         ) : null}
       </div>
 
+      {/* D93 point 2: the card also says "and the buttons get a strong outline" once a face draws
+          `border_strong` on its buttons; none does yet, so the sentence must not promise it. */}
       {pale.length > 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="design-pale-highlight">
           {t('paleHighlight', {

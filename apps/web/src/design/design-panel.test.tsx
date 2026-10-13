@@ -485,7 +485,7 @@ describe('colours, brand-first', () => {
   it('warns when the page colour is strongly saturated, and only then', () => {
     setup()
     type('Your brand colour', '#00ff00')
-    // The brand-first pre-fill itself never warns, even for a pure green.
+    // The brand-first pre-fill (tints of the brand) itself never warns, even for a pure green.
     expect(screen.queryByTestId('design-saturation-warning')).toBeNull()
     type('Page', '#ffcc00')
     expect(screen.getByTestId('design-saturation-warning').textContent).toContain(
@@ -500,8 +500,9 @@ describe('colours, brand-first', () => {
   it('says so in one sentence when the brand colour stands out less than 3:1 against the page', () => {
     setup()
     type('Your brand colour', '#eab308')
+    // It does not promise the strong outline: no face draws it yet (D93 point 2).
     expect(screen.getByTestId('design-pale-highlight').textContent).toBe(
-      'Your brand colour stands out less than 3:1 against the page (Light screen), so it stays as you chose it and the buttons get a strong outline.',
+      'Your brand colour stands out less than 3:1 against the page (Light screen), so it stays as you chose it.',
     )
     type('Your brand colour', '#1e3a8a')
     expect(screen.queryByTestId('design-pale-highlight')).toBeNull()

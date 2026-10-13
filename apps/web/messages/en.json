@@ -1781,7 +1781,7 @@
       },
       "followBrand": "Use tints of my brand colour again",
       "saturated": "This page colour is strongly saturated. A calm, light tint usually looks best behind photos and text.",
-      "paleHighlight": "Your brand colour stands out less than 3:1 against the page ({screens}), so it stays as you chose it and the buttons get a strong outline.",
+      "paleHighlight": "Your brand colour stands out less than 3:1 against the page ({screens}), so it stays as you chose it.",
       "suggest": "Suggest with colour theory",
       "suggestHelp": "Works out the page and the panels from your brand colour, which stays as it is.",
       "rules": {

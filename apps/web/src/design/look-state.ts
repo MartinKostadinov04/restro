@@ -11,8 +11,7 @@
 // tab can point at, not a value that vanishes.
 //
 // A look that is saved the old way loads as its three colours: a brand-only look as its brand
-// colour with the tints it always had in the light screen, a preset look as its colours and the
-// roles it pinned. The form never saves a preset or a brand colour any more: it saves `colors` with
+// colour with the tints of it, a preset look as its colours and the roles it pinned. The form never saves a preset or a brand colour any more: it saves `colors` with
 // `preset: null` and the overrides.
 import {
   type AnyRoleName,
@@ -23,7 +22,6 @@ import {
   EXTENDED_PAIRS,
   type ExtendedRoleName,
   FALLBACK_BRAND,
-  generatePalette,
   type HarmonyRule,
   hexToOklch,
   MIN_CONTROL_CONTRAST,
@@ -81,23 +79,26 @@ const NO_OVERRIDES: RoleTexts = { light: {}, dark: {} }
 // --- Brand-first tints ---------------------------------------------------------------------------
 
 /**
- * The page and the panels a brand colour fills in (D93): the light screen's page and panels of the
- * brand's palette, `semanticColours(generatePalette(brand))` — a calm tint of the brand's hue for
- * the page, white for the panels. With no (or no usable) brand colour: the neutral default
- * palette's, the page a venue without a look has.
+ * The page and the panels a brand colour fills in (D93): calm tints of the brand colour, the
+ * engine's monochrome suggestion (`suggestHarmony(brand, 'monochrome')`: its primary is the page,
+ * its secondary the panels), so both keep the brand's hue and the dark screen keeps it too. With no
+ * brand colour: the neutral default palette's page and panels, what a venue without a look has.
  */
 export function tintsOf(brand: string | null): { readonly page: string; readonly panels: string } {
-  const colours = semanticColours(brand === null ? DEFAULT_PALETTE : generatePalette(brand))
-  return { page: colours.background.toLowerCase(), panels: colours.surface.toLowerCase() }
+  if (brand === null) {
+    const neutral = semanticColours(DEFAULT_PALETTE)
+    return { page: neutral.background.toLowerCase(), panels: neutral.surface.toLowerCase() }
+  }
+  const { primary, secondary } = suggestHarmony(brand, 'monochrome')
+  return { page: primary, panels: secondary }
 }
 
 /**
  * How much colour (OKLCH chroma) a page may carry before the tab warns that it is strongly
  * saturated. The engine's own monochrome suggestion (`suggestHarmony`) never gives the page more
  * than 0.02 (and the panels never more than 0.035); a page with two and a half times that is no
- * longer a tint, and text and photos sit uneasily on it. It is also above the most colour the
- * brand-first pre-fill ever gives a page (0.044, for a pure green or magenta), so the pre-fill
- * itself never warns.
+ * longer a tint, and text and photos sit uneasily on it. The brand-first pre-fill is that same
+ * suggestion, so it never warns.
  */
 export const STRONG_PAGE_CHROMA = 0.05
 
@@ -114,7 +115,8 @@ export function isStronglySaturated(page: string): boolean {
 
 /**
  * The screens on which the highlight stands out less than 3:1 against the page (WCAG 1.4.11, D93
- * point 2). It stays as the person chose it; the buttons get the strong outline instead.
+ * point 2). It stays as the person chose it. (Buttons are to get the strong outline then; that is
+ * the face's work, and the card says nothing of it until the face draws it.)
  */
 export function paleHighlightScreens(roles: ThemeRoleSet): RoleMode[] {
   return ROLE_MODES.filter(

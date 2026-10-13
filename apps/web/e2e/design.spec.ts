@@ -41,11 +41,11 @@ const OWNER_EMAIL = 'design-owner@demo-club.test'
 const SLUG = 'design-club'
 const WORKER_WAIT = { timeout: 45_000 }
 
-/** The brand colour the steps type, and the page and panels it fills in (brand-first, D93). */
+/** The brand colour the steps type, and the calm tints of it that fill the page and panels (D93). */
 const BRAND = '#2563eb'
-const BRAND_PAGE = '#e8eefd'
-const BRAND_PAGE_RGB = 'rgb(232, 238, 253)'
-const BRAND_PANELS = '#ffffff'
+const BRAND_PAGE = '#ebf2ff'
+const BRAND_PAGE_RGB = 'rgb(235, 242, 255)'
+const BRAND_PANELS = '#d5e2f9'
 
 let owner: BrowserContext
 let page: Page

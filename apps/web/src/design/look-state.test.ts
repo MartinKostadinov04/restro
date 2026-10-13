@@ -5,7 +5,6 @@ import {
   DEFAULT_PALETTE,
   EXTENDED_PAIRS,
   EXTENDED_ROLE_NAMES,
-  generatePalette,
   HARMONY_RULES,
   hslToHex,
   REQUIRED_PAIRS,
@@ -89,14 +88,14 @@ describe('the form state of a saved look', () => {
     expect(view.issues).toEqual([])
   })
 
-  it('loads a brand-only look as its brand colour with the page and panels it always had', () => {
+  it('loads a brand-only look as its brand colour with calm tints of it for the page and panels', () => {
     const theme = { brand: '#2563eb', logo_asset_id: 'as_0123456789ABCDEFGHIJKL' }
     const state = lookStateOf(theme)
-    const light = semanticColours(generatePalette('#2563eb'))
+    const mono = suggestHarmony('#2563eb', 'monochrome')
     expect(isBrandOnlyLook(theme)).toBe(true)
     expect(state.colours).toEqual({
-      primary: light.background.toLowerCase(),
-      secondary: light.surface.toLowerCase(),
+      primary: mono.primary,
+      secondary: mono.secondary,
       tertiary: '#2563eb',
     })
     expect(state.edited).toEqual({ primary: false, secondary: false })
@@ -105,7 +104,7 @@ describe('the form state of a saved look', () => {
     const saved = themeOf(state).theme
     expect(saved).toMatchObject({
       preset: null,
-      colors: { primary: light.background, secondary: light.surface, tertiary: '#2563eb' },
+      colors: { primary: mono.primary, secondary: mono.secondary, tertiary: '#2563eb' },
       logo_asset_id: 'as_0123456789ABCDEFGHIJKL',
     })
     expect(saved).not.toHaveProperty('brand')
@@ -190,14 +189,19 @@ describe('the form state of a saved look', () => {
 })
 
 describe('brand-first: the brand colour fills the page and the panels', () => {
-  it('pre-fills them with the palette’s light page and panels', () => {
+  it('pre-fills them with the monochrome suggestion: calm tints that keep the brand’s hue', () => {
     for (const brand of BRANDS) {
       const state = setBrand(NONE, brand)
-      const light = semanticColours(generatePalette(brand))
-      expect(state.colours.primary, brand).toBe(light.background.toLowerCase())
-      expect(state.colours.secondary, brand).toBe(light.surface.toLowerCase())
+      const mono = suggestHarmony(brand, 'monochrome')
+      expect(state.colours.primary, brand).toBe(mono.primary)
+      expect(state.colours.secondary, brand).toBe(mono.secondary)
       expect(state.colours.tertiary).toBe(brand)
+      expect(tintsOf(brand)).toEqual({ page: mono.primary, panels: mono.secondary })
     }
+    // A vivid brand keeps its hue in the panels (white panels would lose it).
+    expect(chromaOf(tintsOf('#2563eb').panels)).toBeGreaterThan(0.02)
+    // No brand colour: the neutral default page and white panels, as a venue without a look has.
+    expect(tintsOf(null)).toEqual({ page: '#f8f8f9', panels: '#ffffff' })
   })
 
   it('saves the three colours with no preset and no brand colour, and they read on both screens', () => {
@@ -305,7 +309,7 @@ describe('a strongly saturated page', () => {
     expect(isStronglySaturated('')).toBe(false)
   })
 
-  it('is above every page the engine’s harmony helpers and the brand-first pre-fill give', () => {
+  it('is above every page the engine’s harmony helpers give, and the pre-fill is one of them', () => {
     for (let hue = 0; hue < 360; hue += 5) {
       const seed = hslToHex(hue, 1, 0.5)
       for (const rule of HARMONY_RULES) {
