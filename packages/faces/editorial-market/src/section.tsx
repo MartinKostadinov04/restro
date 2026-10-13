@@ -1,16 +1,17 @@
 // One section of the menu: its title, description and image, then its own items, then its
-// sub-sections (the reading order of R2). The first top-level section can be the photo-led
-// "feature" strip. A section the guest's filters have emptied is hidden, and so is a section
-// whose sub-sections are all hidden.
+// sub-sections (the reading order of R2). A section the composer marks horizontal (D92: its
+// `hints.layout`) is drawn as the photo-led "feature" strip, whichever section it is. A section
+// the guest's filters have emptied is hidden, and so is a section whose sub-sections are all
+// hidden.
 
 import type { ViewSection } from '@restro/shell'
 import type { ReactNode } from 'react'
 
 import { Item } from './item'
-import { type Filters, hasVisibleItems, isFiltering, sectionDomId } from './model'
+import { type Filters, hasVisibleItems, isFiltering, isStrip, sectionDomId } from './model'
 import { type PageContext, Photo, Text } from './parts'
 
-/** The first items of the feature strip are the first thing on the page: load their photos now. */
+/** The first items of a strip at the top are the first thing on the page: load their photos now. */
 const EAGER_PHOTOS = 3
 
 export function SectionBlock({
@@ -18,7 +19,7 @@ export function SectionBlock({
   ctx,
   filters,
   level = 2,
-  feature = false,
+  first = false,
   tools,
 }: {
   readonly section: ViewSection
@@ -26,17 +27,19 @@ export function SectionBlock({
   readonly filters: Filters
   /** The heading level of the title: 2 for a section, 3 for a sub-section. */
   readonly level?: 2 | 3
-  /** Draw this section as the photo-led strip. */
-  readonly feature?: boolean
+  /** The first section of the page: the photos of a strip there load at once. */
+  readonly first?: boolean
   /** Controls that belong under the title (the layout switch). */
   readonly tools?: ReactNode
 }) {
   const { locale, assetBase } = ctx
   const Title = level === 2 ? 'h2' : 'h3'
+  const feature = isStrip(section)
   return (
     <section
       id={sectionDomId(section.id)}
       className={feature ? 'rm-section is-feature' : 'rm-section'}
+      data-section-layout={section.hints.layout}
       hidden={isFiltering(filters) && !hasVisibleItems(section, filters)}
     >
       <div className="rm-section-head">
@@ -60,7 +63,7 @@ export function SectionBlock({
             key={item.id}
             item={item}
             ctx={ctx}
-            priority={feature && index < EAGER_PHOTOS}
+            priority={feature && first && index < EAGER_PHOTOS}
             strip={feature}
             nameLevel={level === 2 ? 3 : 4}
           />

@@ -1,6 +1,6 @@
 // The small pure helpers of the Editorial Market face: language tags, asset addresses, image
-// attributes, the guest's filters, the face's typed presentation options and the theme as CSS
-// variables. No React and nothing from outside @restro/shell.
+// attributes, the guest's filters, the layouts (the menu's and a section's strip) and the theme
+// as CSS variables. No React and nothing from outside @restro/shell.
 
 import type {
   Locale,
@@ -123,34 +123,9 @@ export function photoSizes(layout: Layout, strip: boolean): string {
   }
 }
 
-/* ---------------------------------------------------------------------------------------------
- * Options
- * ------------------------------------------------------------------------------------------- */
-
-/** The face's own presentation options, as typed values. */
-export interface FaceOptions {
-  /** The layout the menu starts in. */
-  readonly layout: Layout
-  /** Whether the guest gets the layout switch. */
-  readonly layoutSwitch: boolean
-  /** Whether the first section is drawn as the photo-led strip. */
-  readonly featureFirstSection: boolean
-}
-
-/**
- * The options as typed values, from what the shell's `resolveOptions` returned for this face's
- * manifest. The manifest is the one place that declares the options and their defaults:
- * `resolveOptions` has already dropped unknown keys and replaced anything missing, of the wrong
- * type or not in the enum with the default, so the checks below always hold. They are there for
- * the types, and the values they fall back to are the manifest's own defaults (a test pins both).
- */
-export function faceOptions(resolved: Readonly<Record<string, string | boolean>>): FaceOptions {
-  const { layout, layoutSwitch, featureFirstSection } = resolved
-  return {
-    layout: isLayout(layout) ? layout : 'two',
-    layoutSwitch: typeof layoutSwitch === 'boolean' ? layoutSwitch : true,
-    featureFirstSection: typeof featureFirstSection === 'boolean' ? featureFirstSection : true,
-  }
+/** True for a section drawn as the photo-led strip: one the composer marks horizontal (D92). */
+export function isStrip(section: ViewSection): boolean {
+  return section.hints.layout === 'horizontal'
 }
 
 /* ---------------------------------------------------------------------------------------------

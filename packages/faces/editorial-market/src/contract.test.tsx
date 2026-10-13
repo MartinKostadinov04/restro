@@ -31,7 +31,10 @@ const renderBrowsing = (view: ViewModel) =>
 const render = (view: ViewModel) =>
   renderToStaticMarkup(<EditorialMarketFace view={view} services={stubServices()} />)
 
-/** Every host prop and option at once: the contract must hold however the host dresses the face. */
+/**
+ * Every host prop at once, and options a venue stored before D92 (the face reads none now): the
+ * contract must hold however the host dresses the face.
+ */
 const renderDressed = (view: ViewModel) =>
   renderToStaticMarkup(
     <EditorialMarketFace
@@ -67,7 +70,7 @@ describe('the face contract (brief S3-02 harness, every fixture)', () => {
     expect(report.failures).toEqual([])
   })
 
-  it('also passes with a table, two languages, a forced scheme and every option changed', async () => {
+  it('also passes with a table, two languages, a forced scheme and stale options', async () => {
     const report = await runFaceContract(renderDressed, EDITORIAL_MARKET_MANIFEST)
     expect(report.failures).toEqual([])
   })
@@ -78,6 +81,36 @@ describe('the face contract (brief S3-02 harness, every fixture)', () => {
     })
     expect(report.failures).toEqual([])
     expect(report.items).toBe(14)
+  })
+})
+
+describe('layouts (D92)', () => {
+  /** Each top-level section's class and layout attribute, in order. */
+  const sectionsOf = (html: string) =>
+    withAttribute(parseHtml(html), 'data-section-layout').map((section) => [
+      section.attrs.class,
+      section.attrs['data-section-layout'],
+    ])
+
+  it('draws a section marked horizontal as the strip, and not an unmarked first one', () => {
+    // horizontal-sections: the second section is marked, the first is not.
+    expect(sectionsOf(render(viewOf(fixture('horizontal-sections'))))).toEqual([
+      ['rm-section', 'vertical'],
+      ['rm-section is-feature', 'horizontal'],
+      ['rm-section', 'vertical'],
+    ])
+    // A first section published without a layout (before D92) is no strip either.
+    expect(sectionsOf(render(viewOf(fixture('long-names'))))).toEqual([['rm-section', 'vertical']])
+  })
+
+  it('starts in the menu’s layout, and draws the switch only where the menu lets guests switch', () => {
+    const two = render(viewOf(fixture('horizontal-sections')))
+    expect(two).toContain('data-layout="two"')
+    expect(two).toContain('data-slot="menu.layout_switch"')
+    const one = render(viewOf(fixture('one-column')))
+    expect(one).toContain('data-layout="one"')
+    expect(one).not.toContain('data-slot="menu.layout_switch"')
+    expect(one).not.toContain('role="radiogroup"')
   })
 })
 

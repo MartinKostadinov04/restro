@@ -381,7 +381,7 @@ export const EDITORIAL_CSS = `
 .rm-waiter {
   font-weight: 750;
 }
-/* The photo-led strip: the first section, a row of big cards that scrolls sideways. */
+/* The photo-led strip: a section marked horizontal (D92), big cards that scroll sideways. */
 .rm-section.is-feature {
   padding-top: 38px;
 }
@@ -1181,7 +1181,7 @@ export const EDITORIAL_CSS = `
     margin-left: 14px;
   }
 }
-/* Layout: two columns (the default). The photo-led strip is not affected by the layout. */
+/* Layout: two columns. The photo-led strip is not affected by the layout. */
 .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 12px;

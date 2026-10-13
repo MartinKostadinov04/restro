@@ -1,8 +1,8 @@
 // The Editorial Market face: a photo-led guest menu for a phone. It draws a view model and nothing
 // else (the shell has already decided what is shown, in what order and in what state). Top to
-// bottom: the venue bar, the menu title, a sticky category rail, the sections (the first one as a
-// photo-led strip) with the layout switch under the next section's title, and the allergen
-// information footer. A tap on an item opens its dish page, a tap on its allergen codes opens the
+// bottom: the venue bar, the menu title, a sticky category rail, the sections (each one the
+// composer marks horizontal as a photo-led strip, D92) with the layout switch under the title of
+// the first other section when the menu lets guests switch, and the allergen information footer. A tap on an item opens its dish page, a tap on its allergen codes opens the
 // allergen sheet, and the filter button opens the filter sheet.
 //
 // Ported from the designer's delivery of 2026-10-11 (docs/design/faces/editorial-market): the same
@@ -15,7 +15,7 @@
 // stylesheet for them and no empty band under the menu.
 
 import type { FaceHostProps, ViewItem } from '@restro/shell'
-import { resolveOptions, stringsFor } from '@restro/shell'
+import { stringsFor } from '@restro/shell'
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AllergenSheet } from './allergen-sheet'
@@ -25,15 +25,14 @@ import { DishPage } from './detail'
 import { type FilterKind, FilterSheet } from './filters'
 import { Header } from './header'
 import { LayoutSwitch } from './layout-switch'
-import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import {
   allItems,
   bcp47,
   countVisible,
   type Filters,
-  faceOptions,
   hasVisibleItems,
   isFiltering,
+  isStrip,
   langOf,
   matchesFilters,
   NO_FILTERS,
@@ -71,7 +70,6 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     scheme = 'auto',
     services,
   } = props
-  const options = faceOptions(resolveOptions(EDITORIAL_MARKET_MANIFEST, props.options))
   const locale = view.locale
   const strings = stringsFor(locale).guest
 
@@ -94,7 +92,8 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     }
   }, [chosen, filterControl, view.filters])
 
-  const [layout, chooseLayout] = useLayout(options.layout, options.layoutSwitch)
+  // The menu's layout and guest switch (D92), published with the menu; no face option any more.
+  const [layout, chooseLayout] = useLayout(view.layout.default, view.layout.guestSwitch)
   const dish = useDishRoute()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [allergens, setAllergens] = useState<AllergenState | null>(null)
@@ -166,13 +165,13 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     [locale, strings, assetBase, layout, filters, dish.open, openAllergens],
   )
 
-  // The first section is the photo-led strip, unless the venue turned that off. The layout switch
-  // sits under the title of the first section after it that still has something to show.
-  const featureIndex = options.featureFirstSection ? 0 : -1
-  const switchIndex = options.layoutSwitch
+  // A section the composer marks horizontal is a photo-led strip (D92). The layout switch, when
+  // the menu lets guests switch, sits under the title of the first other section that still has
+  // something to show.
+  const switchIndex = view.layout.guestSwitch
     ? view.sections.findIndex(
-        (section, index) =>
-          index !== featureIndex && (!isFiltering(filters) || hasVisibleItems(section, filters)),
+        (section) =>
+          !isStrip(section) && (!isFiltering(filters) || hasVisibleItems(section, filters)),
       )
     : -1
   const nothingMatches = isFiltering(filters) && countVisible(view.sections, filters) === 0
@@ -219,7 +218,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
               section={section}
               ctx={ctx}
               filters={filters}
-              feature={index === featureIndex}
+              first={index === 0}
               tools={
                 index === switchIndex ? (
                   <LayoutSwitch layout={layout} onChange={chooseLayout} strings={strings} />

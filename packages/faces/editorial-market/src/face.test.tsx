@@ -54,6 +54,21 @@ function visibleNames(container: HTMLElement): string[] {
     .map((card) => card.querySelector('[data-slot="item.name"]')?.textContent ?? '')
 }
 
+/** The test menu with other section layouts (D92) and, if given, another menu layout. */
+function withLayouts(
+  sections: readonly ('vertical' | 'horizontal')[],
+  layout: ViewModel['layout'] = view.layout,
+): ViewModel {
+  return {
+    ...view,
+    layout,
+    sections: view.sections.map((section, index) => ({
+      ...section,
+      hints: { ...section.hints, layout: sections[index] ?? 'vertical' },
+    })),
+  }
+}
+
 /** The top-level sections, in order, and whether each is hidden. */
 const sectionsOf = (container: HTMLElement) => [
   ...container.querySelectorAll<HTMLElement>('section.rm-section'),
@@ -94,23 +109,30 @@ describe('the layout', () => {
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
   })
 
-  it('starts in the layout the venue chose (options.layout)', () => {
-    const { container } = draw({ options: { layout: 'list' } })
-    expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
-    expect(screen.getByRole('radio', { name: 'List' }).getAttribute('aria-checked')).toBe('true')
-  })
-
-  it('falls back to two columns for an unknown or wrongly typed option', () => {
-    for (const options of [{ layout: 'grid' }, { layout: true }, { layout: 2 as never }]) {
-      const { container, unmount } = draw({ options })
-      expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
+  it('starts in the layout of the menu (view.layout, a composer setting)', () => {
+    for (const layout of ['list', 'one', 'two'] as const) {
+      const { container, unmount } = draw({
+        view: { ...view, layout: { default: layout, guestSwitch: true } },
+      })
+      expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe(layout)
       unmount()
     }
   })
 
+  it('reads none of the retired template options (layout, layoutSwitch, featureFirstSection)', () => {
+    const { container } = draw({
+      options: { layout: 'list', layoutSwitch: false, featureFirstSection: false },
+    })
+    expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
+    expect(screen.getByRole('radiogroup', { name: 'Menu layout' })).toBeTruthy()
+    expect(sectionsOf(container)[0]?.classList.contains('is-feature')).toBe(true)
+  })
+
   it("lets the guest's remembered choice win while the switch is shown", () => {
     window.sessionStorage.setItem('rm-layout', 'one')
-    const { container } = draw({ options: { layout: 'list' } })
+    const { container } = draw({
+      view: { ...view, layout: { default: 'list', guestSwitch: true } },
+    })
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('one')
   })
 
@@ -132,9 +154,11 @@ describe('the layout', () => {
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
   })
 
-  it('hides the switch with options.layoutSwitch = false, and then the remembered choice does not apply', () => {
+  it('draws no switch when the menu does not let guests switch, and then the remembered choice does not apply', () => {
     window.sessionStorage.setItem('rm-layout', 'one')
-    const { container } = draw({ options: { layout: 'list', layoutSwitch: false } })
+    const { container } = draw({
+      view: { ...view, layout: { default: 'list', guestSwitch: false } },
+    })
     expect(screen.queryByRole('radiogroup')).toBeNull()
     expect(screen.queryByRole('radio')).toBeNull()
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
@@ -150,12 +174,45 @@ describe('the layout', () => {
     expect(container.querySelectorAll('.rm-layout')).toHaveLength(1)
   })
 
-  it('with featureFirstSection = false draws the first section like the others', () => {
-    const { container } = draw({ options: { featureFirstSection: false } })
+  it('draws the first section like the others when it is not marked horizontal', () => {
+    const { container } = draw({ view: withLayouts(['vertical', 'vertical', 'vertical']) })
     expect(container.querySelector('.is-feature')).toBeNull()
     const [first, second] = sectionsOf(container)
+    expect(first?.getAttribute('data-section-layout')).toBe('vertical')
     expect(first?.querySelector('.rm-layout')).not.toBeNull()
     expect(second?.querySelector('.rm-layout')).toBeNull()
+  })
+
+  it('draws any section marked horizontal as the strip, not only the first (D92)', () => {
+    const { container } = draw({ view: withLayouts(['vertical', 'horizontal', 'vertical']) })
+    const [first, second, third] = sectionsOf(container)
+    expect(first?.classList.contains('is-feature')).toBe(false)
+    expect(second?.classList.contains('is-feature')).toBe(true)
+    expect(second?.getAttribute('data-section-layout')).toBe('horizontal')
+    expect(third?.classList.contains('is-feature')).toBe(false)
+    // The switch sits under the first section that is not a strip.
+    expect(first?.querySelector('.rm-layout')).not.toBeNull()
+    expect(container.querySelectorAll('.rm-layout')).toHaveLength(1)
+    // A strip that is not at the top of the page loads its photos lazily, like the rest.
+    for (const image of second?.querySelectorAll('img') ?? []) {
+      expect(image.getAttribute('loading')).toBe('lazy')
+    }
+  })
+
+  it('draws two strips when two sections are marked horizontal', () => {
+    const { container } = draw({ view: withLayouts(['horizontal', 'vertical', 'horizontal']) })
+    expect(
+      sectionsOf(container).map((section) => section.classList.contains('is-feature')),
+    ).toEqual([true, false, true])
+    expect(sectionsOf(container)[1]?.querySelector('.rm-layout')).not.toBeNull()
+  })
+
+  it('carries the switch as the menu.layout_switch slot (the contract checks it, D92)', () => {
+    const { container } = draw()
+    expect(container.querySelectorAll('[data-slot="menu.layout_switch"]')).toHaveLength(1)
+    cleanup()
+    const off = draw({ view: { ...view, layout: { default: 'two', guestSwitch: false } } })
+    expect(off.container.querySelector('[data-slot="menu.layout_switch"]')).toBeNull()
   })
 
   it('keeps the switch reachable when a filter hides the section it sat in', () => {

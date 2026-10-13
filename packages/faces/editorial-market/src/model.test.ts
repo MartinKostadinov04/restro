@@ -1,14 +1,15 @@
-import { resolveOptions } from '@restro/shell'
+import type { ViewLayout } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
-import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import {
   assetUrl,
   bcp47,
   countVisible,
-  faceOptions,
   hasVisibleItems,
   isFiltering,
+  isLayout,
+  isStrip,
+  LAYOUTS,
   langOf,
   languageLabel,
   localeLang,
@@ -43,37 +44,23 @@ describe('asset addresses', () => {
   })
 })
 
-describe('the options', () => {
-  // The face reads its options the way face.tsx does: the shell resolves them against the manifest.
-  const read = (raw: unknown) => faceOptions(resolveOptions(EDITORIAL_MARKET_MANIFEST, raw))
-  const DEFAULTS = { layout: 'two', layoutSwitch: true, featureFirstSection: true }
-
-  it('has the defaults of the brief, which the manifest declares', () => {
-    expect(read(undefined)).toEqual(DEFAULTS)
-    expect(read({})).toEqual(DEFAULTS)
-  })
-
-  it('reads valid options', () => {
-    expect(read({ layout: 'list', layoutSwitch: false, featureFirstSection: false })).toEqual({
-      layout: 'list',
-      layoutSwitch: false,
-      featureFirstSection: false,
-    })
-    expect(read({ layout: 'one' }).layout).toBe('one')
-  })
-
-  it('falls back to the default for an unknown, missing or wrongly typed value', () => {
-    expect(read({ layout: 'grid', layoutSwitch: 'yes', featureFirstSection: 'false' })).toEqual(
-      DEFAULTS,
-    )
-    expect(read({ layout: true, layoutSwitch: 'false' })).toEqual(DEFAULTS)
-    expect(read({ colour: 'red' })).toEqual(DEFAULTS)
-  })
-
-  it('keeps a layout that is not on the list out, whatever the host passes', () => {
-    for (const layout of ['grid', 'Two', '', 'two ', 2, null, ['two']]) {
-      expect(read({ layout }).layout, String(layout)).toBe('two')
+describe('the layouts (D92)', () => {
+  it('knows the three menu layouts the snapshot names, and nothing else', () => {
+    // The view model's words (core's SNAPSHOT_MENU_LAYOUTS): a face draws exactly these.
+    const named: readonly ViewLayout['default'][] = ['list', 'one', 'two']
+    expect([...LAYOUTS]).toEqual(named)
+    for (const layout of LAYOUTS) expect(isLayout(layout)).toBe(true)
+    for (const other of ['grid', 'Two', '', 'two ', 2, null, ['two']]) {
+      expect(isLayout(other), String(other)).toBe(false)
     }
+  })
+
+  it('draws a section as the strip when the composer marks it horizontal, never otherwise', () => {
+    const [first, second] = richView().sections
+    if (first === undefined || second === undefined) throw new Error('the view lost a section')
+    expect(isStrip({ ...first, hints: { ...first.hints, layout: 'horizontal' } })).toBe(true)
+    expect(isStrip({ ...first, hints: { ...first.hints, layout: 'vertical' } })).toBe(false)
+    expect(isStrip({ ...second, hints: { ...second.hints, layout: 'horizontal' } })).toBe(true)
   })
 })
 
