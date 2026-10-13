@@ -4,7 +4,7 @@ Every interface sentence added or changed since T44's last entries, Bulgarian fi
 
 Basis: every key under the namespaces each screen uses, minus the keys T44 already lists. T44 lists the whole `publish`, `tables`, `tablePage` and `design` namespaces and the named `composer` and `itemSheet` keys, so those screens show only their T44 wording items.
 
-Not in this file: `workspace.composer.*` and `workspace.tables.*` (title and description). No component reads them, and their description still names barsy. Delete them or rewrite them with the lead's OK.
+Deleted by the lead after S8: `workspace.composer.*` and `workspace.tables.*` (title and description); no component read them.
 
 Not on these screens (shared chrome, not listed): `meta`, `auth`, `noOrganization`, `language`, `user`, `nav`, `ui`, `organizationSwitcher`, `devFields`, `devItemSheet`.
 
@@ -528,7 +528,6 @@ _No further sentences: everything under this screen is in T44's list._
 - „Не се продава в barsy“: the key is gone; the badge now reads composer.badges.offSaleTill (listed below)
 - „Маркирай като изчерпано тази вечер“ (itemSheet.details.sale.mark)
 
-_Still names the POS, not rewritten (needs the instance name): `composer.new.description` (apps/web/src/composer/new-section-dialog.tsx line 100 calls t('new.description') without a source)._
 
 **Bulgarian — English, new since T44:**
 
@@ -813,7 +812,7 @@ _Still names the POS, not rewritten (needs the instance name): `composer.new.des
 - `composer.dnd.droppedInSection` — {name} е преместено в {section}. — {name} moved to {section}.
 - `composer.dnd.cancelled` — Преместването е отменено. {name} е на старото си място. — Move cancelled. {name} is back where it was.
 - `composer.new.title` — Нова секция — New section
-- `composer.new.description` — Създайте своя секция, която не идва от barsy, например „Коктейли на вечерта“. — Create a section of your own that does not come from barsy, for example “Tonight’s cocktails”. [still names the POS]
+- `composer.new.description` — Създайте своя секция, например „Коктейли на вечерта“. — Create a section of your own, for example “Tonight’s cocktails”.
 - `composer.new.parent` — Къде — Where
 - `composer.new.topLevel` — Най-горно ниво — Top level
 - `composer.new.names` — Име на секцията — Section name

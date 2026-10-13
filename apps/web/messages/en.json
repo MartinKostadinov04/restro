@@ -684,7 +684,7 @@
     },
     "new": {
       "title": "New section",
-      "description": "Create a section of your own that does not come from barsy, for example “Tonight’s cocktails”.",
+      "description": "Create a section of your own, for example “Tonight’s cocktails”.",
       "parent": "Where",
       "topLevel": "Top level",
       "names": "Section name",
@@ -881,14 +881,6 @@
       "general": "General",
       "publish": "Publish",
       "versioning": "Versioning"
-    },
-    "composer": {
-      "title": "Menu composer",
-      "description": "Arrange the menu that comes from barsy here: move items between sections, reorder them, and add images, descriptions and translations."
-    },
-    "tables": {
-      "title": "Tables & QR codes",
-      "description": "Every table from barsy gets its own QR code here, ready to print."
     },
     "settings": {
       "title": "Venue settings",
