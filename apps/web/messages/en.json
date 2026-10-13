@@ -1524,7 +1524,7 @@
     "venueMenuNone": "This venue has no menu yet. An area or a table shows the live menu once the venue has one.",
     "empty": {
       "title": "No tables yet",
-      "description": "Areas and tables come from {source}. Connect {source} in Settings → Integrations and choose this venue's {source} venue in the Menu source card of its Settings tab. The tables appear after the next full sync.",
+      "description": "Areas and tables come from {source} with its next read. A venue without a till adds its own areas and tables.",
       "action": "Go to the Menu source"
     },
     "emptyHand": {
