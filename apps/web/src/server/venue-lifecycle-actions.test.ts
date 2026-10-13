@@ -24,7 +24,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { getPool } from './db'
 import { hasDatabase, openOwnerPool, testSlug, useTestServerEnvironment } from './test-database'
 import { getVenue, getVenueInAnyState, listArchivedVenues, listVenues } from './venues'
-import { deleteVenueAction, renameVenueAction, restoreVenueAction } from './venues-actions'
+import {
+  deleteVenueAction,
+  renameVenueAction,
+  restoreVenueAction,
+  unpublishVenueAction,
+} from './venues-actions'
 
 const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
 const revalidated = vi.hoisted(() => [] as string[])
@@ -490,6 +495,23 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
         relinked: false,
       })
       expect((await rowOf(venue.id))?.archived_at).toBeNull()
+    })
+  })
+
+  describe('unpublishVenueAction', () => {
+    it('takes a live venue off the phones and hands its table codes to the files job (D86)', async () => {
+      const { venue, codes } = await tillVenueWithCodes()
+      queue.jobs.length = 0
+      expect(await unpublishVenueAction({ venueId: venue.id })).toMatchObject({
+        ok: true,
+        name: 'Till Club',
+        filesQueued: true,
+      })
+      const tokensJob = queue.jobs.find((job) => job.name === JOB_NAMES.publishTableTokens)
+      expect([...((tokensJob?.data.retired as string[] | undefined) ?? [])].sort()).toEqual(
+        [...codes].sort(),
+      )
+      expect((await getVenue(tenant, venue.id))?.unpublishedAt).toBeInstanceOf(Date)
     })
   })
 

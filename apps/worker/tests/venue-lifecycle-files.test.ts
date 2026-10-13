@@ -39,6 +39,7 @@ import {
   listVenueTables,
   mapBarsyVenue,
   restoreVenue,
+  unpublishVenue,
   upsertPlaces,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
@@ -423,6 +424,31 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       )
       expect(linked.ok).toBe(true)
       expect(await listVenueTables(world.pool, world.tenantId, world.venueId)).toHaveLength(2)
+      await runJob(JOB_NAMES.publishTableTokens, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        retired: [],
+      })
+      expect(await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))).toEqual(
+        bytesBefore,
+      )
+    })
+
+    it('withdraws the files of an unpublished venue (D86), and a publish brings them back', async () => {
+      const tokens = await twoTables()
+      const bytesBefore = await Promise.all(tokens.map((t) => store.get(tableTokenPath(t))))
+      const unpublished = await unpublishVenue(world.pool, tenantId(), world.venueId)
+      expect([...unpublished.tableTokens].sort()).toEqual([...tokens].sort())
+      await runJob(JOB_NAMES.publishTableTokens, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        retired: unpublished.tableTokens,
+      })
+      expect(await files(tokens)).toEqual([null, null])
+      // What a publish does to the flag (the world's menu has no items to publish, V10).
+      await world.query('update restro.venues set unpublished_at = null where id = $1', [
+        world.venueId,
+      ])
       await runJob(JOB_NAMES.publishTableTokens, {
         tenantId: world.tenantId,
         venueId: world.venueId,

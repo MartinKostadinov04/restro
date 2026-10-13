@@ -331,7 +331,7 @@ export async function unpublishVenueAction(input: unknown): Promise<UnpublishVen
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
     if (venue.archivedAt !== null) return { ok: false, error: 'venue_archived' }
-    await unpublishVenue(pool, organization.id, venueId)
+    const unpublished = await unpublishVenue(pool, organization.id, venueId)
 
     let filesQueued = true
     try {
@@ -342,10 +342,11 @@ export async function unpublishVenueAction(input: unknown): Promise<UnpublishVen
       } else {
         await enqueueJob(JOB_NAMES.publishOrganizationIndex, { tenantId })
       }
+      // The table files go too (D86): the job withdraws the codes the writer reported.
       await enqueueJob(JOB_NAMES.publishTableTokens, {
         tenantId,
         venueId: venueId as VenueId,
-        retired: [],
+        retired: [...unpublished.tableTokens],
       })
     } catch (error) {
       logError('venue_unpublish_files_not_queued', error)

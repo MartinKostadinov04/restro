@@ -59,6 +59,26 @@ function checkedIds(tenantId: string, venueId: string): void {
   if (!isId('vn', venueId)) throw new ProvisionError('invalid_input', 'venueId must be a vn_ id')
 }
 
+/**
+ * The QR tokens of every table of the venue that is not deleted, hidden ones included (a withdrawn
+ * file that is not there is no harm), sorted. What a delete or an unpublish hands to the worker's
+ * table-files job as the files to withdraw; the tokens themselves stay on the tables.
+ */
+async function tableTokensOf(tx: WriteTx, venueId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ token: venueTables.qrToken })
+    .from(venueTables)
+    .where(
+      and(
+        eq(venueTables.venueId, venueId),
+        isNull(venueTables.archivedAt),
+        isNotNull(venueTables.qrToken),
+      ),
+    )
+    .orderBy(asc(venueTables.qrToken))
+  return rows.flatMap((row) => (row.token === null ? [] : [row.token]))
+}
+
 /** What `renameVenue` did. */
 export interface RenamedVenue {
   readonly venueId: string
@@ -141,20 +161,7 @@ export async function archiveVenue(
         tableTokens: [],
       }
     }
-    // The tokens of every table that is not deleted, hidden ones included (a withdrawn file that
-    // is not there is no harm).
-    const tokenRows = await tx
-      .select({ token: venueTables.qrToken })
-      .from(venueTables)
-      .where(
-        and(
-          eq(venueTables.venueId, venueId),
-          isNull(venueTables.archivedAt),
-          isNotNull(venueTables.qrToken),
-        ),
-      )
-      .orderBy(asc(venueTables.qrToken))
-    const tableTokens = tokenRows.flatMap((row) => (row.token === null ? [] : [row.token]))
+    const tableTokens = await tableTokensOf(tx, venueId)
 
     const [archived] = await tx
       .update(venues)
@@ -247,19 +254,25 @@ export async function restoreVenue(
 /** What `unpublishVenue` did. */
 export interface UnpublishedVenue {
   readonly venueId: string
-  /** False when the venue was unpublished already (nothing was written). */
+  /** False when the venue was unpublished already (nothing was written, `tableTokens` is empty). */
   readonly changed: boolean
   /** When the venue was unpublished (now, or when it was before). */
   readonly unpublishedAt: Date
+  /**
+   * The QR tokens of the venue's tables, sorted: the caller hands them to the worker's table-files
+   * job as the files to withdraw (the tokens stay on the tables; the next publish writes the
+   * files back).
+   */
+  readonly tableTokens: readonly string[]
 }
 
 /**
  * Takes a venue off guests' phones without deleting anything (D86: back to Draft): sets
- * `venues.unpublished_at`. The worker's file jobs then withdraw its address and table files; the
- * next publish of any of its menus clears the flag (`publishMenu`) and the files come back.
- * Nothing else changes: menus, versions, tables and codes stay as they are. Unpublishing an
- * unpublished venue changes nothing. Refuses a venue the tenant does not have (`venue_missing`)
- * and a deleted one (`venue_archived`).
+ * `venues.unpublished_at` and reports the table codes whose files must go. The worker's file jobs
+ * then withdraw its address and table files; the next publish of any of its menus clears the flag
+ * (`publishMenu`) and the files come back. Nothing else changes: menus, versions, tables and
+ * codes stay as they are. Unpublishing an unpublished venue changes nothing. Refuses a venue the
+ * tenant does not have (`venue_missing`) and a deleted one (`venue_archived`).
  */
 export async function unpublishVenue(
   pool: DbPool,
@@ -273,14 +286,20 @@ export async function unpublishVenue(
       throw new ProvisionError(locked.refused, venueRefusalText(venueId, locked.refused))
     }
     if (locked.venue.unpublishedAt !== null) {
-      return { venueId, changed: false, unpublishedAt: locked.venue.unpublishedAt }
+      return {
+        venueId,
+        changed: false,
+        unpublishedAt: locked.venue.unpublishedAt,
+        tableTokens: [],
+      }
     }
+    const tableTokens = await tableTokensOf(tx, venueId)
     const [row] = await tx
       .update(venues)
       .set({ unpublishedAt: sql`now()` })
       .where(eq(venues.id, venueId))
       .returning({ unpublishedAt: venues.unpublishedAt })
     if (row?.unpublishedAt == null) throw new Error('the venue could not be unpublished')
-    return { venueId, changed: true, unpublishedAt: row.unpublishedAt }
+    return { venueId, changed: true, unpublishedAt: row.unpublishedAt, tableTokens }
   })
 }

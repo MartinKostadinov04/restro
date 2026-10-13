@@ -18,7 +18,13 @@ import { ProvisionError, provisionMenu, provisionTenant, provisionVenue } from '
 import { createIntegration } from './sources'
 import { issueTableToken, listVenueTables, loadTokenFiles } from './tables'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
-import { archiveVenue, MAX_VENUE_NAME_LENGTH, renameVenue, restoreVenue } from './venue-lifecycle'
+import {
+  archiveVenue,
+  MAX_VENUE_NAME_LENGTH,
+  renameVenue,
+  restoreVenue,
+  unpublishVenue,
+} from './venue-lifecycle'
 import { lockLiveVenue } from './venue-lock'
 
 /** A pool that is never used: the input checks run before any query. */
@@ -437,6 +443,51 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       return typeof code === 'string' ? code : `threw ${String(error)}`
     }
   }
+
+  describe('unpublishVenue', () => {
+    it('marks the venue unpublished, reports its table codes, and is idempotent', async () => {
+      const { venueId } = await liveVenue('Off the phones')
+      const till = await linkTill(venueId)
+      await upsertPlaces(app, tenant, integrationId, till, [place('u1', '1'), place('u2', '2')], {
+        pagesOk: [true],
+      })
+      const tokens: string[] = []
+      for (const table of await listVenueTables(app, tenant, venueId)) {
+        const issued = await issueTableToken(app, tenant, table.id)
+        if (!issued.ok) throw new Error(issued.reason)
+        tokens.push(issued.table.token ?? '')
+      }
+
+      const first = await unpublishVenue(app, tenant, venueId)
+      expect(first).toMatchObject({ venueId, changed: true })
+      expect(first.unpublishedAt).toBeInstanceOf(Date)
+      // Both sides sorted here (the database's order by collates differently in CI).
+      expect([...first.tableTokens].sort()).toEqual([...tokens].sort())
+      // The tokens stay on the tables: the next publish brings the files back.
+      expect((await listVenueTables(app, tenant, venueId)).map((row) => row.token).sort()).toEqual(
+        [...tokens].sort(),
+      )
+
+      const again = await unpublishVenue(app, tenant, venueId)
+      expect(again).toEqual({
+        venueId,
+        changed: false,
+        unpublishedAt: first.unpublishedAt,
+        tableTokens: [],
+      })
+    })
+
+    it('refuses a deleted venue, and what the tenant does not have', async () => {
+      const { venueId } = await liveVenue('Deleted first')
+      await archiveVenue(app, tenant, venueId)
+      await expect(unpublishVenue(app, tenant, venueId)).rejects.toMatchObject({
+        code: 'venue_archived',
+      })
+      await expect(unpublishVenue(app, tenant, otherTenantVenue)).rejects.toMatchObject({
+        code: 'venue_missing',
+      })
+    })
+  })
 
   describe('every writer of one venue refuses a deleted venue', () => {
     // One row per writer: how to call it for a venue id, the code it gives a deleted venue, and
