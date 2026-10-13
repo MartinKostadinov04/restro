@@ -18,7 +18,7 @@ Every later section uses these terms in exactly this sense.
 
 | Term | Meaning |
 | --- | --- |
-| Tenant | A restaurant group or club operator: one account, one or more venues. The venue admin calls it the organisation; its id is the organisation's |
+| Tenant | A restaurant group or club operator: one account, one or more venues. The venue admin calls it the organisation, and its `tn_` id is the organisation's id |
 | Venue | One physical outlet. Either served by one Barsy venue (`bid`) of one Barsy instance, or made by hand; the source is fixed when the venue is created (D87). Has several menus, exactly one of them live, and an address name guests see |
 | Integration | A named instance of a connection to one POS installation (today Barsy): name, host, API user, venues, webhook subscriptions, cursors. An organisation can have several, also of one system (D81) |
 | Template | A versioned schema tree: which node types exist, how they nest, which fields each carries |
