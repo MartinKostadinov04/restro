@@ -159,25 +159,29 @@ export async function setLiveMenuAction(input: unknown): Promise<SetLiveMenuActi
   const parsed = MenuInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId: venue, menuId: menu } = parsed.data
-  return run<Extract<SetLiveMenuActionResult, { ok: true }>>('menu_set_live_failed', venue, async (tenantId, actor, role) => {
-    const pool = getPool()
-    const result = await setLiveMenu(pool, tenantId, { venueId: venue, menuId: menu })
-    if (!result.ok) return result
-    if (!result.changed) return { ok: true as const, menu: result.menu, queued: false }
-    const published = await publishNow(
-      {
-        pool,
-        tenantId,
-        venueId: venue as Parameters<typeof publishNow>[0]['venueId'],
-        actor,
-        canPublish: canPublishMenu(role),
-      },
-      { enqueue: enqueueJob },
-      menu,
-    )
-    if (!published.ok) logError('menu_set_live_not_published', new Error(published.error))
-    return { ok: true as const, menu: result.menu, queued: published.ok }
-  })
+  return run<Extract<SetLiveMenuActionResult, { ok: true }>>(
+    'menu_set_live_failed',
+    venue,
+    async (tenantId, actor, role) => {
+      const pool = getPool()
+      const result = await setLiveMenu(pool, tenantId, { venueId: venue, menuId: menu })
+      if (!result.ok) return result
+      if (!result.changed) return { ok: true as const, menu: result.menu, queued: false }
+      const published = await publishNow(
+        {
+          pool,
+          tenantId,
+          venueId: venue as Parameters<typeof publishNow>[0]['venueId'],
+          actor,
+          canPublish: canPublishMenu(role),
+        },
+        { enqueue: enqueueJob },
+        menu,
+      )
+      if (!published.ok) logError('menu_set_live_not_published', new Error(published.error))
+      return { ok: true as const, menu: result.menu, queued: published.ok }
+    },
+  )
 }
 
 const ImportInput = z.strictObject({

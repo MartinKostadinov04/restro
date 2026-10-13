@@ -103,13 +103,20 @@ describe('the Publish bar with one menu', () => {
   })
 
   it('stays on with nothing new while automatic publishing is paused', () => {
-    render(barView({ paused: true, menus: [barMenu({ changes: 0, identical: true, list: NO_CHANGES })] }))
+    render(
+      barView({
+        paused: true,
+        menus: [barMenu({ changes: 0, identical: true, list: NO_CHANGES })],
+      }),
+    )
     expect(button().disabled).toBe(false)
     expect(reason()).toBe('Nothing new; publishing resumes automatic publishing.')
   })
 
   it('says why a draft cannot be published', () => {
-    render(barView({ menus: [barMenu({ changes: null, list: null, blocked: 'no_visible_items' })] }))
+    render(
+      barView({ menus: [barMenu({ changes: null, list: null, blocked: 'no_visible_items' })] }),
+    )
     expect(button().disabled).toBe(true)
     expect(reason()).toBe('Nothing visible to publish: show at least one item in the composer.')
   })
@@ -216,7 +223,9 @@ describe('the Publish bar with several menus', () => {
     await user.click(brunch)
     const dialog = await screen.findByTestId('publish-confirm-dialog')
     expect(within(dialog).getByText('Publish Brunch?')).toBeTruthy()
-    expect(within(dialog).getByText('Brunch is not the live menu. Guests see it in: Garden, Bar.')).toBeTruthy()
+    expect(
+      within(dialog).getByText('Brunch is not the live menu. Guests see it in: Garden, Bar.'),
+    ).toBeTruthy()
     await user.click(within(dialog).getByTestId('publish-confirm'))
     expect(actions.publishNowAction).toHaveBeenCalledWith(VENUE_ID, 'nd_brunchMenuForTests')
   })
@@ -226,7 +235,13 @@ describe('the Publish bar with several menus', () => {
       barView({
         menus: [
           barMenu({ changes: 0, identical: true, list: NO_CHANGES }),
-          barMenu({ menuId: 'nd_other', live: false, changes: 0, identical: true, list: NO_CHANGES }),
+          barMenu({
+            menuId: 'nd_other',
+            live: false,
+            changes: 0,
+            identical: true,
+            list: NO_CHANGES,
+          }),
         ],
       }),
     )

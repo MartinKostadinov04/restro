@@ -11,7 +11,7 @@ import { MenuSourceTab } from '@/integration/menu-source-tab'
 import { getPool } from '@/server/db'
 import { canDeleteVenue, canManageIntegration } from '@/server/roles'
 
-import { MenusCard, type MenuRow } from './menus-card'
+import { type MenuRow, MenusCard } from './menus-card'
 import { VenueDangerZone } from './venue-danger-zone'
 import { VenueSettings } from './venue-settings'
 
@@ -50,6 +50,7 @@ export async function VenueSettingsGeneral({
         menus={inUse}
         deleted={deleted}
         binDays={MENU_BIN_DAYS}
+        timeZone={venue.timezone}
       />
       <Suspense fallback={<MenuSourceSkeleton />}>
         <MenuSourceTab tenantId={tenantId} role={role} venue={venue} />

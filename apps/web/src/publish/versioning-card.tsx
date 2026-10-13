@@ -212,10 +212,7 @@ export function VersioningCard({ view }: { view: VersioningView }) {
   }
 
   return (
-    <FormSection
-      title={t('title')}
-      description={t('description', { kept: VERSIONS_KEPT })}
-    >
+    <FormSection title={t('title')} description={t('description', { kept: VERSIONS_KEPT })}>
       <OutcomeNote outcome={outcome} slow={false} onDismiss={() => setOutcome(null)} />
       {view.canPublish ? null : (
         <p className="text-sm text-muted-foreground" data-testid="read-only">

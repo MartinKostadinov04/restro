@@ -352,8 +352,14 @@ export function publishBlock(target: PublishTarget, busy: boolean): PublishBlock
 
 /** A summary row as a publish target: the live menu carries the venue's pause and address. */
 export function targetOf(
-  menu: Pick<PublishSummaryMenu, 'live' | 'blocked' | 'identical'> & { readonly published: boolean },
-  venue: { readonly canPublish: boolean; readonly paused: boolean; readonly addressServed: boolean },
+  menu: Pick<PublishSummaryMenu, 'live' | 'blocked' | 'identical'> & {
+    readonly published: boolean
+  },
+  venue: {
+    readonly canPublish: boolean
+    readonly paused: boolean
+    readonly addressServed: boolean
+  },
 ): PublishTarget {
   return {
     canPublish: venue.canPublish,

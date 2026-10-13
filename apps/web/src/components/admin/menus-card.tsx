@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
-import { type FormEvent, useId, useState, useTransition } from 'react'
+import { type FormEvent, useEffect, useId, useState, useTransition } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -155,9 +155,9 @@ function ImportDialog({
   const [loading, startLoading] = useTransition()
   const [pending, startImport] = useTransition()
 
-  function changeOpen(next: boolean) {
-    onOpenChange(next)
-    if (!next) return
+  // Each time it opens the venues are read again: another venue may have a new menu by now.
+  useEffect(() => {
+    if (!open) return
     setFailed(false)
     setFromVenue('')
     setFromMenu('')
@@ -167,7 +167,7 @@ function ImportDialog({
       if (result.ok) setSources(result.venues)
       else setFailed(true)
     })
-  }
+  }, [open, venueId])
 
   const venue = sources?.find((source) => source.venueId === fromVenue)
 
@@ -187,7 +187,7 @@ function ImportDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="menu-import-dialog">
         <form onSubmit={submit} className="grid gap-4">
           <DialogHeader>
@@ -257,7 +257,7 @@ function ImportDialog({
             </>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => changeOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('cancel')}
             </Button>
             <Button
@@ -282,6 +282,7 @@ export function MenusCard({
   menus,
   deleted,
   binDays,
+  timeZone,
 }: {
   venueId: string
   venueName: string
@@ -295,6 +296,8 @@ export function MenusCard({
   deleted: readonly MenuRow[]
   /** Days a binned menu waits before the purge erases it. */
   binDays: number
+  /** The venue's time zone: the days are the venue's. */
+  timeZone: string
 }) {
   const t = useTranslations('venueMenus')
   const format = useFormatter()
@@ -349,14 +352,11 @@ export function MenusCard({
     }, t('added'))
   }
 
-  const purgeDate = (deletedAt: string) =>
-    format.dateTime(new Date(Date.parse(deletedAt) + binDays * DAY_MS), { dateStyle: 'medium' })
+  const day = (at: Date) => format.dateTime(at, { dateStyle: 'medium', timeZone })
+  const purgeDate = (deletedAt: string) => day(new Date(Date.parse(deletedAt) + binDays * DAY_MS))
 
   return (
-    <FormSection
-      title={t('title')}
-      description={hasTill ? t('descriptionTill') : t('description')}
-    >
+    <FormSection title={t('title')} description={hasTill ? t('descriptionTill') : t('description')}>
       <ol className="divide-y rounded-md border" data-testid="menus-list">
         {menus.map((menu, index) => (
           <li
@@ -543,13 +543,21 @@ export function MenusCard({
       {handMade && deleted.length > 0 ? (
         <Collapsible open={binOpen} onOpenChange={setBinOpen} className="grid gap-2">
           <CollapsibleTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="w-fit" data-testid="menus-bin-toggle">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-fit"
+              data-testid="menus-bin-toggle"
+            >
               {binOpen ? <ChevronUpIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
               {t('bin.title', { count: deleted.length })}
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <p className="mb-2 text-xs text-muted-foreground">{t('bin.description', { days: binDays })}</p>
+            <p className="mb-2 text-xs text-muted-foreground">
+              {t('bin.description', { days: binDays })}
+            </p>
             <ul className="divide-y rounded-md border" data-testid="menus-bin">
               {deleted.map((menu) => (
                 <li
@@ -563,7 +571,7 @@ export function MenusCard({
                     {menu.deletedAt !== null ? (
                       <span className="text-xs text-muted-foreground">
                         {t('bin.when', {
-                          deleted: format.dateTime(new Date(menu.deletedAt), { dateStyle: 'medium' }),
+                          deleted: day(new Date(menu.deletedAt)),
                           erased: purgeDate(menu.deletedAt),
                         })}
                       </span>

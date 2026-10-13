@@ -334,7 +334,8 @@ export async function previewDraft(
   menu?: string,
 ): Promise<PreviewResult> {
   const target = await targetMenu(scope, menu)
-  if ('error' in target) return { ok: false, error: target.error === 'invalid' ? 'failed' : 'no_menu' }
+  if ('error' in target)
+    return { ok: false, error: target.error === 'invalid' ? 'failed' : 'no_menu' }
   const { menuId } = target
   try {
     const draft = await loadDraft(scope.pool, scope.tenantId, { menuId, venueId: scope.venueId })

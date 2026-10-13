@@ -127,11 +127,7 @@ const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
  */
 export function WorkspaceTabs({ contents }: WorkspaceTabsProps) {
   const t = useTranslations('workspace')
-  const [current, select] = useUrlTab<WorkspaceTabValue>(
-    'tab',
-    workspaceTabOf,
-    isWorkspaceTabValue,
-  )
+  const [current, select] = useUrlTab<WorkspaceTabValue>('tab', workspaceTabOf, isWorkspaceTabValue)
   return (
     <UrlTabs
       defs={WORKSPACE_TAB_DEFS}

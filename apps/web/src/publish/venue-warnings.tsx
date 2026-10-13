@@ -23,7 +23,9 @@ export async function VenueWarnings({
 }) {
   const state = await venuePublishState(tenantId, venueId)
   const several = state.menus.length > 1
-  const held = state.menus.flatMap((menu) => (menu.held === null ? [] : [{ menu, held: menu.held }]))
+  const held = state.menus.flatMap((menu) =>
+    menu.held === null ? [] : [{ menu, held: menu.held }],
+  )
   if (held.length === 0 && !state.paused && state.addressServed) return null
   return (
     <div className="grid gap-3" data-testid="venue-warnings">
@@ -36,7 +38,11 @@ export async function VenueWarnings({
           canPublish={canPublish}
           canPublishNow={
             publishBlock(
-              targetOf(menu, { canPublish, paused: state.paused, addressServed: state.addressServed }),
+              targetOf(menu, {
+                canPublish,
+                paused: state.paused,
+                addressServed: state.addressServed,
+              }),
               false,
             ) === null
           }

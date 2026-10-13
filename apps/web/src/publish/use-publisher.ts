@@ -103,7 +103,9 @@ export function usePublisher(venueId: string, view: PublisherState): Publisher {
     slow,
     outcome,
     publish: (menuId) =>
-      queue(() => (menuId === undefined ? publishNowAction(venueId) : publishNowAction(venueId, menuId))),
+      queue(() =>
+        menuId === undefined ? publishNowAction(venueId) : publishNowAction(venueId, menuId),
+      ),
     approve: (snapshotId) => queue(() => approveHeldAction(venueId, snapshotId)),
     reject: (snapshotId) => {
       setOutcome(null)

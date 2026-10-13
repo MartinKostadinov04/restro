@@ -11,7 +11,7 @@ import { venuePublishState } from '@/server/publish/summary'
 import type { PublishBarView } from '@/server/publish/view'
 
 import { PublishBar } from './publish-bar'
-import { PublishOutcome, PublisherProvider } from './publisher-context'
+import { PublisherProvider, PublishOutcome } from './publisher-context'
 import { VenueWarnings } from './venue-warnings'
 
 /** The header row: the name and address on the left, the bar (or its place) on the right. */

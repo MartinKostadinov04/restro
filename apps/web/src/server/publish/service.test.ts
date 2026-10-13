@@ -219,7 +219,10 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
       if (!brunch.ok) throw new Error(brunch.reason)
       expect(brunch.menu.live).toBe(false)
       sent.length = 0
-      expect(await publishNow(scope(), services, brunch.menu.id)).toEqual({ ok: true, queued: true })
+      expect(await publishNow(scope(), services, brunch.menu.id)).toEqual({
+        ok: true,
+        queued: true,
+      })
       expect(sent).toEqual([
         {
           name: JOB_NAMES.publishMenu,
@@ -331,9 +334,9 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
     const sync = { mode: 'auto', incremental_minutes: 5, full_pull_time: '12:00' } as const
 
     it('refuses a venue without a till: it has nothing to sync', async () => {
-      expect(await readAutomation(app, tenant, { id: emptyVenueId, timezone: 'Europe/Sofia' })).toBe(
-        null,
-      )
+      expect(
+        await readAutomation(app, tenant, { id: emptyVenueId, timezone: 'Europe/Sofia' }),
+      ).toBe(null)
       expect(
         await saveAutomation(scope({ venueId: emptyVenueId }), { sync, afterSync: 'auto' }),
       ).toEqual({ ok: false, error: 'not_found' })
@@ -371,7 +374,9 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
           afterSync: 'auto',
         }),
       ).toEqual({ ok: true, queued: true })
-      expect(await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' })).toMatchObject({
+      expect(
+        await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' }),
+      ).toMatchObject({
         sync: { mode: 'manual', incremental_minutes: 15, full_pull_time: '04:00' },
         syncInherited: false,
         afterSync: 'auto',
@@ -412,7 +417,9 @@ describe.skipIf(!hasDatabase)('publish now and rollback (as the restro_app role)
       expect(
         await saveAutomation(scope({ canPublish: false }), { sync, afterSync: 'auto' }),
       ).toEqual({ ok: false, error: 'not_allowed' })
-      expect(await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' })).toMatchObject({
+      expect(
+        await readAutomation(app, tenant, { id: venueId, timezone: 'Europe/Sofia' }),
+      ).toMatchObject({
         afterSync: 'manual',
       })
     })

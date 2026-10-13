@@ -107,10 +107,12 @@ export function AutomationSettings({
     time !== view.sync.full_pull_time ||
     afterSync !== view.afterSync ||
     inherited
-  const edit = <T,>(set: (value: T) => void) => (value: T) => {
-    set(value)
-    setSaved(false)
-  }
+  const edit =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      set(value)
+      setSaved(false)
+    }
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -152,9 +154,7 @@ export function AutomationSettings({
                 <Label htmlFor={`${formId}-minutes`}>{t('sync.interval')}</Label>
                 <Select
                   value={String(minutes)}
-                  onValueChange={(value) =>
-                    edit(setMinutes)(Number(value) as IncrementalMinutes)
-                  }
+                  onValueChange={(value) => edit(setMinutes)(Number(value) as IncrementalMinutes)}
                   disabled={!canManage}
                 >
                   <SelectTrigger id={`${formId}-minutes`} data-testid="automation-interval">

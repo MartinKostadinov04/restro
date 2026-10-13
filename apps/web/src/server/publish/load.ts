@@ -785,8 +785,7 @@ export async function loadVersioningView(
         loadCurrentSnapshot(scope.pool, scope.tenantId, target),
         loadHistoryPage(scope, menu.id, {}, deps),
       ])
-      const liveVersion =
-        current === null ? null : await liveViewOf(scope, deps, menu.id, current)
+      const liveVersion = current === null ? null : await liveViewOf(scope, deps, menu.id, current)
       return {
         menuId: menu.id,
         name: menu.name ?? scope.venueName,

@@ -99,7 +99,10 @@ export function PublishBar({ view }: { view: PublishBarView }) {
           : null
 
   return (
-    <div className="grid justify-items-start gap-1.5 sm:justify-items-end" data-testid="publish-bar">
+    <div
+      className="grid justify-items-start gap-1.5 sm:justify-items-end"
+      data-testid="publish-bar"
+    >
       <div className="flex flex-wrap items-center gap-2">
         {guestOff ? (
           <Button
