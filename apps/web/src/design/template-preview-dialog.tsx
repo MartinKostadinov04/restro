@@ -61,7 +61,7 @@ export function TemplatePreviewDialog({
   const tPublish = useTranslations('publish.previewDialog')
   const [chosenScheme, setScheme] = useState<PreviewScheme | null>(null)
   const shown = chosenScheme ?? scheme
-  const snapshot = usePreviewLook(draft, { theme, face: entry?.id ?? '', options })
+  const snapshot = usePreviewLook(draft, entry === null ? null : { theme, face: entry.id, options })
 
   return (
     <Dialog

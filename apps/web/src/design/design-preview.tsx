@@ -93,14 +93,27 @@ export function DraftMessage({
   )
 }
 
-/** The draft with the form's unsaved look laid over it, for the template `face`. */
+/**
+ * The draft with the form's unsaved look laid over it, for the template `look.face`; null while
+ * the draft is not ready, or when there is no look to draw (a closed pop-up).
+ */
 export function usePreviewLook(
   draft: Draft,
-  look: { readonly theme: VenueTheme; readonly face: string; readonly options: OptionValues },
+  look: {
+    readonly theme: VenueTheme
+    readonly face: string
+    readonly options: OptionValues
+  } | null,
 ): MenuSnapshot | null {
+  const theme = look?.theme
+  const face = look?.face
+  const options = look?.options
   return useMemo(
-    () => (draft.state === 'ready' ? previewSnapshot(draft.snapshot, look) : null),
-    [draft, look],
+    () =>
+      draft.state === 'ready' && theme !== undefined && face !== undefined && options !== undefined
+        ? previewSnapshot(draft.snapshot, { theme, face, options })
+        : null,
+    [draft, theme, face, options],
   )
 }
 

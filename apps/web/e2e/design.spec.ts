@@ -7,18 +7,24 @@ import { runScript } from './global-setup'
 import { addressOfVenue } from './menu-path'
 import { ADMIN_PASSWORD } from './support'
 
-// The Design tab on a production build, with the REAL worker running beside it (brief SH-05a). The
-// venue is the fixture of scripts/seed-design-e2e.ts: three drinks, no look, no template, nothing
-// published. In English unless a step says otherwise. Since brief S6 (D92) it is the composer's
-// Design subtab, and the menu's layout is set in the composer's Structure. Steps:
+// The Design tab on a production build, with the REAL worker running beside it (briefs SH-05a and
+// S7). The venue is the fixture of scripts/seed-design-e2e.ts: three drinks, no look, no template,
+// nothing published. In English unless a step says otherwise. Since brief S6 (D92) it is the
+// composer's Design subtab; since brief S7 it is brand-first: a collapsed template chooser, then
+// the cards (logo and header name, guest features, font and screen, colours) beside a sticky phone
+// preview. Steps:
 //
 //   Design is the composer's subtab, and Settings no longer holds the Appearance card
-//   the phone preview draws the template from the draft, and the admin page keeps its scrollbar
-//   Midnight is chosen -> the preview shows its colours at once -> Save is on
-//   a colour set by hand that does not read -> Save is off, the pair is named (screenshot)
+//   the template chooser is one line and opens a phone pop-up; the cards come in order; the phone
+//     preview draws the open menu, stays in view while the form scrolls, and the admin page keeps
+//     its scrollbar
+//   a brand colour fills the page and the panels -> the preview shows them at once -> Save is on
+//   the font is a dropdown, each name in its own font
+//   an Advanced override that does not read turns Save off and names the pair (screenshot)
+//   the header name saves apart from Save look
 //   the menu layout is chosen in Structure (another page) -> it saves by itself
-//   Save look -> reload -> the look is still Midnight
-//   Publish -> the guest page carries Midnight's page colour and the chosen layout
+//   Save look -> reload -> the look is still the brand colour
+//   Publish -> the guest page carries the page colour, the font and the chosen layout
 //   the same tab at phone width (screenshot), and in Bulgarian
 //
 // The screenshots go to `E2E_SHOTS_DIR`, else to `.local/screenshots/sh/`.
@@ -35,9 +41,11 @@ const OWNER_EMAIL = 'design-owner@demo-club.test'
 const SLUG = 'design-club'
 const WORKER_WAIT = { timeout: 45_000 }
 
-/** Midnight's page colour in the light set (the designer's value, docs/design/.../presets.json). */
-const MIDNIGHT_PAGE = '#f5f1ea'
-const MIDNIGHT_PAGE_RGB = 'rgb(245, 241, 234)'
+/** The brand colour the steps type, and the page and panels it fills in (brand-first, D93). */
+const BRAND = '#2563eb'
+const BRAND_PAGE = '#e8eefd'
+const BRAND_PAGE_RGB = 'rgb(232, 238, 253)'
+const BRAND_PANELS = '#ffffff'
 
 let owner: BrowserContext
 let page: Page
@@ -66,9 +74,15 @@ const designUrl = () => `/venues/${venueId}?tab=composer&sub=design`
 const panel = () => page.getByTestId('design-panel')
 const save = () => page.getByRole('button', { name: 'Save look' })
 const toast = () => page.locator('[data-sonner-toast]')
-/** The template's root inside the preview's phone frame. */
+const brandBox = (target: Page = page) => target.getByLabel('Your brand colour', { exact: true })
+const pageBox = (target: Page = page) => target.getByLabel('Page', { exact: true })
+const panelsBox = (target: Page = page) => target.getByLabel('Panels', { exact: true })
+/** The template's root inside the live preview's phone frame (not the template pop-up's). */
 const previewRoot = (target: Page = page) =>
-  target.getByTestId('phone-frame').locator('[data-face="editorial-market"]:not([data-testid])')
+  target
+    .getByTestId('design-preview')
+    .getByTestId('phone-frame')
+    .locator('[data-face="editorial-market"]:not([data-testid])')
 
 async function openDesign(target: Page = page) {
   await target.goto(designUrl())
@@ -120,15 +134,59 @@ test('Design is the composer’s subtab, and Settings no longer holds the Appear
   await expect(page.getByRole('heading', { name: 'Appearance' })).toHaveCount(0)
 })
 
-test('the preview draws the template from the draft, and the admin page keeps its scrollbar', async () => {
+test('the template chooser is one line until opened, and each template has a phone pop-up', async () => {
   await openDesign()
+  // One line: "Template: <name>" and "Change", no gallery.
+  await expect(page.getByTestId('design-template-current')).toHaveText('Template: Editorial Market')
+  await expect(page.getByTestId('design-gallery')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Change' }).click()
+
   // The gallery reads as a gallery: a card with a picture, a name, a description and "In use".
   const card = page.getByTestId('template-editorial-market')
   await expect(card.getByRole('heading', { name: 'Editorial Market' })).toBeVisible()
   await expect(card.getByTestId('template-in-use')).toBeVisible()
   await expect(card.getByRole('img')).toHaveAttribute('src', '/faces/editorial-market.png')
+
+  // "Preview": the venue's menu in that template, in a phone, no table.
+  await card.getByRole('button', { name: 'Preview the template Editorial Market' }).click()
+  const dialog = page.getByTestId('template-preview-dialog')
+  await expect(dialog.getByText('Preview: Editorial Market')).toBeVisible()
+  await expect(
+    dialog
+      .getByTestId('phone-frame')
+      .locator('[data-face="editorial-market"]:not([data-testid])')
+      .getByText('Negroni'),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Close' }).click()
+  await expect(page.getByTestId('design-gallery')).toHaveCount(0)
+})
+
+test('the cards come in order, and the preview draws the open menu and keeps its place', async () => {
+  await openDesign()
   // The draft menu is in the phone frame.
-  await expect(page.getByTestId('phone-frame').getByText('Negroni')).toBeVisible()
+  await expect(page.getByTestId('design-preview').getByText('Negroni')).toBeVisible()
+  await expect(page.getByTestId('design-preview-menu')).toHaveText('Menu: Design Club Sofia')
+
+  // The chooser, then the cards in Martin's order (D92), one under the other.
+  const order = [
+    'design-templates',
+    'design-logo-section',
+    'guest-features-panel',
+    'design-style-section',
+    'design-colours-section',
+  ]
+  let lastBottom = -1
+  for (const id of order) {
+    const box = await page.getByTestId(id).boundingBox()
+    expect(box, id).not.toBeNull()
+    expect(box?.y ?? 0, `${id} is below the card before it`).toBeGreaterThanOrEqual(lastBottom - 1)
+    lastBottom = (box?.y ?? 0) + (box?.height ?? 0)
+  }
+  // Advanced is collapsed: the computed colours are not on the page until it is opened.
+  await expect(page.getByTestId('design-roles')).toHaveCount(0)
 
   // The face used to style the page around it (no sideways scroll, no scrollbar); templates no
   // longer do (the lead's fix, 937dc75). With the preview open the admin page scrolls as usual.
@@ -148,37 +206,72 @@ test('the preview draws the template from the draft, and the admin page keeps it
   expect(rules.scrollable).toBe(true)
   expect(rules.scrolled).toBeGreaterThan(0)
   await page.evaluate(() => window.scrollTo(0, 0))
-
-  // The derived colours: the light and the dark screen side by side, one role per row.
-  const light = await page.getByTestId('role-light-text').boundingBox()
-  const dark = await page.getByTestId('role-dark-text').boundingBox()
-  expect(light).not.toBeNull()
-  expect(dark).not.toBeNull()
-  expect(Math.abs((light?.y ?? 0) - (dark?.y ?? 99))).toBeLessThan(2)
-  expect(dark?.x ?? 0).toBeGreaterThanOrEqual((light?.x ?? 0) + (light?.width ?? 0))
   await page.screenshot({ path: shotPath('desktop-light'), fullPage: false })
+
+  // The preview is beside the form at all times (sticky): far down the form it is still in view,
+  // at the top of the window and inside it.
+  await page.evaluate(() => window.scrollTo(0, 1200))
+  const aside = await page.getByTestId('design-preview-aside').boundingBox()
+  const view = page.viewportSize()
+  expect(aside).not.toBeNull()
+  expect(aside?.y ?? 99).toBeGreaterThanOrEqual(0)
+  expect(aside?.y ?? 99).toBeLessThan(40)
+  expect((aside?.y ?? 0) + (aside?.height ?? 0)).toBeLessThanOrEqual(view?.height ?? 0)
+  await expect(page.getByTestId('design-preview').getByTestId('phone-frame')).toBeInViewport()
+  await page.screenshot({ path: shotPath('desktop-sticky-preview'), fullPage: false })
+  await page.evaluate(() => window.scrollTo(0, 0))
 })
 
-test('choosing Midnight shows its colours in the preview at once and turns Save on', async () => {
+test('a brand colour fills the page and the panels, and the preview shows them at once', async () => {
   await expect(save()).toBeDisabled()
-  await page.getByRole('button', { name: 'Midnight' }).click()
-  await expect(page.getByLabel('Primary', { exact: true })).toHaveValue(MIDNIGHT_PAGE)
-  await expect(page.getByLabel('Tertiary', { exact: true })).toHaveValue('#e0a43a')
-  // Sixteen roles, the designer's own, each with the contrast of its pairs.
-  await expect(
-    page
-      .getByTestId('design-roles')
-      .locator('div[data-testid^="role-light-"], div[data-testid^="role-dark-"]'),
-  ).toHaveCount(16)
-  await expect(previewRoot()).toHaveCSS('--rm-l-background', MIDNIGHT_PAGE)
-  await expect(previewRoot()).toHaveCSS('--rm-d-background', '#0e0d0c')
+  // No presets, no swatches, no starting point: one set of three pickers.
+  await expect(page.getByRole('button', { name: 'Midnight' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Custom' })).toHaveCount(0)
+  await expect(page.getByTestId('design-three-colours').locator('[data-colour]')).toHaveCount(3)
+
+  await brandBox().fill(BRAND)
+  await expect(pageBox()).toHaveValue(BRAND_PAGE)
+  await expect(panelsBox()).toHaveValue(BRAND_PANELS)
+  await expect(previewRoot()).toHaveCSS('--rm-l-background', BRAND_PAGE)
+  await expect(previewRoot()).toHaveCSS('--rm-l-accent', BRAND)
   await expect(save()).toBeEnabled()
+  await expect(page.getByTestId('design-saturation-warning')).toHaveCount(0)
+
+  // A page the person sets stays theirs; a strongly saturated one is warned about.
+  await pageBox().fill('#ffcc00')
+  await expect(page.getByTestId('design-saturation-warning')).toBeVisible()
+  await brandBox().fill('#16a34a')
+  await expect(pageBox()).toHaveValue('#ffcc00')
+  await page.getByRole('button', { name: 'Use tints of my brand colour again' }).click()
+  await expect(page.getByTestId('design-saturation-warning')).toHaveCount(0)
+  await brandBox().fill(BRAND)
+  await expect(pageBox()).toHaveValue(BRAND_PAGE)
 })
 
-test('a colour set by hand that does not read turns Save off and names the pair', async () => {
+test('the font is a dropdown, each name in its own font, and the preview follows', async () => {
+  await expect(page.getByTestId('design-font-select')).toHaveText('Inter')
+  await page.getByRole('combobox', { name: 'Font' }).click()
+  const options = page.getByRole('option')
+  await expect(options).toHaveText([
+    'Inter',
+    'Manrope',
+    'Montserrat',
+    'Playfair Display',
+    'Lora',
+    'Unbounded',
+  ])
+  await expect(options.nth(4)).toHaveCSS('font-family', /Lora/)
+  await page.screenshot({ path: shotPath('desktop-font-dropdown') })
+  await options.nth(4).click()
+  await expect(page.getByTestId('design-font-select')).toHaveText('Lora')
+  await expect(previewRoot()).toHaveCSS('--rm-font', /Lora/)
+})
+
+test('an Advanced override that does not read turns Save off and names the pair', async () => {
+  await page.getByRole('button', { name: 'Advanced' }).click()
   const text = page.getByTestId('role-light-text')
   await text.getByRole('button', { name: 'Adjust Text, Light screen' }).click()
-  await text.getByLabel('Colour code for Text, Light screen').fill(MIDNIGHT_PAGE)
+  await text.getByLabel('Colour code for Text, Light screen').fill(BRAND_PAGE)
   await expect(text).toHaveAttribute('data-failing', 'true')
   await expect(save()).toBeDisabled()
   const alert = page.getByTestId('design-unreadable')
@@ -193,6 +286,39 @@ test('a colour set by hand that does not read turns Save off and names the pair'
     .click()
   await expect(alert).toHaveCount(0)
   await expect(save()).toBeEnabled()
+  // The ten roles of D93 are listed with their contrast; none can be adjusted by hand yet.
+  await expect(page.getByTestId('design-more-roles').getByTestId('design-role-focus')).toBeVisible()
+  await expect(
+    page.getByTestId('design-more-roles').getByRole('button', { name: /^Adjust/ }),
+  ).toHaveCount(0)
+  await page.getByRole('button', { name: 'Advanced' }).click()
+  await expect(page.getByTestId('design-roles')).toHaveCount(0)
+})
+
+test('the header name saves apart from Save look', async () => {
+  const name = page.getByLabel('Name at the top of the menu')
+  await expect(name).toHaveValue('')
+  await expect(name).toHaveAttribute('placeholder', 'Design Club Sofia')
+  await name.fill('Main bar')
+  await page.getByRole('button', { name: 'Save name' }).click()
+  await expect(toast().first()).toContainText('Name saved')
+  await expect(page.getByRole('button', { name: 'Save name' })).toBeDisabled()
+  // The look is not saved by it: Save look still waits for the colours of the steps above.
+  await expect(save()).toBeEnabled()
+
+  // It is the menu's name: another page of the same person finds it.
+  const other = await owner.newPage()
+  try {
+    await other.goto(designUrl())
+    await expect(other.getByLabel('Name at the top of the menu')).toHaveValue('Main bar')
+    await expect(other.getByTestId('design-preview-menu')).toHaveText('Menu: Main bar')
+    // Back to the venue's name, so the fixture is as it was.
+    await other.getByLabel('Name at the top of the menu').fill('')
+    await other.getByRole('button', { name: 'Save name' }).click()
+    await expect(other.locator('[data-sonner-toast]').first()).toContainText('Name saved')
+  } finally {
+    await other.close()
+  }
 })
 
 test('the menu layout is chosen in the composer’s Structure, and saves by itself (D92)', async () => {
@@ -209,31 +335,30 @@ test('the menu layout is chosen in the composer’s Structure, and saves by itse
       'aria-pressed',
       'true',
     )
-    // The Design tab draws no layout option any more: the template declares none.
+    // The Design tab draws no layout option: the template declares none.
     await expect(page.getByTestId('design-look-options')).toHaveCount(0)
   } finally {
     await structure.close()
   }
 })
 
-test('Save look keeps the whole look: it is still Midnight after a reload', async () => {
+test('Save look keeps the whole look: it is still the brand colour after a reload', async () => {
   await save().click()
   await expect(toast().first()).toContainText('Saved. Guests see it after the next publish.')
-  await expect(page.getByTestId('design-status')).toContainText('Go to Publishing')
+  await expect(page.getByTestId('design-status')).toContainText('Saved.')
   await expect(save()).toBeDisabled()
   await page.reload()
   await expect(previewRoot()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Midnight' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-  await expect(page.getByLabel('Primary', { exact: true })).toHaveValue(MIDNIGHT_PAGE)
+  await expect(brandBox()).toHaveValue(BRAND)
+  await expect(pageBox()).toHaveValue(BRAND_PAGE)
+  await expect(panelsBox()).toHaveValue(BRAND_PANELS)
+  await expect(page.getByTestId('design-font-select')).toHaveText('Lora')
   // The draft carries the menu layout chosen in Structure (D92).
   await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
   await expect(save()).toBeDisabled()
 })
 
-test('after Publish the guest page carries Midnight’s page colour and the chosen layout', async ({
+test('after Publish the guest page carries the page colour, the font and the chosen layout', async ({
   browser,
 }) => {
   // The Publish button heads every tab (D96); it asks first.
@@ -253,12 +378,12 @@ test('after Publish the guest page carries Midnight’s page colour and the chos
     await guest.goto(`${guestPath}?lang=en`)
     const root = guest.locator('[data-face="editorial-market"]:not([data-testid])')
     await expect(root).toBeVisible()
-    await expect(root).toHaveCSS('--rm-l-background', MIDNIGHT_PAGE)
-    await expect(root).toHaveCSS('background-color', MIDNIGHT_PAGE_RGB)
+    await expect(root).toHaveCSS('--rm-l-background', BRAND_PAGE)
+    await expect(root).toHaveCSS('background-color', BRAND_PAGE_RGB)
+    await expect(root).toHaveCSS('--rm-l-accent', BRAND)
+    await expect(root).toHaveCSS('--rm-font', /Lora/)
     await expect(root).toHaveAttribute('data-layout', 'one')
     await expect(root).toHaveAttribute('data-scheme', 'auto')
-    // And the corners the preset gave (Midnight: 6 px).
-    await expect(root).toHaveCSS('--rm-radius', '6px')
   } finally {
     await guestContext.close()
   }
@@ -282,15 +407,21 @@ test('at phone width the tab stacks, with the preview below the form and no side
       view: document.documentElement.clientWidth,
     }))
     expect(widths.page).toBeLessThanOrEqual(widths.view)
-    const form = await target.getByTestId('design-templates').boundingBox()
+    const form = await target.getByTestId('design-colours-section').boundingBox()
     const preview = await target.getByTestId('design-preview').boundingBox()
     expect(form).not.toBeNull()
     expect(preview).not.toBeNull()
     expect((preview?.y ?? 0) > (form?.y ?? 0) + (form?.height ?? 0)).toBe(true)
     // Narrow: the dark screen's colour sits under the light one's.
+    await target.getByRole('button', { name: 'Advanced' }).click()
     const light = await target.getByTestId('role-light-text').boundingBox()
     const dark = await target.getByTestId('role-dark-text').boundingBox()
     expect((dark?.y ?? 0) >= (light?.y ?? 0) + (light?.height ?? 0)).toBe(true)
+    const open = await target.evaluate(() => ({
+      page: document.documentElement.scrollWidth,
+      view: document.documentElement.clientWidth,
+    }))
+    expect(open.page).toBeLessThanOrEqual(open.view)
     // The whole page (very tall: the form, then the preview), and the screen a person sees on
     // the colours.
     await target.screenshot({ path: shotPath('phone-full-page'), fullPage: true })
@@ -316,14 +447,16 @@ test('in Bulgarian', async ({ browser }) => {
       'aria-selected',
       'true',
     )
-    await expect(target.getByRole('heading', { name: 'Шаблон', exact: true })).toBeVisible()
-    await expect(target.getByTestId('template-in-use')).toHaveText('Използва се')
-    await expect(target.getByRole('heading', { name: 'Цветове', exact: true })).toBeVisible()
-    await expect(target.getByRole('button', { name: 'Полунощ' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    await expect(target.getByTestId('design-template-current')).toHaveText(
+      'Шаблон: Редакционен пазар',
     )
+    await expect(target.getByRole('button', { name: 'Смени' })).toBeVisible()
+    await expect(target.getByRole('heading', { name: 'Цветове', exact: true })).toBeVisible()
+    await expect(target.getByRole('heading', { name: 'Лого и име', exact: true })).toBeVisible()
+    await expect(target.getByLabel('Цветът на вашата марка', { exact: true })).toHaveValue(BRAND)
+    await expect(target.getByLabel('Име най-горе в менюто')).toBeVisible()
     await expect(target.getByRole('button', { name: 'Запази външния вид' })).toBeDisabled()
+    await target.getByRole('button', { name: 'Разширени' }).click()
     await expect(target.getByTestId('design-roles')).toContainText('Текст върху акцента')
     await target.screenshot({ path: shotPath('desktop-bulgarian') })
   } finally {
