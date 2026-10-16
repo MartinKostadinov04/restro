@@ -16,7 +16,7 @@ Restro does not use `docs/adr/`. Don't create it. The code, briefs and plans cit
 When a skill says "record an ADR":
 
 1. Take the next free D-number (the highest in `docs/decisions.md` plus one).
-2. Write the full text as a row in the tracker's `## Decisions` table, and its one line with a status in `docs/decisions.md`, in the same commit (CLAUDE.md, "Lead workflow").
+2. Write the full text as a row in the tracker's `## Decisions` table, and its one line with a status in `docs/decisions.md`, in the same commit (`docs/agents/lead.md`).
 3. A decision that changes an older one says so in both rows ("refines D<n>", "supersedes D<n>"); the older row's status names the newer one. Never delete or renumber a row.
 
 Only Martin makes product decisions. An agent proposes one in its report with a recommendation; the lead records it once Martin agrees.
