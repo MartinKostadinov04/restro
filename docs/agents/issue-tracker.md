@@ -14,6 +14,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Restro conventions
+
+- **Specs** carry the label `spec`; **tickets** end with the `## Restro` block from `.claude/skills/restro-flow/ship.md`. Create a missing label with `gh label create` before first use.
+- **gh is 2.88** on this PC: no `--parent` or `--add-sub-issue`; use the `gh api` forms below for sub-issues and blocking links.
+- **Decisions are not issues:** they stay D-numbers (`docs/agents/domain.md`). New tasks become issues; the T-numbers in `docs/open-items.md` stay until they close.
+- Issue text names concepts in `GLOSSARY.md` terms and is plain enough for Martin to follow.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

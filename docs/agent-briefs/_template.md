@@ -1,3 +1,5 @@
+> Retired for new work (10-16): tickets are GitHub issues in the format of `.claude/skills/restro-flow/ship.md`. Kept for the briefs already written.
+
 # Brief: <short task name>
 
 - **Model:** Sonnet 5.5 | Opus 5.5 (Opus for anything touching apply(), resolver, snapshot contract, barsy sync/deletion, RLS/tenancy, money, or the nine rules)

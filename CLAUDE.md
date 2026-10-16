@@ -4,12 +4,12 @@ Restro is a QR-to-phone menu and ordering web app for venues (pilot: Bulgarian n
 
 ## Read before any task
 Read only what your task needs: the big documents are for looking things up, not for reading whole (Martin 10-11: agents read too much).
-1. `docs/decisions.md`: every decision in force, one line each, and binding. For the full text of a decision or task your brief names, search `docs/tracker.md` for its number (`| D69 |`, `T74.`); never read the whole tracker.
-2. Your brief in `docs/agent-briefs/` and the `docs/adjustments/` file it names.
+1. Decisions are binding and each is a file: `docs/decisions/D<n>.md`. Read the ones your ticket names and any D-number cited in the code you change; `docs/decisions.md` is only the index of titles, for finding a number. For a task's full text, search `docs/tracker.md` for `T<n>.`; never read the whole tracker.
+2. Your ticket (a GitHub issue) and the `docs/adjustments/` file it names; `docs/agent-briefs/` holds the briefs written before 10-16.
 3. Only the sections of `docs/architecture/data-architecture.md` and `stack.md` your brief names. They mirror the live doc, which wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a.
 4. `docs/platform-reference.md` and the Platform files your brief names (read-only, `C:\Platform`).
 5. `GLOSSARY.md` whenever you name a domain concept (code names, interface text, reports): use its term.
-6. **If you are the lead** (the session Martin talks to): `docs/agents/lead.md` before briefing, starting agents or merging.
+6. **If you are the lead** (the session Martin talks to): `docs/agents/lead.md` before planning, briefing, starting agents or merging.
 
 Fact precedence: official POS docs (barsy: docs.lukanet.com) > the architecture doc > the tracker.
 
@@ -121,4 +121,4 @@ At most about one page (400 words). The diff shows the details; the report says 
 6. **Out-of-scope observations** worth a follow-up, one line each.
 
 ## Agent skills
-Issues: GitHub Issues via `gh` (`docs/agents/issue-tracker.md`); triage labels: the five defaults (`docs/agents/triage-labels.md`). Domain docs: `GLOSSARY.md` for the language; decisions are D-numbers in `docs/decisions.md`, with no `docs/adr/` (`docs/agents/domain.md`).
+New work starts with the `restro-flow` skill (lead only). Specs and tickets: GitHub Issues via `gh` (`docs/agents/issue-tracker.md`); triage labels: the five defaults (`docs/agents/triage-labels.md`). Domain docs: `GLOSSARY.md` for the language; decisions are D-numbers in `docs/decisions.md`, with no `docs/adr/` (`docs/agents/domain.md`).

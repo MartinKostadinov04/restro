@@ -7,12 +7,11 @@ on:
   push:
     branches:
       - main
+      # The stage branches the lead merges tickets into: the full gate runs here, on GitHub,
+      # instead of on the local PC (Martin 10-11). A task branch gets its run through its pull
+      # request into the stage branch (Martin 10-17), whatever the branch is named.
+      - '**/foundation'
       - 's1/**'
-      # The working branches the lead merges agents into (connector foundation, guest templates,
-      # adjustments): the full gate runs here, on GitHub, instead of on the local PC (Martin 10-11).
-      - 'cf/**'
-      - 'sh/**'
-      - 'ad/**'
 
 permissions:
   contents: read
