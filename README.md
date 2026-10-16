@@ -10,7 +10,7 @@ Status: Stage 1 — setting up the ground. See `docs/tracker.md` for decisions a
 | `docs/tracker.md` | Decisions, open questions, tasks (the working memory of the project) |
 | `docs/architecture/` | Mirrors of the Menu Engine Data Architecture doc. The live doc wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a |
 | `docs/platform-reference.md` | What we port from the Synex Platform UI and what we fix |
-| `docs/agent-briefs/` | Task briefs for coding agents |
+| `docs/agent-briefs/` | Briefs written before 10-16; tickets are GitHub issues now (`docs/agents/issue-tracker.md`) |
 | `docs/research/` | Market research (background) |
 | `CLAUDE.md` | Rules every coding agent follows |
 

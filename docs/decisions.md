@@ -77,12 +77,12 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D70](decisions/D70.md) | Venue colours: Primary ~60%, Secondary ~30%, Tertiary ~10% | firm |
 | [D71](decisions/D71.md) | Guest features are venue settings in the composer | firm |
 | [D72](decisions/D72.md) | Faces stay pure: a face draws the host's service state and sends commands with an… | firm |
-| [D73](decisions/D73.md) | (Refined by D81, D82, D87.) Organisation-wide | firm |
+| [D73](decisions/D73.md) | What is set once for the organisation and what per venue | firm |
 | [D74](decisions/D74.md) | The sidebar lists the venues and the organisation's Settings | firm |
 | [D75](decisions/D75.md) | When barsy has no public name for an item, option or category, Restro shows barsy's… | firm |
 | [D76](decisions/D76.md) | Deleting a venue (owners, after typing its name) archives it | firm |
 | [D77](decisions/D77.md) | A venue's menu languages come from one core function every workflow calls | firm |
-| [D78](decisions/D78.md) | Superseded by D87: a venue's source never changes | superseded |
+| [D78](decisions/D78.md) | Superseded by D87: a venue's source never changes | superseded by D87 |
 | [D79](decisions/D79.md) | The pilot's till is Mistral / Zamboo | firm |
 | [D80](decisions/D80.md) | Custom domains (owner self-service, subdomains only, guest menu and table codes only) | firm |
 | [D81](decisions/D81.md) | Settings › Integrations is source-agnostic now | firm |
