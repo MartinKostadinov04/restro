@@ -87,7 +87,7 @@ docs/               tracker, decisions index, adjustments, architecture mirrors,
 3. **POS ids stay in the backend.** Snapshots, the shell, faces and URLs use only our prefixed ids (`nd_`, `as_`, `sn_`, `tb_`).
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
 5. **Our layers only make the menu more cautious than the till.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
-6. **Absence is deletion only after a complete full pull.** A pull with any failed page concludes nothing.
+6. **Absence is deletion only after a complete full read.** A read with any failed page concludes nothing.
 7. **Sync never writes into a POS.** `packages/barsy/write/` exports only calls on Martin's allowlist — currently **none**.
 8. **Money is integer minor units** with the POS's rounding, through the `money` module only. barsy sends prices as JSON floats: parse losslessly, convert from the decimal string, round half-up. Never `x * 100`, never floats in storage.
 9. **POS accounts:** one API user per connection per environment; staging config refuses production hosts; (later) one POS-registration owner and server-generated order uuids.
@@ -155,3 +155,17 @@ At most about one page (400 words). The diff shows the details; the report says 
 - Branch per task: `<stage>/<slug>` (e.g. `ad/01-menus`). Conventional commit messages.
 - Pull requests carry a plain-language summary for Martin (what changed, why, what he can see or test).
 - Production deploys never Thursday–Sunday 18:00–08:00 Europe/Sofia, except fixes Martin approves.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (MartinKostadinov04/restro), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created lazily. Restro's binding decisions stay in `docs/decisions.md`. See `docs/agents/domain.md`.
