@@ -9,6 +9,9 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues.
 - Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
+- Q79 Lukanet: is barsy NRA-listed sales software; can it take Restro's orders as an Annex 42 import before acceptance (fiscal research 10-17, L11); with Q8 and Q24.
+- Q80 Martin, after the lawyer: a paper fiscal receipt per song-request capture with no guest email (D99); weigh the options.
+- Q81 Martin, after the lawyer: the bill screen as a "document" under Н-18 чл. 7а; until then no template screen resembles a receipt or says "фискален".
 
 **Lukanet / pilot owners (T9, T13)**
 - Q47: `Accounts_place` with payment and close: exactly one fiscal receipt, and bar printing of the rows?
