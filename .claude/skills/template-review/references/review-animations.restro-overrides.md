@@ -1,6 +1,6 @@
 # Restro overrides to the vendored review-animations skill
 
-Read before `review-animations/SKILL.md` and `review-animations/STANDARDS.md`. Where a line of the vendored files and a line here, the designer guide's §7.5 or `template-design/references/restro-overrides.md` (row 7: motion only in answer to a tap) differ, **this file, §7.5 and that file win** (D106). The vendored files stay a diffable copy of upstream, so every Restro change is here. The audit covers a guest face's CSS (D105); the owner's screens (D107) are calm shadcn and out of scope (A11).
+Read before `review-animations/SKILL.md` and `review-animations/STANDARDS.md`. Where a line of the vendored files differs from a line here, from the designer guide's §7.5 or from `template-design/references/restro-overrides.md` (row 7: motion only in answer to a tap), **this file, §7.5 and that file win** (D106). The vendored files stay a diffable copy of upstream, so every Restro change is here. The audit covers a guest face's CSS (D105); the owner's screens (D107) are calm shadcn and out of scope (A11).
 
 Every finding is a fact checked in the CSS, tagged and written in `template-review` step 7's line format, with its file and line. Where the pinned Animation rules of `web-interface-guidelines.pinned.md` (step 4) already flag the same line, report it once, under the pinned rule.
 

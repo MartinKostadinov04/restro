@@ -27,7 +27,7 @@ Read `references/web-interface-guidelines.pinned.md` and `references/web-interfa
 
 ## 4b. Motion
 
-Only when the package's CSS contains `transition`, `animation`, `@keyframes` or `scroll-behavior`. Read `references/review-animations.restro-overrides.md`, then `references/review-animations/SKILL.md` and `STANDARDS.md`; the overrides win. Apply them to the package's CSS only. Done when each of the standards has a verdict; the findings go into the step 7 list.
+Only when the package's CSS contains `transition`, `animation`, `@keyframes` or `scroll-behavior`. Read `references/review-animations.restro-overrides.md`, then `references/review-animations/SKILL.md` and `STANDARDS.md`; the overrides win. Apply them to the package's CSS only. Done when each standard the overrides keep has a verdict; the findings go into the step 7 list.
 
 ## 5. Code review against the brief
 
