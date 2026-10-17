@@ -74,6 +74,10 @@ const workerEnvironment = Object.fromEntries(
 
 export default defineConfig({
   testDir: './e2e',
+  // Playwright empties its output folder at the start of every run. The screenshot matrix keeps
+  // its pictures in test-results/faces-visual/<face>/ (one folder per template), so Playwright's own
+  // files go in a folder beside it and a run for one template leaves another's pictures alone.
+  outputDir: './test-results/playwright',
   globalSetup: './e2e/global-setup.ts',
   // The sign-in tests share one demo owner and Better Auth's rate limiter (3 sign-ins per
   // 10 seconds), so the files run one after the other.

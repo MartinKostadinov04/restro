@@ -23,6 +23,9 @@ export type VisualThemeId = VisualTheme['id']
 /** The custom theme's three colours (primary, secondary, tertiary), as the brief names them. */
 export const CUSTOM_COLOURS = { primary: '#f6f1e9', secondary: '#e9dccb', tertiary: '#7a2e8c' }
 
+/** A template id as the registry spells it (`editorial-market`, `qr-phone`): lower case and hyphens. */
+export const isFaceId = (id: string): boolean => /^[a-z][a-z0-9-]*$/.test(id)
+
 /** The slug in front of a fixture menu's public code. */
 export const VISUAL_SLUG = 'visual-fixture'
 

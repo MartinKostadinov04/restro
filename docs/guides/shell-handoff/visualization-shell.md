@@ -811,7 +811,7 @@ A template is listed in the gallery only when all of these pass. The first three
 | **The CSS theme-only check** | `assertThemeOnlyCss(css)` finds no hex colour, no named colour and no colour function with a literal number; `color-mix()` and relative colours of variables are fine. And `assertFaceScopedCss(css)` finds no `html`, `body` or `:root` selector. | `faceContractSuite`; export the whole stylesheet as one string. |
 | **The feature-slot checks** | Each of `menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay` is absent when its feature is off and present when it is on and listed in the manifest. | `runFaceContract`, inside `faceContractSuite`; the fixtures `features-on` and `features-off` exist for it. |
 | **The registry test** | The template has an entry with a loader, a picture (a PNG of a phone screen, 320 to 480 px wide, at most 150 KB), both names, and its stylesheet is named in the test. | `apps/web/src/faces/registry.test.ts`, `manifests.test.ts` (§12.1). |
-| **The visual audit** | Screenshots of the template in the four presets and one custom theme, in light and dark, Bulgarian and English, at 320, 360, 390, 430 and 820 px, for the menu, the layouts, a 60-character name, sold-out and scheduled items, the dish page, the filter sheet, the allergen sheet and (in the preview) the service sheets. Automated checks of touch targets, dialogs and focus, horizontal scroll, uncut names, reduced motion and rendered contrast (inverse bands, `color-mix`). | `apps/web/e2e/faces-visual.spec.ts`. The pictures are saved only with `FACES_VISUAL=1` (`FACES_VISUAL=1 pnpm test:e2e`) to `apps/web/test-results/faces-visual/`, for people to review; the automated checks run in the normal Playwright run. |
+| **The visual audit** | Screenshots of the template in the four presets and one custom theme, in light and dark, Bulgarian and English, at 320, 360, 390, 430 and 820 px, for the menu, the layouts, a 60-character name, sold-out and scheduled items, the dish page, the filter sheet, the allergen sheet and (in the preview) the service sheets. Automated checks of touch targets, dialogs and focus, horizontal scroll, uncut names, reduced motion and rendered contrast (inverse bands, `color-mix`). | `apps/web/e2e/faces-visual.spec.ts`. The pictures are saved only with `FACES_VISUAL=1`, for one template per run named by `FACES_VISUAL_FACE` (default `editorial-market`): `FACES_VISUAL=1 FACES_VISUAL_FACE=<id> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts`. They go to `apps/web/test-results/faces-visual/<id>/`, with `skipped.txt` naming each step the template cannot take (the spec finds everything through the markers of §5.5 and §7.3, so a template without a control skips that picture); the automated checks run in the normal Playwright run. |
 
 Run only your own: `pnpm vitest run --project packages/faces/<id> --reporter=dot`.
 
@@ -916,7 +916,7 @@ A template designed by an agent inside the repo (D105) writes the package `packa
 
 ### 9.4 What the Restro team does next
 
-They validate your manifest with `validateManifest`, port the source into a face package, run `faceContractSuite` (the thirteen fixtures, the feature slots, the two CSS checks), run the registry test, take the screenshot matrix of the visual audit (`FACES_VISUAL=1`), review your CSS and screenshots against section 7.5, and then list the template in the gallery (§12). Anything that fails goes back to you with the rule number.
+They validate your manifest with `validateManifest`, port the source into a face package, run `faceContractSuite` (the thirteen fixtures, the feature slots, the two CSS checks), run the registry test, take the screenshot matrix of the visual audit (`FACES_VISUAL=1 FACES_VISUAL_FACE=<id>`, §7.7), review your CSS and screenshots against section 7.5, and then list the template in the gallery (§12). Anything that fails goes back to you with the rule number.
 
 ### 9.5 Checklist
 
@@ -1145,7 +1145,7 @@ Martin sends updates to a template as a new delivery, the way the first one came
 1. **Store it** in `docs/design/faces/<id>/<date>/`, next to the earlier ones, with the delivery's `README.md`, `handover.md`, plans and `source/`. A stored delivery is never edited.
 2. **Diff `source/`** against the previous delivery's `source/` (for example `git diff --no-index docs/design/faces/<id>/<old>/source docs/design/faces/<id>/<new>/source`).
 3. **Port only the differences** into `packages/faces/<id>` (table below), keeping the package's readable structure. Do not paste the delivery over the package.
-4. **Run the tests** of §7.7 and the visual audit (`FACES_VISUAL=1`), and compare the screenshots with the earlier matrix.
+4. **Run the tests** of §7.7 and the visual audit (`FACES_VISUAL=1 FACES_VISUAL_FACE=<id>`, §7.7), and compare the screenshots with the earlier matrix.
 5. **If the update changes the contract** (a new slot, token, feature, option, string or service command, or a change to what the face needs from the host), stop and ask first: that is a decision for the lead and Martin, and may need a change in the shell, the manifest rules, the admin or this guide. A new option that fits the manifest's types needs no change in the admin: the Design tab and the composer panel build their forms from the manifest (an enum option's value words are the exception, §7.1).
 6. **Record it** in the tracker, and fix the guide's Appendix C if the code ends up differing from the plan.
 
@@ -1185,7 +1185,7 @@ Martin sends updates to a template as a new delivery, the way the first one came
 | 7 | **The picture.** A phone-width PNG of the template at `apps/web/public/faces/<id>.png`: 320 to 480 px wide, at most 150 KB. | Reviewer | The registry test is green. |
 | 8 | **The tests that name templates.** In `apps/web/src/faces/registry.test.ts` add the template's whole stylesheet to `STYLESHEETS` and its id to the expected lists; update `manifests.test.ts` and any test that lists the visible templates. | Reviewer | `pnpm vitest run --project apps/web src/faces` passes. |
 | 9 | **The words.** An enum option's values need their words in both `apps/web/messages/bg.json` and `en.json`, under `design.lookOptions.values.<value>` (a test fails if the two files differ). A boolean option needs none. | Reviewer | The Design tab shows the option in both languages. |
-| 10 | **Screenshots.** Run `FACES_VISUAL=1 pnpm test:e2e` and review `apps/web/test-results/faces-visual/` against §7.5; fix what the audit finds in the template's CSS and markup. | Design session; the reviewer and the lead check | The lead has no open findings, and Martin has accepted the template on a local preview (`template.md` step 3). |
+| 10 | **Screenshots.** Run `FACES_VISUAL=1 FACES_VISUAL_FACE=<id> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts` and review `apps/web/test-results/faces-visual/<id>/` against §7.5; fix what the audit finds in the template's CSS and markup. | Design session; the reviewer and the lead check | The lead has no open findings, and Martin has accepted the template on a local preview (`template.md` step 3). |
 | 11 | **Gate.** `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build`, and the Playwright specs of the Design tab and the guest page. | Reviewer | All green. |
 | 12 | **It is in the gallery.** The Design tab lists every template that is not hidden; a venue that picks it keeps its colours, font, corners and the options it saves. Nothing else to switch on. | Lead | A venue can choose it on staging. |
 | 13 | **Record it.** The tracker (full text) and `docs/decisions.md` (one line) in the same commit; Appendix C of this guide if the code differs from the plan. | Lead | Committed. |
@@ -1223,7 +1223,7 @@ Fill in the angle brackets. Keep it to one page; follow `docs/agent-briefs/_temp
 3. **The manifest.** `features`: <list>. `options`: <list with group, default and labels in bg and en>. `ordering: <true|false>`.
 4. **Wiring** (checklist steps 6 to 9): `apps/web/package.json`, `next.config.ts`, `manifests.ts`, `registry.ts`, the picture, the tests that name templates, the words of any enum option.
 5. **Tests**: `contract.test.tsx` with `faceContractSuite`, a manifest test, CSS tests, tests of the pure helpers.
-6. **Screenshots**: `FACES_VISUAL=1 pnpm test:e2e`; report the folder and the ten most telling pictures.
+6. **Screenshots**: `FACES_VISUAL=1 FACES_VISUAL_FACE=<id> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts`; report the folder and the ten most telling pictures.
 
 ## Done when
 

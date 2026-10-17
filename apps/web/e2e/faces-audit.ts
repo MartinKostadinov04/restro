@@ -154,7 +154,7 @@ export function installAudit(): void {
     if (document.getElementById('rm-audit-style') !== null) return
     const style = document.createElement('style')
     style.id = 'rm-audit-style'
-    style.textContent = '.rm-item { content-visibility: visible !important; }'
+    style.textContent = '[data-item] { content-visibility: visible !important; }'
     document.documentElement.appendChild(style)
   }
 

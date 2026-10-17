@@ -1,20 +1,22 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { expect, type Locator, type Page, test } from '@playwright/test'
 
 import { dialogs, settled } from './faces-audit'
 import {
+  chooseLanguage,
   chooseTheme,
-  fillBag,
+  FACE_ID,
   type Owner,
   onScreen,
   openPreview,
-  PREVIEW_FACE,
   SCREENS,
   servicesBack,
   servicesOn,
   signInAsOwner,
+  tryFillBag,
+  whyNoScreen,
 } from './faces-preview'
 import { runScript } from './global-setup'
 import {
@@ -27,29 +29,49 @@ import {
   visualPath,
 } from './visual-fixtures'
 
-// The screenshot matrix of the Editorial Market (brief SH-07): pictures for people to look at, not a
-// pixel comparison. Skipped unless FACES_VISUAL=1, so the normal gate stays fast:
+// The screenshot matrix of a template (briefs SH-07 and T89): pictures for people to look at, not a
+// pixel comparison. Skipped unless FACES_VISUAL=1, so the normal gate stays fast. One template per
+// run, chosen by FACES_VISUAL_FACE (default editorial-market; any id in the registry, hidden ones
+// too):
 //
-//   FACES_VISUAL=1 pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts
+//   FACES_VISUAL=1 FACES_VISUAL_FACE=<face> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts
 //
-// Every picture goes to apps/web/test-results/faces-visual/<preset>-<scheme>-<lang>-<width>-<screen>.png
+// Every picture goes to apps/web/test-results/faces-visual/<face>/<preset>-<scheme>-<lang>-<width>-<screen>.png,
+// and the steps this template cannot take, each with its reason, to <face>/skipped.txt.
+//
+// The spec finds everything through the face contract (guide §5.5 and §7.3): `data-face`, `data-item`,
+// `data-slot` (`item.name`, `item.allergens`, `menu.filters`, `menu.bag`, `menu.bill`, `menu.pay`,
+// `menu.call_waiter`) and the dialog role. What the contract has no marker for is driven another
+// way (the menu's layout through the snapshot, D92) or skipped with a named reason.
 //
 //   presets  the designer's four and a custom one from three colours
 //   schemes  light, dark;  languages  bg, en;  widths  320, 360, 390, 430, 820
-//   screens  top (the venue bar, the title, the rail, the photo strip), layout-list, layout-one and
-//            layout-two (a section of photo cards), soldout and scheduled (a photo card each),
-//            longname-photo and longname-text (at 320 only: 60 characters of Cyrillic or Latin),
-//            dish (the dish page), filters (the filter sheet), allergens (the allergen sheet)
+//   screens  top (the first screen), layout-list, layout-one and layout-two (a section of photo
+//            cards), soldout and scheduled (a photo card each), longname-photo and longname-text
+//            (at 320 only: 60 characters of Cyrillic or Latin), dish (the dish page), filters (the
+//            filter sheet), allergens (the allergen sheet)
 //   services bag, bill, call, pay, receipt: the Design tab's phone preview with "Preview guest
 //            services" on, at 390 and 320 (the phone frame is 360 px wide at most, so the other
-//            widths would look the same)
+//            widths would look the same); only those the template has (R15)
 test.skip(process.env.FACES_VISUAL !== '1', 'screenshots for people to review: set FACES_VISUAL=1')
 test.setTimeout(180_000)
 // A step that cannot be done fails in seconds, not in minutes: there are 110 of these tests.
 test.use({ actionTimeout: 20_000 })
 
-const OUT = fileURLToPath(new URL('../test-results/faces-visual/', import.meta.url))
+const OUT = fileURLToPath(new URL(`../test-results/faces-visual/${FACE_ID}/`, import.meta.url))
 mkdirSync(OUT, { recursive: true })
+
+/** The steps this template could not take, by reason, and how many pictures each cost. */
+const SKIPPED = new Map<string, number>()
+const skip = (reason: string) => SKIPPED.set(reason, (SKIPPED.get(reason) ?? 0) + 1)
+
+test.afterAll(() => {
+  const lines = [...SKIPPED].map(([reason, times]) => `${reason} (${times}x)`)
+  writeFileSync(
+    `${OUT}skipped.txt`,
+    `${lines.length === 0 ? 'nothing skipped' : lines.join('\n')}\n`,
+  )
+})
 
 const WIDTHS = [320, 360, 390, 430, 820] as const
 const LANGS = ['bg', 'en'] as const
@@ -85,14 +107,24 @@ const WORDS = {
   },
 } as const
 
+/** A text matched whole, with no surrounding text (a name must not match the longer names that start with it). */
+const exactly = (text: string) =>
+  new RegExp(`^\\s*${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`)
+
+/** The card of the item with exactly this name: a `data-item` that holds an `item.name` slot of that text. */
 const card = (page: Page, name: string) =>
-  page.locator('[data-item]').filter({ has: page.getByRole('heading', { name, exact: true }) })
+  page.locator('[data-item]').filter({
+    has: page.locator('[data-slot="item.name"]', { hasText: exactly(name) }),
+  })
+
+/** The section a card is in (its nearest `section`; the card itself when the template draws none). */
+const sectionOf = (item: Locator) => item.locator('xpath=ancestor::section[1]').or(item).first()
 
 /** Loads the photos that wait for the guest to scroll, and waits for all of them. */
 async function loadPhotos(page: Page) {
   // A picture of a section taller than the screen would leave out the items the browser has not
   // painted (it skips what is off screen, `content-visibility: auto`): paint them all.
-  await page.addStyleTag({ content: '.rm-item { content-visibility: visible !important; }' })
+  await page.addStyleTag({ content: '[data-item] { content-visibility: visible !important; }' })
   await page.evaluate(() => {
     for (const image of document.querySelectorAll('img[loading="lazy"]')) {
       image.setAttribute('loading', 'eager')
@@ -109,11 +141,40 @@ async function shoot(page: Page, path: string, target?: Locator) {
   else await target.screenshot({ path })
 }
 
+/** The snapshot file of a fixture menu, as the guest page asks for it (`snap/sn_….json`). */
+const SNAPSHOT_FILE = /\/snap\/sn_[^/]+\.json$/
+
+/**
+ * Opens a fixture menu with the menu's layout set to `layout`. The layout is a setting of the menu
+ * (D92), published in its snapshot, so the snapshot is served here with that one value changed (what
+ * the composer would publish) instead of pressing a template's own layout switch.
+ */
+async function openMenu(
+  page: Page,
+  theme: VisualTheme,
+  lang: string,
+  layout: (typeof LAYOUTS)[number],
+) {
+  await page.unroute(SNAPSHOT_FILE)
+  await page.route(SNAPSHOT_FILE, async (route) => {
+    const response = await route.fetch()
+    const snapshot = (await response.json()) as { layout?: Record<string, unknown> }
+    await route.fulfill({
+      response,
+      json: { ...snapshot, layout: { ...snapshot.layout, default: layout } },
+    })
+  })
+  await page.goto(`${visualPath(theme)}?lang=${lang}&t=${theme.table}`)
+  await expect(page.locator(`[data-face="${FACE_ID}"]:not([data-testid])`)).toBeVisible()
+  await expect(page.locator('[data-item]').first()).toBeVisible()
+  await loadPhotos(page)
+}
+
 test.describe('the guest menu', () => {
   // The global setup of the guest page's test clears the venue and table files of the publish folder
-  // when it starts, so the five fixture menus are written (again) here.
+  // when it starts, so the five fixture menus are written (again) here, for this template.
   test.beforeAll(() => {
-    runScript('./scripts/seed-visual-e2e.ts')
+    runScript('./scripts/seed-visual-e2e.ts', FACE_ID)
   })
 
   for (const theme of VISUAL_THEMES) {
@@ -125,52 +186,65 @@ test.describe('the guest menu', () => {
             const path = (screen: string) => file(theme, scheme, lang, width, screen)
             await page.setViewportSize({ width, height: 800 })
             await page.emulateMedia({ colorScheme: scheme })
-            await page.goto(`${visualPath(theme)}?lang=${lang}&t=${theme.table}`)
-            await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-            await loadPhotos(page)
 
-            await shoot(page, path('top'))
-
-            // A section of photo cards in each layout.
-            const beer = page.locator('main > section').nth(1)
-            for (const [index, layout] of LAYOUTS.entries()) {
-              await page.locator('.rm-layout [role="radio"]').nth(index).click()
-              await expect(page.locator('[data-face="editorial-market"]')).toHaveAttribute(
-                'data-layout',
-                layout,
-              )
-              await beer.scrollIntoViewIfNeeded()
-              await shoot(page, path(`layout-${layout}`), beer)
+            // A section of photo cards in each layout. The menu's own layout (two columns) comes
+            // first, for the "top" and the long names; one column comes last, for what follows.
+            const beer = () => sectionOf(card(page, words.soldOut))
+            for (const layout of ['two', 'list', 'one'] as const) {
+              await openMenu(page, theme, lang, layout)
+              if (layout === 'two') await shoot(page, path('top'))
+              await beer().scrollIntoViewIfNeeded()
+              await shoot(page, path(`layout-${layout}`), beer())
+              // A long name at the narrowest width, in the narrowest layout (two columns).
+              if (layout === 'two' && width === 320) {
+                await shoot(page, path('longname-photo'), card(page, words.longName))
+                await shoot(page, path('longname-text'), card(page, words.longText))
+              }
             }
 
-            // A long name at the narrowest width, in the narrowest layout (two columns).
-            if (width === 320) {
-              await page.locator('.rm-layout [role="radio"]').nth(2).click()
-              await shoot(page, path('longname-photo'), card(page, words.longName))
-              await shoot(page, path('longname-text'), card(page, words.longText))
-            }
-
-            // Sold-out and scheduled items, as one column of big cards.
-            await page.locator('.rm-layout [role="radio"]').nth(1).click()
+            // Sold-out and scheduled items, as one column of big cards (the layout opened last).
             await shoot(page, path('soldout'), card(page, words.soldOut))
             await shoot(page, path('scheduled'), card(page, words.scheduled))
 
             // The dish page, the filter sheet and the allergen sheet.
-            await card(page, words.negroni).locator('.rm-item-open').click()
-            await expect(dialogs(page)).toHaveCount(1)
-            await shoot(page, path('dish'))
-            await page.keyboard.press('Escape')
-            await expect(dialogs(page)).toHaveCount(0)
+            const dish = card(page, words.negroni).locator('[data-slot="item.name"] button')
+            if ((await dish.count()) === 0) {
+              skip('dish: item.name holds no button, so there is no dish page to open')
+            } else {
+              await dish.click()
+              await expect(dialogs(page)).toHaveCount(1)
+              await shoot(page, path('dish'))
+              await page.keyboard.press('Escape')
+              await expect(dialogs(page)).toHaveCount(0)
+            }
 
-            await page.locator('.rm-header [data-slot="menu.filters"]').click()
-            await expect(dialogs(page)).toHaveCount(1)
-            await shoot(page, path('filters'))
-            await page.keyboard.press('Escape')
-            await expect(dialogs(page)).toHaveCount(0)
+            const filters = page.locator('[data-slot="menu.filters"]').first()
+            if ((await filters.count()) === 0) {
+              skip('filters: the template draws no menu.filters')
+            } else if ((await filters.evaluate((element) => element.tagName)) !== 'BUTTON') {
+              skip(
+                'filters: menu.filters is not a button (drawn inline), so there is no filter sheet',
+              )
+            } else {
+              await filters.click()
+              await expect(dialogs(page)).toHaveCount(1)
+              await shoot(page, path('filters'))
+              await page.keyboard.press('Escape')
+              await expect(dialogs(page)).toHaveCount(0)
+            }
 
-            await card(page, words.platter).locator('[data-slot="item.allergens"] button').click()
-            await expect(dialogs(page)).toHaveCount(1)
-            await shoot(page, path('allergens'))
+            const allergens = card(page, words.platter).locator(
+              '[data-slot="item.allergens"] button',
+            )
+            if ((await allergens.count()) === 0) {
+              skip(
+                'allergens: item.allergens holds no button, so there is no allergen sheet to open',
+              )
+            } else {
+              await allergens.first().click()
+              await expect(dialogs(page)).toHaveCount(1)
+              await shoot(page, path('allergens'))
+            }
           })
         }
       }
@@ -199,13 +273,20 @@ test.describe('the service screens, in the Design preview', () => {
         for (const scheme of SCHEMES) {
           for (const lang of LANGS) {
             // A fresh preview each time: the demo table starts again (a paid bill would change them all).
-            await openPreview(owner, width, scheme)
+            await openPreview(owner, width, scheme, { servicesOptional: true })
             await chooseTheme(page, theme)
-            await page
-              .locator(`${PREVIEW_FACE} .rm-language button`, { hasText: lang.toUpperCase() })
-              .click()
-            await fillBag(page)
+            if (!(await chooseLanguage(page, lang))) {
+              skip(
+                `services: the preview of ${FACE_ID} has no language control; the pictures keep the menu's default language`,
+              )
+            }
+            await tryFillBag(page)
             for (const screen of SCREENS) {
+              const why = await whyNoScreen(page, screen)
+              if (why !== null) {
+                skip(`services/${screen}: ${why}`)
+                continue
+              }
               await onScreen(page, screen, async () => {
                 await shoot(
                   page,
