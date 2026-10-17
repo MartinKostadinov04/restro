@@ -9,7 +9,7 @@ Does it work the way it is meant to, judged by the people who use it? The produc
    - an organisation **admin** or **member** reaching for what their role should not allow.
 2. **User stories:** gather them from the spec issues, the decisions (`docs/decisions.md`) and the adjustments plan. Write each as "As a <persona> I want <x>, so that <y>", with the behaviour expected and the D-number or issue it comes from. Done when every story in scope names its source.
 3. **Environment, local only:** your own database on the running Postgres (54329), `pnpm db:migrate`, `pnpm db:roles`, `pnpm db:seed:dev`, the dev server through `preview_start`. Sign in only with the seed's test accounts.
-4. **Walk each story as its persona** in the built-in browser: mobile viewport for guests, both languages, screenshot each step. Note where the persona would hesitate, misread, take a wrong turn or get stuck, and check the result against the decision text. Guest pages also get the accessibility checks the faces specs already use.
+4. **Walk each story as its persona** in the built-in browser: mobile viewport for guests, both languages, screenshot each step. Note where the persona would hesitate, misread, take a wrong turn or get stuck, and check the result against the decision text. Guest pages also get the accessibility checks the faces specs already use. On operational screens (D107) count the taps of each common story (hide or show an item, rename, reorder, switch a guest feature, pick a template, publish) and report the trade-off where fewer taps cost a clear screen.
 5. **Sort each finding:**
    - **Works:** one line.
    - **Broken:** a bug; it goes to `bug.md` (the report links it).

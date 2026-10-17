@@ -12,6 +12,7 @@ A GitHub issue (`docs/agents/issue-tracker.md`): `to-tickets`' issue template, o
 - **Branch:** `<stage>/<slug>` from `<stage branch>`; pull request into `<stage branch>`
 - **Read:** decisions D…, architecture sections …, Platform files … (`docs/platform-reference.md`)
 - **Stop and ask if:** anything task-specific beyond CLAUDE.md's list
+- **Menu functionality:** none | revises `docs/guides/menu-template-functionality.md` (the ticket adds, changes or removes something a guest can do in the menu; the same change updates the file)
 ```
 
 Testing, done-criteria and the report format come from CLAUDE.md; the ticket doesn't restate them. Label it `ready-for-agent` once it is complete.
@@ -23,6 +24,7 @@ Testing, done-criteria and the report format come from CLAUDE.md; the ticket doe
 ## 3. Review (the lead)
 - Read the diff and the session's `code-review` output; a finding is a hypothesis until checked in the code.
 - Built-in `code-review` on the pull request, run by the lead so the bugs are judged outside the session that wrote the code: `low` by default, `high` when the diff touches a core-rule area; none for a wording, visual or docs-only diff. Its confirmed findings are facts; check its plausible ones in the code.
+- For an admin UI diff, the lead audits the changed screens against `.claude/skills/template-review/references/web-interface-guidelines.pinned.md` with its `web-interface-guidelines.restro-overrides.md` (the overrides win) and `copy-rules.md`.
 - Built-in `security-review` when the diff touches sign-in, roles, RLS, tokens, inputs from outside or secrets.
 - For a core-rule diff, name the one fact the change is safe because of and prove it by running code (a test, a script), not by reading.
 - A finding goes back to the same session (SendMessage) or becomes a new ticket.

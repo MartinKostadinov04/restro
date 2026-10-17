@@ -19,6 +19,7 @@ For the lead (`docs/agents/lead.md`). One request → one **category** → one *
 | **Build › Feature** | one new behaviour a user can see; grilling, ticket and build fit one session | `build.md` → Feature |
 | **Build › Feature set** | several features toward one clear destination; more than one session to build | `build.md` → Feature set |
 | **Build › Architecture** | the data model, a seam (a connector, a layer), a rule across packages; or the way there is foggy | `build.md` → Architecture |
+| **Build › Template** | a new guest menu template, or a change to one (D69, D105) | `template.md` |
 | **Change** | an existing feature should behave, read or look different; Martin's feedback or acceptance notes | `change.md` |
 | **Bug** | broken, throwing, wrong, slow or flaky | `bug.md` |
 | **Audit › Behaviour** | does it work as intended, judged as the people who use it | `audit-behaviour.md` |

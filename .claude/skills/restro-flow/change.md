@@ -9,5 +9,5 @@ An existing feature should behave, read or look different. Ends in `ship.md`.
    - **Contradicts a decision** → say so ("Contradicts D89, but…"); Martin decides; the new decision refines or supersedes the old D-number.
 3. **Open look?** Several layouts or wordings possible → `prototype` UI variations Martin can click through before the ticket.
 4. **A feedback list** (acceptance notes, a call with Martin): one ticket per independent item, with blocking links where one waits on another. Martin's own items skip triage; reports filed by others go through `upkeep.md` → Incoming reports first.
-5. **Tickets** in `ship.md`'s format. Each ticket changes the tests that encode the old behaviour together with the code. A guardrail test that encodes it is a stop-and-ask (D67).
+5. **Tickets** in `ship.md`'s format. Each ticket changes the tests that encode the old behaviour together with the code. A guardrail test that encodes it is a stop-and-ask (D67). A ticket that adds, changes or removes anything a guest can do in the menu revises `docs/guides/menu-template-functionality.md` in the same change.
 6. **Ship:** `ship.md`; for anything a guest or owner sees, finish with `audit-behaviour.md` steps 3–5 on the changed stories.
