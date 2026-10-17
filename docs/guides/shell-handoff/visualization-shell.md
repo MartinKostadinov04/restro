@@ -719,9 +719,9 @@ The reference faces also put `data-state` on the item wrapper, which is handy fo
 | `item.add` | The control inside an item that puts one of that dish in the bag. | On an item exactly when `view.features.ordering` is on and the item's `order.controls` is true; when the manifest lists `ordering` it must be there. The tests render with an empty bag; a face may swap the control for a stepper once the dish is in it. Checked by the contract tests (§7.4). |
 | `item.open` | The control inside an item that opens that item's own page (the dish page). | When the template has a dish page; a template without one draws none, which is allowed. Not checked. |
 | `menu.language` | The language switch: the group that holds one button (or radio) per language, whose text is the language code. | Exactly when the host gives two or more languages (`languages`, §7.6) on an interactive channel; never with fewer. Checked by the contract tests (§7.4). |
-| `pay.method` | Each payment method in the pay sheet; tapping it starts the payment. Carries `data-method` with the method (`apple`, `google`, `card` or `waiter`). | Inside the pay sheet (`#pay`), once the host's quote offers the method. Not read by the contract tests: the sheet opens on a tap. |
-| `pay.receipt_open` | The control on the paid screen that opens the receipt. | Inside the pay sheet, only once the payment is accepted and the host's state holds the receipt (§10.3). Not read by the contract tests. |
-| `pay.receipt` | The receipt itself, as the host issued it. | On the receipt screen (`#receipt`). Not read by the contract tests. |
+| `pay.method` | Each payment method in the pay sheet; tapping it starts the payment. Carries `data-method` with the method (`apple`, `google`, `card` or `waiter`). | Inside the pay sheet (`#pay`), once the host's quote offers the method. Checked by the face's own tests and the e2e specs, not by the contract suite (the sheet opens on a tap). |
+| `pay.receipt_open` | The control on the paid screen that opens the receipt. | Inside the pay sheet, only once the payment is accepted and the host's state holds the receipt (§10.3). Checked by the face's own tests and the e2e specs, not by the contract suite. |
+| `pay.receipt` | The receipt itself, as the host issued it. | On the receipt screen (`#receipt`). Checked by the face's own tests and the e2e specs, not by the contract suite. |
 
 Markers are additions: they change nothing of what the other attributes mean.
 
@@ -729,7 +729,7 @@ Reading order that the tests expect: for each section, its **own items first, th
 
 ### 7.4 The contract tests
 
-The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceContractSuite` (§7.7). They render your face (to a static HTML string) for every fixture on every channel your manifest declares, and report each failure with the rule it breaks.
+The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceContractSuite` (§7.7). They render your face (to a static HTML string) for every fixture on every channel your manifest declares, and report each failure with the rule it breaks. The render function is `(view, host?) => string`: the optional `host` carries the host's `languages` for the language-switch check, and a face that ignores it keeps working for every other check.
 
 **Fixtures** (every face must survive all fifteen):
 
@@ -762,7 +762,7 @@ The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceC
 | R6 | Allergens reachable in the manifest's mode. For `numbered_legend`, the slot shows the allergen's number. For `inline_icons`/`inline_codes`, the allergen's label or its code appears in the slot's text or in an `aria-label`, `title`, `alt` or `data-allergen` attribute inside it. For `info_link`/`info_qr`, the menu-level `menu.allergen_info` slot must exist. |
 | R15 | A feature slot (`menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay`) is **absent** whenever its feature is off, whatever the manifest says; and **present** when the feature is on and the manifest lists it. |
 | R15 | `item.add` is **absent** on every item without ordering controls (so on every item while ordering is off), and **present** on every item with them when the manifest lists `ordering`. |
-| §7.6 | `menu.language` is **present** when the host gives two languages (interactive channels) and **absent** when it gives one. The harness renders the `six-languages` fixture again with each; the render function receives the languages as its second argument, `render(view, host)`, and a face passes `host.languages` on as its `languages` prop. |
+| §7.6 | `menu.language` is **present** when the host gives two languages (interactive channels) and **absent** when it gives one. The harness renders the `six-languages` fixture again with each; the render function receives the languages as an optional second argument, `render(view, host)`, and a face passes `host.languages` on as its `languages` prop. |
 | Rule 3 | No id-shaped string of any kind other than `nd_`, `as_` and `tg_` appears in the markup. |
 
 Consequences that are easy to miss:
