@@ -5,8 +5,8 @@ For the lead: every open question and open task, one line each, grouped by owner
 Owner is the group heading. None blocks the current stages unless a brief says so.
 
 **Payment provider and the lawyer, for song requests and deposits (T80)**
-- Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions.
-- Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues.
+- Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions. Prepared in `docs/research/2026-10-17-fiscal-rules-in-app-payments.md` (questions L1–L4, L7, L9, L11, L12).
+- Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues. Prepared in `docs/research/2026-10-17-fiscal-rules-in-app-payments.md` (questions L4–L8, L10).
 - Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
 
