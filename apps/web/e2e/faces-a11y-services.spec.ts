@@ -28,10 +28,16 @@ import { VISUAL_THEMES } from './visual-fixtures'
 // reduced motion, and the contrast of what is drawn for every theme in the light and the dark scheme,
 // with the edge of every input and choice box held to 3:1.
 //
-// The way into each screen is the face contract's (e2e/faces-preview.ts: `data-slot`), but what is
-// measured inside the screens is Editorial Market's own markup (`.rm-overlay`, `.ro-*`): the
-// contract has no markers for the sheets' insides. So the audit is for that template, and a run
-// with another FACES_VISUAL_FACE skips it.
+// The way into each screen, and into the dish page, is the face contract's (e2e/faces-preview.ts:
+// `data-slot`: `item.add`, `item.open`, `menu.*`, `pay.*`), but what is measured inside the screens
+// is still Editorial Market's own markup, which the contract has no markers for. So the audit is
+// for that template, and a run with another FACES_VISUAL_FACE skips it. What still names that
+// markup: `.rm-overlay` (the sheet's root: every scan, target and overflow check), `.ro-options`,
+// `.ro-choicegrid`, `.ro-tips`, `.ro-scope` (the choice boxes whose edge is measured), the
+// `.ro-acc summary` and the "Custom" radio opened in the pay sheet, `.rm-sections` and
+// `.rm-section.is-feature .rm-items` (the sideways strips left out of the overflow check), and
+// the sheets' titles ('Your bag', 'Table order', 'Call a server', 'Pay'); `overlapsInHeader`
+// (faces-audit.ts) names `.rm-logo`, `.rm-table` and `.rm-language`.
 test.skip(
   FACE_ID !== 'editorial-market',
   'these checks read the service sheets of Editorial Market',
@@ -208,7 +214,7 @@ test.describe('the contrast of what is drawn', () => {
           })
         }
         // A dish's page, where the choices and the note are.
-        await page.locator(`${PREVIEW_FACE} [data-slot="item.name"] button`).first().click()
+        await page.locator(`${PREVIEW_FACE} [data-slot="item.open"]`).first().click()
         await expect(dialogs(page)).toHaveCount(1)
         await scan('the dish page', '.rm-overlay')
         await page.keyboard.press('Escape')
