@@ -75,7 +75,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D68](decisions/D68.md) | Public address <base>/m/<slug>-<code> | refined by D84 (clean addresses; the code is internal only) |
 | [D69](decisions/D69.md) | Template gallery: a venue picks a face in the Design tab | firm |
 | [D70](decisions/D70.md) | Venue colours: Primary ~60%, Secondary ~30%, Tertiary ~10% | firm |
-| [D71](decisions/D71.md) | Guest features are venue settings in the composer | firm |
+| [D71](decisions/D71.md) | Guest features are venue settings in the composer | firm; refined by D100 |
 | [D72](decisions/D72.md) | Faces stay pure: a face draws the host's service state and sends commands with an… | firm |
 | [D73](decisions/D73.md) | What is set once for the organisation and what per venue | firm |
 | [D74](decisions/D74.md) | The sidebar lists the venues and the organisation's Settings | firm |
@@ -102,6 +102,12 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D95](decisions/D95.md) | Areas and tables: barsy's halls and tables | firm |
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
 | [D97](decisions/D97.md) | Venue page tabs: Composer | firm |
+| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm |
+| [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | firm direction; prototype to be ported (T82), access to be grilled (T81) |
+| [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
+| [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | firm direction; after ordering from the menu (T83) |
+| [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm |
+| [D103](decisions/D103.md) | One cheap always-on host through 10 clubs; agent time goes into portability, not moves | firm |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

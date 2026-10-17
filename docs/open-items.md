@@ -4,6 +4,12 @@ For the lead: every open question and open task, one line each, grouped by owner
 ## Open questions
 Owner is the group heading. None blocks the current stages unless a brief says so.
 
+**Payment provider and the lawyer, for song requests and deposits (T80)**
+- Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions.
+- Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues.
+- Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
+- Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
+
 **Lukanet / pilot owners (T9, T13)**
 - Q47: `Accounts_place` with payment and close: exactly one fiscal receipt, and bar printing of the rows?
 - Q55: can an unpaid bill be kept from printing and "For confirmation" until paid, and auto-cancelled?
@@ -56,6 +62,11 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents.
+- T84 Martin + Claude: analytics questions and the guest event model (D103), before the prototypes are ported.
+- T83 Martin, then Claude: port the reservations prototype (D101), after ordering from the menu.
+- T82 Martin, then Claude: port the song-requests prototype (D99, D100); starts with a grilling round against D99.
+- T81 Martin + Claude: grill table-less access to song requests (D100), when T82 starts.
+- T80 Claude: payment-provider feasibility research (D98), before the payments interface.
 - T79 Claude: Adjustments 01 (`docs/adjustments/adjustments_01.md`, plan `adjustments_01-plan.md` approved 10-12); wave 0 done; ad/01 (schema, roles), ad/02 (menus, languages, barsy roots) ad/03a (areas, tables, menu routes) and ad/03b (guest addresses, venue states, Unpublish) built 10-12, ad/04 (purge, versions) and ad/05 (per-venue sync, colour roles) built 10-13, CI pending; next: merge ad/03–ad/05 into ad/foundation, then the screens in pairs, then screens in pairs A–D, then the purge rehearsal.
 - T45 Claude: deploy pipeline re-runs the freeze-window check; at the Stage 3 deploy.
 - T44 Martin: review Bulgarian wording in `apps/web/messages/bg.json` (S3 namespaces listed in the tracker).

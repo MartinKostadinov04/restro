@@ -161,3 +161,66 @@ _Avoid_: URL, link, slug
 **Service day**:
 A venue's business day, which ends at 07:00 local time by default, not at midnight.
 _Avoid_: day, night, shift
+
+## Song requests and payments
+
+**Song request**:
+A song a guest asks the DJ to play, paid or free. Lives in a venue's request queue for one service day.
+_Avoid_: bid (the amount on a request), track, song (alone)
+
+**Paid request**:
+A song request with money held on it. Ordered in the queue by its total amount.
+
+**Free request**:
+A song request with no money. Queued behind every paid request, in the order it arrived.
+
+**Boost**:
+Adding money to a song request that is already in the queue, under your own name.
+_Avoid_: bid up, top up
+
+**Backer**:
+A guest whose money is on a song request. A request has one or more backers.
+_Avoid_: contributor, bidder
+
+**Request queue**:
+A venue's song requests for the current service day, in play order.
+_Avoid_: playlist, bids, list
+
+**Lock window**:
+The playing request and the next N requests, which no request or boost can displace. N is a venue setting.
+_Avoid_: freeze, buffer
+
+**Played**:
+A song request the DJ accepted and played; its holds are captured.
+
+**Skipped**:
+A song request the DJ passed over; its holds are released or refunded.
+
+**Hold**:
+Money reserved on a guest's card for a request, not yet taken.
+_Avoid_: authorisation, pre-auth, freeze
+
+**Capture**:
+Taking held money. Happens when the DJ accepts a request.
+
+**Release**:
+Letting a hold lapse without taking the money.
+_Avoid_: cancel, void
+
+**Refund**:
+Returning money that was captured.
+
+**Payment provider**:
+A company that moves card money for a venue: myPOS, Stripe. Plugged in through a connector, like a POS system.
+_Avoid_: PSP, gateway, acquirer
+
+**Payment account**:
+A venue's own account at a payment provider, into which its guests' money is paid. One per venue.
+_Avoid_: merchant account, wallet
+
+**Guest session**:
+One phone's anonymous visit to a venue's guest page, with or without a table code. Never an account.
+_Avoid_: user, account, login
+
+**DJ**:
+The organisation role that runs a venue's request queue.
