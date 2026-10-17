@@ -66,6 +66,8 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
+- T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
+- T91 Claude, then Martin: guest page `viewport-fit=cover` and status-bar colour; the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
 - T90 Claude: contract markers for the audits (add to bag, open dish, pay controls, language switch); small; before T87.
 - T89 Claude: screenshot matrix for any template (contract markers, `FACES_VISUAL_FACE`); blocks T87; Sonnet.
 - T88 Claude: four admin defects from the design-skills trial (Sonnet); six ordering-sheet findings wait for ordering (D79).
