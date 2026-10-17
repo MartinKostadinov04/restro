@@ -62,6 +62,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents.
+- T85 Claude: portability groundwork (D103): containers, storage module, schema split with a no-join check, restore drill; before T82.
 - T84 Martin + Claude: analytics questions and the guest event model (D103), before the prototypes are ported.
 - T83 Martin, then Claude: port the reservations prototype (D101), after ordering from the menu.
 - T82 Martin, then Claude: port the song-requests prototype (D99, D100); starts with a grilling round against D99.

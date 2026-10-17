@@ -107,7 +107,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | firm direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm |
-| [D103](decisions/D103.md) | One cheap always-on host through 10 clubs; agent time goes into portability, not moves | firm |
+| [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
