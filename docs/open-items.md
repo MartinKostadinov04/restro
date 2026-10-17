@@ -53,6 +53,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q73: which pilot venue goes first, and who is its barsy admin?
 
 **Product design (Martin)**
+- Q78: the DJ request queue in templates: slot, contract, and whether every template draws it; when T82 reaches the face contract.
 - Q22: barsy post retry window before voiding (only if Stripe holds).
 - Q11: disputes ("drink never arrived", unauthorised use).
 - Q15: effect of a fixed per-transaction fee on small tickets.
@@ -62,6 +63,9 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents.
+- T88 Claude: four admin defects from the design-skills trial (Sonnet); six ordering-sheet findings wait for ordering (D79).
+- T87 Claude: first template through the pipeline, a dark club-night face (D105); after T86; Martin accepts on a local preview.
+- T86 Claude: template pipeline (D105–D107): functionality file and guardrail, template-design and template-review skills, pinned audit rules, template flow; ticket next.
 - T85 Claude: portability groundwork (D103): containers, storage module, schema split with a no-join check, restore drill; before T82.
 - T84 Martin + Claude: analytics questions and the guest event model (D103), before the prototypes are ported.
 - T83 Martin, then Claude: port the reservations prototype (D101), after ordering from the menu.
@@ -112,7 +116,7 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T23 Claude: research writing translations into barsy (D26, Q46); with T21.
 - T24: `Accounts_place` note fields found; what prints on bar tickets is open (P37, Q52).
 - T3 Martin: pilot-club interviews.
-- T34 Martin: visual design for the guest flow and admin (guest design: D63, D69).
+- T34 Martin: visual design for the guest flow and admin (guest templates: D105, D69; admin: D107).
 - T27: monthly restore drill; once live.
 - T4: test barsy's QR menu and one other BG QR app live.
 - T6: accountant check; folded into T33.

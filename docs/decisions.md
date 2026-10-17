@@ -67,7 +67,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D60](decisions/D60.md) | Venue-defined tags and dietary labels are assigned in the composer and shown on the… | firm |
 | [D61](decisions/D61.md) | QR links: ours (/t/<token>, default) or the venue's own link, both supported with a… | firm; refined by D80 (custom domains) |
 | [D62](decisions/D62.md) | Stage 3 plan approved | firm |
-| [D63](decisions/D63.md) | Guest menu design comes from Martin's Lovable shell | firm |
+| [D63](decisions/D63.md) | Guest menu design comes from Martin's Lovable shell | superseded by D105 |
 | [D64](decisions/D64.md) | Restro is not barsy-only | firm (direction); shape pending |
 | [D65](decisions/D65.md) | Spreadsheet import dropped | firm |
 | [D66](decisions/D66.md) | In a venue with a till, the till is the only source of items | firm |
@@ -109,6 +109,9 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
 | [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58 |
+| [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69 |
+| [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm |
+| [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
