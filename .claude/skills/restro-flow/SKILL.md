@@ -45,6 +45,7 @@ Before any work, show Martin the card, in plain language and `GLOSSARY.md` terms
 1. <step>: <skill> — <what it produces> (<who: you / lead / agent session>)
 2. …
 **Your part:** the decisions and grilling rounds you will be asked
+**Lead model:** Sonnet | Fable (heavy zone: <area>) — switch before step 1 when the session runs another
 **Sessions:** how many agent sessions, which models (D58), at most two running tests at once
 **Left out:** flow steps skipped, and why
 ```
@@ -58,7 +59,16 @@ End the turn with the card and one question: approve, or change the plan. Martin
 - **Who confirms what:** where a skill asks "the user" to confirm a technical choice (test seams, ticket granularity, blocking edges), the lead decides and tells Martin in one line. Behaviour, wording, scope and anything a decision covers go to Martin.
 - **The plugin updates itself.** When a skill's steps no longer match what a flow file assumes, the skill is right; fix the flow file (Upkeep › Agent environment).
 
-## 4. Every flow keeps
+## 4. Models for planning (D104)
+
+Read `docs/decisions/D104.md` before the card: it defines the **heavy zone** and the "I don't know" steps.
+
+- **Sonnet plans; Fable plans the heavy zone.** Check for the zone at classification and on every grilling question. When a question crosses into it, stop and write "⚠ Heavy zone: <area>. Switch to Fable before we continue." Resume once the session runs Fable. Announce the zone closed when its tickets are merged.
+- **Fable plans, assigns and reviews.** It sets each ticket's model by D58 and sends the work to sessions; a ticket the lead would code goes to an Opus session.
+- **"I don't know"** from Martin runs D104's four steps: fetch a missing fact first, else a proposal from the lead, an Opus agent or a Fable agent (`effort: max`) by complexity, put back to Martin as the next question.
+- **Before a Sonnet-planned feature set publishes tickets,** one read-only Fable agent checks the spec and tickets against the nine rules and the decisions in force.
+
+## 5. Every flow keeps
 
 - **Inside the current phase:** check CLAUDE.md's "Scope right now" before the card. Work outside it (ordering, payments, POS writes, a parked connector, a deploy) goes on the card as "outside the current phase", for Martin to start or park.
 - **Facts are the agent's job; decisions are Martin's.** A grilling round asks Martin only what he can decide, each question with a recommendation.

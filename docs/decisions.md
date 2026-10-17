@@ -62,7 +62,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D55](decisions/D55.md) | Stage 2 plan approved | firm |
 | [D56](decisions/D56.md) | Read public catalogue data only | firm; refined by D88 (a venue's menus are barsy's designated roots) |
 | [D57](decisions/D57.md) | Menu photos in private R2 bucket restro-assets-staging | applied |
-| [D58](decisions/D58.md) | Haiku for simple exactly specified tasks, Sonnet by default, Opus only for genuinely… | firm |
+| [D58](decisions/D58.md) | Haiku for simple exactly specified tasks, Sonnet by default, Opus only for genuinely… | firm; refined by D104 (planning tiers) |
 | [D59](decisions/D59.md) | Publishing is a sync setting | firm; refined by D82 (allergen key per instance) and D77 (languages) |
 | [D60](decisions/D60.md) | Venue-defined tags and dietary labels are assigned in the composer and shown on the… | firm |
 | [D61](decisions/D61.md) | QR links: ours (/t/<token>, default) or the venue's own link, both supported with a… | firm; refined by D80 (custom domains) |
@@ -108,6 +108,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | firm direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
+| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
