@@ -716,7 +716,7 @@ The reference faces also put `data-state` on the item wrapper, which is handy fo
 
 | `data-slot` | Marks | Present |
 |---|---|---|
-| `item.add` | The control inside an item that puts one of that dish in the bag. | On an item exactly when `view.features.ordering` is on and the item's `order.controls` is true; when the manifest lists `ordering` it must be there. A dish already in the bag may show a stepper instead. Checked by the contract tests (§7.4). |
+| `item.add` | The control inside an item that puts one of that dish in the bag. | On an item exactly when `view.features.ordering` is on and the item's `order.controls` is true; when the manifest lists `ordering` it must be there. The tests render with an empty bag; a face may swap the control for a stepper once the dish is in it. Checked by the contract tests (§7.4). |
 | `item.open` | The control inside an item that opens that item's own page (the dish page). | When the template has a dish page; a template without one draws none, which is allowed. Not checked. |
 | `menu.language` | The language switch: the group that holds one button (or radio) per language, whose text is the language code. | Exactly when the host gives two or more languages (`languages`, §7.6) on an interactive channel; never with fewer. Checked by the contract tests (§7.4). |
 | `pay.method` | Each payment method in the pay sheet; tapping it starts the payment. Carries `data-method` with the method (`apple`, `google`, `card` or `waiter`). | Inside the pay sheet (`#pay`), once the host's quote offers the method. Not read by the contract tests: the sheet opens on a tap. |
@@ -761,7 +761,7 @@ The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceC
 | R8 | An empty optional slot is not drawn (the image slot may be drawn without an image unless the manifest says `text_only`); an optional slot declared in the manifest and having content is drawn. |
 | R6 | Allergens reachable in the manifest's mode. For `numbered_legend`, the slot shows the allergen's number. For `inline_icons`/`inline_codes`, the allergen's label or its code appears in the slot's text or in an `aria-label`, `title`, `alt` or `data-allergen` attribute inside it. For `info_link`/`info_qr`, the menu-level `menu.allergen_info` slot must exist. |
 | R15 | A feature slot (`menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay`) is **absent** whenever its feature is off, whatever the manifest says; and **present** when the feature is on and the manifest lists it. |
-| R15, R11 | `item.add` is **absent** on every item without ordering controls (so on every item while ordering is off), and **present** on every item with them when the manifest lists `ordering`. |
+| R15 | `item.add` is **absent** on every item without ordering controls (so on every item while ordering is off), and **present** on every item with them when the manifest lists `ordering`. |
 | §7.6 | `menu.language` is **present** when the host gives two languages (interactive channels) and **absent** when it gives one. The harness renders the `six-languages` fixture again with each; the render function receives the languages as its second argument, `render(view, host)`, and a face passes `host.languages` on as its `languages` prop. |
 | Rule 3 | No id-shaped string of any kind other than `nd_`, `as_` and `tg_` appears in the markup. |
 

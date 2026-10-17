@@ -258,10 +258,14 @@ export async function chooseLanguage(page: Page, lang: string): Promise<boolean>
  */
 export async function payAndOpenReceipt(page: Page): Promise<void> {
   const sheet = dialogs(page).last()
-  await sheet
+  const method = sheet
     .locator('[data-slot="pay.method"]:not([data-method="apple"]):not([data-method="waiter"])')
     .first()
-    .click()
+  await expect(
+    method,
+    `${FACE_ID}'s pay sheet marks a card or wallet method pay.method`,
+  ).toBeVisible()
+  await method.click()
   const toReceipt = sheet.locator('[data-slot="pay.receipt_open"]')
   await expect(toReceipt).toBeVisible({ timeout: 15_000 })
   await toReceipt.click()

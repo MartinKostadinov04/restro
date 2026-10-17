@@ -31,13 +31,9 @@ import { VISUAL_THEMES } from './visual-fixtures'
 // The way into each screen, and into the dish page, is the face contract's (e2e/faces-preview.ts:
 // `data-slot`: `item.add`, `item.open`, `menu.*`, `pay.*`), but what is measured inside the screens
 // is still Editorial Market's own markup, which the contract has no markers for. So the audit is
-// for that template, and a run with another FACES_VISUAL_FACE skips it. What still names that
-// markup: `.rm-overlay` (the sheet's root: every scan, target and overflow check), `.ro-options`,
-// `.ro-choicegrid`, `.ro-tips`, `.ro-scope` (the choice boxes whose edge is measured), the
-// `.ro-acc summary` and the "Custom" radio opened in the pay sheet, `.rm-sections` and
-// `.rm-section.is-feature .rm-items` (the sideways strips left out of the overflow check), and
-// the sheets' titles ('Your bag', 'Table order', 'Call a server', 'Pay'); `overlapsInHeader`
-// (faces-audit.ts) names `.rm-logo`, `.rm-table` and `.rm-language`.
+// for that template, and a run with another FACES_VISUAL_FACE skips it. The selectors that still
+// name that markup are the `.rm-*` and `.ro-*` ones below, and `.rm-header .rm-brandline`, `.rm-logo`,
+// `.rm-table` and `.rm-language` in `overlapsInHeader` (faces-audit.ts).
 test.skip(
   FACE_ID !== 'editorial-market',
   'these checks read the service sheets of Editorial Market',

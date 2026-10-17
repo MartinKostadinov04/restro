@@ -22,15 +22,9 @@
 // element with that slot may exist when the view model's `layout.guestSwitch` is off (the menu
 // does not let guests switch, or the channel is not interactive).
 //
-// T90, the markers the audits drive (guide §7.3), tested here:
-//   - `item.add`, the control that puts a dish in the bag, is on an item exactly when the view
-//     model has ordering on and the item has ordering controls (and when the manifest lists
-//     `ordering`, it must be there); it is never drawn otherwise;
-//   - `menu.language`, the language switch, is drawn when the host gives two or more languages on
-//     an interactive channel, and is not drawn with fewer. The host's languages reach a face through
-//     the second argument of the render function, so the check renders `LANGUAGE_FIXTURE` again;
-//   - `item.open` (a template without a dish page draws none) and the `pay.*` markers (inside the
-//     pay sheet, which only opens on a tap) are not read here: see the guide's §7.3.
+// T90, two of the markers the audits drive (guide §7.3): `item.add` on an orderable item and
+// nowhere else, and `menu.language` with two languages and not with one. The other audit markers
+// (`item.open`, `pay.*`) are not read here.
 
 import {
   contrastRatio,
