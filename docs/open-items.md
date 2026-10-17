@@ -63,6 +63,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents.
+- T90 Claude: contract markers for the audits (add to bag, open dish, pay controls, language switch); small; before T87.
 - T89 Claude: screenshot matrix for any template (contract markers, `FACES_VISUAL_FACE`); blocks T87; Sonnet.
 - T88 Claude: four admin defects from the design-skills trial (Sonnet); six ordering-sheet findings wait for ordering (D79).
 - T87 Claude: first template through the pipeline, a dark club-night face (D105); after T86; Martin accepts on a local preview.
