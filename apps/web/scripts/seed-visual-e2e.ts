@@ -43,6 +43,7 @@ import { fixtureId, snapshotFromSpec } from '@restro/shell/testing'
 
 import {
   CUSTOM_COLOURS,
+  isFaceId,
   LONG_NAME_BG,
   LONG_NAME_EN,
   LONG_TEXT_NAME_BG,
@@ -358,7 +359,7 @@ function snapshotOf(theme: VisualTheme, index: number, face: string | null): Men
 async function main(): Promise<void> {
   assertDevEnvironment(process.env)
   const [face = null] = process.argv.slice(2)
-  if (face !== null && !/^[a-z][a-z0-9-]*$/.test(face)) {
+  if (face !== null && !isFaceId(face)) {
     throw new Error(`the template must be an id such as "qr-phone", not "${face}"`)
   }
   for (const text of [LONG_NAME_BG, LONG_NAME_EN, LONG_TEXT_NAME_BG, LONG_TEXT_NAME_EN]) {

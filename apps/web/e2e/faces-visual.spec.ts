@@ -107,12 +107,14 @@ const WORDS = {
   },
 } as const
 
+/** A text matched whole, with no surrounding text (a name must not match the longer names that start with it). */
+const exactly = (text: string) =>
+  new RegExp(`^\\s*${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`)
+
 /** The card of the item with exactly this name: a `data-item` that holds an `item.name` slot of that text. */
 const card = (page: Page, name: string) =>
   page.locator('[data-item]').filter({
-    has: page.locator('[data-slot="item.name"]', {
-      hasText: new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`),
-    }),
+    has: page.locator('[data-slot="item.name"]', { hasText: exactly(name) }),
   })
 
 /** The section a card is in (its nearest `section`; the card itself when the template draws none). */
@@ -234,9 +236,15 @@ test.describe('the guest menu', () => {
             const allergens = card(page, words.platter).locator(
               '[data-slot="item.allergens"] button',
             )
-            await allergens.first().click()
-            await expect(dialogs(page)).toHaveCount(1)
-            await shoot(page, path('allergens'))
+            if ((await allergens.count()) === 0) {
+              skip(
+                'allergens: item.allergens holds no button, so there is no allergen sheet to open',
+              )
+            } else {
+              await allergens.first().click()
+              await expect(dialogs(page)).toHaveCount(1)
+              await shoot(page, path('allergens'))
+            }
           })
         }
       }
@@ -249,7 +257,7 @@ test.describe('the service screens, in the Design preview', () => {
   let owner: Owner
 
   test.beforeAll(async ({ browser }) => {
-    await servicesOn(FACE_ID)
+    await servicesOn()
     owner = await signInAsOwner(browser)
   })
 

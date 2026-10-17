@@ -26,11 +26,11 @@ import pg from 'pg'
 import { dialogs, settled, withAudit } from './faces-audit'
 import { addressOfVenue } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG, VENUE_NAME } from './support'
-import { CUSTOM_COLOURS, type VisualTheme } from './visual-fixtures'
+import { CUSTOM_COLOURS, isFaceId, type VisualTheme } from './visual-fixtures'
 
 /** The template this run draws: `FACES_VISUAL_FACE`, or Editorial Market. */
 export const FACE_ID = process.env.FACES_VISUAL_FACE || 'editorial-market'
-if (!/^[a-z][a-z0-9-]*$/.test(FACE_ID)) {
+if (!isFaceId(FACE_ID)) {
   throw new Error(`FACES_VISUAL_FACE must be a template id such as "qr-phone", not "${FACE_ID}"`)
 }
 
@@ -51,17 +51,17 @@ async function withOwnerPool(run: (pool: pg.Pool) => Promise<void>): Promise<voi
 }
 
 /**
- * Every service on, and the template `face` chosen, in the demo venue's own settings: the draft the
+ * Every service on, and the run's template (`FACE_ID`) chosen, in the demo venue's own settings: the draft the
  * preview is built from has them. (A hidden template cannot be picked in the Design tab, so the
  * settings are written here, the way the seeds do.)
  */
-export async function servicesOn(face: string = FACE_ID): Promise<void> {
+export async function servicesOn(): Promise<void> {
   await withOwnerPool(async (pool) => {
     await pool.query(
       `update restro.venues set settings = coalesce(settings, '{}'::jsonb) || $1::jsonb where slug = $2`,
       [
         JSON.stringify({
-          presentation: { face, options: {} },
+          presentation: { face: FACE_ID, options: {} },
           guest_features: {
             filters: true,
             call_waiter: {
@@ -178,31 +178,40 @@ export async function chooseTheme(page: Page, theme: VisualTheme): Promise<void>
   }
 }
 
-/** The control of a menu-level slot (guide §5.5) inside the preview's template. */
+/** Editorial Market's own markup is driven only where the contract has no marker (see below). */
+export const IS_EDITORIAL_MARKET = FACE_ID === 'editorial-market'
+
+/** The menu-level slot (guide §5.5) of each screen's feature; paying and the receipt share one. */
+const SLOT_OF: Record<Screen, string> = {
+  bag: 'menu.bag',
+  bill: 'menu.bill',
+  call: 'menu.call_waiter',
+  pay: 'menu.pay',
+  receipt: 'menu.pay',
+}
+
+/** The control of a menu-level slot inside the preview's template. */
 const slot = (name: string): string => `${PREVIEW_FACE} [data-slot="${name}"]`
 
-/** The control that opens a screen: the slot the contract names for its feature. */
+/**
+ * The control that opens a screen: the slot the contract names for its feature. `menu.bag` is the
+ * bag's place: the button is the slot itself or inside it, and only while the bag has a dish.
+ */
 export const opener = (page: Page, screen: Screen): Locator =>
   page.locator(
-    {
-      // `menu.bag` is the bag's place; the button is the slot itself or inside it, and only while the bag has a dish.
-      bag: `${slot('menu.bag')}:is(button), ${slot('menu.bag')} button`,
-      bill: slot('menu.bill'),
-      call: slot('menu.call_waiter'),
-      pay: slot('menu.pay'),
-      receipt: slot('menu.pay'),
-    }[screen],
+    screen === 'bag'
+      ? `${slot('menu.bag')}:is(button), ${slot('menu.bag')} button`
+      : slot(SLOT_OF[screen]),
   )
 
 /**
  * The control on a dish card that puts the dish in the bag. The contract has no marker for it
- * (stop-and-ask in the T89 report; proposed: `data-slot="item.add"` on the control). Until it has,
+ * (open question of ticket T89; proposed: `data-slot="item.add"` on the control). Until it has,
  * Editorial Market's own quick-add button is used, for it alone.
  */
-const ADD_TO_BAG =
-  FACE_ID === 'editorial-market'
-    ? `${PREVIEW_FACE} [data-slot="item.add"], ${PREVIEW_FACE} .ro-plus`
-    : `${PREVIEW_FACE} [data-slot="item.add"]`
+const ADD_TO_BAG = IS_EDITORIAL_MARKET
+  ? `${PREVIEW_FACE} [data-slot="item.add"], ${PREVIEW_FACE} .ro-plus`
+  : `${PREVIEW_FACE} [data-slot="item.add"]`
 
 /** Puts a dish in the bag when the template has a way to, so the bag has its button. */
 export async function tryFillBag(page: Page): Promise<boolean> {
@@ -225,20 +234,15 @@ export async function fillBag(page: Page): Promise<void> {
  * is a template that has no such service, not a failure.
  */
 export async function whyNoScreen(page: Page, screen: Screen): Promise<string | null> {
-  const feature = {
-    bag: 'menu.bag',
-    bill: 'menu.bill',
-    call: 'menu.call_waiter',
-    pay: 'menu.pay',
-    receipt: 'menu.pay',
-  }[screen]
+  const feature = SLOT_OF[screen]
   if ((await page.locator(slot(feature)).count()) === 0) {
     return `${FACE_ID} draws no ${feature} (its manifest lists no such feature), so there is no ${screen} screen`
   }
-  if ((await opener(page, screen).count()) === 0) {
-    return `${FACE_ID} has no way to put a dish in the bag (no "item.add" marker in the contract), so there is no ${screen} screen`
+  // Only the bag's button waits for a dish; the other controls are the slots themselves.
+  if (screen === 'bag' && (await opener(page, screen).count()) === 0) {
+    return `${FACE_ID} has no way to put a dish in the bag (no "item.add" marker in the contract), so there is no bag screen`
   }
-  if (screen === 'receipt' && FACE_ID !== 'editorial-market') {
+  if (screen === 'receipt' && !IS_EDITORIAL_MARKET) {
     return `the pay sheet's controls have no contract marker, so ${FACE_ID}'s receipt cannot be reached`
   }
   return null
