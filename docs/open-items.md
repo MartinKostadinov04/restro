@@ -62,7 +62,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q1–Q4: why barsy clubs skip barsy's QR add-on; lost orders; owner and waiter appetite; table vs bar revenue share.
 
 ## Open tasks
-Owner, then state. "Claude" is the lead agent and its subagents.
+Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
 - T90 Claude: contract markers for the audits (add to bag, open dish, pay controls, language switch); small; before T87.
 - T89 Claude: screenshot matrix for any template (contract markers, `FACES_VISUAL_FACE`); blocks T87; Sonnet.
 - T88 Claude: four admin defects from the design-skills trial (Sonnet); six ordering-sheet findings wait for ordering (D79).
@@ -73,7 +73,9 @@ Owner, then state. "Claude" is the lead agent and its subagents.
 - T83 Martin, then Claude: port the reservations prototype (D101), after ordering from the menu.
 - T82 Martin, then Claude: port the song-requests prototype (D99, D100); starts with a grilling round against D99.
 - T81 Martin + Claude: grill table-less access to song requests (D100), when T82 starts.
-- T80 Claude: payment-provider feasibility research (D98), before the payments interface.
+- #8 Claude (research, Opus): Bulgarian fiscal rules for card payments through the app, deposits and paid song requests; prepares the lawyer's Q74 and Q75; waits for Martin's go.
+- #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; waits for Martin's go.
+- #10 Claude (upkeep, Sonnet): one home per rule in the agent docs; CLAUDE.md under 1,500 words; CLAUDE.md diff shown to Martin before merge.
 - T79 Claude: Adjustments 01 (`docs/adjustments/adjustments_01.md`, plan `adjustments_01-plan.md` approved 10-12); wave 0 done; ad/01 (schema, roles), ad/02 (menus, languages, barsy roots) ad/03a (areas, tables, menu routes) and ad/03b (guest addresses, venue states, Unpublish) built 10-12, ad/04 (purge, versions) and ad/05 (per-venue sync, colour roles) built 10-13, CI pending; next: merge ad/03–ad/05 into ad/foundation, then the screens in pairs, then screens in pairs A–D, then the purge rehearsal.
 - T45 Claude: deploy pipeline re-runs the freeze-window check; at the Stage 3 deploy.
 - T44 Martin: review Bulgarian wording in `apps/web/messages/bg.json` (S3 namespaces listed in the tracker).

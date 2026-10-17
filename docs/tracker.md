@@ -321,6 +321,8 @@ Moved on 10-17: each decision is a file in `docs/decisions/D<n>.md` (full text, 
 - Q1–Q4. Why barsy clubs don't use barsy's QR add-on; lost orders; owner/waiter appetite; table vs. bar revenue share
 
 ## Tasks
+
+Since 10-17 a new task is a GitHub issue from the moment it exists (`docs/agents/issue-tracker.md`); this section takes no new T entries. The open T-numbers below stay until they close.
 **Stage 1 — set up the ground (in progress)**
 - [x] T35. Platform reference map (`docs/platform-reference.md`) — Claude, 10-08
 - [x] T36. Repo `E:\Restro` initialised; research moved to `docs/research/`; doc mirrors in `docs/architecture/`; agent brief template — Claude, 10-08

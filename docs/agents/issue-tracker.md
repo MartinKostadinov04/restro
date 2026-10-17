@@ -18,7 +18,8 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 - **Specs** carry the label `spec`; **tickets** end with the `## Restro` block from `.claude/skills/restro-flow/ship.md`. Create a missing label with `gh label create` before first use.
 - **gh is 2.88** on this PC: no `--parent` or `--add-sub-issue`; use the `gh api` forms below for sub-issues and blocking links.
-- **Decisions are not issues:** they stay D-numbers (`docs/agents/domain.md`). New tasks become issues; the T-numbers in `docs/open-items.md` stay until they close.
+- **Decisions are not issues:** they stay D-numbers (`docs/agents/domain.md`).
+- **A task is an issue from the moment it exists** (Martin 10-17): label `task` until it carries the Restro block, then `ready-for-agent`; `research` and `upkeep` mark the kind where it helps. `docs/open-items.md` lists each open issue by number and owner; the T-numbers already open stay until they close; `docs/tracker.md` takes no new T entries (its research facts, acceptance runs and proposals stay where they are).
 - Issue text names concepts in `GLOSSARY.md` terms and is plain enough for Martin to follow.
 
 ## Pull requests as a triage surface

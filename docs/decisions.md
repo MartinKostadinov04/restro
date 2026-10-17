@@ -1,7 +1,7 @@
 # Decisions index
 One line per decision, every decision ever made (D-numbers are never reused or renumbered). The full text of each is its own file in `docs/decisions/D<n>.md`, which wins on any difference. Read only the files your ticket names and any D-number cited in the code you change; never all of them.
 
-Status: **firm** (agreed), **applied** (done or in force), **pending** (stated or wanted, not yet firm), **refined by D<n>**, **superseded by D<n>**. A superseded or refined decision keeps its file; the file says which decision changed it.
+Status: **firm** (agreed), **applied** (done or in force), **pending** (stated or wanted, not yet firm), **direction** (Martin's decision on where a feature goes; agents build nothing on it until its own grilling, named in the file, has happened), **refined by D<n>**, **superseded by D<n>**. A superseded or refined decision keeps its file; the file says which decision changed it.
 
 | ID | Title | Status |
 |---|---|---|
@@ -103,15 +103,16 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
 | [D97](decisions/D97.md) | Venue page tabs: Composer | firm |
 | [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm |
-| [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | firm direction; prototype to be ported (T82), access to be grilled (T81) |
+| [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
-| [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | firm direction; after ordering from the menu (T83) |
+| [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
-| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58 |
+| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 |
 | [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69 |
 | [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm |
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
+| [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
