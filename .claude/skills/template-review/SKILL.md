@@ -25,6 +25,10 @@ Open the screenshots in the design folder: the four sets (BG and EN, light and d
 
 Read `references/web-interface-guidelines.pinned.md` and `references/web-interface-guidelines.restro-overrides.md`; where they differ, the overrides win. Apply the rules to the package's source, dropping every rule the overrides exclude for faces. Read `references/copy-rules.md` for the strings the package ships. Done when each pinned section has been applied to every source file.
 
+## 4b. Motion
+
+Only when the package's CSS contains `transition`, `animation`, `@keyframes` or `scroll-behavior`. Read `references/review-animations.restro-overrides.md`, then `references/review-animations/SKILL.md` and `STANDARDS.md`; the overrides win. Apply them to the package's CSS only. Done when each of the standards has a verdict; the findings go into the step 7 list.
+
 ## 5. Code review against the brief
 
 Invoke `mattpocock-skills:code-review` (Standards and Spec) on the changes since the merge-base with the stage branch, with the brief as the spec. When the Agent tool is not available to you (you are a subagent yourself), run the Standards and Spec axes inline, one after the other, instead of as sub-agents. Done when both axes have reported and each item is either a finding or a stated reason it is not one.
