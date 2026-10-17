@@ -8,13 +8,15 @@ import { describe, expect, it } from 'vitest'
 // list of what a guest can do in a menu. It has one `### <name>` entry per capability, each with
 // the bullets Shell key, Status, Drawn means and Where. This test fails when
 //   1. a feature key the shell knows is missing from the entries' Shell key lines: the keys of
-//      `ViewFeatures` (packages/shell/src/features.ts), the manifest's `FEATURE_NAMES`
-//      (packages/shell/src/manifest.ts) and the request kinds `CALL_WAITER_KINDS` (packages/core,
-//      which the shell re-exports as its service kinds). A request kind must sit in the Shell key
-//      line of the entry that also names `callWaiter`;
+//      `ViewFeatures` (packages/shell/src/features.ts), each the first backticked word of some
+//      entry's Shell key line; the manifest's `FEATURE_NAMES` (packages/shell/src/manifest.ts),
+//      named anywhere in those lines; and the request kinds `CALL_WAITER_KINDS` (packages/core,
+//      which the shell re-exports as its service kinds), named in the line of the entry that also
+//      names `callWaiter`;
 //   2. an entry has a status outside the four, or lacks one of the four bullets;
 //   3. an entry with status `supported` or `drawn, platform parked` names no guide section (§) and
-//      no decision (D<n>) in its Where line.
+//      no decision (D<n>) in its Where line, or cites a § that is no heading of the designer guide
+//      (that a cited D<n> has a file is decisions.test.ts's job).
 // When the shell's lists and the file disagree, fix the file, never this test.
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -85,13 +87,16 @@ describe('the menu template functionality file', () => {
   })
 
   it('names every feature key the shell knows', () => {
-    const keyLines = entries.map((e) => e.bullets.get('Shell key') ?? '').join('\n')
-    const known = [
-      ...readViewFeatureKeys(),
-      ...readList('packages/shell/src/manifest.ts', 'FEATURE_NAMES'),
+    const keyLines = entries.map((e) => e.bullets.get('Shell key') ?? '')
+    const primary = new Set(keyLines.map((line) => /`([^`]+)`/.exec(line)?.[1]))
+    const viewKeys = readViewFeatureKeys()
+    const manifestNames = readList('packages/shell/src/manifest.ts', 'FEATURE_NAMES')
+    expect(viewKeys.length).toBeGreaterThanOrEqual(5) // not vacuous
+    expect(manifestNames.length).toBeGreaterThanOrEqual(5)
+    const missing = [
+      ...viewKeys.filter((key) => !primary.has(key)),
+      ...manifestNames.filter((key) => !keyLines.join('\n').includes(`\`${key}\``)),
     ]
-    expect(known.length).toBeGreaterThanOrEqual(10) // five view keys and five manifest names
-    const missing = known.filter((key) => !keyLines.includes(`\`${key}\``))
     expect(missing.map((key) => `${key}: in no Shell key line`)).toEqual([])
   })
 
@@ -102,6 +107,19 @@ describe('the menu template functionality file', () => {
     expect(waiter, 'no entry has the Shell key `callWaiter`').toBeDefined()
     const line = waiter?.bullets.get('Shell key') ?? ''
     expect(kinds.filter((kind) => !line.includes(`\`${kind}\``))).toEqual([])
+  })
+
+  it('cites only sections the designer guide has', () => {
+    const guide = read('docs/guides/shell-handoff/visualization-shell.md')
+    const sections = new Set([...guide.matchAll(/^#{2,3} (\d+(?:\.\d+)?)\.?\s/gm)].map((m) => m[1]))
+    expect(sections.size).toBeGreaterThan(30) // not vacuous
+    const unknown = entries.flatMap((e) =>
+      [...(e.bullets.get('Where') ?? '').matchAll(/§(\d+(?:\.\d+)?)/g)]
+        .map((m) => m[1] ?? '')
+        .filter((n) => !sections.has(n))
+        .map((n) => `${e.name}: §${n} is no heading of the guide`),
+    )
+    expect(unknown).toEqual([])
   })
 
   it('points every drawn entry at a guide section or a decision', () => {

@@ -66,7 +66,7 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 
 ## Services
 
-A service control is drawn only when its `view.features` field is on, and carries its `menu.*` slot (§5.5). All of them follow D72: the template draws the host's state and sends commands, and shows pending, then accepted or rejected.
+A service control is drawn only when its `view.features` field is on, and carries its `menu.*` slot (§5.5). Each acts on a table, so it needs a confirmed table code (D71, D100). All of them follow D72: the template draws the host's state and sends commands, and shows pending, then accepted or rejected.
 
 ### Call a waiter
 - **Shell key:** `callWaiter` (manifest `call_waiter`, slot `menu.call_waiter`); request kinds `waiter`, `bill`, `water`, `cutlery`, `terminal`, `other`
@@ -93,7 +93,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 - **Where:** §5.5, §10.2, §10.3; D71, D72
 
 ### Get the receipt
-- **Shell key:** `pay` (a screen of the pay feature, `#receipt`)
+- **Shell key:** none; a screen of the pay feature (`#receipt`)
 - **Status:** drawn, platform parked
 - **Drawn means:** the paid receipt as the host issued it, with a button only for each action the receipt supports.
 - **Where:** §10.1, §10.2; D71, D72

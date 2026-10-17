@@ -14,7 +14,7 @@ Done when you hold all five, from the brief or from the lead:
 - the template id (kebab-case; it never changes), and its name and one-line description in Bulgarian and English;
 - a three-line intent;
 - two or three visual references;
-- the stage branch to cut from, and the date for the design folder;
+- the stage branch to cut from, and the date: the design folder is `docs/design/faces/<id>/<date>/`;
 - any exempted entries of the functionality file, named explicitly.
 
 Material is Martin's to bring. When the brief has none, stop and ask the lead for three one-screen directions from `prototype`, picked by Martin (D105).
@@ -29,7 +29,7 @@ Material is Martin's to bring. When the brief has none, stop and ask the lead fo
 
 ## 3. Design plan, before any code
 
-Write it into the design-intent note (step 6) as you go. Done when each part is written and the check below passes:
+Write it into `design-intent.md` in the design folder as you go. Done when each part is written and the check below passes:
 
 - **Type roles.** Sizes, weights, case and spacing for name, price, description, section heading, chips and sheets, all from the `font` token.
 - **Colour roles.** The eight roles, light and dark, and which surface and text use which. Name roles only; the plan holds for any three venue colours.
@@ -41,15 +41,15 @@ Then apply the vendored skill's question to the plan: would any similar brief pr
 
 ## 4. Write the package
 
-Create `packages/faces/<id>` directly: guide §12.1 steps 4 and 5, following the patterns of the reference faces. Stop at the package: wiring into the web app (§12.1 steps 6 to 9) belongs to the reviewer. Contract changes (a new slot, token, feature, string or command) are a question to the lead, never an edit to the shell or core.
+Create `packages/faces/<id>` directly: guide §12.1 steps 4 and 5, following the patterns of the reference faces. Then wire it so the preview and the matrix can show it: §12.1 step 6, with `hidden: true` in `MANIFESTS` so no venue is offered it yet. Steps 7 to 9 and listing it belong to the reviewer. Contract changes (a new slot, token, feature, string or command) are a question to the lead, never an edit to the shell or core.
 
 ## 5. Run the face's tests
 
-`pnpm vitest run --project packages/faces/<id> --reporter=dot`, then `pnpm lint && pnpm typecheck && pnpm deps:check`. CLAUDE.md's testing tiers apply. At most two sessions run tests at once, and a subagent running tests counts as one. Done when all are green.
+`pnpm vitest run --project packages/faces/<id> --reporter=dot`, then CLAUDE.md's done-gate (`pnpm lint && pnpm typecheck && pnpm deps:check`). At most two sessions run tests at once, and a subagent running tests counts as one. Done when all are green.
 
 ## 6. Record the design
 
-Under `docs/design/faces/<id>/<date>/`, write `design-intent.md` (the step 3 plan as built, plus every new interface string with its Bulgarian and English text) and the screenshot matrix from `FACES_VISUAL=1` (the guide's §9.3 sets and §7.7). Done when the note and the screenshots are committed.
+Under `docs/design/faces/<id>/<date>/`, write `design-intent.md` (the step 3 plan as built, plus every new interface string with its Bulgarian and English text) and the screenshot matrix from `FACES_VISUAL=1 pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts --reporter=line` (the guide's §9.3 sets and §7.7). That spec's selectors target Editorial Market (`PREVIEW_FACE` in `apps/web/e2e/faces-preview.ts`); when it cannot show your template, stop and report to the lead that the spec needs a ticket. Done when the note and the screenshots are committed.
 
 ## 7. Review
 

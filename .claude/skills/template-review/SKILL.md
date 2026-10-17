@@ -5,7 +5,7 @@ description: Independently review a Restro guest menu template (a package under 
 
 # Template review
 
-You review one template that another model designed, and you wire it in when it is clean (D105). The designer's handoff packet gives you the brief, the path of `docs/guides/menu-template-functionality.md` (the functionality file) with any exemptions, the package `packages/faces/<id>`, and the design-intent note with its screenshots. Without all four, ask the design session for the missing one before you start.
+You review one template that another model designed, and you wire it in when it is clean (D105). The designer's handoff packet gives you the brief, the path of `docs/guides/menu-template-functionality.md` (the functionality file) with any exemptions, the package `packages/faces/<id>`, and the design-intent note with its screenshots. Without all four, say so in your report and stop: the design session supplies it.
 
 The designer guide is `docs/guides/shell-handoff/visualization-shell.md` (the guide below). You edit nothing inside the template: findings go back to the designer. Every finding is a fact you checked in the code or the screenshots, with its file and line.
 
@@ -19,7 +19,7 @@ Run `pnpm vitest run --project packages/faces/<id> --reporter=dot` (it holds `fa
 
 ## 3. Screenshots against §7.5 and §9.5
 
-Open the screenshots in the design folder: the four sets (BG and EN, light and dark), the 320 px stress case and the second preset. Check each rule of the guide's §7.5 and each line of §9.5 against what you see and what the CSS says. Done when every line of §9.5 has a verdict. A missing screenshot is a finding; produce it with `FACES_VISUAL=1 pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts --reporter=line` once the package is wired, or ask the designer.
+Open the screenshots in the design folder: the four sets (BG and EN, light and dark), the 320 px stress case and the second preset. Check each rule of the guide's §7.5 and each line of §9.5 against what you see and what the CSS says. Done when every line of §9.5 has a verdict. A missing screenshot is a finding; return it as a question to the designer.
 
 ## 4. The pinned audit
 
@@ -31,7 +31,7 @@ Invoke `mattpocock-skills:code-review` (Standards and Spec) on the changes since
 
 ## 6. Extra fat
 
-Look for what nobody asked for: unused code, options or props the brief does not name, strings outside the strings files (`guest-strings.ts` and the shell's strings), a dependency beyond `react`, `react-dom` and `@restro/shell`. Done when each source file has been read for it.
+Look for what nobody asked for: unused code, options or props the brief does not name, a word typed into a component instead of the shell's `GuestStrings` or `ServiceStrings`, a dependency beyond `react`, `react-dom` and `@restro/shell`. Done when each source file has been read for it.
 
 ## 7. The output
 
@@ -47,6 +47,6 @@ Also list, apart from the items, any finding that points at the skills or the fl
 
 ## 8. On a clean verdict: wire it
 
-Only then. Follow the guide's §12.1 steps 6 to 9 exactly: the web app's dependency and `transpilePackages`, `MANIFESTS` in `apps/web/src/faces/manifests.ts`, the loader in `apps/web/src/faces/registry.ts`, the picture `apps/web/public/faces/<id>.png`, the tests that name templates, and the words of any enum option. Then run CLAUDE.md's gate: `pnpm lint && pnpm typecheck && pnpm deps:check`, the tests of every package you touched (`pnpm vitest run --project apps/web src/faces --reporter=dot` among them) and the Playwright specs of the Design tab and the guest page. Commit as you go.
+Only then. Follow the guide's §12.1 steps 6 to 9 exactly. The design session has done the first half of step 6 (the dependency, `transpilePackages`, a hidden `MANIFESTS` entry and the loader): check it, finish steps 6 to 9 and set `hidden: false`. Then run CLAUDE.md's done-gate with the tests of every package you touched (`pnpm vitest run --project apps/web src/faces --reporter=dot` among them) and the Playwright specs of the Design tab and the guest page. Commit as you go.
 
 Report to the design session: the verdict, the list, the files you changed while wiring, and the gate's results (failures in detail only). A wiring failure that points at the template is a finding, and the verdict goes back to `not clean`.
