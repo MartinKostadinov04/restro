@@ -386,13 +386,23 @@ async function checkLanguageSwitch(
   view: ViewModel,
   fail: (rule: string, message: string) => void,
 ): Promise<void> {
-  const drawn = async (languages: readonly Locale[]) =>
+  const switches = async (languages: readonly Locale[]) =>
     withAttribute(parseHtml(await render(view, { languages })), SLOT_ATTRIBUTE, LANGUAGE_SLOT)
-      .length
-  if (INTERACTIVE_CHANNELS.includes(view.channel) && (await drawn(TWO_LANGUAGES)) === 0) {
-    fail('§7.6', `the host gives two languages, but ${LANGUAGE_SLOT} is not drawn`)
+  if (INTERACTIVE_CHANNELS.includes(view.channel)) {
+    const [drawn] = await switches(TWO_LANGUAGES)
+    if (drawn === undefined) {
+      fail('§7.6', `the host gives two languages, but ${LANGUAGE_SLOT} is not drawn`)
+    } else {
+      // The audits pick a language by the `lang` of its button.
+      const langs = withAttribute(drawn, 'lang').map((element) => element.attrs.lang)
+      for (const code of TWO_LANGUAGES) {
+        if (!langs.includes(localeToBcp47(code))) {
+          fail('§7.6', `${LANGUAGE_SLOT} has no control with lang="${localeToBcp47(code)}"`)
+        }
+      }
+    }
   }
-  if ((await drawn([view.locale])) > 0) {
+  if ((await switches([view.locale])).length > 0) {
     fail('§7.6', `the host gives one language, but ${LANGUAGE_SLOT} is drawn`)
   }
 }

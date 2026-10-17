@@ -237,13 +237,12 @@ export async function whyNoScreen(page: Page, screen: Screen): Promise<string | 
 
 /**
  * Switches the template's language switch (`menu.language`, guide §7.3) to `lang`: the button or
- * radio inside it whose text is the code. False when the template draws no switch in the preview.
+ * radio inside it that carries that `lang`. False when the template draws no switch in the preview.
  */
 export async function chooseLanguage(page: Page, lang: string): Promise<boolean> {
   const control = page
     .locator(slot('menu.language'))
-    .locator('button, [role="radio"]')
-    .filter({ hasText: new RegExp(`^${lang}$`, 'i') })
+    .locator(`:is(button, [role="radio"])[lang|="${lang}"]`)
     .first()
   if ((await control.count()) === 0) return false
   await control.click()

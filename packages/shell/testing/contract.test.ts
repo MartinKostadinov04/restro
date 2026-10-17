@@ -687,6 +687,16 @@ describe('runFaceContract: the language switch (T90)', () => {
     expect(report.failures[0]?.message).toContain('two languages')
   })
 
+  it('catches a face whose switch does not carry the language of each control', async () => {
+    const report = await runFaceContract(
+      face((html) => html.replace(/<button lang="[^"]*">/g, '<button>')),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('lang="bg-BG"')
+  })
+
   it('catches a face that draws it with one language', async () => {
     const report = await runFaceContract(
       face((html, languages) =>
