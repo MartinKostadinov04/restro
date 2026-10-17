@@ -7,6 +7,10 @@
 // the guest page reads, like the look fixture of seed-guest-e2e.ts: no venue row, a fixed public
 // code each (e2e/visual-fixtures.ts), and the photos are drawn here and saved as webp variants.
 //
+// Takes the template to draw as an argument (`seed-visual-e2e.ts qr-phone`, T89): the snapshots then
+// carry `presentation.face`. Without one they carry none, and the guest page draws the default
+// template (Editorial Market).
+//
 // Idempotent; touches no database. Like the other seeds it refuses to run unless NODE_ENV is
 // development and DATABASE_URL points at this machine.
 import { createRequire } from 'node:module'
@@ -293,7 +297,7 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
 }
 
 /** The base snapshot with its "Предястия" section moved under "Храна", ids and look of one theme. */
-function snapshotOf(theme: VisualTheme, index: number): MenuSnapshot {
+function snapshotOf(theme: VisualTheme, index: number, face: string | null): MenuSnapshot {
   const base = snapshotFromSpec(menuSpec())
   const sectionIds = Object.keys(base.sections)
   const food = sectionIds[2]
@@ -337,6 +341,7 @@ function snapshotOf(theme: VisualTheme, index: number): MenuSnapshot {
       roles: { light: roles.light, dark: roles.dark },
       scheme: 'auto',
     },
+    ...(face === null ? {} : { presentation: { face, options: {} } }),
   }
   return {
     ...content,
@@ -352,6 +357,10 @@ function snapshotOf(theme: VisualTheme, index: number): MenuSnapshot {
 
 async function main(): Promise<void> {
   assertDevEnvironment(process.env)
+  const [face = null] = process.argv.slice(2)
+  if (face !== null && !/^[a-z][a-z0-9-]*$/.test(face)) {
+    throw new Error(`the template must be an id such as "qr-phone", not "${face}"`)
+  }
   for (const text of [LONG_NAME_BG, LONG_NAME_EN, LONG_TEXT_NAME_BG, LONG_TEXT_NAME_EN]) {
     if ([...text].length !== 60)
       throw new Error(`a long fixture name is not 60 characters: ${text}`)
@@ -373,7 +382,7 @@ async function main(): Promise<void> {
   }
 
   for (const [index, theme] of VISUAL_THEMES.entries()) {
-    const snapshot = snapshotOf(theme, index + 1)
+    const snapshot = snapshotOf(theme, index + 1, face)
     const menuId = snapshot.snapshot.menu_id as NodeId
     const venueId = snapshot.snapshot.venue_id as VenueId
     await put(snapshotPath(snapshot.snapshot.id as SnapshotId), snapshot)
