@@ -81,6 +81,7 @@ export function Item({
             <button
               type="button"
               className="rm-item-open"
+              data-slot="item.open"
               aria-haspopup="dialog"
               onClick={(event) => ctx.openDish(item.id, event.currentTarget)}
             >

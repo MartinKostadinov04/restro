@@ -79,7 +79,7 @@ export function ReceiptPage() {
     <div className="ro-page">
       <h2>{words.receipt}</h2>
       <div className="ro-sheet">
-        <article className="ro-receipt" aria-label={words.receipt}>
+        <article className="ro-receipt" data-slot="pay.receipt" aria-label={words.receipt}>
           <header>
             <strong>{receipt.venueName}</strong>
             {receipt.tableLabel === null ? null : (

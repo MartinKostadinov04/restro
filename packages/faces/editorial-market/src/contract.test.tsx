@@ -1,5 +1,6 @@
 import type { ViewModel, ViewText } from '@restro/shell'
 import {
+  type ContractHost,
   faceContractSuite,
   fixture,
   fixtures,
@@ -21,26 +22,28 @@ import { SERVICES_CSS } from './services/services-css'
 import { itemsOf, richFixture, richView, viewOf } from './test-views'
 
 /** The browsing page: the host binds no services. */
-const renderBrowsing = (view: ViewModel) =>
-  renderToStaticMarkup(<EditorialMarketFace view={view} />)
+const renderBrowsing = (view: ViewModel, host?: ContractHost) =>
+  renderToStaticMarkup(<EditorialMarketFace view={view} languages={host?.languages} />)
 
 /**
  * The face as the contract renders it (brief SH-06): with the empty services binding of the test
  * harness, so the controls of a service the view model has on are drawn and the rest are not.
  */
-const render = (view: ViewModel) =>
-  renderToStaticMarkup(<EditorialMarketFace view={view} services={stubServices()} />)
+const render = (view: ViewModel, host?: ContractHost) =>
+  renderToStaticMarkup(
+    <EditorialMarketFace view={view} languages={host?.languages} services={stubServices()} />,
+  )
 
 /**
  * Every host prop at once, and options a venue stored before D92 (the face reads none now): the
  * contract must hold however the host dresses the face.
  */
-const renderDressed = (view: ViewModel) =>
+const renderDressed = (view: ViewModel, host?: ContractHost) =>
   renderToStaticMarkup(
     <EditorialMarketFace
       view={view}
       assetBase="https://cdn.example.test/"
-      languages={['bg_BG', 'en_US']}
+      languages={host?.languages ?? ['bg_BG', 'en_US']}
       onLanguageChange={() => {}}
       tableLabel="12"
       scheme="dark"
@@ -283,7 +286,13 @@ describe('the service controls (R15, D71, D72)', () => {
     const report = await runFaceContract(renderBrowsing, EDITORIAL_MARKET_MANIFEST)
     expect(new Set(report.failures.map((failure) => failure.rule))).toEqual(new Set(['R15']))
     expect(report.failures.every((failure) => failure.fixture === 'features-on')).toBe(true)
-    expect(report.failures).toHaveLength(SERVICE_SLOTS.length)
+    // The four slots, and the quick-add of each dish that can be ordered (T90).
+    const orderable = itemsOf(viewOf(fixture('features-on'))).filter((item) => item.order.controls)
+    expect(orderable.length).toBeGreaterThan(0)
+    expect(report.failures).toHaveLength(SERVICE_SLOTS.length + orderable.length)
+    expect(report.failures.filter((failure) => failure.message.includes('item.add'))).toHaveLength(
+      orderable.length,
+    )
   })
 
   it('draw the stylesheet of the services, and the room for the bar, only with the bar', () => {
@@ -316,6 +325,48 @@ describe('the service controls (R15, D71, D72)', () => {
     // And none at all when the venue has ordering off, whatever else is on.
     const off: ViewModel = { ...view, features: { ...view.features, ordering: false } }
     expect(withAttribute(parseHtml(render(off)), 'class', 'ro-quick')).toHaveLength(0)
+  })
+
+  it('mark that quick-add item.add, one on each item with ordering controls (T90)', () => {
+    const view = viewOf(fixture('features-on'))
+    const root = parseHtml(render(view))
+    const cards = withAttribute(root, 'data-item')
+    const marked = cards.filter((card) => withAttribute(card, 'data-slot', 'item.add').length > 0)
+    expect(marked.map((card) => card.attrs['data-item'])).toEqual(
+      itemsOf(view)
+        .filter((item) => item.order.controls)
+        .map((item) => item.id),
+    )
+    expect(
+      withAttribute(root, 'data-slot', 'item.add').every((control) => control.tag === 'button'),
+    ).toBe(true)
+  })
+})
+
+describe('the controls the audits drive (T90)', () => {
+  it('marks the button that opens the dish page item.open, once in each item', () => {
+    const view = richView()
+    const root = parseHtml(render(view))
+    const cards = withAttribute(root, 'data-item')
+    expect(cards.length).toBeGreaterThan(0)
+    for (const card of cards) {
+      const opener = withAttribute(card, 'data-slot', 'item.open')
+      expect(opener).toHaveLength(1)
+      expect(opener[0]?.tag).toBe('button')
+    }
+  })
+
+  it('marks the language switch menu.language when the host gives two languages, and not with one', () => {
+    const view = richView()
+    const languages = ['bg_BG', 'en_US'] as const
+    const two = renderToStaticMarkup(
+      <EditorialMarketFace view={view} languages={languages} onLanguageChange={() => {}} />,
+    )
+    const marked = withAttribute(parseHtml(two), 'data-slot', 'menu.language')
+    expect(marked).toHaveLength(1)
+    expect(withAttribute(marked[0] as HtmlElement, 'aria-pressed')).toHaveLength(2)
+    const one = renderToStaticMarkup(<EditorialMarketFace view={view} languages={['en_US']} />)
+    expect(withAttribute(parseHtml(one), 'data-slot', 'menu.language')).toHaveLength(0)
   })
 })
 
