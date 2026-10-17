@@ -1,0 +1,18 @@
+# Restro overrides to the vendored frontend-design skill
+
+Read before `frontend-design/SKILL.md`. Where a line of the vendored skill and a line here or in the designer guide's §7.5 differ, **this file and §7.5 win**. The vendored skill itself says the brief's own words win; this is that brief. A template is a guest menu on a phone, so the vendored skill's palette, typeface and hero advice does not apply; its layout, hierarchy, item anatomy, spacing, ornament and motion advice does.
+
+| # | The vendored skill says | Restro rule | Do this instead |
+|---|---|---|---|
+| 1 | Choose typefaces deliberately; one family or two | The venue picks one of six fonts; the face reads the `font` token through `fontStacks` and loads nothing (§5.4, §7.5) | No typeface choice. Build hierarchy with size, weight, case and spacing. |
+| 2 | Describe the palette as 4 to 6 named hex values | Every colour is one of the eight roles, light and dark; a literal colour fails `assertThemeOnlyCss` (§5.4, §7.5) | Name roles in the plan, never hex. The plan must hold for any three venue colours, the four presets, light and dark. |
+| 3 | A calibration list of colour "tells" (cream with terracotta, near-black with an acid accent, `#0B0B0B`) | Colour is the venue's, not the template's (§5.4) | Apply the list to layout, type treatment and structure only. |
+| 4 | One border-radius and the same soft shadow everywhere are tells | `radius` (0 to 32 px) and `shadow` (0 to 5) are venue tokens (§5.4, §7.5) | Take both from the tokens (`calc` or `color-mix` of variables). Vary hierarchy with size, spacing and borders. |
+| 5 | The hero is the first thing viewers see: a headline, an image, an animation, a live demo | The page is a menu: four required slots, items in view-model order, all of them in the markup, empty slots collapse (§7.1 to §7.3, §9.5) | No hero and no landing page. The first screen is header, jump bar, filters, first section. The one memorable touch goes into the header, the section headings or the item anatomy. |
+| 6 | Come up with copy and placeholder content | Strings come only from the shell's `GuestStrings` and `ServiceStrings`; menu text only from the view model; no placeholder text (§9.1, §9.5) | Invent no copy. A word the design needs goes into the design-intent note with its Bulgarian and English text. |
+| 7 | An animation, a live demo, one page-load sequence or reveal | `prefers-reduced-motion` is honoured; state survives a refreshed `view` (§7.5, §9.1) | Motion only as an answer to a tap, off under reduced motion, never replayed by a refreshed `view`. |
+| 8 | Identify the subject yourself and confirm with the client | Martin does not read code and the subject is fixed | Do not ask. The subject is a Bulgarian nightclub's QR menu on a phone, in dim light, read standing and one-handed. |
+| 9 | Responsive down to mobile is the quality floor | 320 to 430 px, 44 px targets, 3:1 focus and control boundaries, allergens always reachable, names never cut, Cyrillic first (§7.5) | §7.5 is the floor; where the two differ, §7.5 wins. |
+| 10 | Take screenshots to review if your environment supports it | Four sets (BG and EN, light and dark), 390 px plus a 320 px stress case, one other preset (§9.3) | Take the screenshots §9.3 lists, as `template-design` step 6 says. |
+| 11 | Invites images, animation or other libraries | A face imports its own files, `react`, `react-dom` and `@restro/shell` (§9.1, CLAUDE.md) | No dependency, icon pack or animation library: plain CSS and inline SVG. |
+| 12 | "All caps for labels" is a tell; serif text gets slightly more line-height | Cyrillic comes first, and the face does not know the venue's font class | Set line-height to 1.5 or more for every font; never branch on the font family. |
