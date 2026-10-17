@@ -2,7 +2,7 @@
 
 What a guest can do in a menu. The `template-design` skill reads this file first and the `template-review` skill checks against it first (D105). The designer guide (`docs/guides/shell-handoff/visualization-shell.md`) holds the *how*; this file holds the *what*, with a pointer per entry.
 
-**The rule (D105).** A template draws every entry whose status is `supported` or `drawn, platform parked`; a brief may exempt one entry, and only by naming it. A case this file leaves open is a stop-and-ask, and a template missing a required entry stays hidden (D69).
+**The rule (D105).** A template draws every entry whose status is `supported` or `drawn, platform parked`; a brief may exempt entries, each named explicitly. A case this file leaves open is a stop-and-ask, and a template missing a required entry stays hidden (D69).
 
 **Statuses.** `supported`: the platform runs it today. `drawn, platform parked`: templates draw it and guests see it once the platform supports it (D71). `decided, not in the contract yet`: decided, no face contract; not drawn. `planned`: a direction only; not drawn.
 

@@ -27,7 +27,7 @@ Read `references/web-interface-guidelines.pinned.md` and `references/web-interfa
 
 ## 5. Code review against the brief
 
-Invoke `mattpocock-skills:code-review` (Standards and Spec) on the changes since the merge-base with the stage branch, with the brief as the spec. Done when both axes have reported and each item is either a finding or a stated reason it is not one.
+Invoke `mattpocock-skills:code-review` (Standards and Spec) on the changes since the merge-base with the stage branch, with the brief as the spec. When the Agent tool is not available to you (you are a subagent yourself), run the Standards and Spec axes inline, one after the other, instead of as sub-agents. Done when both axes have reported and each item is either a finding or a stated reason it is not one.
 
 ## 6. Extra fat
 
@@ -47,6 +47,6 @@ Also list, apart from the items, any finding that points at the skills or the fl
 
 ## 8. On a clean verdict: wire it
 
-Only then. Follow the guide's §12.1 steps 6 to 9 exactly. The design session has done the first half of step 6 (the dependency, `transpilePackages`, a hidden `MANIFESTS` entry and the loader): check it, finish steps 6 to 9 and set `hidden: false`. Then run CLAUDE.md's done-gate with the tests of every package you touched (`pnpm vitest run --project apps/web src/faces --reporter=dot` among them) and the Playwright specs of the Design tab and the guest page. Commit as you go.
+Only then. Follow the guide's §12.1 steps 6 to 9 exactly. The design session has done the whole of step 6 (the dependency, `transpilePackages`, a hidden `MANIFESTS` entry and the loader): check it, do steps 7 to 9 and set `hidden: false`. Then run CLAUDE.md's done-gate with the tests of every package you touched (`pnpm vitest run --project apps/web src/faces --reporter=dot` among them) and the Playwright specs of the Design tab and the guest page. Commit as you go.
 
 Report to the design session: the verdict, the list, the files you changed while wiring, and the gate's results (failures in detail only). A wiring failure that points at the template is a finding, and the verdict goes back to `not clean`.
