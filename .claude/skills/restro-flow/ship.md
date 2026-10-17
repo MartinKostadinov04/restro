@@ -28,7 +28,7 @@ Testing, done-criteria and the report format come from CLAUDE.md; the ticket doe
 
 ## 4. Merge
 - CI runs on the pull request. When it is green, the lead merges the pull request into the stage branch and closes the issue with a comment naming the merge commit. A conflict is resolved on the task branch, its touched tests re-run, then CI again.
-- A pull request from a stage branch into `main` gets `pr`'s body plus the plain-language summary for Martin: what changed, why, what he can see or test. Merging into `main` is Martin's.
+- A pull request from a stage branch into `main` gets `pr`'s body plus the plain-language summary for Martin: what changed, why, what he can see or test. Merging into `main` is Martin's. Once he has merged it, offer him one codebase-health scan of that stage's code (`upkeep.md` → Codebase health).
 
 ## 5. Report to Martin
 A few plain sentences: what is done, what he can try and where, what waits on him. Then `retro` if the build went sideways.

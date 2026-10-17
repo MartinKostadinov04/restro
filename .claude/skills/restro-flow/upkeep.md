@@ -3,7 +3,7 @@
 Work that isn't a feature but keeps the project moving.
 
 ## Codebase health
-`improve-codebase-architecture`, scoped to the hot spots in recent commits, one candidate per session. The candidate Martin or the lead picks is grilled there, then built through `build.md` → Architecture (or `change.md` when small). The last scan is `docs/reviews/codebase-design-scan.md`; start from it before rescanning.
+`improve-codebase-architecture`, scoped to the hot spots in recent commits, one candidate per session. It runs when Martin asks, or when he accepts the lead's offer after a stage branch reaches `main` (`ship.md` §4). The candidate Martin or the lead picks is grilled there, then built through `build.md` → Architecture (or `change.md` when small). The last scan is `docs/reviews/codebase-design-scan.md`; start from it before rescanning.
 
 ## Agent environment
 - `retro` after work that went sideways, in that session.

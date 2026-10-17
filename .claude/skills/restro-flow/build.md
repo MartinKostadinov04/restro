@@ -7,8 +7,8 @@ Three sizes. Each ends in `ship.md`. The skills decide how each step runs; this 
 One behaviour, one session.
 
 1. **Grill** with `grill-with-docs`. Done when the skill says so and Martin confirms you share one understanding; new terms in `GLOSSARY.md`, any decision he made recorded (`docs/agents/domain.md`).
-2. **Prototype** only when a question needs a runnable answer (`prototype` picks the branch). The prototype stays on a `prototype/<name>` branch; its verdict goes into the ticket.
-3. **Ticket:** one GitHub issue, `to-tickets`' issue template plus `ship.md`'s block. No spec issue for a single feature. A new template (D69) uses the designer guide's "A new template" checklist as its acceptance criteria.
+2. **Prototype** only when a question needs a runnable answer (`prototype` picks the branch). It runs in its own agent session forked from the grilling session, which waits for the verdict and then continues. The prototype stays on a `prototype/<name>` branch; its verdict goes into the ticket.
+3. **Ticket:** one GitHub issue, `to-tickets`' issue template plus `ship.md`'s block; two or three only when the parts build and test apart. No spec issue for a single feature. A new template (D69) uses the designer guide's "A new template" checklist as its acceptance criteria.
 4. **Build and ship:** `ship.md`.
 
 ## Feature set

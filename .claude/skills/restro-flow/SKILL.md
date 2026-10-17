@@ -55,7 +55,7 @@ End the turn with the card and one question: approve, or change the plan. Martin
 ## 3. Running the skills
 
 - **Model-invoked** (call the Skill tool): `grilling`, `domain-modeling`, `tdd`, `diagnosing-bugs`, `mattpocock-skills:code-review` (Standards + Spec), `codebase-design`, `research`, `prototype`, `pr`, `wizard`, `writing-for-agents`; built-in `code-review` (correctness), `security-review`, `run`.
-- **User-invoked** (`grill-with-docs`, `to-spec`, `to-tickets`, `wayfinder`, `implement`, `implement-spec`, `improve-codebase-architecture`, `retro`, `handoff`, `to-questionnaire`, `triage`, `teach`): once the card is approved, read the skill's `SKILL.md` and follow it. It lives under `C:\Users\Martin\.claude\plugins\cache\claude-plugins-official\mattpocock-skills\<version>\skills\<group>\<name>\SKILL.md` (newest version; `<group>` is `engineering` or `productivity`). `grill-with-docs` is `grilling` + `domain-modeling`.
+- **User-invoked** (`grill-with-docs`, `to-spec`, `to-tickets`, `wayfinder`, `implement`, `implement-spec`, `improve-codebase-architecture`, `retro`, `to-questionnaire`, `triage`, `teach`): once the card is approved, read the skill's `SKILL.md` and follow it. It lives under `C:\Users\Martin\.claude\plugins\cache\claude-plugins-official\mattpocock-skills\<version>\skills\<group>\<name>\SKILL.md` (newest version; `<group>` is `engineering` or `productivity`). `grill-with-docs` is `grilling` + `domain-modeling`.
 - **Who confirms what:** where a skill asks "the user" to confirm a technical choice (test seams, ticket granularity, blocking edges), the lead decides and tells Martin in one line. Behaviour, wording, scope and anything a decision covers go to Martin.
 - **The plugin updates itself.** When a skill's steps no longer match what a flow file assumes, the skill is right; fix the flow file (Upkeep › Agent environment).
 
@@ -74,6 +74,6 @@ Read `docs/decisions/D104.md` before the card: it defines the **heavy zone** and
 - **Facts are the agent's job; decisions are Martin's.** A grilling round asks Martin only what he can decide, each question with a recommendation.
 - **Decisions are files** `docs/decisions/D<n>.md` (`docs/agents/domain.md`); terms go to `GLOSSARY.md` as they settle.
 - **Specs and tickets are GitHub issues** (`docs/agents/issue-tracker.md`); every code change leaves through `ship.md`.
-- **Phase boundaries:** one unbroken window from grilling to tickets; at a boundary follow `ask-matt`'s `PHASE-BOUNDARIES.md` (same folder as the `ask-matt` skill). An "agent session" here is the desktop app's session, Matt's "subagent".
+- **Phase boundaries:** one unbroken window from grilling to tickets; at a boundary follow `ask-matt`'s `PHASE-BOUNDARIES.md` (same folder as the `ask-matt` skill). An "agent session" here is the desktop app's session, Matt's "subagent". The app's fork and hand-off sessions do `handoff`'s job; `handoff` itself is only for work leaving this app (another tool, a person).
 - **Limits:** `docs/agents/lead.md` (two agents running tests at once; cheap work to a cheap model, then checked).
 - **Close the loop:** after work that went sideways, `retro` in that session.
