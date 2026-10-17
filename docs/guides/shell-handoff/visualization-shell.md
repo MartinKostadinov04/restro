@@ -748,6 +748,8 @@ The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceC
 | `custom-roles` | A venue with its own eight colour roles and a forced dark scheme. |
 | `features-on` | Every guest feature switched on, supported by the platform, at a confirmed table with ordering on, on a menu that has filter chips. |
 | `features-off` | The same menu with the venue's switches all off: no control may be drawn. |
+| `horizontal-sections` | A horizontal section that is not the first, between a vertical one and one published without a layout, with photos in the row; the menu starts in two columns and lets the guest switch (D92). |
+| `one-column` | The first section horizontal, the rest vertical; the menu starts in one column and the guest may not switch (D92). |
 
 **Checks:**
 
