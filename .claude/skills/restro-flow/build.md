@@ -20,7 +20,7 @@ Several features, one clear destination. Keep steps 1–4 in one window.
 3. **Spec** with `to-spec`: label the issue `spec` and remove `ready-for-agent` (a spec is not a ticket). Its user stories are the acceptance list for step 7. The lead agrees the test seams.
 4. **Tickets** with `to-tickets`, each with `ship.md`'s block. Show Martin the list in plain words; the lead owns granularity and edges.
 5. **Build the frontier** as `implement-spec` describes, with Restro's substitutions: an implementer subagent is an agent session in its own worktree on a branch cut from the stage branch (the integration branch); at most two running tests at once; the merger is the lead through `ship.md` §4, never a subagent.
-6. **Review the whole:** after the last ticket, one `mattpocock-skills:code-review` of the stage branch against the spec.
+6. **Review the whole:** after the last ticket, one `mattpocock-skills:code-review` of the stage branch against the spec, and one built-in `code-review` at `high` of the same branch.
 7. **Acceptance:** `audit-behaviour.md` steps 3–5 on the spec's user stories, then hand Martin what to try and where.
 8. **Retro** if the build went sideways.
 

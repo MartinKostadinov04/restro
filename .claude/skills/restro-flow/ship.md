@@ -22,13 +22,14 @@ Testing, done-criteria and the report format come from CLAUDE.md; the ticket doe
 
 ## 3. Review (the lead)
 - Read the diff and the session's `code-review` output; a finding is a hypothesis until checked in the code.
-- Built-in `code-review` as well when the diff touches a core-rule area; built-in `security-review` when it touches sign-in, roles, RLS, tokens, inputs from outside or secrets.
+- Built-in `code-review` on the pull request, run by the lead so the bugs are judged outside the session that wrote the code: `low` by default, `high` when the diff touches a core-rule area; none for a wording, visual or docs-only diff. Its confirmed findings are facts; check its plausible ones in the code.
+- Built-in `security-review` when the diff touches sign-in, roles, RLS, tokens, inputs from outside or secrets.
 - For a core-rule diff, name the one fact the change is safe because of and prove it by running code (a test, a script), not by reading.
 - A finding goes back to the same session (SendMessage) or becomes a new ticket.
 
 ## 4. Merge
 - CI runs on the pull request. When it is green, the lead merges the pull request into the stage branch and closes the issue with a comment naming the merge commit. A conflict is resolved on the task branch, its touched tests re-run, then CI again.
-- A pull request from a stage branch into `main` gets `pr`'s body plus the plain-language summary for Martin: what changed, why, what he can see or test. Merging into `main` is Martin's. Once he has merged it, offer him one codebase-health scan of that stage's code (`upkeep.md` → Codebase health).
+- A pull request from a stage branch into `main` gets `pr`'s body plus the plain-language summary for Martin: what changed, why, what he can see or test, and that he can run `/code-review ultra <PR>` (a billed cloud review only he can start) before merging. Merging into `main` is Martin's. Once he has merged it, offer him one codebase-health scan of that stage's code (`upkeep.md` → Codebase health).
 
 ## 5. Report to Martin
 A few plain sentences: what is done, what he can try and where, what waits on him. Then `retro` if the build went sideways.
