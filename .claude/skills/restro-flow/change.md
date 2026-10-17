@@ -2,7 +2,7 @@
 
 An existing feature should behave, read or look different. Ends in `ship.md`.
 
-1. **Find what exists:** the feature's original issue, brief or adjustments plan, the decisions behind it (`docs/decisions.md`), its code, its tests and its `GLOSSARY.md` terms. These are facts: read them, and never ask Martin what the code does.
+1. **Find what exists:** the feature's original issue, brief or adjustments plan, the decisions behind it (`docs/decisions.md`), its code, its tests and its `GLOSSARY.md` terms. These are facts: read them, and never ask Martin what the code does. Done when you can name the decisions, the code and the tests that make today's behaviour.
 2. **Size the change:**
    - **Wording or visual tweak** inside current decisions → one ticket, no grilling.
    - **New behaviour inside current decisions** → a short `grilling` round on the difference only, plus `domain-modeling` when it names a concept or makes a decision (recorded as in `decide.md` step 2).

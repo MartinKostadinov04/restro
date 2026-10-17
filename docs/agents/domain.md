@@ -7,8 +7,6 @@ How the engineering skills should consume this repo's domain documentation when 
 - **`GLOSSARY.md`** at the repo root: Restro's own words, one canonical term each.
 - **`docs/decisions/D<n>.md`**: one file per decision. These are this repo's ADRs, in the ADR format (title, status, one to a few paragraphs). Read the ones your ticket names and any D-number cited in the code you touch. `docs/decisions.md` is the index of titles and statuses, for finding a number; never a substitute for the file.
 
-If `GLOSSARY.md` doesn't exist, proceed silently.
-
 ## ADRs are D-numbers in `docs/decisions/`, not `docs/adr/`
 
 The code, briefs and plans cite decisions by D-number (about 1,400 citations), so a decision keeps its number and its file for life. Don't create `docs/adr/`.
@@ -20,18 +18,6 @@ When a skill says "record an ADR":
 3. A decision that changes an older one says so in both files ("refines D<n>", "supersedes D<n>"); the older file's status names the newer one. Never delete or renumber a file.
 
 Only Martin makes product decisions. An agent proposes one in its report with a recommendation; the lead records it once Martin agrees.
-
-## File structure
-
-```
-/
-├── GLOSSARY.md            ← the language
-├── CLAUDE.md              ← rules for agents, the nine rules
-└── docs/
-    ├── decisions.md       ← the index: one line per decision
-    ├── decisions/D<n>.md  ← one file per decision (the ADRs)
-    └── tracker.md         ← questions, tasks, proposals, research, acceptance runs
-```
 
 ## Use the glossary's vocabulary
 

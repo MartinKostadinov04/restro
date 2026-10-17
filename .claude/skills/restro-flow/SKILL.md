@@ -1,11 +1,11 @@
 ---
 name: restro-flow
-description: Start every new piece of Restro work here, before planning or coding. Classifies the request (explain, decide, build, change, bug, audit, upkeep, outside question, human-only step) and lays out the plan with the skills each step runs, for Martin's OK. Use when Martin asks a question about the product or code, wants to settle a decision, asks for something new, changes or gives feedback on an existing feature, reports a problem, or asks for an audit.
+description: Start every new piece of Restro work here, before planning or coding. Classifies the request (explain, decide, build, change, bug, audit, upkeep, outside question, human-only step) and, for flows that make work, lays out the plan with the skills each step runs for Martin's OK. Use for any new request from Martin, a question included.
 ---
 
 # Restro flow
 
-For the lead (`docs/agents/lead.md`). One request → one **category** → one **flow**. Classify; for a flow that makes sessions, tickets or code (Build, Change, Bug, Audit, Upkeep) show the **plan card** and wait for Martin's OK; Explain, Decide and Outside question are answered directly, with no card (Martin 10-17). Then walk the flow step by step. A coding agent working from a ticket skips this skill: its ticket is its flow.
+For the lead (`docs/agents/lead.md`). One request → one **category** → one **flow**: classify (§1), show the plan card where §2 says, then walk the flow step by step. A coding agent working from a ticket skips this skill: its ticket is its flow.
 
 **Matt's skills govern how a step runs.** The flow files below never restate a skill; they name it and add only what is Restro's: who decides, the limits in `docs/agents/lead.md`, the testing tiers and the stop-and-ask list in CLAUDE.md, and the decisions (`docs/decisions/`). Where a skill's text and a Restro rule differ, the Restro rule wins only when the flow file says so explicitly.
 
@@ -38,7 +38,7 @@ Read only the flow file the category names, plus `ship.md` when the flow changes
 
 ## 2. The plan card
 
-Before a Build, Change, Bug, Audit or Upkeep flow starts, show Martin the card, in plain language and `GLOSSARY.md` terms (Explain, Decide and Outside question get no card):
+Before a Build, Change, Bug, Audit or Upkeep flow starts (the flows that make sessions, tickets or code), show Martin the card, in plain language and `GLOSSARY.md` terms, and wait for his OK. Explain, Decide and Outside question are answered directly, with no card (Martin 10-17).
 
 ```
 **Category:** Build › Feature set: <one line on why>
@@ -47,7 +47,7 @@ Before a Build, Change, Bug, Audit or Upkeep flow starts, show Martin the card, 
 2. …
 **Your part:** the decisions and grilling rounds you will be asked
 **Lead model:** Sonnet | Opus | Fable — the rung and why in one line (D108); the lead switches the session itself before step 1
-**Sessions:** how many agent sessions, which models (D58), at most two running tests at once
+**Sessions:** how many agent sessions, which models (D58), within `docs/agents/lead.md`'s limits
 **Left out:** flow steps skipped, and why
 ```
 
@@ -65,7 +65,7 @@ End the turn with the card and one question: approve, or change the plan. Martin
 Read `docs/decisions/D104.md` (the **heavy zone**, the "I don't know" steps) and `D108.md` (the rungs) before the card.
 
 - **Three rungs, one at a time.** Sonnet by default; Opus for a real trade-off or a question spanning more than one area; Fable for the heavy zone. Check at classification and on every grilling question. To climb, write the rung and the reason in one line ("Opus: trade-off between X and Y", "Fable: heavy zone, RLS") and switch the session model yourself; never Sonnet to Fable without considering Opus.
-- **The rung is sticky.** The model that planned a ticket reviews its diff and sets each ticket's model by D58. Go back down only at a classification outside the heavy zone, when none of your tickets is still in review. The lead codes its three things (a nine-rule change, a migration, a guardrail) on whatever rung it runs.
+- **The rung is sticky.** The model that planned a ticket reviews its diff and sets each ticket's model by D58. Go back down only at a classification outside the heavy zone, when none of your tickets is still in review.
 - **"I don't know"** from Martin runs D104's four steps: fetch a missing fact first, else a proposal from the lead, an Opus agent or a Fable agent (`effort: max`) by complexity, put back to Martin as the next question.
 - **Before a Sonnet-planned feature set publishes tickets,** one read-only Fable agent checks the spec and tickets against the nine rules and the decisions in force.
 
@@ -76,5 +76,5 @@ Read `docs/decisions/D104.md` (the **heavy zone**, the "I don't know" steps) and
 - **Decisions are files** `docs/decisions/D<n>.md` (`docs/agents/domain.md`); terms go to `GLOSSARY.md` as they settle.
 - **Specs and tickets are GitHub issues** (`docs/agents/issue-tracker.md`); every code change leaves through `ship.md`.
 - **Phase boundaries:** one unbroken window from grilling to tickets; at a boundary follow `ask-matt`'s `PHASE-BOUNDARIES.md` (same folder as the `ask-matt` skill). An "agent session" here is the desktop app's session, Matt's "subagent". The app's fork and hand-off sessions do `handoff`'s job; `handoff` itself is only for work leaving this app (another tool, a person).
-- **Limits:** `docs/agents/lead.md` (two agents running tests at once; one finished build waiting for Martin's acceptance; cheap work to a cheap model, then checked).
+- **Limits:** `docs/agents/lead.md`.
 - **Close the loop:** after work that went sideways, `retro` in that session.

@@ -7,7 +7,7 @@ The product version is the port in `packages/faces/editorial-market` (briefs SH-
 | Path | What |
 |---|---|
 | `handover.md` | The designer's handover: what the face draws, what the platform must supply, the two-way contract, the formatting and capability panels, and acceptance scenarios |
-| `roadmap.md`, `AGENTS.md` | The Lovable project's own roadmap and agent notes |
+| `roadmap.md`, `LOVABLE-NOTES.md` | The Lovable project's own roadmap and agent notes |
 | `plans/` | The Lovable plans that shaped the design, oldest first by date in the name |
 | `source/` | `src/features/restro-face/**` as delivered: the face, its CSS, the copied view-model types, the face strings, the ordering screens (`ordering/`) and the review fixtures (`fixtures/`: our demo view models and the four theme presets) |
 | `source/_tests/` | The designer's tests (`src/test/restro-*`) |

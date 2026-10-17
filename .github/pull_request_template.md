@@ -4,7 +4,7 @@
 
 ## Tests run
 
-<!-- Commands and results, e.g. `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build`: pass. -->
+<!-- Commands and results, e.g. `pnpm lint && pnpm typecheck && pnpm deps:check` and the tests of the packages you touched: pass. CI runs the full test suite and build. -->
 
 ## Guardrails touched?
 
