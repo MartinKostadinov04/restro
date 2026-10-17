@@ -1,15 +1,15 @@
 # Restro — rules for coding agents
 
-Restro is a QR-to-phone menu and ordering web app for venues (pilot: Bulgarian nightclubs). A venue's menu comes from a POS through a connector (barsy today; Mistral next, D79) or is built by hand (D64). Martin Kostadinov, the product owner, does not read code; AI agents write all code. The lead agent writes tickets, reviews every diff and reports to Martin.
+Restro is a QR-to-phone menu and ordering web app for venues (pilot: Bulgarian nightclubs). A venue's menu comes from a POS through a connector (barsy today; Mistral next, D79) or is built by hand (D64). Martin Kostadinov is the product owner and does not read code; AI agents write all code. The lead agent writes tickets, reviews every diff and reports to Martin.
 
 ## Read before any task
 Read only what your task needs: the big documents are for looking things up, not for reading whole (Martin 10-11: agents read too much).
 1. Decisions are binding, one file each: `docs/decisions/D<n>.md`. Read those your ticket names and any D-number cited in the code you change; `docs/decisions.md` is the index of titles, for finding a number.
-2. Your ticket (a GitHub issue, `docs/agents/issue-tracker.md`) and the `docs/adjustments/` file it names. Only a still-open T-number has its text in `docs/tracker.md`: search it for `T<n>.`, never read it whole.
+2. Your ticket (a GitHub issue, `docs/agents/issue-tracker.md`) and the `docs/adjustments/` file it names. For a T-number still open, search `docs/tracker.md` for `T<n>.`, never read it whole.
 3. Only the sections of `docs/architecture/data-architecture.md` and `stack.md` your ticket names. They mirror the live doc, which wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a.
-4. Before building a UI or engine piece: `docs/platform-reference.md` and the Platform files your ticket names (read-only, `C:\Platform`). Port the pattern, apply the listed fixes, and say in your report what you ported and changed.
+4. `docs/platform-reference.md` and the Platform files your ticket names (read-only, `C:\Platform`). Before building a UI or engine piece, port the matching pattern, apply the listed fixes, and say in your report what you ported and changed.
 5. `GLOSSARY.md` whenever you name a domain concept (code names, interface text, reports): use its term.
-6. **If you are the lead** (the session Martin talks to): `docs/agents/lead.md` before planning, briefing, starting agents or merging.
+6. **If you are the lead** (the session Martin talks to): `docs/agents/lead.md` before planning, writing tickets, starting agents or merging.
 
 Fact precedence: official POS docs (barsy: docs.lukanet.com) > the architecture doc > the tracker.
 
@@ -72,16 +72,17 @@ The full `pnpm test`, `pnpm build` and the whole Playwright suite are CI's job: 
 
 - **Known slow tests:** `apps/worker/tests/worker.integration.test.ts`, `sync-queue.test.ts` and the composer keyboard reorder e2e can time out when the machine is busy (T75). Run a failing one alone once; if it passes alone, say so and move on.
 - **Always go through `pnpm`:** `use-node-version` pins Node 24.21.0, and bare `node` picks the system's Node 22.
-- **Guardrails only tighten (D67).** A guardrail test, dependency rule or the vendor-word baseline (`scripts/vendor-words.baseline.json`) that blocks your task is a stop-and-ask, never something to weaken, delete or skip. Vendor names (barsy, Mistral…) belong only where `scripts/vendor-words.config.ts` lists them (a connector's own package and its adapters); D83's purge role is the one approved exception. After removing vendor words, `pnpm vendor-words:baseline` lowers the baseline (it refuses to raise one).
+- **Guardrails only tighten (D67).** A guardrail test, dependency rule or the vendor-word baseline (`scripts/vendor-words.baseline.json`) that blocks your task is a stop-and-ask, never something to weaken, delete or skip. Vendor names (barsy, Mistral…) belong only in a connector's own package, `packages/core/src/connectors/`, `apps/web/src/connectors/` and `apps/worker/src/connectors.ts` (`scripts/vendor-words.config.ts`); D83's purge role is the one approved exception. After removing vendor words, `pnpm vendor-words:baseline` lowers the baseline (it refuses to raise one).
 - **Line endings:** files are LF. Editing from Python on Windows, open files with `newline=''`.
-- **Database tests, migrations, sorting:** `packages/db/CLAUDE.md`.
+- **Sorting:** CI's Postgres sorts with `en_US`, the local one with `C`, so sort a SQL `order by` result and its JavaScript comparison the same way before comparing.
+- **Database tests and migrations:** `packages/db/CLAUDE.md`.
 
 ## Repository layout
-`apps/web` (admin, guest shell, template registry, small API), `apps/worker` (POS read sync, resolve, publish, assets, backups, purge, health), `packages/core` (schema, change sets, `apply()`, resolver, snapshot builder, money, theme), `packages/shell` (population rules R1–R15 → view model, face contract, services contract D72), `packages/faces/*`, `packages/db`, `packages/barsy`, `docs/`. Working in `packages/faces` or `apps/web/src/faces` (the template registry), `packages/db` or `packages/barsy`: read that folder's `CLAUDE.md` first (templates; database tests, migrations, sorting; POS-call comments).
+`apps/web` (admin, guest shell, template registry, small API), `apps/worker` (POS read sync, resolve, publish, assets, backups, purge, health), `packages/core` (schema, change sets, `apply()`, resolver, snapshot builder, money, theme), `packages/shell` (population rules R1–R15 → view model, face contract, services contract D72), `packages/faces/*`, `packages/db`, `packages/barsy`, `docs/`. Working in `packages/faces` or `apps/web/src/faces` (the template registry), `packages/db` or `packages/barsy`: read that folder's `CLAUDE.md` first (templates; database tests and migrations; POS-call comments).
 
 ## Conventions
 - **Next.js 16.4 is newer than your training data.** Before writing Next.js code, read the relevant guide in `apps/web/node_modules/next/dist/docs/` (see `apps/web/AGENTS.md`).
-- **Workspace packages export TypeScript source** (`README.md` → "Scaffold conventions"). Zod at every boundary (POS responses, change sets, snapshots, server-action inputs).
+- **Workspace packages export TypeScript source,** with no build step (`README.md` → "Scaffold conventions"). Zod at every boundary (POS responses, change sets, snapshots, server-action inputs).
 - **Data fetching (U4):** admin = server components for reads, server actions that call `apply()` for writes. Guest = static shell that reads published files from the CDN.
 - **One field-type registry.** Each field type registers `{ schema, Display, Editor, DefinitionEditor }` once; components look a type up in the registry rather than switching over field types.
 - **Layout is separate from the item schema.** Section membership and order are `placements` with fractional `sort_key`s.
@@ -89,7 +90,7 @@ The full `pnpm test`, `pnpm build` and the whole Playwright suite are CI's job: 
 - **Time:** always the venue's time zone and its service day (ends 07:00 by default), with date-fns + @date-fns/tz.
 - **Ids:** opaque, prefixed by kind; never sequential integers in URLs.
 - **Logs:** structured (pino), never personal data, never secrets.
-- **Tests:** unit for pure logic, fast-check property tests for rules 5, 6 and 8, Postgres integration tests for `apply()` and RLS, contract tests for every face.
+- **Tests:** unit for pure logic, fast-check property tests for rules 5, 6 and 8, integration tests on Postgres for `apply()` and RLS, contract tests for every face.
 - **Git:** a branch per task, `<stage>/<slug>` (e.g. `ad/01-menus`); conventional commit messages.
 
 ## Report format (final message of every agent task)
