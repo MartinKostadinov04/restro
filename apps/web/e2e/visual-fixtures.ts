@@ -46,8 +46,8 @@ export const LONG_TEXT_NAME_EN = 'Roast lamb with rosemary, garlic and grilled v
 
 /**
  * Two more logos for the venue, drawn with no background (D109): a white mark and a black one, each
- * invisible on one of the two schemes. The seed writes them as assets of every menu (`as_` ids
- * 8 and 9 of the fixture numbering), and the matrix swaps one in as `theme.logo`.
+ * invisible on one of the two schemes. The seed writes their image files, and the matrix serves a
+ * menu's snapshot with one of them as `theme.logo`.
  */
 export const LOGO_MARKS = {
   white: 'as_0000000000000000000008',

@@ -781,7 +781,7 @@ function hostileNames(): Fixture {
       locales: BG_EN,
       sections: [
         {
-          title: bgen('ЩЕДРОСТ НА ЙОДА', 'Names that bite'),
+          title: bgen('ЩЕДРИ ЦЕНИ ЗА ЙОГИ', 'GENEROUS PRICES FOR YOGIS'),
           items: [
             {
               name: bgen('ЙОГУРТЕН ЩРУДЕЛ ЦЕЛИНА Ѝ', 'Yoghurt strudel'),

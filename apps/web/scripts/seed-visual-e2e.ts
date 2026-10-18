@@ -103,9 +103,11 @@ const photo = (n: number) => fixtureId('as', n)
  * logo it has (it serves the snapshot with that one asset moved to the new id).
  */
 const MARKS = [
-  { n: 8, w: 640, h: 200, ink: '#ffffff', alt: bgen('Бяло лого', 'White logo') },
-  { n: 9, w: 640, h: 200, ink: '#000000', alt: bgen('Черно лого', 'Black logo') },
+  { id: LOGO_MARKS.white, ink: '#ffffff' },
+  { id: LOGO_MARKS.black, ink: '#000000' },
 ] as const
+/** The size of a mark: as wide as the logos of the demo venue. */
+const MARK_SIZE = { w: 640, h: 200 } as const
 
 /** A club mark in one colour on a transparent ground: a ring and two bars. */
 function markArtwork(width: number, height: number, ink: string) {
@@ -388,9 +390,6 @@ async function main(): Promise<void> {
     if ([...text].length !== 60)
       throw new Error(`a long fixture name is not 60 characters: ${text}`)
   }
-  if (photo(8) !== LOGO_MARKS.white || photo(9) !== LOGO_MARKS.black) {
-    throw new Error('the logo marks of visual-fixtures.ts are not assets 8 and 9')
-  }
   const config = publishStoreConfig(process.env)
   if (config.kind !== 'local') throw new Error('the e2e publish store must be local')
   const store = await createPublishStore(config)
@@ -408,9 +407,9 @@ async function main(): Promise<void> {
   }
   // The marks have an alpha channel, which webp keeps.
   for (const entry of MARKS) {
-    const source = markArtwork(entry.w, entry.h, entry.ink)
+    const source = markArtwork(MARK_SIZE.w, MARK_SIZE.h, entry.ink)
     for (const width of [320, 640, 1280]) {
-      const path = variantPath(photo(entry.n) as AssetId, width)
+      const path = variantPath(entry.id as AssetId, width)
       const bytes = await sharp(source).resize(width).webp({ quality: 80 }).toBuffer()
       await store.put(path, bytes, publishPutOptions(path))
     }

@@ -157,6 +157,20 @@ async function shoot(page: Page, path: string, target?: Locator) {
 const SNAPSHOT_FILE = /\/snap\/sn_[^/]+\.json$/
 
 /**
+ * D109: the snapshot's theme and assets with another logo instead of the fixture's blue one. A
+ * snapshot may not name an asset nothing uses, so the logo's entry moves to the new id (its file
+ * paths with it).
+ */
+function withLogo(
+  snapshot: { theme: { logo: string } & Record<string, unknown>; assets: Record<string, unknown> },
+  logo: string,
+) {
+  const { [snapshot.theme.logo]: entry, ...others } = snapshot.assets
+  const moved = JSON.parse(JSON.stringify(entry).replaceAll(snapshot.theme.logo, logo))
+  return { theme: { ...snapshot.theme, logo }, assets: { ...others, [logo]: moved } }
+}
+
+/**
  * Opens a fixture menu with the menu's layout set to `layout`. The layout is a setting of the menu
  * (D92), published in its snapshot, so the snapshot is served here with that one value changed (what
  * the composer would publish) instead of pressing a template's own layout switch.
@@ -176,19 +190,13 @@ async function openMenu(
       theme: { logo: string } & Record<string, unknown>
       assets: Record<string, unknown>
     }
-    // D109: a logo with no background instead of the fixture's blue one. A snapshot may not name
-    // an asset nothing uses, so the logo's entry moves to the new id (its file paths with it).
-    const swapped =
-      logo === undefined
-        ? {}
-        : (() => {
-            const { [snapshot.theme.logo]: entry, ...others } = snapshot.assets
-            const moved = JSON.parse(JSON.stringify(entry).replaceAll(snapshot.theme.logo, logo))
-            return { theme: { ...snapshot.theme, logo }, assets: { ...others, [logo]: moved } }
-          })()
     await route.fulfill({
       response,
-      json: { ...snapshot, layout: { ...snapshot.layout, default: layout }, ...swapped },
+      json: {
+        ...snapshot,
+        layout: { ...snapshot.layout, default: layout },
+        ...(logo === undefined ? {} : withLogo(snapshot, logo)),
+      },
     })
   })
   await page.goto(`${visualPath(theme)}?lang=${lang}&t=${theme.table}`)
@@ -279,9 +287,28 @@ test.describe('the guest menu', () => {
   }
 })
 
-/** The shell's words for a language of the matrix. */
-const wordsOf = (lang: (typeof LANGS)[number]) =>
+/** The shell's own interface words for a language of the matrix (the fixture menus' words are WORDS). */
+const shellWords = (lang: (typeof LANGS)[number]) =>
   stringsFor(lang === 'bg' ? 'bg_BG' : 'en_US').guest
+
+/**
+ * Opens the filter sheet and returns true, or says why the template has none (a skipped step, under
+ * `step`) and returns false.
+ */
+async function openFilterSheet(page: Page, step: string): Promise<boolean> {
+  const filters = page.locator('[data-slot="menu.filters"]').first()
+  if ((await filters.count()) === 0) {
+    skip(`${step}: the template draws no menu.filters`)
+    return false
+  }
+  if ((await filters.evaluate((element) => element.tagName)) !== 'BUTTON') {
+    skip(`${step}: menu.filters is not a button (drawn inline), so there is no filter sheet`)
+    return false
+  }
+  await filters.click()
+  await expect(dialogs(page)).toHaveCount(1)
+  return true
+}
 
 /**
  * Scales the text of the page by `factor` as a phone's large-text setting does: every font size and
@@ -321,33 +348,23 @@ test.describe('the worst cases of D109', () => {
       await page.setViewportSize({ width: 390, height: 800 })
       for (const scheme of SCHEMES) {
         for (const lang of LANGS) {
-          const strings = wordsOf(lang)
+          const strings = shellWords(lang)
           await page.emulateMedia({ colorScheme: scheme })
           await openMenu(page, theme, lang, 'two')
-          const filters = page.locator('[data-slot="menu.filters"]').first()
-          if ((await filters.count()) === 0) {
-            skip('nomatch: the template draws no menu.filters')
-            return
-          }
-          if ((await filters.evaluate((element) => element.tagName)) !== 'BUTTON') {
-            skip(
-              'nomatch: menu.filters is not a button (drawn inline), so there is no filter sheet',
-            )
-            return
-          }
-          await filters.click()
-          await expect(dialogs(page)).toHaveCount(1)
-          // The contract has no marker for the choices: they are the sheet's buttons, but for the
-          // close and the clear button, whose names are the shell's strings.
+          if (!(await openFilterSheet(page, 'nomatch'))) continue
+          // The contract has no marker for the choices: every button of the sheet is one, except
+          // the close button and the clear button, whose names are the shell's strings.
           const buttons = dialogs(page).first().getByRole('button')
           const total = await buttons.count()
           for (let index = 0; index < total; index++) {
+            // A template whose sheet closes itself on a choice leaves nothing more to press.
+            if ((await dialogs(page).count()) === 0) break
             const button = buttons.nth(index)
             const name = (await button.getAttribute('aria-label')) ?? (await button.innerText())
             if (name.trim() === strings.close || name.trim() === strings.clearFilters) continue
             await button.click()
           }
-          await page.keyboard.press('Escape')
+          if ((await dialogs(page).count()) > 0) await page.keyboard.press('Escape')
           await expect(dialogs(page)).toHaveCount(0)
           const message = page.getByText(strings.noMatches, { exact: true })
           const reset = page.getByRole('button', { name: strings.clearFilters, exact: true })
@@ -355,7 +372,7 @@ test.describe('the worst cases of D109', () => {
             skip(
               'nomatch: with every filter choice on, items still match (or the template shows no "no matches" text)',
             )
-            return
+            continue
           }
           await expect(message).toBeVisible()
           await expect(reset).toBeVisible()
@@ -372,7 +389,7 @@ test.describe('the worst cases of D109', () => {
           await openMenu(page, theme, 'bg', 'two', id)
           if ((await page.locator(`img[src*="${id}"]`).count()) === 0) {
             skip('logo: the template draws no logo (no image of the theme logo on the page)')
-            return
+            continue
           }
           await shoot(page, file(theme, scheme, 'bg', 390, `logo-${name}`))
         }
@@ -419,14 +436,7 @@ test.describe('the worst cases of D109', () => {
             await expect(dialogs(page)).toHaveCount(0)
           }
 
-          const filters = page.locator('[data-slot="menu.filters"]').first()
-          if ((await filters.count()) === 0) {
-            skip('landscape/filters: the template draws no menu.filters')
-          } else if ((await filters.evaluate((element) => element.tagName)) !== 'BUTTON') {
-            skip('landscape/filters: menu.filters is not a button, so there is no filter sheet')
-          } else {
-            await filters.click()
-            await expect(dialogs(page)).toHaveCount(1)
+          if (await openFilterSheet(page, 'landscape/filters')) {
             await shoot(page, path('filters'))
             await page.keyboard.press('Escape')
             await expect(dialogs(page)).toHaveCount(0)
