@@ -1,5 +1,5 @@
 # Payment providers for Restro: feasibility of D98's interface
-### Research for tracker T80 (issue #9). Extends Part 1 of `2026-10-17-mypos-and-fiscal-receipts.md`; does not repeat it.
+### Research for tracker T80 (issue #9). Extends Part 1 of `docs/research/2026-10-17-mypos-and-fiscal-receipts.md`; does not repeat it.
 *Researched 2026-10-17 from the providers' own developer documentation and pages. Not legal advice. The legal side (fiscal receipts, who may take a fee) is the lawyer's (Q74, Q75) and is only cross-referenced here.*
 
 ## How to read this document

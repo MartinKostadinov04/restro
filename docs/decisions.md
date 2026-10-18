@@ -9,7 +9,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D2](decisions/D2.md) | MVP lean enough for one person to hold in their head | firm |
 | [D3](decisions/D3.md) | No extra friction against walk-outs | pending (stated) |
 | [D4](decisions/D4.md) | Order-first MVP: self-ordering, multi-tenant online payments, receipts | firm |
-| [D5](decisions/D5.md) | An order holds many items and is paid when placed | firm (refined 10-08); barsy mapping open (Q21, Q47) |
+| [D5](decisions/D5.md) | An order holds many items and is paid when placed | superseded by D111, D112 and D113 |
 | [D6](decisions/D6.md) | Pilot clubs all run barsy | firm |
 | [D7](decisions/D7.md) | Pilot: our software free | pending (at risk) |
 | [D8](decisions/D8.md) | Tips: optional line on payment, paid out to the venue, which distributes them | firm |
@@ -18,7 +18,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D11](decisions/D11.md) | No in-app age check; the door handles it | firm; Q66 |
 | [D12](decisions/D12.md) | Own waiter view only for venues without barsy, billed separately | firm |
 | [D13](decisions/D13.md) | Paid orders go to barsy without our own staff-confirmation step | firm; see D18, Q38, Q49 |
-| [D14](decisions/D14.md) | Guests can split the bill in the web app | firm |
+| [D14](decisions/D14.md) | Guests can split the bill in the web app | firm; refined by D112 |
 | [D15](decisions/D15.md) | Config-driven app: venue data rendered by a visual shell changeable per customer | applied |
 | [D16](decisions/D16.md) | Sync a copy of barsy's data into our own model | applied |
 | [D17](decisions/D17.md) | Architecture = the Menu Engine doc including its nine rules | applied |
@@ -33,8 +33,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D26](decisions/D26.md) | A venue may opt in to push our translations into barsy, only if the API allows it | pending (wanted); back-office write, needs its own decision (D110) |
 | [D27](decisions/D27.md) | Table access in v0: the QR token only | firm |
 | [D28](decisions/D28.md) | Delivery in v0: to the table only | firm |
-| [D29](decisions/D29.md) | Ordering mode per item, set by the owner | firm |
-| [D30](decisions/D30.md) | Time for other guests to pay their share of a split order | firm; P42 |
+| [D29](decisions/D29.md) | Ordering mode per item, set by the owner | firm; refined by D113 |
+| [D30](decisions/D30.md) | Time for other guests to pay their share of a split order | reopened by D112; decided with the bill screen; P42 |
 | [D31](decisions/D31.md) | Venue stats: first research what barsy exposes, then ask owners | firm |
 | [D32](decisions/D32.md) | Store every payment at the finest grain so any disaggregation is possible | firm |
 | [D33](decisions/D33.md) | A barsy test installation | firm |
@@ -115,6 +115,10 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
 | [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
+| [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113 |
+| [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30 |
+| [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29 |
+| [D114](decisions/D114.md) | Agents' deliverables are filed in docs/deliverables and kept for revisiting | firm |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

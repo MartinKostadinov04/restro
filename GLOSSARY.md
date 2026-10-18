@@ -162,6 +162,44 @@ _Avoid_: URL, link, slug
 A venue's business day, which ends at 07:00 local time by default, not at midnight.
 _Avoid_: day, night, shift
 
+## Ordering and bills
+
+**Bag**:
+The items a guest has picked on the guest page but not yet sent.
+_Avoid_: cart, basket
+
+**Order**:
+What one guest sends from the guest page in one go. It goes into the venue's POS on a POS bill of its own; once the POS has it, it is part of the table's bill.
+_Avoid_: request (that is a song request), ticket
+
+**Round**:
+Items added to a bill at one time, by a guest's order or by a waiter.
+_Avoid_: batch, course
+
+**Bill**:
+Everything ordered at a table during one visit, with what is paid and what is still owed. Guests see and pay one bill per table, however many POS bills sit behind it.
+_Avoid_: tab, check, ticket, account
+
+**POS bill**:
+One bill as the venue's POS holds it: items owed plus the payments made against it, open until settled, then closed with a fiscal receipt. The table is an optional label on it, and a table can hold several open POS bills at once.
+_Avoid_: account (barsy's word), сметка (in English text), check
+
+**Payment mode**:
+Whether an item is paid on the bill or paid first, when it is ordered. A venue default, an override per item, and a table can have prepayments disabled.
+_Avoid_: payment type, prepaid flag
+
+**Split**:
+Moving chosen items off a POS bill onto a new one, so they can be paid on their own.
+_Avoid_: divide, separate
+
+**Part payment**:
+A payment that leaves its POS bill open with something still owed.
+_Avoid_: partial (on its own), instalment
+
+**Group payment**:
+Several guests' cards settling one bill, or one share of it, together.
+_Avoid_: split payment (a split moves items), split tender
+
 ## Song requests and payments
 
 **Song request**:

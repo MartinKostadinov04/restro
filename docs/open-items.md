@@ -5,8 +5,8 @@ For the lead: every open question and open task, one line each, grouped by owner
 Owner is the group heading. None blocks the current stages unless a brief says so.
 
 **Payment provider and the lawyer, for song requests and deposits (T80)**
-- Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions.
-- Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues.
+- Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions. Prepared in `docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md` (questions L1–L4, L7, L9, L11, L12).
+- Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues. Prepared in `docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md` (questions L4–L8, L10).
 - Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
 - Q82 Lukanet: seven open points from the signed-in API reading (part payment on an open bill, refusing a row, our id on a bill, approval in the status, offline docs); send with Q79.
@@ -67,7 +67,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
-- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 signed-in reading done 10-18 (`research/barsy-signed-in`); grilling #35 bill in Restro, #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main.
+- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 signed-in reading done 10-18 (`research/barsy-signed-in`); grilling #35 bill in Restro done 10-18 (D111–D113; deliverables filed per D114; POS questions in `docs/connector-questions.md`), #43 group payment research done 10-18 (`docs/deliverables/2026-10-18-split-payments.md`); open: #45 the guest's bill screen (prototype, after #36), #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main. barsy's duplicate guard re-read signed in 10-18: it covers only a new bill (D112).
 - T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
 - T91 Claude, then Martin: guest page `viewport-fit=cover`, a status-bar colour from the venue's `background` roles and `interactive-widget=resizes-content` (D109); the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
 - #21 Claude: operational-screens note, audit and template flow additions, stack-doc library table, T91 and T88 refinements (D109); Sonnet.
@@ -85,7 +85,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T82 Martin, then Claude: port the song-requests prototype (D99, D100); starts with a grilling round against D99.
 - T81 Martin + Claude: grill table-less access to song requests (D100), when T82 starts.
 - #8 Claude (research, Opus): Bulgarian fiscal rules for card payments through the app, deposits and paid song requests; prepares the lawyer's Q74 and Q75; waits for Martin's go.
-- #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; done 10-17, findings in `docs/research/2026-10-17-payment-providers-feasibility.md` (recommends Stripe first, myPOS second); next: Martin picks the first provider, then Q76, Q77 and the lawyer's Q74/Q75.
+- #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; done 10-17, findings in `docs/deliverables/2026-10-17-payment-providers-feasibility.md` (recommends Stripe first, myPOS second); next: Martin picks the first provider, then Q76, Q77 and the lawyer's Q74/Q75.
 - #10 Claude (upkeep, Sonnet): one home per rule in the agent docs; CLAUDE.md under 1,500 words; CLAUDE.md diff shown to Martin before merge.
 - #27 Claude: bug, the menu's header name never reaches the guest heading (snapshot title ignores `menus.name`); Opus; found by #24.
 - #26 Claude: dev seed with a real till venue, so audits cover the till-venue rules; Sonnet.
