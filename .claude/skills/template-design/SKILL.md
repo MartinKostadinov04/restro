@@ -61,7 +61,7 @@ Spawn the `template-review` subagent with the Agent tool: `subagent_type: genera
 - the brief (the lead's text, verbatim);
 - the path of `docs/guides/menu-template-functionality.md` and the exemptions;
 - the package path `packages/faces/<id>`;
-- the path of the design-intent note and the screenshot folder.
+- the path of the design-intent note (it holds the Motion roles table) and the screenshot folder.
 
 ## 8. Fix, then review again
 

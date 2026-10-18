@@ -22,12 +22,10 @@ Every curve and every duration lives here, once; the rest of the CSS writes `var
 | Motion | Duration | Curve |
 |---|---|---|
 | Press feedback, a colour change on a small control | 100 to 160 ms | `--xx-ease-out` |
-| A small popover | 125 to 200 ms | `--xx-ease-out` |
-| A dropdown | 150 to 250 ms | `--xx-ease-out` |
 | A sheet, the dish page, a dialog | 200 to 500 ms (over 300 is flagged, never blocked) | `--xx-ease-drawer` or `--xx-ease-out` |
 | The host's answer to a command (once, override row 7) | 350 ms at most | `--xx-ease-out` |
 
-Name only the tokens you use. The touch lines remove the tap delay and the grey flash, so every tappable then needs its pressed state.
+Pick each value inside its row's range, and name only the tokens you use. The touch lines remove the tap delay and the grey flash, so every tappable then needs its pressed state.
 *Check:* the root rule holds both touch lines; every curve and time in the CSS is a `var(--xx-…)`.
 
 ## Press
@@ -46,7 +44,7 @@ Under reduced motion the pressed state is a colour change on a named pair (§5.4
 
 ## Sheet and dish page
 
-Enters and leaves on the same edge, in `translateY(%)`, exit no longer than enter. Scale-in starts at `scale(0.96)` or more, never `scale(0)`.
+Enters and leaves on the same edge, in `translateY(%)`, exit no longer than enter. A dialog that scales in instead never starts from `scale(0)`.
 
 ```css
 .xx-sheet {
