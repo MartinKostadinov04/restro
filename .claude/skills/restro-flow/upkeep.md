@@ -8,6 +8,7 @@ Work that isn't a feature but keeps the project moving.
 ## Agent environment
 - `retro` after work that went sideways, in that session.
 - `writing-for-agents` whenever CLAUDE.md, `docs/agents/`, a skill or a ticket template is edited: one place per rule, prune what no longer changes behaviour. A flow file that disagrees with the skill it names is fixed here.
+- A **vendored skill** (D106, D109) is a verbatim copy under the `references/` folder of the skill that uses it, with a provenance README and a Restro overrides file. Nothing from a vendored repository is ever installed as a skill or plugin. Its overrides file is read first, wins on every conflict, and opens with a row that neutralises the vendored "Initial Response" (a run that obeys it does nothing). The copy keeps its `disable-model-invocation` flag as it is. An update is an Upkeep ticket: diff the new upstream commit against the copy, review the new lines against the overrides, then change the hashes in the README.
 - Keep `docs/decisions.md` and `docs/open-items.md` current: an answered question or a closed task leaves `open-items.md` in the commit that closes it.
 - `teach` when Martin wants to understand a concept over several sittings (RLS, the service day, fiscal rules); a one-off question is `decide.md` → Explain.
 
