@@ -651,12 +651,13 @@ async function prepareSnapshot(
     doc,
     externalIds,
     backendOnly,
-    // The heading is public by design (D92), like the look's strings: only the name it shows.
-    publicStrings: [...lookPublicStrings(theme, presentation), ...Object.values(built.menu.title)],
+    publicStrings: lookPublicStrings(theme, presentation),
   })
   let snapshot: MenuSnapshot
   try {
-    snapshot = assertSnapshotSafe(built, forbidden)
+    // The heading is public by design (D92): the guard skips its place and nothing else, so an
+    // internal value that reads like the header name is still refused anywhere else.
+    snapshot = assertSnapshotSafe(built, forbidden, { exempt: [['menu', 'title']] })
   } catch (error) {
     if (!(error instanceof SnapshotError)) throw error
     throw new PublishError('unsafe_snapshot', `the snapshot was refused: ${error.message}`, {
