@@ -6,7 +6,7 @@ Three sizes. Each ends in `ship.md`. The skills decide how each step runs; this 
 
 One behaviour, one session.
 
-1. **Grill** with `grill-with-docs`. Done when the skill says so and Martin confirms you share one understanding; new terms in `GLOSSARY.md`, any decision he made recorded (`docs/agents/domain.md`).
+1. **Grill** with `grill-with-docs`. Done when the skill says so and Martin confirms you share one understanding; new terms in `GLOSSARY.md`, any decision he made recorded (`docs/agents/domain.md`). **Decision log (D114):** from the first answer, keep `docs/deliverables/<date>-<slug>-decision-log.md`. It holds one row per decision as it settles: the decision, why, status (firm / later / on request / out / open) and where it is recorded. A changed decision is marked as replaced. Martin reviews the log before he confirms. The D-numbers, glossary entries and tickets are written from it, and its last column points to them. Model: `docs/deliverables/2026-10-18-bill-decision-log.md`.
 2. **Prototype** only when a question needs a runnable answer (`prototype` picks the branch). It runs in its own agent session forked from the grilling session, which waits for the verdict and then continues. The prototype stays on a `prototype/<name>` branch; its verdict goes into the ticket.
 3. **Ticket:** one GitHub issue, `to-tickets`' issue template plus `ship.md`'s block; two or three only when the parts build and test apart. No spec issue for a single feature. A new template (D69) is not a Feature: it follows `template.md`. A step that adds, changes or removes anything a guest can do in the menu revises `docs/guides/menu-template-functionality.md` in the same change.
 4. **Build and ship:** `ship.md`.
@@ -15,7 +15,7 @@ One behaviour, one session.
 
 Several features, one clear destination. Keep steps 1–4 in one window.
 
-1. **Grill** with `grill-with-docs`.
+1. **Grill** with `grill-with-docs`, keeping the decision log (Feature step 1).
 2. **Prototype** detours as in Feature.
 3. **Spec** with `to-spec`: label the issue `spec` and remove `ready-for-agent` (a spec is not a ticket). Its user stories are the acceptance list for step 7. The lead agrees the test seams.
 4. **Tickets** with `to-tickets`, each with `ship.md`'s block. Show Martin the list in plain words; the lead owns granularity and edges.
@@ -28,7 +28,7 @@ Several features, one clear destination. Keep steps 1–4 in one window.
 
 A change to the shape: the data model, a seam, a layer, a rule that spans packages.
 
-1. **Foggy?** `wayfinder` when the way can't be seen and its decisions won't fit one session (research tickets run as `research` agents, within the limits). When the map clears, continue at Feature set step 3.
-2. **Clear:** `grill-with-docs`, with `codebase-design` for the vocabulary and its design-it-twice when one interface is worth exploring (three designs at most).
+1. **Foggy?** `wayfinder` when the way can't be seen and its decisions won't fit one session (research tickets run as `research` agents, within the limits; each grilling ticket keeps a decision log, Feature step 1). When the map clears, continue at Feature set step 3.
+2. **Clear:** `grill-with-docs`, keeping the decision log (Feature step 1), with `codebase-design` for the vocabulary and its design-it-twice when one interface is worth exploring (three designs at most).
 3. **Record** each decision that meets the ADR bar as `docs/decisions/D<n>.md`; update the live architecture doc and its mirror in `docs/architecture/` in the same change.
 4. **Tickets:** Feature set steps 3–8. A wide refactor follows `to-tickets`' expand–migrate–contract. Migrations are the lead's to code; a staging migration needs Martin's OK.
