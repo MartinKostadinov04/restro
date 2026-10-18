@@ -1,5 +1,6 @@
 import { buildViewModel, imageSlotsFor, type ViewModel, validateManifest } from '@restro/shell'
 import {
+  type ContractHost,
   faceContractSuite,
   fixture,
   parseHtml,
@@ -24,7 +25,8 @@ import {
 } from './model'
 import { QrPhoneNotice, QrPhoneSkeleton } from './notices'
 
-const render = (view: ViewModel) => renderToStaticMarkup(<QrPhoneFace view={view} />)
+const render = (view: ViewModel, host?: ContractHost) =>
+  renderToStaticMarkup(<QrPhoneFace view={view} languages={host?.languages} />)
 /** The markup without the stylesheet (whose text mentions every class). */
 const withoutStyle = (html: string) => html.replace(/<style>[\s\S]*?<\/style>/, '')
 
@@ -115,6 +117,11 @@ describe('what the face draws', () => {
     )
     expect(buttons.map(textOf)).toEqual(['БГ', 'EN'])
     expect(buttons.map((el) => el.attrs['aria-pressed'])).toEqual(['true', 'false'])
+    // The contract marker the audits find the switch by (T90): the group, once.
+    const marked = withAttribute(root, 'data-slot', 'menu.language')
+    expect(marked).toHaveLength(1)
+    expect(marked[0]?.attrs.class).toBe('rq-lang')
+    expect(withAttribute(parseHtml(render(view)), 'data-slot', 'menu.language')).toHaveLength(0)
   })
 
   it('draws a jump link per section and filter chips from the view model', () => {

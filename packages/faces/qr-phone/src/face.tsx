@@ -340,7 +340,7 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
               </h1>
             )}
             {languages.length > 1 ? (
-              <fieldset className="rq-lang" aria-label={strings.language}>
+              <fieldset className="rq-lang" data-slot="menu.language" aria-label={strings.language}>
                 {languages.map((code) => (
                   <button
                     key={code}

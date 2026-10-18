@@ -99,6 +99,13 @@ describe('the quote', () => {
     expect(within(sheet).queryByRole('button', { name: 'Apple Pay' })).toBeNull()
   })
 
+  it('marks each method control pay.method, with the method (contract markers, T90)', async () => {
+    const { sheet } = await openPay(fakeHost({ bill }), quoteOf({ methods: ['card', 'waiter'] }))
+    const marked = [...sheet.querySelectorAll('[data-slot="pay.method"]')]
+    expect(marked.map((element) => element.tagName)).toEqual(['BUTTON', 'BUTTON'])
+    expect(marked.map((element) => element.getAttribute('data-method'))).toEqual(['card', 'waiter'])
+  })
+
   it('has no method at all when the quote has none', async () => {
     const { sheet } = await openPay(fakeHost({ bill }), quoteOf({ methods: [] }))
     for (const name of ['Apple Pay', 'Google Pay', 'Card', 'Pay the waiter at the table']) {
@@ -285,6 +292,10 @@ describe('paying', () => {
     expect(within(sheet).getByText(PAID)).toBeTruthy()
     expect(within(sheet).getByRole('button', { name: 'View receipt' })).toBeTruthy()
     expect(within(sheet).getByRole('button', { name: 'Back to menu' })).toBeTruthy()
+    // The paid screen marks the way on to the receipt, and shows no method any more (T90).
+    const open = sheet.querySelectorAll('[data-slot="pay.receipt_open"]')
+    expect([...open].map((element) => element.textContent)).toEqual(['View receipt'])
+    expect(sheet.querySelector('[data-slot="pay.method"]')).toBeNull()
   })
 
   it('does not take a receipt that was there before for this payment', async () => {
@@ -390,6 +401,7 @@ describe('paying', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'View receipt' }))
     const receipt = await screen.findByRole('dialog', { name: 'Receipt' })
     expect(receipt.textContent).toContain('Test venue')
+    expect(receipt.querySelectorAll('[data-slot="pay.receipt"]')).toHaveLength(1)
     expect(screen.queryByRole('dialog', { name: 'Pay' })).toBeNull()
   })
 })

@@ -21,9 +21,14 @@
 // D92, fail-closed the same way: the guest's layout switch carries `menu.layout_switch`, and no
 // element with that slot may exist when the view model's `layout.guestSwitch` is off (the menu
 // does not let guests switch, or the channel is not interactive).
+//
+// T90, two of the markers the audits drive (guide §7.3): `item.add` on an orderable item and
+// nowhere else, and `menu.language` with two languages and not with one. The other audit markers
+// (`item.open`, `pay.*`) are not read here.
 
 import {
   contrastRatio,
+  type Locale,
   localeToBcp47,
   MIN_TEXT_CONTRAST,
   rolesFromSemantic,
@@ -32,7 +37,7 @@ import {
 } from '@restro/core'
 
 import { buildViewModel } from '../src/build'
-import type { Channel } from '../src/context'
+import { type Channel, INTERACTIVE_CHANNELS } from '../src/context'
 import {
   type ColourPair,
   type FaceManifest,
@@ -58,8 +63,18 @@ export const SLOT_ATTRIBUTE = 'data-slot'
 /** The attribute that carries an item's state code on its `item.state` slot. */
 export const STATE_ATTRIBUTE = 'data-state'
 
-/** What a face is: a function from a view model to markup. */
-export type RenderFn = (view: ViewModel) => string | Promise<string>
+/** What the contract tests give a face besides the view model (the host props that change its markup). */
+export interface ContractHost {
+  /** The menu's languages for the switch (`FaceHostProps.languages`). */
+  readonly languages: readonly Locale[]
+}
+
+/**
+ * What a face is: a function from a view model to markup. The second argument is given only by the
+ * language-switch check (T90); a face passes `host.languages` on as its `languages` prop, and
+ * otherwise draws as the host would by default.
+ */
+export type RenderFn = (view: ViewModel, host?: ContractHost) => string | Promise<string>
 
 /** One thing a face got wrong. */
 export interface ContractFailure {
@@ -97,6 +112,18 @@ export const FEATURE_SLOTS: readonly { readonly slot: string; readonly feature: 
 
 /** The slot of the guest's layout switch (D92). */
 export const LAYOUT_SWITCH_SLOT = 'menu.layout_switch'
+
+/** The slot of the language switch (T90). */
+export const LANGUAGE_SLOT = 'menu.language'
+
+/** The slot of the control that puts a dish in the bag (T90). */
+export const ADD_SLOT = 'item.add'
+
+/** The fixture the language-switch check renders again, with two languages and with one. */
+export const LANGUAGE_FIXTURE = 'six-languages'
+
+/** Two languages for the switch check. */
+const TWO_LANGUAGES: readonly Locale[] = ['bg_BG', 'en_US']
 
 /** Whether the view model has the feature on. */
 function featureOn(view: ViewModel, feature: FeatureName): boolean {
@@ -240,6 +267,21 @@ function checkItem(
     if (filled && declared && !present) fail('R8', `${where}: ${slot} has content but is not drawn`)
   }
 
+  // T90: the control that puts the dish in the bag, exactly where the dish can be ordered.
+  const orderable = view.features.ordering && item.order.controls
+  if (!orderable && slots.has(ADD_SLOT)) {
+    fail(
+      'R15',
+      `${where}: ${ADD_SLOT} is drawn although the item has no ordering controls (ordering is ${view.features.ordering ? 'on' : 'off'})`,
+    )
+  }
+  if (orderable && manifest.features.includes('ordering') && !slots.has(ADD_SLOT)) {
+    fail(
+      'R15',
+      `${where} can be ordered and the manifest declares ordering, but has no ${ADD_SLOT}`,
+    )
+  }
+
   // R6: allergens are reachable the way the manifest says.
   const allergenSlot = slots.get('item.allergens')
   if (allergenSlot !== undefined) {
@@ -338,6 +380,33 @@ function checkDocument(
   return expected.length
 }
 
+/** T90: the language switch is drawn with two languages (on an interactive channel) and not with one. */
+async function checkLanguageSwitch(
+  render: RenderFn,
+  view: ViewModel,
+  fail: (rule: string, message: string) => void,
+): Promise<void> {
+  const switches = async (languages: readonly Locale[]) =>
+    withAttribute(parseHtml(await render(view, { languages })), SLOT_ATTRIBUTE, LANGUAGE_SLOT)
+  if (INTERACTIVE_CHANNELS.includes(view.channel)) {
+    const [drawn] = await switches(TWO_LANGUAGES)
+    if (drawn === undefined) {
+      fail('§7.6', `the host gives two languages, but ${LANGUAGE_SLOT} is not drawn`)
+    } else {
+      // The audits pick a language by the `lang` of its button.
+      const langs = withAttribute(drawn, 'lang').map((element) => element.attrs.lang)
+      for (const code of TWO_LANGUAGES) {
+        if (!langs.includes(localeToBcp47(code))) {
+          fail('§7.6', `${LANGUAGE_SLOT} has no control with lang="${localeToBcp47(code)}"`)
+        }
+      }
+    }
+  }
+  if ((await switches([view.locale])).length > 0) {
+    fail('§7.6', `the host gives one language, but ${LANGUAGE_SLOT} is drawn`)
+  }
+}
+
 /**
  * Renders every fixture on every channel the face declares and reports what breaks the contract.
  * An empty `failures` list means the face may be installed.
@@ -361,6 +430,7 @@ export async function runFaceContract(
       const fail = (rule: string, message: string) =>
         failures.push({ fixture: fixture.name, channel, rule, message })
       items += checkDocument(parseHtml(html), html, view, manifest, fail)
+      if (fixture.name === LANGUAGE_FIXTURE) await checkLanguageSwitch(render, view, fail)
       renders++
     }
   }
