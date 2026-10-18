@@ -66,6 +66,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
+- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 Martin: sign in to docs.lukanet.com for the signed-in reading; grilling #35 bill in Restro, #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main.
 - T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
 - T91 Claude, then Martin: guest page `viewport-fit=cover` and status-bar colour; the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
 - #21 Claude: operational-screens note, audit and template flow additions, stack-doc library table, T91 and T88 refinements (D109); Sonnet.
@@ -125,7 +126,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T9 Martin: send Lukanet the consolidated questions, after T39.
 - T13 Martin: ask a pilot owner for the "software resource" price (Q25, Q29, Q41).
 - T33 Martin: send the lawyer/accountant questions.
-- T29 Claude: orders and payments spec; skeleton before Stage 4, details after T9 and T33.
+- T29 Claude: orders and payments spec; the ordering half now runs as map #29; payments after it, details after T9 and T33.
 - T31 Martin + lawyer: privacy notice, terms, data processing agreement; before the first guest.
 - T17 Martin: remaining decisions P41–P43, P46, P48–P50, P52, P53, P10; veto window on D50.
 - T20 Claude: read the 2021 food-information ordinance, or ask the lawyer (Q42).
