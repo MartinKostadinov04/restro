@@ -4,7 +4,7 @@ D107 says what an operational screen must be (the admin, the composer, settings,
 
 ## Undo
 
-Reversible actions undo; they do not ask first (D107). An action that `apply()` cannot invert keeps its confirmation; erasing a venue's data is only the purge job's (D83).
+Reversible actions undo; they do not ask first (D107). An action that `apply()` cannot invert keeps its confirmation, so does an action that takes a venue's menu down, such as archiving the venue, even though it can be undone: the night promise (D102) outweighs the saved tap (D107, Martin 10-18). Erasing a venue's data is only the purge job's (D83).
 
 - **One toast, one action.** `toast(text, { id, action: { label, onClick } })`. The label is the interface string "Undo" (next-intl, BG and EN). The one toast with an `action` so far (`apps/web/src/components/admin/delete-venue-dialog.tsx`) opens the list an archived venue is restored from: a link, not an undo.
 - **A stable `id` per action**, built from the thing changed (for example `hide:<item id>`), so a second fire updates the toast and never stacks a second.
