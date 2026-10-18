@@ -50,8 +50,8 @@ Considered and not adopted, so nobody proposes them again (D109):
 | NumberFlow | A price must never animate: prices are `price.text` and money stays integer minor units (rule 8); a rolling number is motion without a tap |
 | cmdk | A keyboard-first command palette is the opposite of D107 for an owner who is not a tech person |
 | zustand | Server components read and server actions write (U4), so there is no client store to hold |
-| Virtuoso, virtua | Every item stays in the markup; virtualising a long list is a proposal for Martin after a measurement, never added unasked (the pinned audit's overrides, row 3) |
-| base-ui | Radix through shadcn is installed and works; a swap buys nothing |
+| Virtuoso, virtua | Every item stays in the markup; virtualising a long list is a proposal for Martin after a measurement, never added unasked (row 3 of `.claude/skills/template-review/references/web-interface-guidelines.restro-overrides.md`) |
+| base-ui | Radix through shadcn is installed; swapping an installed library is churn |
 | next-themes | The admin follows its own theme choice (`apps/web/src/lib/theme.ts`), and the Toaster reads it |
 | dnd kit | `@hello-pangea/dnd` runs the composer, the Platform port map uses it, and a keyboard-reorder e2e depends on it |
 | Leva | A live panel for tuning values while developing; it has no screen of the product to serve |
