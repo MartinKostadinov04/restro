@@ -161,7 +161,7 @@ describe('fixtures', () => {
     expect(a?.snapshot).not.toBe(b?.snapshot)
   })
 
-  it('keep the ten fixtures of S3-02 first and in order, then the three of SH-03 and the two of S6', () => {
+  it('keep the ten fixtures of S3-02 first and in order, then the three of SH-03, the two of S6 and the two of D109', () => {
     expect(fixtures().map((f) => f.name)).toEqual([
       'long-names',
       'six-languages',
@@ -178,6 +178,8 @@ describe('fixtures', () => {
       'features-off',
       'horizontal-sections',
       'one-column',
+      'hostile-names',
+      'crowded',
     ])
   })
 
@@ -282,6 +284,84 @@ describe('the S6 fixtures (D92)', () => {
     const view = viewOf('long-names')
     expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
     expect(layouts(view)).toEqual(['vertical'])
+  })
+})
+
+describe('the D109 fixtures (worst cases)', () => {
+  const viewOf = (name: string): ViewModel => {
+    const f = fixture(name)
+    return buildViewModel(f.snapshot, f.overlay, f.context)
+  }
+  const names = (view: ViewModel): string[] =>
+    view.sections.flatMap((section) => section.items.map((item) => item.name.text))
+
+  it('hostile-names: capitals with the tall marks, a sixty-character one, emoji, joiners, doubles', () => {
+    const f = fixture('hostile-names')
+    const texts = Object.values(f.snapshot.items).flatMap((item) => Object.values(item.name))
+    const caps = texts.filter((text) => text === text.toUpperCase() && /[А-Я]/.test(text))
+    for (const mark of ['Й', 'Ѝ', 'Ц', 'Щ']) {
+      expect(
+        caps.some((text) => text.includes(mark)),
+        mark,
+      ).toBe(true)
+    }
+    expect(caps.some((text) => [...text].length === 60)).toBe(true)
+    expect(texts.some((text) => text.startsWith('🍸'))).toBe(true)
+    expect(texts.some((text) => text.includes(String.fromCodePoint(0x200d)))).toBe(true)
+    expect(texts.some((text) => text.includes('   '))).toBe(true)
+  })
+
+  it('hostile-names: two items share one name, in both languages, and stay two placements', () => {
+    const view = viewOf('hostile-names')
+    const [section] = view.sections
+    const twins = (section?.items ?? []).filter((item) => item.name.text === 'Негрони')
+    expect(twins).toHaveLength(2)
+    expect(new Set(twins.map((item) => item.id)).size).toBe(2)
+    expect(new Set(twins.map((item) => item.price?.text)).size).toBe(2)
+  })
+
+  it('hostile-names: a name that is only spaces falls back to the next language, or the item is left out', () => {
+    const f = fixture('hostile-names')
+    // The snapshot schema takes both (a non-empty string); the shell is where a blank name is read.
+    expect(
+      Object.values(f.snapshot.items).filter((item) => item.name.bg_BG === '   '),
+    ).toHaveLength(2)
+    const view = viewOf('hostile-names')
+    const fallback = view.sections[0]?.items.find(
+      (item) => item.name.text === 'Only the English name',
+    )
+    expect(fallback?.name.lang).toBe('en_US')
+    // Ten items in the snapshot, nine on the page: the one with no readable name is not drawn.
+    expect(Object.keys(f.snapshot.items)).toHaveLength(10)
+    expect(view.sections[0]?.items).toHaveLength(9)
+    expect(names(view).every((text) => text.trim() !== '')).toBe(true)
+  })
+
+  it('crowded: twelve tags on one item, one of forty characters with no space', () => {
+    const f = fixture('crowded')
+    const view = viewOf('crowded')
+    const crowd = view.sections[0]?.items.find((item) => item.tags.length === 12)
+    expect(crowd).toBeDefined()
+    const labels = (crowd?.tags ?? []).map((tag) => tag.label.text)
+    const unbroken = labels.filter((label) => !label.includes(' '))
+    expect(unbroken.some((label) => [...label].length === 40)).toBe(true)
+    expect(Object.keys(f.snapshot.tags)).toHaveLength(12)
+  })
+
+  it('crowded: one price text is sixteen characters', () => {
+    const view = viewOf('crowded')
+    const lengths = view.sections.flatMap((section) =>
+      section.items.map((item) => [...(item.price?.text ?? '')].length),
+    )
+    expect(lengths).toContain(16)
+  })
+
+  it('crowded: a section with one item, and a section with no item that the shell leaves out', () => {
+    const f = fixture('crowded')
+    const itemCounts = f.snapshot.menu.sections.map((id) => f.snapshot.sections[id]?.items.length)
+    expect(itemCounts).toEqual([2, 1, 0])
+    const view = viewOf('crowded')
+    expect(view.sections.map((section) => section.items.length)).toEqual([2, 1])
   })
 })
 

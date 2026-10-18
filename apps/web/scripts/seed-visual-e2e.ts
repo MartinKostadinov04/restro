@@ -44,6 +44,7 @@ import { fixtureId, snapshotFromSpec } from '@restro/shell/testing'
 import {
   CUSTOM_COLOURS,
   isFaceId,
+  LOGO_MARKS,
   LONG_NAME_BG,
   LONG_NAME_EN,
   LONG_TEXT_NAME_BG,
@@ -95,6 +96,29 @@ const PHOTOS = [
   },
 ] as const
 const photo = (n: number) => fixtureId('as', n)
+
+/**
+ * D109: the two logos with no background, one white and one black. Only their image files are
+ * written: a snapshot may not name an asset that nothing uses, so the matrix swaps one in for the
+ * logo it has (it serves the snapshot with that one asset moved to the new id).
+ */
+const MARKS = [
+  { id: LOGO_MARKS.white, ink: '#ffffff' },
+  { id: LOGO_MARKS.black, ink: '#000000' },
+] as const
+/** The size of a mark: as wide as the logos of the demo venue. */
+const MARK_SIZE = { w: 640, h: 200 } as const
+
+/** A club mark in one colour on a transparent ground: a ring and two bars. */
+function markArtwork(width: number, height: number, ink: string) {
+  const r = height * 0.36
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <circle cx="${height / 2}" cy="${height / 2}" r="${r}" fill="none" stroke="${ink}" stroke-width="${height * 0.1}"/>
+    <rect x="${height * 1.05}" y="${height * 0.3}" width="${width * 0.55}" height="${height * 0.12}" fill="${ink}"/>
+    <rect x="${height * 1.05}" y="${height * 0.56}" width="${width * 0.38}" height="${height * 0.12}" fill="${ink}"/>
+  </svg>`
+  return Buffer.from(svg)
+}
 
 function artwork(width: number, height: number, [from, to]: readonly [string, string]) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
@@ -378,6 +402,15 @@ async function main(): Promise<void> {
     for (const width of [320, 640, 1280]) {
       const path = variantPath(photo(entry.n) as AssetId, width)
       const bytes = await sharp(source).resize(width).webp({ quality: 70 }).toBuffer()
+      await store.put(path, bytes, publishPutOptions(path))
+    }
+  }
+  // The marks have an alpha channel, which webp keeps.
+  for (const entry of MARKS) {
+    const source = markArtwork(MARK_SIZE.w, MARK_SIZE.h, entry.ink)
+    for (const width of [320, 640, 1280]) {
+      const path = variantPath(entry.id as AssetId, width)
+      const bytes = await sharp(source).resize(width).webp({ quality: 80 }).toBuffer()
       await store.put(path, bytes, publishPutOptions(path))
     }
   }
