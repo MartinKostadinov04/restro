@@ -25,7 +25,9 @@ Material is Martin's to bring. When the brief has none, stop and ask the lead fo
 2. The guide: §5.5, §7, §9, §10 and §12. §7.5 is the quality floor.
 3. `references/restro-overrides.md`. It and §7.5 win over the vendored skill on every conflict.
 4. `references/frontend-design/SKILL.md`, the visual direction.
-5. The two reference faces, `packages/faces/editorial-market` and `packages/faces/qr-phone`, as patterns for satisfying the contract. Your template looks different from both.
+5. The motion standards the reviewer holds your CSS to: `../template-review/references/review-animations.restro-overrides.md` first, then `../template-review/references/review-animations/STANDARDS.md`; the overrides win.
+6. `references/interaction-polish.md`: the tokens and recipes you write motion and touch with.
+7. The two reference faces, `packages/faces/editorial-market` and `packages/faces/qr-phone`, as patterns for wiring the contract (override row 13). Your template looks different from both.
 
 ## 3. Design plan, before any code
 
@@ -35,6 +37,7 @@ Write it into `design-intent.md` in the design folder as you go. Done when each 
 - **Colour roles.** The eight roles, light and dark, and which surface and text use which. Name roles only; the plan holds for any three venue colours.
 - **Layout concept.** The page top to bottom, the item anatomy, how the horizontal sections and the layout switch look.
 - **The one bold move.** One place, named. Everything around it stays quiet.
+- **Motion roles.** A table, one row per selector that gets a `transition` or `animation`: the tap that starts it, its purpose (feedback, where it came from, the host's answer), its curve token and its duration token from `interaction-polish.md`. "No motion" is a valid table. The reviewer diffs the CSS against it both ways, so every animated selector has its row and every row its selector.
 - **Coverage check.** Walk the functionality file entry by entry and write where each one lives. Done when no required entry lacks a place.
 
 Then apply the vendored skill's question to the plan: would any similar brief produce this? Revise the parts that say yes, and note what changed.
@@ -62,11 +65,11 @@ Spawn the `template-review` subagent with the Agent tool: `subagent_type: genera
 
 ## 8. Fix, then review again
 
-The reviewer returns one list, each item tagged `missing`, `inconsistent`, `wrong` or `extra`, and a verdict. Fix every item in the template, then spawn the reviewer again with the items that remain. After two rounds without a clean verdict, stop: the brief was wrong. Report the list to the lead.
+The reviewer returns one list, each item tagged `missing`, `inconsistent`, `wrong` or `extra` and marked `code` or `device`, and a verdict. Fix every `code` item in the template and keep the `device` lines for step 9, then spawn the reviewer again with the items that remain. After two rounds without a clean verdict, stop: the brief was wrong. Report the list to the lead.
 
 ## 9. Ship
 
-On a clean verdict the reviewer has wired the template and run the gate. Run `ship.md` of the `restro-flow` skill: a pull request into the stage branch, with Martin's acceptance on a local preview before the lead merges (the lead's `template.md` flow).
+On a clean verdict the reviewer has wired the template and run the gate. Run `ship.md` of the `restro-flow` skill: a pull request into the stage branch, with Martin's acceptance on a local preview before the lead merges (the lead's `template.md` flow). The pull request lists the reviewer's `device` lines under "For Martin's phone": his acceptance settles them.
 
 ## 10. Report
 
