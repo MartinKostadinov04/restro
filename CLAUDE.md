@@ -35,7 +35,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
 5. **Our layers only make the menu more cautious than the POS.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
 6. **Absence is deletion only after a complete full read.** A read with any failed page concludes nothing.
-7. **Sync never writes into a POS.** `packages/barsy/write/` exports only calls on Martin's allowlist — currently **none**. No webhooks, no POS registration.
+7. **Restro writes into a POS only as a waiter would (D110).** Through the API it does what a waiter does at the POS's front end: open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel within the POS's own rules. Never back-office work (items, prices, settings, users). Menu sync stays read-only. No webhooks, no POS registration (D41). Development and tests never run against a live venue's POS.
 8. **Money is integer minor units** with the POS's rounding, through the `money` module only. barsy sends prices as JSON floats: parse losslessly, convert from the decimal string, round half-up. Never `x * 100`, never floats in storage.
 9. **POS accounts:** one API user per connection per environment; staging config refuses production hosts; (later) one POS-registration owner and server-generated order uuids.
 
