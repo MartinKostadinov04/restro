@@ -253,6 +253,27 @@ describe('buildSnapshot', () => {
   it('gives the same JSON for the same document', () => {
     expect(JSON.stringify(snapshotOf(barMenu()))).toBe(JSON.stringify(snapshotOf(barMenu())))
   })
+
+  // D92: the guest heading is the menu's header name, else the document's title, else the venue's
+  // display name. A plain name is in the menu's main language: the shell falls back to it (R3).
+  it('titles the menu with its header name, else the document title, else the venue name', () => {
+    const names = { menuName: 'Club Sofia', venueName: 'Demo Club' }
+    expect(snapshotOf(barMenu(), context(names)).menu.title).toEqual({ bg_BG: 'Club Sofia' })
+
+    expect(snapshotOf(barMenu(), context({ ...names, menuName: null })).menu.title).toEqual({
+      bg_BG: 'Бар',
+      en_US: 'Bar',
+    })
+
+    const untitled = barMenu().unset(ROOT, 'title')
+    expect(snapshotOf(untitled, context({ ...names, menuName: null })).menu.title).toEqual({
+      bg_BG: 'Demo Club',
+    })
+    expect(
+      snapshotOf(untitled, context({ menuName: '  ', venueName: ' Demo Club ' })).menu.title,
+    ).toEqual({ bg_BG: 'Demo Club' })
+    expect(snapshotOf(untitled).menu.title).toEqual({})
+  })
 })
 
 describe('the strict schema', () => {
