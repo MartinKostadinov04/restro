@@ -11,6 +11,24 @@ Research for ticket #32 (child of the map #29 "Ordering from the menu"). Plannin
 - **Approval is a venue setting, not an API step.** Four modes per cash desk (documented). Whether the API can see the approval is not documented publicly; the account's data carries fields whose names contain `confirmation_output_screen` (name only).
 - **Duplicates:** `uuid` is on the create and place pages and on the account input object; the word is absent from the pages that read an account back (`Accounts_get`, `Accounts_getlist`). So finding an account by our id is probably not offered. To confirm signed in.
 
+## Update after the signed-in reading (same day)
+
+Martin signed in afterwards. The lead's signed-in notes on every API page are on branch `research/barsy-signed-in` (`docs/research/2026-10-18-barsy-api-reference.md`, ticket #34); that file is the source for the API cells below. I re-read one page myself, [Accounts_getlist](https://docs.lukanet.com/barsy.api/methods/accounts/getlist.html), for the approval fields. The table further down was written signed out and is kept as it was; where it says "name only" or "behind sign-in", this update wins.
+
+| Row | What the signed-in reading says |
+|---|---|
+| 1, 2 | `Accounts_place` creates a bill, or continues one when `account_id` is given, and adds `orders`. `place_id` is optional, so a bill does not need a table. Returns the bill's number. |
+| 3 | `account_alias` (title, shown in lists), `description` (printed on the receipt), `notes` (not printed). Confirmed. What the bar ticket prints is still not stated. |
+| 4 | A repeated `uuid` is refused. No method finds a bill by it (`AccountData` has no uuid; `Accounts_getlist` has no uuid filter). Confirmed my inference. |
+| 5 | **The API can see a bill waiting for approval**: `Accounts_getlist` filters by `service_status_id`, where 1 is waiting for payment, 2 waiting for approval ("Чака одобрение"), 3 for service, 4 served, 5 delivered. No call approves or declines. The `…confirmation_output_screen…` names mean something else: whether the *current workstation* has a confirmation screen for the bill's status (a display fact, not the approval). Open (Lukanet Q82): which status an API bill gets under each of the four modes, and whether a decline shows. |
+| 7, 8 | No row-removal method. `Accounts_place` takes `reason_id` "needed for refusals" (from `Reasons_getlist`, each reason says whether the item still leaves stock); how a refusal is sent is not stated. A closed bill is reversed with `Accounts_storno` (new reversing bill, own УНП, storno fiscal receipt). |
+| 9 | Per bill: `service_status_id` / `_name`, `unp`, `total_real`, `total_paid`, `total_remain`. Per row: `status`, `order_status_title`, `served_date`, `served_by` (`Orders_getlist`). |
+| 10 | Still no pre-bill call. `print_receipt` is a local print of a slip for the order. `Messages_create` sends internal messages to staff; reaching the hall tablet is not stated. |
+| 11 to 13 | `Accounts_divide` moves chosen rows into a new bill; `Accounts_move` takes `account_id`, `place_id`, `user_id` (without the direct-transfer right the new waiter must accept); merge, `mergebyplaceid`, `mergebyclientid` exist. A table can hold several open bills. |
+| 14 | `Accounts_place` accepts `payments` only when it closes the bill. `Payments_create` can link a payment to bills (spread over what they owe); whether it prints a fiscal receipt is not stated. `Accounts_getpaymentlink` makes a one-time public link. Every write must come from a registered cash desk assigned to the API user. |
+
+Nothing else in this file changes. The open questions at the end stand, except that Lukanet question 6 (find by uuid) is answered "no".
+
 ## How to read the status column
 
 | Mark | Meaning |
