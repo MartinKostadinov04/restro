@@ -97,7 +97,11 @@ const PHOTOS = [
 ] as const
 const photo = (n: number) => fixtureId('as', n)
 
-/** D109: the two logos with no background, one white and one black; the matrix swaps them in. */
+/**
+ * D109: the two logos with no background, one white and one black. Only their image files are
+ * written: a snapshot may not name an asset that nothing uses, so the matrix swaps one in for the
+ * logo it has (it serves the snapshot with that one asset moved to the new id).
+ */
 const MARKS = [
   { n: 8, w: 640, h: 200, ink: '#ffffff', alt: bgen('Бяло лого', 'White logo') },
   { n: 9, w: 640, h: 200, ink: '#000000', alt: bgen('Черно лого', 'Black logo') },
@@ -133,7 +137,7 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
     locales: { default: 'bg_BG', available: ['bg_BG', 'en_US'] },
     menuTitle: bgen('Визуален клуб', 'Visual Club'),
     assets: Object.fromEntries(
-      [...PHOTOS, ...MARKS].map((entry) => [
+      PHOTOS.map((entry) => [
         photo(entry.n),
         {
           w: entry.w,
@@ -144,8 +148,7 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
       ]),
     ),
     tags: { [signature]: bgen('Фирмено', 'Signature'), [spicy]: bgen('Люто', 'Spicy') },
-    // The logos are the assets no item uses; the snapshot must name them to accept them (the two
-    // marks with no background are for the matrix, which swaps one in as the logo).
+    // The logo is the one asset no item uses; the snapshot must name it to accept it.
     theme: { logo: photo(7) },
     features: {
       filters: true,

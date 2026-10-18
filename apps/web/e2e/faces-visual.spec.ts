@@ -173,16 +173,22 @@ async function openMenu(
     const response = await route.fetch()
     const snapshot = (await response.json()) as {
       layout?: Record<string, unknown>
-      theme: Record<string, unknown>
+      theme: { logo: string } & Record<string, unknown>
+      assets: Record<string, unknown>
     }
+    // D109: a logo with no background instead of the fixture's blue one. A snapshot may not name
+    // an asset nothing uses, so the logo's entry moves to the new id (its file paths with it).
+    const swapped =
+      logo === undefined
+        ? {}
+        : (() => {
+            const { [snapshot.theme.logo]: entry, ...others } = snapshot.assets
+            const moved = JSON.parse(JSON.stringify(entry).replaceAll(snapshot.theme.logo, logo))
+            return { theme: { ...snapshot.theme, logo }, assets: { ...others, [logo]: moved } }
+          })()
     await route.fulfill({
       response,
-      json: {
-        ...snapshot,
-        layout: { ...snapshot.layout, default: layout },
-        // D109: a logo with no background instead of the fixture's blue one.
-        ...(logo === undefined ? {} : { theme: { ...snapshot.theme, logo } }),
-      },
+      json: { ...snapshot, layout: { ...snapshot.layout, default: layout }, ...swapped },
     })
   })
   await page.goto(`${visualPath(theme)}?lang=${lang}&t=${theme.table}`)
