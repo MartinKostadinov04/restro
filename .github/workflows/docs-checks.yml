@@ -1,0 +1,74 @@
+# Docs checks: the quick gate for a change that touches only documentation, agent docs or skills
+# (Martin 10-18, after the October Actions minutes ran out). ci.yml skips such a change with
+# paths-ignore; this workflow runs the checks that read those files: lint, the secret scan, the
+# repo-level guardrails in scripts/ (decisions index, menu functionality file, vendor words) and the
+# one app test that reads a guide. A change that touches code as well runs ci.yml in full, and
+# this workflow too.
+name: Docs checks
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
+  push:
+    branches:
+      - main
+      - '**/foundation'
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
+
+permissions:
+  contents: read
+  # gitleaks-action lists the commits of a pull request.
+  pull-requests: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Lint, secrets, docs guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      # Full history, because gitleaks scans every commit of the push or pull request.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+
+      # The guardrails that read docs/ and .claude/skills/ (decisions, menu functionality file,
+      # vendor words), and apps/web's test of docs/guides/qr-links.md.
+      - name: Docs guardrails
+        run: |
+          pnpm vitest run --project scripts --reporter=dot
+          pnpm vitest run --project apps/web src/guides --reporter=dot
