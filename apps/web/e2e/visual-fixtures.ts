@@ -6,6 +6,8 @@
 // Like the look fixture of the guest page (e2e/support.ts) these menus have no venue row: they are
 // snapshot files in the e2e publish folder, found by a fixed public code.
 
+import { fixtureId } from '@restro/shell/testing'
+
 /** The five themes of the audit: the designer's four presets and one made from three colours. */
 export const VISUAL_THEMES = [
   { id: 'botanical', publicId: 'visualbota01', table: 'tb_e2eVisualTable01' },
@@ -50,8 +52,9 @@ export const LONG_TEXT_NAME_EN = 'Roast lamb with rosemary, garlic and grilled v
  * menu's snapshot with one of them as `theme.logo`.
  */
 export const LOGO_MARKS = {
-  white: 'as_0000000000000000000008',
-  black: 'as_0000000000000000000009',
+  // The seed's photos are ids 1 to 7 (7 is the menus' own logo), so 8 and 9 are free.
+  white: fixtureId('as', 8),
+  black: fixtureId('as', 9),
 } as const
 
 /** Items the specs look for by their Bulgarian name. */

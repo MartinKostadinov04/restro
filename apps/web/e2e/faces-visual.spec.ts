@@ -162,11 +162,17 @@ const SNAPSHOT_FILE = /\/snap\/sn_[^/]+\.json$/
  * paths with it).
  */
 function withLogo(
-  snapshot: { theme: { logo: string } & Record<string, unknown>; assets: Record<string, unknown> },
+  snapshot: {
+    theme: { logo: string | null } & Record<string, unknown>
+    assets: Record<string, unknown>
+  },
   logo: string,
 ) {
-  const { [snapshot.theme.logo]: entry, ...others } = snapshot.assets
-  const moved = JSON.parse(JSON.stringify(entry).replaceAll(snapshot.theme.logo, logo))
+  // A menu with no logo (null, or an id the assets lack) is served as it is; the test then skips.
+  const current = snapshot.theme.logo
+  if (current === null || !(current in snapshot.assets)) return {}
+  const { [current]: entry, ...others } = snapshot.assets
+  const moved = JSON.parse(JSON.stringify(entry).replaceAll(current, logo))
   return { theme: { ...snapshot.theme, logo }, assets: { ...others, [logo]: moved } }
 }
 
@@ -187,7 +193,7 @@ async function openMenu(
     const response = await route.fetch()
     const snapshot = (await response.json()) as {
       layout?: Record<string, unknown>
-      theme: { logo: string } & Record<string, unknown>
+      theme: { logo: string | null } & Record<string, unknown>
       assets: Record<string, unknown>
     }
     await route.fulfill({
@@ -205,12 +211,18 @@ async function openMenu(
   await loadPhotos(page)
 }
 
+// The global setup of the guest page's test clears the venue and table files of the publish folder
+// when it starts, so the five fixture menus are written (again) here, for this template: once per
+// worker, by whichever describe block runs first.
+let seeded = false
+function seedOnce() {
+  if (seeded) return
+  runScript('./scripts/seed-visual-e2e.ts', FACE_ID)
+  seeded = true
+}
+
 test.describe('the guest menu', () => {
-  // The global setup of the guest page's test clears the venue and table files of the publish folder
-  // when it starts, so the five fixture menus are written (again) here, for this template.
-  test.beforeAll(() => {
-    runScript('./scripts/seed-visual-e2e.ts', FACE_ID)
-  })
+  test.beforeAll(seedOnce)
 
   for (const theme of VISUAL_THEMES) {
     for (const scheme of SCHEMES) {
@@ -339,9 +351,7 @@ async function zoomText(page: Page, factor: number) {
 }
 
 test.describe('the worst cases of D109', () => {
-  test.beforeAll(() => {
-    runScript('./scripts/seed-visual-e2e.ts', FACE_ID)
-  })
+  test.beforeAll(seedOnce)
 
   for (const theme of VISUAL_THEMES) {
     test(`${theme.id} a filter that matches nothing`, async ({ page }) => {
@@ -355,11 +365,13 @@ test.describe('the worst cases of D109', () => {
           // The contract has no marker for the choices: every button of the sheet is one, except
           // the close button and the clear button, whose names are the shell's strings.
           const buttons = dialogs(page).first().getByRole('button')
-          const total = await buttons.count()
-          for (let index = 0; index < total; index++) {
+          // Re-read the list each turn: a click may re-render the chips, and a template may move
+          // the chips that are on to the front; a chip that is already on is left alone.
+          for (let index = 0; index < (await buttons.count()); index++) {
             // A template whose sheet closes itself on a choice leaves nothing more to press.
             if ((await dialogs(page).count()) === 0) break
             const button = buttons.nth(index)
+            if ((await button.getAttribute('aria-pressed')) === 'true') continue
             const name = (await button.getAttribute('aria-label')) ?? (await button.innerText())
             if (name.trim() === strings.close || name.trim() === strings.clearFilters) continue
             await button.click()
@@ -388,7 +400,7 @@ test.describe('the worst cases of D109', () => {
         for (const [name, id] of Object.entries(LOGO_MARKS)) {
           await openMenu(page, theme, 'bg', 'two', id)
           if ((await page.locator(`img[src*="${id}"]`).count()) === 0) {
-            skip('logo: the template draws no logo (no image of the theme logo on the page)')
+            skip('logo: the menu has no logo to swap, or the template draws none')
             continue
           }
           await shoot(page, file(theme, scheme, 'bg', 390, `logo-${name}`))
