@@ -9,6 +9,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues.
 - Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
+- Q82 Lukanet: seven open points from the signed-in API reading (part payment on an open bill, refusing a row, our id on a bill, approval in the status, offline docs); send with Q79.
 - Q79 Lukanet: is barsy NRA-listed sales software; can it take Restro's orders as an Annex 42 import before acceptance (fiscal research 10-17, L11); with Q8 and Q24.
 - Q80 Martin, after the lawyer: a paper fiscal receipt per song-request capture with no guest email (D99); weigh the options.
 - Q81 Martin, after the lawyer: the bill screen as a "document" under Н-18 чл. 7а; until then no template screen resembles a receipt or says "фискален".
@@ -66,7 +67,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
-- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 Martin: sign in to docs.lukanet.com for the signed-in reading; grilling #35 bill in Restro, #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main.
+- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 signed-in reading done 10-18 (`research/barsy-signed-in`); grilling #35 bill in Restro, #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main.
 - T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
 - T91 Claude, then Martin: guest page `viewport-fit=cover` and status-bar colour; the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
 - #21 Claude: operational-screens note, audit and template flow additions, stack-doc library table, T91 and T88 refinements (D109); Sonnet.
