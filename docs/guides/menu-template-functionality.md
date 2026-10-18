@@ -37,7 +37,7 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### Browse a horizontal section
 - **Shell key:** none (`hints.layout` of a section)
 - **Status:** supported
-- **Drawn means:** a section the composer marks horizontal is a row the guest scrolls sideways; any other section is the usual list.
+- **Drawn means:** a section the composer marks horizontal is a row the guest scrolls sideways; any other section is the usual list. Native scrolling of a focusable row counts as the tap-and-keyboard alternative; no drag code is needed.
 - **Where:** §8.1, App. C 19; D92
 
 ### Change the menu layout
@@ -49,7 +49,7 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### Filter the menu
 - **Shell key:** `filters` (manifest `filters`, slot `menu.filters`)
 - **Status:** supported
-- **Drawn means:** a control to narrow the menu by dietary label and tag, drawn only when `view.features.filters` is on, with a way to reset; it needs no table code.
+- **Drawn means:** a control to narrow the menu by dietary label and tag, drawn only when `view.features.filters` is on, with a way to reset; when nothing matches, the message `strings.noMatches` with a reset control labelled `strings.clearFilters`; it needs no table code.
 - **Where:** §5.5, §7.2, §7.3; D71
 
 ### Switch the language
