@@ -73,7 +73,7 @@ Read `docs/decisions/D104.md` (the **heavy zone**, the "I don't know" steps) and
 
 - **Inside the current phase:** check CLAUDE.md's "Scope right now" before the card. Work outside it (ordering, payments, POS writes, a parked connector, a deploy) goes on the card as "outside the current phase", for Martin to start or park.
 - **Facts are the agent's job; decisions are Martin's.** A grilling round asks Martin only what he can decide, each question with a recommendation.
-- **Decisions are files** `docs/decisions/D<n>.md` (`docs/agents/domain.md`); terms go to `GLOSSARY.md` as they settle.
+- **Decisions are files** `docs/decisions/D<n>.md` (`docs/agents/domain.md`); terms go to `GLOSSARY.md` as they settle. Every grilling keeps a decision log and wires it (`domain.md` → "Decision logs"); when a decision alone is unclear, `revisit-decision` reads the log behind it.
 - **Specs and tickets are GitHub issues** (`docs/agents/issue-tracker.md`); every code change leaves through `ship.md`.
 - **Phase boundaries:** one unbroken window from grilling to tickets; at a boundary follow `ask-matt`'s `PHASE-BOUNDARIES.md` (same folder as the `ask-matt` skill). An "agent session" here is the desktop app's session, Matt's "subagent". The app's fork and hand-off sessions do `handoff`'s job; `handoff` itself is only for work leaving this app (another tool, a person).
 - **Limits:** `docs/agents/lead.md` (two agents running tests at once; one finished build waiting for Martin's acceptance; cheap work to a cheap model, then checked).

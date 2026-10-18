@@ -23,7 +23,7 @@ No deploys from an agent (CLAUDE.md). When the tracker opens a deploy (the Stage
 
 ## Outside question
 The answer sits outside the repo.
-- **Public documents** (barsy docs, a law, a provider's API): `research`, findings with citations in `docs/research/`. Official POS docs outrank everything else (CLAUDE.md, "Fact precedence").
+- **Public documents** (barsy docs, a law, a provider's API): `research`, findings with citations as a deliverable in `docs/deliverables/` (D114). A plain set of legal rules (a law's or regulation's text) is researched by agents; a lawyer is asked only for interpretation (Martin 10-18). Official POS docs outrank everything else (CLAUDE.md, "Fact precedence").
 - **A person** (Lukanet, the lawyer or accountant, a pilot owner): `to-questionnaire`. Martin sends it; the lead never does. The open questions per person are in `docs/open-items.md`.
 - The answers feed a grilling round, a D-number, or a ticket.
 

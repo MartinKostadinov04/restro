@@ -4,7 +4,7 @@ Restro is a QR-to-phone menu and ordering web app for venues (pilot: Bulgarian n
 
 ## Read before any task
 Read only what your task needs: the big documents are for looking things up, not for reading whole (Martin 10-11: agents read too much).
-1. Decisions are binding and each is a file: `docs/decisions/D<n>.md`. Read the ones your ticket names and any D-number cited in the code you change; `docs/decisions.md` is only the index of titles, for finding a number. For a task's full text, search `docs/tracker.md` for `T<n>.`; never read the whole tracker.
+1. Decisions are binding and each is a file: `docs/decisions/D<n>.md`. Read the ones your ticket names and any D-number cited in the code you change; `docs/decisions.md` is only the index of titles, for finding a number. When a decision alone is not clear (why, what was rejected, what was left open), use the `revisit-decision` skill: it reads the decision log and deliverables behind it. For a task's full text, search `docs/tracker.md` for `T<n>.`; never read the whole tracker.
 2. Your ticket (a GitHub issue) and the `docs/adjustments/` file it names; `docs/agent-briefs/` holds the briefs written before 10-16. Earlier agents' research, opinions and process maps are in `docs/deliverables/` (index `docs/deliverables.md`): read the ones your ticket names.
 3. Only the sections of `docs/architecture/data-architecture.md` and `stack.md` your brief names. They mirror the live doc, which wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a.
 4. `docs/platform-reference.md` and the Platform files your brief names (read-only, `C:\Platform`).

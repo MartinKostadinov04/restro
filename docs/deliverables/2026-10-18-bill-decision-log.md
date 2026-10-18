@@ -125,7 +125,7 @@ Only D-numbers bind; this log is the index to them.
 | 8.10 | Tips. | After ordering. | later | D112 |
 | 8.11 | The time others have to pay their share (D30). | Too short for a group; decided with the bill screen. | open | D30, D112, #45 |
 | 8.12 | barsy's own payment links. | They would bypass the venue's payment provider. | out | CQ |
-| 8.13 | The Instagram in-app browser. | Guests scan with the camera, which opens their normal browser. | out | this log |
+| 8.13 | The Instagram in-app browser. | Guests scan with the camera, which opens their normal browser. | out | D112 |
 
 ## 9. Follow-ups and way of working
 
@@ -134,5 +134,5 @@ Only D-numbers bind; this log is the index to them.
 | 9.1 | The bill screen gets its own prototype ticket: paid and unpaid, paying from it, group payment, D30, the minimum, tips. | Martin asked to mark it for design. | open | #45 |
 | 9.2 | One living list of POS questions, POS-neutral, with a barsy and a Mistral line each; it is also the Mistral checklist. | Martin: figure out each POS. | firm | CQ |
 | 9.3 | Agents' deliverables are filed in `docs/deliverables/` with an index, informing and never binding. | Martin. | firm | D114, CLAUDE.md |
-| 9.4 | Plain legal rules are researched by agents; a lawyer only for interpretation. | Martin. | firm | lead's memory |
+| 9.4 | Plain legal rules are researched by agents; a lawyer only for interpretation. | Martin. | firm | restro-flow `upkeep.md` |
 | 9.5 | D5 ("an order is paid when placed") is superseded; D14 and D29 refined; D30 reopened. | | firm | D111–D113 |
