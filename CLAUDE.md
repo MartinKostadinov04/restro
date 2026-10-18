@@ -62,7 +62,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 Put the question in your report, with your recommendation, when: a rule or doc section is ambiguous or conflicts; a POS behaviour is undocumented; you need a new dependency or a schema change beyond your brief; a UX choice is unspecified; a test can only pass by weakening a rule. State unknowns as unknowns.
 
 ## Testing, and when a task is done
-**Done** = `pnpm lint && pnpm typecheck && pnpm deps:check` pass, plus the tests of every package you touched (`pnpm vitest run --project <package dir> --reporter=dot`) and any Playwright spec you wrote or changed. CI runs the full gate on the pushed branch; the lead merges only when it is green.
+**Done** = `pnpm lint && pnpm typecheck && pnpm deps:check` pass, plus the tests of every package you touched (`pnpm vitest run --project <package dir> --reporter=dot`) and any Playwright spec you wrote or changed. CI runs the full gate on the pushed branch; a change that touches only `docs/`, Markdown or `.claude/` runs the quick docs checks instead (`.github/workflows/docs-checks.yml`). The lead merges only when it is green.
 
 While you work, run only the tests of what you touched, with quiet output:
 - `pnpm vitest run --project <package dir> <paths> --reporter=dot`
