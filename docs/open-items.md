@@ -69,14 +69,14 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
 - #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 signed-in reading done 10-18 (`research/barsy-signed-in`); grilling #35 bill in Restro, #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main.
 - T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
-- T91 Claude, then Martin: guest page `viewport-fit=cover` and status-bar colour; the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
+- T91 Claude, then Martin: guest page `viewport-fit=cover`, a status-bar colour from the venue's `background` roles and `interactive-widget=resizes-content` (D109); the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
 - #21 Claude: operational-screens note, audit and template flow additions, stack-doc library table, T91 and T88 refinements (D109); Sonnet.
 - #20 Claude: contract fixtures and matrix cases for the worst cases D109 lists; Sonnet; after #18's ruling.
 - #19 Claude: template-design interaction-polish reference, override rows, template-review checks (D109); Sonnet; after PR 16 merges.
 - #18 Claude: Emil Kowalski skills, three reviews joined and ruled in D109; closes when #19, #20 and #21 are merged.
 - T90 Claude: contract markers for the audits (add to bag, open dish, pay controls, language switch); small; before T87.
 - T89 Claude: screenshot matrix for any template (contract markers, `FACES_VISUAL_FACE`); blocks T87; Sonnet.
-- T88 Claude: four admin defects from the design-skills trial (Sonnet); six ordering-sheet findings wait for ordering (D79).
+- T88 Claude: four admin defects from the design-skills trial, plus the admin's global reduced-motion rule and the Toaster defaults (D109) (Sonnet); six ordering-sheet findings wait for ordering (D79).
 - T87 Claude: first template through the pipeline, a dark club-night face (D105); after T86; Martin accepts on a local preview.
 - T86 Claude: template pipeline (D105–D107): functionality file and guardrail, template-design and template-review skills, pinned audit rules, template flow; ticket next.
 - T85 Claude: portability groundwork (D103): containers, storage module, schema split with a no-join check, restore drill; before T82.

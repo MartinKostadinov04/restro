@@ -38,6 +38,24 @@ Each layer takes the most widely used tool that has a free or usage-priced tier,
 | Hosting | Railway, EU West (Amsterdam): web and worker in one project (Postgres on Supabase, D43) | Always-on processes for the queue; usage-based billing suits low traffic. Cloudflare's free proxy sits in front: rate limits, Turnstile bot checks, and a cached static guest page that keeps menus up even if Railway is down | Vercel: Hobby is non-commercial, Pro is $20 a seat plus a separate worker host. A VPS is cheaper still, but someone has to run the server |
 | Monitoring | Sentry (EU region, no personal data), guest events in our own Postgres, deep health checks, phone alerts through a Telegram bot | Errors; funnel data we own and Martin can query in SQL or Power BI (H1–H3); a phone alert within a minute when orders or money get stuck | PostHog: another vendor and a consent question; paid APM |
 
+## UI libraries: in use, and considered but not adopted
+
+Already in the admin, and kept: Sonner (the one Toaster), vaul (drawers), clsx and class-variance-authority (class names), `@hello-pangea/dnd` (the composer's drag and keyboard reorder), tw-animate-css (shadcn's enter and exit classes). A guest template adds none of them (the designer guide's §9.1: React and nothing else).
+
+Considered and not adopted, so nobody proposes them again (D109):
+
+| Library | Why not |
+| --- | --- |
+| motion (Framer Motion) | A template adds no animation library (§9.1) and its motion is plain CSS; the admin is calm shadcn (D107) |
+| NumberFlow | A price must never animate: prices are `price.text` and money stays integer minor units (rule 8); a rolling number is motion without a tap |
+| cmdk | A keyboard-first command palette is the opposite of D107 for an owner who is not a tech person |
+| zustand | Server components read and server actions write (U4), so there is no client store to hold |
+| Virtuoso, virtua | Every item stays in the markup; virtualising a long list is a proposal for Martin after a measurement, never added unasked (row 3 of `.claude/skills/template-review/references/web-interface-guidelines.restro-overrides.md`) |
+| base-ui | Radix through shadcn is installed; swapping an installed library is churn |
+| next-themes | The admin follows its own theme choice (`apps/web/src/lib/theme.ts`), and the Toaster reads it |
+| dnd kit | `@hello-pangea/dnd` runs the composer, the Platform port map uses it, and a keyboard-reorder e2e depends on it |
+| Leva | A live panel for tuning values while developing; it has no screen of the product to serve |
+
 ## Cost at pilot scale
 
 Production should cost about $10–15 a month before money flows, almost all of it Railway, and about $35–40 once Supabase Pro is on (D43). The usage figure is an estimate; check it against the first month's invoice.
