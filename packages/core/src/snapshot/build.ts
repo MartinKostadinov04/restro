@@ -106,6 +106,10 @@ export interface SnapshotContext {
   readonly features?: GuestFeatures | null
   /** The menu's layout (D92, from `menuLayoutOf`); null or absent = `DEFAULT_MENU_LAYOUT`. */
   readonly layout?: SnapshotLayout | null
+  /** The menu's header name (D92, `menus.name`); null, absent or blank = none set. */
+  readonly menuName?: string | null
+  /** The venue's display name (`venues.name`): the heading of a menu with no name and no title. */
+  readonly venueName?: string | null
 }
 
 /**
@@ -442,6 +446,19 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
   const features = canonicalFeatures(ctx.features ?? DEFAULT_GUEST_FEATURES)
   const layout = ctx.layout ?? DEFAULT_MENU_LAYOUT
 
+  // The guest heading (D92): the menu's header name, else the document's title, else the venue's
+  // display name. A plain name is one text, put in the main language; the shell falls back to it.
+  const inMainLanguage = (name: string | null | undefined): LocalizedText | null => {
+    const trimmed = name?.trim() ?? ''
+    return trimmed === '' ? null : { [ctx.locales.default]: trimmed }
+  }
+  const documentTitle = text('menu', resolved.menu.fields, 'title')
+  const title =
+    inMainLanguage(ctx.menuName) ??
+    (Object.keys(documentTitle).length === 0 ? null : documentTitle) ??
+    inMainLanguage(ctx.venueName) ??
+    {}
+
   const content: Omit<MenuSnapshot, 'snapshot'> = {
     schema: SNAPSHOT_SCHEMA,
     locales: { default: ctx.locales.default, available: [...ctx.locales.available] },
@@ -461,7 +478,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     field_types: fieldTypes,
     menu: {
       id: resolved.menu.id,
-      title: text('menu', resolved.menu.fields, 'title'),
+      title,
       intro: text('menu', resolved.menu.fields, 'intro'),
       availability: valueAs('availability', read('menu', resolved.menu.fields, 'availability')),
       sections: menuSections,

@@ -171,15 +171,19 @@ describe.skipIf(!hasDatabase)('loadPublishSummary (as the restro_app role)', () 
 
   it('follows a publish per menu, and a header name', async () => {
     await publish(main)
+    const published = await loadPublishSummary(app, tenant, venueId, served)
+    expect(published.menus[0]).toMatchObject({ changes: 0, identical: true })
+    // The header name is the guest heading (D92): a rename is a change waiting.
     expect((await renameMenu(app, tenant, { venueId, menuId: main, name: 'Main' })).ok).toBe(true)
     const summary = await loadPublishSummary(app, tenant, venueId, served)
-    expect(summary.menus[0]).toMatchObject({ name: 'Main', changes: 0, identical: true })
+    expect(summary.menus[0]).toMatchObject({ name: 'Main', changes: 1, identical: false })
     expect(summary.menus[1]).toMatchObject({ changes: 1, identical: false })
     // The brunch menu still has something to publish.
     expect(summary.canPublish).toBe(true)
   })
 
   it('has nothing to publish once every menu that can be published is', async () => {
+    await publish(main)
     await publish(brunch)
     const summary = await loadPublishSummary(app, tenant, venueId, served)
     expect(summary.menus.map((menu) => [menu.changes, menu.identical, menu.blocked])).toEqual([
@@ -231,7 +235,7 @@ describe.skipIf(!hasDatabase)('loadPublishSummary (as the restro_app role)', () 
         menu.entries.map((entry) => entry.version),
       ]),
     ).toEqual([
-      ['Main', true, 1, [1]],
+      ['Main', true, 2, [2, 1]],
       ['Brunch', false, 1, [1]],
       ['Empty', false, null, []],
     ])

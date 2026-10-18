@@ -1168,6 +1168,7 @@
     "rename": {
       "open": "Rename",
       "label": "Menu name",
+      "help": "Guests see this name at the top of the menu after the next publish.",
       "save": "Save"
     },
     "delete": "Delete",

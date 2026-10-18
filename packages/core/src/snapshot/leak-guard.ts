@@ -187,10 +187,24 @@ export function collectForbiddenValues(sources: ForbiddenSources): Map<string, F
  * any string of `forbidden`. Returns the parsed snapshot. The error lists every place found
  * (redacted path and kind), never the value.
  */
-export function assertSnapshotSafe(snapshot: unknown, forbidden: ForbiddenValues): MenuSnapshot {
+export function assertSnapshotSafe(
+  snapshot: unknown,
+  forbidden: ForbiddenValues,
+  options: {
+    /**
+     * Paths the walk skips: places whose text is public by design (the guest heading, D92), so a
+     * forbidden value that happens to read the same is still refused everywhere else.
+     */
+    readonly exempt?: readonly (readonly PropertyKey[])[]
+  } = {},
+): MenuSnapshot {
   const parsed = parseSnapshot(snapshot, forbidden)
   const problems: SnapshotProblem[] = []
+  const exempt = options.exempt ?? []
+  const isExempt = (path: PropertyKey[]) =>
+    exempt.some((e) => e.length === path.length && e.every((k, i) => String(k) === String(path[i])))
   const walk = (value: unknown, path: PropertyKey[]) => {
+    if (isExempt(path)) return
     if (typeof value === 'string') {
       const kind = forbidden.get(value)
       if (kind !== undefined) problems.push({ path: snapshotPath(path, forbidden), code: kind })

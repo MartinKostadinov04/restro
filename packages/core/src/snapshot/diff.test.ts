@@ -193,6 +193,22 @@ describe('diffSnapshots', () => {
     expect(diff.total).toBe(1)
   })
 
+  it('a new header name for the menu (D92) is one change outside the items', () => {
+    const names = { menuName: null, venueName: 'Demo Club' }
+    const renamed = diffSnapshots(
+      snapshotOf(bar(), context(names)),
+      snapshotOf(bar(), context({ ...names, menuName: 'Club Sofia' })),
+    )
+    expect(renamed).toMatchObject({ areas: ['menu'], total: 1, renamed: [], otherChanged: [] })
+
+    const untitled = () => bar((b) => b.unset(ROOT, 'title'))
+    const cleared = diffSnapshots(
+      snapshotOf(untitled(), context({ ...names, menuName: 'Club Sofia' })),
+      snapshotOf(untitled(), context(names)),
+    )
+    expect(cleared).toMatchObject({ areas: ['menu'], total: 1 })
+  })
+
   it('a new look (the theme) is a change outside the items', () => {
     const next = snapshotOf(
       bar(),
