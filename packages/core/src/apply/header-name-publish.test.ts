@@ -70,6 +70,8 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
         manual(item, 'name', { bg_BG: 'Вода' }),
         manual(item, 'price', { amount_minor: 300, currency: 'EUR' }),
         manual(item, 'allergens', []),
+        // An internal note that reads like the header name: the heading is public all the same.
+        manual(item, 'internal_note', 'Club Sofia'),
         { op: 'setPlacement', item: { id: item }, section: { id: section }, sortKey: 'end' },
       ],
     } as ChangeSet)
@@ -110,7 +112,8 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
     })
     const third = await publish(10)
     expect(third.status).toBe('published')
-    expect(Object.values(third.snapshot.body?.menu.title ?? {})).toEqual(['Demo Club'])
+    const body = third.snapshot.body
+    expect(body?.menu.title).toEqual({ [body?.locales.default ?? '']: 'Demo Club' })
     expect((await publish(11)).status).toBe('unchanged')
   })
 })

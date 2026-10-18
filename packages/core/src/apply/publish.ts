@@ -651,11 +651,8 @@ async function prepareSnapshot(
     doc,
     externalIds,
     backendOnly,
-    // The heading's names are public by design (D92), like the look's strings.
-    publicStrings: [
-      ...lookPublicStrings(theme, presentation),
-      ...[menuName, venueName].flatMap((name) => (name === null ? [] : [name.trim()])),
-    ],
+    // The heading is public by design (D92), like the look's strings: only the name it shows.
+    publicStrings: [...lookPublicStrings(theme, presentation), ...Object.values(built.menu.title)],
   })
   let snapshot: MenuSnapshot
   try {

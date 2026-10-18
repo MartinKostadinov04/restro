@@ -448,15 +448,15 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
 
   // The guest heading (D92): the menu's header name, else the document's title, else the venue's
   // display name. A plain name is one text, put in the main language; the shell falls back to it.
-  const named = (name: string | null | undefined): LocalizedText | null => {
+  const inMainLanguage = (name: string | null | undefined): LocalizedText | null => {
     const trimmed = name?.trim() ?? ''
     return trimmed === '' ? null : { [ctx.locales.default]: trimmed }
   }
   const documentTitle = text('menu', resolved.menu.fields, 'title')
   const title =
-    named(ctx.menuName) ??
-    (Object.keys(documentTitle).length > 0 ? documentTitle : null) ??
-    named(ctx.venueName) ??
+    inMainLanguage(ctx.menuName) ??
+    (Object.keys(documentTitle).length === 0 ? null : documentTitle) ??
+    inMainLanguage(ctx.venueName) ??
     {}
 
   const content: Omit<MenuSnapshot, 'snapshot'> = {
