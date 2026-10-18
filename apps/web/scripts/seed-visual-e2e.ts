@@ -44,6 +44,7 @@ import { fixtureId, snapshotFromSpec } from '@restro/shell/testing'
 import {
   CUSTOM_COLOURS,
   isFaceId,
+  LOGO_MARKS,
   LONG_NAME_BG,
   LONG_NAME_EN,
   LONG_TEXT_NAME_BG,
@@ -96,6 +97,23 @@ const PHOTOS = [
 ] as const
 const photo = (n: number) => fixtureId('as', n)
 
+/** D109: the two logos with no background, one white and one black; the matrix swaps them in. */
+const MARKS = [
+  { n: 8, w: 640, h: 200, ink: '#ffffff', alt: bgen('Бяло лого', 'White logo') },
+  { n: 9, w: 640, h: 200, ink: '#000000', alt: bgen('Черно лого', 'Black logo') },
+] as const
+
+/** A club mark in one colour on a transparent ground: a ring and two bars. */
+function markArtwork(width: number, height: number, ink: string) {
+  const r = height * 0.36
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <circle cx="${height / 2}" cy="${height / 2}" r="${r}" fill="none" stroke="${ink}" stroke-width="${height * 0.1}"/>
+    <rect x="${height * 1.05}" y="${height * 0.3}" width="${width * 0.55}" height="${height * 0.12}" fill="${ink}"/>
+    <rect x="${height * 1.05}" y="${height * 0.56}" width="${width * 0.38}" height="${height * 0.12}" fill="${ink}"/>
+  </svg>`
+  return Buffer.from(svg)
+}
+
 function artwork(width: number, height: number, [from, to]: readonly [string, string]) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
     <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -115,7 +133,7 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
     locales: { default: 'bg_BG', available: ['bg_BG', 'en_US'] },
     menuTitle: bgen('Визуален клуб', 'Visual Club'),
     assets: Object.fromEntries(
-      PHOTOS.map((entry) => [
+      [...PHOTOS, ...MARKS].map((entry) => [
         photo(entry.n),
         {
           w: entry.w,
@@ -126,7 +144,8 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
       ]),
     ),
     tags: { [signature]: bgen('Фирмено', 'Signature'), [spicy]: bgen('Люто', 'Spicy') },
-    // The logo is the one asset no item uses; the snapshot must name it to accept it.
+    // The logos are the assets no item uses; the snapshot must name them to accept them (the two
+    // marks with no background are for the matrix, which swaps one in as the logo).
     theme: { logo: photo(7) },
     features: {
       filters: true,
@@ -366,6 +385,9 @@ async function main(): Promise<void> {
     if ([...text].length !== 60)
       throw new Error(`a long fixture name is not 60 characters: ${text}`)
   }
+  if (photo(8) !== LOGO_MARKS.white || photo(9) !== LOGO_MARKS.black) {
+    throw new Error('the logo marks of visual-fixtures.ts are not assets 8 and 9')
+  }
   const config = publishStoreConfig(process.env)
   if (config.kind !== 'local') throw new Error('the e2e publish store must be local')
   const store = await createPublishStore(config)
@@ -378,6 +400,15 @@ async function main(): Promise<void> {
     for (const width of [320, 640, 1280]) {
       const path = variantPath(photo(entry.n) as AssetId, width)
       const bytes = await sharp(source).resize(width).webp({ quality: 70 }).toBuffer()
+      await store.put(path, bytes, publishPutOptions(path))
+    }
+  }
+  // The marks have an alpha channel, which webp keeps.
+  for (const entry of MARKS) {
+    const source = markArtwork(entry.w, entry.h, entry.ink)
+    for (const width of [320, 640, 1280]) {
+      const path = variantPath(photo(entry.n) as AssetId, width)
+      const bytes = await sharp(source).resize(width).webp({ quality: 80 }).toBuffer()
       await store.put(path, bytes, publishPutOptions(path))
     }
   }

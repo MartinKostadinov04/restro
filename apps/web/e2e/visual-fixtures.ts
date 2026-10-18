@@ -44,6 +44,16 @@ export const LONG_TEXT_NAME_BG = 'Агнешко печено с розмари�
 /** The English twin of the one above (60 characters as well). */
 export const LONG_TEXT_NAME_EN = 'Roast lamb with rosemary, garlic and grilled vegetables (2x)'
 
+/**
+ * Two more logos for the venue, drawn with no background (D109): a white mark and a black one, each
+ * invisible on one of the two schemes. The seed writes them as assets of every menu (`as_` ids
+ * 8 and 9 of the fixture numbering), and the matrix swaps one in as `theme.logo`.
+ */
+export const LOGO_MARKS = {
+  white: 'as_0000000000000000000008',
+  black: 'as_0000000000000000000009',
+} as const
+
 /** Items the specs look for by their Bulgarian name. */
 export const VISUAL_ITEMS = {
   /** A photo card in the photo strip, with a "new" badge and many labels. */
