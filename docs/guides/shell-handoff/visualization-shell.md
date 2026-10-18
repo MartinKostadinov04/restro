@@ -715,7 +715,7 @@ Reading order that the tests expect: for each section, its **own items first, th
 
 The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceContractSuite` (§7.7). They render your face (to a static HTML string) for every fixture on every channel your manifest declares, and report each failure with the rule it breaks.
 
-**Fixtures** (every face must survive all thirteen):
+**Fixtures** (every face must survive all seventeen):
 
 | Fixture | The hard case |
 |---|---|
@@ -732,6 +732,10 @@ The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceC
 | `custom-roles` | A venue with its own eight colour roles and a forced dark scheme. |
 | `features-on` | Every guest feature switched on, supported by the platform, at a confirmed table with ordering on, on a menu that has filter chips. |
 | `features-off` | The same menu with the venue's switches all off: no control may be drawn. |
+| `horizontal-sections` | A horizontal section that is not the first, between a vertical one and one published without a layout; two columns, with the guest switch. |
+| `one-column` | The first section horizontal, the rest vertical; one column, and the guest may not switch. |
+| `hostile-names` | ALL-CAPS Cyrillic with Й, Ѝ, Ц and Щ (one of 60 characters); a name starting with an emoji and names holding a zero-width joiner; two items with the identical name; a name with doubled spaces; a name that is only spaces, once with an English name to fall back to and once alone (the shell leaves that item out, R3). |
+| `crowded` | Twelve tags on one item, one of 40 characters with no space; a price text of 16 characters; a section with exactly one item; a section with no item (the shell leaves it out). |
 
 **Checks:**
 
@@ -807,7 +811,7 @@ A template is listed in the gallery only when all of these pass. The first three
 
 | Test | What it proves | Where |
 |---|---|---|
-| **`faceContractSuite`** | The manifest passes `validateManifest`; the contract (§7.4) holds on all thirteen fixtures on every channel the manifest declares; the two CSS checks below pass. | The face's own `contract.test.tsx`, and `apps/web/src/faces/registry.test.ts` for every registered template (rendered the way the guest page draws it, with every host prop and `stubServices()`). |
+| **`faceContractSuite`** | The manifest passes `validateManifest`; the contract (§7.4) holds on all seventeen fixtures on every channel the manifest declares; the two CSS checks below pass. | The face's own `contract.test.tsx`, and `apps/web/src/faces/registry.test.ts` for every registered template (rendered the way the guest page draws it, with every host prop and `stubServices()`). |
 | **The CSS theme-only check** | `assertThemeOnlyCss(css)` finds no hex colour, no named colour and no colour function with a literal number; `color-mix()` and relative colours of variables are fine. And `assertFaceScopedCss(css)` finds no `html`, `body` or `:root` selector. | `faceContractSuite`; export the whole stylesheet as one string. |
 | **The feature-slot checks** | Each of `menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay` is absent when its feature is off and present when it is on and listed in the manifest. | `runFaceContract`, inside `faceContractSuite`; the fixtures `features-on` and `features-off` exist for it. |
 | **The registry test** | The template has an entry with a loader, a picture (a PNG of a phone screen, 320 to 480 px wide, at most 150 KB), both names, and its stylesheet is named in the test. | `apps/web/src/faces/registry.test.ts`, `manifests.test.ts` (§12.1). |
@@ -898,6 +902,13 @@ You will not be able to run the shell. To test the cases the contract tests cove
 - `order.askWaiter` set; `menu.schedule` set; `theme.logo` null and not null;
 - a `ViewText` whose `lang` differs from `view.locale`;
 - a section with `hints.color` set, and nested sub-sections;
+- ALL-CAPS Cyrillic names with Й, Ѝ, Ц and Щ, in a card whose name box is clipped or has a tight line height (the marks must not be cut);
+- two items with the identical name; a name that starts with an emoji or holds a zero-width joiner; a name with doubled spaces (shown as given, not collapsed); a name that is only spaces (the shell reads the next language, or leaves the item out);
+- an item with twelve `tags`, one of 40 characters with no space; a `price.text` of 16 characters;
+- a section with exactly one item, and one with none (the shell leaves an empty section out);
+- a filter combination that matches nothing (`strings.noMatches` with `strings.clearFilters`);
+- a `theme.logo` that is transparent, white and black, on the light and the dark scheme;
+- text at 200 % at 320 px wide, and a landscape phone at 844 × 390 with a sheet open;
 - `features` all on (§6.2) and all off, with `services` absent, with an empty state, and with a state that holds a bill (a staff round and a guest round), a waiter request on the way, a quote with VAT and a receipt;
 - `options` missing, with an unknown key, and with a value that is not in `values`;
 - each of the four presets' roles, in `scheme` `light`, `dark` and `auto`, and a theme whose page and panels are very close (a pale page and pale panels) or very far apart in lightness.
