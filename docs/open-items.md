@@ -85,6 +85,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - #8 Claude (research, Opus): Bulgarian fiscal rules for card payments through the app, deposits and paid song requests; prepares the lawyer's Q74 and Q75; waits for Martin's go.
 - #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; done 10-17, findings in `docs/research/2026-10-17-payment-providers-feasibility.md` (recommends Stripe first, myPOS second); next: Martin picks the first provider, then Q76, Q77 and the lawyer's Q74/Q75.
 - #10 Claude (upkeep, Sonnet): one home per rule in the agent docs; CLAUDE.md under 1,500 words; CLAUDE.md diff shown to Martin before merge.
+- #27 Claude: bug, the menu's header name never reaches the guest heading (snapshot title ignores `menus.name`); Opus; found by #24.
 - #26 Claude: dev seed with a real till venue, so audits cover the till-venue rules; Sonnet.
 - #25 Martin: eight small awkward points from the acceptance walk, pick which become change tickets.
 - #24 Claude, then Martin: acceptance walk of Adjustments 01 done 10-18 (one bug, eight awkward points, seven checks need `restro_accept`); Martin's own acceptance next.
