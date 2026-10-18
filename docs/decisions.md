@@ -30,7 +30,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D23](decisions/D23.md) | TypeScript end to end | firm |
 | [D24](decisions/D24.md) | A missing language is added by hand in the translations tab | firm |
 | [D25](decisions/D25.md) | Legal checks per country | firm |
-| [D26](decisions/D26.md) | A venue may opt in to push our translations into barsy, only if the API allows it | pending (wanted) |
+| [D26](decisions/D26.md) | A venue may opt in to push our translations into barsy, only if the API allows it | pending (wanted); back-office write, needs its own decision (D110) |
 | [D27](decisions/D27.md) | Table access in v0: the QR token only | firm |
 | [D28](decisions/D28.md) | Delivery in v0: to the table only | firm |
 | [D29](decisions/D29.md) | Ordering mode per item, set by the owner | firm |
@@ -45,7 +45,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D38](decisions/D38.md) | Channel: QR to phone only | firm |
 | [D39](decisions/D39.md) | Staged proof of concept on one venue | firm |
 | [D40](decisions/D40.md) | Build the doc's document model plus a generic shell/face contract | firm |
-| [D41](decisions/D41.md) | barsy freshness by polling | firm |
+| [D41](decisions/D41.md) | barsy freshness by polling | firm; refined by D110 |
 | [D42](decisions/D42.md) | Allergens are a plain EU-14 enum_set attribute | firm |
 | [D43](decisions/D43.md) | Supabase Postgres only, free plan, restro-staging and restro-prod, Data API off | refined by D54 |
 | [D44](decisions/D44.md) | E:\Restro is the repo | firm |
@@ -114,6 +114,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
+| [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

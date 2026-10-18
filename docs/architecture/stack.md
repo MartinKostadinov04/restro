@@ -30,13 +30,31 @@ Each layer takes the most widely used tool that has a free or usage-priced tier,
 | Venue-admin login | Better Auth with its organization plugin | Free; accounts stay in our Postgres; tenant = organization with owner/admin/member roles, invitations, and a staff role that can only mark items sold out. Email and password (magic links optional), so a slow email never locks staff out mid-service | Clerk: another vendor holding staff accounts |
 | Email | Resend | Login links, invitations, the daily ops digest | — |
 | Payments | Payments are a connector kind (D98): one `PaymentProvider` interface (hold, capture, release, refund, hosted checkout, status notifications) with capability flags (hold and how long, Apple Pay and Google Pay, split), and one package per provider. myPOS is the first candidate, pending the feasibility check (T80); Stripe is second | The venue is the merchant on its own payment account at the provider, and Restro never holds money; Restro's fee is invoiced to the venue. The platform knows no provider's name. Whether guests can pay through barsy's payment link when they order from the menu is a separate open question (Q39, Q58) | Restro holding funds; building on one provider first |
-| Barsy access | One typed client, split into `read` and `write`; native `fetch` with a 30-second timeout | Agents cannot invent endpoints; every write is a named call on an allowlist Martin approves (order placement, webhook subscribe and restart; POS registration stays manual) | Ad-hoc calls |
+| Barsy access | One typed client, split into `read` and `write`; native `fetch` with a 30-second timeout | Agents cannot invent endpoints; every write is a waiter action (D110); webhooks and POS registration stay out (D41) | Ad-hoc calls |
 | Dates and money | date-fns + @date-fns/tz; integer minor units; `Intl.NumberFormat` | Past-midnight schedules in Europe/Sofia; Barsy's rounding in one module | Floats |
 | Interface text | next-intl (BG, EN) | Interface strings only; menu text comes from snapshots | — |
 | Tests | Vitest, fast-check, Playwright, MSW with recorded Barsy responses | Agents can check their own work; property tests guard "more cautious than the till" | — |
 | Code checks | Biome (lint + format), `tsc --noEmit`, dependency-cruiser | One fast tool, import rules that enforce the architecture, and gitleaks so no secret is ever committed | ESLint + Prettier: more configuration |
 | Hosting | Railway, EU West (Amsterdam): web and worker in one project (Postgres on Supabase, D43) | Always-on processes for the queue; usage-based billing suits low traffic. Cloudflare's free proxy sits in front: rate limits, Turnstile bot checks, and a cached static guest page that keeps menus up even if Railway is down | Vercel: Hobby is non-commercial, Pro is $20 a seat plus a separate worker host. A VPS is cheaper still, but someone has to run the server |
 | Monitoring | Sentry (EU region, no personal data), guest events in our own Postgres, deep health checks, phone alerts through a Telegram bot | Errors; funnel data we own and Martin can query in SQL or Power BI (H1–H3); a phone alert within a minute when orders or money get stuck | PostHog: another vendor and a consent question; paid APM |
+
+## UI libraries: in use, and considered but not adopted
+
+Already in the admin, and kept: Sonner (the one Toaster), vaul (drawers), clsx and class-variance-authority (class names), `@hello-pangea/dnd` (the composer's drag and keyboard reorder), tw-animate-css (shadcn's enter and exit classes). A guest template adds none of them (the designer guide's §9.1: React and nothing else).
+
+Considered and not adopted, so nobody proposes them again (D109):
+
+| Library | Why not |
+| --- | --- |
+| motion (Framer Motion) | A template adds no animation library (§9.1) and its motion is plain CSS; the admin is calm shadcn (D107) |
+| NumberFlow | A price must never animate: prices are `price.text` and money stays integer minor units (rule 8); a rolling number is motion without a tap |
+| cmdk | A keyboard-first command palette is the opposite of D107 for an owner who is not a tech person |
+| zustand | Server components read and server actions write (U4), so there is no client store to hold |
+| Virtuoso, virtua | Every item stays in the markup; virtualising a long list is a proposal for Martin after a measurement, never added unasked (row 3 of `.claude/skills/template-review/references/web-interface-guidelines.restro-overrides.md`) |
+| base-ui | Radix through shadcn is installed; swapping an installed library is churn |
+| next-themes | The admin follows its own theme choice (`apps/web/src/lib/theme.ts`), and the Toaster reads it |
+| dnd kit | `@hello-pangea/dnd` runs the composer, the Platform port map uses it, and a keyboard-reorder e2e depends on it |
+| Leva | A live panel for tuning values while developing; it has no screen of the product to serve |
 
 ## Cost at pilot scale
 
@@ -92,7 +110,7 @@ Import rules, checked in CI by dependency-cruiser:
 
 - `shell` and the faces in `apps/web` never import `db`, `barsy` or a payment provider package.
 - Only `core/apply` imports the write side of `db`.
-- Only `apps/worker` imports `barsy`. Its `write` part exposes only the calls on Martin's allowlist: order placement (outbox) and webhook subscribe and restart (onboarding, `barsy-health`). POS registration stays a manual, admin-only action.
+- Only `apps/worker` imports `barsy`. Its `write` part exposes only waiter actions (D110), such as order placement through the outbox. Webhook subscription and POS registration are setup, not waiter actions, and stay out (D41).
 - `apps/web` never calls Barsy; it reads Barsy state from Postgres and only verifies webhook signatures.
 - Only `apps/worker` imports a payment provider package and calls a provider (capture, release, refund, test call). The web app never imports one: its inbox checks a notification's signature through that provider's part in `apps/web/src/connectors/` (where POS-specific web code already lives), stores it, and reads payment state from Postgres (D98).
 - Packages never import apps.
@@ -109,7 +127,7 @@ Every non-negotiable rule from the Data architecture tab is backed by a check th
 | 4. The shell reads only snapshots | Import rule; the shell's only input type is `Snapshot` |
 | 5. Our layers only make the menu more cautious | Property tests (fast-check) on the resolver: whatever the layers hold, an item Barsy hides or takes off sale is never orderable, and an orderable item's price always equals Barsy's |
 | 6. Absence is a deletion only after a complete full pull | Integration test with a failed page in the fixture: nothing is hidden |
-| 7. Sync never writes into Barsy | `barsy/write` holds only the named calls on Martin's allowlist (order placement, webhook subscribe and restart); the venue-approved translation push (D26) would be added there by name |
+| 7. Restro writes into a POS only as a waiter would (D110) | Menu sync stays read-only; a connector's `write` part exports only waiter actions (open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel), each declared as such and checked by a test; never back-office writes (items, prices, settings, users); tests only on a test installation |
 | 8. Integer minor units, Barsy's rounding | One `money` module; Zod `.int()` on every amount; tests built from Barsy's own calculation examples |
 | 9. Barsy accounts | One API user per integration per environment; unique `pos_registrations.venue_id`; the outbox command schema requires a `uuid`; staging configuration refuses production hosts |
 

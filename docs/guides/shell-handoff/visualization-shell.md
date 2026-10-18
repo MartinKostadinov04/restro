@@ -384,6 +384,8 @@ What a face must do about it:
 | `ordering` | `ordering` | `menu.bag` |
 | `pay` | `pay` | `menu.pay` |
 
+Two features have more markers than their slot, for the audits (§7.3): ordering also marks the control that puts a dish in the bag (`item.add`, on each orderable dish), and pay marks the controls inside the pay sheet (`pay.method`, `pay.receipt_open`, `pay.receipt`, §10.2). The language switch is not a feature: it follows the host's `languages` (`menu.language`, §7.6).
+
 - **List in the manifest the features you have controls for** (§7.1). A feature a face does not list is never offered by that face, even when the venue switched it on. If the venue has it on and the face lists it, the slot must exist.
 - **Never make allergen information depend on a feature.** It has no switch.
 - **Template features** (a switch the venue sets for something only your template has, such as Editorial Market's layout switch for guests) are not in `view.features`. They are manifest `options` with `group: 'feature'` (§7.1) and arrive as the `options` prop.
@@ -692,6 +694,7 @@ A **slot** is a named piece of an item card. Required slots (R6, R7) must be dra
 | `menu.allergen_legend` | A numbered legend; required for `numbered_legend` faces whenever the menu has allergens. |
 | `menu.allergen_info` | An info link or QR code, for `info_link` and `info_qr` faces. |
 | `menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay` | The controls of the five guest features (§5.5). Each exists exactly when its feature is on. |
+| `menu.language` | The language switch (§7.6). Exists exactly when the host gives two or more languages. |
 
 The reference faces also mark `menu.title`, `menu.intro`, `menu.table` and `menu.allergen_sheet`; these are free to use but not checked.
 
@@ -709,11 +712,24 @@ The contract tests read your markup. Three attributes are mandatory:
 
 The reference faces also put `data-state` on the item wrapper, which is handy for styling (`.card[data-state="sold_out"]`).
 
+**The controls the audits drive.** The screenshot matrix and the accessibility audit (§7.7) reach a template's controls through these markers, never through its class names. A marker sits on the control itself (a `button`) unless it says otherwise; a template that draws no such control draws no marker, and the audit skips that picture.
+
+| `data-slot` | Marks | Present |
+|---|---|---|
+| `item.add` | The control inside an item that puts one of that dish in the bag. | On an item exactly when `view.features.ordering` is on and the item's `order.controls` is true; when the manifest lists `ordering` it must be there. The tests render with an empty bag; a face may swap the control for a stepper once the dish is in it. Checked by the contract tests (§7.4). |
+| `item.open` | The control inside an item that opens that item's own page (the dish page). | When the template has a dish page; a template without one draws none, which is allowed. Not checked. |
+| `menu.language` | The language switch: the group that holds one button (or radio) per language, each with the `lang` of its language (`bg-BG`). | Exactly when the host gives two or more languages (`languages`, §7.6) on an interactive channel; never with fewer. Checked by the contract tests (§7.4). |
+| `pay.method` | Each payment method in the pay sheet; tapping it starts the payment. Carries `data-method` with the method (`apple`, `google`, `card` or `waiter`). | Inside the pay sheet (`#pay`), once the host's quote offers the method. Checked by the face's own tests and the e2e specs, not by the contract suite (the sheet opens on a tap). |
+| `pay.receipt_open` | The control on the paid screen that opens the receipt. | Inside the pay sheet, only once the payment is accepted and the host's state holds the receipt (§10.3). Checked by the face's own tests and the e2e specs, not by the contract suite. |
+| `pay.receipt` | The receipt itself, as the host issued it. | On the receipt screen (`#receipt`). Checked by the face's own tests and the e2e specs, not by the contract suite. |
+
+Markers are additions: they change nothing of what the other attributes mean.
+
 Reading order that the tests expect: for each section, its **own items first, then its sub-sections** (each in the same way), depth first, sections in view-model order. Section titles, images and descriptions can sit around that however you like.
 
 ### 7.4 The contract tests
 
-The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceContractSuite` (§7.7). They render your face (to a static HTML string) for every fixture on every channel your manifest declares, and report each failure with the rule it breaks.
+The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceContractSuite` (§7.7). They render your face (to a static HTML string) for every fixture on every channel your manifest declares, and report each failure with the rule it breaks. The render function is `(view, host?) => string`: the optional `host` carries the host's `languages` for the language-switch check, and a face that ignores it keeps working for every other check.
 
 **Fixtures** (every face must survive all seventeen):
 
@@ -732,8 +748,8 @@ The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceC
 | `custom-roles` | A venue with its own eight colour roles and a forced dark scheme. |
 | `features-on` | Every guest feature switched on, supported by the platform, at a confirmed table with ordering on, on a menu that has filter chips. |
 | `features-off` | The same menu with the venue's switches all off: no control may be drawn. |
-| `horizontal-sections` | A horizontal section that is not the first, between a vertical one and one published without a layout; two columns, with the guest switch. |
-| `one-column` | The first section horizontal, the rest vertical; one column, and the guest may not switch. |
+| `horizontal-sections` | A horizontal section that is not the first, between a vertical one and one published without a layout, with photos in the row; the menu starts in two columns and lets the guest switch (D92). |
+| `one-column` | The first section horizontal, the rest vertical; the menu starts in one column and the guest may not switch (D92). |
 | `hostile-names` | ALL-CAPS Cyrillic with Й, Ѝ, Ц and Щ (one of 60 characters); a name starting with an emoji and names holding a zero-width joiner; two items with the identical name; a name with doubled spaces; a name that is only spaces, once with an English name to fall back to and once alone (the shell leaves that item out, R3). |
 | `crowded` | Twelve tags on one item, one of 40 characters with no space; a price text of 16 characters; a section with exactly one item; a section with no item (the shell leaves it out). |
 
@@ -749,6 +765,8 @@ The tests live in `packages/shell/testing/contract.ts` and are bundled in `faceC
 | R8 | An empty optional slot is not drawn (the image slot may be drawn without an image unless the manifest says `text_only`); an optional slot declared in the manifest and having content is drawn. |
 | R6 | Allergens reachable in the manifest's mode. For `numbered_legend`, the slot shows the allergen's number. For `inline_icons`/`inline_codes`, the allergen's label or its code appears in the slot's text or in an `aria-label`, `title`, `alt` or `data-allergen` attribute inside it. For `info_link`/`info_qr`, the menu-level `menu.allergen_info` slot must exist. |
 | R15 | A feature slot (`menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay`) is **absent** whenever its feature is off, whatever the manifest says; and **present** when the feature is on and the manifest lists it. |
+| R15 | `item.add` is **absent** on every item without ordering controls (so on every item while ordering is off), and **present** on every item with them when the manifest lists `ordering`. |
+| §7.6 | `menu.language` is **present** when the host gives two languages (interactive channels) and **absent** when it gives one. The harness renders the `six-languages` fixture again with each; the render function receives the languages as an optional second argument, `render(view, host)`, and a face passes `host.languages` on as its `languages` prop. |
 | Rule 3 | No id-shaped string of any kind other than `nd_`, `as_` and `tg_` appears in the markup. |
 
 Consequences that are easy to miss:
@@ -813,9 +831,9 @@ A template is listed in the gallery only when all of these pass. The first three
 |---|---|---|
 | **`faceContractSuite`** | The manifest passes `validateManifest`; the contract (§7.4) holds on all seventeen fixtures on every channel the manifest declares; the two CSS checks below pass. | The face's own `contract.test.tsx`, and `apps/web/src/faces/registry.test.ts` for every registered template (rendered the way the guest page draws it, with every host prop and `stubServices()`). |
 | **The CSS theme-only check** | `assertThemeOnlyCss(css)` finds no hex colour, no named colour and no colour function with a literal number; `color-mix()` and relative colours of variables are fine. And `assertFaceScopedCss(css)` finds no `html`, `body` or `:root` selector. | `faceContractSuite`; export the whole stylesheet as one string. |
-| **The feature-slot checks** | Each of `menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay` is absent when its feature is off and present when it is on and listed in the manifest. | `runFaceContract`, inside `faceContractSuite`; the fixtures `features-on` and `features-off` exist for it. |
+| **The feature-slot checks** | Each of `menu.filters`, `menu.call_waiter`, `menu.bill`, `menu.bag`, `menu.pay` is absent when its feature is off and present when it is on and listed in the manifest; `item.add` is on each orderable item and nowhere else; `menu.language` is drawn with two languages and not with one. | `runFaceContract`, inside `faceContractSuite`; the fixtures `features-on`, `features-off` and `six-languages` exist for it. |
 | **The registry test** | The template has an entry with a loader, a picture (a PNG of a phone screen, 320 to 480 px wide, at most 150 KB), both names, and its stylesheet is named in the test. | `apps/web/src/faces/registry.test.ts`, `manifests.test.ts` (§12.1). |
-| **The visual audit** | Screenshots of the template in the four presets and one custom theme, in light and dark, Bulgarian and English, at 320, 360, 390, 430 and 820 px, for the menu, the layouts, a 60-character name, sold-out and scheduled items, the dish page, the filter sheet, the allergen sheet and (in the preview) the service sheets. Automated checks of touch targets, dialogs and focus, horizontal scroll, uncut names, reduced motion and rendered contrast (inverse bands, `color-mix`). | `apps/web/e2e/faces-visual.spec.ts`. The pictures are saved only with `FACES_VISUAL=1`, for one template per run named by `FACES_VISUAL_FACE` (default `editorial-market`): `FACES_VISUAL=1 FACES_VISUAL_FACE=<id> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts`. They go to `apps/web/test-results/faces-visual/<id>/`, with `skipped.txt` naming each step the template cannot take (the spec finds everything through the markers of §5.5 and §7.3, so a template without a control skips that picture); the automated checks run in the normal Playwright run. |
+| **The visual audit** | Screenshots of the template in the four presets and one custom theme, in light and dark, Bulgarian and English, at 320, 360, 390, 430 and 820 px, for the menu, the layouts, a 60-character name, sold-out and scheduled items, the dish page, the filter sheet, the allergen sheet and (in the preview) the service sheets. Automated checks of touch targets, dialogs and focus, horizontal scroll, uncut names, reduced motion and rendered contrast (inverse bands, `color-mix`). | `apps/web/e2e/faces-visual.spec.ts`. The pictures are saved only with `FACES_VISUAL=1`, for one template per run named by `FACES_VISUAL_FACE` (default `editorial-market`): `FACES_VISUAL=1 FACES_VISUAL_FACE=<id> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts`. They go to `apps/web/test-results/faces-visual/<id>/`, with `skipped.txt` naming each step the template cannot take (the spec finds everything through the markers of §5.5, §7.3 and §10.2, so a template without a control skips that picture); the automated checks run in the normal Playwright run. |
 
 Run only your own: `pnpm vitest run --project packages/faces/<id> --reporter=dot`.
 
@@ -934,6 +952,7 @@ They validate your manifest with `validateManifest`, port the source into a face
 - [ ] Root component takes `view` and the host props; no fetching, no globals read during render.
 - [ ] Manifest valid: four required slots exactly `"required"`, `channels: ["qr"]`, `paging: null`; `ordering: true` only if the `ordering` feature is listed; `features` lists only what is drawn; `options` have a default, a group and both labels.
 - [ ] `data-item`, `data-slot`, `data-state` everywhere they belong; each feature control has its `menu.*` slot and is not in the page when its feature is off.
+- [ ] The audit markers of §7.3 on the controls the template draws: `item.add` on the control that puts a dish in the bag, `item.open` on the one that opens the dish page, `menu.language` on the language switch (only with two or more languages), and in the pay sheet `pay.method` (with `data-method`), `pay.receipt_open` and `pay.receipt`. A control the template does not draw has no marker.
 - [ ] Items in view-model order; all 300 in the markup; none drawn twice or skipped.
 - [ ] Names whole (wrapped, never ellipsised); `lang` set on every differing text.
 - [ ] Price printed from `price.text` only; no arithmetic or formatting.
@@ -999,6 +1018,8 @@ The host parses a command with `GuestCommandSchema`, which refuses unknown keys 
 **The face waits 15 seconds** for an answer. An error, a timeout or an answer to a different command is an *unknown outcome*: the command may have worked, so the retry uses the same `actionId`. A late answer is ignored; the host's state is the truth.
 
 **The bag.** The bag is the guest's draft, kept by the face in its own memory (it does not survive a reload). A bag line holds only what the guest chose: the item id, the option ids, the quantity and a note. It holds no name and no price: those are looked up in the current view model whenever the bag is drawn, so a price change or a sold-out item shows at once. A line whose item or option has left the menu, or whose item has no ordering controls any more (R11), is marked unavailable, and sending stays blocked until the guest removes it. The same item with the same options and note is one line. The shell has the bag's logic (`bagReducer`, `resolveBag`, `orderLines`), so every face has the same bag; use it.
+
+**The pay markers.** The audits pay the demo bill in the pay sheet and open the receipt through three markers (§7.3): `pay.method` on each method control, with `data-method` set to the method (tapping it sends `pay.start`; a template that asks the guest to confirm first would need one more marker, to be added to the contract then), `pay.receipt_open` on the paid screen's control that opens the receipt, and `pay.receipt` on the receipt itself. They add nothing to the commands and the state above.
 
 **Where the screens live.** The dish page is at `#item-<id>`; the service sheets are at `#bag`, `#tab`, `#call`, `#pay` and `#receipt`. They are addresses, so the phone's Back button closes them and a link can reopen them. A sheet whose feature is off has no page at all.
 

@@ -9,6 +9,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues.
 - Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
+- Q82 Lukanet: seven open points from the signed-in API reading (part payment on an open bill, refusing a row, our id on a bill, approval in the status, offline docs); send with Q79.
 - Q79 Lukanet: is barsy NRA-listed sales software; can it take Restro's orders as an Annex 42 import before acceptance (fiscal research 10-17, L11); with Q8 and Q24.
 - Q80 Martin, after the lawyer: a paper fiscal receipt per song-request capture with no guest email (D99); weigh the options.
 - Q81 Martin, after the lawyer: the bill screen as a "document" under Н-18 чл. 7а; until then no template screen resembles a receipt or says "фискален".
@@ -66,15 +67,16 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
+- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110); research #30 bill in barsy, #31 bill in POS systems, #32 barsy waiter actions, #33 NRA list (agent sessions, 10-18); #34 signed-in reading done 10-18 (`research/barsy-signed-in`); grilling #35 bill in Restro, #36 table visit, #37 life of an order, #38 fake orders, #39 failure and pause, #40 guest page to platform; planning only, no build before T79 is on main.
 - T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
-- T91 Claude, then Martin: guest page `viewport-fit=cover` and status-bar colour; the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
+- T91 Claude, then Martin: guest page `viewport-fit=cover`, a status-bar colour from the venue's `background` roles and `interactive-widget=resizes-content` (D109); the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
 - #21 Claude: operational-screens note, audit and template flow additions, stack-doc library table, T91 and T88 refinements (D109); Sonnet.
 - #20 Claude: contract fixtures and matrix cases for the worst cases D109 lists; Sonnet; after #18's ruling.
 - #19 Claude: template-design interaction-polish reference, override rows, template-review checks (D109); Sonnet; after PR 16 merges.
 - #18 Claude: Emil Kowalski skills, three reviews joined and ruled in D109; closes when #19, #20 and #21 are merged.
 - T90 Claude: contract markers for the audits (add to bag, open dish, pay controls, language switch); small; before T87.
 - T89 Claude: screenshot matrix for any template (contract markers, `FACES_VISUAL_FACE`); blocks T87; Sonnet.
-- T88 Claude: four admin defects from the design-skills trial (Sonnet); six ordering-sheet findings wait for ordering (D79).
+- T88 Claude: four admin defects from the design-skills trial, plus the admin's global reduced-motion rule and the Toaster defaults (D109) (Sonnet); six ordering-sheet findings wait for ordering (D79).
 - T87 Claude: first template through the pipeline, a dark club-night face (D105); after T86; Martin accepts on a local preview.
 - T86 Claude: template pipeline (D105–D107): functionality file and guardrail, template-design and template-review skills, pinned audit rules, template flow; ticket next.
 - T85 Claude: portability groundwork (D103): containers, storage module, schema split with a no-join check, restore drill; before T82.
@@ -85,6 +87,10 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - #8 Claude (research, Opus): Bulgarian fiscal rules for card payments through the app, deposits and paid song requests; prepares the lawyer's Q74 and Q75; waits for Martin's go.
 - #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; done 10-17, findings in `docs/research/2026-10-17-payment-providers-feasibility.md` (recommends Stripe first, myPOS second); next: Martin picks the first provider, then Q76, Q77 and the lawyer's Q74/Q75.
 - #10 Claude (upkeep, Sonnet): one home per rule in the agent docs; CLAUDE.md under 1,500 words; CLAUDE.md diff shown to Martin before merge.
+- #27 Claude: bug, the menu's header name never reaches the guest heading (snapshot title ignores `menus.name`); Opus; found by #24.
+- #26 Claude: dev seed with a real till venue, so audits cover the till-venue rules; Sonnet.
+- #25 Martin: eight small awkward points from the acceptance walk, pick which become change tickets.
+- #24 Claude, then Martin: acceptance walk of Adjustments 01 done 10-18 (one bug, eight awkward points, seven checks need `restro_accept`); Martin's own acceptance next.
 - T79 Claude: Adjustments 01 (`docs/adjustments/adjustments_01.md`, plan `adjustments_01-plan.md` approved 10-12); wave 0 done; ad/01 (schema, roles), ad/02 (menus, languages, barsy roots) ad/03a (areas, tables, menu routes) and ad/03b (guest addresses, venue states, Unpublish) built 10-12, ad/04 (purge, versions) and ad/05 (per-venue sync, colour roles) built 10-13, CI pending; next: merge ad/03–ad/05 into ad/foundation, then the screens in pairs, then screens in pairs A–D, then the purge rehearsal.
 - T45 Claude: deploy pipeline re-runs the freeze-window check; at the Stage 3 deploy.
 - T44 Martin: review Bulgarian wording in `apps/web/messages/bg.json` (S3 namespaces listed in the tracker).
@@ -121,7 +127,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T9 Martin: send Lukanet the consolidated questions, after T39.
 - T13 Martin: ask a pilot owner for the "software resource" price (Q25, Q29, Q41).
 - T33 Martin: send the lawyer/accountant questions.
-- T29 Claude: orders and payments spec; skeleton before Stage 4, details after T9 and T33.
+- T29 Claude: orders and payments spec; the ordering half now runs as map #29; payments after it, details after T9 and T33.
 - T31 Martin + lawyer: privacy notice, terms, data processing agreement; before the first guest.
 - T17 Martin: remaining decisions P41–P43, P46, P48–P50, P52, P53, P10; veto window on D50.
 - T20 Claude: read the 2021 food-information ordinance, or ask the lawyer (Q42).

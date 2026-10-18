@@ -915,14 +915,14 @@ The full stack design, costs, environments and how CI enforces the nine rules ar
 - [ ] Display price: Barsy's base price plus promotion badges, or the live current price?
 - [x] New Barsy Items: decided 2026-10-08. Publish automatically; V11 still blocks mass changes. The show/hold rule was removed (D96).
 - [ ] Allergens: which Barsy characteristic key holds them for each client, or are they entered in our editor? First check what Bulgarian law requires (and re-check per country before any expansion), then whether pilot venues hold allergens in Barsy.
-- [x] Languages: decided 2026-10-08, refined 2026-10-12 (D77). Per venue, from one core function: one main language, the languages its owner switched on, and the languages the till fills for about 20% of the texts or more; more are added by hand in our translations tab; BG + EN for the pilot. Open: should our translations later be written back to Barsy? That would need a change to rule 7 (sync never writes into Barsy).
+- [x] Languages: decided 2026-10-08, refined 2026-10-12 (D77). Per venue, from one core function: one main language, the languages its owner switched on, and the languages the till fills for about 20% of the texts or more; more are added by hand in our translations tab; BG + EN for the pilot. Open: should our translations later be written back to Barsy? That is back-office work, which rule 7 excludes (D110); it would need its own decision.
 - [x] Nightly pull time per venue (clubs close late): decided 2026-10-12 (D82). A venue setting, `full_pull_time` in the venue's time zone, default 12:00.
 - [x] Sold-out Items: decided 2026-10-08. Shown greyed out, with no order button.
 - [ ] Card payment: which Barsy flow prints exactly one fiscal receipt (ask Lukanet)? Preferred route (2026-10-08): Barsy's payment link, if it supports Apple/Google Pay and split payments and prints exactly one fiscal receipt; Stripe Connect is the fallback.
 - [ ] Service day: the hour a venue's day ends (proposed 07:00), used for sold-out resets, table tabs, stats and money reconciliation. Service editions are named by service day, not calendar date.
 - [ ] Barsy bill model (Q21): one Barsy account per paid order (recommended: the only model with documented deduplication) or rounds on one table account.
 - [ ] Split rules: how a bill is split, who pays the leftover cent, what happens when the payment window expires, and whether an order reaches the bar only when fully paid. The window must not outlast Barsy's payment-link lifetime.
-- [ ] Writes to a live Barsy: the allowlist of calls allowed against a live venue (order placement, webhook subscribe and restart). POS registration stays manual until a test installation proves it cannot disturb the venue's own POS.
+- [x] Writes into a POS: decided 2026-10-18 (D110). Restro writes only as a waiter would (bills, rounds, payments, cancels at the front end), never back-office; tests only on a test installation. Webhooks and POS registration stay out (D41).
 - [ ] Sold out: Barsy's for-sale flag or stock as the source, with our toggle for managers only, or our toggle for waiters too (trace 4 assumes waiters use our editor, which conflicts with "no separate device").
 - [ ] Default order\_mode for items published automatically.
 - [ ] Call waiter and request bill in v0: only if Barsy's API can message staff (Q48).
