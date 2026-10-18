@@ -764,6 +764,125 @@ function oneColumn(): Fixture {
   }
 }
 
+/** A zero-width joiner: it joins the emoji of a family and can sit invisibly inside a word. */
+const ZWJ = String.fromCodePoint(0x200d)
+
+/**
+ * D109, names a guest menu really holds: ALL-CAPS Cyrillic with the tall marks of Й, Ѝ, Ц and Щ, a
+ * name that starts with an emoji, one with a zero-width joiner, two items with the same name,
+ * doubled spaces, and a name that is only spaces (the other language then reads, or, with none,
+ * the shell leaves the item out).
+ */
+function hostileNames(): Fixture {
+  return {
+    name: 'hostile-names',
+    note: 'ALL-CAPS Cyrillic with Й, Ѝ, Ц, Щ; emoji-led and joiner names; two identical names; doubled spaces; a whitespace-only name with and without a fallback language.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      sections: [
+        {
+          title: bgen('ЩЕДРОСТ НА ЙОДА', 'Names that bite'),
+          items: [
+            {
+              name: bgen('ЙОГУРТЕН ЩРУДЕЛ ЦЕЛИНА Ѝ', 'Yoghurt strudel'),
+              allergens: ['milk', 'gluten'],
+            },
+            {
+              // 60 characters, all capitals, a tall mark in nearly every word.
+              name: {
+                bg_BG: 'ЩАСТЛИВИЯТ ЦАР ЙОРДАН ЯЖДЕ ЙОГУРТ И ЩРУДЕЛ ЦЯЛА ЩЕДРОСТ НОЩИ',
+                en_US: 'THE HAPPIEST KING JORDAN EATS YOGHURT AND STRUDEL ALL NIGHT!',
+              },
+              price: 1150,
+              allergens: ['milk'],
+            },
+            { name: bgen('🍸 Мартини', '🍸 Martini'), price: 900, allergens: ['sulphites'] },
+            {
+              name: bgen(`👨${ZWJ}👩${ZWJ}👧 Семейно плато`, `👨${ZWJ}👩${ZWJ}👧 Family platter`),
+              price: 3600,
+              allergens: ['gluten'],
+            },
+            { name: bgen(`Мо${ZWJ}хито`, `Mo${ZWJ}jito`), price: 1000, allergens: [] },
+            { name: bgen('Негрони', 'Negroni'), price: 1250, allergens: ['sulphites'] },
+            { name: bgen('Негрони', 'Negroni'), price: 1450, allergens: ['sulphites', 'eggs'] },
+            {
+              name: bgen('Бира   тъмна   нефилтрирана', 'Beer   dark   unfiltered'),
+              price: 650,
+              allergens: ['gluten'],
+            },
+            {
+              // Blank in Bulgarian, the guest's language: the English name reads instead.
+              name: { bg_BG: '   ', en_US: 'Only the English name' },
+              price: 500,
+              allergens: [],
+            },
+            {
+              // Blank in the only language it has: the shell leaves the item out (R3).
+              name: { bg_BG: '   ' },
+              price: 500,
+              allergens: [],
+            },
+          ],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'bg_BG', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** A tag no one can break: 40 characters, no space. */
+const UNBROKEN_TAG = 'НеразделимОченДългоЕтикетБезИнтервалиХХХ'
+
+/**
+ * D109, crowds: twelve tags on one item (one of 40 characters without a space), a price text of 16
+ * characters, a section with exactly one item and a section with none (the shell leaves it out).
+ */
+function crowded(): Fixture {
+  const tagIds = Array.from({ length: 12 }, (_, i) => fixtureId('tg', i + 1))
+  const labels: Record<string, LocalizedText> = {}
+  tagIds.forEach((id, i) => {
+    labels[id] =
+      i === 11
+        ? { bg_BG: UNBROKEN_TAG, en_US: 'ExtremelyLongTagWithNoSpacesAtAllXXXXXXX' }
+        : bgen(`Етикет ${i + 1}`, `Tag ${i + 1}`)
+  })
+  return {
+    name: 'crowded',
+    note: 'Twelve tags on one item, one of 40 unbroken characters; a 16-character price text; a section of exactly one item; a section with no item.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      tags: labels,
+      sections: [
+        {
+          title: bgen('Препълнено', 'Crowded'),
+          items: [
+            {
+              name: bgen('Плато с етикети', 'Platter with labels'),
+              price: 2800,
+              tags: tagIds,
+              allergens: ['nuts'],
+            },
+            {
+              // "123 456 789,00 €" in Bulgarian: 16 characters.
+              name: bgen('Бутилка за олигарси', 'Bottle for oligarchs'),
+              price: 12345678900,
+              allergens: [],
+            },
+          ],
+        },
+        {
+          title: bgen('Само едно', 'Just one'),
+          items: [{ name: bgen('Единствената', 'The only one'), price: 700, allergens: [] }],
+        },
+        { title: bgen('Празна секция', 'Empty section'), items: [] },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'bg_BG', now: WEDNESDAY_EVENING },
+  }
+}
+
 /** All fixtures, freshly built. */
 export function fixtures(): Fixture[] {
   return [
@@ -782,6 +901,8 @@ export function fixtures(): Fixture[] {
     featuresOff(),
     horizontalSections(),
     oneColumn(),
+    hostileNames(),
+    crowded(),
   ]
 }
 
