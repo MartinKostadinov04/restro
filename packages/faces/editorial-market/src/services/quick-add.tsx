@@ -36,6 +36,7 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
       <button
         type="button"
         className="ro-plus"
+        data-slot="item.add"
         aria-label={words.addNamed(item.name.text)}
         onClick={(event) => {
           if (needsChoices(item)) o.openDish(item.id, event.currentTarget)

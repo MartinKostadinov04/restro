@@ -127,13 +127,13 @@ describe.each(FACES.map((entry) => [entry.id, entry] as const))('the %s entry', 
   faceContractSuite(`registry: ${entry.id}`, {
     manifest: entry.manifest,
     css: STYLESHEETS[entry.id] ?? '',
-    render: async (view) => {
+    render: async (view, host) => {
       const Face = await entry.load()
       return renderToStaticMarkup(
         createElement(Face, {
           view,
           assetBase: '/cdn',
-          languages: ['bg_BG', 'en_US'],
+          languages: host?.languages ?? ['bg_BG', 'en_US'],
           onLanguageChange: () => {},
           tableLabel: '12',
           fontStacks: FONT_STACKS,

@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest'
 import { buildViewModel } from '../src/build'
 import { type FaceManifest, validateManifest } from '../src/manifest'
 import type { ViewItem, ViewModel, ViewSection } from '../src/view-model'
-import { FEATURE_SLOTS, LAYOUT_SWITCH_SLOT, type RenderFn, runFaceContract } from './contract'
+import {
+  ADD_SLOT,
+  FEATURE_SLOTS,
+  LANGUAGE_FIXTURE,
+  LANGUAGE_SLOT,
+  LAYOUT_SWITCH_SLOT,
+  type RenderFn,
+  runFaceContract,
+} from './contract'
 import { CUSTOM_ROLES, fixture, fixtureId, fixtures } from './fixtures'
 import { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
 import { faceContractSuite } from './suite'
@@ -47,7 +55,7 @@ const lang = (locale: string) => locale.replace('_', '-')
 function referenceFace(
   tweak: (item: ViewItem, html: string, view: ViewModel) => string = (_i, h) => h,
 ): RenderFn {
-  return (view) => {
+  return (view, host) => {
     const item = (entry: ViewItem): string => {
       const name = `<h3 data-slot="item.name" lang="${lang(entry.name.lang)}">${esc(entry.name.text)}</h3>`
       const price =
@@ -93,12 +101,20 @@ function referenceFace(
         entry.modifierGroups.length === 0
           ? ''
           : `<div data-slot="item.modifiers">${entry.modifierGroups.map((g) => `<section>${esc(g.name.text)}${g.options.map((o) => `<i>${esc(o.name.text)} ${esc(o.delta?.text ?? '')}</i>`).join('')}</section>`).join('')}</div>`
-      const html = `<article data-item="${entry.id}">${image}${name}${price}${state}${allergens}${description}${badges}${portion}${dietary}${tags}${extra}${modifiers}</article>`
+      const add =
+        view.features.ordering && entry.order.controls
+          ? `<button data-slot="${ADD_SLOT}">+</button>`
+          : ''
+      const html = `<article data-item="${entry.id}">${image}${name}${price}${state}${allergens}${description}${badges}${portion}${dietary}${tags}${extra}${modifiers}${add}</article>`
       return tweak(entry, html, view)
     }
     const section = (entry: ViewSection): string =>
       `<section><h2>${esc(entry.title.text)}</h2>${entry.items.map(item).join('')}${entry.sections.map(section).join('')}</section>`
-    return `<!doctype html><html lang="${lang(view.locale)}"><body>${view.sections.map(section).join('')}</body></html>`
+    const languages =
+      host !== undefined && host.languages.length > 1
+        ? `<fieldset data-slot="${LANGUAGE_SLOT}">${host.languages.map((code) => `<button lang="${lang(code)}">${code}</button>`).join('')}</fieldset>`
+        : ''
+    return `<!doctype html><html lang="${lang(view.locale)}"><body>${languages}${view.sections.map(section).join('')}</body></html>`
   }
 }
 
@@ -334,8 +350,8 @@ describe('runFaceContract', () => {
   })
 
   it('R2: catches a face that reorders items', async () => {
-    const reversed: RenderFn = (view) => {
-      const parts = (referenceFace()(view) as string).split('<article')
+    const reversed: RenderFn = (view, host) => {
+      const parts = (referenceFace()(view, host) as string).split('<article')
       return [
         parts[0],
         ...parts
@@ -458,11 +474,11 @@ function isOn(view: ViewModel, feature: string): boolean {
 /** The reference face with a control (an element carrying the feature's slot) added per `draw`. */
 function featureFace(draw: (view: ViewModel) => string[]): RenderFn {
   const base = referenceFace()
-  return async (view) => {
+  return async (view, host) => {
     const controls = draw(view)
       .map((slot) => `<button data-slot="${slot}"></button>`)
       .join('')
-    return (await base(view)).replace('<body>', `<body>${controls}`)
+    return (await base(view, host)).replace('<body>', `<body>${controls}`)
   }
 }
 
@@ -576,8 +592,8 @@ describe('runFaceContract: R15 feature slots (fail-closed)', () => {
 
   it('looks at the whole page, not only at the items', async () => {
     const report = await runFaceContract(
-      (view) =>
-        (referenceFace()(view) as string).replace(
+      (view, host) =>
+        (referenceFace()(view, host) as string).replace(
           '</body>',
           '<footer><nav><a data-slot="menu.pay">Pay</a></nav></footer></body>',
         ),
@@ -588,12 +604,130 @@ describe('runFaceContract: R15 feature slots (fail-closed)', () => {
   })
 })
 
+describe('runFaceContract: the item.add control (T90)', () => {
+  const featureFixtures = { fixtures: fixtures().filter((f) => f.name.startsWith('features-')) }
+  const ADD = `<button data-slot="${ADD_SLOT}">+</button>`
+  /** The reference face with its markup changed by `change`. */
+  const addFace = (change: (html: string) => string): RenderFn => {
+    const base = referenceFace()
+    return async (view, host) => change(await base(view, host))
+  }
+
+  it('passes a face that draws it on each orderable item, and only there', async () => {
+    const report = await runFaceContract(rightFeatures, featureManifest, featureFixtures)
+    expect(report.failures).toEqual([])
+    // Not vacuous: the features-on menu has orderable items, and the reference face drew a control on them.
+    const on = fixture('features-on')
+    const view = buildViewModel(on.snapshot, on.overlay, { ...on.context, channel: 'qr' })
+    expect(await rightFeatures(view)).toContain(ADD_SLOT)
+  })
+
+  it('catches a face that draws it while ordering is off', async () => {
+    const report = await runFaceContract(
+      addFace((html) => html.replace(/(<article[^>]*>)/g, `$1${ADD}`)),
+      featureManifest,
+      { fixtures: [fixture('features-off')] },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures[0]?.message).toContain(ADD_SLOT)
+  })
+
+  it('catches a face that draws it on an item without ordering controls', async () => {
+    // The features-on menu has a bottle only the waiter can bring.
+    const report = await runFaceContract(
+      addFace((html) => html.replace(/(<article[^>]*>)/g, `$1${ADD}`)),
+      featureManifest,
+      { fixtures: [fixture('features-on')] },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures.some((f) => f.message.includes('no ordering controls'))).toBe(true)
+  })
+
+  it('catches a face that declares ordering and leaves the control out', async () => {
+    const report = await runFaceContract(
+      addFace((html) => html.split(ADD).join('')),
+      featureManifest,
+      { fixtures: [fixture('features-on')] },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures[0]?.message).toContain('has no item.add')
+  })
+
+  it('does not ask for it of a face that does not declare ordering', async () => {
+    const report = await runFaceContract(
+      addFace((html) => html.split(ADD).join('')),
+      manifest,
+      featureFixtures,
+    )
+    expect(report.failures).toEqual([])
+  })
+})
+
+describe('runFaceContract: the language switch (T90)', () => {
+  const languageFixtures = { fixtures: fixtures().filter((f) => f.name === LANGUAGE_FIXTURE) }
+  const SWITCH = new RegExp(`<fieldset data-slot="${LANGUAGE_SLOT}">.*?</fieldset>`)
+  const face = (change: (html: string, languages: number) => string): RenderFn => {
+    const base = referenceFace()
+    return async (view, host) =>
+      change(await base(view, host), host === undefined ? 0 : host.languages.length)
+  }
+
+  it('passes a face that draws it with two languages and not with one', async () => {
+    const report = await runFaceContract(referenceFace(), manifest, languageFixtures)
+    expect(report.failures).toEqual([])
+  })
+
+  it('catches a face that never draws it', async () => {
+    const report = await runFaceContract(
+      face((html) => html.replace(SWITCH, '')),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('two languages')
+  })
+
+  it('catches a face whose switch does not carry the language of each control', async () => {
+    const report = await runFaceContract(
+      face((html) => html.replace(/<button lang="[^"]*">/g, '<button>')),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('lang="bg-BG"')
+  })
+
+  it('catches a face that draws it with one language', async () => {
+    const report = await runFaceContract(
+      face((html, languages) =>
+        languages === 1
+          ? html.replace('<body>', `<body><i data-slot="${LANGUAGE_SLOT}"></i>`)
+          : html,
+      ),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('one language')
+  })
+
+  it('is looked at on one fixture only, so the 300-item menu is not rendered again', async () => {
+    const withHost: string[] = []
+    const counting: RenderFn = (view, host) => {
+      if (host !== undefined) withHost.push(`${host.languages.length}`)
+      return referenceFace()(view, host)
+    }
+    await runFaceContract(counting, manifest)
+    expect(withHost).toEqual(['2', '1']) // two languages, then one: one fixture, the one channel
+  })
+})
+
 describe('runFaceContract: the layout switch (D92, fail-closed)', () => {
   /** The reference face with the layout switch drawn when `draw` says so. */
   const switchFace = (draw: (view: ViewModel) => boolean): RenderFn => {
     const base = referenceFace()
-    return async (view) => {
-      const html = await base(view)
+    return async (view, host) => {
+      const html = await base(view, host)
       return draw(view)
         ? html.replace(
             '<body>',

@@ -19,7 +19,7 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### Read an item
 - **Shell key:** none (the `item.*` slots)
 - **Status:** supported
-- **Drawn means:** name, price, description (cut only with a way to read the rest), photo, portion, dietary labels, tags, badges, extra fields and the choices an item offers; an empty optional slot collapses; the dish page opens at `#item-<id>`.
+- **Drawn means:** name, price, description (cut only with a way to read the rest), photo, portion, dietary labels, tags, badges, extra fields and the choices an item offers; an empty optional slot collapses; the dish page opens at `#item-<id>`, from a control marked `item.open` (a template without a dish page draws none).
 - **Where:** §7.2, §7.3, §5.2 R7 to R10 and R12, §9.5; D69
 
 ### See whether an item can be had (sold out, scheduled, unavailable)
@@ -55,7 +55,7 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### Switch the language
 - **Shell key:** none (host prop `languages`)
 - **Status:** supported
-- **Drawn means:** a language switch when the menu has two or more languages, calling `onLanguageChange`; text in another language than the page's carries `lang`.
+- **Drawn means:** a language switch, marked `menu.language`, when the menu has two or more languages, calling `onLanguageChange`; text in another language than the page's carries `lang`.
 - **Where:** §5.2 R3, §7.5, §7.6; D69
 
 ### See the table code
@@ -83,19 +83,19 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the bag with the item's choices (modifier groups and options), quantities and a note, a send that waits for the host's answer, and a rejected order that keeps the bag.
+- **Drawn means:** a control on each orderable item, marked `item.add`, that puts the dish in the bag; the bag with the item's choices (modifier groups and options), quantities and a note, a send that waits for the host's answer, and a rejected order that keeps the bag.
 - **Where:** §5.5, §7.2, §10.2, §10.3, §10.5; D71, D72
 
 ### Pay
 - **Shell key:** `pay` (slot `menu.pay`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the choice of scope (all, a share, only mine), tip and promo code, and method, drawn from the host's quote; the template computes no total, tip, VAT or split.
+- **Drawn means:** the choice of scope (all, a share, only mine), tip and promo code, and method, drawn from the host's quote, each method control marked `pay.method`; the template computes no total, tip, VAT or split.
 - **Where:** §5.5, §10.2, §10.3; D71, D72
 
 ### Get the receipt
 - **Shell key:** none; a screen of the pay feature (`#receipt`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the paid receipt as the host issued it, with a button only for each action the receipt supports.
+- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports.
 - **Where:** §10.1, §10.2; D71, D72
 
 ## Later

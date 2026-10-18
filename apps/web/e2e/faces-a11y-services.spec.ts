@@ -28,10 +28,12 @@ import { VISUAL_THEMES } from './visual-fixtures'
 // reduced motion, and the contrast of what is drawn for every theme in the light and the dark scheme,
 // with the edge of every input and choice box held to 3:1.
 //
-// The way into each screen is the face contract's (e2e/faces-preview.ts: `data-slot`), but what is
-// measured inside the screens is Editorial Market's own markup (`.rm-overlay`, `.ro-*`): the
-// contract has no markers for the sheets' insides. So the audit is for that template, and a run
-// with another FACES_VISUAL_FACE skips it.
+// The way into each screen, and into the dish page, is the face contract's (e2e/faces-preview.ts:
+// `data-slot`: `item.add`, `item.open`, `menu.*`, `pay.*`), but what is measured inside the screens
+// is still Editorial Market's own markup, which the contract has no markers for. So the audit is
+// for that template, and a run with another FACES_VISUAL_FACE skips it. The selectors that still
+// name that markup are the `.rm-*` and `.ro-*` ones below, and `.rm-header .rm-brandline`, `.rm-logo`,
+// `.rm-table` and `.rm-language` in `overlapsInHeader` (faces-audit.ts).
 test.skip(
   FACE_ID !== 'editorial-market',
   'these checks read the service sheets of Editorial Market',
@@ -208,7 +210,7 @@ test.describe('the contrast of what is drawn', () => {
           })
         }
         // A dish's page, where the choices and the note are.
-        await page.locator(`${PREVIEW_FACE} [data-slot="item.name"] button`).first().click()
+        await page.locator(`${PREVIEW_FACE} [data-slot="item.open"]`).first().click()
         await expect(dialogs(page)).toHaveCount(1)
         await scan('the dish page', '.rm-overlay')
         await page.keyboard.press('Escape')

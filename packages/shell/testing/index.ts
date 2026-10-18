@@ -4,12 +4,16 @@
 // binding a face is rendered with.
 
 export {
+  ADD_SLOT,
   assertFaceContract,
   type ContractFailure,
+  type ContractHost,
   type ContractOptions,
   type ContractReport,
   FEATURE_SLOTS,
   ITEM_ATTRIBUTE,
+  LANGUAGE_FIXTURE,
+  LANGUAGE_SLOT,
   LAYOUT_SWITCH_SLOT,
   type RenderFn,
   runFaceContract,

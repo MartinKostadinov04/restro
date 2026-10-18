@@ -40,9 +40,10 @@ import {
 // and the steps this template cannot take, each with its reason, to <face>/skipped.txt.
 //
 // The spec finds everything through the face contract (guide §5.5 and §7.3): `data-face`, `data-item`,
-// `data-slot` (`item.name`, `item.allergens`, `menu.filters`, `menu.bag`, `menu.bill`, `menu.pay`,
-// `menu.call_waiter`) and the dialog role. What the contract has no marker for is driven another
-// way (the menu's layout through the snapshot, D92) or skipped with a named reason.
+// `data-slot` (`item.name`, `item.allergens`, `item.open`, `item.add`, `menu.filters`, `menu.bag`,
+// `menu.bill`, `menu.pay`, `menu.call_waiter`, `menu.language`, `pay.method`, `pay.receipt_open`,
+// `pay.receipt`) and the dialog role. What the contract has no marker for is driven another way
+// (the menu's layout through the snapshot, D92) or skipped with a named reason.
 //
 //   presets  the designer's four and a custom one from three colours
 //   schemes  light, dark;  languages  bg, en;  widths  320, 360, 390, 430, 820
@@ -207,9 +208,9 @@ test.describe('the guest menu', () => {
             await shoot(page, path('scheduled'), card(page, words.scheduled))
 
             // The dish page, the filter sheet and the allergen sheet.
-            const dish = card(page, words.negroni).locator('[data-slot="item.name"] button')
+            const dish = card(page, words.negroni).locator('[data-slot="item.open"]')
             if ((await dish.count()) === 0) {
-              skip('dish: item.name holds no button, so there is no dish page to open')
+              skip('dish: the template draws no item.open, so there is no dish page to open')
             } else {
               await dish.click()
               await expect(dialogs(page)).toHaveCount(1)
@@ -277,7 +278,7 @@ test.describe('the service screens, in the Design preview', () => {
             await chooseTheme(page, theme)
             if (!(await chooseLanguage(page, lang))) {
               skip(
-                `services: the preview of ${FACE_ID} has no language control; the pictures keep the menu's default language`,
+                `services: the preview of ${FACE_ID} draws no menu.language; the pictures keep the menu's default language`,
               )
             }
             await tryFillBag(page)

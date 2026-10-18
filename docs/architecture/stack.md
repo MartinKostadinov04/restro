@@ -30,7 +30,7 @@ Each layer takes the most widely used tool that has a free or usage-priced tier,
 | Venue-admin login | Better Auth with its organization plugin | Free; accounts stay in our Postgres; tenant = organization with owner/admin/member roles, invitations, and a staff role that can only mark items sold out. Email and password (magic links optional), so a slow email never locks staff out mid-service | Clerk: another vendor holding staff accounts |
 | Email | Resend | Login links, invitations, the daily ops digest | — |
 | Payments | Payments are a connector kind (D98): one `PaymentProvider` interface (hold, capture, release, refund, hosted checkout, status notifications) with capability flags (hold and how long, Apple Pay and Google Pay, split), and one package per provider. myPOS is the first candidate, pending the feasibility check (T80); Stripe is second | The venue is the merchant on its own payment account at the provider, and Restro never holds money; Restro's fee is invoiced to the venue. The platform knows no provider's name. Whether guests can pay through barsy's payment link when they order from the menu is a separate open question (Q39, Q58) | Restro holding funds; building on one provider first |
-| Barsy access | One typed client, split into `read` and `write`; native `fetch` with a 30-second timeout | Agents cannot invent endpoints; every write is a named call on an allowlist Martin approves (order placement, webhook subscribe and restart; POS registration stays manual) | Ad-hoc calls |
+| Barsy access | One typed client, split into `read` and `write`; native `fetch` with a 30-second timeout | Agents cannot invent endpoints; every write is a waiter action (D110); webhooks and POS registration stay out (D41) | Ad-hoc calls |
 | Dates and money | date-fns + @date-fns/tz; integer minor units; `Intl.NumberFormat` | Past-midnight schedules in Europe/Sofia; Barsy's rounding in one module | Floats |
 | Interface text | next-intl (BG, EN) | Interface strings only; menu text comes from snapshots | — |
 | Tests | Vitest, fast-check, Playwright, MSW with recorded Barsy responses | Agents can check their own work; property tests guard "more cautious than the till" | — |
@@ -110,7 +110,7 @@ Import rules, checked in CI by dependency-cruiser:
 
 - `shell` and the faces in `apps/web` never import `db`, `barsy` or a payment provider package.
 - Only `core/apply` imports the write side of `db`.
-- Only `apps/worker` imports `barsy`. Its `write` part exposes only the calls on Martin's allowlist: order placement (outbox) and webhook subscribe and restart (onboarding, `barsy-health`). POS registration stays a manual, admin-only action.
+- Only `apps/worker` imports `barsy`. Its `write` part exposes only waiter actions (D110), such as order placement through the outbox. Webhook subscription and POS registration are setup, not waiter actions, and stay out (D41).
 - `apps/web` never calls Barsy; it reads Barsy state from Postgres and only verifies webhook signatures.
 - Only `apps/worker` imports a payment provider package and calls a provider (capture, release, refund, test call). The web app never imports one: its inbox checks a notification's signature through that provider's part in `apps/web/src/connectors/` (where POS-specific web code already lives), stores it, and reads payment state from Postgres (D98).
 - Packages never import apps.
@@ -127,7 +127,7 @@ Every non-negotiable rule from the Data architecture tab is backed by a check th
 | 4. The shell reads only snapshots | Import rule; the shell's only input type is `Snapshot` |
 | 5. Our layers only make the menu more cautious | Property tests (fast-check) on the resolver: whatever the layers hold, an item Barsy hides or takes off sale is never orderable, and an orderable item's price always equals Barsy's |
 | 6. Absence is a deletion only after a complete full pull | Integration test with a failed page in the fixture: nothing is hidden |
-| 7. Sync never writes into Barsy | `barsy/write` holds only the named calls on Martin's allowlist (order placement, webhook subscribe and restart); the venue-approved translation push (D26) would be added there by name |
+| 7. Restro writes into a POS only as a waiter would (D110) | Menu sync stays read-only; a connector's `write` part exports only waiter actions (open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel), each declared as such and checked by a test; never back-office writes (items, prices, settings, users); tests only on a test installation |
 | 8. Integer minor units, Barsy's rounding | One `money` module; Zod `.int()` on every amount; tests built from Barsy's own calculation examples |
 | 9. Barsy accounts | One API user per integration per environment; unique `pos_registrations.venue_id`; the outbox command schema requires a `uuid`; staging configuration refuses production hosts |
 

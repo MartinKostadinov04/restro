@@ -5,10 +5,9 @@
 // faces-a11y-services.spec.ts and faces-visual.spec.ts.
 //
 // The template under test is one id, `FACES_VISUAL_FACE` (default `editorial-market`), and every
-// control is found through the face contract's markers (guide §5.5 and §7.3: `data-slot`,
-// `data-item`), never through a template's class names. Two things the contract has no marker for
-// are still driven through Editorial Market's own markup, and only for it (see `ADD_TO_BAG` and
-// `payAndOpenReceipt`); any other template skips those steps with a named reason.
+// control is found through the face contract's markers (guide §5.5, §7.3 and §10.2: `data-slot`,
+// `data-item`), never through a template's class names: a template that draws no such control
+// skips the step with a named reason.
 //
 // The demo venue's items are linked to the till, so they can be ordered (a "+" on each card); every
 // service is switched on in its settings for the length of one spec file (`servicesOn`), and put back
@@ -178,9 +177,6 @@ export async function chooseTheme(page: Page, theme: VisualTheme): Promise<void>
   }
 }
 
-/** Editorial Market's own markup is driven only where the contract has no marker (see below). */
-export const IS_EDITORIAL_MARKET = FACE_ID === 'editorial-market'
-
 /** The menu-level slot (guide §5.5) of each screen's feature; paying and the receipt share one. */
 const SLOT_OF: Record<Screen, string> = {
   bag: 'menu.bag',
@@ -204,14 +200,8 @@ export const opener = (page: Page, screen: Screen): Locator =>
       : slot(SLOT_OF[screen]),
   )
 
-/**
- * The control on a dish card that puts the dish in the bag. The contract has no marker for it
- * (open question of ticket T89; proposed: `data-slot="item.add"` on the control). Until it has,
- * Editorial Market's own quick-add button is used, for it alone.
- */
-const ADD_TO_BAG = IS_EDITORIAL_MARKET
-  ? `${PREVIEW_FACE} [data-slot="item.add"], ${PREVIEW_FACE} .ro-plus`
-  : `${PREVIEW_FACE} [data-slot="item.add"]`
+/** The control on a dish card that puts the dish in the bag (guide §7.3). */
+const ADD_TO_BAG = `${PREVIEW_FACE} [data-slot="item.add"]`
 
 /** Puts a dish in the bag when the template has a way to, so the bag has its button. */
 export async function tryFillBag(page: Page): Promise<boolean> {
@@ -240,24 +230,19 @@ export async function whyNoScreen(page: Page, screen: Screen): Promise<string | 
   }
   // Only the bag's button waits for a dish; the other controls are the slots themselves.
   if (screen === 'bag' && (await opener(page, screen).count()) === 0) {
-    return `${FACE_ID} has no way to put a dish in the bag (no "item.add" marker in the contract), so there is no bag screen`
-  }
-  if (screen === 'receipt' && !IS_EDITORIAL_MARKET) {
-    return `the pay sheet's controls have no contract marker, so ${FACE_ID}'s receipt cannot be reached`
+    return `${FACE_ID} draws no "item.add" control, so a dish cannot be put in the bag and there is no bag screen`
   }
   return null
 }
 
 /**
- * Switches the template's language control to `lang` (a button or radio whose text is the code).
- * The control is the template's own markup (the contract has no marker for it); false when the
- * template draws none in the preview.
+ * Switches the template's language switch (`menu.language`, guide §7.3) to `lang`: the button or
+ * radio inside it that carries that `lang`. False when the template draws no switch in the preview.
  */
 export async function chooseLanguage(page: Page, lang: string): Promise<boolean> {
   const control = page
-    .locator(PREVIEW_FACE)
-    .locator('button, [role="radio"]')
-    .filter({ hasText: new RegExp(`^${lang}$`, 'i') })
+    .locator(slot('menu.language'))
+    .locator(`:is(button, [role="radio"])[lang|="${lang}"]`)
     .first()
   if ((await control.count()) === 0) return false
   await control.click()
@@ -265,16 +250,25 @@ export async function chooseLanguage(page: Page, lang: string): Promise<boolean>
 }
 
 /**
- * From the open pay sheet to the receipt: pays the demo bill by card and opens the receipt. The
- * pay sheet's controls are not in the contract; these are Editorial Market's (`whyNoScreen` keeps
- * other templates out).
+ * From the open pay sheet to the receipt, through the contract's pay markers (guide §10.2): pays
+ * the demo bill with the first method that is a card or wallet (`pay.method`, not Apple Pay or
+ * "pay the waiter"), waits for the paid screen's way on to the receipt (`pay.receipt_open`), and
+ * opens it (`pay.receipt`).
  */
 export async function payAndOpenReceipt(page: Page): Promise<void> {
   const sheet = dialogs(page).last()
-  await sheet.locator('.ro-pay:not(.is-apple)').first().click()
-  await expect(sheet.locator('.ro-state[data-tone="ok"]')).toBeVisible({ timeout: 15_000 })
-  await sheet.locator('.ro-primary').click()
-  await expect(sheet.locator('.ro-receipt')).toBeVisible()
+  const method = sheet
+    .locator('[data-slot="pay.method"]:not([data-method="apple"]):not([data-method="waiter"])')
+    .first()
+  await expect(
+    method,
+    `${FACE_ID}'s pay sheet marks a card or wallet method pay.method`,
+  ).toBeVisible()
+  await method.click()
+  const toReceipt = sheet.locator('[data-slot="pay.receipt_open"]')
+  await expect(toReceipt).toBeVisible({ timeout: 15_000 })
+  await toReceipt.click()
+  await expect(sheet.locator('[data-slot="pay.receipt"]')).toBeVisible()
 }
 
 /** Opens a screen and runs `check` on it; the screen is closed again afterwards. */
