@@ -115,10 +115,11 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
 | [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
-| [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113 |
-| [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30 |
+| [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) |
+| [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill) |
 | [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29 |
 | [D114](decisions/D114.md) | Agents' deliverables are filed in docs/deliverables and kept for revisiting | firm |
+| [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

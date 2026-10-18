@@ -169,7 +169,7 @@ The items a guest has picked on the guest page but not yet sent.
 _Avoid_: cart, basket
 
 **Order**:
-What one guest sends from the guest page in one go. It goes into the venue's POS on a POS bill of its own; once the POS has it, it is part of the table's bill.
+What one guest sends from the guest page in one go. It goes into the venue's POS as a round on the table's open POS bill, or on a new POS bill when the table has none, and is then part of the table's bill. A pay-first order is a POS bill of its own, paid and closed at once.
 _Avoid_: request (that is a song request), ticket
 
 **Round**:
@@ -177,8 +177,8 @@ Items added to a bill at one time, by a guest's order or by a waiter.
 _Avoid_: batch, course
 
 **Bill**:
-Everything ordered at a table during one visit, with what is paid and what is still owed. Guests see and pay one bill per table, however many POS bills sit behind it.
-_Avoid_: tab, check, ticket, account
+Everything still open at a table: its open POS bills, with what is owed and anything already paid against them. A POS bill that closes drops off it. Guests see and pay one bill per table, however many POS bills sit behind it.
+_Avoid_: tab, check, ticket, account, visit (Restro has none)
 
 **POS bill**:
 One bill as the venue's POS holds it: items owed plus the payments made against it, open until settled, then closed with a fiscal receipt. The table is an optional label on it, and a table can hold several open POS bills at once.

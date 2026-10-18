@@ -23,9 +23,9 @@ It is a living file: when an answer arrives, replace the `open` text on that POS
 
 ## Decisions that shape the list
 
-The list does not ask what these settle. Restro writes into a POS only as a waiter would (D110). No webhooks: Restro polls (D41). Approval at the bar and orders that arrive late are out of scope for now. Each guest order opens its own POS bill, stamped with Restro's code, until a POS confirms a guard for adding rounds. The guest sees one bill per table. A pay-first order is its own paid, closed POS bill. Paying early for chosen items is a split. Part payment of an amount on an open POS bill waits for the POS and fiscal answers. Refunds happen at the venue, not through Restro.
+The list does not ask what these settle. Restro writes into a POS only as a waiter would (D110). No webhooks: Restro polls (D41). Approval at the bar and orders that arrive late are out of scope for now. A guest's on-the-bill order is added as a round to the table's oldest open POS bill, and opens a new POS bill stamped with Restro's code only when the table has none; a round that times out is checked by reading back, never resent (D115). The guest sees one bill per table: its open POS bills. A pay-first order is its own paid, closed POS bill. Paying early for chosen items is a split. Part payment of an amount on an open POS bill waits for the POS and fiscal answers. Refunds happen at the venue, not through Restro.
 
-Summary: 51 questions, 37 blocking.
+Summary: 52 questions, 38 blocking.
 
 ## 1. Connecting and setup
 
@@ -129,13 +129,18 @@ Summary: 51 questions, 37 blocking.
 - Mistral: open: no public API (T69).
 
 ### C20. Can a round be added to an open POS bill with the same protection: the code checked on additions, or a marker that groups the rows of one call as one round, or a conditional write (a version on the POS bill)?
-**Later.** Until a POS confirms a guard, each guest order opens its own POS bill. A yes would allow one POS bill per table.
+**Later.** Rounds go onto the table's open POS bill (D115). Without a guard, a timed-out round is checked by reading back (C52); a yes here makes a resend safe instead.
 - barsy: known: `Accounts_place` with `account_id` adds orders to an open bill. Whether a repeat is refused: not yet asked (did-it-land section 7, questions 1, 7 and 8; races R1; processes, open point 1).
 - Mistral: open: no public API (T69).
 
 ### C21. Can Restro set its own id on a POS bill and on a row, read it back and filter by it?
-**Later.** It would replace matching by rows and time when a POS bill must be found.
+**Later.** It would replace matching by rows, POS user and time (C52) with an exact match, so a timed-out round leaves no doubt (D115).
 - barsy: open: Q82.3. The fields `ref_id` (bill) and `order_ref_id` (row) exist; how they are set is not stated (api-reference).
+- Mistral: open: no public API (T69).
+
+### C52. After a round times out, can Restro tell for certain whether it landed by reading the table's open POS bills: does each row read back with the POS user who entered it and the time, is a call all-or-nothing, and can a row still land after Restro has looked for a minute?
+**Blocking.** D115's check for a timed-out round rests on this: Restro's own POS user, one order in flight per table, a minute of reading back, never a resend. It is Restro's design, not a documented feature, so it must be proven on the POS's test installation before ordering is built.
+- barsy: partly known: each row carries `user_name` (who placed it) and `date`, and `Accounts_getlist` filters a table's open bills (api-reference). All-or-nothing and late landing: not yet asked (close to C18). Test on the test installation: not yet run. Q82.3 (C21) would make the match exact.
 - Mistral: open: no public API (T69).
 
 ## 4. Reading a bill back

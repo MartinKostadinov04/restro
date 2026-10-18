@@ -17,6 +17,8 @@ Every decision taken in the grilling, one row each. **Status:**
 
 Only D-numbers bind; this log is the index to them.
 
+**Updated after #36 (10-18):** rows 1.4, 1.8, 1.11 and 4.1–4.4 now name D115, which changed them; their first status word stays as the guard test (`scripts/decisions.test.ts`) allows, and the rest says what changed. The #36 log is `2026-10-18-table-visit-decision-log.md`.
+
 ## 1. What a bill is
 
 | # | Decision | Why | Status | Recorded in |
@@ -24,14 +26,14 @@ Only D-numbers bind; this log is the index to them.
 | 1.1 | A **POS bill** is one bill as the venue's POS holds it: items owed plus payments, open until settled, closed with a fiscal receipt. | Same in barsy and every POS read. | firm | D111, GLOSSARY |
 | 1.2 | The POS is the only truth. Restro never keeps a bill of its own. | A copy disagrees the moment a waiter acts. | firm | D111 |
 | 1.3 | A table can hold several open POS bills; the table is an optional label; a POS bill can have no table. | barsy and POS systems in general work this way. | firm | D111, GLOSSARY |
-| 1.4 | A **bill** is what guests see: everything ordered at a table in one visit, by one guest or several, with what is paid and what is owed. One per table, however many POS bills sit behind it. | "I don't really care how many bills you open as long as the customer sees the full bill" (Martin). | firm | D111, GLOSSARY |
+| 1.4 | A **bill** is what guests see: everything ordered at a table in one visit, by one guest or several, with what is paid and what is owed. One per table, however many POS bills sit behind it. | "I don't really care how many bills you open as long as the customer sees the full bill" (Martin). | firm, "in one visit" superseded by D115 (no visit: the bill is the table's open POS bills) | D111, D115, GLOSSARY |
 | 1.5 | The bill shows no "who ordered what". | Separate bills are tiring; attribution costs development without much value. | later (improvement) | D111 |
 | 1.6 | Everyone who opens the guest page from the table code sees the table's bill. | The friend who pays often didn't order. | firm | D111 |
 | 1.7 | Anyone who sees the bill may pay it. | Otherwise it becomes very complex; money coming in is never a risk. | firm | D111 |
-| 1.8 | In this map every guest order comes through a table code; ordering at the bar means table codes on the bar counter. | Keeps the bill tied to a table. | firm | D111 |
+| 1.8 | In this map every guest order comes through a table code; ordering at the bar means table codes on the bar counter. | Keeps the bill tied to a table. | firm, the bar-counter part superseded by D115 (no ordering from the bar) | D111, D115 |
 | 1.9 | Ordering with no table code. | | out | D111 |
 | 1.10 | Waiters keep every power they had; whatever they do in the POS is what the bill shows. | Restro is one more party that reads the bill and acts on it. | firm | D111, D112 |
-| 1.11 | When a visit starts and ends, and which POS bills belong to a bill. | | open | #36 |
+| 1.11 | When a visit starts and ends, and which POS bills belong to a bill. | Answered in #36: there is no visit. | firm, answered by D115 | D115, #36 |
 
 ## 2. What Restro keeps
 
@@ -65,10 +67,10 @@ Only D-numbers bind; this log is the index to them.
 
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
-| 4.1 | Each guest order opens its own POS bill on the table, stamped with Restro's code. Replaces the charting decision "orders add rounds to the table's open bill". | A timeout tells nothing; barsy refuses a duplicate only for a new bill (re-read signed in 10-18), so a retry can't double the drinks. | firm | D112 |
-| 4.2 | Adding rounds to an open POS bill. | Waits until a POS confirms a duplicate guard. | open | D112, CQ, Q82 |
-| 4.3 | Restro never sends a second order, **for now** ("until we see this issue being real"). | | firm, revisitable | D112 |
-| 4.4 | With no answer, Restro resends the identical stamped request for about a minute; then "please call a waiter" and a staff alert. | The same letter with the same seal, never a new order. | firm | D112 |
+| 4.1 | Each guest order opens its own POS bill on the table, stamped with Restro's code. Replaces the charting decision "orders add rounds to the table's open bill". | A timeout tells nothing; barsy refuses a duplicate only for a new bill (re-read signed in 10-18), so a retry can't double the drinks. | firm, superseded by D115 (rounds go onto the table's oldest open POS bill; a new stamped POS bill only when none is open) | D112, D115 |
+| 4.2 | Adding rounds to an open POS bill. | Waits until a POS confirms a duplicate guard. | firm, superseded by D115 (rounds are added now; a timed-out round is checked by reading back, never resent) | D112, D115, CQ, Q82 |
+| 4.3 | Restro never sends a second order, **for now** ("until we see this issue being real"). | | firm, made permanent for rounds by D115 (a round is never resent) | D112, D115 |
+| 4.4 | With no answer, Restro resends the identical stamped request for about a minute; then "please call a waiter" and a staff alert. | The same letter with the same seal, never a new order. | firm, narrowed by D115 (only an order opening a new POS bill is resent; a round is checked) | D112, D115 |
 | 4.5 | The phone shows "Sending…", "Added to your bill" (only once the POS has it), or "We couldn't send your order, please call a waiter". | No moment where the bar and the guest disagree. | firm | D112 |
 | 4.6 | No delivery-style stages ("being prepared"). | Extra steps for waiters, load on our systems. | out | D112 |
 | 4.7 | Staff see several POS bills on a table and can merge them in one action. | barsy's own QR menu works so. | firm | D112 |
