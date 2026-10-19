@@ -25,7 +25,7 @@ Sources: `2026-10-18-table-visit-in-other-software.md` and `2026-10-18-how-qr-ap
 | 1.6 | Nothing happens at 07:00: the service day stamps each order but doesn't cut the bill. | A POS bill still open is the POS's truth (Martin: "on staff to figure out in the POS"). | firm | D115, D45 |
 | 1.7 | A new group sees whatever the POS still has open on the table; a bill left open overnight is staff's to close. | Restro shows the menu and lets guests act as they would with a waiter (Martin). | firm | D115 |
 | 1.8 | A page left open when the table's POS bills close: D111's knock shows "your bill changed", then the empty bill; nothing is blocked. | Already covered by D111. | firm | D115, D111 |
-| 1.9 | The phone that paid lists its own paid orders and receipt copies for the service day ("Your paid orders"); how it looks is the bill screen's. | A closed POS bill drops off the table's bill (1.2), but the payer still needs proof. | open (Martin's answer pending) | #45, D115 |
+| 1.9 | The phone that paid lists its own paid orders and receipt copies for the service day ("Your paid orders"); how it looks is the bill screen's. | A closed POS bill drops off the table's bill (1.2), but the payer still needs proof. Martin: yes. | firm | D115, #45 |
 
 ## 2. How an order joins the table's POS bill
 
