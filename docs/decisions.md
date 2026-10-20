@@ -17,7 +17,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D10](decisions/D10.md) | Menu languages: all barsy holds plus ones added by hand | firm (refined 10-08); refined by D77 (only languages with filled texts); Q65 |
 | [D11](decisions/D11.md) | No in-app age check; the door handles it | firm; Q66 |
 | [D12](decisions/D12.md) | Own waiter view only for venues without barsy, billed separately | firm |
-| [D13](decisions/D13.md) | Paid orders go to barsy without our own staff-confirmation step | firm; see D18, Q38, Q49 |
+| [D13](decisions/D13.md) | Paid orders go to barsy without our own staff-confirmation step | superseded by D116; see D18, Q38, Q49 |
 | [D14](decisions/D14.md) | Guests can split the bill in the web app | firm; refined by D112 |
 | [D15](decisions/D15.md) | Config-driven app: venue data rendered by a visual shell changeable per customer | applied |
 | [D16](decisions/D16.md) | Sync a copy of barsy's data into our own model | applied |
@@ -116,10 +116,12 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
 | [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
 | [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) |
-| [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill) |
+| [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill), D116 and D117 (the shared bag; a mixed bag no longer waits) |
 | [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29 |
 | [D114](decisions/D114.md) | Agents' deliverables are filed in docs/deliverables and kept for revisiting | firm |
-| [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112 |
+| [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112; refined by D117 |
+| [D116](decisions/D116.md) | The life of an order: its states, what the guest sees, no cancelling after Send, and approval at the bar as a venue setting | firm; supersedes D13; refines D112 |
+| [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

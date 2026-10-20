@@ -23,9 +23,9 @@ It is a living file: when an answer arrives, replace the `open` text on that POS
 
 ## Decisions that shape the list
 
-The list does not ask what these settle. Restro writes into a POS only as a waiter would (D110). No webhooks: Restro polls (D41). Approval at the bar and orders that arrive late are out of scope for now. A guest's on-the-bill order is added as a round to the table's oldest open POS bill, and opens a new POS bill stamped with Restro's code only when the table has none; a round that times out is checked by reading back, never resent (D115). The guest sees one bill per table: its open POS bills. A pay-first order is its own paid, closed POS bill. Paying early for chosen items is a split. Part payment of an amount on an open POS bill waits for the POS and fiscal answers. Refunds happen at the venue, not through Restro.
+The list does not ask what these settle. Restro writes into a POS only as a waiter would (D110). No webhooks: Restro polls (D41). Approval at the bar is a venue setting for on-the-bill orders, offered only where the POS supports it (D116); orders that arrive late are out of scope for now. A guest's on-the-bill order is added as a round to the table's oldest open POS bill, and opens a new POS bill stamped with Restro's code only when the table has none; a round that times out is checked by reading back, never resent (D115). The guest sees one bill per table: its open POS bills. A pay-first order is its own paid, closed POS bill. Paying early for chosen items is a split. Part payment of an amount on an open POS bill waits for the POS and fiscal answers. Refunds happen at the venue, not through Restro.
 
-Summary: 52 questions, 38 blocking.
+Summary: 53 questions, 38 blocking.
 
 ## 1. Connecting and setup
 
@@ -99,6 +99,11 @@ Summary: 52 questions, 38 blocking.
 ### C14. Does an outside order reach the bar and kitchen screens and printers the way a waiter's order does, and does it print anything on the fiscal device?
 **Blocking.** The bar must see the order, and the law forbids a service slip on the fiscal device.
 - barsy: partly known: a new bill goes to the screens and printers set for new orders in the venue's settings; the setting "print fiscal total" prints a total-only receipt plus a service note (requirements, P6.6 and G5). Whether a bill made by the API follows it: not yet asked.
+- Mistral: open: no public API (T69).
+
+### C53. Can the bar approve or decline an outside order in the POS before it counts, and can Restro read the approval and the decline back?
+**Later.** Approval at the bar is a venue setting, off by default and offered only where the POS answers yes (D116). With it on, an order is Awaiting approval until the bar approves; a decline returns the lines to the guest's bag. Also: does approval apply per POS bill or per round (a round added to a POS bill the bar already approved), how long an order may wait, and does a paid, closed POS bill ever wait for approval (D116 keeps pay-first orders out of approval).
+- barsy: partly known: approval is a mode per cash desk ("Без одобрение", "Ръчен", "Директно след плащане", "Автоматичен"), bills waiting appear under "За потвърждение", and `service_status_id` 2 reads "waiting for approval" (requirements P6.4, api-reference). Which status an API bill gets under each mode, whether `Accounts_place` honours the mode, and how a decline reads back: open: Q82.4, Q82.5.
 - Mistral: open: no public API (T69).
 
 ## 3. Not sending twice
@@ -309,7 +314,7 @@ Summary: 52 questions, 38 blocking.
 
 These came up in the sources and are not in the list, because a decision settles them or they are not about ordering and paying from the menu. Say if one should come back.
 
-- Approval at the bar (Q82.4 and Q82.5, processes open point 4, the status part of races G15) and orders that arrive late: out of scope for now.
+- Orders that arrive late: out of scope for now. Approval at the bar came back as C53 (D116).
 - Webhooks, POS registration and subscribing to POS events: D41, D110.
 - Refunds, storno, credit notes and a refund to a card without cash in the drawer (Lukanet 8; requirements F5): refunds happen at the venue.
 - Payment links made by the POS (Lukanet 10): not something a waiter does, and the money would bypass Restro's payment provider. This is a product choice for Martin, not a question for a POS.

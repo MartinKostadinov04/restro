@@ -19,6 +19,8 @@ Only D-numbers bind; this log is the index to them.
 
 **Updated after #36 (10-18):** rows 1.4, 1.8, 1.11 and 4.1–4.4 now name D115, which changed them; their first status word stays as the guard test (`scripts/decisions.test.ts`) allows, and the rest says what changed. The #36 log is `2026-10-18-table-visit-decision-log.md`.
 
+**Updated after #37 (10-19):** rows 4.8, 6.2, 6.3, 6.4 and 8.4 now name D116 or D117, which changed them, in the same way. The #37 log is `2026-10-19-order-life-decision-log.md`.
+
 ## 1. What a bill is
 
 | # | Decision | Why | Status | Recorded in |
@@ -74,7 +76,7 @@ Only D-numbers bind; this log is the index to them.
 | 4.5 | The phone shows "Sending…", "Added to your bill" (only once the POS has it), or "We couldn't send your order, please call a waiter". | No moment where the bar and the guest disagree. | firm | D112 |
 | 4.6 | No delivery-style stages ("being prepared"). | Extra steps for waiters, load on our systems. | out | D112 |
 | 4.7 | Staff see several POS bills on a table and can merge them in one action. | barsy's own QR menu works so. | firm | D112 |
-| 4.8 | Approval of orders at the bar. | | out (now) | D112, #38 |
+| 4.8 | Approval of orders at the bar. | | out (now), brought back by D116 as a venue setting for on-the-bill orders where the POS supports it | D112, D116, #38 |
 | 4.9 | Orders that arrive late. | | out (now) | D112, #37 |
 | 4.10 | An item the bar refuses after it is on the bill. | An item is either on the menu or not. | out | D112 |
 | 4.11 | Moving a bill to another table; a guest at the wrong table. | Done by a waiter in the POS. | out | D112, #36 |
@@ -93,9 +95,9 @@ Only D-numbers bind; this log is the index to them.
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
 | 6.1 | A pay-first order is paid before it reaches the POS, then becomes its own POS bill, opened, paid and closed in one call, labelled with the table. | Nothing in the POS can change under it. | firm | D112 |
-| 6.2 | The guest chooses: pay only the pay-first items, or the whole bag. Replaces the charting decision "a bag with any pay-first item is paid first as a whole". | Martin. | firm | D112 |
-| 6.3 | The on-the-bill items wait until the payment settles, then go to the POS right after the paid POS bill. | | firm | D112 |
-| 6.4 | "Card declined": try again, order the rest without it, call a waiter, and a small way back. | Cancel is not a priority action (Martin). | firm | D112 |
+| 6.2 | The guest chooses: pay only the pay-first items, or the whole bag. Replaces the charting decision "a bag with any pay-first item is paid first as a whole". | Martin. | firm, superseded by D117 (Send sends the on-the-bill lines at once; pay-first lines stay in the bag until paid, in one payment for the ticked lines) | D112, D117 |
+| 6.3 | The on-the-bill items wait until the payment settles, then go to the POS right after the paid POS bill. | | firm, superseded by D117 (they no longer wait) | D112, D117 |
+| 6.4 | "Card declined": try again, order the rest without it, call a waiter, and a small way back. | Cancel is not a priority action (Martin). | firm, narrowed by D117 ("Order the rest without it" is gone, "Pay later" is the way back) | D112, D117 |
 | 6.5 | "Can't tell yet": about 60 s of "Checking…" with no retry button, then "Please call a waiter" with a reference. | A retry there risks paying twice. | firm | D112 |
 
 ## 7. Paying on the bill
@@ -118,7 +120,7 @@ Only D-numbers bind; this log is the index to them.
 | 8.1 | Every guest payment: hold, write to the POS, then capture; a POS refusal releases the hold. | The guest is never charged for what the POS didn't record. | firm | D112 |
 | 8.2 | With a provider that cannot hold, Restro refunds automatically only on a clear POS "no", never after a timeout. | | firm | D112 |
 | 8.3 | The server finishes each payment from the provider's notice; an unfinished payment is dropped after about 10 minutes (a venue setting). | Closing the phone changes nothing. | firm | D112 |
-| 8.4 | One payment at a time per bag and per bill; others see "someone is paying". | Two people never pay for the same drinks. | firm | D112 |
+| 8.4 | One payment at a time per bag and per bill; others see "someone is paying". | Two people never pay for the same drinks. | firm, made a visible countdown lock by D117 (one for the bag, one for the bill, side by side) | D112, D117 |
 | 8.5 | Refunds happen at the venue (provider dashboard plus a POS reversal); Restro's payment record carries the provider's reference. | | firm | D112 |
 | 8.6 | A minimum amount for card payments is a venue-wide setting. | | firm | D112 |
 | 8.7 | A table's minimum spend for the night (VIP tables). | | out | D112 |

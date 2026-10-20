@@ -165,12 +165,28 @@ _Avoid_: day, night, shift
 ## Ordering and bills
 
 **Bag**:
-The items a guest has picked on the guest page but not yet sent.
+The items the guests at a table have picked on the guest page but not yet sent. One per table, shared by every phone opened from its table code. Pay-first items stay in it until someone pays for them.
 _Avoid_: cart, basket
 
+**Earlier bag**:
+A bag left unchanged for the venue's idle time, set aside so the table can restore it until its POS bills close.
+_Avoid_: old cart, saved bag
+
 **Order**:
-What one guest sends from the guest page in one go. It goes into the venue's POS as a round on the table's open POS bill, or on a new POS bill when the table has none, and is then part of the table's bill. A pay-first order is a POS bill of its own, paid and closed at once.
+What leaves a table's bag in one Send, or in one payment for pay-first items. It goes into the venue's POS as a round on the table's open POS bill, or on a new POS bill when the table has none, and is then part of the table's bill. A pay-first order is a POS bill of its own, paid and closed at once.
 _Avoid_: request (that is a song request), ticket
+
+**Order state**:
+Where an order stands. **Waiting**: stored, waiting for the table's turn. **Sending**: on its way to the POS. **Checking**: no answer came, so Restro is finding out whether it landed. **Awaiting approval**: in the POS, waiting for the bar to approve it (only where the venue uses approval). **Added**: the POS has it. **Not sent**: certainly not in the POS. **Unconfirmed**: still unknown after the check.
+_Avoid_: pending, accepted, rejected, failed, unknown
+
+**Read-back**:
+Reading a table's POS bills to find out whether a round that got no answer reached the POS.
+_Avoid_: reconcile, lookup
+
+**Approval**:
+The bar confirming an on-the-bill order in the POS before it counts as added. A venue setting, where the POS supports it.
+_Avoid_: confirmation, acceptance
 
 **Round**:
 Items added to a bill at one time, by a guest's order or by a waiter.
