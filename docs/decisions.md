@@ -122,7 +122,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112; refined by D117 and D118 (only at open tables; the location check) |
 | [D116](decisions/D116.md) | The life of an order: its states, what the guest sees, no cancelling after Send, and approval at the bar as a venue setting | firm; supersedes D13; refines D112 |
 | [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115 |
-| [D118](decisions/D118.md) | Guards against fake orders on the bill: only at open tables, a location check, a cap per round and a pace limit per table | firm; refines D115; supersedes D27 |
+| [D118](decisions/D118.md) | Guards against fake orders on the bill: only at open tables, a location check, a cap per round and a pace limit per table | firm; refines D115; supersedes D27; refined by D119 |
+| [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

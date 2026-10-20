@@ -81,3 +81,19 @@ The binding text is D118. Martin confirmed the shared understanding on 10-20.
 |---|---|---|---|---|
 | 8.1 | **Location check**: checking, before an on-the-bill order, that the phone is at the venue. | A new concept, named once for code, docs and screens. | firm | GLOSSARY, D118 |
 | 8.2 | **Open table**: a table with at least one open POS bill, which a waiter has started. The rule in 2.1 is "only at open tables". | Martin: ok. | firm | GLOSSARY, D118 |
+
+## 9. After the ticket: the law (10-20)
+
+Martin 10-20: move on without a lawyer for now; an Opus deep-research agent gave the working answers (`2026-10-20-location-check-law-deep-research.md`). Martin also ran the field test: coverage inside with decent accuracy, so 3.1's defaults stand (`docs/open-items.md`).
+
+| # | Decision | Why | Status | Recorded in |
+|---|---|---|---|---|
+| 9.1 | Consent stays the basis: the "strictly necessary" exemption is arguable but not relied on. Replaces 3.10's "probably doesn't fit". | Regulators split (DSK and AEPD for, CNIL and WP29 Opinion 9/2014 against). | firm | D119 |
+| 9.2 | The consent screen: "[Venue] and Restro check your location each time you order to the bill, so nobody outside can add to it. It's never stored. You can stop anytime, or pay first or call a waiter instead. [Privacy]" with [Allow] / [Not now]. Replaces 3.10's line and the research's longer draft. | The law needs who, why, not stored, the alternatives and the right to stop before consent; Martin: the long one was too long. | firm | D119 |
+| 9.3 | A "Stop location check" control in the "Why?" line and on the bill; after a refusal the phone isn't asked again that service day. | Withdrawal must be as easy as giving consent. | firm | D119 |
+| 9.4 | The screen shows once per phone per service day, even if the browser already allows location; a browser block counts as a refusal. | The consent is to the venue and Restro, not to the browser. | firm | D119 |
+| 9.5 | Each on-the-bill order records "location check passed, consent text vN", with no coordinates and no phone identifier. | The controller must be able to show consent; the order record is kept anyway (D111). | firm | D119 |
+| 9.6 | An agent drafts the privacy notice items, a short DPIA, the records of processing and a venue-terms clause (Art. 26 for the check, Art. 28 for orders) under T31, before the first guest. | Joint control of the check, processing of orders; location is a DPIA criterion. | firm | D119 |
+| 9.7 | Turnstile runs only at Send, in managed mode, with pre-clearance and feedback off; what it stores is inspected on staging; Cloudflare is asked in writing about reusing the signals. No home-made alternative now. | Keeps it within "strictly necessary" as far as Restro can; a home-made check would be a new dependency. | firm | D119 |
+| 9.8 | Five narrow questions stay for the lawyer (the exemption, refusal and the waiter as alternative, Turnstile's reuse, joint or independent control, the DPIA's finding). | Interpretation only (Martin 10-18). | open | open-items (Q83), D119 |
+

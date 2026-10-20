@@ -48,7 +48,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q42: allergen rules for food and drinks in catering and online menus; do pilots hold allergens in barsy?
 - Q10: accounting treatment of online tips.
 - Q70: may a Bulgarian fiscal receipt carry English item names (`lang_id`)? Default: always `bg_BG`.
-- Q83: the location check before on-the-bill orders and Turnstile under ePrivacy (D118). Six questions, prepared in `docs/deliverables/2026-10-19-location-check-eprivacy.md` ("Narrowest questions for the lawyer"): the "strictly necessary" exemption (Directive Art. 5(3), Art. 4а ЗЕТ); whether Restro's line plus the phone's prompt is valid consent; whether a refusal may block on-the-bill orders (GDPR Art. 7(4)); Turnstile without pre-clearance; controller (venue, Restro or both) and whether a DPIA is needed; who enforces Art. 4а ЗЕТ (КЗП or КЗЛД). Until answered, the build follows D118's consent design. Martin 10-20: move on without a lawyer for now; an Opus deep-research agent gave the working answers on 10-20 (`docs/deliverables/2026-10-20-location-check-law-deep-research.md`): build on consent, КЗП enforces Art. 4а ЗЕТ. Five narrow questions stay for the lawyer, listed in that file under "For the lawyer later". Its proposed changes to D118 wait for Martin.
+- Q83: the location check before on-the-bill orders and Turnstile under ePrivacy (D118). Six questions, prepared in `docs/deliverables/2026-10-19-location-check-eprivacy.md` ("Narrowest questions for the lawyer"): the "strictly necessary" exemption (Directive Art. 5(3), Art. 4а ЗЕТ); whether Restro's line plus the phone's prompt is valid consent; whether a refusal may block on-the-bill orders (GDPR Art. 7(4)); Turnstile without pre-clearance; controller (venue, Restro or both) and whether a DPIA is needed; who enforces Art. 4а ЗЕТ (КЗП or КЗЛД). Until answered, the build follows D118's consent design. Martin 10-20: move on without a lawyer for now; an Opus deep-research agent gave the working answers on 10-20 (`docs/deliverables/2026-10-20-location-check-law-deep-research.md`): build on consent, КЗП enforces Art. 4а ЗЕТ. Five narrow questions stay for the lawyer, listed in that file under "For the lawyer later". Martin decided its proposed changes on 10-20 (D119).
 
 **Pilot venues (T3)**
 - Q43: time-based price lists (happy hour)? Q45: EN names in barsy? Q54: which stats do owners want (after T21)?
@@ -127,7 +127,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T13 Martin: ask a pilot owner for the "software resource" price (Q25, Q29, Q41).
 - T33 Martin: send the lawyer/accountant questions.
 - T29 Claude: orders and payments spec; the ordering half now runs as map #29; payments after it, details after T9 and T33.
-- T31 Martin + lawyer: privacy notice, terms, data processing agreement; before the first guest.
+- T31 Martin + lawyer: privacy notice, terms, data processing agreement; before the first guest. For the location check and Turnstile (D119): an agent drafts the notice items, a short DPIA, the records of processing and the venue-terms clause (Art. 26 / Art. 28), without a lawyer for now.
 - T17 Martin: remaining decisions P41–P43, P46, P48–P50, P52, P53, P10; veto window on D50.
 - T20 Claude: read the 2021 food-information ordinance, or ask the lawyer (Q42).
 - T21 Claude + Martin: research what data barsy gives for venue stats.
