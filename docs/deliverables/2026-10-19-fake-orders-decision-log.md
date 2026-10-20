@@ -17,6 +17,8 @@ The binding text is D118. Martin confirmed the shared understanding on 10-20.
 
 **Updated after #39 (10-20):** row 5.1 now names D120, which details its alert; its first status word stays. The #39 log is `2026-10-20-failure-pause-decision-log.md`.
 
+**Updated after #40 (10-20):** rows 3.2 and 9.2 now name D121, which changed them (a location pass of 2 hours; the check on every on-the-bill change; a shorter consent screen); their first status word stays. The #40 log is `2026-10-20-guest-api-decision-log.md`.
+
 ## 1. What is guarded, and against whom
 
 | # | Decision | Why | Status | Recorded in |
@@ -38,7 +40,7 @@ The binding text is D118. Martin confirmed the shared understanding on 10-20.
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
 | 3.1 | A field test in the pilot club comes before the check is built: iPhone and Android, Wi-Fi on and off, precise location on and off, spots inside including the deepest corner, and the street 50, 100 and 200 m away. The radius (3.4) and the "can't check" width (3.3) are set from it. Martin runs it on 10-19. | No public measurement exists for a basement club; indoor positions are off by tens to hundreds of metres. | open | D118, open-items |
-| 3.2 | The phone asks at the first Send of an on-the-bill order, not when the menu opens. One line from Restro first ("We check you're in [venue] so nobody can order onto your table from outside. Your location is used once and not stored."), then the phone's own prompt (final wording: 3.10). Every later on-the-bill order checks again without a prompt. | A refusal can't be asked again by the page, so the reason comes first; a guest who left must not keep ordering onto the table from home. | firm | D118 |
+| 3.2 | The phone asks at the first Send of an on-the-bill order, not when the menu opens. One line from Restro first ("We check you're in [venue] so nobody can order onto your table from outside. Your location is used once and not stored."), then the phone's own prompt (final wording: 3.10). Every later on-the-bill order checks again without a prompt. | A refusal can't be asked again by the page, so the reason comes first; a guest who left must not keep ordering onto the table from home. | firm; refined by D121: checked at every on-the-bill change, then a 2-hour location pass per phone and table | D118, D121 |
 | 3.3 | The check passes when the phone's circle of doubt touches the venue's circle. A circle wider than about 1 km (approximate location) counts as "can't check". | Fails only guests who are clearly elsewhere; a km-wide circle proves nothing. | firm | D118 |
 | 3.4 | The owner sets the venue's point once ("I'm at the venue – use this spot", or a pin on a map). The radius is 150 m to start, then what the field test shows. Round 2 made the radius Restro's; replaced in round 3 by a venue setting from 100 to 500 m (7.1). | Android's own guidance puts 100 m as the smallest useful circle; below it real guests in a basement are refused. Martin: it's the venue's floor and its risk. | firm | D118 |
 | 3.5 | Refused, blocked, "can't check" or no answer in about 10 s: no on-the-bill order from that phone. The menu, the bill and paying are never blocked. | Fails closed; revisited only if the field test shows real guests often can't be located inside. | firm | D118 |
@@ -91,7 +93,7 @@ Martin 10-20: move on without a lawyer for now; an Opus deep-research agent gave
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
 | 9.1 | Consent stays the basis: the "strictly necessary" exemption is arguable but not relied on. Replaces 3.10's "probably doesn't fit". | Regulators split (DSK and AEPD for, CNIL and WP29 Opinion 9/2014 against). | firm | D119 |
-| 9.2 | The consent screen: "[Venue] and Restro check your location each time you order to the bill, so nobody outside can add to it. It's never stored. You can stop anytime, or pay first or call a waiter instead. [Privacy]" with [Allow] / [Not now]. Replaces 3.10's line and the research's longer draft. | The law needs who, why, not stored, the alternatives and the right to stop before consent; Martin: the long one was too long. | firm | D119 |
+| 9.2 | The consent screen: "[Venue] and Restro check your location each time you order to the bill, so nobody outside can add to it. It's never stored. You can stop anytime, or pay first or call a waiter instead. [Privacy]" with [Allow] / [Not now]. Replaces 3.10's line and the research's longer draft. | The law needs who, why, not stored, the alternatives and the right to stop before consent; Martin: the long one was too long. | firm; replaced by D121's shorter text, shown at the first on-the-bill change | D119, D121 |
 | 9.3 | A "Stop location check" control in the "Why?" line and on the bill; after a refusal the phone isn't asked again that service day. | Withdrawal must be as easy as giving consent. | firm | D119 |
 | 9.4 | The screen shows once per phone per service day, even if the browser already allows location; a browser block counts as a refusal. | The consent is to the venue and Restro, not to the browser. | firm | D119 |
 | 9.5 | Each on-the-bill order records "location check passed, consent text vN", with no coordinates and no phone identifier. | The controller must be able to show consent; the order record is kept anyway (D111). | firm | D119 |

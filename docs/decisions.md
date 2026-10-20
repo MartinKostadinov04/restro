@@ -121,10 +121,11 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D114](decisions/D114.md) | Agents' deliverables are filed in docs/deliverables and kept for revisiting | firm |
 | [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112; refined by D117 and D118 (only at open tables; the location check) |
 | [D116](decisions/D116.md) | The life of an order: its states, what the guest sees, no cancelling after Send, and approval at the bar as a venue setting | firm; supersedes D13; refines D112; refined by D120 (Unconfirmed orders, the Log) |
-| [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115; refined by D120 (how a table pause lifts) |
-| [D118](decisions/D118.md) | Guards against fake orders on the bill: only at open tables, a location check, a cap per round and a pace limit per table | firm; refines D115; supersedes D27; refined by D119 |
-| [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118 |
+| [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115; refined by D120 (how a table pause lifts) and D121 (bag edits show at once; an order's progress on the sending phone) |
+| [D118](decisions/D118.md) | Guards against fake orders on the bill: only at open tables, a location check, a cap per round and a pace limit per table | firm; refines D115; supersedes D27; refined by D119 and D121 (the location pass) |
+| [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118; refined by D121 (a shorter consent screen) |
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117 |
+| [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

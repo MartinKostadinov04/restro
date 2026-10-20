@@ -188,6 +188,10 @@ _Avoid_: pending, accepted, rejected, failed, unknown
 Reading a table's POS bills to find out whether a round that got no answer reached the POS.
 _Avoid_: reconcile, lookup
 
+**Reading**:
+Restro's short-lived copy of a table's open POS bills, shared by every phone at the table and shown with its age. Kept for minutes, never as a record.
+_Avoid_: snapshot (that is the published menu), cache, sync
+
 **Approval**:
 The bar confirming an on-the-bill order in the POS before it counts as added. A venue setting, where the POS supports it.
 _Avoid_: confirmation, acceptance
@@ -241,8 +245,12 @@ Several guests' cards settling one bill, or one share of it, together.
 _Avoid_: split payment (a split moves items), split tender
 
 **Location check**:
-Checking, before an on-the-bill order, that the guest's phone is at the venue. The location is used once and never kept.
+Checking, before a phone adds to or sends on-the-bill items, that it is at the venue. The location is used once and never kept.
 _Avoid_: geofence, geolocation, GPS check
+
+**Location pass**:
+What a phone holds after passing the location check: for the venue's set time (2 hours by default), its on-the-bill actions at that table need no new check. Another table needs a new check, and no pass lasts past the service day. Restro keeps no copy.
+_Avoid_: location token, geo session, verified device
 
 ## Song requests and payments
 

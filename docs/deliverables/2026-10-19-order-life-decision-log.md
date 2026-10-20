@@ -15,6 +15,8 @@ Sources, filed under D114: two Fable opinions, on one shared bag per table (`202
 
 **Updated after #39 (10-20):** row 7.3 now names D120, which answered it, in the same way. The #39 log is `2026-10-20-failure-pause-decision-log.md`.
 
+**Updated after #40 (10-20):** row 7.2 now names D121, which answered it, in the same way. The #40 log is `2026-10-20-guest-api-decision-log.md`.
+
 ## 1. The states of an order and what the guest sees
 
 | # | Decision | Why | Status | Recorded in |
@@ -95,6 +97,6 @@ Sources, filed under D114: two Fable opinions, on one shared bag per table (`202
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
 | 7.1 | The approval question goes into the connector questions, POS-neutral, with a barsy and a Mistral line. (Q6) | Martin. | firm | CQ C53 |
-| 7.2 | How the bag, the bill and an order's state reach the phone (one combined call, polling interval or push), the guest commands and refusal codes. | The guest API's ticket. | open | #40 |
+| 7.2 | How the bag, the bill and an order's state reach the phone (one combined call, polling interval or push), the guest commands and refusal codes. | The guest API's ticket. | open, answered by D121 (two endpoints, polling every 2 seconds on the bag and bill, the commands and refusal codes; an order's progress only on the sending phone) | D121, #40 |
 | 7.3 | What staff see of Unconfirmed orders, the alert, and how a paused table resumes. | The failure ticket. | open, answered by D120 (the guest's "Show this to your waiter" panel, push alerts, the Log, four ways a table pause lifts) | D120, #39 |
 | 7.4 | Song-request bids are frozen while being paid (Martin, in passing). | The DJ queue has its own owner (10-17). | out | D99 |
