@@ -13,6 +13,8 @@ Every decision taken in the grilling, one row each. **Status:**
 
 Sources: `2026-10-18-table-visit-in-other-software.md` and `2026-10-18-how-qr-apps-write-orders-into-pos.md` (research subagents, Sonnet), barsy's signed-in `Places_getlist` and `Accounts_getlist` (lead, 10-18).
 
+**Updated after #38 (10-20):** rows 2.3, 3.1 and 3.2 now name D118; their first status word stays, and the rest says what changed. The #38 log is `2026-10-19-fake-orders-decision-log.md`.
+
 ## 1. The table's bill
 
 | # | Decision | Why | Status | Recorded in |
@@ -33,7 +35,7 @@ Sources: `2026-10-18-table-visit-in-other-software.md` and `2026-10-18-how-qr-ap
 |---|---|---|---|---|
 | 2.1 | An on-the-bill order is added as a round to the table's open POS bill, like a waiter's. Replaces D112's "each guest order opens its own POS bill". | Every QR product that documents it adds to the table's open check (Toast, Qerko, storekit on Lightspeed); none documents a check per order. Martin: "each guest opening their own order doesn't sound right". | firm | D115 |
 | 2.2 | When the table holds several open POS bills: the oldest. If the POS says it was just closed or locked, Restro reads again and uses the next open one or opens a new one. | The one barsy keeps when merging and Lightspeed returns; "closed" or "locked" is a definite "no". | firm | D115 |
-| 2.3 | Only when the table has no open POS bill does the order open a new one, stamped with Restro's code, resent unchanged for about a minute if no answer comes. | barsy refuses a repeat of the code, so this resend is safe. | firm | D115, D112 |
+| 2.3 | Only when the table has no open POS bill does the order open a new one, stamped with Restro's code, resent unchanged for about a minute if no answer comes. | barsy refuses a repeat of the code, so this resend is safe. | firm, narrowed by D118 (an on-the-bill order is accepted only at an open table, so by default only a pay-first order opens a new POS bill) | D115, D112, D118 |
 | 2.4 | A round that times out is never resent. For about a minute Restro reads the table's open POS bills for rows entered by its own POS user after the order went out: found → "Added to your bill"; missing → "We couldn't send your order, please call a waiter" and a staff alert. | barsy documents no guard on adding a round; storekit makes the same choice. Cost: a few more "call a waiter" when the POS is slow; gain: no doubled round. | firm | D115 |
 | 2.5 | One order in flight per table; a second phone's order waits a few seconds. | So the read-back cannot confuse two orders. | firm, refined by D117 (the bag is shared by the table; a second Send waits its turn as "Sending…") | D115, D117 |
 | 2.6 | The read-back is Restro's design, not a barsy feature: proven on barsy's test installation before ordering is built. | barsy's rows carry who and when, but nothing promises a call is all-or-nothing or that no row lands late. | open | D115, CQ C52 |
@@ -46,8 +48,8 @@ Sources: `2026-10-18-table-visit-in-other-software.md` and `2026-10-18-how-qr-ap
 
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
-| 3.1 | Before ordering, the phone asks for the guest's location to check they are in the venue. Replaces the proposal "an old page confirms the table again". | Martin. No product researched does this. | firm | D115, #38 |
-| 3.2 | When the location is asked, what happens if the guest refuses, and the accuracy in a basement club. | Belongs with the other guards against fake orders. | open | #38 |
+| 3.1 | Before ordering, the phone asks for the guest's location to check they are in the venue. Replaces the proposal "an old page confirms the table again". | Martin. No product researched does this. | firm, detailed by D118 | D115, D118 |
+| 3.2 | When the location is asked, what happens if the guest refuses, and the accuracy in a basement club. | Belongs with the other guards against fake orders. | open, answered by D118 (#38, 10-20) | D118 |
 | 3.3 | The location is used only for the check and never stored. | D111: nothing about the phone stays past the service day. | firm | D115 |
 | 3.4 | No ordering from the bar: the bar stays person to person until proven otherwise; table codes go on tables only. Withdraws D111's bar-counter line. | Martin. A counter never empties, so one code would make one bill for strangers all night. | firm | D115 |
 | 3.5 | A "bar mode" where each phone sees only its own orders. Proposed in round 1. | Fell away with 3.4. | out | D115 |

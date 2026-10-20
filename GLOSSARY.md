@@ -151,6 +151,10 @@ A place in an area where guests sit and scan a table code.
 The QR code on a table; it opens the menu routed to that table.
 _Avoid_: QR token, QR link, sticker
 
+**Open table**:
+A table with at least one open POS bill, which a waiter has started. Guests order on the bill only at an open table.
+_Avoid_: seated table, active table, occupied table
+
 **Menu routing**:
 The rule that picks which menu a table code opens: the table's own menu, else its area's, else the venue's live menu.
 
@@ -215,6 +219,10 @@ _Avoid_: partial (on its own), instalment
 **Group payment**:
 Several guests' cards settling one bill, or one share of it, together.
 _Avoid_: split payment (a split moves items), split tender
+
+**Location check**:
+Checking, before an on-the-bill order, that the guest's phone is at the venue. The location is used once and never kept.
+_Avoid_: geofence, geolocation, GPS check
 
 ## Song requests and payments
 

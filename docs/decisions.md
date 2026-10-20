@@ -31,7 +31,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D24](decisions/D24.md) | A missing language is added by hand in the translations tab | firm |
 | [D25](decisions/D25.md) | Legal checks per country | firm |
 | [D26](decisions/D26.md) | A venue may opt in to push our translations into barsy, only if the API allows it | pending (wanted); back-office write, needs its own decision (D110) |
-| [D27](decisions/D27.md) | Table access in v0: the QR token only | firm |
+| [D27](decisions/D27.md) | Table access in v0: the QR token only | superseded by D118 |
 | [D28](decisions/D28.md) | Delivery in v0: to the table only | firm |
 | [D29](decisions/D29.md) | Ordering mode per item, set by the owner | firm; refined by D113 |
 | [D30](decisions/D30.md) | Time for other guests to pay their share of a split order | reopened by D112; decided with the bill screen; P42 |
@@ -119,9 +119,10 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill), D116 and D117 (the shared bag; a mixed bag no longer waits) |
 | [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29 |
 | [D114](decisions/D114.md) | Agents' deliverables are filed in docs/deliverables and kept for revisiting | firm |
-| [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112; refined by D117 |
+| [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112; refined by D117 and D118 (only at open tables; the location check) |
 | [D116](decisions/D116.md) | The life of an order: its states, what the guest sees, no cancelling after Send, and approval at the bar as a venue setting | firm; supersedes D13; refines D112 |
 | [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115 |
+| [D118](decisions/D118.md) | Guards against fake orders on the bill: only at open tables, a location check, a cap per round and a pace limit per table | firm; refines D115; supersedes D27 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
