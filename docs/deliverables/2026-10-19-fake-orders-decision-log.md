@@ -15,6 +15,8 @@ Sources, filed under D114: how other products guard against fake orders (`2026-1
 
 The binding text is D118. Martin confirmed the shared understanding on 10-20.
 
+**Updated after #39 (10-20):** row 5.1 now names D120, which details its alert; its first status word stays. The #39 log is `2026-10-20-failure-pause-decision-log.md`.
+
 ## 1. What is guarded, and against whom
 
 | # | Decision | Why | Status | Recorded in |
@@ -60,7 +62,7 @@ The binding text is D118. Martin confirmed the shared understanding on 10-20.
 
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
-| 5.1 | Staff get no live signal and no new screen when a guard trips; the guest sees why. Restro counts every trip per venue and table; a table that hits the pace limit (4.3) alerts the Restro team. | D107; Restro's rounds already show in the POS under its own user. | firm | D118, #39 |
+| 5.1 | Staff get no live signal and no new screen when a guard trips; the guest sees why. Restro counts every trip per venue and table; a table that hits the pace limit (4.3) alerts the Restro team. | D107; Restro's rounds already show in the POS under its own user. | firm, the alert detailed by D120 (Telegram, grouped; each trip is a Log entry) | D118, D120 |
 
 ## 6. When something slips through
 

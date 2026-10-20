@@ -13,6 +13,8 @@ Every decision taken in the grilling, one row each, numbered by topic; the quest
 
 Sources, filed under D114: two Fable opinions, on one shared bag per table (`2026-10-19-shared-table-bag.md`) and on Martin's pay-first flow (`2026-10-19-pay-first-in-shared-bag.md`); an Opus proposal for locking the shared bag (`2026-10-19-table-bag-locking.md`) and a Fable second opinion on it (`2026-10-19-bag-locks-second-opinion.md`); the earlier process map, race list and use cases (`2026-10-18-ordering-*.md`); barsy's signed-in API reference (`2026-10-18-barsy-api-reference.md`); A5 §5.1 (`docs/reviews/connector-architecture/A5-guest-outbound.md`), the starting design this grilling tested.
 
+**Updated after #39 (10-20):** row 7.3 now names D120, which answered it, in the same way. The #39 log is `2026-10-20-failure-pause-decision-log.md`.
+
 ## 1. The states of an order and what the guest sees
 
 | # | Decision | Why | Status | Recorded in |
@@ -94,5 +96,5 @@ Sources, filed under D114: two Fable opinions, on one shared bag per table (`202
 |---|---|---|---|---|
 | 7.1 | The approval question goes into the connector questions, POS-neutral, with a barsy and a Mistral line. (Q6) | Martin. | firm | CQ C53 |
 | 7.2 | How the bag, the bill and an order's state reach the phone (one combined call, polling interval or push), the guest commands and refusal codes. | The guest API's ticket. | open | #40 |
-| 7.3 | What staff see of Unconfirmed orders, the alert, and how a paused table resumes. | The failure ticket. | open | #39 |
+| 7.3 | What staff see of Unconfirmed orders, the alert, and how a paused table resumes. | The failure ticket. | open, answered by D120 (the guest's "Show this to your waiter" panel, push alerts, the Log, four ways a table pause lifts) | D120, #39 |
 | 7.4 | Song-request bids are frozen while being paid (Martin, in passing). | The DJ queue has its own owner (10-17). | out | D99 |

@@ -192,6 +192,26 @@ _Avoid_: reconcile, lookup
 The bar confirming an on-the-bill order in the POS before it counts as added. A venue setting, where the POS supports it.
 _Avoid_: confirmation, acceptance
 
+**Table pause**:
+A stop on ordering at one table after one of its orders ends Unconfirmed. The rest of the venue keeps ordering.
+_Avoid_: table lock, blocked table
+
+**Venue pause**:
+A stop on ordering and paying at every table of a venue, while the menu and the last reading of each bill stay. Started by Restro when it can't work with the POS, or by the owner's "Pause ordering" switch.
+_Avoid_: breaker, outage mode, menu-only, offline
+
+**Pre-opening check**:
+Restro's check, before a venue opens, that it can work with the venue's POS. A failure is fixed before guests arrive; until then the venue opens paused.
+_Avoid_: health check, smoke test
+
+**Log**:
+A venue's record of what happened in service, one entry per step: orders and each of their states, payments, pauses, alerts and tripped guards. Searchable by the venue for a month.
+_Avoid_: history, audit trail, orphaned-orders list, activity feed
+
+**Operations panel**:
+The Restro screen a venue's staff use during service, mostly for its alerts; staff keep working in the POS as before.
+_Avoid_: staff app, waiter screen, dashboard
+
 **Round**:
 Items added to a bill at one time, by a guest's order or by a waiter.
 _Avoid_: batch, course

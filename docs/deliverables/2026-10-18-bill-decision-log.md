@@ -21,6 +21,8 @@ Only D-numbers bind; this log is the index to them.
 
 **Updated after #37 (10-19):** rows 4.8, 6.2, 6.3, 6.4 and 8.4 now name D116 or D117, which changed them, in the same way. The #37 log is `2026-10-19-order-life-decision-log.md`.
 
+**Updated after #39 (10-20):** row 3.4 now names D120, which answered it, in the same way. The #39 log is `2026-10-20-failure-pause-decision-log.md`.
+
 ## 1. What a bill is
 
 | # | Decision | Why | Status | Recorded in |
@@ -59,7 +61,7 @@ Only D-numbers bind; this log is the index to them.
 | 3.1 | The platform keeps one **reading** of a table's POS bills for minutes, refreshes it a few times a minute at most, serves it to every phone, and shows when it was read. | 8 phones polling would be ~50 POS calls a minute per table. | firm | D111 |
 | 3.2 | When the POS does not answer: the last reading with its age, plus the guest's own orders sent since; ordering and paying pause; never a blank or a made-up total. | | firm | D111 |
 | 3.3 | Each POS failure goes into an error log per connector and alerts the Restro team. | Martin. | firm | D111 |
-| 3.4 | How the team is alerted at night. | | open | #39 |
+| 3.4 | How the team is alerted at night. | | open, answered by D120 (Telegram for the Restro team, push alerts for staff and owners, an outside watchdog) | D120, #39 |
 | 3.5 | Before each guest action on the bill, the platform asks the POS: is the bill still open, and is it the same as this phone was shown? The phone carries what it was shown. | Martin's "knock on the door": cheaper than storing anything per guest. | firm | D111 |
 | 3.6 | If the bill changed: one short message and the fresh bill. No line-by-line list. | A list means storing what each phone saw: load and development for little value. | firm | D111 |
 | 3.7 | Prices that change within the night (happy hour). | No venue has asked; day-long discounts are a separate menu. | on request | D111 |

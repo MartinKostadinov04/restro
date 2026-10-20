@@ -106,7 +106,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
-| [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm |
+| [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm; refined by D120 (push alerts, the outside watchdog) |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
 | [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 |
 | [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69 |
@@ -115,15 +115,16 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
 | [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
-| [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) |
+| [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) and D120 (table and venue pauses) |
 | [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill), D116 and D117 (the shared bag; a mixed bag no longer waits) |
 | [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29 |
 | [D114](decisions/D114.md) | Agents' deliverables are filed in docs/deliverables and kept for revisiting | firm |
 | [D115](decisions/D115.md) | No table visit: the bill is the table's open POS bills, and a guest's order joins the table's POS bill like a waiter's | firm; refines D111 and D112; refined by D117 and D118 (only at open tables; the location check) |
-| [D116](decisions/D116.md) | The life of an order: its states, what the guest sees, no cancelling after Send, and approval at the bar as a venue setting | firm; supersedes D13; refines D112 |
-| [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115 |
+| [D116](decisions/D116.md) | The life of an order: its states, what the guest sees, no cancelling after Send, and approval at the bar as a venue setting | firm; supersedes D13; refines D112; refined by D120 (Unconfirmed orders, the Log) |
+| [D117](decisions/D117.md) | One shared bag per table, guarded by server locks; pay-first lines stay in the bag until someone pays them | firm; refines D112 and D115; refined by D120 (how a table pause lifts) |
 | [D118](decisions/D118.md) | Guards against fake orders on the bill: only at open tables, a location check, a cap per round and a pace limit per table | firm; refines D115; supersedes D27; refined by D119 |
 | [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118 |
+| [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
