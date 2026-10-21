@@ -177,5 +177,5 @@ The first three were asked on 2026-10-21 by Restro through myPOS's contact form 
 8. Any myPOS partnership or integration with Mistral / Zamboo.
 9. The notice signature (which key, which field order), the retry schedule, and whether duplicates happen.
 10. The hold length for a bar or club. (H21 10-21: "up to 30 days" in general.)
-11. Whether a club can get pre-authorisation for online payments through Checkout. Asked by the venue itself, from its registered email, to help@mypos.com (H21 6882468303517). Not asked yet: needs Martin and the venue (#56, #61).
+11. Whether a club can get pre-authorisation for online payments through Checkout. Asked by the venue itself, from its registered email, to help@mypos.com (H21 6882468303517). Not asked yet: needs Martin and the venue (#56, #61). 2026-10-21: the email was drafted for the venue to send (in Bulgarian, subject in English as myPOS asks). It also asks questions 3, 10 and 12.
 12. The fee for a cancelled or lapsed hold on the venue's tariff, and whether it applies to an online cancel (`IPCPreAuthCancellation`) as it does at a terminal. The venue can read the amount in its myPOS account. Not asked yet.
