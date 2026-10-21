@@ -22,12 +22,12 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 - **2.** Is there an API for third parties (protocol, authentication, documentation, test installation, terms, cost)? What does the Back Office screen "Външни системи" do?
 - **1.** Which product runs at the pilot venue, Zamboo or Мистрал v3, and which version? Is it on the NRA list under ЗДДС чл. 118, ал. 16 (type, version)?
 
-## The menu (phase 1 needs these)
+## The menu
 
 - **18.** Can an outside app read the menu: items, categories, prices, options and add-ons, and what is sold out?
 - **28.** What are the API's rate limits? Where does it run, on the venue's PC or a server? Can one call read every open bill in the venue?
 
-## Ordering on the bill (phase 1)
+## Ordering on the bill
 
 - **3.** Can an outside app post an order to a table or a bill, as Zamboo Web Menu does? Does the order wait for approval in the POS?
 - **40.** Can an outside app add the first items to a table that has no open bill, so the bill opens? Or must a waiter put the first item on? *(New, 10-21.)*
@@ -45,7 +45,7 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 - **8.** Are there webhooks, or polling, for order status, the УНП and the receipt number?
 - **5.** Does Zamboo meet Приложение 42, т. 2 for imported orders (source, method, request id, declined requests kept, requested against confirmed)?
 
-## Paying in the app (phase 2)
+## Paying in the app (the pilot needs these too: Martin 10-21)
 
 - **11.** Can the API move chosen lines, or part of a line's quantity, from one table's bill to another table? Does a move print a ticket again at any bar?
 - **12.** How are virtual or buffer tables set up? Can each belong to a bar? Can an outside app order onto one, pay and close it?

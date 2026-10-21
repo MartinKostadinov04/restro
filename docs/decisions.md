@@ -126,7 +126,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118; refined by D121 (a shorter consent screen); refined by D122 |
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117; refined by D122 |
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
-| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm, except choices A and B (open); refines D111, D112, D113, D115–D121 |
+| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

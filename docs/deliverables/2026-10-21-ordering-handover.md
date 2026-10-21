@@ -1,5 +1,7 @@
 Made by: lead session (Opus), 10-21. For: the next lead session, and Martin. A handover of the ordering planning (map #29) after D122.
 
+> **Update, later on 10-21:** Martin settled both choices. **A is declined:** the pilot runs the whole workflow, ordering and paying in the app, and demo and staging use the provider's sandbox and a POS test installation. Nothing is designed around a pilot without paying unless he says so. **B is the reviewers' order.** Both are in D122 and the addendum of `2026-10-21-board-review-answers-2.md`; the "Still open" section below is superseded on these two points. With paying in the pilot, the parked law points matter before the pilot, not after.
+
 # Ordering: where the planning stands (handover, 10-21)
 
 ## In one paragraph

@@ -25,3 +25,12 @@ Also from this answer:
   - it drifts away from even the temporary design system.
 
   Next comes a redesign, after D122 and the handover.
+
+## Addendum, later on 10-21: choices A and B
+
+After the lead re-explained them, Martin answered:
+
+| Choice | Martin | What it settles |
+|---|---|---|
+| A · open the pilot with ordering only, paying in the app as phase 2 | "Pilot is pilot and has to work with the full workflow functionality. Demo or staging environments work with sandboxes if available. If we exclude payment processing on the pilot I will let you know, but I don't want you to design around a decision that limits the functionality." | **Declined.** The pilot gets ordering and paying in the app. Demo and staging run the same workflow on the provider's sandbox and a POS test installation or training mode. Nothing is designed for a pilot without paying unless Martin says so (D122) |
+| B · the order of steps when a guest pays their own lines | OK | **The reviewers' order.** The guest confirms from a fresh reading of the real table, the card is held, then Restro moves the lines, reads them back (the last check), closes and captures within seconds (D122 §8) |
