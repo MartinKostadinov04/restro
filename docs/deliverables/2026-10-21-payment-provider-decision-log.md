@@ -34,8 +34,9 @@ Only D-numbers bind; this log is the index to them.
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
 | 1.1 | **myPOS is the first payment provider** (Martin 10-21, round 1). It replaces the lead's recommendation of Stripe. | Martin's choice. myPOS is common in Bulgaria, and Mistral names a myPOS partnership (Mistral question 9). | firm | #49 (D-file at the end of the grilling) |
-| 1.2 | **The pilot venue writes to myPOS** through its contact form, asking for the full API documentation and a technical contact, with the questions of Q76 widened by `2026-10-21-payment-provider-facts.md` §11. Martin sends it. | The facts that decide the payment flow on myPOS are not public: holds in an embedded form, partial completion, how a platform connects to a venue's account, key limits, retries, the sandbox. | open | Q76 in `docs/tracker.md`, #49 |
+| 1.2 | **Restro writes to myPOS** through its contact form, as the software company whose client (the pilot venue) is a myPOS merchant, asking for access to the API documentation and the open questions of Q76. Martin sends it. *Replaced 10-21 (Martin): the first draft was written as the venue.* | The facts that decide the payment flow on myPOS are not public: the sandbox, the embedded form, hold details, key limits, retries. | open | Q76 in `docs/tracker.md`, #49 |
 | 1.3 | **What if myPOS can hold the card only on its own page** (its Checkout redirects; its embedded SDK documents no hold, no Apple Pay and no Google Pay, facts §11)? This clashes with the embedded form settled in round 1 (6.6). | Asked in round 2. | open | #49 |
+| 1.4 | **What Martin already knows of myPOS** (10-21), taken as given and not asked again: API access is given from the client's own myPOS account, with permissions; a sandbox exists (its details are unknown); authorisations and pre-authorisations are supported; a released hold returns to the card in a few days, depending on the bank; a tip is not a field of a pre-authorisation, but can be taken as a charge of its own. | Martin's knowledge. Tips as a separate charge feeds #53. | firm | #49, #53 |
 
 ## 2. Connecting the venue's account (Martin)
 
