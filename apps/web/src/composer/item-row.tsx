@@ -138,7 +138,7 @@ export function ItemRow({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-7 shrink-0 text-muted-foreground phone:hidden opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                    className="size-7 shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                     aria-label={t('rename.item', { name })}
                     onClick={() => startRename({ kind: 'item', id: itemId })}
                     data-testid="item-rename-start"
