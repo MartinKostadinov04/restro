@@ -15,6 +15,7 @@ The one place for what Restro knows about myPOS, the first payment provider (Mar
 - **C21**: `2026-10-21-mypos-vs-stripe-cost.md` (the cost comparison made for #54).
 - **Martin**: Martin's own knowledge.
 - **AI-1**: myPOS's first reply to Restro (10-21). It was written by myPOS's AI virtual assistant from general help pages, not by a person. Where it "can't confirm" something, its material is silent; that doesn't mean the thing is missing.
+- **AI-2**: myPOS's AI assistant again (10-21), in a new chat, answering Restro's full list of 47 questions (pasted by Martin). It confirmed little beyond the help pages. For everything it couldn't confirm, it offered to escalate the chat to a person.
 - **H21**: myPOS's help centre, help.mypos.com (en-gb), read by the ordering lead on 10-21. Each line names the article id and the date the article was last updated. The help centre is written mostly for card terminals; online-only points are marked. Searches for embedded, iframe, sandbox, nightclub and bar found nothing, and the Bulgarian help centre returned no results.
 - **P21**: myPOS's public fees page, mypos.com/en-gb/pricing-and-fees/fees, read on 10-21. It is the UK page, in pounds; the Bulgarian figures may differ.
 
@@ -28,7 +29,8 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-17 · R17 [DOC] A partner path exists in the Identity API: a partner creates an Integration in the Partner Portal, and after a merchant approves it, gets merchant-specific credentials. The scopes shown are accounting and banking. Whether they drive Checkout is not stated (F17).
 - 2026-10-21 · Martin [SAID] API access is given from the client's own myPOS account, with permissions.
 - 2026-10-21 · AI-1 [SAID] To integrate: the merchant opens a free myPOS account, completes the online identification, then connects through myPOS Checkout (API, SDK or e-commerce plugins). Money settles into the merchant's myPOS account.
-- 2026-10-21 · AI-1 [SAID] Its material describes no integrator programme, only the "Препоръчай myPOS" referral scheme. **Conflicts** with R17's Identity API partner path. Asked of a person (open question 4).
+- ~~2026-10-21 · AI-1 [SAID] Its material describes no integrator programme, only the "Препоръчай myPOS" referral scheme. **Conflicts** with R17's Identity API partner path. Asked of a person (open question 4).~~ (replaced by the AI-2 line below)
+- 2026-10-21 · AI-2 [SAID] myPOS has a **partner programme for software companies**: commissions, bonuses, payment technology, 24/7 support and branding. Whether it gives a partner access to a merchant's Checkout is not stated (open question 4). Public Checkout resources: a "how it works" guide, APIs, SDKs and plugins. It has no confirmed data on non-public documentation or a technical contact.
 - 2026-10-17 · R17 [DOC] Checkout is not supported for crypto, pharma and nutra, gambling, adult content, tobacco, streaming or hosting. Alcohol is not listed.
 - 2026-10-21 · H21 [VENDOR] (6741946321565, updated 2026-09-09) Any legal business registered and operating in the EU, EEA, UK or Switzerland can open an account. Not supported: FX speculators, weapons dealers, non-regulated charities, companies with bearer shares, and "other high-risk industries" in the Acceptance Policy (not read yet). Bars and clubs are not named.
 
@@ -91,12 +93,18 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - **A club may not be eligible.** Holds are aimed at hotels, but "food or beverage charges" are an allowed use. Only myPOS can say, after the venue asks (open question 11).
   - **Every hold that isn't captured costs the venue a fee**, whether Restro cancels it or it lapses. D122 §8 cancels a hold only when the last check fails, so this should be rare; but a guest who leaves the payment screen after the hold, or a hold placed and then not needed, also costs a fee. For #53: place the hold as late as possible, right before the lines are moved, so few holds end up cancelled (the fee amount is open question 12).
   - Restro still never lets a hold lapse: a lapse costs the same and leaves the guest's money blocked for up to 30 days.
+- 2026-10-21 · AI-2 [SAID]
+  - For a nightclub with food and drink on site there is **no automatic approval**. The request is assessed for eligibility, and holds **need the cardholder's prior consent**.
+  - The hold lasts up to 30 days, then is cancelled automatically, with a fee whose amount it didn't give.
+  - A completion may be lower than the hold, never higher.
+  - Not confirmed: whether the fee applies to `IPCPreAuthCancellation` or to a cancel seconds after the hold; how `IPCPreAuthorization` differs from `Authorization` / `Capture`; whether 3-D Secure runs on the hold.
+- 2026-10-21 · [READING] The cardholder's consent fits our flow: the guest confirms the amount and enters the card on myPOS's page before the hold (D122 §8 step 1). The payment screen should say plainly that the amount is held and taken within seconds (#45, #57). Whether a club is eligible is still open (question 11): only the venue's request, or a person at myPOS, can answer it.
 
 ## Tips
 
 - 2026-10-21 · Martin [SAID] A tip is not a field of a pre-authorisation, but it can be taken as a charge of its own (#53).
 - 2026-10-17 · R17 [DOC] Extra amounts go into the cart as additional items (on `IPCPurchase`).
-- Whether the tip charge needs the guest to enter the card again is open (question 7).
+- Whether the tip charge needs the guest to enter the card again is open (question 7). AI-2 (10-21) didn't answer it.
 
 ## Refunds and reversals
 
@@ -113,6 +121,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - A `PreAuthorization Notify` exists, and `IPCGetPaymentStatus` polls.
 - 2026-10-17 · F17 [DOC] The signature covers all fields, and the list "can be expanded over time". Any non-200 answer counts as an error. No retry schedule is published.
 - 2026-10-21 · AI-1 [SAID] Nothing specific to online checkout.
+- 2026-10-21 · AI-2 [SAID] It has no confirmed information on `URL_Notify` (question 9).
 
 ## Wallets
 
@@ -128,6 +137,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - Holds and wallets in the sandbox are not stated.
 - 2026-10-21 · AI-1 [SAID] Its material describes no sandbox for online checkout. **Conflicts** with F17's documentation; trust the documentation. Asked of a person (question 1).
 - 2026-10-21 · Martin [SAID] A sandbox exists. Its details, who registers in it and what it costs are unknown.
+- 2026-10-21 · AI-2 [SAID] It has no confirmed answers on the sandbox: who registers, its cost, holds, completion, cancel, status, 3-D Secure, test cards, Apple Pay, Google Pay or `URL_Notify`. It confirmed only that Checkout has a secure payment page, digital wallets and 3-D Secure, without saying whether these work in the sandbox.
 
 ## Fees
 
@@ -142,6 +152,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - Three fees can apply to an idle account: no-cooperation £75 (documents not sent), inactivity £15 (10 months without a transaction), no-acquiring £30 (10 months without a card payment). Two months' notice is given first.
   - Asking myPOS to cancel or return a completed card or online payment costs £10. A normal refund from the balance is free.
   - Card payments cost one flat rate, "from 1.10% + £0.07".
+- 2026-10-21 · AI-2 [SAID] Below €5,000 turnover a month: €0 a month and 1.45% per transaction. Above €5,000: an individual offer. MO/TO limits are shown under Fees in the account. Whether this is the Checkout rate or the terminal rate is not stated. It **differs** from R17's 1.30% + €0.10 for EEA consumer cards; the venue's own tariff in its account settles it.
 - 2026-10-21 · P21 [VENDOR] An online payment costs £0.30 and a refund of an online payment £0.25 (the account fees table). The card acquiring rates, the pre-authorisation fees among them, are shown only inside the myPOS account.
 
 ## Settlement and reserve
@@ -158,14 +169,16 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 
 - 2026-10-21 · AI-1 [SAID] Its receipt answers are about terminals: print, email or SMS, and a pre-auth receipt carries the pre-auth code. Whether myPOS emails the payer after an online payment, and whether the venue can turn that off, is open (question 6).
 - 2026-10-21 · [READING] A myPOS email to the guest must never look like the venue's fiscal receipt (D122 §8).
+- 2026-10-21 · AI-2 [SAID] Again only terminal answers: email, SMS or printed receipts; refunds from the device menu; money arrives in the myPOS account at once. Question 6 is still open.
 
 ## Mistral
 
 - 2026-10-21 · Mistral list, question 9: does the myPOS partnership include online payments tied to Zamboo receipts? Asked of Mistral, and also of myPOS (question 8).
+- 2026-10-21 · AI-2 [SAID] It has no confirmed information on a Mistral / Zamboo integration.
 
 ## Open questions
 
-The first three were asked on 2026-10-21 by Restro through myPOS's contact form (AI-1 answered). The follow-up asking for a person at myPOS was drafted on 2026-10-21 for Martin to send.
+The first three were asked on 2026-10-21 by Restro through myPOS's contact form (AI-1 answered). The follow-up asking for a person at myPOS was drafted on 2026-10-21 for Martin to send. On 2026-10-21 all of them went to myPOS's AI assistant in a new chat, as 47 questions (AI-2). It answered none of 1–12 fully and offered to escalate the chat to a person.
 
 1. The sandbox: who registers (Restro or the venue), whether it costs anything, and whether holds, completion, cancel and 3-D Secure work in it.
 2. Whether the Embedded SDK can hold a card, and with which wallets; otherwise, whether the redirecting Checkout is the only way.
