@@ -26,7 +26,7 @@ Made by: the ordering lead session (Opus), 10-21, from the Opus design agent's p
 |---|---|---|---|---|
 | 2.1 | **One entry point, `applyService(command)` in `core/service`,** beside `apply()`. The commands are one checked union, and each declares its origins (guest, staff, worker) and the permission it needs. The answer is accepted, or refused with a code (D72). | `apply()` locks a tenant's whole document, and service writes need a lock per table and state machines with deadlines (design §2.1). | firm | D122 §9 |
 | 2.2 | **Provenance on service rows** is `source` (guest, staff, worker, provider, restro, pos), `actor` and `job_id`, NOT NULL, plus `via` (Tonight or Telegram). | Rule 2's who, where from and which job. | firm | D122 §9 |
-| 2.3 | **Does rule 2's "layer" apply to service rows?** The proposal is that it applies to the menu's values only, since a layer is a slot in the menu's layer stack. | It touches the wording of one of the nine rules, so it goes to Martin. | open | #55 |
+| 2.3 | **Rule 2's "layer" applies to the menu's values only** (Martin 10-21). Service rows carry `source`, `actor` and `job_id` instead; a layer is a slot in the menu's layer stack. CLAUDE.md's rule 2 says so in one sentence. | Who did what stays complete; only the menu-specific part is skipped. | firm | D122 §9, CLAUDE.md |
 | 2.4 | **Taking a lock is the one conditional statement.** Every other write locks its row first (order, then sent order or payment, then the lock), decides in memory and writes. No POS or provider call happens inside a transaction. | D122 §9 literally, with one fixed lock order so two writers can't deadlock. | firm | D122 §9 |
 | 2.5 | **Idempotency:**<br>- a ring of 64 action ids on the order;<br>- unique action ids on sent orders and payments;<br>- unique (payment, step, attempt);<br>- notices stored by their id;<br>- staff actions return the current state. | D121 2.4, with no table that grows. | firm | D122 §9 |
 | 2.6 | **Who calls it:**<br>- the guest endpoints of D121;<br>- Tonight's server actions;<br>- the worker.<br><br>Telegram works by long polling in the worker, so there is no new public endpoint. The provider's notices get one web endpoint that only checks and stores them, built only when the tracker opens it. | No POS call from the web (D121 5.5). | firm | D122 §9 |
@@ -38,7 +38,7 @@ Made by: the ordering lead session (Opus), 10-21, from the Opus design agent's p
 |---|---|---|---|---|
 | 3.1 | **Every service table follows the existing tenant pattern,** with its own RLS migration and its line in `table-access.ts`. There is no owner role, no `BYPASSRLS` and no Data API. | CLAUDE.md "Never". | firm | D122 §9 |
 | 3.2 | **Retention:**<br>- Log entries are classed `night` (31 days) or `record` (18 months);<br>- the service path sets `retain_until`, and the purge only compares dates;<br>- notes are deleted at 31 days;<br>- a disputed payment is kept until 6 months after the dispute closes. | Evidence is never cut short by purge logic (D122 §8). | firm | D122 §9 |
-| 3.3 | **Give `restro_purge` DELETE on the new service tables.** | Retention needs it, but it widens a guardrail role (D83, D67), so it goes to Martin. | open | #55 |
+| 3.3 | **Give `restro_purge` DELETE on the new service tables.** Asked in round 1 on 10-21; Martin left it unanswered, so it's asked again. | Retention needs it, but it widens a guardrail role (D83, D67), so it goes to Martin. | open | #55 |
 | 3.4 | **The venue is offered an export before its data is erased** (Н-18 чл. 52к, ал. 3, lawyer question 10). | #52's working answers. | firm | D122 §9 |
 | 3.5 | **Rate counters live in the web app's memory,** and are never stored. They move into Postgres when the web app runs on more than one instance. | D122 §4: the server keeps these for minutes only. | firm | D122 §9 |
 
@@ -49,10 +49,11 @@ Made by: the ordering lead session (Opus), 10-21, from the Opus design agent's p
 | 4.1 | **Per-venue roles built from a fixed list of 15 permissions** (design §5), with three defaults. Organisation owners and admins hold every venue permission. D99's DJ role stays separate. | No lockout, and today's admin behaviour stays. | firm | D122 §7 |
 | 4.2 | **A PIN unlocks Tonight's actions only.** Settings need the person's own sign-in. Permissions are checked only on the server, inside `applyService` and `readTonight`. | A 4-digit secret is weak. | firm | D122 §7 |
 | 4.3 | **Restro generates the PIN,** unique in the organisation, with "New PIN" for the person or an owner. | A PIN the person chooses, refused as taken, would reveal someone else's. A security choice, so the lead's. | firm | D122 §7 |
-| 4.4 | **The names of the default roles:** Staff, Manager, Owner. | Names are Martin's. | open | #55 |
-| 4.5 | **Can a venue change a default role,** or only copy it into its own? | Martin's. | open | #55 |
-| 4.6 | **Staff with a PIN and no account.** | Martin's. | open | #55 |
-| 4.7 | **"Sold out" for Staff by default.** | Martin's. | open | #55 |
+| 4.4 | **The default roles:** Staff, Manager, Owner, "plus admin" (Martin 10-21). Whether "admin" means the organisation's admin (today's role, which holds every venue permission) or a fourth venue role is asked again. | Names are Martin's. | open | #55 |
+| 4.5 | **A venue can't change a default role;** it copies one into its own role and adjusts the copy (Martin 10-21). | The defaults stay safe and gain new permissions as features ship. | firm | D122 §7 |
+| 4.6 | **Staff work with a PIN; an account isn't needed** (Martin 10-21). The admin sees and manages the staff's PINs in the venue settings. | Bar staff rarely want an account, and the Log still names a person. | firm | D122 §7 |
+| 4.8 | **Because the admin sees the PINs, a PIN is stored sealed** (encrypted, as the table code's copy, 1.4), beside a hash used for checking; it is shown only in venue settings, to roles that manage staff. Restro still generates it, unique in the organisation (4.3), and "New PIN" stays. | Martin's 4.6 needs a PIN that can be shown again; a hash alone can't be. The lead's security choice. | firm | D122 §7 |
+| 4.7 | **Stock is the POS's business, not Restro's** (Martin 10-21: "inventory depends on the POS"). Whether Tonight then drops its "Sold out" tab for a POS venue is asked again. | Martin's. | open | #55 |
 
 ## 5. Follow-ups
 

@@ -30,7 +30,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 
 ## The nine rules (non-negotiable)
 1. **One write path.** Every change from every source goes through `core.apply(changeSet)`. Nothing else writes `field_values`, `events`, resolved documents or snapshots.
-2. **Provenance.** Every stored value carries its layer, source and job (NOT NULL). `events` is append-only.
+2. **Provenance.** Every stored value carries its layer, source and job (NOT NULL). `events` is append-only. Service data (orders, payments, the Log) has no layer: it carries its source, actor and job (D122 §9).
 3. **POS ids stay in the backend.** Snapshots, the shell, faces and URLs carry only our prefixed ids (`nd_`, `as_`, `sn_`, `tb_`) and public fields: no POS ids, internal names, cost prices or internal fields. One exception (D75): when barsy has no public name for an item, option or category, its own name (`article_name`, `cat_name`) is shown and the composer warns.
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
 5. **Our layers only make the menu more cautious than the POS.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
