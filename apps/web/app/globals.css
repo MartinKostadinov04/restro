@@ -8,8 +8,11 @@
 /* Touch floor (D123): on a phone (under 48rem, Tailwind's md) a tappable control has a hit area of
    at least 44 x 44 px (docs/guides/operational-screens.md, Accessibility). Controls that stay small
    to look at (a checkbox, a switch, a drag handle) add this class: an invisible square, centred on
-   the control, takes the taps around it. The element must have room around it, since neighbouring
-   hit areas that overlap give the tap to the later one. From md up it does nothing. */
+   the control, takes the taps around it. Three traps: the element must have room around it (hit
+   areas that overlap give the tap to the later sibling); it takes `::after` and `position: relative`,
+   so never combine it with `after:` utilities or `absolute`/`fixed`/`sticky`; and an ancestor or the
+   element itself with `overflow` other than visible (`truncate`) clips it. From md up it does
+   nothing. */
 @utility tap-area {
   @media (width < 48rem) {
     position: relative;
