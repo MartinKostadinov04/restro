@@ -60,7 +60,7 @@ A "no" to any of the eleven is a Works-but-awkward proposal.
 
 ## Patterns
 
-The same job looks the same on every screen (D107): one pattern per job, chosen from what the admin already has (D123; `docs/deliverables/2026-10-21-admin-pattern-inventory.md` found up to five patterns for one job). A screen plan names the pattern for each of its jobs; a job with no row here is a question to the lead. Where a Platform file (`docs/platform-reference.md`) does a job another way, this table wins: port the Platform's mechanics, not its pattern, and say so in the report. Where a screen uses another pattern today, it is a *divergence*: reported by the ticket's implementer or at review, and fixed only by its own `change.md` ticket when Martin picks it, never folded into another ticket.
+The same job looks the same on every screen (D107): one pattern per job, chosen from what the admin already has (D123; `docs/deliverables/2026-10-21-admin-pattern-inventory.md` found up to five patterns for one job). A screen plan names the pattern for each of its jobs; a job with no row here is a question to the lead. Where a Platform file (`docs/platform-reference.md`) does a job another way, this table wins: port the Platform's mechanics, not its pattern, and say so in the report. Where a screen uses another pattern today, it is a *divergence*. A screen plan follows this table, so a ticket that redesigns a screen fixes that screen's divergences as part of its plan; on every other screen a divergence is reported (by the implementer or at review) and fixed by its own `change.md` ticket when Martin picks it from #60.
 
 | Job | The pattern | Divergences today |
 |---|---|---|
