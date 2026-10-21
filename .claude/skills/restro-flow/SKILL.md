@@ -67,13 +67,13 @@ Read `docs/decisions/D104.md` (the **heavy zone**, the "I don't know" steps) and
 - **Three rungs, one at a time.** Sonnet by default; Opus for a real trade-off or a question spanning more than one area; Fable for the heavy zone. Check at classification and on every grilling question. To climb, write the rung and the reason in one line ("Opus: trade-off between X and Y", "Fable: heavy zone, RLS") and switch the session model yourself; never Sonnet to Fable without considering Opus.
 - **The rung is sticky.** The model that planned a ticket reviews its diff and sets each ticket's model by D58. Go back down only at a classification outside the heavy zone, when none of your tickets is still in review. The lead codes its three things (a nine-rule change, a migration, a guardrail) on whatever rung it runs.
 - **"I don't know"** from Martin runs D104's four steps: fetch a missing fact first, else a proposal from the lead, an Opus agent or a Fable agent (`effort: max`) by complexity, put back to Martin as the next question.
-- **Before a Sonnet-planned feature set publishes tickets,** one read-only Fable agent checks the spec and tickets against the nine rules and the decisions in force.
+- **Before a Sonnet-planned feature set publishes tickets,** one read-only Fable agent checks the spec and tickets against the nine rules and the decisions in force, and that every screen plan's states cover the personas it serves (`ship.md` §1).
 
 ## 5. Every flow keeps
 
 - **Inside the current phase:** check CLAUDE.md's "Scope right now" before the card. Work outside it (ordering, payments, POS writes, a parked connector, a deploy) goes on the card as "outside the current phase", for Martin to start or park.
 - **Facts are the agent's job; decisions are Martin's.** A grilling round asks Martin only what he can decide, each question with a recommendation.
-- **Decisions are files** `docs/decisions/D<n>.md` (`docs/agents/domain.md`); terms go to `GLOSSARY.md` as they settle.
+- **Decisions are files** `docs/decisions/D<n>.md` (`docs/agents/domain.md`); terms go to `GLOSSARY.md` as they settle. Every grilling keeps a decision log and wires it (`domain.md` → "Decision logs"); when a decision alone is unclear, `revisit-decision` reads the log behind it.
 - **Specs and tickets are GitHub issues** (`docs/agents/issue-tracker.md`); every code change leaves through `ship.md`.
 - **Phase boundaries:** one unbroken window from grilling to tickets; at a boundary follow `ask-matt`'s `PHASE-BOUNDARIES.md` (same folder as the `ask-matt` skill). An "agent session" here is the desktop app's session, Matt's "subagent". The app's fork and hand-off sessions do `handoff`'s job; `handoff` itself is only for work leaving this app (another tool, a person).
 - **Limits:** `docs/agents/lead.md` (two agents running tests at once; one finished build waiting for Martin's acceptance; cheap work to a cheap model, then checked).

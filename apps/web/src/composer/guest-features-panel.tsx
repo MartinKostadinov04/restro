@@ -222,7 +222,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
                 <legend className="mb-1 text-xs text-muted-foreground">{t('kinds.legend')}</legend>
                 {CALL_WAITER_KINDS.map((kind) => (
                   <div key={kind} className="grid gap-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 phone:min-h-11">
                       <Checkbox
                         id={`${ids}-kind-${kind}`}
                         checked={callWaiter.kinds.includes(kind)}

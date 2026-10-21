@@ -446,6 +446,10 @@ interface Resolution {
   readonly features: GuestFeatures
   /** The menu's layout and guest switch (`menus.settings`, D92); the defaults when unset. */
   readonly layout: SnapshotLayout
+  /** The menu's header name (`menus.name`, D92); null = none set. */
+  readonly menuName: string | null
+  /** The venue's display name (`venues.name`): the heading of a menu without one (D92). */
+  readonly venueName: string
 }
 
 /**
@@ -517,6 +521,8 @@ async function resolveForVenue(
     presentation: readPresentation(venue.settings),
     features: readGuestFeatures(venue.settings),
     layout: menuLayoutOf(menuSettingsOf(menu.settings)),
+    menuName: menu.name,
+    venueName: venue.name,
   }
 }
 
@@ -546,6 +552,8 @@ async function prepareSnapshot(
     presentation,
     features,
     layout,
+    menuName,
+    venueName,
   } = await resolveForVenue(tx, scope, now)
   const blocking = [
     ...new Set(
@@ -635,6 +643,8 @@ async function prepareSnapshot(
     presentation,
     features,
     layout,
+    menuName,
+    venueName,
   })
   const forbidden = collectForbiddenValues({
     template: TEMPLATE,
@@ -645,7 +655,9 @@ async function prepareSnapshot(
   })
   let snapshot: MenuSnapshot
   try {
-    snapshot = assertSnapshotSafe(built, forbidden)
+    // The heading is public by design (D92): the guard skips its place and nothing else, so an
+    // internal value that reads like the header name is still refused anywhere else.
+    snapshot = assertSnapshotSafe(built, forbidden, { exempt: [['menu', 'title']] })
   } catch (error) {
     if (!(error instanceof SnapshotError)) throw error
     throw new PublishError('unsafe_snapshot', `the snapshot was refused: ${error.message}`, {

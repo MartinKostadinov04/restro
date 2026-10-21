@@ -129,6 +129,7 @@ function RenameForm({
       <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
         {t('cancel')}
       </Button>
+      <p className="basis-full text-xs text-muted-foreground">{t('rename.help')}</p>
     </form>
   )
 }

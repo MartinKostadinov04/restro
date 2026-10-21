@@ -12,3 +12,4 @@ Restro's own rules for interface text, in Bulgarian and English. They replace th
 8. **Domain words from `GLOSSARY.md`**: "item", "section", "sold out", never "product", "category", "out of stock". An owner-facing string names the POS with `{source}` (D82).
 9. **Every string goes through next-intl** (admin) **or the shell's `GuestStrings` and `ServiceStrings`** (a template), in both languages, with the Bulgarian written for a Bulgarian reader rather than translated word for word.
 10. **Menu text is never typed into code**: it comes from the view model's `localized_text`.
+11. **A confirmation dialog names the action and its consequence** (the few D107 keeps): the question says what will happen ("Delete this venue for good?"), the body says the consequence and whether and where it can be undone, and the buttons say the action ("Delete venue" / "Keep venue"), never OK / Cancel.

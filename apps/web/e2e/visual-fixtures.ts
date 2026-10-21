@@ -6,6 +6,8 @@
 // Like the look fixture of the guest page (e2e/support.ts) these menus have no venue row: they are
 // snapshot files in the e2e publish folder, found by a fixed public code.
 
+import { fixtureId } from '@restro/shell/testing'
+
 /** The five themes of the audit: the designer's four presets and one made from three colours. */
 export const VISUAL_THEMES = [
   { id: 'botanical', publicId: 'visualbota01', table: 'tb_e2eVisualTable01' },
@@ -43,6 +45,17 @@ export const LONG_NAME_EN = `Negroni ${'x'.repeat(52)}`
 export const LONG_TEXT_NAME_BG = 'Агнешко печено с розмарин, чесън и зеленчуци на скара и лук.'
 /** The English twin of the one above (60 characters as well). */
 export const LONG_TEXT_NAME_EN = 'Roast lamb with rosemary, garlic and grilled vegetables (2x)'
+
+/**
+ * Two more logos for the venue, drawn with no background (D109): a white mark and a black one, each
+ * invisible on one of the two schemes. The seed writes their image files, and the matrix serves a
+ * menu's snapshot with one of them as `theme.logo`.
+ */
+export const LOGO_MARKS = {
+  // The seed's photos are ids 1 to 7 (7 is the menus' own logo), so 8 and 9 are free.
+  white: fixtureId('as', 8),
+  black: fixtureId('as', 9),
+} as const
 
 /** Items the specs look for by their Bulgarian name. */
 export const VISUAL_ITEMS = {

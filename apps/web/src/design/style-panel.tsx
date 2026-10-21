@@ -124,7 +124,7 @@ export function StylePanel({
             value={radius}
             disabled={!canEdit}
             onChange={(event) => onRadius(Number(event.target.value))}
-            className="w-full accent-primary disabled:opacity-60"
+            className="w-full accent-primary phone:h-11 disabled:opacity-60"
           />
           <p className="text-xs text-muted-foreground">{t('radiusHelp')}</p>
         </div>
@@ -150,7 +150,7 @@ export function StylePanel({
             value={shadow}
             disabled={!canEdit}
             onChange={(event) => onShadow(Number(event.target.value))}
-            className="w-full accent-primary disabled:opacity-60"
+            className="w-full accent-primary phone:h-11 disabled:opacity-60"
           />
           <p className="text-xs text-muted-foreground">{t('shadowHelp')}</p>
         </div>

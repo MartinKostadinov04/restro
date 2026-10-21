@@ -168,6 +168,7 @@ export function PaySheet() {
         <button
           type="button"
           className="ro-primary is-wide"
+          data-slot="pay.receipt_open"
           onClick={(event) => o.openSheet('receipt', event.currentTarget)}
         >
           <span>{words.viewReceipt}</span>
@@ -422,6 +423,8 @@ export function PaySheet() {
                       ? 'ro-ghost'
                       : 'ro-pay'
                 }
+                data-slot="pay.method"
+                data-method={method}
                 disabled={!canPay}
                 onClick={() => pay(method)}
               >

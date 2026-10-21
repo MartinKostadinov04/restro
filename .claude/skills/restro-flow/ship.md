@@ -13,6 +13,19 @@ A GitHub issue (`docs/agents/issue-tracker.md`): `to-tickets`' issue template, o
 - **Read:** decisions D…, architecture sections …, Platform files … (`docs/platform-reference.md`)
 - **Stop and ask if:** anything task-specific beyond CLAUDE.md's list
 - **Menu functionality:** none | revises `docs/guides/menu-template-functionality.md` (the ticket adds, changes or removes something a guest can do in the menu; the same change updates the file)
+- **Screen:** none | the screen plan below, and `docs/guides/operational-screens.md` goes on the Read line (the ticket adds or changes an operational screen, D107; a wording or visual tweak writes `none`)
+```
+
+**The screen plan** (D123) is the design of an operational screen, written before its code and judged against afterwards. The planning session writes it during the grilling, where the stories are, or, in a feature set, when the tickets are cut from the spec; never the implementer, whose inventing it is the gap it closes. Martin confirms the story list and any behaviour choice (an unspecified UX choice is a stop-and-ask); the lead decides the rest. About fifteen lines, as a section of the ticket:
+
+```markdown
+## Screen plan
+- **Stories and taps:** each story the screen serves ("As a <persona> I want <x>, so that <y>"), with today's taps from `docs/guides/admin-map.md` where the story exists, and its target: from a documented comparable (a POS front end, a comparable admin) when one exists, else today's count or fewer, with the reason. A target is an acceptance criterion: the story's Playwright spec, or the behaviour audit, counts it.
+- **Place:** where the screen sits on the admin map and how it is reached.
+- **Pattern:** for each job on the screen, the pattern from `docs/guides/operational-screens.md` → Patterns; a job with no pattern there is a question to the lead.
+- **Primary action:** the one.
+- **States:** empty, loading, failed, the longest Bulgarian text, many items, a member whose role forbids the action, a POS venue where the control is read-only (D87–D92); a state that does not apply is written "n/a: <reason>".
+- **Strings:** every new interface string, Bulgarian and English (`copy-rules.md`).
 ```
 
 Testing, done-criteria and the report format come from CLAUDE.md; the ticket doesn't restate them. Label it `ready-for-agent` once it is complete.
@@ -24,7 +37,7 @@ Testing, done-criteria and the report format come from CLAUDE.md; the ticket doe
 ## 3. Review (the lead)
 - Read the diff and the session's `code-review` output; a finding is a hypothesis until checked in the code.
 - Built-in `code-review` on the pull request, run by the lead so the bugs are judged outside the session that wrote the code: `low` by default, `high` when the diff touches a core-rule area; none for a wording, visual or docs-only diff. Its confirmed findings are facts; check its plausible ones in the code.
-- For an admin UI diff, the lead audits the changed screens against `.claude/skills/template-review/references/web-interface-guidelines.pinned.md` with its `web-interface-guidelines.restro-overrides.md` (the overrides win) and `copy-rules.md`.
+- For an admin UI diff, two reads, and a finding is reported once, under the read that found it. **The code:** the lead audits the diff against `.claude/skills/template-review/references/web-interface-guidelines.pinned.md` with its `web-interface-guidelines.restro-overrides.md` (the overrides win) and `copy-rules.md`. **The screen:** on the pull request's branch, environment as `audit-behaviour.md` step 3, the lead opens each changed screen in the preview (`preview_start`, 390 px) and reads it as the owner, with `docs/guides/operational-screens.md` (Clean, the eleven wayfinding, screen-read and feedback answers, the Accessibility criteria, the Patterns) and the ticket's screen plan (its pattern, primary action, states and target taps, each tried). For a `Screen: none` diff, read only the changed element. Done when each changed screen has its eleven answers and its Accessibility verdicts, and each screen-plan line has a verdict.
 - Built-in `security-review` when the diff touches sign-in, roles, RLS, tokens, inputs from outside or secrets.
 - For a core-rule diff, name the one fact the change is safe because of and prove it by running code (a test, a script), not by reading.
 - A finding goes back to the same session (SendMessage) or becomes a new ticket.
@@ -34,4 +47,4 @@ Testing, done-criteria and the report format come from CLAUDE.md; the ticket doe
 - A pull request from a stage branch into `main` gets `pr`'s body plus the plain-language summary for Martin: what changed, why, what he can see or test, and that he can run `/code-review ultra <PR>` (a billed cloud review only he can start) before merging. Merging into `main` is Martin's. Once he has merged it, offer him one codebase-health scan of that stage's code (`upkeep.md` → Codebase health).
 
 ## 5. Report to Martin
-A few plain sentences: what is done, what he can try and where, what waits on him. Then `retro` if the build went sideways.
+A few plain sentences: what is done, what he can try and where, what waits on him. For a ticket with a screen plan, list its stories with their target taps, so he tries those and says which felt long: his taps are the design loop's cheapest signal (D123). Then `retro` if the build went sideways.

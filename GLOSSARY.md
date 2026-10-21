@@ -135,7 +135,7 @@ The page a guest opens on their phone: one venue's menu in that venue's template
 _Avoid_: guest menu, public page, shell (the host code around a template)
 
 **Guest feature**:
-A service a venue can switch on for guests, such as the bag, the bill or calling a waiter. Guests see it only once Restro supports it.
+A service a venue can switch on for guests, such as the order, the bill or calling a waiter. Guests see it only once Restro supports it.
 _Avoid_: guest function, service screen
 
 ## Tables and addresses
@@ -151,6 +151,22 @@ A place in an area where guests sit and scan a table code.
 The QR code on a table; it opens the menu routed to that table.
 _Avoid_: QR token, QR link, sticker
 
+**Open for phones**:
+A table where staff let phones order to the bill, opened and closed by staff in Restro (one table, "Open all", "Close all") or closed at the venue's closing hour. Phones at other tables see the menu only.
+_Avoid_: open table, seated table, active table, occupied table
+
+**Sitting**:
+One group's time at a table, from when it opens for phones until its POS bill closes, staff close it, or staff tap "New guests". Location passes, the unsent order and the phones' saved state belong to one sitting and end with it.
+_Avoid_: visit (Restro has none), session, occupancy
+
+**Bar**:
+The bar that serves a table and prints its tickets. One per table, read from the POS.
+_Avoid_: area (where guests sit), station, counter
+
+**Payment table**:
+A POS table only Restro uses, of the table's bar, where lines are moved to be paid and closed, at a POS with one bill per table.
+_Avoid_: virtual table (the venue's and the connector's word), buffer table, QR table
+
 **Menu routing**:
 The rule that picks which menu a table code opens: the table's own menu, else its area's, else the venue's live menu.
 
@@ -161,6 +177,96 @@ _Avoid_: URL, link, slug
 **Service day**:
 A venue's business day, which ends at 07:00 local time by default, not at midnight.
 _Avoid_: day, night, shift
+
+## Ordering and bills
+
+**Order**:
+The items the guests at a table have picked on the guest page but not yet sent. One per table and sitting, shared by every phone opened from its table code. Pay-first items stay in it until someone pays for them. In code `tableOrder`.
+_Avoid_: bag, cart, basket, the table's order
+
+**Earlier order**:
+An order left unchanged for the venue's idle time, set aside so the table can restore it until its sitting ends.
+_Avoid_: earlier bag, old cart, saved order
+
+**Sent order**:
+What leaves a table's order in one Send, or in one payment for pay-first items. It goes onto the table's POS bill (or a new POS bill where the POS allows several and the table has none) and is then part of the table's bill. A pay-first sent order is paid and closed at once. In code `sentOrder`; "order" alone never means a sent order.
+_Avoid_: round, request (that is a song request), ticket
+
+**Sent order state**:
+Where a sent order stands. **Waiting**: stored, waiting for the table's turn. **Sending**: on its way to the POS. **Checking**: no answer came, so Restro is finding out whether it landed. **Awaiting approval**: in the POS, waiting for the bar to approve it (only where the venue uses approval). **Added**: the POS has it. **Not sent**: certainly not in the POS. **Unconfirmed**: still unknown after the check.
+_Avoid_: pending, accepted, rejected, failed, unknown
+
+**Read-back**:
+Reading a table's POS bills to find out whether a sent order that got no answer reached the POS.
+_Avoid_: reconcile, lookup
+
+**Reading**:
+Restro's short-lived copy of a table's open POS bills, shared by every phone at the table and shown with its age. Kept for minutes, never as a record.
+_Avoid_: snapshot (that is the published menu), cache, sync
+
+**Approval**:
+The bar confirming an on-the-bill order in the POS before it counts as added. A venue setting, where the POS supports it.
+_Avoid_: confirmation, acceptance
+
+**Table pause**:
+A stop on ordering at one table after one of its orders ends Unconfirmed. The rest of the venue keeps ordering.
+_Avoid_: table lock, blocked table
+
+**Venue pause**:
+A stop on ordering and paying at every table of a venue, while the menu and the last reading of each bill stay. Started by Restro when it can't work with the POS, or by the owner's "Pause ordering" switch.
+_Avoid_: breaker, outage mode, menu-only, offline
+
+**Pre-opening check**:
+Restro's check, before a venue opens, that it can work with the venue's POS. A failure is fixed before guests arrive; until then the venue opens paused.
+_Avoid_: health check, smoke test
+
+**Log**:
+A venue's record of what happened in service, one entry per step: orders and each of their states, payments, pauses, alerts and tripped guards. Searchable by the venue for a month.
+_Avoid_: history, audit trail, orphaned-orders list, activity feed
+
+**Tonight**:
+The staff screen in the venue admin used during service (working name): alerts, the tables open for phones, the night's sent orders, sold out, and the Log for roles that may see it. Staff keep working in the POS as before.
+_Avoid_: operations panel, staff app, waiter screen, dashboard
+
+**Connection pause**:
+A pause of one POS login (one bar's, where bars log in separately), started and lifted by Restro. When every connection is paused, it is the venue pause.
+_Avoid_: breaker, circuit
+
+**Capability**:
+Something a connector declares its POS lets Restro do or read, such as moving lines or approval at the bar. A setting or feature that needs one shows only where it is declared.
+_Avoid_: feature flag, support level
+
+**Bill**:
+Everything still open at a table: its open POS bills, with what is owed and anything already paid against them. A POS bill that closes drops off it. Guests see and pay one bill per table, however many POS bills sit behind it.
+_Avoid_: tab, check, ticket, account, visit (Restro has none)
+
+**POS bill**:
+One bill as the venue's POS holds it: items owed plus the payments made against it, open until settled, then closed with a fiscal receipt. The table is an optional label on it, and a table can hold several open POS bills at once.
+_Avoid_: account (barsy's word), сметка (in English text), check
+
+**Payment mode**:
+Whether an item is paid on the bill or paid first, when it is ordered. A venue default and an override per item; whether pay-first applies is set for the venue, a group of tables and a table, the most specific winning.
+_Avoid_: payment type, prepaid flag
+
+**Split**:
+Moving chosen items off a POS bill onto a new one, so they can be paid on their own.
+_Avoid_: divide, separate
+
+**Part payment**:
+A payment that leaves its POS bill open with something still owed.
+_Avoid_: partial (on its own), instalment
+
+**Group payment**:
+Several guests' cards settling one bill, or one share of it, together.
+_Avoid_: split payment (a split moves items), split tender
+
+**Location check**:
+Checking, before a phone adds to or sends on-the-bill items, that it is at the venue. The location is used once and never kept.
+_Avoid_: geofence, geolocation, GPS check
+
+**Location pass**:
+What a phone holds after passing the location check: a note signed by Restro that, for the venue's set time (2 hours by default), lets it see the table's bill and order and make on-the-bill changes without a new check. It belongs to the table's sitting and dies with it; another table needs a new check, and no pass lasts past the service day. Restro keeps no copy.
+_Avoid_: location token, geo session, verified device
 
 ## Song requests and payments
 

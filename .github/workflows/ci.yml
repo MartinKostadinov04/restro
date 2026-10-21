@@ -2,8 +2,14 @@
 # Third-party actions are pinned to a full commit SHA (the comment names the release).
 name: CI
 
+# A change that touches only documentation, agent docs or skills skips this workflow and runs
+# docs-checks.yml instead (Martin 10-18): the full gate costs about 25 Actions minutes a run.
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
   push:
     branches:
       - main
@@ -12,6 +18,10 @@ on:
       # request into the stage branch (Martin 10-17), whatever the branch is named.
       - '**/foundation'
       - 's1/**'
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
 
 permissions:
   contents: read

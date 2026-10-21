@@ -43,7 +43,7 @@ export function HexField({
       <input
         type="color"
         aria-label={pickerLabel}
-        className="h-10 w-12 shrink-0 cursor-pointer rounded-md border bg-transparent p-1 disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-10 w-12 shrink-0 phone:h-11 phone:w-12 cursor-pointer rounded-md border bg-transparent p-1 disabled:cursor-not-allowed disabled:opacity-50"
         value={normaliseHex(value) ?? fallback}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}

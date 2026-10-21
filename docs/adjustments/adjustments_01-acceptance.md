@@ -44,7 +44,7 @@ Everything from `adjustments_01.md` that is built is on the branch `ad/foundatio
 
 1. Create a venue by hand named "Rehearsal", publish it, print one table's code (note the code in its guest address).
 2. Delete it (Settings › General › danger zone), then Settings › Deleted venues: it says when it will be erased. Restore it: it is back as a Draft.
-3. Delete it again, then "Delete permanently" (type its name). The toast says it is being erased; after the worker's purge (within a minute) the venue is gone from Deleted venues, and the old guest address and the table's code answer "not available" for good (never reissued).
+3. Delete it again, then "Delete permanently" (type its name). The toast says it is being erased; after the worker's purge (within a minute) the venue is gone from Deleted venues, and the old guest address and the table's code answer "not available"; the code is never reissued (D83), while the address name is freed and a new venue may take it later.
 4. Versions (Settings › Versioning): the live version and up to two earlier ones stay; older non-live ones go after 30 days.
 5. A removed instance's data is purged 30 days after its removal (S9, once merged); nothing to see in a rehearsal except the removal itself.
 

@@ -52,7 +52,11 @@ export function Header({
             <span className="rm-table">{strings.table(tableLabel)}</span>
           ) : null}
           {languages.length > 1 ? (
-            <fieldset className="rm-language" aria-label={strings.language}>
+            <fieldset
+              className="rm-language"
+              data-slot="menu.language"
+              aria-label={strings.language}
+            >
               {languages.map((code) => (
                 <button
                   key={code}

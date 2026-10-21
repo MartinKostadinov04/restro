@@ -68,7 +68,7 @@ const card = (page: Page, name: string) =>
   page.locator('[data-item]').filter({ has: page.getByRole('heading', { name, exact: true }) })
 
 /** The opener of the dish page of an item, by the item's Bulgarian name. */
-const dishOpener = (page: Page, name: string) => card(page, name).locator('.rm-item-open')
+const dishOpener = (page: Page, name: string) => card(page, name).locator('[data-slot="item.open"]')
 
 /** The sheet-opening buttons of the menu, in either language. */
 const filterButton = (page: Page) => page.locator('.rm-header [data-slot="menu.filters"]')

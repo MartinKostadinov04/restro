@@ -8,6 +8,7 @@ Work that isn't a feature but keeps the project moving.
 ## Agent environment
 - `retro` after work that went sideways, in that session.
 - `writing-for-agents` whenever CLAUDE.md, `docs/agents/`, a skill or a ticket template is edited: one place per rule, prune what no longer changes behaviour. A flow file that disagrees with the skill it names is fixed here.
+- A **vendored skill** (D106, D109) is a verbatim copy under the `references/` folder of the skill that uses it. Its Restro overrides file opens with a row that neutralises the vendored "Initial Response", and the copy keeps its `disable-model-invocation` flag. Install nothing from a vendored repository as a skill or plugin.
 - Keep `docs/decisions.md` and `docs/open-items.md` current: an answered question or a closed task leaves `open-items.md` in the commit that closes it.
 - `teach` when Martin wants to understand a concept over several sittings (RLS, the service day, fiscal rules); a one-off question is `decide.md` → Explain.
 
@@ -22,7 +23,7 @@ No deploys from an agent (CLAUDE.md). When the tracker opens a deploy (the Stage
 
 ## Outside question
 The answer sits outside the repo.
-- **Public documents** (barsy docs, a law, a provider's API): `research`, findings with citations in `docs/research/`. Official POS docs outrank everything else (CLAUDE.md, "Fact precedence").
+- **Public documents** (barsy docs, a law, a provider's API): `research`, findings with citations as a deliverable in `docs/deliverables/` (D114). A plain set of legal rules (a law's or regulation's text) is researched by agents; a lawyer is asked only for interpretation (Martin 10-18). Official POS docs outrank everything else (CLAUDE.md, "Fact precedence").
 - **A person** (Lukanet, the lawyer or accountant, a pilot owner): `to-questionnaire`. Martin sends it; the lead never does. The open questions per person are in `docs/open-items.md`.
 - The answers feed a grilling round, a D-number, or a ticket.
 

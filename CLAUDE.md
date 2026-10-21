@@ -4,8 +4,8 @@ Restro is a QR-to-phone menu and ordering web app for venues (pilot: Bulgarian n
 
 ## Read before any task
 Read only what your task needs: the big documents are for looking things up, not for reading whole (Martin 10-11: agents read too much).
-1. Decisions are binding and each is a file: `docs/decisions/D<n>.md`. Read the ones your ticket names and any D-number cited in the code you change; `docs/decisions.md` is only the index of titles, for finding a number. For a task's full text, search `docs/tracker.md` for `T<n>.`; never read the whole tracker.
-2. Your ticket (a GitHub issue) and the `docs/adjustments/` file it names; `docs/agent-briefs/` holds the briefs written before 10-16.
+1. Decisions are binding and each is a file: `docs/decisions/D<n>.md`. Read the ones your ticket names and any D-number cited in the code you change; `docs/decisions.md` is only the index of titles, for finding a number. When a decision alone is not clear (why, what was rejected, what was left open), use the `revisit-decision` skill: it reads the decision log and deliverables behind it. For a task's full text, search `docs/tracker.md` for `T<n>.`; never read the whole tracker.
+2. Your ticket (a GitHub issue) and the `docs/adjustments/` file it names; `docs/agent-briefs/` holds the briefs written before 10-16. Earlier agents' research, opinions and process maps are in `docs/deliverables/` (index `docs/deliverables.md`): read the ones your ticket names.
 3. Only the sections of `docs/architecture/data-architecture.md` and `stack.md` your brief names. They mirror the live doc, which wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a.
 4. `docs/platform-reference.md` and the Platform files your brief names (read-only, `C:\Platform`).
 5. `GLOSSARY.md` whenever you name a domain concept (code names, interface text, reports): use its term.
@@ -35,7 +35,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
 5. **Our layers only make the menu more cautious than the POS.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
 6. **Absence is deletion only after a complete full read.** A read with any failed page concludes nothing.
-7. **Sync never writes into a POS.** `packages/barsy/write/` exports only calls on Martin's allowlist — currently **none**. No webhooks, no POS registration.
+7. **Restro writes into a POS only as a waiter would (D110).** Through the API it does what a waiter does at the POS's front end: open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel within the POS's own rules. Never back-office work (items, prices, settings, users). Menu sync stays read-only. No webhooks, no POS registration (D41). Development and tests never run against a live venue's POS.
 8. **Money is integer minor units** with the POS's rounding, through the `money` module only. barsy sends prices as JSON floats: parse losslessly, convert from the decimal string, round half-up. Never `x * 100`, never floats in storage.
 9. **POS accounts:** one API user per connection per environment; staging config refuses production hosts; (later) one POS-registration owner and server-generated order uuids.
 
@@ -62,7 +62,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 Put the question in your report, with your recommendation, when: a rule or doc section is ambiguous or conflicts; a POS behaviour is undocumented; you need a new dependency or a schema change beyond your brief; a UX choice is unspecified; a test can only pass by weakening a rule. State unknowns as unknowns.
 
 ## Testing, and when a task is done
-**Done** = `pnpm lint && pnpm typecheck && pnpm deps:check` pass, plus the tests of every package you touched (`pnpm vitest run --project <package dir> --reporter=dot`) and any Playwright spec you wrote or changed. CI runs the full gate on the pushed branch; the lead merges only when it is green.
+**Done** = `pnpm lint && pnpm typecheck && pnpm deps:check` pass, plus the tests of every package you touched (`pnpm vitest run --project <package dir> --reporter=dot`) and any Playwright spec you wrote or changed. CI runs the full gate on the pushed branch; a change that touches only `docs/`, Markdown or `.claude/` runs the quick docs checks instead (`.github/workflows/docs-checks.yml`). The lead merges only when it is green.
 
 While you work, run only the tests of what you touched, with quiet output:
 - `pnpm vitest run --project <package dir> <paths> --reporter=dot`
@@ -109,6 +109,7 @@ docs/               tracker, decisions index, adjustments, architecture mirrors,
 - **Platform reference rule:** before building a UI or engine piece, read the matching Platform files in `docs/platform-reference.md`; port the pattern, apply the listed fixes, and say in your report what you ported and changed.
 - **POS calls:** every method in a connector has a comment with the official doc URL (barsy: `https://docs.lukanet.com/barsy.api/methods/...`) and is checked against it before implementation.
 - **Tests:** unit for pure logic, fast-check property tests for rules 5, 6 and 8, integration tests on Postgres for `apply()` and RLS, contract tests for every face.
+- **Deliverables (D114):** research, an opinion, a process map or a review made by a session, worktree or subagent is one file `docs/deliverables/<date>-<slug>.md`, never only a chat message, a notes folder or an unmerged branch. The lead files it with its row in `docs/deliverables.md`; files are kept and revisited, never rewritten.
 - **Git:** a branch per task, `<stage>/<slug>` (e.g. `ad/01-menus`); conventional commit messages.
 
 ## Report format (final message of every agent task)
