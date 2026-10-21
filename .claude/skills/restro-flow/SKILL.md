@@ -67,7 +67,7 @@ Read `docs/decisions/D104.md` (the **heavy zone**, the "I don't know" steps) and
 - **Three rungs, one at a time.** Sonnet by default; Opus for a real trade-off or a question spanning more than one area; Fable for the heavy zone. Check at classification and on every grilling question. To climb, write the rung and the reason in one line ("Opus: trade-off between X and Y", "Fable: heavy zone, RLS") and switch the session model yourself; never Sonnet to Fable without considering Opus.
 - **The rung is sticky.** The model that planned a ticket reviews its diff and sets each ticket's model by D58. Go back down only at a classification outside the heavy zone, when none of your tickets is still in review. The lead codes its three things (a nine-rule change, a migration, a guardrail) on whatever rung it runs.
 - **"I don't know"** from Martin runs D104's four steps: fetch a missing fact first, else a proposal from the lead, an Opus agent or a Fable agent (`effort: max`) by complexity, put back to Martin as the next question.
-- **Before a Sonnet-planned feature set publishes tickets,** one read-only Fable agent checks the spec and tickets against the nine rules and the decisions in force.
+- **Before a Sonnet-planned feature set publishes tickets,** one read-only Fable agent checks the spec and tickets against the nine rules and the decisions in force, and that every screen plan's states cover the personas it serves (`ship.md` §1).
 
 ## 5. Every flow keeps
 
