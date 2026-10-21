@@ -79,7 +79,7 @@ Made by: independent reviewer (Opus), 10-21. For: Martin and the lead.
 - Fold T69 (tracker) into #48, so the same request isn't tracked twice.
 
 **4. No ticket for the owner's setup screens.**
-- D123 says a screen plan is written in the planning, never by the implementer.
+- The screen-plan rule (the design-skills decision, still uncommitted on 10-21) says a screen plan is written in the planning, never by the implementer.
 - D122 creates many settings, none with a screen plan:
   - service hours and the closing hour;
   - the guard box;

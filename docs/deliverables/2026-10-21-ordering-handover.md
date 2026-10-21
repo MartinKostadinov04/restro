@@ -1,6 +1,8 @@
 Made by: lead session (Opus), 10-21. For: the next lead session, and Martin. A handover of the ordering planning (map #29) after D122.
 
 > **Update, later on 10-21:** Martin settled both choices. **A is declined:** the pilot runs the whole workflow, ordering and paying in the app, and demo and staging use the provider's sandbox and a POS test installation. Nothing is designed around a pilot without paying unless he says so. **B is the reviewers' order.** Both are in D122 and the addendum of `2026-10-21-board-review-answers-2.md`; the "Still open" section below is superseded on these two points. With paying in the pilot, the parked law points matter before the pilot, not after.
+>
+> **Update, end of 10-21:** an independent review of the tickets (`2026-10-21-map-29-ticket-review.md`) led to a rework of map #29, and Martin answered its questions (D122, "Martin's answers to the ticket review"). Build now; the Mistral connector gets its own spec when Mistral answers, so "nothing can be built until Mistral answers" below no longer holds. Tips and "call a waiter" are in the pilot. The guest template is designed last, by its own agent. The design tickets (#45, #50, the owner's setup screens) wait for the design-skills work of 10-21. #29's body lists the open tickets.
 
 # Ordering: where the planning stands (handover, 10-21)
 

@@ -9,7 +9,7 @@ The questions were drafted across five files:
 - 24–29: `2026-10-20-ordering-review-merged.md`;
 - 30–37: `2026-10-21-board-review-final.md`.
 
-The receipt-law check added four more, which are folded in here as 21, 36 and 38–39. The numbers are kept so every file still points to the right question. Martin's answers of 10-21 drop 32 and 34, and add 40.
+The receipt-law check added four more, which are folded in here as 21, 36 and 38–39. The numbers are kept so every file still points to the right question. Martin's answers of 10-21 drop 32 and 34, and add 40. The ticket review of 10-21 (`2026-10-21-map-29-ticket-review.md`) adds 41 and a venue question about the payment account.
 
 Not sent yet: Martin sends them and records the date here or in the tracker. When answers come, an agent fills the "Shown" and "Route" columns of the Mistral API checker.
 
@@ -64,6 +64,7 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 - **6.** Does Zamboo support a "ЧАСТИЧНИ ПЛАЩАНИЯ" department under Н-18 чл. 26а for deposits and part payments? Does "Продажба кредит" close with "резерв 2"?
 - **7.** Can an outside system start a storno, full or partial, of a sale paid online? How does Zamboo document a refund to a card without cash in the drawer?
 - **9.** Does the myPOS partnership include online payments tied to Zamboo receipts?
+- **41.** How does a tip paid by card in the app go into Zamboo: as a line, as part of the card payment, or not at all? How does it show on the fiscal receipt and in the day's report? (Tips are in the pilot: Martin 10-21.)
 
 ## Dropped
 
@@ -76,4 +77,5 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 - How many bars do you have, which tables belong to which, and how do the bars log in? Which virtual tables do you use today, and could Restro have its own few per bar?
 - A photo of a bar ticket.
 - How often do guests pay their own part, and how often is one bill paid with two or more cards?
+- Which card acquirer or payment provider does the venue use today? Would it open its own account with the online payment provider Restro uses (the venue is the merchant, D98)?
 - The opening, last-orders and closing times per weekday, and the closed nights (as defaults for the settings).
