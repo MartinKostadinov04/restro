@@ -194,8 +194,8 @@ h2.sh .sp{flex:1}
   <h1>PROTOTYPE, throwaway: "Tonight", screen 1 (actions and tables) · #50, 10-21</h1>
   <p>Question it answers: is the bar tablet calm and readable at first sight, and are the stories few taps? Fake data, nothing saved. Prototype PINs: <b>1111</b> Maria (staff), <b>2222</b> Georgi (manager).</p>
   <div class="bar" role="toolbar" aria-label="Prototype controls">
-    <div class="grp">Device <div class="seg" id="c-width"><button data-c="width" data-v="tablet">Bar tablet 1180×820</button><button data-c="width" data-v="phone">Phone 390</button></div></div>
-    <div class="grp">Signed in as <div class="seg" id="c-session"><button data-c="session" data-v="shared">Shared tablet (PIN)</button><button data-c="session" data-v="staff">My phone: staff</button><button data-c="session" data-v="manager">My phone: manager</button></div></div>
+    <div class="grp">Device <div class="seg" id="c-width"><button type="button" data-c="width" data-v="tablet">Bar tablet 1180×820</button><button type="button" data-c="width" data-v="phone">Phone 390</button></div></div>
+    <div class="grp">Signed in as <div class="seg" id="c-session"><button type="button" data-c="session" data-v="shared">Shared tablet (PIN)</button><button type="button" data-c="session" data-v="staff">My phone: staff</button><button type="button" data-c="session" data-v="manager">My phone: manager</button></div></div>
     <div class="grp">Night <select id="c-scen" aria-label="Scenario">
       <option value="busy">Busy night (24 tables, 3 alerts, 2 calls)</option>
       <option value="empty">Empty night (nothing open)</option>
@@ -203,12 +203,12 @@ h2.sh .sp{flex:1}
       <option value="unreachable">POS unreachable (Restro pause)</option>
       <option value="long">Longest Bulgarian text</option>
       <option value="many">Many (40 tables, 12 alerts)</option></select></div>
-    <div class="grp">Language <div class="seg"><button data-c="lang" data-v="bg">BG</button><button data-c="lang" data-v="en">EN</button></div></div>
-    <div class="grp">Theme <div class="seg"><button data-c="theme" data-v="light">Light</button><button data-c="theme" data-v="dark">Dark</button></div></div>
+    <div class="grp">Language <div class="seg"><button type="button" data-c="lang" data-v="bg">BG</button><button type="button" data-c="lang" data-v="en">EN</button></div></div>
+    <div class="grp">Theme <div class="seg"><button type="button" data-c="theme" data-v="light">Light</button><button type="button" data-c="theme" data-v="dark">Dark</button></div></div>
     <label><input type="checkbox" id="c-fail"> Next write fails</label>
     <label><input type="checkbox" id="c-callpin"> PIN on waiter calls</label>
-    <button class="mini" id="c-newcall">+ waiter call</button>
-    <button class="mini" id="c-reset">Reset night</button>
+    <button type="button" class="mini" id="c-newcall">+ waiter call</button>
+    <button type="button" class="mini" id="c-reset">Reset night</button>
   </div>
   <div class="stage">
     <div class="stagewrap" id="wrap"><div class="dev tablet" id="dev"></div></div>
@@ -525,7 +525,7 @@ function key(k){
 function rowHtml(a,first){
  const tb=tbl(a.table),bar=barName(tOf(a.table)?tOf(a.table).bar:1),meta=`${tb} · ${bar} · ${ago(a.age)}`;
  const main=first;   // only the first row's main action is filled: the one primary action
- const b=(act,label,cls)=>`<button class="btn ${cls||''}" data-a="${act}" data-id="${a.id}" data-fk="${act}${a.id}">${label}</button>`;
+ const b=(act,label,cls)=>`<button type="button" class="btn ${cls||''}" data-a="${act}" data-id="${a.id}" data-fk="${act}${a.id}">${label}</button>`;
  let cls='',icon='bell',ti='',me=meta,de='',acts='';
  switch(a.kind){
   case 'money':cls='money';icon='alert';ti=t('m_t');
@@ -559,7 +559,7 @@ function needsHtml(){
  let h=S.width==='phone'?'':`<h2 class="sh">${t('needs')} <span class="n">${A.length||''}</span></h2>`;
  if(!A.length){
   h+=anyOpen?`<div class="empty">${ic('ccheck',28)}<b>${t('e_open_t')}</b><span>${t('e_open_d')}</span></div>`
-   :`<div class="empty">${ic('circle',28)}<b>${t('e_night_t')}</b><span>${t('e_night_d')}</span>${S.width==='phone'?`<button class="btn primary" style="margin-top:8px" data-a="openall" data-fk="oa2">${t('openall')}</button>`:''}</div>`;
+   :`<div class="empty">${ic('circle',28)}<b>${t('e_night_t')}</b><span>${t('e_night_d')}</span>${S.width==='phone'?`<button type="button" class="btn primary" style="margin-top:8px" data-a="openall" data-fk="oa2">${t('openall')}</button>`:''}</div>`;
   return h;
  }
  const now=A.filter(a=>!LATER(a.kind)),lat=A.filter(a=>LATER(a.kind));
@@ -579,15 +579,15 @@ function tileHtml(tb){
  }
  const sub=S.D.long&&[4,9,11,12].includes(tb.n)?`<div class="tname">${LONG[S.lang].tn.replace(' · ','')}</div>`:'';
  const label=`${tshort(tb.n)}, ${word}`;
- return `<button class="tile ${cls}" data-a="tile" data-n="${tb.n}" data-fk="t${tb.n}" aria-label="${label}"><b>${tb.n}</b><span>${ic(icon)}<em>${word}</em></span>${sub}</button>`;
+ return `<button type="button" class="tile ${cls}" data-a="tile" data-n="${tb.n}" data-fk="t${tb.n}" aria-label="${label}"><b>${tb.n}</b><span>${ic(icon)}<em>${word}</em></span>${sub}</button>`;
 }
 function tablesHtml(){
  if(S.scen==='loading')return `<div aria-busy="true"><span class="sr">${t('loading')}</span><div class="grid">${'<div class="skel sk-tile"></div>'.repeat(12)}</div></div>`;
  const T=S.D.tables,o=T.filter(x=>x.open).length;
  let h=`<h2 class="sh"><span class="tt">${t('tables')}<span class="n">${t('openof',{o,t:T.length})}</span></span><span class="sp"></span>`;
- if(o<T.length)h+=`<button class="btn ${o===0&&!S.D.alerts.length?'primary':''}" data-a="openall" data-fk="oa1">${t('openall')}</button>`;
- h+=`<span class="mw"><button class="btn ghost" aria-label="${t('more')}" aria-haspopup="menu" aria-expanded="${S.menu==='tm'}" data-a="menu" data-m="tm" data-fk="tm" style="min-width:44px;padding:8px">${ic('more')}</button>`;
- if(S.menu==='tm')h+=`<div class="pop" role="menu"><button role="menuitem" data-a="closeall-ask" data-fk="ca" ${o?'':'disabled'}>${t('closeall')}</button></div>`;
+ if(o<T.length)h+=`<button type="button" class="btn ${o===0&&!S.D.alerts.length?'primary':''}" data-a="openall" data-fk="oa1">${t('openall')}</button>`;
+ h+=`<span class="mw"><button type="button" class="btn ghost" aria-label="${t('more')}" aria-haspopup="menu" aria-expanded="${S.menu==='tm'}" data-a="menu" data-m="tm" data-fk="tm" style="min-width:44px;padding:8px">${ic('more')}</button>`;
+ if(S.menu==='tm')h+=`<div class="pop" role="menu"><button type="button" role="menuitem" data-a="closeall-ask" data-fk="ca" ${o?'':'disabled'}>${t('closeall')}</button></div>`;
  h+=`</span></h2>`;
  for(const b of [1,2]){
   const bt=T.filter(x=>x.bar===b);
@@ -600,7 +600,7 @@ function bannerHtml(){
  if(S.D.restro)h+=`<div class="banner" role="status">${ic('plug',22)}<div class="tx">${t('b_restro',{source:source()})}</div></div>`;
  else if(S.D.pauses.length){
   const p=S.D.pauses[0];
-  h+=`<div class="banner" role="status"><span style="color:var(--accent)">${ic('pause',22)}</span><div class="tx">${t('b_staff',{scope:scopeName(p.scope),who:p.by,time:p.at})}</div><button class="btn" data-a="lift" data-fk="lift">${t('lift')}</button></div>`;
+  h+=`<div class="banner" role="status"><span style="color:var(--accent)">${ic('pause',22)}</span><div class="tx">${t('b_staff',{scope:scopeName(p.scope),who:p.by,time:p.at})}</div><button type="button" class="btn" data-a="lift" data-fk="lift">${t('lift')}</button></div>`;
  }
  return h;
 }
@@ -608,12 +608,12 @@ function headHtml(){
  const phone=S.width==='phone';
  const paused=S.D.restro||S.D.pauses.length;
  const status='';
- const pauseBtn=paused?'':`<span class="mw"><button class="btn" data-a="menu" data-m="p" aria-haspopup="menu" aria-expanded="${S.menu==='p'}" data-fk="pm">${ic('pause',18)}${t('pause')}${ic('down',18)}</button>${S.menu==='p'?`<div class="pop" role="menu"><button role="menuitem" data-a="pause" data-s="0" data-fk="p0">${t('p_all')}</button><button role="menuitem" data-a="pause" data-s="1">${barName(1)}</button><button role="menuitem" data-a="pause" data-s="2">${barName(2)}</button></div>`:''}</span>`;
+ const pauseBtn=paused?'':`<span class="mw"><button type="button" class="btn" data-a="menu" data-m="p" aria-haspopup="menu" aria-expanded="${S.menu==='p'}" data-fk="pm">${ic('pause',18)}${t('pause')}${ic('down',18)}</button>${S.menu==='p'?`<div class="pop" role="menu"><button type="button" role="menuitem" data-a="pause" data-s="0" data-fk="p0">${t('p_all')}</button><button type="button" role="menuitem" data-a="pause" data-s="1">${barName(1)}</button><button type="button" role="menuitem" data-a="pause" data-s="2">${barName(2)}</button></div>`:''}</span>`;
  let h=`<div class="hd"><div class="ttl"><div class="crumb">${t('venue')}</div><h1 class="t">${t('title')}</h1></div>${phone?'':status}${pauseBtn}</div>`;
  if(phone)h=`<div class="hd"><div class="ttl"><div class="crumb">${t('venue')}</div><h1 class="t">${t('title')}</h1></div>${pauseBtn}</div>`;
  const tabs=['act','sent','sold','log'];
  if(phone)h+=`<div class="tabsel"><select class="sel" aria-label="${t('title')}" id="tabsel">${tabs.map(k=>`<option value="${k}" ${S.tab===k?'selected':''}>${t('tab_'+k)}</option>`).join('')}</select></div>`;
- else h+=`<div class="tabs" role="tablist">${tabs.map(k=>`<button role="tab" aria-selected="${S.tab===k}" data-a="tab" data-v="${k}" data-fk="tab${k}">${t('tab_'+k)}</button>`).join('')}</div>`;
+ else h+=`<div class="tabs" role="tablist">${tabs.map(k=>`<button type="button" role="tab" aria-selected="${S.tab===k}" data-a="tab" data-v="${k}" data-fk="tab${k}">${t('tab_'+k)}</button>`).join('')}</div>`;
  return h;
 }
 function modalHtml(){
@@ -621,28 +621,28 @@ function modalHtml(){
  const phone=S.width==='phone';
  if(m.type==='pin'){
   const c=m.cfg,mgr=c.min==='manager';
-  const keys=[1,2,3,4,5,6,7,8,9].map(k=>`<button class="btn" data-a="key" data-k="${k}" data-fk="k${k}">${k}</button>`).join('')+`<span></span><button class="btn" data-a="key" data-k="0" data-fk="k0">0</button><button class="btn ghost" data-a="key" data-k="del" aria-label="${t('del')}" data-fk="kd">${ic('back',24)}</button>`;
+  const keys=[1,2,3,4,5,6,7,8,9].map(k=>`<button type="button" class="btn" data-a="key" data-k="${k}" data-fk="k${k}">${k}</button>`).join('')+`<span></span><button type="button" class="btn" data-a="key" data-k="0" data-fk="k0">0</button><button type="button" class="btn ghost" data-a="key" data-k="del" aria-label="${t('del')}" data-fk="kd">${ic('back',24)}</button>`;
   return `<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><h3 id="dt">${c.title||c.label}</h3><p>${c.body||''}</p>
    <div class="who" id="pl">${mgr?t('pin_tm'):t('pin_t')}</div>
    <div class="dots" role="img" aria-label="${t('pin_lb')}: ${m.digits.length}/4">${[0,1,2,3].map(i=>`<i class="${i<m.digits.length?'on':''}"></i>`).join('')}</div>
    <div class="perr" role="alert">${m.err?ic('alert',16)+m.err:''}</div>
    <div class="keys">${keys}</div>
-   <button class="btn" style="width:100%" data-a="modal-x" data-fk="leave">${t('leave')}</button></div></div>`;
+   <button type="button" class="btn" style="width:100%" data-a="modal-x" data-fk="leave">${t('leave')}</button></div></div>`;
  }
- if(m.type==='confirm')return `<div class="scrim"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dt"><h3 id="dt">${m.title}</h3><p>${m.body}</p><div class="col2"><button class="btn primary" data-a="confirm-ok" data-fk="cok">${m.ok}</button><button class="btn" data-a="modal-x" data-fk="leave">${m.keep}</button></div></div></div>`;
+ if(m.type==='confirm')return `<div class="scrim"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dt"><h3 id="dt">${m.title}</h3><p>${m.body}</p><div class="col2"><button type="button" class="btn primary" data-a="confirm-ok" data-fk="cok">${m.ok}</button><button type="button" class="btn" data-a="modal-x" data-fk="leave">${m.keep}</button></div></div></div>`;
  if(m.type==='sheet'){
   const tb=tOf(m.n),al=sortedAlerts().filter(a=>a.table===m.n);
   return `<div class="scrim ${phone?'':'side'}"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt">
    <h3 id="dt">${tbl(m.n)}</h3><p>${t('sh_sub',{bar:barName(tb.bar),since:tb.since||''})}</p>
    <ul class="facts"><li>${t('sh_f1',{k:tb.orders})}</li><li>${t('sh_f2',{amt:eur(tb.bill)})}</li></ul>
-   <div class="col2"><button class="btn" data-a="sheet-close" data-fk="sc">${t('sh_close')}</button><button class="btn" data-a="sheet-new" data-fk="sn">${t('sh_new')}</button><button class="btn ghost" data-a="modal-x" data-fk="leave">${t('close')}</button></div></div></div>`;
+   <div class="col2"><button type="button" class="btn" data-a="sheet-close" data-fk="sc">${t('sh_close')}</button><button type="button" class="btn" data-a="sheet-new" data-fk="sn">${t('sh_new')}</button><button type="button" class="btn ghost" data-a="modal-x" data-fk="leave">${t('close')}</button></div></div></div>`;
  }
  return '';
 }
 function toastHtml(){
  const x=S.toast;if(!x)return '';
- if(x.err)return `<div class="toast err" role="alert">${ic('alert',20)}<span>${x.text}</span><button class="btn" data-a="toast-x" aria-label="${t('close')}" style="min-width:44px;padding:8px">${ic('x',20)}</button></div>`;
- return `<div class="toast" role="status"><span>${x.text}</span>${x.undo?`<button class="btn" data-a="undo" data-fk="undo">${t('undo')}</button>`:`<button class="btn" data-a="toast-x" aria-label="${t('close')}" style="min-width:44px;padding:8px;text-decoration:none">${ic('x',20)}</button>`}</div>`;
+ if(x.err)return `<div class="toast err" role="alert">${ic('alert',20)}<span>${x.text}</span><button type="button" class="btn" data-a="toast-x" aria-label="${t('close')}" style="min-width:44px;padding:8px">${ic('x',20)}</button></div>`;
+ return `<div class="toast" role="status"><span>${x.text}</span>${x.undo?`<button type="button" class="btn" data-a="undo" data-fk="undo">${t('undo')}</button>`:`<button type="button" class="btn" data-a="toast-x" aria-label="${t('close')}" style="min-width:44px;padding:8px;text-decoration:none">${ic('x',20)}</button>`}</div>`;
 }
 function render(){
  const dev=$('#dev');
@@ -655,7 +655,7 @@ function render(){
  if(S.tab!=='act')body=`<div class="stub">${t('stub')}</div>`;
  else if(phone){
   const n=S.scen==='loading'?'':sortedAlerts().length;
-  body=`<div class="segp"><div class="seg" role="group"><button aria-pressed="${S.pane==='needs'}" data-a="pane" data-v="needs" data-fk="pn">${t('ph_needs')}${n!==''?' · '+n:''}</button><button aria-pressed="${S.pane==='tables'}" data-a="pane" data-v="tables" data-fk="pt">${t('ph_tables')} · ${S.D.tables.length}</button></div></div><div class="main" data-sc>${S.pane==='needs'?`<div class="col">${needsHtml()}</div>`:`<div class="col">${tablesHtml()}</div>`}</div>`;
+  body=`<div class="segp"><div class="seg" role="group"><button type="button" aria-pressed="${S.pane==='needs'}" data-a="pane" data-v="needs" data-fk="pn">${t('ph_needs')}${n!==''?' · '+n:''}</button><button type="button" aria-pressed="${S.pane==='tables'}" data-a="pane" data-v="tables" data-fk="pt">${t('ph_tables')} · ${S.D.tables.length}</button></div></div><div class="main" data-sc>${S.pane==='needs'?`<div class="col">${needsHtml()}</div>`:`<div class="col">${tablesHtml()}</div>`}</div>`;
  }else body=`<div class="main"><div class="col l" data-sc>${needsHtml()}</div><div class="col" data-sc>${tablesHtml()}</div></div>`;
  dev.innerHTML=headHtml()+bannerHtml()+body+modalHtml()+toastHtml();
  // phone: the segmented control must not scroll away; .main scrolls
