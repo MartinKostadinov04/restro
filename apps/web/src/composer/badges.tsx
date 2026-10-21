@@ -209,9 +209,10 @@ export function IssuesBadge({ issues }: { issues: readonly ComposerIssue[] }) {
   return (
     <HoverCard openDelay={150}>
       <HoverCardTrigger asChild>
+        {/* The 18 px keeps its 44 px square clear of the name above it in an item row (D123). */}
         <button
           type="button"
-          className="tap-area rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="tap-area rounded-full phone:mt-[18px] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           data-testid="issues-badge"
           data-count={issues.length}
         >

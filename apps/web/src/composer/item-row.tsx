@@ -89,7 +89,7 @@ export function ItemRow({
         >
           {/* Shown on hover and focus (always on a touch screen, and once something is ticked). */}
           {/* A native checkbox takes no pseudo-element, so on a phone its label is the 44 px target (D123). */}
-          <label className="flex shrink-0 items-center justify-center max-md:size-11">
+          <label className="flex shrink-0 items-center justify-center phone:size-11">
             <input
               type="checkbox"
               checked={isSelected}
@@ -109,7 +109,7 @@ export function ItemRow({
           <div
             {...drag.dragHandleProps}
             aria-label={t('actions.dragItem', { name })}
-            className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md max-md:size-11 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+            className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md phone:size-11 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
           >
             <GripVerticalIcon className="size-4" aria-hidden />
           </div>
@@ -138,7 +138,7 @@ export function ItemRow({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-7 shrink-0 text-muted-foreground max-md:hidden opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                    className="size-7 shrink-0 text-muted-foreground phone:hidden opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                     aria-label={t('rename.item', { name })}
                     onClick={() => startRename({ kind: 'item', id: itemId })}
                     data-testid="item-rename-start"

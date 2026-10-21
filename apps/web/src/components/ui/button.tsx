@@ -18,16 +18,20 @@ const buttonVariants = cva(
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-9 px-4 py-2 has-[>svg]:px-3 max-md:h-11',
-        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 max-md:h-11 max-md:min-w-11 [&_svg:not([class*='size-'])]:size-3",
-        sm: 'h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5 max-md:h-11 max-md:min-w-11',
-        lg: 'h-10 rounded-md px-6 has-[>svg]:px-4 max-md:h-11',
-        icon: 'size-9 max-md:size-11',
-        'icon-xs': "size-6 rounded-md max-md:size-11 [&_svg:not([class*='size-'])]:size-3",
-        'icon-sm': 'size-8 max-md:size-11',
-        'icon-lg': 'size-10 max-md:size-11',
+        default: 'h-9 px-4 py-2 has-[>svg]:px-3 phone:h-11',
+        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 phone:h-11 phone:min-w-11 [&_svg:not([class*='size-'])]:size-3",
+        sm: 'h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5 phone:h-11 phone:min-w-11',
+        lg: 'h-10 rounded-md px-6 has-[>svg]:px-4 phone:h-11',
+        icon: 'size-9 phone:size-11',
+        'icon-xs': "size-6 rounded-md phone:size-11 [&_svg:not([class*='size-'])]:size-3",
+        'icon-sm': 'size-8 phone:size-11',
+        'icon-lg': 'size-10 phone:size-11',
       },
     },
+    compoundVariants: [
+      // A link-style button sits inside a sentence: WCAG 2.5.8 exempts an inline target, so it keeps its height.
+      { variant: 'link', class: 'phone:h-auto phone:min-w-0' },
+    ],
     defaultVariants: {
       variant: 'default',
       size: 'default',

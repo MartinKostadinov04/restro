@@ -51,16 +51,19 @@ export function ItemToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="item-toolbar">
-      <label className="flex items-center gap-2 text-sm text-muted-foreground max-md:-ml-3.5 max-md:min-h-11 max-md:pl-3.5">
-        <input
-          ref={checkbox}
-          type="checkbox"
-          className="size-4 accent-primary"
-          checked={all}
-          disabled={visibleIds.length === 0}
-          onChange={() => selectItems(visibleIds, !all)}
-          data-testid="select-all"
-        />
+      <label className="flex items-center gap-2 text-sm text-muted-foreground phone:gap-0">
+        {/* A native checkbox takes no pseudo-element: on a phone it sits in a 44 px box, as in an item row (D123). */}
+        <span className="flex shrink-0 items-center justify-center phone:size-11">
+          <input
+            ref={checkbox}
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={all}
+            disabled={visibleIds.length === 0}
+            onChange={() => selectItems(visibleIds, !all)}
+            data-testid="select-all"
+          />
+        </span>
         {t('selectAll')}
       </label>
 

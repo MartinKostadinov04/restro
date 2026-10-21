@@ -20,6 +20,8 @@ interface Miss {
   readonly control: string
   readonly box: string
   readonly missed: readonly string[]
+  /** What the first missed probe landed on instead. */
+  readonly hitBy: string
 }
 
 /**
@@ -64,7 +66,7 @@ async function floorMisses(
         return `${role} "${label}"`
       }
       const isInline = (el: Element) => {
-        if (el.tagName !== 'A') return false
+        if (el.tagName !== 'A' && el.tagName !== 'BUTTON') return false
         const parent = el.parentElement
         if (!parent) return false
         const own = (el.textContent ?? '').trim()
@@ -72,7 +74,7 @@ async function floorMisses(
         return all.length > own.length + 3 && getComputedStyle(parent).display !== 'flex'
       }
 
-      const misses: { control: string; box: string; missed: string[] }[] = []
+      const misses: { control: string; box: string; missed: string[]; hitBy: string }[] = []
       let checked = 0
       const seen = new Set<Element>()
       for (const el of Array.from(root.querySelectorAll(selector))) {
@@ -92,6 +94,8 @@ async function floorMisses(
         el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
         let rect = el.getBoundingClientRect()
         if (rect.width === 0 || rect.height === 0) continue
+        // A visually hidden twin (a file input behind its button) takes no taps.
+        if (rect.width <= 1 && rect.height <= 1) continue
 
         // The square: the control's centre, at least FLOOR on each side (a larger control keeps
         // its own box).
@@ -111,6 +115,7 @@ async function floorMisses(
         ]
         checked += 1
         const missed: string[] = []
+        let hitBy = ''
         for (const [where, x, y] of probes) {
           const hit = document.elementFromPoint(x, y)
           const label =
@@ -120,7 +125,10 @@ async function floorMisses(
             (el.contains(hit) ||
               // The label of a field is the field (a tap on it focuses or toggles it).
               (label !== null && Array.from(label).some((l) => l.contains(hit))))
-          if (!ok) missed.push(where)
+          if (!ok) {
+            missed.push(where)
+            if (hitBy === '') hitBy = hit ? describe(hit) : 'nothing (outside the page)'
+          }
         }
         rect = el.getBoundingClientRect()
         if (missed.length > 0) {
@@ -128,6 +136,7 @@ async function floorMisses(
             control: describe(el),
             box: `${Math.round(rect.width)}x${Math.round(rect.height)}`,
             missed,
+            hitBy,
           })
         }
       }
@@ -179,30 +188,68 @@ const phone = {
   hasTouch: true,
 } as const
 
-test('the composer Structure screen: every control has a 44 px hit area on a phone', async ({
+/** Signs in as the demo owner and opens the venue's composer. */
+async function openComposer(page: Page) {
+  await signIn(page, ADMIN_EMAIL)
+  await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+  await expect(page.getByTestId('composer')).toBeVisible()
+  await expect(page.getByTestId('section-picker')).toContainText('Коктейли')
+}
+
+/** The composer's two subtabs and what opens over them, measured on the screen's own controls. */
+async function walkComposer(page: Page) {
+  await expectFloor(page, 'Structure, top to bottom', 20)
+  // The pickers and menus that open over the screen.
+  await page.getByTestId('section-picker').click()
+  await expectFloor(page, 'section picker open', 3)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('item-menu').first().click()
+  await expectFloor(page, 'item menu open', 3)
+  await page.keyboard.press('Escape')
+  // The row checkboxes and the selection bar they bring up.
+  await page.getByTestId('item-row').first().getByRole('checkbox').click()
+  // The bar covers the foot of the list while it is up (it is fixed), so only its own controls
+  // are measured here; the rows were measured above.
+  await expectFloor(page, 'one item selected', 2, '[data-testid="selection-bar"]')
+  await page.getByTestId('clear-selection').click()
+  // The Design subtab, with the Guest features panel (stacked switches and checkboxes).
+  const design = new URL(page.url())
+  design.searchParams.set('tab', 'composer')
+  design.searchParams.set('sub', 'design')
+  await page.goto(design.pathname + design.search)
+  await expect(page.getByTestId('guest-features-panel')).toBeVisible()
+  await expectFloor(page, 'Design subtab', 10)
+}
+
+test('the composer Structure and Design screens: every control has a 44 px hit area on a phone', async ({
   browser,
 }) => {
   const context = await browser.newContext(phone)
   const page = await context.newPage()
   try {
-    await signIn(page, ADMIN_EMAIL)
-    await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
-    await expect(page.getByTestId('composer')).toBeVisible()
-    await expect(page.getByTestId('section-picker')).toContainText('Коктейли')
+    await openComposer(page)
+    await walkComposer(page)
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
 
-    await expectFloor(page, 'venue page, top to bottom', 20)
-    // The pickers and menus that open over the screen.
-    await page.getByTestId('section-picker').click()
-    await expectFloor(page, 'section picker open', 3)
-    await page.keyboard.press('Escape')
-    await page.getByTestId('item-menu').first().click()
-    await expectFloor(page, 'item menu open', 3)
-    await page.keyboard.press('Escape')
-    // The row checkboxes and the selection bar they bring up.
-    await page.getByTestId('item-row').first().getByRole('checkbox').click()
-    // The bar covers the foot of the list while it is up (it is fixed), so only its own controls
-    // are measured here; the rows were measured above.
-    await expectFloor(page, 'one item selected', 2, '[data-testid="selection-bar"]')
+// A bar tablet (768 to 1024 px wide, a touch screen) gets the same floor: it is keyed to a coarse
+// pointer as well as to width (the `phone` variant in globals.css). 820 px keeps the section picker
+// instead of the tree, which is drawn from 1024 px.
+test('the same screens on a tablet-wide touch screen', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 820, height: 1180 },
+    hasTouch: true,
+  })
+  const page = await context.newPage()
+  try {
+    expect(
+      await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches),
+      'the context reports a coarse pointer',
+    ).toBe(true)
+    await openComposer(page)
+    await walkComposer(page)
   } finally {
     await context.close().catch(() => undefined)
   }
@@ -230,7 +277,7 @@ test('Settings -> Integrations: every control has a 44 px hit area on a phone', 
     if ((await page.getByTestId('instance').count()) === 0) {
       const form = page.getByTestId('add-instance-form')
       await form.getByLabel('Име').fill('barsy – 44 px')
-      await form.getByLabel('Адрес на barsy').fill('https://touch-targets.barsyonline.com')
+      await form.getByLabel('Адрес на barsy').fill('https://touch-targets.barsy.test')
       await form.getByLabel('API потребител').fill('touch-api-user')
       await form.getByLabel('Парола').fill('touch-password-not-a-secret')
       await form.getByRole('button', { name: 'Запази и провери' }).click()

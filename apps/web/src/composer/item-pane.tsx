@@ -186,7 +186,7 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
           <span className="text-sm text-muted-foreground">{t('itemCount', { count })}</span>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 max-md:gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <NewItemButton sectionId={sectionId} testId="new-item" />
         <SoldOutChip />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
