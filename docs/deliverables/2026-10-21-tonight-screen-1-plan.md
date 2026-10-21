@@ -293,3 +293,4 @@ The lead reviewed the plan and the prototype. Questions that are the lead's are 
 - **Q12, wording and the BG terms:** to Martin with the prototype.
 - **Q13:** the storno deadline stays off the row until the accountant answers (#52).
 - **Q14:** each job keeps its own word; "Done" only in Telegram.
+- **Martin 10-21 (#55):** stock lives in the POS, so Tonight has no "Sold out" tab. Its actions instead get a notice when an item runs out in the POS ("Out of stock in {source}: Mojito. Greyed out on the menu."), D122 §4.

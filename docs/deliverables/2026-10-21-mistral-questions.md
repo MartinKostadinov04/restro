@@ -25,6 +25,7 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 ## The menu
 
 - **18.** Can an outside app read the menu: items, categories, prices, options and add-ons, and what is sold out?
+- **42.** Right before sending an order, can an outside app ask whether each item is still available (in stock) at that moment? If an item has run out, does Zamboo refuse the line, and does it say which item? (Martin 10-21: stock lives in the POS.)
 - **28.** What are the API's rate limits? Where does it run, on the venue's PC or a server? Can one call read every open bill in the venue?
 
 ## Ordering on the bill
