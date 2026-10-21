@@ -15,6 +15,8 @@ The one place for what Restro knows about myPOS, the first payment provider (Mar
 - **C21**: `2026-10-21-mypos-vs-stripe-cost.md` (the cost comparison made for #54).
 - **Martin**: Martin's own knowledge.
 - **AI-1**: myPOS's first reply to Restro (10-21). It was written by myPOS's AI virtual assistant from general help pages, not by a person. Where it "can't confirm" something, its material is silent; that doesn't mean the thing is missing.
+- **H21**: myPOS's help centre, help.mypos.com (en-gb), read by the ordering lead on 10-21. Each line names the article id and the date the article was last updated. The help centre is written mostly for card terminals; online-only points are marked. Searches for embedded, iframe, sandbox, nightclub and bar found nothing, and the Bulgarian help centre returned no results.
+- **P21**: myPOS's public fees page, mypos.com/en-gb/pricing-and-fees/fees, read on 10-21. It is the UK page, in pounds; the Bulgarian figures may differ.
 
 Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, **[SAID]** said by myPOS or by Martin, **[READING]** our interpretation.
 
@@ -28,6 +30,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-21 · AI-1 [SAID] To integrate: the merchant opens a free myPOS account, completes the online identification, then connects through myPOS Checkout (API, SDK or e-commerce plugins). Money settles into the merchant's myPOS account.
 - 2026-10-21 · AI-1 [SAID] Its material describes no integrator programme, only the "Препоръчай myPOS" referral scheme. **Conflicts** with R17's Identity API partner path. Asked of a person (open question 4).
 - 2026-10-17 · R17 [DOC] Checkout is not supported for crypto, pharma and nutra, gambling, adult content, tobacco, streaming or hosting. Alcohol is not listed.
+- 2026-10-21 · H21 [VENDOR] (6741946321565, updated 2026-09-09) Any legal business registered and operating in the EU, EEA, UK or Switzerland can open an account. Not supported: FX speculators, weapons dealers, non-regulated charities, companies with bearer shares, and "other high-risk industries" in the Acceptance Policy (not read yet). Bars and clubs are not named.
 
 ## What the merchant's site must show
 
@@ -55,6 +58,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-21 · F21 [DOC] The Checkout API redirects: "iFrame and similar solutions will not work due to security reasons."
 - 2026-10-21 · F21 [DOC] The Embedded SDK's iFrame takes cards and iDEAL, needs at least 320×620, and lists Apple Pay and Google Pay as "not supported". It documents no pre-authorisation. **Conflicts** with R17 on the wallets; the pages may differ by SDK version. Asked of a person (open question 2).
 - 2026-10-21 · AI-1 [SAID] Its material describes no embedded form, only the payment portal.
+- 2026-10-21 · H21 [VENDOR] (6883031967389, updated 2025-12-08) With Checkout, "customers are directed to a secure payment gateway" to enter the card. This matches F21: Checkout redirects.
 - 2026-10-21 · [READING] Plan for myPOS's own page for holds until a person at myPOS confirms an in-page form that can hold a card (#49 round 2, Q3).
 
 ## Pre-authorisation (holding the money)
@@ -72,8 +76,21 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-21 · [READING] What this means for the pilot:
   - a completion below the hold looks allowed, but whether the rest is released at once is open (question 3);
   - a tip can't be added at completion;
-  - Restro always cancels an unused hold itself and never lets one lapse, so the venue pays no lapse fee;
+  - ~~Restro always cancels an unused hold itself and never lets one lapse, so the venue pays no lapse fee;~~ (wrong: a cancel costs the same fee as a lapse; see the H21 lines below)
   - the pilot venue must ask for pre-authorisation before the pilot (#56, #61).
+- 2026-10-21 · H21 [VENDOR] (6882373876253, updated 2026-06-15) myPOS offers pre-authorisation "predominantly for hotels, motels, B&Bs, hostels, camping sites, boat rentals and others". A hold lasts up to 30 days. It must not be used for loss, damage or theft charges.
+- 2026-10-21 · H21 [VENDOR] (6882468303517, updated 2026-04-27) To switch it on, the merchant emails help@mypos.com **from the email address the account was registered with**, subject "Requesting a pre-authorization method". myPOS assesses each request on its own.
+- 2026-10-21 · H21 [VENDOR] (6882470531741, updated 2026-08-28) Pre-authorisations may be used only for a listed set of charges, which includes **"Food or beverage charges"** (others: rental fees, room charges, fuel, parking, cruise purchases, insurance, taxes). The article is about terminals.
+- 2026-10-21 · H21 [VENDOR] (6882371009821, updated 2026-04-27)
+  - The completion may differ from the hold, but never be higher.
+  - A hold not completed within 30 days is cancelled by myPOS, and the merchant is charged for it.
+  - **A cancel the merchant makes itself costs "the same fee as the one for the automatic cancellation".**
+  - The fee is in the account's tariff page. P21 confirms that acquiring fees are listed only inside the myPOS account, so the amount can't be read from outside.
+  - The article is about terminals; whether the same fee applies to `IPCPreAuthCancellation` online isn't stated.
+- 2026-10-21 · [READING] What this changes:
+  - **A club may not be eligible.** Holds are aimed at hotels, but "food or beverage charges" are an allowed use. Only myPOS can say, after the venue asks (open question 11).
+  - **Every hold that isn't captured costs the venue a fee**, whether Restro cancels it or it lapses. D122 §8 cancels a hold only when the last check fails, so this should be rare; but a guest who leaves the payment screen after the hold, or a hold placed and then not needed, also costs a fee. For #53: place the hold as late as possible, right before the lines are moved, so few holds end up cancelled (the fee amount is open question 12).
+  - Restro still never lets a hold lapse: a lapse costs the same and leaves the guest's money blocked for up to 30 days.
 
 ## Tips
 
@@ -120,6 +137,22 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - other cards 2.90% + €0.10.
 - 2026-10-21 · AI-1 [SAID] No set-up or subscription fee, only a fee per transaction. A lapsed pre-authorisation is charged.
 - 2026-10-21 · C21 The comparison with Stripe for the pilot venue is in that file.
+- 2026-10-21 · H21 [VENDOR] (31033431141404, updated 2026-10-14; UK, pounds)
+  - Opening and holding an account is free: no subscription, no contract.
+  - Three fees can apply to an idle account: no-cooperation £75 (documents not sent), inactivity £15 (10 months without a transaction), no-acquiring £30 (10 months without a card payment). Two months' notice is given first.
+  - Asking myPOS to cancel or return a completed card or online payment costs £10. A normal refund from the balance is free.
+  - Card payments cost one flat rate, "from 1.10% + £0.07".
+- 2026-10-21 · P21 [VENDOR] An online payment costs £0.30 and a refund of an online payment £0.25 (the account fees table). The card acquiring rates, the pre-authorisation fees among them, are shown only inside the myPOS account.
+
+## Settlement and reserve
+
+- 2026-10-21 · H21 [VENDOR] (6881492806813, updated 2026-09-17) Funds are in the merchant's myPOS account within seconds after a payment.
+- 2026-10-21 · H21 [VENDOR] (6883186370589, updated 2026-09-18) A rolling reserve applies to MO/TO payments (mail or phone orders, card not present and typed in by the merchant): 30% of each, at least €1, held for 180 days.
+- 2026-10-21 · [READING] A guest typing their own card on myPOS's page is an online payment, not MO/TO, so the reserve shouldn't apply. R17's "funds held in reserve" until the store is verified is a different, temporary rule.
+
+## Support
+
+- 2026-10-21 · H21 [VENDOR] (6852687183133, updated 2026-10-03) Support is open 24/7, by phone, email and the online portal, Bulgarian included.
 
 ## Receipts
 
@@ -143,4 +176,6 @@ The first three were asked on 2026-10-21 by Restro through myPOS's contact form 
 7. Whether a tip charged on its own needs the card entered again.
 8. Any myPOS partnership or integration with Mistral / Zamboo.
 9. The notice signature (which key, which field order), the retry schedule, and whether duplicates happen.
-10. The hold length for a bar or club.
+10. The hold length for a bar or club. (H21 10-21: "up to 30 days" in general.)
+11. Whether a club can get pre-authorisation for online payments through Checkout. Asked by the venue itself, from its registered email, to help@mypos.com (H21 6882468303517). Not asked yet: needs Martin and the venue (#56, #61).
+12. The fee for a cancelled or lapsed hold on the venue's tariff, and whether it applies to an online cancel (`IPCPreAuthCancellation`) as it does at a terminal. The venue can read the amount in its myPOS account. Not asked yet.
