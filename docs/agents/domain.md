@@ -8,8 +8,6 @@ How the engineering skills should consume this repo's domain documentation when 
 - **When a decision alone is not clear** (why it was taken, what was rejected, what was left open, whether a small point was decided at all): use the `revisit-decision` skill.
 - **`docs/decisions/D<n>.md`**: one file per decision. These are this repo's ADRs, in the ADR format (title, status, one to a few paragraphs). Read the ones your ticket names and any D-number cited in the code you touch. `docs/decisions.md` is the index of titles and statuses, for finding a number; never a substitute for the file.
 
-If `GLOSSARY.md` doesn't exist, proceed silently.
-
 ## ADRs are D-numbers in `docs/decisions/`, not `docs/adr/`
 
 The code, briefs and plans cite decisions by D-number (about 1,400 citations), so a decision keeps its number and its file for life. Don't create `docs/adr/`.
@@ -21,6 +19,10 @@ When a skill says "record an ADR":
 3. A decision that changes an older one says so in both files ("refines D<n>", "supersedes D<n>"); the older file's status names the newer one. Never delete or renumber a file.
 
 Only Martin makes product decisions. An agent proposes one in its report with a recommendation; the lead records it once Martin agrees.
+
+## Deliverables
+
+Research, an opinion, a process map or a review made by a session, worktree or subagent is one file `docs/deliverables/<date>-<slug>.md` (D114), never only a chat message, a notes folder or an unmerged branch. The lead files it with its row in `docs/deliverables.md`; files are kept and revisited, never rewritten.
 
 ## Decision logs
 
@@ -38,19 +40,6 @@ Every grilling keeps a **decision log** (D114): `docs/deliverables/<date>-<slug>
   4. The resolution comment (wayfinder) and the map's pointer link the log.
 - **Closing:** a log is final once its ticket is resolved and its decisions are committed. After that it is kept as is (D114). A later change is a new D-number that supersedes the old one, and the log stays as the record of what was decided then.
 - **Revisiting:** when a D-number alone does not say enough, the `revisit-decision` skill reads its log and the deliverables behind it.
-
-## File structure
-
-```
-/
-├── GLOSSARY.md            ← the language
-├── CLAUDE.md              ← rules for agents, the nine rules
-└── docs/
-    ├── decisions.md       ← the index: one line per decision
-    ├── decisions/D<n>.md  ← one file per decision (the ADRs)
-    ├── deliverables/      ← research, opinions, decision logs (D114); index in deliverables.md
-    └── tracker.md         ← questions, tasks, proposals, research, acceptance runs
-```
 
 ## Use the glossary's vocabulary
 

@@ -9,7 +9,7 @@ Work that isn't a feature but keeps the project moving.
 - `retro` after work that went sideways, in that session.
 - `writing-for-agents` whenever CLAUDE.md, `docs/agents/`, a skill or a ticket template is edited: one place per rule, prune what no longer changes behaviour. A flow file that disagrees with the skill it names is fixed here.
 - A **vendored skill** (D106, D109) is a verbatim copy under the `references/` folder of the skill that uses it. Its Restro overrides file opens with a row that neutralises the vendored "Initial Response", and the copy keeps its `disable-model-invocation` flag. Install nothing from a vendored repository as a skill or plugin.
-- Keep `docs/decisions.md` and `docs/open-items.md` current: an answered question or a closed task leaves `open-items.md` in the commit that closes it.
+- Keep `docs/decisions.md` (`docs/agents/domain.md`) and `docs/open-items.md` (`docs/agents/lead.md`) current.
 - `teach` when Martin wants to understand a concept over several sittings (RLS, the service day, fiscal rules); a one-off question is `decide.md` → Explain.
 
 ## Operations
