@@ -7,7 +7,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 **Payment provider and the lawyer, for song requests and deposits (T80)**
 - Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions. Prepared in `docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md` (questions L1–L4, L7, L9, L11, L12).
 - Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues. Prepared in `docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md` (questions L4–L8, L10).
-- Q76 Martin → myPOS: pre-authorisation switch-on and hold duration, partial capture/refund, Apple/Google Pay, notification retries, partner or split model, venue onboarding.
+- Q76 Martin → myPOS (the pilot venue writes through myPOS's contact form; myPOS is the first provider, #49, 10-21): holds in the embedded form or only on myPOS's page, hold length, partial completion, how a platform connects and limits its key, notification retries, sandbox, payer receipts, the Zamboo link, venue onboarding.
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
 - Q82 Lukanet: seven open points from the signed-in API reading (part payment on an open bill, refusing a row, our id on a bill, approval in the status, offline docs); send with Q79.
 - Q79 Lukanet: is barsy NRA-listed sales software; can it take Restro's orders as an Annex 42 import before acceptance (fiscal research 10-17, L11); with Q8 and Q24.
