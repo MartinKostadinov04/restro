@@ -178,7 +178,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 
 ## Open questions
 
-The first three were asked on 2026-10-21 by Restro through myPOS's contact form (AI-1 answered). The follow-up asking for a person at myPOS was drafted on 2026-10-21 for Martin to send. On 2026-10-21 all of them went to myPOS's AI assistant in a new chat, as 47 questions (AI-2). It answered none of 1–12 fully and offered to escalate the chat to a person.
+The first three were asked on 2026-10-21 by Restro through myPOS's contact form (AI-1 answered). The follow-up asking for a person at myPOS was drafted on 2026-10-21 for Martin to send. On 2026-10-21 all of them went to myPOS's AI assistant in a new chat, as 47 questions (AI-2). It answered none of 1–12 fully and offered to escalate the chat to a person. Also on 2026-10-21, one email was drafted for Martin to send as Restro. It lists every fact above for myPOS to confirm or correct, and asks every open question.
 
 1. The sandbox: who registers (Restro or the venue), whether it costs anything, and whether holds, completion, cancel and 3-D Secure work in it.
 2. Whether the Embedded SDK can hold a card, and with which wallets; otherwise, whether the redirecting Checkout is the only way.
