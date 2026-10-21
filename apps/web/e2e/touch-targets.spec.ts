@@ -200,7 +200,9 @@ test('the composer Structure screen: every control has a 44 px hit area on a pho
     await page.keyboard.press('Escape')
     // The row checkboxes and the selection bar they bring up.
     await page.getByTestId('item-row').first().getByRole('checkbox').click()
-    await expectFloor(page, 'one item selected', 20)
+    // The bar covers the foot of the list while it is up (it is fixed), so only its own controls
+    // are measured here; the rows were measured above.
+    await expectFloor(page, 'one item selected', 2, '[data-testid="selection-bar"]')
   } finally {
     await context.close().catch(() => undefined)
   }
