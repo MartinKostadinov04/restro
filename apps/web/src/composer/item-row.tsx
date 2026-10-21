@@ -88,25 +88,28 @@ export function ItemRow({
           )}
         >
           {/* Shown on hover and focus (always on a touch screen, and once something is ticked). */}
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={() => toggleSelected(itemId)}
-            aria-label={t('selection.select', { name })}
-            data-testid="item-select"
-            className={cn(
-              'size-4 shrink-0 accent-primary focus-visible:opacity-100',
-              !isSelected &&
-                !selecting &&
-                'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
-            )}
-          />
+          {/* A native checkbox takes no pseudo-element, so on a phone its label is the 44 px target (D123). */}
+          <label className="flex shrink-0 items-center justify-center phone:size-11">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleSelected(itemId)}
+              aria-label={t('selection.select', { name })}
+              data-testid="item-select"
+              className={cn(
+                'size-4 shrink-0 accent-primary focus-visible:opacity-100',
+                !isSelected &&
+                  !selecting &&
+                  'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+              )}
+            />
+          </label>
           {/* A div, not a button: the library does not start a drag from an interactive element. */}
           {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
           <div
             {...drag.dragHandleProps}
             aria-label={t('actions.dragItem', { name })}
-            className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+            className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md phone:size-11 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
           >
             <GripVerticalIcon className="size-4" aria-hidden />
           </div>
@@ -125,10 +128,10 @@ export function ItemRow({
                 <button
                   type="button"
                   onClick={() => openItem(itemId)}
-                  className="min-w-0 truncate rounded-sm text-left text-sm font-medium hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                  className="tap-area min-w-0 rounded-sm text-left text-sm font-medium hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                   data-testid="item-open"
                 >
-                  {name}
+                  <span className="block truncate">{name}</span>
                 </button>
                 {renamable ? (
                   <Button

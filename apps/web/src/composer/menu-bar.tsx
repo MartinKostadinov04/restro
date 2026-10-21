@@ -117,7 +117,7 @@ export function MenuBar({
 
   return (
     <section
-      className="grid gap-4 rounded-lg border bg-card p-4 text-card-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+      className="grid gap-4 rounded-lg border bg-card p-4 text-card-foreground lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
       aria-label={t('label')}
       data-testid="menu-bar"
     >
