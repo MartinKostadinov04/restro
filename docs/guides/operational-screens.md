@@ -4,6 +4,14 @@ D107 says what an operational screen must be (the admin, the composer, settings,
 
 **The persona** for every check: an owner or manager on a phone at 03:00, one-handed, who has never read a manual. The manager's phone is a supported admin device (D123), so a screen is checked at 390 px. The admin's screens and how they are reached are in `admin-map.md`.
 
+**The persona on Tonight and any screen used at the bar** (D122; the Tonight plan, `docs/deliverables/2026-10-21-tonight-screen-1-plan.md` §7): a bartender at the shared bar tablet, a metre away, wet hands, a guest waiting, who glances, taps once and looks away; or a waiter on a phone in one hand. Neither has time to read a sentence. Such a screen is checked at 1180 × 820 and at 390 px. The tablet changes these rules:
+- **Undo:** an answer that moves money is confirmed by the PIN sheet, which names the consequence, and gets no Undo toast; every other write keeps the 8-second toast.
+- **Frequency:** nothing moves, a new alert included; it is announced to a screen reader. (Whether a new alert may also play one short sound is Martin's open question, Q10 of the plan; until he answers, no sound.)
+- **How do I get out:** a bar tablet stays on this screen all night and has no back button to lean on; a sheet or dialog closes with a visible control and Esc and loses nothing.
+- **Targets and text:** 44 px stays the floor; answer buttons are 48 px and PIN keys 56 to 60 px on the tablet; text is 14 px at the least and 16 px for what is read at arm's length; a reference a waiter reads is at least 40 px at 7:1 (D122 §9).
+- **Who did it:** a signed-in personal phone names the person; a shared device asks for a PIN, so the log names a person (D122 §7).
+- **A role that may not act** is sent to a higher PIN, never shown a disabled control.
+
 ## Undo
 
 Reversible actions undo; they do not ask first (D107). An action that `apply()` cannot invert keeps its confirmation, so does an action that takes a venue's menu down, such as archiving the venue, even though it can be undone: the night promise (D102) outweighs the saved tap (D107, Martin 10-18). Erasing a venue's data is only the purge job's (D83).
@@ -80,6 +88,10 @@ The same job looks the same on every screen (D107): one pattern per job, chosen 
 | What happened after a write | In place when the control shows it, else a toast; a failure is the error toast that stays and names the fix (Undo, above). | Inline red text in cards and dialogs beside toasts; one job, two voices. |
 | Nothing here yet | The empty-state block: what this is and one button to start (`copy-rules.md` rule 5). | Menus and areas: a plain sentence. |
 | Edits that are not saved yet | Prefer saving at once (row 1). Where a form must be saved as a whole: Save disabled until something changed, "Unsaved" visible, and the leave-page warning (T88). | No leave-page warning anywhere. |
+| An alert that needs an answer (money, a sent order to check, an approval, a call, a to-do) | A list row: icon, title, meta line, and its one or two answer buttons under it; the list is ordered by what costs most to leave, and only the top row's answer is filled. A money alert's two answers sit at equal weight, both outline. | none (new with Tonight, #50) |
+| The state of many things at a glance (tables tonight) | A grid of status tiles, each an icon and one word (closed, open, needs you, money); a tap opens the thing. | none (new with Tonight) |
+| Who is acting on a shared device | The PIN sheet over the screen: the action as its title, its consequence in one sentence, "Enter your PIN" or "Enter a manager's PIN", a 3 × 4 pad, "Leave it"; it submits on the last digit; a wrong PIN clears and says what to do. | none (new with Tonight) |
+| A choice that is also the action (the scope of a pause) | A button that opens a menu of the options; the pick does it: two taps, no Select and no second button. | none (new with Tonight) |
 
 Checked by: the screen plan's Pattern line against this table before the ticket; the screenshot at review.
 
