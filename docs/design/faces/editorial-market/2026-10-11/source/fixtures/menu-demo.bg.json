@@ -1,0 +1,5228 @@
+{
+  "locale": "bg_BG",
+  "currency": "EUR",
+  "channel": "qr",
+  "menu": {
+    "id": "nd_1xPsqv2Ze4m2BosZHaBkxS",
+    "title": null,
+    "intro": null,
+    "schedule": null
+  },
+  "sections": [
+    {
+      "id": "nd_7BgwzLkft6GtB9C5EWQIYx",
+      "title": {
+        "text": "Летни предложения",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_2ACEHLGLQzrZTKUFkCkXbr",
+          "name": {
+            "text": "Печен патладжан с доматен сос и кашкавал",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 404,
+            "currency": "EUR",
+            "amount": "4,04 €",
+            "from": false,
+            "text": "4,04 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Запечен патладжан с доматен сос, подправки и кашкавал.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_05SCyIIS43byD7Lw3bAZKu",
+            "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Печен патладжан с доматен сос и кашкавал",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0GAahHxC0IgnWQoAO9xbI2",
+          "name": {
+            "text": "Пилешки шишчета с лимон и билки",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 557,
+            "currency": "EUR",
+            "amount": "5,57 €",
+            "from": false,
+            "text": "5,57 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Мариновано пилешко филе, лимонов сок, мащерка, розмарин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5t6AZJ0b1nXEfImC9AeCaj",
+            "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Пилешки шишчета с лимон и билки",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_79SO2BafCl00lX7HbR9GF8",
+          "name": {
+            "text": "Домашна лимонада с лимон и мента",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 251,
+            "currency": "EUR",
+            "amount": "2,51 €",
+            "from": false,
+            "text": "2,51 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Прясно изцеден лимонов сок, мента, мед или захар.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5qyqUoKwCv1L4IDeJRiPt8",
+            "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Домашна лимонада с лимон и мента",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_2mb3vcX9C7ufRex4lfaroy",
+          "name": {
+            "text": "Паста с пресни домати и босилек",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Семпла паста с доматен сос, чесън и пресен босилек.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_4injXrnWFODimBqbwsfin0",
+            "src": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Паста с пресни домати и босилек",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0d8tO4geFKE02mlWg851MV",
+          "name": {
+            "text": "Плодова купа с диня, пъпеш и грозде",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 399,
+            "currency": "EUR",
+            "amount": "3,99 €",
+            "from": false,
+            "text": "3,99 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежи летни плодове, поднесени охладени.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5XkD5c42BSbX41wf9Kvb74",
+            "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Плодова купа с диня, пъпеш и грозде",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0mjFEeTnlYq4hx6IXsDFgU",
+          "name": {
+            "text": "Калмари на скара с лимонов дресинг",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 966,
+            "currency": "EUR",
+            "amount": "9,66 €",
+            "from": false,
+            "text": "9,66 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Сочни калмари, овкусени с лимонов сок, зехтин и чесън.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5ce4atSslFwtfLSL59YdZ1",
+            "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Калмари на скара с лимонов дресинг",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5SHAnapNW0fAmteWg3pYtr",
+          "name": {
+            "text": "Брускети със сьомга и крема сирене",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Препечен хляб с крема сирене, пушена сьомга и копър.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1OROMbFIsuIRobsa6YKiDe",
+            "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Брускети със сьомга и крема сирене",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_27smk36TabkpllOcMAF6Tz",
+          "name": {
+            "text": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 500,
+            "currency": "EUR",
+            "amount": "5,00 €",
+            "from": false,
+            "text": "5,00 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Тънко нарязани тиквички, изпържени до златисто, поднесени с класически гръцки сос.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2tPGjnS4meuwPvRnAL2oZ5",
+            "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_3b6tz85SDCtaYc7DKBtVo9",
+      "title": {
+        "text": "Обедно меню",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_2ACEHLGLQzrZTKUFkCkXbr",
+          "name": {
+            "text": "Печен патладжан с доматен сос и кашкавал",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 404,
+            "currency": "EUR",
+            "amount": "4,04 €",
+            "from": false,
+            "text": "4,04 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Запечен патладжан с доматен сос, подправки и кашкавал.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_05SCyIIS43byD7Lw3bAZKu",
+            "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_05SCyIIS43byD7Lw3bAZKu/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Печен патладжан с доматен сос и кашкавал",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0GAahHxC0IgnWQoAO9xbI2",
+          "name": {
+            "text": "Пилешки шишчета с лимон и билки",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 557,
+            "currency": "EUR",
+            "amount": "5,57 €",
+            "from": false,
+            "text": "5,57 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Мариновано пилешко филе, лимонов сок, мащерка, розмарин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5t6AZJ0b1nXEfImC9AeCaj",
+            "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Пилешки шишчета с лимон и билки",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_2mb3vcX9C7ufRex4lfaroy",
+          "name": {
+            "text": "Паста с пресни домати и босилек",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Семпла паста с доматен сос, чесън и пресен босилек.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_4injXrnWFODimBqbwsfin0",
+            "src": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Паста с пресни домати и босилек",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0d8tO4geFKE02mlWg851MV",
+          "name": {
+            "text": "Плодова купа с диня, пъпеш и грозде",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 399,
+            "currency": "EUR",
+            "amount": "3,99 €",
+            "from": false,
+            "text": "3,99 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежи летни плодове, поднесени охладени.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5XkD5c42BSbX41wf9Kvb74",
+            "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Плодова купа с диня, пъпеш и грозде",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0mjFEeTnlYq4hx6IXsDFgU",
+          "name": {
+            "text": "Калмари на скара с лимонов дресинг",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 966,
+            "currency": "EUR",
+            "amount": "9,66 €",
+            "from": false,
+            "text": "9,66 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Сочни калмари, овкусени с лимонов сок, зехтин и чесън.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5ce4atSslFwtfLSL59YdZ1",
+            "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Калмари на скара с лимонов дресинг",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5SHAnapNW0fAmteWg3pYtr",
+          "name": {
+            "text": "Брускети със сьомга и крема сирене",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Препечен хляб с крема сирене, пушена сьомга и копър.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1OROMbFIsuIRobsa6YKiDe",
+            "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Брускети със сьомга и крема сирене",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_27smk36TabkpllOcMAF6Tz",
+          "name": {
+            "text": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 500,
+            "currency": "EUR",
+            "amount": "5,00 €",
+            "from": false,
+            "text": "5,00 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Тънко нарязани тиквички, изпържени до златисто, поднесени с класически гръцки сос.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2tPGjnS4meuwPvRnAL2oZ5",
+            "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4fK5cVrntYn4W51rK58tg9",
+          "name": {
+            "text": "Цезар салата в чаша",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Традиционна Цезар салата с пармезан, крутони и домашен дресинг, поднесена в чаша.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3mDZBbaGAAhXdRyMdkgtJ2",
+            "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Цезар салата в чаша",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_57zVg8BBY4xHv7K6es6kBg",
+          "name": {
+            "text": "Салата с авокадо и киноа",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежа салата с авокадо, киноа, домати, червен лук и лимонов дресинг.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_0Pf5BNaz178Cs7UQnEpIGs",
+            "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с авокадо и киноа",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5AQQBshi7Irh6ZOEeRk0NX",
+          "name": {
+            "text": "Ризото с гъби и пармезан",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 813,
+            "currency": "EUR",
+            "amount": "8,13 €",
+            "from": false,
+            "text": "8,13 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Кремообразно ризото с гъби и пармезан, гарнирано с пресни билки.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3pMMINW045qA2bALvCCL7t",
+            "src": "/a/as_3pMMINW045qA2bALvCCL7t/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3pMMINW045qA2bALvCCL7t/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3pMMINW045qA2bALvCCL7t/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3pMMINW045qA2bALvCCL7t/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Ризото с гъби и пармезан",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_67Dy0BiCasMceoMlisx69q",
+          "name": {
+            "text": "Тост с авокадо и яйце",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Тост с кремаво авокадо и яйце по избор (пържено или варено).",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_7lOdbixj9lkpt5y97PHh9P",
+            "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Тост с авокадо и яйце",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_1TlHJ7nN4igndz2qeXKj7j",
+          "name": {
+            "text": "Печен кашкавал с чери домати",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Печен кашкавал с подправки и чери домати, гарниран с пресни листа от рукола.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5ljMESk7lWYyn2c7X6mnW0",
+            "src": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5ljMESk7lWYyn2c7X6mnW0/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Печен кашкавал с чери домати",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_6GTFeYK6LHhLYAqnEEW9jL",
+      "title": {
+        "text": "Салати",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_4fK5cVrntYn4W51rK58tg9",
+          "name": {
+            "text": "Цезар салата в чаша",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Традиционна Цезар салата с пармезан, крутони и домашен дресинг, поднесена в чаша.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3mDZBbaGAAhXdRyMdkgtJ2",
+            "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3mDZBbaGAAhXdRyMdkgtJ2/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Цезар салата в чаша",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_57zVg8BBY4xHv7K6es6kBg",
+          "name": {
+            "text": "Салата с авокадо и киноа",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежа салата с авокадо, киноа, домати, червен лук и лимонов дресинг.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_0Pf5BNaz178Cs7UQnEpIGs",
+            "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0Pf5BNaz178Cs7UQnEpIGs/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с авокадо и киноа",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_7bWmIh8ma1I2d0ieaLaHKo",
+          "name": {
+            "text": "Салата от домати и моцарела",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Пресни домати, моцарела, базиликови листа и зехтин с балсамико.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3VPHK49yhVYT90EWOQgKKL",
+            "src": "/a/as_3VPHK49yhVYT90EWOQgKKL/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3VPHK49yhVYT90EWOQgKKL/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3VPHK49yhVYT90EWOQgKKL/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3VPHK49yhVYT90EWOQgKKL/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата от домати и моцарела",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4fWU5FVaNlnlAPCUATLvwp",
+          "name": {
+            "text": "Гръцка салата",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 496,
+            "currency": "EUR",
+            "amount": "4,96 €",
+            "from": false,
+            "text": "4,96 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Класическа гръцка салата с домати, краставици, червен лук, маслини, сирене фета и зехтин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_76sm72aBp9EbuPbAs7hT2E",
+            "src": "/a/as_76sm72aBp9EbuPbAs7hT2E/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_76sm72aBp9EbuPbAs7hT2E/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_76sm72aBp9EbuPbAs7hT2E/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_76sm72aBp9EbuPbAs7hT2E/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Гръцка салата",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_7FyuRgumGJezXHpVkMfRsQ",
+          "name": {
+            "text": "Салата с авокадо и киноа",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 511,
+            "currency": "EUR",
+            "amount": "5,11 €",
+            "from": false,
+            "text": "5,11 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежа салата с авокадо, киноа, домати, червен лук и лимонов дресинг.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1RYCibntdFwrtOo3KZuWgX",
+            "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с авокадо и киноа",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4FWgJ0UqxL2gyoajBasE7P",
+          "name": {
+            "text": "Салата с риба тон",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 455,
+            "currency": "EUR",
+            "amount": "4,55 €",
+            "from": false,
+            "text": "4,55 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Салата с риба тон, варени яйца, домати, червен лук, маслини и зехтин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_05qEshwOIvDhZn0RpvFvMb",
+            "src": "/a/as_05qEshwOIvDhZn0RpvFvMb/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_05qEshwOIvDhZn0RpvFvMb/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_05qEshwOIvDhZn0RpvFvMb/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_05qEshwOIvDhZn0RpvFvMb/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с риба тон",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_7eSXOsxWxBPCrzURhvDI2Z",
+          "name": {
+            "text": "Салата с бурата и авокадо",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 711,
+            "currency": "EUR",
+            "amount": "7,11 €",
+            "from": false,
+            "text": "7,11 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Салата с бурата, авокадо, чери домати, зехтин и балсамов оцет.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1RYCibntdFwrtOo3KZuWgX",
+            "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1RYCibntdFwrtOo3KZuWgX/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с бурата и авокадо",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_3dZ4viXYMbSsltrlFbKCAf",
+          "name": {
+            "text": "Салата с моцарела, рукола и пармезан",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 808,
+            "currency": "EUR",
+            "amount": "8,08 €",
+            "from": false,
+            "text": "8,08 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежа салата с моцарела, рукола, пармезан, чери домати и дресинг от зехтин и лимон.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1iD3kku11d5OJ5sYUSOQ2U",
+            "src": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1iD3kku11d5OJ5sYUSOQ2U/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с моцарела, рукола и пармезан",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_1b3M1zjqhDI8ZzUXMwuuVX",
+          "name": {
+            "text": "Салата с бурата и череши",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 787,
+            "currency": "EUR",
+            "amount": "7,87 €",
+            "from": false,
+            "text": "7,87 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежа салата с бурата, череши, рукола, домати и балсамов дресинг.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_14O3BgZBikZj1OCJ6fSyZp",
+            "src": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_14O3BgZBikZj1OCJ6fSyZp/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Салата с бурата и череши",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_2p61BmwY9JzvlkI36bwC1k",
+      "title": {
+        "text": "Основни ястия",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_0GAahHxC0IgnWQoAO9xbI2",
+          "name": {
+            "text": "Пилешки шишчета с лимон и билки",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 557,
+            "currency": "EUR",
+            "amount": "5,57 €",
+            "from": false,
+            "text": "5,57 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Мариновано пилешко филе, лимонов сок, мащерка, розмарин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5t6AZJ0b1nXEfImC9AeCaj",
+            "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5t6AZJ0b1nXEfImC9AeCaj/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Пилешки шишчета с лимон и билки",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_2mb3vcX9C7ufRex4lfaroy",
+          "name": {
+            "text": "Паста с пресни домати и босилек",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Семпла паста с доматен сос, чесън и пресен босилек.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_4injXrnWFODimBqbwsfin0",
+            "src": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_4injXrnWFODimBqbwsfin0/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Паста с пресни домати и босилек",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0mjFEeTnlYq4hx6IXsDFgU",
+          "name": {
+            "text": "Калмари на скара с лимонов дресинг",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 966,
+            "currency": "EUR",
+            "amount": "9,66 €",
+            "from": false,
+            "text": "9,66 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Сочни калмари, овкусени с лимонов сок, зехтин и чесън.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5ce4atSslFwtfLSL59YdZ1",
+            "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Калмари на скара с лимонов дресинг",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5AQQBshi7Irh6ZOEeRk0NX",
+          "name": {
+            "text": "Ризото с гъби и пармезан",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 813,
+            "currency": "EUR",
+            "amount": "8,13 €",
+            "from": false,
+            "text": "8,13 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Кремообразно ризото с гъби и пармезан, гарнирано с пресни билки.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3pMMINW045qA2bALvCCL7t",
+            "src": "/a/as_3pMMINW045qA2bALvCCL7t/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3pMMINW045qA2bALvCCL7t/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3pMMINW045qA2bALvCCL7t/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3pMMINW045qA2bALvCCL7t/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Ризото с гъби и пармезан",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_2tCrzsm5nR7i7uVUS80Uly",
+          "name": {
+            "text": "Мини пилешки бургерчета с авокадо",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 629,
+            "currency": "EUR",
+            "amount": "6,29 €",
+            "from": false,
+            "text": "6,29 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Малки пилешки бургери с авокадо и свежи зеленчуци, поднесени с чеснов сос.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3gloWIFqy1Z3K6fqix2qmR",
+            "src": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3gloWIFqy1Z3K6fqix2qmR/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Мини пилешки бургерчета с авокадо",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4sXGAFKsyHlghXkpFjrIs9",
+          "name": {
+            "text": "Пилешко със сос терияки",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 813,
+            "currency": "EUR",
+            "amount": "8,13 €",
+            "from": false,
+            "text": "8,13 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Пилешко, запечено в сладко-кисел терияки сос, поднесено с пресни зеленчуци.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5AuiFDPJ9LQo9amVJFGVl3",
+            "src": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5AuiFDPJ9LQo9amVJFGVl3/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Пилешко със сос терияки",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_3jzWPUdjFcDwVAC9cYxGwH",
+          "name": {
+            "text": "Пилешко филе с лимон и каперси",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 915,
+            "currency": "EUR",
+            "amount": "9,15 €",
+            "from": false,
+            "text": "9,15 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Пилешко филе, запечено с лимон и каперси, поднесено с картофено пюре и гарнитура от зеленчуци.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1i4F9A8qBbadbYnF0gSASN",
+            "src": "/a/as_1i4F9A8qBbadbYnF0gSASN/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1i4F9A8qBbadbYnF0gSASN/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1i4F9A8qBbadbYnF0gSASN/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1i4F9A8qBbadbYnF0gSASN/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Пилешко филе с лимон и каперси",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_2iQrcTv9MUwjinrDRm77dr",
+          "name": {
+            "text": "Рибно филе със сос от лимон и маслини",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 910,
+            "currency": "EUR",
+            "amount": "9,10 €",
+            "from": false,
+            "text": "9,10 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Прясно рибно филе, запечено със сос от лимон и маслини, поднесено с гарнитура от зеленчуци.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_56W097Ba8fUG234h9ci056",
+            "src": "/a/as_56W097Ba8fUG234h9ci056/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_56W097Ba8fUG234h9ci056/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_56W097Ba8fUG234h9ci056/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_56W097Ba8fUG234h9ci056/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Рибно филе със сос от лимон и маслини",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_17pk4SPb1tHkPV3famDLqN",
+          "name": {
+            "text": "Свински врат с мед и горчица",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 966,
+            "currency": "EUR",
+            "amount": "9,66 €",
+            "from": false,
+            "text": "9,66 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свински врат, запечен с мед и горчица, гарниран със задушени картофи и зелена салата.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_6hsPca9InngpWrGSiScnPD",
+            "src": "/a/as_6hsPca9InngpWrGSiScnPD/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_6hsPca9InngpWrGSiScnPD/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_6hsPca9InngpWrGSiScnPD/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_6hsPca9InngpWrGSiScnPD/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Свински врат с мед и горчица",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_28wopA2KVURIPdFrIbebJe",
+          "name": {
+            "text": "Кюфтета от агнешко месо с доматен сос",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 915,
+            "currency": "EUR",
+            "amount": "9,15 €",
+            "from": false,
+            "text": "9,15 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Ароматни агнешки кюфтета, поднесени с домашен доматен сос и ориз.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_7A73Cgf4faOF39GWYxCeQ0",
+            "src": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_7A73Cgf4faOF39GWYxCeQ0/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Кюфтета от агнешко месо с доматен сос",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5iKzxn5iK4YzjnUK7JwfZ3",
+          "name": {
+            "text": "Вегетарианска лазаня",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 726,
+            "currency": "EUR",
+            "amount": "7,26 €",
+            "from": false,
+            "text": "7,26 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Лазаня със слой от прясно приготвени зеленчуци, доматен сос и топено сирене.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_0qScJlOwKC4xyTyCpAiPwO",
+            "src": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0qScJlOwKC4xyTyCpAiPwO/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Вегетарианска лазаня",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_3WJze9faA4kD6JPlIyOp1i",
+      "title": {
+        "text": "Предястия",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_0mjFEeTnlYq4hx6IXsDFgU",
+          "name": {
+            "text": "Калмари на скара с лимонов дресинг",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 966,
+            "currency": "EUR",
+            "amount": "9,66 €",
+            "from": false,
+            "text": "9,66 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Сочни калмари, овкусени с лимонов сок, зехтин и чесън.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5ce4atSslFwtfLSL59YdZ1",
+            "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5ce4atSslFwtfLSL59YdZ1/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Калмари на скара с лимонов дресинг",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5SHAnapNW0fAmteWg3pYtr",
+          "name": {
+            "text": "Брускети със сьомга и крема сирене",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Препечен хляб с крема сирене, пушена сьомга и копър.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1OROMbFIsuIRobsa6YKiDe",
+            "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1OROMbFIsuIRobsa6YKiDe/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Брускети със сьомга и крема сирене",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_27smk36TabkpllOcMAF6Tz",
+          "name": {
+            "text": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 500,
+            "currency": "EUR",
+            "amount": "5,00 €",
+            "from": false,
+            "text": "5,00 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Тънко нарязани тиквички, изпържени до златисто, поднесени с класически гръцки сос.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2tPGjnS4meuwPvRnAL2oZ5",
+            "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2tPGjnS4meuwPvRnAL2oZ5/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "ТИКВИЧКИ ПО ГРЪЦКИ 250 ГР",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_67Dy0BiCasMceoMlisx69q",
+          "name": {
+            "text": "Тост с авокадо и яйце",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Тост с кремаво авокадо и яйце по избор (пържено или варено).",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_7lOdbixj9lkpt5y97PHh9P",
+            "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_7lOdbixj9lkpt5y97PHh9P/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Тост с авокадо и яйце",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4zFebSgIKbdg7diOgviQp2",
+          "name": {
+            "text": "Печени картофи с чесън и розмарин",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Картофи, печени до златисто, с чесън и ароматен розмарин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3SYT526bwF5DiJurAHo7BR",
+            "src": "/a/as_3SYT526bwF5DiJurAHo7BR/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3SYT526bwF5DiJurAHo7BR/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3SYT526bwF5DiJurAHo7BR/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3SYT526bwF5DiJurAHo7BR/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Печени картофи с чесън и розмарин",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_3VZY52xZJfzPUMyjBq5LvK",
+          "name": {
+            "text": "Меки сиренца с мед и орехи",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Меки сиренца, поднесени с мед и запечени орехи за по-сладък вкус.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3rpIdmg2wEGSS4eFd8YOgS",
+            "src": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3rpIdmg2wEGSS4eFd8YOgS/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Меки сиренца с мед и орехи",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_3YU3w3FG4QomRi3NuuE8Fb",
+          "name": {
+            "text": "Картофени крокети с чеснов сос",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Картофени крокети с хрупкава коричка, сервират се с кисел сос по избор.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1wyepSWuXuoMfxmMn8hELh",
+            "src": "/a/as_1wyepSWuXuoMfxmMn8hELh/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1wyepSWuXuoMfxmMn8hELh/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1wyepSWuXuoMfxmMn8hELh/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1wyepSWuXuoMfxmMn8hELh/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Картофени крокети с чеснов сос",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_77GnBESSD5z5QigHNxTthc",
+          "name": {
+            "text": "Пилешки хапки с панирана коричка",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 660,
+            "currency": "EUR",
+            "amount": "6,60 €",
+            "from": false,
+            "text": "6,60 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Панирани пилешки хапки, сервират се с домашен чеснов сос или барбекю сос.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2XtWqkA4rLaGuYZBSjo99X",
+            "src": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2XtWqkA4rLaGuYZBSjo99X/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Пилешки хапки с панирана коричка",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_5QKmfqImYMq1Kpyr76hDB1",
+      "title": {
+        "text": "Бургери",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_3UpxzKFONT6OMtckvejRV6",
+          "name": {
+            "text": "Класически бургер",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Телешко месо, айсберг, домат, сос.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2bngoniFfGvUSHpnMrFSMi",
+            "src": "/a/as_2bngoniFfGvUSHpnMrFSMi/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2bngoniFfGvUSHpnMrFSMi/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2bngoniFfGvUSHpnMrFSMi/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2bngoniFfGvUSHpnMrFSMi/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Класически бургер",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5ZTCTOZJfiLttBz9VXpfMj",
+          "name": {
+            "text": "Бургер с бекон и яйце",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 629,
+            "currency": "EUR",
+            "amount": "6,29 €",
+            "from": false,
+            "text": "6,29 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Телешко месо, бекон, яйце на очи, чедър.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2jMbqvAoQ5vioR54r8D5Fa",
+            "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Бургер с бекон и яйце",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_6sKjdLN6hLfOi5umy8PoDV",
+          "name": {
+            "text": "Веган бургер",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 522,
+            "currency": "EUR",
+            "amount": "5,22 €",
+            "from": false,
+            "text": "5,22 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Зеленчуков патеш, хумус, домат.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1dJPYcLDIigPXmP9f2VrPv",
+            "src": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1dJPYcLDIigPXmP9f2VrPv/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Веган бургер",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_3d7clA8EecJGHK9UDaAb5j",
+          "name": {
+            "text": "Бургер Smokehouse",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 813,
+            "currency": "EUR",
+            "amount": "8,13 €",
+            "from": false,
+            "text": "8,13 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Сухо отлежало телешко месо, чедър, пушен бекон, карамелизиран лук, дижонска горчица и чипотле айоли в маслено бриош хлебче.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_2jMbqvAoQ5vioR54r8D5Fa",
+            "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_2jMbqvAoQ5vioR54r8D5Fa/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Бургер Smokehouse",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5nGeItMtv87xamF8Pf7zrf",
+          "name": {
+            "text": "Бургер Alpine",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 690,
+            "currency": "EUR",
+            "amount": "6,90 €",
+            "from": false,
+            "text": "6,90 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Телешко месо, разтопено швейцарско сирене, сотирани гъби в масло и мащерка, чеснов майонезен сос, маруля и ръжен хляб.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_0u8RzqBQUSngtarePp0TjV",
+            "src": "/a/as_0u8RzqBQUSngtarePp0TjV/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0u8RzqBQUSngtarePp0TjV/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0u8RzqBQUSngtarePp0TjV/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0u8RzqBQUSngtarePp0TjV/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Бургер Alpine",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_0FQCgYQd0Wate8NY87jvvw",
+          "name": {
+            "text": "Marrakesh Chicken Бургер",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 859,
+            "currency": "EUR",
+            "amount": "8,59 €",
+            "from": false,
+            "text": "8,59 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Пилешко бутче, мариновано в хариса и кориандър, печен патладжан, кисело мляко с чесън и кориандър, сусамено хлебче.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_1CHTyYP6TLRixWSjVIEzB2",
+            "src": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_1CHTyYP6TLRixWSjVIEzB2/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Marrakesh Chicken Бургер",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_1wbnhAqrFAVxA1mFOpCaSa",
+      "title": {
+        "text": "Десерти",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_0d8tO4geFKE02mlWg851MV",
+          "name": {
+            "text": "Плодова купа с диня, пъпеш и грозде",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 399,
+            "currency": "EUR",
+            "amount": "3,99 €",
+            "from": false,
+            "text": "3,99 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Свежи летни плодове, поднесени охладени.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5XkD5c42BSbX41wf9Kvb74",
+            "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5XkD5c42BSbX41wf9Kvb74/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Плодова купа с диня, пъпеш и грозде",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_5pWev0UWnlppfoVFwFpX18",
+          "name": {
+            "text": "Чийзкейк с горски плодове",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Сметанов чийзкейк с горски плодове.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_73ho0owcu6DszlAdN0kctS",
+            "src": "/a/as_73ho0owcu6DszlAdN0kctS/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_73ho0owcu6DszlAdN0kctS/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_73ho0owcu6DszlAdN0kctS/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_73ho0owcu6DszlAdN0kctS/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Чийзкейк с горски плодове",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_31ejJ4GGy4lyZrVXdDjKCw",
+          "name": {
+            "text": "Шоколадов тарт с морска сол",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 455,
+            "currency": "EUR",
+            "amount": "4,55 €",
+            "from": false,
+            "text": "4,55 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Интензивен тъмен шоколадов ганаш върху бадемов блат, с фино поръсена морска сол и капка зехтин.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3Wt5nwEgjlzw4KKcA1sWLF",
+            "src": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3Wt5nwEgjlzw4KKcA1sWLF/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Шоколадов тарт с морска сол",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_6tuCwFMI46iGaMEU1VZp1L",
+          "name": {
+            "text": "Крем с шамфъстък и бял шоколад",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 511,
+            "currency": "EUR",
+            "amount": "5,11 €",
+            "from": false,
+            "text": "5,11 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Кадифен мус от бял шоколад, смлян шамфъстък и хрупкав чипс от филирани ядки.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_455vUtGF7WdQqdNrRN6V3K",
+            "src": "/a/as_455vUtGF7WdQqdNrRN6V3K/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_455vUtGF7WdQqdNrRN6V3K/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_455vUtGF7WdQqdNrRN6V3K/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_455vUtGF7WdQqdNrRN6V3K/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Крем с шамфъстък и бял шоколад",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4HLFGbQsMip23a9uSRcKkL",
+          "name": {
+            "text": "Медена торта с орехи",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 522,
+            "currency": "EUR",
+            "amount": "5,22 €",
+            "from": false,
+            "text": "5,22 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Класическа медена торта с крем от заквасена сметана, орехови ядки и аромат на карамел.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_6z1Y3H3hGICVTiKfSPhn6t",
+            "src": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_6z1Y3H3hGICVTiKfSPhn6t/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Медена торта с орехи",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_7Q91egFteUN7CCrwT13W0I",
+          "name": {
+            "text": "Малиново парфе с розова вода",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 557,
+            "currency": "EUR",
+            "amount": "5,57 €",
+            "from": false,
+            "text": "5,57 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Лек десерт с мус от малина, нотка розова вода и бисквитена основа с масло от кашу.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_0GK93xARwdLk9q4DMwyQxj",
+            "src": "/a/as_0GK93xARwdLk9q4DMwyQxj/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0GK93xARwdLk9q4DMwyQxj/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0GK93xARwdLk9q4DMwyQxj/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0GK93xARwdLk9q4DMwyQxj/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Малиново парфе с розова вода",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_1FMkJznDTgZC0z0976g3nE",
+          "name": {
+            "text": "Печен шоколадов мус с еспресо",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 506,
+            "currency": "EUR",
+            "amount": "5,06 €",
+            "from": false,
+            "text": "5,06 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Плътен мус с белгийски шоколад и еспресо, поднесен с крем фреш и лешников крокан.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3jq0wAiYSXvfdUk6M7yww3",
+            "src": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3jq0wAiYSXvfdUk6M7yww3/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Печен шоколадов мус с еспресо",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4pAPAF7G3WQCVpHl3VRJtp",
+          "name": {
+            "text": "Панакота с лавандула и боровинки",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 455,
+            "currency": "EUR",
+            "amount": "4,55 €",
+            "from": false,
+            "text": "4,55 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Италианска пана кота с лек аромат на лавандула, свежи боровинки и сироп от бъз.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_6jSlY3pqOEZCOLKCsjcAwN",
+            "src": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_6jSlY3pqOEZCOLKCsjcAwN/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Панакота с лавандула и боровинки",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_2M7I3ojMIPac9y4tMEGB73",
+          "name": {
+            "text": "Панакота с шамфъстък и малина",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 537,
+            "currency": "EUR",
+            "amount": "5,37 €",
+            "from": false,
+            "text": "5,37 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Кадифена панакота с шамфъстъкова паста, гарнирана с кисело-сладък малинов сос и препечен шамфъстък.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_6VFI3zfIFwp1BpFYTTEf4u",
+            "src": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_6VFI3zfIFwp1BpFYTTEf4u/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Панакота с шамфъстък и малина",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "nd_5Zop0Qy4kfpVNSQW8EA5JC",
+      "title": {
+        "text": "Напитки",
+        "lang": "bg_BG"
+      },
+      "description": null,
+      "image": null,
+      "hints": {
+        "color": null,
+        "onColor": null,
+        "icon": null
+      },
+      "sections": [],
+      "items": [
+        {
+          "id": "nd_79SO2BafCl00lX7HbR9GF8",
+          "name": {
+            "text": "Домашна лимонада с лимон и мента",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 251,
+            "currency": "EUR",
+            "amount": "2,51 €",
+            "from": false,
+            "text": "2,51 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Прясно изцеден лимонов сок, мента, мед или захар.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_5qyqUoKwCv1L4IDeJRiPt8",
+            "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5qyqUoKwCv1L4IDeJRiPt8/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Домашна лимонада с лимон и мента",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_7irIooLvbGiQx4XjM2D2eM",
+          "name": {
+            "text": "Минерална вода 0.500",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 102,
+            "currency": "EUR",
+            "amount": "1,02 €",
+            "from": false,
+            "text": "1,02 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": null,
+          "image": {
+            "id": "as_5lkiIrCedy9PMRFqi20n3f",
+            "src": "/a/as_5lkiIrCedy9PMRFqi20n3f/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_5lkiIrCedy9PMRFqi20n3f/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_5lkiIrCedy9PMRFqi20n3f/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_5lkiIrCedy9PMRFqi20n3f/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Минерална вода 0.500",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_7juVdQBZYZ4tl41Bd81CuQ",
+          "name": {
+            "text": "Прясно изцеден портокалов сок",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 297,
+            "currency": "EUR",
+            "amount": "2,97 €",
+            "from": false,
+            "text": "2,97 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Натурален сок от пресни портокали.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_6nvhtC4JGkqMnmdoF2khVx",
+            "src": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_6nvhtC4JGkqMnmdoF2khVx/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Прясно изцеден портокалов сок",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4yIi3WGUlBi4eQTi69K1gj",
+          "name": {
+            "text": "Класически газирани напитки",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 194,
+            "currency": "EUR",
+            "amount": "1,94 €",
+            "from": false,
+            "text": "1,94 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Coca-Cola, Fanta, Sprite, Schweppes, Cappy.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_0JYkJRwEkMIui7vOtipseA",
+            "src": "/a/as_0JYkJRwEkMIui7vOtipseA/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0JYkJRwEkMIui7vOtipseA/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0JYkJRwEkMIui7vOtipseA/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0JYkJRwEkMIui7vOtipseA/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Класически газирани напитки",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_00I10urh7zxhn1RPQwx9hC",
+          "name": {
+            "text": "Студен чай праскова и лавандула",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 230,
+            "currency": "EUR",
+            "amount": "2,30 €",
+            "from": false,
+            "text": "2,30 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Черен чай с праскова, мед и капка лавандулов сироп.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_3gOh7APYJg2YuhmpQohF3s",
+            "src": "/a/as_3gOh7APYJg2YuhmpQohF3s/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_3gOh7APYJg2YuhmpQohF3s/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_3gOh7APYJg2YuhmpQohF3s/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_3gOh7APYJg2YuhmpQohF3s/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Студен чай праскова и лавандула",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_6AlzmF2c8iLrmBfJPQ10Qw",
+          "name": {
+            "text": "Капучино с канела",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 281,
+            "currency": "EUR",
+            "amount": "2,81 €",
+            "from": false,
+            "text": "2,81 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": {
+            "text": "Класическо капучино с лека канела и какао.",
+            "lang": "bg_BG",
+            "truncatable": true
+          },
+          "image": {
+            "id": "as_6gstq3FvCAMWDUaSC8gnKq",
+            "src": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_6gstq3FvCAMWDUaSC8gnKq/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Капучино с канела",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        },
+        {
+          "id": "nd_4x6fCWFSlZ6hMdg8ZG22Rw",
+          "name": {
+            "text": "Бира Heineken",
+            "lang": "bg_BG"
+          },
+          "price": {
+            "minor": 281,
+            "currency": "EUR",
+            "amount": "2,81 €",
+            "from": false,
+            "text": "2,81 €"
+          },
+          "state": {
+            "code": "available",
+            "label": null,
+            "schedule": null
+          },
+          "allergens": [],
+          "description": null,
+          "image": {
+            "id": "as_0Onx93fLIrPN8GuH2G7FZT",
+            "src": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w640.webp",
+            "variant": "card",
+            "width": 640,
+            "variants": [
+              {
+                "src": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w320.webp",
+                "width": 320
+              },
+              {
+                "src": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w640.webp",
+                "width": 640
+              },
+              {
+                "src": "/a/as_0Onx93fLIrPN8GuH2G7FZT/w1280.webp",
+                "width": 1280
+              }
+            ],
+            "sourceWidth": 2000,
+            "sourceHeight": 1333,
+            "focal": null,
+            "objectPosition": "50% 50%",
+            "alt": {
+              "text": "Бира Heineken",
+              "lang": "bg_BG"
+            }
+          },
+          "noImage": false,
+          "badges": [
+            {
+              "kind": "new",
+              "label": {
+                "text": "Ново",
+                "lang": "bg_BG"
+              }
+            }
+          ],
+          "portion": null,
+          "dietary": [],
+          "tags": [],
+          "extraFields": [],
+          "modifierGroups": [],
+          "order": {
+            "controls": false,
+            "askWaiter": null
+          }
+        }
+      ]
+    }
+  ],
+  "allergenLegend": [],
+  "filters": {
+    "tags": [],
+    "dietary": []
+  },
+  "ordering": {
+    "enabled": false
+  },
+  "theme": {
+    "palette": {
+      "50": "#f8f8f9",
+      "100": "#efeff1",
+      "200": "#dcdce0",
+      "300": "#bdbdc4",
+      "400": "#9a9aa3",
+      "500": "#7c7c86",
+      "600": "#63636c",
+      "700": "#505058",
+      "800": "#3f3f46",
+      "900": "#27272a",
+      "950": "#18181b"
+    },
+    "colors": {
+      "background": "#f8f8f9",
+      "surface": "#ffffff",
+      "accent": "#7c7c86",
+      "onAccent": "#000000",
+      "text": "#18181b",
+      "muted": "#505058",
+      "accentText": "#63636c",
+      "border": "#dcdce0"
+    },
+    "colorsDark": {
+      "background": "#18181b",
+      "surface": "#27272a",
+      "accent": "#7c7c86",
+      "onAccent": "#000000",
+      "text": "#f8f8f9",
+      "muted": "#bdbdc4",
+      "accentText": "#9a9aa3",
+      "border": "#3f3f46"
+    },
+    "font": "Inter",
+    "radius": 8,
+    "shadow": 1,
+    "logo": null
+  }
+}

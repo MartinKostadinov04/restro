@@ -13,10 +13,13 @@ export function uniqueBy<T>(list: readonly T[], key: (item: T) => string | numbe
   return result
 }
 
-/** barsy's 0/1 flags (a boolean is accepted too): null when the flag is missing or unreadable. */
+/**
+ * barsy's 0/1 flags (a boolean is accepted too, and the text "0" / "1" that the per-venue for-sale
+ * exceptions arrive as): null when the flag is missing or unreadable.
+ */
 export function flagOf(value: unknown): boolean | null {
-  if (value === true || value === 1) return true
-  if (value === false || value === 0) return false
+  if (value === true || value === 1 || value === '1') return true
+  if (value === false || value === 0 || value === '0') return false
   return null
 }
 

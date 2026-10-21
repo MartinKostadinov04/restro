@@ -3,7 +3,6 @@
 // pausing automatic publishing; approving and rejecting a held publish; the preview; who may do
 // what; and another organisation seeing none of it. The queue is a fake.
 import {
-  autoPublishPaused,
   type ChangeSet,
   JOB_NAMES,
   type NodeId,
@@ -23,7 +22,8 @@ import {
   provisionTenant,
   provisionVenue,
   publishMenu,
-  setAutoPublishPaused,
+  saveSyncSettingsConfig,
+  setVenueAutoPublishPaused,
   startJobRun,
   upsertBarsyVenues,
 } from '@restro/core/apply'
@@ -32,9 +32,8 @@ import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { saveSyncSettings } from '../integration/service'
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
-import { loadHistoryPage, loadPublishView, type ViewDeps, type ViewScope } from './load'
+import { loadHistoryPage, loadPublishView, readPaused, type ViewDeps, type ViewScope } from './load'
 import {
   approveHeld,
   type PublishScope,
@@ -44,6 +43,9 @@ import {
   rollback,
 } from './service'
 import { isLiveEntry, isReturnable } from './view'
+
+/** A venue public code for the scopes below (D68); the view only passes it on. */
+const PUBLIC_ID = 'k3x9p2m7qa1z'
 
 describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -75,7 +77,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
   const viewScope = (overrides: Partial<ViewScope> = {}): ViewScope => ({
     pool: app,
     tenantId: tenant,
-    venue: { id: venueId, slug: 'main', timezone: 'Europe/Sofia' },
+    venue: { id: venueId, slug: 'main', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
     canPublish: true,
     ...overrides,
   })
@@ -123,7 +125,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       },
       { now: new Date(Date.parse('2026-10-09T18:00:00Z') + minutes * 60_000) },
     )
-  const configOf = async () =>
+  const _configOf = async () =>
     (
       await withTenant(app, tenant, (tx) =>
         tx.select().from(integrations).where(eq(integrations.id, integrationId)),
@@ -202,6 +204,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         busy: null,
         lastRun: null,
         canPublish: true,
+        // What the guest link is made of (menuPath).
+        venueSlug: 'main',
+        venuePublicId: PUBLIC_ID,
         history: { entries: [], nextBeforeVersion: null },
       })
       expect(before.draft.state).toBe('ready')
@@ -212,9 +217,20 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(before.draft.staleOverrides).toEqual([])
     })
 
+    it('has nothing to serve yet, so the address is never "switched off" (D76)', async () => {
+      const unpublished = await loadPublishView(viewScope(), {
+        ...deps,
+        addressServed: async () => false,
+      })
+      expect(unpublished.live).toBeNull()
+      expect(unpublished.addressServed).toBe(true)
+    })
+
     it('says "no menu" for a venue without one', async () => {
       const bare = (await provisionVenue(app, tenant, { name: 'Bare', slug: testSlug('bare') })).id
-      const result = await view({ venue: { id: bare, slug: 'bare', timezone: 'Europe/Sofia' } })
+      const result = await view({
+        venue: { id: bare, slug: 'bare', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      })
       expect(result).toMatchObject({ menu: 'none', live: null, held: null })
     })
 
@@ -223,7 +239,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         ok: false,
         error: 'nothing_published',
       })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
     })
   })
 
@@ -247,6 +263,28 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       const [only] = after.history.entries
       expect(only && isLiveEntry(only, after.live?.version ?? null)).toBe(true)
       expect(only && isReturnable(only, after.live?.version ?? null)).toBe(false)
+    })
+
+    it('says the address is switched off when the venue index is not in the files (D76)', async () => {
+      const served = await loadPublishView(viewScope(), {
+        ...deps,
+        addressServed: async () => true,
+      })
+      expect(served.addressServed).toBe(true)
+      const off = await loadPublishView(viewScope(), { ...deps, addressServed: async () => false })
+      expect(off.addressServed).toBe(false)
+      // What the check is asked: this venue's id and public code.
+      const asked: unknown[] = []
+      await loadPublishView(viewScope(), {
+        ...deps,
+        addressServed: async (venue) => {
+          asked.push(venue)
+          return true
+        },
+      })
+      expect(asked).toEqual([
+        { id: venueId, slug: 'main', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      ])
     })
 
     it('counts a price change as one change waiting, and a publish clears it', async () => {
@@ -293,13 +331,13 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
   describe('returning to an earlier version', () => {
     it('moves the live version back, pauses automatic publishing, and queues the files', async () => {
       sent.length = 0
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
       expect(await rollback(scope(), services, snapshotIds.v1 as string)).toEqual({
         ok: true,
         queued: true,
       })
       expect((await current())?.id).toBe(snapshotIds.v1)
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
       expect(sent).toEqual([
         { name: JOB_NAMES.publishFiles, data: { tenantId: tenant, menuId: menu.id, venueId } },
       ])
@@ -329,26 +367,17 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(after.history.entries[0]).toMatchObject({ restoresVersion: 1, counts: null })
     })
 
-    it('keeps the pause when the form saves the sync settings (they do not own it)', async () => {
-      const result = await saveSyncSettings(
-        {
-          pool: app,
-          tenantId: tenant,
-          venue: { id: venueId, name: 'Main', timezone: 'Europe/Sofia' },
-          canManage: true,
+    it('keeps the pause when the sync settings are saved (they do not own it)', async () => {
+      const saved = await saveSyncSettingsConfig(app, tenant, integrationId, {
+        schedule: {
+          incremental_enabled: true,
+          incremental_minutes: 5,
+          full_pull_enabled: true,
+          full_pull_time: '12:00',
         },
-        {
-          schedule: {
-            incremental_enabled: true,
-            incremental_minutes: 5,
-            full_pull_enabled: true,
-            full_pull_time: '12:00',
-          },
-          publish: { after_sync: 'auto', new_items: 'show' },
-        },
-      )
-      expect(result).toEqual({ ok: true })
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      })
+      expect(saved).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 
     it('does not pause again, or change the pause, when the version is current already', async () => {
@@ -358,32 +387,32 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         queued: false,
       })
       expect(sent).toEqual([])
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 
     it('takes a pause it set off again when the return fails; leaves an earlier pause alone', async () => {
-      await setAutoPublishPaused(app, tenant, integrationId, false)
+      await setVenueAutoPublishPaused(app, tenant, venueId, false)
       expect(await rollback(scope(), services, newId('sn'))).toEqual({
         ok: false,
         error: 'not_restorable',
       })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
 
-      await setAutoPublishPaused(app, tenant, integrationId, true)
+      await setVenueAutoPublishPaused(app, tenant, venueId, true)
       expect(await rollback(scope(), services, newId('sn'))).toEqual({
         ok: false,
         error: 'not_restorable',
       })
       // It was paused before this call: still paused.
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
     })
 
     it('is for owners and admins only, and changes nothing for anyone else', async () => {
-      await setAutoPublishPaused(app, tenant, integrationId, false)
+      await setVenueAutoPublishPaused(app, tenant, venueId, false)
       expect(
         await rollback(scope({ canPublish: false }), services, snapshotIds.v2 as string),
       ).toEqual({ ok: false, error: 'not_allowed' })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
       expect((await current())?.id).toBe(snapshotIds.v1)
     })
 
@@ -393,8 +422,8 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         queued: true,
       })
       expect((await current())?.id).toBe(snapshotIds.v2)
-      expect(autoPublishPaused(await configOf())).toBe(true)
-      await setAutoPublishPaused(app, tenant, integrationId, false)
+      expect(await readPaused(app, tenant, venueId)).toBe(true)
+      await setVenueAutoPublishPaused(app, tenant, venueId, false)
     })
 
     it('pauses nothing for a venue with no barsy integration', async () => {
@@ -436,7 +465,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       expect(
         await rollback(scope({ venueId: lone }), services, first.snapshot.id as string),
       ).toEqual({ ok: true, queued: true })
-      expect(autoPublishPaused(await configOf())).toBe(false)
+      expect(await readPaused(app, tenant, venueId)).toBe(false)
     })
   })
 
@@ -601,7 +630,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       ).id as VenueId
       await provisionMenu(app, tenant, noItems)
       const result = await view({
-        venue: { id: noItems, slug: 'nonehere', timezone: 'Europe/Sofia' },
+        venue: { id: noItems, slug: 'nonehere', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
       })
       expect(result.draft).toEqual({ state: 'nothing_visible' })
       expect(result.live).toBeNull()
@@ -645,7 +674,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         {
           pool: app,
           tenantId: otherTenant,
-          venue: { id: venueId, slug: 'main', timezone: 'Europe/Sofia' },
+          venue: { id: venueId, slug: 'main', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
           canPublish: true,
         },
         deps,
@@ -687,7 +716,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
           actor: 'user:us_maria',
         })
       }
-      const scopeMany = viewScope({ venue: { id: many, slug: 'many', timezone: 'Europe/Sofia' } })
+      const scopeMany = viewScope({
+        venue: { id: many, slug: 'many', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      })
       const first = await loadHistoryPage(scopeMany, manyMenu.id, {}, deps)
       expect(first.entries).toHaveLength(20)
       expect(first.entries[0]?.version).toBe(23)
@@ -746,7 +777,9 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
       const four = await publishLone()
       expect(four.snapshot.version).toBe(4)
 
-      const scopeLone = viewScope({ venue: { id: lone, slug: 'return', timezone: 'Europe/Sofia' } })
+      const scopeLone = viewScope({
+        venue: { id: lone, slug: 'return', publicId: PUBLIC_ID, timezone: 'Europe/Sofia' },
+      })
       const page = await loadHistoryPage(scopeLone, loneMenu.id, {}, deps)
       expect(page.entries.map((entry) => entry.version)).toEqual([4, 3, 2, 1])
       expect(page.entries[0]).toMatchObject({ counts: { total: 1, priceChanged: 1 } })

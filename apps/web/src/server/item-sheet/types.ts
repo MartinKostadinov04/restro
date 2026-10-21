@@ -1,18 +1,24 @@
 // What the item sheet's server code hands to its client component (brief S2-06b). Plain data
 // only (it crosses the server/client boundary as JSON): field definitions, resolved values with
-// their provenance, issues, the translation grid, the image with a short-lived URL. No barsy ids,
+// their provenance, issues, the translation grid, the image with a short-lived URL. No external ids,
 // no storage keys, no internal names beyond the template's own `internal_note` field (rule 3).
 import type { FieldDefinition, Locale, LocalizedText } from '@restro/core'
 
+/**
+ * Where the item sheet's actions look: the venue (its live menu), or the venue and the menu the
+ * composer has open (brief S6).
+ */
+export type SheetTarget = string | { readonly venueId: string; readonly menuId: string }
+
 /** Who controls a value as the sheet shows it (the resolver's `Provenance`). */
-export type SheetProvenance = 'barsy' | 'owned' | 'overridden' | 'stale' | 'locked' | 'none'
+export type SheetProvenance = 'till' | 'owned' | 'overridden' | 'stale' | 'locked' | 'none'
 
 /** Why a field has no edit button. */
 export type ReadOnlyReason =
-  /** Barsy owns it and it cannot be changed here (the price of a linked item): change it in barsy. */
-  | 'locked_to_barsy'
-  /** Barsy hides or takes off sale; our layers can only make the menu more cautious (rule 5). */
-  | 'barsy_decides'
+  /** The till owns it and it cannot be changed here (the price of a linked item): change it there. */
+  | 'locked_to_till'
+  /** The till hides or takes off sale; our layers can only make the menu more cautious (rule 5). */
+  | 'till_decides'
   /** Shown or hidden from the composer's list, not from here. */
   | 'composer_toggle'
   /** Sold out tonight is marked with the control at the top of this tab (S3-08, D46). */
@@ -40,12 +46,12 @@ export interface SheetField {
   /** `localized_text` only: provenance per language, when it is known. */
   readonly localeProvenance?: Readonly<Partial<Record<Locale, SheetProvenance>>>
   readonly access: FieldAccess
-  /** True if our override can be removed (the value is ours over barsy's). */
+  /** True if our override can be removed (the value is ours over the till's). */
   readonly canRevert: boolean
-  /** True if a stale override can be kept: barsy still holds a value to record as its basis. */
+  /** True if a stale override can be kept: the till still holds a value to record as its basis. */
   readonly canKeep: boolean
-  /** Barsy's current value, shown beside an override; null when barsy holds none. */
-  readonly barsyValue: unknown | null
+  /** The till's current value, shown beside an override; null when the till holds none. */
+  readonly tillValue: unknown | null
 }
 
 /** A finding of the resolver about this item (the sheet turns the code into a sentence). */
@@ -58,16 +64,16 @@ export interface SheetIssue {
 
 /** One language of one localized field in the Translations grid. */
 export interface TranslationCell {
-  /** The text that shows today (barsy's, an override's or ours); null = none. */
+  /** The text that shows today (the till's, an override's or ours); null = none. */
   readonly text: string | null
   readonly provenance: SheetProvenance
   /** Our own text for this language (the manual layer); null = none. This is what the cell edits. */
   readonly ourText: string | null
-  /** False where barsy holds this language of a barsy-owned field: it is read-only there. */
+  /** False where the till holds this language of a till-owned field: it is read-only there. */
   readonly editable: boolean
   /** No text in this language at all (the V7 gap). */
   readonly missing: boolean
-  /** Barsy's text changed after our translation was written (D24); our text stays live. */
+  /** The till's text changed after our translation was written (D24); our text stays live. */
   readonly review: boolean
 }
 
@@ -101,10 +107,10 @@ export interface SheetSale {
    */
   readonly soldOutTonight: boolean
   /**
-   * Off sale for another reason: `barsy` (the till's flag) or `other` (another layer). Ours can
+   * Off sale for another reason: `till` (the till's own flag) or `other` (another layer). Ours can
    * only add caution (rule 5), so there is no "Back on sale" for it.
    */
-  readonly offSale: 'barsy' | 'other' | null
+  readonly offSale: 'till' | 'other' | null
   /** The person may mark and unmark (owner or admin). */
   readonly canMark: boolean
 }
@@ -115,8 +121,10 @@ export interface ItemSheetData {
   readonly venueId: string
   /** The item's name in the venue's default language (or any language there is). */
   readonly title: string
-  /** The item has a barsy source link, in any state. */
-  readonly linkedToBarsy: boolean
+  /** The item has a till link (source `till:<integration>`), in any state. */
+  readonly linkedToTill: boolean
+  /** The name of the item's till (`{source}` in "From {source}"); '' for a hand-made item. */
+  readonly tillLabel: string
   readonly linkState: 'none' | 'active' | 'missing' | 'deleted'
   /** Goes up with each saved change: a key for things that must reload after one. */
   readonly revision: number
@@ -128,6 +136,8 @@ export interface ItemSheetData {
   readonly visible: boolean
   /** Sold out tonight, or off sale (S3-08). */
   readonly sale: SheetSale
+  /** The name shown is the till's own, because the till has no public one (D75). Warns only. */
+  readonly nameFromTill: boolean
   readonly fields: readonly SheetField[]
   readonly issues: readonly SheetIssue[]
   readonly translations: readonly TranslationRow[]
@@ -160,7 +170,7 @@ export interface HistoryEntry {
   /** The event's op (`setField`, `clearField`, `createNode`, `setPlacement`, …). */
   readonly op: string
   readonly actor: HistoryActor
-  /** `manual`, `barsy:<integration>`, `import:<profile>`. */
+  /** `manual` or `till:<integration>`. */
   readonly source: string
 }
 

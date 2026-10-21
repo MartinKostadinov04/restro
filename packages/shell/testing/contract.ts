@@ -5,17 +5,45 @@
 //   - names appear whole (R9) and in their own language (`lang`, R3);
 //   - the state is on the page (`data-state`, R5);
 //   - allergens are reachable the way the manifest says (R6);
-//   - only `nd_`, `as_` and `tg_` ids appear (rule 3).
+//   - only `nd_`, `as_` and `tg_` ids appear (rule 3);
+//   - every colour pair the manifest declares reads in both schemes of the fixture's theme, and
+//     the markup paints no colour of its own inline (R13, D93).
 // The face renders a view model to an HTML string (`renderToStaticMarkup` in S3-03). It marks each
 // item placement with `data-item="<nd_ id>"` and each slot with `data-slot="item.name"` etc.
 // Menu-level slots used here: `menu.allergen_legend` (numbered legend) and `menu.allergen_info`
-// (info link or QR code).
+// (info link or QR code), and the five feature slots below (R15).
+//
+// R15, fail-closed: a control for a guest feature carries the slot named in FEATURE_SLOTS.
+//   - when the view model has the feature off, no element with that slot may exist, whatever the
+//     manifest declares (a hidden control must not be in the page at all);
+//   - when the manifest declares the feature and the view model has it on, the slot must exist.
+//
+// D92, fail-closed the same way: the guest's layout switch carries `menu.layout_switch`, and no
+// element with that slot may exist when the view model's `layout.guestSwitch` is off (the menu
+// does not let guests switch, or the channel is not interactive).
+//
+// T90, two of the markers the audits drive (guide §7.3): `item.add` on an orderable item and
+// nowhere else, and `menu.language` with two languages and not with one. The other audit markers
+// (`item.open`, `pay.*`) are not read here.
 
-import { localeToBcp47 } from '@restro/core'
+import {
+  contrastRatio,
+  type Locale,
+  localeToBcp47,
+  MIN_TEXT_CONTRAST,
+  rolesFromSemantic,
+  type SemanticColours,
+  semanticFromRoles,
+} from '@restro/core'
 
 import { buildViewModel } from '../src/build'
-import type { Channel } from '../src/context'
-import { type FaceManifest, imageSlotsFor } from '../src/manifest'
+import { type Channel, INTERACTIVE_CHANNELS } from '../src/context'
+import {
+  type ColourPair,
+  type FaceManifest,
+  type FeatureName,
+  imageSlotsFor,
+} from '../src/manifest'
 import type { ViewItem, ViewModel, ViewSection } from '../src/view-model'
 import { fixtures as allFixtures, type Fixture } from './fixtures'
 import {
@@ -35,8 +63,18 @@ export const SLOT_ATTRIBUTE = 'data-slot'
 /** The attribute that carries an item's state code on its `item.state` slot. */
 export const STATE_ATTRIBUTE = 'data-state'
 
-/** What a face is: a function from a view model to markup. */
-export type RenderFn = (view: ViewModel) => string | Promise<string>
+/** What the contract tests give a face besides the view model (the host props that change its markup). */
+export interface ContractHost {
+  /** The menu's languages for the switch (`FaceHostProps.languages`). */
+  readonly languages: readonly Locale[]
+}
+
+/**
+ * What a face is: a function from a view model to markup. The second argument is given only by the
+ * language-switch check (T90); a face passes `host.languages` on as its `languages` prop, and
+ * otherwise draws as the host would by default.
+ */
+export type RenderFn = (view: ViewModel, host?: ContractHost) => string | Promise<string>
 
 /** One thing a face got wrong. */
 export interface ContractFailure {
@@ -61,6 +99,85 @@ export interface ContractOptions {
   readonly fixtures?: readonly Fixture[]
   /** Pixel density to build the view models for. */
   readonly density?: number
+}
+
+/** The menu-level slot of each guest feature's control (R15). */
+export const FEATURE_SLOTS: readonly { readonly slot: string; readonly feature: FeatureName }[] = [
+  { slot: 'menu.filters', feature: 'filters' },
+  { slot: 'menu.call_waiter', feature: 'call_waiter' },
+  { slot: 'menu.bill', feature: 'bill' },
+  { slot: 'menu.bag', feature: 'ordering' },
+  { slot: 'menu.pay', feature: 'pay' },
+]
+
+/** The slot of the guest's layout switch (D92). */
+export const LAYOUT_SWITCH_SLOT = 'menu.layout_switch'
+
+/** The slot of the language switch (T90). */
+export const LANGUAGE_SLOT = 'menu.language'
+
+/** The slot of the control that puts a dish in the bag (T90). */
+export const ADD_SLOT = 'item.add'
+
+/** The fixture the language-switch check renders again, with two languages and with one. */
+export const LANGUAGE_FIXTURE = 'six-languages'
+
+/** Two languages for the switch check. */
+const TWO_LANGUAGES: readonly Locale[] = ['bg_BG', 'en_US']
+
+/** Whether the view model has the feature on. */
+function featureOn(view: ViewModel, feature: FeatureName): boolean {
+  switch (feature) {
+    case 'filters':
+      return view.features.filters
+    case 'call_waiter':
+      return view.features.callWaiter !== null
+    case 'bill':
+      return view.features.bill
+    case 'ordering':
+      return view.features.ordering
+    case 'pay':
+      return view.features.pay
+  }
+}
+
+/** An inline style that paints a colour of its own (a raw value, not a variable): R13 forbids it. */
+const INLINE_RAW_COLOUR =
+  /style="[^"]*(?:^|;)\s*(?:background(?:-color)?|color|border(?:-color)?|outline(?:-color)?)\s*:\s*(?:#[0-9a-f]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\()/i
+
+/** The colour of a role in one scheme's colours, by its snake_case name; undefined when absent. */
+function roleColour(colours: SemanticColours, role: ColourPair['fg']): string | undefined {
+  const roles = rolesFromSemantic(colours)
+  return roles[role]
+}
+
+/** D93: every pair the manifest declares reads (text 4.5:1, a control 3:1) in both schemes. */
+function checkColourPairs(
+  view: ViewModel,
+  manifest: FaceManifest,
+  fail: (rule: string, message: string) => void,
+): void {
+  for (const [scheme, colours] of [
+    ['light', view.theme.colors],
+    ['dark', view.theme.colorsDark],
+  ] as const) {
+    // The shell keeps the colours as the roles the publisher wrote; re-reading them through the
+    // roles keeps the check honest to what a face receives.
+    const seen = semanticFromRoles(rolesFromSemantic(colours))
+    for (const pair of manifest.colour_pairs) {
+      const fg = roleColour(seen, pair.fg)
+      const bg = roleColour(seen, pair.bg)
+      if (fg === undefined || bg === undefined) continue
+      const min = pair.min ?? MIN_TEXT_CONTRAST
+      const ratio = contrastRatio(fg, bg)
+      if (ratio < min) {
+        fail(
+          'R13',
+          `${scheme}: ${pair.fg} on ${pair.bg} reads at ${(Math.floor(ratio * 100) / 100).toFixed(2)}:1, below ${min}:1`,
+        )
+      }
+    }
+  }
 }
 
 /** Ids our snapshots and view models may show. Any other id-shaped string is a leak. */
@@ -150,6 +267,21 @@ function checkItem(
     if (filled && declared && !present) fail('R8', `${where}: ${slot} has content but is not drawn`)
   }
 
+  // T90: the control that puts the dish in the bag, exactly where the dish can be ordered.
+  const orderable = view.features.ordering && item.order.controls
+  if (!orderable && slots.has(ADD_SLOT)) {
+    fail(
+      'R15',
+      `${where}: ${ADD_SLOT} is drawn although the item has no ordering controls (ordering is ${view.features.ordering ? 'on' : 'off'})`,
+    )
+  }
+  if (orderable && manifest.features.includes('ordering') && !slots.has(ADD_SLOT)) {
+    fail(
+      'R15',
+      `${where} can be ordered and the manifest declares ordering, but has no ${ADD_SLOT}`,
+    )
+  }
+
   // R6: allergens are reachable the way the manifest says.
   const allergenSlot = slots.get('item.allergens')
   if (allergenSlot !== undefined) {
@@ -219,7 +351,60 @@ function checkDocument(
       fail('R6', 'an info-link or info-QR face must draw menu.allergen_info')
     }
   }
+
+  // R13, D93: the declared colour pairs read, and nothing is painted with a raw colour inline.
+  checkColourPairs(view, manifest, fail)
+  if (INLINE_RAW_COLOUR.test(html)) {
+    fail(
+      'R13',
+      'an element paints a raw colour inline; a face paints with the theme variables only',
+    )
+  }
+
+  // R15: feature controls appear only when the view model has the feature on.
+  for (const { slot, feature } of FEATURE_SLOTS) {
+    const on = featureOn(view, feature)
+    const drawn = documentSlots.has(slot)
+    if (!on && drawn) {
+      fail('R15', `${slot} is drawn while the ${feature} feature is off (R15 is fail-closed)`)
+    }
+    if (on && !drawn && manifest.features.includes(feature)) {
+      fail('R15', `the manifest declares ${feature} and it is on, but ${slot} is not drawn`)
+    }
+  }
+
+  // D92: the layout switch only where the menu lets guests switch.
+  if (!view.layout.guestSwitch && documentSlots.has(LAYOUT_SWITCH_SLOT)) {
+    fail('D92', `${LAYOUT_SWITCH_SLOT} is drawn while the menu does not let guests switch`)
+  }
   return expected.length
+}
+
+/** T90: the language switch is drawn with two languages (on an interactive channel) and not with one. */
+async function checkLanguageSwitch(
+  render: RenderFn,
+  view: ViewModel,
+  fail: (rule: string, message: string) => void,
+): Promise<void> {
+  const switches = async (languages: readonly Locale[]) =>
+    withAttribute(parseHtml(await render(view, { languages })), SLOT_ATTRIBUTE, LANGUAGE_SLOT)
+  if (INTERACTIVE_CHANNELS.includes(view.channel)) {
+    const [drawn] = await switches(TWO_LANGUAGES)
+    if (drawn === undefined) {
+      fail('§7.6', `the host gives two languages, but ${LANGUAGE_SLOT} is not drawn`)
+    } else {
+      // The audits pick a language by the `lang` of its button.
+      const langs = withAttribute(drawn, 'lang').map((element) => element.attrs.lang)
+      for (const code of TWO_LANGUAGES) {
+        if (!langs.includes(localeToBcp47(code))) {
+          fail('§7.6', `${LANGUAGE_SLOT} has no control with lang="${localeToBcp47(code)}"`)
+        }
+      }
+    }
+  }
+  if ((await switches([view.locale])).length > 0) {
+    fail('§7.6', `the host gives one language, but ${LANGUAGE_SLOT} is drawn`)
+  }
 }
 
 /**
@@ -245,6 +430,7 @@ export async function runFaceContract(
       const fail = (rule: string, message: string) =>
         failures.push({ fixture: fixture.name, channel, rule, message })
       items += checkDocument(parseHtml(html), html, view, manifest, fail)
+      if (fixture.name === LANGUAGE_FIXTURE) await checkLanguageSwitch(render, view, fail)
       renders++
     }
   }

@@ -1,21 +1,26 @@
 'use client'
 
-// The small status badges on every composer row: where it comes from (From barsy / Owned here),
-// why it is hidden (Hidden by barsy / Hidden), and how many problems the resolver found.
+// The small status badges on every composer row: where it comes from (From {source} / Owned
+// here), why it is hidden (Hidden by {source} / Hidden), whether the name shown is the till's own
+// for want of a public one (D75), and how many problems the resolver found.
+// `{source}` is the name of the till the menu comes from (`useTillLabel`, brief CF-03).
 import type { Locale } from '@restro/core'
+import { AlertTriangleIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { useTillLabel } from '@/fields/till-label'
 
 import type { ComposerIssue, ComposerOrigin, ItemHiddenBy, ItemOffSale } from './view-model'
 
-/** From barsy (mirrors a barsy article or category) or Owned here (made in the composer). */
+/** From {source} (mirrors an object of the till) or Owned here (made in the composer). */
 export function OriginBadge({ origin }: { origin: ComposerOrigin }) {
   const t = useTranslations('composer.badges')
-  return origin === 'barsy' ? (
-    <Badge variant="info" data-testid="origin-badge" data-origin="barsy">
-      {t('barsy')}
+  const source = useTillLabel()
+  return origin === 'till' ? (
+    <Badge variant="info" data-testid="origin-badge" data-origin="till">
+      {t('fromTill', { source })}
     </Badge>
   ) : (
     <Badge variant="success" data-testid="origin-badge" data-origin="owned">
@@ -24,20 +29,21 @@ export function OriginBadge({ origin }: { origin: ComposerOrigin }) {
   )
 }
 
-/** Why something is hidden: barsy hides it (not ours to change) or we do. */
+/** Why something is hidden: the till hides it (not ours to change) or we do. */
 export function HiddenBadge({ hiddenBy }: { hiddenBy: ItemHiddenBy | 'section' }) {
   const t = useTranslations('composer.badges')
-  if (hiddenBy === 'barsy') {
+  const source = useTillLabel()
+  if (hiddenBy === 'till') {
     return (
-      <Badge variant="warning" data-testid="hidden-badge" data-hidden-by="barsy">
-        {t('hiddenByBarsy')}
+      <Badge variant="warning" data-testid="hidden-badge" data-hidden-by="till">
+        {t('hiddenByTill', { source })}
       </Badge>
     )
   }
-  if (hiddenBy === 'new_from_barsy') {
+  if (hiddenBy === 'new_from_till') {
     return (
-      <Badge variant="warning" data-testid="hidden-badge" data-hidden-by="new_from_barsy">
-        {t('newFromBarsy')}
+      <Badge variant="warning" data-testid="hidden-badge" data-hidden-by="new_from_till">
+        {t('newFromTill', { source })}
       </Badge>
     )
   }
@@ -50,7 +56,7 @@ export function HiddenBadge({ hiddenBy }: { hiddenBy: ItemHiddenBy | 'section' }
 
 /**
  * Where an item stands on sale (brief S3-08, D46): "Sold out tonight" for a manager's mark, "Not
- * on sale in barsy" when the till has it off sale (ours cannot undo that, rule 5). Renders
+ * on sale in {source}" when the till has it off sale (ours cannot undo that, rule 5). Renders
  * nothing for an item that is on sale.
  */
 export function SaleBadge({
@@ -61,10 +67,11 @@ export function SaleBadge({
   offSale: ItemOffSale | null
 }) {
   const t = useTranslations('composer.badges')
+  const source = useTillLabel()
   if (offSale !== null) {
     return (
       <Badge variant="warning" data-testid="off-sale-badge" data-off-sale={offSale}>
-        {offSale === 'barsy' ? t('offSaleBarsy') : t('offSaleOther')}
+        {offSale === 'till' ? t('offSaleTill', { source }) : t('offSaleOther')}
       </Badge>
     )
   }
@@ -73,6 +80,84 @@ export function SaleBadge({
     <Badge variant="danger" data-testid="sold-out-badge">
       {t('soldOutTonight')}
     </Badge>
+  )
+}
+
+/**
+ * The way out of a name that is the till's own: fill in the public name in the till, or type a
+ * name here (an item in its sheet, a section in its header, brief S6).
+ */
+const helpKey = (target: 'item' | 'section') =>
+  target === 'section' ? 'nameFromTillHelpSection' : 'nameFromTillHelp'
+
+/**
+ * The name shown is the till's own, because the till has no public name for it (D75): "Menu name
+ * missing in {source}: its own name is shown", with the way out as a help line on hover or focus.
+ * A warning only; it never keeps anything off the menu.
+ */
+export function NameFromTillBadge({ target = 'item' }: { target?: 'item' | 'section' }) {
+  const t = useTranslations('composer.badges')
+  const source = useTillLabel()
+  return (
+    <HoverCard openDelay={150}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          data-testid="name-from-till-badge"
+        >
+          <Badge variant="warning">{t('nameFromTill', { source })}</Badge>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-72 text-sm">
+        <p data-testid="name-from-till-help">{t(helpKey(target), { source })}</p>
+      </HoverCardContent>
+    </HoverCard>
+  )
+}
+
+/** The same warning in full, with its help line, for the item sheet. */
+export function NameFromTillNotice() {
+  const t = useTranslations('composer.badges')
+  const source = useTillLabel()
+  return (
+    <section
+      aria-label={t('nameFromTill', { source })}
+      data-testid="name-from-till-notice"
+      className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+    >
+      <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+      <div className="grid gap-0.5">
+        <p className="font-medium">{t('nameFromTill', { source })}</p>
+        <p className="text-muted-foreground">{t('nameFromTillHelp', { source })}</p>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * "Overrides to review" (V12): the till changed a value we wrote over since we wrote it, and a
+ * person should keep ours or take the till's (in the item's sheet). Hover or focus says so.
+ */
+export function ReviewBadge({ count }: { count: number }) {
+  const t = useTranslations('composer.badges')
+  const source = useTillLabel()
+  return (
+    <HoverCard openDelay={150}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          data-testid="review-badge"
+          data-count={count}
+        >
+          <Badge variant="warning">{t('review', { count })}</Badge>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-72 text-sm">
+        <p data-testid="review-help">{t('reviewHelp', { source })}</p>
+      </HoverCardContent>
+    </HoverCard>
   )
 }
 
@@ -101,13 +186,14 @@ const KNOWN_ISSUES = new Set([
 /** The sentence for one issue, in the interface language. */
 export function useIssueText(): (issue: ComposerIssue) => string {
   const t = useTranslations('composer.issues')
+  const source = useTillLabel()
   const uiLocale = useLocale()
   const names = new Intl.DisplayNames([uiLocale], { type: 'language' })
   const languageName = (locale: Locale | undefined) =>
     locale === undefined ? '' : (names.of(locale.split('_')[0] ?? locale) ?? locale)
   return (issue) =>
     KNOWN_ISSUES.has(issue.code)
-      ? t(issue.code, { language: languageName(issue.locale) })
+      ? t(issue.code, { language: languageName(issue.locale), source })
       : t('fallback')
 }
 
@@ -123,9 +209,10 @@ export function IssuesBadge({ issues }: { issues: readonly ComposerIssue[] }) {
   return (
     <HoverCard openDelay={150}>
       <HoverCardTrigger asChild>
+        {/* The 18 px keeps its 44 px square clear of the name above it in an item row (D123). */}
         <button
           type="button"
-          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="tap-area rounded-full phone:mt-[18px] focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           data-testid="issues-badge"
           data-count={issues.length}
         >

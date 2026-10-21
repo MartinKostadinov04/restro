@@ -1,8 +1,17 @@
 // R4 Money: amounts arrive as integer minor units and leave as text for the locale and the
 // snapshot currency. The shell may format; it never computes a price (no sums, no products), and
 // it never turns minor units into a float (`formatMoney` hands Intl an exact decimal string).
+// The one sum it does is the guest's bag estimate (bag.ts), added up with core's money module
+// (D72); every other amount a face shows comes from the platform.
 
-import { type Currency, formatMoney, type Locale, type Money } from '@restro/core'
+import {
+  type Currency,
+  decimalToMinor,
+  formatMoney,
+  type Locale,
+  type Money,
+  MoneyError,
+} from '@restro/core'
 
 import type { Strings } from './strings'
 
@@ -30,6 +39,26 @@ export function viewMoney(money: Money, currency: Currency, locale: Locale): Vie
     minor: money.amount_minor,
     currency,
     text: formatMoney(money.amount_minor, currency, locale),
+  }
+}
+
+/** An amount of integer minor units as shown. Throws (core's `MoneyError`) for anything that is not one. */
+export function viewMinor(minor: number, currency: Currency, locale: Locale): ViewMoney {
+  return { minor, currency, text: formatMoney(minor, currency, locale) }
+}
+
+/**
+ * An amount a guest typed ("2,50", "3", "0.5") as minor units, through core's decimal conversion,
+ * or null when it is not an amount of at most two decimals. Parsing only: nothing is computed.
+ */
+export function parseMinor(text: string): number | null {
+  const decimal = text.trim().replace(',', '.')
+  if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(decimal)) return null
+  try {
+    return decimalToMinor(decimal)
+  } catch (error) {
+    if (error instanceof MoneyError) return null
+    throw error
   }
 }
 

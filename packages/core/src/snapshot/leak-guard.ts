@@ -1,13 +1,13 @@
 // The leak guard (rule 3; brief S3-01a): a snapshot is published only if it parses against the
 // strict `menu-snapshot/1` schema AND no string in it — value or key — equals a value the
-// backend keeps to itself. The strict schema leaves no slot for a barsy id or an internal
+// backend keeps to itself. The strict schema leaves no slot for a till's id or an internal
 // field; the walk catches a builder bug that would put one into a slot that does exist.
 //
 // `collectForbiddenValues` gathers those values from the document. External ids are refused
 // outright. Internal field values and override bases are refused unless the same string is
 // public anyway (a public value of the document, the template's public labels, or a word of
-// the snapshot's own vocabulary): an override basis is barsy's earlier text, which commonly
-// equals a public value elsewhere (barsy's allergen codes beside our override of them, the
+// the snapshot's own vocabulary): an override basis is the till's earlier text, which commonly
+// equals a public value elsewhere (the till's allergen codes beside our override of them, the
 // other languages of a name), and refusing those would block every publish without keeping
 // anything private.
 
@@ -19,14 +19,24 @@ import { LOCALES } from '../locales'
 import { CURRENCIES } from '../money'
 import type { NodeType } from '../node-types'
 import type { Template } from '../template'
-import { ORDER_MODES } from '../templates/venue-menu'
+import { ORDER_MODES, SECTION_LAYOUTS } from '../templates/venue-menu'
+import {
+  CALL_WAITER_KINDS,
+  GuestFeaturesSchema,
+  type Presentation,
+  PresentationSchema,
+} from '../theme/presentation'
+import { ROLE_MODES, ROLE_NAMES, THEME_SCHEMES } from '../theme/roles'
 import { parseSnapshot, SnapshotError, type SnapshotProblem, snapshotPath } from './errors'
 import {
   type MenuSnapshot,
   NEW_BADGE,
   SNAPSHOT_ITEM_STATES,
+  SNAPSHOT_MENU_LAYOUTS,
   SNAPSHOT_ORDER_MODES,
   SNAPSHOT_SCHEMA,
+  SnapshotLayoutSchema,
+  type SnapshotTheme,
 } from './schema'
 
 /** What a forbidden value is, for the error (the value itself is never shown). */
@@ -49,7 +59,50 @@ const SNAPSHOT_VOCABULARY: readonly string[] = [
   ...CURRENCIES,
   ...MEASUREMENT_UNITS,
   ...FIELD_TYPE_NAMES,
+  // SH-01: the theme roles, the template and the guest services, keys and fixed values. The
+  // venue's own values (role colours, the face id, option keys and values) are public strings the
+  // publisher passes in (`ForbiddenSources.publicStrings`).
+  'roles',
+  'scheme',
+  'presentation',
+  'features',
+  ...ROLE_MODES,
+  ...ROLE_NAMES,
+  ...THEME_SCHEMES,
+  ...Object.keys(PresentationSchema.shape),
+  ...Object.keys(GuestFeaturesSchema.shape),
+  ...Object.keys(GuestFeaturesSchema.shape.call_waiter.shape),
+  ...CALL_WAITER_KINDS,
+  // D92: the menu's layout and the sections' layout hints, keys and fixed values.
+  'layout',
+  ...Object.keys(SnapshotLayoutSchema.shape),
+  ...SNAPSHOT_MENU_LAYOUTS,
+  ...SECTION_LAYOUTS,
 ]
+
+/**
+ * The strings of a venue's look that are public by design (SH-01): the font family, the palette,
+ * every role colour, the face id and the option keys and values. The publisher passes them as
+ * `publicStrings`, so an internal note that happens to read "two" never blocks a template option
+ * `two`.
+ */
+export function lookPublicStrings(
+  theme: SnapshotTheme,
+  presentation: Presentation | null | undefined,
+): string[] {
+  const strings = [theme.font, ...theme.palette]
+  if (theme.roles !== undefined) {
+    strings.push(...Object.values(theme.roles.light), ...Object.values(theme.roles.dark))
+  }
+  if (presentation !== null && presentation !== undefined) {
+    strings.push(presentation.face)
+    for (const [key, value] of Object.entries(presentation.options)) {
+      strings.push(key)
+      if (typeof value === 'string') strings.push(value)
+    }
+  }
+  return strings
+}
 
 /** Every string inside a JSON value (object keys excluded: they are shapes, not data). */
 function stringLeaves(value: unknown, out: string[] = []): string[] {
@@ -67,7 +120,7 @@ function stringLeaves(value: unknown, out: string[] = []): string[] {
 export interface ForbiddenSources {
   readonly template: Template
   readonly doc: MenuDocument
-  /** External ids of the document's nodes (barsy article, category, modifier ids …). */
+  /** External ids of the document's nodes (the till's item, category, modifier ids …). */
   readonly externalIds: Iterable<string>
   /** Other backend-only strings, always refused (asset storage keys and origins …). */
   readonly backendOnly?: Iterable<string>
@@ -134,10 +187,24 @@ export function collectForbiddenValues(sources: ForbiddenSources): Map<string, F
  * any string of `forbidden`. Returns the parsed snapshot. The error lists every place found
  * (redacted path and kind), never the value.
  */
-export function assertSnapshotSafe(snapshot: unknown, forbidden: ForbiddenValues): MenuSnapshot {
+export function assertSnapshotSafe(
+  snapshot: unknown,
+  forbidden: ForbiddenValues,
+  options: {
+    /**
+     * Paths the walk skips: places whose text is public by design (the guest heading, D92), so a
+     * forbidden value that happens to read the same is still refused everywhere else.
+     */
+    readonly exempt?: readonly (readonly PropertyKey[])[]
+  } = {},
+): MenuSnapshot {
   const parsed = parseSnapshot(snapshot, forbidden)
   const problems: SnapshotProblem[] = []
+  const exempt = options.exempt ?? []
+  const isExempt = (path: PropertyKey[]) =>
+    exempt.some((e) => e.length === path.length && e.every((k, i) => String(k) === String(path[i])))
   const walk = (value: unknown, path: PropertyKey[]) => {
+    if (isExempt(path)) return
     if (typeof value === 'string') {
       const kind = forbidden.get(value)
       if (kind !== undefined) problems.push({ path: snapshotPath(path, forbidden), code: kind })

@@ -64,11 +64,42 @@ export function appDatabaseUrl(): string {
 }
 
 /**
- * A venue slug no other test created: `base` and a random suffix. Venue slugs are globally unique
- * (brief S3-10) and the test files share one database, so a literal slug would collide.
+ * restro_purge connection string (D83): DATABASE_URL_PURGE, or the owner URL with restro_purge's
+ * password (DATABASE_PURGE_PASSWORD).
+ */
+export function purgeDatabaseUrl(): string {
+  const explicit = process.env.DATABASE_URL_PURGE
+  if (explicit) {
+    assertLocal(explicit, 'DATABASE_URL_PURGE')
+    return explicit
+  }
+  const password = process.env.DATABASE_PURGE_PASSWORD
+  if (!password) {
+    throw new Error(
+      'Set DATABASE_URL_PURGE (restro_purge) or DATABASE_PURGE_PASSWORD for the tests.',
+    )
+  }
+  const url = new URL(ownerDatabaseUrl())
+  url.username = 'restro_purge'
+  url.password = encodeURIComponent(password)
+  return url.toString()
+}
+
+/**
+ * A venue slug with a random suffix. Slugs are unique within an organisation (D84), and tests
+ * that share a database with other test files need one nobody else uses.
  */
 export function testSlug(base: string): string {
   return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`
+}
+
+/**
+ * A venue public code no other test created: 12 characters of `a-z0-9`, unique per call (the
+ * `venues_public_id_unique` index spans every test file). Core's `newPublicId` is not importable
+ * here (core depends on this package), and this one does not need its uniform draw.
+ */
+export function testPublicId(): string {
+  return randomUUID().replaceAll('-', '').slice(0, 12)
 }
 
 /** A fresh id of a kind (`tn`, `vn`, `tp`): unique per test run, valid for the id checks. */
@@ -116,11 +147,15 @@ export const DOCUMENT_TABLES_CHILDREN_FIRST = [
   'field_values',
   'placements',
   'source_links',
+  'menu_routes',
   'menus',
   'nodes',
   'source_records',
   'job_runs',
   'places',
+  'tables',
+  'areas',
+  'venue_slug_history',
   'barsy_venues',
   'assets',
   'integrations',
@@ -135,6 +170,8 @@ export async function cleanUp(
   for (const table of DOCUMENT_TABLES_CHILDREN_FIRST) {
     await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
   }
+  // The purge's log is not a document table (the app role only reads it), but it names a tenant.
+  await owner.query('delete from restro.purge_log where tenant_id = any($1)', [tenants])
   await owner.query('delete from restro.venues where tenant_id = any($1)', [tenants])
   await owner.query('delete from restro.templates where tenant_id = any($1) or id = any($2)', [
     tenants,

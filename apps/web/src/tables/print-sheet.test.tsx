@@ -15,6 +15,7 @@ import { SVG } from './test-view'
 const card = (index: number, label = String(index)): PrintCard => ({
   id: `tb_${String(index).padStart(22, '0')}`,
   label,
+  area: 'Terrace',
   address: `http://192.168.1.20:3000/t/Ab3dEfGh1jKlMnOpQrSt${String(index).padStart(2, '0')}`,
   qrSvg: SVG,
 })
@@ -58,6 +59,7 @@ describe('the print sheet', () => {
     expect(within(only).getByText('Demo Club')).toBeTruthy()
     expect(within(only).getByText('Маса / Table')).toBeTruthy()
     expect(within(only).getByTestId('print-label').textContent).toBe('VIP 3')
+    expect(within(only).getByTestId('print-area').textContent).toBe('Terrace')
     expect(within(only).getByTestId('print-qr').tagName).toBe('IMG')
     expect(within(only).getByTestId('print-address').textContent).toBe(
       '192.168.1.20:3000/t/Ab3dEfGh1jKlMnOpQrSt12',

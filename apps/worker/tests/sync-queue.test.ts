@@ -76,6 +76,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     const policy = { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] }
     const config: WorkerConfig = {
       databaseUrl: db.appUrl,
+      purgeDatabaseUrl: null,
       workerId: 'sync-queue-test',
       healthPort: 0,
       logLevel: 'silent',
@@ -135,8 +136,9 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
   })
 
   it('a full pull that finds another pull running is queued again, and the real queue takes it', async () => {
-    // The running job holds the integration's plain singleton key, and the exclusive policy drops
-    // a second job with it (send returns null). The copy is accepted because its key is its own.
+    // The running job holds its own singleton key (integration and venue), and the exclusive
+    // policy drops a second job with it (send returns null). The copy is accepted because its key
+    // is its own.
     const job = prepareJob(JOB_NAMES.barsyFullPull, {
       tenantId: world.tenantId,
       integrationId: world.integrationId,
@@ -166,7 +168,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       })
       expect(jobs[0]).toMatchObject({ state: 'completed', singleton_key: job.singletonKey })
       expect(jobs[1]?.state).toBe('created')
-      expect(jobs[1]?.singleton_key).toMatch(new RegExp(`^${world.integrationId}:later:\\d+$`))
+      expect(jobs[1]?.singleton_key).toMatch(new RegExp(`^${job.singletonKey}:later:\\d+$`))
       expect(jobs[1]?.in_a_minute).toBe(true)
       const [run] = await world.query<{ status: string; error_summary: string }>(
         `select status, error_summary from restro.job_runs
@@ -185,7 +187,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     }
   })
 
-  it('two pulls of one integration are never queued at once; another integration is not blocked', async () => {
+  it('two pulls of one venue are never queued at once; another venue or integration is not dropped (CF-16)', async () => {
     await worker.boss.offWork(JOB_NAMES.barsyFullPull)
     const base = { tenantId: world.tenantId, venueId: world.venueId }
     const mine = prepareJob(JOB_NAMES.barsyFullPull, {
@@ -198,9 +200,18 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
     const first = await send(mine)
     expect(first).toEqual(expect.any(String))
     // The web app's "Sync now", the daily tick, an incremental run that saw the tree change:
-    // whoever sends, a second pull of the same integration is dropped.
+    // whoever sends, a second pull of the same venue is dropped.
     expect(await send(mine)).toBeNull()
     expect(await send(mine)).toBeNull()
+
+    // Another venue of the same integration (T50): its pull is queued, never dropped for this one.
+    const secondVenue = prepareJob(JOB_NAMES.barsyFullPull, {
+      ...base,
+      integrationId: world.integrationId,
+      venueId: world.venueId.replace(/.$/, (c) => (c === 'a' ? 'b' : 'a')),
+    })
+    expect(await send(secondVenue)).toEqual(expect.any(String))
+    expect(await send(secondVenue)).toBeNull()
 
     const other = prepareJob(JOB_NAMES.barsyFullPull, {
       ...base,
@@ -211,7 +222,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       `select count(*) as n from pgboss.job where name = $1`,
       [JOB_NAMES.barsyFullPull],
     )
-    expect(Number(rows[0]?.n)).toBe(2)
+    expect(Number(rows[0]?.n)).toBe(3)
   })
 
   it('a job travels the queue end to end: barsy-connect connects the integration', async () => {
@@ -240,10 +251,11 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
   })
 
   describe('the tick', () => {
+    // The pulls the tick queues (its places reads, CF-16, are tested in sync-venues.test.ts).
     const tick = async () => {
       world.enqueued.length = 0
       await world.run(JOB_NAMES.barsySyncTick, {})
-      return world.enqueued
+      return world.enqueued.filter((job) => job.name !== JOB_NAMES.placesRead)
     }
 
     beforeEach(async () => {
@@ -269,7 +281,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
             integrationId: world.integrationId,
             venueId: world.venueId,
           },
-          singletonKey: world.integrationId,
+          singletonKey: `${world.integrationId}:${world.venueId}`,
         })
       }
     })
@@ -331,13 +343,16 @@ describe('buildJobs', () => {
       JOB_NAMES.publishLiveTick,
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
+      JOB_NAMES.publishOrganizationIndex,
     ])
-    expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('SEAL_PUBLIC_KEY')
-    expect(warnings[0]).not.toMatch(/[A-Za-z0-9_-]{40,}/)
+    // One warning per missing setting: the sealing keys, and the purge connection (D83).
+    expect(warnings).toHaveLength(2)
+    expect(warnings.some((warning) => warning.includes('SEAL_PUBLIC_KEY'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(true)
+    for (const warning of warnings) expect(warning).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
-  it('with the keys it adds the four sync jobs and the one tick to the publish jobs', async () => {
+  it('with the keys it adds the five sync jobs and the one tick to the publish jobs', async () => {
     const world = await import('../src/config').then(async ({ loadConfig }) => {
       const { generateSealKeyPair } = await import('@restro/core/seal-open')
       const pair = generateSealKeyPair()
@@ -353,6 +368,7 @@ describe('buildJobs', () => {
       JOB_NAMES.barsyConnect,
       JOB_NAMES.barsyFullPull,
       JOB_NAMES.barsyIncremental,
+      JOB_NAMES.placesRead,
       JOB_NAMES.assetFetch,
       JOB_NAMES.barsySyncTick,
       JOB_NAMES.publishMenu,
@@ -361,6 +377,24 @@ describe('buildJobs', () => {
       JOB_NAMES.publishLiveTick,
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
+      JOB_NAMES.publishOrganizationIndex,
     ])
+  })
+
+  it('with DATABASE_URL_PURGE it adds the two purge jobs (D83); without it, nothing is ever erased', async () => {
+    const { loadConfig } = await import('../src/config')
+    const config = loadConfig({
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      DATABASE_URL_PURGE: 'postgres://restro_purge:x@localhost:54329/restro',
+    })
+    const warnings: string[] = []
+    const jobs = await buildJobs(config, {
+      warn: (message: string) => warnings.push(message),
+    } as never)
+    expect(jobs.map((job) => job.name).slice(-2)).toEqual([
+      JOB_NAMES.purgeVenue,
+      JOB_NAMES.purgeTick,
+    ])
+    expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(false)
   })
 })

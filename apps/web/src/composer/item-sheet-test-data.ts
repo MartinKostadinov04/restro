@@ -2,6 +2,7 @@
 // template, with the values and provenance a test asks for.
 import { type FieldDefinition, VENUE_MENU_TEMPLATE } from '@restro/core'
 
+import { SAMPLE_TILL_LABEL } from '@/fields/samples'
 import type { ItemSheetData, SheetField } from '@/server/item-sheet/types'
 
 export const ITEM_DEFINITIONS: readonly FieldDefinition[] =
@@ -21,7 +22,7 @@ export function sheetField(key: string, overrides: Partial<SheetField> = {}): Sh
     access: { kind: 'edit' },
     canRevert: false,
     canKeep: false,
-    barsyValue: null,
+    tillValue: null,
     ...overrides,
   }
 }
@@ -37,7 +38,8 @@ export function sheetData(
     itemId: 'nd_0123456789ABCDEFGHIJKL',
     venueId: 'vn_0123456789ABCDEFGHIJKL',
     title: 'Негрони',
-    linkedToBarsy: true,
+    linkedToTill: true,
+    tillLabel: SAMPLE_TILL_LABEL,
     linkState: 'active',
     revision: 3,
     defaultLocale: 'bg_BG',
@@ -46,6 +48,7 @@ export function sheetData(
     timezone: 'Europe/Sofia',
     visible: true,
     sale: { soldOutTonight: false, offSale: null, canMark: true },
+    nameFromTill: false,
     issues: [],
     translations: [],
     image: null,

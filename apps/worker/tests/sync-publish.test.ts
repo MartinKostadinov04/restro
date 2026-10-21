@@ -1,13 +1,14 @@
 // The publish after a sync (brief S3-01b, doc "Publish policy"): a pull that applied at least one
 // op queues an automatic publish of the venue's menu (30 s delay, one key per menu + venue), unless
-// the integration says `publish.after_sync = manual` (or the older flat key `publish_after_sync =
-// false`). Against the in-memory barsy installation,
+// the venue says `publish.after_sync = manual` (CF-09b), or, for a venue that never saved its
+// rules, the integration's old `publish.after_sync = manual` (or the older flat key
+// `publish_after_sync = false`). Against the in-memory barsy installation,
 // through the pull jobs' real handlers.
 import { JOB_NAMES } from '@restro/core'
 import { provisionVenue } from '@restro/core/apply'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { publishesAfterSync, queuePublishAfterSync } from '../src/publish/after-sync'
+import { queuePublishAfterSync, venuePublishesAfterSync } from '../src/publish/after-sync'
 import { localTimeText } from '../src/sync/cursor'
 import {
   allowSlowSetup,
@@ -144,7 +145,7 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
     await fullPull()
     expect((await lastRun('barsy_full_pull')).counters.ops_applied).toBeGreaterThan(0)
     expect(publishes()).toEqual([])
-    expect(logged()).toContain('publish after sync is off for this integration: nothing was queued')
+    expect(logged()).toContain('publish after sync is off for this venue: nothing was queued')
 
     advance(5)
     changePrice(1.5)
@@ -164,7 +165,7 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
     await fullPull()
     expect((await lastRun('barsy_full_pull')).counters.ops_applied).toBeGreaterThan(0)
     expect(publishes()).toEqual([])
-    expect(logged()).toContain('publish after sync is off for this integration: nothing was queued')
+    expect(logged()).toContain('publish after sync is off for this venue: nothing was queued')
 
     advance(5)
     changePrice(1.5)
@@ -258,9 +259,9 @@ describe.skipIf(!hasDatabase)('the publish after a sync', () => {
         { publish_after_sync: true },
         { other: 1 },
       ]) {
-        expect(publishesAfterSync(config), JSON.stringify(config)).toBe(true)
+        expect(venuePublishesAfterSync({}, config), JSON.stringify(config)).toBe(true)
       }
-      expect(publishesAfterSync({ publish_after_sync: false })).toBe(false)
+      expect(venuePublishesAfterSync({}, { publish_after_sync: false })).toBe(false)
     })
   })
 })

@@ -99,7 +99,7 @@ export async function readMenuDocument(tx: ReadTx, menuId: string): Promise<Menu
         ), '[]'::json) as values,
         coalesce((
           select json_agg(json_build_object(
-              'nodeId', l.node_id, 'source', i.kind || ':' || l.integration_id,
+              'nodeId', l.node_id, 'source', 'till:' || l.integration_id,
               'externalType', l.external_type, 'state', l.state)
             order by l.node_id collate "C", l.integration_id collate "C",
               l.external_type collate "C")

@@ -6,6 +6,11 @@
 //   `system` tables hold no tenant data at all and have no tenant_id column.
 // - `app` lists the only table privileges the app role (`restro_app`) holds. `pnpm db:roles`
 //   revokes everything else and fails if a table exists in the database but not here.
+// - `purge` lists the only table privileges the purge role (`restro_purge`) holds (D83): the
+//   worker's purge job connects as it to erase a purged venue's data, a binned menu, a removed
+//   POS instance's data and old versions, and to write the tombstones and the purge log. It is
+//   the only role with DELETE on venue data; absent = nothing. It is held to row-level security
+//   like the app role (it scopes every transaction to one tenant).
 //
 // Adding a table (tests/rls-guard.test.ts and tests/app-role.test.ts fail until all agree):
 //   1. Define it in src/schema.ts with `restro.table(...)`; a tenant table gets a NOT NULL
@@ -25,6 +30,12 @@
 /** The login role the web app and the worker connect as. Never owner, never BYPASSRLS. */
 export const APP_ROLE = 'restro_app'
 
+/**
+ * The login role the worker's purge job connects as (D83): the only role with DELETE on venue
+ * data. Never owner, never BYPASSRLS; nothing but the purge job may use it.
+ */
+export const PURGE_ROLE = 'restro_purge'
+
 /** The schema that holds every Restro table. */
 export const APP_SCHEMA = 'restro'
 
@@ -37,58 +48,93 @@ export type TablePrivilege = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'
 /** How a table's rows are kept apart between tenants. */
 export type Tenancy = 'tenant-root' | 'tenant' | 'tenant-or-system' | 'system'
 
-/** One table's isolation and the app role's privileges on it. */
+/** One table's isolation and the two roles' privileges on it. */
 export interface TableAccess {
   readonly tenancy: Tenancy
   readonly app: readonly TablePrivilege[]
+  /** The purge role's privileges; left out = none. */
+  readonly purge?: readonly TablePrivilege[]
 }
+
+/** What the purge role holds on a table whose rows a purge erases: read to find them, delete. */
+const PURGED = ['SELECT', 'DELETE'] as const
 
 /** Every table in schema `restro`, keyed by its Postgres name. */
 export const TABLE_ACCESS = {
   // Rows are visible only while they are the current tenant (RLS on `id`). Tenants are created
   // inside their own tenant scope; deleting one is an operator task, not an app action.
-  tenants: { tenancy: 'tenant-root', app: ['SELECT', 'INSERT', 'UPDATE'] },
-  venues: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  tenants: { tenancy: 'tenant-root', app: ['SELECT', 'INSERT', 'UPDATE'], purge: ['SELECT'] },
+  // Archived by the app (`archived_at`); the row itself goes only with the purge.
+  venues: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   // Immutable rows: no UPDATE, no DELETE.
   templates: { tenancy: 'tenant-or-system', app: ['SELECT', 'INSERT'] },
   // Upserted by the worker through withSystem().
   worker_heartbeats: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
 
   // The menu document and its sources (brief S2-01). Every one is tenant-scoped with FORCE RLS
-  // (migration 0004). Nothing here is ever deleted by the app except the rows whose removal is
-  // the action itself: a placement (take an item out of a section), a field value (clearField,
-  // unlink) and a source link (unlink).
-  // Status and last check change; credentials are replaced; never deleted (disable instead).
-  integrations: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
-  // Renamed, mapped to one of our venues, catalogue root chosen.
-  barsy_venues: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
-  // A menu pins its venue, template and root node once (template migrations come later).
-  menus: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
-  // Status and revision change; nodes are archived, never deleted.
-  nodes: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
-  placements: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
-  field_values: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+  // (migration 0004). The app role may DELETE only `placements`, `field_values` and
+  // `source_links`, through `apply()`, as the action itself (unplace, clear a field, unlink).
+  // Erasing venue data, or anything in bulk, is only the purge job's, through its dedicated
+  // role (D83, made precise by Martin 10-12).
+  // Status and last check change; credentials are replaced; never deleted by the app (disable
+  // instead); a removed instance's data goes with the purge.
+  integrations: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // Renamed, mapped to one of our venues.
+  barsy_venues: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // Several per venue (migration 0019): named, ordered, binned (`deleted_at`) and set live by
+  // the app; a binned menu is erased by the purge.
+  menus: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // Status and revision change; nodes are archived, never deleted by the app.
+  nodes: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  placements: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'], purge: PURGED },
+  field_values: {
+    tenancy: 'tenant',
+    app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+    purge: PURGED,
+  },
   // Tier 1 is append-only: a changed object is a new row.
-  source_records: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
+  source_records: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
   // The link lifecycle (active / missing / deleted, last seen) updates rows; unlink deletes one.
-  source_links: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
-  // Append-only changelog (rule 2).
-  events: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
-  job_runs: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
-  places: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
-  assets: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  source_links: {
+    tenancy: 'tenant',
+    app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+    purge: PURGED,
+  },
+  // Append-only changelog (rule 2); only a purge removes a purged venue's rows.
+  events: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  job_runs: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // The first connector's till layer under `tables` (migration 0020).
+  places: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  assets: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
+  // Areas and tables (migration 0020; D95). Renamed, reordered, hidden and archived by the app;
+  // erased by the purge. Menu routes are rows per area or table, cleared by an update.
+  areas: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  tables: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  menu_routes: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
+  // Old address names (migration 0022; D84): added on a rename, never changed; a venue's go
+  // with its purge; an organisation's stay (organisations are not purged).
+  venue_slug_history: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  organization_slug_history: { tenancy: 'system', app: ['SELECT', 'INSERT'] },
 
   // What was published (brief S3-01a; migration 0008). Snapshot bodies never change: UPDATE is
-  // only for a held row's decision, and a trigger refuses any other change. Never deleted.
-  snapshots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // only for a held row's decision, and a trigger refuses any other change. Only the purge
+  // removes old versions (D96) and a purged venue's rows.
+  snapshots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   // One row per menu + venue, moved by every publish and rollback.
-  publish_pointers: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  publish_pointers: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   // Written once per item, never changed.
-  item_first_published: { tenancy: 'tenant', app: ['SELECT', 'INSERT'] },
+  item_first_published: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
 
   // A venue's tag list (brief S3-06; migration 0010). Renamed, recoloured, reordered and archived
-  // (`archived_at`), never deleted: items and old snapshots still name a tag by its id.
-  tags: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // (`archived_at`), never deleted by the app: items and old snapshots still name a tag by its id.
+  tags: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
+  // The purge's own records (migration 0023; D83): the app reads, only the purge writes. A
+  // tombstone or a log line is never changed or removed.
+  tombstones: { tenancy: 'system', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },
+  purge_log: { tenancy: 'tenant', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },
 
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
@@ -98,7 +144,8 @@ export const TABLE_ACCESS = {
   // session, clearing expired ones) and `auth_verification` (single-use tokens are consumed by
   // deleting them; nothing writes there yet). Users, accounts, organisations, members and
   // invitations are never deleted by the app: removing a person or an organisation is an
-  // operator task (apps/web switches off Better Auth's endpoints that would delete them).
+  // operator task (apps/web switches off Better Auth's endpoints that would delete them). The
+  // purge role touches none of them.
   auth_user: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
   auth_session: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
   auth_account: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
@@ -111,9 +158,27 @@ export const TABLE_ACCESS = {
 /** Name of a table in schema `restro`. */
 export type RestroTableName = keyof typeof TABLE_ACCESS
 
+/**
+ * The only tables the app role may DELETE from (D83, Martin 10-12): the three row kinds
+ * `apply()` removes as the action itself, and Better Auth's session and verification rows.
+ * Pinned by src/table-access.test.ts; widening it is a guardrail change.
+ */
+export const APP_DELETE_TABLES = [
+  'auth_session',
+  'auth_verification',
+  'field_values',
+  'placements',
+  'source_links',
+] as const
+
 /** Schema privileges of the app role. It may never CREATE in `restro`. */
 export const APP_SCHEMA_PRIVILEGES = {
   [APP_SCHEMA]: ['USAGE'],
   // pg-boss creates and migrates its own tables at worker start (`createSchema: false`).
   [JOB_QUEUE_SCHEMA]: ['USAGE', 'CREATE'],
+} as const satisfies Record<string, readonly ('USAGE' | 'CREATE')[]>
+
+/** Schema privileges of the purge role: it only uses `restro`, and never the queue schema. */
+export const PURGE_SCHEMA_PRIVILEGES = {
+  [APP_SCHEMA]: ['USAGE'],
 } as const satisfies Record<string, readonly ('USAGE' | 'CREATE')[]>

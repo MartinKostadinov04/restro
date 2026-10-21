@@ -1,6 +1,10 @@
 // apply(): the one write path (rule 1; doc "The internal data source" → "One write path"). Every
-// collection path (barsy sync, the composer, imports later) hands a change set to this function,
+// collection path (a till connector's sync, the composer) hands a change set to this function,
 // and nothing else writes nodes, placements, field_values, source_links or events.
+//
+// The till is a role (brief CF-03): every integration feeds a till, writes the `till` layer under
+// the source `till:<integration>`, and may link a node only through the link types its connector
+// kind declares (`TILL_LINK_TYPES`). A node has at most one till link.
 //
 // One transaction per change set, under the tenant's document lock (./lock.ts):
 //   1. read, in a few batched queries, everything the ops refer to: the nodes (with their
@@ -30,6 +34,7 @@ import {
   events,
   fieldValues,
   integrations,
+  menus,
   nodes,
   placements,
   sourceLinks,
@@ -38,7 +43,7 @@ import {
   venues,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { type SQL, sql } from 'drizzle-orm'
+import { asc, type SQL, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import {
@@ -56,7 +61,15 @@ import {
   type Scope,
   type SetLinkState,
   type SourceLink,
+  tillIntegrationOf,
+  tillSource,
 } from '../change-set'
+import {
+  isIntegrationKind,
+  TILL_LINK_TYPES,
+  type TillLinkTypes,
+  tillLinkTypeProblem,
+} from '../connectors'
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 import { canonicalJson, sha256Hex } from '../hash'
 import type { NodeId } from '../ids'
@@ -77,7 +90,13 @@ export type ApplyRejectionCode =
   | 'unknown_node'
   /** A `venue:` scope names a venue the tenant does not have. */
   | 'unknown_venue'
-  /** A barsy write cites a source record that does not exist or belongs to another integration. */
+  /**
+   * The op is about a deleted (archived) venue, D76: a `venue:` scope of it, or a node of its menu
+   * (the menu itself, a section of it, a placement into one). Items are not in a menu, so a
+   * master value of an item is not refused by this.
+   */
+  | 'venue_archived'
+  /** A till write cites a source record that does not exist or belongs to another integration. */
   | 'unknown_source_record'
   /** A link names an integration the tenant does not have. */
   | 'unknown_integration'
@@ -95,9 +114,12 @@ export type ApplyRejectionCode =
   | 'invalid_placement'
   /** The external object is linked to another node. */
   | 'link_taken'
-  /** The node already has a link from this integration (one link per source per node). */
+  /** The node already has a till link, from this integration or another (one till link per node). */
   | 'already_linked'
-  /** A barsy link whose external type does not fit the node type (`BARSY_LINK_TYPES`). */
+  /**
+   * A link whose external type does not fit the node type for its connector kind
+   * (`TILL_LINK_TYPES`), or whose connector kind declares no link types at all.
+   */
   | 'invalid_link_type'
   /** This source may not do this (unlink from an adapter, create a menu, link another source). */
   | 'source_not_allowed'
@@ -112,20 +134,6 @@ export type ApplyRejectionCode =
    */
   | 'unknown_tag'
 
-/**
- * The barsy external types each node type may be linked to (doc "Barsy to canonical mapping"):
- * an item mirrors an article, a section a category, a modifier group a supplement group of one
- * combo article (`<articleId>:<groupId>`), an option a modificator or a supplement article
- * (`<articleId>:<groupId>:<optionArticleId>`). The resolver counts only an active `article`
- * link towards `orderable`. Other node types (the menu, specials) take no barsy link.
- */
-export const BARSY_LINK_TYPES: { readonly [K in NodeType]?: readonly string[] } = {
-  item: ['article'],
-  section: ['category'],
-  modifier_group: ['supplement_group'],
-  option: ['modificator', 'supplement'],
-}
-
 /** One refused op: its index in `changeSet.ops`, a code and a reason for people. */
 export interface ApplyRejection {
   readonly opIndex: number
@@ -133,7 +141,7 @@ export interface ApplyRejection {
   readonly reason: string
   /**
    * Our id (`nd_…`) of the node the op was about, when it names one that exists: by id, or by a
-   * source link that resolves. Never a barsy id (rule 3). The sync copies it into `job_runs`.
+   * source link that resolves. Never an external id (rule 3). The sync copies it into `job_runs`.
    */
   readonly nodeRef?: string
   /** The field the op was about (`setField`, `clearField`). */
@@ -174,6 +182,11 @@ export interface ApplyOptions {
   /** The template field writes are validated against. Default: `VENUE_MENU_TEMPLATE`. */
   readonly template?: Template
   /**
+   * The link types each connector kind declares, which every `linkSource` is checked against.
+   * Default: `TILL_LINK_TYPES`. Tests pass their own map to prove no kind is special.
+   */
+  readonly tillLinkTypes?: TillLinkTypes
+  /**
    * All or nothing: if any op is rejected the whole change set is refused with an `ApplyError`
    * (`change_set_rejected`, the rejections in `error.rejected`) and nothing is written. For
    * changes whose ops belong together, such as a person's drag in the composer. Default: false
@@ -186,7 +199,7 @@ export interface ApplyOptions {
 export type ApplyErrorCode =
   /** The change set does not parse (`parseChangeSet`). */
   | 'invalid_change_set'
-  /** A barsy change set names an integration the tenant does not have. */
+  /** A till change set names an integration the tenant does not have. */
   | 'unknown_integration'
   /** `loadMenuDocument`: the tenant has no menu with this id. */
   | 'menu_not_found'
@@ -307,6 +320,10 @@ function batches<T>(rows: readonly T[], size = 500): T[][] {
 class DocumentState {
   readonly integrations = new Map<string, { kind: string }>()
   readonly venues = new Set<string>()
+  /** The venues that were deleted (archived, D76); a subset of `venues`. */
+  readonly archivedVenues = new Set<string>()
+  /** The menus (root node ids) of the archived venues: nothing is written into them. */
+  readonly archivedMenus = new Set<NodeId>()
   readonly records = new Map<string, string>()
   readonly nodes = new Map<NodeId, NodeState>()
   readonly aliases = new Map<NodeId, NodeId>()
@@ -367,13 +384,23 @@ class DocumentState {
     return undefined
   }
 
-  /** True if the node has a link from a barsy integration, in any state. */
-  hasBarsyLink(nodeId: NodeId): boolean {
+  /** True if the integration feeds a till: a connector kind core knows (`connectors/`). */
+  isTill(integrationId: string): boolean {
+    return isIntegrationKind(this.integrations.get(integrationId)?.kind)
+  }
+
+  /** The node's till link, from any integration, in any state (a node has at most one). */
+  tillLinkOf(nodeId: NodeId): LinkState | undefined {
     for (const key of this.linksOfNode.get(nodeId) ?? []) {
       const link = this.links.get(key)
-      if (link && this.integrations.get(link.integrationId)?.kind === 'barsy') return true
+      if (link && this.isTill(link.integrationId)) return link
     }
-    return false
+    return undefined
+  }
+
+  /** True if the node has a till link, in any state. */
+  hasTillLink(nodeId: NodeId): boolean {
+    return this.tillLinkOf(nodeId) !== undefined
   }
 
   putValue(row: ValueRow): void {
@@ -436,7 +463,24 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     .from(integrations)) {
     state.integrations.set(row.id, { kind: row.kind })
   }
-  for (const row of await tx.select({ id: venues.id }).from(venues)) state.venues.add(row.id)
+  // The tenant's venues, locked shared (in id order, so two writers cannot wait for each other):
+  // a deletion (`archiveVenue`, FOR UPDATE) waits for this change set to commit, and one that
+  // committed first is read here, so nothing is written into a venue that was deleted (D76).
+  for (const row of await tx
+    .select({ id: venues.id, archivedAt: venues.archivedAt })
+    .from(venues)
+    .orderBy(asc(venues.id))
+    .for('share')) {
+    state.venues.add(row.id)
+    if (row.archivedAt !== null) state.archivedVenues.add(row.id)
+  }
+  if (state.archivedVenues.size > 0) {
+    const archivedMenus = await tx
+      .select({ rootNodeId: menus.rootNodeId })
+      .from(menus)
+      .where(anyOf(menus.venueId, [...state.archivedVenues]))
+    for (const menu of archivedMenus) state.archivedMenus.add(menu.rootNodeId as NodeId)
+  }
   if (recordIds.size > 0) {
     const rows = await tx
       .select({ id: sourceRecords.id, integrationId: sourceRecords.integrationId })
@@ -682,7 +726,7 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
 }
 
 /**
- * What the `tags` check of `Run.setField` needs: for every tag id a non-barsy write to a `tags`
+ * What the `tags` check of `Run.setField` needs: for every tag id a non-till write to a `tags`
  * field names, the tag's venue and whether it is archived; and for every item such a write
  * targets, the venues of the menus the item is placed in (walked up from its sections).
  */
@@ -696,7 +740,7 @@ async function loadTagContext(
   const tagIds = new Set<string>()
   const targets = new Set<NodeId>()
   for (const op of set.ops) {
-    if (op.op !== 'setField' || op.layer === 'barsy' || !keys.has(op.fieldKey)) continue
+    if (op.op !== 'setField' || op.layer === 'till' || !keys.has(op.fieldKey)) continue
     if (!Array.isArray(op.value)) continue
     for (const id of op.value) if (typeof id === 'string') tagIds.add(id)
     const ref = op.node
@@ -739,22 +783,29 @@ class Run {
   applied = 0
   unchanged = 0
   skipped = 0
-  private readonly barsyIntegration: string | null
+  /** The integration of a till change set (`till:<integration>`), or null for a manual one. */
+  private readonly tillIntegration: string | null
   /** The layer of the source, which structural events (no field, no layer of their own) carry. */
   private readonly sourceLayer: Layer
   private readonly set: ChangeSet
   private readonly template: Template
   private readonly state: DocumentState
+  private readonly tillLinkTypes: TillLinkTypes
 
   // No parameter properties: the dev seed runs this file under Node's type stripping, which does
   // not support them (it is also the only TypeScript construct here that must be rewritten).
-  constructor(set: ChangeSet, template: Template, state: DocumentState) {
+  constructor(
+    set: ChangeSet,
+    template: Template,
+    state: DocumentState,
+    tillLinkTypes: TillLinkTypes,
+  ) {
     this.set = set
     this.template = template
     this.state = state
-    this.barsyIntegration = set.source.startsWith('barsy:') ? set.source.slice(6) : null
-    this.sourceLayer =
-      this.barsyIntegration !== null ? 'barsy' : set.source === 'manual' ? 'manual' : 'import'
+    this.tillLinkTypes = tillLinkTypes
+    this.tillIntegration = tillIntegrationOf(set.source)
+    this.sourceLayer = this.tillIntegration !== null ? 'till' : 'manual'
   }
 
   processAll(): void {
@@ -837,6 +888,17 @@ class Run {
   }
 
   private node(ref: NodeRef): NodeState | Outcome {
+    const found = this.nodeNamed(ref)
+    if (isOutcome(found)) return found
+    // Nothing is written into the menu of a deleted venue (D76); this is where every op resolves
+    // the nodes it is about, so one check covers them all.
+    if (this.state.archivedMenus.size > 0 && this.state.archivedMenus.has(this.rootOf(found))) {
+      return refused('venue_archived', `${found.id} is in the menu of a deleted venue`)
+    }
+    return found
+  }
+
+  private nodeNamed(ref: NodeRef): NodeState | Outcome {
     if ('id' in ref) {
       const node = this.state.nodes.get(this.state.aliases.get(ref.id) ?? ref.id)
       return node ?? refused('unknown_node', `there is no node ${ref.id}`)
@@ -844,6 +906,15 @@ class Run {
     const link = this.state.links.get(refKey(ref.link))
     const node = link && this.state.nodes.get(link.nodeId)
     return node ?? refused('unknown_node', `no node is linked to ${describeLink(ref.link)}`)
+  }
+
+  /** A refusal when a `venue:` scope names a deleted venue (D76); null for master or a live venue. */
+  private archivedScope(scope: Scope): Outcome | null {
+    if (scope === 'master') return null
+    const venueId = scope.slice('venue:'.length)
+    return this.state.archivedVenues.has(venueId)
+      ? refused('venue_archived', `${scope} is a deleted venue`)
+      : null
   }
 
   private touch(nodeId: NodeId): void {
@@ -901,24 +972,27 @@ class Run {
     }
   }
 
-  /** The checks a barsy-layer op needs before anything else: the node is linked to this source. */
-  private barsyLinkProblem(node: NodeState): Outcome | null {
-    const integration = this.barsyIntegration
+  /** The checks a till-layer op needs before anything else: the node is linked to this source. */
+  private tillLinkProblem(node: NodeState): Outcome | null {
+    const integration = this.tillIntegration
     if (integration === null || this.state.linkOf(node.id, integration)) return null
-    return refused('not_linked', `${node.id} has no link to ${integration}: barsy values need one`)
+    return refused('not_linked', `${node.id} has no link to ${integration}: till values need one`)
   }
 
   private setField(write: FieldWrite): Outcome {
     const node = this.node(write.node)
     if (isOutcome(node)) return node
-    if (write.layer === 'barsy') {
-      const problem = this.barsyLinkProblem(node)
+    // A deleted venue's scope is refused before anything else is asked about the write (D76).
+    const archived = this.archivedScope(write.scope)
+    if (archived) return archived
+    if (write.layer === 'till') {
+      const problem = this.tillLinkProblem(node)
       if (problem) return problem
       const recordIntegration = this.state.records.get(write.sourceRecordId ?? '')
-      if (recordIntegration !== this.barsyIntegration) {
+      if (recordIntegration !== this.tillIntegration) {
         return refused(
           'unknown_source_record',
-          `source record ${write.sourceRecordId} does not exist for ${this.barsyIntegration}`,
+          `source record ${write.sourceRecordId} does not exist for ${this.tillIntegration}`,
         )
       }
     }
@@ -929,7 +1003,7 @@ class Run {
     const key = slotKey(node.id, write.fieldKey, write.layer, write.scope)
     const current = this.state.values.get(key)
     const verdict = validateWrite(this.template, node.type, write, {
-      linkedToBarsy: this.state.hasBarsyLink(node.id),
+      linkedToTill: this.state.hasTillLink(node.id),
     })
     if (!verdict.ok) {
       // Keep an invalid value (V1/V2) with its reason, unless it would replace a good value.
@@ -950,7 +1024,7 @@ class Run {
     // validateWrite found the definition, so it exists.
     const definition = findField(this.template, node.type, write.fieldKey)
     if (!definition) return refused('unknown_field', `${node.type} has no field ${write.fieldKey}`)
-    if (definition.type === 'tags' && write.layer !== 'barsy') {
+    if (definition.type === 'tags' && write.layer !== 'till') {
       const problem = this.tagProblem(node, write, current)
       if (problem) return problem
     }
@@ -1012,8 +1086,10 @@ class Run {
   private clearField(clear: ClearField): Outcome {
     const node = this.node(clear.node)
     if (isOutcome(node)) return node
-    if (clear.layer === 'barsy') {
-      const problem = this.barsyLinkProblem(node)
+    const archived = this.archivedScope(clear.scope)
+    if (archived) return archived
+    if (clear.layer === 'till') {
+      const problem = this.tillLinkProblem(node)
       if (problem) return problem
     }
     const key = slotKey(node.id, clear.fieldKey, clear.layer, clear.scope)
@@ -1317,7 +1393,7 @@ class Run {
     if (!integration) {
       return refused('unknown_integration', `this tenant has no integration ${link.integration}`)
     }
-    const own = `${integration.kind}:${link.integration}`
+    const own = tillSource(link.integration)
     if (this.set.source !== 'manual' && (manualOnly || this.set.source !== own)) {
       return refused(
         'source_not_allowed',
@@ -1334,27 +1410,30 @@ class Run {
     if (problem) return problem
     const node = this.node(op.node)
     if (isOutcome(node)) return node
-    if (this.state.integrations.get(op.link.integration)?.kind === 'barsy') {
-      const allowed = BARSY_LINK_TYPES[node.type] ?? []
-      if (!allowed.includes(op.link.externalType)) {
-        return refused(
-          'invalid_link_type',
-          allowed.length === 0
-            ? `a ${node.type} takes no barsy link`
-            : `a ${node.type} links to a barsy ${allowed.join(' or ')}, not a ${op.link.externalType}`,
-        )
-      }
-    }
+    // Every connector kind declares its link types; a kind that declares none links nothing.
+    const kind = this.state.integrations.get(op.link.integration)?.kind ?? ''
+    const typeProblem = tillLinkTypeProblem(
+      kind,
+      node.type,
+      op.link.externalType,
+      this.tillLinkTypes,
+    )
+    if (typeProblem !== null) return refused('invalid_link_type', typeProblem)
     const existing = this.state.links.get(refKey(op.link))
     if (existing) {
       return existing.nodeId === node.id
         ? UNCHANGED
         : refused('link_taken', `${describeLink(op.link)} is linked to ${existing.nodeId}`)
     }
-    if (this.state.linkOf(node.id, op.link.integration)) {
+    // One till link per node (A1-F4): two tills would overwrite each other's `till` values.
+    const current =
+      this.state.tillLinkOf(node.id) ?? this.state.linkOf(node.id, op.link.integration)
+    if (current) {
       return refused(
         'already_linked',
-        `${node.id} already has a link from ${op.link.integration}; unlink it first`,
+        current.integrationId === op.link.integration
+          ? `${node.id} already has a link from ${op.link.integration}; unlink it first`
+          : `${node.id} already has a till link from ${current.integrationId}; a node has one till link`,
       )
     }
     const link: LinkState = {
@@ -1373,10 +1452,13 @@ class Run {
     return APPLIED
   }
 
-  /** What a link event records: the source and the kind of external object, never its id. */
+  /**
+   * What a link event records: the till source (`till:<integration>`, the role, never the
+   * vendor) and the kind of external object, never its id.
+   */
   private linkEventValue(link: Pick<LinkState, 'integrationId' | 'externalType'>) {
     return {
-      source: `${this.state.integrations.get(link.integrationId)?.kind}:${link.integrationId}`,
+      source: tillSource(link.integrationId),
       external_type: link.externalType,
     }
   }
@@ -1395,7 +1477,7 @@ class Run {
     if (!integration) {
       return refused('unknown_integration', `this tenant has no integration ${op.link.integration}`)
     }
-    const own = `${integration.kind}:${op.link.integration}`
+    const own = tillSource(op.link.integration)
     if (this.set.source !== own) {
       return refused('source_not_allowed', `only ${own} sets the state of its own links`)
     }
@@ -1438,8 +1520,8 @@ class Run {
   }
 
   /**
-   * Unlink (doc "Linking and unlinking"): the current barsy values are copied into the manual
-   * layer (`unlinkCopy`), the barsy rows of this integration are removed (so the node's own
+   * Unlink (doc "Linking and unlinking"): the current till values are copied into the manual
+   * layer (`unlinkCopy`), the till rows of this integration are removed (so the node's own
    * values show from now on), and the link is deleted. Overrides stay where they are.
    */
   private unlinkSource(op: Extract<ChangeSet['ops'][number], { op: 'unlinkSource' }>): Outcome {
@@ -1457,12 +1539,12 @@ class Run {
     this.state.removeLink(key)
     this.state.dirtyLinks.add(key)
     this.structuralEvent('unlinkSource', node.id, 'link', this.linkEventValue(existing), null)
-    const linkedToBarsy = this.state.hasBarsyLink(node.id)
-    const source = `${this.state.integrations.get(op.link.integration)?.kind}:${op.link.integration}`
+    const linkedToTill = this.state.hasTillLink(node.id)
+    const source = tillSource(op.link.integration)
     const rowsByField = new Map<string, ValueRow[]>()
     for (const slot of this.state.valuesOfNode.get(node.id) ?? []) {
       const row = this.state.values.get(slot)
-      if (row?.layer !== 'barsy' || row.source !== source) continue
+      if (row?.layer !== 'till' || row.source !== source) continue
       rowsByField.set(row.fieldKey, [...(rowsByField.get(row.fieldKey) ?? []), row])
     }
     const validValue = (layer: Layer, fieldKey: string) => {
@@ -1476,9 +1558,8 @@ class Run {
       const copy =
         definition &&
         unlinkCopy(definition, {
-          barsy: rows.filter((row) => row.valid).map((row) => row.value),
+          till: rows.filter((row) => row.valid).map((row) => row.value),
           manual: manualBefore,
-          import: validValue('import', fieldKey),
         })
       if (definition && copy) {
         const write: FieldWrite = {
@@ -1489,7 +1570,7 @@ class Run {
           scope: 'master',
           value: copy.value as FieldWrite['value'],
         }
-        if (validateWrite(this.template, node.type, write, { linkedToBarsy }).ok) {
+        if (validateWrite(this.template, node.type, write, { linkedToTill }).ok) {
           const spec = FIELD_TYPES[definition.type] as FieldTypeSpec
           const manualKey = slotKey(node.id, fieldKey, 'manual', 'master')
           this.state.putValue(this.valueRow(node.id, write, spec.hash(copy.value as never), null))
@@ -1505,7 +1586,7 @@ class Run {
         this.state.deleteValue(slotKey(row.nodeId, row.fieldKey, row.layer, row.scope))
         if (row.valid) {
           this.event(
-            { op: 'clearField', nodeId: node.id, fieldKey, layer: 'barsy', scope: row.scope },
+            { op: 'clearField', nodeId: node.id, fieldKey, layer: 'till', scope: row.scope },
             row.value,
             null,
           )
@@ -1766,16 +1847,14 @@ export async function applyInTransaction(
   const template = options.template ?? VENUE_MENU_TEMPLATE
   await lockTenantDocument(tx, tenantId)
   const state = await loadState(tx, set, template)
-  if (set.source.startsWith('barsy:')) {
-    const integration = set.source.slice('barsy:'.length)
-    if (state.integrations.get(integration)?.kind !== 'barsy') {
-      throw new ApplyError(
-        'unknown_integration',
-        `this tenant has no barsy integration ${integration}`,
-      )
-    }
+  const tillIntegration = tillIntegrationOf(set.source)
+  if (tillIntegration !== null && !state.isTill(tillIntegration)) {
+    throw new ApplyError(
+      'unknown_integration',
+      `this tenant has no till integration ${tillIntegration}`,
+    )
   }
-  const run = new Run(set, template, state)
+  const run = new Run(set, template, state, options.tillLinkTypes ?? TILL_LINK_TYPES)
   run.processAll()
   if (options.atomic === true && run.rejected.length > 0) {
     const first = run.rejected[0]

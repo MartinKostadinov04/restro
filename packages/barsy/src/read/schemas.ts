@@ -21,6 +21,13 @@ export type BarsyNumber = z.output<typeof barsyNumberSchema>
 /** barsy's 0/1 flags. */
 const flagSchema = z.union([z.literal(0), z.literal(1), z.boolean()])
 
+/**
+ * A flag inside the per-venue for-sale exceptions: the catalogue recordings send them as text
+ * (`{"1":"1","10":"1"}`, fixtures/demo/articles-bid*-menu72.json), so "0" and "1" are accepted
+ * too (brief CF-16; before, one such article failed the whole page).
+ */
+const venueFlagSchema = z.union([flagSchema, z.literal('0'), z.literal('1')])
+
 /** Text per barsy language key. Empty string and null both mean "no text in that language". */
 const mlTextSchema = z.record(z.string(), z.string().nullable())
 
@@ -59,7 +66,7 @@ export const currenciesSchema = z.array(currencySchema)
 export const categorySchema = z.looseObject({
   cat_id: z.int().nullable(),
   parent_id: z.int().nullable(),
-  /** Internal name: never shown to guests. */
+  /** barsy's own name (what the till shows): a guest sees it only where there is no public name (D75). */
   cat_name: z.string(),
   cat_name_public: z.string().nullish(),
   cat_name_public_ml: mlTextSchema.nullish(),
@@ -94,7 +101,10 @@ export const categoryTreeNodeSchema: z.ZodType<CategoryTreeNode> = z.lazy(() =>
 /** A barsy category id as an article lists them: demo responses use strings (`["370"]`). */
 const categoryIdSchema = z.union([z.int(), z.string().regex(/^\d+$/)])
 
-/** `Articles_getlist` → one article. `article_name` is internal and never shown to guests. */
+/**
+ * `Articles_getlist` → one article. `article_name` is barsy's own name (what the till shows): a
+ * guest sees it only where there is no public name (D75).
+ */
 export const articleSchema = z.looseObject({
   article_id: z.int(),
   article_name: z.string(),
@@ -109,7 +119,7 @@ export const articleSchema = z.looseObject({
   is_public: flagSchema.nullish(),
   is_for_sale: flagSchema.nullish(),
   /** Per-venue for-sale exceptions, keyed by barsy venue id (only with `limits_by_barsys`). */
-  is_for_sale_barsys: z.record(z.string(), flagSchema.nullable()).nullish(),
+  is_for_sale_barsys: z.record(z.string(), venueFlagSchema.nullable()).nullish(),
   is_service: flagSchema.nullish(),
   delete_flag: flagSchema.nullish(),
   /** File name inside barsy, or (some demo articles) a full image URL. */
@@ -119,6 +129,8 @@ export const articleSchema = z.looseObject({
   /** Characteristics by key (`k102`); empty in every demo recording, so the value shape is unconfirmed. */
   article_details: z.record(z.string(), z.unknown()).nullish(),
   has_supplements: flagSchema.nullish(),
+  /** The catalogue the article belongs to (brief CF-16, T71): venues can share a catalogue. */
+  menu_id: z.int().nullish(),
 })
 export type Article = z.output<typeof articleSchema>
 export const articlesSchema = z.array(articleSchema)
@@ -171,6 +183,9 @@ export const articleDetailsTreeSchema = z.array(articleDetailsGroupSchema)
 export const placeSchema = z.looseObject({
   place_id: z.int(),
   place_num: z.union([z.string(), z.int()]).nullish(),
+  /** The hall: its id and order among halls (D95: keyed by id, ordered by weight), and its name. */
+  salon_id: z.union([z.int(), z.string()]).nullish(),
+  salon_weight: z.union([z.int(), z.string()]).nullish(),
   salon_name: z.string().nullish(),
   is_public: flagSchema.nullish(),
 })

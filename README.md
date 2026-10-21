@@ -10,7 +10,7 @@ Status: Stage 1 — setting up the ground. See `docs/tracker.md` for decisions a
 | `docs/tracker.md` | Decisions, open questions, tasks (the working memory of the project) |
 | `docs/architecture/` | Mirrors of the Menu Engine Data Architecture doc. The live doc wins: https://claude.ai/code/artifact/2f2ab8b4-61ce-45a3-986b-bf675d8b472a |
 | `docs/platform-reference.md` | What we port from the Synex Platform UI and what we fix |
-| `docs/agent-briefs/` | Task briefs for coding agents |
+| `docs/agent-briefs/` | Briefs written before 10-16; tickets are GitHub issues now (`docs/agents/issue-tracker.md`) |
 | `docs/research/` | Market research (background) |
 | `CLAUDE.md` | Rules every coding agent follows |
 
@@ -32,8 +32,8 @@ Copy `.env.example` to `.env.local` when a task needs settings. The default `DAT
 Needs the database, its tables, the app role and a demo owner. With `pnpm db:local` running and `.env.local` copied from `.env.example`:
 
 ```
-pnpm db:migrate && pnpm db:roles    # DATABASE_URL_OWNER and DATABASE_APP_PASSWORD from .env.local; set them in your shell first (the db scripts do not read .env files)
-pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club) + its demo menu
+pnpm db:migrate && pnpm db:roles    # DATABASE_URL_OWNER, DATABASE_APP_PASSWORD and DATABASE_PURGE_PASSWORD from .env.local; set them in your shell first (the db scripts do not read .env files)
+pnpm db:seed:dev                    # demo owner + organisation "Demo Club" + venue "Demo Club Sofia" (slug demo-club, with its own random public code: the guest address is printed) + its demo menu
 pnpm dev                            # http://localhost:3000 → sign in with DEV_ADMIN_EMAIL / DEV_ADMIN_PASSWORD
 ```
 
@@ -63,6 +63,7 @@ The worker's `dev` script loads the root `.env.local` and then `.env.worker.loca
 | Variable | Meaning | Default |
 |---|---|---|
 | `DATABASE_URL` | `restro_app` connection string. The role carries a 30 s `statement_timeout` and a 60 s `idle_in_transaction_session_timeout` (set by `pnpm db:roles`, so they also hold behind Supabase's session pooler); the worker keeps five connections at most | required |
+| `DATABASE_URL_PURGE` | `restro_purge` connection string (D83): the only role with DELETE on venue data, used by the purge job alone; `pnpm db:roles` creates it with `DATABASE_PURGE_PASSWORD`. Without it the worker registers no purge job | unset |
 | `WORKER_ID` | Name of this process in `worker_heartbeats` | the host name |
 | `WORKER_HEALTH_PORT` | Port of `GET /health` | `8081` |
 | `LOG_LEVEL` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent` | `info` |
@@ -96,5 +97,10 @@ The worker's `dev` script loads the root `.env.local` and then `.env.worker.loca
 - **Code style** is set by `biome.json`: 2-space indent, single quotes, semicolons only where needed, trailing commas, 100 columns. Run `pnpm format` to fix; `pnpm lint` only checks.
 - **Tests:** Vitest files end in `.test.ts(x)` and sit next to the code (or in `tests/`); Playwright specs end in `.spec.ts` and live in `apps/web/e2e/`. One Vitest project per package or app is found automatically from `vitest.config.ts`.
 - **Import rules** live in `.dependency-cruiser.cjs`; `scripts/depcruise-rules.test.ts` proves each one fires. Changing a rule means changing that test.
-- **Web app layout:** routes in `apps/web/app`, everything else in `apps/web/src` (`@/` alias): `components/ui` (shadcn, with our fixes), `fields` (the UI field-type registry), `server` (auth, tenant-scoped reads), `i18n`. Interface text lives in `apps/web/messages/{bg,en}.json`; a test fails if the two differ. Add shadcn components with `npx shadcn@4.21.0 add <name>` from `apps/web` (`pnpm dlx` fails on this PC), then repoint any `from "cn"` import to `@/lib/utils` and run `pnpm format`.
+- **A face package** (`packages/faces/<id>`, a "template" in the gallery, D69) is laid out like `packages/faces/editorial-market`:
+  - `src/manifest.ts` builds the manifest and runs `validateManifest` when the module loads, so an invalid face cannot even be imported. `src/index.ts` exports the face component, its stylesheet (`EDITORIAL_CSS`, one string) and the manifest.
+  - **Subpath exports** in `package.json`: `.` (components and CSS), `./manifest` (the manifest and nothing else, so server code can read it without loading components) and, for a face that draws services, `./preview` (a demo host for the admin's preview; only the admin imports it). `qr-phone` has `./notices` instead of `./preview`.
+  - **Allowed imports** (dependency-cruiser `faces-only-react-and-shell`): the face's own files, `react`, `react-dom` and `@restro/shell`. No `@restro/core`, no icon, UI or animation library, no other face, no Node built-in that does I/O; only test files may import `@restro/shell/testing`. Only a face's `preview/` folder may import `@restro/shell/money`. A face is a function of its view model: it fetches nothing and reads no clock. Dependencies in its `package.json` are `@restro/shell`, `react` and `react-dom`; its tests add Testing Library and `jsdom`.
+  - **Tests** sit beside the code: a `contract.test.tsx` that calls `faceContractSuite` from `@restro/shell/testing` (manifest, every fixture, theme-only CSS, no `html`/`body`/`:root` rules, the feature slots) and runs the face with the host props set; a `manifest.test.ts`; a CSS test for its own rules; tests for the pure helpers (`model.ts`) and the screens. The web app's `src/faces/registry.test.ts` runs the same suite for every registered template, so none can be listed without passing. The designer guide (`docs/guides/shell-handoff/visualization-shell.md`) is the full contract, with the checklist for a new template.
+- **Web app layout:** routes in `apps/web/app`, everything else in `apps/web/src` (`@/` alias): `components/ui` (shadcn, with our fixes), `fields` (the UI field-type registry), `faces` (the template registry: `manifests.ts` for server code, `registry.ts` with the loaders for client code), `design` (the Design tab), `guest` (the guest phone page), `server` (auth, tenant-scoped reads), `i18n`. Interface text lives in `apps/web/messages/{bg,en}.json`; a test fails if the two differ. Add shadcn components with `npx shadcn@4.21.0 add <name>` from `apps/web` (`pnpm dlx` fails on this PC), then repoint any `from "cn"` import to `@/lib/utils` and run `pnpm format`.
 - **Versions** are pinned exactly (`save-exact` in `.npmrc`). Update them deliberately, not with `^`.

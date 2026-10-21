@@ -152,15 +152,21 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     expect(all.filter((l) => l.external_type === 'category')).toHaveLength(11)
     expect(all.filter((l) => l.external_type === 'article')).toHaveLength(58)
     expect(all.every((l) => l.state === 'active')).toBe(true)
-    // Every link has the hash of the record it was last seen in.
-    expect(all.every((l) => /^[0-9a-f]{64}$/.test(l.last_hash ?? ''))).toBe(true)
+    // Every link has the hash of the record it was last seen in (the menu's own link to the root
+    // it mirrors, D88, names no record).
+    expect(
+      all
+        .filter((l) => l.external_type !== 'menu_root')
+        .every((l) => /^[0-9a-f]{64}$/.test(l.last_hash ?? '')),
+    ).toBe(true)
+    expect(all.filter((l) => l.external_type === 'menu_root')).toHaveLength(1)
 
     // Money is integer minor units, from the decimal text (0.97 -> 97), in the venue scope.
     const [price] = await world.query<{ value: { amount_minor: number; currency: string } }>(
       `select fv.value from restro.field_values fv
        join restro.source_links sl on sl.node_id = fv.node_id
        where sl.integration_id = $1 and sl.external_type = 'article' and sl.external_id = '11'
-         and fv.field_key = 'price' and fv.layer = 'barsy' and fv.scope = $2`,
+         and fv.field_key = 'price' and fv.layer = 'till' and fv.scope = $2`,
       [world.integrationId, `venue:${world.venueId}`],
     )
     expect(price?.value).toEqual({ amount_minor: 97, currency: 'EUR' })
@@ -250,7 +256,7 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       `select fv.value from restro.field_values fv
        join restro.source_links sl on sl.node_id = fv.node_id
        where sl.integration_id = $1 and sl.external_type = 'article' and sl.external_id = '11'
-         and fv.field_key = 'price' and fv.layer = 'barsy'`,
+         and fv.field_key = 'price' and fv.layer = 'till'`,
       [world.integrationId],
     )
     expect(price?.value.amount_minor).toBe(125)
@@ -443,12 +449,16 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
       expect((await linkOf('article', '11')).state).toBe('missing')
     })
 
-    it('one venue for now: with two mapped venues the deletion check is skipped (T50)', async () => {
+    it('two mapped venues on one catalogue: absence is concluded per catalogue, once (CF-16, T50)', async () => {
+      // Before CF-16 a second mapped venue switched the deletion check off for every venue. Now
+      // each full pull reads the whole catalogue and concludes for it.
       await pull()
       const second = await provisionVenue(world.pool, world.tenantId, {
         name: 'Second club',
         slug: testSlug('second-club'),
       })
+      const [first] = fake.venues
+      fake.venues = [...fake.venues, { ...first, barsy_id: 11, name: 'Second', menu_id: 1 }]
       await upsertBarsyVenues(world.pool, world.tenantId, world.integrationId, [
         { bid: 11, name: 'Second' },
       ])
@@ -458,11 +468,20 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
         [second.id, DEMO_ROOT_CAT, world.integrationId],
       )
       fake.articles = fake.articles.filter((article) => article.article_id !== 11)
+      world.clock = new Date(world.clock.getTime() + 10 * 60 * 1000)
       await pull()
-      const run = await lastPull()
-      expect(run.counters.missing).toBe(0)
-      expect(run.error_summary).toContain('deletion check skipped: 2 venues')
-      expect((await linkOf('article', '11')).state).toBe('active')
+      let run = await lastPull()
+      expect(run.counters.missing).toBe(1)
+      expect(run.error_summary).toBeNull()
+      expect((await linkOf('article', '11')).state).toBe('missing')
+
+      // The second venue reads the same catalogue: it agrees, and has nothing more to conclude.
+      world.clock = new Date(world.clock.getTime() + 10 * 60 * 1000)
+      await world.run(JOB_NAMES.barsyFullPull, { ...payload(), venueId: second.id })
+      run = await lastPull()
+      expect(run.status).toBe('completed')
+      expect(run.counters).toMatchObject({ missing: 0, deleted: 0, hidden_here: 0 })
+      expect((await linkOf('article', '11')).state).toBe('missing')
     })
   })
 
@@ -551,14 +570,18 @@ describe.skipIf(!hasDatabase)('barsy-full-pull', () => {
     expect(row).toMatchObject({ status: 'error', status_detail: 'wrong_credentials' })
   })
 
-  it('a venue that is not mapped fails the run without calling barsy', async () => {
+  it('a venue that is not mapped is skipped without a run, a failure or a call to barsy (CF-18)', async () => {
     await world.query(
       'update restro.barsy_venues set venue_id = null, catalogue_root_cat_id = null where integration_id = $1',
       [world.integrationId],
     )
     await expect(pull()).resolves.toBeUndefined()
-    expect((await lastPull()).status).toBe('failed')
+    // Skipped with the reason in the log: no run, so nothing is recorded as failed and nothing is
+    // written; the till was not asked.
+    expect(await fullPulls()).toEqual([])
+    expect(world.logLines.join('\n')).toContain('not linked')
     expect(fake.callsOf('Categories_getalltree')).toHaveLength(0)
+    expect(fake.calls).toHaveLength(0)
   })
 
   it('no network leaks: the only host the sync talked to is the integration’s own', async () => {

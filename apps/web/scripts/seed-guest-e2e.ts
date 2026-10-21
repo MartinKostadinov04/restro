@@ -1,12 +1,17 @@
 // Fixtures for the guest page's end-to-end test (brief S3-03): the demo venue's menu gets three
 // photos, a few dietary labels, a brand colour and a logo, a table code is written, and the menu is
-// PUBLISHED into the e2e publish folder (`LOCAL_PUBLISH_DIR`), so `/m/demo-club` and `/t/<token>`
-// have something to show. A second, hand-made menu with tags (the shell's `tags-dietary` fixture)
-// is written under the address `/m/tag-fixture`, because tags can only be assigned in the composer
-// from S3-06 on and the tag filter needs some.
+// PUBLISHED into the e2e publish folder (`LOCAL_PUBLISH_DIR`), so the demo venue's menu address
+// (`/m/demo-club-<its public code>`, D68) and `/t/<token>` have something to show. A second,
+// hand-made menu with tags (the shell's `tags-dietary` fixture) is written under the fixed code
+// `TAG_PUBLIC_ID` (address `/m/tag-fixture-<code>`), because tags can only be assigned in the
+// composer from S3-06 on and the tag filter needs some. The demo venue's code is random and made
+// by the database seed; the specs read it from the database (e2e/menu-path.ts), and this script
+// prints the addresses when it is done. A third menu (`LOOK_PUBLIC_ID`, `/m/look-fixture-<code>`) is the
+// same fixture with a venue that chose the reference template, a forced dark scheme and another font
+// (SH-04).
 //
 // The publish goes the real way: `publishMenu` (core/apply), then the worker's own
-// `writePublishFiles` (snapshot, pointer, slug index) and `runAssetVariants` (webp photo variants
+// `writePublishFiles` (snapshot, pointer, venue index) and `runAssetVariants` (webp photo variants
 // with sharp). Run after `pnpm db:seed:dev` and `seed-item-sheet` (the e2e global setup does).
 // Idempotent; refuses to run unless NODE_ENV is development and the database is local.
 import { createHash } from 'node:crypto'
@@ -28,18 +33,29 @@ import {
   venueIndexPath,
   writeTableTokenFile,
 } from '@restro/assets'
-import { type ChangeSet, type NodeId, newId, type SnapshotId, type VenueId } from '@restro/core'
+import {
+  type ChangeSet,
+  menuPath,
+  type NodeId,
+  newId,
+  type SnapshotId,
+  type VenueId,
+} from '@restro/core'
 import { apply, createAsset, provisionMenu, publishMenu, setVenueTheme } from '@restro/core/apply'
 import { authOrganization, sourceLinks, venues, withTenant } from '@restro/db'
 import { fixture } from '@restro/shell/testing'
 import { and, eq, inArray } from 'drizzle-orm'
 import { writeLiveOverlay, writePublishFiles } from '../../worker/src/publish/files'
+import { writeOrganizationIndex } from '../../worker/src/publish/organization-index'
 import { runAssetVariants } from '../../worker/src/publish/variants'
 import {
   GUEST_BRAND,
   GUEST_SLUG,
   GUEST_TABLE_LABEL,
   GUEST_TABLE_TOKEN,
+  LOOK_PUBLIC_ID,
+  LOOK_SLUG,
+  TAG_PUBLIC_ID,
   TAG_SLUG,
 } from '../e2e/support'
 import { getAuthDb, getPool } from '../src/server/db'
@@ -87,7 +103,11 @@ async function main(): Promise<void> {
   if (!organization) throw new Error('Run `pnpm db:seed:dev` first: there is no demo organisation.')
   const tenantId = organization.id
   const [venue] = await withTenant(pool, tenantId, (tx) =>
-    tx.select({ id: venues.id }).from(venues).where(eq(venues.slug, GUEST_SLUG)).limit(1),
+    tx
+      .select({ id: venues.id, publicId: venues.publicId })
+      .from(venues)
+      .where(eq(venues.slug, GUEST_SLUG))
+      .limit(1),
   )
   if (!venue) throw new Error('Run `pnpm db:seed:dev` first: there is no demo venue.')
   const menu = await provisionMenu(pool, tenantId, venue.id)
@@ -99,8 +119,8 @@ async function main(): Promise<void> {
   const publishStore = await createPublishStore(publishStoreConfig(process.env))
   const publishDir = publishStoreConfig(process.env)
   if (publishDir.kind !== 'local') throw new Error('the e2e publish store must be local')
-  // A database that was reset makes new venue ids: drop the old slug index and table codes. (The
-  // photo variants stay: `assets.variants` says they exist.)
+  // A database that was reset makes new venue ids and codes: drop the old venue indexes and table
+  // codes. (The photo variants stay: `assets.variants` says they exist.)
   for (const folder of ['v', 't']) {
     await rm(path.join(publishDir.dir, folder), { recursive: true, force: true })
   }
@@ -197,8 +217,13 @@ async function main(): Promise<void> {
   const scope = { tenantId, menuId: menu.id, venueId: venue.id as never }
   const files = await writePublishFiles(deps, scope)
   await writeLiveOverlay(deps, scope)
+  // The organisation's index (D84), as the publish job writes it after the files.
+  await writeOrganizationIndex(deps, tenantId)
   await writeTableTokenFile(publishStore, GUEST_TABLE_TOKEN, {
+    venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
+    // The demo organisation's slug (D84): `/t/<token>` leads to `/m/demo-club/<venue>`.
+    organization_slug: 'demo-club',
     table_label: GUEST_TABLE_LABEL,
   })
 
@@ -216,9 +241,46 @@ async function main(): Promise<void> {
   })
   await put(livePath(menu_id, venue_id), { version: tagged.snapshot.version, items: {} })
   await publishStore.put(
-    venueIndexPath(TAG_SLUG),
-    venueIndexBytes({ venue_id, menu_id }),
-    publishPutOptions(venueIndexPath(TAG_SLUG)),
+    venueIndexPath(TAG_PUBLIC_ID),
+    venueIndexBytes({ venue_id, menu_id, slug: TAG_SLUG }),
+    publishPutOptions(venueIndexPath(TAG_PUBLIC_ID)),
+  )
+
+  // --- a third menu: another template, a forced scheme and a font of its own (SH-04) -------------
+  // The same fixture, with ids of its own (all fixtures share theirs, and files are keyed by id).
+  // Its venue chose the reference template, forces the dark scheme and asks for Playfair Display,
+  // which is how the guest page, the template registry and the self-hosted fonts are checked on a
+  // production build without touching the demo venue's look.
+  const lookIds = {
+    snapshot: `sn_${'E2eLookSnapshot'.padEnd(22, '0')}`,
+    menu: `nd_${'E2eLookMenu'.padEnd(22, '0')}`,
+    venue: `vn_${'E2eLookVenue'.padEnd(22, '0')}`,
+  }
+  const looked = {
+    ...tagged,
+    snapshot: {
+      ...tagged.snapshot,
+      id: lookIds.snapshot,
+      menu_id: lookIds.menu,
+      venue_id: lookIds.venue,
+    },
+    menu: { ...tagged.menu, id: lookIds.menu },
+    theme: { ...tagged.theme, font: 'Playfair Display', scheme: 'dark' as const },
+    presentation: { face: 'qr-phone', options: {} },
+  }
+  const lookMenu = lookIds.menu as NodeId
+  const lookVenue = lookIds.venue as VenueId
+  await put(snapshotPath(lookIds.snapshot as SnapshotId), looked)
+  await put(currentPath(lookMenu, lookVenue), {
+    snapshot_id: lookIds.snapshot,
+    version: looked.snapshot.version,
+    hash: looked.snapshot.hash,
+  })
+  await put(livePath(lookMenu, lookVenue), { version: looked.snapshot.version, items: {} })
+  await publishStore.put(
+    venueIndexPath(LOOK_PUBLIC_ID),
+    venueIndexBytes({ venue_id: lookVenue, menu_id: lookMenu, slug: LOOK_SLUG }),
+    publishPutOptions(venueIndexPath(LOOK_PUBLIC_ID)),
   )
 
   console.log(
@@ -226,7 +288,10 @@ async function main(): Promise<void> {
       level: 'info',
       event: 'seed_guest_e2e_done',
       published: published.status,
-      slugIndex: files.status === 'checked' ? files.slugIndex : files.status,
+      venueIndex: files.status === 'checked' ? files.venueIndex : files.status,
+      guestPath: menuPath({ slug: GUEST_SLUG, publicId: venue.publicId }),
+      tagPath: menuPath({ slug: TAG_SLUG, publicId: TAG_PUBLIC_ID }),
+      lookPath: menuPath({ slug: LOOK_SLUG, publicId: LOOK_PUBLIC_ID }),
       publishDir: publishDir.dir,
     }),
   )

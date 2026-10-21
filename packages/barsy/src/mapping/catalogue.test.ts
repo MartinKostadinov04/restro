@@ -25,7 +25,7 @@ import {
   rootOf,
   VENUE_ID,
 } from './test-data.ts'
-import type { CatalogueMapping } from './types.ts'
+import { BARSY_MAPPING_VERSION, type CatalogueMapping } from './types.ts'
 
 const opsOf = (result: CatalogueMapping): ChangeSetOp[] => result.changeSet?.ops ?? []
 
@@ -67,7 +67,7 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
       parsed.success ? '' : JSON.stringify(parsed.error.issues.slice(0, 3)),
     ).toBe(true)
     expect(result.changeSet).toMatchObject({
-      source: `barsy:${INTEGRATION_ID}`,
+      source: `till:${INTEGRATION_ID}`,
       actor: `integration:${INTEGRATION_ID}`,
       observedAt: '2026-10-09T10:00:00+03:00',
     })
@@ -83,7 +83,8 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     })
     expect(result.counts.items).toBe(58)
     expect(result.counts.placements).toBe(58) // every demo article sits in exactly one mapped section
-    expect(warningCodes(result)).toContain('article_outside_catalogue')
+    // Outside the root is counted, not warned about: a whole-catalogue read holds many (CF-16).
+    expect(warningCodes(result)).not.toContain('article_outside_catalogue')
   })
 
   it('every barsy-layer write carries its source record and the mapping version; every cited record exists', () => {
@@ -92,8 +93,8 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     expect(writes.length).toBeGreaterThan(150)
     for (const op of writes) {
       if (op.op !== 'setField') continue
-      expect(op.layer).toBe('barsy')
-      expect(op.mappingVersion).toBe(1)
+      expect(op.layer).toBe('till')
+      expect(op.mappingVersion).toBe(BARSY_MAPPING_VERSION)
       expect(recordIds.has(op.sourceRecordId ?? '')).toBe(true)
     }
   })
@@ -155,14 +156,19 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     expect(record?.scope).toBe(`venue:${VENUE_ID}`)
   })
 
-  it('"Кафе" has no public name in barsy: the name is cleared and flagged, never the internal one', () => {
-    expect(writeOf(result, 'article', '11', 'name')?.op).toBe('clearField')
+  it('"Кафе" has no public name (every language of the _ml object is empty): barsy\'s own name stands in, with a warning (D75)', () => {
+    expect(writtenValue(writeOf(result, 'article', '11', 'name'))).toStrictEqual({ bg_BG: 'Кафе' })
     expect(result.warnings).toContainEqual({
+      code: 'item_public_name_missing',
+      externalType: 'article',
+      externalId: '11',
+    })
+    // It has a name, so it is not "no name at all".
+    expect(result.warnings).not.toContainEqual({
       code: 'item_name_missing',
       externalType: 'article',
       externalId: '11',
     })
-    expect(JSON.stringify(opsOf(result))).not.toContain('Кафе')
   })
 
   it('names per locale: empty strings are missing, the language-less public name fills the default', () => {
@@ -178,9 +184,12 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     expect(writtenValue(writeOf(result, 'article', '40', 'name'))).toStrictEqual({
       bg_BG: 'КАФЕ ЕКСПРЕСО КЪСО',
     })
-    // 70 has neither ml nor public name: internal name "Абсолют  0.050" must not appear.
-    expect(writeOf(result, 'article', '70', 'name')?.op).toBe('clearField')
-    expect(JSON.stringify(opsOf(result))).not.toContain('Абсолют')
+    // 70 has neither ml nor public name: barsy's own name stands in, under the default language (D75).
+    expect(writtenValue(writeOf(result, 'article', '70', 'name'))).toStrictEqual({
+      bg_BG: 'Абсолют  0.050',
+    })
+    // A public name wins as it stands: 160's own name "Бакарди" is not mixed in or added.
+    expect(JSON.stringify(opsOf(result))).not.toContain('Бакарди')
   })
 
   it('maps description_ml / description_public as a fallback layer', () => {
@@ -267,10 +276,14 @@ describe('mapCatalogue on the demo recordings (till root 1091, bid 10)', () => {
     expect(JSON.stringify(opsOf(result))).not.toContain('files_get')
   })
 
-  it('sections have no public titles on the till tree: cleared and flagged, never the internal name', () => {
-    expect(writeOf(result, 'category', '310', 'title')?.op).toBe('clearField')
-    expect(warningCodes(result).filter((code) => code === 'section_title_missing')).toHaveLength(11)
-    expect(JSON.stringify(opsOf(result))).not.toContain('Алкохол')
+  it("sections have no public titles on the till tree: barsy's own name stands in, one warning each (D75)", () => {
+    expect(writtenValue(writeOf(result, 'category', '310', 'title'))).toStrictEqual({
+      bg_BG: 'Алкохол',
+    })
+    expect(
+      warningCodes(result).filter((code) => code === 'section_public_title_missing'),
+    ).toHaveLength(11)
+    expect(warningCodes(result)).not.toContain('section_title_missing')
   })
 
   it('is_for_sale: article 100 is off sale (0); is_public maps to visible', () => {
@@ -312,6 +325,7 @@ describe('the public menu root (1171) has public section titles', () => {
       en_US: 'Summer Offers',
     })
     expect(warningCodes(result)).not.toContain('section_title_missing')
+    expect(warningCodes(result)).not.toContain('section_public_title_missing')
     // None of the 60 demo articles sits in the public menu: they are all outside it.
     expect(result.counts.items).toBe(0)
     expect(result.counts.outsideCatalogue).toBe(59)
@@ -391,6 +405,9 @@ describe('articles', () => {
     expect(forSale(article(3, { is_for_sale: 1, is_for_sale_barsys: { 99: 0 } }))).toBe(true)
     expect(forSale(article(4, { is_for_sale: 0, is_for_sale_barsys: {} }))).toBe(false)
     expect(forSale(article(5, { is_for_sale: 1, is_for_sale_barsys: { [BID]: null } }))).toBe(true)
+    // As the catalogue recordings send them: text flags (CF-16).
+    expect(forSale(article(6, { is_for_sale: 1, is_for_sale_barsys: { [BID]: '0' } }))).toBe(false)
+    expect(forSale(article(7, { is_for_sale: 0, is_for_sale_barsys: { [BID]: '1' } }))).toBe(true)
   })
 
   it('maps sr_RS@latin to sr_RS, drops unknown language keys, honours the installation languages', () => {
@@ -494,7 +511,7 @@ describe('articles', () => {
           op: 'clearField',
           node: { link: { integration: INTEGRATION_ID, externalType: 'article', externalId: '1' } },
           fieldKey: 'image',
-          layer: 'barsy',
+          layer: 'till',
           scope: 'master',
         })
         expect(result.assetRequests).toHaveLength(0)
@@ -681,15 +698,77 @@ describe('combos: the burger (article 7183)', () => {
     expect(create).toMatchObject({ parent: { link: { externalType: 'supplement_group' } } })
   })
 
-  it("the option name is the option article's public name; none known → unset and flagged", () => {
+  it("the option name is the option article's public name; none in the list → left alone and flagged", () => {
     expect(writtenValue(writeOf(result, 'supplement', '7183:191:7095', 'name'))).toStrictEqual({
       bg_BG: 'Сос BBQ',
       en_US: 'BBQ sauce',
     })
-    // The option's own (internal) name in the combo response is never used.
-    expect(writeOf(result, 'supplement', '7183:191:7096', 'name')?.op).toBe('clearField')
+    // The option's own (internal) name in the combo response is never used. An option whose
+    // article is not in this run's list is neither written nor cleared (B1-F6): a stored name stays.
+    expect(writeOf(result, 'supplement', '7183:191:7096', 'name')).toBeUndefined()
     expect(warningCodes(result).filter((code) => code === 'option_name_missing')).toHaveLength(13)
     expect(JSON.stringify(opsOf(result))).not.toContain('СОС ПЕСТО')
+  })
+
+  it('a batch that holds only the combo (an incremental run) never clears an option name', () => {
+    const alone = mapCatalogue(
+      input({ tree, articles: [burger], supplementsByArticle: { '7183': demoBurgerSupplements } }),
+      cfg,
+    )
+    const nameOps = opsOf(alone).filter(
+      (op) =>
+        (op.op === 'setField' || op.op === 'clearField') &&
+        'link' in op.node &&
+        op.node.link.externalType === 'supplement' &&
+        op.fieldKey === 'name',
+    )
+    expect(nameOps).toEqual([])
+    expect(alone.counts).toMatchObject({ modifierGroups: 4, options: 14 })
+    // The options themselves are still seen, so they are not concluded missing.
+    expect(alone.linkStates.filter((state) => state.linkType === 'supplement')).toHaveLength(14)
+    expect(warningCodes(alone).filter((code) => code === 'option_name_missing')).toHaveLength(14)
+  })
+
+  it('an option article that is in the list but has no public name takes its own name, with a warning (D75)', () => {
+    const unnamed = article(7095, { categories: ['110'], article_name_public: null })
+    const named = mapCatalogue(
+      input({
+        tree,
+        articles: [burger, unnamed],
+        supplementsByArticle: { '7183': demoBurgerSupplements },
+      }),
+      cfg,
+    )
+    expect(writtenValue(writeOf(named, 'supplement', '7183:191:7095', 'name'))).toStrictEqual({
+      bg_BG: 'INTERNAL 7095',
+    })
+    expect(named.warnings).toContainEqual({
+      code: 'option_public_name_missing',
+      externalType: 'supplement',
+      externalId: '7183:191:7095',
+    })
+    // The name comes from the option article's record, not from the combo response.
+    const op = writeOf(named, 'supplement', '7183:191:7095', 'name')
+    const record = named.sourceRecords.find(
+      (r) => r.externalType === 'article' && r.externalId === '7095',
+    )
+    expect(op?.op === 'setField' ? op.sourceRecordId : null).toBe(record?.id)
+    // The combo response's own name for the option (what it calls it there) is still not read.
+    expect(JSON.stringify(opsOf(named))).not.toContain('СОС ПЕСТО')
+    // An option article with no name at all (not even its own) still clears the name.
+    const nameless = mapCatalogue(
+      input({
+        tree,
+        articles: [
+          burger,
+          article(7095, { categories: ['110'], article_name: '  ', article_name_public: null }),
+        ],
+        supplementsByArticle: { '7183': demoBurgerSupplements },
+      }),
+      cfg,
+    )
+    expect(writeOf(nameless, 'supplement', '7183:191:7095', 'name')?.op).toBe('clearField')
+    expect(warningCodes(nameless)).toContain('option_name_missing')
   })
 
   it('is valid for core and validates against the template; supplement records are venue-scoped', () => {
@@ -720,6 +799,174 @@ describe('combos: the burger (article 7183)', () => {
         'supplements_for_unmapped_article',
       ]),
     )
+  })
+})
+
+describe("barsy's own name stands in for a missing public name (D75)", () => {
+  const tree = rootOf(
+    node(100, [
+      node(110, [], { cat_name: 'Own section', cat_name_public: ' Public section ' }),
+      node(120, [], { cat_name: 'Own only', cat_name_public_ml: { bg_BG: '  ', en_US: null } }),
+      node(130, [], { cat_name: '   ', cat_name_public: null }),
+      node(140, [], { cat_name: 'Own EN', cat_name_public_ml: { en_US: 'Only English' } }),
+    ]),
+  )
+  const cfg = config({ catalogueRootCatId: 100 })
+  const mapOne = (overrides: Partial<Article>) =>
+    mapCatalogue(
+      input({ tree, articles: [article(1, { categories: ['110'], ...overrides })] }),
+      cfg,
+    )
+  const nameOf = (result: CatalogueMapping) => writtenValue(writeOf(result, 'article', '1', 'name'))
+
+  it('an item with no public name gets its own name under the default language, and one warning', () => {
+    const nothing: Partial<Article>[] = [
+      { article_name_public: null, article_name_public_ml: null },
+      { article_name_public: '', article_name_public_ml: {} },
+      { article_name_public: '  ', article_name_public_ml: { bg_BG: '', en_US: ' ', de_DE: null } },
+    ]
+    for (const none of nothing) {
+      const result = mapOne({ article_name: '  Own name  ', ...none })
+      expect(nameOf(result)).toStrictEqual({ bg_BG: 'Own name' })
+      expect(result.warnings.filter((w) => w.code === 'item_public_name_missing')).toStrictEqual([
+        { code: 'item_public_name_missing', externalType: 'article', externalId: '1' },
+      ])
+      expect(warningCodes(result)).not.toContain('item_name_missing')
+    }
+  })
+
+  it('the language barsy text without a tag is stored under is the configured default language', () => {
+    const result = mapCatalogue(
+      input({
+        tree,
+        articles: [
+          article(1, { categories: ['110'], article_name_public: null, article_name: 'Own' }),
+        ],
+      }),
+      { ...cfg, defaultLocale: 'en_US' },
+    )
+    expect(nameOf(result)).toStrictEqual({ en_US: 'Own' })
+  })
+
+  it('a public name in any one language wins as it stands: the two are never mixed', () => {
+    const onlyEnglish = mapOne({
+      article_name: 'Own name',
+      article_name_public: null,
+      article_name_public_ml: { en_US: 'Public' },
+    })
+    expect(nameOf(onlyEnglish)).toStrictEqual({ en_US: 'Public' })
+    const unnamed = mapOne({
+      article_name: 'Own name',
+      article_name_public: 'Public',
+      article_name_public_ml: null,
+    })
+    expect(nameOf(unnamed)).toStrictEqual({ bg_BG: 'Public' })
+    for (const result of [onlyEnglish, unnamed]) {
+      expect(JSON.stringify(opsOf(result))).not.toContain('Own name')
+      expect(warningCodes(result)).not.toContain('item_public_name_missing')
+    }
+  })
+
+  it('a public name only in a language the installation does not hold counts as missing', () => {
+    const result = mapCatalogue(
+      input({
+        tree,
+        languages: [{ lang_id: 'bg_BG', lang_name: 'Български' }],
+        articles: [
+          article(1, {
+            categories: ['110'],
+            article_name: 'Own name',
+            article_name_public: null,
+            article_name_public_ml: { de_DE: 'Nur Deutsch', xx_XX: 'x' },
+          }),
+        ],
+      }),
+      cfg,
+    )
+    expect(nameOf(result)).toStrictEqual({ bg_BG: 'Own name' })
+  })
+
+  it('no name at all (not even its own) is still "no name": cleared, and flagged as before', () => {
+    const result = mapOne({ article_name: '   ', article_name_public: null })
+    expect(writeOf(result, 'article', '1', 'name')?.op).toBe('clearField')
+    expect(result.warnings).toContainEqual({
+      code: 'item_name_missing',
+      externalType: 'article',
+      externalId: '1',
+    })
+    expect(warningCodes(result)).not.toContain('item_public_name_missing')
+  })
+
+  it('a response that did not carry the public fields at all says nothing: no fallback, no clear', () => {
+    const result = mapOne({
+      article_name: 'Own name',
+      article_name_public: undefined,
+      article_name_public_ml: undefined,
+    })
+    expect(writeOf(result, 'article', '1', 'name')).toBeUndefined()
+    expect(JSON.stringify(opsOf(result))).not.toContain('Own name')
+    expect(warningCodes(result)).not.toContain('item_public_name_missing')
+  })
+
+  it("a section: the public title wins, else the category's own name, else nothing", () => {
+    const result = mapCatalogue(input({ tree, articles: [] }), cfg)
+    const title = (id: string) => writtenValue(writeOf(result, 'category', id, 'title'))
+    expect(title('110')).toStrictEqual({ bg_BG: 'Public section' })
+    expect(title('120')).toStrictEqual({ bg_BG: 'Own only' }) // blank _ml in every language
+    expect(writeOf(result, 'category', '130', 'title')?.op).toBe('clearField') // no name at all
+    expect(title('140')).toStrictEqual({ en_US: 'Only English' }) // one language wins as it stands
+    expect(JSON.stringify(opsOf(result))).not.toContain('Own EN')
+    const missing = (code: string) =>
+      result.warnings.filter((w) => w.code === code).map((w) => w.externalId)
+    expect(missing('section_public_title_missing')).toStrictEqual(['120'])
+    expect(missing('section_title_missing')).toStrictEqual(['130'])
+  })
+
+  it('counts one warning per fallback, none for a public name, whatever the order', () => {
+    const articles = [
+      article(1, { categories: ['110'], article_name: 'A', article_name_public: null }),
+      article(2, { categories: ['110'], article_name: 'B', article_name_public: 'Public B' }),
+      article(3, { categories: ['110'], article_name: 'C', article_name_public: null }),
+    ]
+    const forward = mapCatalogue(input({ tree, articles }), cfg)
+    const backward = mapCatalogue(input({ tree, articles: [...articles].reverse() }), cfg)
+    const fallbacks = (result: CatalogueMapping) =>
+      result.warnings.filter((w) => w.code === 'item_public_name_missing').map((w) => w.externalId)
+    expect(fallbacks(forward)).toStrictEqual(['1', '3'])
+    expect(backward).toStrictEqual(forward)
+  })
+
+  it("only the one name is read: ids, prices, notes and every other field of barsy's own stay out", () => {
+    const secret = {
+      internal_note: 'NOTE-SECRET',
+      cost_price: '1.11',
+      delivery_price: '2.22',
+      code: 'CODE-SECRET',
+      barcode: 'BARCODE-SECRET',
+      ref_num: 'REF-SECRET',
+      export_id: 'EXPORT-SECRET',
+    }
+    const result = mapOne({ article_name: 'Own name', article_name_public: null, ...secret })
+    expect(nameOf(result)).toStrictEqual({ bg_BG: 'Own name' })
+    const written = JSON.stringify(opsOf(result))
+    for (const value of Object.values(secret)) expect(written).not.toContain(value)
+    // No field beyond the ones the mapping already wrote for an item and its section.
+    const keys = new Set(
+      opsOf(result).flatMap((op) =>
+        op.op === 'setField' || op.op === 'clearField' ? [op.fieldKey] : [],
+      ),
+    )
+    const known = [
+      'allergens',
+      'description',
+      'for_sale',
+      'image',
+      'name',
+      'price',
+      'title',
+      'visible',
+    ]
+    for (const key of keys) expect(known, key).toContain(key)
   })
 })
 
@@ -815,7 +1062,7 @@ describe('input errors', () => {
     const bad = (cfg: Partial<ReturnType<typeof config>>) => () =>
       mapCatalogue(input(), { ...config(), ...cfg } as never)
     expect(bad({ integrationId: 'nope' as never })).toThrow(/integrationId/)
-    expect(bad({ mappingVersion: 2 as never })).toThrow(/mappingVersion/)
+    expect(bad({ mappingVersion: (BARSY_MAPPING_VERSION + 1) as never })).toThrow(/mappingVersion/)
     expect(bad({ observedAt: 'yesterday' })).toThrow(/observedAt/)
     expect(bad({ priceSource: 'list_price' as never })).toThrow(/priceSource/)
     expect(() => mapCatalogue(input({ venueId: 'venue-1' as never }), config())).toThrow(/venueId/)

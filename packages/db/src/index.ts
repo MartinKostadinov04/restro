@@ -1,9 +1,11 @@
 // @restro/db, the read side: the connection pool, tenant-scoped READ ONLY transactions, the
 // system-table scope, and the Drizzle schema objects. Writes to tenant data go through
-// `@restro/db/write`, which only core/apply may import (dependency-cruiser enforces it).
-// This file must never import from ./write.
+// `@restro/db/write`, which only core/apply may import, and purges through `@restro/db/purge`,
+// which only the worker's purge job may import (dependency-cruiser enforces both).
+// This file must never import from ./write or ./purge.
 import { type DbPool, runForTenant, runScoped, type Transaction } from './internal/pool'
 import type {
+  areas,
   assets,
   barsyVenues,
   events,
@@ -11,18 +13,24 @@ import type {
   integrations,
   itemFirstPublished,
   jobRuns,
+  menuRoutes,
   menus,
   nodes,
+  organizationSlugHistory,
   placements,
   places,
   publishPointers,
+  purgeLog,
   snapshots,
   sourceLinks,
   sourceRecords,
   tags,
   templates,
   tenants,
+  tombstones,
+  venueSlugHistory,
   venues,
+  venueTables,
   workerHeartbeats,
 } from './schema'
 
@@ -108,3 +116,17 @@ export type PublishPointer = typeof publishPointers.$inferSelect
 export type ItemFirstPublishedRow = typeof itemFirstPublished.$inferSelect
 /** A row of restro.tags. */
 export type TagRow = typeof tags.$inferSelect
+/** A row of restro.areas. */
+export type AreaRow = typeof areas.$inferSelect
+/** A row of restro.tables (a venue's table; the Drizzle object is `venueTables`). */
+export type VenueTableRow = typeof venueTables.$inferSelect
+/** A row of restro.menu_routes. */
+export type MenuRouteRow = typeof menuRoutes.$inferSelect
+/** A row of restro.venue_slug_history. */
+export type VenueSlugHistoryRow = typeof venueSlugHistory.$inferSelect
+/** A row of restro.organization_slug_history. */
+export type OrganizationSlugHistoryRow = typeof organizationSlugHistory.$inferSelect
+/** A row of restro.tombstones. */
+export type TombstoneRow = typeof tombstones.$inferSelect
+/** A row of restro.purge_log. */
+export type PurgeLogRow = typeof purgeLog.$inferSelect

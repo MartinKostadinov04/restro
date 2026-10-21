@@ -2,6 +2,7 @@
 // SSRF guard (same origin only), the image checks (magic bytes, 10 MB), the checksum dedupe, the
 // barsy-layer `image` field and the rule that a manual photo still wins. The store is an
 // in-memory fake (the R2 implementation is mocked in its own package's tests).
+import { BARSY_MAPPING_VERSION } from '@restro/barsy'
 import {
   type ChangeSet,
   JOB_NAMES,
@@ -140,7 +141,7 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
       status: string
     }>('select * from restro.assets where tenant_id = $1 order by created_at', [world.tenantId])
   const variantJobs = () => world.enqueued.filter((job) => job.name === JOB_NAMES.assetVariants)
-  const imageOf = async (articleId: string, layer = 'barsy') =>
+  const imageOf = async (articleId: string, layer = 'till') =>
     (
       await world.query<{ value: { asset_id: string; alt: unknown; focal: unknown } }>(
         `select fv.value from restro.field_values fv
@@ -162,7 +163,7 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
 
     const [asset] = await assetRows()
     expect(asset).toMatchObject({
-      origin: 'barsy',
+      origin: 'connector',
       content_type: 'image/png',
       width: 8,
       height: 6,
@@ -189,9 +190,9 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
        where sl.integration_id = $1 and sl.external_id = '11' and fv.field_key = 'image'`,
       [world.integrationId],
     )
-    expect(row?.source).toBe(`barsy:${world.integrationId}`)
+    expect(row?.source).toBe(`till:${world.integrationId}`)
     expect(row?.job_id).toMatch(/^jb_/)
-    expect(row?.mapping_version).toBe(1)
+    expect(row?.mapping_version).toBe(BARSY_MAPPING_VERSION)
   })
 
   it('sends no credentials unless the host asks for them, and then only to its own origin', async () => {
@@ -545,7 +546,7 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
         await fetchJob(11)
         await fetchJob(OTHER)
         expect(await imageOf('11')).toBeDefined()
-        expect((await resolvedImage(11))?.layer).toBe('barsy')
+        expect((await resolvedImage(11))?.layer).toBe('till')
 
         const manualAsset = newId('as')
         await createAsset(world.pool, world.tenantId, {
@@ -593,7 +594,7 @@ describe.skipIf(!hasDatabase)('asset-fetch', () => {
         expect(await imageOf('11')).toBeUndefined()
         expect(await imageOf(String(OTHER))).toBeUndefined()
         const plain = await resolvedImage(11)
-        expect(plain?.layer).not.toBe('barsy')
+        expect(plain?.layer).not.toBe('till')
         expect(plain?.value ?? null).toBeNull()
         // The manual photo is still what the guest sees.
         const manual = await resolvedImage(OTHER)

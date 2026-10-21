@@ -1,4 +1,4 @@
-// Public types of the barsy mapping (mapping v1): what goes in, what comes out. The mapping is
+// Public types of the barsy mapping (mapping v2): what goes in, what comes out. The mapping is
 // pure: no database, no jobs, no network. S2-03 fetches (read wrappers), calls these functions,
 // stores the descriptors and hands the change set to apply().
 
@@ -20,8 +20,13 @@ import type {
   SupplementGroup,
 } from '../read/schemas.ts'
 
-/** The mapping version stamped on every barsy-layer write (doc: "Every write records mapping_version"). */
-export const BARSY_MAPPING_VERSION = 1
+/**
+ * The mapping version stamped on every till-layer write (doc: "Every write records
+ * mapping_version"). 2 (D75, CF-17): barsy's own name stands in for a public name that is not
+ * there. The change of version also changes the sync's scope hash, so the next pull of every
+ * venue is a full one and writes the names.
+ */
+export const BARSY_MAPPING_VERSION = 2
 
 /** Which barsy price feeds `price` (the open decision P52; both stay in the source record). */
 export type PriceSource = 'actual_price' | 'current_price'
@@ -56,7 +61,7 @@ export interface CatalogueInput {
   readonly menuId: NodeId
   /** `Categories_getalltree` (public tree of this venue): one root node. */
   readonly tree: CategoryTreeNode
-  /** All pages of `Articles_getlist` for the catalogue root, concatenated. */
+  /** All pages of `Articles_getlist` (the venue's root, or its whole catalogue), concatenated. */
   readonly articles: readonly Article[]
   /** `Articlesupplements_get` per article id (as text), for articles with `has_supplements`. */
   readonly supplementsByArticle: Readonly<Record<string, readonly SupplementGroup[]>>
@@ -64,6 +69,16 @@ export interface CatalogueInput {
   readonly detailsTree: readonly ArticleDetailsGroup[]
   /** `Languages_getlist`: the languages the installation holds. */
   readonly languages: readonly Language[]
+  /**
+   * Categories whose section in this menu is linked under a qualified key
+   * (`<catId>@<qualifier>`, ./venues.ts `qualifiedSections`): a map of category to qualifier (the
+   * menu's id, or the venue's for a link from before D88), or, as before D88, a set of categories
+   * qualified by the venue's id. Absent or empty: every section uses the plain key, as before
+   * several venues shared a catalogue (CF-16).
+   */
+  readonly qualifiedSections?: ReadonlySet<number> | ReadonlyMap<number, string> | undefined
+  /** Articles (ids as text) this venue had hidden, outside its root: cleared when mapped (CF-16). */
+  readonly venueHiddenArticles?: ReadonlySet<string> | undefined
 }
 
 /** What kind of barsy object a source record holds. */
@@ -121,10 +136,11 @@ export interface LinkStateIntent {
 export type MappingWarningCode =
   | 'category_flattened'
   | 'section_title_missing'
+  | 'section_public_title_missing'
   | 'article_duplicate'
-  | 'article_outside_catalogue'
   | 'article_unplaced'
   | 'item_name_missing'
+  | 'item_public_name_missing'
   | 'price_missing'
   | 'price_invalid'
   | 'allergen_key_not_found'
@@ -135,9 +151,14 @@ export type MappingWarningCode =
   | 'supplements_for_unmapped_article'
   | 'modifier_group_max_unknown'
   | 'option_name_missing'
+  | 'option_public_name_missing'
   | 'option_price_invalid'
 
-/** Something the mapping did not guess. Barsy ids only, never names, prices or personal data. */
+/**
+ * Something the mapping did not guess. Barsy ids only, never names, prices or personal data.
+ * `*_name_missing` / `section_title_missing`: barsy holds no name at all. `*_public_*_missing`
+ * (D75): barsy holds no public name, so its own name was used; one per fallback.
+ */
 export interface MappingWarning {
   readonly code: MappingWarningCode
   readonly externalType: SourceExternalType | 'catalogue' | 'supplement_group' | 'supplement'
@@ -156,8 +177,21 @@ export interface CatalogueCounts {
   readonly deletedArticles: number
   /** `is_service` articles left out. */
   readonly skippedServices: number
-  /** Articles with no category inside the catalogue. */
+  /** Articles with no category under the venue's root (another venue's part of the catalogue, or none). */
   readonly outsideCatalogue: number
+}
+
+/**
+ * The connector's language report (D77, adjustments I3): the languages the installation offers
+ * (`Languages_getlist`, as our locale keys; all of ours when it lists none) and how many of the
+ * guest-facing texts this mapping wrote (names and descriptions of sections, items, option
+ * groups and options) hold text in each, out of how many such texts there were. The worker
+ * records it on the venue after a complete full read; core decides which languages count.
+ */
+export interface MappedLanguages {
+  readonly offered: readonly Locale[]
+  readonly filled: Readonly<Partial<Record<Locale, number>>>
+  readonly total: number
 }
 
 /** The result of mapping one venue's catalogue. */
@@ -170,6 +204,7 @@ export interface CatalogueMapping {
   readonly linkStates: readonly LinkStateIntent[]
   readonly warnings: readonly MappingWarning[]
   readonly counts: CatalogueCounts
+  readonly languages: MappedLanguages
 }
 
 /** One barsy place, ready to be stored in `places` (the table QR token is S2-03/Stage 3). */
@@ -178,6 +213,9 @@ export interface PlaceDescriptor {
   readonly placeId: string
   /** barsy's `place_num` as text ("VIP", "Бар", "12"). */
   readonly placeNum: string | null
+  /** The hall's id as text and its order among halls (D95); null when barsy sends none. */
+  readonly salonId: string | null
+  readonly salonWeight: number | null
   readonly salonName: string | null
   readonly isPublic: boolean
   readonly sourceRecord: SourceRecordDescriptor

@@ -32,6 +32,23 @@ export const JOB_NAMES = {
   assetVariants: 'asset-variants',
   /** Write the `t/<token>.json` files of a venue's table codes and remove the retired ones (S3-07). */
   publishTableTokens: 'publish-table-tokens',
+  /**
+   * Write an organisation's index `o/<slug>.json` and the redirect files of its earlier slugs
+   * (D84): after a rename of the organisation, a venue, or a change of a venue's state. The
+   * publish jobs write the index themselves after a publish.
+   */
+  publishOrganizationIndex: 'publish-organization-index',
+  /**
+   * Erase one deleted venue now (D83: "Delete permanently"): its own rows, files, codes and
+   * tokens (tombstoned). Only the worker's purge job, through the role `restro_purge`.
+   */
+  purgeVenue: 'purge-venue',
+  /**
+   * Scheduled, daily (D83, D96): purges what is due in every organisation: venues 30 days in the
+   * bin, binned menus, deleted areas and tables, old versions, the change log past two months.
+   * Not sent by anyone else.
+   */
+  purgeTick: 'purge-tick',
   /** Test the credentials and read what the installation holds (venues, languages, tree). */
   barsyConnect: 'barsy-connect',
   /** The full pull of one venue (collection path C). The only job that may conclude absence. */
@@ -40,6 +57,11 @@ export const JOB_NAMES = {
   barsyIncremental: 'barsy-incremental',
   /** Download one barsy picture into the asset store. */
   assetFetch: 'asset-fetch',
+  /**
+   * Read the tables of one mapped till venue (brief CF-16, T67). Needs no catalogue root: the
+   * minute tick queues it for a mapped venue whose tables were never read.
+   */
+  placesRead: 'places-read',
   /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
@@ -60,9 +82,16 @@ const venueId = idSchema('vn')
 export const BarsyConnectJobSchema = z.strictObject({ tenantId, integrationId })
 export type BarsyConnectJob = z.output<typeof BarsyConnectJobSchema>
 
+/**
+ * A job about one venue of an integration: the two pulls and the places read. `venueId` is OUR
+ * venue (`vn_`), never a till's own venue id.
+ */
+export const VenueSyncJobSchema = z.strictObject({ tenantId, integrationId, venueId })
+export type VenueSyncJob = z.output<typeof VenueSyncJobSchema>
+
 /** `barsy-full-pull` and `barsy-incremental`: `venueId` is OUR venue (`vn_`), never a barsy `bid`. */
-export const BarsyPullJobSchema = z.strictObject({ tenantId, integrationId, venueId })
-export type BarsyPullJob = z.output<typeof BarsyPullJobSchema>
+export const BarsyPullJobSchema = VenueSyncJobSchema
+export type BarsyPullJob = VenueSyncJob
 
 /**
  * `asset-fetch`: one picture of one article. `url` is the one the mapping built from barsy's
@@ -130,17 +159,28 @@ export const PublishTableTokensJobSchema = z.strictObject({
 })
 export type PublishTableTokensJob = z.output<typeof PublishTableTokensJobSchema>
 
+/** `publish-organization-index`: one organisation. */
+export const PublishOrganizationIndexJobSchema = z.strictObject({ tenantId })
+export type PublishOrganizationIndexJob = z.output<typeof PublishOrganizationIndexJobSchema>
+
+/** `purge-venue`: one deleted venue, erased now. */
+export const PurgeVenueJobSchema = z.strictObject({ tenantId, venueId })
+export type PurgeVenueJob = z.output<typeof PurgeVenueJobSchema>
+
 /** The payload schema of each job that carries one. */
 export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyConnect]: BarsyConnectJobSchema,
   [JOB_NAMES.barsyFullPull]: BarsyPullJobSchema,
   [JOB_NAMES.barsyIncremental]: BarsyPullJobSchema,
   [JOB_NAMES.assetFetch]: AssetFetchJobSchema,
+  [JOB_NAMES.placesRead]: VenueSyncJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
   [JOB_NAMES.assetVariants]: AssetVariantsJobSchema,
   [JOB_NAMES.publishTableTokens]: PublishTableTokensJobSchema,
+  [JOB_NAMES.publishOrganizationIndex]: PublishOrganizationIndexJobSchema,
+  [JOB_NAMES.purgeVenue]: PurgeVenueJobSchema,
 } as const
 
 /** The jobs a producer may send (the ticks are only ever created by the scheduler). */
@@ -165,6 +205,7 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.barsyIncremental,
   JOB_NAMES.assetFetch,
   JOB_NAMES.assetVariants,
+  JOB_NAMES.placesRead,
 ])
 
 /**
@@ -178,15 +219,18 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishFiles,
   JOB_NAMES.publishLive,
   JOB_NAMES.publishTableTokens,
+  JOB_NAMES.publishOrganizationIndex,
+  JOB_NAMES.purgeVenue,
 ])
 
 /**
- * The pg-boss singleton key of a job: one key per integration for connect and the two pulls, and
- * one picture is fetched once at a time. The `exclusive` policy applies per queue AND key, so it
- * only keeps two jobs of the SAME queue apart: a full pull and an incremental run of one
- * integration can both be active. What keeps pulls from overlapping is the worker's Postgres
- * advisory lock (apps/worker/src/sync/pull-lock.ts). Venue-level keys come with a second venue
- * per integration (tracker T50).
+ * The pg-boss singleton key of a job: one key per integration for connect; one per integration
+ * and venue for the two pulls and the places read (brief CF-16, T50), so a venue's pull is never
+ * dropped because another venue's is queued; one picture is fetched once at a time. The
+ * `exclusive` policy applies per queue AND key, so it only keeps two jobs of the SAME queue apart:
+ * a full pull and an incremental run can both be active. What keeps pulls from overlapping (one
+ * at a time per installation) is the worker's Postgres advisory lock
+ * (apps/worker/src/sync/pull-lock.ts).
  *
  * Publishing is keyed by menu + venue. An automatic publish has its own key, so a person's
  * "Publish" is never swallowed by an automatic one still waiting out its delay (their reasons
@@ -210,6 +254,10 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
         ? tokens.venueId
         : `${tokens.venueId}:${sha256Hex(retired).slice(0, 16)}`
     }
+    case JOB_NAMES.publishOrganizationIndex:
+      return (data as PublishOrganizationIndexJob).tenantId
+    case JOB_NAMES.purgeVenue:
+      return (data as PurgeVenueJob).venueId
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
       const scope = data as PublishScopeJob
@@ -222,19 +270,25 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
         ? `${base}:auto`
         : `${base}:manual:${publish.approveHold ?? 'new'}`
     }
-    default:
-      return (data as { integrationId: string }).integrationId
+    default: {
+      // Connect carries no venue: one per integration. A venue job: one per integration and venue.
+      const keyed = data as { integrationId: string; venueId?: string }
+      return keyed.venueId === undefined
+        ? keyed.integrationId
+        : `${keyed.integrationId}:${keyed.venueId}`
+    }
   }
 }
 
 /**
- * The key for a pull that a running pull sends again for later (its integration was busy). The
- * running job still holds the plain key, and the `exclusive` policy would drop a second job with
- * it (`send` returns null), so the later copy carries a key of its own. The second makes it unique
- * per deferral: a copy that is busy again can send its own successor.
+ * The key for a pull that a running pull sends again for later (its integration was busy):
+ * `key` is the running job's own singleton key (integration and venue). The running job still
+ * holds that key, and the `exclusive` policy would drop a second job with it (`send` returns
+ * null), so the later copy carries a key of its own. The second makes it unique per deferral: a
+ * copy that is busy again can send its own successor.
  */
-export function deferredSingletonKey(integrationId: string, at: Date): string {
-  return `${integrationId}:later:${Math.floor(at.getTime() / 1000)}`
+export function deferredSingletonKey(key: string, at: Date): string {
+  return `${key}:later:${Math.floor(at.getTime() / 1000)}`
 }
 
 /**

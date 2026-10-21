@@ -39,11 +39,11 @@ const describeWrite = {
   value: { en_US: 'Gin, Campari, vermouth' },
 } as const
 
-const barsyPrice = {
+const tillPrice = {
   op: 'setField',
   node: { link: { integration: 'int_club', externalType: 'article', externalId: '102751' } },
   fieldKey: 'price',
-  layer: 'barsy',
+  layer: 'till',
   scope: `venue:${venueId}`,
   value: { amount_minor: 1250, currency: 'EUR' },
   sourceRecordId: 'sr_1',
@@ -90,15 +90,15 @@ describe('ChangeSetSchema', () => {
     expect(parsed.value.ops).toHaveLength(8)
   })
 
-  it('parses a valid barsy change set that names nodes by link', () => {
+  it('parses a valid till change set that names nodes by link', () => {
     const parsed = parseChangeSet({
-      ...manualSet([barsyPrice]),
-      source: 'barsy:int_club',
+      ...manualSet([tillPrice]),
+      source: 'till:int_club',
       actor: 'integration:int_club',
-      jobId: 'job_barsy_full_7',
+      jobId: 'job_till_full_7',
     })
     if (!parsed.ok) throw new Error(parsed.reason)
-    expect(parsed.value.source).toBe('barsy:int_club')
+    expect(parsed.value.source).toBe('till:int_club')
   })
 
   it('rejects a change set without job, source, actor, time or ops (rule 2)', () => {
@@ -123,18 +123,34 @@ describe('ChangeSetSchema', () => {
   })
 
   it('rejects writes into a layer the source may not write', () => {
-    expect(issuesOf(manualSet([barsyPrice]))).toContain('cannot write the barsy layer')
-    const fromImport = { ...manualSet([describeWrite]), source: 'import:wine-list' }
-    expect(issuesOf(fromImport)).toContain('cannot write the manual layer')
+    expect(issuesOf(manualSet([tillPrice]))).toContain('cannot write the till layer')
+    const fromTill = {
+      ...manualSet([describeWrite]),
+      source: 'till:int_club',
+      actor: 'integration:int_club',
+    }
+    expect(issuesOf(fromTill)).toContain('cannot write the manual layer')
   })
 
-  it('rejects link refs in manual sets and links of another integration in barsy sets', () => {
-    expect(issuesOf(manualSet([{ ...describeWrite, node: barsyPrice.node }]))).toContain(
+  it('refuses the import layer and import sources: spreadsheet import was dropped (D65)', () => {
+    const intoImport = { ...describeWrite, layer: 'import' }
+    expect(FieldWriteSchema.safeParse(intoImport).success).toBe(false)
+    expect(issuesOf(manualSet([intoImport]))).toContain('expected till, manual, override')
+    const fromImport = { ...manualSet([describeWrite]), source: 'import:wine-list' }
+    expect(issuesOf(fromImport)).toContain('expected manual or till:<integration>')
+    // The vendor's name is no source either: only the role is (brief CF-03).
+    expect(issuesOf({ ...manualSet([describeWrite]), source: 'barsy:int_club' })).toContain(
+      'expected manual or till:<integration>',
+    )
+  })
+
+  it('rejects link refs in manual sets and links of another integration in till sets', () => {
+    expect(issuesOf(manualSet([{ ...describeWrite, node: tillPrice.node }]))).toContain(
       'manual change sets name nodes by id',
     )
     const otherIntegration = {
-      ...manualSet([barsyPrice]),
-      source: 'barsy:int_other',
+      ...manualSet([tillPrice]),
+      source: 'till:int_other',
       actor: 'integration:int_other',
     }
     expect(issuesOf(otherIntegration)).toContain('another integration')
@@ -147,20 +163,20 @@ describe('ChangeSetSchema', () => {
     expect(issuesOf(manualSet([{ ...describeWrite, basis: { en_US: 'x' } }]))).toContain('basis')
   })
 
-  it('keeps venue scope to barsy values, with our venue id (never a barsy bid)', () => {
+  it("keeps venue scope to till values, with our venue id (never the till's own)", () => {
     expect(issuesOf(manualSet([{ ...describeWrite, scope: `venue:${venueId}` }]))).toContain(
       'venue-scoped',
     )
     const withBid = {
-      ...manualSet([{ ...barsyPrice, scope: 'venue:1' }]),
-      source: 'barsy:int_club',
+      ...manualSet([{ ...tillPrice, scope: 'venue:1' }]),
+      source: 'till:int_club',
     }
     expect(issuesOf(withBid)).toContain('scope')
   })
 
-  it('requires source record and mapping version on barsy writes', () => {
-    const { sourceRecordId: _record, mappingVersion: _version, ...bare } = barsyPrice
-    const set = { ...manualSet([bare]), source: 'barsy:int_club', actor: 'integration:int_club' }
+  it('requires source record and mapping version on till writes', () => {
+    const { sourceRecordId: _record, mappingVersion: _version, ...bare } = tillPrice
+    const set = { ...manualSet([bare]), source: 'till:int_club', actor: 'integration:int_club' }
     const reason = issuesOf(set)
     expect(reason).toContain('sourceRecordId')
     expect(reason).toContain('mappingVersion')
@@ -211,36 +227,34 @@ describe('ChangeSetSchema', () => {
     const parsed = parseChangeSet(manualSet([clear]))
     if (!parsed.ok) throw new Error(parsed.reason)
     expect(parsed.value.ops[0]?.op).toBe('clearField')
-    expect(issuesOf(manualSet([{ ...clear, layer: 'barsy' }]))).toContain(
-      'cannot clear the barsy layer',
+    expect(issuesOf(manualSet([{ ...clear, layer: 'till' }]))).toContain(
+      'cannot clear the till layer',
     )
     expect(issuesOf(manualSet([{ ...clear, scope: `venue:${venueId}` }]))).toContain('venue-scoped')
-    expect(issuesOf(manualSet([{ ...clear, node: barsyPrice.node, layer: 'manual' }]))).toContain(
+    expect(issuesOf(manualSet([{ ...clear, node: tillPrice.node, layer: 'manual' }]))).toContain(
       'manual change sets name nodes by id',
     )
-    const barsyClear = {
-      ...manualSet([
-        { ...clear, node: barsyPrice.node, layer: 'barsy', scope: `venue:${venueId}` },
-      ]),
-      source: 'barsy:int_club',
+    const tillClear = {
+      ...manualSet([{ ...clear, node: tillPrice.node, layer: 'till', scope: `venue:${venueId}` }]),
+      source: 'till:int_club',
       actor: 'integration:int_club',
     }
-    expect(parseChangeSet(barsyClear).ok).toBe(true)
+    expect(parseChangeSet(tillClear).ok).toBe(true)
   })
 
   it("accepts the position hint 'end', and only 'end' from adapters", () => {
     const placement = {
       op: 'setPlacement',
-      item: barsyPrice.node,
+      item: tillPrice.node,
       section: { link: { integration: 'int_club', externalType: 'category', externalId: '7' } },
     }
-    const fromBarsy = (sortKey: string) => ({
+    const fromTill = (sortKey: string) => ({
       ...manualSet([{ ...placement, sortKey }]),
-      source: 'barsy:int_club',
+      source: 'till:int_club',
       actor: 'integration:int_club',
     })
-    expect(parseChangeSet(fromBarsy('end')).ok).toBe(true)
-    expect(issuesOf(fromBarsy('a0'))).toContain("places nodes with 'end'")
+    expect(parseChangeSet(fromTill('end')).ok).toBe(true)
+    expect(issuesOf(fromTill('a0'))).toContain("places nodes with 'end'")
     const manual = { op: 'setPlacement', item: { id: itemId }, section: { id: sectionId } }
     expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'end' }])).ok).toBe(true)
     expect(parseChangeSet(manualSet([{ ...manual, sortKey: 'a0' }])).ok).toBe(true)
@@ -250,40 +264,40 @@ describe('ChangeSetSchema', () => {
   it('carries the optional onlyIfUnplaced flag on a placement, and only as a boolean', () => {
     const placement = {
       op: 'setPlacement',
-      item: barsyPrice.node,
+      item: tillPrice.node,
       section: { link: { integration: 'int_club', externalType: 'category', externalId: '7' } },
       sortKey: 'end',
     }
-    const fromBarsy = (op: unknown) => ({
+    const fromTill = (op: unknown) => ({
       ...manualSet([op]),
-      source: 'barsy:int_club',
+      source: 'till:int_club',
       actor: 'integration:int_club',
     })
-    const withFlag = parseChangeSet(fromBarsy({ ...placement, onlyIfUnplaced: true }))
+    const withFlag = parseChangeSet(fromTill({ ...placement, onlyIfUnplaced: true }))
     if (!withFlag.ok) throw new Error(withFlag.reason)
     expect(withFlag.value.ops[0]).toMatchObject({ op: 'setPlacement', onlyIfUnplaced: true })
     // Without the flag nothing changes (it stays absent, not false).
-    const without = parseChangeSet(fromBarsy(placement))
+    const without = parseChangeSet(fromTill(placement))
     if (!without.ok) throw new Error(without.reason)
     expect(without.value.ops[0]).not.toHaveProperty('onlyIfUnplaced')
-    expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplaced: false })).ok).toBe(true)
-    expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplaced: 'yes' })).ok).toBe(false)
-    expect(parseChangeSet(fromBarsy({ ...placement, onlyIfUnplacd: true })).ok).toBe(false)
+    expect(parseChangeSet(fromTill({ ...placement, onlyIfUnplaced: false })).ok).toBe(true)
+    expect(parseChangeSet(fromTill({ ...placement, onlyIfUnplaced: 'yes' })).ok).toBe(false)
+    expect(parseChangeSet(fromTill({ ...placement, onlyIfUnplacd: true })).ok).toBe(false)
   })
 
   it('setLinkState names a link of its own integration, a lifecycle state, and a hash only with seenAt', () => {
     const link = { integration: 'int_club', externalType: 'article', externalId: '102751' }
-    const fromBarsy = (op: unknown, integration = 'int_club') => ({
+    const fromTill = (op: unknown, integration = 'int_club') => ({
       ...manualSet([op]),
-      source: `barsy:${integration}`,
+      source: `till:${integration}`,
       actor: `integration:${integration}`,
     })
     const hash = 'a'.repeat(64)
     for (const state of ['active', 'missing', 'deleted']) {
-      expect(parseChangeSet(fromBarsy({ op: 'setLinkState', link, state })).ok).toBe(true)
+      expect(parseChangeSet(fromTill({ op: 'setLinkState', link, state })).ok).toBe(true)
     }
     const seen = parseChangeSet(
-      fromBarsy({
+      fromTill({
         op: 'setLinkState',
         link,
         state: 'active',
@@ -295,17 +309,17 @@ describe('ChangeSetSchema', () => {
     expect(seen.value.ops[0]).toMatchObject({ op: 'setLinkState', hash })
     expect(nodeRefsOf(seen.value.ops[0] as never)).toEqual([])
 
-    expect(issuesOf(fromBarsy({ op: 'setLinkState', link, state: 'active', hash }))).toContain(
+    expect(issuesOf(fromTill({ op: 'setLinkState', link, state: 'active', hash }))).toContain(
       'seenAt',
     )
-    expect(parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'gone' })).ok).toBe(false)
+    expect(parseChangeSet(fromTill({ op: 'setLinkState', link, state: 'gone' })).ok).toBe(false)
     expect(
-      parseChangeSet(fromBarsy({ op: 'setLinkState', link, state: 'active', seenAt: 'yesterday' }))
+      parseChangeSet(fromTill({ op: 'setLinkState', link, state: 'active', seenAt: 'yesterday' }))
         .ok,
     ).toBe(false)
     expect(
       parseChangeSet(
-        fromBarsy({
+        fromTill({
           op: 'setLinkState',
           link,
           state: 'active',
@@ -315,12 +329,11 @@ describe('ChangeSetSchema', () => {
       ).ok,
     ).toBe(false)
     expect(
-      issuesOf(fromBarsy({ op: 'setLinkState', link, state: 'missing' }, 'int_other')),
+      issuesOf(fromTill({ op: 'setLinkState', link, state: 'missing' }, 'int_other')),
     ).toContain('cannot link another integration')
     expect(
-      parseChangeSet(
-        fromBarsy({ op: 'setLinkState', link, state: 'missing', node: { id: itemId } }),
-      ).ok,
+      parseChangeSet(fromTill({ op: 'setLinkState', link, state: 'missing', node: { id: itemId } }))
+        .ok,
     ).toBe(false)
   })
 
@@ -339,12 +352,12 @@ describe('ChangeSetSchema', () => {
     expect(parseChangeSet(manualSet([create('option', parent, 'a3')])).ok).toBe(true)
     expect(parseChangeSet(manualSet([create('section', parent, 'oops')])).ok).toBe(false)
     expect(issuesOf(manualSet([create('item', null, 'a0')]))).toContain('no siblings')
-    const fromBarsy = {
-      ...manualSet([create('section', barsyPrice.node, 'a0')]),
-      source: 'barsy:int_club',
+    const fromTill = {
+      ...manualSet([create('section', tillPrice.node, 'a0')]),
+      source: 'till:int_club',
       actor: 'integration:int_club',
     }
-    expect(issuesOf(fromBarsy)).toContain("places nodes with 'end'")
+    expect(issuesOf(fromTill)).toContain("places nodes with 'end'")
   })
 
   it('types a parsed write', () => {
@@ -355,24 +368,26 @@ describe('ChangeSetSchema', () => {
 
 describe('sources, layers and scopes', () => {
   it('recognises the allowed forms', () => {
-    expect(['manual', 'import:wine-list', 'barsy:int_club'].every(isSource)).toBe(true)
-    expect(['', 'import:', 'barsy', 'webhook:x', 'manual:x'].some(isSource)).toBe(false)
-    expect(['barsy', 'import', 'manual', 'override', 'edition:venue-1'].every(isLayer)).toBe(true)
-    expect(['edition:', 'master', 'Barsy'].some(isLayer)).toBe(false)
+    expect(['manual', 'till:int_club'].every(isSource)).toBe(true)
+    expect(
+      ['', 'till:', 'till', 'import:wine-list', 'barsy:int_club', 'webhook:x', 'manual:x'].some(
+        isSource,
+      ),
+    ).toBe(false)
+    expect(['till', 'manual', 'override', 'edition:venue-1'].every(isLayer)).toBe(true)
+    expect(['edition:', 'master', 'Till', 'import', 'barsy'].some(isLayer)).toBe(false)
     expect(isScope('master') && isScope(`venue:${venueId}`)).toBe(true)
     expect(isScope('venue:vn_beach') || isScope('venue:')).toBe(false)
   })
 
   it('maps each source to the layers it may write', () => {
-    expect(layerAllowedForSource('barsy:int_club', 'barsy')).toBe(true)
-    expect(layerAllowedForSource('barsy:int_club', 'manual')).toBe(false)
-    expect(layerAllowedForSource('import:wine-list', 'import')).toBe(true)
-    expect(layerAllowedForSource('import:wine-list', 'override')).toBe(false)
+    expect(layerAllowedForSource('till:int_club', 'till')).toBe(true)
+    expect(layerAllowedForSource('till:int_club', 'manual')).toBe(false)
+    expect(layerAllowedForSource('till:int_club', 'override')).toBe(false)
     expect(layerAllowedForSource('manual', 'manual')).toBe(true)
     expect(layerAllowedForSource('manual', 'override')).toBe(true)
     expect(layerAllowedForSource('manual', 'edition:venue-1')).toBe(true)
-    expect(layerAllowedForSource('manual', 'barsy')).toBe(false)
-    expect(layerAllowedForSource('manual', 'import')).toBe(false)
+    expect(layerAllowedForSource('manual', 'till')).toBe(false)
   })
 })
 
@@ -388,13 +403,13 @@ describe('moveNode', () => {
   })
 
   it("holds an adapter to 'end', like every other position", () => {
-    const fromBarsy = (sortKey: string) => ({
+    const fromTill = (sortKey: string) => ({
       ...manualSet([{ ...move, sortKey }]),
-      source: 'barsy:int_club',
+      source: 'till:int_club',
       actor: 'integration:int_club',
     })
-    expect(parseChangeSet(fromBarsy('end')).ok).toBe(true)
-    expect(issuesOf(fromBarsy('a0'))).toContain("places nodes with 'end'")
+    expect(parseChangeSet(fromTill('end')).ok).toBe(true)
+    expect(issuesOf(fromTill('a0'))).toContain("places nodes with 'end'")
   })
 
   it('names both nodes it touches, so they are loaded and checked like any reference', () => {

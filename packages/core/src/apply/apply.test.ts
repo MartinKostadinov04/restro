@@ -18,12 +18,13 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ChangeSet, SourceLink } from '../change-set'
+import { TILL_LINK_TYPES, type TillLinkTypes } from '../connectors'
 import { sha256Hex } from '../hash'
 import { type NodeId, newId } from '../ids'
 import * as core from '../index'
 import { resolve } from '../resolve'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
-import { type ApplyResult, apply, BARSY_LINK_TYPES } from './apply'
+import { type ApplyResult, apply } from './apply'
 import * as applyEntry from './index'
 import { loadMenuDocument } from './load-document'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
@@ -44,12 +45,14 @@ describe('module boundary', () => {
     }
   })
 
-  it('links items to articles, sections to categories, groups to supplement groups, options to modificators or supplements', () => {
-    expect(BARSY_LINK_TYPES).toEqual({
-      item: ['article'],
+  it('links menus to roots, items to articles, sections to categories, groups to supplement groups, options to modificators or supplements', () => {
+    expect(TILL_LINK_TYPES.barsy).toEqual({
+      menu: ['menu_root'],
       section: ['category'],
+      item: ['article'],
       modifier_group: ['supplement_group'],
       option: ['modificator', 'supplement'],
+      special: [],
     })
   })
 })
@@ -87,10 +90,10 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     } as ChangeSet
   }
   const manual = (ops: unknown[]) => changeSet('manual', ops, 'job_manual_test')
-  const barsy = (ops: unknown[], jobId?: string) =>
-    changeSet(`barsy:${integration}`, ops, jobId ?? newId('jb'))
+  const till = (ops: unknown[], jobId?: string) =>
+    changeSet(`till:${integration}`, ops, jobId ?? newId('jb'))
 
-  /** A tier-1 record for a barsy write to cite (the sync stores these before applying). */
+  /** A tier-1 record for a till write to cite (the sync stores these before applying). */
   async function sourceRecord(externalType: string, externalId: string): Promise<string> {
     const id = newId('sr')
     await withTenantWrite(app, tenant, (tx) =>
@@ -104,7 +107,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     return id
   }
 
-  function barsyField(
+  function tillField(
     link: SourceLink,
     record: string,
     fieldKey: string,
@@ -115,7 +118,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
       op: 'setField',
       node: { link },
       fieldKey,
-      layer: 'barsy',
+      layer: 'till',
       scope,
       value,
       sourceRecordId: record,
@@ -123,7 +126,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     }
   }
 
-  /** What a pull of one barsy category produces: the section, its link and its title. */
+  /** What a pull of one till category produces: the section, its link and its title. */
   function categoryOps(section: NodeId, externalId: string, record: string) {
     const link = category(externalId)
     return [
@@ -136,11 +139,11 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
         sortKey: 'end',
       },
       { op: 'linkSource', node: { id: section }, link },
-      barsyField(link, record, 'title', { bg_BG: 'РљРѕРєС‚РµР№Р»Рё', en_US: 'Cocktails' }),
+      tillField(link, record, 'title', { bg_BG: 'Коктейли', en_US: 'Cocktails' }),
     ]
   }
 
-  /** What a pull of one barsy article produces: the item, its link, its values, its placement. */
+  /** What a pull of one till article produces: the item, its link, its values, its placement. */
   function articleOps(
     item: NodeId,
     externalId: string,
@@ -151,10 +154,10 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     return [
       { op: 'createNode', id: item, nodeType: 'item', parent: null, status: 'active' },
       { op: 'linkSource', node: { id: item }, link },
-      barsyField(link, record, 'name', { bg_BG: 'РќРµРіСЂРѕРЅРё', en_US: 'Negroni' }),
-      barsyField(link, record, 'price', eur(options.priceMinor ?? 1250), `venue:${venueId}`),
-      barsyField(link, record, 'for_sale', options.forSale ?? true, `venue:${venueId}`),
-      barsyField(link, record, 'visible', true),
+      tillField(link, record, 'name', { bg_BG: 'Негрони', en_US: 'Negroni' }),
+      tillField(link, record, 'price', eur(options.priceMinor ?? 1250), `venue:${venueId}`),
+      tillField(link, record, 'for_sale', options.forSale ?? true, `venue:${venueId}`),
+      tillField(link, record, 'visible', true),
       ...(options.section
         ? [
             {
@@ -221,7 +224,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     menu = await provisionMenu(app, tenant, venueId)
     const categoryRecord = await sourceRecord('category', CATEGORY)
     const articleRecord = await sourceRecord('article', ARTICLE)
-    pull = barsy([
+    pull = till([
       ...categoryOps(section, CATEGORY, categoryRecord),
       ...articleOps(item, ARTICLE, articleRecord, { section: category(CATEGORY) }),
     ])
@@ -236,7 +239,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
   })
 
   describe('provisionMenu', () => {
-    it('creates the venueвЂ™s root node and menu once, pinned to venue-menu@1', async () => {
+    it('creates the venue’s root node and menu once, pinned to venue-menu@1', async () => {
       expect(menu).toMatchObject({
         venueId,
         templateKey: 'venue-menu',
@@ -266,7 +269,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     })
   })
 
-  it('a barsy pull creates the section and item, links them, writes values and places the item', async () => {
+  it('a till pull creates the section and item, links them, writes values and places the item', async () => {
     const result = await apply(app, tenant, pull)
     expect(result.rejected).toEqual([])
     expect(result.createdNodeIds).toEqual([section, item])
@@ -280,9 +283,9 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
       revision: 1,
     })
     expect(await placementsIn(section)).toMatchObject([{ itemId: item, sortKey: 'a0' }])
-    expect(await storedValue(item, 'price', 'barsy', `venue:${venueId}`)).toMatchObject({
+    expect(await storedValue(item, 'price', 'till', `venue:${venueId}`)).toMatchObject({
       value: eur(1250),
-      source: `barsy:${integration}`,
+      source: `till:${integration}`,
       jobId: pull.jobId,
       valid: true,
       mappingVersion: 1,
@@ -320,17 +323,13 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     const result = await apply(
       app,
       tenant,
-      barsy(
-        articleOps(freshId, ARTICLE, record, { priceMinor: 1300, section: category(CATEGORY) }),
-      ),
+      till(articleOps(freshId, ARTICLE, record, { priceMinor: 1300, section: category(CATEGORY) })),
     )
     expect(result.rejected).toEqual([])
     expect(result.createdNodeIds).toEqual([])
     expect(result.applied).toBe(1) // only the new price
     expect(await nodeOf(freshId)).toBeUndefined()
-    expect((await storedValue(item, 'price', 'barsy', `venue:${venueId}`))?.value).toEqual(
-      eur(1300),
-    )
+    expect((await storedValue(item, 'price', 'till', `venue:${venueId}`))?.value).toEqual(eur(1300))
     expect(await placementsIn(section)).toHaveLength(1)
   })
 
@@ -368,7 +367,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect(await storedValue(item, 'dietary', 'manual')).toEqual(stored)
   })
 
-  it('bumps a nodeвЂ™s revision once per change set that changes it', async () => {
+  it('bumps a node’s revision once per change set that changes it', async () => {
     const before = (await nodeOf(item))?.revision ?? 0
     await apply(
       app,
@@ -395,7 +394,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect((await nodeOf(item))?.revision).toBe(before + 1)
   })
 
-  it('clearField removes one layerвЂ™s value, with an event; clearing nothing is a no-op', async () => {
+  it('clearField removes one layer’s value, with an event; clearing nothing is a no-op', async () => {
     const hide = {
       op: 'setField',
       node: { id: item },
@@ -423,8 +422,8 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
       newValue: null,
     })
     expect(await apply(app, tenant, manual([clear]))).toMatchObject({ applied: 0, unchanged: 1 })
-    // The barsy layer is barsy's to clear: a manual change set cannot.
-    await expect(apply(app, tenant, manual([{ ...clear, layer: 'barsy' }]))).rejects.toMatchObject({
+    // The till layer is till's to clear: a manual change set cannot.
+    await expect(apply(app, tenant, manual([{ ...clear, layer: 'till' }]))).rejects.toMatchObject({
       code: 'invalid_change_set',
     })
   })
@@ -485,7 +484,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect((await placementsIn(curated)).map((row) => row.itemId)).toEqual([x, z])
   })
 
-  it('unlink copies the barsy values into manual, clears the barsy rows and removes the link', async () => {
+  it('unlink copies the till values into manual, clears the till rows and removes the link', async () => {
     const externalId = '736451928'
     const record = await sourceRecord('article', externalId)
     const unlinked = newId('nd')
@@ -493,9 +492,9 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     await apply(
       app,
       tenant,
-      barsy([
+      till([
         ...articleOps(unlinked, externalId, record, { priceMinor: 990, forSale: false }),
-        barsyField(link, record, 'description', { en_US: 'From barsy', bg_BG: 'РћС‚ barsy' }),
+        tillField(link, record, 'description', { en_US: 'From till', bg_BG: 'От till' }),
       ]),
     )
     await apply(
@@ -528,22 +527,22 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect(result).toMatchObject({ applied: 1, rejected: [] })
 
     const rows = await valuesOf(unlinked)
-    expect(rows.filter((row) => row.layer === 'barsy')).toEqual([])
+    expect(rows.filter((row) => row.layer === 'till')).toEqual([])
     const manualValue = (fieldKey: string) =>
       rows.find((row) => row.fieldKey === fieldKey && row.layer === 'manual')?.value
     expect(manualValue('name')).toEqual({
       de_DE: 'Negroni (DE)',
-      bg_BG: 'РќРµРіСЂРѕРЅРё',
+      bg_BG: 'Негрони',
       en_US: 'Negroni',
     })
     expect(manualValue('price')).toEqual(eur(990))
     expect(manualValue('for_sale')).toBe(false)
-    expect(manualValue('description')).toEqual({ en_US: 'Ours', bg_BG: 'РћС‚ barsy' })
-    expect(manualValue('visible')).toBeUndefined() // barsy said true: absence already means true
-    // Every barsy row's removal and every copy is in the changelog.
+    expect(manualValue('description')).toEqual({ en_US: 'Ours', bg_BG: 'От till' })
+    expect(manualValue('visible')).toBeUndefined() // till said true: absence already means true
+    // Every till row's removal and every copy is in the changelog.
     const changes = (await eventsOf(unlinked)).slice(-9)
     expect(
-      changes.filter((event) => event.layer === 'barsy' && event.newValue === null),
+      changes.filter((event) => event.layer === 'till' && event.newValue === null),
     ).toHaveLength(5)
     expect(changes.filter((event) => event.layer === 'manual')).toHaveLength(4)
 
@@ -563,11 +562,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
       ]),
     )
     expect(after.applied).toBe(1)
-    const stale = await apply(
-      app,
-      tenant,
-      barsy([barsyField(link, record, 'name', { en_US: 'x' })]),
-    )
+    const stale = await apply(app, tenant, till([tillField(link, record, 'name', { en_US: 'x' })]))
     expect(codesOf(stale)).toEqual(['unknown_node'])
     // Unlinking again changes nothing.
     expect(
@@ -623,7 +618,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     ])
     expect(
       (await valuesOf(item)).filter(
-        (row) => row.layer !== 'barsy' && ['visible', 'for_sale', 'price'].includes(row.fieldKey),
+        (row) => row.layer !== 'till' && ['visible', 'for_sale', 'price'].includes(row.fieldKey),
       ),
     ).toEqual([])
   })
@@ -660,7 +655,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
             })),
           ),
         )
-        const builderRows = (await valuesOf(item)).filter((row) => row.layer !== 'barsy')
+        const builderRows = (await valuesOf(item)).filter((row) => row.layer !== 'till')
         for (const row of builderRows) {
           if (row.fieldKey === 'price') expect.fail(`a ${row.layer} price was stored`)
           if (['visible', 'for_sale'].includes(row.fieldKey) && row.valid) {
@@ -672,7 +667,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     )
     // Leave the item as the next tests expect it: no builder hides.
     for (const row of (await valuesOf(item)).filter(
-      (r) => r.layer !== 'barsy' && ['visible', 'for_sale'].includes(r.fieldKey),
+      (r) => r.layer !== 'till' && ['visible', 'for_sale'].includes(r.fieldKey),
     )) {
       await apply(
         app,
@@ -690,33 +685,33 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     }
   })
 
-  it('keeps an invalid barsy value as a rejected row only where no good value exists', async () => {
+  it('keeps an invalid till value as a rejected row only where no good value exists', async () => {
     const externalId = '645192837'
     const record = await sourceRecord('article', externalId)
     const priced = newId('nd')
     const link = article(externalId)
-    const price = (amount: unknown) => barsyField(link, record, 'price', amount, `venue:${venueId}`)
+    const price = (amount: unknown) => tillField(link, record, 'price', amount, `venue:${venueId}`)
     const first = await apply(
       app,
       tenant,
-      barsy([
+      till([
         { op: 'createNode', id: priced, nodeType: 'item', parent: null, status: 'active' },
         { op: 'linkSource', node: { id: priced }, link },
         price(eur(-5)),
       ]),
     )
     expect(first.rejected).toMatchObject([{ opIndex: 2, code: 'V2' }])
-    expect(await storedValue(priced, 'price', 'barsy', `venue:${venueId}`)).toMatchObject({
+    expect(await storedValue(priced, 'price', 'till', `venue:${venueId}`)).toMatchObject({
       valid: false,
       value: eur(-5),
       rejectReason: expect.stringContaining('money'),
     })
-    expect((await apply(app, tenant, barsy([price(eur(800))]))).applied).toBe(1)
-    const good = await storedValue(priced, 'price', 'barsy', `venue:${venueId}`)
+    expect((await apply(app, tenant, till([price(eur(800))]))).applied).toBe(1)
+    const good = await storedValue(priced, 'price', 'till', `venue:${venueId}`)
     expect(good).toMatchObject({ valid: true, value: eur(800), rejectReason: null })
-    const bad = await apply(app, tenant, barsy([price({ amount_minor: 8.5, currency: 'EUR' })]))
+    const bad = await apply(app, tenant, till([price({ amount_minor: 8.5, currency: 'EUR' })]))
     expect(codesOf(bad)).toEqual(['V2'])
-    expect(await storedValue(priced, 'price', 'barsy', `venue:${venueId}`)).toEqual(good)
+    expect(await storedValue(priced, 'price', 'till', `venue:${venueId}`)).toEqual(good)
   })
 
   it('refuses each op the document cannot take, and still applies the others', async () => {
@@ -793,14 +788,14 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     expect(result).toMatchObject({ applied: 2, unchanged: 1, createdNodeIds: [group] })
     expect(await nodeOf(group)).toMatchObject({ parentId: item, sortKey: 'a0' })
 
-    const fromBarsy = await apply(
+    const fromTill = await apply(
       app,
       tenant,
-      barsy([
-        /* 0 */ barsyField(article(ARTICLE), newId('sr'), 'name', { en_US: 'x' }),
-        /* 1 */ barsyField(article(ARTICLE), record, 'price', eur(1), `venue:${otherVenueId}`),
+      till([
+        /* 0 */ tillField(article(ARTICLE), newId('sr'), 'name', { en_US: 'x' }),
+        /* 1 */ tillField(article(ARTICLE), record, 'price', eur(1), `venue:${otherVenueId}`),
         /* 2 */ {
-          ...barsyField(article(ARTICLE), record, 'name', { en_US: 'x' }),
+          ...tillField(article(ARTICLE), record, 'name', { en_US: 'x' }),
           node: { id: group },
         },
         /* 3 */ { op: 'unlinkSource', node: { id: item }, link: article(ARTICLE) },
@@ -814,22 +809,100 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
         /* 5 */ { op: 'linkSource', node: { id: section }, link: category('999') },
       ]),
     )
-    expect(fromBarsy.rejected.map(({ opIndex, code }) => [opIndex, code])).toEqual([
+    expect(fromTill.rejected.map(({ opIndex, code }) => [opIndex, code])).toEqual([
       [0, 'unknown_source_record'],
       [1, 'unknown_venue'],
       [2, 'not_linked'],
       [3, 'source_not_allowed'],
       [5, 'already_linked'],
     ])
-    expect(fromBarsy.applied).toBe(1)
-    // A refusal says which of our nodes and which field it was about (never a barsy id): by id,
+    expect(fromTill.applied).toBe(1)
+    // A refusal says which of our nodes and which field it was about (never a till id): by id,
     // through a source link that resolves, and not at all for a node that does not exist.
-    expect(fromBarsy.rejected[1]).toMatchObject({ opIndex: 1, nodeRef: item, fieldKey: 'price' })
-    expect(fromBarsy.rejected[2]).toMatchObject({ opIndex: 2, nodeRef: group, fieldKey: 'name' })
-    expect(fromBarsy.rejected[3]).toMatchObject({ opIndex: 3, nodeRef: item })
-    expect(fromBarsy.rejected[3]?.fieldKey).toBeUndefined()
+    expect(fromTill.rejected[1]).toMatchObject({ opIndex: 1, nodeRef: item, fieldKey: 'price' })
+    expect(fromTill.rejected[2]).toMatchObject({ opIndex: 2, nodeRef: group, fieldKey: 'name' })
+    expect(fromTill.rejected[3]).toMatchObject({ opIndex: 3, nodeRef: item })
+    expect(fromTill.rejected[3]?.fieldKey).toBeUndefined()
     expect(result.rejected[0]).toMatchObject({ opIndex: 0, code: 'unknown_node' })
     expect(result.rejected[0]?.nodeRef).toBeUndefined()
+  })
+
+  it('one till link per node: a node linked to one till refuses a link from another (A1-F4)', async () => {
+    const second = newId('in')
+    await withTenantWrite(app, tenant, (tx) =>
+      tx.execute(sql`
+        insert into restro.integrations (id, tenant_id, kind, host)
+        values (${second}, ${tenant}, 'barsy', 'second.example')`),
+    )
+    const secondArticle = { integration: second, externalType: 'article', externalId: '4455' }
+    const fromSecond = await apply(app, tenant, {
+      ...changeSet(`till:${second}`, [
+        { op: 'linkSource', node: { id: item }, link: secondArticle },
+      ]),
+      actor: `integration:${second}`,
+    })
+    expect(codesOf(fromSecond)).toEqual(['already_linked'])
+    expect(fromSecond.rejected[0]?.reason).toContain('a node has one till link')
+    // Not through a person either.
+    const fromPerson = await apply(
+      app,
+      tenant,
+      manual([{ op: 'linkSource', node: { id: item }, link: secondArticle }]),
+    )
+    expect(codesOf(fromPerson)).toEqual(['already_linked'])
+    const links = await owner.query<{ integration_id: string }>(
+      'select integration_id from restro.source_links where node_id = $1',
+      [item],
+    )
+    expect(links.rows.map((row) => row.integration_id)).toEqual([integration])
+
+    // A node with no till link takes the second till's link.
+    const fresh = newId('nd')
+    const linked = await apply(
+      app,
+      tenant,
+      manual([
+        { op: 'createNode', id: fresh, nodeType: 'item', parent: null, status: 'active' },
+        { op: 'linkSource', node: { id: fresh }, link: secondArticle },
+      ]),
+    )
+    expect(linked.rejected).toEqual([])
+  })
+
+  it("checks every link against its connector kind's link types; a kind with none links nothing", async () => {
+    const node = newId('nd')
+    await apply(
+      app,
+      tenant,
+      manual([{ op: 'createNode', id: node, nodeType: 'item', parent: null, status: 'active' }]),
+    )
+    const link = (externalType: string, externalId: string) => ({
+      op: 'linkSource',
+      node: { id: node },
+      link: { integration, externalType, externalId },
+    })
+    // A map in which this integration's kind calls items `product`s: apply() follows the map.
+    const productTill: TillLinkTypes = {
+      ...TILL_LINK_TYPES,
+      barsy: { ...TILL_LINK_TYPES.barsy, item: ['product'] },
+    }
+    const options = { tillLinkTypes: productTill }
+    expect(codesOf(await apply(app, tenant, manual([link('article', '5501')]), options))).toEqual([
+      'invalid_link_type',
+    ])
+    // A map that does not know this integration's kind: nothing links through it.
+    const unknownKind = await apply(app, tenant, manual([link('product', '5502')]), {
+      tillLinkTypes: { another: TILL_LINK_TYPES.barsy },
+    })
+    expect(codesOf(unknownKind)).toEqual(['invalid_link_type'])
+    expect(unknownKind.rejected[0]?.reason).toContain('declares no link types')
+    // The default map refuses a `product`, the test map takes it.
+    expect(codesOf(await apply(app, tenant, manual([link('product', '5503')])))).toEqual([
+      'invalid_link_type',
+    ])
+    expect((await apply(app, tenant, manual([link('product', '5504')]), options)).rejected).toEqual(
+      [],
+    )
   })
 
   it('refuses a whole change set that does not parse or names an unknown integration', async () => {
@@ -840,7 +913,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     const stranger = newId('in')
     await expect(
       apply(app, tenant, {
-        ...changeSet(`barsy:${stranger}`, [
+        ...changeSet(`till:${stranger}`, [
           {
             op: 'setNodeStatus',
             node: { link: { integration: stranger, externalType: 'article', externalId: '1' } },
@@ -897,12 +970,12 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     }
   })
 
-  it('loadMenuDocument returns the menu without external ids and only this venueвЂ™s scope', async () => {
+  it('loadMenuDocument returns the menu without external ids and only this venue’s scope', async () => {
     const record = await sourceRecord('article', ARTICLE)
     await apply(
       app,
       tenant,
-      barsy([barsyField(article(ARTICLE), record, 'price', eur(1500), `venue:${secondVenueId}`)]),
+      till([tillField(article(ARTICLE), record, 'price', eur(1500), `venue:${secondVenueId}`)]),
     )
     const doc = await loadMenuDocument(app, tenant, menu.id)
     expect(doc.menu).toEqual({
@@ -925,7 +998,7 @@ describe.skipIf(!hasDatabase)('apply() against Postgres (as the restro_app role)
     ).toBe(true)
     expect(doc.links).toContainEqual({
       nodeId: item,
-      source: `barsy:${integration}`,
+      source: `till:${integration}`,
       externalType: 'article',
       state: 'active',
     })

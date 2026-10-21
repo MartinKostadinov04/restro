@@ -54,20 +54,20 @@ describe('venue-menu@1', () => {
       string,
       [FieldDefinition['type'], FieldDefinition['owner'], FieldDefinition['combinator']]
     > = {
-      name: ['localized_text', 'barsy', 'source_first'],
+      name: ['localized_text', 'till', 'source_first'],
       description: ['localized_text', 'builder', 'builder_first'],
-      price: ['money', 'barsy', 'locked'],
+      price: ['money', 'till', 'locked'],
       image: ['image', 'builder', 'builder_first'],
-      allergens: ['enum_set', 'barsy', 'must_agree'],
+      allergens: ['enum_set', 'till', 'must_agree'],
       dietary: ['enum_set', 'builder', 'union'],
-      portion: ['measurement', 'barsy', 'source_first'],
+      portion: ['measurement', 'till', 'source_first'],
       abv: ['number', 'builder', 'builder_first'],
       tags: ['tags', 'builder', 'union'],
       availability: ['availability', 'builder', 'builder_first'],
       internal_note: ['long_text', 'builder', 'builder_first'],
       order_mode: ['enum', 'builder', 'builder_first'],
-      for_sale: ['boolean', 'barsy', 'all_true'],
-      visible: ['boolean', 'barsy', 'all_true'],
+      for_sale: ['boolean', 'till', 'all_true'],
+      visible: ['boolean', 'till', 'all_true'],
     }
     const fields = VENUE_MENU_TEMPLATE.nodeTypes.item?.fields ?? []
     expect(fields.map((field) => field.key)).toEqual(Object.keys(expected))
@@ -104,13 +104,20 @@ describe('venue-menu@1', () => {
   it('has the Section, Menu, Modifier group and Option fields', () => {
     const keys = (type: keyof Template['nodeTypes']) =>
       (VENUE_MENU_TEMPLATE.nodeTypes[type]?.fields ?? []).map((field) => field.key)
-    expect(keys('section')).toEqual(['title', 'description', 'image', 'hint_color', 'hint_icon'])
+    expect(keys('section')).toEqual([
+      'title',
+      'description',
+      'image',
+      'hint_color',
+      'hint_icon',
+      'layout',
+    ])
     expect(keys('menu')).toEqual(['title', 'intro', 'availability'])
     expect(keys('modifier_group')).toEqual(['name', 'min', 'max'])
     expect(keys('option')).toEqual(['name', 'price_delta'])
     expect(findField(VENUE_MENU_TEMPLATE, 'option', 'price_delta')).toMatchObject({
       type: 'money',
-      owner: 'barsy',
+      owner: 'till',
       combinator: 'locked',
     })
   })
@@ -167,7 +174,7 @@ describe('parseTemplate', () => {
   it('rejects inconsistent field definitions', () => {
     const cases: [Partial<FieldDefinition>, string][] = [
       [{ combinator: 'all_true' }, 'all_true combines boolean fields only'],
-      [{ owner: 'barsy' }, 'builder_first is for builder-owned fields'],
+      [{ owner: 'till' }, 'builder_first is for builder-owned fields'],
       [{ overridable: 'always' }, 'builder-owned fields use never'],
       [{ localizable: true }, 'localizable'],
       [{ unit: undefined, options: ['a'] }, 'only enum fields take options'],

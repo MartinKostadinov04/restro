@@ -20,6 +20,7 @@ import {
 import { canonicalJson, sha256Hex } from '../hash'
 import type { AssetId, NodeId, SnapshotId, TagId, VenueId } from '../ids'
 import type { Locale, LocalizedText } from '../locales'
+import type { MenuLayout, MenuSettings } from '../menus'
 import { type Currency, type Money, MoneySchema } from '../money'
 import type { NodeType } from '../node-types'
 import type {
@@ -32,6 +33,18 @@ import type {
 } from '../resolve/types'
 import type { TagColor } from '../tags'
 import type { Template } from '../template'
+import {
+  DEFAULT_SECTION_LAYOUT,
+  SECTION_LAYOUTS,
+  type SectionLayout,
+} from '../templates/venue-menu'
+import { DEFAULT_PALETTE, PALETTE_STEPS, paletteRoles } from '../theme/derive'
+import {
+  canonicalFeatures,
+  DEFAULT_GUEST_FEATURES,
+  type GuestFeatures,
+  type Presentation,
+} from '../theme/presentation'
 import { parseSnapshot } from './errors'
 import {
   type MenuSnapshot,
@@ -39,6 +52,8 @@ import {
   SNAPSHOT_FIELD_TYPES,
   SNAPSHOT_SCHEMA,
   type SnapshotItem,
+  type SnapshotLayout,
+  type SnapshotMenuLayout,
   type SnapshotTheme,
 } from './schema'
 
@@ -85,27 +100,71 @@ export interface SnapshotContext {
   /** Images whose variant files exist; an image not listed here counts as no image. */
   readonly assets: Readonly<Record<AssetId, SnapshotAssetInput>>
   readonly tagVocabulary: Readonly<Record<TagId, TagVocabularyEntry>>
+  /** The venue's template and its options (D69); null or absent = not written. */
+  readonly presentation?: Presentation | null
+  /** The venue's guest services (D71); null or absent = `DEFAULT_GUEST_FEATURES`. */
+  readonly features?: GuestFeatures | null
+  /** The menu's layout (D92, from `menuLayoutOf`); null or absent = `DEFAULT_MENU_LAYOUT`. */
+  readonly layout?: SnapshotLayout | null
+  /** The menu's header name (D92, `menus.name`); null, absent or blank = none set. */
+  readonly menuName?: string | null
+  /** The venue's display name (`venues.name`): the heading of a menu with no name and no title. */
+  readonly venueName?: string | null
 }
 
-/** The theme a venue gets until it sets its own (S3-03 derives a palette from a brand colour). */
+/**
+ * The layout of a menu that set none (D92): the look it had before the layout became a menu
+ * setting (the Editorial Market's old option defaults), two columns, and guests may switch it.
+ */
+export const DEFAULT_MENU_LAYOUT: SnapshotLayout = Object.freeze({
+  default: 'two',
+  guest_switch: true,
+})
+
+/** A menu's stored layout (`menus.settings.layout`) as the snapshot names it. */
+const SNAPSHOT_LAYOUT_OF: Readonly<Record<MenuLayout, SnapshotMenuLayout>> = {
+  list: 'list',
+  one_column: 'one',
+  two_columns: 'two',
+}
+
+/**
+ * The snapshot's `layout` of a menu's settings (D92): the stored layout in the snapshot's words,
+ * and the guest switch; a key the menu never set takes `DEFAULT_MENU_LAYOUT`'s value.
+ */
+export function menuLayoutOf(settings: MenuSettings | null | undefined): SnapshotLayout {
+  return {
+    default:
+      settings?.layout === undefined
+        ? DEFAULT_MENU_LAYOUT.default
+        : SNAPSHOT_LAYOUT_OF[settings.layout],
+    guest_switch: settings?.layout_switch ?? DEFAULT_MENU_LAYOUT.guest_switch,
+  }
+}
+
+/** A stored section layout, or the default when the value is not one. */
+function sectionLayoutOf(value: unknown): SectionLayout {
+  return SECTION_LAYOUTS.find((layout) => layout === value) ?? DEFAULT_SECTION_LAYOUT
+}
+
+const DEFAULT_ROLES = paletteRoles(DEFAULT_PALETTE)
+
+/**
+ * The theme a venue gets until it sets its own (S3-03 derives a palette from a brand colour): the
+ * neutral default palette, its roles through the v1 path (`semanticColours` /
+ * `semanticColoursDark`, exactly what the shell derives from that palette), and `auto` scheme.
+ */
 export const DEFAULT_THEME: SnapshotTheme = Object.freeze({
-  palette: Object.freeze([
-    '#f8f8f9',
-    '#efeff1',
-    '#dcdce0',
-    '#bdbdc4',
-    '#9a9aa3',
-    '#7c7c86',
-    '#63636c',
-    '#505058',
-    '#3f3f46',
-    '#27272a',
-    '#18181b',
-  ]) as string[],
+  palette: Object.freeze(PALETTE_STEPS.map((step) => DEFAULT_PALETTE[step])) as string[],
   font: 'Inter',
   radius: 8,
   shadow: 1,
   logo: null,
+  roles: Object.freeze({
+    light: Object.freeze(DEFAULT_ROLES.light),
+    dark: Object.freeze(DEFAULT_ROLES.dark),
+  }),
+  scheme: 'auto',
 })
 
 /**
@@ -340,6 +399,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
         color:
           typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : null,
         icon: typeof icon === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(icon) ? icon : null,
+        layout: sectionLayoutOf(read('section', section.fields, 'layout')),
       },
       sections: childIds,
       items: itemIds,
@@ -372,6 +432,33 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     }
   }
 
+  // Presentation only when the venue chose a template; features always (the defaults: filters on,
+  // every service off), with the request kinds in vocabulary order.
+  const presentation =
+    ctx.presentation === undefined || ctx.presentation === null
+      ? {}
+      : {
+          presentation: {
+            face: ctx.presentation.face,
+            options: { ...ctx.presentation.options },
+          },
+        }
+  const features = canonicalFeatures(ctx.features ?? DEFAULT_GUEST_FEATURES)
+  const layout = ctx.layout ?? DEFAULT_MENU_LAYOUT
+
+  // The guest heading (D92): the menu's header name, else the document's title, else the venue's
+  // display name. A plain name is one text, put in the main language; the shell falls back to it.
+  const inMainLanguage = (name: string | null | undefined): LocalizedText | null => {
+    const trimmed = name?.trim() ?? ''
+    return trimmed === '' ? null : { [ctx.locales.default]: trimmed }
+  }
+  const documentTitle = text('menu', resolved.menu.fields, 'title')
+  const title =
+    inMainLanguage(ctx.menuName) ??
+    (Object.keys(documentTitle).length === 0 ? null : documentTitle) ??
+    inMainLanguage(ctx.venueName) ??
+    {}
+
   const content: Omit<MenuSnapshot, 'snapshot'> = {
     schema: SNAPSHOT_SCHEMA,
     locales: { default: ctx.locales.default, available: [...ctx.locales.available] },
@@ -382,12 +469,16 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       radius: theme.radius,
       shadow: theme.shadow,
       logo,
+      ...(theme.roles === undefined
+        ? {}
+        : { roles: { light: { ...theme.roles.light }, dark: { ...theme.roles.dark } } }),
+      ...(theme.scheme === undefined ? {} : { scheme: theme.scheme }),
     },
     assets,
     field_types: fieldTypes,
     menu: {
       id: resolved.menu.id,
-      title: text('menu', resolved.menu.fields, 'title'),
+      title,
       intro: text('menu', resolved.menu.fields, 'intro'),
       availability: valueAs('availability', read('menu', resolved.menu.fields, 'availability')),
       sections: menuSections,
@@ -397,6 +488,18 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     modifier_groups: groups,
     options,
     tags,
+    ...presentation,
+    features: {
+      filters: features.filters,
+      call_waiter: {
+        enabled: features.call_waiter.enabled,
+        kinds: [...features.call_waiter.kinds],
+      },
+      bill: features.bill,
+      ordering: features.ordering,
+      pay: features.pay,
+    },
+    layout: { default: layout.default, guest_switch: layout.guest_switch },
   }
 
   const { schema, ...rest } = content

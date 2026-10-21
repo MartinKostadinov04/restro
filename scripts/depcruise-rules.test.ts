@@ -123,16 +123,22 @@ describe('rule 1: shell and faces stay pure', () => {
     }
   })
 
-  it('rejects the same imports from a face', async () => {
-    await expectRules(
+  it('rejects the same imports from a face (which the faces rule refuses too)', async () => {
+    const lines = await expectRules(
       {
         ...base,
         'packages/faces/qr-phone/src/a.ts': "import '@restro/db'",
         'packages/faces/qr-phone/src/b.ts': "import '@restro/barsy'",
         'packages/faces/qr-phone/src/c.ts': "import '../../../../apps/web/app/page'",
       },
-      ['pure-layers-no-data-or-apps', 'barsy-only-from-worker', 'packages-never-import-apps'],
+      [
+        'faces-only-react-and-shell',
+        'pure-layers-no-data-or-apps',
+        'barsy-only-from-worker',
+        'packages-never-import-apps',
+      ],
     )
+    expect(lines.filter((line) => line.startsWith('faces-only-react-and-shell'))).toHaveLength(3)
   })
 
   it.each([
@@ -151,9 +157,11 @@ describe('rule 1: shell and faces stay pure', () => {
         'packages/shell/src/io.ts': `import '${builtin}'`,
         'packages/faces/qr-phone/src/io.ts': `import '${builtin}'`,
       },
-      ['pure-layers-no-io-builtins'],
+      ['faces-only-react-and-shell', 'pure-layers-no-io-builtins'],
     )
-    expect(lines).toHaveLength(2)
+    // The shell file breaks the I/O rule; the face file breaks it and the faces rule.
+    expect(lines).toHaveLength(3)
+    expect(lines.filter((line) => line.startsWith('pure-layers-no-io-builtins'))).toHaveLength(2)
   })
 
   it.each(['pg', 'pg-boss', 'postgres'])('rejects the database package %s', async (name) => {
@@ -383,6 +391,72 @@ describe('rule 6: no circular dependencies', () => {
   })
 })
 
+// SH-06 (D72): the services of a face.
+describe("a face's preview adapter and the shell's money arithmetic", () => {
+  const faceFiles: Files = {
+    ...base,
+    'packages/faces/qr-phone/src/preview/index.ts': 'export const demo = 1',
+    'packages/shell/src/money-math.ts': 'export const addMinor = 1',
+  }
+
+  it("rejects a face's ./preview subpath from the guest page and its route (by package name and by path)", async () => {
+    const lines = await expectRules(
+      {
+        ...faceFiles,
+        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/guest/relative.ts':
+          "import '../../../../packages/faces/qr-phone/src/preview/index'",
+        'apps/web/app/m/[venue]/page.ts': "import '@restro/editorial-market/preview'",
+        'apps/web/app/m/[venue]/relative.ts':
+          "import '../../../../../packages/faces/qr-phone/src/preview/index'",
+      },
+      ['guest-never-imports-face-preview'],
+    )
+    expect(lines).toHaveLength(4)
+  })
+
+  it('allows the face itself on the guest page, and the preview from the admin side of the web app', async () => {
+    await expectRules(
+      {
+        ...faceFiles,
+        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone'",
+        'apps/web/src/design/panel.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/design/relative.ts':
+          "import '../../../../packages/faces/qr-phone/src/preview/index'",
+        'packages/faces/qr-phone/src/face.ts': "import './preview/index'",
+      },
+      [],
+    )
+  })
+
+  it("rejects the shell's money arithmetic from a face outside its preview folder (by package name and by path)", async () => {
+    const lines = await expectRules(
+      {
+        ...faceFiles,
+        'packages/faces/qr-phone/src/bag.ts': "import '@restro/shell/money'",
+        'packages/faces/qr-phone/src/relative.ts': "import '../../../shell/src/money-math'",
+        'packages/faces/qr-phone/src/services/sum.test.ts': "import '@restro/shell/money'",
+      },
+      ['faces-money-math-only-in-preview'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it("allows the money arithmetic in a face's preview folder, and in the shell and the apps", async () => {
+    await expectRules(
+      {
+        ...faceFiles,
+        'packages/faces/qr-phone/src/preview/demo.ts': "import '@restro/shell/money'",
+        'packages/faces/qr-phone/src/preview/relative.ts':
+          "import '../../../../shell/src/money-math'",
+        'packages/shell/src/bag.ts': "import './money-math'",
+        'apps/web/src/design/sum.ts': "import '@restro/shell/money'",
+      },
+      [],
+    )
+  })
+})
+
 describe('packages/assets: storage only, no database or barsy', () => {
   it('rejects @restro/db, @restro/barsy and a relative path into packages/db', async () => {
     await expectRules(
@@ -437,6 +511,136 @@ describe('the guest page reads published files only (rule 4)', () => {
       },
       [],
     )
+  })
+})
+
+describe('a face imports only react and the shell (SH-04)', () => {
+  const faces: Files = {
+    ...base,
+    'packages/shell/testing/index.ts': 'export const testing = 1',
+    'packages/faces/qr-phone/src/model.ts': 'export const model = 1',
+    'packages/faces/editorial-market/src/index.ts': 'export const other = 1',
+  }
+  const FACE = 'packages/faces/qr-phone/src'
+
+  it('rejects core, an icon library, another face and a Node built-in (as written and by path)', async () => {
+    const lines = await expectRules(
+      {
+        ...faces,
+        [`${FACE}/core.ts`]: "import '@restro/core'",
+        [`${FACE}/core-by-path.ts`]: "import '../../../core/src/index'",
+        [`${FACE}/icons.ts`]: "import 'lucide-react'",
+        [`${FACE}/other-face.ts`]: "import '../../editorial-market/src/index'",
+        [`${FACE}/other-face-by-name.ts`]: "import '@restro/editorial-market'",
+        [`${FACE}/crypto.ts`]: "import 'node:crypto'",
+        [`${FACE}/type-only.ts`]:
+          "import type { Locale } from '@restro/core'\nexport type L = Locale",
+        'packages/faces/editorial-market/src/deep.ts': "import '../../qr-phone/src/model'",
+      },
+      ['faces-only-react-and-shell'],
+    )
+    expect(lines).toHaveLength(8)
+  })
+
+  it('rejects the shell’s testing helpers from a face’s own code, by name and by path', async () => {
+    const lines = await expectRules(
+      {
+        ...faces,
+        [`${FACE}/by-name.ts`]: "import '@restro/shell/testing'",
+        [`${FACE}/by-path.ts`]: "import '../../../shell/testing/index'",
+      },
+      ['faces-only-react-and-shell'],
+    )
+    expect(lines).toHaveLength(2)
+  })
+
+  it('allows its own files, react, react-dom (with internals), and the shell', async () => {
+    await expectRules(
+      {
+        ...faces,
+        [`${FACE}/face.ts`]:
+          "import './model'\nimport { model } from './model'\nexport const face = model",
+        [`${FACE}/react.ts`]:
+          "import 'react'\nimport 'react/jsx-runtime'\nimport 'react-dom'\nimport 'react-dom/server'\nimport 'scheduler'",
+        [`${FACE}/shell.ts`]:
+          "import '@restro/shell'\nimport type { shell } from '../../../shell/src/index'\nexport type S = typeof shell",
+      },
+      [],
+    )
+  })
+
+  it('leaves tests and test-* helpers alone, and does not look at code outside the faces', async () => {
+    await expectRules(
+      {
+        ...faces,
+        [`${FACE}/face.test.tsx`]:
+          "import 'vitest'\nimport '@restro/shell/testing'\nimport '@restro/core'",
+        [`${FACE}/test-views.ts`]: "import '@restro/shell/testing'\nimport '@restro/core'",
+        'packages/shell/src/uses-core.ts': "import '../../core/src/index'",
+        'apps/web/app/uses-icons.ts': "import 'lucide-react'\nimport '@restro/editorial-market'",
+      },
+      [],
+    )
+  })
+
+  it('does not exempt a production file that merely has "test" in its name', async () => {
+    const lines = await expectRules(
+      {
+        ...faces,
+        [`${FACE}/contest.ts`]: "import '@restro/core'",
+        [`${FACE}/latest.tsx`]: "import 'lucide-react'",
+        [`${FACE}/testing.ts`]: "import '@restro/core'",
+      },
+      ['faces-only-react-and-shell'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+})
+
+describe('the purge role: only the worker purge job imports @restro/db/purge (D83)', () => {
+  const withPurge: Files = {
+    ...base,
+    'packages/db/src/purge/index.ts': 'export const purge = 1',
+  }
+
+  it('rejects @restro/db/purge from the web app, core, and the worker outside its purge job', async () => {
+    const lines = await expectRules(
+      {
+        ...withPurge,
+        'apps/web/app/action.ts': "import '@restro/db/purge'",
+        'packages/core/src/apply/erase.ts': "import '@restro/db/purge'",
+        'apps/worker/src/jobs/barsy.ts': "import '@restro/db/purge'",
+        'apps/worker/src/sync/run.ts': "import '../../../../packages/db/src/purge/index'",
+      },
+      ['db-purge-only-from-worker-purge-job'],
+    )
+    expect(lines).toHaveLength(4)
+  })
+
+  it('allows the worker purge job, by package name and by path, and the purge side itself', async () => {
+    await expectRules(
+      {
+        ...withPurge,
+        'packages/db/src/internal/pool.ts': 'export const pool = 1',
+        'packages/db/src/purge/index.ts':
+          "import { pool } from '../internal/pool'\nexport const purge = pool",
+        'apps/worker/src/jobs/purge.ts': "import '@restro/db/purge'",
+        'apps/worker/src/jobs/purge-venue.ts': "import '../../../../packages/db/src/purge/index'",
+      },
+      [],
+    )
+  })
+
+  it('the read side never imports the purge side either', async () => {
+    const lines = await expectRules(
+      {
+        ...withPurge,
+        'packages/db/src/index.ts':
+          "import { purge } from './purge/index'\nexport const db = purge",
+      },
+      ['db-read-side-no-write'],
+    )
+    expect(lines).toHaveLength(1)
   })
 })
 

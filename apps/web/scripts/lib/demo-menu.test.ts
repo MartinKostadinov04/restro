@@ -72,7 +72,7 @@ describe('demoPullChangeSet', () => {
     const parsed = parseChangeSet(set)
     if (!parsed.ok) throw new Error(parsed.reason)
     const ops = parsed.value.ops
-    expect(parsed.value.source).toBe(`barsy:${input.integrationId}`)
+    expect(parsed.value.source).toBe(`till:${input.integrationId}`)
 
     const creates = ops.filter((op) => op.op === 'createNode')
     expect(creates.filter((op) => op.nodeType === 'section')).toHaveLength(4)
@@ -82,7 +82,7 @@ describe('demoPullChangeSet', () => {
     )
     for (const op of ops) {
       if (op.op === 'setField') {
-        expect(op.layer).toBe('barsy')
+        expect(op.layer).toBe('till')
         expect(op.mappingVersion).toBe(1)
         expect(op.sourceRecordId).toMatch(/^sr_/)
       }

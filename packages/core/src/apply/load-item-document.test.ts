@@ -54,7 +54,7 @@ describe.skipIf(!hasDatabase)('loadItemDocument against Postgres', () => {
     op: 'setField',
     node: { link: { integration, externalType: 'article', externalId } },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value,
     sourceRecordId: record,
@@ -84,7 +84,7 @@ describe.skipIf(!hasDatabase)('loadItemDocument against Postgres', () => {
     await apply(
       app,
       tenant,
-      changeSet(`barsy:${integration}`, [
+      changeSet(`till:${integration}`, [
         {
           op: 'createNode',
           id: section,
@@ -170,13 +170,15 @@ describe.skipIf(!hasDatabase)('loadItemDocument against Postgres', () => {
     ).toEqual(['description', 'name', 'price'])
     expect(doc.links).toContainEqual({
       nodeId: unplaced,
-      source: `barsy:${integration}`,
+      source: `till:${integration}`,
       externalType: 'article',
       state: 'active',
     })
     // Nothing of the placed item is duplicated, and no external id travels with the links.
     expect(doc.values.filter((value) => value.nodeId === placed)).toHaveLength(1)
-    expect(JSON.stringify(doc)).not.toContain('a1"')
+    expect(doc.links.every((link) => !('externalId' in link))).toBe(true)
+    // The whole value, so the id cannot hide in a nested field (a random id may end in `a1`).
+    expect(JSON.stringify(doc)).not.toContain('"a1"')
   })
 
   it('gives the resolver what it needs to resolve the unplaced item', async () => {
@@ -187,7 +189,7 @@ describe.skipIf(!hasDatabase)('loadItemDocument against Postgres', () => {
       now: new Date().toISOString(),
     })
     const item = resolved.items[unplaced as NodeId]
-    expect(item?.fields.name?.provenance).toBe('barsy')
+    expect(item?.fields.name?.provenance).toBe('till')
     expect(item?.fields.description?.provenance).toBe('owned')
     expect(item?.issues.map((issue) => issue.code)).toContain('unplaced_item')
     expect(item?.visible).toBe(false)

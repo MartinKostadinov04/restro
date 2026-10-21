@@ -1,4 +1,4 @@
-// /venues/<id>/tables/print: the print sheet of a venue's table codes (brief S3-07). A page of its
+// /venues/<id>/tables/print: the print sheet of a venue's table codes (briefs S3-07, S5). A page of its
 // own, outside the admin frame (no sidebar), so what the browser prints is only the cards. It is
 // behind the sign-in like the rest of the admin: the proxy sends a visitor without a session to
 // /login, and this page checks the session and the venue itself. Read-only: any member of the
@@ -8,10 +8,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-
-import { loadAppearance } from '@/server/appearance/service'
 import { getAssetStore } from '@/server/assets'
 import { getPool } from '@/server/db'
+import { loadVenueLogo } from '@/server/design/service'
 import { defaultQrBaseUrl } from '@/server/env'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
@@ -40,14 +39,27 @@ export default async function PrintTablesPage({
     },
     defaultQrBaseUrl(),
   )
-  const appearance = await loadAppearance(getPool(), organization.id, venue, getAssetStore)
+  const logo = await loadVenueLogo(getPool(), organization.id, venue, getAssetStore)
 
+  // By area, in the areas' and the tables' order; a hidden area or table is left out (D95).
   const cards = view.halls
-    .flatMap((hall) => hall.tables)
-    .flatMap((row) =>
-      row.qrSvg !== null && row.address !== null && row.shownAs !== null
-        ? [{ id: row.id, label: row.shownAs, address: row.address, qrSvg: row.qrSvg }]
-        : [],
+    .filter((hall) => hall.isPublic)
+    .flatMap((hall) =>
+      hall.tables
+        .filter((row) => row.isPublic)
+        .flatMap((row) =>
+          row.qrSvg !== null && row.address !== null && row.shownAs !== null
+            ? [
+                {
+                  id: row.id,
+                  label: row.shownAs,
+                  area: hall.name,
+                  address: row.address,
+                  qrSvg: row.qrSvg,
+                },
+              ]
+            : [],
+        ),
     )
 
   return (
@@ -90,7 +102,7 @@ export default async function PrintTablesPage({
         </div>
       </header>
       {cards.length > 0 ? (
-        <PrintSheets venueName={venue.name} logoUrl={appearance.logo?.url ?? null} cards={cards} />
+        <PrintSheets venueName={venue.name} logoUrl={logo?.url ?? null} cards={cards} />
       ) : (
         <p style={{ padding: '16px', textAlign: 'center' }} data-testid="print-empty">
           {t('print.empty')}

@@ -1,20 +1,23 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
-import { AppearanceSection } from '@/appearance/appearance-section'
 import { AdminHeader } from '@/components/admin/admin-header'
-import { VenueSettings } from '@/components/admin/venue-settings'
-import { DEFAULT_WORKSPACE_TAB, isWorkspaceTab } from '@/components/admin/workspace-tab-defs'
-import { WorkspaceTabs } from '@/components/admin/workspace-tabs'
-import { Skeleton } from '@/components/ui/skeleton'
+import { VenueSettingsGeneral } from '@/components/admin/venue-settings-general'
+import { settingsSectionOf, workspaceTabOf } from '@/components/admin/workspace-tab-defs'
+import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
-import { IntegrationSkeleton } from '@/integration/integration-skeleton'
-import { IntegrationTab } from '@/integration/integration-tab'
-import { PublishSkeleton } from '@/publish/publish-skeleton'
-import { PublishTab } from '@/publish/publish-tab'
+import {
+  PublishSettingsSection,
+  SettingsSectionSkeleton,
+  VersioningSection,
+} from '@/publish/settings-sections'
+import { VenueHeader } from '@/publish/venue-header'
+import { getPool } from '@/server/db'
+import { guestPathOf } from '@/server/publish/summary'
+import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
-import { getVenue } from '@/server/venues'
+import { getVenue, venueHasTill } from '@/server/venues'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
 import { TablesTab } from '@/tables/tables-tab'
 
@@ -36,31 +39,69 @@ export default async function VenueWorkspacePage({
 
   // The composer reads the whole menu: only read it while its tab is the open one (the tab bar
   // shows the skeleton at once when someone switches to it, and the page streams the rest in).
-  const requestedTab = (await searchParams).tab
-  const openTab = isWorkspaceTab(requestedTab) ? requestedTab : DEFAULT_WORKSPACE_TAB
+  // The same holds for the Settings sections (`?section=`, D97).
+  const query = await searchParams
+  // The Design tab is the composer's Design subtab now (D92): an old link lands there.
+  if (query.tab === 'design') {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (typeof value === 'string' && key !== 'tab' && key !== 'sub') params.set(key, value)
+    }
+    params.set('tab', 'composer')
+    params.set('sub', 'design')
+    redirect(`/venues/${venue.id}?${params.toString()}`)
+  }
+  const openTab = workspaceTabOf(query.tab)
   const composerOpen = openTab === 'composer'
-  const publishingOpen = openTab === 'publishing'
-  const integrationOpen = openTab === 'integration'
-  const tablesOpen = openTab === 'tables'
   const settingsOpen = openTab === 'settings'
+  const tablesOpen = openTab === 'tables'
+  const [hasTill, guestPath] = await Promise.all([
+    venueHasTill(organization.id, venue.id),
+    guestPathOf(getPool(), organization.id, venue.slug),
+  ])
+  const openSection = settingsSectionOf(query.section, hasTill)
+  const sectionOpen = (section: typeof openSection) => settingsOpen && openSection === section
 
   const tNav = await getTranslations('nav')
+
+  // The name and the guest address `/m/<organisation>/<venue>` (D84) head every tab.
+  const title = (
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight">{venue.name}</h1>
+      {guestPath === null ? null : (
+        <code
+          className="mt-2 inline-block max-w-full break-all rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground ring-1 ring-border"
+          data-testid="venue-header-address"
+        >
+          {guestPath}
+        </code>
+      )}
+    </>
+  )
 
   return (
     <>
       <AdminHeader trail={[{ label: tNav('venues'), href: '/venues' }]} current={venue.name} />
       <div className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{venue.name}</h1>
-          <code className="mt-2 inline-block rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground ring-1 ring-border">
-            #{venue.slug}
-          </code>
-        </div>
+        {/* The Publish bar top right and the warnings under the header, on every tab (D96, D97). */}
+        <VenueHeader
+          tenantId={organization.id}
+          venueId={venue.id}
+          guestPath={guestPath}
+          canPublish={canPublishMenu(organization.role)}
+          title={title}
+        />
         <WorkspaceTabs
           contents={{
             composer: composerOpen ? (
               <Suspense fallback={<ComposerSkeleton />}>
-                <ComposerTab tenantId={organization.id} venue={venue} />
+                <ComposerTab
+                  tenantId={organization.id}
+                  role={organization.role}
+                  venue={venue}
+                  menu={query.menu}
+                  sub={query.sub}
+                />
               </Suspense>
             ) : (
               <ComposerSkeleton />
@@ -72,33 +113,50 @@ export default async function VenueWorkspacePage({
             ) : (
               <TablesSkeleton />
             ),
-            publishing: publishingOpen ? (
-              <Suspense fallback={<PublishSkeleton />}>
-                <PublishTab tenantId={organization.id} role={organization.role} venue={venue} />
-              </Suspense>
-            ) : (
-              <PublishSkeleton />
-            ),
-            integration: integrationOpen ? (
-              <Suspense fallback={<IntegrationSkeleton />}>
-                <IntegrationTab tenantId={organization.id} role={organization.role} venue={venue} />
-              </Suspense>
-            ) : (
-              <IntegrationSkeleton />
-            ),
             settings: (
-              <div className="space-y-8">
-                <VenueSettings venue={venue} />
-                {settingsOpen ? (
-                  <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-                    <AppearanceSection
-                      tenantId={organization.id}
-                      role={organization.role}
-                      venue={venue}
-                    />
-                  </Suspense>
-                ) : null}
-              </div>
+              <SettingsSections
+                hasTill={hasTill}
+                contents={{
+                  general: sectionOpen('general') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <VenueSettingsGeneral
+                        tenantId={organization.id}
+                        role={organization.role}
+                        venue={venue}
+                        hasTill={hasTill}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                  ...(hasTill
+                    ? {
+                        publish: sectionOpen('publish') ? (
+                          <Suspense fallback={<SettingsSectionSkeleton />}>
+                            <PublishSettingsSection
+                              tenantId={organization.id}
+                              role={organization.role}
+                              venue={venue}
+                            />
+                          </Suspense>
+                        ) : (
+                          <SettingsSectionSkeleton />
+                        ),
+                      }
+                    : {}),
+                  versioning: sectionOpen('versioning') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <VersioningSection
+                        tenantId={organization.id}
+                        role={organization.role}
+                        venue={venue}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                }}
+              />
             ),
           }}
         />

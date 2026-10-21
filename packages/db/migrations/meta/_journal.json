@@ -99,6 +99,104 @@
       "when": 1791647218798,
       "tag": "0013_venues_global_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791700161310,
+      "tag": "0014_till_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791704393511,
+      "tag": "0015_venues_public_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791734866347,
+      "tag": "0016_venue_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791743786511,
+      "tag": "0017_venue_archived",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791823897667,
+      "tag": "0018_integration_instances",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791823960480,
+      "tag": "0019_menus_many",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791824073220,
+      "tag": "0020_areas_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791824196516,
+      "tag": "0021_menu_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791824234418,
+      "tag": "0022_venue_addresses",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791824280112,
+      "tag": "0023_purge",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791827926411,
+      "tag": "0024_till_venue_roots",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791829537565,
+      "tag": "0025_places_drop_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791838401645,
+      "tag": "0026_places_table_set_null",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791843367151,
+      "tag": "0027_integrations_removed_at",
+      "breakpoints": true
     }
   ]
 }

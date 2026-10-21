@@ -30,13 +30,15 @@ import {
   withTenant,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, desc, eq, getTableColumns, inArray, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { parseAssetVariants } from '../asset-variants'
 import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
+import { venueLanguages } from '../languages'
 import { isLocale, type Locale, type LocalizedText, LocalizedTextSchema } from '../locales'
+import { menuSettingsOf } from '../menus'
 import { CURRENCIES, type Currency } from '../money'
 import { compareVisibility, V11_MAX_HIDDEN_SHARE } from '../resolve/compare-visibility'
 import { resolve } from '../resolve/resolve'
@@ -46,16 +48,33 @@ import {
   type AssetVariantWidths,
   buildSnapshot,
   DEFAULT_THEME,
+  menuLayoutOf,
   type SnapshotAssetInput,
 } from '../snapshot/build'
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
-import { assertSnapshotSafe, collectForbiddenValues } from '../snapshot/leak-guard'
+import {
+  assertSnapshotSafe,
+  collectForbiddenValues,
+  lookPublicStrings,
+} from '../snapshot/leak-guard'
 import { buildLiveOverlay } from '../snapshot/overlay'
-import type { LiveOverlay, MenuSnapshot, SnapshotTheme } from '../snapshot/schema'
+import type { LiveOverlay, MenuSnapshot, SnapshotLayout, SnapshotTheme } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
-import { readVenueTheme, snapshotPalette, type VenueTheme } from '../theme'
+import {
+  fontFamilyOf,
+  type GuestFeatures,
+  type Presentation,
+  paletteList,
+  readGuestFeatures,
+  readPresentation,
+  readVenueTheme,
+  themePaletteOf,
+  themeRolesOf,
+  type VenueTheme,
+} from '../theme'
 import { readMenuDocument } from './load-document'
 import { loadTagVocabulary } from './tags'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** Why a publish happens: a person pressed Publish, or a sync published on its own. */
 export const PUBLISH_REASONS = ['manual', 'auto_sync'] as const
@@ -126,6 +145,8 @@ export type PublishErrorCode =
   | 'invalid_input'
   /** The tenant has no such menu, or the menu is not this venue's. */
   | 'menu_not_found'
+  /** The venue was deleted (archived, D76): nothing of it is published until it is restored. */
+  | 'venue_archived'
   /** The menu cannot be resolved for this venue (missing root, template, locales …). */
   | 'menu_blocked'
   /** V10: no item would be visible. */
@@ -259,6 +280,18 @@ async function lockPublish(tx: WriteTx, tenantId: string, menuId: string, venueI
   )
 }
 
+/**
+ * Locks the venue (shared, `lockLiveVenue`) and refuses a deleted one, so a publish, a rollback or a
+ * decision and the deletion of its venue never interleave. A venue the tenant does not have keeps
+ * the refusal the writer gives it later (`menu_not_found`, `nothing_published`, …).
+ */
+async function refuseArchivedVenue(tx: WriteTx, venueId: string): Promise<void> {
+  const locked = await lockLiveVenue(tx, venueId)
+  if (locked.refused === 'venue_archived') {
+    throw new PublishError('venue_archived', venueRefusalText(venueId, 'venue_archived'))
+  }
+}
+
 const inScope = (menuId: string, venueId: string) =>
   and(eq(snapshots.menuId, menuId), eq(snapshots.venueId, venueId))
 
@@ -310,6 +343,15 @@ async function movePointer(
       target: [publishPointers.menuId, publishPointers.venueId],
       set: { currentSnapshotId: snapshotId },
     })
+  await serveVenueAgain(tx, venueId)
+}
+
+/** A publish is the word to serve the venue again after an Unpublish (D86: Draft → Live). */
+async function serveVenueAgain(tx: WriteTx, venueId: string): Promise<void> {
+  await tx
+    .update(venues)
+    .set({ unpublishedAt: null })
+    .where(and(eq(venues.id, venueId), isNotNull(venues.unpublishedAt)))
 }
 
 /** Records `at` as the first-published date of every item of `body` that has none yet. */
@@ -345,10 +387,13 @@ async function supersedeHeld(tx: WriteTx, menuId: string, venueId: string, at: D
 }
 
 /**
- * The snapshot's theme (R13): the default until the venue chooses a brand colour, then the palette
- * derived from that colour and the venue's logo. A logo that is not stored yet, or has no variant
- * files yet (the `asset-variants` job is still to run), is left out rather than shown broken; the
- * next publish picks it up.
+ * The snapshot's theme (R13): the default until the venue sets a theme; then the palette of its
+ * colours (`themePaletteOf`: the tertiary, else the brand colour), the eight roles per scheme
+ * (`themeRolesOf`, SH-01), its font family, corners, shadow and light/dark policy (each the
+ * default when unset), and the venue's logo. A v1 theme (`{brand, logo_asset_id}`) keeps exactly
+ * its palette and the default tokens, and gets the roles the shell derives from that palette.
+ * A logo that is not stored yet, or has no variant files yet (the `asset-variants` job is still
+ * to run), is left out rather than shown broken; the next publish picks it up.
  */
 function snapshotThemeOf(
   theme: VenueTheme | null,
@@ -357,9 +402,13 @@ function snapshotThemeOf(
   if (theme === null) return DEFAULT_THEME
   const logo = theme.logo_asset_id
   return {
-    ...DEFAULT_THEME,
-    palette: snapshotPalette(theme.brand),
+    palette: paletteList(themePaletteOf(theme)),
+    font: theme.font === undefined ? DEFAULT_THEME.font : fontFamilyOf(theme.font),
+    radius: theme.radius ?? DEFAULT_THEME.radius,
+    shadow: theme.shadow ?? DEFAULT_THEME.shadow,
     logo: logo !== null && Object.hasOwn(snapshotAssets, logo) ? logo : null,
+    roles: themeRolesOf(theme),
+    scheme: theme.scheme ?? 'auto',
   }
 }
 
@@ -391,6 +440,16 @@ interface Resolution {
   readonly nowIso: string
   /** The look the venue chose (`venues.settings.theme`), or null: the default theme applies. */
   readonly theme: VenueTheme | null
+  /** The template the venue chose (`venues.settings.presentation`), or null: none is written. */
+  readonly presentation: Presentation | null
+  /** The guest services (`venues.settings.guest_features`); the defaults when unset. */
+  readonly features: GuestFeatures
+  /** The menu's layout and guest switch (`menus.settings`, D92); the defaults when unset. */
+  readonly layout: SnapshotLayout
+  /** The menu's header name (`menus.name`, D92); null = none set. */
+  readonly menuName: string | null
+  /** The venue's display name (`venues.name`): the heading of a menu without one (D92). */
+  readonly venueName: string
 }
 
 /**
@@ -414,16 +473,18 @@ async function resolveForVenue(
   if (venue === undefined) {
     throw new PublishError('menu_not_found', `this tenant has no venue ${venueId}`)
   }
+  if (venue.archivedAt !== null) {
+    throw new PublishError('venue_archived', venueRefusalText(venueId, 'venue_archived'))
+  }
   const doc = await readMenuDocument(tx, menuId)
 
-  // Context: the venue's languages (default first), its service day and time zone.
-  const defaultLocale = venue.defaultLocale as Locale
-  const locales = [
-    defaultLocale,
-    ...venue.enabledLocales.filter((locale) => locale !== defaultLocale),
-  ].filter(isLocale)
+  // Context: the venue's languages (the one source every workflow uses, D77: its main language
+  // first), its service day and time zone.
+  const languages = venueLanguages(venue)
+  const defaultLocale = languages.main
+  const locales = [...languages.all]
   const currency = venue.currency as Currency
-  if (!isLocale(defaultLocale) || !(CURRENCIES as readonly string[]).includes(currency)) {
+  if (!isLocale(venue.defaultLocale) || !(CURRENCIES as readonly string[]).includes(currency)) {
     throw new PublishError('menu_blocked', `venue ${venueId} has an unknown locale or currency`)
   }
   const day = serviceDate(now, venue.timezone, venue.serviceDayEndsAt)
@@ -457,6 +518,11 @@ async function resolveForVenue(
     day,
     nowIso,
     theme: readVenueTheme(venue.settings),
+    presentation: readPresentation(venue.settings),
+    features: readGuestFeatures(venue.settings),
+    layout: menuLayoutOf(menuSettingsOf(menu.settings)),
+    menuName: menu.name,
+    venueName: venue.name,
   }
 }
 
@@ -483,6 +549,11 @@ async function prepareSnapshot(
     currency,
     nowIso,
     theme: venueTheme,
+    presentation,
+    features,
+    layout,
+    menuName,
+    venueName,
   } = await resolveForVenue(tx, scope, now)
   const blocking = [
     ...new Set(
@@ -569,17 +640,24 @@ async function prepareSnapshot(
     theme,
     assets: snapshotAssets,
     tagVocabulary,
+    presentation,
+    features,
+    layout,
+    menuName,
+    venueName,
   })
   const forbidden = collectForbiddenValues({
     template: TEMPLATE,
     doc,
     externalIds,
     backendOnly,
-    publicStrings: [theme.font, ...theme.palette],
+    publicStrings: lookPublicStrings(theme, presentation),
   })
   let snapshot: MenuSnapshot
   try {
-    snapshot = assertSnapshotSafe(built, forbidden)
+    // The heading is public by design (D92): the guard skips its place and nothing else, so an
+    // internal value that reads like the header name is still refused anywhere else.
+    snapshot = assertSnapshotSafe(built, forbidden, { exempt: [['menu', 'title']] })
   } catch (error) {
     if (!(error instanceof SnapshotError)) throw error
     throw new PublishError('unsafe_snapshot', `the snapshot was refused: ${error.message}`, {
@@ -613,6 +691,7 @@ export async function publishMenu(
   const now = options.now ?? new Date()
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
+    await refuseArchivedVenue(tx, venueId)
     const version = await nextVersion(tx, menuId, venueId)
     const { snapshot } = await prepareSnapshot(
       tx,
@@ -651,6 +730,8 @@ export async function publishMenu(
     }
 
     if (previous !== null && previous.hash === hash) {
+      // Nothing new to publish, but "Publish" was said: an unpublished venue is served again.
+      await serveVenueAgain(tx, venueId)
       return { status: 'unchanged', snapshot: previous, previous }
     }
 
@@ -735,6 +816,7 @@ export async function rollbackTo(
   const now = options.now ?? new Date()
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
+    await refuseArchivedVenue(tx, venueId)
     const current = await currentRow(tx, menuId, venueId)
     if (current === undefined) {
       throw new PublishError('nothing_published', 'this menu has never been published here')
@@ -786,6 +868,7 @@ export async function rejectHeld(
   const now = options.now ?? new Date()
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
+    await refuseArchivedVenue(tx, venueId)
     const held = await snapshotRow(tx, menuId, venueId, snapshotId)
     if (held === undefined || held.status !== 'held') {
       throw new PublishError('held_not_found', `no held snapshot ${snapshotId} for this menu`)
@@ -885,6 +968,8 @@ export async function listPublishedScopes(
       })
       .from(publishPointers)
       .innerJoin(venues, eq(venues.id, publishPointers.venueId))
+      // A deleted venue has nothing to remake (D76).
+      .where(isNull(venues.archivedAt))
       .orderBy(publishPointers.menuId, publishPointers.venueId),
   )
   return rows.map((row) => ({

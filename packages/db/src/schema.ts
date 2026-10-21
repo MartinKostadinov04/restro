@@ -4,6 +4,7 @@
 // src/table-access.ts, whose header says how to add a table.
 import { sql } from 'drizzle-orm'
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -30,9 +31,22 @@ export const tenants = restro.table(
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    /**
+     * Organisation-wide settings that are not columns of their own (adjustments I1, D81).
+     * `systems`: the POS systems the organisation chose in Settings › Integrations, as connector
+     * kinds (`integrations.kind`); an instance can only be added for a chosen system, and a
+     * system with instances cannot be unchosen. core/apply validates and writes it.
+     */
+    settings: jsonb('settings')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check('tenants_id_format', sql`${t.id} ~ '^tn_[0-9A-Za-z]+$'`)],
+  (t) => [
+    check('tenants_id_format', sql`${t.id} ~ '^tn_[0-9A-Za-z]+$'`),
+    check('tenants_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
+  ],
 )
 
 /** A venue (one club) of a tenant. Tenant-isolated by row-level security. */
@@ -44,7 +58,18 @@ export const venues = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
+    /**
+     * The readable part of the public menu address (`/m/<slug>-<public_id>`, D68). Cosmetic and
+     * editable: it is not unique, and a stale one still finds the menu. The format is checked in
+     * core (`isVenueSlug`) before every write.
+     */
     slug: text('slug').notNull(),
+    /**
+     * The random code that finds the venue's menu (`/m/<slug>-<public_id>`, `v/<public_id>.json`,
+     * D68): 12 characters of `a-z0-9` from `crypto` (core `newPublicId`), set when the venue is
+     * created and never changed. Never derived from `id` (rule 3).
+     */
+    publicId: text('public_id').notNull(),
     /** IANA time zone the venue's day and schedules are counted in. */
     timezone: text('timezone').notNull().default('Europe/Sofia'),
     /** Local time at which the venue's service day ends (D45); the night before owns earlier hours. */
@@ -64,20 +89,115 @@ export const venues = restro.table(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Kept current by the `venues_touch_updated_at` trigger, whatever writes the row. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * When the venue was deleted (D76, brief CF-18); null = live. Deleting a venue only archives
+     * it: the row, its menu, tables and settings stay (history is append-only, rule 2) and the app
+     * role has no DELETE on this table. Core's `archiveVenue` / `restoreVenue` are the only
+     * writers; every other writer of one venue calls `lockLiveVenue` first, and every admin read
+     * and worker job leaves archived venues out. The public code and the QR tokens stay, so a
+     * restore brings the same addresses back.
+     */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /**
+     * The venue's live menu (D88, D90; migration 0019): the one guests see at the venue's address
+     * and wherever no area or table route says otherwise (`menu_routes`). Null only while the
+     * venue is being created, before its first menu exists. Core's menu writers set it; the
+     * foreign key makes it a menu of this very venue, and purging that menu clears it (in the
+     * database the key says `ON DELETE SET NULL (live_menu_id)`, a column list this builder
+     * cannot express; migration 0019 writes it by hand).
+     */
+    liveMenuId: text('live_menu_id'),
+    /**
+     * Set by Unpublish (D86): the guest files were withdrawn and the venue shows as Draft until
+     * the next publish clears it. Null = nothing withdrawn.
+     */
+    unpublishedAt: timestamp('unpublished_at', { withTimezone: true }),
   },
   (t) => [
-    unique('venues_tenant_id_slug_unique').on(t.tenantId, t.slug),
-    // A venue's slug is its public address (`/m/<slug>`, `v/<slug>.json`, the table QR links), which
-    // is global, so it is unique across all tenants (T61). Slugs are lower-case by construction
-    // (`provisionVenue` accepts only the `isVenueSlug` pattern and nothing else sets the column), so
-    // a plain index on `slug` is enough; row-level security hides other tenants' rows, which is why
-    // only the index can tell a tenant that its slug is taken.
-    uniqueIndex('venues_slug_unique').on(t.slug),
+    // The public code is the venue's global address (D68, replacing the unique slug of T61): unique
+    // across all tenants. Row-level security hides other tenants' rows, which is why only the index
+    // can tell that a drawn code is taken (`provisionVenue` draws again).
+    uniqueIndex('venues_public_id_unique').on(t.publicId),
+    check('venues_public_id_format', sql`${t.publicId} ~ '^[a-z0-9]{12}$'`),
     check('venues_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
     // Target of the composite foreign keys (tenant_id, venue_id) of the document tables.
     unique('venues_tenant_id_id_unique').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'venues_live_menu_fk',
+      columns: [t.tenantId, t.id, t.liveMenuId],
+      foreignColumns: liveMenuTarget(),
+    }).onDelete('set null'),
     check('venues_id_format', sql`${t.id} ~ '^vn_[0-9A-Za-z]+$'`),
     check('venues_default_locale_enabled', sql`${t.defaultLocale} = any(${t.enabledLocales})`),
+    // The address name is unique within the organisation (D84, migration 0022): the guest address
+    // is `/m/<organisation>/<venue>`. A venue in the bin keeps its name; a purged one frees it.
+    unique('venues_tenant_id_slug_unique').on(t.tenantId, t.slug),
+  ],
+)
+
+/**
+ * The columns `venues_live_menu_fk` points at: `(tenant_id, venue_id, id)` of `menus`. A function
+ * with a declared return type, because `venues` and `menus` reference each other (menus belong
+ * to a venue; a venue names its live menu): TypeScript cannot infer two constants from each
+ * other, while Drizzle only calls the table's config callback later, once both exist.
+ */
+function liveMenuTarget(): [AnyPgColumn, AnyPgColumn, AnyPgColumn] {
+  return [menus.tenantId, menus.venueId, menus.id]
+}
+
+/**
+ * A venue's earlier address names (D84): an old name keeps redirecting to the venue and stays
+ * reserved in the organisation until the venue is purged (then the purge job deletes these rows).
+ * Written by core's address writer when a venue is renamed.
+ */
+export const venueSlugHistory = restro.table(
+  'venue_slug_history',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    slug: text('slug').notNull(),
+    replacedAt: timestamp('replaced_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'venue_slug_history_pkey', columns: [t.tenantId, t.slug] }),
+    foreignKey({
+      name: 'venue_slug_history_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    index('venue_slug_history_venue_id_idx').on(t.venueId),
+    check(
+      'venue_slug_history_slug_format',
+      sql`${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and length(${t.slug}) <= 63`,
+    ),
+  ],
+)
+
+/**
+ * Organisations' earlier address names (D84): the organisation part of a guest address is
+ * `auth_organization.slug`, unique platform-wide, so its old names are reserved platform-wide
+ * too. A system table like `auth_organization` (no tenant scope: every organisation's history
+ * must be checked when a slug is chosen). Written by the organisation's address action.
+ */
+export const organizationSlugHistory = restro.table(
+  'organization_slug_history',
+  {
+    slug: text('slug').primaryKey(),
+    organizationId: text('organization_id').notNull(),
+    replacedAt: timestamp('replaced_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('organization_slug_history_organization_id_idx').on(t.organizationId),
+    check(
+      'organization_slug_history_organization_id',
+      sql`${t.organizationId} ~ '^tn_[0-9A-Za-z]+$'`,
+    ),
+    check(
+      'organization_slug_history_slug_format',
+      sql`${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$' and length(${t.slug}) <= 63`,
+    ),
   ],
 )
 
@@ -104,6 +224,62 @@ export const templates = restro.table(
     check('templates_id_format', sql`${t.id} ~ '^tp_[0-9A-Za-z]+$'`),
     check('templates_version_positive', sql`${t.version} >= 1`),
     check('templates_definition_object', sql`jsonb_typeof(${t.definition}) = 'object'`),
+  ],
+)
+
+// --- The purge (D83; adjustments V1) --------------------------------------------------------------
+// A deleted venue is purged after 30 days (or at once), by the worker's purge job through its own
+// database role, the only one with DELETE on venue data (src/table-access.ts). What it erases is
+// gone; what it must never give back is kept here.
+
+/**
+ * Codes that must never be reissued (D83): the public codes and table tokens of purged venues.
+ * A system table (no tenant scope): both kinds are unique across all tenants, and the generators
+ * (`newPublicId`, `newTableToken`) check here before a code is used. Written by the purge role
+ * only; the app role reads.
+ */
+export const tombstones = restro.table(
+  'tombstones',
+  {
+    kind: text('kind').notNull(),
+    value: text('value').notNull(),
+    /** Which organisation the code belonged to, for the record. */
+    organizationId: text('organization_id').notNull(),
+    purgedAt: timestamp('purged_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'tombstones_pkey', columns: [t.kind, t.value] }),
+    check('tombstones_kind', sql`${t.kind} in ('public_code', 'table_token')`),
+    check('tombstones_value_length', sql`length(${t.value}) between 1 and 128`),
+    check('tombstones_organization_id', sql`${t.organizationId} ~ '^tn_[0-9A-Za-z]+$'`),
+  ],
+)
+
+/**
+ * What the purge job erased, without content (D83): which venue, menu, instance or version set,
+ * and how many rows of each table went. The subject's id is kept as text with no foreign key:
+ * the row it names is gone. Tenant-scoped; written by the purge role, read by the admin.
+ */
+export const purgeLog = restro.table(
+  'purge_log',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    /** What was purged: a venue, a binned menu, a removed POS instance, old versions, tables. */
+    kind: text('kind').notNull(),
+    /** The purged thing's id (`vn_…`, `nd_…`, `in_…`), or the venue whose versions were purged. */
+    subjectId: text('subject_id').notNull(),
+    /** Rows deleted per table, e.g. `{"nodes": 120, "snapshots": 4}`. Never content. */
+    counts: jsonb('counts').$type<Record<string, number>>().notNull().default({}),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('purge_log_tenant_id_at_idx').on(t.tenantId, t.at),
+    check('purge_log_kind', sql`${t.kind} in ('venue', 'menu', 'instance', 'versions', 'tables')`),
+    check('purge_log_subject_id', sql`${t.subjectId} ~ '^[a-z]{2}_[0-9A-Za-z]+$'`),
+    check('purge_log_counts_object', sql`jsonb_typeof(${t.counts}) = 'object'`),
   ],
 )
 
@@ -262,8 +438,11 @@ export const authInvitation = restro.table(
 
 /** Edition layers: edition:<id> (the other layers are listed in the checks). */
 const EDITION_LAYER_PATTERN = sql.raw(`'^edition:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
-/** Sources other than `manual`: import:<profile>, barsy:<integration>. */
-const SOURCE_PATTERN = sql.raw(`'^(import|barsy):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
+/**
+ * Sources other than `manual`: till:<integration>, the role of whichever connector feeds a
+ * venue's till (brief CF-03). The vendor is the integration's `kind`, never part of a source.
+ */
+const SOURCE_PATTERN = sql.raw(`'^till:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
 /** Actors other than `system`: user:<id>, integration:<id> (never personal data). */
 const ACTOR_PATTERN = sql.raw(`'^(user|integration):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'`)
 /** Scopes other than `master`: venue:<our vn_ id> (never a barsy bid). */
@@ -310,12 +489,27 @@ export const integrations = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     kind: text('kind').notNull(),
+    /**
+     * The instance's name in the admin (adjustments I1, D81): what the owner calls this
+     * connection, e.g. the system's name and a city, so several instances of one system can be
+     * told apart. Trimmed, 1–80 characters. Migration 0018 named existing rows "<kind> – <host>",
+     * and a BEFORE INSERT trigger gives a row inserted without a name that same default.
+     */
+    name: text('name').notNull(),
     host: text('host').notNull(),
     credentialsSealed: text('credentials_sealed'),
     status: text('status').notNull().default('new'),
     statusDetail: text('status_detail'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     config: jsonb('config').$type<IntegrationConfig>().notNull().default({}),
+    /**
+     * When the instance was removed in Settings › Integrations (adjustments I1, D81; migration
+     * 0027); null = in use. A removed instance is hidden from the admin and never synced, but the
+     * row, its credentials and what it synced stay (nothing is erased from app code; the purge
+     * job clears a removed instance's data later, D91). Core's `removeIntegration` is the only
+     * writer, and refuses while a venue still links to the instance.
+     */
+    removedAt: timestamp('removed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -323,6 +517,10 @@ export const integrations = restro.table(
     unique('integrations_tenant_id_id_unique').on(t.tenantId, t.id),
     check('integrations_id_format', sql`${t.id} ~ '^in_[0-9A-Za-z]+$'`),
     check('integrations_kind', sql`${t.kind} in ('barsy')`),
+    check(
+      'integrations_name_length',
+      sql`char_length(${t.name}) between 1 and 80 and ${t.name} = btrim(${t.name})`,
+    ),
     check('integrations_status', sql`${t.status} in ('new', 'connected', 'error')`),
     check('integrations_config_object', sql`jsonb_typeof(${t.config}) = 'object'`),
   ],
@@ -341,6 +539,25 @@ export const barsyVenues = restro.table(
     venueId: text('venue_id'),
     /** The catalogue root this venue's menu is read from (D56); null until chosen. */
     catalogueRootCatId: integer('catalogue_root_cat_id'),
+    /**
+     * The catalogue (item set) this venue sells from, as the till lists it; venues can share one
+     * (T71). Written whenever the venue list is read; null until then (brief CF-16).
+     */
+    catalogueId: integer('catalogue_id'),
+    /**
+     * Which till price this venue's menu shows (`actual_price` or `current_price`): per venue,
+     * because prices differ per venue (D73). Null: the integration's `config.price_source`.
+     */
+    priceSource: text('price_source'),
+    /**
+     * The menu roots the till designates for this venue (D88; migration 0024): the category its
+     * public menu starts at (`public_cat_id`) and the one its till tree starts at (`cat_id`), as
+     * the venue list reports them; null until read, or when the till has none. The sync keeps one
+     * menu per root that is in the tree (`menu_root` links). `catalogue_root_cat_id` above is the
+     * picker of before (D56), no longer read by the sync; it goes with the picker.
+     */
+    publicCatId: integer('public_cat_id'),
+    treeCatId: integer('tree_cat_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -364,6 +581,14 @@ export const barsyVenues = restro.table(
       columns: [t.tenantId, t.venueId],
       foreignColumns: [venues.tenantId, venues.id],
     }),
+    // Named for the till role, not the vendor (D67: no new vendor words outside a connector).
+    check(
+      'till_venue_price_source',
+      sql`${t.priceSource} is null or ${t.priceSource} in ('actual_price', 'current_price')`,
+    ),
+    check('till_venue_catalogue_id', sql`${t.catalogueId} is null or ${t.catalogueId} >= 0`),
+    check('till_venue_public_cat_id', sql`${t.publicCatId} is null or ${t.publicCatId} >= 0`),
+    check('till_venue_tree_cat_id', sql`${t.treeCatId} is null or ${t.treeCatId} >= 0`),
   ],
 )
 
@@ -417,7 +642,13 @@ export const nodes = restro.table(
   ],
 )
 
-/** A menu: one per venue (P47). Its id is its root node's id: a menu is its root node. */
+/**
+ * A menu of a venue: several per venue, exactly one of them live (`venues.live_menu_id`; D88,
+ * D90, migration 0019). Its id is its root node's id: a menu is its root node. Each menu has its
+ * own draft and published versions (`snapshots`, `publish_pointers`); a venue's template, design
+ * and guest features are shared by all its menus. A hand-made venue's owner adds, renames,
+ * reorders and bins menus (`deleted_at`); a POS venue's menus are the roots its till designates.
+ */
 export const menus = restro.table(
   'menus',
   {
@@ -429,12 +660,33 @@ export const menus = restro.table(
     templateKey: text('template_key').notNull(),
     templateVersion: integer('template_version').notNull(),
     rootNodeId: text('root_node_id').notNull(),
+    /** The header name guests see (D92); null = the venue's name. Trimmed, 1–120 characters. */
+    name: text('name'),
+    /** Order among the venue's menus (Settings › Menus): a fractional key compared by byte order. */
+    sortKey: byteOrderText('sort_key').notNull().default('a0'),
+    /**
+     * Menu settings that are not columns of their own (D92): the layout default (`layout`) and
+     * whether guests may switch it (`layout_switch`). core/apply validates and writes it.
+     */
+    settings: jsonb('settings')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    /**
+     * When the owner moved the menu to the venue's bin (D91); null = in use. A binned menu is
+     * never the live one, is left out of every list and is purged after 30 days (D83).
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `menus_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique('menus_venue_id_unique').on(t.venueId),
     // Target of the composite foreign keys (tenant_id, menu_id) of the publish tables.
     unique('menus_tenant_id_id_unique').on(t.tenantId, t.id),
+    // Target of `venues_live_menu_fk` and `menu_routes_menu_fk`: a menu of that same venue.
+    unique('menus_tenant_id_venue_id_id_unique').on(t.tenantId, t.venueId, t.id),
+    index('menus_venue_id_idx').on(t.venueId, t.sortKey),
     foreignKey({
       name: 'menus_venue_fk',
       columns: [t.tenantId, t.venueId],
@@ -447,6 +699,12 @@ export const menus = restro.table(
     }),
     check('menus_id_is_root_node', sql`${t.id} = ${t.rootNodeId}`),
     check('menus_template_version_positive', sql`${t.templateVersion} >= 1`),
+    check(
+      'menus_name_length',
+      sql`${t.name} is null or (char_length(${t.name}) between 1 and 120 and ${t.name} = btrim(${t.name}))`,
+    ),
+    check('menus_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+    check('menus_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
   ],
 )
 
@@ -616,29 +874,26 @@ export const fieldValues = restro.table(
     check('field_values_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
       'field_values_layer',
-      sql`${t.layer} in ('barsy', 'import', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
+      sql`${t.layer} in ('till', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
     ),
     check('field_values_scope', sql`${t.scope} = 'master' or ${t.scope} ~ ${VENUE_SCOPE_PATTERN}`),
     check('field_values_source', sql`${t.source} = 'manual' or ${t.source} ~ ${SOURCE_PATTERN}`),
     check('field_values_actor', sql`${t.actor} = 'system' or ${t.actor} ~ ${ACTOR_PATTERN}`),
     check('field_values_job_id', sql`length(${t.jobId}) between 1 and 128`),
     check('field_values_value_hash', sql`${t.valueHash} ~ ${SHA256_PATTERN}`),
-    // Each source writes its own layers: barsy -> barsy, import -> import, manual -> the rest.
+    // Each source writes its own layers: a till -> till, manual -> the rest.
     check(
       'field_values_layer_matches_source',
-      sql`(${t.layer} = 'barsy') = (${t.source} like 'barsy:%') and (${t.layer} = 'import') = (${t.source} like 'import:%')`,
+      sql`(${t.layer} = 'till') = (${t.source} like 'till:%')`,
     ),
-    check(
-      'field_values_venue_scope_barsy_only',
-      sql`${t.scope} = 'master' or ${t.layer} = 'barsy'`,
-    ),
+    check('field_values_venue_scope_till_only', sql`${t.scope} = 'master' or ${t.layer} = 'till'`),
     check(
       'field_values_basis_on_overrides',
       sql`(${t.layer} = 'override') = (${t.basis} is not null)`,
     ),
     check(
-      'field_values_barsy_provenance',
-      sql`${t.layer} <> 'barsy' or (${t.sourceRecordId} is not null and ${t.mappingVersion} is not null)`,
+      'field_values_till_provenance',
+      sql`${t.layer} <> 'till' or (${t.sourceRecordId} is not null and ${t.mappingVersion} is not null)`,
     ),
     check('field_values_mapping_version_positive', sql`${t.mappingVersion} >= 1`),
     check('field_values_reject_reason', sql`${t.valid} = (${t.rejectReason} is null)`),
@@ -672,13 +927,13 @@ export const EVENT_OPS = [
  * a field value: `field_key` is the field, `layer` and `scope` the slot. The structural ops
  * (`createNode`, `setNodeStatus`, `setPlacement`, `removePlacement`, `moveNode`, `linkSource`,
  * `unlinkSource`, `setLinkState`) fill the same columns with a reserved key naming what changed
- * (`node`, `status`, `placement`, `parent`, `link`), the layer of their source (`manual`,
- * `import` or `barsy`), scope `master`, and JSON in `old_value` / `new_value` that names only our
+ * (`node`, `status`, `placement`, `parent`, `link`), the layer of their source (`manual` or
+ * `till`), scope `master`, and JSON in `old_value` / `new_value` that names only our
  * own ids and never an external id (rule 3): `{section, sort_key}` for a placement,
  * `{parent, sort_key}` for a move, `{type, parent, status}` for a new node,
  * `{source, external_type}` for a link, `{source, external_type, state}` for a link-state
- * change, the status text for a status change. `node_id` is the node that changed (the item,
- * for a placement).
+ * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
+ * the node that changed (the item, for a placement).
  */
 export const events = restro.table(
   'events',
@@ -715,7 +970,7 @@ export const events = restro.table(
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
       'events_layer',
-      sql`${t.layer} in ('barsy', 'import', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
+      sql`${t.layer} in ('till', 'manual', 'override') or ${t.layer} ~ ${EDITION_LAYER_PATTERN}`,
     ),
     check('events_scope', sql`${t.scope} = 'master' or ${t.scope} ~ ${VENUE_SCOPE_PATTERN}`),
     check('events_source', sql`${t.source} = 'manual' or ${t.source} ~ ${SOURCE_PATTERN}`),
@@ -734,8 +989,24 @@ export const events = restro.table(
 export interface JobRunDetails {
   notes: string[]
   refused: { nodeRef: string | null; fieldKey?: string; code: string }[]
+  /**
+   * The venue of ours (`vn_…`) a run was for, so the history of the whole installation can say
+   * which venue each pull belonged to (CF-09b). Absent on runs recorded before it existed and on
+   * runs that belong to no venue (the connection check).
+   */
+  venue_id?: string
   /** True when a full pull did not conclude absence. Absent on runs recorded before it existed. */
   deletionCheckSkipped?: boolean
+  /**
+   * Set when a complete full pull found nothing, or far fewer items than the menu holds, so its
+   * absence conclusion was held and nothing was hidden (T62): why, how many items it would have
+   * hidden and how many were on the menu. Absent when nothing was held.
+   */
+  absence_held?: {
+    reason: 'empty_read' | 'too_many_missing'
+    would_hide: number
+    active: number
+  }
 }
 
 /** One run of a job (full pull, incremental pull, photo fetch, …) with its counters. */
@@ -775,6 +1046,177 @@ export const jobRuns = restro.table(
   ],
 )
 
+// --- Areas and tables (adjustments T1; D94, D95) ---------------------------------------------
+// The platform's own model of where guests sit: a venue has areas (halls, a terrace), an area has
+// tables. A hand-made venue's owner creates, renames and deletes them; a POS venue's come from the
+// till through its connector, which mirrors them (`places` for the first connector) and may only
+// rename, reorder and hide them. Guests only ever see a table's `tb_` id and its QR token (rule 3).
+// Tenant-scoped like every table here; only `@restro/core/apply` writes them.
+
+/** An area of a venue. `source_key` is the till's own key for it (its hall id) when it came from a till. */
+export const areas = restro.table(
+  'areas',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** The name guests and staff see: the owner's, or our name over the till's. Trimmed, 1–60. */
+    name: text('name').notNull(),
+    /** Order among the venue's areas: a fractional key compared by byte order. */
+    sortKey: byteOrderText('sort_key').notNull(),
+    /** A hidden area and its tables get no codes and no guest page (D95). */
+    hidden: boolean('hidden').notNull().default(false),
+    /**
+     * The key the till reports for this area (its hall id, as text), so a sync finds it again
+     * whatever it is called; null = the owner's own area. Never shown to guests.
+     */
+    sourceKey: text('source_key'),
+    /** Set when the owner deleted the area (hand-made venues, D95); purged later (D83). */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `areas_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('areas_tenant_id_id_unique').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'areas_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    index('areas_venue_id_idx').on(t.venueId, t.sortKey),
+    // One area per till hall and venue.
+    uniqueIndex('areas_venue_id_source_key_unique')
+      .on(t.venueId, t.sourceKey)
+      .where(sql`${t.sourceKey} is not null`),
+    check('areas_id_format', sql`${t.id} ~ '^ar_[0-9A-Za-z]+$'`),
+    check(
+      'areas_name_length',
+      sql`char_length(${t.name}) between 1 and 60 and ${t.name} = btrim(${t.name})`,
+    ),
+    check('areas_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+    check(
+      'areas_source_key_length',
+      sql`${t.sourceKey} is null or length(${t.sourceKey}) between 1 and 128`,
+    ),
+  ],
+)
+
+/**
+ * A table (or a seat, a bar spot) of an area. `number` is what staff know it by (the till's
+ * number, or the owner's); `name` is our name over it, shown to guests when set (D95). The QR
+ * token on its sticker is unique across all tenants, and a purged token is tombstoned, never
+ * reissued (D83).
+ */
+export const venueTables = restro.table(
+  'tables',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    areaId: text('area_id').notNull(),
+    /** Our name for it, or null (guests then see `number`). Trimmed, 1–40 characters. */
+    name: text('name'),
+    /** The till's number or label, or the owner's; null only when `name` is set. Trimmed, 1–40. */
+    number: text('number'),
+    /** Order among the area's tables: a fractional key compared by byte order. */
+    sortKey: byteOrderText('sort_key').notNull(),
+    /** A hidden table gets no code and no guest page (D95: non-public and placeholder places). */
+    hidden: boolean('hidden').notNull().default(false),
+    /** The QR token on its sticker (the guest files' token pattern), or null when it has no code. */
+    qrToken: text('qr_token'),
+    /** Set when the owner deleted the table (hand-made venues, D95); purged later (D83). */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `tables_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('tables_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('tables_qr_token_unique').on(t.qrToken),
+    foreignKey({
+      name: 'tables_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    foreignKey({
+      name: 'tables_area_fk',
+      columns: [t.tenantId, t.areaId],
+      foreignColumns: [areas.tenantId, areas.id],
+    }),
+    index('tables_area_id_idx').on(t.areaId, t.sortKey),
+    check('tables_id_format', sql`${t.id} ~ '^tb_[0-9A-Za-z]+$'`),
+    check(
+      'tables_name_length',
+      sql`${t.name} is null or (char_length(${t.name}) between 1 and 40 and ${t.name} = btrim(${t.name}))`,
+    ),
+    check(
+      'tables_number_length',
+      sql`${t.number} is null or (char_length(${t.number}) between 1 and 40 and ${t.number} = btrim(${t.number}))`,
+    ),
+    check('tables_has_label', sql`${t.name} is not null or ${t.number} is not null`),
+    check('tables_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+    check(
+      'tables_qr_token_format',
+      sql`${t.qrToken} is null or ${t.qrToken} ~ '^[A-Za-z0-9_-]{8,128}$'`,
+    ),
+  ],
+)
+
+/**
+ * Menu routing (D95; adjustments M2): which menu an area or a table shows. The venue's live menu
+ * (`venues.live_menu_id`) is the default; a row here for an area overrides it for that area, a
+ * row for a table overrides the area. One row per area or table, with exactly one of the two
+ * set; `menu_id` null means "no choice of its own" (inherit), so clearing a route is an update.
+ * The publisher resolves the dictionary into the guest files (rule 4): an unpublished or binned
+ * menu falls back to the next level up.
+ */
+export const menuRoutes = restro.table(
+  'menu_routes',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    areaId: text('area_id'),
+    tableId: text('table_id'),
+    menuId: text('menu_id'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('menu_routes_area_id_unique').on(t.areaId).where(sql`${t.areaId} is not null`),
+    uniqueIndex('menu_routes_table_id_unique').on(t.tableId).where(sql`${t.tableId} is not null`),
+    index('menu_routes_venue_id_idx').on(t.venueId),
+    foreignKey({
+      name: 'menu_routes_venue_fk',
+      columns: [t.tenantId, t.venueId],
+      foreignColumns: [venues.tenantId, venues.id],
+    }),
+    foreignKey({
+      name: 'menu_routes_area_fk',
+      columns: [t.tenantId, t.areaId],
+      foreignColumns: [areas.tenantId, areas.id],
+    }),
+    foreignKey({
+      name: 'menu_routes_table_fk',
+      columns: [t.tenantId, t.tableId],
+      foreignColumns: [venueTables.tenantId, venueTables.id],
+    }),
+    // The chosen menu is a menu of this very venue; purging it clears the choice (in the
+    // database: `ON DELETE SET NULL (menu_id)`, written by hand in migration 0021).
+    foreignKey({
+      name: 'menu_routes_menu_fk',
+      columns: [t.tenantId, t.venueId, t.menuId],
+      foreignColumns: [menus.tenantId, menus.venueId, menus.id],
+    }).onDelete('set null'),
+    check('menu_routes_one_target', sql`(${t.areaId} is null) <> (${t.tableId} is null)`),
+  ],
+)
+
 /** A barsy place (a table) of a barsy venue. Guests only ever see its `tb_` id and QR token. */
 export const places = restro.table(
   'places',
@@ -789,38 +1231,38 @@ export const places = restro.table(
     placeId: text('place_id').notNull(),
     placeNum: text('place_num'),
     salonName: text('salon_name'),
+    /** The till's hall id and its order among halls (D95: halls keyed by id); null until read. */
+    salonId: text('salon_id'),
+    salonWeight: integer('salon_weight'),
     isPublic: boolean('is_public').notNull(),
     state: text('state').notNull().default('active'),
     /**
-     * The QR code's random token (brief S3-07): 22 base62 characters from `crypto`, never derived
-     * from a barsy id; null = no code. `/t/<token>` leads to the menu with this table's name.
+     * The platform table this place is mirrored into (`tables`, migration 0020); null while the
+     * place's till venue serves no venue of ours. The table holds the QR token and the name the
+     * manager chose (migration 0025 moved them there from this row).
      */
-    qrToken: text('qr_token'),
-    /** What the guest page calls the table when a manager has chosen a name; else `place_num`. */
-    label: text('label'),
+    tableId: text('table_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique('places_integration_id_bid_place_id_unique').on(t.integrationId, t.bid, t.placeId),
-    unique('places_qr_token_unique').on(t.qrToken),
+    unique('places_table_id_unique').on(t.tableId),
     foreignKey({
       name: 'places_barsy_venue_fk',
       columns: [t.tenantId, t.integrationId, t.bid],
       foreignColumns: [barsyVenues.tenantId, barsyVenues.integrationId, barsyVenues.bid],
     }),
+    // A purged table (D83) leaves the place without one; the next read makes a new table if the
+    // place's till venue serves a venue (in the database: `ON DELETE SET NULL (table_id)`,
+    // written by hand in migration 0026, since a plain SET NULL would null the tenant too).
+    foreignKey({
+      name: 'places_table_fk',
+      columns: [t.tenantId, t.tableId],
+      foreignColumns: [venueTables.tenantId, venueTables.id],
+    }).onDelete('set null'),
     check('places_id_format', sql`${t.id} ~ '^tb_[0-9A-Za-z]+$'`),
     check('places_state', sql`${t.state} in ('active', 'missing', 'deleted')`),
-    // The token file (`t/<token>.json`) holds a label of 1 to 40 characters.
-    check(
-      'places_label_length',
-      sql`${t.label} is null or (char_length(${t.label}) between 1 and 40 and ${t.label} = btrim(${t.label}))`,
-    ),
-    // A token is URL-safe and opaque: the same shape as `TABLE_TOKEN_PATTERN` in @restro/core.
-    check(
-      'places_qr_token_format',
-      sql`${t.qrToken} is null or ${t.qrToken} ~ '^[A-Za-z0-9_-]{8,128}$'`,
-    ),
   ],
 )
 
@@ -844,7 +1286,7 @@ export const assets = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     origin: text('origin').notNull(),
-    /** Where it came from (the barsy picture it was fetched for); backend only. */
+    /** Where it came from (the connector's picture it was fetched for); backend only. */
     originRef: text('origin_ref'),
     checksum: text('checksum'),
     contentType: text('content_type'),
@@ -863,7 +1305,7 @@ export const assets = restro.table(
       'assets_variants_object',
       sql`${t.variants} is null or jsonb_typeof(${t.variants}) = 'object'`,
     ),
-    check('assets_origin', sql`${t.origin} in ('upload', 'barsy')`),
+    check('assets_origin', sql`${t.origin} in ('upload', 'connector')`),
     check('assets_status', sql`${t.status} in ('pending', 'stored', 'failed')`),
     check('assets_checksum', sql`${t.checksum} ~ ${SHA256_PATTERN}`),
     check('assets_dimensions_positive', sql`${t.width} > 0 and ${t.height} > 0`),

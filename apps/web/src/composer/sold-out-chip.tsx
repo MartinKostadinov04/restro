@@ -3,7 +3,7 @@
 // The "Sold out (N)" chip in the header of the item pane (brief S3-08, D46) and the quick list it
 // opens: every item a manager marked sold out tonight, across the whole menu, each with a
 // "Back on sale" button that takes OUR mark off (rule 5: it can never put back on sale an item
-// barsy has off sale, and such items are not in the list at all). The chip is there for everyone
+// the till has off sale, and such items are not in the list at all). The chip is there for everyone
 // who can see the composer once something is marked; the buttons only for owners and admins.
 import type { NodeId } from '@restro/core'
 import { BanIcon, Undo2Icon } from 'lucide-react'
@@ -23,7 +23,7 @@ import { useComposer } from './composer-context'
 import { itemName } from './labels'
 import type { ComposerView } from './view-model'
 
-/** The items marked sold out tonight (and not off sale in barsy), by name. */
+/** The items marked sold out tonight (and not off sale in the till), by name. */
 export function soldOutTonightIds(view: ComposerView): NodeId[] {
   return (Object.values(view.items) as ComposerView['items'][NodeId][])
     .filter((item) => item.soldOutTonight && item.offSale === null)

@@ -1,5 +1,6 @@
-// The venue's look (brief S3-03): the pure theme helpers, the writer `setVenueTheme`, and the
-// publisher feeding the brand colour and the logo into the snapshot's theme. Postgres as restro_app.
+// The venue's look (briefs S3-03 and SH-01): the pure theme helpers, the writer `setVenueTheme`,
+// and the publisher feeding the theme (v1: brand colour and logo; v2: three colours, overrides,
+// font, corners, shadow, light/dark policy) into the snapshot's theme. Postgres as restro_app.
 import { createPool, type DbPool, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import type pg from 'pg'
@@ -10,10 +11,15 @@ import { sha256Hex } from '../hash'
 import { newId } from '../ids'
 import { DEFAULT_THEME } from '../snapshot/build'
 import {
+  deriveRoles,
   generatePalette,
   PALETTE_STEPS,
+  paletteRoles,
   readVenueTheme,
+  semanticColours,
+  semanticColoursDark,
   snapshotPalette,
+  THEME_PRESETS,
   VenueThemeSchema,
 } from '../theme'
 import { apply } from './apply'
@@ -55,15 +61,41 @@ describe('the venue theme setting (pure)', () => {
 })
 
 describe('setVenueTheme input checks (no database needed)', () => {
+  const theme = (fields: Record<string, unknown>) => ({ logo_asset_id: null, ...fields })
   it.each([
     ['a malformed venue id', { venueId: 'vn_nope', theme: null }],
     ['a colour name', { venueId: newId('vn'), theme: { brand: 'blue', logo_asset_id: null } }],
     ['an unknown field', { venueId: newId('vn'), theme: null, font: 'Inter' }],
+    ['an unknown font', { venueId: newId('vn'), theme: theme({ font: 'comic-sans' }) }],
+    ['a radius out of range', { venueId: newId('vn'), theme: theme({ radius: 40 }) }],
+    ['a shadow out of range', { venueId: newId('vn'), theme: theme({ shadow: 9 }) }],
+    ['an unknown scheme', { venueId: newId('vn'), theme: theme({ scheme: 'sepia' }) }],
+    ['an unknown preset', { venueId: newId('vn'), theme: theme({ preset: 'neon' }) }],
   ])('refuses %s before touching the database', async (_label, input) => {
     await expect(setVenueTheme({} as DbPool, newId('tn'), input as never)).rejects.toMatchObject({
       name: 'VenueThemeError',
       code: 'invalid_input',
     })
+  })
+
+  it('refuses colours that do not read, naming every failing pair, before touching the database', async () => {
+    const refusal = setVenueTheme({} as DbPool, newId('tn'), {
+      venueId: newId('vn'),
+      theme: {
+        logo_asset_id: null,
+        colors: { primary: '#ffffff', secondary: '#f4f4f5', tertiary: '#2563eb' },
+        overrides: { light: { text: '#eeeeee' }, dark: { on_accent: '#2563eb' } },
+      },
+    })
+    await expect(refusal).rejects.toMatchObject({ name: 'VenueThemeError', code: 'unreadable' })
+    const error = (await refusal.catch((caught: unknown) => caught)) as VenueThemeError
+    expect(error.issues.map(({ mode, fg, bg }) => `${mode} ${fg}/${bg}`)).toEqual([
+      'light text/background',
+      'light text/surface',
+      'dark on_accent/accent',
+    ])
+    expect(error.message).toContain('light text on background')
+    expect(error.message).toContain('needs 4.5:1')
   })
 })
 
@@ -184,10 +216,19 @@ describe.skipIf(!hasDatabase)('the venue theme against Postgres (as the restro_a
 
     const next = await publish(10)
     expect(next.status).toBe('published')
+    // A v1 theme keeps today's look (its palette, the default tokens) and gets, since SH-01, the
+    // roles the shell has always derived from that palette, and the auto scheme.
+    const palette = generatePalette('#3366cc')
     expect(next.snapshot.body?.theme).toEqual({
       ...DEFAULT_THEME,
       palette: snapshotPalette('#3366cc'),
+      roles: paletteRoles(palette),
+      scheme: 'auto',
     })
+    expect(next.snapshot.body?.theme.roles?.light.accent_text).toBe(
+      semanticColours(palette).accentText,
+    )
+    expect(next.snapshot.body?.theme.roles?.dark.text).toBe(semanticColoursDark(palette).text)
     // A publish with nothing new in between is the same snapshot.
     expect((await publish(11)).status).toBe('unchanged')
   })
@@ -248,5 +289,72 @@ describe.skipIf(!hasDatabase)('the venue theme against Postgres (as the restro_a
     expect(await settingsOf()).toEqual({ other: 1 })
     const reset = await publish(30)
     expect(reset.snapshot.body?.theme).toEqual(DEFAULT_THEME)
+  })
+
+  it('saves a v2 theme, keeps other settings, and publishes its roles, font, corners and policy', async () => {
+    const theme = {
+      logo_asset_id: null,
+      preset: null,
+      colors: { primary: '#FBF5EC', secondary: '#f0e2d2', tertiary: '#c8372d' },
+      overrides: { dark: { accent: '#e5533f' } },
+      font: 'playfair-display',
+      radius: 18,
+      shadow: 2,
+      scheme: 'light',
+    } as const
+    const stored = await setVenueTheme(app, tenant, { venueId, theme })
+    const lower = { ...theme, colors: { ...theme.colors, primary: '#fbf5ec' } }
+    expect(stored).toEqual(lower)
+    expect(await settingsOf()).toEqual({ other: 1, theme: lower })
+    // Saving the same theme again changes nothing.
+    expect(await setVenueTheme(app, tenant, { venueId, theme })).toEqual(lower)
+    expect(await settingsOf()).toEqual({ other: 1, theme: lower })
+
+    const published = await publish(40)
+    expect(published.status).toBe('published')
+    expect(published.snapshot.body?.theme).toEqual({
+      palette: snapshotPalette('#c8372d'),
+      font: 'Playfair Display',
+      radius: 18,
+      shadow: 2,
+      logo: null,
+      roles: deriveRoles(lower.colors, lower.overrides),
+      scheme: 'light',
+    })
+    expect(published.snapshot.body?.theme.roles?.dark.accent).toBe('#e5533f')
+  })
+
+  it('saves a preset as it is and publishes the designer colours', async () => {
+    const midnight = THEME_PRESETS[1]
+    if (midnight === undefined) throw new Error('no preset')
+    await setVenueTheme(app, tenant, {
+      venueId,
+      theme: {
+        logo_asset_id: null,
+        preset: midnight.id,
+        colors: midnight.colours,
+        overrides: midnight.overrides,
+        radius: midnight.radius,
+      },
+    })
+    const published = await publish(50)
+    // The designer's eight roles as chosen; the extended roles of D93 are published with them.
+    expect(published.snapshot.body?.theme.roles).toMatchObject(midnight.overrides)
+    expect(published.snapshot.body?.theme).toMatchObject({ radius: 6, font: 'Inter', shadow: 1 })
+  })
+
+  it('refuses an unreadable override and keeps the saved theme', async () => {
+    const before = await settingsOf()
+    await expect(
+      setVenueTheme(app, tenant, {
+        venueId,
+        theme: {
+          logo_asset_id: null,
+          colors: { primary: '#ffffff', secondary: '#f4f4f5', tertiary: '#2563eb' },
+          overrides: { light: { muted: '#dddddd' } },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'unreadable' })
+    expect(await settingsOf()).toEqual(before)
   })
 })

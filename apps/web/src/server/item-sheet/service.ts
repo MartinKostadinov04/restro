@@ -15,6 +15,7 @@ import {
   FIELD_TYPES,
   type FieldDefinition,
   isLocale,
+  isTillSource,
   type Layer,
   LOCALES,
   type Locale,
@@ -30,10 +31,15 @@ import {
   VENUE_MENU_TEMPLATE,
 } from '@restro/core'
 import { apply, ItemNotFoundError, loadItemDocument } from '@restro/core/apply'
-import { assets, type DbPool, events, menus, venues, withTenant } from '@restro/db'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { assets, type DbPool, events, venues, withTenant } from '@restro/db'
+import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 
+import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
+import { tillTextShown } from '@/fields/name-fallback'
+import { liveMenuOf, menuInUse } from '@/server/composer/menu'
 import { logError } from '../log'
+import { loadTillLabels, tillLabelOf } from '../till-label'
+
 import { type LayerView, layerMap, layerView } from './layers'
 import {
   fieldAccess,
@@ -64,6 +70,11 @@ export interface SheetScope {
   readonly tenantId: string
   readonly venueId: string
   readonly itemId: string
+  /**
+   * The menu the composer has open (brief S6: a venue has several, D88); absent = the venue's live
+   * menu. A menu that is not one of the venue's menus in use finds no item.
+   */
+  readonly menuId?: string
   /** The person may mark the item sold out tonight (owner or admin, D46); default: no. */
   readonly canMarkSoldOut?: boolean
 }
@@ -95,8 +106,13 @@ interface ItemState {
   readonly locales: readonly Locale[]
   readonly doc: Awaited<ReturnType<typeof loadItemDocument>>
   readonly item: ResolvedItem
+  /** The item has a till link (source `till:<integration>`), in any state. */
   readonly linked: boolean
   readonly linkState: ItemSheetData['linkState']
+  /** The name of the item's till; '' for a hand-made item. */
+  readonly tillLabel: string
+  /** The name shown is the till's own, standing in for a missing public one (D75). */
+  readonly nameFromTill: boolean
   readonly revision: number
 }
 
@@ -109,17 +125,22 @@ function venueLocales(venue: typeof venues.$inferSelect): Locale[] {
 
 async function readState(scope: SheetScope): Promise<ItemState | null> {
   const { pool, tenantId, venueId, itemId } = scope
+  // A deleted venue (D76) has no item sheet: it reads as no venue.
   const [venue] = await withTenant(pool, tenantId, (tx) =>
-    tx.select().from(venues).where(eq(venues.id, venueId)),
+    tx
+      .select()
+      .from(venues)
+      .where(and(eq(venues.id, venueId), isNull(venues.archivedAt))),
   )
   if (!venue) return null
-  const [menu] = await withTenant(pool, tenantId, (tx) =>
-    tx.select({ id: menus.id }).from(menus).where(eq(menus.venueId, venueId)),
-  )
-  if (!menu) return null
+  const menuId =
+    scope.menuId === undefined
+      ? await liveMenuOf(tenantId, venueId, pool)
+      : await menuInUse(tenantId, venueId, scope.menuId, pool)
+  if (!menuId) return null
   let doc: ItemState['doc']
   try {
-    doc = await loadItemDocument(pool, tenantId, menu.id, itemId)
+    doc = await loadItemDocument(pool, tenantId, menuId, itemId)
   } catch (error) {
     if (error instanceof ItemNotFoundError) return null
     throw error
@@ -136,18 +157,28 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
   })
   const item = resolved.items[itemId as keyof typeof resolved.items]
   if (!item) return null
-  const barsyLinks = doc.links.filter(
-    (link) => link.nodeId === itemId && link.source.startsWith('barsy:'),
-  )
-  const broken = barsyLinks.find((link) => link.state !== 'active')
+  // Linked to the till = a till link (`till:<integration>`), whichever connector feeds it (A4-F4).
+  const tillLinks = doc.links.filter((link) => link.nodeId === itemId && isTillSource(link.source))
+  const broken = tillLinks.find((link) => link.state !== 'active')
+  const tillLabel =
+    tillLinks.length === 0
+      ? ''
+      : tillLabelOf(doc.links, await loadTillLabels(pool, tenantId), itemId)
+  // The till's own name stands in for a missing public one (D75), and nothing typed here replaces it.
+  const nameFromTill =
+    tillLinks.length > 0 &&
+    tillTextShown(item.fields.name) &&
+    (await withTenant(pool, tenantId, (tx) => readNameFallbackNodeIds(tx, [itemId]))).length > 0
   return {
     venue,
     venueScope,
     locales,
     doc,
     item,
-    linked: barsyLinks.length > 0,
-    linkState: barsyLinks.length === 0 ? 'none' : (broken?.state ?? 'active'),
+    linked: tillLinks.length > 0,
+    linkState: tillLinks.length === 0 ? 'none' : (broken?.state ?? 'active'),
+    tillLabel,
+    nameFromTill,
     revision: doc.nodes.find((node) => node.id === itemId)?.revision ?? 1,
   }
 }
@@ -155,7 +186,7 @@ async function readState(scope: SheetScope): Promise<ItemState | null> {
 function contextFor(state: ItemState, itemId: string, definition: FieldDefinition): PlanContext {
   return {
     definition,
-    linkedToBarsy: state.linked,
+    linkedToTill: state.linked,
     layers: layerView(state.doc, itemId, definition.key, state.venueScope),
   }
 }
@@ -174,7 +205,7 @@ function resolvedFieldOf(
   return combineField({
     definition,
     layers,
-    linkedToBarsy: state.linked,
+    linkedToTill: state.linked,
     locales: state.locales,
   }).field
 }
@@ -187,7 +218,7 @@ function buildField(state: ItemState, itemId: string, definition: FieldDefinitio
   const context = contextFor(state, itemId, definition)
   const resolved = resolvedFieldOf(state, definition, context.layers)
   const override = context.layers.override
-  const barsy = context.layers.barsy
+  const till = context.layers.till
   const localeProvenance = resolved.locales
     ? (Object.fromEntries(
         Object.entries(resolved.locales).map(([locale, info]) => [
@@ -210,8 +241,8 @@ function buildField(state: ItemState, itemId: string, definition: FieldDefinitio
     ...(localeProvenance ? { localeProvenance } : {}),
     access,
     canRevert: access.kind === 'edit' && override !== undefined,
-    canKeep: access.kind === 'edit' && override !== undefined && barsy !== undefined && stale,
-    barsyValue: barsy?.value ?? null,
+    canKeep: access.kind === 'edit' && override !== undefined && till !== undefined && stale,
+    tillValue: till?.value ?? null,
   }
 }
 
@@ -230,7 +261,7 @@ function buildTranslations(
     .map((field) => {
       const { definition } = field
       const layers = layerView(state.doc, itemId, definition.key, state.venueScope)
-      const barsyText = textOf(layers.barsy?.value)
+      const tillText = textOf(layers.till?.value)
       const manualText = textOf(layers.manual?.value)
       const current = textOf(field.value)
       const cells: Partial<Record<Locale, TranslationCell>> = {}
@@ -240,8 +271,8 @@ function buildTranslations(
           text,
           provenance: field.localeProvenance?.[locale] ?? 'none',
           ourText: isBlank(manualText[locale]) ? null : (manualText[locale] ?? null),
-          // Barsy's own text of a barsy-owned field is read-only; a builder-owned field is ours.
-          editable: definition.owner === 'builder' || isBlank(barsyText[locale]),
+          // The till's own text of a till-owned field is read-only; a builder-owned field is ours.
+          editable: definition.owner === 'builder' || isBlank(tillText[locale]),
           missing: text === null,
           review: reviews.has(`${definition.key}:${locale}`),
         }
@@ -308,7 +339,8 @@ export async function loadItemSheet(
     itemId: scope.itemId,
     venueId: scope.venueId,
     title: titleOf(fields, state.locales),
-    linkedToBarsy: state.linked,
+    linkedToTill: state.linked,
+    tillLabel: state.tillLabel,
     linkState: state.linkState,
     revision: state.revision,
     defaultLocale: state.locales[0] ?? 'bg_BG',
@@ -317,6 +349,7 @@ export async function loadItemSheet(
     timezone: state.venue.timezone,
     visible: state.item.visible,
     sale: { ...saleStateOf(state.item.fields.for_sale), canMark: scope.canMarkSoldOut === true },
+    nameFromTill: state.nameFromTill,
     fields,
     issues: state.item.issues.map((issue) => ({
       code: issue.code,
@@ -452,7 +485,7 @@ export async function saveField(
   return commit(scope, services, actor, found.definition, planFieldSave(found.context, edited))
 }
 
-/** Removes our override of a field: revert, or take barsy's value instead of ours. */
+/** Removes our override of a field: revert, or take the till's value instead of ours. */
 export async function revertField(
   scope: SheetScope,
   services: SheetServices,
@@ -464,7 +497,7 @@ export async function revertField(
   return commit(scope, services, actor, found.definition, planRevert(found.context))
 }
 
-/** Keeps our override although barsy changed since: barsy's current value becomes its basis. */
+/** Keeps our override although the till changed since: its current value becomes the basis. */
 export async function keepOverride(
   scope: SheetScope,
   services: SheetServices,
@@ -528,7 +561,7 @@ export async function setImage(
   return commit(scope, services, actor, found.definition, planFieldSave(found.context, value))
 }
 
-/** Takes our own picture off the item (a barsy photo, once S2-03 fetches it, shows again). */
+/** Takes our own picture off the item (the till's photo, if there is one, shows again). */
 export async function removeImage(
   scope: SheetScope,
   services: SheetServices,

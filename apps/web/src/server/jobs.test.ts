@@ -19,7 +19,7 @@ function recorder(answer: string | null = 'job-1') {
 }
 
 describe('enqueueJob', () => {
-  it('sends the validated payload with the integration as the singleton key', async () => {
+  it('sends the validated payload with the integration and the venue as the singleton key', async () => {
     const { sent, sender } = recorder()
     const id = await enqueueJob(
       JOB_NAMES.barsyFullPull,
@@ -31,7 +31,7 @@ describe('enqueueJob', () => {
       {
         name: 'barsy-full-pull',
         data: { tenantId, integrationId, venueId },
-        options: { singletonKey: integrationId },
+        options: { singletonKey: `${integrationId}:${venueId}` },
       },
     ])
   })

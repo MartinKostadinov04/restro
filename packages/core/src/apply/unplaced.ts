@@ -8,8 +8,15 @@
 // menu's venue scope, like the document) and links, as parts that `mergeDocumentParts`
 // (../document/merge) adds to the document before resolving, so the composer can show them with
 // the same provenance, visibility and issues as every other item (`unplaced_item` included).
-// Archived items are left out. An item placed only in a section of another menu counts as
-// unplaced here: "under this menu" is the question.
+// Archived items are left out.
+//
+// Only this venue's items are listed (T72; Martin 10-11: a new venue showed another venue's 115
+// items, nameless and priceless). Items belong to the organisation, so "placed in none of this
+// menu's sections" alone lists every other venue's items too. An unplaced item is listed when:
+//   - the till read it for this venue: it has a value scoped to this venue (its pull writes
+//     price, for sale or a venue-only hide there; brief CF-16), or
+//   - it is hand-made and placed nowhere yet (no till link, no placement in any menu): once a
+//     venue places it, it belongs to that venue's menu and leaves the others' Unsorted.
 
 import { type DbPool, withTenant } from '@restro/db'
 import { sql } from 'drizzle-orm'
@@ -62,6 +69,14 @@ export async function loadUnplacedItems(
           and not exists (
             select 1 from restro.placements p
             where p.item_id = n.id and p.section_id in (select id from sections))
+          and (
+            exists (
+              select 1 from restro.field_values v
+              where v.node_id = n.id and v.scope = 'venue:' || (select venue_id from menu))
+            or (
+              not exists (select 1 from restro.source_links l where l.node_id = n.id)
+              and not exists (select 1 from restro.placements p where p.item_id = n.id))
+          )
       ),
       reach (id) as (
         select id from unplaced
@@ -94,7 +109,7 @@ export async function loadUnplacedItems(
         ), '[]'::json) as values,
         coalesce((
           select json_agg(json_build_object(
-              'nodeId', l.node_id, 'source', i.kind || ':' || l.integration_id,
+              'nodeId', l.node_id, 'source', 'till:' || l.integration_id,
               'externalType', l.external_type, 'state', l.state)
             order by l.node_id collate "C", l.integration_id collate "C",
               l.external_type collate "C")

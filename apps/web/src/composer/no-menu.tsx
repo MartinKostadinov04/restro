@@ -1,7 +1,10 @@
 'use client'
 
-// A venue with no menu yet: say so, and offer to create the (empty) menu. The usual path is the
-// operator setting the venue up; this keeps a venue without one from showing a blank tab.
+// A venue with no menu yet: say so, and offer to create the (empty) menu (owners and admins; the
+// action checks the role again). A venue made in the admin gets its menu with it; this keeps a
+// venue without one (an older one, or one whose menu could not be made) from showing a blank tab.
+// The menu is made by S4's menu action, the one Settings › General uses (D88); a venue with a till
+// gets its menus from the till, and the action says so.
 import { LayoutListIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useTransition } from 'react'
@@ -17,10 +20,11 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 
-import { createMenuAction } from './actions'
+import { createMenuAction } from '@/server/menus-actions'
 
-export function NoMenu({ venueId }: { venueId: string }) {
+export function NoMenu({ venueId, canCreate }: { venueId: string; canCreate: boolean }) {
   const t = useTranslations('composer')
+  const tMenus = useTranslations('venueMenus.errors')
   const [pending, startTransition] = useTransition()
 
   function create() {
@@ -28,7 +32,7 @@ export function NoMenu({ venueId }: { venueId: string }) {
       const result = await createMenuAction({ venueId }).catch(
         () => ({ ok: false, error: 'failed' }) as const,
       )
-      if (!result.ok) toast.error(t(`errors.${result.error}`))
+      if (!result.ok) toast.error(tMenus(result.error))
     })
   }
 
@@ -39,13 +43,17 @@ export function NoMenu({ venueId }: { venueId: string }) {
           <LayoutListIcon aria-hidden />
         </EmptyMedia>
         <EmptyTitle>{t('empty.noMenu.title')}</EmptyTitle>
-        <EmptyDescription>{t('empty.noMenu.description')}</EmptyDescription>
+        <EmptyDescription>
+          {t(canCreate ? 'empty.noMenu.description' : 'empty.noMenu.descriptionReadOnly')}
+        </EmptyDescription>
       </EmptyHeader>
-      <EmptyContent>
-        <Button type="button" onClick={create} disabled={pending} data-testid="create-menu">
-          {t('empty.noMenu.action')}
-        </Button>
-      </EmptyContent>
+      {canCreate ? (
+        <EmptyContent>
+          <Button type="button" onClick={create} disabled={pending} data-testid="create-menu">
+            {t('empty.noMenu.action')}
+          </Button>
+        </EmptyContent>
+      ) : null}
     </Empty>
   )
 }

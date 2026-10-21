@@ -1,46 +1,43 @@
 'use client'
 
-// The Synchronisation card: "Sync now" queues a full pull of this venue (the sync settings form is
-// below it). The button is off, with the reason written next
-// to it, until the integration is connected and both pickers are set, and while a pull is
-// queued or running (the queue is exclusive per integration, so a second press would do
-// nothing). The server checks the same rule again; this only explains it.
+// The "Sync everything" card of one instance (D82): an action, not a setting. "Sync everything
+// now" queues a full pull of every venue that uses this instance and that its system can read.
+// The button is off, with the reason written next to it, until the instance is connected and a
+// venue uses it, and while a connection check or a pull is queued or running. The server checks
+// the same rule again; this only explains it. The pulls then run one after the other (one pull at
+// a time per installation). Automatic syncing is each venue's own setting (D82).
 import { RefreshCwIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useState, useTransition } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FormSection } from '@/components/ui/form-section'
-import { syncNowAction } from '@/server/integration/actions'
-import type { IntegrationErrorCode, IntegrationView } from '@/server/integration/view'
+import { syncAllAction } from '@/server/integration/actions'
+import type { InstanceView, IntegrationErrorCode } from '@/server/integration/view'
 
 import { ErrorNote, Notice } from './error-note'
-import { SyncSettingsForm } from './sync-settings-form'
 import { useClearWhenIdle } from './use-clear-when-idle'
-import { useMoment } from './use-moment'
 
-export function SyncCard({ venueId, view }: { venueId: string; view: IntegrationView }) {
+export function SyncCard({ instance }: { instance: InstanceView }) {
   const t = useTranslations('integration.sync')
-  const moment = useMoment(view.timeZone)
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
-  const [queued, setQueued] = useState(false)
+  const [queued, setQueued] = useState<number | null>(null)
   const [pending, startTransition] = useTransition()
-  useClearWhenIdle(view.activeJob, () => setQueued(false))
-  const { gate } = view
-  const lastSynced = moment(view.lastSyncedAt)
+  useClearWhenIdle(instance.activeJob, () => setQueued(null))
+  const { gate, source } = instance
 
   function press() {
     setError(null)
-    setQueued(false)
+    setQueued(null)
     startTransition(async () => {
-      const result = await syncNowAction({ venueId })
-      if (result.ok) setQueued(true)
+      const result = await syncAllAction({ integrationId: instance.id })
+      if (result.ok) setQueued(result.pulls ?? 0)
       else setError(result.error)
     })
   }
 
   return (
-    <FormSection title={t('title')} description={t('description')}>
+    <FormSection title={t('title')} description={t('description', { source })}>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={press} disabled={!gate.enabled || pending}>
           <RefreshCwIcon aria-hidden className={pending ? 'animate-spin' : undefined} />
@@ -48,16 +45,12 @@ export function SyncCard({ venueId, view }: { venueId: string; view: Integration
         </Button>
         {!gate.enabled ? (
           <p className="text-sm text-muted-foreground" data-testid="sync-blocked">
-            {t(`blocked.${gate.reason}`)}
+            {t(`blocked.${gate.reason}`, { source })}
           </p>
         ) : null}
       </div>
-      <p className="text-sm text-muted-foreground" data-testid="sync-last">
-        {lastSynced ? t('lastSynced', { when: lastSynced }) : t('neverSynced')}
-      </p>
-      {queued ? <Notice>{t('queued')}</Notice> : null}
-      <ErrorNote code={error} />
-      <SyncSettingsForm venueId={venueId} view={view} />
+      {queued !== null ? <Notice>{t('queued', { count: queued })}</Notice> : null}
+      <ErrorNote code={error} source={source} />
     </FormSection>
   )
 }

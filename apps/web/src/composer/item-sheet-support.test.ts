@@ -54,9 +54,9 @@ describe('languageName', () => {
 
 describe('provenance mapping', () => {
   it('maps stored layers to the badge they stand for', () => {
-    expect(layerProvenance('barsy')).toBe('barsy')
+    expect(layerProvenance('till')).toBe('till')
     expect(layerProvenance('manual')).toBe('owned')
-    expect(layerProvenance('import')).toBe('owned')
+    expect(layerProvenance('import')).toBeNull()
     expect(layerProvenance('override')).toBe('overridden')
     expect(layerProvenance('edition:venue:vn_x')).toBeNull()
   })

@@ -8,15 +8,17 @@
 
 import { type DbPool, type Integration, integrations, sourceRecords } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { isScope, type Scope } from '../change-set'
+import type { IntegrationKind } from '../connectors'
+import { tillVenueLinks } from '../connectors/till-venues'
 import { sha256Hex } from '../hash'
 import { isId, newId } from '../ids'
 import { lockTenantDocument } from './lock'
 import { ProvisionError } from './provision'
 
-/** The integration kinds a tenant can configure. */
-export type IntegrationKind = 'barsy'
+/** The integration kinds a tenant can configure (defined with the connector data in core). */
+export type { IntegrationKind }
 
 /** The states of an integration (`integrations.status`). */
 export const INTEGRATION_STATUSES = ['new', 'connected', 'error'] as const
@@ -51,9 +53,29 @@ function checkedDetail(value: string | null): string | null {
     : value
 }
 
+/** Most characters in an instance's name (`integrations.name`). */
+export const MAX_INTEGRATION_NAME_LENGTH = 80
+
+/** Refuses an empty, blank or overlong instance name; returns it trimmed. */
+function checkedInstanceName(value: string): string {
+  const name = value.trim()
+  if (name === '' || name.length > MAX_INTEGRATION_NAME_LENGTH) {
+    throw new ProvisionError(
+      'invalid_input',
+      `the instance name must be 1 to ${MAX_INTEGRATION_NAME_LENGTH} characters`,
+    )
+  }
+  return name
+}
+
 /** What `createIntegration` needs. */
 export interface CreateIntegrationInput {
   readonly kind: IntegrationKind
+  /**
+   * The instance's name in the admin (D81): what the owner calls this connection. Default:
+   * "<kind> – <host>".
+   */
+  readonly name?: string
   /** The installation's host, e.g. `demo.barsyonline.com`. Bare: no scheme, path or user info. */
   readonly host: string
   /**
@@ -66,17 +88,19 @@ export interface CreateIntegrationInput {
 
 /** An integration row after `createIntegration`; `created` is false when it existed. */
 export interface CreatedIntegration {
-  /** The `in_` id that sources name (`barsy:<id>`). */
+  /** The `in_` id that till sources name (`till:<id>`). */
   readonly id: string
   readonly kind: IntegrationKind
+  readonly name: string
   readonly host: string
   readonly created: boolean
 }
 
 /**
  * Creates the tenant's integration for a host, or returns the one it has (matched by kind and
- * host; an existing row is not changed, `updateIntegration` does that). The row starts with
- * status `new`.
+ * host among the instances that are not removed; an existing row is not changed,
+ * `updateIntegration` does that). The row starts with status `new`. An instance that was removed
+ * (`removeIntegration`) stays as it was: adding the same host again makes a new instance.
  *
  * Sealing binds the credentials to the integration id, so a caller that has the credentials
  * generates the id first: pass `id` (an `in_` id from `newId('in')`) together with the sealed
@@ -94,23 +118,34 @@ export async function createIntegration(
   }
   const sealed =
     input.credentialsSealed === undefined ? null : checkedSealed(input.credentialsSealed)
+  const name = checkedInstanceName(input.name ?? `${input.kind} – ${host}`)
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
     const [existing] = await tx
-      .select({ id: integrations.id })
+      .select({ id: integrations.id, name: integrations.name })
       .from(integrations)
-      .where(and(eq(integrations.kind, input.kind), eq(integrations.host, host)))
-    if (existing) return { id: existing.id, kind: input.kind, host, created: false }
+      .where(
+        and(
+          eq(integrations.kind, input.kind),
+          eq(integrations.host, host),
+          isNull(integrations.removedAt),
+        ),
+      )
+    if (existing) {
+      return { id: existing.id, kind: input.kind, name: existing.name, host, created: false }
+    }
     const id = input.id ?? newId('in')
     await tx
       .insert(integrations)
-      .values({ id, tenantId, kind: input.kind, host, credentialsSealed: sealed })
-    return { id, kind: input.kind, host, created: true }
+      .values({ id, tenantId, kind: input.kind, name, host, credentialsSealed: sealed })
+    return { id, kind: input.kind, name, host, created: true }
   })
 }
 
 /** What `updateIntegration` may change; a field that is left out stays as it is. */
 export interface UpdateIntegrationInput {
+  /** The instance's name in the admin (D81). */
+  readonly name?: string
   /** Changing the host invalidates the sealed credentials (they are bound to it): seal again. */
   readonly host?: string
   /** A new sealed envelope, or null to forget the credentials. */
@@ -147,6 +182,7 @@ export async function updateIntegration(
     )
   }
   const set: Record<string, unknown> = {}
+  if (patch.name !== undefined) set.name = checkedInstanceName(patch.name)
   if (patch.host !== undefined) set.host = checkedHost(patch.host)
   if (patch.credentialsSealed !== undefined) {
     set.credentialsSealed =
@@ -182,6 +218,58 @@ export async function updateIntegration(
       .where(eq(integrations.id, integrationId))
       .returning()
     return row ?? null
+  })
+}
+
+/** Why `removeIntegration` refused. */
+export type RemoveIntegrationError =
+  /** The tenant has no such instance, or it was removed already. */
+  | 'unknown_integration'
+  /** A venue still links to the instance (D81): move or delete those venues first. */
+  | 'has_venues'
+
+/** What `removeIntegration` answers. */
+export type IntegrationRemoved =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: RemoveIntegrationError }
+
+/**
+ * Removes an instance from Settings › Integrations (D81): sets `removed_at`, nothing else. The row
+ * and its credentials are never erased (a removed instance's data is the purge job's later, D91),
+ * it is hidden from the admin and the worker leaves it alone. Refused while any venue of ours
+ * links to the instance (`has_venues`; a deleted venue has released its link, D76). The link check
+ * and the update run in one transaction under the tenant's document lock, the same lock that
+ * "Add as venue" and linking take, so a venue cannot be linked in between.
+ */
+export async function removeIntegration(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+): Promise<IntegrationRemoved> {
+  checkedTenant(tenantId)
+  if (!isId('in', integrationId)) {
+    throw new ProvisionError('invalid_input', 'integrationId must be an in_ id')
+  }
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    await lockTenantDocument(tx, tenantId)
+    const [instance] = await tx
+      .select({ id: integrations.id })
+      .from(integrations)
+      .where(and(eq(integrations.id, integrationId), isNull(integrations.removedAt)))
+    if (instance === undefined) return { ok: false, error: 'unknown_integration' } as const
+    const [linked] = await tx
+      .select({ venueId: tillVenueLinks.venueId })
+      .from(tillVenueLinks)
+      .where(
+        and(eq(tillVenueLinks.integrationId, integrationId), isNotNull(tillVenueLinks.venueId)),
+      )
+      .limit(1)
+    if (linked !== undefined) return { ok: false, error: 'has_venues' } as const
+    await tx
+      .update(integrations)
+      .set({ removedAt: new Date() })
+      .where(eq(integrations.id, integrationId))
+    return { ok: true } as const
   })
 }
 

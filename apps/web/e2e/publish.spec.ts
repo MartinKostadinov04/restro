@@ -5,38 +5,50 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 import pg from 'pg'
 
 import { runScript } from './global-setup'
+import { addressOfVenue } from './menu-path'
 import { ADMIN_PASSWORD, PUBLISH_MEMBER_EMAIL, PUBLISH_OWNER_EMAIL, PUBLISH_SLUG } from './support'
 
-// The Publish tab on a production build with the REAL worker running beside it (brief S3-05). The
-// venue is the fixture of scripts/seed-publish-e2e.ts: five drinks, nothing published, a barsy
-// integration mapped to it. In English unless a step says otherwise. Steps:
+// Publishing on a production build with the REAL worker running beside it (briefs S3-05, S4; D96,
+// D97). The venue is the fixture of scripts/seed-publish-e2e.ts: five drinks, nothing published,
+// a POS integration mapped to it. The Publish button heads every tab of the venue page; the
+// warnings sit under the header; Settings has Publish (Automation) and Versioning. In English
+// unless a step says otherwise. Steps:
 //
-//   nothing published -> Publish -> "Version 1 is live" -> the guest page shows the menu
-//   a price changes behind the tab's back (core's writer) -> "1 change waiting" -> the preview
-//   shows the new price in a phone frame, the guest page still the old one
-//   Publish -> "Version 2 is live" -> return to version 1 -> the paused banner, the guest page is
-//   back to the old price, a waiting automatic publish is skipped by the worker
-//   Publish -> version 4, automatic publishing is back -> an automatic publish goes through
-//   a held publish (V11): reject it; hold again, approve it
-//   a plain member reads the tab and can change nothing
+//   nothing published -> Publish (the confirmation lists the whole menu) -> "Version 1 is live" ->
+//   "Open the guest page" shows the menu
+//   a price changes behind the page's back (core's writer) -> the bar counts 1 change, the
+//   confirmation lists it, its Preview shows the new price in a phone frame; the guest page does not
+//   Publish -> "Version 2 is live" -> Settings › Versioning: return to version 1 -> the paused
+//   warning under the header, the guest page is back to the old price, a waiting automatic
+//   publish is skipped by the worker
+//   Publish -> version 4, automatic publishing is back -> an automatic publish goes through;
+//   another return, then "Resume automatic publishing" lifts the pause without publishing
+//   Settings › Publish: the Automation settings save the sync mode and "publish after a sync"
+//   a held publish (V11) under the header: reject it; hold again, approve it
+//   a plain member sees the page and can change nothing
 //
-// The screenshots (BG and EN, light and dark, desktop and phone) go to `.local/screenshots/s3/`.
+// The screenshots (BG and EN, light and dark, desktop and phone) go to `.local/screenshots/s4/`.
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(120_000)
 
-const SHOTS = fileURLToPath(new URL('../../../.local/screenshots/s3/', import.meta.url))
+const SHOTS = fileURLToPath(new URL('../../../.local/screenshots/s4/', import.meta.url))
 mkdirSync(SHOTS, { recursive: true })
-const shotPath = (name: string) => `${SHOTS}s3-05-${name}.png`
+const shotPath = (name: string) => `${SHOTS}s4-publish-${name}.png`
 
 const PRICE_BEFORE = '€12.50'
 const PRICE_AFTER = '€14.50'
 const WORKER_WAIT = { timeout: 45_000 }
+const UP_TO_DATE = 'Up to date: guests see the latest version.'
 
 let owner: BrowserContext
 let page: Page
 let venueId = ''
 let db: pg.Pool
 let tenantId = ''
+/** The venue's guest address of before D84, `/m/<slug>-<code>`: it still opens the menu. */
+let guestPath = ''
+/** The guest address of D84, `/m/<organisation>/<venue>`, as the header and the bar show it. */
+const GUEST_ADDRESS = `/m/publish-club/${PUBLISH_SLUG}`
 let ownerState: Awaited<ReturnType<BrowserContext['storageState']>>
 let memberState: Awaited<ReturnType<BrowserContext['storageState']>>
 
@@ -57,10 +69,32 @@ async function signIn(target: Page, email: string) {
   throw new Error(`could not sign in as ${email}`)
 }
 
-const tabUrl = () => `/venues/${venueId}?tab=publishing`
-const open = async (target: Page = page) => {
-  await target.goto(tabUrl())
-  await expect(target.getByTestId('publish-panel')).toBeVisible()
+/**
+ * The page once everything streamed in is shown: React keeps streamed HTML in hidden containers
+ * (`S:<n>`) until it reveals it, and for a moment a part can be there twice.
+ */
+const settled = (target: Page) => expect(target.locator('[hidden][id*="S:"]')).toHaveCount(0)
+
+/** The venue page (a tab, a settings section), once its Publish bar is in. */
+const open = async (target: Page = page, query = '') => {
+  await target.goto(`/venues/${venueId}${query}`)
+  await settled(target)
+  await expect(target.getByTestId('publish-bar')).toBeVisible()
+}
+const VERSIONING = '?tab=settings&section=versioning'
+const AUTOMATION = '?tab=settings&section=publish'
+
+const bar = {
+  button: (target: Page = page) => target.getByTestId('publish-button'),
+  reason: (target: Page = page) => target.getByTestId('publish-block-reason'),
+  count: (target: Page = page) => target.getByTestId('publish-count'),
+}
+
+/** Presses Publish and confirms it. */
+async function publish(target: Page = page) {
+  await bar.button(target).click()
+  await expect(target.getByTestId('publish-confirm-dialog')).toBeVisible()
+  await target.getByTestId('publish-confirm').click()
 }
 
 async function snapshotRows() {
@@ -70,11 +104,12 @@ async function snapshotRows() {
   )
   return rows
 }
+/** The rollback pause is the venue's own since ad/05 (T76, D82): `venues.settings.publish.auto_paused`. */
 async function pauseFlag() {
   const { rows } = await db.query<{ paused: boolean }>(
-    `select coalesce((config #>> '{publish,auto_paused}')::boolean, false) as paused
-     from restro.integrations where tenant_id = $1`,
-    [tenantId],
+    `select coalesce((settings #>> '{publish,auto_paused}')::boolean, false) as paused
+     from restro.venues where id = $1`,
+    [venueId],
   )
   return rows[0]?.paused
 }
@@ -84,7 +119,7 @@ async function guestPrice(browser: Browser, name: string): Promise<string | null
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
-    await guest.goto(`/m/${PUBLISH_SLUG}?lang=en`)
+    await guest.goto(`${guestPath}?lang=en`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     const card = guest
       .locator('[data-item]')
@@ -96,7 +131,7 @@ async function guestPrice(browser: Browser, name: string): Promise<string | null
   }
 }
 
-/** A fresh page of the tab, in a language and colour scheme, for a picture. */
+/** A fresh page of the venue, in a language and colour scheme, for a picture. */
 async function shoot(
   browser: Browser,
   name: string,
@@ -105,6 +140,7 @@ async function shoot(
     scheme: 'light' | 'dark'
     phone?: boolean
     state?: typeof ownerState
+    query?: string
     before?: (target: Page) => Promise<void>
   },
 ) {
@@ -125,7 +161,7 @@ async function shoot(
       { name: 'NEXT_LOCALE', value: options.locale, url: new URL(page.url()).origin },
     ])
     const target = await context.newPage()
-    await open(target)
+    await open(target, options.query ?? '')
     await options.before?.(target)
     await target.screenshot({ path: shotPath(name), fullPage: true })
   } finally {
@@ -148,6 +184,11 @@ test.beforeAll(async ({ browser }) => {
   )
   tenantId = rows[0]?.tenant_id ?? ''
   expect(tenantId).not.toBe('')
+  const address = await addressOfVenue({ venueId })
+  expect(address.slug).toBe(PUBLISH_SLUG)
+  guestPath = address.path
+  // The venue's page names its guest address under its name (D84).
+  await expect(page.getByTestId('venue-header-address')).toHaveText(GUEST_ADDRESS)
   // English from here on (the sign-in page was in Bulgarian, the default).
   await owner.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   ownerState = await owner.storageState()
@@ -165,42 +206,58 @@ test.afterAll(async () => {
   await db?.end()
 })
 
-test('before the first publish: nothing live, the whole menu waiting, Publish on the live card', async () => {
+test('before the first publish: the bar counts the whole menu; no versions; the guest page is off', async () => {
   await open()
-  await expect(page.getByTestId('live-nothing')).toContainText('Nothing published yet')
-  await expect(page.getByTestId('live-nothing')).toContainText('5 items are ready')
-  await expect(page.getByTestId('changes-all-new')).toContainText('5 items will go live')
-  await expect(page.getByTestId('history-empty')).toBeVisible()
+  // No Publishing tab (D97): the bar heads the page.
+  await expect(page.getByRole('tab', { name: 'Publishing' })).toHaveCount(0)
+  await expect(bar.button()).toBeEnabled()
+  await expect(bar.count()).toHaveText('5')
+  await expect(bar.reason()).toHaveText('Not published yet: guests see nothing until you publish.')
+  await expect(page.getByTestId('guest-link')).toBeDisabled()
+  await expect(page.getByTestId('guest-link-hint')).toHaveText('Nothing is published yet.')
   expect(await snapshotRows()).toEqual([])
   // The guest page has nothing to show yet.
   const guest = await page.context().newPage()
-  await guest.goto(`/m/${PUBLISH_SLUG}?lang=en`)
-  await expect(guest.getByText('Menu not found')).toBeVisible()
+  await guest.goto(`${guestPath}?lang=en`)
+  await expect(guest.getByText('This menu is not available')).toBeVisible()
   await guest.close()
   await page.screenshot({ path: shotPath('en-light-desktop-empty'), fullPage: true })
+
+  await open(page, VERSIONING)
+  await expect(page.getByTestId('history-empty')).toBeVisible()
+  await expect(page.getByTestId('versioning-purge')).toContainText('erased 30 days after')
 })
 
-test('Publish: "Version 1 is live", and the guest page shows the menu', async ({ browser }) => {
-  await page.getByTestId('live-nothing').getByRole('button', { name: 'Publish' }).click()
+test('Publish: the confirmation lists the whole menu, then "Version 1 is live" and the guest page shows it', async ({
+  browser,
+}) => {
+  await bar.button().click()
+  await expect(page.getByTestId('changes-all-new')).toHaveText(
+    'Everything is new: 5 items will go live with the first publish.',
+  )
+  await page.getByTestId('publish-confirm').click()
   // The press only queues the job; the button says so while the worker works.
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(
     'Version 1 is live',
     WORKER_WAIT,
   )
-  await expect(page.getByTestId('live-version-number')).toHaveText('Version 1')
-  await expect(page.getByTestId('live-meta')).toContainText('Published by hand')
-  await expect(page.getByTestId('live-meta')).toContainText('Publish Owner')
-  await expect(page.getByTestId('changes-up-to-date')).toBeVisible()
-  await expect(page.getByTestId('history-row')).toHaveCount(1)
+  await expect(bar.button()).toBeDisabled()
+  await expect(bar.reason()).toHaveText(UP_TO_DATE)
   await expect(page.getByTestId('paused-banner')).toHaveCount(0)
+  // Settings › Versioning (still open): version 1, live, by hand, by the owner.
+  const rows = page.getByTestId('history-row')
+  await expect(rows).toHaveCount(1)
+  await expect(rows.first()).toContainText('Live')
+  await expect(rows.first()).toContainText('Published by hand')
+  await expect(rows.first()).toContainText('Publish Owner')
 
-  // "Open the guest page": a new tab with the published menu.
+  // "Open the guest page": a new tab with the published menu, at the address of D84.
   const [guest] = await Promise.all([
     page.context().waitForEvent('page'),
     page.getByTestId('guest-link').click(),
   ])
   await guest.waitForLoadState()
-  expect(new URL(guest.url()).pathname).toBe(`/m/${PUBLISH_SLUG}`)
+  expect(new URL(guest.url()).pathname).toBe(GUEST_ADDRESS)
   await expect(guest.getByRole('heading', { level: 1 })).toHaveText('Publish Club')
   await expect(guest.locator('[data-slot="item.name"]')).toHaveText([
     'Negroni',
@@ -216,82 +273,92 @@ test('Publish: "Version 1 is live", and the guest page shows the menu', async ({
   ])
 })
 
-test('a price changes behind the tab: "1 change waiting", the preview shows it, the guest page does not', async ({
+test('a price changes behind the page: the bar counts 1 change, the confirmation lists it, the preview shows it, the guest page does not', async ({
   browser,
 }) => {
   runScript('./scripts/seed-publish-e2e.ts', 'price', '1450')
-  await page.reload()
-  await expect(page.getByTestId('changes-count')).toHaveText('1 change waiting')
-  await expect(page.getByTestId('change-summary')).toHaveText('1 with a new price')
-  await page.getByRole('button', { name: 'Show the changes' }).click()
-  await expect(page.getByTestId('change-list-prices')).toContainText(
+  await open()
+  await expect(bar.count()).toHaveText('1')
+  await expect(bar.reason()).toHaveText('1 change waiting')
+  await bar.button().click()
+  const dialog = page.getByTestId('publish-confirm-dialog')
+  await expect(dialog.getByTestId('changes-count')).toHaveText('1 change waiting')
+  await expect(dialog.getByTestId('change-summary')).toHaveText('1 with a new price')
+  await expect(dialog.getByTestId('change-list-prices')).toContainText(
     `Negroni: ${PRICE_BEFORE} → ${PRICE_AFTER}`,
   )
+  await dialog.screenshot({ path: shotPath('en-light-desktop-confirm') })
   await snapshotsOfChanges(browser)
 
-  // The preview: a phone frame with the guest face, drawn from the draft.
-  await page.getByRole('button', { name: 'Preview' }).click()
-  const frame = page.getByTestId('phone-frame')
+  // The preview: a phone frame with the guest face, drawn from the draft. The draft names no
+  // template, so it is the registry's default, the Editorial Market (SH-04).
+  await dialog.getByTestId('publish-confirm-preview').click()
+  const preview = page.getByTestId('preview-dialog')
+  const frame = preview.getByTestId('phone-frame')
   await expect(frame).toBeVisible()
-  await expect(frame.locator('[data-face="qr-phone"]')).toBeVisible()
+  await expect(frame.locator('[data-face="editorial-market"]:not([data-testid])')).toBeVisible()
   const negroni = frame.locator('[data-item]').filter({ hasText: 'Negroni' })
   await expect(negroni).toContainText(PRICE_AFTER)
   // A phone-sized screen inside the dialog, scrolling on its own.
   const screen = await page.getByTestId('phone-screen').boundingBox()
   expect(screen?.width).toBeGreaterThan(300)
   expect(screen?.width).toBeLessThan(400)
-  await page.getByRole('dialog').screenshot({ path: shotPath('en-light-desktop-preview') })
-  await page.getByRole('button', { name: 'Dark' }).click()
-  await expect(frame.locator('.rq-root')).toHaveAttribute('data-scheme', 'dark')
-  await page.getByRole('dialog').screenshot({ path: shotPath('en-dark-desktop-preview') })
+  await preview.screenshot({ path: shotPath('en-light-desktop-preview') })
+  await preview.getByRole('button', { name: 'Dark' }).click()
+  await expect(frame.locator('[data-face]:not([data-testid])')).toHaveAttribute(
+    'data-scheme',
+    'dark',
+  )
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(preview).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
 
   // Nothing was published by looking: the guest page keeps the old price, no new row.
   expect(await guestPrice(browser, 'Negroni')).toBe(PRICE_BEFORE)
   expect(await snapshotRows()).toHaveLength(1)
 })
 
-/** The same state in the other languages, schemes and a phone (the first screenshots of the tab). */
+/** The confirmation in the other languages and schemes. */
 async function snapshotsOfChanges(browser: Browser) {
-  await shoot(browser, 'en-light-desktop-changes', {
-    locale: 'en',
-    scheme: 'light',
-    before: async (target) => {
-      await target.getByRole('button', { name: 'Show the changes' }).click()
-    },
-  })
-  await shoot(browser, 'bg-dark-desktop-changes', {
-    locale: 'bg',
-    scheme: 'dark',
-    before: async (target) => {
-      await target.getByRole('button', { name: 'Покажи промените' }).click()
-    },
-  })
+  for (const [name, locale, scheme] of [
+    ['en-dark-desktop-confirm', 'en', 'dark'],
+    ['bg-light-desktop-confirm', 'bg', 'light'],
+  ] as const) {
+    await shoot(browser, name, {
+      locale,
+      scheme,
+      before: async (target) => {
+        await target.getByTestId('publish-button').click()
+        await expect(target.getByTestId('publish-confirm-dialog')).toBeVisible()
+      },
+    })
+  }
 }
 
 test('Publish again: "Version 2 is live", and the guest page has the new price', async ({
   browser,
 }) => {
-  await page.getByTestId('changes-count').waitFor()
-  await page.getByRole('button', { name: 'Publish', exact: true }).click()
+  await open(page, VERSIONING)
+  await publish()
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(
     'Version 2 is live',
     WORKER_WAIT,
   )
-  await expect(page.getByTestId('live-version-number')).toHaveText('Version 2')
-  await expect(page.getByTestId('changes-up-to-date')).toBeVisible()
-  await expect(page.getByTestId('history-row')).toHaveCount(2)
-  await expect(page.getByTestId('history-row').first()).toContainText('1 with a new price')
-  await expect(page.getByTestId('history-row').first()).toContainText('Live')
+  await expect(bar.reason()).toHaveText(UP_TO_DATE)
+  const rows = page.getByTestId('history-row')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first()).toContainText('1 with a new price')
+  await expect(rows.first()).toContainText('Live')
   expect(await guestPrice(browser, 'Negroni')).toBe(PRICE_AFTER)
 })
 
-test('Return to version 1: the paused banner, the old price is back, and a waiting automatic publish is skipped', async ({
+test('Return to version 1 in Settings › Versioning: the pause warning, the old price is back, a waiting automatic publish is skipped', async ({
   browser,
 }) => {
   // Something differs from version 1 now, so an automatic publish WOULD publish.
   expect(await pauseFlag()).toBe(false)
+  await open(page, VERSIONING)
   await page
     .getByTestId('history-row')
     .filter({ hasText: 'Version 1' })
@@ -304,13 +371,20 @@ test('Return to version 1: the paused banner, the old price is back, and a waiti
   await expect(page.getByTestId('publish-outcome-title')).toHaveText('Returned to version 1.', {
     timeout: 30_000,
   })
+  // The warning under the header, on every tab (D97).
   await expect(page.getByTestId('paused-banner')).toContainText(
-    'Automatic publishing is paused because you returned to an older version. Publish to resume.',
+    'Automatic publishing is paused because you returned to an older version.',
   )
-  await expect(page.getByTestId('live-version-number')).toHaveText('Version 1')
-  await expect(page.getByTestId('live-returned')).toContainText('Returned to this version')
-  await expect(page.getByTestId('history-row')).toHaveCount(3)
-  await expect(page.getByTestId('history-row').first()).toContainText('Returned to version 1')
+  // Versioning keeps the live version and the ones to return to; the return itself is said on the
+  // live row.
+  const rows = page.getByTestId('history-row')
+  await expect(rows).toHaveCount(2)
+  const live = rows.filter({ hasText: 'Version 1' })
+  await expect(live).toContainText('Live')
+  await expect(live.getByTestId('live-returned')).toContainText('Returned to this version')
+  await expect(rows.filter({ hasText: 'Version 2' }).getByRole('button')).toHaveText(
+    'Return to this version',
+  )
   expect(await pauseFlag()).toBe(true)
   expect((await snapshotRows()).map((row) => [row.version, row.reason])).toEqual([
     [1, 'manual'],
@@ -339,6 +413,9 @@ test('Return to version 1: the paused banner, the old price is back, and a waiti
   expect(await snapshotRows()).toHaveLength(3)
   expect(await pauseFlag()).toBe(true)
 
+  // The warning heads every tab.
+  await open(page, '?tab=composer')
+  await expect(page.getByTestId('paused-banner')).toBeVisible()
   await page.screenshot({ path: shotPath('en-light-desktop-paused'), fullPage: true })
   await shoot(browser, 'bg-light-desktop-paused', { locale: 'bg', scheme: 'light' })
   await shoot(browser, 'en-dark-desktop-paused', { locale: 'en', scheme: 'dark' })
@@ -346,17 +423,18 @@ test('Return to version 1: the paused banner, the old price is back, and a waiti
   await shoot(browser, 'en-dark-phone-paused', { locale: 'en', scheme: 'dark', phone: true })
 })
 
-test('Publish resumes automatic publishing', async ({ browser }) => {
-  await page.reload()
+test('Publish resumes automatic publishing; an automatic publish then goes through', async ({
+  browser,
+}) => {
+  await open(page, VERSIONING)
   await expect(page.getByTestId('paused-banner')).toBeVisible()
-  await page.getByRole('button', { name: 'Publish', exact: true }).click()
+  await publish()
   // Version 3 was the return; the menu as it is now (the new price) is version 4.
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(
     'Version 4 is live',
     WORKER_WAIT,
   )
   await expect(page.getByTestId('paused-banner')).toHaveCount(0)
-  await expect(page.getByTestId('live-version-number')).toHaveText('Version 4')
   expect(await pauseFlag()).toBe(false)
   expect(await guestPrice(browser, 'Negroni')).toBe(PRICE_AFTER)
 
@@ -367,24 +445,93 @@ test('Publish resumes automatic publishing', async ({ browser }) => {
     .poll(async () => (await snapshotRows()).at(-1)?.reason, { timeout: 30_000 })
     .toBe('auto_sync')
   expect((await snapshotRows()).at(-1)?.version).toBe(5)
-  await page.reload()
-  await expect(page.getByTestId('live-version-number')).toHaveText('Version 5')
-  await expect(page.getByTestId('live-meta')).toContainText('Published automatically after a sync')
+  await open(page, VERSIONING)
+  const live = page.getByTestId('history-row').first()
+  await expect(live).toContainText('Version 5')
+  await expect(live).toContainText('Published automatically after a sync')
 })
 
-test('a held publish (V11): the banner names what it would hide, and Reject turns it down', async ({
+test('"Resume automatic publishing" lifts the pause after a return without publishing', async () => {
+  await open(page, VERSIONING)
+  await page
+    .getByTestId('history-row')
+    .filter({ hasText: 'Version 4' })
+    .getByRole('button', { name: 'Return to this version' })
+    .click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Return to version 4' }).click()
+  await expect(page.getByTestId('paused-banner')).toBeVisible({ timeout: 30_000 })
+  expect(await pauseFlag()).toBe(true)
+  const before = (await snapshotRows()).length
+
+  await page.getByTestId('paused-resume').click()
+  await expect(page.getByTestId('paused-banner')).toHaveCount(0, { timeout: 30_000 })
+  expect(await pauseFlag()).toBe(false)
+  // Nothing was published by the resume.
+  expect(await snapshotRows()).toHaveLength(before)
+  // The draft (version 5's price) still differs from version 4: Publish is on.
+  await expect(bar.button()).toBeEnabled()
+})
+
+test('Settings › Publish: the Automation settings save the sync mode and "publish after a sync"', async ({
+  browser,
+}) => {
+  await open(page, AUTOMATION)
+  const form = page.getByTestId('automation-form')
+  await expect(form).toContainText('Reading the menu from barsy')
+  // D96: the "new items from the till" rule is gone.
+  await expect(form).not.toContainText('New items')
+  await expect(page.getByTestId('automation-zone')).toHaveText('Europe/Sofia')
+  await expect(page.getByTestId('automation-sync-auto')).toBeChecked()
+  await expect(page.getByTestId('automation-after-auto')).toBeChecked()
+  await shoot(browser, 'en-light-desktop-automation', {
+    locale: 'en',
+    scheme: 'light',
+    query: AUTOMATION,
+  })
+  await shoot(browser, 'bg-dark-phone-automation', {
+    locale: 'bg',
+    scheme: 'dark',
+    phone: true,
+    query: AUTOMATION,
+  })
+
+  await page.getByTestId('automation-sync-manual').check()
+  await page.getByTestId('automation-after-manual').check()
+  await page.getByTestId('automation-save').click()
+  await expect(page.getByTestId('automation-saved')).toBeVisible()
+  const settings = async () =>
+    (
+      await db.query<{ sync: { mode: string }; after: string }>(
+        `select settings -> 'sync' as sync, settings #>> '{publish,after_sync}' as after
+         from restro.venues where id = $1`,
+        [venueId],
+      )
+    ).rows[0]
+  expect(await settings()).toMatchObject({ sync: { mode: 'manual' }, after: 'manual' })
+  await open(page, AUTOMATION)
+  await expect(page.getByTestId('automation-sync-manual')).toBeChecked()
+  await expect(page.getByTestId('automation-after-manual')).toBeChecked()
+  await expect(page.getByTestId('automation-inherited')).toHaveCount(0)
+
+  // Back as they were, for the steps below and the next run.
+  await page.getByTestId('automation-sync-auto').check()
+  await page.getByTestId('automation-after-auto').check()
+  await page.getByTestId('automation-save').click()
+  await expect(page.getByTestId('automation-saved')).toBeVisible()
+  expect(await settings()).toMatchObject({ sync: { mode: 'auto' }, after: 'auto' })
+})
+
+test('a held publish (V11) under the header: it names what it would hide, and Reject turns it down', async ({
   browser,
 }) => {
   runScript('./scripts/seed-publish-e2e.ts', 'hold')
-  await page.reload()
+  await open(page, VERSIONING)
   const banner = page.getByTestId('held-banner')
   await expect(banner).toContainText(
     'An automatic publish was held: it would hide 3 of 5 items (60%)',
   )
   await expect(banner.getByTestId('held-items')).toContainText('Mojito, Negroni, Spritz')
-  // Streamed HTML is in the page before it is shown: wait until the tab has really replaced its skeleton.
-  await expect(banner).toBeVisible()
-  await expect(page.getByTestId('publish-skeleton')).toHaveCount(0)
+  await expect(page.getByTestId('history-row').filter({ hasText: 'Held' })).toHaveCount(1)
   await page.screenshot({ path: shotPath('en-light-desktop-held'), fullPage: true })
   await shoot(browser, 'bg-dark-desktop-held', { locale: 'bg', scheme: 'dark' })
 
@@ -403,10 +550,11 @@ test('a held publish the menu has moved on from cannot be approved; it can be re
   // The document changes after the hold (a drink that is still shown, the lager): approving would
   // be refused, so the banner says so.
   runScript('./scripts/seed-publish-e2e.ts', 'price', '475', '3')
-  await page.reload()
+  await open()
   const banner = page.getByTestId('held-banner')
   await expect(banner).toContainText('The menu has changed since this publish was held')
   await expect(banner.getByRole('button', { name: 'Approve and publish' })).toHaveCount(0)
+  await expect(banner.getByTestId('held-publish-now')).toBeVisible()
   await banner.getByRole('button', { name: 'Reject' }).click()
   await expect(page.getByTestId('held-banner')).toHaveCount(0, { timeout: 30_000 })
 })
@@ -416,7 +564,7 @@ test('Approve publishes the held menu through the worker; the hidden drinks leav
 }) => {
   // The document is still the held state (three drinks hidden, the lager at 4.75): hold it once more.
   runScript('./scripts/seed-publish-e2e.ts', 'hold')
-  await page.reload()
+  await open()
   await expect(page.getByTestId('held-banner')).toContainText('would hide 3 of 5 items')
   await page.getByTestId('held-approve').click()
   await expect(page.getByTestId('publish-outcome-title')).toHaveText(
@@ -430,25 +578,31 @@ test('Approve publishes the held menu through the worker; the hidden drinks leav
 
   // Put the menu back: show the drinks, publish by hand.
   runScript('./scripts/seed-publish-e2e.ts', 'unhide')
-  await page.reload()
-  await expect(page.getByTestId('changes-count')).toContainText('changes waiting')
-  await page.getByRole('button', { name: 'Publish', exact: true }).click()
-  await expect(page.getByTestId('changes-up-to-date')).toBeVisible(WORKER_WAIT)
+  await open()
+  await expect(bar.reason()).toContainText('changes waiting')
+  await publish()
+  await expect(bar.reason()).toHaveText(UP_TO_DATE, WORKER_WAIT)
   expect(await guestPrice(browser, 'Mojito')).not.toBeNull()
 })
 
-test('a plain member reads the tab and can change nothing', async ({ browser }) => {
+test('a plain member sees the page and can change nothing', async ({ browser }) => {
   const context = await browser.newContext({ storageState: memberState })
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   const member = await context.newPage()
   await open(member)
-  await expect(member.getByTestId('read-only')).toBeVisible()
-  await expect(member.getByTestId('live-version-number')).toBeVisible()
   await expect(member.getByTestId('publish-button')).toBeDisabled()
+  await expect(member.getByTestId('publish-block-reason')).toHaveText(
+    'Only an owner or admin can publish.',
+  )
+  // The guest page is anyone's to open.
+  await expect(member.getByTestId('guest-link')).toHaveAttribute('href', GUEST_ADDRESS)
+  await open(member, VERSIONING)
+  await expect(member.getByTestId('read-only')).toBeVisible()
+  await expect(member.getByTestId('history-row').first()).toBeVisible()
   await expect(member.getByRole('button', { name: 'Return to this version' })).toHaveCount(0)
-  // Looking is allowed: the preview opens.
-  await member.getByRole('button', { name: 'Preview' }).click()
-  await expect(member.getByTestId('phone-frame')).toBeVisible()
+  await open(member, AUTOMATION)
+  await expect(member.getByTestId('automation-form')).toBeVisible()
+  await expect(member.getByTestId('automation-save')).toHaveCount(0)
   await context.close()
 })
 
@@ -459,12 +613,14 @@ test('saves the screenshots of the brief (BG and EN, light and dark, phone)', as
   await shoot(browser, 'en-dark-desktop-live', { locale: 'en', scheme: 'dark' })
   await shoot(browser, 'bg-dark-phone-live', { locale: 'bg', scheme: 'dark', phone: true })
   await shoot(browser, 'en-light-phone-live', { locale: 'en', scheme: 'light', phone: true })
-  await shoot(browser, 'bg-light-desktop-preview', {
-    locale: 'bg',
+  await shoot(browser, 'en-light-desktop-versioning', {
+    locale: 'en',
     scheme: 'light',
-    before: async (target) => {
-      await target.getByRole('button', { name: 'Преглед' }).click()
-      await expect(target.getByTestId('phone-frame')).toBeVisible()
-    },
+    query: VERSIONING,
+  })
+  await shoot(browser, 'bg-dark-desktop-versioning', {
+    locale: 'bg',
+    scheme: 'dark',
+    query: VERSIONING,
   })
 })

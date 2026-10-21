@@ -26,7 +26,7 @@ import {
   openOwnerPool,
   ownerDatabaseUrl,
   testId,
-  testSlug,
+  testPublicId,
 } from './database'
 
 /** Postgres's message when a row fails a policy's WITH CHECK. */
@@ -55,7 +55,14 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     ] as const) {
       await withTenantWrite(app, tenantId, async (tx) => {
         await tx.insert(tenants).values({ id: tenantId, name })
-        await tx.insert(venues).values({ id: venueId, tenantId, name, slug: testSlug('main') })
+        // The same slug in both tenants: slugs are not unique (D68), the public code is.
+        await tx.insert(venues).values({
+          id: venueId,
+          tenantId,
+          name,
+          slug: 'main',
+          publicId: testPublicId(),
+        })
       })
     }
     await withTenantWrite(app, tenantA, (tx) =>
@@ -117,29 +124,84 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     expect(
       await databaseError(
         withTenantWrite(app, tenantA, (tx) =>
-          tx
-            .insert(venues)
-            .values({ id: testId('vn'), tenantId: tenantB, name: 'Intruder', slug: testSlug('x') }),
+          tx.insert(venues).values({
+            id: testId('vn'),
+            tenantId: tenantB,
+            name: 'Intruder',
+            slug: 'x',
+            publicId: testPublicId(),
+          }),
         ),
       ),
     ).toMatch(RLS_VIOLATION)
   })
 
-  it('2. a venue slug is a public address: the database refuses it for a second tenant too', async () => {
-    // Row-level security hides tenant A's venues from tenant B, so only a global unique index can
-    // refuse a slug A holds; the error names the index core/apply maps to `slug_taken`.
+  it('2. a slug is unique within an organisation and free across organisations (D84)', async () => {
+    // Both tenants' venues were created with the slug `main`: fine across organisations.
     const [held] = await withTenant(app, tenantA, (tx) =>
       tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, venueA)),
     )
-    const slug = held?.slug ?? ''
-    expect(slug).not.toBe('')
+    expect(held?.slug).toBe('main')
+    const [other] = await withTenant(app, tenantB, (tx) =>
+      tx.select({ slug: venues.slug }).from(venues).where(eq(venues.id, venueB)),
+    )
+    expect(other?.slug).toBe('main')
+    // A second venue of tenant B with the same slug is refused by the per-organisation rule
+    // (migration 0022); the failed transaction leaves the one venue as it was.
     expect(
       await databaseError(
         withTenantWrite(app, tenantB, (tx) =>
-          tx.insert(venues).values({ id: testId('vn'), tenantId: tenantB, name: 'Second', slug }),
+          tx.insert(venues).values({
+            id: testId('vn'),
+            tenantId: tenantB,
+            name: 'Third',
+            slug: 'main',
+            publicId: testPublicId(),
+          }),
         ),
       ),
-    ).toMatch(/venues_slug_unique/)
+    ).toMatch(/venues_tenant_id_slug_unique/)
+  })
+
+  it('2. a venue public code is global: the database refuses it for a second tenant too', async () => {
+    // Row-level security hides tenant A's venues from tenant B, so only a global unique index can
+    // refuse a code A holds; the error names the index core/apply retries on.
+    const [held] = await withTenant(app, tenantA, (tx) =>
+      tx.select({ publicId: venues.publicId }).from(venues).where(eq(venues.id, venueA)),
+    )
+    const publicId = held?.publicId ?? ''
+    expect(publicId).toMatch(/^[a-z0-9]{12}$/)
+    expect(
+      await databaseError(
+        withTenantWrite(app, tenantB, (tx) =>
+          tx.insert(venues).values({
+            id: testId('vn'),
+            tenantId: tenantB,
+            name: 'Second',
+            slug: 'second',
+            publicId,
+          }),
+        ),
+      ),
+    ).toMatch(/venues_public_id_unique/)
+  })
+
+  it('2. a venue public code must be 12 characters of a-z and 0-9', async () => {
+    for (const publicId of ['short', 'ABCDEFGHIJKL', 'abcdefghijk-', 'abcdefghijklm']) {
+      expect(
+        await databaseError(
+          withTenantWrite(app, tenantA, (tx) =>
+            tx.insert(venues).values({
+              id: testId('vn'),
+              tenantId: tenantA,
+              name: 'Bad code',
+              slug: 'bad',
+              publicId,
+            }),
+          ),
+        ),
+      ).toMatch(/venues_public_id_format/)
+    }
   })
 
   it('2. moving a venue to another tenant, or writing to another tenant, fails or does nothing', async () => {
@@ -181,8 +243,8 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
       expect((await bare.query('select * from restro.venues')).rowCount).toBe(0)
       await expect(
         bare.query(
-          `insert into restro.venues (id, tenant_id, name, slug) values ($1, $2, 'No tenant', 'n')`,
-          [testId('vn'), tenantA],
+          `insert into restro.venues (id, tenant_id, name, slug, public_id) values ($1, $2, 'No tenant', 'n', $3)`,
+          [testId('vn'), tenantA, testPublicId()],
         ),
       ).rejects.toThrow(RLS_VIOLATION)
     } finally {
@@ -196,9 +258,13 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     expect(
       await databaseError(
         withSystem(app, (tx) =>
-          tx
-            .insert(venues)
-            .values({ id: testId('vn'), tenantId: tenantA, name: 'X', slug: testSlug('y') }),
+          tx.insert(venues).values({
+            id: testId('vn'),
+            tenantId: tenantA,
+            name: 'X',
+            slug: 'y',
+            publicId: testPublicId(),
+          }),
         ),
       ),
     ).toMatch(RLS_VIOLATION)
@@ -334,9 +400,13 @@ describe.skipIf(!hasDatabase)('tenant isolation (row-level security)', () => {
     const venueId = testId('vn')
     await expect(
       withTenantWrite(app, tenantA, async (tx) => {
-        await tx
-          .insert(venues)
-          .values({ id: venueId, tenantId: tenantA, name: 'Ghost', slug: testSlug('ghost') })
+        await tx.insert(venues).values({
+          id: venueId,
+          tenantId: tenantA,
+          name: 'Ghost',
+          slug: 'ghost',
+          publicId: testPublicId(),
+        })
         throw new Error('boom')
       }),
     ).rejects.toThrow('boom')

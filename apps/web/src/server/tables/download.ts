@@ -1,12 +1,11 @@
-// "Download PNG" and "Download SVG" of a table's code (brief S3-07): the file for one table of the
-// signed-in person's organisation, made from the address the venue's setting gives (core/qr.ts).
+// "Download PNG" and "Download SVG" of a table's code (briefs S3-07, S5): the file for one table of
+// the signed-in person's organisation, made from this installation's address (address.ts, D94).
 // A route handler (app/api/tables/[tableId]/qr/route.ts) calls this with the tenant it found; the
 // tenant is never taken from the request. Nothing is fetched.
-import { qrAddress, readVenueQr } from '@restro/core'
-import { findVenueTable } from '@restro/core/apply'
-import { type DbPool, venues, withTenant } from '@restro/db'
-import { eq } from 'drizzle-orm'
+import { findVenueTable, tableLabel } from '@restro/core/apply'
+import type { DbPool } from '@restro/db'
 
+import { codeAddress, codeBaseUrl } from './address'
 import { qrPng, qrSvgFile } from './qr-image'
 
 /** The two file kinds. */
@@ -47,13 +46,9 @@ export async function buildQrDownload(
 ): Promise<QrDownload> {
   const found = await findVenueTable(deps.pool, tenantId, tableId)
   if (found === null || found.table.token === null) return { ok: false }
-  const [venue] = await withTenant(deps.pool, tenantId, (tx) =>
-    tx.select({ settings: venues.settings }).from(venues).where(eq(venues.id, found.venueId)),
-  )
-  if (!venue) return { ok: false }
-  const address = qrAddress(readVenueQr(venue.settings, deps.defaultBaseUrl), found.table.token)
+  const address = codeAddress(codeBaseUrl(deps.defaultBaseUrl), found.table.token)
   if (address === null) return { ok: false }
-  const name = `restro-table-${fileNamePart(found.table.label ?? found.table.placeNum)}`
+  const name = `restro-table-${fileNamePart(tableLabel(found.table))}`
   return format === 'svg'
     ? {
         ok: true,

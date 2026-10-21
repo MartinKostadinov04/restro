@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { AppSidebar } from '@/components/admin/app-sidebar'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { listVenues } from '@/server/venues'
 
@@ -20,6 +21,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         venues={venues.map(({ id, name }) => ({ id, name }))}
         organizations={organizations.map(({ id, name }) => ({ id, name }))}
         activeOrganizationId={organization.id}
+        // Owners and admins add venues (the action checks the role again).
+        canCreateVenue={canManageIntegration(organization.role)}
         user={{ name: user.name, email: user.email }}
       />
       <SidebarInset>{children}</SidebarInset>

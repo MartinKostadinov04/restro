@@ -8,6 +8,7 @@ import {
   type Allergen,
   type AssetId,
   assetVariantPath,
+  CALL_WAITER_KINDS,
   DIETARY_LABELS,
   type DietaryLabel,
   type LiveOverlay,
@@ -15,6 +16,7 @@ import {
   type LocalizedText,
   type MenuSnapshot,
   parseSnapshot,
+  type SectionLayout,
   snapshotContentHash,
 } from '@restro/core'
 
@@ -62,6 +64,8 @@ export interface SectionSpec {
   description?: LocalizedText
   image?: string
   color?: string
+  /** D92: the section's layout hint; absent = a snapshot published before it (vertical). */
+  layout?: SectionLayout
   items: readonly ItemSpec[]
 }
 
@@ -82,6 +86,10 @@ export interface SnapshotSpec {
   tags?: Readonly<Record<string, LocalizedText>>
   fieldTypes?: MenuSnapshot['field_types']
   theme?: Partial<MenuSnapshot['theme']>
+  /** The venue's guest features (D71); absent = a snapshot published before them. */
+  features?: MenuSnapshot['features']
+  /** The menu's layout and guest switch (D92); absent = a snapshot published before them. */
+  layout?: MenuSnapshot['layout']
 }
 
 /** A deterministic id of the right shape: `nd_0000000000000000000042`. */
@@ -189,7 +197,11 @@ export function snapshotFromSpec(spec: SnapshotSpec): MenuSnapshot {
       title: sectionSpec.title,
       description: sectionSpec.description ?? {},
       image: sectionSpec.image ?? null,
-      hints: { color: sectionSpec.color ?? null, icon: null },
+      hints: {
+        color: sectionSpec.color ?? null,
+        icon: null,
+        ...(sectionSpec.layout === undefined ? {} : { layout: sectionSpec.layout }),
+      },
       sections: [],
       items: itemIds,
     }
@@ -218,6 +230,8 @@ export function snapshotFromSpec(spec: SnapshotSpec): MenuSnapshot {
     modifier_groups: groups,
     options,
     tags,
+    ...(spec.features === undefined ? {} : { features: spec.features }),
+    ...(spec.layout === undefined ? {} : { layout: spec.layout }),
   }
   return parseSnapshot({
     ...content,
@@ -550,6 +564,325 @@ function tagsAndDietary(): Fixture {
   }
 }
 
+/**
+ * Roles a venue chose by hand (D70): a green and cream light scheme and a deep green dark one.
+ * They are readable, and none of them is what the palette would give, so a face or a test can
+ * tell the published roles from the derived ones.
+ */
+export const CUSTOM_ROLES: NonNullable<MenuSnapshot['theme']['roles']> = {
+  light: {
+    background: '#f6f1e7',
+    surface: '#ffffff',
+    accent: '#1f6f5c',
+    on_accent: '#ffffff',
+    text: '#1d2a26',
+    muted: '#566660',
+    accent_text: '#1b5e4e',
+    border: '#d9d2c3',
+  },
+  dark: {
+    background: '#101a17',
+    surface: '#18251f',
+    accent: '#3fb59a',
+    on_accent: '#06201a',
+    text: '#eef3f0',
+    muted: '#a8b8b1',
+    accent_text: '#6fd3bb',
+    border: '#2a3b34',
+  },
+}
+
+function customRoles(): Fixture {
+  return {
+    name: 'custom-roles',
+    note: 'A venue with its own eight colour roles and a forced dark scheme; none equals what the palette would derive.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      theme: { roles: CUSTOM_ROLES, scheme: 'dark' },
+      sections: [
+        {
+          title: bgen('Вино', 'Wine'),
+          items: [
+            { name: bgen('Червено вино', 'Red wine'), allergens: ['sulphites'], price: 800 },
+            { name: bgen('Бяло вино', 'White wine'), allergens: ['sulphites'], price: 750 },
+          ],
+        },
+        {
+          title: bgen('Безалкохолно', 'Soft drinks'),
+          items: [{ name: bgen('Лимонада', 'Lemonade'), allergens: [], price: 450 }],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'en_US', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** The tags, dietary labels and sections the two feature fixtures share: there are chips to filter by. */
+function featureMenu(features: NonNullable<MenuSnapshot['features']>): MenuSnapshot {
+  const signature = fixtureId('tg', 1)
+  const spicy = fixtureId('tg', 2)
+  return snapshotFromSpec({
+    locales: BG_EN,
+    features,
+    tags: { [signature]: bgen('Фирмено', 'Signature'), [spicy]: { en_US: 'Spicy' } },
+    sections: [
+      {
+        title: bgen('Коктейли', 'Cocktails'),
+        items: [
+          {
+            name: bgen('Негрони', 'Negroni'),
+            allergens: ['sulphites'],
+            dietary: ['vegan'],
+            tags: [signature],
+            price: 1100,
+          },
+          { name: bgen('Мохито', 'Mojito'), allergens: [], tags: [spicy], price: 1000 },
+        ],
+      },
+      {
+        title: bgen('Храна', 'Food'),
+        items: [
+          { name: bgen('Хумус', 'Hummus'), allergens: ['sesame'], dietary: ['vegan'], price: 700 },
+          { name: bgen('Бутилка водка', 'Bottle of vodka'), price: 12000, askWaiter: true },
+        ],
+      },
+    ],
+  })
+}
+
+/** A table is confirmed, the platform supports every service and ordering is on for the venue. */
+const EVERYTHING_AVAILABLE = {
+  locale: 'en_US',
+  now: WEDNESDAY_EVENING,
+  orderingEnabled: true,
+  tableToken: 'fixture-table-token',
+  capabilities: { callWaiter: true, bill: true, ordering: true, pay: true },
+} as const
+
+function featuresOn(): Fixture {
+  return {
+    name: 'features-on',
+    note: 'Every guest feature switched on by the venue and supported by the platform, at a confirmed table with ordering on, on a menu that has filter chips.',
+    snapshot: featureMenu({
+      filters: true,
+      call_waiter: { enabled: true, kinds: [...CALL_WAITER_KINDS] },
+      bill: true,
+      ordering: true,
+      pay: true,
+    }),
+    overlay: null,
+    context: { ...EVERYTHING_AVAILABLE },
+  }
+}
+
+function featuresOff(): Fixture {
+  return {
+    name: 'features-off',
+    note: 'The venue switched filters and every service off, though the menu has filter chips and the platform supports every service at a confirmed table: no control may be drawn.',
+    snapshot: featureMenu({
+      filters: false,
+      call_waiter: { enabled: false, kinds: [] },
+      bill: false,
+      ordering: false,
+      pay: false,
+    }),
+    overlay: null,
+    context: { ...EVERYTHING_AVAILABLE },
+  }
+}
+
+/**
+ * D92: sections laid out as a row (horizontal, the face's strip) beside vertical ones, a second
+ * section marked horizontal and the first not, photos in the row, a menu that starts in two
+ * columns and lets the guest switch.
+ */
+function horizontalSections(): Fixture {
+  const photo = fixtureId('as', 1)
+  return {
+    name: 'horizontal-sections',
+    note: 'A horizontal section that is not the first, between a vertical one and one published without a layout; two columns, with the guest switch.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      layout: { default: 'two', guest_switch: true },
+      assets: { [photo]: { w: 1600, h: 1200, alt: { en_US: 'Negroni on ice' } } },
+      sections: [
+        {
+          title: bgen('Коктейли', 'Cocktails'),
+          layout: 'vertical',
+          items: [
+            { name: bgen('Мохито', 'Mojito'), allergens: [] },
+            { name: bgen('Дайкири', 'Daiquiri'), allergens: ['eggs'] },
+          ],
+        },
+        {
+          title: bgen('Препоръчваме', 'Top picks'),
+          layout: 'horizontal',
+          items: [
+            { name: bgen('Негрони', 'Negroni'), image: photo, allergens: ['sulphites'] },
+            { name: bgen('Шприц', 'Spritz'), allergens: ['sulphites'], price: 900 },
+            { name: bgen('Вода', 'Water'), allergens: [], price: 250 },
+          ],
+        },
+        {
+          title: bgen('Храна', 'Food'),
+          items: [{ name: bgen('Хумус', 'Hummus'), allergens: ['sesame'], price: 700 }],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'en_US', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** D92: the first section as a row, a menu that starts in one column, and no guest switch. */
+function oneColumn(): Fixture {
+  return {
+    name: 'one-column',
+    note: 'The first section horizontal, the rest vertical; one column, and the guest may not switch.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      layout: { default: 'one', guest_switch: false },
+      sections: [
+        {
+          title: bgen('Промоции', 'Promotions'),
+          layout: 'horizontal',
+          items: [
+            { name: bgen('Два за едно', 'Two for one'), allergens: [], price: 1000 },
+            { name: bgen('Шот', 'Shot'), allergens: [], price: 300 },
+          ],
+        },
+        {
+          title: bgen('Бира', 'Beer'),
+          layout: 'vertical',
+          items: [{ name: bgen('Светла бира', 'Lager'), allergens: ['gluten'], price: 450 }],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'bg_BG', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** A zero-width joiner: it joins the emoji of a family and can sit invisibly inside a word. */
+const ZWJ = String.fromCodePoint(0x200d)
+
+/**
+ * D109, names a guest menu really holds: ALL-CAPS Cyrillic with the tall marks of Й, Ѝ, Ц and Щ, a
+ * name that starts with an emoji, one with a zero-width joiner, two items with the same name,
+ * doubled spaces, and a name that is only spaces (the other language then reads, or, with none,
+ * the shell leaves the item out).
+ */
+function hostileNames(): Fixture {
+  return {
+    name: 'hostile-names',
+    note: 'ALL-CAPS Cyrillic with Й, Ѝ, Ц, Щ; emoji-led and joiner names; two identical names; doubled spaces; a whitespace-only name with and without a fallback language.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      sections: [
+        {
+          title: bgen('ЩЕДРИ ЦЕНИ ЗА ЙОГИ', 'GENEROUS PRICES FOR YOGIS'),
+          items: [
+            {
+              name: bgen('ЙОГУРТЕН ЩРУДЕЛ ЦЕЛИНА Ѝ', 'Yoghurt strudel'),
+              allergens: ['milk', 'gluten'],
+            },
+            {
+              // 60 characters, all capitals, a tall mark in nearly every word.
+              name: {
+                bg_BG: 'ЩАСТЛИВИЯТ ЦАР ЙОРДАН ЯЖДЕ ЙОГУРТ И ЩРУДЕЛ ЦЯЛА ЩЕДРОСТ НОЩИ',
+                en_US: 'THE HAPPIEST KING JORDAN EATS YOGHURT AND STRUDEL ALL NIGHT!',
+              },
+              price: 1150,
+              allergens: ['milk'],
+            },
+            { name: bgen('🍸 Мартини', '🍸 Martini'), price: 900, allergens: ['sulphites'] },
+            {
+              name: bgen(`👨${ZWJ}👩${ZWJ}👧 Семейно плато`, `👨${ZWJ}👩${ZWJ}👧 Family platter`),
+              price: 3600,
+              allergens: ['gluten'],
+            },
+            { name: bgen(`Мо${ZWJ}хито`, `Mo${ZWJ}jito`), price: 1000, allergens: [] },
+            { name: bgen('Негрони', 'Negroni'), price: 1250, allergens: ['sulphites'] },
+            { name: bgen('Негрони', 'Negroni'), price: 1450, allergens: ['sulphites', 'eggs'] },
+            {
+              name: bgen('Бира   тъмна   нефилтрирана', 'Beer   dark   unfiltered'),
+              price: 650,
+              allergens: ['gluten'],
+            },
+            {
+              // Blank in Bulgarian, the guest's language: the English name reads instead.
+              name: { bg_BG: '   ', en_US: 'Only the English name' },
+              price: 500,
+              allergens: [],
+            },
+            {
+              // Blank in the only language it has: the shell leaves the item out (R3).
+              name: { bg_BG: '   ' },
+              price: 500,
+              allergens: [],
+            },
+          ],
+        },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'bg_BG', now: WEDNESDAY_EVENING },
+  }
+}
+
+/** A tag no one can break: 40 characters, no space. */
+const UNBROKEN_TAG = 'НеразделимОченДългоЕтикетБезИнтервалиХХХ'
+
+/**
+ * D109, crowds: twelve tags on one item (one of 40 characters without a space), a price text of 16
+ * characters, a section with exactly one item and a section with none (the shell leaves it out).
+ */
+function crowded(): Fixture {
+  const tagIds = Array.from({ length: 12 }, (_, i) => fixtureId('tg', i + 1))
+  const labels: Record<string, LocalizedText> = {}
+  tagIds.forEach((id, i) => {
+    labels[id] =
+      i === 11
+        ? { bg_BG: UNBROKEN_TAG, en_US: 'ExtremelyLongTagWithNoSpacesAtAllXXXXXXX' }
+        : bgen(`Етикет ${i + 1}`, `Tag ${i + 1}`)
+  })
+  return {
+    name: 'crowded',
+    note: 'Twelve tags on one item, one of 40 unbroken characters; a 16-character price text; a section of exactly one item; a section with no item.',
+    snapshot: snapshotFromSpec({
+      locales: BG_EN,
+      tags: labels,
+      sections: [
+        {
+          title: bgen('Препълнено', 'Crowded'),
+          items: [
+            {
+              name: bgen('Плато с етикети', 'Platter with labels'),
+              price: 2800,
+              tags: tagIds,
+              allergens: ['nuts'],
+            },
+            {
+              // "123 456 789,00 €" in Bulgarian: 16 characters.
+              name: bgen('Бутилка за олигарси', 'Bottle for oligarchs'),
+              price: 12345678900,
+              allergens: [],
+            },
+          ],
+        },
+        {
+          title: bgen('Само едно', 'Just one'),
+          items: [{ name: bgen('Единствената', 'The only one'), price: 700, allergens: [] }],
+        },
+        { title: bgen('Празна секция', 'Empty section'), items: [] },
+      ],
+    }),
+    overlay: null,
+    context: { locale: 'bg_BG', now: WEDNESDAY_EVENING },
+  }
+}
+
 /** All fixtures, freshly built. */
 export function fixtures(): Fixture[] {
   return [
@@ -563,6 +896,13 @@ export function fixtures(): Fixture[] {
     deepModifiers(),
     askWaiter(),
     tagsAndDietary(),
+    customRoles(),
+    featuresOn(),
+    featuresOff(),
+    horizontalSections(),
+    oneColumn(),
+    hostileNames(),
+    crowded(),
   ]
 }
 

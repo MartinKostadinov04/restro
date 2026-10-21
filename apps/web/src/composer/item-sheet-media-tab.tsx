@@ -246,8 +246,10 @@ export function ItemSheetMediaTab({
                 </a>
               ) : null}
             </dl>
-            {image.provenance === 'barsy' ? (
-              <p className="text-xs text-muted-foreground">{t('fromBarsyHint')}</p>
+            {image.provenance === 'till' ? (
+              <p className="text-xs text-muted-foreground">
+                {t('fromTillHint', { source: data.tillLabel })}
+              </p>
             ) : null}
           </>
         ) : (

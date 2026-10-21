@@ -16,7 +16,7 @@
 // Clearing our mark can only reveal the layers below, so an item barsy has off sale (the barsy
 // layer says `false`, and `all_true` lets any `false` win) stays off sale whatever is sent here.
 
-import { type DbPool, nodes, venues } from '@restro/db'
+import { type DbPool, nodes } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
@@ -26,6 +26,7 @@ import { idSchema, newId } from '../ids'
 import { serviceDate, serviceEditionLayer } from '../service-day'
 import { type ApplyResult, applyInTransaction } from './apply'
 import { lockTenantDocument } from './lock'
+import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** The most items one call marks or unmarks. */
 export const MAX_SOLD_OUT_ITEMS = 200
@@ -47,6 +48,8 @@ export type SoldOutErrorCode =
   | 'invalid_input'
   /** The tenant has no such venue. */
   | 'unknown_venue'
+  /** The venue was deleted (D76). */
+  | 'venue_archived'
   /** One of the ids is not an active item of this tenant. */
   | 'unknown_item'
 
@@ -121,14 +124,15 @@ export async function setSoldOutTonight(
 
 /** The venue's service date at `now`, from its time zone and the end of its day. */
 async function currentServiceDay(tx: WriteTx, venueId: string, now: Date): Promise<string> {
-  const [venue] = await tx
-    .select({ timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
-    .from(venues)
-    .where(eq(venues.id, venueId))
-  if (venue === undefined) {
-    throw new SoldOutError('unknown_venue', `this tenant has no venue ${venueId}`)
+  const locked = await lockLiveVenue(tx, venueId)
+  if (locked.refused !== null) {
+    throw new SoldOutError(
+      locked.refused === 'venue_archived' ? 'venue_archived' : 'unknown_venue',
+      venueRefusalText(venueId, locked.refused),
+    )
   }
-  return serviceDate(now, venue.timezone, venue.dayEndsAt)
+  const { venue } = locked
+  return serviceDate(now, venue.timezone, venue.serviceDayEndsAt)
 }
 
 async function assertActiveItems(tx: WriteTx, ids: readonly string[]): Promise<void> {

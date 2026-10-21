@@ -40,6 +40,8 @@ Free projects have an IPv6-only direct host (`db.<ref>.supabase.co`); GitHub run
 | `DATABASE_URL_OWNER` | `postgres` (migration owner; runner only) | `postgresql://postgres.<ref>:<db password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=<cert path>` |
 | `DATABASE_URL` | `restro_app` (web app, worker) | `postgresql://restro_app.<ref>:<app password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=<cert path>` |
 | `DATABASE_APP_PASSWORD` | the password `db:roles` sets for `restro_app` | same value as in `DATABASE_URL` |
+| `DATABASE_PURGE_PASSWORD` | the password `db:roles` sets for `restro_purge` (the purge job's role, D83) | a second generated password |
+| `DATABASE_URL_PURGE` | `restro_purge` (worker only, the purge job) | like `DATABASE_URL` with `restro_purge.<ref>` and the purge password |
 
 Through the shared pooler every user name carries the project ref (`<role>.<ref>`); custom roles work the same way as `postgres`.
 
@@ -55,14 +57,14 @@ On any trusted machine (this generates a value, it touches no database):
 node -e "console.log(require('node:crypto').randomBytes(24).toString('base64url'))"
 ```
 
-32 characters, printable ASCII without spaces (what `db:roles` requires: at least 16). Store it as the GitHub environment secret `STAGING_DATABASE_APP_PASSWORD`, and build `STAGING_DATABASE_URL` and `STAGING_DATABASE_URL_OWNER` from step 4 as secrets too. Never paste any of them in chat.
+32 characters, printable ASCII without spaces (what `db:roles` requires: at least 16). Store it as the GitHub environment secret `STAGING_DATABASE_APP_PASSWORD`, and build `STAGING_DATABASE_URL` and `STAGING_DATABASE_URL_OWNER` from step 4 as secrets too. Generate a second one the same way for the purge role (`STAGING_DATABASE_PURGE_PASSWORD`, and `STAGING_DATABASE_URL_PURGE` for the worker). Never paste any of them in chat.
 
 ## 6. Apply migrations and roles
 
 Everything below runs **as `postgres`** (the owner connection):
 
 - `pnpm db:migrate`: creates schemas `restro`, `pgboss` and `drizzle` (the migration journal), the four tables, `restro.enable_tenant_rls()`, the forced RLS policies, the templates policies and the `updated_at` trigger. Pending migrations run in one transaction under an advisory lock.
-- `pnpm db:roles`: creates or updates `restro_app` (LOGIN, NOINHERIT, no SUPERUSER / BYPASSRLS / CREATEROLE / CREATEDB / REPLICATION), grants CONNECT, `USAGE` on `restro`, `USAGE, CREATE` on `pgboss`, exactly the table privileges in `src/table-access.ts`, revokes everything else, and checks the result before committing. On Supabase `postgres` is not a superuser, so the script only names role attributes that actually need changing.
+- `pnpm db:roles`: creates or updates `restro_app` and `restro_purge` (LOGIN, NOINHERIT, no SUPERUSER / BYPASSRLS / CREATEROLE / CREATEDB / REPLICATION), grants CONNECT, `USAGE` on `restro` (and `USAGE, CREATE` on `pgboss` to `restro_app` only), exactly the table privileges in `src/table-access.ts` (`app` and `purge` lists), revokes everything else, and checks the result before committing. On Supabase `postgres` is not a superuser, so the script only names role attributes that actually need changing.
 
 Runner: a manually started workflow with a protected `staging` environment. It does not exist yet (adding it is a follow-up); its shape, with actions pinned to the same SHAs as `ci.yml`:
 
@@ -84,12 +86,13 @@ jobs:
       - name: Supabase CA certificate
         run: printf '%s\n' "$SUPABASE_CA_CERT" > "$RUNNER_TEMP/supabase-ca.crt"
         env: { SUPABASE_CA_CERT: '${{ secrets.SUPABASE_CA_CERT }}' }
-      - name: Migrations and app role
+      - name: Migrations and roles
         run: pnpm db:migrate && pnpm db:roles
         env:
           RESTRO_DB_ALLOW_REMOTE: '1'
           DATABASE_URL_OWNER: ${{ secrets.STAGING_DATABASE_URL_OWNER }}
           DATABASE_APP_PASSWORD: ${{ secrets.STAGING_DATABASE_APP_PASSWORD }}
+          DATABASE_PURGE_PASSWORD: ${{ secrets.STAGING_DATABASE_PURGE_PASSWORD }}
       - name: Log in as restro_app through the pooler
         run: psql "$DATABASE_URL" -c "select current_user, (select count(*) from restro.venues) as rows_without_tenant"
         env: { DATABASE_URL: '${{ secrets.STAGING_DATABASE_URL }}' }

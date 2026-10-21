@@ -2,12 +2,26 @@
 # Third-party actions are pinned to a full commit SHA (the comment names the release).
 name: CI
 
+# A change that touches only documentation, agent docs or skills skips this workflow and runs
+# docs-checks.yml instead (Martin 10-18): the full gate costs about 25 Actions minutes a run.
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
   push:
     branches:
       - main
+      # The stage branches the lead merges tickets into: the full gate runs here, on GitHub,
+      # instead of on the local PC (Martin 10-11). A task branch gets its run through its pull
+      # request into the stage branch (Martin 10-17), whatever the branch is named.
+      - '**/foundation'
       - 's1/**'
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
 
 permissions:
   contents: read
@@ -22,7 +36,7 @@ jobs:
   checks:
     name: Lint, types, import rules, secrets, tests, build, e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     # Postgres for the packages/db integration tests (required in CI). CI never uses
     # docker-compose.yml or `pnpm db:local`; this container is the CI database.
@@ -48,6 +62,11 @@ jobs:
       # Migration owner: used by db:migrate, db:roles and the integration tests' set-up only.
       DATABASE_URL_OWNER: postgres://postgres:postgres@localhost:5432/restro
       DATABASE_APP_PASSWORD: ci-only-not-a-secret
+      # The purge role (D83), created by `pnpm db:roles` and used by the purge-role tests.
+      DATABASE_PURGE_PASSWORD: ci-only-purge-not-a-secret
+      # The purge role's own connection, for the worker the e2e run starts: without it the worker
+      # registers no purge job and a "Delete permanently" is never queued (D83).
+      DATABASE_URL_PURGE: postgres://restro_purge:ci-only-purge-not-a-secret@localhost:5432/restro
       NEXT_TELEMETRY_DISABLED: '1'
 
     steps:

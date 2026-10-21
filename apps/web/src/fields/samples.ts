@@ -3,9 +3,13 @@
 // so that all 17 field types can be seen. Every value is valid for its definition
 // (samples.test.ts proves it with core's own validation).
 import type { FieldDefinition, FieldType } from '@restro/core'
-import { VENUE_MENU_TEMPLATE } from '@restro/core'
+import { CONNECTOR_LABELS, INTEGRATION_KINDS, VENUE_MENU_TEMPLATE } from '@restro/core'
 
 import type { Provenance } from './types'
+
+/** The till name the preview's "From {source}" badges show: the first connector kind's. */
+export const SAMPLE_TILL_LABEL: string =
+  INTEGRATION_KINDS.map((kind) => CONNECTOR_LABELS[kind])[0] ?? ''
 
 const ASSET_ID = 'as_4fK9zQ2mX7pL0aBcDeFgHi'
 const NODE_ID = 'nd_7Jq2LmN8vXc4RtYz0bPaSd'
@@ -40,19 +44,19 @@ export const ITEM_SAMPLE_VALUES: Readonly<Record<string, unknown>> = {
 
 /** Where each Item field came from, for the provenance badge (an illustration, not real layers). */
 export const ITEM_SAMPLE_PROVENANCE: Readonly<Record<string, Provenance>> = {
-  name: 'barsy',
+  name: 'till',
   description: 'owned',
-  price: 'barsy',
+  price: 'till',
   image: 'owned',
   allergens: 'overridden',
   dietary: 'owned',
-  portion: 'barsy',
+  portion: 'till',
   abv: 'owned',
   tags: 'owned',
   availability: 'owned',
   internal_note: 'owned',
   order_mode: 'owned',
-  for_sale: 'barsy',
+  for_sale: 'till',
   visible: 'stale',
 }
 

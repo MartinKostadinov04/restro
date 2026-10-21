@@ -3,7 +3,7 @@
 // What the composer's parts share: the view, which section is open, and what each row can do.
 // One context instead of a dozen props through the tree and its rows. The stub of the item sheet
 // reads the item's name from here; the real sheet (S2-06b) loads its own data from the id.
-import type { Locale, NodeId, TagId } from '@restro/core'
+import type { Locale, NodeId, SectionLayout, TagId } from '@restro/core'
 import { createContext, type ReactNode, useContext } from 'react'
 
 import type { TagDraft } from '@/fields/environment'
@@ -12,6 +12,11 @@ import type { ComposerView } from './view-model'
 
 /** The open section: a section id, or `'unsorted'`. */
 export type Selection = NodeId | 'unsorted'
+
+/** The section or item whose name is being edited in place. */
+export type RenameTarget =
+  | { readonly kind: 'section'; readonly id: NodeId }
+  | { readonly kind: 'item'; readonly id: NodeId }
 
 export type { TagDraft }
 
@@ -31,6 +36,22 @@ export interface ComposerActions {
   /** Moves a section to the end of a parent (`null` = top level). */
   readonly moveSectionTo: (sectionId: NodeId, parentId: NodeId | null) => void
   readonly newSection: (parentId?: NodeId | null) => void
+  /** Opens "New item" for a section (`null` = Unsorted). */
+  readonly newItem: (sectionId: NodeId | null) => void
+
+  // --- structure (D89, D90, D92) -------------------------------------------------------------
+  /** Lays a section out as a vertical list or a horizontal row on the guest page. */
+  readonly setSectionLayout: (sectionId: NodeId, layout: SectionLayout) => void
+  /** Starts (or, with `null`, ends) editing a name in place. */
+  readonly startRename: (target: RenameTarget | null) => void
+  /** Saves a section's new title in the interface language (the venue's main one if not enabled). */
+  readonly renameSection: (sectionId: NodeId, title: string) => void
+  /** Saves an item's new name the same way (items made by hand only). */
+  readonly renameItem: (itemId: NodeId, name: string) => void
+  /** Asks to delete a section (a confirmation first); its items go to Unsorted. */
+  readonly deleteSection: (sectionId: NodeId) => void
+  /** Asks to delete an item made by hand (a confirmation first). */
+  readonly deleteItem: (itemId: NodeId) => void
 
   // --- tags (D60) ---------------------------------------------------------------------------
   /** Adds a tag to the venue's list under the id the caller made; true when it was saved. */
@@ -51,8 +72,8 @@ export interface ComposerActions {
   // --- sold out tonight (D46) --------------------------------------------------------------------
   /**
    * Marks items sold out tonight (`true`) or takes OUR mark off (`false`: "back on sale" only
-   * removes the mark, so an item barsy has off sale stays off sale, rule 5). Only owners and
-   * admins; items barsy has off sale are left out.
+   * removes the mark, so an item the till has off sale stays off sale, rule 5). Only owners and
+   * admins; items the till has off sale are left out.
    */
   readonly setSoldOut: (itemIds: readonly NodeId[], soldOut: boolean) => void
 
@@ -80,6 +101,20 @@ export interface ComposerState extends ComposerActions {
   readonly tagFilter: ReadonlySet<TagId>
   /** The person may mark items sold out tonight and take the mark off (owner or admin). */
   readonly canMarkSoldOut: boolean
+  /**
+   * The person may create items by hand here: an owner or admin, in a venue without a till
+   * (CF-01, D66).
+   */
+  readonly canCreateItem: boolean
+  /** The venue has a till: its items come from the till (the empty states say so). */
+  readonly hasTill: boolean
+  /**
+   * The person may delete: sections (a venue without a till: any; with one: its own sections) and
+   * items made by hand. Owners and admins.
+   */
+  readonly canDelete: boolean
+  /** The name being edited in place, or null. */
+  readonly renaming: RenameTarget | null
 }
 
 const Context = createContext<ComposerState | null>(null)

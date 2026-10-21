@@ -4,13 +4,22 @@ import { useTranslations } from 'next-intl'
 
 import type { IntegrationErrorCode } from '@/server/integration/view'
 
-/** The words for a refused action (messages `integration.errors`), as an alert under the field. */
-export function ErrorNote({ code }: { code: IntegrationErrorCode | null }) {
+/**
+ * The words for a refused action (messages `integration.errors`), as an alert under the field.
+ * `source` is the system's name for the messages that name it (`{source}`).
+ */
+export function ErrorNote({
+  code,
+  source = '',
+}: {
+  code: IntegrationErrorCode | null
+  source?: string
+}) {
   const t = useTranslations('integration.errors')
   if (code === null) return null
   return (
     <p role="alert" className="text-sm text-destructive" data-testid="integration-error">
-      {t(code)}
+      {t(code, { source })}
     </p>
   )
 }

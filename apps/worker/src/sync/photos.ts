@@ -7,14 +7,20 @@
 // and only if it asks for them (a 401 or 403 on the first, anonymous request).
 //
 // The same bytes are stored once: an existing barsy asset with the same SHA-256 is reused. The
-// item then gets the asset in its `image` field in the BARSY layer, through apply(); a photo the
+// item then gets the asset in its `image` field in the till layer, through apply(); a photo the
 // manager added (manual layer) still wins by the field's combinator, which this never touches.
 
 import { createHash } from 'node:crypto'
 
 import { assetStorageKey, inspectImage } from '@restro/assets'
 import { BARSY_MAPPING_VERSION, readArticlePicture } from '@restro/barsy'
-import { type AssetFetchJob, type AssetImageType, MAX_IMAGE_BYTES, newId } from '@restro/core'
+import {
+  type AssetFetchJob,
+  type AssetImageType,
+  MAX_IMAGE_BYTES,
+  newId,
+  tillSource,
+} from '@restro/core'
 import { type ApplyRejection, apply, createAsset } from '@restro/core/apply'
 import { assets, sourceLinks, sourceRecords, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
@@ -230,7 +236,7 @@ async function currentRecord(
 
 /**
  * The whole job: check the job is current, download, check the bytes, dedupe by checksum, store,
- * check again, write the item's `image` field in the barsy layer. `runId` is the job run (it goes
+ * check again, write the item's `image` field in the till layer. `runId` is the job run (it goes
  * into the change set).
  *
  * The job is checked against the article's current record twice: before the download (so an
@@ -267,7 +273,11 @@ export async function fetchPhoto(
       .select({ id: assets.id })
       .from(assets)
       .where(
-        and(eq(assets.checksum, checksum), eq(assets.origin, 'barsy'), eq(assets.status, 'stored')),
+        and(
+          eq(assets.checksum, checksum),
+          eq(assets.origin, 'connector'),
+          eq(assets.status, 'stored'),
+        ),
       )
       .limit(1),
   )
@@ -281,7 +291,7 @@ export async function fetchPhoto(
     await env.store.put(storageKey, bytes, contentType)
     const created = await createAsset(env.pool, tenantId, {
       id,
-      origin: 'barsy',
+      origin: 'connector',
       originRef: `article:${request.articleExternalId}:${request.pictureName}`.slice(0, 512),
       contentType,
       checksum,
@@ -301,7 +311,7 @@ export async function fetchPhoto(
 
   const result = await apply(env.pool, tenantId, {
     id: newId('cs'),
-    source: `barsy:${integrationId}`,
+    source: tillSource(integrationId),
     jobId: runId,
     actor: `integration:${integrationId}`,
     observedAt: env.now().toISOString(),
@@ -316,7 +326,7 @@ export async function fetchPhoto(
           },
         },
         fieldKey: 'image',
-        layer: 'barsy',
+        layer: 'till',
         scope: 'master',
         value: { asset_id: assetId, alt: {}, focal: null },
         sourceRecordId: now.recordId,

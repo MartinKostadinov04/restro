@@ -13,6 +13,7 @@
 // from `summarizeError` (no query parameters) and `finishJobRun` scrubs URLs again.
 
 import { BarsyAuthError } from '@restro/barsy'
+import type { AbsenceHeld } from '@restro/core'
 import {
   type ApplyRejection,
   finishJobRun,
@@ -32,6 +33,8 @@ export interface RunReport {
   readonly notes?: readonly string[]
   /** True when a full pull did not conclude absence; the Integration tab reads it from the run. */
   readonly deletionCheckSkipped?: boolean
+  /** Set when a complete full pull held its absence conclusion back (T62): why, and how much. */
+  readonly absenceHeld?: AbsenceHeld
   readonly refused?: readonly ApplyRejection[]
   /** `failed` for a run that ended without doing its work but is not an error to retry. */
   readonly status?: 'completed' | 'failed'
@@ -58,14 +61,17 @@ export async function trackedRun(
     readonly tenantId: string
     /** Absent for a run that belongs to no integration (the publish jobs). */
     readonly integrationId?: string
+    /** The venue of ours the run is for, when it is for one: the history names it (CF-09b). */
+    readonly venueId?: string
     readonly kind: string
   },
   body: (run: JobRun) => Promise<RunReport | undefined>,
 ): Promise<void> {
-  const { tenantId, integrationId } = target
+  const { tenantId, integrationId, venueId } = target
   const run = await startJobRun(env.pool, tenantId, {
     kind: target.kind,
     ...(integrationId === undefined ? {} : { integrationId }),
+    ...(venueId === undefined ? {} : { venueId }),
     startedAt: env.now(),
   })
   const finish = async (status: 'completed' | 'failed', report: RunReport, summary?: string) => {
@@ -76,6 +82,7 @@ export async function trackedRun(
         ...(report.deletionCheckSkipped !== undefined
           ? { deletionCheckSkipped: report.deletionCheckSkipped }
           : {}),
+        ...(report.absenceHeld !== undefined ? { absenceHeld: report.absenceHeld } : {}),
         summary: [summary, ...(report.notes ?? [])].filter(Boolean).join('\n'),
         refused: report.refused ?? [],
         finishedAt: env.now(),

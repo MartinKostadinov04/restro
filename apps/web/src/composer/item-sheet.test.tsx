@@ -49,6 +49,15 @@ describe('ItemSheet', () => {
     ])
   })
 
+  it('reads and saves in the menu the composer has open (S6), when it names one', async () => {
+    A.loadItemSheetAction.mockResolvedValue(sheetData())
+    A.saveItemFieldAction.mockResolvedValue({ ok: true, data: sheetData() })
+    const MENU = 'nd_menu000000000000000000'
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" menuId={MENU} />)
+    await screen.findByTestId('item-sheet-title')
+    expect(A.loadItemSheetAction).toHaveBeenCalledWith({ venueId: 'vn_x', menuId: MENU }, ITEM)
+  })
+
   it("takes the venue from the page's route when no venue is given", async () => {
     A.loadItemSheetAction.mockResolvedValue(sheetData())
     renderWithIntl(<ItemSheet itemId={ITEM} />)
@@ -68,6 +77,28 @@ describe('ItemSheet', () => {
     expect((await screen.findByTestId('item-sheet-problem')).textContent).toMatch(
       /could not be loaded/,
     )
+  })
+
+  it('notes the overrides to review (V12): what the till changed since ours was written', async () => {
+    A.loadItemSheetAction.mockResolvedValue(
+      sheetData({
+        issues: [
+          { code: 'stale_override', severity: 'warning', fieldKey: 'name' },
+          { code: 'V4', severity: 'warning', fieldKey: 'allergens' },
+        ],
+      }),
+    )
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" />, { locale: 'en' })
+    const notice = await screen.findByTestId('review-notice')
+    expect(notice.textContent).toContain('Overrides to review')
+    expect(notice.textContent).toContain('barsy changed Name after you replaced it here.')
+  })
+
+  it('has no such note when nothing waits for review', async () => {
+    A.loadItemSheetAction.mockResolvedValue(sheetData())
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" />)
+    await screen.findByTestId('item-sheet-title')
+    expect(screen.queryByTestId('review-notice')).toBeNull()
   })
 
   it('does not load anything while closed', () => {
@@ -120,14 +151,14 @@ describe('ItemSheet', () => {
             value: ['gluten', 'milk'],
             provenance: 'overridden',
             canRevert: true,
-            barsyValue: ['gluten'],
+            tillValue: ['gluten'],
           },
         },
       }),
     )
     A.revertItemFieldAction.mockResolvedValue({
       ok: true,
-      data: sheetData({ fields: { allergens: { value: ['gluten'], provenance: 'barsy' } } }),
+      data: sheetData({ fields: { allergens: { value: ['gluten'], provenance: 'till' } } }),
     })
     renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" />)
     await screen.findByTestId('item-sheet-title')

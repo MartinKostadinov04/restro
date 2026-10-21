@@ -68,6 +68,33 @@ module.exports = {
       to: { path: IO_PACKAGES },
     },
 
+    // 1b. A face is a pure function from a view model to markup, and the registry loads it by
+    //     name (SH-04): it may use React and the shell's types and helpers, nothing else. Not
+    //     even core: a face that needs a core helper asks for it to be put into the shell, so
+    //     the contract between host and face stays one package wide. `$1` is the face's own
+    //     folder, which it may of course import. Test files and the `test-*` helpers beside them
+    //     are exempt (they use vitest, Testing Library and the shell's `testing` fixtures); the
+    //     shell's `testing` folder is otherwise off limits.
+    {
+      name: 'faces-only-react-and-shell',
+      severity: 'error',
+      comment:
+        'A file under packages/faces/<face>/src/ (tests and test-* helpers excepted) may import only its own package, react, react-dom (and their internals, such as react/jsx-runtime and scheduler) and @restro/shell (not @restro/shell/testing). No @restro/core, no icon or UI library, no other face: the face stays a function of its view model, and its code stays small for the guest who downloads it.',
+      from: {
+        path: '^packages/faces/([^/]+)/src/',
+        pathNot: ['\\.test\\.[jt]sx?$', '(^|/)test-[^/]+\\.[jt]sx?$'],
+      },
+      to: {
+        pathNot: [
+          '^packages/faces/$1/',
+          '^(react|react-dom|scheduler)(/|$)',
+          '(^|/)node_modules/(react|react-dom|scheduler)/',
+          '^packages/shell/(?!testing/)',
+          '^@restro/shell(/(?!testing(/|$))|$)',
+        ],
+      },
+    },
+
     // 2. One write path (rule 1): only apply() may use the write side of the db package, and
     //    the package has exactly two doors.
     {
@@ -78,22 +105,33 @@ module.exports = {
       to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
     },
     {
+      name: 'db-purge-only-from-worker-purge-job',
+      severity: 'error',
+      comment:
+        'Only the worker purge job (apps/worker/src/jobs/purge*) may import @restro/db/purge: the purge role is the only one with DELETE on venue data (D83), and nothing else may erase anything.',
+      from: { pathNot: ['^apps/worker/src/jobs/purge', '^packages/db/'] },
+      to: { path: ['^packages/db/src/purge(/|\\.|$)', '^@restro/db/purge(/|$)'] },
+    },
+    {
       name: 'db-entry-points-only',
       severity: 'error',
       comment:
-        'Outside packages/db, import the database package only through its two entry points, @restro/db and @restro/db/write (packages/db/src/index.ts and packages/db/src/write/index.ts). Anything else under packages/db/src, such as the connection pool, would let code run queries outside a tenant-scoped transaction.',
+        'Outside packages/db, import the database package only through its three entry points, @restro/db, @restro/db/write and @restro/db/purge (packages/db/src/index.ts, packages/db/src/write/index.ts and packages/db/src/purge/index.ts). Anything else under packages/db/src, such as the connection pool, would let code run queries outside a tenant-scoped transaction.',
       from: { pathNot: '^packages/db/' },
       to: {
-        path: ['^packages/db/src/(?!(index|write/index)\\.ts$)', '^@restro/db/src(/|$)'],
+        path: [
+          '^packages/db/src/(?!(index|write/index|purge/index)\\.ts$)',
+          '^@restro/db/src(/|$)',
+        ],
       },
     },
     {
       name: 'db-read-side-no-write',
       severity: 'error',
       comment:
-        'Inside packages/db/src, only files under packages/db/src/write/ may import packages/db/src/write: the read side (the @restro/db entry, the pool, the schema) must never reach the write side, or the read-only entry point could end up exposing a write transaction.',
-      from: { path: '^packages/db/src/', pathNot: '^packages/db/src/write/' },
-      to: { path: '^packages/db/src/write(/|\\.|$)' },
+        'Inside packages/db/src, only files under packages/db/src/write/ or packages/db/src/purge/ may import packages/db/src/write or packages/db/src/purge: the read side (the @restro/db entry, the pool, the schema) must never reach them, or the read-only entry point could end up exposing a write or purge transaction.',
+      from: { path: '^packages/db/src/', pathNot: '^packages/db/src/(write|purge)/' },
+      to: { path: '^packages/db/src/(write|purge)(/|\\.|$)' },
     },
 
     // 3 and 4. barsy is read by the worker only (CLAUDE.md "Never": web never calls barsy).
@@ -148,6 +186,28 @@ module.exports = {
           '^@restro/(web|worker)(/|$)',
         ],
       },
+    },
+
+    // SH-06 (D72), the services of a face. A face's preview adapter (its `./preview` subpath, e.g.
+    // `@restro/editorial-market/preview`) is a make-believe host for the admin's preview: a guest
+    // page must never import it, or demo data could reach a venue's guests. And a face draws the
+    // amounts the host gives it without adding them up: the money arithmetic the shell exports for
+    // that adapter (`@restro/shell/money`) is for a face's `preview/` folder alone.
+    {
+      name: 'guest-never-imports-face-preview',
+      severity: 'error',
+      comment:
+        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import the ./preview subpath of any face (packages/faces/*/src/preview): it is the admin-only demo host, and a guest page binds real services or none (D72).',
+      from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
+      to: { path: ['^packages/faces/[^/]+/src/preview(/|$)', '^@restro/[^/]+/preview(/|$)'] },
+    },
+    {
+      name: 'faces-money-math-only-in-preview',
+      severity: 'error',
+      comment:
+        'Under packages/faces/, only a preview/ folder may import @restro/shell/money (packages/shell/src/money-math.ts): a face draws the amounts the host gives it and never adds them up (D72, rule 8).',
+      from: { path: '^packages/faces/', pathNot: '(^|/)preview/' },
+      to: { path: ['^packages/shell/src/money-math\\.ts$', '^@restro/shell/money(/|$)'] },
     },
 
     // The guest page (rule 4): it reads published files and nothing else. Its code (app/m and

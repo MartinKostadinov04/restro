@@ -1,11 +1,21 @@
-import { MenuSnapshotSchema } from '@restro/core'
+import { CALL_WAITER_KINDS, MenuSnapshotSchema, validateRoles } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
+import { buildViewModel } from '../src/build'
 import { type FaceManifest, validateManifest } from '../src/manifest'
 import type { ViewItem, ViewModel, ViewSection } from '../src/view-model'
-import { type RenderFn, runFaceContract } from './contract'
-import { fixtureId, fixtures } from './fixtures'
+import {
+  ADD_SLOT,
+  FEATURE_SLOTS,
+  LANGUAGE_FIXTURE,
+  LANGUAGE_SLOT,
+  LAYOUT_SWITCH_SLOT,
+  type RenderFn,
+  runFaceContract,
+} from './contract'
+import { CUSTOM_ROLES, fixture, fixtureId, fixtures } from './fixtures'
 import { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
+import { faceContractSuite } from './suite'
 
 const manifest = (() => {
   const result = validateManifest({
@@ -45,7 +55,7 @@ const lang = (locale: string) => locale.replace('_', '-')
 function referenceFace(
   tweak: (item: ViewItem, html: string, view: ViewModel) => string = (_i, h) => h,
 ): RenderFn {
-  return (view) => {
+  return (view, host) => {
     const item = (entry: ViewItem): string => {
       const name = `<h3 data-slot="item.name" lang="${lang(entry.name.lang)}">${esc(entry.name.text)}</h3>`
       const price =
@@ -91,12 +101,20 @@ function referenceFace(
         entry.modifierGroups.length === 0
           ? ''
           : `<div data-slot="item.modifiers">${entry.modifierGroups.map((g) => `<section>${esc(g.name.text)}${g.options.map((o) => `<i>${esc(o.name.text)} ${esc(o.delta?.text ?? '')}</i>`).join('')}</section>`).join('')}</div>`
-      const html = `<article data-item="${entry.id}">${image}${name}${price}${state}${allergens}${description}${badges}${portion}${dietary}${tags}${extra}${modifiers}</article>`
+      const add =
+        view.features.ordering && entry.order.controls
+          ? `<button data-slot="${ADD_SLOT}">+</button>`
+          : ''
+      const html = `<article data-item="${entry.id}">${image}${name}${price}${state}${allergens}${description}${badges}${portion}${dietary}${tags}${extra}${modifiers}${add}</article>`
       return tweak(entry, html, view)
     }
     const section = (entry: ViewSection): string =>
       `<section><h2>${esc(entry.title.text)}</h2>${entry.items.map(item).join('')}${entry.sections.map(section).join('')}</section>`
-    return `<!doctype html><html lang="${lang(view.locale)}"><body>${view.sections.map(section).join('')}</body></html>`
+    const languages =
+      host !== undefined && host.languages.length > 1
+        ? `<fieldset data-slot="${LANGUAGE_SLOT}">${host.languages.map((code) => `<button lang="${lang(code)}">${code}</button>`).join('')}</fieldset>`
+        : ''
+    return `<!doctype html><html lang="${lang(view.locale)}"><body>${languages}${view.sections.map(section).join('')}</body></html>`
   }
 }
 
@@ -141,6 +159,209 @@ describe('fixtures', () => {
     const b = fixtures()[0]
     expect(a?.snapshot).toEqual(b?.snapshot)
     expect(a?.snapshot).not.toBe(b?.snapshot)
+  })
+
+  it('keep the ten fixtures of S3-02 first and in order, then the three of SH-03, the two of S6 and the two of D109', () => {
+    expect(fixtures().map((f) => f.name)).toEqual([
+      'long-names',
+      'six-languages',
+      'no-images',
+      'with-images',
+      'sold-out',
+      'scheduled',
+      'big-menu',
+      'deep-modifiers',
+      'ask-waiter',
+      'tags-dietary',
+      'custom-roles',
+      'features-on',
+      'features-off',
+      'horizontal-sections',
+      'one-column',
+      'hostile-names',
+      'crowded',
+    ])
+  })
+
+  it('each describe their hard case', () => {
+    for (const f of fixtures()) {
+      expect(f.note.trim().length, f.name).toBeGreaterThan(20)
+    }
+  })
+})
+
+describe('the SH-03 fixtures', () => {
+  const viewOf = (name: string): ViewModel => {
+    const f = fixture(name)
+    return buildViewModel(f.snapshot, f.overlay, f.context)
+  }
+
+  it('custom-roles: a snapshot with its own readable roles and a forced dark scheme', () => {
+    const f = fixture('custom-roles')
+    expect(f.snapshot.theme.roles).toEqual(CUSTOM_ROLES)
+    expect(f.snapshot.theme.scheme).toBe('dark')
+    expect(validateRoles(CUSTOM_ROLES)).toEqual([])
+    const view = viewOf('custom-roles')
+    expect(view.theme.scheme).toBe('dark')
+    expect(view.theme.colors.background).toBe(CUSTOM_ROLES.light.background)
+    expect(view.theme.colorsDark.accent).toBe(CUSTOM_ROLES.dark.accent)
+  })
+
+  it('features-on: every feature switched on, supported, at a table with ordering on, with chips', () => {
+    const f = fixture('features-on')
+    expect(f.snapshot.features).toEqual({
+      filters: true,
+      call_waiter: { enabled: true, kinds: [...CALL_WAITER_KINDS] },
+      bill: true,
+      ordering: true,
+      pay: true,
+    })
+    expect(f.context).toMatchObject({
+      orderingEnabled: true,
+      capabilities: { callWaiter: true, bill: true, ordering: true, pay: true },
+    })
+    expect(f.context.tableToken).toEqual(expect.any(String))
+    const view = viewOf('features-on')
+    expect(view.features).toEqual({
+      filters: true,
+      callWaiter: { kinds: [...CALL_WAITER_KINDS] },
+      bill: true,
+      ordering: true,
+      pay: true,
+    })
+    expect(view.ordering.enabled).toBe(true)
+  })
+
+  it('features-off: filters off while chips exist, every service off though the platform supports it', () => {
+    const f = fixture('features-off')
+    expect(f.snapshot.features?.filters).toBe(false)
+    expect(f.context.capabilities).toEqual({
+      callWaiter: true,
+      bill: true,
+      ordering: true,
+      pay: true,
+    })
+    const view = viewOf('features-off')
+    expect(view.filters.tags.length).toBeGreaterThan(0)
+    expect(view.filters.dietary.length).toBeGreaterThan(0)
+    expect(view.features).toEqual({
+      filters: false,
+      callWaiter: null,
+      bill: false,
+      ordering: false,
+      pay: false,
+    })
+  })
+})
+
+describe('the S6 fixtures (D92)', () => {
+  const viewOf = (name: string): ViewModel => {
+    const f = fixture(name)
+    return buildViewModel(f.snapshot, f.overlay, f.context)
+  }
+  const layouts = (view: ViewModel) => view.sections.map((section) => section.hints.layout)
+
+  it('horizontal-sections: a horizontal section that is not the first; two columns, guests may switch', () => {
+    const f = fixture('horizontal-sections')
+    expect(f.snapshot.layout).toEqual({ default: 'two', guest_switch: true })
+    const sections = f.snapshot.menu.sections.map((id) => f.snapshot.sections[id]?.hints.layout)
+    // The third section is published without a layout, as a snapshot made before D92 is.
+    expect(sections).toEqual(['vertical', 'horizontal', undefined])
+    const view = viewOf('horizontal-sections')
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
+    expect(layouts(view)).toEqual(['vertical', 'horizontal', 'vertical'])
+  })
+
+  it('one-column: the first section horizontal; one column, no switch', () => {
+    const view = viewOf('one-column')
+    expect(view.layout).toEqual({ default: 'one', guestSwitch: false })
+    expect(layouts(view)).toEqual(['horizontal', 'vertical'])
+  })
+
+  it('a fixture published before D92 reads as it looked: two columns with the switch, sections vertical', () => {
+    const f = fixture('long-names')
+    expect(f.snapshot).not.toHaveProperty('layout')
+    const view = viewOf('long-names')
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: true })
+    expect(layouts(view)).toEqual(['vertical'])
+  })
+})
+
+describe('the D109 fixtures (worst cases)', () => {
+  const viewOf = (name: string): ViewModel => {
+    const f = fixture(name)
+    return buildViewModel(f.snapshot, f.overlay, f.context)
+  }
+  const names = (view: ViewModel): string[] =>
+    view.sections.flatMap((section) => section.items.map((item) => item.name.text))
+
+  it('hostile-names: capitals with the tall marks, a sixty-character one, emoji, joiners, doubles', () => {
+    const f = fixture('hostile-names')
+    const texts = Object.values(f.snapshot.items).flatMap((item) => Object.values(item.name))
+    const caps = texts.filter((text) => text === text.toUpperCase() && /[А-Я]/.test(text))
+    for (const mark of ['Й', 'Ѝ', 'Ц', 'Щ']) {
+      expect(
+        caps.some((text) => text.includes(mark)),
+        mark,
+      ).toBe(true)
+    }
+    expect(caps.some((text) => [...text].length === 60)).toBe(true)
+    expect(texts.some((text) => text.startsWith('🍸'))).toBe(true)
+    expect(texts.some((text) => text.includes(String.fromCodePoint(0x200d)))).toBe(true)
+    expect(texts.some((text) => text.includes('   '))).toBe(true)
+  })
+
+  it('hostile-names: two items share one name, in both languages, and stay two placements', () => {
+    const view = viewOf('hostile-names')
+    const [section] = view.sections
+    const twins = (section?.items ?? []).filter((item) => item.name.text === 'Негрони')
+    expect(twins).toHaveLength(2)
+    expect(new Set(twins.map((item) => item.id)).size).toBe(2)
+    expect(new Set(twins.map((item) => item.price?.text)).size).toBe(2)
+  })
+
+  it('hostile-names: a name that is only spaces falls back to the next language, or the item is left out', () => {
+    const f = fixture('hostile-names')
+    // The snapshot schema takes both (a non-empty string); the shell is where a blank name is read.
+    expect(
+      Object.values(f.snapshot.items).filter((item) => item.name.bg_BG === '   '),
+    ).toHaveLength(2)
+    const view = viewOf('hostile-names')
+    const fallback = view.sections[0]?.items.find(
+      (item) => item.name.text === 'Only the English name',
+    )
+    expect(fallback?.name.lang).toBe('en_US')
+    // Ten items in the snapshot, nine on the page: the one with no readable name is not drawn.
+    expect(Object.keys(f.snapshot.items)).toHaveLength(10)
+    expect(view.sections[0]?.items).toHaveLength(9)
+    expect(names(view).every((text) => text.trim() !== '')).toBe(true)
+  })
+
+  it('crowded: twelve tags on one item, one of forty characters with no space', () => {
+    const f = fixture('crowded')
+    const view = viewOf('crowded')
+    const crowd = view.sections[0]?.items.find((item) => item.tags.length === 12)
+    expect(crowd).toBeDefined()
+    const labels = (crowd?.tags ?? []).map((tag) => tag.label.text)
+    const unbroken = labels.filter((label) => !label.includes(' '))
+    expect(unbroken.some((label) => [...label].length === 40)).toBe(true)
+    expect(Object.keys(f.snapshot.tags)).toHaveLength(12)
+  })
+
+  it('crowded: one price text is sixteen characters', () => {
+    const view = viewOf('crowded')
+    const lengths = view.sections.flatMap((section) =>
+      section.items.map((item) => [...(item.price?.text ?? '')].length),
+    )
+    expect(lengths).toContain(16)
+  })
+
+  it('crowded: a section with one item, and a section with no item that the shell leaves out', () => {
+    const f = fixture('crowded')
+    const itemCounts = f.snapshot.menu.sections.map((id) => f.snapshot.sections[id]?.items.length)
+    expect(itemCounts).toEqual([2, 1, 0])
+    const view = viewOf('crowded')
+    expect(view.sections.map((section) => section.items.length)).toEqual([2, 1])
   })
 })
 
@@ -209,8 +430,8 @@ describe('runFaceContract', () => {
   })
 
   it('R2: catches a face that reorders items', async () => {
-    const reversed: RenderFn = (view) => {
-      const parts = (referenceFace()(view) as string).split('<article')
+    const reversed: RenderFn = (view, host) => {
+      const parts = (referenceFace()(view, host) as string).split('<article')
       return [
         parts[0],
         ...parts
@@ -305,4 +526,326 @@ describe('runFaceContract', () => {
     })
     expect(report.renders).toBe(2)
   })
+})
+
+/** A manifest that has controls for every guest feature. */
+const featureManifest: FaceManifest = (() => {
+  const result = validateManifest({
+    ...manifest,
+    ordering: true,
+    features: ['filters', 'call_waiter', 'bill', 'ordering', 'pay'],
+  })
+  if (!result.ok) throw new Error(JSON.stringify(result.issues))
+  return result.manifest
+})()
+
+/** The slot of each feature, by name. */
+const SLOT_OF = Object.fromEntries(FEATURE_SLOTS.map(({ slot, feature }) => [feature, slot]))
+
+/** Whether the view model has the feature on. */
+function isOn(view: ViewModel, feature: string): boolean {
+  if (feature === 'filters') return view.features.filters
+  if (feature === 'call_waiter') return view.features.callWaiter !== null
+  if (feature === 'bill') return view.features.bill
+  if (feature === 'ordering') return view.features.ordering
+  return view.features.pay
+}
+
+/** The reference face with a control (an element carrying the feature's slot) added per `draw`. */
+function featureFace(draw: (view: ViewModel) => string[]): RenderFn {
+  const base = referenceFace()
+  return async (view, host) => {
+    const controls = draw(view)
+      .map((slot) => `<button data-slot="${slot}"></button>`)
+      .join('')
+    return (await base(view, host)).replace('<body>', `<body>${controls}`)
+  }
+}
+
+/** A face that draws exactly the controls the view model turns on. */
+const rightFeatures = featureFace((view) =>
+  FEATURE_SLOTS.filter(({ feature }) => isOn(view, feature)).map(({ slot }) => slot),
+)
+
+describe('runFaceContract: R15 feature slots (fail-closed)', () => {
+  it('knows the five menu-level slots of the brief', () => {
+    expect(FEATURE_SLOTS.map(({ slot }) => slot)).toEqual([
+      'menu.filters',
+      'menu.call_waiter',
+      'menu.bill',
+      'menu.bag',
+      'menu.pay',
+    ])
+    expect(SLOT_OF.ordering).toBe('menu.bag')
+  })
+
+  it('passes a face that draws a control exactly when its feature is on', async () => {
+    const report = await runFaceContract(rightFeatures, featureManifest)
+    expect(report.failures).toEqual([])
+    expect(report.renders).toBe(fixtures().length)
+  })
+
+  it('passes a face that draws no control at all when the manifest declares no feature', async () => {
+    const report = await runFaceContract(referenceFace(), manifest)
+    expect(report.failures).toEqual([])
+  })
+
+  it('catches a face that draws menu.bill while the bill feature is off', async () => {
+    const report = await runFaceContract(
+      featureFace((view) => [
+        ...FEATURE_SLOTS.filter(({ feature }) => isOn(view, feature)).map(({ slot }) => slot),
+        'menu.bill',
+      ]),
+      featureManifest,
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures.every((failure) => failure.message.includes('menu.bill'))).toBe(true)
+    // It is wrong on every fixture where the bill is off, and right on the one where it is on.
+    expect([...new Set(report.failures.map((failure) => failure.fixture))].sort()).toEqual(
+      fixtures()
+        .map((f) => f.name)
+        .filter((name) => name !== 'features-on')
+        .sort(),
+    )
+  })
+
+  it('catches it whether or not the manifest declares the feature', async () => {
+    const draws = featureFace(() => ['menu.pay'])
+    for (const m of [manifest, featureManifest]) {
+      const report = await runFaceContract(draws, m, {
+        fixtures: fixtures().filter((f) => f.name === 'no-images'),
+      })
+      expect(rules(report), String(m.features)).toEqual(['R15'])
+    }
+  })
+
+  it.each(FEATURE_SLOTS)('catches $slot drawn while $feature is off', async ({ slot, feature }) => {
+    const report = await runFaceContract(
+      featureFace((view) => [
+        ...FEATURE_SLOTS.filter((entry) => isOn(view, entry.feature)).map((entry) => entry.slot),
+        slot,
+      ]),
+      featureManifest,
+      { fixtures: fixtures().filter((f) => f.name === 'features-off') },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures.map((failure) => failure.message).join('\n')).toContain(
+      `${slot} is drawn while the ${feature} feature is off`,
+    )
+  })
+
+  it('catches a face that ignores the venue’s switch (features-off is the fixture for that)', async () => {
+    // Draws the filter control whenever the menu has chips, as the face did before R15.
+    const ignoresSwitch = featureFace((view) => {
+      const chips = view.filters.tags.length + view.filters.dietary.length > 0
+      return chips ? ['menu.filters'] : []
+    })
+    const report = await runFaceContract(ignoresSwitch, manifest)
+    expect(rules(report)).toEqual(['R15'])
+    expect([...new Set(report.failures.map((failure) => failure.fixture))]).toEqual([
+      'features-off',
+    ])
+  })
+
+  it('catches a declared feature that is on but whose control is not drawn', async () => {
+    const report = await runFaceContract(
+      featureFace((view) =>
+        FEATURE_SLOTS.filter(({ feature }) => isOn(view, feature) && feature !== 'call_waiter').map(
+          ({ slot }) => slot,
+        ),
+      ),
+      featureManifest,
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect([...new Set(report.failures.map((failure) => failure.fixture))]).toEqual(['features-on'])
+    expect(report.failures[0]?.message).toContain('menu.call_waiter')
+  })
+
+  it('does not ask for the control of a feature the manifest does not declare', async () => {
+    const filtersOnly: FaceManifest = { ...manifest, features: ['filters'] }
+    const report = await runFaceContract(
+      featureFace((view) => (view.features.filters ? ['menu.filters'] : [])),
+      filtersOnly,
+    )
+    expect(report.failures).toEqual([])
+  })
+
+  it('looks at the whole page, not only at the items', async () => {
+    const report = await runFaceContract(
+      (view, host) =>
+        (referenceFace()(view, host) as string).replace(
+          '</body>',
+          '<footer><nav><a data-slot="menu.pay">Pay</a></nav></footer></body>',
+        ),
+      manifest,
+      { fixtures: fixtures().filter((f) => f.name === 'features-off') },
+    )
+    expect(rules(report)).toEqual(['R15'])
+  })
+})
+
+describe('runFaceContract: the item.add control (T90)', () => {
+  const featureFixtures = { fixtures: fixtures().filter((f) => f.name.startsWith('features-')) }
+  const ADD = `<button data-slot="${ADD_SLOT}">+</button>`
+  /** The reference face with its markup changed by `change`. */
+  const addFace = (change: (html: string) => string): RenderFn => {
+    const base = referenceFace()
+    return async (view, host) => change(await base(view, host))
+  }
+
+  it('passes a face that draws it on each orderable item, and only there', async () => {
+    const report = await runFaceContract(rightFeatures, featureManifest, featureFixtures)
+    expect(report.failures).toEqual([])
+    // Not vacuous: the features-on menu has orderable items, and the reference face drew a control on them.
+    const on = fixture('features-on')
+    const view = buildViewModel(on.snapshot, on.overlay, { ...on.context, channel: 'qr' })
+    expect(await rightFeatures(view)).toContain(ADD_SLOT)
+  })
+
+  it('catches a face that draws it while ordering is off', async () => {
+    const report = await runFaceContract(
+      addFace((html) => html.replace(/(<article[^>]*>)/g, `$1${ADD}`)),
+      featureManifest,
+      { fixtures: [fixture('features-off')] },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures[0]?.message).toContain(ADD_SLOT)
+  })
+
+  it('catches a face that draws it on an item without ordering controls', async () => {
+    // The features-on menu has a bottle only the waiter can bring.
+    const report = await runFaceContract(
+      addFace((html) => html.replace(/(<article[^>]*>)/g, `$1${ADD}`)),
+      featureManifest,
+      { fixtures: [fixture('features-on')] },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures.some((f) => f.message.includes('no ordering controls'))).toBe(true)
+  })
+
+  it('catches a face that declares ordering and leaves the control out', async () => {
+    const report = await runFaceContract(
+      addFace((html) => html.split(ADD).join('')),
+      featureManifest,
+      { fixtures: [fixture('features-on')] },
+    )
+    expect(rules(report)).toEqual(['R15'])
+    expect(report.failures[0]?.message).toContain('has no item.add')
+  })
+
+  it('does not ask for it of a face that does not declare ordering', async () => {
+    const report = await runFaceContract(
+      addFace((html) => html.split(ADD).join('')),
+      manifest,
+      featureFixtures,
+    )
+    expect(report.failures).toEqual([])
+  })
+})
+
+describe('runFaceContract: the language switch (T90)', () => {
+  const languageFixtures = { fixtures: fixtures().filter((f) => f.name === LANGUAGE_FIXTURE) }
+  const SWITCH = new RegExp(`<fieldset data-slot="${LANGUAGE_SLOT}">.*?</fieldset>`)
+  const face = (change: (html: string, languages: number) => string): RenderFn => {
+    const base = referenceFace()
+    return async (view, host) =>
+      change(await base(view, host), host === undefined ? 0 : host.languages.length)
+  }
+
+  it('passes a face that draws it with two languages and not with one', async () => {
+    const report = await runFaceContract(referenceFace(), manifest, languageFixtures)
+    expect(report.failures).toEqual([])
+  })
+
+  it('catches a face that never draws it', async () => {
+    const report = await runFaceContract(
+      face((html) => html.replace(SWITCH, '')),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('two languages')
+  })
+
+  it('catches a face whose switch does not carry the language of each control', async () => {
+    const report = await runFaceContract(
+      face((html) => html.replace(/<button lang="[^"]*">/g, '<button>')),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('lang="bg-BG"')
+  })
+
+  it('catches a face that draws it with one language', async () => {
+    const report = await runFaceContract(
+      face((html, languages) =>
+        languages === 1
+          ? html.replace('<body>', `<body><i data-slot="${LANGUAGE_SLOT}"></i>`)
+          : html,
+      ),
+      manifest,
+      languageFixtures,
+    )
+    expect(rules(report)).toEqual(['§7.6'])
+    expect(report.failures[0]?.message).toContain('one language')
+  })
+
+  it('is looked at on one fixture only, so the 300-item menu is not rendered again', async () => {
+    const withHost: string[] = []
+    const counting: RenderFn = (view, host) => {
+      if (host !== undefined) withHost.push(`${host.languages.length}`)
+      return referenceFace()(view, host)
+    }
+    await runFaceContract(counting, manifest)
+    expect(withHost).toEqual(['2', '1']) // two languages, then one: one fixture, the one channel
+  })
+})
+
+describe('runFaceContract: the layout switch (D92, fail-closed)', () => {
+  /** The reference face with the layout switch drawn when `draw` says so. */
+  const switchFace = (draw: (view: ViewModel) => boolean): RenderFn => {
+    const base = referenceFace()
+    return async (view, host) => {
+      const html = await base(view, host)
+      return draw(view)
+        ? html.replace(
+            '<body>',
+            `<body><div role="radiogroup" data-slot="${LAYOUT_SWITCH_SLOT}"></div>`,
+          )
+        : html
+    }
+  }
+
+  it('passes a face that draws the switch exactly where the menu lets guests switch', async () => {
+    const report = await runFaceContract(
+      switchFace((view) => view.layout.guestSwitch),
+      manifest,
+    )
+    expect(report.failures).toEqual([])
+  })
+
+  it('catches a face that draws the switch where the menu does not let guests switch', async () => {
+    const report = await runFaceContract(
+      switchFace(() => true),
+      manifest,
+    )
+    expect(rules(report)).toEqual(['D92'])
+    // Only where the menu says no: one-column (the others let guests switch, explicitly or as the
+    // look from before D92).
+    expect([...new Set(report.failures.map((failure) => failure.fixture))]).toEqual(['one-column'])
+  })
+
+  it('a non-interactive channel never gets the switch', async () => {
+    const f = fixture('horizontal-sections')
+    const view = buildViewModel(f.snapshot, f.overlay, { ...f.context, channel: 'print' })
+    expect(view.layout).toEqual({ default: 'two', guestSwitch: false })
+  })
+})
+
+// The suite every face's test calls, run on the harness's own reference face.
+faceContractSuite('the harness reference face', {
+  manifest: featureManifest,
+  render: rightFeatures,
+  css: '.ref { color: var(--ref-text, CanvasText); background: color-mix(in srgb, var(--ref-bg) 80%, transparent); }',
 })

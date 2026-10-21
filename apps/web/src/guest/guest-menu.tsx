@@ -7,24 +7,43 @@
 // to the service day) and is fetched again at once with a cache-busting query. States: a loading
 // skeleton, and a friendly notice for an unknown venue, a menu that is not published yet, or a
 // failed load.
+//
+// The address is `/m/<organisation>/<venue>` (D84), read from the organisation's published file,
+// which also knows the old names of the organisation and of its venues. The address of before,
+// `/m/<slug>-<code>` (D68), still works: the code finds the venue (`parseMenuParam`) and its file
+// names the organisation. In both cases the page replaces what the address bar says with the
+// canonical path through the History API, keeping `?t=`, `?lang=` and the rest. There is no
+// redirect and no server read: the page stays a static shell over published files (rule 4).
+// A table's code in `?t=` may name the menu it opens (D95); the loader reads that one.
 
-import type { LiveOverlay, Locale } from '@restro/core'
-import { bcp47, QrPhoneFace, QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone'
+import {
+  guestMenuPath,
+  type LiveOverlay,
+  type Locale,
+  localeToBcp47,
+  menuPath,
+  parseMenuParam,
+} from '@restro/core'
+import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone/notices'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { ChosenFace, preloadFace } from '@/faces/chosen-face'
+import { faceEntry } from '@/faces/registry'
+import { FONT_STACKS } from '@/fonts'
 import { CDN_BASE } from './cdn'
-import { buildContext, chooseLocale, langParam, readTableToken } from './context'
+import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
 import {
+  type GuestAddress,
   GuestLoadError,
   type LoadDeps,
   type LoadedMenu,
   type LoadFailure,
   loadLive,
   loadMenu,
+  loadMenuAt,
   loadPointer,
   loadSnapshot,
-  loadTableLabel,
   refetchLiveForSnapshot,
 } from './load'
 
@@ -37,9 +56,6 @@ type Phase =
 const POINTER_EVERY_MS = 30_000
 const LIVE_EVERY_MS = 15_000
 const CLOCK_EVERY_MS = 60_000
-
-/** The font stacks of fonts this app serves itself (next/font in the root layout). */
-export const FONT_STACKS = { Inter: 'var(--font-inter), "Inter", system-ui, sans-serif' } as const
 
 /** Runs `callback` every `ms` while the page is visible, and once when it becomes visible again. */
 function useVisibleInterval(callback: () => void, ms: number, enabled: boolean): void {
@@ -74,18 +90,29 @@ function useVisibleInterval(callback: () => void, ms: number, enabled: boolean):
   }, [ms, enabled])
 }
 
-export function GuestMenu({ slug }: { readonly slug: string }) {
+/**
+ * What the page is opened with: the two parts of `/m/<organisation>/<venue>` (D84), or the one
+ * part of the address of before, `/m/<slug>-<code>` (or the bare code).
+ */
+export type GuestMenuProps = { readonly address: GuestAddress } | { readonly venue: string }
+
+export function GuestMenu(props: GuestMenuProps) {
+  const address = 'address' in props ? props.address : null
+  // The code of the address of before; null for one that names no venue.
+  const publicId = 'venue' in props ? parseMenuParam(props.venue) : null
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   // The address and the browser are read after mount, so the first client render equals the server's.
   const [search, setSearch] = useState('')
   const [browser, setBrowser] = useState<readonly string[]>([])
-  const [tableLabel, setTableLabel] = useState<string | null>(null)
   const [now, setNow] = useState(() => new Date())
   const deps = useMemo<LoadDeps>(() => ({ fetch: (url) => fetch(url), base: CDN_BASE }), [])
 
   useEffect(() => {
     setSearch(window.location.search)
     setBrowser(navigator.languages?.length > 0 ? navigator.languages : [navigator.language])
+    // Nearly every venue uses the default template: fetch its code now, while the menu's files are
+    // still on their way. (A venue that chose another one fetches that when its snapshot arrives.)
+    preloadFace(faceEntry(null))
   }, [])
 
   // --- loading ----------------------------------------------------------------------------
@@ -95,9 +122,17 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` only restarts the load
   useEffect(() => {
     let cancelled = false
-    setPhase({ kind: 'loading' })
     refetchedFor.current = null
-    loadMenu(deps, slug).then(
+    if (address === null && publicId === null) {
+      setPhase({ kind: 'error', reason: 'unknown_venue' })
+      return
+    }
+    setPhase({ kind: 'loading' })
+    // The table's code in the address goes with the load: its file may name the menu to show.
+    const token = readTableToken(window.location.search)
+    const loading =
+      address !== null ? loadMenuAt(deps, address, token) : loadMenu(deps, publicId ?? '', token)
+    loading.then(
       (menu) => {
         if (!cancelled) setPhase({ kind: 'ready', menu })
       },
@@ -109,22 +144,39 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
     return () => {
       cancelled = true
     }
-  }, [deps, slug, attempt])
+  }, [deps, publicId, address, attempt])
 
-  const tableToken = readTableToken(search)
+  // The address corrects itself: the files name the organisation's and the venue's current slugs
+  // (D84), or, for a venue whose files do not know the organisation yet, the current slug for the
+  // address of before. The address bar is replaced (not pushed, no redirect) when it shows another
+  // path.
+  const loaded = phase.kind === 'ready' ? phase.menu : null
+  const canonicalOrganization = loaded?.canonical?.organization ?? null
+  const canonicalVenue = loaded?.canonical?.venue ?? null
+  const indexSlug = loaded?.index.slug ?? null
+  const loadedPublicId = loaded?.publicId ?? null
   useEffect(() => {
-    if (tableToken === null) {
-      setTableLabel(null)
+    let canonical: string
+    if (canonicalOrganization !== null && canonicalVenue !== null) {
+      canonical = guestMenuPath({ organization: canonicalOrganization, venue: canonicalVenue })
+    } else if (indexSlug !== null && loadedPublicId !== null) {
+      canonical = menuPath({ slug: indexSlug, publicId: loadedPublicId })
+    } else {
       return
     }
-    let cancelled = false
-    loadTableLabel(deps, tableToken, slug).then((label) => {
-      if (!cancelled) setTableLabel(label)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [deps, slug, tableToken])
+    if (window.location.pathname === canonical) return
+    const url = new URL(window.location.href)
+    url.pathname = canonical
+    window.history.replaceState(null, '', url)
+  }, [canonicalOrganization, canonicalVenue, indexSlug, loadedPublicId])
+
+  // The code in the address is a claim until the published `t/<token>.json` answered for this venue
+  // (the loader asked). The banner and the shell's context use the confirmed table only: an
+  // unknown code is no code.
+  const requestedToken = readTableToken(search)
+  const table = confirmedTable(requestedToken, loaded?.table ?? null)
+  const tableToken = table?.token ?? null
+  const tableLabel = table?.label ?? null
 
   // --- keeping fresh ----------------------------------------------------------------------
   const ready = phase.kind === 'ready'
@@ -207,12 +259,20 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
     available: snapshot?.locales.available ?? [],
     menuDefault: snapshot?.locales.default ?? null,
   })
+  // The template the venue chose (the registry's default when it chose none); its manifest decides
+  // which photo sizes the shell asks for.
+  const faceId = snapshot?.presentation?.face
+  const entry = useMemo(() => faceEntry(faceId), [faceId])
   const view = useMemo(
     () =>
       snapshot === null
         ? null
-        : buildViewModel(snapshot, live, buildContext({ locale, now, tableToken })),
-    [snapshot, live, locale, now, tableToken],
+        : buildViewModel(
+            snapshot,
+            live,
+            buildContext({ locale, now, tableToken, manifest: entry.manifest }),
+          ),
+    [snapshot, live, locale, now, tableToken, entry],
   )
 
   const switchLanguage = useCallback((next: Locale) => {
@@ -222,11 +282,21 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
     setSearch(url.search)
   }, [])
 
+  // The page around the template is ours (globals.css, `html[data-guest-page]`): templates never
+  // style html or body themselves, so the admin's previews of them stay untouched.
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.guestPage = ''
+    return () => {
+      delete root.dataset.guestPage
+    }
+  }, [])
+
   const shownLocale = view?.locale ?? locale
   useEffect(() => {
     const root = document.documentElement
     const previous = root.lang
-    root.lang = bcp47(shownLocale)
+    root.lang = localeToBcp47(shownLocale)
     return () => {
       root.lang = previous
     }
@@ -248,24 +318,28 @@ export function GuestMenu({ slug }: { readonly slug: string }) {
       return (
         <QrPhoneNotice
           {...text}
-          lang={bcp47(shownLocale)}
+          lang={localeToBcp47(shownLocale)}
           {...(phase.reason === 'unknown_venue'
             ? {}
             : { actionLabel: strings.retry, onAction: () => setAttempt((n) => n + 1) })}
         />
       )
     }
-    return <QrPhoneSkeleton label={strings.loading} lang={bcp47(shownLocale)} />
+    return <QrPhoneSkeleton label={strings.loading} lang={localeToBcp47(shownLocale)} />
   }
 
   return (
-    <QrPhoneFace
+    <ChosenFace
+      entry={entry}
+      strings={strings}
       view={view}
       assetBase={CDN_BASE}
       languages={snapshot.locales.available}
       onLanguageChange={switchLanguage}
       tableLabel={tableLabel}
       fontStacks={FONT_STACKS}
+      scheme={view.theme.scheme}
+      options={snapshot.presentation?.options}
     />
   )
 }

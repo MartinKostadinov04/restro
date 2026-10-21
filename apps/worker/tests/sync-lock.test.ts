@@ -221,10 +221,11 @@ describe.skipIf(!hasDatabase)('the pull lock', () => {
     const again = world.enqueued.filter((job) => job.name === JOB_NAMES.barsyFullPull)
     expect(again).toHaveLength(1)
     expect(again[0]).toMatchObject({ data: payload(), startAfter: 60 })
-    // The running job still holds the plain key, and the queue's exclusive policy would drop a
-    // second job with it, so the copy has a key of its own.
-    expect(again[0]?.singletonKey).not.toBe(world.integrationId)
-    expect(again[0]?.singletonKey).toMatch(new RegExp(`^${world.integrationId}:later:\\d+$`))
+    // The running job still holds its own key (integration and venue), and the queue's exclusive
+    // policy would drop a second job with it, so the copy has a key of its own.
+    const own = `${world.integrationId}:${world.venueId}`
+    expect(again[0]?.singletonKey).not.toBe(own)
+    expect(again[0]?.singletonKey).toMatch(new RegExp(`^${own}:later:\\d+$`))
 
     // The queued copy runs normally once the lock is free.
     await world.run(JOB_NAMES.barsyFullPull, again[0]?.data ?? {})

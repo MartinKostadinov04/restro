@@ -136,11 +136,15 @@ async function seed(): Promise<void> {
 
   const pool = getPool()
   const [existing] = await withTenant(pool, organizationId, (tx) =>
-    tx.select({ id: venues.id }).from(venues).where(eq(venues.slug, VENUE.slug)).limit(1),
+    tx
+      .select({ id: venues.id, publicId: venues.publicId })
+      .from(venues)
+      .where(eq(venues.slug, VENUE.slug))
+      .limit(1),
   )
-  const venueId =
-    existing?.id ??
-    (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug })).id
+  const venue =
+    existing ?? (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug }))
+  const venueId = venue.id
   const menu = await provisionMenu(pool, organizationId, venueId)
 
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
@@ -238,7 +242,7 @@ async function seed(): Promise<void> {
         op: 'setField',
         node: { link: article },
         fieldKey,
-        layer: 'barsy',
+        layer: 'till',
         scope,
         value,
         sourceRecordId: record,
@@ -247,7 +251,7 @@ async function seed(): Promise<void> {
     const linked = await apply(
       pool,
       organizationId,
-      changeSet(`barsy:${integration}`, `integration:${integration}`, [
+      changeSet(`till:${integration}`, `integration:${integration}`, [
         { op: 'createNode', id: barsyItem, nodeType: 'item', parent: null, status: 'active' },
         { op: 'linkSource', node: { id: barsyItem }, link: article },
         field('name', { bg_BG: 'Кампари', en_US: 'Campari' }),
@@ -284,7 +288,7 @@ async function seed(): Promise<void> {
   // --- publish it the real way, into the e2e publish folder -------------------------------------
   const config = publishStoreConfig(process.env)
   if (config.kind !== 'local') throw new Error('the e2e publish store must be local')
-  await rm(path.join(config.dir, 'v', `${VENUE.slug}.json`), { force: true })
+  await rm(path.join(config.dir, 'v', `${venue.publicId}.json`), { force: true })
   await rm(path.join(config.dir, 'm', menu.id), { recursive: true, force: true })
   const store = await createPublishStore(config)
   const published = await publishMenu(pool, organizationId, {

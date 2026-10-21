@@ -9,6 +9,11 @@
 // Layout and interaction are ported from the Platform's builder (tree + side sheet + drag-and-drop
 // lists, Ontology/Show.jsx and RenderGraph.jsx); the layout lives apart from the schema here
 // (placements and sort keys), where the Platform freezes it inside the ontology.
+//
+// It is the Structure subtab of the venue's composer (D92) and edits one menu, the one in the URL
+// (`?menu=`, brief S6): every action names it. What a venue may do depends on its source (D89,
+// D90, D92): one without a till creates, renames and deletes sections and items; one with a till
+// moves, reorders, hides, renames over the till's text and has sections of its own.
 import {
   DragDropContext,
   type DragStart,
@@ -16,7 +21,16 @@ import {
   type DropResult,
   type ResponderProvided,
 } from '@hello-pangea/dnd'
-import { isId, type Locale, type LocalizedText, type NodeId, newId, type TagId } from '@restro/core'
+import {
+  type Currency,
+  isId,
+  type Locale,
+  type LocalizedText,
+  type NodeId,
+  newId,
+  type SectionLayout,
+  type TagId,
+} from '@restro/core'
 import { PlusIcon, TagsIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -32,21 +46,31 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { pickLocalized } from '@/fields/localized'
+import { parseMoneyInput } from '@/fields/money-input'
+import { TillLabelProvider } from '@/fields/till-label'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import type { ActionResult } from './action-result'
 import {
+  createItemAction,
   createSectionAction,
+  deleteItemAction,
+  deleteSectionAction,
   moveSectionAction,
   placeItemAction,
+  renameItemAction,
+  renameSectionAction,
   setItemHiddenAction,
   setSectionHiddenAction,
+  setSectionLayoutAction,
 } from './actions'
 import {
   type ComposerActions,
   ComposerProvider,
+  type RenameTarget,
   type Selection,
   type TagDraft,
 } from './composer-context'
+import { DeleteDialog } from './delete-dialog'
 import {
   DROP_TARGET_ATTR,
   parseDraggable,
@@ -66,6 +90,7 @@ import {
 } from './item-param'
 import { ItemSheet } from './item-sheet'
 import { itemName, sectionTitle } from './labels'
+import { NewItemDialog } from './new-item-dialog'
 import { NewSectionDialog } from './new-section-dialog'
 import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
@@ -81,15 +106,31 @@ import {
 } from './tag-actions'
 import { TagsPanel } from './tags-panel'
 import { childIdsOf, flattenSections } from './tree'
-import type { ComposerSection, ComposerTag, ComposerView } from './view-model'
+import type {
+  ComposerIssue,
+  ComposerItem,
+  ComposerSection,
+  ComposerTag,
+  ComposerView,
+} from './view-model'
 
 interface ComposerProps {
   readonly venueId: string
+  /** The menu the composer edits (`?menu=`, brief S6): every action names it. */
+  readonly menuId: NodeId
   readonly view: ComposerView
   readonly defaultLocale: Locale
   readonly enabledLocales: readonly Locale[]
+  /** The venue's currency: the price of a new item is in it. */
+  readonly currency: Currency
   /** The person may mark items sold out tonight (owner or admin, D46). */
   readonly canMarkSoldOut: boolean
+  /** The person may create items by hand (owner or admin, CF-01). */
+  readonly canCreateItem: boolean
+  /** The venue has a till: its items come from the till only, none are made by hand (D66). */
+  readonly hasTill: boolean
+  /** The person may delete sections of the venue's own and items made by hand (owner or admin). */
+  readonly canDelete: boolean
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -101,10 +142,15 @@ function initialSelection(view: ComposerView, requested: string | null): Selecti
 
 export function Composer({
   venueId,
+  menuId,
   view: serverView,
   defaultLocale,
   enabledLocales,
+  currency,
   canMarkSoldOut,
+  canCreateItem,
+  hasTill,
+  canDelete,
 }: ComposerProps) {
   const t = useTranslations('composer')
   const uiLocale = useLocale()
@@ -121,6 +167,10 @@ export function Composer({
   const [dialog, setDialog] = useState<{ open: boolean; parentId: NodeId | null }>({
     open: false,
     parentId: null,
+  })
+  const [itemDialog, setItemDialog] = useState<{ open: boolean; sectionId: NodeId | null }>({
+    open: false,
+    sectionId: null,
   })
 
   // A section that vanished (or a first visit) falls back to the first one.
@@ -139,6 +189,11 @@ export function Composer({
   const [ticked, setTicked] = useState<ReadonlySet<NodeId>>(new Set())
   const [filterIds, setFilterIds] = useState<ReadonlySet<TagId>>(new Set())
   const [tagsOpen, setTagsOpen] = useState(false)
+  // The name being edited in place, and what waits for "Delete?" to be confirmed.
+  const [renaming, setRenaming] = useState<RenameTarget | null>(null)
+  const [deleting, setDeleting] = useState<RenameTarget | null>(null)
+  // A rename writes the language the composer shows; one the venue does not use is its main one.
+  const renameLocale = enabledLocales.includes(locale) ? locale : defaultLocale
   // Only items and tags that still exist and are active count.
   const selected = useMemo(
     () => new Set([...ticked].filter((id) => view.items[id] !== undefined)),
@@ -164,7 +219,7 @@ export function Composer({
         } catch {
           result = { ok: false, error: 'failed' }
         }
-        if (!result.ok) toast.error(t(`errors.${result.error}`))
+        if (!result.ok) toast.error(t(`errors.${result.error}`, { source: view.tillLabel }))
         else if (result.warning === 'live_not_queued') toast.warning(t('soldOut.liveLater'))
         resolve(result.ok)
       })
@@ -206,7 +261,7 @@ export function Composer({
   ) {
     const keys = toSectionId === null ? [] : itemKeys(toSectionId, itemId, index)
     mutate({ type: 'placeItem', itemId, fromSectionId, toSectionId, keys }, () =>
-      placeItemAction({ venueId, itemId, fromSectionId, toSectionId, keys }),
+      placeItemAction({ venueId, menuId, itemId, fromSectionId, toSectionId, keys }),
     )
   }
 
@@ -219,7 +274,7 @@ export function Composer({
         ? [{ id: sectionId, key: keyAtEnd(others) }]
         : planKeys(others, sectionId, index)
     mutate({ type: 'moveSection', sectionId, parentId, keys }, () =>
-      moveSectionAction({ venueId, sectionId, parentId, keys }),
+      moveSectionAction({ venueId, menuId, sectionId, parentId, keys }),
     )
     if (parentId !== null) {
       setCollapsed((current) => {
@@ -247,9 +302,11 @@ export function Composer({
       sortKey,
       childIds: [],
       issues: [],
+      nameFromTill: false,
+      layout: 'vertical',
     }
     mutate({ type: 'addSection', section }, () =>
-      createSectionAction({ venueId, id, parentId, title, sortKey }),
+      createSectionAction({ venueId, menuId, id, parentId, title, sortKey }),
     )
     select(id)
     if (parentId !== null) {
@@ -259,6 +316,70 @@ export function Composer({
         return next
       })
     }
+  }
+
+  // Items made by hand are for venues without a till, and for owners and admins.
+  const mayCreateItem = canCreateItem && !hasTill
+
+  /**
+   * Creates an item by hand at the end of a section (or in Unsorted), then opens its sheet so the
+   * person can fill in allergens, description and photo. The price goes to the server as typed;
+   * the screen shows it at once, converted by the same rule (core's money module).
+   */
+  function createItem(sectionId: NodeId | null, name: LocalizedText, price: string) {
+    const id = newId('nd')
+    const others: KeyedId<NodeId>[] =
+      sectionId === null
+        ? []
+        : (view.placements[sectionId] ?? []).map((placement) => ({
+            id: placement.itemId,
+            key: placement.sortKey,
+          }))
+    const sortKey = keyAtEnd(others)
+    const money = parseMoneyInput(price, currency)
+    // What the resolver will say about a new item: no allergens yet (V4), and a missing name in
+    // each enabled language that has none (V7). Shown at once so the badge does not flash in.
+    const issues: ComposerIssue[] = [
+      { code: 'V4', severity: 'warning', fieldKey: 'allergens' },
+      ...enabledLocales
+        .filter((language) => !name[language])
+        .map(
+          (language): ComposerIssue => ({
+            code: 'V7',
+            severity: 'warning',
+            fieldKey: 'name',
+            locale: language,
+          }),
+        ),
+    ]
+    const item: ComposerItem = {
+      id,
+      name: name[locale] ?? name[defaultLocale] ?? Object.values(name)[0] ?? '',
+      price: money === undefined || money === 'invalid' ? null : money,
+      origin: 'owned',
+      hiddenBy: null,
+      shown: false,
+      issues,
+      tags: [],
+      dietary: [],
+      soldOutTonight: false,
+      offSale: null,
+      nameFromTill: false,
+      reviewFields: [],
+    }
+    void mutate({ type: 'addItem', item, sectionId, sortKey, locale }, () =>
+      createItemAction({
+        venueId,
+        menuId,
+        id,
+        sectionId,
+        name,
+        ...(price === '' ? {} : { price }),
+        sortKey,
+      }),
+    ).then((saved) => {
+      if (saved) replaceSearchParams({ [ITEM_PARAM]: id })
+    })
   }
 
   const actions: ComposerActions = {
@@ -272,11 +393,11 @@ export function Composer({
       }),
     toggleItemHidden: (itemId) => {
       const item = view.items[itemId]
-      // barsy's hide (and any other layer's) is not ours to undo (rule 5).
-      if (!item || item.hiddenBy === 'barsy' || item.hiddenBy === 'other') return
+      // The till's hide (and any other layer's) is not ours to undo (rule 5).
+      if (!item || item.hiddenBy === 'till' || item.hiddenBy === 'other') return
       const hidden = item.hiddenBy === null
       mutate({ type: 'setItemHidden', itemId, hidden }, () =>
-        setItemHiddenAction({ venueId, itemId, hidden }),
+        setItemHiddenAction({ venueId, menuId, itemId, hidden }),
       )
     },
     toggleSectionHidden: (sectionId) => {
@@ -284,13 +405,42 @@ export function Composer({
       if (!section) return
       const hidden = !section.hidden
       mutate({ type: 'setSectionHidden', sectionId, hidden }, () =>
-        setSectionHiddenAction({ venueId, sectionId, hidden }),
+        setSectionHiddenAction({ venueId, menuId, sectionId, hidden }),
       )
+    },
+    setSectionLayout: (sectionId, layout: SectionLayout) => {
+      const section = view.sections[sectionId]
+      if (!section || section.layout === layout) return
+      mutate({ type: 'setSectionLayout', sectionId, layout }, () =>
+        setSectionLayoutAction({ venueId, menuId, sectionId, layout }),
+      )
+    },
+    startRename: setRenaming,
+    renameSection: (sectionId, title) => {
+      setRenaming(null)
+      mutate({ type: 'renameSection', sectionId, title }, () =>
+        renameSectionAction({ venueId, menuId, sectionId, title: { [renameLocale]: title } }),
+      )
+    },
+    renameItem: (itemId, name) => {
+      setRenaming(null)
+      mutate({ type: 'renameItem', itemId, name }, () =>
+        renameItemAction({ venueId, menuId, itemId, name: { [renameLocale]: name } }),
+      )
+    },
+    deleteSection: (sectionId) => {
+      if (view.sections[sectionId]) setDeleting({ kind: 'section', id: sectionId })
+    },
+    deleteItem: (itemId) => {
+      if (view.items[itemId]) setDeleting({ kind: 'item', id: itemId })
     },
     moveItemToSection: (itemId, fromSectionId, toSectionId) =>
       placeItem(itemId, fromSectionId, toSectionId),
     moveSectionTo: (sectionId, parentId) => moveSection(sectionId, parentId),
     newSection: (parentId = null) => setDialog({ open: true, parentId }),
+    newItem: (sectionId) => {
+      if (mayCreateItem) setItemDialog({ open: true, sectionId })
+    },
 
     createTag: (id, draft) =>
       mutate({ type: 'upsertTag', tag: tagOf(id, draft, false) }, () =>
@@ -329,7 +479,7 @@ export function Composer({
 
     setSoldOut: (itemIds, soldOut) => {
       if (!canMarkSoldOut) return
-      // An item barsy has off sale is not ours to touch (rule 5): there is nothing to mark or clear.
+      // An item the till has off sale is not ours to touch (rule 5): nothing to mark or clear.
       const ids = itemIds.filter(
         (id) => view.items[id] !== undefined && view.items[id]?.offSale === null,
       )
@@ -527,124 +677,182 @@ export function Composer({
 
   const sectionOptions = flattenSections(view)
 
+  /** Deletes what the dialog asked about, once it is confirmed. */
+  function confirmDelete() {
+    const target = deleting
+    setDeleting(null)
+    if (target === null) return
+    if (target.kind === 'section') {
+      mutate({ type: 'deleteSection', sectionId: target.id }, () =>
+        deleteSectionAction({ venueId, menuId, sectionId: target.id }),
+      )
+      return
+    }
+    if (openItemId === target.id) clearOpenItem()
+    mutate({ type: 'deleteItem', itemId: target.id }, () =>
+      deleteItemAction({ venueId, menuId, itemId: target.id }),
+    )
+  }
+
   return (
-    <ComposerProvider
-      value={{
-        ...actions,
-        view,
-        selection,
-        expanded,
-        locale,
-        overTarget,
-        selected,
-        tagFilter,
-        canMarkSoldOut,
-      }}
-    >
-      <DragDropContext
-        onDragStart={onDragStart}
-        onDragUpdate={onDragUpdate}
-        onDragEnd={onDragEnd}
-        dragHandleUsageInstructions={t('dnd.instructions')}
+    <TillLabelProvider label={view.tillLabel}>
+      <ComposerProvider
+        value={{
+          ...actions,
+          view,
+          selection,
+          expanded,
+          locale,
+          overTarget,
+          selected,
+          tagFilter,
+          canMarkSoldOut,
+          canCreateItem: mayCreateItem,
+          hasTill,
+          canDelete,
+          renaming,
+        }}
       >
-        <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
-          <aside className="grid content-start gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>
+        <DragDropContext
+          onDragStart={onDragStart}
+          onDragUpdate={onDragUpdate}
+          onDragEnd={onDragEnd}
+          dragHandleUsageInstructions={t('dnd.instructions')}
+        >
+          <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
+            <aside className="grid content-start gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => actions.newSection(null)}
+                  data-testid="new-section"
+                >
+                  <PlusIcon aria-hidden />
+                  {t('newSection')}
+                </Button>
+              </div>
+
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => actions.newSection(null)}
-                data-testid="new-section"
+                className="justify-start"
+                onClick={() => setTagsOpen(true)}
+                data-testid="open-tags"
               >
-                <PlusIcon aria-hidden />
-                {t('newSection')}
+                <TagsIcon aria-hidden />
+                {t('tags.open')}
+                <span className="ml-auto text-muted-foreground" data-testid="tag-count">
+                  {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
+                </span>
               </Button>
-            </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="justify-start"
-              onClick={() => setTagsOpen(true)}
-              data-testid="open-tags"
-            >
-              <TagsIcon aria-hidden />
-              {t('tags.open')}
-              <span className="ml-auto text-muted-foreground" data-testid="tag-count">
-                {view.tagIds.filter((id) => view.tags[id]?.archived === false).length}
-              </span>
-            </Button>
-
-            {/* Small screens: a picker instead of the tree (its drops need room). */}
-            <div className="lg:hidden">
-              <Select value={selection ?? ''} onValueChange={(value) => select(value as Selection)}>
-                <SelectTrigger
-                  className="w-full"
-                  aria-label={t('chooseSection')}
-                  data-testid="section-picker"
+              {/* Small screens: a picker instead of the tree (its drops need room). */}
+              <div className="lg:hidden">
+                <Select
+                  value={selection ?? ''}
+                  onValueChange={(value) => select(value as Selection)}
                 >
-                  <SelectValue placeholder={t('chooseSection')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {sectionOptions.map(({ id, depth }) => (
-                    <SelectItem key={id} value={id}>
-                      <span style={{ paddingInlineStart: `${(depth - 1) * 0.75}rem` }}>
-                        {sectionTitle(view, id, t('untitledSection'))}
-                      </span>
+                  <SelectTrigger
+                    className="w-full"
+                    aria-label={t('chooseSection')}
+                    data-testid="section-picker"
+                  >
+                    <SelectValue placeholder={t('chooseSection')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectionOptions.map(({ id, depth }) => (
+                      <SelectItem key={id} value={id}>
+                        <span style={{ paddingInlineStart: `${(depth - 1) * 0.75}rem` }}>
+                          {sectionTitle(view, id, t('untitledSection'))}
+                        </span>
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={UNSORTED_KEY}>
+                      {t('unsorted')} ({view.unsortedIds.length})
                     </SelectItem>
-                  ))}
-                  <SelectItem value={UNSORTED_KEY}>
-                    {t('unsorted')} ({view.unsortedIds.length})
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="hidden lg:block">
-              <SectionTree />
-            </div>
-          </aside>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="hidden lg:block">
+                <SectionTree />
+              </div>
+            </aside>
 
-          <ItemPane />
-        </div>
-      </DragDropContext>
+            <ItemPane />
+          </div>
+        </DragDropContext>
 
-      <SelectionBar />
-      {/* Outside the drag-and-drop context above: the panel has a list of its own to reorder. */}
-      <TagsPanel
-        open={tagsOpen}
-        onOpenChange={setTagsOpen}
-        defaultLocale={defaultLocale}
-        enabledLocales={enabledLocales}
-      />
-
-      {openItemId ? (
-        <ItemSheet
-          key={openItemId}
-          itemId={openItemId}
-          tags={sheetTags}
-          onCreateTag={createSheetTag}
+        <SelectionBar />
+        {/* Outside the drag-and-drop context above: the panel has a list of its own to reorder. */}
+        <TagsPanel
+          open={tagsOpen}
+          onOpenChange={setTagsOpen}
+          defaultLocale={defaultLocale}
+          enabledLocales={enabledLocales}
+        />
+        <DeleteDialog
+          target={
+            deleting === null
+              ? null
+              : {
+                  kind: deleting.kind,
+                  name:
+                    deleting.kind === 'section'
+                      ? sectionTitle(view, deleting.id, t('untitledSection'))
+                      : itemName(view, deleting.id, t('unnamedItem')),
+                }
+          }
+          onConfirm={confirmDelete}
           onOpenChange={(open) => {
-            if (open) return
-            clearOpenItem()
-            // The sheet saves through its own actions; reload the composer's view so names,
-            // badges and issue counts match what was saved.
-            router.refresh()
+            if (!open) setDeleting(null)
           }}
         />
-      ) : null}
 
-      <NewSectionDialog
-        open={dialog.open}
-        onOpenChange={(open) => setDialog((current) => ({ ...current, open }))}
-        view={view}
-        defaultLocale={defaultLocale}
-        enabledLocales={enabledLocales}
-        initialParentId={dialog.parentId}
-        onCreate={({ parentId, title }) => createSection(parentId, title)}
-      />
-    </ComposerProvider>
+        {openItemId ? (
+          <ItemSheet
+            key={openItemId}
+            itemId={openItemId}
+            menuId={menuId}
+            tags={sheetTags}
+            onCreateTag={createSheetTag}
+            onOpenChange={(open) => {
+              if (open) return
+              clearOpenItem()
+              // The sheet saves through its own actions; reload the composer's view so names,
+              // badges and issue counts match what was saved.
+              router.refresh()
+            }}
+          />
+        ) : null}
+
+        <NewItemDialog
+          open={itemDialog.open}
+          onOpenChange={(open) => setItemDialog((current) => ({ ...current, open }))}
+          defaultLocale={defaultLocale}
+          enabledLocales={enabledLocales}
+          currency={currency}
+          sectionLabel={
+            itemDialog.sectionId === null
+              ? t('unsorted')
+              : sectionTitle(view, itemDialog.sectionId, t('untitledSection'))
+          }
+          onCreate={({ name, price }) => createItem(itemDialog.sectionId, name, price)}
+        />
+
+        <NewSectionDialog
+          open={dialog.open}
+          onOpenChange={(open) => setDialog((current) => ({ ...current, open }))}
+          view={view}
+          defaultLocale={defaultLocale}
+          enabledLocales={enabledLocales}
+          initialParentId={dialog.parentId}
+          onCreate={({ parentId, title }) => createSection(parentId, title)}
+        />
+      </ComposerProvider>
+    </TillLabelProvider>
   )
 }

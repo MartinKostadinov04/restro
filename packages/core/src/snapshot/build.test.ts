@@ -53,13 +53,13 @@ function barMenu(): DocBuilder {
   const builder = new DocBuilder()
     .section(COCKTAILS, ROOT, 'active', 'a0')
     .section(WINES, ROOT, 'active', 'a1')
-    .barsyItem(NEGRONI, 1250)
-    .barsyItem(SPRITZ, 900)
+    .tillItem(NEGRONI, 1250)
+    .tillItem(SPRITZ, 900)
     .item(MERLOT)
     .place(SPRITZ, COCKTAILS, 'a1')
     .place(NEGRONI, COCKTAILS, 'a0')
     .place(MERLOT, WINES, 'a0')
-  builder.set(SPRITZ, 'name', 'barsy', { bg_BG: 'Шприц', en_US: 'Spritz' })
+  builder.set(SPRITZ, 'name', 'till', { bg_BG: 'Шприц', en_US: 'Spritz' })
   builder.set(MERLOT, 'name', 'manual', { bg_BG: 'Мерло' })
   builder.set(MERLOT, 'price', 'manual', eur(3200))
   builder.set(MERLOT, 'allergens', 'manual', ['sulphites'])
@@ -92,7 +92,7 @@ describe('buildSnapshot', () => {
     expect(snapshot.theme).toEqual(DEFAULT_THEME)
   })
 
-  it('carries orderable and order mode: a barsy item is orderable, a hand-made one is not', () => {
+  it('carries orderable and order mode: a till item is orderable, a hand-made one is not', () => {
     const snapshot = snapshotOf(barMenu())
     expect(snapshot.items[NEGRONI]).toMatchObject({ orderable: true, order_mode: 'orderable' })
     expect(snapshot.items[MERLOT]).toMatchObject({ orderable: false, order_mode: 'orderable' })
@@ -112,14 +112,14 @@ describe('buildSnapshot', () => {
     const shown = nd('premium')
     const hidden = nd('house')
     builder.node(group, 'modifier_group', NEGRONI)
-    builder.set(group, 'name', 'barsy', { en_US: 'Gin' })
-    builder.set(group, 'min', 'barsy', 0)
-    builder.set(group, 'max', 'barsy', 1)
+    builder.set(group, 'name', 'till', { en_US: 'Gin' })
+    builder.set(group, 'min', 'till', 0)
+    builder.set(group, 'max', 'till', 1)
     builder.node(shown, 'option', group, 'active', 'a0')
-    builder.set(shown, 'name', 'barsy', { en_US: 'Premium gin' })
-    builder.set(shown, 'price_delta', 'barsy', eur(300))
+    builder.set(shown, 'name', 'till', { en_US: 'Premium gin' })
+    builder.set(shown, 'price_delta', 'till', eur(300))
     builder.node(hidden, 'option', group, 'hidden', 'a1')
-    builder.set(hidden, 'name', 'barsy', { en_US: 'House gin' })
+    builder.set(hidden, 'name', 'till', { en_US: 'House gin' })
     const snapshot = snapshotOf(builder)
     expect(Object.keys(snapshot.items)).toEqual([NEGRONI])
     expect(snapshot.menu.sections).toEqual([COCKTAILS])
@@ -149,12 +149,12 @@ describe('buildSnapshot', () => {
     })
   })
 
-  it('marks an item that barsy has off sale as sold out and never orderable', () => {
-    // Barsy's own flag. A service-edition mark does not belong here any more (S3-08): the
+  it('marks an item that the till has off sale as sold out and never orderable', () => {
+    // The till's own flag. A service-edition mark does not belong here any more (S3-08): the
     // publisher resolves a snapshot without the service edition, so tonight's marks reach guests
     // only through the live overlay (see "buildLiveOverlay" below and the publisher's tests).
     const builder = barMenu()
-    builder.set(NEGRONI, 'for_sale', 'barsy', false, { scope: VENUE })
+    builder.set(NEGRONI, 'for_sale', 'till', false, { scope: VENUE })
     const snapshot = snapshotOf(builder)
     expect(snapshot.items[NEGRONI]).toMatchObject({
       orderable: false,
@@ -246,12 +246,33 @@ describe('buildSnapshot', () => {
     expect(one.snapshot.hash).toMatch(/^[0-9a-f]{64}$/)
 
     const changed = barMenu()
-    changed.set(NEGRONI, 'price', 'barsy', eur(1300), { scope: VENUE })
+    changed.set(NEGRONI, 'price', 'till', eur(1300), { scope: VENUE })
     expect(snapshotOf(changed).snapshot.hash).not.toBe(one.snapshot.hash)
   })
 
   it('gives the same JSON for the same document', () => {
     expect(JSON.stringify(snapshotOf(barMenu()))).toBe(JSON.stringify(snapshotOf(barMenu())))
+  })
+
+  // D92: the guest heading is the menu's header name, else the document's title, else the venue's
+  // display name. A plain name is in the menu's main language: the shell falls back to it (R3).
+  it('titles the menu with its header name, else the document title, else the venue name', () => {
+    const names = { menuName: 'Club Sofia', venueName: 'Demo Club' }
+    expect(snapshotOf(barMenu(), context(names)).menu.title).toEqual({ bg_BG: 'Club Sofia' })
+
+    expect(snapshotOf(barMenu(), context({ ...names, menuName: null })).menu.title).toEqual({
+      bg_BG: 'Бар',
+      en_US: 'Bar',
+    })
+
+    const untitled = barMenu().unset(ROOT, 'title')
+    expect(snapshotOf(untitled, context({ ...names, menuName: null })).menu.title).toEqual({
+      bg_BG: 'Demo Club',
+    })
+    expect(
+      snapshotOf(untitled, context({ menuName: '  ', venueName: ' Demo Club ' })).menu.title,
+    ).toEqual({ bg_BG: 'Demo Club' })
+    expect(snapshotOf(untitled).menu.title).toEqual({})
   })
 })
 
@@ -338,7 +359,7 @@ describe('collectForbiddenValues', () => {
   it('refuses external ids, internal values and private override bases, not public text', () => {
     const builder = barMenu()
     builder.set(NEGRONI, 'internal_note', 'manual', 'cost 2.10 per glass')
-    // An override of a name: barsy's earlier BG name is private, its EN name is still public.
+    // An override of a name: the till's earlier BG name is private, its EN name is still public.
     builder.set(
       SPRITZ,
       'name',
@@ -348,7 +369,7 @@ describe('collectForbiddenValues', () => {
         basis: { bg_BG: 'Шприц старо', en_US: 'Spritz' },
       },
     )
-    // An override of allergens whose basis is barsy's (public) codes.
+    // An override of allergens whose basis is the till's (public) codes.
     builder.set(NEGRONI, 'allergens', 'override', ['sulphites', 'milk'], { basis: ['sulphites'] })
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
@@ -367,6 +388,41 @@ describe('collectForbiddenValues', () => {
     const snapshot = snapshotOf(builder)
     expect(() => assertSnapshotSafe(snapshot, forbidden)).not.toThrow()
   })
+
+  it('the till’s own name standing in for a public one (D75) is public text; ids, cost and internal notes stay refused', () => {
+    const builder = barMenu()
+    // The sync's till-layer name when the till has no public name: its own name, a `name` value.
+    builder.set(NEGRONI, 'name', 'till', { bg_BG: 'Негрони (име в касата)' })
+    builder.set(NEGRONI, 'internal_note', 'manual', 'cost 2.10 per glass')
+    // A person typed a name over it: an override whose basis is that stand-in.
+    builder.set(
+      SPRITZ,
+      'name',
+      'override',
+      { bg_BG: 'Апероль Шприц', en_US: 'Spritz' },
+      { basis: { bg_BG: 'Шприц', en_US: 'Spritz' } },
+    )
+    const forbidden = collectForbiddenValues({
+      template: VENUE_MENU_TEMPLATE,
+      doc: builder.build(),
+      externalIds: ['102751'],
+    })
+    // Nothing else was loosened: the id and the internal note are refused, the stand-in is not.
+    expect(Object.fromEntries(forbidden)).toEqual({
+      '102751': 'external_id',
+      'cost 2.10 per glass': 'internal_value',
+    })
+    const snapshot = snapshotOf(builder)
+    expect(JSON.stringify(snapshot)).toContain('Негрони (име в касата)')
+    expect(JSON.stringify(snapshot)).not.toContain('cost 2.10')
+    expect(() => assertSnapshotSafe(snapshot, forbidden)).not.toThrow()
+    // Any of them found in a snapshot still stops the publish.
+    for (const leak of ['102751', 'cost 2.10 per glass']) {
+      const poked = structuredClone(snapshot) as unknown as Poke
+      poked.items[NEGRONI].description = { en_US: leak }
+      expect(() => assertSnapshotSafe(poked, forbidden)).toThrow(SnapshotError)
+    }
+  })
 })
 
 describe('buildLiveOverlay', () => {
@@ -376,7 +432,7 @@ describe('buildLiveOverlay', () => {
     tonight.set(NEGRONI, 'for_sale', 'edition:service:2026-10-09', false)
     tonight.set(MERLOT, 'for_sale', 'edition:service:2026-10-09', false)
     const added = nd('added')
-    tonight.barsyItem(added).place(added, COCKTAILS, 'a2')
+    tonight.tillItem(added).place(added, COCKTAILS, 'a2')
     tonight.set(added, 'for_sale', 'edition:service:2026-10-09', false)
     tonight.set(SPRITZ, 'visible', 'manual', false)
     const overlay = buildLiveOverlay(
@@ -391,5 +447,32 @@ describe('buildLiveOverlay', () => {
       items: { [MERLOT]: { sold_out: true }, [NEGRONI]: { sold_out: true } },
     })
     expect(LiveOverlaySchema.safeParse(overlay).success).toBe(true)
+  })
+
+  it('is read by a parser that has not heard of newer top-level keys (A5-P1), and stays strict inside', () => {
+    const marks = { [NEGRONI]: { sold_out: true } }
+    const newer = LiveOverlaySchema.safeParse({
+      version: 3,
+      items: marks,
+      ordering: { state: 'on' },
+    })
+    expect(newer.success).toBe(true)
+    expect(newer.data?.items).toEqual(marks)
+    expect(newer.data?.version).toBe(3)
+    // `version` and `items` and each mark stay strict.
+    expect(LiveOverlaySchema.safeParse({ items: marks }).success).toBe(false)
+    expect(LiveOverlaySchema.safeParse({ version: 0, items: marks }).success).toBe(false)
+    expect(LiveOverlaySchema.safeParse({ version: 1, items: [] }).success).toBe(false)
+    expect(
+      LiveOverlaySchema.safeParse({ version: 1, items: { [NEGRONI]: { sold_out: false } } })
+        .success,
+    ).toBe(false)
+    expect(
+      LiveOverlaySchema.safeParse({ version: 1, items: { [NEGRONI]: { sold_out: true, x: 1 } } })
+        .success,
+    ).toBe(false)
+    // The snapshot is not loosened.
+    const base = snapshotOf(barMenu())
+    expect(MenuSnapshotSchema.safeParse({ ...base, extra: 1 }).success).toBe(false)
   })
 })

@@ -8,6 +8,7 @@
 // `provisionVenue`, and the venue's menu with core's `provisionMenu` and `apply()` (a made-up
 // barsy integration and pull: see lib/demo-menu.ts). It connects as the app role (DATABASE_URL),
 // like the web app.
+import { menuPath } from '@restro/core'
 import { provisionTenant, provisionVenue } from '@restro/core/apply'
 import { authMember, authOrganization, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
@@ -82,12 +83,16 @@ async function main(): Promise<void> {
   }
 
   // 4. The venue.
-  const [venue] = await withTenant(pool, organizationId, (tx) =>
-    tx.select({ id: venues.id }).from(venues).where(eq(venues.slug, VENUE.slug)).limit(1),
+  const [venueRow] = await withTenant(pool, organizationId, (tx) =>
+    tx
+      .select({ id: venues.id, publicId: venues.publicId })
+      .from(venues)
+      .where(eq(venues.slug, VENUE.slug))
+      .limit(1),
   )
-  const venueId = venue
-    ? venue.id
-    : (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug })).id
+  const venue =
+    venueRow ?? (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug }))
+  const venueId = venue.id
 
   // 5. The demo menu (made-up items), unless SEED_DEMO_MENU=0: then the venue starts empty and
   // its menu comes from a real barsy sync (the Stage 2 acceptance run).
@@ -105,6 +110,8 @@ async function main(): Promise<void> {
       organizationId,
       venue: VENUE.name,
       venueId,
+      // The guest address: the slug and the venue's random public code (D68).
+      menuPath: menuPath({ slug: VENUE.slug, publicId: venue.publicId }),
       owner: email,
     }),
   )

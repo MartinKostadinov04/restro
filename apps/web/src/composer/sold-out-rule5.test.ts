@@ -57,7 +57,7 @@ const row = (
   scope,
   value,
   valueHash: HASH,
-  source: layer === 'barsy' ? `barsy:${integration}` : 'manual',
+  source: layer === 'till' ? `till:${integration}` : 'manual',
   observedAt: '2026-10-09T10:00:00.000Z',
   basis: null,
   valid: true,
@@ -77,7 +77,7 @@ type Step =
   /** Somebody tries to write "on sale" into the service edition (a forged request). */
   | { kind: 'forceOnSale'; item: number; night: number }
   /** Barsy takes the item off sale, or puts it back. */
-  | { kind: 'barsy'; item: number; forSale: boolean }
+  | { kind: 'till'; item: number; forSale: boolean }
   /** The clock moves to another evening. */
   | { kind: 'goTo'; night: number }
 
@@ -92,7 +92,7 @@ const step: fc.Arbitrary<Step> = fc.oneof(
   },
   {
     arbitrary: fc.record({
-      kind: fc.constant('barsy' as const),
+      kind: fc.constant('till' as const),
       item: index,
       forSale: fc.boolean(),
     }),
@@ -126,7 +126,7 @@ function documentOf(rows: readonly Row[]): MenuDocument {
     values: [...rows],
     links: ITEMS.map((id) => ({
       nodeId: id,
-      source: `barsy:${integration}` as const,
+      source: `till:${integration}` as const,
       externalType: 'article',
       state: 'active' as const,
     })),
@@ -152,17 +152,17 @@ describe('rule 5 for sold out tonight', () => {
           const rows = (): Row[] => [
             row(sectionId, 'title', 'manual', { bg_BG: 'Коктейли', en_US: 'Cocktails' }, 'master'),
             ...ITEMS.flatMap((id, i) => [
-              row(id, 'name', 'barsy', { bg_BG: `Напитка ${i}`, en_US: `Drink ${i}` }, 'master'),
+              row(id, 'name', 'till', { bg_BG: `Напитка ${i}`, en_US: `Drink ${i}` }, 'master'),
               row(
                 id,
                 'price',
-                'barsy',
+                'till',
                 { amount_minor: 800 + i, currency: 'EUR' },
                 `venue:${venueId}`,
               ),
-              row(id, 'for_sale', 'barsy', barsy.get(id), `venue:${venueId}`),
-              row(id, 'visible', 'barsy', true, 'master'),
-              row(id, 'allergens', 'barsy', [], 'master'),
+              row(id, 'for_sale', 'till', barsy.get(id), `venue:${venueId}`),
+              row(id, 'visible', 'till', true, 'master'),
+              row(id, 'allergens', 'till', [], 'master'),
             ]),
             ...[...marks].map((key) => {
               const [i, n] = key.split('|').map(Number) as [number, number]
@@ -173,7 +173,7 @@ describe('rule 5 for sold out tonight', () => {
 
           for (const s of steps) {
             if (s.kind === 'goTo') current = s.night
-            else if (s.kind === 'barsy') barsy.set(ITEMS[s.item] as NodeId, s.forSale)
+            else if (s.kind === 'till') barsy.set(ITEMS[s.item] as NodeId, s.forSale)
             else {
               const layer = serviceEditionLayer(
                 serviceDate(NIGHTS[s.night] as Date, TIME_ZONE, '07:00'),
@@ -261,7 +261,7 @@ describe('rule 5 for sold out tonight', () => {
               if (barsyOff) expect(view?.state.code).not.toBe('available')
               // The composer: barsy's flag is barsy's, a mark is ours, and they never get mixed up.
               const shown = composer.items[id]
-              expect(shown?.offSale, `composer ${i}`).toBe(barsyOff ? 'barsy' : null)
+              expect(shown?.offSale, `composer ${i}`).toBe(barsyOff ? 'till' : null)
               expect(shown?.soldOutTonight, `composer mark ${i}`).toBe(!barsyOff && markedTonight)
             }
           }
@@ -273,7 +273,7 @@ describe('rule 5 for sold out tonight', () => {
   }, 60_000)
 
   it('does not make the property vacuous: marks, forged writes and barsy changes all occur', () => {
-    const seen = { mark: 0, unmark: 0, forceOnSale: 0, barsy: 0, goTo: 0 }
+    const seen = { mark: 0, unmark: 0, forceOnSale: 0, till: 0, goTo: 0 }
     fc.assert(
       fc.property(fc.array(step, { minLength: 1, maxLength: 20 }), (steps) => {
         for (const s of steps) seen[s.kind] += 1

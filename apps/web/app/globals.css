@@ -4,6 +4,38 @@
 /* Dark mode follows the .dark class on <html>, set by the inline script in the root layout
    (stored choice: light / dark / system) before the first paint. */
 @custom-variant dark (&:is(.dark *));
+/* A phone, or any touch screen (a bar tablet is 768 to 1024 px wide): controls get the touch floor. */
+@custom-variant phone {
+  @media (width < 48rem) {
+    @slot;
+  }
+  @media (pointer: coarse) {
+    @slot;
+  }
+}
+
+/* Touch floor (D123): on a phone (under 48rem) or any touch screen, a tappable control has a hit area of
+   at least 44 x 44 px (docs/guides/operational-screens.md, Accessibility). Controls that stay small
+   to look at (a checkbox, a switch, a drag handle) add this class: an invisible square, centred on
+   the control, takes the taps around it. Three traps: the element must have room around it (hit
+   areas that overlap give the tap to the later sibling); it takes `::after` and `position: relative`,
+   so never combine it with `after:` utilities or `absolute`/`fixed`/`sticky`; and an ancestor or the
+   element itself with `overflow` other than visible (`truncate`) clips it. On a wide screen with a
+   mouse it does nothing. A switch needs no tap-area: it is drawn inside a 44 px box (switch.tsx). */
+@utility tap-area {
+  @media (width < 48rem), (pointer: coarse) {
+    position: relative;
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
 
 /*
   Semantic tokens (D, U9). Every colour the admin uses is one of these; components never hold a
@@ -158,4 +190,23 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* The guest's menu page (/m/…): no sideways scroll and no scrollbar. The guest page marks <html>
+   with data-guest-page (src/guest/guest-menu.tsx); templates never style the page around them, so
+   the same template sits unchanged inside the admin's previews.
+   `clip`, never `hidden` on both: `hidden` on <html> AND <body> makes <body> a scroll box of its
+   own that never scrolls, and a template's sticky bar (the Editorial Market's category rail) then
+   scrolls away with the page. Browsers without `clip` (Safari before 16) get `hidden` on <html>
+   alone, which goes to the window and keeps sticky bars working. */
+html[data-guest-page] {
+  overflow-x: hidden;
+}
+html[data-guest-page],
+html[data-guest-page] body {
+  overflow-x: clip;
+  scrollbar-width: none;
+}
+html[data-guest-page]::-webkit-scrollbar {
+  display: none;
 }

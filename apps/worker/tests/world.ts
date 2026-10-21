@@ -39,8 +39,10 @@ export interface World {
   readonly pool: DbPool
   readonly tenantId: string
   readonly venueId: string
-  /** The venue's slug: `demo-club-` and a random suffix, since slugs are globally unique. */
+  /** The venue's slug: `demo-club-` and a random suffix (slugs need not be unique, D68). */
   readonly venueSlug: string
+  /** The venue's public code (D68): what its published files are keyed by. */
+  readonly venuePublicId: string
   readonly menuId: string
   readonly integrationId: string
   readonly keys: SealKeys
@@ -64,7 +66,10 @@ export interface World {
   close(): Promise<void>
 }
 
+/** The demo venue's till tree root ("Каса Kiosk"), the picker's choice of before D88. */
 export const DEMO_ROOT_CAT = 1091
+/** The demo venue's public menu root ("Публично меню", `public_cat_id`): a second menu (D88). */
+export const DEMO_PUBLIC_CAT = 1171
 export const DEMO_BID = 10
 
 const POLICY: BarsyPolicy = {
@@ -86,6 +91,11 @@ export async function createWorld(
     readonly pullLockWaitMs?: number
     /** How often a waiting full pull asks again (default 2 s). */
     readonly pullLockPollMs?: number
+    /**
+     * Give the demo venue its public menu root as well (two menus, D88). Default: the till tree
+     * only, as a venue mapped before D88 (the fake's venue list then reports no public menu).
+     */
+    readonly publicMenu?: boolean
   } = {},
 ): Promise<World> {
   const db = options.database ?? (await createTestDatabase())
@@ -102,12 +112,17 @@ export async function createWorld(
 
   const tenantId = newId('tn')
   await provisionTenant(pool, { tenantId, name: 'Sync test club' })
-  // Venue slugs are globally unique (brief S3-10) and a file's worlds share one database.
+  // A slug of its own per world, so a test can tell its venue from another world's.
   const slug = testSlug('demo-club')
   const venue = await provisionVenue(pool, tenantId, { name: 'Demo club', slug })
   const menu = await provisionMenu(pool, tenantId, venue.id)
 
   const integrationId = newId('in')
+  if (options.publicMenu !== true) {
+    // As before D88: the venue list names no roots, so every venue reads the root the picker
+    // chose (`catalogue_root_cat_id`), which the tests set and change themselves.
+    fake.venues = fake.venues.map((venue) => ({ ...venue, cat_id: null, public_cat_id: null }))
+  }
   const sealed = sealBarsyCredentials(
     { user: 'demo', password: fake.password },
     { tenantId, integrationId, host: fake.host, publicKey: pair.publicKey },
@@ -126,9 +141,15 @@ export async function createWorld(
     withOwnerClient(db.ownerUrl, async (client) => (await client.query(sql, values)).rows as Row[])
   if (options.mapVenue !== false) {
     await query(
-      `update restro.barsy_venues set venue_id = $1, catalogue_root_cat_id = $2
-       where integration_id = $3 and bid = $4`,
-      [venue.id, DEMO_ROOT_CAT, integrationId, DEMO_BID],
+      options.publicMenu === true
+        ? `update restro.barsy_venues
+             set venue_id = $1, catalogue_root_cat_id = $2, tree_cat_id = $2, public_cat_id = $5
+           where integration_id = $3 and bid = $4`
+        : `update restro.barsy_venues set venue_id = $1, catalogue_root_cat_id = $2
+           where integration_id = $3 and bid = $4`,
+      options.publicMenu === true
+        ? [venue.id, DEMO_ROOT_CAT, integrationId, DEMO_BID, DEMO_PUBLIC_CAT]
+        : [venue.id, DEMO_ROOT_CAT, integrationId, DEMO_BID],
     )
   }
   await query(`update restro.integrations set status = 'connected' where id = $1`, [integrationId])
@@ -205,6 +226,7 @@ export async function createWorld(
     tenantId,
     venueId: venue.id,
     venueSlug: slug,
+    venuePublicId: venue.publicId,
     menuId: menu.id,
     integrationId,
     keys,

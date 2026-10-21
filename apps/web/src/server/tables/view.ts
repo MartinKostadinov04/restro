@@ -1,63 +1,91 @@
-// What the Tables & QR tab and the print sheet are drawn from (brief S3-07), and what its actions
-// answer. Plain data, no I/O, so the client components can import the types.
+// What the Tables & QR tab and the print sheet are drawn from (briefs S3-07 and S5), and what its
+// actions answer. Plain data, no I/O, so the client components can import the types.
 //
-// Nothing here carries a barsy id (rule 3): a table is its `tb_` id, its number as barsy shows it
-// to people ("12", "VIP"), its hall's name, and its QR token (the admin may read its own tokens).
-import type { QrAddressProblem, QrMode } from '@restro/core'
+// Nothing here carries a till id (rule 3): a table is its `tb_` id, its number as the till or
+// the owner gave it ("12", "VIP"), its area, and its QR token (the admin may read its own tokens).
+
+/** Where the menu a table or an area shows comes from (D95): its own entry, the area's, the venue's. */
+export type MenuLevel = 'table' | 'area' | 'venue'
+
+/** The menu a code opens, as the guest gets it, and which level chose it. */
+export interface MenuShown<Level extends MenuLevel = MenuLevel> {
+  /** `nd_…`: the menu's id. */
+  readonly id: string
+  /** The name the admin lists it by (its header name, else the venue's name). */
+  readonly name: string
+  readonly level: Level
+}
+
+/** One of the venue's menus a route can name (the ones in the bin are not offered). */
+export interface MenuChoice {
+  readonly id: string
+  readonly name: string
+  /** True for the venue's live menu: the default of every area and table. */
+  readonly live: boolean
+}
 
 /** One table of the venue as the tab shows it. */
 export interface TableRowView {
   /** `tb_…`: the id the actions take. */
   readonly id: string
-  /** The number or name barsy gives the table, or null. */
+  /** The number the till (or the owner) gives the table, or null. */
   readonly number: string | null
   /** The name the manager gave it, or null. */
   readonly label: string | null
-  /** What the guest page calls it: the manager's name, else barsy's number; null = nothing. */
+  /** What the guest page calls it: the manager's name, else the number; null = nothing. */
   readonly shownAs: string | null
+  /** False for a hidden table (D95): no code that leads anywhere, no guest page. */
   readonly isPublic: boolean
-  /** `missing`: barsy did not list it in the last full pull (its code still works). */
-  readonly state: 'active' | 'missing'
   /** The QR token, or null when the table has no code. */
   readonly token: string | null
-  /** The address the code carries, or null (no code, or "our link" has no base address yet). */
+  /** The address the code carries, or null (no code, or the installation has no address yet). */
   readonly address: string | null
-  /** The code as SVG markup (dark on light, always), or null when there is no address. */
+  /** The code as SVG markup (dark on light, always), or null when there is no address or the table is hidden. */
   readonly qrSvg: string | null
+  /** The menu a guest who scans the code gets, or null when the venue has nothing published. */
+  readonly menu: MenuShown | null
+  /** The menu the table's own entry names, or null (it takes its area's). */
+  readonly routeMenuId: string | null
 }
 
-/** The tables of one hall. */
+/** The tables of one area (D95), in the area's order. */
 export interface HallView {
-  /** The hall's name; null = tables barsy puts in no hall (shown last). */
-  readonly name: string | null
+  /** `ar_…`: the area's id. */
+  readonly id: string
+  readonly name: string
+  /** False for a hidden area (D95): its tables have no codes and no guest page. */
+  readonly isPublic: boolean
+  /** The menu the area's tables show unless they choose their own, or null (nothing published). */
+  readonly menu: MenuShown<'area' | 'venue'> | null
+  /** The menu the area's own entry names, or null (it takes the venue's live menu). */
+  readonly routeMenuId: string | null
   readonly tables: readonly TableRowView[]
-}
-
-/** The venue's address setting, with its defaults resolved. */
-export interface QrSettingsView {
-  readonly mode: QrMode
-  /** The saved base address, else the default; null when neither exists. */
-  readonly baseUrl: string | null
-  /** True when `baseUrl` is the default (nothing saved). */
-  readonly baseIsDefault: boolean
-  /** The app's own address from the environment, or null. */
-  readonly defaultBaseUrl: string | null
-  readonly ownPattern: string | null
 }
 
 /** The whole tab. */
 export interface TablesView {
   readonly venueId: string
   readonly venueName: string
-  /** An owner or admin: may create, change and turn off codes and save the address. */
+  /** An owner or admin: may create, change and turn off codes and edit areas and tables. */
   readonly canManage: boolean
-  readonly qr: QrSettingsView
+  /** True when a till serves the venue: its areas and tables are the till's (D95). */
+  readonly fromTill: boolean
+  /** The till's name for `{source}`; '' when the venue is made by hand. */
+  readonly sourceLabel: string
+  /**
+   * The address of this installation, without a trailing slash: the codes lead to
+   * `<baseUrl>/t/<token>` (D94). Null when the installation has no usable address configured.
+   */
+  readonly baseUrl: string | null
+  /** The venue's menus a route can name, in the venue's order. */
+  readonly menus: readonly MenuChoice[]
   readonly halls: readonly HallView[]
   readonly total: number
+  /** Tables with a code that leads somewhere (a hidden table's paused code is not counted). */
   readonly coded: number
   /**
-   * The first table with a code (by hall and number), for the address preview and the test link:
-   * its token and what the table is called. Null when no table has a code.
+   * The first table with a code (by area and number), for the test link: its token and what the
+   * table is called. Null when no table has a code.
    */
   readonly sample: { readonly token: string; readonly shownAs: string | null } | null
 }
@@ -68,10 +96,16 @@ export type TablesErrorCode =
   | 'invalid'
   /** Only owners and admins may do this. */
   | 'forbidden'
-  /** The table or venue is not there (any more). */
+  /** The table, area or venue is not there (any more). */
   | 'not_found'
-  /** The table has neither a number from barsy nor a name of its own. */
+  /** The table has neither a number nor a name of its own. */
   | 'no_label'
+  /** The table or its area is hidden: it gets no code (D95). */
+  | 'hidden'
+  /** The venue's areas and tables come from its till: not created, deleted or renumbered here. */
+  | 'from_till'
+  /** The menu is not one of the venue's, or it is in the bin. */
+  | 'unknown_menu'
   | 'failed'
 
 /** What an action answers. */
@@ -90,7 +124,4 @@ export type TablesActionResult =
   | {
       readonly ok: false
       readonly error: TablesErrorCode
-      /** For a refused address: which field and what is wrong with it. */
-      readonly field?: 'baseUrl' | 'ownPattern'
-      readonly problem?: QrAddressProblem
     }

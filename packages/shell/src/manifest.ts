@@ -2,9 +2,12 @@
 // `validateManifest()`, which a face must pass before it can be installed. It enforces
 //   R6  allergens are always reachable: the slot is required and the face names how it shows them;
 //   R7  the required slots (name, price, allergens, state) are declared required, never optional;
-//   R9  names are never cut, and a description may be cut only where the reader can expand it.
+//   R9  names are never cut, and a description may be cut only where the reader can expand it;
+//   R15 the guest features a face has controls for (`features`) and the options a venue may set
+//       (`options`), each with a type, a default and a label, so the admin can build a form from it.
 // A face that declares an optional required slot, or none at all, cannot be installed.
 
+import { EXTENDED_ROLE_NAMES, MAX_PRESENTATION_OPTIONS, ROLE_NAMES } from '@restro/core'
 import { z } from 'zod'
 
 import { CHANNELS, IMAGE_VARIANTS, type ImageVariant, INTERACTIVE_CHANNELS } from './context'
@@ -52,15 +55,85 @@ export const COLOUR_NAMES = [
   'border',
 ] as const
 
-/** Every token name a manifest may list. */
+/** Every token name a manifest may list; the extended colours (D93) are tokens too. */
 export const TOKEN_NAMES: readonly string[] = [
   ...PALETTE_STEPS.map((step) => `palette.${step}`),
   ...COLOUR_NAMES.map((name) => `color.${name}`),
+  ...EXTENDED_ROLE_NAMES.map((name) => `color.${name}`),
   'font',
   'radius',
   'shadow',
   'logo',
 ]
+
+/** Any colour role a face may name in a pair: the eight base roles and the ten of D93. */
+export const PAIR_ROLE_NAMES = [...ROLE_NAMES, ...EXTENDED_ROLE_NAMES] as const
+
+/**
+ * One text-on-colour (or control-on-colour) pair a face draws (D93): `fg` sits on `bg`. The
+ * contract test checks the pair in both schemes of every fixture's theme, at `min` (4.5:1 by
+ * default: text; a face says 3 for a control's border or ring). A pair on an extended role is
+ * skipped for a theme that has none (a snapshot from before D93).
+ */
+const ColourPairSchema = z.strictObject({
+  fg: z.enum(PAIR_ROLE_NAMES),
+  bg: z.enum(PAIR_ROLE_NAMES),
+  min: z.number().min(1).max(21).optional(),
+})
+
+/** One pair a face declares. */
+export type ColourPair = z.output<typeof ColourPairSchema>
+
+/** The guest features a face can draw controls for (R15, D71). */
+export const FEATURE_NAMES = ['filters', 'call_waiter', 'bill', 'ordering', 'pay'] as const
+
+/** One guest feature. */
+export type FeatureName = (typeof FEATURE_NAMES)[number]
+
+/**
+ * Where the admin lists an option: with the guest features (`feature`: a switch for something the
+ * guest can use) or with the template's look (`look`: how the menu is laid out and dressed).
+ */
+export const OPTION_GROUPS = ['feature', 'look'] as const
+
+/** An option key: camelCase, the same pattern core accepts in a published presentation. */
+const OPTION_KEY = /^[a-z][A-Za-z0-9]{0,31}$/
+
+/** An enum option's value: a short lower-case token, the same pattern core accepts. */
+const OPTION_VALUE = /^[a-z0-9_-]{1,32}$/
+
+const OptionLabelSchema = z.strictObject({
+  bg: z.string().min(1).max(80),
+  en: z.string().min(1).max(80),
+})
+
+const EnumOptionSchema = z.strictObject({
+  type: z.literal('enum'),
+  values: z
+    .array(z.string().regex(OPTION_VALUE))
+    .min(1)
+    .max(8)
+    .refine((values) => new Set(values).size === values.length, 'values must not repeat'),
+  default: z.string(),
+  group: z.enum(OPTION_GROUPS),
+  label: OptionLabelSchema,
+})
+
+const BooleanOptionSchema = z.strictObject({
+  type: z.literal('boolean'),
+  default: z.boolean(),
+  group: z.enum(OPTION_GROUPS),
+  label: OptionLabelSchema,
+})
+
+/** One option a face lets the venue set. */
+export const FaceOptionSchema = z.discriminatedUnion('type', [
+  EnumOptionSchema,
+  BooleanOptionSchema,
+])
+
+/** One option a face lets the venue set. */
+export type FaceOption = z.output<typeof FaceOptionSchema>
 
 const SlotOptionsSchema = z.strictObject({
   optional: z.literal(true),
@@ -98,6 +171,22 @@ export const FaceManifestSchema = z.strictObject({
   /** Null = the face scrolls. */
   paging: PagingSchema.nullable(),
   tokens: z.array(z.enum(TOKEN_NAMES as [string, ...string[]])),
+  /**
+   * Every pair of colours the face puts one on the other (D93): the contract test holds each to
+   * its contrast in both schemes of every fixture. A face that lists none is checked on the base
+   * pairs the engine guarantees anyway, and the test says so.
+   */
+  colour_pairs: z.array(ColourPairSchema).default([]),
+  /** The guest features this face has controls for (R15). A feature the face does not list is never offered. */
+  features: z.array(z.enum(FEATURE_NAMES)).default([]),
+  /** The options a venue may set, by key (camelCase). Core's presentation allows as many. */
+  options: z
+    .record(z.string().regex(OPTION_KEY), FaceOptionSchema)
+    .refine(
+      (options) => Object.keys(options).length <= MAX_PRESENTATION_OPTIONS,
+      `at most ${MAX_PRESENTATION_OPTIONS} options`,
+    )
+    .default({}),
 })
 
 /** A face manifest. */
@@ -116,6 +205,9 @@ export interface ManifestIssue {
     | 'paging_on_scrolling_channel'
     | 'duplicate_channel'
     | 'duplicate_token'
+    | 'duplicate_feature'
+    | 'ordering_feature_without_ordering'
+    | 'option_default_not_allowed'
   readonly path: string
   readonly message: string
 }
@@ -203,6 +295,30 @@ export function validateManifest(input: unknown): ManifestResult {
     add('duplicate_token', 'tokens', 'tokens must not repeat')
   }
 
+  // R15: features are listed once, and a face that offers ordering controls orders.
+  if (new Set(manifest.features).size !== manifest.features.length) {
+    add('duplicate_feature', 'features', 'features must not repeat')
+  }
+  if (manifest.features.includes('ordering') && !manifest.ordering) {
+    add(
+      'ordering_feature_without_ordering',
+      'features',
+      'a face with the "ordering" feature must declare ordering: true (R11, R15)',
+    )
+  }
+
+  // An enum option's default is one of its values, or resolveOptions could hand out a value the
+  // admin never offers.
+  for (const [key, option] of Object.entries(manifest.options)) {
+    if (option.type === 'enum' && !option.values.includes(option.default)) {
+      add(
+        'option_default_not_allowed',
+        `options.${key}.default`,
+        `the default "${option.default}" is not one of the values of option ${key}`,
+      )
+    }
+  }
+
   return issues.length === 0 ? { ok: true, manifest } : { ok: false, issues }
 }
 
@@ -217,4 +333,30 @@ export function imageSlotsFor(
   const slot = manifest.slots['item.image']
   const variant = typeof slot === 'object' && slot.variant !== undefined ? slot.variant : 'card'
   return { item: { variant, density } }
+}
+
+/**
+ * The face's options with defaults: what the venue published, kept only where it is right. A key
+ * the manifest does not declare is dropped; a value of the wrong type, or an enum value the
+ * manifest does not list, is replaced by the option's default; a missing one is the default.
+ * `raw` may be anything (it comes from a published file): it never throws.
+ */
+export function resolveOptions(
+  manifest: FaceManifest,
+  raw: unknown,
+): Readonly<Record<string, string | boolean>> {
+  const given =
+    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {}
+  const out: Record<string, string | boolean> = {}
+  for (const [key, option] of Object.entries(manifest.options)) {
+    const value = Object.hasOwn(given, key) ? given[key] : undefined
+    if (option.type === 'enum') {
+      out[key] = typeof value === 'string' && option.values.includes(value) ? value : option.default
+    } else {
+      out[key] = typeof value === 'boolean' ? value : option.default
+    }
+  }
+  return out
 }

@@ -5,6 +5,7 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 import pg from 'pg'
 
 import { runScript } from './global-setup'
+import { addressOfVenue } from './menu-path'
 import { ADMIN_PASSWORD } from './support'
 
 // Sold out tonight, end to end on a production build with the REAL worker running beside it (brief
@@ -44,6 +45,8 @@ let page: Page
 let venueId = ''
 let menuId = ''
 let tenantId = ''
+/** The venue's guest address, `/m/<slug>-<code>` (D68). */
+let guestPath = ''
 let db: pg.Pool
 let ownerState: Awaited<ReturnType<BrowserContext['storageState']>>
 let memberState: Awaited<ReturnType<BrowserContext['storageState']>>
@@ -85,7 +88,7 @@ async function guestState(browser: Browser, name: string) {
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
-    await guest.goto(`/m/${SLUG}?lang=bg`)
+    await guest.goto(`${guestPath}?lang=bg`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
     const card = guest
       .locator('[data-item]')
@@ -175,6 +178,9 @@ test.beforeAll(async ({ browser }) => {
   tenantId = rows[0]?.tenant_id ?? ''
   menuId = rows[0]?.menu_id ?? ''
   expect(tenantId).not.toBe('')
+  const address = await addressOfVenue({ venueId })
+  expect(address.slug).toBe(SLUG)
+  guestPath = address.path
   ownerState = await owner.storageState()
 
   const memberContext = await browser.newContext()
@@ -203,6 +209,26 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
   expect(await guestState(browser, 'Негрони')).toEqual({ state: 'available', soldOutWord: false })
   await expect(page.getByTestId('sold-out-chip')).toHaveCount(0)
 
+  // A guest who already has the menu open (the Editorial Market, the registry's default, SH-04):
+  // the page asks for the overlay itself every 15 seconds, so the mark must reach it without a
+  // reload. `window.openGuestPage` is the page's own marker: it is gone if the page reloads.
+  const watcherContext = await browser.newContext()
+  const watcher = await watcherContext.newPage()
+  await watcher.goto(`${guestPath}?lang=bg`)
+  await expect(watcher.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(watcher.locator('[data-face]:not([data-testid])')).toHaveAttribute(
+    'data-face',
+    'editorial-market',
+  )
+  await watcher.evaluate(() => {
+    ;(window as unknown as { openGuestPage: boolean }).openGuestPage = true
+  })
+  const watched = watcher
+    .locator('[data-item]')
+    .filter({ has: watcher.getByRole('heading', { name: 'Негрони', exact: true }) })
+    .first()
+  await expect(watched).toHaveAttribute('data-state', 'available')
+
   await markFromRowMenu(page, 'Негрони')
   await expect(rowOf(page, 'Негрони').getByTestId('sold-out-badge')).toHaveText(
     'Изчерпано тази вечер',
@@ -216,6 +242,16 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
     .toBe('sold_out')
   expect(await guestState(browser, 'Негрони')).toEqual({ state: 'sold_out', soldOutWord: true })
   expect(await guestState(browser, 'Мохито')).toEqual({ state: 'available', soldOutWord: false })
+  // The page that was already open shows it too, within its own 15-second refresh (the worker has
+  // rewritten live.json by now), and was not reloaded to do it.
+  await expect(watched).toHaveAttribute('data-state', 'sold_out', { timeout: 30_000 })
+  await expect(watched).toContainText(SOLD_OUT_WORD)
+  expect(
+    await watcher.evaluate(
+      () => (window as unknown as { openGuestPage?: boolean }).openGuestPage === true,
+    ),
+  ).toBe(true)
+  await watcherContext.close()
   // live.json lists the marked drink and the Campari (barsy has it off sale), and is for version 1.
   const live = (await cdnJson(page, liveFile())) as { version: number; items: object }
   expect(live.version).toBe(1)
@@ -233,7 +269,7 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
   })
   try {
     const phone = await guest.newPage()
-    await phone.goto(`/m/${SLUG}?lang=bg`)
+    await phone.goto(`${guestPath}?lang=bg`)
     await expect(phone.getByRole('heading', { level: 1 })).toBeVisible()
     await phone.screenshot({ path: shotPath('bg-light-phone-guest-sold-out') })
   } finally {
@@ -284,7 +320,7 @@ test('an item barsy has off sale says so and has no control, in the row and in t
   await campari.getByTestId('item-open').click()
   const card = page.getByTestId('item-sheet-sale')
   await expect(card).toBeVisible()
-  await expect(card).toHaveAttribute('data-state', 'off_barsy')
+  await expect(card).toHaveAttribute('data-state', 'off_till')
   await expect(card.getByTestId('sale-state')).toHaveText('Не се продава в barsy')
   await expect(card.getByRole('button')).toHaveCount(0)
   await expect(page.getByText('Върни в продажба')).toHaveCount(0)
@@ -377,7 +413,8 @@ test("the mark lapses with the service day: the real worker's tick remakes live.
   browser,
 }) => {
   // Moving the end of the service day to 23:59 puts "now" in the PREVIOUS service day, which is
-  // what 07:00 does to last night. (From 23:00 on that would not be true; skip then.)
+  // what 07:00 does to last night. Only true between 07:00 and 23:00 Sofia time: before 07:00 both
+  // ends give the previous day (no rollover can happen), and from 23:00 on neither moves it. Skip.
   const localHour = Number(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Europe/Sofia',
@@ -385,7 +422,10 @@ test("the mark lapses with the service day: the real worker's tick remakes live.
       hourCycle: 'h23',
     }).format(new Date()),
   )
-  test.skip(localHour >= 23, 'the service day cannot be moved forward this late in the evening')
+  test.skip(
+    localHour >= 23 || localHour < 7,
+    'the service day end can only be moved past "now" between 07:00 and 23:00 Sofia time',
+  )
 
   await openComposer()
   await markFromRowMenu(page, 'Негрони')

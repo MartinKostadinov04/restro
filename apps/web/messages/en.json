@@ -35,7 +35,7 @@
       "reference": "Reference"
     },
     "provenance": {
-      "barsy": "From barsy",
+      "till": "From {source}",
       "owned": "Owned here",
       "overridden": "Overridden",
       "stale": "Stale",
@@ -164,17 +164,17 @@
     "loadingTitle": "Loading item…",
     "untitled": "Untitled item",
     "description": "Details, translations, photo and history of this item.",
-    "linked": "From barsy",
+    "linked": "From {source}",
     "createdHere": "Created here",
     "linkState": {
-      "missing": "barsy no longer lists it",
-      "deleted": "Deleted in barsy"
+      "missing": "{source} no longer lists it",
+      "deleted": "Deleted in {source}"
     },
     "issueCount": "{count, plural, =0 {Nothing to check} one {# thing to check} other {# things to check}}",
     "missing": "This item could not be found in this venue.",
     "loadError": "The item could not be loaded. Close the sheet and try again.",
     "saved": "Saved",
-    "reverted": "Back to barsy's value",
+    "reverted": "Back to {source}'s value",
     "kept": "Your value is kept",
     "imageSaved": "Photo saved",
     "imageRemoved": "Photo removed",
@@ -184,9 +184,9 @@
       "not_found": "This item or field could not be found.",
       "not_allowed": "Only an owner or admin can mark items sold out.",
       "read_only": "This value cannot be changed here.",
-      "locked": "barsy owns this value. Change it in barsy.",
+      "locked": "{source} owns this value. Change it in {source}.",
       "nothing_to_revert": "There is nothing to revert.",
-      "no_basis": "barsy no longer holds a value for this, so there is nothing to keep yours against. Revert it instead.",
+      "no_basis": "{source} no longer holds a value for this, so there is nothing to keep yours against. Revert it instead.",
       "invalid_value": "That value is not valid for this field.",
       "asset_not_found": "The uploaded photo could not be found. Upload it again.",
       "refused": "The change was refused and nothing was saved.",
@@ -206,17 +206,17 @@
       "unknown": "Finding {code}.",
       "V3": "The name is missing in the default language, so the item stays off the guest menu.",
       "V4": "Allergens are not filled in.",
-      "V5": "barsy and this venue disagree about {field}. Choose the right value.",
+      "V5": "{source} and this venue disagree about {field}. Choose the right value.",
       "V6": "There is no price, so the item stays off the guest menu.",
       "V7": "{field} has no text in {language}.",
-      "stale_override": "barsy changed {field} after you replaced it here.",
-      "link_missing": "barsy no longer lists this item, so guests do not see it.",
-      "link_deleted": "This item was deleted in barsy, so guests do not see it.",
+      "stale_override": "{source} changed {field} after you replaced it here.",
+      "link_missing": "{source} no longer lists this item, so guests do not see it.",
+      "link_deleted": "This item was deleted in {source}, so guests do not see it.",
       "invalid_value": "A stored value for {field} is not valid and is ignored.",
       "ignored_value": "A stored value for {field} sits in a layer that does not apply to it and is ignored.",
       "required_missing": "{field} is required.",
-      "translation_review": "barsy's {field} changed after the {language} translation was written. Check it.",
-      "price_not_venue_scoped": "barsy's price is not stored for this venue yet.",
+      "translation_review": "{source}'s {field} changed after the {language} translation was written. Check it.",
+      "price_not_venue_scoped": "{source}'s price is not stored for this venue yet.",
       "unplaced_item": "This item is in no section, so guests do not see it.",
       "required_group_unsatisfiable": "A required choice has too few options, so the item cannot be ordered."
     },
@@ -230,8 +230,8 @@
       },
       "editorDescription": "The change is saved to the menu at once. The History tab keeps who changed what.",
       "readOnly": {
-        "locked_to_barsy": "Change this in barsy.",
-        "barsy_decides": "barsy has hidden this or taken it off sale. Change it in barsy.",
+        "locked_to_till": "Change this in {source}.",
+        "till_decides": "{source} has hidden this or taken it off sale. Change it in {source}.",
         "composer_toggle": "Show or hide the item from the list in the composer.",
         "sold_out_control": "Mark an item sold out tonight with the control at the top of this tab."
       },
@@ -239,34 +239,34 @@
         "title": "Sale tonight",
         "onSale": "On sale",
         "soldOutTonight": "Sold out tonight",
-        "offSaleBarsy": "Not on sale in barsy",
+        "offSaleTill": "Not on sale in {source}",
         "offSaleOther": "Not on sale",
         "mark": "Mark sold out tonight",
         "unmark": "Back on sale",
         "markNote": "Guests see it as sold out within about 15 seconds. The mark ends by itself when the service day ends.",
         "lapsesNote": "Guests see it as sold out. The mark ends by itself when the service day ends.",
-        "offSaleBarsyNote": "barsy has taken this off sale. Put it back on sale in barsy: this page can only add to what barsy says.",
+        "offSaleTillNote": "{source} has taken this off sale. Put it back on sale in {source}: this page can only add to what {source} says.",
         "offSaleOtherNote": "Another setting has taken this off sale. This page cannot put it back on sale.",
         "managersOnly": "Only an owner or admin can mark an item sold out."
       },
-      "conflict": "barsy and this venue disagree. Choose the right value.",
-      "staleHint": "barsy changed this after you replaced it. barsy now says:",
-      "barsyValueHint": "barsy's value:",
+      "conflict": "{source} and this venue disagree. Choose the right value.",
+      "staleHint": "{source} changed this after you replaced it. {source} now says:",
+      "tillValueHint": "{source}'s value:",
       "keep": "Keep mine",
       "keepFor": "Keep my value for {field}",
-      "takeBarsy": "Take barsy's",
-      "takeBarsyFor": "Take barsy's value for {field}",
+      "takeTill": "Take {source}'s",
+      "takeTillFor": "Take {source}'s value for {field}",
       "revert": "Revert",
-      "revertFor": "Revert {field} to barsy's value"
+      "revertFor": "Revert {field} to {source}'s value"
     },
     "translations": {
-      "intro": "Every language of this venue. Languages barsy already holds are read-only; the ones you add are saved as your own translations.",
+      "intro": "Every language of this venue. Languages {source} already holds are read-only; the ones you add are saved as your own translations.",
       "missing": "Missing",
       "review": "Review",
-      "reviewHint": "barsy's text changed after this translation was written. It stays live; edit it to clear this flag.",
+      "reviewHint": "{source}'s text changed after this translation was written. It stays live; edit it to clear this flag.",
       "placeholder": "No text yet",
       "save": "Save",
-      "heldByBarsy": "Held by barsy"
+      "heldByTill": "Held by {source}"
     },
     "media": {
       "title": "Photo",
@@ -274,7 +274,7 @@
       "dimensions": "Size",
       "type": "Type",
       "openFull": "Open full size",
-      "fromBarsyHint": "This photo comes from barsy. Uploading yours replaces it here.",
+      "fromTillHint": "This photo comes from {source}. Uploading yours replaces it here.",
       "none": "No photo yet",
       "upload": "Upload a photo or drop one here",
       "replace": "Replace the photo or drop a new one here",
@@ -307,7 +307,7 @@
     },
     "history": {
       "someone": "Someone",
-      "barsySync": "The barsy sync",
+      "tillSync": "The {source} sync",
       "system": "The system",
       "set": "{who} set {field} to {value}",
       "changed": "{who} changed {field} from {from} to {to}",
@@ -318,14 +318,18 @@
         "removePlacement": "{who} took the item out of a section",
         "moveNode": "{who} moved the item",
         "setNodeStatus": "{who} changed whether the item is shown",
-        "linkSource": "{who} linked the item to barsy",
-        "unlinkSource": "{who} unlinked the item from barsy",
-        "setLinkState": "{who} updated the item's barsy status",
+        "linkSource": "{who} linked the item to {source}",
+        "unlinkSource": "{who} unlinked the item from {source}",
+        "setLinkState": "{who} updated the item's {source} status",
         "other": "{who} changed the item's place in the menu"
       },
       "empty": "No changes yet.",
       "error": "The history could not be loaded.",
       "loadMore": "Show older"
+    },
+    "review": {
+      "title": "Overrides to review",
+      "text": "{source} changed {fields} after you replaced it here. In Details, keep yours or take {source}’s."
     }
   },
   "devItemSheet": {
@@ -383,25 +387,197 @@
     "signOut": "Sign out"
   },
   "nav": {
-    "manage": "Manage",
-    "venues": "Venues",
-    "breadcrumb": "Breadcrumb"
-  },
-  "venueSwitcher": {
-    "label": "Venue",
-    "choose": "Choose a venue",
     "venues": "Venues",
     "allVenues": "All venues",
-    "organization": "Organisation"
+    "newVenue": "New venue",
+    "organization": "Organisation",
+    "settings": "Settings",
+    "breadcrumb": "Breadcrumb"
+  },
+  "organizationSwitcher": {
+    "label": "Organisation",
+    "switchTo": "Switch organisation"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "What is set once for the whole organisation, not for a single venue.",
+    "sectionsLabel": "Settings sections",
+    "sections": {
+      "general": "General",
+      "integrations": "Integrations",
+      "deletedVenues": "Deleted venues"
+    },
+    "general": {
+      "description": "The organisation's name and the first part of every guest address.",
+      "readOnly": "Only an owner can change this.",
+      "name": {
+        "title": "Organisation name",
+        "description": "Shown in the admin, in the sidebar and wherever the organisation is named.",
+        "label": "Name",
+        "save": "Save name",
+        "saving": "Saving…",
+        "saved": "Name saved.",
+        "invalid": "Enter a name of 1 to 200 characters."
+      },
+      "address": {
+        "title": "Address name",
+        "description": "The first part of every guest address, the part after /m/. No other organisation can have the same one.",
+        "label": "Address name",
+        "help": "Lower-case Latin letters, digits and single hyphens, up to 63 characters, for example night-group.",
+        "example": "Your venues will have addresses like",
+        "keep": "The old address keeps working: guests who open it are taken to the new one, so printed and shared links never break.",
+        "suggest": "Suggest from the name",
+        "save": "Save address name",
+        "saving": "Saving…",
+        "saved": "Address name saved. Guests who open the old address are taken to the new one within a minute.",
+        "savedLate": "Address name saved. The guest files could not be updated just now: publish a menu to bring them up to date.",
+        "invalid": "Use lower-case Latin letters, digits and single hyphens, for example night-group."
+      },
+      "errors": {
+        "not_allowed": "Only an owner can change the organisation's name or address name.",
+        "invalid": "This cannot be used. Check it and try again.",
+        "taken": "Another organisation has this address name, or had it before. Choose another one.",
+        "failed": "Something went wrong. Nothing was changed, try again."
+      }
+    },
+    "integrations": {
+      "description": "The systems you use, their connections and how each one is read. Set once for the whole organisation and used by every venue."
+    },
+    "deletedVenues": {
+      "description": "Venues an owner deleted. Restore one within {days} days and it comes back as a draft with its menu, tables and codes, and its till is linked again unless another venue serves it now. After that, or at once with Delete permanently, a venue is erased for good.",
+      "empty": {
+        "title": "No deleted venues",
+        "description": "A venue you delete appears here, and you can restore it."
+      },
+      "listLabel": "Deleted venues",
+      "dates": "Deleted on {when} · erased on {erasedOn}",
+      "restore": "Restore",
+      "restoring": "Restoring…",
+      "purge": "Delete permanently",
+      "purgeDialog": {
+        "title": "Delete {name} permanently?",
+        "description": "{name} is erased now, without waiting until {erasedOn}. This cannot be undone. This is what goes:",
+        "effects": {
+          "menus": "Its menus, sections and items, every published version and its change log.",
+          "tables": "Its tables and QR codes. The codes never come back: printed codes stop working for good.",
+          "address": "Its address name is freed, so another venue can take it. Its public code is never used again.",
+          "kept": "Items that the till or another venue still uses stay."
+        },
+        "confirmLabel": "Type the venue name to confirm: {name}",
+        "cancel": "Cancel",
+        "confirm": "Delete permanently",
+        "deleting": "Deleting…",
+        "deleted": "{name} is being erased. It leaves this list now.",
+        "deletedLate": "{name} could not be sent to be erased just now. It is erased by itself on {erasedOn}.",
+        "errors": {
+          "not_allowed": "Only an owner can delete a venue permanently.",
+          "invalid": "This venue could not be found.",
+          "not_deleted": "This venue is not in the deleted venues. Delete it first.",
+          "name_mismatch": "The name does not match. Type it exactly as shown.",
+          "failed": "Something went wrong. The venue was not deleted, try again."
+        }
+      },
+      "restored": "{name} is back as a draft. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
+      "restoredLinked": "{name} is back as a draft, with its till linked again. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
+      "errors": {
+        "not_allowed": "Only an owner can restore a venue.",
+        "invalid": "This venue could not be found.",
+        "till_taken": "Not restored: the till venue it served is linked to “{holder}” now.",
+        "failed": "Something went wrong. The venue was not restored, try again."
+      }
+    }
   },
   "venues": {
     "title": "Venues",
     "description": "The venues of {organization}.",
-    "languages": "Languages",
     "open": "Open",
+    "preview": "Preview menu",
+    "previewDraft": "A draft has no guest page yet. Publish the venue to preview its menu.",
+    "state": {
+      "draft": "Draft",
+      "live": "Live"
+    },
+    "source": "Source",
+    "byHand": "By hand",
+    "venueIn": "Venue in {source}",
     "empty": {
       "title": "No venues yet",
-      "description": "Your first venue is set up together with the Restro team."
+      "description": "Create your first venue with the New venue button.",
+      "descriptionReadOnly": "An owner or admin of the organisation can create the first venue."
+    },
+    "unpublish": {
+      "button": "Unpublish…",
+      "dialog": {
+        "title": "Unpublish {name}?",
+        "description": "This is what guests will see once you unpublish this venue:",
+        "effects": {
+          "guests": "Its guest page and its table QR codes stop showing the menu: guests see that the menu is not available.",
+          "draft": "The venue goes back to Draft. Nothing is deleted: its menus, tables and settings stay.",
+          "again": "Publish a menu of the venue again to put it back on guests’ phones."
+        },
+        "cancel": "Cancel",
+        "confirm": "Unpublish",
+        "working": "Unpublishing…",
+        "done": "{name} was unpublished.",
+        "doneLate": "{name} was unpublished, but its guest files could not be withdrawn just now. They are withdrawn with the next job; if guests still see the menu in a few minutes, unpublish again.",
+        "errors": {
+          "not_allowed": "Only an owner or admin can unpublish a venue.",
+          "invalid": "This venue could not be found.",
+          "venue_archived": "This venue was deleted.",
+          "failed": "Something went wrong. The venue was not unpublished, try again."
+        }
+      }
+    },
+    "new": {
+      "button": "New venue",
+      "title": "New venue",
+      "description": "Where does the venue’s menu come from? This cannot be changed after the venue is created.",
+      "back": "Back",
+      "next": "Next",
+      "cancel": "Cancel",
+      "create": "Create venue",
+      "creating": "Creating…",
+      "sources": {
+        "legend": "Menu source",
+        "loading": "Loading…",
+        "failed": "The sources could not be loaded. Try again.",
+        "retry": "Try again",
+        "hand": "By hand",
+        "handHelp": "You write the menu yourself: sections, items and prices.",
+        "venueCount": "{count, plural, one {# venue} other {# venues}}",
+        "none": "No point-of-sale system is connected yet.",
+        "connect": "Connect one in Settings › Integrations"
+      },
+      "instance": {
+        "title": "New venue from {source}",
+        "description": "Nothing to type: the name, the address and the languages come from {source}. You can change them later in the venue’s settings.",
+        "legend": "Venues in {source}",
+        "linkedTo": "linked to {venue}",
+        "noVenues": "{source} has not reported any venues yet. Check the connection in Settings › Integrations.",
+        "allLinked": "Every venue in {source} is linked to a venue already."
+      },
+      "hand": {
+        "title": "New venue by hand",
+        "description": "A venue you build yourself, with its own menu, languages and address."
+      },
+      "name": "Name",
+      "nameRequired": "Enter a name.",
+      "slug": "Address name",
+      "slugHelp": "The venue part of the menu’s web address. No other venue of yours may use it.",
+      "address": "Guests will open",
+      "slugInvalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
+      "languages": "Languages",
+      "languagesHelp": "The languages the menu can be written in. Each item can be translated later.",
+      "defaultLanguage": "Main language",
+      "defaultLanguageHelp": "Every item and section needs a name in this language.",
+      "defaults": "Time zone: {timeZone} · Currency: {currency}",
+      "errors": {
+        "not_allowed": "Only an owner or admin can create a venue.",
+        "invalid": "Check the name, the address and the languages, then try again.",
+        "taken": "Another venue of yours already has this address. Choose another one.",
+        "link_taken": "This venue of {source} was linked to another venue in the meantime. Pick another one.",
+        "failed": "Something went wrong. The venue was not created, try again."
+      }
     }
   },
   "composer": {
@@ -420,16 +596,19 @@
       "noMenu": {
         "title": "This venue has no menu yet",
         "description": "Create it to start arranging sections and items.",
+        "descriptionReadOnly": "An owner or admin can create it.",
         "action": "Create the menu"
       },
       "noSections": {
         "title": "No sections yet",
-        "description": "The menu from barsy arrives here already sorted once the connection is set up. Until then you can create a section of your own.",
+        "description": "Create a section, or connect a till in Settings → Integrations.",
         "action": "Create a section"
       },
       "noItems": {
         "title": "No items in this section",
-        "description": "Drag items here from another section or from Unsorted."
+        "description": "Create an item with New item, or drag items here from another section or from Unsorted.",
+        "descriptionTill": "Items come from the till. Drag them here from Unsorted or another section; photos, descriptions and tags are added here.",
+        "descriptionReadOnly": "Drag items here from another section or from Unsorted."
       },
       "noUnsorted": {
         "title": "Every item has a section",
@@ -445,16 +624,21 @@
       }
     },
     "badges": {
-      "barsy": "From barsy",
+      "fromTill": "From {source}",
       "owned": "Owned here",
-      "hiddenByBarsy": "Hidden by barsy",
+      "hiddenByTill": "Hidden by {source}",
       "hidden": "Hidden",
       "hiddenOther": "Hidden (setting)",
-      "newFromBarsy": "New from barsy, hidden until you show it",
+      "newFromTill": "New from {source}, hidden until you show it",
+      "nameFromTill": "Menu name missing in {source}: its own name is shown",
+      "nameFromTillHelp": "Fill in the public name in {source}, or type a name here.",
+      "nameFromTillHelpSection": "Fill in the public name in {source}, or rename the section here.",
       "soldOutTonight": "Sold out tonight",
-      "offSaleBarsy": "Not on sale in barsy",
+      "offSaleTill": "Not on sale in {source}",
       "offSaleOther": "Not on sale",
-      "issues": "{count, plural, one {# issue} other {# issues}}"
+      "issues": "{count, plural, one {# issue} other {# issues}}",
+      "review": "{count, plural, one {# override to review} other {# overrides to review}}",
+      "reviewHelp": "{source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s."
     },
     "soldOut": {
       "mark": "Sold out tonight",
@@ -468,7 +652,7 @@
     "visibility": {
       "toggleItem": "Shown to guests: {name}",
       "toggleSection": "Section shown to guests",
-      "lockedByBarsy": "Hidden in barsy. Show it there.",
+      "lockedByTill": "Hidden in {source}. Show it there.",
       "lockedOther": "Hidden by another setting. Change it in the item.",
       "sectionHidden": "This section is hidden from guests.",
       "hideSection": "Hide section",
@@ -484,7 +668,10 @@
       "collapse": "Collapse {name}",
       "dragItem": "Drag {name}",
       "dragSection": "Drag {name}",
-      "removeFromSection": "Move to Unsorted"
+      "removeFromSection": "Move to Unsorted",
+      "rename": "Rename",
+      "deleteSection": "Delete section…",
+      "deleteItem": "Delete item…"
     },
     "dnd": {
       "instructions": "Press space to pick up, the arrow keys to move, space to drop, escape to cancel.",
@@ -497,7 +684,7 @@
     },
     "new": {
       "title": "New section",
-      "description": "Create a section of your own that does not come from barsy, for example “Tonight’s cocktails”.",
+      "description": "Create a section of your own, for example “Tonight’s cocktails”.",
       "parent": "Where",
       "topLevel": "Top level",
       "names": "Section name",
@@ -508,15 +695,31 @@
       "creating": "Creating…",
       "cancel": "Cancel"
     },
+    "newItem": {
+      "button": "New item",
+      "title": "New item",
+      "description": "It is added to “{section}”. Next you can fill in its allergens, description and photo.",
+      "names": "Item name",
+      "name": "Name ({language})",
+      "optional": "optional",
+      "nameRequired": "Enter a name in the main language.",
+      "price": "Price ({currency})",
+      "priceHelp": "For example 4.50. You can add or change it later.",
+      "priceInvalid": "Enter a price like 4.50, with at most two decimals.",
+      "create": "Create item",
+      "cancel": "Cancel"
+    },
     "itemSheet": {
       "stub": "Details, translations, photos and history arrive with the item sheet."
     },
     "errors": {
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
-      "not_allowed": "Only an owner or admin can mark items sold out.",
+      "not_allowed": "Only an owner or admin can do this.",
+      "till_venue": "This venue gets its items from the till: items cannot be created, renamed in the list or deleted here.",
       "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
-      "failed": "Something went wrong. The change was not saved, try again."
+      "failed": "Something went wrong. The change was not saved, try again.",
+      "till_section": "This section comes from {source}: it can be hidden, not deleted."
     },
     "issues": {
       "fallback": "Needs attention.",
@@ -526,15 +729,15 @@
       "V6": "Missing price.",
       "V7": "Not translated into {language}.",
       "V9": "This section has nothing to show yet.",
-      "stale_override": "barsy’s value changed since you overrode it.",
-      "link_missing": "Not found in barsy any more.",
-      "link_deleted": "Deleted in barsy.",
+      "stale_override": "{source}’s value changed since you overrode it.",
+      "link_missing": "Not found in {source} any more.",
+      "link_deleted": "Deleted in {source}.",
       "invalid_value": "A stored value is not valid.",
-      "ignored_value": "A value is ignored because barsy owns that field.",
+      "ignored_value": "A value is ignored because {source} owns that field.",
       "required_missing": "A required field is empty.",
       "group_min_max": "The minimum of a choice group is above its maximum.",
       "required_group_unsatisfiable": "A required choice has too few options.",
-      "translation_review": "barsy’s text changed. Check the {language} translation.",
+      "translation_review": "{source}’s text changed. Check the {language} translation.",
       "price_not_venue_scoped": "The price is not set for this venue.",
       "unplaced_item": "Not in any section.",
       "orphan_node": "Not attached to the menu."
@@ -561,6 +764,41 @@
       "restore": "Restore {name}",
       "restoreShort": "Restore"
     },
+    "guestFeatures": {
+      "title": "Guest features",
+      "description": "What guests can use on the menu on their phone. Changes reach guests with the next publish.",
+      "groups": {
+        "menu": "Menu",
+        "service": "Service at the table"
+      },
+      "filters": "Filters (diet and tags)",
+      "allergensAlways": "Allergen information is always shown",
+      "callWaiter": "Call a waiter",
+      "kinds": {
+        "legend": "Requests a guest can send",
+        "waiter": "Waiter",
+        "bill": "Bill",
+        "water": "Water",
+        "cutlery": "Cutlery",
+        "terminal": "Card terminal",
+        "other": "Other"
+      },
+      "otherNote": "Guests can say what they need in a short note.",
+      "kindsNone": "Tick at least one request, or switch Call a waiter off.",
+      "bill": "Show the table's bill",
+      "ordering": "Order from the phone",
+      "pay": "Pay from the phone",
+      "stage4": "Guests see this once ordering is connected (Stage 4)",
+      "stage5": "Guests see this once payment is connected (Stage 5)",
+      "save": "Save",
+      "saved": "Saved. Guests see it after the next publish",
+      "readOnly": "Only owners and admins can change these.",
+      "errors": {
+        "forbidden": "Only owners and admins can change guest features.",
+        "invalid": "These changes could not be saved. Reload the page and try again.",
+        "failed": "Something went wrong. Try again."
+      }
+    },
     "toolbar": {
       "selectAll": "Select all in this section",
       "filter": "Filter by tag",
@@ -584,77 +822,199 @@
     "chips": {
       "moreTags": "More tags: {names}",
       "moreDietary": "More dietary labels: {names}"
+    },
+    "subtabs": {
+      "label": "Composer view",
+      "structure": "Structure",
+      "design": "Design"
+    },
+    "menuBar": {
+      "label": "Menu and its layout",
+      "menu": "Menu",
+      "live": "Live",
+      "manage": "Manage menus",
+      "layout": "Menu layout",
+      "layouts": {
+        "list": "List",
+        "one_column": "One column",
+        "two_columns": "Two columns"
+      },
+      "guestSwitch": "Guests may switch the layout",
+      "saved": "Saved. Guests see it after the next publish"
+    },
+    "layout": {
+      "horizontal": "Horizontal row"
+    },
+    "rename": {
+      "save": "Save the name",
+      "cancel": "Cancel",
+      "section": "Rename {name}",
+      "sectionLabel": "Title of {name}",
+      "item": "Rename {name}",
+      "itemLabel": "Name of {name}"
+    },
+    "delete": {
+      "cancel": "Cancel",
+      "section": {
+        "title": "Delete {name}?",
+        "description": "The section and the sections inside it leave the menu. Their items move to Unsorted unless they are in another section too. The history keeps a record.",
+        "confirm": "Delete section"
+      },
+      "item": {
+        "title": "Delete {name}?",
+        "description": "The item leaves every menu of the venue and the composer. The history keeps a record.",
+        "confirm": "Delete item"
+      }
     }
   },
   "workspace": {
     "switchTab": "Switch tab",
+    "switchSection": "Switch section",
     "comingInStage": "Coming in Stage {stage}",
     "tabs": {
       "composer": "Composer",
       "tables": "Tables & QR",
-      "publishing": "Publishing",
-      "integration": "Integration",
+      "design": "Design",
       "settings": "Settings"
     },
-    "composer": {
-      "title": "Menu composer",
-      "description": "Arrange the menu that comes from barsy here: move items between sections, reorder them, and add images, descriptions and translations."
-    },
-    "tables": {
-      "title": "Tables & QR codes",
-      "description": "Every table from barsy gets its own QR code here, ready to print."
+    "settingsSections": {
+      "general": "General",
+      "publish": "Publish",
+      "versioning": "Versioning"
     },
     "settings": {
       "title": "Venue settings",
       "description": "How this venue keeps time, which languages and which currency it uses.",
       "name": "Name",
-      "slug": "Identifier",
+      "address": "Menu address",
       "timezone": "Time zone",
       "serviceDayEnd": "Service day ends at",
       "languages": "Languages",
       "defaultLanguage": "default",
       "currency": "Currency",
-      "readOnly": "These settings are read-only for now. Editing them arrives with the composer."
+      "readOnly": "The other settings are read-only for now. Editing them arrives with the composer.",
+      "rename": {
+        "label": "Venue name",
+        "help": "Shown in the admin and on the guest menu. Guests see a new name after the next publish.",
+        "save": "Save name",
+        "saving": "Saving…",
+        "saved": "Saved. Guests see the new name after the next publish.",
+        "invalid": "Enter a name of 1 to 120 characters.",
+        "errors": {
+          "not_allowed": "Only an owner or admin can rename a venue.",
+          "invalid": "This name cannot be used. Check it and try again.",
+          "venue_archived": "This venue was deleted.",
+          "failed": "Something went wrong. The name was not changed, try again."
+        }
+      },
+      "danger": {
+        "title": "Danger zone",
+        "description": "Deleting a venue takes it off guests' phones and out of the admin. Nothing is erased.",
+        "button": "Delete venue…",
+        "dialog": {
+          "title": "Delete {name}?",
+          "description": "This is what happens when you delete this venue:",
+          "effects": {
+            "admin": "It disappears from the admin: the sidebar, the venue list and its pages.",
+            "guests": "Its guest page and its table QR codes stop working: guests see that the menu is not available.",
+            "till": "Its link to the till is released, so the till venue is free for another venue, and syncing and publishing stop.",
+            "kept": "Nothing is erased. Its menu, tables and settings are kept, and you can restore it from Settings › Deleted venues."
+          },
+          "confirmLabel": "Type the venue name to confirm: {name}",
+          "cancel": "Cancel",
+          "confirm": "Delete venue",
+          "deleting": "Deleting…",
+          "deleted": "{name} was deleted.",
+          "deletedLate": "{name} was deleted, but its guest page could not be switched off just now. Restore it from Settings › Deleted venues and delete it again in a moment.",
+          "seeDeleted": "Deleted venues",
+          "errors": {
+            "not_allowed": "Only an owner can delete a venue.",
+            "invalid": "This venue could not be found.",
+            "name_mismatch": "The name does not match. Type it exactly as shown.",
+            "venue_archived": "This venue was deleted.",
+            "failed": "Something went wrong. The venue was not deleted, try again."
+          }
+        }
+      },
+      "slug": {
+        "label": "Address name",
+        "help": "Lower-case Latin letters, digits and single hyphens, for example demo-club. It must differ from the address names of your other venues.",
+        "keep": "Links that are already shared or printed keep working: guests who open an old address are taken to the new one.",
+        "suggest": "Suggest from the name",
+        "save": "Save address",
+        "saving": "Saving…",
+        "saved": "Address saved. Guests see the new name within a minute.",
+        "savedLate": "Address saved. The published files could not be updated just now: publish the menu to bring them up to date.",
+        "invalid": "Use lower-case Latin letters, digits and single hyphens, for example demo-club.",
+        "open": "Open",
+        "openTitle": "Open the menu in a new tab",
+        "errors": {
+          "not_allowed": "Only an owner or admin can change the address.",
+          "invalid": "This address cannot be used. Check it and try again.",
+          "taken": "Another venue of yours already has this address name. Choose another one.",
+          "failed": "Something went wrong. The address was not changed, try again."
+        }
+      }
     }
   },
   "publish": {
-    "readOnly": "You can see what is published. Only an owner or admin can publish, approve a held publish or return to an earlier version.",
-    "noMenu": {
-      "title": "No menu to publish yet",
-      "description": "Add items in the composer, or connect barsy, and the menu can be published from here."
-    },
     "actor": {
       "sync": "barsy sync",
       "system": "the system",
       "person": "a team member"
     },
+    "bar": {
+      "publish": "Publish",
+      "publishing": "Publishing…",
+      "choose": "Choose the menu to publish",
+      "venueAddress": "venue address",
+      "count": "{count, plural, one {# change} other {# changes}}",
+      "waiting": "{count, plural, one {# change waiting} other {# changes waiting}}",
+      "minor": "Small changes waiting",
+      "firstPublish": "Not published yet: guests see nothing until you publish.",
+      "pausedSame": "Nothing new; publishing resumes automatic publishing.",
+      "addressOffSame": "Nothing new; publishing switches the menu address back on.",
+      "openGuest": "Open the guest page",
+      "guestOff": "The menu address is switched off. Publish to put it back.",
+      "guestNothing": "Nothing is published yet.",
+      "reason": {
+        "role": "Only an owner or admin can publish.",
+        "busy": "Waiting for the publisher…",
+        "up_to_date": "Up to date: guests see the latest version.",
+        "allUpToDate": "Up to date: every menu is published as it is.",
+        "noMenu": "This venue has no menu yet.",
+        "no_visible_items": "Nothing visible to publish: show at least one item in the composer.",
+        "menu_blocked": "The menu cannot be published yet. Check the composer.",
+        "held_outdated": "The menu has changed since the publish was held.",
+        "held_not_found": "The held publish was already decided.",
+        "unsafe_snapshot": "The draft was refused by the safety check.",
+        "other": "The draft could not be prepared. Reload the page to try again."
+      }
+    },
+    "publishConfirm": {
+      "title": "Publish the menu?",
+      "titleMenu": "Publish {name}?",
+      "description": "Guests see these changes as soon as it is published.",
+      "notLive": "{name} is not the live menu. Guests see it in: {areas}.",
+      "notLiveUnrouted": "{name} is not the live menu and no area shows it, so guests do not see it yet.",
+      "same": "Nothing in the menu changed.",
+      "samePaused": "Nothing in the menu changed. Publishing resumes automatic publishing.",
+      "sameAddressOff": "Nothing in the menu changed. Publishing switches the menu address back on.",
+      "preview": "Preview",
+      "cancel": "Cancel"
+    },
     "live": {
-      "title": "On guests' phones now",
-      "description": "What guests see when they scan a table code or open the menu link.",
-      "version": "Version {version}",
-      "badge": "Live",
       "reason": {
         "manual": "Published by hand",
         "auto_sync": "Published automatically after a sync"
       },
-      "meta": "{reason}, {when}, by {who}",
-      "returned": "Returned to this version on {when} by {who}.",
-      "open": "Open the guest page",
-      "nothingTitle": "Nothing published yet",
-      "nothingText": "Guests see nothing until you publish. {count, plural, one {# item is ready.} other {# items are ready.}}",
-      "nothingTextPlain": "Guests see nothing until you publish."
+      "returned": "Returned to this version on {when} by {who}."
     },
     "changes": {
-      "title": "Changes waiting",
-      "description": "What would change on guests' phones if you published now.",
-      "upToDate": "Up to date",
-      "upToDateText": "The live menu is the same as the draft.",
       "allNew": "Everything is new: {count, plural, one {# item} other {# items}} will go live with the first publish.",
       "waiting": "{count, plural, one {# change waiting} other {# changes waiting}}",
       "minor": "Small changes waiting",
       "minorText": "The live menu differs from the draft in small details.",
-      "show": "Show the changes",
-      "hide": "Hide the changes",
       "summary": {
         "added": "{count} added",
         "hidden": "{count} hidden or removed",
@@ -680,31 +1040,10 @@
       },
       "arrow": "{from} → {to}",
       "noPrice": "no price",
-      "unnamed": "(no name)",
-      "blocked": {
-        "title": "The menu cannot be published yet",
-        "text": "Something blocks the whole menu, such as a missing language. Check the composer."
-      },
-      "nothingVisible": {
-        "title": "Nothing visible to publish",
-        "text": "Every item is hidden. Show at least one item in the composer, then publish."
-      },
-      "unavailable": {
-        "title": "The draft could not be prepared",
-        "text": "Reload the page to try again."
-      }
+      "unnamed": "(no name)"
     },
-    "stale": {
-      "title": "Overrides to review",
-      "text": "These items have your own value over barsy's, and barsy has changed since. Check them before you publish.",
-      "open": "Open {name}"
-    },
-    "publish": "Publish",
-    "publishing": "Publishing…",
-    "preview": "Preview",
     "dismiss": "Dismiss",
     "updatingFiles": "Updating what guests see…",
-    "nothingToPublish": "Nothing to publish",
     "outcome": {
       "published": "Version {version} is live",
       "publishedText": "Guests see it now.",
@@ -739,13 +1078,19 @@
       "outdatedText": "The menu has changed since this publish was held, so it can no longer be approved. Reject it, or publish the menu as it is now.",
       "publishNow": "Publish the menu as it is now"
     },
+    "addressOff": {
+      "title": "The menu address is switched off. Publish to put it back.",
+      "text": "Guests who open the menu or scan a table code see that the menu is not available. This happens after the venue was unpublished, or deleted and restored."
+    },
     "paused": {
-      "title": "Automatic publishing is paused because you returned to an older version. Publish to resume.",
-      "text": "Until then, changes from barsy wait in the draft and guests keep seeing the version above."
+      "title": "Automatic publishing is paused because you returned to an older version.",
+      "text": "Until you publish or resume it, changes from the till wait in the draft and guests keep seeing the version you returned to.",
+      "resume": "Resume automatic publishing",
+      "resuming": "Resuming…"
     },
     "history": {
       "title": "Versions",
-      "description": "Every publish and every return to an earlier version, newest first.",
+      "description": "The version guests see now and up to {kept} earlier ones you can return to, newest first.",
       "empty": "Nothing has been published yet.",
       "version": "Version {version}",
       "live": "Live",
@@ -755,13 +1100,12 @@
       "first": "First version",
       "noChange": "No visible change",
       "heldText": "Would have hidden {hidden} of {total} items",
-      "returnedTo": "Returned to version {version}",
-      "returnedToUnknown": "Returned to an earlier version",
       "return": "Return to this version",
-      "more": "Show older versions",
-      "loading": "Loading…",
-      "loadFailed": "Older versions could not be loaded. Try again.",
-      "listLabel": "Version history"
+      "listLabel": "Version history",
+      "liveMenu": "Live menu",
+      "noMenu": "This venue has no menu yet.",
+      "readOnly": "Only an owner or admin can return to an earlier version.",
+      "purge": "Earlier versions are erased {days} days after they were made (the live one never is), and the log of changes is kept for {logDays} days."
     },
     "confirm": {
       "title": "Return to version {version}?",
@@ -784,16 +1128,166 @@
       "light": "Light",
       "dark": "Dark",
       "frame": "Phone preview of the draft"
+    },
+    "automation": {
+      "title": "Automation",
+      "description": "How this venue reads its menu from {source}, and whether a sync goes live by itself. These settings are for this venue only.",
+      "sync": {
+        "legend": "Reading the menu from {source}",
+        "auto": "Automatically",
+        "autoHelp": "Checks {source} for changes on a schedule, and reads the whole menu once a day.",
+        "manual": "Only when I ask",
+        "manualHelp": "This venue is not read on a schedule: read it with “Sync this venue” in General. Items it shares with other venues can still change when those are read.",
+        "interval": "Check for changes every",
+        "minutes": "{count, plural, one {# minute} other {# minutes}}",
+        "fullRead": "Read the whole menu daily at",
+        "timeInvalid": "Enter a time as HH:MM, for example 12:00."
+      },
+      "afterSync": {
+        "legend": "After a sync",
+        "auto": "Publish automatically",
+        "autoHelp": "Guests see changes from {source} within about a minute. A sync that would hide more than 30% of the menu still waits for you.",
+        "manual": "Wait until I press Publish",
+        "manualHelp": "Changes from {source} wait until you publish them."
+      },
+      "inherited": "These are the settings the connection had before they moved to the venue. Saving makes them this venue’s own.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved. The settings apply from the next sync of this venue."
+    }
+  },
+  "venueMenus": {
+    "title": "Menus",
+    "description": "The venue’s menus. The live one is at the venue’s address; an area or a table can show another one (Tables & QR).",
+    "descriptionTill": "The menus come from the till: you can rename them, change their order and choose the live one.",
+    "live": "Live",
+    "venueNameNote": "(the venue’s name)",
+    "open": "Open {name} in the composer",
+    "up": "Move up",
+    "down": "Move down",
+    "rename": {
+      "open": "Rename",
+      "label": "Menu name",
+      "help": "Guests see this name at the top of the menu after the next publish.",
+      "save": "Save"
+    },
+    "delete": "Delete",
+    "deleteLive": "The live menu cannot be deleted: make another menu live first.",
+    "deleted": "Moved to Deleted menus.",
+    "restored": "Restored.",
+    "added": "Menu added.",
+    "imported": "Menu imported.",
+    "cancel": "Cancel",
+    "empty": "No menus yet. Add one.",
+    "emptyTill": "No menus yet: they appear after the first sync.",
+    "add": {
+      "open": "Add menu",
+      "label": "Name of the new menu",
+      "placeholder": "Name (empty = {name})",
+      "submit": "Add"
+    },
+    "setLive": {
+      "open": "Set live",
+      "title": "Make {name} the live menu?",
+      "description": "It is published now, and guests at the venue’s address and at tables without a menu of their own see it.",
+      "confirm": "Set live and publish",
+      "done": "It is the live menu now. Publishing it…",
+      "notQueued": "It is the live menu now, but it could not be published just now. Publish it from the top of the page."
+    },
+    "import": {
+      "open": "Import from another venue",
+      "title": "Import a menu",
+      "description": "Copies a menu of another venue made by hand into this one, once. Later changes to either menu stay apart.",
+      "loading": "Loading the venues…",
+      "loadFailed": "The venues could not be loaded. Close and try again.",
+      "none": "No other venue made by hand has a menu to import.",
+      "venue": "Venue",
+      "venuePlaceholder": "Choose a venue",
+      "menu": "Menu",
+      "menuPlaceholder": "Choose a menu",
+      "name": "Name of the copy",
+      "namePlaceholder": "Empty = the menu’s name",
+      "cancel": "Cancel",
+      "submit": "Import",
+      "importing": "Importing…"
+    },
+    "bin": {
+      "title": "{count, plural, one {Deleted menus (#)} other {Deleted menus (#)}}",
+      "description": "A deleted menu can be restored for {days} days; then it is erased.",
+      "when": "Deleted {deleted} · erased on {erased}",
+      "restore": "Restore"
+    },
+    "errors": {
+      "invalid_input": "That name or choice cannot be used. Check it and try again.",
+      "unknown_venue": "This venue was not found.",
+      "venue_archived": "This venue was deleted.",
+      "unknown_menu": "That menu was not found. Reload the page.",
+      "menu_deleted": "That menu is in Deleted menus. Restore it first.",
+      "menu_live": "The live menu cannot be deleted: make another menu live first.",
+      "till_venue": "This venue’s menus come from the till: they cannot be added, deleted or imported here.",
+      "unknown_source": "That menu cannot be imported any more. Choose another one.",
+      "not_allowed": "Only an owner or admin can change the menus.",
+      "invalid": "That request was not understood. Reload the page and try again.",
+      "failed": "Something went wrong. Nothing was changed; try again."
     }
   },
   "integration": {
-    "readOnly": "Only owners and admins can change the connection and the settings or start a sync. You can see the status and the history.",
+    "readOnly": "Only owners and admins can change the systems, the connections and their settings or start a sync. You can see the status and the history.",
+    "systems": {
+      "title": "Systems",
+      "description": "Choose the systems your venues get their menus from. Each chosen system gets its own tab below, where you add its connections.",
+      "legend": "Systems we support",
+      "instances": "{count, plural, =0 {no connections} one {# connection} other {# connections}}",
+      "keepHint": "{source} still has connections. Remove them before you unselect it.",
+      "save": "Save systems",
+      "saving": "Saving…",
+      "saved": "Systems saved."
+    },
+    "tabs": {
+      "label": "Chosen systems",
+      "empty": {
+        "title": "No system chosen yet",
+        "description": "Choose the systems you use above. Each one gets a tab for its connections."
+      }
+    },
+    "system": {
+      "add": "Add {source}",
+      "empty": {
+        "title": "No {source} connection yet",
+        "readOnly": "An owner or an admin can add one."
+      }
+    },
+    "add": {
+      "title": "Add {source}",
+      "description": "Another connection to a {source} installation. Give it a name you will recognise, for example the city or the brand.",
+      "namePlaceholder": "{source} – Sofia",
+      "nameHelp": "Optional. Left empty, the name is the system and the address."
+    },
+    "instance": {
+      "venues": {
+        "none": "No venue uses this connection yet.",
+        "used": "{count, plural, one {Used by # venue} other {Used by # venues}}: {venues}."
+      },
+      "remove": {
+        "button": "Remove",
+        "title": "Remove “{name}”?",
+        "description": "It leaves this list and is never synced again. Its credentials and history are kept. A connection that venues still use cannot be removed.",
+        "cancel": "Cancel",
+        "confirm": "Remove connection",
+        "removing": "Removing…"
+      }
+    },
     "connect": {
       "title": "Connection",
-      "description": "The barsy address and the API user this venue's menu is read with. The password is sealed on the server: it cannot be read back, not even here.",
-      "host": "barsy address",
-      "hostHelp": "The https address of the installation, for example https://club.barsyonline.com.",
-      "hostPlaceholder": "https://club.barsyonline.com",
+      "description": "The {source} address and the API user this connection is read with. The password is sealed on the server: it cannot be read back, not even here.",
+      "name": {
+        "label": "Name",
+        "rename": "Rename",
+        "save": "Save name"
+      },
+      "host": "{source} address",
+      "hostHelp": "The https address of the installation, for example {example}.",
+      "hostHelpPlain": "The https address of the installation.",
       "user": "API user",
       "password": "Password",
       "save": "Save and check",
@@ -813,7 +1307,7 @@
     },
     "status": {
       "title": "Status",
-      "description": "Whether Restro can reach barsy with the saved credentials.",
+      "description": "Whether Restro can reach {source} with the saved credentials.",
       "state": {
         "new": "Not checked yet",
         "connected": "Connected",
@@ -822,145 +1316,53 @@
       "address": "Address",
       "lastChecked": "Last checked",
       "never": "Never",
-      "noIntegration": "Not connected to barsy yet.",
       "activeConnect": "Checking the connection…",
       "activePull": "A sync is queued or running…",
       "checkAgain": "Check again",
-      "checkQueued": "The connection check is queued."
+      "checkQueued": "The connection check is queued.",
+      "held": {
+        "title": "The last full sync of {venue} was held back",
+        "titleNoVenue": "The last full sync was held back",
+        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.",
+        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}."
+      }
     },
     "statusDetail": {
       "wrong_credentials": "Wrong user or password.",
-      "host_refused": "This barsy address is not allowed.",
-      "credentials_unreadable": "The saved credentials cannot be read. Enter them again."
-    },
-    "barsyVenue": {
-      "title": "barsy venue",
-      "description": "One barsy installation can hold several venues. Choose the one that is this venue.",
-      "legend": "barsy venues",
-      "empty": {
-        "title": "No barsy venues yet",
-        "description": "They appear after the connection check succeeds."
-      },
-      "usedBy": "Used by {venue}",
-      "switchHint": "Choosing another barsy venue moves this venue to it. Items already read stay in the menu; the next full sync decides which of them still exist."
-    },
-    "catalogue": {
-      "title": "Menu catalogue",
-      "description": "One barsy installation can hold several menus in one category tree. Choose the category whose sub-categories make up this venue's menu.",
-      "legend": "Categories",
-      "needVenue": "Choose the barsy venue first.",
-      "empty": {
-        "title": "No categories yet",
-        "description": "The category tree is read when the connection is checked."
-      },
-      "children": "{count, plural, =0 {no sub-categories} one {# sub-category} other {# sub-categories}}",
-      "expand": "Show the sub-categories of {name}",
-      "collapse": "Hide the sub-categories of {name}",
-      "readAt": "Read {when}",
-      "unknownRoot": "The chosen category is no longer in the tree."
-    },
-    "mapping": {
-      "title": "Mapping settings",
-      "description": "How barsy's data becomes menu fields. A change applies from the next sync.",
-      "price": {
-        "legend": "Price shown",
-        "default": "default",
-        "actual": "Base price",
-        "actualHelp": "barsy's regular price of the article.",
-        "current": "Current price",
-        "currentHelp": "The price barsy charges right now; it can change during the day."
-      },
-      "allergen": {
-        "label": "Allergen characteristic",
-        "auto": "Detect automatically",
-        "autoFound": "Detect automatically ({name})",
-        "autoNone": "Detect automatically (none found yet)",
-        "help": "The barsy characteristic that lists the allergens of an article. Automatic detection looks for \"Алергени\" or \"Allergens\".",
-        "noOptions": "The list of characteristics is read when the connection is checked."
-      },
-      "locale": {
-        "label": "Default language",
-        "help": "The language that barsy text without a language tag is stored in."
-      },
-      "save": "Save settings",
-      "saving": "Saving…",
-      "saved": "Settings saved. They apply from the next sync."
+      "host_refused": "This {source} address is not allowed.",
+      "credentials_unreadable": "The saved credentials cannot be read. Enter them again.",
+      "currency_not_eur": "The till's main currency is not EUR; Restro shows prices in EUR only."
     },
     "sync": {
-      "title": "Sync",
-      "description": "Reads the menu from barsy now. Below you choose when it also runs by itself and whether a sync goes live on its own.",
-      "button": "Sync now",
+      "title": "Sync everything",
+      "description": "Reads the menu from {source} for every venue that uses this connection. Each venue sets its own automatic syncing.",
+      "button": "Sync everything now",
       "starting": "Starting…",
-      "queued": "The sync is queued.",
-      "lastSynced": "Last synced {when}",
-      "neverSynced": "Not synced yet.",
+      "queued": "{count, plural, =0 {Nothing was queued.} one {# sync is queued.} other {# syncs are queued.}}",
       "blocked": {
         "not_manager": "Only owners and admins can start a sync.",
-        "no_credentials": "Save the barsy credentials first.",
+        "no_credentials": "Save the {source} credentials first.",
         "checking": "The connection is being checked. Wait until it finishes.",
-        "not_connected": "The connection to barsy has to work first. See the status above.",
-        "no_barsy_venue": "Choose the barsy venue first.",
-        "no_root": "Choose the menu catalogue first.",
+        "not_connected": "The connection to {source} has to work first. See the status above.",
+        "no_till_venue": "No venue uses this connection yet.",
+        "no_menu": "{source} has not reported the menus of its venues yet. Check the connection again.",
         "busy": "A sync is already queued or running."
-      },
-      "settings": {
-        "heading": "Automatic syncing",
-        "incremental": {
-          "label": "Check for changes automatically",
-          "help": "Reads only what changed in barsy since the last check.",
-          "every": "Check every",
-          "minutes": "{minutes, plural, one {# minute} other {# minutes}}"
-        },
-        "fullPull": {
-          "label": "Read the whole catalogue once a day",
-          "help": "Also notices what was deleted in barsy. Best at a quiet hour.",
-          "time": "Time of day",
-          "timeHelp": "Venue time ({zone})."
-        },
-        "afterSync": {
-          "legend": "After a sync",
-          "auto": "Publish automatically",
-          "autoHelp": "Guests see changes from barsy within about a minute.",
-          "manual": "Wait until I press Publish",
-          "manualHelp": "Changes from barsy wait until you publish them in the Publishing tab."
-        },
-        "newItems": {
-          "legend": "New items from barsy",
-          "show": "Show them on the menu",
-          "showHelp": "A new item is on the menu with the next publish.",
-          "hold": "Keep them hidden until I review them",
-          "holdHelp": "New items stay hidden in the composer until you show them."
-        },
-        "next": {
-          "both": "Next change check about {incremental}. Next full read {fullPull}.",
-          "incremental": "Next change check about {incremental}.",
-          "fullPull": "Next full read {fullPull}.",
-          "none": "Automatic syncing is switched off.",
-          "inactive": "Automatic syncing starts once the connection works and the catalogue is chosen."
-        },
-        "save": "Save automatic sync",
-        "saving": "Saving…",
-        "saved": "Saved. It applies from the next minute."
       }
     },
     "history": {
       "title": "Sync history",
-      "description": "The latest 20 runs of this integration, newest first.",
+      "description": "The latest 20 runs of every venue of this connection, newest first.",
+      "venueTitle": "This venue’s sync history",
+      "last": "Last run: {kind} · {status} · {when}",
+      "show": "Show the last {count, plural, one {run} other {# runs}}",
+      "hide": "Hide the list",
       "empty": {
         "title": "No sync yet",
         "description": "Runs appear here after the first connection check or sync."
       },
-      "columns": {
-        "run": "Run",
-        "started": "Started",
-        "duration": "Duration",
-        "status": "Status"
-      },
       "kind": {
-        "barsy_connect": "Connection check",
-        "barsy_full_pull": "Full sync",
-        "barsy_incremental": "Quick sync",
-        "other": "Other"
+        "other": "Other",
+        "places_read": "Tables read"
       },
       "status": {
         "queued": "Queued",
@@ -985,7 +1387,7 @@
         "failed_pages": "Failed pages",
         "refused_writes": "Refused writes",
         "items_held": "Held for review",
-        "venues": "barsy venues",
+        "venues": "{source} venues",
         "languages": "Languages"
       },
       "deletionSkipped": "Deletion check skipped",
@@ -1004,70 +1406,208 @@
         "less_cautious": "Would make the menu less cautious than the till",
         "layer_not_allowed": "This source may not write this field",
         "unknown_field": "Unknown field",
-        "not_linked": "Not linked to barsy",
+        "not_linked": "Not linked to {source}",
         "unknown_node": "Unknown item",
         "unknown_link": "Unknown link",
-        "link_taken": "The barsy object is linked to another item",
-        "already_linked": "The item already has a barsy link"
-      }
+        "link_taken": "The {source} object is linked to another item",
+        "already_linked": "The item already has a {source} link"
+      },
+      "held": "Held"
     },
     "errors": {
       "not_allowed": "Only owners and admins can do this.",
-      "not_found": "The venue or the barsy venue could not be found.",
+      "not_found": "The connection or the venue could not be found.",
       "invalid": "That input is not valid.",
-      "invalid_host": "Enter the https address of the barsy installation, without a port or a path.",
+      "invalid_host": "Enter the https address of the {source} installation, without a port or a path.",
       "sync_keys_missing": "The sync keys are not set up. Ask the Restro team.",
-      "host_in_use": "Another connection of this organisation already uses that address.",
-      "barsy_venue_taken": "That barsy venue already belongs to another venue.",
+      "host_in_use": "Another {source} connection of this organisation already uses that address.",
+      "host_change_blocked": "This connection already serves venues or holds a menu from another installation. Changing the address would mix the two. Add another {source} connection instead.",
+      "has_instances": "{source} still has connections. Remove them before you unselect it.",
+      "has_venues": "Venues still use this connection. Delete those venues first, then remove the connection.",
+      "system_not_chosen": "Choose {source} in the systems above first.",
       "not_ready": "Not ready yet: finish the earlier steps first.",
       "already_running": "A sync is already queued or running.",
       "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
       "failed": "Something went wrong. Try again."
     }
   },
+  "menuSource": {
+    "title": "Menu source",
+    "description": "Where this venue’s menu comes from: the {source} connection and the venue in it. It is chosen when the venue is created and does not change.",
+    "readOnly": "Only owners and admins can change the menu source or start a sync. You can see what is set.",
+    "instance": {
+      "label": "Connection"
+    },
+    "venue": {
+      "label": "Venue in {source}"
+    },
+    "sync": {
+      "button": "Sync this venue",
+      "starting": "Starting…",
+      "queued": "The sync is queued.",
+      "lastSynced": "Last synced {when}",
+      "neverSynced": "Not synced yet.",
+      "blocked": {
+        "not_manager": "Only owners and admins can start a sync.",
+        "no_credentials": "Save the {source} credentials first, in Settings → Integrations.",
+        "checking": "The connection is being checked. Wait until it finishes.",
+        "not_connected": "The connection to {source} has to work first. See Settings → Integrations.",
+        "no_till_venue": "This venue has no venue in {source}.",
+        "no_menu": "{source} has not reported the menus of this venue yet. Check the connection again.",
+        "busy": "A sync is already queued or running."
+      },
+      "held": {
+        "title": "The last full sync was held back",
+        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.",
+        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}."
+      }
+    }
+  },
+  "connectors": {
+    "barsy": {
+      "connect": {
+        "hostExample": "https://club.barsyonline.com"
+      },
+      "runKinds": {
+        "barsy_connect": "Connection check",
+        "barsy_full_pull": "Full sync",
+        "barsy_incremental": "Quick sync"
+      },
+      "settings": {
+        "title": "How barsy data is read",
+        "description": "Set once for the whole installation, and the same for every venue that uses this connection. A change applies from the next sync.",
+        "allergen": {
+          "label": "Allergen characteristic",
+          "auto": "Detect automatically",
+          "autoFound": "Detect automatically ({name})",
+          "autoNone": "Detect automatically (none found yet)",
+          "help": "The barsy characteristic that lists the allergens of an article. Automatic detection looks for \"Алергени\" or \"Allergens\".",
+          "noOptions": "The list of characteristics is read when the connection is checked."
+        },
+        "locale": {
+          "label": "Language of untagged text",
+          "help": "The language that barsy text without a language tag is stored in."
+        },
+        "save": "Save settings",
+        "saving": "Saving…",
+        "saved": "Settings saved. They apply from the next sync."
+      },
+      "price": {
+        "legend": "Price shown",
+        "default": "default",
+        "actual": "Base price",
+        "actualHelp": "The article’s regular price in barsy.",
+        "current": "Current price",
+        "currentHelp": "The price barsy charges right now; it can change during the day.",
+        "warning": "Current price follows barsy’s price rules for this venue. Time-based rules, such as a happy hour, may show late in the menu until Lukanet confirms how barsy reports them.",
+        "save": "Save price",
+        "saving": "Saving…",
+        "saved": "Saved. It applies from the next sync."
+      }
+    }
+  },
   "tables": {
     "title": "Tables & QR codes",
-    "intro": "Each table from barsy can have a QR code. A guest who scans it opens this venue's menu with the table's name at the top.",
+    "intro": "Each table can have a QR code. A guest who scans it opens this venue's menu with the table's name at the top. Every area is a section and every table a card; the card's menu holds its actions.",
+    "introTill": "Areas and tables come from {source}. Here you can rename, reorder and hide them; {source} creates and removes them.",
+    "introHand": "You make the areas and tables of this venue yourself: add them here.",
     "summary": "{total, plural, one {# table} other {# tables}}, {coded} with a code",
-    "readOnly": "Only owners and admins can create, change or turn off codes and change the address. You can look at the codes and print them.",
+    "readOnly": "Only owners and admins can change codes, areas, tables and menus. You can look at the codes and print them.",
+    "venueMenu": "The venue's live menu is the default: {menu}. An area or a table can show another menu instead. You choose the live menu in the venue's Settings.",
+    "venueMenuNone": "This venue has no menu yet. An area or a table shows the live menu once the venue has one.",
     "empty": {
       "title": "No tables yet",
-      "description": "Tables come from barsy. Connect barsy and choose this venue's barsy venue in the Integration tab. The tables appear after the next full sync.",
-      "action": "Go to Integration"
+      "description": "Areas and tables come from {source}. They appear at its next read. A venue without a till adds its own areas and tables.",
+      "action": "Go to the Menu source"
+    },
+    "emptyHand": {
+      "title": "No areas yet",
+      "description": "Add an area (for example Terrace or Main hall), then add its tables."
     },
     "createAll": "Create codes for all tables",
     "createAllWorking": "Creating codes…",
     "created": "{count, plural, one {# code created.} other {# codes created.}}",
     "createdNone": "Every table already has a code.",
-    "skipped": "{count, plural, one {# table was left out: it has no number from barsy and no name.} other {# tables were left out: they have no number from barsy and no name.}}",
+    "skipped": "{count, plural, one {# table was left out: it has no number and no name.} other {# tables were left out: they have no number and no name.}}",
     "printSheet": "Print sheet",
     "printNone": "Create a code first, then print.",
     "queuedLate": "Saved, but the public page of the code could not be refreshed yet. If a scanned code says it is not active, wait a minute or ask your administrator.",
     "halls": {
-      "none": "No hall",
       "count": "{count, plural, one {# table} other {# tables}}"
     },
-    "row": {
-      "nameLabel": "Name of table {number} on the guest menu",
-      "namePlaceholder": "Name (optional)",
-      "number": "barsy number: {number}",
-      "noNumber": "no number",
-      "public": "Public",
+    "area": {
+      "nameLabel": "Name of the area",
+      "nameSaved": "Area name saved.",
       "hidden": "Hidden",
-      "missing": "Not in barsy's last list",
+      "hiddenHelp": "Hidden: its tables have no guest page and their codes are paused.",
+      "actions": "Actions for the area {name}",
+      "hide": "Hide area",
+      "show": "Show area",
+      "moveUp": "Move area up",
+      "moveDown": "Move area down",
+      "delete": "Delete area",
+      "addTable": "Add table",
+      "noTables": "No tables in this area yet.",
+      "hiddenDone": "Area hidden. Its codes are paused.",
+      "shownDone": "Area shown.",
+      "moved": "Order saved.",
+      "deleted": "Area deleted."
+    },
+    "confirmDeleteArea": {
+      "title": "Delete the area {name}?",
+      "description": "Its tables are deleted with it. Stickers already printed with their codes stop working: they will say the code is not active.",
+      "confirm": "Delete area"
+    },
+    "addArea": {
+      "title": "Add area",
+      "label": "Name of the new area",
+      "placeholder": "For example Terrace",
+      "button": "Add area",
+      "done": "Area added."
+    },
+    "addTable": {
+      "title": "Add a table to {area}",
+      "number": "Number",
+      "name": "Name guests see (optional)",
+      "button": "Add table",
+      "done": "Table added."
+    },
+    "row": {
+      "nameLabel": "Name guests see",
+      "namePlaceholder": "Name (optional)",
+      "fromSource": "from {source}: {number}",
+      "numberLabel": "Number",
+      "noNumber": "no number",
+      "hidden": "Hidden",
       "codeActive": "Code active",
       "codeNone": "No code",
+      "codePaused": "Code paused",
+      "menu": "Menu: {menu}",
+      "menuNone": "Menu: none published yet",
+      "overrides": "Overrides",
+      "actions": "Actions for table {table}",
       "createCode": "Create code",
       "newCode": "New code",
       "turnOff": "Turn off code",
+      "hide": "Hide table",
+      "show": "Show table",
+      "moveUp": "Move table up",
+      "moveDown": "Move table down",
+      "moveTo": "Move to {area}",
+      "delete": "Delete table",
       "downloadPng": "Download PNG",
       "downloadSvg": "Download SVG",
       "enlarge": "Enlarge the QR code of table {table}",
       "qrAlt": "QR code of table {table}",
       "nameSaved": "Name saved.",
+      "numberSaved": "Number saved.",
       "codeCreated": "Code created.",
       "codeRenewed": "New code made. The old one stopped working.",
-      "codeOff": "Code turned off."
+      "codeOff": "Code turned off.",
+      "hiddenDone": "Table hidden. Its code is paused.",
+      "shownDone": "Table shown.",
+      "moved": "Table moved.",
+      "deleted": "Table deleted."
     },
     "confirmNew": {
       "title": "Make a new code for table {table}?",
@@ -1079,6 +1619,27 @@
       "description": "A guest who scans the printed sticker will be told the code is not active. You can create a new code later.",
       "confirm": "Turn off"
     },
+    "confirmDeleteTable": {
+      "title": "Delete table {table}?",
+      "description": "Its code stops working: a guest who scans the printed sticker will be told the code is not active.",
+      "confirm": "Delete table"
+    },
+    "route": {
+      "label": "Menu for {target}",
+      "value": "Menu: {menu}",
+      "inheritVenue": "Venue's ({menu})",
+      "inheritArea": "Area's ({menu})",
+      "inheritNone": "none published yet",
+      "sameAsVenue": "Same as the venue",
+      "sameAsArea": "Same as the area",
+      "liveMark": "{name} (live)",
+      "notPublished": "Not published yet: guests see {menu} for now.",
+      "notPublishedNone": "Not published yet: guests see no menu from this code.",
+      "saved": "Menu saved.",
+      "cleared": "Menu choice removed.",
+      "area": "the area {name}",
+      "table": "table {table}"
+    },
     "cancel": "Cancel",
     "qrDialog": {
       "title": "QR code of table {table}",
@@ -1087,52 +1648,33 @@
     },
     "address": {
       "title": "Address in the codes",
-      "description": "Where a code leads when someone scans it. Stickers you have already printed keep the address they were printed with, so set this before you print.",
-      "mode": "Which address do the codes carry?",
+      "description": "Where a code leads when someone scans it.",
       "ours": "Our link",
-      "oursHelp": "Nothing to set up: the code opens this app's table link.",
       "own": "The venue's own link",
-      "ownHelp": "A link on your own website address that forwards to ours. If our address ever changes, your stickers keep working.",
       "baseUrl": "Base address",
-      "baseUrlHelp": "The address of this app. To scan from a phone on the same Wi-Fi while we build, use this PC's network address, for example http://192.168.1.20:3000.",
-      "baseUrlDefault": "Using the default address of this installation.",
-      "baseUrlMissing": "This installation has no default address. Type the address of this app.",
-      "useDefault": "Use the default ({address})",
       "pattern": "Link pattern",
-      "patternHelp": "Your address with {placeholder} where the table's code goes, for example https://menu.example.com/t/{placeholder}. It must forward to our table link.",
-      "guide": "How do I use my own link?",
-      "preview": "Address in the code of table {table}",
-      "previewExample": "Example of an address (no table has a code yet)",
-      "testLink": "Open test link",
-      "testLinkHint": "Opens this address in a new browser tab. If the menu opens there, the link works.",
-      "testLinkNone": "Create a code for a table first, then test the link.",
-      "unsaved": "Not saved yet. The codes below change when you save.",
       "save": "Save address",
-      "saving": "Saving…",
-      "saved": "Address saved. The codes below use it now."
-    },
-    "problems": {
-      "empty": "Type an address.",
-      "too_long": "This address is too long.",
-      "whitespace": "The address must not contain spaces.",
-      "not_a_url": "This is not an address. Start it with https://",
-      "not_https": "Use https://. Plain http:// works only for this PC and the local network.",
-      "credentials": "Leave out any user name and password.",
-      "query_or_fragment": "Leave out the part after # (and, in the base address, after ?).",
-      "missing_token": "The pattern needs {placeholder} where the table's code goes.",
-      "token_in_host": "{placeholder} must come after the domain name, not inside it.",
-      "unknown_placeholder": "Only {placeholder} can be written in curly brackets."
+      "leads": "Codes lead to",
+      "none": "This installation has no address configured yet, so no code can be drawn. Ask your administrator.",
+      "warning": "Stickers you have already printed keep the address they were printed with. Our address keeps working even after you add a domain of your own.",
+      "domainLater": "A domain of your own for the codes comes later.",
+      "testLink": "Open test link",
+      "testLinkHint": "Opens the address of a table in a new browser tab. If the menu opens there, the link works.",
+      "testLinkNone": "Create a code for a table first, then test the link."
     },
     "errors": {
       "invalid": "That did not work: check what you typed.",
       "forbidden": "Only owners and admins can do this.",
-      "not_found": "This table or venue is not there any more. Reload the page.",
-      "no_label": "This table has no number from barsy. Give it a name first.",
+      "not_found": "This table, area or venue is not there any more. Reload the page.",
+      "no_label": "A table needs a name or a number.",
+      "hidden": "A hidden table gets no code. Show it first.",
+      "from_till": "This venue's areas and tables come from {source}: you can rename, reorder and hide them, not create, delete or renumber them.",
+      "unknown_menu": "This menu is not available any more. Choose another one.",
       "failed": "Something went wrong. Try again."
     },
     "print": {
       "title": "Print sheet: tables of {venue}",
-      "intro": "Six codes on each A4 page. Click Print / Save as PDF, choose A4 and switch headers and footers off.",
+      "intro": "Six codes on each A4 page, area by area. Hidden areas and tables are left out. Click Print / Save as PDF, choose A4 and switch headers and footers off.",
       "button": "Print / Save as PDF",
       "back": "Back to Tables & QR",
       "empty": "No table has a code yet. Create the codes in the Tables & QR tab first.",
@@ -1152,52 +1694,258 @@
     "title": "This table code is not active.",
     "text": "Ask the staff."
   },
-  "appearance": {
-    "title": "Appearance",
-    "description": "How your guest menu looks: one brand colour and your logo. The other colours are worked out from it, so text always stays easy to read.",
-    "readOnly": "Only owners and admins can change the appearance.",
-    "brand": "Brand colour",
-    "brandHelp": "Pick a colour, choose one of the suggestions or type it as #rrggbb.",
-    "brandPicker": "Colour picker",
-    "brandInvalid": "Enter a colour like #3366cc.",
-    "swatches": "Suggested colours",
-    "clearBrand": "Use the default grey",
-    "logo": "Logo",
-    "logoHelp": "JPEG, PNG or WebP, up to 10 MB. A wide logo on a transparent background works best.",
-    "logoUpload": "Upload a logo",
-    "logoReplace": "Replace logo",
-    "logoRemove": "Remove logo",
-    "logoUploading": "Uploading…",
-    "logoCurrent": "Current logo",
-    "logoPending": "The new logo shows in the preview after you save.",
-    "previewTitle": "Preview",
-    "previewHint": "The colours a guest sees, worked out from the brand colour.",
-    "previewLight": "Light screen",
-    "previewDark": "Dark screen",
-    "sampleSection": "Cocktails",
-    "sampleName": "Sample item",
-    "sampleText": "A line of description under the name.",
-    "samplePrice": "12,50 €",
-    "sampleChip": "Selected",
-    "pairs": {
-      "page": "Page",
-      "card": "Card",
-      "accent": "Accent",
-      "onAccent": "Text on accent",
-      "text": "Text",
-      "muted": "Secondary text",
-      "accentText": "Accent as text",
-      "ratio": "{ratio}:1"
-    },
-    "save": "Save appearance",
+  "design": {
+    "readOnly": "Only owners and admins can change the design. You can see how it looks.",
+    "save": "Save look",
     "saving": "Saving…",
-    "saved": "Appearance saved. Guests see it after the next publish.",
+    "saved": "Saved. Guests see it after the next publish.",
+    "status": {
+      "clean": "Nothing to save.",
+      "unsaved": "Unsaved changes. The preview already shows them.",
+      "invalid": "A colour is not complete yet. Enter it like #3366cc.",
+      "unreadable": "Some text would be hard to read. Fix the colours marked in red to save."
+    },
     "errors": {
-      "invalid": "Check the colour and try again.",
-      "forbidden": "Only owners and admins can change the appearance.",
+      "invalid": "Check the look and try again.",
+      "forbidden": "Only owners and admins can change the design.",
       "not_found": "This venue could not be found.",
+      "unknown_face": "That template is not available.",
       "logo_not_usable": "That logo could not be used. Upload it again.",
+      "unreadable": "The look was not saved: some text would be hard to read.",
       "failed": "Something went wrong. Try again."
+    },
+    "templates": {
+      "title": "Template",
+      "description": "The layout guests see when they scan a QR code. You can change it at any time; the menu itself stays the same.",
+      "inUse": "In use",
+      "use": "Use this template",
+      "useNamed": "Use this template: {name}",
+      "thumbnailAlt": "Picture of the {name} template",
+      "hiddenInUse": "This venue uses a technical test template that is not offered to venues. Choose a template below to switch.",
+      "current": "Template: {name}",
+      "change": "Change",
+      "browse": "See templates",
+      "close": "Close",
+      "preview": "Preview",
+      "previewNamed": "Preview the template {name}",
+      "previewTitle": "Preview: {name}",
+      "previewDescription": "Your menu in this template, with the look you are editing, saved or not. No table is chosen, so only the menu shows."
+    },
+    "lookOptions": {
+      "title": "How this template looks",
+      "help": "Options of the chosen template. They are saved as soon as you change them.",
+      "values": {
+        "list": "List",
+        "one": "One column",
+        "two": "Two columns"
+      }
+    },
+    "logoName": {
+      "title": "Logo and name",
+      "description": "The logo and the name guests see at the top of this menu."
+    },
+    "headerName": {
+      "label": "Name at the top of the menu",
+      "help": "Guests see it as the title of this menu. Leave it empty to use the venue's name ({venue}).",
+      "save": "Save name",
+      "saving": "Saving…",
+      "saved": "Name saved. Guests see it after the next publish.",
+      "noMenu": "This venue has no menu yet. Add one in Structure to give it a name."
+    },
+    "colours": {
+      "title": "Colours",
+      "description": "Start with your brand colour. The page and the panels are filled in from it and you can change them. Every other colour is worked out for you, so text stays easy to read.",
+      "invalid": "Enter a colour like #3366cc.",
+      "tertiary": {
+        "name": "Your brand colour",
+        "help": "The colour of your brand: buttons, badges and highlights. About 10% of what guests see. The page and the panels below are filled in from it.",
+        "picker": "Pick your brand colour",
+        "placeholder": "Not chosen yet"
+      },
+      "primary": {
+        "name": "Page",
+        "help": "The background of the whole menu. A calm tint of your brand colour until you change it.",
+        "picker": "Pick the page colour"
+      },
+      "secondary": {
+        "name": "Panels",
+        "help": "Behind photos, cards and the header. Filled in from your brand colour until you change it.",
+        "picker": "Pick the panels colour"
+      },
+      "followBrand": "Use tints of my brand colour again",
+      "saturated": "This page colour is strongly saturated. A calm, light tint usually looks best behind photos and text.",
+      "paleHighlight": "Your brand colour stands out less than 3:1 against the page ({screens}), so it stays as you chose it.",
+      "suggest": "Suggest with colour theory",
+      "suggestHelp": "Works out the page and the panels from your brand colour, which stays as it is.",
+      "rules": {
+        "complementary": {
+          "name": "Complementary",
+          "help": "Opposite on the colour wheel: the page and panels lean towards the opposite of the highlight."
+        },
+        "analogous": {
+          "name": "Analogous",
+          "help": "Neighbours on the colour wheel: calm and harmonious."
+        },
+        "triadic": {
+          "name": "Triadic",
+          "help": "Three evenly spaced colours: lively but balanced."
+        },
+        "split_complementary": {
+          "name": "Split complementary",
+          "help": "The two neighbours of the opposite colour: contrast without harshness."
+        },
+        "monochrome": {
+          "name": "Monochrome",
+          "help": "One hue in different tints: the most restrained look."
+        }
+      }
+    },
+    "roles": {
+      "help": "The colours worked out for you, for a light and a dark phone screen, with how well text reads on each. Change one only if you need to: a colour that is hard to read cannot be saved.",
+      "screens": {
+        "light": "Light screen",
+        "dark": "Dark screen"
+      },
+      "background": {
+        "name": "Page",
+        "help": "The main background: the menu and the dish page."
+      },
+      "surface": {
+        "name": "Panels",
+        "help": "Behind photos and on selected options."
+      },
+      "accent": {
+        "name": "Highlights",
+        "help": "Badges, the main buttons and the order count."
+      },
+      "on_accent": {
+        "name": "Text on highlights",
+        "help": "Writing on badges and buttons."
+      },
+      "text": {
+        "name": "Text",
+        "help": "Names, prices and body text."
+      },
+      "muted": {
+        "name": "Secondary text",
+        "help": "Descriptions, portions and small details."
+      },
+      "accent_text": {
+        "name": "Highlight as text",
+        "help": "Emphasis, the underline of the category and focus outlines."
+      },
+      "border": {
+        "name": "Borders",
+        "help": "Separators and outlines."
+      },
+      "swatch": "{role}: {colour}",
+      "pairsLabel": "Contrast of {role}",
+      "pair": "{other} {ratio}:1",
+      "needs": "needs {min}:1",
+      "noPairs": "No reading requirement.",
+      "adjust": "Adjust",
+      "adjustAria": "Adjust {role}, {screen}",
+      "done": "Done",
+      "reset": "Reset to derived",
+      "resetAria": "Reset {role}, {screen}, to the derived colour",
+      "picker": "Pick a colour for {role}, {screen}",
+      "hex": "Colour code for {role}, {screen}",
+      "invalid": "Enter a colour like #3366cc.",
+      "adjusted": "Adjusted",
+      "derivedWas": "Derived colour: {colour}",
+      "unreadableTitle": "These colours are hard to read",
+      "unreadableItem": "{screen}: {fg} on {bg} reads at {ratio}:1, needs {min}:1.",
+      "advanced": "Advanced",
+      "resetAll": "Reset all adjusted colours",
+      "lightFromPickers": "The light screen's one is set above.",
+      "more": {
+        "title": "More colours worked out for you",
+        "help": "Status colours, disabled text, selected options, the focus ring, the sheet backdrop and the strong border. They follow from the colours above and cannot be adjusted yet."
+      },
+      "unreadableHelp": "Adjust or reset the colours marked in red under Advanced.",
+      "error": {
+        "name": "Error colour",
+        "help": "Error marks and warnings."
+      },
+      "error_text": {
+        "name": "Error text",
+        "help": "Error messages written as text."
+      },
+      "success": {
+        "name": "Success colour",
+        "help": "Confirmation marks."
+      },
+      "success_text": {
+        "name": "Success text",
+        "help": "Confirmations written as text."
+      },
+      "disabled_text": {
+        "name": "Disabled text",
+        "help": "Sold-out and switched-off items."
+      },
+      "selected": {
+        "name": "Selected option",
+        "help": "The soft fill behind a chosen filter or option."
+      },
+      "selected_text": {
+        "name": "Text on selected",
+        "help": "Writing on the selected fill."
+      },
+      "focus": {
+        "name": "Focus ring",
+        "help": "The outline around what the keyboard is on."
+      },
+      "backdrop": {
+        "name": "Sheet backdrop",
+        "help": "The dimmed colour behind a sheet."
+      },
+      "border_strong": {
+        "name": "Strong border",
+        "help": "Outlines of buttons and fields, clear against the page and the panels."
+      }
+    },
+    "style": {
+      "title": "Font, corners, shadow and screen",
+      "description": "How the menu is lettered and shaped, and when it is light or dark.",
+      "font": "Font",
+      "fontHelp": "Six fonts with Bulgarian letters. One font is used for the whole menu.",
+      "sample": "Меню · Menu 12,50 €",
+      "kinds": {
+        "sans": "Sans-serif",
+        "serif": "Serif",
+        "display": "Display"
+      },
+      "radius": "Corners",
+      "radiusValue": "{value} px",
+      "radiusHelp": "How round photos, buttons and sheets are.",
+      "shadow": "Shadow",
+      "shadowHelp": "The shadow around the menu on wider screens. 0 is none.",
+      "scheme": "Light or dark",
+      "schemes": {
+        "auto": "Follow the guest's phone",
+        "light": "Always light",
+        "dark": "Always dark"
+      },
+      "schemeHelp": "Both versions are always prepared; this only decides which one guests get."
+    },
+    "logo": {
+      "title": "Logo",
+      "help": "JPEG, PNG or WebP, up to 10 MB. A wide logo on a transparent background works best.",
+      "upload": "Upload a logo",
+      "replace": "Replace logo",
+      "remove": "Remove logo",
+      "uploading": "Uploading…",
+      "current": "Current logo",
+      "pending": "The new logo shows in the preview after you save."
+    },
+    "preview": {
+      "title": "Live preview",
+      "hint": "The menu on a guest's phone with the changes you have not saved yet.",
+      "refresh": "Refresh",
+      "services": "Preview guest services",
+      "servicesHint": "Shows the bag, the bill, calling a waiter and paying with made-up data, the way guests will see them once they are connected. Nothing is sent.",
+      "servicesNoneOn": "No service is switched on. Switch them on in Guest features above, then press Refresh.",
+      "menu": "Menu: {name}"
     }
   }
 }

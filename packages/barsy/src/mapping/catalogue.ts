@@ -3,18 +3,30 @@
 // needs. Pure and deterministic (no database, no network, no clock, no randomness): the same input
 // and configuration always give a deep-equal result, whatever the order of the article list.
 //
-// What it writes, all in the `barsy` layer with the source record and the mapping version:
+// What it writes, all in the `till` layer (source `till:<integration>`, brief CF-03) with the
+// source record and the mapping version:
 //   section   title, description                                  (master)
 //   item      name, description, visible, allergens               (master)
 //             image: cleared when barsy has no picture; set by the photo job, never here
 //             price, for_sale                                      (venue:<our vn_ id>)
+//             visible at venue scope: cleared when the venue had hidden the item (CF-16)
 //   group     name, min, max                                      (master)
 //   option    name (master), price_delta                          (venue)
-// A field barsy has no value for is cleared in the barsy layer (so the layers below show through
+// A field barsy has no value for is cleared in the till layer (so the layers below show through
 // and a value removed in barsy does not linger), except where the source is silent (see each).
+// An option's name is silent when its option article is not in this run's article list.
+//
+// Names (D75): the menu name of a section, an item or an option is barsy's public name. Where
+// barsy holds none, in any language, barsy's own name (`cat_name`, `article_name`: what the till
+// shows) stands in for it, under the default language, and the run says so with a warning per
+// fallback (`*_public_*_missing`). Nothing else of barsy's internal fields is ever read as text.
 //
 // Nodes are named by source link everywhere after their creation, so the change set can be split
 // into chunks. Node ids are derived (./ids.ts), so a repeated pull creates nothing new.
+//
+// Several venues on one catalogue (brief CF-16): items are the installation's (one link per
+// article); sections are the venue's, linked under the keys `input.qualifiedSections` names
+// (./venues.ts). Without it every key is the plain one, exactly as before CF-16.
 
 import {
   type ChangeSet,
@@ -22,6 +34,8 @@ import {
   canonicalJson,
   decimalToMinor,
   type FieldWrite,
+  LOCALES,
+  type Locale,
   type LocalizedText,
   MoneyError,
   type NodeRef,
@@ -29,6 +43,7 @@ import {
   type Scope,
   type SourceLink,
   sha256Hex,
+  tillSource,
 } from '@restro/core'
 
 import type { Article, SupplementGroup } from '../read/schemas.ts'
@@ -37,7 +52,15 @@ import { assertInputIds, parseMappingConfig, type ResolvedMappingConfig } from '
 import { deriveId } from './ids.ts'
 import { planSections, type SectionsPlan } from './sections.ts'
 import { describeSource } from './source-records.ts'
-import { allowedLocales, isEmptyText, localizedText, type TextContext } from './text.ts'
+import {
+  allowedLocales,
+  isEmptyText,
+  localizedText,
+  type NameText,
+  nameText,
+  normaliseLocaleKey,
+  type TextContext,
+} from './text.ts'
 import {
   type AssetRequest,
   BARSY_MAPPING_VERSION,
@@ -51,6 +74,7 @@ import {
   type SourceRecordDescriptor,
 } from './types.ts'
 import { decimalText, flagOf, uniqueBy } from './util.ts'
+import { sectionLinkId } from './venues.ts'
 
 const CURRENCY = 'EUR' as const
 
@@ -68,6 +92,8 @@ interface Run {
   readonly sourceRecords: SourceRecordDescriptor[]
   readonly linkStates: LinkStateIntent[]
   readonly assetRequests: AssetRequest[]
+  /** The language report's counts: every guest-facing text written or cleared, and per language. */
+  readonly texts: { total: number; readonly filled: Map<Locale, number> }
 }
 
 function linkOf(run: Run, externalType: LinkType, externalId: string): SourceLink {
@@ -103,7 +129,7 @@ function write(
     op: 'setField',
     node: { link },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope,
     value: value as FieldValue,
     sourceRecordId: record.id,
@@ -112,7 +138,7 @@ function write(
 }
 
 function clear(run: Run, link: SourceLink, fieldKey: string, scope: Scope): void {
-  run.ops.push({ op: 'clearField', node: { link }, fieldKey, layer: 'barsy', scope })
+  run.ops.push({ op: 'clearField', node: { link }, fieldKey, layer: 'till', scope })
 }
 
 /** Writes a localized text, or clears the field when barsy holds no text. Returns whether text was written. */
@@ -123,12 +149,27 @@ function writeText(
   value: LocalizedText,
   record: SourceRecordDescriptor,
 ): boolean {
+  // Every guest-facing text counts for the language report (D77), filled or not.
+  run.texts.total += 1
+  for (const locale of Object.keys(value) as Locale[]) {
+    run.texts.filled.set(locale, (run.texts.filled.get(locale) ?? 0) + 1)
+  }
   if (isEmptyText(value)) {
     clear(run, link, fieldKey, 'master')
     return false
   }
   write(run, link, fieldKey, 'master', value, record)
   return true
+}
+
+/** The languages the installation offers, as our locale keys (all of ours when it lists none). */
+function offeredLocales(languages: CatalogueInput['languages']): Locale[] {
+  const found = new Set<Locale>()
+  for (const language of languages) {
+    const locale = normaliseLocaleKey(language.lang_id)
+    if (locale !== null) found.add(locale)
+  }
+  return LOCALES.filter((locale) => found.size === 0 || found.has(locale))
 }
 
 function warn(
@@ -161,28 +202,49 @@ function money(minor: number): { amount_minor: number; currency: typeof CURRENCY
 
 // --- sections -----------------------------------------------------------------------------
 
+/** The section link of a category in this menu (plain, or qualified by the menu or the venue; CF-16, D88). */
+function sectionLinkOf(run: Run, catId: number): SourceLink {
+  const qualified = run.input.qualifiedSections
+  const qualifier =
+    qualified === undefined
+      ? null
+      : qualified instanceof Map
+        ? (qualified.get(catId) ?? null)
+        : qualified.has(catId)
+          ? run.input.venueId
+          : null
+  return linkOf(run, 'category', sectionLinkId(catId, qualifier))
+}
+
 function mapSections(run: Run, plan: SectionsPlan): void {
   for (const section of plan.sections) {
     const category = section.node.category
     const externalId = String(section.catId)
-    const link = linkOf(run, 'category', externalId)
+    const link = sectionLinkOf(run, section.catId)
+    // The record is barsy's category, shared by every venue that shows it.
     const record = describeSource(run.cfg.integrationId, 'category', externalId, 'master', category)
     run.sourceRecords.push(record)
 
-    const parent: NodeRef =
-      section.parentCatId === null
-        ? { id: run.input.menuId }
-        : { link: linkOf(run, 'category', String(section.parentCatId)) }
+    const parentLink = section.parentCatId === null ? null : sectionLinkOf(run, section.parentCatId)
+    const parent: NodeRef = parentLink === null ? { id: run.input.menuId } : { link: parentLink }
     // The parent is part of the id: a category moved in barsy gets a new derived id, which apply()
     // collapses onto the node it is already linked to (instead of refusing the same id under a
-    // new parent).
+    // new parent). Plain keys derive exactly the ids they did before CF-16.
     const parentKey =
-      section.parentCatId === null ? `menu:${run.input.menuId}` : `category:${section.parentCatId}`
-    createAndLink(run, 'section', link, parent, ['category', externalId, parentKey])
+      parentLink === null ? `menu:${run.input.menuId}` : `category:${parentLink.externalId}`
+    createAndLink(run, 'section', link, parent, ['category', link.externalId, parentKey])
 
-    const title = localizedText(category.cat_name_public_ml, category.cat_name_public, run.text)
-    if (!writeText(run, link, 'title', title, record)) {
+    // The public title, else the category's own name (D75).
+    const title = nameText(
+      category.cat_name_public_ml,
+      category.cat_name_public,
+      category.cat_name,
+      run.text,
+    )
+    if (!writeText(run, link, 'title', title.text, record)) {
       warn(run, 'section_title_missing', 'category', externalId)
+    } else if (title.ownName) {
+      warn(run, 'section_public_title_missing', 'category', externalId)
     }
     writeText(
       run,
@@ -271,17 +333,31 @@ function pictureRequest(run: Run, link: SourceLink, article: Article, externalId
   }
 }
 
+/**
+ * The menu name of an article (an item, or an option, which is an article too): its public name,
+ * else its own name (D75). A response that did not carry the public fields at all (not asked for)
+ * does not say whether a public name exists, so it never falls back.
+ */
+function articleName(run: Run, article: Article): NameText {
+  const asked = provided(article.article_name_public_ml, article.article_name_public)
+  return nameText(
+    article.article_name_public_ml,
+    article.article_name_public,
+    asked ? article.article_name : null,
+    run.text,
+  )
+}
+
 function mapItemFields(run: Run, item: ItemPlan, allergenKey: string | null): void {
   const { article, externalId, link, record } = item
 
   if (provided(article.article_name_public_ml, article.article_name_public)) {
-    const name = localizedText(
-      article.article_name_public_ml,
-      article.article_name_public,
-      run.text,
-    )
-    if (!writeText(run, link, 'name', name, record))
+    const name = articleName(run, article)
+    if (!writeText(run, link, 'name', name.text, record)) {
       warn(run, 'item_name_missing', 'article', externalId)
+    } else if (name.ownName) {
+      warn(run, 'item_public_name_missing', 'article', externalId)
+    }
   }
   if (provided(article.description_ml, article.description_public)) {
     const description = localizedText(article.description_ml, article.description_public, run.text)
@@ -311,6 +387,10 @@ function mapItemFields(run: Run, item: ItemPlan, allergenKey: string | null): vo
   const visible = flagOf(article.is_public)
   if (visible === null) clear(run, link, 'visible', 'master')
   else write(run, link, 'visible', 'master', visible, record)
+  // The venue had hidden the item (it was outside the venue's root, CF-16): its root holds it again.
+  if (run.input.venueHiddenArticles?.has(externalId) === true) {
+    clear(run, link, 'visible', run.venueScope)
+  }
 
   mapAllergens(run, item, allergenKey)
 }
@@ -340,7 +420,7 @@ function mapCombo(
   run: Run,
   item: ItemPlan,
   groups: readonly SupplementGroup[],
-  publicNames: ReadonlyMap<number, { name: LocalizedText; record: SourceRecordDescriptor }>,
+  optionNames: ReadonlyMap<number, { name: NameText; record: SourceRecordDescriptor }>,
 ): { groups: number; options: number } {
   const articleId = item.externalId
   const comboRecord = describeSource(
@@ -387,13 +467,24 @@ function mapCombo(
       ])
       optionCount += 1
 
-      // The option's own name in the response is internal. The public name is the option article's.
-      const known = publicNames.get(option.article_id)
-      if (known === undefined || isEmptyText(known.name)) {
+      // The option's own name in the combo response is not read. The name is the option
+      // article's (its public name, else its own name, D75). A name is written only from the
+      // option article of this run's article list. An option article that is not in the list (an
+      // incremental run holds only the changed articles, and a supplement may sit outside the
+      // catalogue root) says nothing about the name: it is neither written nor cleared, so a
+      // price change on a combo never wipes its option names (B1-F6). The warning stays: this run
+      // could not name the option.
+      const known = optionNames.get(option.article_id)
+      if (known === undefined) {
+        warn(run, 'option_name_missing', 'supplement', optionExternalId)
+      } else if (isEmptyText(known.name.text)) {
+        // The article is here and has no name at all: barsy's value is gone, so ours goes too.
         clear(run, optionLink, 'name', 'master')
         warn(run, 'option_name_missing', 'supplement', optionExternalId)
       } else {
-        write(run, optionLink, 'name', 'master', known.name, known.record)
+        write(run, optionLink, 'name', 'master', known.name.text, known.record)
+        if (known.name.ownName)
+          warn(run, 'option_public_name_missing', 'supplement', optionExternalId)
       }
 
       const delta = option.supplement_price
@@ -429,6 +520,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     sourceRecords: [],
     linkStates: [],
     assetRequests: [],
+    texts: { total: 0, filled: new Map() },
   }
 
   const plan = planSections(input.tree, cfg.catalogueRootCatId, run.warnings)
@@ -491,7 +583,8 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
       if (categories.includes(cfg.catalogueRootCatId)) {
         warn(run, 'article_unplaced', 'article', externalId, 'sits directly in the catalogue root')
       } else {
-        warn(run, 'article_outside_catalogue', 'article', externalId)
+        // Outside this venue's root: another venue's part of a shared catalogue, or no category of
+        // the tree. Counted, not warned about: a whole-catalogue read holds many (CF-16).
         outsideCatalogue += 1
         continue
       }
@@ -528,7 +621,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
       run.ops.push({
         op: 'setPlacement',
         item: { link: item.link },
-        section: { link: linkOf(run, 'category', String(section.catId)) },
+        section: { link: sectionLinkOf(run, section.catId) },
         sortKey: 'end',
         onlyIfUnplaced: true,
       })
@@ -536,15 +629,12 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     }
   }
 
-  // Combos. An option's public name is its own article's.
-  const publicNames = new Map<number, { name: LocalizedText; record: SourceRecordDescriptor }>()
+  // Combos. An option's name is its own article's.
+  const optionNames = new Map<number, { name: NameText; record: SourceRecordDescriptor }>()
   for (const article of articles) {
     const record = records.get(article.article_id)
     if (record === undefined) continue
-    publicNames.set(article.article_id, {
-      name: localizedText(article.article_name_public_ml, article.article_name_public, run.text),
-      record,
-    })
+    optionNames.set(article.article_id, { name: articleName(run, article), record })
   }
   let modifierGroups = 0
   let options = 0
@@ -552,7 +642,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
   for (const item of items) {
     const groups = input.supplementsByArticle[item.externalId]
     if (groups === undefined || groups.length === 0) continue
-    const counted = mapCombo(run, item, groups, publicNames)
+    const counted = mapCombo(run, item, groups, optionNames)
     modifierGroups += counted.groups
     options += counted.options
   }
@@ -570,6 +660,11 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     skippedServices,
     outsideCatalogue,
   }
+  const filled: Partial<Record<Locale, number>> = {}
+  for (const locale of LOCALES) {
+    const count = run.texts.filled.get(locale)
+    if (count !== undefined) filled[locale] = count
+  }
   return {
     changeSet: buildChangeSet(run),
     sourceRecords: run.sourceRecords,
@@ -577,6 +672,7 @@ export function mapCatalogue(input: CatalogueInput, config: MappingConfig): Cata
     linkStates: run.linkStates,
     warnings: run.warnings,
     counts,
+    languages: { offered: offeredLocales(input.languages), filled, total: run.texts.total },
   }
 }
 
@@ -595,7 +691,7 @@ function buildChangeSet(run: Run): ChangeSet | null {
   const { cfg, input, ops } = run
   return {
     id: deriveId('cs', cfg.jobId, input.venueId, sha256Hex(canonicalJson(ops))),
-    source: `barsy:${cfg.integrationId}`,
+    source: tillSource(cfg.integrationId),
     jobId: cfg.jobId,
     actor: cfg.actor,
     observedAt: cfg.observedAt,

@@ -1,6 +1,7 @@
-// saveSyncSettingsConfig against Postgres as the restro_app role (brief S3-10): one atomic UPDATE
-// that writes the form's keys and never reads or writes `publish.auto_paused`, so a rollback (pause)
-// or a manual publish (resume) that lands while a save is in flight is neither lost nor revived.
+// saveSyncSettingsConfig against Postgres as the restro_app role (brief S3-10, CF-09b): one atomic
+// UPDATE that writes the schedule and never reads or writes `config.publish` (the publishing rules
+// are per venue now; `publish.auto_paused` stays here), so a rollback (pause) or a manual publish
+// (resume) that lands while a save is in flight is neither lost nor revived.
 import { createPool, type DbPool, integrations, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import type pg from 'pg'
@@ -20,8 +21,10 @@ const SETTINGS = {
     full_pull_enabled: true,
     full_pull_time: '03:30',
   },
-  publish: { after_sync: 'manual', new_items: 'hold' },
 } as const
+
+/** What a venue without rules of its own inherits: untouched by a save of the schedule. */
+const INHERITED = { after_sync: 'manual', new_items: 'hold' } as const
 
 describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -87,11 +90,13 @@ describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)
     }
   }
 
-  it('writes the schedule and the two publish settings as sent, and removes the legacy flat key', async () => {
+  it('writes the schedule as sent, and leaves the old publishing rule and every other key alone', async () => {
     await updateIntegration(app, tenant, integrationId, {
       config: {
         publish_after_sync: false,
+        publish: INHERITED,
         price_source: 'current_price',
+        not_used: { '3': true },
         sync: { '10': { cursor: '2026-10-09T10:00:00Z' } },
         schedule: { incremental_minutes: 30, stale_key: true },
       },
@@ -100,29 +105,44 @@ describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)
 
     const config = await configOf()
     expect(config).toEqual({
-      // The schedule is the form's, whole; the publish object holds the form's two settings.
+      // The schedule is the form's, whole. The rules a venue inherits (and the flat key below
+      // them) are not the form's any more: they stay exactly as they were.
       schedule: SETTINGS.schedule,
-      publish: SETTINGS.publish,
+      publish: INHERITED,
+      publish_after_sync: false,
       price_source: 'current_price',
+      not_used: { '3': true },
       sync: { '10': { cursor: '2026-10-09T10:00:00Z' } },
     })
-    expect(parseSyncSettings(config)).toEqual(SETTINGS)
+    expect(parseSyncSettings(config).schedule).toEqual(SETTINGS.schedule)
+    expect(parseSyncSettings(config).publish).toEqual(INHERITED)
+  })
+
+  it('keeps a stored schedule time zone, which the form does not send (CF-16)', async () => {
+    await updateIntegration(app, tenant, integrationId, {
+      config: { schedule: { time_zone: 'Europe/London', stale_key: true } },
+    })
+    expect(await saveSyncSettingsConfig(app, tenant, integrationId, SETTINGS)).toBe(true)
+    expect((await configOf())?.schedule).toEqual({
+      ...SETTINGS.schedule,
+      time_zone: 'Europe/London',
+    })
   })
 
   it('leaves publish.auto_paused alone, set or not set, and the other publish keys', async () => {
-    await updateIntegration(app, tenant, integrationId, { config: { publish: null } })
+    await updateIntegration(app, tenant, integrationId, { config: { publish: INHERITED } })
     expect(await setAutoPublishPaused(app, tenant, integrationId, true)).toBe(true)
     expect(await saveSyncSettingsConfig(app, tenant, integrationId, SETTINGS)).toBe(true)
-    expect((await configOf())?.publish).toEqual({ ...SETTINGS.publish, auto_paused: true })
+    expect((await configOf())?.publish).toEqual({ ...INHERITED, auto_paused: true })
 
     expect(await setAutoPublishPaused(app, tenant, integrationId, false)).toBe(true)
     expect(await saveSyncSettingsConfig(app, tenant, integrationId, SETTINGS)).toBe(true)
-    expect((await configOf())?.publish).toEqual(SETTINGS.publish)
+    expect((await configOf())?.publish).toEqual(INHERITED)
     expect(autoPublishPaused(await configOf())).toBe(false)
   })
 
   it('a pause that lands while the save waits survives it', async () => {
-    await updateIntegration(app, tenant, integrationId, { config: { publish: null } })
+    await updateIntegration(app, tenant, integrationId, { config: { publish: INHERITED } })
     const saved = await saveWhileLocked(
       `update restro.integrations
        set config = config || jsonb_build_object('publish',
@@ -131,12 +151,12 @@ describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)
     )
     expect(saved).toBe(true)
     expect(autoPublishPaused(await configOf())).toBe(true)
-    expect((await configOf())?.publish).toEqual({ ...SETTINGS.publish, auto_paused: true })
+    expect((await configOf())?.publish).toEqual({ ...INHERITED, auto_paused: true })
   })
 
   it('a pause cleared while the save waits is not revived by it', async () => {
     await updateIntegration(app, tenant, integrationId, {
-      config: { publish: { after_sync: 'auto', new_items: 'show', auto_paused: true } },
+      config: { publish: { ...INHERITED, auto_paused: true } },
     })
     const saved = await saveWhileLocked(
       `update restro.integrations
@@ -145,17 +165,24 @@ describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)
     )
     expect(saved).toBe(true)
     expect(autoPublishPaused(await configOf())).toBe(false)
-    expect((await configOf())?.publish).toEqual(SETTINGS.publish)
+    expect((await configOf())?.publish).toEqual(INHERITED)
   })
 
-  it('replaces a publish value that is not an object, instead of extending it', async () => {
+  it('does not touch a publish value that is not an object (the form never writes it)', async () => {
     await updateIntegration(app, tenant, integrationId, { config: { publish: 'broken' } })
     expect(await saveSyncSettingsConfig(app, tenant, integrationId, SETTINGS)).toBe(true)
-    expect((await configOf())?.publish).toEqual(SETTINGS.publish)
+    expect((await configOf())?.publish).toBe('broken')
   })
 
-  it('puts the defaults back when they are saved', async () => {
-    expect(await saveSyncSettingsConfig(app, tenant, integrationId, SYNC_DEFAULTS)).toBe(true)
+  it('puts the default schedule back when it is saved', async () => {
+    await updateIntegration(app, tenant, integrationId, {
+      config: { publish: null, publish_after_sync: null },
+    })
+    expect(
+      await saveSyncSettingsConfig(app, tenant, integrationId, {
+        schedule: SYNC_DEFAULTS.schedule,
+      }),
+    ).toBe(true)
     expect(parseSyncSettings(await configOf())).toEqual(SYNC_DEFAULTS)
   })
 
@@ -171,15 +198,21 @@ describe.skipIf(!hasDatabase)('saving the sync settings (as the restro_app role)
     // The form's own limits apply here too, so a caller cannot store a value the worker would not read.
     await expect(
       saveSyncSettingsConfig(app, tenant, integrationId, {
-        ...SETTINGS,
-        publish: { ...SETTINGS.publish, after_sync: 'later' as never },
+        schedule: { ...SETTINGS.schedule, incremental_minutes: 7 as never },
       }),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+    // The publishing rules are per venue: this writer no longer takes them, nor the pause.
+    await expect(
+      saveSyncSettingsConfig(app, tenant, integrationId, {
+        ...SETTINGS,
+        publish: { after_sync: 'auto', new_items: 'show' },
+      } as never),
     ).rejects.toMatchObject({ code: 'invalid_input' })
     await expect(
       saveSyncSettingsConfig(app, tenant, integrationId, {
         ...SETTINGS,
-        publish: { ...SETTINGS.publish, auto_paused: true } as never,
-      }),
+        publish: { auto_paused: true },
+      } as never),
     ).rejects.toMatchObject({ code: 'invalid_input' })
   })
 })

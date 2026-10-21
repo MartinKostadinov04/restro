@@ -8,7 +8,12 @@ import { BarsyConfigError, BarsyResponseError } from '../errors.ts'
 import type { BarsyFixture } from '../fixture.ts'
 import { FIXTURES_ROOT, readFixture } from '../fixture-files.ts'
 import { createBarsyMockServer } from '../testing/mock-server.ts'
-import { ARTICLE_EXTRA_PROPERTIES, ARTICLES_ORDER_BY, createBarsyReader } from './reader.ts'
+import {
+  ARTICLE_EXTRA_PROPERTIES,
+  ARTICLES_ORDER_BY,
+  CATALOGUE_ORDER_BY,
+  createBarsyReader,
+} from './reader.ts'
 
 // Every wrapper runs against MSW with the real demo recordings (fixtures/demo/). Nothing here can
 // reach the network: the harness fails any request it has no handler for.
@@ -150,6 +155,48 @@ describe('the nine wrappers on the demo recordings', () => {
       ).rejects.toBeInstanceOf(BarsyConfigError)
     }
     expect(mock.requests).toHaveLength(1)
+  })
+
+  it('getArticlesPage for a whole catalogue (CF-16): filters.menu_id, paged by article id', async () => {
+    const catalogue = await readFixture(join(DEMO, 'articles-bid102-menu72.json'))
+    mock.setFixtures([...fixtures.filter((f) => f.method !== 'Articles_getlist'), catalogue])
+    const { data } = await reader.getArticlesPage(102, { catalogueId: 72, offset: 0, length: 60 })
+    expect(data).toHaveLength(60)
+    expect(new Set(data.map((article) => article.menu_id))).toStrictEqual(new Set([72]))
+    expect(data[2]?.is_for_sale_barsys).toStrictEqual({
+      '1': '1',
+      '10': '1',
+      '70': '1',
+      '102': '1',
+    })
+    expect(mock.requests[0]).toMatchObject({
+      methods: ['Articles_getlist'],
+      bid: '102',
+      params: {
+        filters: { menu_id: '72' },
+        order_by: { article_id: 'asc' },
+        extra_properties: ARTICLE_EXTRA_PROPERTIES,
+        offset: '0',
+        length: '60',
+      },
+    })
+    expect(CATALOGUE_ORDER_BY).toStrictEqual({ article_id: 'asc' })
+  })
+
+  it('getArticlesPage reads a category or a catalogue, never both or neither', async () => {
+    const page = { offset: 0, length: 60 }
+    for (const bad of [
+      { ...page, rootCatId: 1091, catalogueId: 72 },
+      page,
+      { ...page, catalogueId: -1 },
+      { ...page, catalogueId: 1.5 },
+    ]) {
+      await expect(
+        reader.getArticlesPage(10, bad as never),
+        JSON.stringify(bad),
+      ).rejects.toBeInstanceOf(BarsyConfigError)
+    }
+    expect(mock.requests).toHaveLength(0)
   })
 
   it('getSupplements: the burger combo, four groups with prices and flags', async () => {

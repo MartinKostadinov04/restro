@@ -19,9 +19,18 @@ export const PUBLISH_MEMBER_EMAIL = 'publish-member@demo-club.test'
 export const PUBLISH_SLUG = 'publish-club'
 
 // The guest page's test (scripts/seed-guest-e2e.ts publishes these): the demo venue's menu at
-// /m/demo-club in the brand colour below, a table code, and a second, tagged menu at /m/tag-fixture.
+// /m/demo-club-<its code> in the brand colour below (the code is random and made when the venue is
+// created: specs read it with `addressOfVenue`, e2e/menu-path.ts), a table code, and a second,
+// tagged menu at /m/tag-fixture-<TAG_PUBLIC_ID>. The tagged menu is a fixture with no venue row, so
+// its public code is a fixed one.
 export const GUEST_SLUG = 'demo-club'
 export const GUEST_BRAND = '#2563eb'
 export const GUEST_TABLE_TOKEN = 'tb_e2eGuestTable000001'
 export const GUEST_TABLE_LABEL = '12'
 export const TAG_SLUG = 'tag-fixture'
+export const TAG_PUBLIC_ID = 'tagfixture01'
+// A third published menu, for the template registry (SH-04): the tagged fixture again, but its venue
+// chose the reference template (`qr-phone`), forces the dark scheme and asks for Playfair Display.
+// Like the tagged menu it has no venue row, so its public code is a fixed one.
+export const LOOK_SLUG = 'look-fixture'
+export const LOOK_PUBLIC_ID = 'lookfixture1'

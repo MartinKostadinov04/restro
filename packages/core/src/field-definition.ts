@@ -13,8 +13,8 @@ import {
 import { FIELD_TYPES } from './field-types/specs'
 import { LocalizedTextSchema } from './locales'
 
-/** Who owns a field: barsy (the till) or the builder (the venue, in our editor). */
-export const OWNERS = ['barsy', 'builder'] as const
+/** Who owns a field: the till (whichever connector feeds it) or the builder (the venue, here). */
+export const OWNERS = ['till', 'builder'] as const
 /** Owner of a field. */
 export type Owner = (typeof OWNERS)[number]
 
@@ -28,9 +28,9 @@ export const OVERRIDABLE = ['never', 'never_when_orderable', 'always'] as const
 export type Overridable = (typeof OVERRIDABLE)[number]
 
 /**
- * How layers combine (doc "Combinators"): `source_first` override → barsy → manual → import →
- * default; `builder_first` manual → import → barsy → default; `locked` barsy only (on an orderable
- * item); `all_true` every layer with a value must say true; `union` the set of all values;
+ * How layers combine (doc "Combinators"): `source_first` override → till → manual → default;
+ * `builder_first` manual → till → default; `locked` the till only (on a till-linked node);
+ * `all_true` every layer with a value must say true; `union` the set of all values;
  * `must_agree` disagreeing layers are a conflict a person resolves.
  */
 export const COMBINATORS = [
@@ -49,7 +49,7 @@ export const VISIBILITIES = ['public', 'internal'] as const
 /** Visibility of a field. */
 export type Visibility = (typeof VISIBILITIES)[number]
 
-/** What happens when barsy changes after an override: open a review, keep it, or drop it. */
+/** What happens when the till changes after an override: open a review, keep it, or drop it. */
 export const STALE_POLICIES = ['review', 'keep', 'drop'] as const
 /** Stale-override policy of a field. */
 export type StalePolicy = (typeof STALE_POLICIES)[number]
@@ -121,14 +121,14 @@ function definitionIssues(def: FieldDefinitionShape): { path: string; message: s
   if (def.combinator === 'union' && !SET_TYPES.includes(def.type)) {
     add('combinator', 'union combines tags and enum_set fields only')
   }
-  if (def.combinator === 'locked' && def.owner !== 'barsy') {
-    add('combinator', 'a locked field is owned by barsy')
+  if (def.combinator === 'locked' && def.owner !== 'till') {
+    add('combinator', 'a locked field is owned by the till')
   }
   if (def.combinator === 'locked' && def.overridable === 'always') {
     add('overridable', 'a locked field refuses overrides on orderable items')
   }
-  if (def.combinator === 'source_first' && def.owner !== 'barsy') {
-    add('combinator', 'source_first is for barsy-owned fields')
+  if (def.combinator === 'source_first' && def.owner !== 'till') {
+    add('combinator', 'source_first is for till-owned fields')
   }
   if (def.combinator === 'builder_first' && def.owner !== 'builder') {
     add('combinator', 'builder_first is for builder-owned fields')

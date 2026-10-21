@@ -96,7 +96,7 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
     op: 'setField',
     node: { link: { integration, externalType: 'article', externalId: external } },
     fieldKey,
-    layer: 'barsy',
+    layer: 'till',
     scope: where,
     value,
     sourceRecordId: records[external],
@@ -197,7 +197,7 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
           barsy(external, 'visible', true),
           barsy(external, 'allergens', []),
         ],
-        `barsy:${integration}`,
+        `till:${integration}`,
       )
       await run([{ op: 'setPlacement', item: { id }, section: { id: section }, sortKey: 'end' }])
     }
@@ -362,7 +362,7 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
       expect(layers).not.toContain('edition:service:2026-10-09')
     })
 
-    it("cannot clear barsy's flag: a manual change set may not touch the barsy layer", async () => {
+    it("cannot clear the till's flag: a manual change set may not touch the till layer", async () => {
       await expect(
         apply(
           app,
@@ -372,13 +372,13 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
               op: 'clearField',
               node: { id: barsyOff },
               fieldKey: 'for_sale',
-              layer: 'barsy',
+              layer: 'till',
               scope: `venue:${venueId}`,
             },
           ]),
         ),
       ).rejects.toMatchObject({ code: 'invalid_change_set' })
-      expect((await rowsOf(barsyOff)).map((row) => row.layer)).toEqual(['barsy'])
+      expect((await rowsOf(barsyOff)).map((row) => row.layer)).toEqual(['till'])
     })
 
     it('keeps an item barsy has off sale sold out through any marks and unmarks', async () => {
@@ -393,9 +393,9 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
         orderable: false,
       })
       // Barsy puts it back on sale: only now is it available again.
-      await run([barsy('ext-off', 'for_sale', true, `venue:${venueId}`)], `barsy:${integration}`)
+      await run([barsy('ext-off', 'for_sale', true, `venue:${venueId}`)], `till:${integration}`)
       expect((await overlayAt(night))?.items[barsyOff]).toBeUndefined()
-      await run([barsy('ext-off', 'for_sale', false, `venue:${venueId}`)], `barsy:${integration}`)
+      await run([barsy('ext-off', 'for_sale', false, `venue:${venueId}`)], `till:${integration}`)
     })
 
     // The sequence property, against the real database: one distinct service day per run keeps the

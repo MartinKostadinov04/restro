@@ -2,14 +2,16 @@
 // are in @restro/core (the guest page, which runs in the browser, reads them with the same
 // schemas); this is the store side:
 //
-//   v/<venue slug>.json      {venue_id, menu_id}        which menu `/m/<slug>` shows
-//   t/<table token>.json     {venue_slug, table_label}  what the QR code of a table means
+//   v/<venue public code>.json  {venue_id, menu_id, slug}  which menu `/m/<slug>-<code>` shows
+//   t/<table token>.json        {venue_public_id, venue_slug, table_label}  what the QR code of a table means
 //
 // The worker writes the first with every publish (apps/worker, writePublishFiles). The second is
 // written when a table gets a code and removed when it is retired, both by the worker's
 // `publish-table-tokens` job (S3-07; `writeTableTokenFile`, `deleteTableTokenFile`). The web app
 // reads both, never the database (rule 4), and never writes the store.
 import {
+  type OrganizationFile,
+  OrganizationFileSchema,
   type TableTokenFile,
   TableTokenFileSchema,
   type VenueIndex,
@@ -17,14 +19,32 @@ import {
 } from '@restro/core'
 import type { z } from 'zod'
 
-import { publishPutOptions, tableTokenPath, venueIndexPath } from './publish-paths'
+import {
+  organizationIndexPath,
+  publishPutOptions,
+  tableTokenPath,
+  venueIndexPath,
+} from './publish-paths'
 import type { PublishStore } from './publish-store'
 
 const encode = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value))
 
-/** The bytes of a slug index file. */
+/** The bytes of a venue index file. */
 export function venueIndexBytes(index: VenueIndex): Uint8Array {
   return encode(VenueIndexSchema.parse(index))
+}
+
+/** The bytes of an organisation's `o/<slug>.json`: its index, or a redirect from an old slug (D84). */
+export function organizationFileBytes(file: OrganizationFile): Uint8Array {
+  return encode(OrganizationFileSchema.parse(file))
+}
+
+/** What `o/<slug>.json` holds, or null (no file, or not valid). */
+export async function readOrganizationFile(
+  store: Pick<PublishStore, 'get'>,
+  slug: string,
+): Promise<OrganizationFile | null> {
+  return parseGuestFile(OrganizationFileSchema, await store.get(organizationIndexPath(slug)))
 }
 
 /** Parses the bytes of a file into `schema`; null for anything that does not fit. */
@@ -41,12 +61,12 @@ export function parseGuestFile<S extends z.ZodType>(
   }
 }
 
-/** The slug index of a venue slug as the store holds it, or null (no file, or not valid). */
+/** The index of a venue's public code as the store holds it, or null (no file, or not valid). */
 export async function readVenueIndex(
   store: Pick<PublishStore, 'get'>,
-  slug: string,
+  publicId: string,
 ): Promise<VenueIndex | null> {
-  return parseGuestFile(VenueIndexSchema, await store.get(venueIndexPath(slug)))
+  return parseGuestFile(VenueIndexSchema, await store.get(venueIndexPath(publicId)))
 }
 
 /** What a table code means, or null for an unknown, retired or malformed token. */

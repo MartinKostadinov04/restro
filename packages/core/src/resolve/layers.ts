@@ -20,7 +20,7 @@ export interface LayerValue {
   readonly scope: Scope
   /** Valid for the field's definition. */
   readonly value: unknown
-  /** Override rows only: barsy's value when the override was made. */
+  /** Override rows only: the till's value when the override was made. */
   readonly basis: unknown | null
   readonly observedAt: string
 }
@@ -150,7 +150,7 @@ function toLayerValue(row: ValueRow): LayerValue {
  * Picks one value per layer the combinator reads (`reads`). The venue row beats the master row.
  * When the venue row is unusable, `fallBackToMaster` decides: true uses the master row (right for
  * `all_true`, where any `false` must still count), false leaves the layer without a value (right
- * for value-picking fields: barsy's master price must never stand in for a broken venue price).
+ * for value-picking fields: the till's master price must never stand in for a broken venue price).
  */
 export function pickLayers(
   definition: FieldDefinition,

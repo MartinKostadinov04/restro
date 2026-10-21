@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="bg" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE (throwaway): Tonight, screen 1, actions and tables</title>
+<style>
+/* PROTOTYPE, throwaway. Question it answers: is this calm, readable at first sight, and few taps?
+   Tokens copied from apps/web/app/globals.css (shadcn zinc). One accent (the admin's info blue),
+   red only for money at risk, never alone. System fonts only, no external files. */
+:root{
+  --bg:oklch(1 0 0);--fg:oklch(.141 .005 285.823);--card:oklch(1 0 0);
+  --primary:oklch(.21 .006 285.885);--primary-fg:oklch(.985 0 0);
+  --muted:oklch(.967 .001 286.375);--muted-fg:oklch(.5 .016 285.938);
+  --border:oklch(.92 .004 286.32);
+  --ctl:oklch(.6 .01 286);               /* control boundary, 3.96:1 on white (WCAG 1.4.11) */
+  --accent:oklch(.46 .15 255);           /* the one accent: the admin's "info" */
+  --danger:oklch(.52 .22 27.325);        /* money at risk only */
+  --accent-tint:color-mix(in srgb,var(--accent) 8%,var(--card));
+  --danger-tint:color-mix(in srgb,var(--danger) 7%,var(--card));
+  --scrim:oklch(0 0 0 / .45);
+}
+:root[data-theme=dark]{
+  --bg:oklch(.141 .005 285.823);--fg:oklch(.985 0 0);--card:oklch(.21 .006 285.885);
+  --primary:oklch(.92 .004 286.32);--primary-fg:oklch(.21 .006 285.885);
+  --muted:oklch(.274 .006 286.033);--muted-fg:oklch(.705 .015 286.067);
+  --border:oklch(1 0 0 / 10%);
+  --ctl:oklch(.58 .01 286);
+  --accent:oklch(.78 .12 255);
+  --danger:oklch(.704 .191 22.216);
+  --scrim:oklch(0 0 0 / .6);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--muted);color:var(--fg);font:14px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- prototype chrome (outside the device) ---------- */
+.pc{max-width:1240px;margin:0 auto;padding:16px}
+.pc h1{font-size:15px;margin:0 0 2px}
+.pc p{margin:0 0 10px;color:var(--muted-fg);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.grp{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-fg)}
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:6px 10px;cursor:pointer;min-height:32px;border-right:1px solid var(--ctl)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg)}
+.pc select,.pc .mini{min-height:32px;border:1px solid var(--ctl);border-radius:6px;background:var(--card);padding:0 8px;cursor:pointer}
+.pc label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.stage{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.stagewrap{flex:none}
+.side{flex:1;min-width:220px;font-size:13px}
+.side h2{font-size:13px;margin:0 0 6px}
+.side ol{margin:0;padding:0;list-style:none}
+.side li{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px}
+.side small{color:var(--muted-fg)}
+.side .hint{color:var(--muted-fg);margin-top:10px}
+
+/* ---------- the device ---------- */
+.dev{position:relative;display:flex;flex-direction:column;background:var(--bg);color:var(--fg);border:1px solid var(--ctl);border-radius:14px;overflow:hidden;font-size:16px;line-height:1.4;transform-origin:top left}
+.dev.tablet{width:1180px;height:820px}
+.dev.phone{width:390px;height:844px}
+.hd{display:flex;align-items:center;gap:16px;padding:14px 24px 0;flex:none}
+.phone .hd{padding:14px 16px 0;flex-wrap:wrap;gap:8px}
+.hd .ttl{flex:1;min-width:0}
+.crumb{font-size:14px;color:var(--muted-fg)}
+h1.t{font-size:24px;line-height:1.2;font-weight:600;margin:2px 0 0}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--muted-fg)}
+.tabs{display:flex;gap:4px;padding:8px 24px 0;border-bottom:1px solid var(--border);flex:none}
+.tabs button{min-height:44px;padding:0 14px;border:0;background:none;color:var(--muted-fg);font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-size:15px}
+.tabs button[aria-selected=true]{color:var(--fg);border-bottom-color:var(--fg)}
+.phone .tabsel{padding:8px 16px 12px;border-bottom:1px solid var(--border);flex:none}
+.sel{width:100%;min-height:44px;border:1px solid var(--ctl);border-radius:6px;background:var(--card);color:var(--fg);padding:0 12px;font-size:15px}
+.banner{display:flex;gap:12px;align-items:center;padding:12px 24px;background:var(--muted);border-bottom:1px solid var(--border);flex:none}
+.phone .banner{padding:12px 16px;flex-wrap:wrap}
+.banner .tx{flex:1;min-width:200px}
+.banner b{display:block}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:464px 1fr}
+.phone .main{display:block;overflow:auto}
+.col{overflow:auto;padding:20px 24px}
+.phone .col{padding:16px;overflow:visible}
+.tablet .col.l{border-right:1px solid var(--border)}
+.segp{display:flex;padding:12px 16px;border-bottom:1px solid var(--border);flex:none}
+.segp .seg{width:100%}
+.segp .seg button{flex:1;min-height:44px;font-size:15px}
+h2.sh{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;margin:0 0 12px;min-height:44px}
+h2.sh .n{font-weight:400;color:var(--muted-fg)}
+h2.sh .tt{display:flex;flex-direction:column;line-height:1.25}
+h2.sh .tt .n{font-size:14px}
+h2.sh .sp{flex:1}
+.gl{font-size:13px;color:var(--muted-fg);margin:20px 0 8px}
+.gl:first-of-type{margin-top:0}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:8px 16px;border:1px solid var(--ctl);border-radius:6px;background:var(--card);color:var(--fg);font-size:15px;font-weight:500;line-height:1.2;text-align:center;cursor:pointer}
+.btn:hover{background:var(--muted)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-fg)}
+.btn.primary:hover{opacity:.9;background:var(--primary)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--muted)}
+.tablet .acts .btn{min-height:48px}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* needs-you list */
+.list{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:8px;background:var(--card);overflow:hidden}
+.row{display:flex;gap:12px;padding:16px;border-top:1px solid var(--border)}
+.row:first-child{border-top:0}
+.row.money{background:var(--danger-tint)}
+.row .ic{padding-top:2px;color:var(--muted-fg)}
+.row.money .ic{color:var(--danger)}
+.row.attn .ic{color:var(--accent)}
+.row .bd{flex:1;min-width:0}
+.row .ti{font-weight:600;font-size:16px;overflow-wrap:anywhere}
+.row .me{font-size:14px;color:var(--muted-fg);overflow-wrap:anywhere}
+.row .de{margin-top:6px;font-size:15px;overflow-wrap:anywhere}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:14px;font-weight:600;margin-top:6px}
+.tag.money{color:var(--danger)}
+.rh{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.rh>div{min-width:0}
+.ref{font:700 44px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;flex:none}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.acts .btn{flex:1 1 150px}
+.empty{border:1px dashed var(--ctl);border-radius:8px;padding:28px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+.empty b{font-size:16px}
+.empty span{color:var(--muted-fg);max-width:32ch}
+
+/* tables */
+.bhead{display:flex;align-items:baseline;gap:8px;margin:18px 0 8px;font-size:14px;font-weight:600}
+.bhead:first-of-type{margin-top:0}
+.bhead span{font-weight:400;color:var(--muted-fg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:8px}
+.phone .grid{grid-template-columns:repeat(3,1fr)}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:64px;padding:8px 10px;border:1px solid var(--ctl);border-radius:8px;background:var(--card);color:var(--fg);text-align:left;cursor:pointer;min-width:0}
+.tile b{font-size:20px;line-height:1.2}
+.tile span{display:flex;align-items:center;gap:4px;font-size:14px;min-width:0;max-width:100%}
+.tile span em{font-style:normal;overflow-wrap:break-word;min-width:0}
+.tile svg.i{width:16px;height:16px;flex:none}
+.phone .tile{padding:8px 8px}.phone .tile.attn,.phone .tile.money{padding:7px}
+.phone .tile span{font-size:13px;gap:3px}
+.tile.closed{background:var(--muted);color:var(--muted-fg)}
+.tile.closed b{font-weight:500}
+.tile.attn{border:2px solid var(--accent);padding:7px 9px;background:var(--accent-tint)}
+.tile.attn span{color:var(--accent);font-weight:600}
+.tile.money{border:2px solid var(--danger);background:var(--danger-tint)}
+.tile.money span{color:var(--danger);font-weight:600}
+.tname{font-size:12px;color:var(--muted-fg);overflow-wrap:anywhere}
+.skel{background:var(--muted);border-radius:8px}
+.sk-row{height:92px;margin-bottom:8px}
+.sk-tile{height:64px}
+@media (prefers-reduced-motion:no-preference){.skel{animation:pulse 2s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.55}}
+
+/* menu popover */
+.mw{position:relative;display:inline-block}
+.pop{position:absolute;right:0;top:calc(100% + 4px);z-index:6;min-width:220px;background:var(--card);border:1px solid var(--ctl);border-radius:8px;padding:4px;box-shadow:0 4px 16px oklch(0 0 0 / .15)}
+.pop button{display:flex;width:100%;align-items:center;gap:8px;min-height:44px;padding:0 12px;border:0;background:none;border-radius:6px;text-align:left;cursor:pointer;font-size:15px}
+.pop button:hover{background:var(--muted)}
+
+/* modal, sheet, toast */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:10;display:flex;align-items:center;justify-content:center}
+.phone .scrim{align-items:flex-end}
+.scrim.side{justify-content:flex-end;align-items:stretch}
+.dlg{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;width:min(440px,calc(100% - 32px));padding:24px;max-height:96%;overflow:auto}
+.phone .dlg{width:100%;border-radius:14px 14px 0 0;padding:20px 16px 16px}
+.tablet .scrim.side .dlg{width:400px;border-radius:0;border-width:0 0 0 1px;max-height:none}
+.dlg h3{font-size:18px;margin:0 0 6px;line-height:1.25}
+.dlg p{margin:0 0 12px;color:var(--muted-fg);font-size:15px}
+.dlg .who{color:var(--fg);font-weight:600;font-size:15px;margin:14px 0 8px}
+.dots{display:flex;gap:14px;justify-content:center;margin:8px 0 6px}
+.dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--ctl)}
+.dots i.on{background:var(--fg);border-color:var(--fg)}
+.perr{min-height:22px;text-align:center;font-size:14px;font-weight:600;margin-bottom:6px;display:flex;justify-content:center;align-items:center;gap:6px}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:300px;margin:0 auto 12px}
+.keys .btn{min-height:60px;font-size:22px}
+.phone .keys .btn{min-height:56px}
+.facts{margin:10px 0 14px;padding:0;list-style:none;font-size:15px}
+.facts li{padding:8px 0;border-top:1px solid var(--border)}
+.facts li:first-child{border-top:0}
+.col2{display:flex;flex-direction:column;gap:8px}
+.toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);background:var(--primary);color:var(--primary-fg);border-radius:8px;padding:4px 4px 4px 16px;box-shadow:0 4px 16px oklch(0 0 0 / .25)}
+.toast .btn{color:inherit;border-color:transparent;background:transparent;text-decoration:underline;min-height:44px}
+.toast .btn:hover{background:oklch(1 0 0 / .12)}
+.toast.err{background:var(--card);color:var(--fg);border:1px solid var(--ctl)}
+.toast.err .btn{text-decoration:none}
+.toast.err:hover{}
+.phone .toast{width:calc(100% - 32px);bottom:16px}
+.stub{padding:40px;color:var(--muted-fg)}
+</style>
+</head>
+<body>
+<div class="pc">
+  <h1>PROTOTYPE, throwaway: "Tonight", screen 1 (actions and tables) · #50, 10-21</h1>
+  <p>Question it answers: is the bar tablet calm and readable at first sight, and are the stories few taps? Fake data, nothing saved. Prototype PINs: <b>1111</b> Maria (staff), <b>2222</b> Georgi (manager).</p>
+  <div class="bar" role="toolbar" aria-label="Prototype controls">
+    <div class="grp">Device <div class="seg" id="c-width"><button type="button" data-c="width" data-v="tablet">Bar tablet 1180×820</button><button type="button" data-c="width" data-v="phone">Phone 390</button></div></div>
+    <div class="grp">Signed in as <div class="seg" id="c-session"><button type="button" data-c="session" data-v="shared">Shared tablet (PIN)</button><button type="button" data-c="session" data-v="staff">My phone: staff</button><button type="button" data-c="session" data-v="manager">My phone: manager</button></div></div>
+    <div class="grp">Night <select id="c-scen" aria-label="Scenario">
+      <option value="busy">Busy night (24 tables, 3 alerts, 2 calls)</option>
+      <option value="empty">Empty night (nothing open)</option>
+      <option value="loading">Loading</option>
+      <option value="unreachable">POS unreachable (Restro pause)</option>
+      <option value="long">Longest Bulgarian text</option>
+      <option value="many">Many (40 tables, 12 alerts)</option></select></div>
+    <div class="grp">Language <div class="seg"><button type="button" data-c="lang" data-v="bg">BG</button><button type="button" data-c="lang" data-v="en">EN</button></div></div>
+    <div class="grp">Theme <div class="seg"><button type="button" data-c="theme" data-v="light">Light</button><button type="button" data-c="theme" data-v="dark">Dark</button></div></div>
+    <label><input type="checkbox" id="c-fail"> Next write fails</label>
+    <label><input type="checkbox" id="c-callpin"> PIN on waiter calls</label>
+    <button type="button" class="mini" id="c-newcall">+ waiter call</button>
+    <button type="button" class="mini" id="c-reset">Reset night</button>
+  </div>
+  <div class="stage">
+    <div class="stagewrap" id="wrap"><div class="dev tablet" id="dev"></div></div>
+    <div class="side">
+      <h2>Taps per finished story (target in brackets)</h2>
+      <ol id="stories"><li><small>Do a story in the screen. Each finished write is listed here with its taps. PIN digits are counted apart.</small></li></ol>
+      <p class="hint">Tablet at 1180×820 is scaled down if your window is narrower; sizes inside are the real ones.</p>
+    </div>
+  </div>
+</div>
+<div id="live" class="sr" aria-live="polite"></div>
+
+<script>
+/* ============ strings (BG default, EN) ============ */
+const L={
+bg:{
+ venue:'Клуб Луна',title:'Тази вечер',
+ tab_act:'Действия и маси',tab_sent:'Поръчки',tab_sold:'Изчерпано',tab_log:'Дневник',stub:'Този екран не е в прототипа.',
+ pause:'Спри поръчките',p_all:'Всички барове',
+ b_staff:'Поръчките на {scope} са спрени от {who} в {time}. Гостите не могат да поръчват от телефоните.',
+ lift:'Пусни поръчките',lift_b:'Гостите пак могат да поръчват от телефоните.',oa_b:'{k} маси се отварят за поръчки от телефони.',
+ b_restro:'Restro спря поръчките, защото няма връзка с {source}. Ще ги пусне сам, щом връзката се върне. Не е нужно да правите нищо.',
+ needs:'Чака вас',now:'Сега',later:'По-късно',
+ e_open_t:'Нищо не чака',e_open_d:'Обажданията на масите и сигналите за пари се появяват тук.',
+ e_night_t:'Масите още не са отворени',e_night_d:'Отворете ги за телефони, за да започнат поръчките.',
+ ago:'преди {m} мин',now0:'току-що',
+ m_t:'Плащане без потвърждение',m_tag:'{amt} са задържани',m_q:'Отпечатана ли е касовата бележка?',
+ m_ok:'Бележката е отпечатана',m_no:'Няма бележка',
+ m_ok_b:'Картата на гостите ще бъде таксувана с {amt}. Това не може да се върне.',
+ m_no_b:'Задържаните {amt} се освобождават, а редовете се връщат на {table}.',
+ m_ok_toast:'Картата е таксувана с {amt} · {who}',m_no_toast:'Парите са освободени · {who}',
+ s_t:'Изпратена поръчка без потвърждение',s_before:'Сметка преди поръчката: {amt}',s_q:'Има ли я в сметката?',
+ s_ok:'Има я в сметката',s_no:'Няма я в сметката',
+ s_ok_b:'Поръчката се води добавена и {table} пак може да поръчва.',s_no_b:'Поръчката се води неизпратена и {table} пак може да поръчва.',
+ s_ok_toast:'Записано: има я в сметката · {who}',s_no_toast:'Записано: няма я в сметката · {who}',
+ a_t:'Изпратена поръчка чака одобрение',a_pos:'Одобрява се или се отказва в {source}.',a_ok:'Одобри',a_no:'Откажи',a_ok_toast:'Поръчката е одобрена',a_no_toast:'Поръчката е отказана',
+ c_t:'{table} вика сервитьор',c_ok:'Обслужено',c_toast:'{table}: обслужено',
+ g_t:'{table} е спряна',g_d:'Достигнат е лимитът за поръчки. Прегледайте масата и я пуснете.',g_ok:'Пусни масата',
+ g_b:'Гостите на {table} пак могат да поръчват.',g_toast:'{table} е пусната · {who}',
+ st_t:'Направете сторно в {source}',st_d:'Връщане на {amt} за {table} (бележка {rcpt}).',st_ok:'Сторното е направено',
+ st_b:'Записваме, че сторното е направено в {source}. Restro не го проверява сама.',st_toast:'Сторното е записано · {who}',
+ d_t:'Спор по картово плащане',d_d:'Плащане от {amt} ({table}, {date}).',d_ok:'Виж доказателствата',d_toast:'Тук се отваря страницата на плащането.',
+ r_t:'Занесете бележката',r_d:'{table}: платено от телефона с реф. {ref}, {amt}.',r_ok:'Занесена',r_toast:'Бележката за {table} е занесена',
+ tables:'Маси',openof:'{o} от {t} са отворени за телефони',openall:'Отвори всички',closeall:'Затвори всички…',
+ ca_t:'Да затворя ли всички маси за телефони?',ca_b:'Всички гостувания приключват, а неизпратените поръчки на телефоните се изчистват. Сметките в {source} остават.',
+ ca_ok:'Затвори всички',ca_keep:'Остави отворени',
+ oa_toast:'Отворени са {k} маси за телефони',ca_toast:'Затворени са всички маси за телефони · {who}',
+ w_open:'Отворена',w_closed:'Затворена',w_paused:'Спряна',w_pay:'Плащане',w_order:'Провери',w_appr:'Одобрение',w_call:'Вика',
+ t_open:'{table} е отворена за телефони',t_closed:'{table} е затворена за телефони',
+ sh_sub:'{bar} · отворена от {since}',sh_f1:'{k} изпратени поръчки',sh_f2:'Сметка: {amt}',
+ sh_close:'Затвори за телефони',sh_new:'Нови гости',
+ ng_t:'Нови гости на {table}?',ng_b:'Започва ново гостуване: старата поръчка и разрешенията на телефоните се изчистват. Сметката в {source} остава.',
+ ng_ok:'Нови гости',ng_keep:'Остави',ng_toast:'{table}: нови гости',
+ pin_t:'Въведете своя ПИН',pin_tm:'Въведете ПИН на мениджър',pin_lb:'ПИН код, 4 цифри',pin_wrong:'Грешен ПИН. Опитайте отново.',
+ pin_staff:'Този ПИН е на служител. Нужен е ПИН на мениджър.',leave:'Остави',del:'Изтрий цифра',
+ p_toast:'Поръчките на {scope} са спрени',lift_toast:'Поръчките са пуснати · {who}',
+ undo:'Върни',close:'Затвори',err:'Не се записа. Проверете връзката и натиснете отново.',
+ loading:'Зареждане…',
+ bar1:'Главен бар',bar2:'Втори бар',
+ who_t:'бар таблета',who_s:'Мария',who_m:'Георги',source:'Mistral',
+ tb:'Маса {n}',ph_needs:'Чака вас',ph_tables:'Маси',
+ more:'Още действия'
+},
+en:{
+ venue:'Club Luna',title:'Tonight',
+ tab_act:'Actions and tables',tab_sent:'Sent orders',tab_sold:'Sold out',tab_log:'Log',stub:"This screen isn't in the prototype.",
+ pause:'Pause ordering',p_all:'All bars',
+ b_staff:"Ordering at {scope} was paused by {who} at {time}. Guests can't order from their phones.",
+ lift:'Resume ordering',lift_b:'Guests can order from their phones again.',oa_b:'{k} tables open for phone orders.',
+ b_restro:"Restro paused ordering because it can't reach {source}. It resumes by itself when the connection is back. You don't need to do anything.",
+ needs:'Needs you',now:'Now',later:'Later',
+ e_open_t:'Nothing is waiting',e_open_d:'Table calls and money alerts show up here.',
+ e_night_t:"Tables aren't open yet",e_night_d:'Open them for phones to start ordering.',
+ ago:'{m} min ago',now0:'just now',
+ m_t:'Payment not confirmed',m_tag:'{amt} on hold',m_q:'Was the receipt printed?',
+ m_ok:'Receipt printed',m_no:'No receipt',
+ m_ok_b:"The guest's card will be charged {amt}. This can't be undone.",
+ m_no_b:'The held {amt} is released and the items go back to {table}.',
+ m_ok_toast:'Card charged {amt} · {who}',m_no_toast:'Money released · {who}',
+ s_t:'Sent order not confirmed',s_before:'Bill before this order: {amt}',s_q:'Is it on the bill?',
+ s_ok:'Found on the bill',s_no:'Not on the bill',
+ s_ok_b:'The order counts as added and {table} can order again.',s_no_b:'The order counts as not sent and {table} can order again.',
+ s_ok_toast:'Saved: found on the bill · {who}',s_no_toast:'Saved: not on the bill · {who}',
+ a_t:'Sent order awaiting approval',a_pos:'Approve or decline it in {source}.',a_ok:'Approve',a_no:'Decline',a_ok_toast:'Order approved',a_no_toast:'Order declined',
+ c_t:'{table} is calling a waiter',c_ok:'Handled',c_toast:'{table}: handled',
+ g_t:'{table} is paused',g_d:'The order limit was reached. Check the table, then resume it.',g_ok:'Resume table',
+ g_b:'Guests at {table} can order again.',g_toast:'{table} resumed · {who}',
+ st_t:'Make the storno in {source}',st_d:'Refund of {amt} for {table} (receipt {rcpt}).',st_ok:'Storno done',
+ st_b:"We record that the storno is done in {source}. Restro doesn't check it.",st_toast:'Storno recorded · {who}',
+ d_t:'Card dispute',d_d:'Payment of {amt} ({table}, {date}).',d_ok:'See the evidence',d_toast:"The payment's page opens here.",
+ r_t:'Bring the receipt',r_d:'{table}: paid from the phone with ref {ref}, {amt}.',r_ok:'Brought',r_toast:'Receipt for {table} brought',
+ tables:'Tables',openof:'{o} of {t} open for phones',openall:'Open all',closeall:'Close all…',
+ ca_t:'Close all tables for phones?',ca_b:'Every sitting ends and unsent phone orders are cleared. Bills in {source} stay.',
+ ca_ok:'Close all',ca_keep:'Keep open',
+ oa_toast:'{k} tables opened for phones',ca_toast:'All tables closed for phones · {who}',
+ w_open:'Open',w_closed:'Closed',w_paused:'Paused',w_pay:'Payment',w_order:'Check',w_appr:'Approval',w_call:'Calling',
+ t_open:'{table} is open for phones',t_closed:'{table} is closed for phones',
+ sh_sub:'{bar} · open since {since}',sh_f1:'{k} sent orders',sh_f2:'Bill: {amt}',
+ sh_close:'Close for phones',sh_new:'New guests',
+ ng_t:'New guests at {table}?',ng_b:'A new sitting starts: the old order and the phones’ permissions are cleared. The bill in {source} stays.',
+ ng_ok:'New guests',ng_keep:'Keep',ng_toast:'{table}: new guests',
+ pin_t:'Enter your PIN',pin_tm:"Enter a manager's PIN",pin_lb:'PIN, 4 digits',pin_wrong:'Wrong PIN. Try again.',
+ pin_staff:"This PIN belongs to staff. A manager's PIN is needed.",leave:'Leave it',del:'Delete digit',
+ p_toast:'Ordering at {scope} paused',lift_toast:'Ordering resumed · {who}',
+ undo:'Undo',close:'Close',err:'Not saved. Check the connection and press it again.',
+ loading:'Loading…',
+ bar1:'Main bar',bar2:'Second bar',
+ who_t:'the bar tablet',who_s:'Maria',who_m:'Georgi',source:'Mistral',
+ tb:'Table {n}',ph_needs:'Needs you',ph_tables:'Tables',
+ more:'More actions'
+}};
+const LONG={bg:{bar1:'Бар на покрива и лаундж зоната',bar2:'Втори бар до VIP кабините и дансинга',source:'Мистрал Бар Софтуер',tn:' · VIP кабина до дансинга'},
+            en:{bar1:'Rooftop bar and the lounge area',bar2:'Second bar next to the VIP booths and the dance floor',source:'Mistral Bar Software',tn:' · VIP booth by the dance floor'}};
+
+const ITEMS={
+ sent:{bg:'2× Джин тоник, 1× Мохито',en:'2× Gin and tonic, 1× Mojito'},
+ sentL:{bg:'2× Шампанско „Моет и Шандон Империал“ 0,75 л, 1× Водка „Белуга Ноубъл“ с тоник, лайм и мента',en:'2× Champagne “Moët & Chandon Impérial” 0.75 l, 1× Vodka “Beluga Noble” with tonic, lime and mint'},
+ appr:{bg:'3× Бира, 1× Чипс',en:'3× Beer, 1× Chips'},
+ apprL:{bg:'3× Бира „Загорка Специално“ 0,5 л, 2× Фъстъци, 1× Чипс „Лейс“ със сметана и лук',en:'3× Beer “Zagorka Special” 0.5 l, 2× Peanuts, 1× Chips “Lay’s” sour cream and onion'}
+};
+const PINS={'1111':{n:'who_s',role:'staff'},'2222':{n:'who_m',role:'manager'}};
+
+/* ============ state ============ */
+const S={lang:'bg',theme:'light',width:'tablet',session:'shared',scen:'busy',failNext:false,callPin:false,
+ pane:'needs',tab:'act',modal:null,menu:null,toast:null,D:null,taps:0,digits:0,stories:[],tt:null};
+const NOW='02:14';
+const $=s=>document.querySelector(s);
+
+function t(k,p){let s=(L[S.lang][k]??k);if(p)for(const x in p)s=s.split('{'+x+'}').join(p[x]);return s}
+function eur(c){const v=(c/100).toFixed(2);return S.lang==='bg'?v.replace('.',',')+' €':'€'+v}
+function lng(k){return S.D.long?LONG[S.lang][k]:t(k)}
+function barName(b){return lng(b===1?'bar1':'bar2')}
+function source(){return lng('source')}
+function tbl(n){return t('tb',{n})+(S.D.long&&(n===12||n===4||n===11||n===9)?LONG[S.lang].tn:'')}
+function tshort(n){return t('tb',{n})}
+function ago(m){return m<1?t('now0'):t('ago',{m})}
+function who(){return S.session==='manager'?t('who_m'):S.session==='staff'?t('who_s'):t('who_t')}
+function itm(k){const key=S.D.long&&ITEMS[k+'L']?k+'L':k;return ITEMS[key][S.lang]}
+
+const IC={
+ check:'<path d="M20 6 9 17l-5-5"/>',
+ circle:'<circle cx="12" cy="12" r="9"/>',
+ ccheck:'<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+ pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+ alert:'<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/>',
+ bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+ hand:'<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
+ receipt:'<path d="M4 2v20l3-2 3 2 3-2 3 2 3-2V2l-3 2-3-2-3 2-3-2Z"/><path d="M8 8h8M8 12h8"/>',
+ plug:'<path d="m2 2 20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0M2 8.8a15 15 0 0 1 4.2-2.7M5 12.9a10 10 0 0 1 5.2-2.7M12 20h.01"/>',
+ more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+ x:'<path d="M18 6 6 18M6 6l12 12"/>',
+ list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+ clip:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
+ shield:'<path d="M20 13c0 5-3.5 7.5-7.7 8.97a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.17 1.17 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4M12 16h.01"/>',
+ card:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+ back:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+ down:'<path d="m6 9 6 6 6-6"/>'
+};
+function ic(n,s){return `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"${s?` style="width:${s}px;height:${s}px"`:''}>${IC[n]}</svg>`}
+
+/* ============ data ============ */
+function build(scen){
+ const many=scen==='many',long=scen==='long';
+ const nT=many?40:24,half=nT/2;
+ const openSet=scen==='empty'?[]:many?null:[1,2,3,4,5,7,9,11,12,15,16,18,20];
+ const tables=[];
+ for(let n=1;n<=nT;n++){
+  const open=many?(n%4!==0):openSet.includes(n);
+  tables.push({n,bar:n<=half?1:2,open,paused:false,since:open?(['23:10','23:40','00:05','00:30','01:15'][n%5]):null,orders:open?(n%4)+1:0,bill:open?4600+((n*1730)%9000):0});
+ }
+ const A=[];let id=0;const add=o=>A.push(Object.assign({id:'a'+(++id)},o));
+ let paused=null;
+ if(scen==='empty'||scen==='loading'){}
+ else if(scen==='unreachable'){
+  add({kind:'call',table:12,age:2});add({kind:'storno',table:7,age:1500,amt:1200,rcpt:'0001234'});
+ }else{
+  add({kind:'money',table:4,age:6,amt:3800});
+  add({kind:'sent',table:11,age:3,ref:'K7Q',before:4600});
+  add({kind:'approve',table:15,age:1});
+  add({kind:'guard',table:9,age:9});
+  add({kind:'call',table:12,age:2});
+  add({kind:'call',table:20,age:0});
+  add({kind:'storno',table:7,age:1500,amt:1200,rcpt:'0001234'});
+  add({kind:'receipt',table:2,age:4,amt:3800,ref:'P4D'});
+  if(many){
+   add({kind:'money',table:18,age:11,amt:5400});
+   add({kind:'call',table:31,age:5});
+   add({kind:'receipt',table:27,age:7,amt:2150,ref:'H2M'});
+   add({kind:'dispute',table:5,age:2900,amt:4600,date:'21.10.'});
+  }
+ }
+ A.forEach(a=>{ if(a.kind==='guard'){const tb=tables.find(x=>x.n===a.table);tb.paused=true;tb.open=true;} });
+ // a table with an alert or a pending paused state is open
+ A.forEach(a=>{const tb=tables.find(x=>x.n===a.table);if(tb&&['money','sent','approve','call','receipt'].includes(a.kind)&&!tb.open&&a.kind!=='receipt'){tb.open=true;tb.orders=2;tb.bill=4200;tb.since='23:50'}});
+ return {tables,alerts:A,pauses:[],restro:scen==='unreachable',long,caps:{approve:true}};
+}
+const PRIO={money:1,sent:2,approve:3,guard:4,call:5,dispute:6,storno:7,receipt:8};
+const LATER=k=>PRIO[k]>=6;
+function visible(a){return !(S.session==='staff'&&(a.kind==='storno'||a.kind==='dispute'))&&(a.kind!=='approve'||S.D.caps.approve)}
+function sortedAlerts(){return S.D.alerts.filter(visible).sort((a,b)=>PRIO[a.kind]-PRIO[b.kind]||b.age-a.age)}
+function snap(){return JSON.stringify({a:S.D.alerts,t:S.D.tables,p:S.D.pauses})}
+function restore(j){const o=JSON.parse(j);S.D.alerts=o.a;S.D.tables=o.t;S.D.pauses=o.p}
+
+/* ============ rules: who must enter a PIN ============ */
+/* A PIN names the person when the signed-in session can't. Needed when the session is the shared tablet,
+   or when the action needs the manager role and the session is a staff one. */
+function needsPin(cfg){
+ if(!cfg.pin)return false;
+ if(S.session==='shared')return true;
+ if(cfg.min==='manager'&&S.session==='staff')return true;
+ return false;
+}
+function gate(cfg){            // cfg: {label,target,pin,min,title,body,run(who)->toast text, undo?}
+ if(needsPin(cfg)){S.modal={type:'pin',cfg,digits:'',err:''};render();focusModal();}
+ else finish(cfg,who());
+}
+function finish(cfg,w){
+ if(S.failNext){S.failNext=false;$('#c-fail').checked=false;S.modal=null;S.toast={err:true,text:t('err')};render();return}
+ const before=snap();
+ const txt=cfg.run(w);
+ S.modal=null;S.menu=null;
+ S.toast={text:txt,undo:cfg.undo?before:null};
+ logStory(cfg,needsPin(cfg));
+ armToast();render();say(txt);
+}
+function logStory(cfg,pin){
+ const tg=cfg.target||'';
+ S.stories.unshift({label:cfg.label,taps:S.taps,digits:S.digits,pin,target:tg});
+ S.stories=S.stories.slice(0,12);S.taps=0;S.digits=0;renderStories();
+}
+function armToast(){clearTimeout(S.tt);if(S.toast&&!S.toast.err)S.tt=setTimeout(()=>{S.toast=null;render()},8000)}
+function say(x){$('#live').textContent='';setTimeout(()=>$('#live').textContent=x,30)}
+
+/* ============ actions ============ */
+const sc=()=>S.D.pauses.length&&S.D.pauses[0].scope;
+function aOf(id){return S.D.alerts.find(a=>a.id===id)}
+function dropAlert(id){S.D.alerts=S.D.alerts.filter(a=>a.id!==id)}
+function tOf(n){return S.D.tables.find(x=>x.n===n)}
+function scopeName(sc){return sc===0?t('p_all'):barName(sc)}
+
+const ACT={
+ money(a,ok){const amt=eur(a.amt),tb=tbl(a.table);return {label:ok?'Receipt printed':'No receipt',target:'1 tap + PIN',pin:true,min:'manager',
+   title:ok?t('m_ok'):t('m_no'),body:ok?t('m_ok_b',{amt}):t('m_no_b',{amt,table:tshort(a.table)}),
+   run:w=>{dropAlert(a.id);return ok?t('m_ok_toast',{amt,who:w}):t('m_no_toast',{who:w})}}},
+ sent(a,ok){const tb=tshort(a.table);return {label:ok?'Found on the bill':'Not on the bill',target:'1 tap + PIN',pin:true,min:'staff',
+   title:ok?t('s_ok'):t('s_no'),body:ok?t('s_ok_b',{table:tb}):t('s_no_b',{table:tb}),
+   run:w=>{dropAlert(a.id);return ok?t('s_ok_toast',{who:w}):t('s_no_toast',{who:w})}}},
+ approve(a,ok){return {label:ok?'Approve':'Decline',target:'1 tap',pin:false,undo:false,run:()=>{dropAlert(a.id);return ok?t('a_ok_toast'):t('a_no_toast')}}},
+ call(a){return {label:'Waiter call handled',target:'1 tap',pin:S.callPin,min:'staff',title:t('c_ok'),body:t('c_toast',{table:tshort(a.table)}),undo:true,run:()=>{dropAlert(a.id);return t('c_toast',{table:tshort(a.table)})}}},
+ guard(a){const tb=tshort(a.table);return {label:'Resume table',target:'1 tap + PIN',pin:true,min:'staff',title:t('g_ok')+': '+tb,body:t('g_b',{table:tb}),
+   run:w=>{dropAlert(a.id);tOf(a.table).paused=false;return t('g_toast',{table:tb,who:w})}}},
+ storno(a){return {label:'Storno done',target:'1 tap + PIN',pin:true,min:'manager',undo:true,title:t('st_ok'),body:t('st_b',{source:source()}),
+   run:w=>{dropAlert(a.id);return t('st_toast',{who:w})}}},
+ receipt(a){return {label:'Receipt brought',target:'1 tap',pin:false,undo:true,run:()=>{dropAlert(a.id);return t('r_toast',{table:tshort(a.table)})}}}
+};
+
+function onAct(a,d){
+ const al=d.id?aOf(d.id):null;
+ switch(a){
+  case 'money-ok':return gate(ACT.money(al,true));
+  case 'money-no':return gate(ACT.money(al,false));
+  case 'sent-ok':return gate(ACT.sent(al,true));
+  case 'sent-no':return gate(ACT.sent(al,false));
+  case 'appr-ok':return gate(ACT.approve(al,true));
+  case 'appr-no':return gate(ACT.approve(al,false));
+  case 'call-ok':return gate(ACT.call(al));
+  case 'guard-ok':return gate(ACT.guard(al));
+  case 'storno-ok':return gate(ACT.storno(al));
+  case 'receipt-ok':return gate(ACT.receipt(al));
+  case 'dispute-ok':S.toast={text:t('d_toast')};armToast();render();return;
+  case 'tile':{const n=+d.n,tb=tOf(n);
+   if(!tb.open){gate({label:'Open one table',target:'1 tap',pin:false,undo:true,run:()=>{tb.open=true;tb.since=NOW;tb.orders=0;tb.bill=0;return t('t_open',{table:tshort(n)})}});return}
+   S.modal={type:'sheet',n};render();return}
+  case 'sheet-close':{const n=S.modal.n,tb=tOf(n);
+   return gate({label:'Close one table',target:'2 taps',pin:false,undo:true,run:()=>{tb.open=false;tb.paused=false;S.D.alerts=S.D.alerts.filter(x=>!(x.table===n&&x.kind==='guard'));return t('t_closed',{table:tshort(n)})}});}
+  case 'sheet-new':{const n=S.modal.n;
+   S.modal={type:'confirm',title:t('ng_t',{table:tshort(n)}),body:t('ng_b',{source:source()}),ok:t('ng_ok'),keep:t('ng_keep'),
+    next:{label:'New guests',target:'3 taps',pin:false,undo:false,run:()=>{const tb=tOf(n);tb.since=NOW;tb.orders=0;tb.bill=0;return t('ng_toast',{table:tshort(n)})}}};render();focusModal();return}
+  case 'confirm-ok':{const nx=S.modal.next;S.modal=null;return gate(nx)}
+  case 'openall':return gate({label:'Open all',target:'1 tap + PIN',pin:true,min:'staff',undo:true,
+    title:t('openall'),body:t('oa_b',{k:S.D.tables.filter(x=>!x.open).length}),
+    run:()=>{let k=0;S.D.tables.forEach(x=>{if(!x.open){x.open=true;x.since=NOW;k++}});return t('oa_toast',{k})}});
+  case 'closeall-ask':S.menu=null;S.modal={type:'confirm',title:t('ca_t'),body:t('ca_b',{source:source()}),ok:t('ca_ok'),keep:t('ca_keep'),
+    next:{label:'Close all',target:'3 taps + PIN',pin:true,min:'staff',title:t('ca_ok'),body:t('ca_b',{source:source()}),undo:false,
+     run:w=>{S.D.tables.forEach(x=>{x.open=false;x.paused=false});S.D.alerts=S.D.alerts.filter(x=>x.kind!=='guard');return t('ca_toast',{who:w})}}};render();focusModal();return;
+  case 'menu':S.menu=S.menu===d.m?null:d.m;render();return;
+  case 'pause':{const scp=+d.s;S.menu=null;
+   return gate({label:'Pause ordering',target:'2 taps',pin:false,undo:true,run:w=>{S.D.pauses=[{scope:scp,by:w,at:NOW}];return t('p_toast',{scope:scopeName(scp)})}});}
+  case 'lift':return gate({label:'Lift a pause',target:'1 tap + PIN',pin:true,min:'manager',title:t('lift'),body:t('lift_b'),
+     run:w=>{S.D.pauses=[];return t('lift_toast',{who:w})}});
+  case 'pane':S.pane=d.v;render();return;
+  case 'tab':S.tab=d.v;render();return;
+  case 'undo':{if(S.toast&&S.toast.undo){restore(S.toast.undo);S.toast=null;S.taps=0;render();say(t('undo'))}return}
+  case 'toast-x':S.toast=null;render();return;
+  case 'modal-x':S.modal=null;render();return;
+  case 'key':return key(d.k);
+ }
+}
+function key(k){
+ const m=S.modal;if(!m||m.type!=='pin')return;
+ if(k==='del'){m.digits=m.digits.slice(0,-1);m.err='';render();return}
+ if(m.digits.length>=4)return;
+ m.digits+=k;S.digits++;m.err='';
+ if(m.digits.length===4){
+  const p=PINS[m.digits],cfg=m.cfg;
+  if(!p){m.err=t('pin_wrong');m.digits='';render();return}
+  if(cfg.min==='manager'&&p.role!=='manager'){m.err=t('pin_staff');m.digits='';render();return}
+  finish(cfg,t(p.n));return;
+ }
+ render();
+}
+
+/* ============ render ============ */
+function rowHtml(a,first){
+ const tb=tbl(a.table),bar=barName(tOf(a.table)?tOf(a.table).bar:1),meta=`${tb} · ${bar} · ${ago(a.age)}`;
+ const main=first;   // only the first row's main action is filled: the one primary action
+ const b=(act,label,cls)=>`<button type="button" class="btn ${cls||''}" data-a="${act}" data-id="${a.id}" data-fk="${act}${a.id}">${label}</button>`;
+ let cls='',icon='bell',ti='',me=meta,de='',acts='';
+ switch(a.kind){
+  case 'money':cls='money';icon='alert';ti=t('m_t');
+   de=`<div class="tag money">${ic('card',18)}${t('m_tag',{amt:eur(a.amt)})}</div><div class="de">${t('m_q')}</div>`;
+   acts=b('money-ok',t('m_ok'))+b('money-no',t('m_no'));break;
+  case 'sent':cls='attn';icon='list';ti=t('s_t');
+   de=`<div class="de">${itm('sent')}</div><div class="me">${t('s_before',{amt:eur(a.before)})}</div><div class="de"><b>${t('s_q')}</b></div>`;
+   acts=b('sent-ok',t('s_ok'))+b('sent-no',t('s_no'));break;
+  case 'approve':cls='attn';icon='check';ti=t('a_t');de=`<div class="de">${itm('appr')}</div>`;
+   acts='<div class="de">'+t('a_pos',{source:source()})+'</div>';break; // lead 10-21: read-only, approval lives in the POS (D116)
+  case 'guard':cls='attn';icon='pause';ti=t('g_t',{table:tshort(a.table)});de=`<div class="de">${t('g_d')}</div>`;
+   acts=b('guard-ok',t('g_ok'),main?'primary':'');break;
+  case 'call':cls='attn';icon='hand';ti=t('c_t',{table:tshort(a.table)});me=`${tb} · ${bar} · ${ago(a.age)}`;
+   acts=b('call-ok',t('c_ok'),main?'primary':'');break;
+  case 'storno':icon='clip';ti=t('st_t',{source:source()});me=ago2(a.age);
+   de=`<div class="de">${t('st_d',{amt:eur(a.amt),table:tb,rcpt:a.rcpt})}</div>`;acts=b('storno-ok',t('st_ok'),main?'primary':'');break;
+  case 'dispute':icon='shield';ti=t('d_t');me=ago2(a.age);de=`<div class="de">${t('d_d',{amt:eur(a.amt),table:tb,date:a.date})}</div>`;
+   acts=b('dispute-ok',t('d_ok'),main?'primary':'');break;
+  case 'receipt':icon='receipt';ti=t('r_t');de=`<div class="de">${t('r_d',{table:tb,ref:a.ref,amt:eur(a.amt)})}</div>`;me=`${bar} · ${ago(a.age)}`;
+   acts=b('receipt-ok',t('r_ok'),main?'primary':'');break;
+ }
+ const refHtml=a.ref?`<div class="ref" aria-label="ref ${a.ref.split('').join(' ')}">${a.ref}</div>`:'';
+ return `<li class="row ${cls}"><div class="ic">${ic(icon)}</div><div class="bd"><div class="rh"><div><div class="ti">${ti}</div><div class="me">${me}</div></div>${refHtml}</div>${de}<div class="acts">${acts}</div></div></li>`;
+}
+function ago2(m){ if(m<60)return ago(m); const h=Math.floor(m/60),d=Math.floor(h/24); return S.lang==='bg'?`преди ${d<1?h+' ч':d+(d===1?' ден':' дни')}`:`${d<1?h+' h':d+(d===1?' day':' days')} ago`; }
+
+function needsHtml(){
+ if(S.scen==='loading')return `<div aria-busy="true"><span class="sr">${t('loading')}</span>${'<div class="skel sk-row"></div>'.repeat(4)}</div>`;
+ const A=sortedAlerts();
+ const anyOpen=S.D.tables.some(x=>x.open);
+ let h=S.width==='phone'?'':`<h2 class="sh">${t('needs')} <span class="n">${A.length||''}</span></h2>`;
+ if(!A.length){
+  h+=anyOpen?`<div class="empty">${ic('ccheck',28)}<b>${t('e_open_t')}</b><span>${t('e_open_d')}</span></div>`
+   :`<div class="empty">${ic('circle',28)}<b>${t('e_night_t')}</b><span>${t('e_night_d')}</span>${S.width==='phone'?`<button type="button" class="btn primary" style="margin-top:8px" data-a="openall" data-fk="oa2">${t('openall')}</button>`:''}</div>`;
+  return h;
+ }
+ const now=A.filter(a=>!LATER(a.kind)),lat=A.filter(a=>LATER(a.kind));
+ let first=true;
+ if(now.length){ if(lat.length)h+=`<div class="gl">${t('now')}</div>`;
+  h+=`<ul class="list">${now.map(a=>{const r=rowHtml(a,first);first=false;return r}).join('')}</ul>`}
+ if(lat.length){h+=`<div class="gl">${t('later')}</div><ul class="list">${lat.map(a=>{const r=rowHtml(a,first);first=false;return r}).join('')}</ul>`}
+ return h;
+}
+function tileHtml(tb){
+ const al=sortedAlerts().filter(a=>a.table===tb.n&&['money','sent','approve','guard','call'].includes(a.kind))[0];
+ let cls='closed',icon='circle',word=t('w_closed');
+ if(tb.open){cls='open';icon='ccheck';word=t('w_open')}
+ if(al){
+  const m={money:['money','alert',t('w_pay')],sent:['attn','list',t('w_order')],approve:['attn','check',t('w_appr')],guard:['attn','pause',t('w_paused')],call:['attn','hand',t('w_call')]}[al.kind];
+  cls=m[0];icon=m[1];word=m[2];
+ }
+ const sub=S.D.long&&[4,9,11,12].includes(tb.n)?`<div class="tname">${LONG[S.lang].tn.replace(' · ','')}</div>`:'';
+ const label=`${tshort(tb.n)}, ${word}`;
+ return `<button type="button" class="tile ${cls}" data-a="tile" data-n="${tb.n}" data-fk="t${tb.n}" aria-label="${label}"><b>${tb.n}</b><span>${ic(icon)}<em>${word}</em></span>${sub}</button>`;
+}
+function tablesHtml(){
+ if(S.scen==='loading')return `<div aria-busy="true"><span class="sr">${t('loading')}</span><div class="grid">${'<div class="skel sk-tile"></div>'.repeat(12)}</div></div>`;
+ const T=S.D.tables,o=T.filter(x=>x.open).length;
+ let h=`<h2 class="sh"><span class="tt">${t('tables')}<span class="n">${t('openof',{o,t:T.length})}</span></span><span class="sp"></span>`;
+ if(o<T.length)h+=`<button type="button" class="btn ${o===0&&!S.D.alerts.length?'primary':''}" data-a="openall" data-fk="oa1">${t('openall')}</button>`;
+ h+=`<span class="mw"><button type="button" class="btn ghost" aria-label="${t('more')}" aria-haspopup="menu" aria-expanded="${S.menu==='tm'}" data-a="menu" data-m="tm" data-fk="tm" style="min-width:44px;padding:8px">${ic('more')}</button>`;
+ if(S.menu==='tm')h+=`<div class="pop" role="menu"><button type="button" role="menuitem" data-a="closeall-ask" data-fk="ca" ${o?'':'disabled'}>${t('closeall')}</button></div>`;
+ h+=`</span></h2>`;
+ for(const b of [1,2]){
+  const bt=T.filter(x=>x.bar===b);
+  h+=`<div class="bhead">${barName(b)} <span>${bt.filter(x=>x.open).length}/${bt.length}</span></div><div class="grid">${bt.map(tileHtml).join('')}</div>`;
+ }
+ return h;
+}
+function bannerHtml(){
+ let h='';
+ if(S.D.restro)h+=`<div class="banner" role="status">${ic('plug',22)}<div class="tx">${t('b_restro',{source:source()})}</div></div>`;
+ else if(S.D.pauses.length){
+  const p=S.D.pauses[0];
+  h+=`<div class="banner" role="status"><span style="color:var(--accent)">${ic('pause',22)}</span><div class="tx">${t('b_staff',{scope:scopeName(p.scope),who:p.by,time:p.at})}</div><button type="button" class="btn" data-a="lift" data-fk="lift">${t('lift')}</button></div>`;
+ }
+ return h;
+}
+function headHtml(){
+ const phone=S.width==='phone';
+ const paused=S.D.restro||S.D.pauses.length;
+ const status='';
+ const pauseBtn=paused?'':`<span class="mw"><button type="button" class="btn" data-a="menu" data-m="p" aria-haspopup="menu" aria-expanded="${S.menu==='p'}" data-fk="pm">${ic('pause',18)}${t('pause')}${ic('down',18)}</button>${S.menu==='p'?`<div class="pop" role="menu"><button type="button" role="menuitem" data-a="pause" data-s="0" data-fk="p0">${t('p_all')}</button><button type="button" role="menuitem" data-a="pause" data-s="1">${barName(1)}</button><button type="button" role="menuitem" data-a="pause" data-s="2">${barName(2)}</button></div>`:''}</span>`;
+ let h=`<div class="hd"><div class="ttl"><div class="crumb">${t('venue')}</div><h1 class="t">${t('title')}</h1></div>${phone?'':status}${pauseBtn}</div>`;
+ if(phone)h=`<div class="hd"><div class="ttl"><div class="crumb">${t('venue')}</div><h1 class="t">${t('title')}</h1></div>${pauseBtn}</div>`;
+ const tabs=['act','sent','sold','log'];
+ if(phone)h+=`<div class="tabsel"><select class="sel" aria-label="${t('title')}" id="tabsel">${tabs.map(k=>`<option value="${k}" ${S.tab===k?'selected':''}>${t('tab_'+k)}</option>`).join('')}</select></div>`;
+ else h+=`<div class="tabs" role="tablist">${tabs.map(k=>`<button type="button" role="tab" aria-selected="${S.tab===k}" data-a="tab" data-v="${k}" data-fk="tab${k}">${t('tab_'+k)}</button>`).join('')}</div>`;
+ return h;
+}
+function modalHtml(){
+ const m=S.modal;if(!m)return '';
+ const phone=S.width==='phone';
+ if(m.type==='pin'){
+  const c=m.cfg,mgr=c.min==='manager';
+  const keys=[1,2,3,4,5,6,7,8,9].map(k=>`<button type="button" class="btn" data-a="key" data-k="${k}" data-fk="k${k}">${k}</button>`).join('')+`<span></span><button type="button" class="btn" data-a="key" data-k="0" data-fk="k0">0</button><button type="button" class="btn ghost" data-a="key" data-k="del" aria-label="${t('del')}" data-fk="kd">${ic('back',24)}</button>`;
+  return `<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt"><h3 id="dt">${c.title||c.label}</h3><p>${c.body||''}</p>
+   <div class="who" id="pl">${mgr?t('pin_tm'):t('pin_t')}</div>
+   <div class="dots" role="img" aria-label="${t('pin_lb')}: ${m.digits.length}/4">${[0,1,2,3].map(i=>`<i class="${i<m.digits.length?'on':''}"></i>`).join('')}</div>
+   <div class="perr" role="alert">${m.err?ic('alert',16)+m.err:''}</div>
+   <div class="keys">${keys}</div>
+   <button type="button" class="btn" style="width:100%" data-a="modal-x" data-fk="leave">${t('leave')}</button></div></div>`;
+ }
+ if(m.type==='confirm')return `<div class="scrim"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dt"><h3 id="dt">${m.title}</h3><p>${m.body}</p><div class="col2"><button type="button" class="btn primary" data-a="confirm-ok" data-fk="cok">${m.ok}</button><button type="button" class="btn" data-a="modal-x" data-fk="leave">${m.keep}</button></div></div></div>`;
+ if(m.type==='sheet'){
+  const tb=tOf(m.n),al=sortedAlerts().filter(a=>a.table===m.n);
+  return `<div class="scrim ${phone?'':'side'}"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dt">
+   <h3 id="dt">${tbl(m.n)}</h3><p>${t('sh_sub',{bar:barName(tb.bar),since:tb.since||''})}</p>
+   <ul class="facts"><li>${t('sh_f1',{k:tb.orders})}</li><li>${t('sh_f2',{amt:eur(tb.bill)})}</li></ul>
+   <div class="col2"><button type="button" class="btn" data-a="sheet-close" data-fk="sc">${t('sh_close')}</button><button type="button" class="btn" data-a="sheet-new" data-fk="sn">${t('sh_new')}</button><button type="button" class="btn ghost" data-a="modal-x" data-fk="leave">${t('close')}</button></div></div></div>`;
+ }
+ return '';
+}
+function toastHtml(){
+ const x=S.toast;if(!x)return '';
+ if(x.err)return `<div class="toast err" role="alert">${ic('alert',20)}<span>${x.text}</span><button type="button" class="btn" data-a="toast-x" aria-label="${t('close')}" style="min-width:44px;padding:8px">${ic('x',20)}</button></div>`;
+ return `<div class="toast" role="status"><span>${x.text}</span>${x.undo?`<button type="button" class="btn" data-a="undo" data-fk="undo">${t('undo')}</button>`:`<button type="button" class="btn" data-a="toast-x" aria-label="${t('close')}" style="min-width:44px;padding:8px;text-decoration:none">${ic('x',20)}</button>`}</div>`;
+}
+function render(){
+ const dev=$('#dev');
+ const sc=[...dev.querySelectorAll('[data-sc]')].map(e=>e.scrollTop);
+ const fk=document.activeElement&&document.activeElement.dataset?document.activeElement.dataset.fk:null;
+ const phone=S.width==='phone';
+ dev.className='dev '+S.width;
+ document.documentElement.lang=S.lang;document.documentElement.dataset.theme=S.theme;
+ let body='';
+ if(S.tab!=='act')body=`<div class="stub">${t('stub')}</div>`;
+ else if(phone){
+  const n=S.scen==='loading'?'':sortedAlerts().length;
+  body=`<div class="segp"><div class="seg" role="group"><button type="button" aria-pressed="${S.pane==='needs'}" data-a="pane" data-v="needs" data-fk="pn">${t('ph_needs')}${n!==''?' · '+n:''}</button><button type="button" aria-pressed="${S.pane==='tables'}" data-a="pane" data-v="tables" data-fk="pt">${t('ph_tables')} · ${S.D.tables.length}</button></div></div><div class="main" data-sc>${S.pane==='needs'?`<div class="col">${needsHtml()}</div>`:`<div class="col">${tablesHtml()}</div>`}</div>`;
+ }else body=`<div class="main"><div class="col l" data-sc>${needsHtml()}</div><div class="col" data-sc>${tablesHtml()}</div></div>`;
+ dev.innerHTML=headHtml()+bannerHtml()+body+modalHtml()+toastHtml();
+ // phone: the segmented control must not scroll away; .main scrolls
+ dev.querySelectorAll('[data-sc]').forEach((e,i)=>{if(sc[i]!=null)e.scrollTop=sc[i]});
+ const ts=$('#tabsel');if(ts)ts.onchange=()=>{S.tab=ts.value;render()};
+ if(fk){const e=dev.querySelector(`[data-fk="${fk}"]`);if(e)e.focus()}
+ for(const b of document.querySelectorAll('[data-c]')){b.setAttribute('aria-pressed',String(S[b.dataset.c]===b.dataset.v))}
+ $('#c-scen').value=S.scen;fit();
+}
+function focusModal(){setTimeout(()=>{const e=$('#dev .scrim button');if(e)e.focus()},0)}
+function renderStories(){
+ const o=$('#stories');
+ if(!S.stories.length){return}
+ o.innerHTML=S.stories.map(s=>{const got=s.taps+' tap'+(s.taps===1?'':'s')+(s.pin?' + PIN ('+s.digits+' digits)':'');return `<li><b>${s.label}</b>: ${got}<br><small>target: ${s.target}</small></li>`}).join('');
+}
+function fit(){
+ const dev=$('#dev'),w=S.width==='phone'?390:1180,h=S.width==='phone'?844:820;
+ const avail=Math.min(window.innerWidth-32,w);
+ const k=Math.min(1,Math.max(.4,avail/w));
+ dev.style.transform=`scale(${k})`;
+ $('#wrap').style.width=(w*k)+'px';$('#wrap').style.height=(h*k)+'px';
+}
+
+/* ============ wiring ============ */
+document.addEventListener('click',e=>{
+ const c=e.target.closest('[data-c]');
+ if(c){const k=c.dataset.c;S[k]=c.dataset.v;
+  if(k==='session'){S.D=S.D||build(S.scen)}
+  render();return}
+ const dv=e.target.closest('#dev');
+ if(S.menu&&!e.target.closest('.mw')){S.menu=null;render()}
+ const b=e.target.closest('#dev [data-a]');
+ if(!b)return;
+ const a=b.dataset.a;
+ if(a!=='key'&&a!=='modal-x'&&a!=='toast-x'&&a!=='undo'&&a!=='pane'&&a!=='tab'&&a!=='menu')S.taps++;
+ else if(a==='menu')S.taps++;
+ onAct(a,b.dataset);
+});
+document.addEventListener('keydown',e=>{
+ if(S.modal&&S.modal.type==='pin'){
+  if(/^[0-9]$/.test(e.key)){e.preventDefault();key(e.key);return}
+  if(e.key==='Backspace'){e.preventDefault();key('del');return}
+ }
+ if(e.key==='Escape'){if(S.modal){S.modal=null;render()}else if(S.menu){S.menu=null;render()}}
+});
+$('#c-scen').onchange=e=>{S.scen=e.target.value;S.D=build(S.scen);S.modal=null;S.toast=null;S.menu=null;render()};
+$('#c-fail').onchange=e=>S.failNext=e.target.checked;
+$('#c-callpin').onchange=e=>S.callPin=e.target.checked;
+$('#c-reset').onclick=()=>{S.D=build(S.scen);S.modal=null;S.toast=null;S.menu=null;S.taps=0;S.digits=0;render()};
+$('#c-newcall').onclick=()=>{
+ const free=S.D.tables.filter(x=>x.open&&!S.D.alerts.some(a=>a.kind==='call'&&a.table===x.n));
+ const tb=free[Math.floor(Math.random()*free.length)]||S.D.tables[0];
+ S.D.alerts.push({id:'n'+Date.now(),kind:'call',table:tb.n,age:0});render();say(t('c_t',{table:tshort(tb.n)}));
+};
+window.addEventListener('resize',fit);
+S.D=build('busy');render();
+</script>
+</body>
+</html>

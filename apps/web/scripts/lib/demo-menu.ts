@@ -3,7 +3,7 @@
 // category), as data and as the change set that applies it. All external ids are made up. Pure:
 // the seed script (../seed-dev.ts) does the database work, this file only describes the menu.
 //
-// Applying it goes through apply() like any pull: barsy-layer values citing a (fake) source
+// Applying it goes through apply() like any pull: till-layer values citing a (fake) source
 // record and mapping version 1, `category` and `article` links, placements at the end of the
 // section. Running it again changes nothing.
 import {
@@ -15,6 +15,7 @@ import {
   type NodeId,
   newId,
   type SourceLink,
+  tillSource,
 } from '@restro/core'
 
 /** The fake mapping version the demo's barsy values record. */
@@ -229,7 +230,7 @@ export interface DemoPullInput {
 
 /**
  * What a pull of the demo catalogue produces: the sections and items with their links, the
- * barsy-layer values (price and for-sale for this venue) and the placements at the end of each
+ * till-layer values (price and for-sale for this venue) and the placements at the end of each
  * section. Item names carry English only where "barsy holds it".
  */
 export function demoPullChangeSet(input: DemoPullInput): ChangeSet {
@@ -260,7 +261,7 @@ export function demoPullChangeSet(input: DemoPullInput): ChangeSet {
         op: 'setField',
         node: { link: ref },
         fieldKey: 'title',
-        layer: 'barsy',
+        layer: 'till',
         scope: 'master',
         value: section.title,
         sourceRecordId: input.categoryRecords.get(section.externalId) ?? '',
@@ -273,7 +274,7 @@ export function demoPullChangeSet(input: DemoPullInput): ChangeSet {
     const ref = link('article', item.externalId)
     const record = input.articleRecords.get(item.externalId) ?? ''
     const id = newId('nd')
-    const barsyField = (
+    const tillField = (
       fieldKey: string,
       value: FieldWrite['value'],
       scope: 'master' | `venue:${string}` = 'master',
@@ -281,7 +282,7 @@ export function demoPullChangeSet(input: DemoPullInput): ChangeSet {
       op: 'setField',
       node: { link: ref },
       fieldKey,
-      layer: 'barsy',
+      layer: 'till',
       scope,
       value,
       sourceRecordId: record,
@@ -290,12 +291,12 @@ export function demoPullChangeSet(input: DemoPullInput): ChangeSet {
     ops.push(
       { op: 'createNode', id, nodeType: 'item', parent: null, status: 'active' },
       { op: 'linkSource', node: { id }, link: ref },
-      barsyField('name', item.en ? { bg_BG: item.bg, en_US: item.en } : { bg_BG: item.bg }),
-      barsyField('price', eur(item.priceMinor), venueScope),
-      barsyField('for_sale', true, venueScope),
-      barsyField('visible', item.hiddenByBarsy !== true),
+      tillField('name', item.en ? { bg_BG: item.bg, en_US: item.en } : { bg_BG: item.bg }),
+      tillField('price', eur(item.priceMinor), venueScope),
+      tillField('for_sale', true, venueScope),
+      tillField('visible', item.hiddenByBarsy !== true),
     )
-    if (item.allergens) ops.push(barsyField('allergens', [...item.allergens]))
+    if (item.allergens) ops.push(tillField('allergens', [...item.allergens]))
     if (item.section !== null) {
       const section = DEMO_SECTIONS[item.section]
       if (!section)
@@ -311,7 +312,7 @@ export function demoPullChangeSet(input: DemoPullInput): ChangeSet {
 
   return {
     id: newId('cs'),
-    source: `barsy:${integrationId}`,
+    source: tillSource(integrationId),
     jobId: newId('jb'),
     actor: `integration:${integrationId}`,
     observedAt: input.observedAt ?? new Date().toISOString(),

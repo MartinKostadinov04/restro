@@ -62,20 +62,32 @@ export type {
   PlaceDescriptor,
   PlacesContext,
   PriceSource,
+  SectionLinkOwner,
   SourceExternalType,
   SourceRecordDescriptor,
+  VenueHide,
 } from './mapping/index.ts'
 export {
   BARSY_MAPPING_VERSION,
   BarsyMappingError,
+  DEFAULT_MAPPING_LOCALE,
+  hasCategory,
+  inMenuOf,
+  inMenuOfAny,
   mapCatalogue,
   mapModificators,
   mapPlaces,
   parseAllergenText,
+  parseSectionLinkId,
+  qualifiedSections,
   readArticlePicture,
+  sectionLinkId,
+  sectionLinksOfMenu,
+  venueHideOps,
 } from './mapping/index.ts'
 export type {
   BarsyArticlesPage,
+  BarsyArticlesScope,
   BarsyCaller,
   BarsyPage,
   BarsyReader,
@@ -84,6 +96,7 @@ export type {
 export {
   ARTICLE_EXTRA_PROPERTIES,
   ARTICLES_ORDER_BY,
+  CATALOGUE_ORDER_BY,
   createBarsyReader,
 } from './read/reader.ts'
 export type {

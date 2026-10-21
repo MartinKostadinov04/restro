@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { getTranslations } from 'next-intl/server'
+import { useTranslations } from 'next-intl'
 import { Fragment } from 'react'
 
 import {
@@ -28,10 +28,11 @@ interface AdminHeaderProps {
 /**
  * The bar above every admin page: sidebar toggle and breadcrumbs. Ported from the Platform's
  * SidebarLayout.jsx (337-371); the trail is passed by each page as props, because a layout does
- * not re-render when you move between its pages.
+ * not re-render when you move between its pages. Not async, so a client component can draw it
+ * too (the Settings layout works out its section from the URL, see settings-header.tsx).
  */
-export async function AdminHeader({ trail = [], current }: AdminHeaderProps) {
-  const t = await getTranslations('nav')
+export function AdminHeader({ trail = [], current }: AdminHeaderProps) {
+  const t = useTranslations('nav')
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
       <SidebarTrigger className="-ml-1" />

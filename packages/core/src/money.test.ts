@@ -9,6 +9,10 @@ import {
   MoneyError,
   MoneySchema,
   minorToDecimal,
+  multiplyMinor,
+  percentOfMinor,
+  ratioOfMinor,
+  subtractMinor,
 } from './money'
 
 /**
@@ -60,6 +64,193 @@ describe('addMinor', () => {
         } else {
           expect(BigInt(addMinor(a, b))).toBe(exact)
         }
+      }),
+    )
+  })
+})
+
+/** Everything the whole-number helpers must refuse: floats, negatives, NaN, infinities, unsafe. */
+const NOT_MINOR = [12.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]
+
+describe('subtractMinor', () => {
+  it('subtracts integer minor units', () => {
+    expect(subtractMinor(1400, 150)).toBe(1250)
+    expect(subtractMinor(150, 150)).toBe(0)
+    expect(subtractMinor(0, 0)).toBe(0)
+    expect(subtractMinor(Number.MAX_SAFE_INTEGER, 0)).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it('refuses floats, negatives, unsafe integers and a negative difference (rule 8)', () => {
+    for (const bad of NOT_MINOR) {
+      expect(() => subtractMinor(bad, 1), `${bad} - 1`).toThrow(MoneyError)
+      expect(() => subtractMinor(5, bad), `5 - ${bad}`).toThrow(MoneyError)
+    }
+    expect(() => subtractMinor(1, 2)).toThrow(MoneyError)
+  })
+
+  it('undoes addition on every safe pair (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 2 ** 52 }),
+        fc.integer({ min: 0, max: 2 ** 52 }),
+        (a, b) => {
+          expect(subtractMinor(addMinor(a, b), b)).toBe(a)
+        },
+      ),
+    )
+  })
+})
+
+describe('multiplyMinor', () => {
+  it('multiplies an amount by a whole factor, exactly', () => {
+    expect(multiplyMinor(1250, 3)).toBe(3750)
+    expect(multiplyMinor(1250, 0)).toBe(0)
+    expect(multiplyMinor(0, 50)).toBe(0)
+    expect(multiplyMinor(Number.MAX_SAFE_INTEGER, 1)).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it('refuses floats, negatives, unsafe integers and an unsafe product (rule 8)', () => {
+    for (const bad of NOT_MINOR) {
+      expect(() => multiplyMinor(bad, 2), `${bad} × 2`).toThrow(MoneyError)
+      expect(() => multiplyMinor(2, bad), `2 × ${bad}`).toThrow(MoneyError)
+    }
+    expect(() => multiplyMinor(Number.MAX_SAFE_INTEGER, 2)).toThrow(MoneyError)
+    expect(() => multiplyMinor(2 ** 27, 2 ** 27)).toThrow(MoneyError)
+    expect(multiplyMinor(2 ** 26, 2 ** 26)).toBe(2 ** 52)
+  })
+
+  it('agrees with BigInt multiplication on every safe pair (property)', () => {
+    fc.assert(
+      fc.property(fc.maxSafeNat(), fc.maxSafeNat(), (a, b) => {
+        const exact = BigInt(a) * BigInt(b)
+        if (exact > BigInt(Number.MAX_SAFE_INTEGER)) {
+          expect(() => multiplyMinor(a, b)).toThrow(MoneyError)
+        } else {
+          expect(BigInt(multiplyMinor(a, b))).toBe(exact)
+        }
+      }),
+      { numRuns: 2000 },
+    )
+  })
+
+  it('agrees with BigInt multiplication when the product is near the safe limit (property)', () => {
+    // Pairs whose product is close to 2^53, where a float product could round across the limit.
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 2 ** 26 }),
+        fc.integer({ min: -4, max: 4 }),
+        (a, offset) => {
+          const b = Math.max(0, Math.floor(Number.MAX_SAFE_INTEGER / a) + offset)
+          const exact = BigInt(a) * BigInt(b)
+          if (exact > BigInt(Number.MAX_SAFE_INTEGER)) {
+            expect(() => multiplyMinor(a, b), `${a} × ${b}`).toThrow(MoneyError)
+          } else {
+            expect(BigInt(multiplyMinor(a, b)), `${a} × ${b}`).toBe(exact)
+          }
+        },
+      ),
+      { numRuns: 2000 },
+    )
+  })
+
+  it('is repeated addition for a small factor (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 1_000_000 }),
+        fc.integer({ min: 0, max: 50 }),
+        (a, n) => {
+          let sum = 0
+          for (let i = 0; i < n; i++) sum = addMinor(sum, a)
+          expect(multiplyMinor(a, n)).toBe(sum)
+        },
+      ),
+    )
+  })
+})
+
+describe('ratioOfMinor', () => {
+  it('rounds half-up', () => {
+    expect(ratioOfMinor(1000, 1, 3)).toBe(333)
+    expect(ratioOfMinor(2000, 1, 3)).toBe(667)
+    expect(ratioOfMinor(2, 1, 4)).toBe(1) // 0.5 rounds up
+    expect(ratioOfMinor(1, 1, 4)).toBe(0) // 0.25 rounds down
+    expect(ratioOfMinor(3, 1, 2)).toBe(2) // 1.5 rounds up
+    expect(ratioOfMinor(1200, 20, 120)).toBe(200)
+    expect(ratioOfMinor(0, 5, 7)).toBe(0)
+  })
+
+  it('refuses floats, negatives, a zero denominator and a result past the safe range', () => {
+    for (const bad of NOT_MINOR) {
+      expect(() => ratioOfMinor(bad, 1, 2), `minor ${bad}`).toThrow(MoneyError)
+      expect(() => ratioOfMinor(1, bad, 2), `numerator ${bad}`).toThrow(MoneyError)
+    }
+    for (const bad of [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => ratioOfMinor(1, 1, bad), `denominator ${bad}`).toThrow(MoneyError)
+    }
+    expect(() => ratioOfMinor(Number.MAX_SAFE_INTEGER, 2, 1)).toThrow(MoneyError)
+    expect(ratioOfMinor(Number.MAX_SAFE_INTEGER, 1, 1)).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it('equals the exact fraction rounded half-up in BigInt (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.maxSafeNat(),
+        fc.integer({ min: 0, max: 1000 }),
+        fc.integer({ min: 1, max: 1000 }),
+        (minor, numerator, denominator) => {
+          // floor(x + 1/2) of the exact fraction, by a different route: quotient and remainder.
+          const n = BigInt(minor) * BigInt(numerator)
+          const d = BigInt(denominator)
+          const quotient = n / d
+          const remainder = n % d
+          const expected = 2n * remainder >= d ? quotient + 1n : quotient
+          if (expected > BigInt(Number.MAX_SAFE_INTEGER)) {
+            expect(() => ratioOfMinor(minor, numerator, denominator)).toThrow(MoneyError)
+          } else {
+            expect(BigInt(ratioOfMinor(minor, numerator, denominator))).toBe(expected)
+          }
+        },
+      ),
+      { numRuns: 2000 },
+    )
+  })
+})
+
+describe('percentOfMinor', () => {
+  it('rounds half-up, like the delivery tests of tips (10 % and 15 % of 24,50)', () => {
+    expect(percentOfMinor(2450, 10)).toBe(245)
+    expect(percentOfMinor(2450, 15)).toBe(368) // 367.5 rounds up
+    expect(percentOfMinor(2450, 0)).toBe(0)
+    expect(percentOfMinor(2450, 100)).toBe(2450)
+    expect(percentOfMinor(1, 50)).toBe(1) // 0.5 rounds up
+    expect(percentOfMinor(1, 49)).toBe(0)
+  })
+
+  it('refuses a percent that is not a whole non-negative number, and a result past the safe range', () => {
+    for (const bad of NOT_MINOR)
+      expect(() => percentOfMinor(100, bad), `${bad} %`).toThrow(MoneyError)
+    expect(() => percentOfMinor(100, 7.5)).toThrow(MoneyError)
+    expect(() => percentOfMinor(Number.MAX_SAFE_INTEGER, 101)).toThrow(MoneyError)
+  })
+
+  it('equals the exact percentage rounded half-up in BigInt (property)', () => {
+    fc.assert(
+      fc.property(fc.maxSafeNat(), fc.integer({ min: 0, max: 100 }), (minor, percent) => {
+        // floor((minor × percent + 50) / 100): the textbook half-up for non-negative amounts.
+        const expected = (BigInt(minor) * BigInt(percent) + 50n) / 100n
+        expect(BigInt(percentOfMinor(minor, percent))).toBe(expected)
+      }),
+      { numRuns: 2000 },
+    )
+  })
+
+  it('never exceeds the amount for a percent up to 100 and grows with the percent (property)', () => {
+    fc.assert(
+      fc.property(fc.maxSafeNat(), fc.integer({ min: 0, max: 99 }), (minor, percent) => {
+        expect(percentOfMinor(minor, percent)).toBeLessThanOrEqual(minor)
+        expect(percentOfMinor(minor, percent)).toBeLessThanOrEqual(
+          percentOfMinor(minor, percent + 1),
+        )
       }),
     )
   })

@@ -11,7 +11,7 @@ import path from 'node:path'
 
 import { LocalPublishStore } from '@restro/assets'
 import { autoPublishPaused, type ChangeSet, JOB_NAMES, type NodeId, newId } from '@restro/core'
-import { apply, createAsset, setAutoPublishPaused } from '@restro/core/apply'
+import { apply, createAsset, setVenueAutoPublishPaused } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
@@ -86,7 +86,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
     } as unknown as Job<object>
     await job.handler([item], world.context)
   }
-  const pause = () => setAutoPublishPaused(world.pool, world.tenantId, world.integrationId, true)
+  const pause = () => setVenueAutoPublishPaused(world.pool, world.tenantId, world.venueId, true)
   const configOf = async () =>
     (
       await world.query<{ config: unknown }>(
@@ -167,7 +167,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       expect(await versions()).toEqual(['1:manual'])
       expect((await runs()).length).toBe(1)
       expect(world.logLines.join('\n')).toContain('automatic publish skipped')
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await autoPublishIsPaused(world, world)).toBe(true)
     })
 
     it('a job that was queued before the pause is stopped too (the pause is read when it runs)', async () => {
@@ -185,7 +185,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       await change([manual(items[0] as string, 'price', eur(777))])
       await pause()
       await runJob(JOB_NAMES.publishMenu, payload('auto_sync'))
-      await setAutoPublishPaused(world.pool, world.tenantId, world.integrationId, false)
+      await setVenueAutoPublishPaused(world.pool, world.tenantId, world.venueId, false)
       await runJob(JOB_NAMES.publishMenu, payload('auto_sync'))
       expect(await versions()).toEqual(['1:manual', '2:auto_sync'])
     })
@@ -236,7 +236,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       await change(items.map((id) => manual(id, 'visible', false)))
       await runJob(JOB_NAMES.publishMenu, payload('manual'))
       expect((await runs()).at(-1)?.status).toBe('failed')
-      expect(autoPublishPaused(await configOf())).toBe(true)
+      expect(await autoPublishIsPaused(world, world)).toBe(true)
     })
 
     it('a venue with no integration has nothing to pause: automatic publishes run', async () => {
@@ -260,7 +260,12 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       config,
     })
 
-    it('a sync queues no publish while paused', async () => {
+    it('a sync queues no publish while paused (the integration’s old flag counts until the venue has its own, T76)', async () => {
+      // A venue that never had a rollback of its own inherits the integration's flag.
+      await world.query(
+        "update restro.venues set settings = settings #- '{publish,auto_paused}' where id = $1",
+        [world.venueId],
+      )
       const note = await queuePublishAfterSync(env(), target({ publish: { auto_paused: true } }), 5)
       expect(note).toContain('paused after a rollback')
       expect(queued()).toEqual([])
@@ -273,7 +278,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       const assetId = newId('as')
       await createAsset(world.pool, world.tenantId, {
         id: assetId,
-        origin: 'barsy',
+        origin: 'connector',
         contentType: 'image/png',
         checksum: 'a'.repeat(64),
         width: 8,
@@ -290,7 +295,7 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
       expect(paused[0]).toContain('paused after a rollback')
       expect(queued()).toEqual([])
 
-      await setAutoPublishPaused(world.pool, world.tenantId, world.integrationId, false)
+      await setVenueAutoPublishPaused(world.pool, world.tenantId, world.venueId, false)
       await queuePublishForAsset(env(), { tenantId: world.tenantId, assetId })
       expect(queued()).toHaveLength(1)
       expect(queued()[0]?.data).toMatchObject({ reason: 'auto_sync' })
@@ -301,6 +306,13 @@ describe.skipIf(!hasDatabase)('the pause of automatic publishing after a rollbac
     expect(await resumeAutoPublish(world, world)).toBe(false)
     await pause()
     expect(await resumeAutoPublish(world, world)).toBe(true)
+    expect(await autoPublishIsPaused(world, world)).toBe(false)
+    // The venue's own flag is written (false); the integration's config is not touched.
+    const [venue] = await world.query<{ settings: { publish?: { auto_paused?: boolean } } }>(
+      'select settings from restro.venues where id = $1',
+      [world.venueId],
+    )
+    expect(venue?.settings.publish?.auto_paused).toBe(false)
     expect(autoPublishPaused(await configOf())).toBe(false)
     expect(await resumeAutoPublish(world, world)).toBe(false)
   })

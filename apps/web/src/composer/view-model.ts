@@ -1,6 +1,6 @@
 // The composer's view model: a plain, serialisable picture of one menu for the client component
 // (server component -> client component, U4). Built on the server from the loaded document and
-// its resolution; nothing in it is a barsy id (rule 3), a layer value the composer may not show,
+// its resolution; nothing in it is an external id (rule 3), a layer value the composer may not show,
 // or a function. It is normalised (sections and items by id, ordered id lists) because every
 // drag changes one list and the reducer (./reducer.ts) rewrites only that list.
 //
@@ -11,6 +11,7 @@ import {
   type IssueCode,
   type IssueSeverity,
   isId,
+  isTillSource,
   type Locale,
   type LocalizedText,
   type MenuDocument,
@@ -20,6 +21,8 @@ import {
   type ResolvedField,
   type ResolvedMenu,
   type ResolvedSection,
+  SECTION_LAYOUTS,
+  type SectionLayout,
   saleStateOf,
   type Tag,
   type TagColor,
@@ -27,6 +30,7 @@ import {
 } from '@restro/core'
 
 import { pickLocalized } from '@/fields/localized'
+import { tillTextShown } from '@/fields/name-fallback'
 
 /** One finding of the resolver about a node, for the Issues badge and its list. */
 export interface ComposerIssue {
@@ -36,8 +40,8 @@ export interface ComposerIssue {
   readonly locale?: Locale
 }
 
-/** Where a node's content comes from: mirrored from barsy, or made here (display only). */
-export type ComposerOrigin = 'barsy' | 'owned'
+/** Where a node's content comes from: mirrored from the till, or made here (display only). */
+export type ComposerOrigin = 'till' | 'owned'
 
 /** A section as the composer shows it. */
 export interface ComposerSection {
@@ -47,7 +51,7 @@ export interface ComposerSection {
   /** Title in the interface language ('' when the section has no title). */
   readonly title: string
   readonly origin: ComposerOrigin
-  /** The builder hid it (`status = hidden`); hiding a section never touches barsy. */
+  /** The builder hid it (`status = hidden`); hiding a section never touches the till. */
   readonly hidden: boolean
   /** Guests would see it (it and its parents are shown and it holds a shown item). */
   readonly shown: boolean
@@ -55,16 +59,23 @@ export interface ComposerSection {
   /** Child sections in order. */
   readonly childIds: readonly NodeId[]
   readonly issues: readonly ComposerIssue[]
+  /** The title shown is the till's own name: it has no public one (D75). Warns; never blocks. */
+  readonly nameFromTill: boolean
+  /**
+   * How guests see its items (D92): a vertical list, or a horizontal row (the guest page's strip).
+   * Ours on every venue, set in the composer.
+   */
+  readonly layout: SectionLayout
 }
 
 /** Why an item is not shown to guests, as far as the composer can tell and act on. */
 export type ItemHiddenBy =
-  /** barsy hides it: the composer cannot show it (rule 5). */
-  | 'barsy'
+  /** The till hides it: the composer cannot show it (rule 5). */
+  | 'till'
   /** The builder's hide flag (`visible = false` in the manual layer): showing clears it. */
   | 'builder'
-  /** The sync hid a new barsy item for review (setting `publish.new_items = hold`): showing clears it. */
-  | 'new_from_barsy'
+  /** The sync hid a new till item for review (setting `publish.new_items = hold`): showing clears it. */
+  | 'new_from_till'
   /** The item's status is `hidden` (held back): showing makes it active. */
   | 'status'
   /** Another layer or setting hides it (an edition, the ordering mode): not changed here. */
@@ -72,7 +83,7 @@ export type ItemHiddenBy =
 
 /**
  * Why an item is off sale, when something other than a manager's "sold out tonight" mark says so
- * (core's `OffSaleBy`): `barsy` is the till's own flag, `other` another layer or edition. The
+ * (core's `OffSaleBy`): `till` is the till's own flag, `other` another layer or edition. The
  * composer cannot put either back on sale (rule 5).
  */
 export type ItemOffSale = OffSaleBy
@@ -99,6 +110,13 @@ export interface ComposerItem {
   readonly soldOutTonight: boolean
   /** Off sale for another reason (see `ItemOffSale`): ours can only add caution, never undo it. */
   readonly offSale: ItemOffSale | null
+  /** The name shown is the till's own name: it has no public one (D75). Warns; never blocks. */
+  readonly nameFromTill: boolean
+  /**
+   * "Overrides to review" (V12): the fields whose override the till's value has outgrown since it
+   * was made (`stale_override`), waiting for a person to keep ours or take the till's. Empty = none.
+   */
+  readonly reviewFields: readonly string[]
 }
 
 /** A venue tag as the composer shows and edits it (D60). */
@@ -133,6 +151,11 @@ export interface ComposerView {
   /** The venue's tag ids in order, archived ones included. */
   readonly tagIds: readonly TagId[]
   readonly tags: Readonly<Record<TagId, ComposerTag>>
+  /**
+   * The name of the till this menu's items come from (`{source}` in "From {source}"), or '' when
+   * nothing in it comes from a till.
+   */
+  readonly tillLabel: string
 }
 
 function textOf(field: ResolvedField | undefined, locale: Locale): string {
@@ -159,8 +182,8 @@ function hiddenByOf(
   held: boolean,
 ): ItemHiddenBy | null {
   if (visible?.value === false) {
-    if (visible.layer === 'barsy') return 'barsy'
-    if (visible.layer === 'manual') return held ? 'new_from_barsy' : 'builder'
+    if (visible.layer === 'till') return 'till'
+    if (visible.layer === 'manual') return held ? 'new_from_till' : 'builder'
     return 'other'
   }
   if (status === 'hidden') return 'status'
@@ -178,6 +201,36 @@ const issuesOf = (issues: readonly ComposerIssue[]): ComposerIssue[] =>
 
 const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
+/** A section's layout as resolved (its field, or the template's default); vertical if unknown. */
+function layoutOf(field: ResolvedField | undefined): SectionLayout {
+  return SECTION_LAYOUTS.find((layout) => layout === field?.value) ?? 'vertical'
+}
+
+/**
+ * The fields with a stale override (V12, the resolver's `stale_override`), in the order the
+ * resolver found them: the same list `loadDraft` reports as `staleOverrides`, read from the
+ * composer's own resolution, so it costs no second read.
+ */
+function reviewFieldsOf(issues: readonly ComposerIssue[]): string[] {
+  const keys = issues
+    .filter((issue) => issue.code === 'stale_override')
+    .map((issue) => issue.fieldKey ?? '')
+  return [...new Set(keys)]
+}
+
+/**
+ * True if guests are shown the till's own name for this node (D75): the stored name was mapped
+ * from a record with no public name (`fallbackIds`), and the resolved name still takes its text
+ * from the till (`tillTextShown`: a name typed here replaces it and takes the warning away).
+ */
+function ownNameShown(
+  id: NodeId,
+  fallbackIds: ReadonlySet<NodeId>,
+  field: ResolvedField | undefined,
+): boolean {
+  return fallbackIds.has(id) && tillTextShown(field)
+}
+
 /** What `buildComposerView` reads: the document (unplaced items merged in), its resolution. */
 export interface BuildViewInput {
   readonly doc: MenuDocument
@@ -194,6 +247,13 @@ export interface BuildViewInput {
   readonly heldNewIds?: readonly NodeId[]
   /** The venue's tags in order, archived ones included (`listTags`). Default: none. */
   readonly tags?: readonly Tag[]
+  /** The name of the till the menu's linked nodes come from (`tillLabelOf`). Default: ''. */
+  readonly tillLabel?: string
+  /**
+   * The nodes whose till name is the till's own name, standing in for a missing public one (D75):
+   * the connector's `readNameFallbackNodeIds`. Default: none.
+   */
+  readonly nameFallbackIds?: readonly NodeId[]
 }
 
 /** The string entries of a resolved list value (`tags`, `dietary`); nothing else. */
@@ -210,13 +270,17 @@ export function buildComposerView({
   displayLocale,
   heldNewIds = [],
   tags: venueTags = [],
+  tillLabel = '',
+  nameFallbackIds = [],
 }: BuildViewInput): ComposerView {
   const heldNew = new Set<NodeId>(heldNewIds)
+  const ownNames = new Set<NodeId>(nameFallbackIds)
   const nodes = new Map(doc.nodes.map((node) => [node.id, node]))
-  const barsyLinked = new Set(
-    doc.links.filter((link) => link.source.startsWith('barsy:')).map((link) => link.nodeId),
+  // Linked to the till = a till link (`till:<integration>`), whichever connector feeds it.
+  const tillLinked = new Set(
+    doc.links.filter((link) => isTillSource(link.source)).map((link) => link.nodeId),
   )
-  const originOf = (id: NodeId): ComposerOrigin => (barsyLinked.has(id) ? 'barsy' : 'owned')
+  const originOf = (id: NodeId): ComposerOrigin => (tillLinked.has(id) ? 'till' : 'owned')
 
   const sections: Record<NodeId, ComposerSection> = {}
   const addSection = (section: ResolvedSection, parentId: NodeId | null) => {
@@ -231,6 +295,8 @@ export function buildComposerView({
       sortKey: node?.sortKey ?? '',
       childIds: section.children.map((child) => child.id),
       issues: issuesOf(section.issues),
+      nameFromTill: ownNameShown(section.id, ownNames, section.fields.title),
+      layout: layoutOf(section.fields.layout),
     }
     for (const child of section.children) addSection(child, section.id)
   }
@@ -278,6 +344,8 @@ export function buildComposerView({
       tags: listOf(item.fields.tags).filter((tag): tag is TagId => isId('tg', tag)),
       dietary: listOf(item.fields.dietary),
       ...saleStateOf(item.fields.for_sale),
+      nameFromTill: ownNameShown(id, ownNames, item.fields.name),
+      reviewFields: reviewFieldsOf(item.issues),
     }
   }
 
@@ -309,5 +377,6 @@ export function buildComposerView({
     unsortedIds,
     tagIds: venueTags.map((tag) => tag.id),
     tags: tagRecords,
+    tillLabel,
   }
 }

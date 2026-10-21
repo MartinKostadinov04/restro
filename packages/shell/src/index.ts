@@ -1,10 +1,32 @@
-// @restro/shell: the population rules R1–R14 that turn (snapshot, live overlay, context) into a
+// @restro/shell: the population rules R1–R15 that turn (snapshot, live overlay, context) into a
 // view model, the palette helper, and the face manifest with its validator. Pure: no I/O, no
 // React, no database, no clock. Faces (packages/faces/*) draw the view model and nothing else.
 // The contract-test harness is in `@restro/shell/testing`.
 
+export type { Locale } from '@restro/core'
+export {
+  type BagAction,
+  type BagDraft,
+  type BagLine,
+  bagEstimate,
+  bagReducer,
+  draftPrice,
+  groupValid,
+  lineKey,
+  needsChoices,
+  orderLines,
+  type ResolvedBag,
+  type ResolvedBagLine,
+  resolveBag,
+  type Selection,
+  selectedOptionIds,
+  selectionOf,
+  selectionValid,
+  toggleOption,
+} from './bag'
 export { buildViewModel } from './build'
 export {
+  CapabilitiesSchema,
   CHANNELS,
   type Channel,
   DEFAULT_TIME_ZONE,
@@ -13,11 +35,14 @@ export {
   type ImageVariant,
   INTERACTIVE_CHANNELS,
   parseContext,
+  type ShellCapabilities,
   type ShellContext,
   type ShellContextInput,
   ShellContextSchema,
   SOLD_OUT_DISPLAYS,
 } from './context'
+export type { FaceHostProps } from './face-props'
+export { SERVICE_KINDS, type ServiceKind } from './features'
 export {
   FIELD_FORMATTERS,
   type FieldFormatContext,
@@ -31,16 +56,22 @@ export {
   COLOUR_NAMES,
   type FaceManifest,
   FaceManifestSchema,
+  type FaceOption,
+  FEATURE_NAMES,
+  type FeatureName,
   imageSlotsFor,
   type ManifestIssue,
   type ManifestResult,
   NO_IMAGE_LAYOUTS,
+  OPTION_GROUPS,
   OPTIONAL_SLOTS,
   REQUIRED_SLOTS,
+  resolveOptions,
   SLOT_NAMES,
   TOKEN_NAMES,
   validateManifest,
 } from './manifest'
+export { parseMinor } from './money'
 export {
   contrastRatio,
   FALLBACK_BRAND,
@@ -60,7 +91,34 @@ export {
   semanticColoursDark,
 } from './palette'
 export { type ScheduleStatus, scheduleStatus } from './schedule'
-export { type GuestStrings, type Strings, stringsFor } from './strings'
+export {
+  BILL_LINE_STATUSES,
+  type BillLineStatus,
+  type BillLineView,
+  type BillRoundView,
+  type BillView,
+  type CommandResult,
+  EMPTY_SERVICE_STATE,
+  type GuestCommand,
+  GuestCommandSchema,
+  type OrderLine,
+  PAY_METHODS,
+  PAY_SCOPES,
+  type PayMethod,
+  type PayQuote,
+  type PayScope,
+  RECEIPT_ACTIONS,
+  REQUEST_STATUSES,
+  type ReceiptAction,
+  type ReceiptView,
+  type RequestStatus,
+  type RequestView,
+  SERVICE_LIMITS,
+  type ServiceBinding,
+  type ServiceState,
+  type VatLine,
+} from './services'
+export { type GuestStrings, type ServiceStrings, type Strings, stringsFor } from './strings'
 export { fallbackChain, pickText } from './text'
 export {
   ITEM_STATES,
@@ -70,9 +128,11 @@ export {
   type ViewDescription,
   type ViewDietary,
   type ViewExtraField,
+  type ViewFeatures,
   type ViewId,
   type ViewImage,
   type ViewItem,
+  type ViewLayout,
   type ViewModel,
   type ViewModifierGroup,
   type ViewMoney,

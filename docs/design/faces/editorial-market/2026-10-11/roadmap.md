@@ -1,0 +1,8 @@
+- [x] Build an isolated, bilingual restaurant menu face using the supplied view models and food images.
+- [x] Build table ordering UI: quick add, dish choices, bag, live table order, waiter call, payment, receipt.
+- [x] Phone/tablet responsiveness fixes.
+- [x] Right-size buttons to screen and text.
+- [x] Remove product passport work; menu is the start page.
+- [x] Write handover.md.
+- [x] Document platform-owned design inputs and two-way actions; preserve theme examples as a preview-only adapter.
+- [ ] Replace demo data (choices, waiter round, VAT, venue) — waiting on real platform data.

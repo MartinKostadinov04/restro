@@ -12,6 +12,14 @@
 //            that the test can check it. If no worker takes the jobs within 30 s it runs the real
 //            `writeTableTokenFiles` itself, as before.
 //
+//   second-menu         the demo venue gets a second, published menu ("Late night") so that a menu
+//                       route (S5) has something to point at, and prints its id. The venue has a
+//                       till, so the menu is made with the owner's SQL, then filled and published
+//                       the real way (`apply`, `publishMenu`).
+//   second-menu-remove  takes that menu and everything it made away again, so that the other
+//                       specs see the demo venue with its one menu. Both are idempotent, and `seed`
+//                       does the removal too and clears the venue's menu routes.
+//
 // Like the other seeds it refuses to run unless NODE_ENV is development and the database is on
 // this machine.
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -19,8 +27,21 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { createPublishStore, publishStoreConfig, tableTokenPath } from '@restro/assets'
-import { JOB_NAMES, PublishTableTokensJobSchema } from '@restro/core'
-import { loadTokenFiles, mapBarsyVenue, upsertBarsyVenues, upsertPlaces } from '@restro/core/apply'
+import {
+  type ChangeSet,
+  JOB_NAMES,
+  newId,
+  PublishTableTokensJobSchema,
+  VENUE_MENU_TEMPLATE,
+} from '@restro/core'
+import {
+  apply,
+  loadTokenFiles,
+  mapBarsyVenue,
+  publishMenu,
+  upsertBarsyVenues,
+  upsertPlaces,
+} from '@restro/core/apply'
 import { authOrganization, barsyVenues, integrations, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import pg from 'pg'
@@ -110,18 +131,19 @@ async function seed(): Promise<void> {
   const store = await createPublishStore(publishStoreConfig(process.env))
   try {
     const old = await owner.query<{ qr_token: string }>(
-      'select qr_token from restro.places where tenant_id = $1 and qr_token is not null',
+      'select qr_token from restro.tables where tenant_id = $1 and qr_token is not null',
       [tenantId],
     )
     for (const { qr_token } of old.rows) await store.delete(tableTokenPath(qr_token))
-    await owner.query(
-      `update restro.places set qr_token = null, label = null
-       where tenant_id = $1 and integration_id = $2 and bid = $3`,
-      [tenantId, integrationId, bid],
-    )
+    await owner.query('update restro.tables set qr_token = null, name = null where venue_id = $1', [
+      venueId,
+    ])
     await owner.query(`update restro.venues set settings = settings - 'qr' where id = $1`, [
       venueId,
     ])
+    // No menu routes of an earlier run, and no second menu left behind by one that failed.
+    await removeSecondMenu(owner)
+    await owner.query('delete from restro.menu_routes where venue_id = $1', [venueId])
     // Jobs left by an earlier run would be run by the stand-in for a venue state that is gone.
     await owner
       .query(`delete from pgboss.job where name = $1`, [JOB_NAMES.publishTableTokens])
@@ -133,6 +155,113 @@ async function seed(): Promise<void> {
   console.log(
     JSON.stringify({ level: 'info', event: 'seed_tables_e2e_done', tables: PLACES.length }),
   )
+}
+
+/** Fixed ids of the second menu, its section and its drink, so that it can be found and removed. */
+const nodeId = (name: string) => `nd_${name.padEnd(22, '0')}`
+const SECOND = {
+  menu: nodeId('E2eTablesLateMenu'),
+  section: nodeId('E2eTablesLateSection'),
+  item: nodeId('E2eTablesLateDrink'),
+}
+const SECOND_NODES = [SECOND.item, SECOND.section, SECOND.menu]
+
+/** Takes the second menu away with everything it made (the owner role: the app role cannot). */
+async function removeSecondMenu(owner: pg.Pool): Promise<void> {
+  await owner.query('delete from restro.item_first_published where menu_id = $1', [SECOND.menu])
+  await owner.query('delete from restro.menu_routes where menu_id = $1', [SECOND.menu])
+  await owner.query('delete from restro.publish_pointers where menu_id = $1', [SECOND.menu])
+  await owner.query('delete from restro.snapshots where menu_id = $1', [SECOND.menu])
+  await owner.query(
+    'delete from restro.placements where item_id = any($1) or section_id = any($1)',
+    [SECOND_NODES],
+  )
+  await owner.query('delete from restro.field_values where node_id = any($1)', [SECOND_NODES])
+  await owner.query('delete from restro.events where node_id = any($1)', [SECOND_NODES])
+  await owner.query('delete from restro.menus where id = $1', [SECOND.menu])
+  // Children first: the drink, the section, then the menu's root.
+  for (const id of SECOND_NODES) await owner.query('delete from restro.nodes where id = $1', [id])
+}
+
+async function secondMenu(): Promise<void> {
+  assertDevEnvironment(process.env)
+  const ownerUrl = process.env.DATABASE_URL_OWNER
+  if (!ownerUrl) throw new Error('seed-tables-e2e needs DATABASE_URL_OWNER (see .env.example).')
+  const { tenantId, venueId } = await demo()
+  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
+  try {
+    await removeSecondMenu(owner)
+    await owner.query(
+      `insert into restro.nodes (id, tenant_id, node_type, parent_id) values ($1, $2, 'menu', null)`,
+      [SECOND.menu, tenantId],
+    )
+    await owner.query(
+      `insert into restro.menus (id, tenant_id, venue_id, template_key, template_version, root_node_id, name, sort_key)
+       values ($1, $2, $3, $4, $5, $1, 'Late night', 'a9')`,
+      [SECOND.menu, tenantId, venueId, VENUE_MENU_TEMPLATE.key, VENUE_MENU_TEMPLATE.version],
+    )
+  } finally {
+    await owner.end()
+  }
+  const manual = (node: string, fieldKey: string, value: unknown) => ({
+    op: 'setField',
+    node: { id: node },
+    fieldKey,
+    layer: 'manual',
+    scope: 'master',
+    value,
+  })
+  const result = await apply(getPool(), tenantId, {
+    id: newId('cs'),
+    source: 'manual',
+    jobId: newId('jb'),
+    actor: 'system',
+    observedAt: new Date().toISOString(),
+    ops: [
+      {
+        op: 'createNode',
+        id: SECOND.section,
+        nodeType: 'section',
+        parent: { id: SECOND.menu },
+        status: 'active',
+        sortKey: 'end',
+      },
+      manual(SECOND.section, 'title', { bg_BG: 'Нощно меню', en_US: 'Late night' }),
+      { op: 'createNode', id: SECOND.item, nodeType: 'item', parent: null, status: 'active' },
+      manual(SECOND.item, 'name', { bg_BG: 'Еспресо мартини', en_US: 'Espresso martini' }),
+      manual(SECOND.item, 'price', { amount_minor: 1100, currency: 'EUR' }),
+      manual(SECOND.item, 'allergens', []),
+      {
+        op: 'setPlacement',
+        item: { id: SECOND.item },
+        section: { id: SECOND.section },
+        sortKey: 'end',
+      },
+    ],
+  } as ChangeSet)
+  if (result.rejected.length > 0) {
+    throw new Error(`the second menu was rejected: ${JSON.stringify(result.rejected)}`)
+  }
+  await publishMenu(getPool(), tenantId, {
+    menuId: SECOND.menu,
+    venueId,
+    reason: 'manual',
+    actor: 'system',
+  })
+  console.log(JSON.stringify({ event: 'second_menu', menuId: SECOND.menu }))
+}
+
+async function secondMenuRemove(): Promise<void> {
+  assertDevEnvironment(process.env)
+  const ownerUrl = process.env.DATABASE_URL_OWNER
+  if (!ownerUrl) throw new Error('seed-tables-e2e needs DATABASE_URL_OWNER (see .env.example).')
+  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
+  try {
+    await removeSecondMenu(owner)
+  } finally {
+    await owner.end()
+  }
+  console.log(JSON.stringify({ event: 'second_menu_removed' }))
 }
 
 /** When the last `worker` call reported (the jobs it printed finished before this); reset by `seed`. */
@@ -216,11 +345,16 @@ async function runWaitingJobsHere(
   }
 }
 
-const commands = { seed, worker } as const
+const commands = {
+  seed,
+  worker,
+  'second-menu': secondMenu,
+  'second-menu-remove': secondMenuRemove,
+} as const
 const command = process.argv[2] as keyof typeof commands | undefined
 
 if (command === undefined || !(command in commands)) {
-  console.error('usage: seed-tables-e2e.ts seed|worker')
+  console.error('usage: seed-tables-e2e.ts seed|worker|second-menu|second-menu-remove')
   process.exit(2)
 }
 

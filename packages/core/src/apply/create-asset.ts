@@ -4,7 +4,7 @@
 // and nowhere else. The bytes themselves live in the asset store; this writes only the row that
 // says where they are (`storage_key`), what they are (type, size in pixels, SHA-256) and where
 // they came from. A field value never holds a URL or a key, only the `as_` id (rule 3 applies to
-// barsy ids; the same discipline keeps storage details out of snapshots).
+// external ids; the same discipline keeps storage details out of snapshots).
 //
 // The row is written in one statement and never changes afterwards except for its status, so
 // there is nothing to lock: the document lock (./lock.ts) protects nodes and values, not assets.
@@ -30,7 +30,7 @@ const CreateAssetInputSchema = z.strictObject({
   /** Pre-generated so the caller can name the asset in its storage key; default: a new `as_` id. */
   id: idSchema('as').optional(),
   origin: z.enum(ASSET_ORIGINS),
-  /** Backend-only note on where it came from (for a barsy photo: which article/picture). */
+  /** Backend-only note on where it came from (for a connector photo: which object and picture). */
   originRef: z.string().min(1).max(512).optional(),
   contentType: z.enum(ASSET_IMAGE_TYPES),
   /** SHA-256 of the stored bytes: 64 lower-case hex characters. */

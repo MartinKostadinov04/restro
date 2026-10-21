@@ -12,12 +12,14 @@ import {
   venueIndexBytes,
   writeTableTokenFile,
 } from './guest-files'
-import { publishPutOptions, venueIndexPath } from './publish-paths'
+import { InvalidPublishPathError, publishPutOptions, venueIndexPath } from './publish-paths'
 import { LocalPublishStore } from './publish-store'
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value))
 
-describe('guest files (slug index and table tokens)', () => {
+const CODE = 'k3x9p2m7qa1z'
+
+describe('guest files (venue index and table tokens)', () => {
   let root: string
   let store: LocalPublishStore
 
@@ -29,32 +31,42 @@ describe('guest files (slug index and table tokens)', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('round-trips a slug index', async () => {
-    const index = { venue_id: newId('vn'), menu_id: newId('nd') }
+  it('round-trips a venue index under its public code', async () => {
+    const index = { venue_id: newId('vn'), menu_id: newId('nd'), slug: 'demo-club' }
     await store.put(
-      venueIndexPath('demo-club'),
+      venueIndexPath(CODE),
       venueIndexBytes(index),
-      publishPutOptions(venueIndexPath('demo-club')),
+      publishPutOptions(venueIndexPath(CODE)),
     )
-    expect(await readVenueIndex(store, 'demo-club')).toEqual(index)
-    expect(await readVenueIndex(store, 'other-club')).toBeNull()
+    expect(venueIndexPath(CODE)).toBe(`v/${CODE}.json`)
+    expect(await readVenueIndex(store, CODE)).toEqual(index)
+    expect(await readVenueIndex(store, '000000000000')).toBeNull()
+  })
+
+  it('does not read, write or serve the older v/<slug>.json file', async () => {
+    // Left in the store from before CF-14, if at all; it is no path of ours any more, so the
+    // store refuses it for every operation, and a slug is no way to ask for a venue index.
+    const options = { contentType: 'application/json', cacheControl: 'public, max-age=30' }
+    await expect(
+      store.put('v/demo-club.json', bytes({ venue_id: 'vn_x', menu_id: 'nd_x' }), options),
+    ).rejects.toBeInstanceOf(InvalidPublishPathError)
+    await expect(readVenueIndex(store, 'demo-club')).rejects.toBeInstanceOf(InvalidPublishPathError)
   })
 
   it('writes a table token file and reads it back', async () => {
-    await writeTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL', {
-      venue_slug: 'demo-club',
-      table_label: '12',
-    })
-    expect(await readTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL')).toEqual({
-      venue_slug: 'demo-club',
-      table_label: '12',
-    })
+    const file = { venue_public_id: CODE, venue_slug: 'demo-club', table_label: '12' }
+    await writeTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL', file)
+    expect(await readTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL')).toEqual(file)
     expect(await readTableTokenFile(store, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')).toBeNull()
   })
 
   it('removes the file of a retired token, and removing it again is not an error', async () => {
     const token = 'Ab3dEfGh1jKlMnOpQrStUv'
-    await writeTableTokenFile(store, token, { venue_slug: 'demo-club', table_label: '12' })
+    await writeTableTokenFile(store, token, {
+      venue_public_id: CODE,
+      venue_slug: 'demo-club',
+      table_label: '12',
+    })
     expect(await readTableTokenFile(store, token)).not.toBeNull()
     await deleteTableTokenFile(store, token)
     expect(await readTableTokenFile(store, token)).toBeNull()
@@ -69,24 +81,46 @@ describe('guest files (slug index and table tokens)', () => {
     expect(
       parseGuestFile(
         TableTokenFileSchema,
-        bytes({ venue_slug: 'demo-club', table_label: '12', barsy_id: 55 }),
+        bytes({
+          venue_public_id: CODE,
+          venue_slug: 'demo-club',
+          table_label: '12',
+          barsy_id: 55,
+        }),
       ),
     ).toBeNull()
+    // A token file of the older shape (no public code) is no file.
     expect(
-      parseGuestFile(VenueIndexSchema, bytes({ venue_id: 'vn_x', menu_id: 'nd_x' })),
+      parseGuestFile(TableTokenFileSchema, bytes({ venue_slug: 'demo-club', table_label: '12' })),
+    ).toBeNull()
+    // A venue index of the older shape (no slug) is no file either.
+    expect(
+      parseGuestFile(VenueIndexSchema, bytes({ venue_id: newId('vn'), menu_id: newId('nd') })),
+    ).toBeNull()
+    expect(
+      parseGuestFile(VenueIndexSchema, bytes({ venue_id: 'vn_x', menu_id: 'nd_x', slug: 'x' })),
     ).toBeNull()
   })
 
-  it('refuses to write a token file with a bad label or slug', async () => {
+  it('refuses to write a token file with a bad label, slug or code', async () => {
     await expect(
       writeTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL', {
+        venue_public_id: CODE,
         venue_slug: 'demo-club',
         table_label: '   ',
       }),
     ).rejects.toThrow()
     await expect(
       writeTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL', {
+        venue_public_id: CODE,
         venue_slug: 'Demo Club',
+        table_label: '1',
+      }),
+    ).rejects.toThrow()
+    await expect(
+      writeTableTokenFile(store, 'tb_0123456789ABCDEFGHIJKL', {
+        venue_public_id: 'vn_internalid',
+        venue_slug: 'demo-club',
         table_label: '1',
       }),
     ).rejects.toThrow()

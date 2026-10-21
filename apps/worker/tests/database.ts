@@ -9,9 +9,14 @@
 // that is not on this machine.
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import pg from 'pg'
 import { vi } from 'vitest'
 
@@ -33,6 +38,7 @@ export async function withOwnerClient<T>(
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const DB_SCRIPTS = fileURLToPath(new URL('../../../packages/db/scripts/', import.meta.url))
+const MIGRATIONS = fileURLToPath(new URL('../../../packages/db/migrations/', import.meta.url))
 
 const ownerUrl = process.env.DATABASE_URL_OWNER ?? ''
 
@@ -81,8 +87,9 @@ function assertLocal(url: string, name: string): void {
 }
 
 /**
- * A venue slug that no other test created: `base` and a random suffix. Venue slugs are globally
- * unique, so tests that provision venues in a shared database must not reuse a literal slug.
+ * A venue slug that no other test created: `base` and a random suffix. Slugs need not be unique
+ * any more (D68, the public code is); a test that tells its venue from another world's by slug
+ * still needs one that is its own.
  */
 export function testSlug(base: string): string {
   return `${base}-${randomUUID().replaceAll('-', '').slice(0, 8)}`
@@ -99,14 +106,71 @@ export interface TestDatabase {
   readonly name: string
   /** Connection string of the app role `restro_app` for the new database. */
   readonly appUrl: string
+  /**
+   * Connection string of the purge role `restro_purge` (D83) for the new database, or null when
+   * DATABASE_PURGE_PASSWORD (or DATABASE_URL_PURGE) is not set: the purge tests then skip.
+   */
+  readonly purgeUrl: string | null
   /** Connection string of the migration owner for the new database (set-up and inspection). */
   readonly ownerUrl: string
   /** Drops the database, closing whatever is still connected to it. */
   drop(): Promise<void>
 }
 
-/** Creates a fresh database, applies the migrations and sets up the app role in it. */
-export async function createTestDatabase(): Promise<TestDatabase> {
+/**
+ * Applies the migrations up to and including `tag` (a database as it was before the later ones),
+ * the way Drizzle's migrator does, from a folder holding only those.
+ */
+async function migrateThrough(url: string, tag: string): Promise<void> {
+  const folder = mkdtempSync(join(tmpdir(), 'restro-migrations-'))
+  mkdirSync(join(folder, 'meta'))
+  const journal = JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8')) as {
+    entries: { tag: string }[]
+  }
+  const entries = journal.entries.filter((entry) => entry.tag <= tag)
+  if (!entries.some((entry) => entry.tag === tag)) throw new Error(`no migration ${tag}`)
+  writeFileSync(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }))
+  for (const entry of entries) {
+    cpSync(join(MIGRATIONS, `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`))
+  }
+  await withOwnerClient(url, (client) =>
+    migrate(drizzle({ client }), {
+      migrationsFolder: folder,
+      migrationsSchema: 'drizzle',
+      migrationsTable: '__drizzle_migrations',
+    }),
+  )
+}
+
+/**
+ * Applies every pending migration to a test database (what `pnpm db:migrate` does); with
+ * `through`, only up to that one.
+ */
+export async function migrateTestDatabase(
+  db: TestDatabase,
+  options: { readonly through?: string } = {},
+): Promise<void> {
+  if (options.through !== undefined) {
+    await migrateThrough(db.ownerUrl, options.through)
+    return
+  }
+  await run(
+    process.execPath,
+    ['--disable-warning=ExperimentalWarning', `${DB_SCRIPTS}migrate.ts`],
+    {
+      env: { ...process.env, DATABASE_URL_OWNER: db.ownerUrl },
+    },
+  )
+}
+
+/**
+ * Creates a fresh database, applies the migrations and sets up the app role in it. With
+ * `through`, only the migrations up to that one (`0015_venues_public_id`): a test of a later
+ * migration seeds the older database, then calls `migrateTestDatabase`.
+ */
+export async function createTestDatabase(
+  options: { readonly through?: string } = {},
+): Promise<TestDatabase> {
   assertLocal(ownerUrl, 'DATABASE_URL_OWNER')
   const explicitAppUrl = process.env.DATABASE_URL
   if (explicitAppUrl) assertLocal(explicitAppUrl, 'DATABASE_URL')
@@ -130,6 +194,18 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     parsed.password = encodeURIComponent(password ?? '')
     appUrl = parsed.toString()
   }
+  const explicitPurgeUrl = process.env.DATABASE_URL_PURGE
+  const purgePassword = process.env.DATABASE_PURGE_PASSWORD
+  let purgeUrl: string | null = null
+  if (explicitPurgeUrl) {
+    assertLocal(explicitPurgeUrl, 'DATABASE_URL_PURGE')
+    purgeUrl = withDatabase(explicitPurgeUrl, name)
+  } else if (purgePassword) {
+    const parsed = new URL(newOwnerUrl)
+    parsed.username = 'restro_purge'
+    parsed.password = encodeURIComponent(purgePassword)
+    purgeUrl = parsed.toString()
+  }
 
   const drop = async () => {
     await withOwnerClient(ownerUrl, (client) =>
@@ -150,6 +226,10 @@ export async function createTestDatabase(): Promise<TestDatabase> {
       await lock.query('select pg_advisory_lock($1)', [ROLES_LOCK])
       try {
         for (const script of ['migrate.ts', 'roles.ts']) {
+          if (script === 'migrate.ts' && options.through !== undefined) {
+            await migrateThrough(newOwnerUrl, options.through)
+            continue
+          }
           await run(
             process.execPath,
             ['--disable-warning=ExperimentalWarning', DB_SCRIPTS + script],
@@ -164,5 +244,5 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     await drop().catch(() => undefined)
     throw error
   }
-  return { name, appUrl, ownerUrl: newOwnerUrl, drop }
+  return { name, appUrl, purgeUrl, ownerUrl: newOwnerUrl, drop }
 }

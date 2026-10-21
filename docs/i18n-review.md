@@ -1,0 +1,900 @@
+# Bulgarian wording to review (T44)
+
+Every interface sentence added or changed since T44's last entries, Bulgarian first, grouped by screen. Each line is `key — Bulgarian — English`. Source: `apps/web/messages/bg.json` and `en.json`.
+
+Basis: every key under the namespaces each screen uses, minus the keys T44 already lists. T44 lists the whole `publish`, `tables`, `tablePage` and `design` namespaces and the named `composer` and `itemSheet` keys, so those screens show only their T44 wording items.
+
+Deleted by the lead after S8: `workspace.composer.*` and `workspace.tables.*` (title and description); no component read them.
+
+Not on these screens (shared chrome, not listed): `meta`, `auth`, `noOrganization`, `language`, `user`, `nav`, `ui`, `organizationSwitcher`, `devFields`, `devItemSheet`.
+
+## Integrations
+
+_The barsy tab's own sentences (`connectors.barsy.*` except `price`) are the connector's own and may name barsy._
+
+**Bulgarian — English, new since T44:**
+
+- `settings.integrations.description` — Системите, които ползвате, техните връзки и как се чете всяка от тях. Настройва се веднъж за цялата организация и важи за всички заведения. — The systems you use, their connections and how each one is read. Set once for the whole organisation and used by every venue.
+- `integration.readOnly` — Само собствениците и администраторите могат да променят системите, връзките и настройките им или да стартират синхронизация. Вие виждате състоянието и историята. — Only owners and admins can change the systems, the connections and their settings or start a sync. You can see the status and the history.
+- `integration.systems.title` — Системи — Systems
+- `integration.systems.description` — Изберете системите, от които заведенията ви взимат менютата си. Всяка избрана система получава свой раздел по-долу, където добавяте връзките ѝ. — Choose the systems your venues get their menus from. Each chosen system gets its own tab below, where you add its connections.
+- `integration.systems.legend` — Системи, които поддържаме — Systems we support
+- `integration.systems.instances` — {count, plural, =0 {няма връзки} one {# връзка} other {# връзки}} — {count, plural, =0 {no connections} one {# connection} other {# connections}}
+- `integration.systems.keepHint` — {source} още има връзки. Премахнете ги, преди да я махнете от избора. — {source} still has connections. Remove them before you unselect it.
+- `integration.systems.save` — Запази системите — Save systems
+- `integration.systems.saving` — Запазване… — Saving…
+- `integration.systems.saved` — Системите са запазени. — Systems saved.
+- `integration.tabs.label` — Избрани системи — Chosen systems
+- `integration.tabs.empty.title` — Още няма избрана система — No system chosen yet
+- `integration.tabs.empty.description` — Изберете системите, които ползвате, по-горе. Всяка получава раздел за връзките си. — Choose the systems you use above. Each one gets a tab for its connections.
+- `integration.system.add` — Добави {source} — Add {source}
+- `integration.system.empty.title` — Още няма връзка с {source} — No {source} connection yet
+- `integration.system.empty.readOnly` — Собственик или администратор може да добави. — An owner or an admin can add one.
+- `integration.add.title` — Добави {source} — Add {source}
+- `integration.add.description` — Още една връзка с инсталация на {source}. Дайте ѝ име, което ще познавате, например града или марката. — Another connection to a {source} installation. Give it a name you will recognise, for example the city or the brand.
+- `integration.add.namePlaceholder` — {source} – София — {source} – Sofia
+- `integration.add.nameHelp` — По избор. Ако го оставите празно, името е системата и адресът. — Optional. Left empty, the name is the system and the address.
+- `integration.instance.venues.none` — Още няма заведение, което ползва тази връзка. — No venue uses this connection yet.
+- `integration.instance.venues.used` — {count, plural, one {Ползва се от # заведение} other {Ползва се от # заведения}}: {venues}. — {count, plural, one {Used by # venue} other {Used by # venues}}: {venues}.
+- `integration.instance.remove.button` — Премахни — Remove
+- `integration.instance.remove.title` — Да се премахне ли „{name}“? — Remove “{name}”?
+- `integration.instance.remove.description` — Връзката излиза от този списък и вече не се синхронизира. Данните ѝ за достъп и историята се пазят. Връзка, която заведения още ползват, не може да се премахне. — It leaves this list and is never synced again. Its credentials and history are kept. A connection that venues still use cannot be removed.
+- `integration.instance.remove.cancel` — Отказ — Cancel
+- `integration.instance.remove.confirm` — Премахни връзката — Remove connection
+- `integration.instance.remove.removing` — Премахване… — Removing…
+- `integration.connect.title` — Връзка — Connection
+- `integration.connect.description` — Адресът на {source} и API потребителят, с които се чете тази връзка. Паролата се запечатва на сървъра и не може да бъде прочетена обратно, дори тук. — The {source} address and the API user this connection is read with. The password is sealed on the server: it cannot be read back, not even here.
+- `integration.connect.name.label` — Име — Name
+- `integration.connect.name.rename` — Преименувай — Rename
+- `integration.connect.name.save` — Запази името — Save name
+- `integration.connect.host` — Адрес на {source} — {source} address
+- `integration.connect.hostHelp` — https адресът на инсталацията, например {example}. — The https address of the installation, for example {example}.
+- `integration.connect.hostHelpPlain` — https адресът на инсталацията. — The https address of the installation.
+- `integration.connect.user` — API потребител — API user
+- `integration.connect.password` — Парола — Password
+- `integration.connect.save` — Запази и провери — Save and check
+- `integration.connect.saving` — Запазване… — Saving…
+- `integration.connect.cancel` — Отказ — Cancel
+- `integration.connect.saved` — Данните за достъп са запазени — Credentials saved
+- `integration.connect.savedHost` — Адрес: {host} — Address: {host}
+- `integration.connect.change` — Смени данните за достъп — Change credentials
+- `integration.connect.changeHelp` — Въведете отново API потребителя и паролата. Те се запечатват за адреса по-горе, затова нов адрес също изисква и двете. — Enter the API user and the password again. They are sealed for the address above, so a new address needs both too.
+- `integration.connect.none` — Още няма данни за достъп. — No credentials yet.
+- `integration.connect.queued` — Проверката на връзката е на опашка. — The connection check is queued.
+- `integration.connect.notQueued` — Данните са запазени, но проверката на връзката не можа да бъде добавена на опашка. Използвайте „Провери отново“. — The credentials are saved, but the connection check could not be queued. Use "Check again".
+- `integration.connect.keysMissing.title` — Ключовете за синхронизация не са настроени — The sync keys are not set up
+- `integration.connect.keysMissing.description` — Преди да могат да се запазят данни за достъп, операторът трябва да настрои ключовете за синхронизация на уеб приложението и на работника. Свържете се с екипа на Restro. — Before credentials can be saved, the operator has to set up the sync keys of the web app and the worker. Ask the Restro team.
+- `integration.status.title` — Състояние — Status
+- `integration.status.description` — Дали Restro може да стигне до {source} със запазените данни за достъп. — Whether Restro can reach {source} with the saved credentials.
+- `integration.status.state.new` — Още не е проверено — Not checked yet
+- `integration.status.state.connected` — Свързано — Connected
+- `integration.status.state.error` — Проблем с връзката — Connection problem
+- `integration.status.address` — Адрес — Address
+- `integration.status.lastChecked` — Последна проверка — Last checked
+- `integration.status.never` — Никога — Never
+- `integration.status.activeConnect` — Проверка на връзката… — Checking the connection…
+- `integration.status.activePull` — Синхронизацията е на опашка или върви… — A sync is queued or running…
+- `integration.status.checkAgain` — Провери отново — Check again
+- `integration.status.checkQueued` — Проверката на връзката е на опашка. — The connection check is queued.
+- `integration.status.held.title` — Последната пълна синхронизация на {venue} е задържана — The last full sync of {venue} was held back
+- `integration.status.held.titleNoVenue` — Последната пълна синхронизация е задържана — The last full sync was held back
+- `integration.status.held.too_many_missing` — Последната пълна синхронизация намери по-малко артикули от тези в менюто и не скри нищо: щеше да скрие {wouldHide} от {active, plural, one {# артикул} other {# артикула}}. Проверете заведението и менютата му в {source}. — The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.
+- `integration.status.held.empty_read` — Последната пълна синхронизация не намери нито един артикул и не скри нищо: щеше да скрие {wouldHide} от {active, plural, one {# артикул} other {# артикула}}. Проверете заведението и менютата му в {source}. — The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.
+- `integration.statusDetail.wrong_credentials` — Грешен потребител или парола. — Wrong user or password.
+- `integration.statusDetail.host_refused` — Този адрес на {source} не е разрешен. — This {source} address is not allowed.
+- `integration.statusDetail.credentials_unreadable` — Запазените данни за достъп не могат да бъдат прочетени. Въведете ги отново. — The saved credentials cannot be read. Enter them again.
+- `integration.statusDetail.currency_not_eur` — Основната валута на касата не е EUR; Restro показва цените само в EUR. — The till's main currency is not EUR; Restro shows prices in EUR only.
+- `integration.sync.title` — Синхронизирай всичко — Sync everything
+- `integration.sync.description` — Чете менюто от {source} за всяко заведение, което ползва тази връзка. Автоматичната синхронизация е настройка на всяко заведение. — Reads the menu from {source} for every venue that uses this connection. Each venue sets its own automatic syncing.
+- `integration.sync.button` — Синхронизирай всичко сега — Sync everything now
+- `integration.sync.starting` — Стартиране… — Starting…
+- `integration.sync.queued` — {count, plural, =0 {Нищо не е добавено на опашка.} one {# синхронизация е на опашка.} other {# синхронизации са на опашка.}} — {count, plural, =0 {Nothing was queued.} one {# sync is queued.} other {# syncs are queued.}}
+- `integration.sync.blocked.not_manager` — Само собствениците и администраторите могат да стартират синхронизация. — Only owners and admins can start a sync.
+- `integration.sync.blocked.no_credentials` — Първо запазете данните за достъп до {source}. — Save the {source} credentials first.
+- `integration.sync.blocked.checking` — Връзката се проверява. Изчакайте да приключи. — The connection is being checked. Wait until it finishes.
+- `integration.sync.blocked.not_connected` — Връзката с {source} трябва първо да работи. Вижте състоянието по-горе. — The connection to {source} has to work first. See the status above.
+- `integration.sync.blocked.no_till_venue` — Още няма заведение, което ползва тази връзка. — No venue uses this connection yet.
+- `integration.sync.blocked.no_menu` — {source} още не е съобщила менютата на заведенията си. Проверете връзката отново. — {source} has not reported the menus of its venues yet. Check the connection again.
+- `integration.sync.blocked.busy` — Вече има синхронизация на опашка или в ход. — A sync is already queued or running.
+- `integration.history.title` — История на синхронизациите — Sync history
+- `integration.history.description` — Последните 20 изпълнения на всички заведения на тази връзка, най-новите първи. — The latest 20 runs of every venue of this connection, newest first.
+- `integration.history.venueTitle` — История на синхронизациите на заведението — This venue’s sync history
+- `integration.history.last` — Последно изпълнение: {kind} · {status} · {when} — Last run: {kind} · {status} · {when}
+- `integration.history.show` — Покажи {count, plural, one {последното изпълнение} other {последните # изпълнения}} — Show the last {count, plural, one {run} other {# runs}}
+- `integration.history.hide` — Скрий списъка — Hide the list
+- `integration.history.empty.title` — Още няма синхронизация — No sync yet
+- `integration.history.empty.description` — Изпълненията се появяват тук след първата проверка на връзката или синхронизация. — Runs appear here after the first connection check or sync.
+- `integration.history.kind.other` — Друго — Other
+- `integration.history.kind.places_read` — Четене на масите — Tables read
+- `integration.history.status.queued` — На опашка — Queued
+- `integration.history.status.running` — В ход — Running
+- `integration.history.status.completed` — Завършено — Completed
+- `integration.history.status.failed` — Неуспешно — Failed
+- `integration.history.duration.seconds` — {seconds} с — {seconds} s
+- `integration.history.duration.minutes` — {minutes} мин {seconds} с — {minutes} min {seconds} s
+- `integration.history.duration.none` — — — —
+- `integration.history.counters.articles_seen` — Прочетени артикули — Articles seen
+- `integration.history.counters.categories_seen` — Прочетени категории — Categories seen
+- `integration.history.counters.created` — Създадени — Created
+- `integration.history.counters.updated` — Обновени — Updated
+- `integration.history.counters.unchanged` — Непроменени — Unchanged
+- `integration.history.counters.missing` — Липсващи — Missing
+- `integration.history.counters.deleted` — Изтрити — Deleted
+- `integration.history.counters.reactivated` — Върнати — Reactivated
+- `integration.history.counters.failed_pages` — Неуспешни страници — Failed pages
+- `integration.history.counters.refused_writes` — Отказани записи — Refused writes
+- `integration.history.counters.items_held` — Задържани за преглед — Held for review
+- `integration.history.counters.venues` — Заведения в {source} — {source} venues
+- `integration.history.counters.languages` — Езици — Languages
+- `integration.history.deletionSkipped` — Проверката за изтрити е пропусната — Deletion check skipped
+- `integration.history.details.show` — Покажи подробностите за изпълнението от {when} — Show the details of the run from {when}
+- `integration.history.details.hide` — Скрий подробностите за изпълнението от {when} — Hide the details of the run from {when}
+- `integration.history.details.notes` — Какво стана — What happened
+- `integration.history.details.nothing` — Няма какво друго да се отчете. — Nothing else to report.
+- `integration.history.details.refused` — Отказани записи — Refused writes
+- `integration.history.details.field` — Поле — Field
+- `integration.history.details.reason` — Причина — Reason
+- `integration.history.details.noField` — (структура) — (structure)
+- `integration.history.details.refusedFallback` — Отказано — Refused
+- `integration.history.refusedCodes.less_cautious` — Би направило менюто по-малко предпазливо от касата — Would make the menu less cautious than the till
+- `integration.history.refusedCodes.layer_not_allowed` — Този източник не може да записва това поле — This source may not write this field
+- `integration.history.refusedCodes.unknown_field` — Непознато поле — Unknown field
+- `integration.history.refusedCodes.not_linked` — Няма връзка с {source} — Not linked to {source}
+- `integration.history.refusedCodes.unknown_node` — Непознат елемент — Unknown item
+- `integration.history.refusedCodes.unknown_link` — Непозната връзка — Unknown link
+- `integration.history.refusedCodes.link_taken` — Обектът от {source} е свързан с друг елемент — The {source} object is linked to another item
+- `integration.history.refusedCodes.already_linked` — Елементът вече има връзка с {source} — The item already has a {source} link
+- `integration.history.held` — Задържана — Held
+- `integration.errors.not_allowed` — Само собствениците и администраторите могат да правят това. — Only owners and admins can do this.
+- `integration.errors.not_found` — Връзката или заведението не бяха намерени. — The connection or the venue could not be found.
+- `integration.errors.invalid` — Въведеното не е валидно. — That input is not valid.
+- `integration.errors.invalid_host` — Въведете https адреса на инсталацията на {source}, без порт и път. — Enter the https address of the {source} installation, without a port or a path.
+- `integration.errors.sync_keys_missing` — Ключовете за синхронизация не са настроени. Свържете се с екипа на Restro. — The sync keys are not set up. Ask the Restro team.
+- `integration.errors.host_in_use` — Друга връзка с {source} на тази организация вече ползва този адрес. — Another {source} connection of this organisation already uses that address.
+- `integration.errors.host_change_blocked` — Тази връзка вече обслужва заведения или съдържа меню от друга инсталация. Смяната на адреса би смесила двете. Добавете друга връзка с {source}. — This connection already serves venues or holds a menu from another installation. Changing the address would mix the two. Add another {source} connection instead.
+- `integration.errors.has_instances` — {source} още има връзки. Премахнете ги, преди да я махнете от избора. — {source} still has connections. Remove them before you unselect it.
+- `integration.errors.has_venues` — Заведения още ползват тази връзка. Първо изтрийте тези заведения, после премахнете връзката. — Venues still use this connection. Delete those venues first, then remove the connection.
+- `integration.errors.system_not_chosen` — Първо изберете {source} от системите по-горе. — Choose {source} in the systems above first.
+- `integration.errors.not_ready` — Още не е готово: първо завършете предишните стъпки. — Not ready yet: finish the earlier steps first.
+- `integration.errors.already_running` — Вече има синхронизация на опашка или в ход. — A sync is already queued or running.
+- `integration.errors.queue_unavailable` — Услугата за синхронизация не може да бъде достигната. Опитайте след малко. — The sync service could not be reached. Try again in a moment.
+- `integration.errors.failed` — Нещо се обърка. Опитайте отново. — Something went wrong. Try again.
+- `connectors.barsy.connect.hostExample` — https://club.barsyonline.com — https://club.barsyonline.com
+- `connectors.barsy.runKinds.barsy_connect` — Проверка на връзката — Connection check
+- `connectors.barsy.runKinds.barsy_full_pull` — Пълна синхронизация — Full sync
+- `connectors.barsy.runKinds.barsy_incremental` — Бърза синхронизация — Quick sync
+- `connectors.barsy.settings.title` — Как се четат данните от barsy — How barsy data is read
+- `connectors.barsy.settings.description` — Настройва се веднъж за цялата инсталация и е едно и също за всяко заведение, което ползва тази връзка. Промяната важи от следващата синхронизация. — Set once for the whole installation, and the same for every venue that uses this connection. A change applies from the next sync.
+- `connectors.barsy.settings.allergen.label` — Характеристика за алергени — Allergen characteristic
+- `connectors.barsy.settings.allergen.auto` — Автоматично откриване — Detect automatically
+- `connectors.barsy.settings.allergen.autoFound` — Автоматично откриване ({name}) — Detect automatically ({name})
+- `connectors.barsy.settings.allergen.autoNone` — Автоматично откриване (още не е намерена) — Detect automatically (none found yet)
+- `connectors.barsy.settings.allergen.help` — Характеристиката в barsy, която изброява алергените на артикула. Автоматичното откриване търси „Алергени“ или „Allergens“. — The barsy characteristic that lists the allergens of an article. Automatic detection looks for "Алергени" or "Allergens".
+- `connectors.barsy.settings.allergen.noOptions` — Списъкът с характеристики се чете при проверката на връзката. — The list of characteristics is read when the connection is checked.
+- `connectors.barsy.settings.locale.label` — Език на текста без етикет — Language of untagged text
+- `connectors.barsy.settings.locale.help` — Езикът, в който се записва текстът от barsy без езиков етикет. — The language that barsy text without a language tag is stored in.
+- `connectors.barsy.settings.save` — Запази настройките — Save settings
+- `connectors.barsy.settings.saving` — Запазване… — Saving…
+- `connectors.barsy.settings.saved` — Настройките са запазени. Важат от следващата синхронизация. — Settings saved. They apply from the next sync.
+
+## Venues
+
+**Bulgarian — English, new since T44:**
+
+- `venues.title` — Заведения — Venues
+- `venues.description` — Заведенията на {organization}. — The venues of {organization}.
+- `venues.open` — Отвори — Open
+- `venues.preview` — Преглед на менюто — Preview menu
+- `venues.previewDraft` — Чернова още няма страница за гости. Публикувайте заведението, за да прегледате менюто му. — A draft has no guest page yet. Publish the venue to preview its menu.
+- `venues.state.draft` — Чернова — Draft
+- `venues.state.live` — На живо — Live
+- `venues.source` — Източник — Source
+- `venues.byHand` — На ръка — By hand
+- `venues.venueIn` — Заведение в {source} — Venue in {source}
+- `venues.empty.title` — Още няма заведения — No venues yet
+- `venues.empty.description` — Създайте първото си заведение с бутона „Ново заведение“. — Create your first venue with the New venue button.
+- `venues.empty.descriptionReadOnly` — Собственик или администратор на организацията може да създаде първото заведение. — An owner or admin of the organisation can create the first venue.
+- `venues.unpublish.button` — Свали от публикация… — Unpublish…
+- `venues.unpublish.dialog.title` — Да свалим ли {name} от публикация? — Unpublish {name}?
+- `venues.unpublish.dialog.description` — Ето какво ще виждат гостите, когато свалите това заведение от публикация: — This is what guests will see once you unpublish this venue:
+- `venues.unpublish.dialog.effects.guests` — Страницата му за гости и QR кодовете на масите спират да показват менюто: гостите виждат, че менюто не е налично. — Its guest page and its table QR codes stop showing the menu: guests see that the menu is not available.
+- `venues.unpublish.dialog.effects.draft` — Заведението се връща към Чернова. Нищо не се трие: менютата, масите и настройките му се пазят. — The venue goes back to Draft. Nothing is deleted: its menus, tables and settings stay.
+- `venues.unpublish.dialog.effects.again` — Публикувайте меню на заведението отново, за да се върне на телефоните на гостите. — Publish a menu of the venue again to put it back on guests’ phones.
+- `venues.unpublish.dialog.cancel` — Отказ — Cancel
+- `venues.unpublish.dialog.confirm` — Свали от публикация — Unpublish
+- `venues.unpublish.dialog.working` — Сваляне… — Unpublishing…
+- `venues.unpublish.dialog.done` — {name} е свалено от публикация. — {name} was unpublished.
+- `venues.unpublish.dialog.doneLate` — {name} е свалено от публикация, но файловете му за гости не можаха да се оттеглят в момента. Те се оттеглят със следващата задача; ако след няколко минути гостите още виждат менюто, свалете го отново. — {name} was unpublished, but its guest files could not be withdrawn just now. They are withdrawn with the next job; if guests still see the menu in a few minutes, unpublish again.
+- `venues.unpublish.dialog.errors.not_allowed` — Само собственик или администратор може да сваля заведение от публикация. — Only an owner or admin can unpublish a venue.
+- `venues.unpublish.dialog.errors.invalid` — Това заведение не е намерено. — This venue could not be found.
+- `venues.unpublish.dialog.errors.venue_archived` — Това заведение вече е изтрито. — This venue was deleted.
+- `venues.unpublish.dialog.errors.failed` — Нещо се обърка. Заведението не е свалено от публикация, опитайте пак. — Something went wrong. The venue was not unpublished, try again.
+- `venues.new.button` — Ново заведение — New venue
+- `venues.new.title` — Ново заведение — New venue
+- `venues.new.description` — Откъде идва менюто на заведението? След създаването това не може да се промени. — Where does the venue’s menu come from? This cannot be changed after the venue is created.
+- `venues.new.back` — Назад — Back
+- `venues.new.next` — Напред — Next
+- `venues.new.cancel` — Отказ — Cancel
+- `venues.new.create` — Създай заведението — Create venue
+- `venues.new.creating` — Създаване… — Creating…
+- `venues.new.sources.legend` — Източник на менюто — Menu source
+- `venues.new.sources.loading` — Зареждане… — Loading…
+- `venues.new.sources.failed` — Източниците не можаха да се заредят. Опитайте пак. — The sources could not be loaded. Try again.
+- `venues.new.sources.retry` — Опитай пак — Try again
+- `venues.new.sources.hand` — На ръка — By hand
+- `venues.new.sources.handHelp` — Менюто пишете сами: секции, артикули и цени. — You write the menu yourself: sections, items and prices.
+- `venues.new.sources.venueCount` — {count, plural, one {# заведение} other {# заведения}} — {count, plural, one {# venue} other {# venues}}
+- `venues.new.sources.none` — Още не е свързана каса. — No point-of-sale system is connected yet.
+- `venues.new.sources.connect` — Свържете такава в Настройки › Интеграции — Connect one in Settings › Integrations
+- `venues.new.instance.title` — Ново заведение от {source} — New venue from {source}
+- `venues.new.instance.description` — Нищо не се въвежда: името, адресът и езиците идват от {source}. Можете да ги промените по-късно в настройките на заведението. — Nothing to type: the name, the address and the languages come from {source}. You can change them later in the venue’s settings.
+- `venues.new.instance.legend` — Заведения в {source} — Venues in {source}
+- `venues.new.instance.linkedTo` — свързано с {venue} — linked to {venue}
+- `venues.new.instance.noVenues` — {source} още не е подала заведения. Проверете връзката в Настройки › Интеграции. — {source} has not reported any venues yet. Check the connection in Settings › Integrations.
+- `venues.new.instance.allLinked` — Всяко заведение в {source} вече е свързано със заведение. — Every venue in {source} is linked to a venue already.
+- `venues.new.hand.title` — Ново заведение на ръка — New venue by hand
+- `venues.new.hand.description` — Заведение, което изграждате сами, със собствено меню, езици и адрес. — A venue you build yourself, with its own menu, languages and address.
+- `venues.new.name` — Име — Name
+- `venues.new.nameRequired` — Въведете име. — Enter a name.
+- `venues.new.slug` — Име в адреса — Address name
+- `venues.new.slugHelp` — Частта на заведението в уеб адреса на менюто. Никое друго ваше заведение не може да я ползва. — The venue part of the menu’s web address. No other venue of yours may use it.
+- `venues.new.address` — Гостите ще отварят — Guests will open
+- `venues.new.slugInvalid` — Използвайте малки латински букви, цифри и единични тирета, например demo-club. — Use lower-case Latin letters, digits and single hyphens, for example demo-club.
+- `venues.new.languages` — Езици — Languages
+- `venues.new.languagesHelp` — Езиците, на които може да е написано менюто. Всеки артикул може да се преведе по-късно. — The languages the menu can be written in. Each item can be translated later.
+- `venues.new.defaultLanguage` — Основен език — Main language
+- `venues.new.defaultLanguageHelp` — Всеки артикул и всяка секция трябва да има име на този език. — Every item and section needs a name in this language.
+- `venues.new.defaults` — Часова зона: {timeZone} · Валута: {currency} — Time zone: {timeZone} · Currency: {currency}
+- `venues.new.errors.not_allowed` — Само собственик или администратор може да създаде заведение. — Only an owner or admin can create a venue.
+- `venues.new.errors.invalid` — Проверете името, адреса и езиците и опитайте пак. — Check the name, the address and the languages, then try again.
+- `venues.new.errors.taken` — Друго ваше заведение вече има този адрес. Изберете друг. — Another venue of yours already has this address. Choose another one.
+- `venues.new.errors.link_taken` — Това заведение в {source} междувременно е свързано с друго заведение. Изберете друго. — This venue of {source} was linked to another venue in the meantime. Pick another one.
+- `venues.new.errors.failed` — Нещо се обърка. Заведението не е създадено, опитайте пак. — Something went wrong. The venue was not created, try again.
+
+## Deleted venues
+
+**Bulgarian — English, new since T44:**
+
+- `settings.deletedVenues.description` — Заведения, изтрити от собственик. Върнете ли заведение в рамките на {days} дни, то се връща като чернова с менюто, масите и кодовете си, а касата му се свързва отново, освен ако друго заведение не я обслужва сега. След това, или веднага с „Изтрий завинаги“, заведението се изтрива окончателно. — Venues an owner deleted. Restore one within {days} days and it comes back as a draft with its menu, tables and codes, and its till is linked again unless another venue serves it now. After that, or at once with Delete permanently, a venue is erased for good.
+- `settings.deletedVenues.empty.title` — Няма изтрити заведения — No deleted venues
+- `settings.deletedVenues.empty.description` — Изтритото от вас заведение се показва тук и можете да го върнете. — A venue you delete appears here, and you can restore it.
+- `settings.deletedVenues.listLabel` — Изтрити заведения — Deleted venues
+- `settings.deletedVenues.dates` — Изтрито на {when} · ще бъде изтрито окончателно на {erasedOn} — Deleted on {when} · erased on {erasedOn}
+- `settings.deletedVenues.restore` — Върни — Restore
+- `settings.deletedVenues.restoring` — Връщане… — Restoring…
+- `settings.deletedVenues.purge` — Изтрий завинаги — Delete permanently
+- `settings.deletedVenues.purgeDialog.title` — Да изтрием ли {name} завинаги? — Delete {name} permanently?
+- `settings.deletedVenues.purgeDialog.description` — {name} се изтрива сега, без да чака до {erasedOn}. Това не може да се върне. Ето какво изчезва: — {name} is erased now, without waiting until {erasedOn}. This cannot be undone. This is what goes:
+- `settings.deletedVenues.purgeDialog.effects.menus` — Менютата, секциите и артикулите му, всяка публикувана версия и дневникът на промените му. — Its menus, sections and items, every published version and its change log.
+- `settings.deletedVenues.purgeDialog.effects.tables` — Масите и QR кодовете му. Кодовете никога не се връщат: отпечатаните кодове спират да работят завинаги. — Its tables and QR codes. The codes never come back: printed codes stop working for good.
+- `settings.deletedVenues.purgeDialog.effects.address` — Името му в адреса се освобождава и друго заведение може да го вземе. Публичният му код никога не се използва пак. — Its address name is freed, so another venue can take it. Its public code is never used again.
+- `settings.deletedVenues.purgeDialog.effects.kept` — Артикулите, които касата или друго заведение още ползва, остават. — Items that the till or another venue still uses stay.
+- `settings.deletedVenues.purgeDialog.confirmLabel` — За потвърждение въведете името на заведението: {name} — Type the venue name to confirm: {name}
+- `settings.deletedVenues.purgeDialog.cancel` — Отказ — Cancel
+- `settings.deletedVenues.purgeDialog.confirm` — Изтрий завинаги — Delete permanently
+- `settings.deletedVenues.purgeDialog.deleting` — Изтриване… — Deleting…
+- `settings.deletedVenues.purgeDialog.deleted` — {name} се изтрива. То напуска този списък сега. — {name} is being erased. It leaves this list now.
+- `settings.deletedVenues.purgeDialog.deletedLate` — {name} не можа да бъде пратено за изтриване в момента. Ще се изтрие само на {erasedOn}. — {name} could not be sent to be erased just now. It is erased by itself on {erasedOn}.
+- `settings.deletedVenues.purgeDialog.errors.not_allowed` — Само собственик може да изтрие заведение завинаги. — Only an owner can delete a venue permanently.
+- `settings.deletedVenues.purgeDialog.errors.invalid` — Това заведение не е намерено. — This venue could not be found.
+- `settings.deletedVenues.purgeDialog.errors.not_deleted` — Това заведение не е сред изтритите. Първо го изтрийте. — This venue is not in the deleted venues. Delete it first.
+- `settings.deletedVenues.purgeDialog.errors.name_mismatch` — Името не съвпада. Въведете го точно както е показано. — The name does not match. Type it exactly as shown.
+- `settings.deletedVenues.purgeDialog.errors.failed` — Нещо се обърка. Заведението не е изтрито, опитайте пак. — Something went wrong. The venue was not deleted, try again.
+- `settings.deletedVenues.restored` — {name} е върнато като чернова. Публикувайте менюто му, за да се върне на телефоните на гостите; кодовете за масите се връщат с тази публикация. — {name} is back as a draft. Publish its menu to put it back on guests' phones; its table codes come back with that publish.
+- `settings.deletedVenues.restoredLinked` — {name} е върнато като чернова, с касата му свързана отново. Публикувайте менюто му, за да се върне на телефоните на гостите; кодовете за масите се връщат с тази публикация. — {name} is back as a draft, with its till linked again. Publish its menu to put it back on guests' phones; its table codes come back with that publish.
+- `settings.deletedVenues.errors.not_allowed` — Само собственик може да върне заведение. — Only an owner can restore a venue.
+- `settings.deletedVenues.errors.invalid` — Това заведение не е намерено. — This venue could not be found.
+- `settings.deletedVenues.errors.till_taken` — Не е върнато: касата, която обслужваше, сега е свързана с „{holder}“. — Not restored: the till venue it served is linked to “{holder}” now.
+- `settings.deletedVenues.errors.failed` — Нещо се обърка. Заведението не е върнато, опитайте пак. — Something went wrong. The venue was not restored, try again.
+
+## Settings › General
+
+**Bulgarian — English, new since T44:**
+
+- `settings.title` — Настройки — Settings
+- `settings.description` — Какво се настройва веднъж за цялата организация, а не за отделно заведение. — What is set once for the whole organisation, not for a single venue.
+- `settings.sectionsLabel` — Раздели на настройките — Settings sections
+- `settings.sections.general` — Общи — General
+- `settings.sections.integrations` — Интеграции — Integrations
+- `settings.sections.deletedVenues` — Изтрити заведения — Deleted venues
+- `settings.general.description` — Името на организацията и първата част от всеки адрес за гости. — The organisation's name and the first part of every guest address.
+- `settings.general.readOnly` — Само собственик може да променя това. — Only an owner can change this.
+- `settings.general.name.title` — Име на организацията — Organisation name
+- `settings.general.name.description` — Показва се в администрацията, в страничното меню и навсякъде, където се споменава организацията. — Shown in the admin, in the sidebar and wherever the organisation is named.
+- `settings.general.name.label` — Име — Name
+- `settings.general.name.save` — Запиши името — Save name
+- `settings.general.name.saving` — Записване… — Saving…
+- `settings.general.name.saved` — Името е записано. — Name saved.
+- `settings.general.name.invalid` — Въведете име от 1 до 200 знака. — Enter a name of 1 to 200 characters.
+- `settings.general.address.title` — Име в адреса — Address name
+- `settings.general.address.description` — Първата част от всеки адрес за гости, тази след /m/. Друга организация не може да има същото. — The first part of every guest address, the part after /m/. No other organisation can have the same one.
+- `settings.general.address.label` — Име в адреса — Address name
+- `settings.general.address.help` — Малки латински букви, цифри и единични тирета, до 63 знака, например night-group. — Lower-case Latin letters, digits and single hyphens, up to 63 characters, for example night-group.
+- `settings.general.address.example` — Заведенията ви ще имат адреси като — Your venues will have addresses like
+- `settings.general.address.keep` — Старият адрес продължава да работи: гостите, които го отворят, се пренасочват към новия, така че отпечатаните и споделените линкове никога не се чупят. — The old address keeps working: guests who open it are taken to the new one, so printed and shared links never break.
+- `settings.general.address.suggest` — Предложи от името — Suggest from the name
+- `settings.general.address.save` — Запиши името в адреса — Save address name
+- `settings.general.address.saving` — Записване… — Saving…
+- `settings.general.address.saved` — Името в адреса е записано. Гостите, които отворят стария адрес, се пренасочват към новия до минута. — Address name saved. Guests who open the old address are taken to the new one within a minute.
+- `settings.general.address.savedLate` — Името в адреса е записано. Файловете за гостите не можаха да се обновят в момента: публикувайте меню, за да се обновят. — Address name saved. The guest files could not be updated just now: publish a menu to bring them up to date.
+- `settings.general.address.invalid` — Използвайте малки латински букви, цифри и единични тирета, например night-group. — Use lower-case Latin letters, digits and single hyphens, for example night-group.
+- `settings.general.errors.not_allowed` — Само собственик може да променя името на организацията или името ѝ в адреса. — Only an owner can change the organisation's name or address name.
+- `settings.general.errors.invalid` — Това не може да се използва. Проверете го и опитайте пак. — This cannot be used. Check it and try again.
+- `settings.general.errors.taken` — Друга организация има това име в адреса или го е имала преди. Изберете друго. — Another organisation has this address name, or had it before. Choose another one.
+- `settings.general.errors.failed` — Нещо се обърка. Нищо не е променено, опитайте пак. — Something went wrong. Nothing was changed, try again.
+
+## Venue settings
+
+**Bulgarian — English, new since T44:**
+
+- `workspace.switchTab` — Смяна на раздела — Switch tab
+- `workspace.switchSection` — Смяна на секцията — Switch section
+- `workspace.comingInStage` — Идва в Етап {stage} — Coming in Stage {stage}
+- `workspace.tabs.composer` — Композитор — Composer
+- `workspace.tabs.tables` — Маси и QR — Tables & QR
+- `workspace.tabs.design` — Дизайн — Design
+- `workspace.tabs.settings` — Настройки — Settings
+- `workspace.settingsSections.general` — Общи — General
+- `workspace.settingsSections.publish` — Публикуване — Publish
+- `workspace.settingsSections.versioning` — Версии — Versioning
+- `workspace.settings.title` — Настройки на заведението — Venue settings
+- `workspace.settings.description` — Как заведението отчита времето, кои езици и каква валута използва. — How this venue keeps time, which languages and which currency it uses.
+- `workspace.settings.name` — Име — Name
+- `workspace.settings.address` — Адрес на менюто — Menu address
+- `workspace.settings.timezone` — Часова зона — Time zone
+- `workspace.settings.serviceDayEnd` — Работният ден свършва в — Service day ends at
+- `workspace.settings.languages` — Езици — Languages
+- `workspace.settings.defaultLanguage` — основен — default
+- `workspace.settings.currency` — Валута — Currency
+- `workspace.settings.readOnly` — Останалите настройки засега са само за четене. Редактирането им идва с композитора. — The other settings are read-only for now. Editing them arrives with the composer.
+- `workspace.settings.rename.label` — Име на заведението — Venue name
+- `workspace.settings.rename.help` — Показва се в администрацията и в менюто за гостите. Гостите виждат новото име след следващата публикация. — Shown in the admin and on the guest menu. Guests see a new name after the next publish.
+- `workspace.settings.rename.save` — Запиши името — Save name
+- `workspace.settings.rename.saving` — Записване… — Saving…
+- `workspace.settings.rename.saved` — Записано. Гостите виждат новото име след следващата публикация. — Saved. Guests see the new name after the next publish.
+- `workspace.settings.rename.invalid` — Въведете име от 1 до 120 знака. — Enter a name of 1 to 120 characters.
+- `workspace.settings.rename.errors.not_allowed` — Само собственик или администратор може да преименува заведение. — Only an owner or admin can rename a venue.
+- `workspace.settings.rename.errors.invalid` — Това име не може да се използва. Проверете го и опитайте пак. — This name cannot be used. Check it and try again.
+- `workspace.settings.rename.errors.venue_archived` — Това заведение е изтрито. — This venue was deleted.
+- `workspace.settings.rename.errors.failed` — Нещо се обърка. Името не е променено, опитайте пак. — Something went wrong. The name was not changed, try again.
+- `workspace.settings.danger.title` — Опасна зона — Danger zone
+- `workspace.settings.danger.description` — Изтриването маха заведението от телефоните на гостите и от администрацията. Нищо не се трие. — Deleting a venue takes it off guests' phones and out of the admin. Nothing is erased.
+- `workspace.settings.danger.button` — Изтрий заведението… — Delete venue…
+- `workspace.settings.danger.dialog.title` — Да изтрием ли {name}? — Delete {name}?
+- `workspace.settings.danger.dialog.description` — Ето какво се случва, когато изтриете това заведение: — This is what happens when you delete this venue:
+- `workspace.settings.danger.dialog.effects.admin` — То изчезва от администрацията: от страничното меню, от списъка със заведения и от страниците си. — It disappears from the admin: the sidebar, the venue list and its pages.
+- `workspace.settings.danger.dialog.effects.guests` — Страницата му за гости и QR кодовете на масите спират да работят: гостите виждат, че менюто не е налично. — Its guest page and its table QR codes stop working: guests see that the menu is not available.
+- `workspace.settings.danger.dialog.effects.till` — Връзката му с касата се освобождава, така че заведението в касата е свободно за друго заведение, а синхронизирането и публикуването спират. — Its link to the till is released, so the till venue is free for another venue, and syncing and publishing stop.
+- `workspace.settings.danger.dialog.effects.kept` — Нищо не се трие. Менюто, масите и настройките му се пазят и можете да го върнете от Настройки › Изтрити заведения. — Nothing is erased. Its menu, tables and settings are kept, and you can restore it from Settings › Deleted venues.
+- `workspace.settings.danger.dialog.confirmLabel` — За потвърждение въведете името на заведението: {name} — Type the venue name to confirm: {name}
+- `workspace.settings.danger.dialog.cancel` — Отказ — Cancel
+- `workspace.settings.danger.dialog.confirm` — Изтрий заведението — Delete venue
+- `workspace.settings.danger.dialog.deleting` — Изтриване… — Deleting…
+- `workspace.settings.danger.dialog.deleted` — {name} е изтрито. — {name} was deleted.
+- `workspace.settings.danger.dialog.deletedLate` — {name} е изтрито, но страницата му за гости не можа да се изключи в момента. Върнете го от Настройки › Изтрити заведения и го изтрийте отново след малко. — {name} was deleted, but its guest page could not be switched off just now. Restore it from Settings › Deleted venues and delete it again in a moment.
+- `workspace.settings.danger.dialog.seeDeleted` — Изтрити заведения — Deleted venues
+- `workspace.settings.danger.dialog.errors.not_allowed` — Само собственик може да изтрие заведение. — Only an owner can delete a venue.
+- `workspace.settings.danger.dialog.errors.invalid` — Това заведение не е намерено. — This venue could not be found.
+- `workspace.settings.danger.dialog.errors.name_mismatch` — Името не съвпада. Въведете го точно както е показано. — The name does not match. Type it exactly as shown.
+- `workspace.settings.danger.dialog.errors.venue_archived` — Това заведение вече е изтрито. — This venue was deleted.
+- `workspace.settings.danger.dialog.errors.failed` — Нещо се обърка. Заведението не е изтрито, опитайте пак. — Something went wrong. The venue was not deleted, try again.
+- `workspace.settings.slug.label` — Име в адреса — Address name
+- `workspace.settings.slug.help` — Малки латински букви, цифри и единични тирета, например demo-club. Трябва да е различно от имената в адреса на другите ви заведения. — Lower-case Latin letters, digits and single hyphens, for example demo-club. It must differ from the address names of your other venues.
+- `workspace.settings.slug.keep` — Вече споделените или отпечатани линкове продължават да работят: гостите, които отворят стар адрес, се пренасочват към новия. — Links that are already shared or printed keep working: guests who open an old address are taken to the new one.
+- `workspace.settings.slug.suggest` — Предложи от името — Suggest from the name
+- `workspace.settings.slug.save` — Запиши адреса — Save address
+- `workspace.settings.slug.saving` — Записване… — Saving…
+- `workspace.settings.slug.saved` — Адресът е записан. Гостите виждат новото име до минута. — Address saved. Guests see the new name within a minute.
+- `workspace.settings.slug.savedLate` — Адресът е записан. Публикуваните файлове не можаха да се обновят в момента: публикувайте менюто, за да се обновят. — Address saved. The published files could not be updated just now: publish the menu to bring them up to date.
+- `workspace.settings.slug.invalid` — Използвайте малки латински букви, цифри и единични тирета, например demo-club. — Use lower-case Latin letters, digits and single hyphens, for example demo-club.
+- `workspace.settings.slug.open` — Отвори — Open
+- `workspace.settings.slug.openTitle` — Отвори менюто в нов раздел — Open the menu in a new tab
+- `workspace.settings.slug.errors.not_allowed` — Само собственик или администратор може да променя адреса. — Only an owner or admin can change the address.
+- `workspace.settings.slug.errors.invalid` — Този адрес не може да се използва. Проверете го и опитайте пак. — This address cannot be used. Check it and try again.
+- `workspace.settings.slug.errors.taken` — Друго ваше заведение вече има това име в адреса. Изберете друго. — Another venue of yours already has this address name. Choose another one.
+- `workspace.settings.slug.errors.failed` — Нещо се обърка. Адресът не е променен, опитайте пак. — Something went wrong. The address was not changed, try again.
+- `venueMenus.title` — Менюта — Menus
+- `venueMenus.description` — Менютата на заведението. Менюто на живо е на адреса на заведението; зона или маса може да показва друго (Маси и QR). — The venue’s menus. The live one is at the venue’s address; an area or a table can show another one (Tables & QR).
+- `venueMenus.descriptionTill` — Менютата идват от касата: можете да ги преименувате, да промените реда им и да изберете кое е на живо. — The menus come from the till: you can rename them, change their order and choose the live one.
+- `venueMenus.live` — На живо — Live
+- `venueMenus.venueNameNote` — (името на заведението) — (the venue’s name)
+- `venueMenus.open` — Отвори {name} в композитора — Open {name} in the composer
+- `venueMenus.up` — Нагоре — Move up
+- `venueMenus.down` — Надолу — Move down
+- `venueMenus.rename.open` — Преименувай — Rename
+- `venueMenus.rename.label` — Име на менюто — Menu name
+- `venueMenus.rename.save` — Запази — Save
+- `venueMenus.delete` — Изтрий — Delete
+- `venueMenus.deleteLive` — Менюто на живо не може да се изтрие: първо направете друго меню на живо. — The live menu cannot be deleted: make another menu live first.
+- `venueMenus.deleted` — Преместено в Изтрити менюта. — Moved to Deleted menus.
+- `venueMenus.restored` — Върнато. — Restored.
+- `venueMenus.added` — Менюто е добавено. — Menu added.
+- `venueMenus.imported` — Менюто е импортирано. — Menu imported.
+- `venueMenus.cancel` — Отказ — Cancel
+- `venueMenus.empty` — Още няма менюта. Добавете едно. — No menus yet. Add one.
+- `venueMenus.emptyTill` — Още няма менюта: ще се появят след първата синхронизация. — No menus yet: they appear after the first sync.
+- `venueMenus.add.open` — Добави меню — Add menu
+- `venueMenus.add.label` — Име на новото меню — Name of the new menu
+- `venueMenus.add.placeholder` — Име (празно = {name}) — Name (empty = {name})
+- `venueMenus.add.submit` — Добави — Add
+- `venueMenus.setLive.open` — Направи на живо — Set live
+- `venueMenus.setLive.title` — Да стане ли {name} менюто на живо? — Make {name} the live menu?
+- `venueMenus.setLive.description` — То се публикува сега и го виждат гостите на адреса на заведението и на масите без собствено меню. — It is published now, and guests at the venue’s address and at tables without a menu of their own see it.
+- `venueMenus.setLive.confirm` — Направи на живо и публикувай — Set live and publish
+- `venueMenus.setLive.done` — Вече е менюто на живо. Публикува се… — It is the live menu now. Publishing it…
+- `venueMenus.setLive.notQueued` — Вече е менюто на живо, но не можа да се публикува в момента. Публикувайте го от горната част на страницата. — It is the live menu now, but it could not be published just now. Publish it from the top of the page.
+- `venueMenus.import.open` — Импортирай от друго заведение — Import from another venue
+- `venueMenus.import.title` — Импортиране на меню — Import a menu
+- `venueMenus.import.description` — Копира веднъж меню на друго заведение, направено на ръка, в това. По-късните промени в двете менюта остават отделни. — Copies a menu of another venue made by hand into this one, once. Later changes to either menu stay apart.
+- `venueMenus.import.loading` — Зареждам заведенията… — Loading the venues…
+- `venueMenus.import.loadFailed` — Заведенията не можаха да се заредят. Затворете и опитайте отново. — The venues could not be loaded. Close and try again.
+- `venueMenus.import.none` — Няма друго заведение, направено на ръка, с меню за импортиране. — No other venue made by hand has a menu to import.
+- `venueMenus.import.venue` — Заведение — Venue
+- `venueMenus.import.venuePlaceholder` — Изберете заведение — Choose a venue
+- `venueMenus.import.menu` — Меню — Menu
+- `venueMenus.import.menuPlaceholder` — Изберете меню — Choose a menu
+- `venueMenus.import.name` — Име на копието — Name of the copy
+- `venueMenus.import.namePlaceholder` — Празно = името на менюто — Empty = the menu’s name
+- `venueMenus.import.cancel` — Отказ — Cancel
+- `venueMenus.import.submit` — Импортирай — Import
+- `venueMenus.import.importing` — Импортиране… — Importing…
+- `venueMenus.bin.title` — {count, plural, one {Изтрити менюта (#)} other {Изтрити менюта (#)}} — {count, plural, one {Deleted menus (#)} other {Deleted menus (#)}}
+- `venueMenus.bin.description` — Изтрито меню може да се върне в рамките на {days} дни; след това се изтрива окончателно. — A deleted menu can be restored for {days} days; then it is erased.
+- `venueMenus.bin.when` — Изтрито на {deleted} · окончателно на {erased} — Deleted {deleted} · erased on {erased}
+- `venueMenus.bin.restore` — Върни — Restore
+- `venueMenus.errors.invalid_input` — Това име или избор не може да се използва. Проверете и опитайте отново. — That name or choice cannot be used. Check it and try again.
+- `venueMenus.errors.unknown_venue` — Заведението не е намерено. — This venue was not found.
+- `venueMenus.errors.venue_archived` — Това заведение е изтрито. — This venue was deleted.
+- `venueMenus.errors.unknown_menu` — Менюто не е намерено. Презаредете страницата. — That menu was not found. Reload the page.
+- `venueMenus.errors.menu_deleted` — Това меню е в Изтрити менюта. Първо го върнете. — That menu is in Deleted menus. Restore it first.
+- `venueMenus.errors.menu_live` — Менюто на живо не може да се изтрие: първо направете друго меню на живо. — The live menu cannot be deleted: make another menu live first.
+- `venueMenus.errors.till_venue` — Менютата на това заведение идват от касата: тук не могат да се добавят, изтриват или импортират. — This venue’s menus come from the till: they cannot be added, deleted or imported here.
+- `venueMenus.errors.unknown_source` — Това меню вече не може да се импортира. Изберете друго. — That menu cannot be imported any more. Choose another one.
+- `venueMenus.errors.not_allowed` — Само собственик или администратор може да променя менютата. — Only an owner or admin can change the menus.
+- `venueMenus.errors.invalid` — Заявката не беше разбрана. Презаредете страницата и опитайте отново. — That request was not understood. Reload the page and try again.
+- `venueMenus.errors.failed` — Нещо се обърка. Нищо не е променено; опитайте отново. — Something went wrong. Nothing was changed; try again.
+- `menuSource.title` — Източник на менюто — Menu source
+- `menuSource.description` — Откъде идва менюто на това заведение: връзката с {source} и заведението в нея. Избира се при създаването на заведението и не се променя. — Where this venue’s menu comes from: the {source} connection and the venue in it. It is chosen when the venue is created and does not change.
+- `menuSource.readOnly` — Само собствениците и администраторите могат да променят източника на менюто или да стартират синхронизация. Вие виждате какво е настроено. — Only owners and admins can change the menu source or start a sync. You can see what is set.
+- `menuSource.instance.label` — Връзка — Connection
+- `menuSource.venue.label` — Заведение в {source} — Venue in {source}
+- `menuSource.sync.button` — Синхронизирай това заведение — Sync this venue
+- `menuSource.sync.starting` — Стартиране… — Starting…
+- `menuSource.sync.queued` — Синхронизацията е на опашка. — The sync is queued.
+- `menuSource.sync.lastSynced` — Последна синхронизация: {when} — Last synced {when}
+- `menuSource.sync.neverSynced` — Още не е синхронизирано. — Not synced yet.
+- `menuSource.sync.blocked.not_manager` — Само собствениците и администраторите могат да стартират синхронизация. — Only owners and admins can start a sync.
+- `menuSource.sync.blocked.no_credentials` — Първо запазете данните за достъп до {source} в Настройки → Интеграции. — Save the {source} credentials first, in Settings → Integrations.
+- `menuSource.sync.blocked.checking` — Връзката се проверява. Изчакайте да приключи. — The connection is being checked. Wait until it finishes.
+- `menuSource.sync.blocked.not_connected` — Връзката с {source} трябва първо да работи. Вижте Настройки → Интеграции. — The connection to {source} has to work first. See Settings → Integrations.
+- `menuSource.sync.blocked.no_till_venue` — Това заведение няма заведение в {source}. — This venue has no venue in {source}.
+- `menuSource.sync.blocked.no_menu` — {source} още не е съобщила менютата на това заведение. Проверете връзката отново. — {source} has not reported the menus of this venue yet. Check the connection again.
+- `menuSource.sync.blocked.busy` — Вече има синхронизация на опашка или в ход. — A sync is already queued or running.
+- `menuSource.sync.held.title` — Последната пълна синхронизация е задържана — The last full sync was held back
+- `menuSource.sync.held.too_many_missing` — Последната пълна синхронизация намери по-малко артикули от тези в менюто и не скри нищо: щеше да скрие {wouldHide} от {active, plural, one {# артикул} other {# артикула}}. Проверете заведението и менютата му в {source}. — The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.
+- `menuSource.sync.held.empty_read` — Последната пълна синхронизация не намери нито един артикул и не скри нищо: щеше да скрие {wouldHide} от {active, plural, one {# артикул} other {# артикула}}. Проверете заведението и менютата му в {source}. — The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.
+- `connectors.barsy.price.legend` — Показвана цена — Price shown
+- `connectors.barsy.price.default` — по подразбиране — default
+- `connectors.barsy.price.actual` — Базова цена — Base price
+- `connectors.barsy.price.actualHelp` — Редовната цена на артикула в barsy. — The article’s regular price in barsy.
+- `connectors.barsy.price.current` — Текуща цена — Current price
+- `connectors.barsy.price.currentHelp` — Цената, която barsy начислява в момента; може да се променя през деня. — The price barsy charges right now; it can change during the day.
+- `connectors.barsy.price.warning` — Текущата цена следва ценовите правила на barsy за това заведение. Правилата по часове, например щастлив час, могат да се покажат в менюто със закъснение, докато Lukanet потвърдят как barsy ги отчита. — Current price follows barsy’s price rules for this venue. Time-based rules, such as a happy hour, may show late in the menu until Lukanet confirms how barsy reports them.
+- `connectors.barsy.price.save` — Запази цената — Save price
+- `connectors.barsy.price.saving` — Запазване… — Saving…
+- `connectors.barsy.price.saved` — Запазено. Важи от следващата синхронизация. — Saved. It applies from the next sync.
+
+## Publish
+
+_The whole `publish` namespace is in T44's list: nothing new here._
+
+_Still names the POS, not rewritten (needs the instance name): `publish.actor.sync` (apps/web/src/publish/names.ts line 21 calls t(actor.kind) without a source)._
+
+_No further sentences: everything under this screen is in T44's list._
+
+## Tables & QR
+
+**Wording to check (T44):**
+
+- „Нашият линк“ / „Собствен линк на заведението“ (the link choice; keys tables.address.ours / .own)
+- „Шаблон на линка“ (tables.address.pattern)
+- „Основен адрес“ (tables.address.baseUrl)
+- „Изключи кода“ (tables.row.turnOff)
+- „Нов код“ (tables.row.newCode)
+- „Лист за печат“ (tables.printSheet)
+- „Без салон“ (no hall): not found in bg.json as written; check the key that replaced it
+- „Скрита“ / „Публична“ (hidden / public table): „Скрита“ is in tables.area.hidden and tables.row.hidden; „Публична“ is not found in bg.json as written
+- „Сканирайте за менюто“ (the card text; tables.card.scan)
+
+**Changed in S8 (new wording, check it):**
+
+- `tables.empty.description` — Зоните и масите идват от {source}. Появяват се при следващото четене. Заведение без каса добавя свои зони и маси. — Areas and tables come from {source}. They appear at its next read. A venue without a till adds its own areas and tables.
+
+_The whole `tables` and `tablePage` namespaces are in T44's list; the items below are the T44 wording to check, plus the one sentence this pass changed._
+
+_No further sentences: everything under this screen is in T44's list._
+
+## Composer › Structure
+
+**Wording to check (T44):**
+
+- „Тагове“ / „таг“ (the tag label; composer.tags.title, fields.tags.*)
+- „Филтър по таг“ (composer.toolbar.filter)
+- „Архивирани“ (composer.tags.archivedTitle)
+- „Върни“ (restore; composer.tags.restore, composer.tags.restoreShort)
+- „Цвят на марката“ / „Контур“ (fields.tags.colours.accent / .border)
+- „Изчерпано тази вечер“ (composer.badges.soldOutTonight, composer.soldOut.chip, itemSheet.details.sale.soldOutTonight)
+- „Върни в продажба“ (composer.soldOut.unmark, itemSheet.details.sale.unmark)
+- „Не се продава в barsy“: the key is gone; the badge now reads composer.badges.offSaleTill (listed below)
+- „Маркирай като изчерпано тази вечер“ (itemSheet.details.sale.mark)
+
+
+**Bulgarian — English, new since T44:**
+
+- `common.yes` — Да — Yes
+- `common.no` — Не — No
+- `common.none` — Няма — None
+- `fields.noValue` — Няма зададена стойност — No value set
+- `fields.invalidStored` — Записаната стойност не е валидна за този тип поле. — The stored value is not valid for this field type.
+- `fields.about` — За полето {field} — About the field {field}
+- `fields.keyLabel` — Ключ на полето — Field key
+- `fields.typeLabel` — Тип — Type
+- `fields.edit` — Редактирай {field} — Edit {field}
+- `fields.set` — Задай {field} — Set {field}
+- `fields.types.short_text` — Кратък текст — Short text
+- `fields.types.long_text` — Дълъг текст — Long text
+- `fields.types.localized_text` — Текст на няколко езика — Text in several languages
+- `fields.types.number` — Число — Number
+- `fields.types.boolean` — Да / не — Yes / no
+- `fields.types.date` — Дата — Date
+- `fields.types.datetime` — Дата и час — Date and time
+- `fields.types.money` — Сума — Money
+- `fields.types.measurement` — Количество с мерна единица — Quantity with a unit
+- `fields.types.range` — Диапазон — Range
+- `fields.types.tags` — Етикети — Tags
+- `fields.types.enum` — Избор от списък — Choice from a list
+- `fields.types.enum_set` — Няколко избора от списък — Several choices from a list
+- `fields.types.image` — Снимка — Image
+- `fields.types.file` — Файл — File
+- `fields.types.availability` — График на наличност — Availability schedule
+- `fields.types.reference` — Препратка — Reference
+- `fields.provenance.till` — От {source} — From {source}
+- `fields.provenance.owned` — Въведено тук — Owned here
+- `fields.provenance.overridden` — Заменено — Overridden
+- `fields.provenance.stale` — Остаряло — Stale
+- `fields.provenance.locked` — Заключено — Locked
+- `fields.editor.title` — Редакция: {field} — Edit {field}
+- `fields.editor.description` — Засега записът е локален: нищо не се записва в базата до Етап 2. — Saving is local for now: nothing is written to the database until Stage 2.
+- `fields.editor.save` — Запази — Save
+- `fields.editor.cancel` — Отказ — Cancel
+- `fields.editor.clear` — Изчисти стойността — Clear value
+- `fields.editor.shortcutHint` — Ctrl/⌘ + Enter записва · Esc отказва — Ctrl/⌘ + Enter saves · Esc cancels
+- `fields.editor.choose` — Изберете… — Choose…
+- `fields.editor.chooseMany` — Изберете всичко подходящо — Choose all that apply
+- `fields.editor.setNotSet` — Няма избор — Not set
+- `fields.editor.setNone` — Нищо не е избрано (изрично „няма“) — None selected (an explicit “none”)
+- `fields.editor.setCount` — {count, plural, one {# избран} other {# избрани}} — {count, plural, one {# selected} other {# selected}}
+- `fields.editor.savedLocally` — Обновено тук (още не е записано в базата) — Updated here (not saved to the database yet)
+- `fields.editor.errors.required` — Полето е задължително. — This field is required.
+- `fields.editor.errors.invalid` — Стойността не е валидна за това поле. — This value is not valid for this field.
+- `fields.hints.maxLength` — До {max} знака — Up to {max} characters
+- `fields.hints.integer` — Само цели числа. — Whole numbers only.
+- `fields.hints.between` — Между {min} и {max}. — Between {min} and {max}.
+- `fields.hints.atLeast` — Поне {min}. — At least {min}.
+- `fields.hints.atMost` — Най-много {max}. — At most {max}.
+- `fields.hints.moneyFormat` — Сума в евро, например 12.50 (до два знака след запетаята). — Amount in euro, for example 12.50 (up to two decimals).
+- `fields.hints.minorUnits` — Записва се като {minor, plural, one {# цент} other {# цента}}. — Stored as {minor, plural, one {# cent} other {# cents}}.
+- `fields.units.g` — г — g
+- `fields.units.kg` — кг — kg
+- `fields.units.ml` — мл — ml
+- `fields.units.l` — л — l
+- `fields.units.cl` — сл — cl
+- `fields.units.pcs` — бр. — pcs
+- `fields.availability.always` — Винаги налично — Always available
+- `fields.availability.nextDay` — на следващия ден — next day
+- `fields.media.noAlt` — Няма описание — No description
+- `fields.comingSoon.title` — Идва в Етап 2 — Coming in Stage 2
+- `fields.comingSoon.description` — Този вид поле вече може да се разглежда тук. Редактирането му идва в Етап 2. — This kind of field can be viewed here already. Editing it arrives in Stage 2.
+- `options.allergens.gluten` — Глутен — Gluten
+- `options.allergens.crustaceans` — Ракообразни — Crustaceans
+- `options.allergens.eggs` — Яйца — Eggs
+- `options.allergens.fish` — Риба — Fish
+- `options.allergens.peanuts` — Фъстъци — Peanuts
+- `options.allergens.soybeans` — Соя — Soybeans
+- `options.allergens.milk` — Мляко — Milk
+- `options.allergens.nuts` — Ядки — Nuts
+- `options.allergens.celery` — Целина — Celery
+- `options.allergens.mustard` — Синап — Mustard
+- `options.allergens.sesame` — Сусам — Sesame
+- `options.allergens.sulphites` — Сулфити — Sulphites
+- `options.allergens.lupin` — Лупина — Lupin
+- `options.allergens.molluscs` — Мекотели — Molluscs
+- `options.dietary.vegan` — Веган — Vegan
+- `options.dietary.vegetarian` — Вегетарианско — Vegetarian
+- `options.dietary.gluten_free` — Без глутен — Gluten-free
+- `options.dietary.lactose_free` — Без лактоза — Lactose-free
+- `options.dietary.halal` — Халал — Halal
+- `options.dietary.kosher` — Кашер — Kosher
+- `options.order_mode.orderable` — Може да се поръчва — Can be ordered
+- `options.order_mode.ask_waiter` — Попитайте сервитьора — Ask your waiter
+- `options.order_mode.hidden` — Скрит — Hidden
+- `itemSheet.loadingTitle` — Зареждане на артикул… — Loading item…
+- `itemSheet.untitled` — Артикул без име — Untitled item
+- `itemSheet.description` — Данни, преводи, снимка и история на този артикул. — Details, translations, photo and history of this item.
+- `itemSheet.linked` — От {source} — From {source}
+- `itemSheet.createdHere` — Създаден тук — Created here
+- `itemSheet.linkState.missing` — {source} вече не го показва — {source} no longer lists it
+- `itemSheet.linkState.deleted` — Изтрит в {source} — Deleted in {source}
+- `itemSheet.issueCount` — {count, plural, =0 {Няма нищо за проверка} one {# нещо за проверка} other {# неща за проверка}} — {count, plural, =0 {Nothing to check} one {# thing to check} other {# things to check}}
+- `itemSheet.missing` — Този артикул не е намерен в заведението. — This item could not be found in this venue.
+- `itemSheet.loadError` — Артикулът не можа да се зареди. Затворете панела и опитайте отново. — The item could not be loaded. Close the sheet and try again.
+- `itemSheet.saved` — Записано — Saved
+- `itemSheet.reverted` — Върнато към стойността от {source} — Back to {source}'s value
+- `itemSheet.kept` — Вашата стойност е запазена — Your value is kept
+- `itemSheet.imageSaved` — Снимката е записана — Photo saved
+- `itemSheet.imageRemoved` — Снимката е премахната — Photo removed
+- `itemSheet.errors.not_found` — Артикулът или полето не е намерено. — This item or field could not be found.
+- `itemSheet.errors.not_allowed` — Само собственик или администратор може да отбелязва артикули като изчерпани. — Only an owner or admin can mark items sold out.
+- `itemSheet.errors.read_only` — Тази стойност не може да се променя оттук. — This value cannot be changed here.
+- `itemSheet.errors.locked` — Тази стойност се води от {source}. Променете я в {source}. — {source} owns this value. Change it in {source}.
+- `itemSheet.errors.nothing_to_revert` — Няма какво да се връща. — There is nothing to revert.
+- `itemSheet.errors.no_basis` — {source} вече няма стойност за това поле, така че няма с какво да се сравни вашата. Върнете полето към {source}. — {source} no longer holds a value for this, so there is nothing to keep yours against. Revert it instead.
+- `itemSheet.errors.invalid_value` — Тази стойност не е валидна за полето. — That value is not valid for this field.
+- `itemSheet.errors.asset_not_found` — Качената снимка не е намерена. Качете я отново. — The uploaded photo could not be found. Upload it again.
+- `itemSheet.errors.refused` — Промяната беше отказана и нищо не е записано. — The change was refused and nothing was saved.
+- `itemSheet.errors.failed` — Записът не успя. Опитайте отново. — Saving failed. Try again.
+- `itemSheet.tabs.details` — Детайли — Details
+- `itemSheet.tabs.translations` — Преводи — Translations
+- `itemSheet.tabs.media` — Медия — Media
+- `itemSheet.tabs.history` — История — History
+- `itemSheet.issues.title` — Неща за проверка — Things to check
+- `itemSheet.issues.blocking` — Не позволява артикулът да се показва в менюто — Keeps the item off the menu
+- `itemSheet.issues.showMore` — Покажи още {count} — Show {count} more
+- `itemSheet.issues.showLess` — Покажи по-малко — Show fewer
+- `itemSheet.issues.unknown` — Забележка {code}. — Finding {code}.
+- `itemSheet.issues.V3` — Липсва име на езика по подразбиране, затова артикулът не се показва на гостите. — The name is missing in the default language, so the item stays off the guest menu.
+- `itemSheet.issues.V4` — Не са въведени алергени. — Allergens are not filled in.
+- `itemSheet.issues.V5` — {source} и заведението не са съгласни за „{field}“. Изберете правилната стойност. — {source} and this venue disagree about {field}. Choose the right value.
+- `itemSheet.issues.V6` — Няма цена, затова артикулът не се показва на гостите. — There is no price, so the item stays off the guest menu.
+- `itemSheet.issues.V7` — „{field}“ няма текст на {language}. — {field} has no text in {language}.
+- `itemSheet.issues.stale_override` — {source} промени „{field}“, след като го заменихте тук. — {source} changed {field} after you replaced it here.
+- `itemSheet.issues.link_missing` — {source} вече не показва този артикул, затова гостите не го виждат. — {source} no longer lists this item, so guests do not see it.
+- `itemSheet.issues.link_deleted` — Артикулът е изтрит в {source}, затова гостите не го виждат. — This item was deleted in {source}, so guests do not see it.
+- `itemSheet.issues.invalid_value` — Записана стойност за „{field}“ не е валидна и се пренебрегва. — A stored value for {field} is not valid and is ignored.
+- `itemSheet.issues.ignored_value` — Записана стойност за „{field}“ е в слой, който не се отнася за това поле, и се пренебрегва. — A stored value for {field} sits in a layer that does not apply to it and is ignored.
+- `itemSheet.issues.required_missing` — „{field}“ е задължително. — {field} is required.
+- `itemSheet.issues.translation_review` — Текстът за „{field}“ в {source} е променен след превода на {language}. Проверете го. — {source}'s {field} changed after the {language} translation was written. Check it.
+- `itemSheet.issues.price_not_venue_scoped` — Цената от {source} още не е записана за това заведение. — {source}'s price is not stored for this venue yet.
+- `itemSheet.issues.unplaced_item` — Артикулът не е в нито една секция, затова гостите не го виждат. — This item is in no section, so guests do not see it.
+- `itemSheet.issues.required_group_unsatisfiable` — Задължителен избор има твърде малко опции, затова артикулът не може да се поръча. — A required choice has too few options, so the item cannot be ordered.
+- `itemSheet.details.groups.content` — Съдържание — Content
+- `itemSheet.details.groups.pricing` — Цена и порция — Price and portion
+- `itemSheet.details.groups.attributes` — Характеристики — Attributes
+- `itemSheet.details.groups.ordering` — Поръчване и наличност — Ordering and availability
+- `itemSheet.details.groups.internal` — Вътрешни — Internal
+- `itemSheet.details.editorDescription` — Промяната се записва веднага в менюто. В раздел „История“ се пази кой какво е променил. — The change is saved to the menu at once. The History tab keeps who changed what.
+- `itemSheet.details.readOnly.locked_to_till` — Променете това в {source}. — Change this in {source}.
+- `itemSheet.details.readOnly.till_decides` — {source} го е скрил или спрял от продажба. Променете го в {source}. — {source} has hidden this or taken it off sale. Change it in {source}.
+- `itemSheet.details.readOnly.composer_toggle` — Показвайте или скривайте артикула от списъка в композитора. — Show or hide the item from the list in the composer.
+- `itemSheet.details.conflict` — {source} и заведението не са съгласни. Изберете правилната стойност. — {source} and this venue disagree. Choose the right value.
+- `itemSheet.details.staleHint` — {source} промени това, след като го заменихте. Сега {source} казва: — {source} changed this after you replaced it. {source} now says:
+- `itemSheet.details.tillValueHint` — Стойността от {source}: — {source}'s value:
+- `itemSheet.details.keep` — Запази моето — Keep mine
+- `itemSheet.details.keepFor` — Запази моята стойност за {field} — Keep my value for {field}
+- `itemSheet.details.takeTill` — Вземи от {source} — Take {source}'s
+- `itemSheet.details.takeTillFor` — Вземи стойността от {source} за {field} — Take {source}'s value for {field}
+- `itemSheet.details.revert` — Върни — Revert
+- `itemSheet.details.revertFor` — Върни {field} към стойността от {source} — Revert {field} to {source}'s value
+- `itemSheet.translations.intro` — Всички езици на заведението. Езиците, които {source} вече има, са само за четене; добавените от вас се записват като ваши преводи. — Every language of this venue. Languages {source} already holds are read-only; the ones you add are saved as your own translations.
+- `itemSheet.translations.missing` — Липсва — Missing
+- `itemSheet.translations.review` — За проверка — Review
+- `itemSheet.translations.reviewHint` — Текстът в {source} е променен след този превод. Преводът остава активен; променете го, за да махнете отметката. — {source}'s text changed after this translation was written. It stays live; edit it to clear this flag.
+- `itemSheet.translations.placeholder` — Още няма текст — No text yet
+- `itemSheet.translations.save` — Запази — Save
+- `itemSheet.translations.heldByTill` — Води се от {source} — Held by {source}
+- `itemSheet.media.title` — Снимка — Photo
+- `itemSheet.media.noPreview` — Снимката не може да се покаже — The photo cannot be shown
+- `itemSheet.media.dimensions` — Размер — Size
+- `itemSheet.media.type` — Тип — Type
+- `itemSheet.media.openFull` — Отвори в пълен размер — Open full size
+- `itemSheet.media.fromTillHint` — Тази снимка идва от {source}. Качването на ваша я заменя тук. — This photo comes from {source}. Uploading yours replaces it here.
+- `itemSheet.media.none` — Още няма снимка — No photo yet
+- `itemSheet.media.upload` — Качете снимка или я пуснете тук — Upload a photo or drop one here
+- `itemSheet.media.replace` — Заменете снимката или пуснете нова тук — Replace the photo or drop a new one here
+- `itemSheet.media.limits` — JPEG, PNG или WebP, до 10 MB — JPEG, PNG or WebP, up to 10 MB
+- `itemSheet.media.uploading` — Качване… — Uploading…
+- `itemSheet.media.saving` — Записване… — Saving…
+- `itemSheet.media.remove` — Премахни снимката — Remove photo
+- `itemSheet.media.detailsTitle` — Описание и фокус — Description and focus
+- `itemSheet.media.altHint` — Алтернативният текст описва снимката за хората, които не я виждат. Пишете го на всеки език. — Alt text describes the photo for people who cannot see it. Write it in each language.
+- `itemSheet.media.altFor` — Алтернативен текст – {language} — Alt text, {language}
+- `itemSheet.media.noAlt` — Снимка без описание — Photo without a description
+- `itemSheet.media.focalSet` — Задай фокусна точка — Set focal point
+- `itemSheet.media.focalDone` — Готово — Done
+- `itemSheet.media.focalClear` — Махни фокусната точка — Clear focal point
+- `itemSheet.media.focalHint` — Щракнете върху частта от снимката, която трябва да остане в кадър. — Click the part of the photo that must stay in frame.
+- `itemSheet.media.focalPicker` — Снимка: щракнете, за да зададете фокусна точка, или ползвайте стрелките — Photo: click to set the focal point, or use the arrow keys
+- `itemSheet.media.saveDetails` — Запази — Save
+- `itemSheet.media.errors.unauthorized` — Влезте отново и опитайте пак. — Sign in again and try once more.
+- `itemSheet.media.errors.bad_origin` — Заявката беше отхвърлена. Презаредете страницата. — The request was refused. Reload the page.
+- `itemSheet.media.errors.no_file` — Не е избран файл. — No file was chosen.
+- `itemSheet.media.errors.empty` — Файлът е празен. — The file is empty.
+- `itemSheet.media.errors.too_large` — Файлът е по-голям от 10 MB. — The file is larger than 10 MB.
+- `itemSheet.media.errors.unsupported_type` — Приемат се само снимки JPEG, PNG и WebP. — Only JPEG, PNG and WebP photos are accepted.
+- `itemSheet.media.errors.corrupt` — Файлът изглежда повреден. — The file looks damaged.
+- `itemSheet.media.errors.dimensions` — Размерът на снимката не е допустим (най-много 16 383 пиксела по страна и 100 мегапиксела). — The photo's size is not allowed (at most 16,383 pixels a side and 100 megapixels).
+- `itemSheet.media.errors.server_error` — Качването не успя. Опитайте отново. — The upload failed. Try again.
+- `itemSheet.media.errors.network` — Връзката прекъсна. Опитайте отново. — The connection dropped. Try again.
+- `itemSheet.history.someone` — Някой — Someone
+- `itemSheet.history.tillSync` — Синхронизацията с {source} — The {source} sync
+- `itemSheet.history.system` — Системата — The system
+- `itemSheet.history.set` — {who} зададе {field}: {value} — {who} set {field} to {value}
+- `itemSheet.history.changed` — {who} промени {field} от {from} на {to} — {who} changed {field} from {from} to {to}
+- `itemSheet.history.cleared` — {who} премахна {field} (беше {value}) — {who} removed {field} (it was {value})
+- `itemSheet.history.structure.createNode` — {who} създаде артикула — {who} created the item
+- `itemSheet.history.structure.setPlacement` — {who} постави артикула в секция — {who} placed the item in a section
+- `itemSheet.history.structure.removePlacement` — {who} извади артикула от секция — {who} took the item out of a section
+- `itemSheet.history.structure.moveNode` — {who} премести артикула — {who} moved the item
+- `itemSheet.history.structure.setNodeStatus` — {who} промени дали артикулът се показва — {who} changed whether the item is shown
+- `itemSheet.history.structure.linkSource` — {who} свърза артикула с {source} — {who} linked the item to {source}
+- `itemSheet.history.structure.unlinkSource` — {who} откачи артикула от {source} — {who} unlinked the item from {source}
+- `itemSheet.history.structure.setLinkState` — {who} обнови статуса на артикула в {source} — {who} updated the item's {source} status
+- `itemSheet.history.structure.other` — {who} промени мястото на артикула в менюто — {who} changed the item's place in the menu
+- `itemSheet.history.empty` — Още няма промени. — No changes yet.
+- `itemSheet.history.error` — Историята не можа да се зареди. — The history could not be loaded.
+- `itemSheet.history.loadMore` — Покажи по-стари — Show older
+- `itemSheet.review.title` — Замени за проверка — Overrides to review
+- `itemSheet.review.text` — {source} промени „{fields}“, след като го заменихте тук. В „Детайли“ запазете вашето или вземете това от {source}. — {source} changed {fields} after you replaced it here. In Details, keep yours or take {source}’s.
+- `composer.sections` — Секции — Sections
+- `composer.newSection` — Нова секция — New section
+- `composer.unsorted` — Неподредени — Unsorted
+- `composer.unsortedHint` — Артикули, които още не са в никоя секция. Плъзнете артикул върху секция или използвайте „Премести в…“. — Items that are in no section yet. Drag one onto a section, or use “Move to…”.
+- `composer.itemCount` — {count, plural, one {# артикул} other {# артикула}} — {count, plural, one {# item} other {# items}}
+- `composer.chooseSection` — Изберете секция — Choose a section
+- `composer.untitledSection` — Секция без заглавие — Section without a title
+- `composer.unnamedItem` — Артикул без име — Item without a name
+- `composer.noPrice` — Без цена — No price
+- `composer.treeLabel` — Секции на менюто — Sections of the menu
+- `composer.listLabel` — Артикули в {section} — Items in {section}
+- `composer.empty.noMenu.title` — Това заведение още няма меню — This venue has no menu yet
+- `composer.empty.noMenu.description` — Създайте го, за да започнете да подреждате секции и артикули. — Create it to start arranging sections and items.
+- `composer.empty.noMenu.descriptionReadOnly` — Собственик или администратор може да го създаде. — An owner or admin can create it.
+- `composer.empty.noMenu.action` — Създай менюто — Create the menu
+- `composer.empty.noSections.title` — Още няма секции — No sections yet
+- `composer.empty.noSections.description` — Създайте секция или свържете каса в Настройки → Интеграции. — Create a section, or connect a till in Settings → Integrations.
+- `composer.empty.noSections.action` — Създай секция — Create a section
+- `composer.empty.noItems.title` — В тази секция няма артикули — No items in this section
+- `composer.empty.noItems.description` — Създайте артикул с „Нов артикул“ или плъзнете артикули тук от друга секция или от „Неподредени“. — Create an item with New item, or drag items here from another section or from Unsorted.
+- `composer.empty.noItems.descriptionTill` — Артикулите идват от касата. Плъзнете ги тук от „Неподредени“ или от друга секция; снимките, описанията и таговете се добавят тук. — Items come from the till. Drag them here from Unsorted or another section; photos, descriptions and tags are added here.
+- `composer.empty.noItems.descriptionReadOnly` — Плъзнете артикули тук от друга секция или от „Неподредени“. — Drag items here from another section or from Unsorted.
+- `composer.empty.noUnsorted.title` — Всеки артикул е в секция — Every item has a section
+- `composer.empty.noUnsorted.description` — Артикулите, които не са в никоя секция, се показват тук. — Items that are in no section show up here.
+- `composer.empty.noSelection.title` — Изберете секция — Choose a section
+- `composer.empty.noSelection.description` — Изберете секция отляво, за да видите и подредите нейните артикули. — Pick a section on the left to see and arrange its items.
+- `composer.badges.fromTill` — От {source} — From {source}
+- `composer.badges.owned` — Създадено тук — Owned here
+- `composer.badges.hiddenByTill` — Скрито от {source} — Hidden by {source}
+- `composer.badges.hidden` — Скрито — Hidden
+- `composer.badges.hiddenOther` — Скрито (настройка) — Hidden (setting)
+- `composer.badges.newFromTill` — Нов от {source}, скрит, докато не го покажете — New from {source}, hidden until you show it
+- `composer.badges.nameFromTill` — Липсва име за менюто в {source}: показва се собственото му име — Menu name missing in {source}: its own name is shown
+- `composer.badges.nameFromTillHelp` — Попълнете публичното име в {source} или въведете име тук. — Fill in the public name in {source}, or type a name here.
+- `composer.badges.nameFromTillHelpSection` — Попълнете публичното име в {source} или преименувайте секцията тук. — Fill in the public name in {source}, or rename the section here.
+- `composer.badges.offSaleTill` — Не се продава в {source} — Not on sale in {source}
+- `composer.badges.issues` — {count, plural, one {# проблем} other {# проблема}} — {count, plural, one {# issue} other {# issues}}
+- `composer.badges.review` — {count, plural, one {# замяна за проверка} other {# замени за проверка}} — {count, plural, one {# override to review} other {# overrides to review}}
+- `composer.badges.reviewHelp` — {source} промени тази стойност, след като я заменихте тук. Отворете артикула, за да запазите вашата или да вземете тази от {source}. — {source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s.
+- `composer.visibility.toggleItem` — Показва се на гостите: {name} — Shown to guests: {name}
+- `composer.visibility.toggleSection` — Секцията се показва на гостите — Section shown to guests
+- `composer.visibility.lockedByTill` — Скрито в {source}. Показвайте го там. — Hidden in {source}. Show it there.
+- `composer.visibility.lockedOther` — Скрито от друга настройка. Променете я в артикула. — Hidden by another setting. Change it in the item.
+- `composer.visibility.sectionHidden` — Тази секция е скрита от гостите. — This section is hidden from guests.
+- `composer.visibility.hideSection` — Скрий секцията — Hide section
+- `composer.visibility.showSection` — Покажи секцията — Show section
+- `composer.actions.open` — Отвори {name} — Open {name}
+- `composer.actions.more` — Още действия за {name} — More actions for {name}
+- `composer.actions.moveTo` — Премести в… — Move to…
+- `composer.actions.newInside` — Нова секция вътре — New section inside
+- `composer.actions.topLevel` — Най-горно ниво — Top level
+- `composer.actions.expand` — Разгъни {name} — Expand {name}
+- `composer.actions.collapse` — Свий {name} — Collapse {name}
+- `composer.actions.dragItem` — Плъзни {name} — Drag {name}
+- `composer.actions.dragSection` — Плъзни {name} — Drag {name}
+- `composer.actions.removeFromSection` — Премести в „Неподредени“ — Move to Unsorted
+- `composer.actions.rename` — Преименувай — Rename
+- `composer.actions.deleteSection` — Изтрий секцията… — Delete section…
+- `composer.actions.deleteItem` — Изтрий артикула… — Delete item…
+- `composer.dnd.instructions` — Натиснете интервал, за да вдигнете, стрелките за преместване, интервал за пускане, Escape за отказ. — Press space to pick up, the arrow keys to move, space to drop, escape to cancel.
+- `composer.dnd.lifted` — Вдигнато: {name}. Позиция {position} от {total}. — Picked up {name}. Position {position} of {total}.
+- `composer.dnd.moved` — {name}: позиция {position} от {total}. — {name}: position {position} of {total}.
+- `composer.dnd.overSection` — {name} е над секция {section}. — {name} is over the section {section}.
+- `composer.dnd.dropped` — {name} е пуснато на позиция {position} от {total}. — {name} dropped at position {position} of {total}.
+- `composer.dnd.droppedInSection` — {name} е преместено в {section}. — {name} moved to {section}.
+- `composer.dnd.cancelled` — Преместването е отменено. {name} е на старото си място. — Move cancelled. {name} is back where it was.
+- `composer.new.title` — Нова секция — New section
+- `composer.new.description` — Създайте своя секция, например „Коктейли на вечерта“. — Create a section of your own, for example “Tonight’s cocktails”.
+- `composer.new.parent` — Къде — Where
+- `composer.new.topLevel` — Най-горно ниво — Top level
+- `composer.new.names` — Име на секцията — Section name
+- `composer.new.name` — Име ({language}) — Name ({language})
+- `composer.new.optional` — по желание — optional
+- `composer.new.nameRequired` — Въведете име на основния език. — Enter a name in the main language.
+- `composer.new.create` — Създай — Create
+- `composer.new.creating` — Създаване… — Creating…
+- `composer.new.cancel` — Отказ — Cancel
+- `composer.newItem.button` — Нов артикул — New item
+- `composer.newItem.title` — Нов артикул — New item
+- `composer.newItem.description` — Ще бъде добавен в „{section}“. След това можете да попълните алергените, описанието и снимката му. — It is added to “{section}”. Next you can fill in its allergens, description and photo.
+- `composer.newItem.names` — Име на артикула — Item name
+- `composer.newItem.name` — Име ({language}) — Name ({language})
+- `composer.newItem.optional` — по желание — optional
+- `composer.newItem.nameRequired` — Въведете име на основния език. — Enter a name in the main language.
+- `composer.newItem.price` — Цена ({currency}) — Price ({currency})
+- `composer.newItem.priceHelp` — Например 4.50. Можете да я добавите или промените по-късно. — For example 4.50. You can add or change it later.
+- `composer.newItem.priceInvalid` — Въведете цена като 4.50, най-много с два знака след десетичния разделител. — Enter a price like 4.50, with at most two decimals.
+- `composer.newItem.create` — Създай артикула — Create item
+- `composer.newItem.cancel` — Отказ — Cancel
+- `composer.itemSheet.stub` — Подробности, преводи, снимки и история ще дойдат с листа на артикула. — Details, translations, photos and history arrive with the item sheet.
+- `composer.errors.not_found` — Това заведение или меню не е намерено. Презаредете страницата. — This venue or its menu was not found. Reload the page.
+- `composer.errors.invalid` — Това действие не е позволено. — This action is not allowed.
+- `composer.errors.till_venue` — Това заведение получава артикулите си от касата: тук артикули не могат да се създават, да се преименуват в списъка или да се изтриват. — This venue gets its items from the till: items cannot be created, renamed in the list or deleted here.
+- `composer.errors.failed` — Нещо се обърка. Промяната не е запазена, опитайте пак. — Something went wrong. The change was not saved, try again.
+- `composer.errors.till_section` — Тази секция идва от {source}: може да се скрие, но не и да се изтрие. — This section comes from {source}: it can be hidden, not deleted.
+- `composer.issues.fallback` — Изисква внимание. — Needs attention.
+- `composer.issues.V3` — Липсва име на основния език. — Missing name in the main language.
+- `composer.issues.V4` — Алергените не са попълнени. — Allergens are not filled in.
+- `composer.issues.V5` — Източниците не са съгласни за дадена стойност. — The sources disagree about a value.
+- `composer.issues.V6` — Липсва цена. — Missing price.
+- `composer.issues.V7` — Няма превод на {language}. — Not translated into {language}.
+- `composer.issues.V9` — Тази секция още няма какво да показва. — This section has nothing to show yet.
+- `composer.issues.stale_override` — Стойността в {source} се е променила, откакто сте я заменили. — {source}’s value changed since you overrode it.
+- `composer.issues.link_missing` — Вече не се намира в {source}. — Not found in {source} any more.
+- `composer.issues.link_deleted` — Изтрито в {source}. — Deleted in {source}.
+- `composer.issues.invalid_value` — Записана стойност не е валидна. — A stored value is not valid.
+- `composer.issues.ignored_value` — Стойност се игнорира, защото полето е на {source}. — A value is ignored because {source} owns that field.
+- `composer.issues.required_missing` — Задължително поле е празно. — A required field is empty.
+- `composer.issues.group_min_max` — Минимумът на група за избор е над максимума. — The minimum of a choice group is above its maximum.
+- `composer.issues.required_group_unsatisfiable` — Задължителен избор има твърде малко опции. — A required choice has too few options.
+- `composer.issues.translation_review` — Текстът в {source} се е променил. Проверете превода на {language}. — {source}’s text changed. Check the {language} translation.
+- `composer.issues.price_not_venue_scoped` — Цената не е зададена за това заведение. — The price is not set for this venue.
+- `composer.issues.unplaced_item` — Не е в никоя секция. — Not in any section.
+- `composer.issues.orphan_node` — Не е свързано с менюто. — Not attached to the menu.
+- `composer.subtabs.label` — Изглед на композитора — Composer view
+- `composer.subtabs.structure` — Структура — Structure
+- `composer.subtabs.design` — Дизайн — Design
+- `composer.menuBar.label` — Меню и подредба — Menu and its layout
+- `composer.menuBar.menu` — Меню — Menu
+- `composer.menuBar.live` — На живо — Live
+- `composer.menuBar.manage` — Управление на менютата — Manage menus
+- `composer.menuBar.layout` — Подредба на менюто — Menu layout
+- `composer.menuBar.layouts.list` — Списък — List
+- `composer.menuBar.layouts.one_column` — Една колона — One column
+- `composer.menuBar.layouts.two_columns` — Две колони — Two columns
+- `composer.menuBar.guestSwitch` — Гостите могат да сменят подредбата — Guests may switch the layout
+- `composer.menuBar.saved` — Запазено. Гостите ще го видят след следващото публикуване — Saved. Guests see it after the next publish
+- `composer.layout.horizontal` — Хоризонтален ред — Horizontal row
+- `composer.rename.save` — Запази името — Save the name
+- `composer.rename.cancel` — Отказ — Cancel
+- `composer.rename.section` — Преименувай {name} — Rename {name}
+- `composer.rename.sectionLabel` — Заглавие на {name} — Title of {name}
+- `composer.rename.item` — Преименувай {name} — Rename {name}
+- `composer.rename.itemLabel` — Име на {name} — Name of {name}
+- `composer.delete.cancel` — Отказ — Cancel
+- `composer.delete.section.title` — Да се изтрие ли {name}? — Delete {name}?
+- `composer.delete.section.description` — Секцията и секциите в нея излизат от менюто. Артикулите им отиват в „Неподредени“, освен ако са и в друга секция. Историята пази запис. — The section and the sections inside it leave the menu. Their items move to Unsorted unless they are in another section too. The history keeps a record.
+- `composer.delete.section.confirm` — Изтрий секцията — Delete section
+- `composer.delete.item.title` — Да се изтрие ли {name}? — Delete {name}?
+- `composer.delete.item.description` — Артикулът излиза от всички менюта на заведението и от композитора. Историята пази запис. — The item leaves every menu of the venue and the composer. The history keeps a record.
+- `composer.delete.item.confirm` — Изтрий артикула — Delete item
+
+## Composer › Design
+
+_The whole `design` namespace and `composer.guestFeatures` are in T44's list: nothing new here._
+
+_No further sentences: everything under this screen is in T44's list._
+
+## Guest
+
+_No messages keys. The guest page and its service screens read packages/shell/src/strings.ts (BG and EN), which T44 lists. Nothing new in this pass._
+
+_No further sentences: everything under this screen is in T44's list._

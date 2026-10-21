@@ -3,8 +3,9 @@
 // The publish server actions (briefs S3-01b and S3-05): thin wrappers over service.ts, in the shape
 // of the Integration tab's. Each checks who is asking (`requireTenant`: the tenant is the person's
 // organisation, never the request's), that the venue is theirs and that their role may publish,
-// validates the input with Zod, and calls the service. The Publish tab is built on them.
-import { idSchema } from '@restro/core'
+// validates the input with Zod, and calls the service. The venue page's Publish bar, its warnings
+// and Settings › Publish and › Versioning are built on them.
+import { AFTER_SYNC_MODES, idSchema, VenueSyncSettingsSchema } from '@restro/core'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -14,7 +15,6 @@ import { logError } from '../log'
 import { canPublishMenu } from '../roles'
 import { requireTenant } from '../session'
 import { getVenue } from '../venues'
-import { loadHistoryPage, menuOfVenue, type ViewScope } from './load'
 import {
   approveHeld,
   type PreviewResult,
@@ -24,9 +24,10 @@ import {
   previewDraft,
   publishNow,
   rejectHeldPublish,
+  resumeAutoPublish,
   rollback,
+  saveAutomation,
 } from './service'
-import type { HistoryPage } from './view'
 
 const venueIdSchema = idSchema('vn')
 
@@ -35,12 +36,7 @@ type ScopeError = 'invalid' | 'not_found' | 'failed'
 /** Runs one function for a venue of the signed-in person's organisation. */
 async function withScope<T>(
   venue: unknown,
-  run: (
-    scope: PublishScope,
-    services: PublishServices,
-    venueSlug: string,
-    timeZone: string,
-  ) => Promise<T>,
+  run: (scope: PublishScope, services: PublishServices) => Promise<T>,
   onError: (error: ScopeError) => T,
 ): Promise<T> {
   const parsed = venueIdSchema.safeParse(venue)
@@ -56,7 +52,7 @@ async function withScope<T>(
       actor: `user:${user.id}`,
       canPublish: canPublishMenu(organization.role),
     }
-    return await run(scope, { enqueue: enqueueJob }, found.slug, found.timezone)
+    return await run(scope, { enqueue: enqueueJob })
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
@@ -75,9 +71,16 @@ async function perform(
   return result
 }
 
-/** Queues a manual publish of this venue's menu (owner or admin). */
-export async function publishNowAction(venueId: string): Promise<PublishActionResult> {
-  return perform(venueId, (scope, services) => publishNow(scope, services))
+/**
+ * Queues a manual publish of one of this venue's menus (owner or admin): `menuId`, else the live
+ * one. A menu that is not live is published as that menu; it does not become live.
+ */
+export async function publishNowAction(
+  venueId: string,
+  menuId?: string,
+): Promise<PublishActionResult> {
+  if (menuId !== undefined && typeof menuId !== 'string') return { ok: false, error: 'invalid' }
+  return perform(venueId, (scope, services) => publishNow(scope, services, menuId))
 }
 
 /** Queues the approval of the publish V11 held (owner or admin). */
@@ -104,44 +107,40 @@ export async function rollbackAction(
   return perform(venueId, (scope, services) => rollback(scope, services, snapshotId))
 }
 
-/** The draft snapshot for the preview (anyone in the organisation): built in memory, nothing written. */
-export async function previewDraftAction(venueId: string): Promise<PreviewResult> {
+const AutomationSchema = z.strictObject({
+  venueId: idSchema('vn'),
+  sync: VenueSyncSettingsSchema,
+  afterSync: z.enum(AFTER_SYNC_MODES),
+})
+
+/**
+ * Saves the venue's Automation settings (owner or admin; Settings › Publish, D82, D96): the sync
+ * mode with its schedule, and whether a sync publishes by itself.
+ */
+export async function saveAutomationAction(input: unknown): Promise<PublishActionResult> {
+  const parsed = AutomationSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  const { venueId, sync, afterSync } = parsed.data
+  return perform(venueId, (scope) => saveAutomation(scope, { sync, afterSync }))
+}
+
+/** "Resume automatic publishing" after a return, without publishing (owner or admin). */
+export async function resumeAutoPublishAction(venueId: string): Promise<PublishActionResult> {
+  return perform(venueId, (scope) => resumeAutoPublish(scope))
+}
+
+/**
+ * The draft snapshot of a menu (`menuId`, else the live one) for the preview (anyone in the
+ * organisation): built in memory, nothing written.
+ */
+export async function previewDraftAction(venueId: string, menuId?: string): Promise<PreviewResult> {
+  if (menuId !== undefined && typeof menuId !== 'string') return { ok: false, error: 'failed' }
   return withScope(
     venueId,
-    (scope) => previewDraft(scope),
+    (scope) => previewDraft(scope, menuId),
     (): PreviewResult => ({
       ok: false,
       error: 'failed',
     }),
-  )
-}
-
-const BeforeVersionSchema = z.int().min(1)
-
-export type HistoryPageResult =
-  | { readonly ok: true; readonly page: HistoryPage }
-  | { readonly ok: false }
-
-/** An older page of the version history (anyone in the organisation). */
-export async function loadHistoryPageAction(
-  venueId: string,
-  beforeVersion: number,
-): Promise<HistoryPageResult> {
-  const before = BeforeVersionSchema.safeParse(beforeVersion)
-  if (!before.success) return { ok: false }
-  return withScope(
-    venueId,
-    async (scope, _services, slug, timezone): Promise<HistoryPageResult> => {
-      const menuId = await menuOfVenue(scope.pool, scope.tenantId, scope.venueId)
-      if (menuId === null) return { ok: false }
-      const view: ViewScope = {
-        pool: scope.pool,
-        tenantId: scope.tenantId,
-        venue: { id: scope.venueId, slug, timezone },
-        canPublish: scope.canPublish,
-      }
-      return { ok: true, page: await loadHistoryPage(view, menuId, { beforeVersion: before.data }) }
-    },
-    (): HistoryPageResult => ({ ok: false }),
   )
 }

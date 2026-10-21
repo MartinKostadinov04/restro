@@ -2,8 +2,9 @@ import { CurrentPointerSchema, VenueIndexSchema } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
+import { faceEntry } from '@/faces/registry'
 import { cdnBase } from './cdn'
-import { buildContext, chooseLocale, langParam, readTableToken } from './context'
+import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
 import {
   files,
   GuestLoadError,
@@ -12,30 +13,36 @@ import {
   type LoadDeps,
   loadLive,
   loadMenu,
+  loadMenuAt,
   loadPointer,
   loadSnapshot,
+  loadTableFile,
   loadTableLabel,
   loadVenueIndex,
   refetchLiveForSnapshot,
+  resolveGuestAddress,
 } from './load'
 
 const BASE = '/cdn'
+/** The public code of the venue in these tests; the slug is only decoration (D68). */
+const CODE = 'k3x9p2m7qa1z'
 
 /** The published files of a fixture, by URL; anything else is a 404. */
-function publishedFiles(name = 'tags-dietary', slug = 'demo-club') {
+function publishedFiles(name = 'tags-dietary', code = CODE) {
   const { snapshot, overlay } = fixture(name)
   const index = VenueIndexSchema.parse({
     venue_id: snapshot.snapshot.venue_id,
     menu_id: snapshot.snapshot.menu_id,
+    slug: 'demo-club',
   })
   const pointer = CurrentPointerSchema.parse({
     snapshot_id: snapshot.snapshot.id,
     version: snapshot.snapshot.version,
     hash: snapshot.snapshot.hash,
   })
-  const table = { venue_slug: slug, table_label: '12' }
+  const table = { venue_public_id: code, venue_slug: 'demo-club', table_label: '12' }
   const bodies = new Map<string, unknown>([
-    [files.index(BASE, slug), index],
+    [files.index(BASE, code), index],
     [files.current(BASE, index), pointer],
     [files.snapshot(BASE, pointer), snapshot],
     [files.live(BASE, index), overlay ?? { version: pointer.version, items: {} }],
@@ -56,9 +63,9 @@ function publishedFiles(name = 'tags-dietary', slug = 'demo-club') {
 }
 
 describe('the guest loader follows the published files (rule 4)', () => {
-  it('goes slug index -> pointer -> snapshot -> overlay, and asks for nothing else', async () => {
+  it('goes venue index -> pointer -> snapshot -> overlay, and asks for nothing else', async () => {
     const f = publishedFiles()
-    const menu = await loadMenu(f.deps(), 'demo-club')
+    const menu = await loadMenu(f.deps(), CODE)
     expect(menu.index).toEqual(f.index)
     expect(menu.pointer).toEqual(f.pointer)
     expect(menu.snapshot.snapshot.id).toBe(f.pointer.snapshot_id)
@@ -66,29 +73,41 @@ describe('the guest loader follows the published files (rule 4)', () => {
     // Every request is under the CDN base and is one of the four files of the chain.
     expect(f.asked).toHaveLength(4)
     expect(f.asked.every((url) => url.startsWith(`${BASE}/`))).toBe(true)
-    expect(f.asked[0]).toBe(`${BASE}/v/demo-club.json`)
+    expect(f.asked[0]).toBe(`${BASE}/v/${CODE}.json`)
   })
 
-  it('says the venue is unknown when the slug index is missing', async () => {
+  it('carries the current slug in the venue index', async () => {
     const f = publishedFiles()
-    await expect(loadMenu(f.deps(), 'no-such-club')).rejects.toMatchObject({
+    expect((await loadVenueIndex(f.deps(), CODE)).slug).toBe('demo-club')
+  })
+
+  it('says the venue is unknown when the index of the code is missing', async () => {
+    const f = publishedFiles()
+    await expect(loadMenu(f.deps(), '000000000000')).rejects.toMatchObject({
       reason: 'unknown_venue',
     })
-    // A slug that cannot be one is unknown without asking anyone.
+    // Something that cannot be a public code is unknown without asking anyone.
     const before = f.asked.length
     await expect(loadVenueIndex(f.deps(), '../etc/passwd')).rejects.toMatchObject({
       reason: 'unknown_venue',
     })
     await expect(loadVenueIndex(f.deps(), 'Demo Club')).rejects.toBeInstanceOf(GuestLoadError)
+    // A slug alone is no code, and neither is a code in capitals.
+    await expect(loadVenueIndex(f.deps(), 'demo-club')).rejects.toMatchObject({
+      reason: 'unknown_venue',
+    })
+    await expect(loadVenueIndex(f.deps(), CODE.toUpperCase())).rejects.toMatchObject({
+      reason: 'unknown_venue',
+    })
     expect(f.asked.length).toBe(before)
   })
 
   it('says the menu is not published yet when the venue has no pointer', async () => {
     const f = publishedFiles()
     // The index names a menu nothing was published for: its pointer file does not exist.
-    const other = { venue_id: f.index.venue_id, menu_id: `nd_${'A'.repeat(22)}` }
-    const index = new Map<string, unknown>([[files.index(BASE, 'demo-club'), other]])
-    await expect(loadMenu(f.deps(index), 'demo-club')).rejects.toMatchObject({
+    const other = { venue_id: f.index.venue_id, menu_id: `nd_${'A'.repeat(22)}`, slug: 'demo-club' }
+    const index = new Map<string, unknown>([[files.index(BASE, CODE), other]])
+    await expect(loadMenu(f.deps(index), CODE)).rejects.toMatchObject({
       reason: 'not_published',
     })
   })
@@ -98,12 +117,33 @@ describe('the guest loader follows the published files (rule 4)', () => {
     const noLive = new Map<string, unknown>([
       [files.live(BASE, f.index), new Response(null, { status: 404 })],
     ])
-    expect((await loadMenu(f.deps(noLive), 'demo-club')).live).toBeNull()
+    expect((await loadMenu(f.deps(noLive), CODE)).live).toBeNull()
     const broken = new Map<string, unknown>([
       [files.live(BASE, f.index), new Response('nope', { status: 500 })],
     ])
-    expect((await loadMenu(f.deps(broken), 'demo-club')).live).toBeNull()
+    expect((await loadMenu(f.deps(broken), CODE)).live).toBeNull()
     await expect(loadLive(f.deps(broken), f.index)).rejects.toMatchObject({ reason: 'failed' })
+  })
+
+  it('reads an overlay that has keys this loader does not know, and keeps its marks (A5-F2)', async () => {
+    const f = publishedFiles()
+    const [first = ''] = Object.keys(f.snapshot.items)
+    const newer = {
+      version: f.pointer.version,
+      items: { [first]: { sold_out: true } },
+      ordering: { state: 'on' },
+    }
+    const overrides = new Map<string, unknown>([[files.live(BASE, f.index), newer]])
+    const live = await loadLive(f.deps(overrides), f.index)
+    expect(live?.items).toEqual({ [first]: { sold_out: true } })
+    expect((await loadMenu(f.deps(overrides), CODE)).live?.items).toEqual({
+      [first]: { sold_out: true },
+    })
+    // Inside `items` nothing is guessed: a mark of another shape is still a failed parse.
+    const odd = new Map<string, unknown>([
+      [files.live(BASE, f.index), { version: 1, items: { [first]: { sold_out: true, hint: 1 } } }],
+    ])
+    await expect(loadLive(f.deps(odd), f.index)).rejects.toMatchObject({ reason: 'failed' })
   })
 
   it('fails (to be retried) on a server error, bad JSON or a file of the wrong shape', async () => {
@@ -112,10 +152,12 @@ describe('the guest loader follows the published files (rule 4)', () => {
       ['server error', new Response(null, { status: 503 })],
       ['not json', new Response('<html>', { status: 200 })],
       ['wrong shape', { venue_id: 'vn_x' }],
+      // The older index, without the slug.
+      ['no slug', { venue_id: f.index.venue_id, menu_id: f.index.menu_id }],
     ]
     for (const [label, body] of cases) {
-      const overrides = new Map<string, unknown>([[files.index(BASE, 'demo-club'), body]])
-      await expect(loadMenu(f.deps(overrides), 'demo-club'), label).rejects.toMatchObject({
+      const overrides = new Map<string, unknown>([[files.index(BASE, CODE), body]])
+      await expect(loadMenu(f.deps(overrides), CODE), label).rejects.toMatchObject({
         reason: 'failed',
       })
     }
@@ -125,7 +167,7 @@ describe('the guest loader follows the published files (rule 4)', () => {
         throw new TypeError('network down')
       },
     }
-    await expect(loadMenu(offline, 'demo-club')).rejects.toMatchObject({ reason: 'failed' })
+    await expect(loadMenu(offline, CODE)).rejects.toMatchObject({ reason: 'failed' })
   })
 
   it('refuses a snapshot that fails the strict schema (e.g. one with a barsy id field)', async () => {
@@ -247,21 +289,23 @@ describe('the table banner', () => {
 
   it('reads the label from t/<token>.json', async () => {
     const f = publishedFiles()
-    expect(await loadTableLabel(f.deps(), token, 'demo-club')).toBe('12')
+    expect(await loadTableLabel(f.deps(), token, CODE)).toBe('12')
     expect(f.asked.at(-1)).toBe(`${BASE}/t/${token}.json`)
   })
 
   it('leaves the banner out for an unknown code, another venue, a bad token or a failure', async () => {
     const f = publishedFiles()
-    expect(await loadTableLabel(f.deps(), 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', 'demo-club')).toBeNull()
-    expect(await loadTableLabel(f.deps(), token, 'other-club')).toBeNull()
+    expect(await loadTableLabel(f.deps(), 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', CODE)).toBeNull()
+    // Another venue is told apart by its public code; the slug in the file proves nothing.
+    expect(await loadTableLabel(f.deps(), token, 'zzzzzzzzzzzz')).toBeNull()
+    expect(await loadTableLabel(f.deps(), token, 'demo-club')).toBeNull()
     const before = f.asked.length
-    expect(await loadTableLabel(f.deps(), '../x', 'demo-club')).toBeNull()
+    expect(await loadTableLabel(f.deps(), '../x', CODE)).toBeNull()
     expect(f.asked.length).toBe(before)
     const broken = new Map<string, unknown>([
       [files.table(BASE, token), new Response('x', { status: 500 })],
     ])
-    expect(await loadTableLabel(f.deps(broken), token, 'demo-club')).toBeNull()
+    expect(await loadTableLabel(f.deps(broken), token, CODE)).toBeNull()
   })
 })
 
@@ -306,12 +350,172 @@ describe('the guest context', () => {
     expect(readTableToken('')).toBeNull()
   })
 
+  it('tells the shell about a table only when the lookup of that very code found one (A5-F5)', () => {
+    const token = 'tb_0123456789ABCDEFGHIJKL'
+    const found = { token, label: '12' }
+    expect(confirmedTable(token, found)).toEqual(found)
+    // No code asked for, no answer yet or an unknown code: no table.
+    expect(confirmedTable(null, found)).toBeNull()
+    expect(confirmedTable(token, null)).toBeNull()
+    // An answer left over from another code (the address changed) counts for nothing.
+    expect(confirmedTable('tb_ZZZZZZZZZZZZZZZZZZZZZZ', found)).toBeNull()
+  })
+
   it('builds a qr context with ordering off', () => {
     const context = buildContext({
       locale: 'bg_BG',
       now: new Date('2026-10-10T12:00:00Z'),
       tableToken: null,
+      manifest: faceEntry(null).manifest,
     })
     expect(context).toMatchObject({ channel: 'qr', orderingEnabled: false, tableToken: null })
+  })
+
+  it('asks for the photo size the chosen template’s manifest declares (R10)', () => {
+    const input = {
+      locale: 'bg_BG' as const,
+      now: new Date('2026-10-10T12:00:00Z'),
+      tableToken: null,
+    }
+    const manifest = faceEntry(null).manifest
+    expect(buildContext({ ...input, manifest }).images).toEqual({
+      item: { variant: 'card', density: 1 },
+    })
+    // A template that wants its photos at full size gets them at full size.
+    const wide = {
+      ...manifest,
+      slots: {
+        ...manifest.slots,
+        'item.image': { optional: true as const, variant: 'full' as const },
+      },
+    }
+    expect(buildContext({ ...input, manifest: wide }).images).toEqual({
+      item: { variant: 'full', density: 1 },
+    })
+  })
+})
+
+describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens (D95)', () => {
+  const ORG = 'night-group'
+  const SECOND_MENU = `nd_${'B'.repeat(22)}`
+  const TABLE_CODE = 'tb_0123456789ABCDEFGHIJKL'
+
+  /** The published files with the organisation's index and a second published menu. */
+  function organizationFiles() {
+    const f = publishedFiles()
+    const organization = {
+      organization_id: `tn_${'C'.repeat(22)}`,
+      slug: ORG,
+      venues: {
+        'demo-club': {
+          venue_id: f.index.venue_id,
+          menu_id: f.index.menu_id,
+          public_id: CODE,
+        },
+      },
+      old_names: { 'old-club': 'demo-club' },
+    }
+    const secondIndex = { venue_id: f.index.venue_id, menu_id: SECOND_MENU }
+    const secondPointer = { ...f.pointer }
+    f.bodies.set(files.organization(BASE, ORG), organization)
+    f.bodies.set(files.organization(BASE, 'old-group'), { redirect_to: ORG })
+    f.bodies.set(files.current(BASE, secondIndex), secondPointer)
+    f.bodies.set(files.live(BASE, secondIndex), { version: f.pointer.version, items: {} })
+    f.bodies.set(files.table(BASE, TABLE_CODE), {
+      venue_public_id: CODE,
+      venue_slug: 'demo-club',
+      organization_slug: ORG,
+      table_label: '7',
+      menu_id: SECOND_MENU,
+    })
+    return { ...f, organization }
+  }
+
+  it('starts from the organisation’s file and ends at the venue’s live menu', async () => {
+    const f = organizationFiles()
+    const resolved = await resolveGuestAddress(f.deps(), { organization: ORG, venue: 'demo-club' })
+    expect(resolved).toEqual({
+      index: { ...f.index, organization: ORG },
+      publicId: CODE,
+      canonical: { organization: ORG, venue: 'demo-club' },
+    })
+    const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' })
+    expect(menu.index.menu_id).toBe(f.index.menu_id)
+    expect(menu.publicId).toBe(CODE)
+    expect(menu.table).toBeNull()
+    expect(menu.canonical).toEqual({ organization: ORG, venue: 'demo-club' })
+    expect(f.asked[0]).toBe(`${BASE}/o/${ORG}.json`)
+  })
+
+  it('follows a renamed organisation and a renamed venue, and says the address to show', async () => {
+    const f = organizationFiles()
+    const menu = await loadMenuAt(f.deps(), { organization: 'old-group', venue: 'old-club' })
+    expect(menu.canonical).toEqual({ organization: ORG, venue: 'demo-club' })
+    expect(menu.index.slug).toBe('demo-club')
+    expect(f.asked.slice(0, 2)).toEqual([`${BASE}/o/old-group.json`, `${BASE}/o/${ORG}.json`])
+  })
+
+  it('is an unknown venue for an unknown organisation, an unlisted venue, or a malformed part', async () => {
+    const f = organizationFiles()
+    for (const address of [
+      { organization: 'nobody', venue: 'demo-club' },
+      { organization: ORG, venue: 'nobody' },
+      { organization: 'Not A Slug', venue: 'demo-club' },
+      { organization: ORG, venue: '../x' },
+    ]) {
+      await expect(loadMenuAt(f.deps(), address)).rejects.toMatchObject({
+        reason: 'unknown_venue',
+      })
+    }
+    // A redirect that loops leads nowhere.
+    const loop = new Map<string, unknown>([
+      [files.organization(BASE, 'a-loop'), { redirect_to: 'b-loop' }],
+      [files.organization(BASE, 'b-loop'), { redirect_to: 'a-loop' }],
+    ])
+    await expect(
+      loadMenuAt(f.deps(loop), { organization: 'a-loop', venue: 'demo-club' }),
+    ).rejects.toMatchObject({ reason: 'unknown_venue' })
+  })
+
+  it('a table’s code may name the menu it opens: that menu’s files are read, and the table is confirmed', async () => {
+    const f = organizationFiles()
+    const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' }, TABLE_CODE)
+    expect(menu.index.menu_id).toBe(SECOND_MENU)
+    expect(menu.table).toEqual({ token: TABLE_CODE, label: '7' })
+    expect(f.asked).toContain(files.table(BASE, TABLE_CODE))
+    expect(f.asked).toContain(
+      files.current(BASE, { venue_id: f.index.venue_id, menu_id: SECOND_MENU }),
+    )
+    // The address of before honours the table's menu too.
+    const legacy = await loadMenu(f.deps(), CODE, TABLE_CODE)
+    expect(legacy.index.menu_id).toBe(SECOND_MENU)
+    expect(legacy.table).toEqual({ token: TABLE_CODE, label: '7' })
+    // A code of another venue, or one with no menu, leaves the live menu.
+    const foreign = new Map<string, unknown>([
+      [
+        files.table(BASE, TABLE_CODE),
+        { venue_public_id: '000000000000', venue_slug: 'x', table_label: '1' },
+      ],
+    ])
+    const stranger = await loadMenuAt(
+      f.deps(foreign),
+      { organization: ORG, venue: 'demo-club' },
+      TABLE_CODE,
+    )
+    expect(stranger.index.menu_id).toBe(f.index.menu_id)
+    expect(stranger.table).toBeNull()
+    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toBeNull()
+  })
+
+  it('the address of before moves to the new one when the venue’s file names the organisation', async () => {
+    const f = publishedFiles()
+    expect((await loadMenu(f.deps(), CODE)).canonical).toBeNull()
+    const withOrganization = new Map<string, unknown>([
+      [files.index(BASE, CODE), { ...f.index, organization: ORG }],
+    ])
+    expect((await loadMenu(f.deps(withOrganization), CODE)).canonical).toEqual({
+      organization: ORG,
+      venue: 'demo-club',
+    })
   })
 })

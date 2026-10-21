@@ -14,6 +14,19 @@ export const ORDER_MODES = ['orderable', 'ask_waiter', 'hidden'] as const
 /** One of the ordering modes. */
 export type OrderMode = (typeof ORDER_MODES)[number]
 
+/**
+ * How a section lays out its items on the guest page (D92): a vertical list, or a horizontal row
+ * (promotions, top picks: the face's feature strip). Ours on every venue, own and till sections
+ * alike; a section that never set it is vertical.
+ */
+export const SECTION_LAYOUTS = ['vertical', 'horizontal'] as const
+
+/** One section layout. */
+export type SectionLayout = (typeof SECTION_LAYOUTS)[number]
+
+/** The layout of a section that has none set. */
+export const DEFAULT_SECTION_LAYOUT: SectionLayout = 'vertical'
+
 function label(bg: string, en: string): LocalizedText {
   return { bg_BG: bg, en_US: en }
 }
@@ -47,8 +60,8 @@ function field(spec: FieldSpec): FieldDefinition {
 
 /** Builder-owned, builder value first, never overridden (overrides are for source values). */
 const BUILDER = { owner: 'builder', overridable: 'never', combinator: 'builder_first' } as const
-/** Barsy-owned, display override allowed, override → barsy → manual → import. */
-const BARSY_DISPLAY = { owner: 'barsy', overridable: 'always', combinator: 'source_first' } as const
+/** Till-owned, display override allowed, override → till → manual. */
+const TILL_DISPLAY = { owner: 'till', overridable: 'always', combinator: 'source_first' } as const
 
 const itemFields: FieldDefinition[] = [
   field({
@@ -57,7 +70,7 @@ const itemFields: FieldDefinition[] = [
     label: label('Име', 'Name'),
     required: true,
     critical: true,
-    ...BARSY_DISPLAY,
+    ...TILL_DISPLAY,
   }),
   field({
     key: 'description',
@@ -71,13 +84,13 @@ const itemFields: FieldDefinition[] = [
     label: label('Цена', 'Price'),
     required: 'when_orderable',
     constraints: { min_minor: 0 },
-    owner: 'barsy',
+    owner: 'till',
     overridable: 'never_when_orderable',
     combinator: 'locked',
     critical: true,
   }),
   field({ key: 'image', type: 'image', label: label('Снимка', 'Image'), ...BUILDER }),
-  // Owner: "barsy when mapped, else builder" — barsy, so builder values go through conflict
+  // Owner: "the till when mapped, else builder" — the till, so builder values go through conflict
   // resolution (stored as overrides). Required but not critical: V4/V5 are warnings (D42).
   field({
     key: 'allergens',
@@ -85,7 +98,7 @@ const itemFields: FieldDefinition[] = [
     label: label('Алергени', 'Allergens'),
     required: true,
     options: [...ALLERGENS],
-    owner: 'barsy',
+    owner: 'till',
     overridable: 'always',
     combinator: 'must_agree',
   }),
@@ -102,7 +115,7 @@ const itemFields: FieldDefinition[] = [
     key: 'portion',
     type: 'measurement',
     label: label('Порция', 'Portion'),
-    ...BARSY_DISPLAY,
+    ...TILL_DISPLAY,
   }),
   field({
     key: 'abv',
@@ -143,21 +156,21 @@ const itemFields: FieldDefinition[] = [
     default: 'orderable',
     ...BUILDER,
   }),
-  // Barsy's for-sale flag (per venue) AND builder sold-out marks; builder layers may only say false.
+  // The till's for-sale flag (per venue) AND builder sold-out marks; builder layers may only say false.
   field({
     key: 'for_sale',
     type: 'boolean',
     label: label('В продажба', 'For sale'),
-    owner: 'barsy',
+    owner: 'till',
     overridable: 'always',
     combinator: 'all_true',
   }),
-  // Barsy's is_public AND builder hiding; builder layers may only say false.
+  // The till's public flag AND builder hiding; builder layers may only say false.
   field({
     key: 'visible',
     type: 'boolean',
     label: label('Видим', 'Visible'),
-    owner: 'barsy',
+    owner: 'till',
     overridable: 'always',
     combinator: 'all_true',
   }),
@@ -170,7 +183,7 @@ const sectionFields: FieldDefinition[] = [
     label: label('Заглавие', 'Title'),
     required: true,
     critical: true,
-    ...BARSY_DISPLAY,
+    ...TILL_DISPLAY,
   }),
   field({
     key: 'description',
@@ -194,6 +207,15 @@ const sectionFields: FieldDefinition[] = [
     constraints: { max_length: 64 },
     ...BUILDER,
   }),
+  // A layout hint like the two above (D92): the snapshot's `hints.layout`, which the face draws.
+  field({
+    key: 'layout',
+    type: 'enum',
+    label: label('Подредба', 'Layout'),
+    options: [...SECTION_LAYOUTS],
+    default: DEFAULT_SECTION_LAYOUT,
+    ...BUILDER,
+  }),
 ]
 
 const menuFields: FieldDefinition[] = [
@@ -213,9 +235,9 @@ const menuFields: FieldDefinition[] = [
   }),
 ]
 
-// Min and max decide what a guest must choose before barsy accepts the order, so they follow
-// barsy and cannot be overridden; builder-defined groups set them in the manual layer.
-const BARSY_STRICT = { owner: 'barsy', overridable: 'never', combinator: 'source_first' } as const
+// Min and max decide what a guest must choose before the till accepts the order, so they follow
+// the till and cannot be overridden; builder-defined groups set them in the manual layer.
+const TILL_STRICT = { owner: 'till', overridable: 'never', combinator: 'source_first' } as const
 
 const modifierGroupFields: FieldDefinition[] = [
   field({
@@ -224,7 +246,7 @@ const modifierGroupFields: FieldDefinition[] = [
     label: label('Име', 'Name'),
     required: true,
     critical: true,
-    ...BARSY_DISPLAY,
+    ...TILL_DISPLAY,
   }),
   field({
     key: 'min',
@@ -233,7 +255,7 @@ const modifierGroupFields: FieldDefinition[] = [
     required: true,
     critical: true,
     constraints: { integer: true, min: 0 },
-    ...BARSY_STRICT,
+    ...TILL_STRICT,
   }),
   field({
     key: 'max',
@@ -242,7 +264,7 @@ const modifierGroupFields: FieldDefinition[] = [
     required: true,
     critical: true,
     constraints: { integer: true, min: 1 },
-    ...BARSY_STRICT,
+    ...TILL_STRICT,
   }),
 ]
 
@@ -253,7 +275,7 @@ const optionFields: FieldDefinition[] = [
     label: label('Име', 'Name'),
     required: true,
     critical: true,
-    ...BARSY_DISPLAY,
+    ...TILL_DISPLAY,
   }),
   // May be 0 (a free choice); never negative (V2).
   field({
@@ -261,7 +283,7 @@ const optionFields: FieldDefinition[] = [
     type: 'money',
     label: label('Добавка към цената', 'Price change'),
     constraints: { min_minor: 0 },
-    owner: 'barsy',
+    owner: 'till',
     overridable: 'never_when_orderable',
     combinator: 'locked',
     critical: true,

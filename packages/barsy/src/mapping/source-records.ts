@@ -1,5 +1,5 @@
 // Source-record descriptors (doc "The internal data source", tier 1): every barsy object the
-// mapping reads, described so S2-03 can store it as a `source_records` row. Barsy-layer writes
+// mapping reads, described so S2-03 can store it as a `source_records` row. Till-layer writes
 // cite the descriptor's id, so a value can always be traced back to the object it came from.
 //
 // The id is content-addressed. The same object with the same content is the same record (a

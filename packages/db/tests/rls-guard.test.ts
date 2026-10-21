@@ -90,6 +90,15 @@ describe.skipIf(!hasDatabase)('row-level security guard', () => {
         'item_first_published',
         // The venue's tag list (brief S3-06).
         'tags',
+        // Adjustments 01 (T79): areas, tables and routing (0020, 0021), address histories (0022),
+        // the purge's records (0023).
+        'areas',
+        'tables',
+        'menu_routes',
+        'venue_slug_history',
+        'organization_slug_history',
+        'tombstones',
+        'purge_log',
       ]),
     )
   })

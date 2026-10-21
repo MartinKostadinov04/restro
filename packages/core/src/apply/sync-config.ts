@@ -24,6 +24,13 @@ export const SyncStateSchema = z.object({
   cursor: IsoInstant.optional(),
   /** SHA-256 of the last public category tree a successful run saw. */
   tree_hash: Sha256.optional(),
+  /**
+   * SHA-256 of the scope the last successful complete full pull read: the barsy venue, the menu
+   * category and the mapping settings it used (B1-Q2). The incremental compares it with the
+   * scope as configured now: a difference queues a full pull instead of a partial one against
+   * the new scope. Absent on state written before it existed, which counts as changed.
+   */
+  scope_hash: Sha256.optional(),
   last_full_pull_at: IsoInstant.optional(),
   last_incremental_at: IsoInstant.optional(),
   // The minute tick's own marks (S3-04). Without them a change check that failed, or a full pull
@@ -32,6 +39,11 @@ export const SyncStateSchema = z.object({
   last_incremental_queued_at: IsoInstant.optional(),
   /** The full-pull slot (an instant) the tick last queued a full pull for. */
   last_full_pull_slot: IsoInstant.optional(),
+  // The tables of the venue (brief CF-16, T67): read once the venue is mapped, root or not.
+  /** When the venue's tables were last read successfully (a full pull or a places read). */
+  places_read_at: IsoInstant.optional(),
+  /** When the tick last queued a places read (so a failed one is asked for again later, not every minute). */
+  places_queued_at: IsoInstant.optional(),
 })
 export type SyncState = z.output<typeof SyncStateSchema>
 
@@ -142,10 +154,20 @@ const storedPublish =
   then ${integrations.config} -> 'publish' else '{}'::jsonb end`
 
 /**
- * Saves the sync settings form (D59, Integration tab): `config.schedule` is replaced with the form's
- * schedule and the form's two publish settings (`after_sync`, `new_items`) are merged into
- * `config.publish`. The flat key `publish_after_sync` of S3-01b is removed (`publish.after_sync`
- * says it now). Returns whether the integration exists.
+ * The stored `config.schedule.time_zone`, as a one-key object to merge (or an empty one): the
+ * form does not send the zone (the page names it, read-only), so a save must not drop it.
+ */
+const storedTimeZone =
+  () => sql`case when jsonb_typeof(${integrations.config} #> '{schedule,time_zone}') = 'string'
+  then jsonb_build_object('time_zone', ${integrations.config} #> '{schedule,time_zone}')
+  else '{}'::jsonb end`
+
+/**
+ * Saves the automatic-sync form (D59, Settings -> Integrations): `config.schedule` is replaced
+ * with the form's schedule (keeping a stored `time_zone`, which the form does not send). Since
+ * CF-09b (D73) the publishing rules are per venue and this never touches `config.publish` or the
+ * flat key `publish_after_sync` of S3-01b: they stay as what a venue without rules of its own
+ * inherits (`venuePublishRules`). Returns whether the integration exists.
  *
  * One atomic `UPDATE`, merged inside Postgres: `publish.auto_paused`, which the Publish tab sets
  * after a rollback and a manual publish clears, is never read or written here, so a pause set or
@@ -165,14 +187,63 @@ export async function saveSyncSettingsConfig(
   const parsed = SyncSettingsInputSchema.safeParse(settings)
   if (!parsed.success) throw new ProvisionError('invalid_input', z.prettifyError(parsed.error))
   const schedule = JSON.stringify(parsed.data.schedule)
-  const publishPatch = JSON.stringify(parsed.data.publish)
   return withTenantWrite(pool, tenantId, async (tx) => {
     const rows = await tx
       .update(integrations)
       .set({
-        config: sql`(${integrations.config} || jsonb_build_object(
-            'schedule', ${schedule}::jsonb,
-            'publish', ${storedPublish()} || ${publishPatch}::jsonb)) - 'publish_after_sync'`,
+        config: sql`${integrations.config} || jsonb_build_object(
+            'schedule', ${schedule}::jsonb || ${storedTimeZone()})`,
+      })
+      .where(eq(integrations.id, integrationId))
+      .returning({ id: integrations.id })
+    return rows.length > 0
+  })
+}
+
+// --- the venues of the till nobody wants as a venue ("Not used", CF-09b, D73) --------------------
+
+const NotUsedSchema = z.record(z.string(), z.literal(true))
+
+/**
+ * The till venues (by their number in the till) marked "Not used": a shop, a catering unit,
+ * "Services". Stored in the integration's config as `not_used: { "<bid>": true }`, so it needs no
+ * migration and two marks never overwrite each other. Empty when there is none or it is unreadable.
+ */
+export function readNotUsedVenues(config: unknown): ReadonlySet<number> {
+  const stored = (config as { not_used?: unknown } | null | undefined)?.not_used
+  const parsed = NotUsedSchema.safeParse(stored)
+  if (!parsed.success) return new Set()
+  return new Set(
+    Object.keys(parsed.data)
+      .map(Number)
+      .filter((bid) => Number.isSafeInteger(bid) && bid >= 0),
+  )
+}
+
+/**
+ * Marks a till venue "Not used" (`true`) or takes the mark off (`false`). One atomic `UPDATE`
+ * merged inside Postgres. Returns whether the integration exists. Whether the till venue exists
+ * and is unlinked is the caller's check.
+ */
+export async function setTillVenueNotUsed(
+  pool: DbPool,
+  tenantId: string,
+  integrationId: string,
+  bid: number,
+  notUsed: boolean,
+): Promise<boolean> {
+  check(tenantId, integrationId, bid)
+  const key = String(bid)
+  const stored = sql`case when jsonb_typeof(${integrations.config} -> 'not_used') = 'object'
+    then ${integrations.config} -> 'not_used' else '{}'::jsonb end`
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .update(integrations)
+      .set({
+        config: notUsed
+          ? sql`${integrations.config} || jsonb_build_object('not_used',
+              ${stored} || jsonb_build_object(${key}::text, true))`
+          : sql`${integrations.config} || jsonb_build_object('not_used', ${stored} - ${key}::text)`,
       })
       .where(eq(integrations.id, integrationId))
       .returning({ id: integrations.id })

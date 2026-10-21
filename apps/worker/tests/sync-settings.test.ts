@@ -15,21 +15,13 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { LocalPublishStore } from '@restro/assets'
-import {
-  type ChangeSet,
-  JOB_NAMES,
-  type NodeId,
-  newId,
-  resolve,
-  VENUE_MENU_TEMPLATE,
-  type VenueId,
-} from '@restro/core'
+import { type ChangeSet, JOB_NAMES, type NodeId, newId, type VenueId } from '@restro/core'
 import {
   apply,
   createAsset,
   loadCurrentSnapshot,
   loadHeldNewItemIds,
-  loadMenuDocument,
+  setVenuePublishRules,
 } from '@restro/core/apply'
 import type { Job } from 'pg-boss'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -38,7 +30,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { makePng } from '../../../packages/assets/src/test-images.ts'
 import { createPublishJobs } from '../src/jobs/publish'
 import type { JobDefinition } from '../src/jobs/types'
-import { localTimeText } from '../src/sync/cursor'
 import {
   allowSlowSetup,
   createTestDatabase,
@@ -106,12 +97,15 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
   // --- the minute tick ---------------------------------------------------------------------
 
   describe('the minute tick', () => {
-    /** The tick at an instant: the names of the jobs it queued, in order. */
+    /**
+     * The tick at an instant: the names of the pulls it queued, in order (its places reads, CF-16,
+     * are tested in sync-venues.test.ts).
+     */
     const tickAt = async (instant: string) => {
       world.clock = new Date(instant)
       world.enqueued.length = 0
       await world.run(JOB_NAMES.barsySyncTick, {})
-      return world.enqueued.map((job) => job.name)
+      return world.enqueued.map((job) => job.name).filter((name) => name !== JOB_NAMES.placesRead)
     }
     const INC = JOB_NAMES.barsyIncremental
     const FULL = JOB_NAMES.barsyFullPull
@@ -168,7 +162,11 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
       ]) {
         expect(await tickAt(instant), instant).toEqual([])
       }
-      expect(await syncState()).toEqual({})
+      // No pull was asked for. (The venue's tables are read once it is mapped, whatever the
+      // switches say: CF-16, T67.)
+      const { places_queued_at: tables, ...marks } = await syncState()
+      expect(tables).toBeDefined()
+      expect(marks).toEqual({})
     })
 
     it('each loop has its own switch', async () => {
@@ -213,14 +211,20 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
       expect(await tickAt('2026-10-10T05:05:00.200Z')).toEqual([INC])
     })
 
-    it('reads the full pull time in the venue’s own time zone', async () => {
+    it('reads the full pull time in the venue’s own time zone (D82), not the integration’s', async () => {
       await settings({ incremental_enabled: false })
       await world.query(`update restro.venues set timezone = 'America/New_York' where id = $1`, [
         world.venueId,
       ])
-      // Noon in New York in October is 16:00 UTC (EDT).
+      // The venue is in New York: its noon is 16:00 UTC (EDT), whatever the integration says.
+      expect(await tickAt('2026-10-10T08:59:30Z')).toEqual([])
+      expect(await tickAt('2026-10-10T09:00:10Z')).toEqual([])
       expect(await tickAt('2026-10-10T15:59:30Z')).toEqual([])
       expect(await tickAt('2026-10-10T16:00:10Z')).toEqual([FULL])
+      // The integration's own zone (the schedule of before D82) no longer times a venue's read.
+      await settings({ incremental_enabled: false, time_zone: 'Europe/Sofia' })
+      expect(await tickAt('2026-10-11T09:00:10Z')).toEqual([])
+      expect(await tickAt('2026-10-11T16:00:10Z')).toEqual([FULL])
     })
 
     it('spring change day in Sofia: a time inside the skipped hour runs once, shifted forward', async () => {
@@ -260,12 +264,8 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
 
   // --- publish.new_items -------------------------------------------------------------------
 
-  describe('publish.new_items = hold', () => {
+  describe('publish.new_items = hold (retired by D96)', () => {
     const fullPull = () => world.run(JOB_NAMES.barsyFullPull, payload())
-    const incremental = () => world.run(JOB_NAMES.barsyIncremental, payload())
-    const advance = (minutes: number) => {
-      world.clock = new Date(world.clock.getTime() + minutes * 60_000)
-    }
     const itemIds = async () =>
       (
         await world.query<{ id: string }>(
@@ -274,158 +274,24 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
         )
       ).map((row) => row.id)
     const manualHides = () =>
-      world.query<{
-        node_id: string
-        value: unknown
-        source: string
-        actor: string
-        scope: string
-        job_id: string
-      }>(
-        `select node_id, value, source, actor, scope, job_id from restro.field_values
-         where tenant_id = $1 and field_key = 'visible' and layer = 'manual' order by node_id`,
+      world.query<{ node_id: string }>(
+        `select node_id from restro.field_values
+         where tenant_id = $1 and field_key = 'visible' and layer = 'manual' and source = 'manual'`,
         [world.tenantId],
       )
-    const lastRun = async (kind: string) => {
-      const rows = await world.query<{
-        counters: Record<string, number>
-        details: { refused: unknown[] } | null
-      }>(
-        `select counters, details from restro.job_runs
-         where integration_id = $1 and kind = $2 order by created_at`,
-        [world.integrationId, kind],
-      )
-      const row = rows.at(-1)
-      if (!row) throw new Error(`no ${kind} run`)
-      return row
-    }
-    const resolved = async () => {
-      const document = await loadMenuDocument(world.pool, world.tenantId, world.menuId)
-      return resolve(VENUE_MENU_TEMPLATE, document, {
-        venueScope: `venue:${world.venueId}`,
-        locales: ['bg_BG'],
-        now: new Date().toISOString(),
-      })
-    }
-    const newArticle = (id: number) => {
-      const template = fake.articles.find((article) => article.article_id === 11)
-      if (!template) throw new Error('no article 11')
-      fake.articles.push({
-        ...template,
-        article_id: id,
-        article_name_public: `Нов ${id}`,
-        last_update: localTimeText(world.clock, 'Europe/Sofia'),
-      })
-    }
-    it('hides every item the pull created: manual layer, source manual, actor system', async () => {
+
+    it('a stored `hold` hides nothing any more: new till items go live without review (D96)', async () => {
       await settings({}, { new_items: 'hold' })
       await fullPull()
-      // Compared in one order (JavaScript's): SQL `order by` follows the database collation, which
-      // differs between the CI Postgres (en_US) and the local one (C) for mixed-case ids.
-      const items = (await itemIds()).sort()
-      expect(items.length).toBeGreaterThan(5)
-
-      const hides = await manualHides()
-      expect(hides.map((row) => row.node_id).sort()).toEqual(items)
-      for (const row of hides) {
-        expect(row).toMatchObject({
-          value: false,
-          source: 'manual',
-          actor: 'system',
-          scope: 'master',
-        })
-        expect(row.job_id).toMatch(/^jb_/)
-      }
-      expect((await loadHeldNewItemIds(world.pool, world.tenantId)).sort()).toEqual(items)
-
-      const run = await lastRun('barsy_full_pull')
-      expect(run.counters.items_held).toBe(items.length)
-      expect(run.details?.refused).toEqual([])
-      // Nothing of them is visible to guests.
-      const menu = await resolved()
-      for (const id of items) expect(menu.items[id as NodeId]?.visible, id).toBe(false)
-    })
-
-    it('hides nothing by default, and with `show`', async () => {
-      await fullPull()
+      expect((await itemIds()).length).toBeGreaterThan(5)
       expect(await manualHides()).toEqual([])
-      expect((await lastRun('barsy_full_pull')).counters).not.toHaveProperty('items_held')
-      await settings({}, { new_items: 'show' })
-      newArticle(90001)
-      advance(5)
-      await incremental()
-      expect(await manualHides()).toEqual([])
-    })
-
-    it('leaves the items that were there before untouched, and holds only the new one', async () => {
-      await fullPull() // default: show
-      const before = await itemIds()
-      await settings({}, { new_items: 'hold' })
-      advance(5)
-      newArticle(90001)
-      await incremental()
-      const after = await itemIds()
-      const created = after.filter((id) => !before.includes(id))
-      expect(created).toHaveLength(1)
-      expect((await manualHides()).map((row) => row.node_id)).toEqual(created)
-      expect((await lastRun('barsy_incremental')).counters).toMatchObject({
-        created: 1,
-        items_held: 1,
-      })
-      // A later pull that creates nothing holds nothing.
-      advance(5)
-      await incremental()
-      expect((await manualHides()).map((row) => row.node_id)).toEqual(created)
-    })
-
-    it('shows an item once a manager clears the hide, and no later pull hides it again', async () => {
-      await settings({}, { new_items: 'hold' })
-      await fullPull()
-      const [shown] = await itemIds()
-      expect(shown).toBeDefined()
-      const result = await apply(
-        world.pool,
-        world.tenantId,
-        manualChange([
-          {
-            op: 'clearField',
-            node: { id: shown },
-            fieldKey: 'visible',
-            layer: 'manual',
-            scope: 'master',
-          },
-        ]),
-      )
-      expect(result.rejected).toEqual([])
-      expect((await loadHeldNewItemIds(world.pool, world.tenantId)).includes(shown as NodeId)).toBe(
-        false,
-      )
-
-      advance(5)
-      await fullPull() // the same installation again: nothing is new
-      expect((await manualHides()).map((row) => row.node_id)).not.toContain(shown)
-      // Nothing hides it any more (the barsy layer's own value stays).
-      expect((await resolved()).items[shown as NodeId]?.fields.visible?.value).not.toBe(false)
-    })
-
-    it('a person’s own hide is not mistaken for a held new item', async () => {
-      await fullPull()
-      const [item] = await itemIds()
-      await apply(
-        world.pool,
-        world.tenantId,
-        manualChange([
-          {
-            op: 'setField',
-            node: { id: item },
-            fieldKey: 'visible',
-            layer: 'manual',
-            scope: 'master',
-            value: false,
-          },
-        ]),
-      )
       expect(await loadHeldNewItemIds(world.pool, world.tenantId)).toEqual([])
+      const [run] = await world.query<{ counters: Record<string, number> }>(
+        `select counters from restro.job_runs where integration_id = $1 and kind = 'barsy_full_pull'
+         order by created_at desc limit 1`,
+        [world.integrationId],
+      )
+      expect(run?.counters).not.toHaveProperty('items_held')
     })
   })
 
@@ -517,7 +383,7 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
     /** The variants job the picture's download queued (the world’s queue is only a recorder). */
     async function variantsJobData() {
       const rows = await world.query<{ id: string }>(
-        `select id from restro.assets where tenant_id = $1 and origin = 'barsy'`,
+        `select id from restro.assets where tenant_id = $1 and origin = 'connector'`,
         [world.tenantId],
       )
       const asset = rows[0]
@@ -592,6 +458,34 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
       await setConfig({ publish: {}, publish_after_sync: false })
       await runPublishJob(JOB_NAMES.assetVariants, await variantsJobData())
       expect(publishes()).toEqual([])
+    })
+
+    it('the venue’s own rule decides for a picture too (CF-09b): manual in the venue beats automatic in the integration', async () => {
+      await settings({}, { after_sync: 'auto' })
+      const job = servePicture()
+      await world.run(JOB_NAMES.barsyFullPull, payload())
+      await world.run(JOB_NAMES.assetFetch, job)
+      await setVenuePublishRules(world.pool, world.tenantId, {
+        venueId: world.venueId,
+        rules: { after_sync: 'manual', new_items: 'show' },
+      })
+      world.enqueued.length = 0
+      await runPublishJob(JOB_NAMES.assetVariants, await variantsJobData())
+      expect(publishes()).toEqual([])
+    })
+
+    it('...and automatic in the venue beats manual in the integration', async () => {
+      await settings({}, { after_sync: 'manual' })
+      const job = servePicture()
+      await world.run(JOB_NAMES.barsyFullPull, payload())
+      await world.run(JOB_NAMES.assetFetch, job)
+      await setVenuePublishRules(world.pool, world.tenantId, {
+        venueId: world.venueId,
+        rules: { after_sync: 'auto', new_items: 'show' },
+      })
+      world.enqueued.length = 0
+      await runPublishJob(JOB_NAMES.assetVariants, await variantsJobData())
+      expect(publishes()).toHaveLength(1)
     })
 
     it('a picture someone uploaded is published when they press Publish, not by itself', async () => {
@@ -694,7 +588,7 @@ describe.skipIf(!hasDatabase)('the sync settings (D59)', () => {
         })
       }
       const rows = await world.query<{ id: string }>(
-        `select id from restro.assets where tenant_id = $1 and origin = 'barsy' order by id`,
+        `select id from restro.assets where tenant_id = $1 and origin = 'connector' order by id`,
         [world.tenantId],
       )
       ids.push(...rows.map((row) => row.id))

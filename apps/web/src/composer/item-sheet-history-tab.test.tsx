@@ -114,8 +114,8 @@ describe('the History tab', () => {
           }),
           entry(3, {
             actor: { kind: 'integration', name: null },
-            layer: 'barsy',
-            source: 'barsy:in_x',
+            layer: 'till',
+            source: 'till:in_x',
             fieldKey: 'name',
             definition: definition('name'),
             newValue: { bg_BG: 'Негрони' },

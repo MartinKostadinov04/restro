@@ -7,7 +7,9 @@
 //   a localized_text never holds an empty string.
 // - Text that barsy holds without a language (`article_name_public`, a group name) is stored under
 //   the default locale, unless the per-language object already has that locale.
-// - Only public texts come in here. The internal names (`article_name`, `cat_name`) never do.
+// - The public texts come in first. barsy's own name (`article_name`, `cat_name`: what the till
+//   shows) comes in only through `nameText`, as the stand-in for a public name that is not there
+//   (D75), and it is then the whole value: it is never mixed with a public text.
 
 import { LOCALES, type Locale, type LocalizedText } from '@restro/core'
 
@@ -75,4 +77,31 @@ export function localizedText(
 /** True if a localized_text holds no text. */
 export function isEmptyText(text: LocalizedText): boolean {
   return Object.keys(text).length === 0
+}
+
+/** A menu name and whether barsy's own name stands in for the public one (D75). */
+export interface NameText {
+  readonly text: LocalizedText
+  /** True if barsy holds no public name, so `text` is barsy's own name (under the default language). */
+  readonly ownName: boolean
+}
+
+/**
+ * The menu name of an article or a category (D75): its public text when barsy holds any, in any
+ * language; otherwise barsy's own name, which has no language and so is stored under the default
+ * one, like `article_name_public`. A public name in even one language wins as it stands: the two
+ * are never mixed in one value. `ownName` null means "do not fall back" (the response did not say
+ * whether a public name exists). Empty when there is nothing at all.
+ */
+export function nameText(
+  perLanguage: Readonly<Record<string, string | null>> | null | undefined,
+  fallback: string | null | undefined,
+  ownName: string | null | undefined,
+  context: TextContext,
+): NameText {
+  const publicText = localizedText(perLanguage, fallback, context)
+  if (!isEmptyText(publicText)) return { text: publicText, ownName: false }
+  const own = clean(ownName)
+  if (own === null) return { text: publicText, ownName: false }
+  return { text: { [context.defaultLocale]: own }, ownName: true }
 }

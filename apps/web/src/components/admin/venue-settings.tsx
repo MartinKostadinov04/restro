@@ -1,7 +1,13 @@
+import { organizationAddress } from '@restro/core/apply'
 import type { Venue } from '@restro/db'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { Badge } from '@/components/ui/badge'
 import { FormSection } from '@/components/ui/form-section'
+import { getPool } from '@/server/db'
+import { canManageIntegration } from '@/server/roles'
+
+import { VenueAddress } from './venue-address'
+import { VenueName } from './venue-name'
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -12,10 +18,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-/** The venue's settings, read-only: editing them arrives with the composer (Stage 2). */
-export async function VenueSettings({ venue }: { venue: Venue }) {
+/**
+ * The venue's settings. The name (CF-18, D76) and the menu address (D84: the organisation's address
+ * name as a fixed prefix, the venue's own as the field) can be changed by an owner or admin; the
+ * rest is read-only: editing it arrives with the composer (Stage 2).
+ */
+export async function VenueSettings({ venue, role }: { venue: Venue; role: string }) {
   const t = await getTranslations('workspace.settings')
   const uiLocale = await getLocale()
+  const organization = await organizationAddress(getPool(), venue.tenantId)
   const languageNames = new Intl.DisplayNames([uiLocale], { type: 'language' })
   // The language only (`en`), not the dialect (`en-US`): "английски", not "американски английски".
   const languageName = (locale: string) =>
@@ -24,9 +35,23 @@ export async function VenueSettings({ venue }: { venue: Venue }) {
   return (
     <FormSection title={t('title')} description={t('description')}>
       <dl className="grid gap-4">
-        <Row label={t('name')}>{venue.name}</Row>
-        <Row label={t('slug')}>
-          <code className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">{venue.slug}</code>
+        <Row label={t('name')}>
+          {/* A new key when the name changes elsewhere, so the field starts from the saved name. */}
+          <VenueName
+            key={venue.name}
+            venueId={venue.id}
+            name={venue.name}
+            canEdit={canManageIntegration(role)}
+          />
+        </Row>
+        <Row label={t('address')}>
+          <VenueAddress
+            venueId={venue.id}
+            venueName={venue.name}
+            slug={venue.slug}
+            organizationSlug={organization?.slug ?? null}
+            canEdit={canManageIntegration(role)}
+          />
         </Row>
         <Row label={t('timezone')}>{venue.timezone}</Row>
         <Row label={t('serviceDayEnd')}>{venue.serviceDayEndsAt.slice(0, 5)}</Row>

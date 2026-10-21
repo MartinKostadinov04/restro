@@ -14,16 +14,110 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
-  DEFAULT_WORKSPACE_TAB,
-  isWorkspaceTab,
+  SETTINGS_SECTION_DEFS,
+  type SettingsSectionValue,
+  settingsSectionOf,
+  settingsSectionsOf,
   WORKSPACE_TAB_DEFS,
+  type WorkspaceTabDef,
   type WorkspaceTabValue,
+  workspaceTabOf,
 } from './workspace-tab-defs'
+
+/**
+ * The tab a URL parameter names, and the way to choose another. The current tab is *derived* from
+ * the URL (the Platform set it while rendering); a choice shows at once (`useOptimistic`) while
+ * `router.replace` writes the parameter, keeping the others, and the page catches up. Exported for
+ * the composer's subtabs (`?sub=`, brief S6).
+ */
+export function useUrlTab<V extends string>(
+  param: string,
+  resolve: (requested: string | null) => V,
+  isValue: (value: string) => value is V,
+): readonly [V, (value: string) => void] {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [, startTransition] = useTransition()
+
+  const fromUrl = resolve(searchParams.get(param))
+  const [current, show] = useOptimistic(fromUrl)
+  // The tab last asked for: a click can fire Radix's change event twice (press, then focus) before
+  // the URL has caught up, and the URL should be written once.
+  const asked = useRef<string>(fromUrl)
+  useEffect(() => {
+    asked.current = fromUrl
+  }, [fromUrl])
+
+  function select(value: string) {
+    if (!isValue(value) || value === asked.current) return
+    asked.current = value
+    const params = new URLSearchParams(searchParams.toString())
+    params.set(param, value)
+    startTransition(() => {
+      show(value)
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    })
+  }
+  return [current, select] as const
+}
+
+/** A tab bar (large screens) and a select (small screens) drawn from one list, and the panels. */
+export function UrlTabs<V extends string>({
+  defs,
+  current,
+  select,
+  contents,
+  label,
+  listClassName,
+}: {
+  defs: readonly (WorkspaceTabDef & { readonly value: V })[]
+  current: V
+  select: (value: string) => void
+  contents: Partial<Record<V, ReactNode>>
+  label: string
+  listClassName?: string
+}) {
+  const t = useTranslations()
+  return (
+    <Tabs value={current} onValueChange={select}>
+      <TabsList className={listClassName ?? 'hidden lg:inline-flex'} aria-label={label}>
+        {defs.map(({ value, labelKey, icon: Icon }) => (
+          <TabsTrigger key={value} value={value}>
+            <Icon aria-hidden />
+            {t(labelKey)}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      <Select value={current} onValueChange={select}>
+        <SelectTrigger className="w-full lg:hidden" aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {defs.map(({ value, labelKey, icon: Icon }) => (
+            <SelectItem key={value} value={value}>
+              <Icon aria-hidden />
+              {t(labelKey)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {defs.map(({ value }) => (
+        <TabsContent key={value} value={value} className="pt-2">
+          {contents[value]}
+        </TabsContent>
+      ))}
+    </Tabs>
+  )
+}
 
 interface WorkspaceTabsProps {
   /** The content of every tab, keyed by tab value (a missing tab is a type error). */
   contents: Record<WorkspaceTabValue, ReactNode>
 }
+
+const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
+  WORKSPACE_TAB_DEFS.some((tab) => tab.value === value)
 
 /**
  * The tabs of a venue workspace, mirrored in the URL (`?tab=settings`). Ported from the
@@ -33,62 +127,47 @@ interface WorkspaceTabsProps {
  * rendering.
  */
 export function WorkspaceTabs({ contents }: WorkspaceTabsProps) {
-  const t = useTranslations()
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const [, startTransition] = useTransition()
-
-  const requested = searchParams.get('tab')
-  const fromUrl: WorkspaceTabValue = isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
-  // Shows the new tab at once while the URL (and the page) catch up; falls back to the URL's tab.
-  const [current, showTab] = useOptimistic(fromUrl)
-  // The tab last asked for: a click can fire Radix's change event twice (press, then focus) before
-  // the URL has caught up, and the URL should be written once.
-  const asked = useRef<string>(fromUrl)
-  useEffect(() => {
-    asked.current = fromUrl
-  }, [fromUrl])
-
-  function selectTab(value: string) {
-    if (!isWorkspaceTab(value) || value === asked.current) return
-    asked.current = value
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('tab', value)
-    startTransition(() => {
-      showTab(value)
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
-    })
-  }
-
+  const t = useTranslations('workspace')
+  const [current, select] = useUrlTab<WorkspaceTabValue>('tab', workspaceTabOf, isWorkspaceTabValue)
   return (
-    <Tabs value={current} onValueChange={selectTab}>
-      <TabsList className="hidden lg:inline-flex">
-        {WORKSPACE_TAB_DEFS.map(({ value, labelKey, icon: Icon }) => (
-          <TabsTrigger key={value} value={value}>
-            <Icon aria-hidden />
-            {t(labelKey)}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      <Select value={current} onValueChange={selectTab}>
-        <SelectTrigger className="w-full lg:hidden" aria-label={t('workspace.switchTab')}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {WORKSPACE_TAB_DEFS.map(({ value, labelKey, icon: Icon }) => (
-            <SelectItem key={value} value={value}>
-              <Icon aria-hidden />
-              {t(labelKey)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {WORKSPACE_TAB_DEFS.map(({ value }) => (
-        <TabsContent key={value} value={value} className="pt-2">
-          {contents[value]}
-        </TabsContent>
-      ))}
-    </Tabs>
+    <UrlTabs
+      defs={WORKSPACE_TAB_DEFS}
+      current={current}
+      select={select}
+      contents={contents}
+      label={t('switchTab')}
+    />
+  )
+}
+
+/**
+ * The sections of the Settings tab (D97), mirrored in the URL as `?section=` beside `?tab=`, the
+ * same port as the workspace tabs: General, Publish (only for a venue with a till) and Versioning.
+ */
+export function SettingsSections({
+  hasTill,
+  contents,
+}: {
+  hasTill: boolean
+  /** The content of each section the venue has. */
+  contents: Partial<Record<SettingsSectionValue, ReactNode>>
+}) {
+  const t = useTranslations('workspace')
+  const sections = settingsSectionsOf(hasTill)
+  const defs = SETTINGS_SECTION_DEFS.filter((def) => sections.includes(def.value))
+  const [current, select] = useUrlTab<SettingsSectionValue>(
+    'section',
+    (requested) => settingsSectionOf(requested, hasTill),
+    (value): value is SettingsSectionValue => sections.some((section) => section === value),
+  )
+  return (
+    <UrlTabs
+      defs={defs}
+      current={current}
+      select={select}
+      contents={contents}
+      label={t('switchSection')}
+      listClassName="hidden lg:inline-flex"
+    />
   )
 }

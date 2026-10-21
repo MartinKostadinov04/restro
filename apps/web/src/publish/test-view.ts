@@ -1,6 +1,14 @@
-// A `PublishView` for the component tests: a published menu with one change waiting, nothing held,
-// nothing paused. Each test states only what it is about. Not part of the app.
-import type { ChangesView, DraftView, PublishView, VersionEntry } from '@/server/publish/view'
+// Views for the component tests: a published menu with one change waiting, nothing held, nothing
+// paused (`publishView`, `barView`, `barMenu`). Each test states only what it is about. Not part
+// of the app.
+import type {
+  ChangesView,
+  DraftView,
+  PublishBarMenu,
+  PublishBarView,
+  PublishView,
+  VersionEntry,
+} from '@/server/publish/view'
 
 export const VENUE_ID = 'vn_demoVenueForPublishTests'
 
@@ -57,6 +65,7 @@ export function publishView(overrides: Partial<PublishView> = {}): PublishView {
   return {
     venueId: VENUE_ID,
     venueSlug: 'demo-club',
+    venuePublicId: 'k3x9p2m7qa1z',
     timeZone: 'Europe/Sofia',
     canPublish: true,
     menu: 'ready',
@@ -70,6 +79,7 @@ export function publishView(overrides: Partial<PublishView> = {}): PublishView {
     draft: readyDraft(),
     held: null,
     paused: false,
+    addressServed: true,
     history: {
       entries: [
         entry(2, {
@@ -89,6 +99,37 @@ export function publishView(overrides: Partial<PublishView> = {}): PublishView {
     },
     busy: null,
     lastRun: null,
+    ...overrides,
+  }
+}
+
+/** The live menu of the venue, published, with the Negroni's new price waiting. */
+export function barMenu(overrides: Partial<PublishBarMenu> = {}): PublishBarMenu {
+  return {
+    menuId: 'nd_liveMenuForPublishTests',
+    name: 'Demo Club',
+    live: true,
+    areas: [],
+    changes: 1,
+    identical: false,
+    blocked: null,
+    published: true,
+    list: ONE_PRICE_CHANGE,
+    busy: null,
+    ...overrides,
+  }
+}
+
+/** The Publish bar of a venue with one menu (`barMenu`), for an owner. */
+export function barView(overrides: Partial<PublishBarView> = {}): PublishBarView {
+  return {
+    venueId: VENUE_ID,
+    canPublish: true,
+    addressServed: true,
+    paused: false,
+    guestPath: '/m/demo-org/demo-club',
+    lastRun: null,
+    menus: [barMenu()],
     ...overrides,
   }
 }
