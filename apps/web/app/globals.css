@@ -5,6 +5,26 @@
    (stored choice: light / dark / system) before the first paint. */
 @custom-variant dark (&:is(.dark *));
 
+/* Touch floor (D123): on a phone (under 48rem, Tailwind's md) a tappable control has a hit area of
+   at least 44 x 44 px (docs/guides/operational-screens.md, Accessibility). Controls that stay small
+   to look at (a checkbox, a switch, a drag handle) add this class: an invisible square, centred on
+   the control, takes the taps around it. The element must have room around it, since neighbouring
+   hit areas that overlap give the tap to the later one. From md up it does nothing. */
+@utility tap-area {
+  @media (width < 48rem) {
+    position: relative;
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
 /*
   Semantic tokens (D, U9). Every colour the admin uses is one of these; components never hold a
   literal colour. Each surface has a readable text-on-colour partner (`x` and `x-foreground`).

@@ -51,7 +51,7 @@ export function ItemToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="item-toolbar">
-      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <label className="flex items-center gap-2 text-sm text-muted-foreground max-md:-ml-3.5 max-md:min-h-11 max-md:pl-3.5">
         <input
           ref={checkbox}
           type="checkbox"

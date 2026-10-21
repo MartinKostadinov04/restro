@@ -35,7 +35,7 @@ export function SettingsNav({ isOwner = false }: { readonly isOwner?: boolean })
                 aria-current={isOpen ? 'page' : undefined}
                 data-testid={`settings-nav-${section.value}`}
                 className={cn(
-                  '-mb-px inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring',
+                  '-mb-px inline-flex items-center gap-2 max-md:min-h-11 border-b-2 border-transparent px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring',
                   isOpen && 'border-primary text-foreground',
                 )}
               >

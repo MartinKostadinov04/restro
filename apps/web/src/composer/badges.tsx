@@ -211,7 +211,7 @@ export function IssuesBadge({ issues }: { issues: readonly ComposerIssue[] }) {
       <HoverCardTrigger asChild>
         <button
           type="button"
-          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="tap-area rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           data-testid="issues-badge"
           data-count={issues.length}
         >
