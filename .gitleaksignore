@@ -1,0 +1,3 @@
+# Known false positives only, one fingerprint each, with Martin's OK (D67: guardrails only tighten).
+# 10-21: a made-up table code in a test (tb_0123456789ABCDEFGHIJKL), renamed in 24ff9e9; still in history.
+8838b833849f4918e2d9ad51a71302e9f359917d:apps/web/src/guest/load.test.ts:generic-api-key:401
