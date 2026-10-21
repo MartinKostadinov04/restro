@@ -7,9 +7,9 @@ It is a living file: when an answer arrives, replace the `open` text on that POS
 ## How to read it
 
 - **Blocking** means ordering or paying cannot be built without the answer. **Later** means the first build works without it.
-- Words follow GLOSSARY.md. A **bill** is what the table sees; a **POS bill** is one bill as the POS holds it (a table can have several open at once); an **order** is what a guest sends from the phone; a **round** is what one order adds to a POS bill.
+- Words follow GLOSSARY.md. A **bill** is what the table sees; a **POS bill** is one bill as the POS holds it (a table can have several open at once); a **sent order** is what a guest sends from the phone and adds to a POS bill (written "order" and "round" in this file before D122, 10-21).
 - `barsy:` says what is known and where it was read, or `open:` with how the question stands. `open: Q82.3` and `open: Q79` are the tracker entries of those numbers (docs/tracker.md); `open: Lukanet 5` is the fifth question in "Questions for Lukanet (barsy)" and `Mistral n` the same for Mistral, both in the requirements deliverable. A question written down is not a question answered; whether Martin has sent it is his to record. `open: not yet asked` means it is on no list yet.
-- `Mistral:` is almost always `open: no public API (T69)`; the Mistral question number is added where one is drafted.
+- `Mistral:` is almost always `open: no public API (T69)`; the Mistral question number is added where one is drafted. Every Mistral question, with its number kept, is in one list: `docs/deliverables/2026-10-21-mistral-questions.md`.
 - Source names used on the `barsy:` lines, all in `docs/deliverables/`:
 
 | Name | File |
