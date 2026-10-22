@@ -46,10 +46,12 @@ import {
   renameAreaOf,
   renameTable,
   renumberTable,
+  revealCodes,
   type TablesScope,
   type TablesServices,
   turnOffCode,
 } from './service'
+import { withRevealed } from './view'
 
 const DEFAULT_BASE = 'http://localhost:3000'
 /** The worker's public seal key (base64url DER), as SEAL_PUBLIC_KEY carries it. */
@@ -358,6 +360,76 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(member.sample).toBeNull()
       // Back to no codes for the tests that follow.
       for (const row of rows) await turnOffCode(await scope(), services, row.id)
+    })
+
+    it('the tab reveals its codes apart from its render: once per code, the same as the print sheet', async () => {
+      await createAllCodes(await scope(), services)
+      const render = async (text: string) => `<svg>${text}</svg>`
+      revealAsked.length = 0
+      // The tab's own read (no reveal) asks the worker for nothing and draws no code yet.
+      const tab = await loadTablesView(await scope(), DEFAULT_BASE, render)
+      expect(revealAsked).toEqual([])
+      const rows = tab.halls.flatMap((hall) => hall.tables)
+      expect(rows.every((row) => row.address === null && row.qrSvg === null)).toBe(true)
+      // Each card with a code that leads somewhere names it by a key that is not its hash.
+      const keyed = rows.filter((row) => row.codeKey !== null)
+      expect(keyed).toHaveLength(tab.coded)
+      for (const row of keyed) {
+        const hash = (await hashOf(row.id)) ?? ''
+        expect(row.codeKey).not.toContain(hash.slice(0, 16))
+      }
+      expect(rows.filter((row) => !row.isPublic).every((row) => row.codeKey === null)).toBe(true)
+      // A member gets no keys and may not ask.
+      const member = await loadTablesView(await scope({ canManage: false }), DEFAULT_BASE, render)
+      expect(member.halls.flatMap((hall) => hall.tables).every((row) => row.codeKey === null)).toBe(
+        true,
+      )
+      const ids = keyed.map((row) => row.id)
+      expect(
+        await revealCodes(await scope({ canManage: false }), DEFAULT_BASE, ids, reveal, render),
+      ).toEqual({ ok: false, error: 'forbidden' })
+      expect(revealAsked).toEqual([])
+
+      // One batch for what the tab asks; a hidden table or another venue's id is left out.
+      const hidden = rows.find((row) => !row.isPublic)
+      const asked = [...ids, ...(hidden ? [hidden.id] : []), newId('tb')]
+      const answer = await revealCodes(await scope(), DEFAULT_BASE, asked, reveal, render)
+      if (!answer.ok) throw new Error('refused')
+      expect(revealAsked).toHaveLength(1)
+      expect([...(revealAsked[0] ?? [])].sort()).toEqual([...ids].sort())
+      expect(answer.codes.map((code) => code.id).sort()).toEqual([...ids].sort())
+      // Drawn in, the tab shows what the print sheet (which reveals in its render) shows.
+      const drawn = withRevealed(tab, new Map(answer.codes.map((code) => [code.codeKey, code])))
+      const printed = await loadTablesView(await scope(), DEFAULT_BASE, render, reveal)
+      expect(drawn.halls).toEqual(printed.halls)
+      expect(drawn.sample).toEqual(printed.sample)
+      // A code given to another table, or under another key, draws nothing.
+      const [first] = answer.codes
+      if (!first) throw new Error('no code')
+      const elsewhere = withRevealed(tab, new Map([[first.codeKey, { ...first, id: newId('tb') }]]))
+      expect(
+        elsewhere.halls.flatMap((hall) => hall.tables).every((row) => row.qrSvg === null),
+      ).toBe(true)
+
+      // A code made again gets a new key; the others keep theirs.
+      await turnOffCode(await scope(), services, first.id)
+      await createAllCodes(await scope(), services)
+      const again = (await loadTablesView(await scope(), DEFAULT_BASE, render)).halls.flatMap(
+        (hall) => hall.tables,
+      )
+      const keyOf = (list: typeof rows, id: string) => list.find((row) => row.id === id)?.codeKey
+      expect(keyOf(again, first.id)).not.toBe(first.codeKey)
+      for (const id of ids.filter((other) => other !== first.id)) {
+        expect(keyOf(again, id)).toBe(keyOf(rows, id))
+      }
+      // Without an address there is nothing to reveal.
+      revealAsked.length = 0
+      expect(await revealCodes(await scope(), null, ids, reveal, render)).toEqual({
+        ok: true,
+        codes: [],
+      })
+      expect(revealAsked).toEqual([])
+      for (const row of again) await turnOffCode(await scope(), services, row.id)
     })
   })
 

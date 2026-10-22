@@ -39,6 +39,12 @@ export interface TableRowView {
   /** True when the table has a code (stored as its hash and a sealed copy, #70). */
   readonly hasCode: boolean
   /**
+   * Names the code the card draws, for the reveal: it changes whenever the code does, and is not
+   * the code or its hash. Null when there is nothing to reveal: no code, the table or its area is
+   * hidden, the installation has no address, or the person may not see codes.
+   */
+  readonly codeKey: string | null
+  /**
    * The address the code carries, or null: no code, the installation has no address yet, or the
    * code was not revealed (only owners and admins see codes, through the worker).
    */
@@ -91,6 +97,43 @@ export interface TablesView {
    * code and what the table is called. Null when no table has one.
    */
   readonly sample: { readonly token: string; readonly shownAs: string | null } | null
+}
+
+/** A code the worker revealed for the tab (#70): what its card draws. */
+export interface RevealedCode {
+  /** `tb_…`: the table. */
+  readonly id: string
+  /** The row's `codeKey` when it was revealed: a card with another key waits for its own. */
+  readonly codeKey: string
+  readonly token: string
+  readonly address: string
+  readonly qrSvg: string
+}
+
+/** What the reveal answers: the codes it could open (a table left out draws none). */
+export type RevealCodesResult =
+  | { readonly ok: true; readonly codes: readonly RevealedCode[] }
+  | { readonly ok: false; readonly error: 'invalid' | 'forbidden' | 'not_found' | 'failed' }
+
+/**
+ * The tab with the revealed codes drawn in: each card whose `codeKey` has a code gets its address
+ * and picture, and the test link takes the first such table in the order the tab shows them.
+ */
+export function withRevealed(
+  view: TablesView,
+  revealed: ReadonlyMap<string, RevealedCode>,
+): TablesView {
+  let sample: TablesView['sample'] = null
+  const halls = view.halls.map((hall) => ({
+    ...hall,
+    tables: hall.tables.map((row) => {
+      const code = row.codeKey === null ? undefined : revealed.get(row.codeKey)
+      if (code === undefined || code.id !== row.id) return row
+      sample ??= { token: code.token, shownAs: row.shownAs }
+      return { ...row, address: code.address, qrSvg: code.qrSvg }
+    }),
+  }))
+  return { ...view, halls, sample: sample ?? view.sample }
 }
 
 /** Why an action did not do what was asked. */
