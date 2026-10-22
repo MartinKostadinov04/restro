@@ -47,6 +47,21 @@ describe('the web app and the sealing private key', () => {
     )
   })
 
+  it('declares the PIN pepper (#72), and treats an empty one as missing', () => {
+    const base = {
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      BETTER_AUTH_SECRET: 'x'.repeat(32),
+    }
+    expect(ServerEnvSchema.parse(base).STAFF_PIN_PEPPER).toBeUndefined()
+    expect(
+      ServerEnvSchema.parse({ ...base, STAFF_PIN_PEPPER: ' ' }).STAFF_PIN_PEPPER,
+    ).toBeUndefined()
+    const pepper = 'p'.repeat(44)
+    expect(ServerEnvSchema.parse({ ...base, STAFF_PIN_PEPPER: pepper }).STAFF_PIN_PEPPER).toBe(
+      pepper,
+    )
+  })
+
   it('knows the address QR codes are printed with by default (PUBLIC_BASE_URL, else BETTER_AUTH_URL)', () => {
     const base = {
       DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',

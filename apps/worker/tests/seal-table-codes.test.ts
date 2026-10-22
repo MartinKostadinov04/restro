@@ -4,8 +4,9 @@
 //     codes' hashes, removes the files named by the plain code and only then clears the plain
 //     code; a second run finds nothing to do, and a run cut short is finished by the next;
 //   - the reveal (`revealTableCodes`) opens the sealed copies for an owner signed in to the
-//     venue's organisation, writes one `record` Log entry, and refuses anyone else.
-import { createHash, randomUUID } from 'node:crypto'
+//     venue's organisation, writes one `record` Log entry, and refuses anyone else; it opens a
+//     staff PIN the same way, for a sign-in of the last 15 minutes (#72).
+import { createHash, createHmac, randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -14,10 +15,11 @@ import { LocalPublishStore, readTableTokenFile, tableTokenPath } from '@restro/a
 import { JOB_NAMES, newId } from '@restro/core'
 import { issueAllTableTokens, listVenueTables, sealPlainTableCodes } from '@restro/core/apply'
 import { openTableCode } from '@restro/core/seal-open'
+import { applyService } from '@restro/core/service'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { sealTableCodesOf } from '../src/jobs/seal-table-codes'
-import { type RevealRequest, revealTableCodes } from '../src/reveal'
+import { type RevealRequest, reveal, revealTableCodes } from '../src/reveal'
 import {
   allowSlowSetup,
   createTestDatabase,
@@ -244,6 +246,56 @@ describe.skipIf(!hasDatabase)('table codes stored in plain before #70', () => {
         expect(foreign).toEqual({ status: 'refused', code: 'table_missing' })
       } finally {
         await removeUser(stranger)
+        await removeUser(userId)
+      }
+    })
+
+    it('opens a staff PIN for an owner signed in within 15 minutes, and logs it (#72)', async () => {
+      const pepper = 'a-test-pepper-of-at-least-32-characters'
+      const userId = await addOwner()
+      const actor = { kind: 'user', userId, sessionId: `sess-${randomUUID()}` } as const
+      const signedInAt = new Date()
+      try {
+        const { result } = await applyService(
+          world.pool,
+          { type: 'staff.add', displayName: 'Ana', roleId: 'staff' },
+          { ...venue(), origin: 'staff', actor, jobId: `req-${randomUUID()}`, signedInAt },
+          { sealPublicKey: world.publicKeyText, pinPepper: pepper },
+        )
+        if (result.status !== 'accepted') throw new Error(`refused: ${result.code}`)
+        const staffMemberId = String(result.details.staffMemberId) as `sm_${string}`
+        const keys = { pool: world.pool, privateKey: world.keys.privateKey }
+        const request = { ...venue(), staffMemberIds: [staffMemberId], actor }
+
+        const stale = new Date(Date.now() - 20 * 60_000).toISOString()
+        expect(await reveal(keys, { ...request, signedInAt: stale })).toEqual({
+          status: 'refused',
+          code: 'sign_in_again',
+        })
+        const answer = await reveal(keys, { ...request, signedInAt: signedInAt.toISOString() })
+        if (answer.status !== 'accepted') throw new Error(`refused: ${answer.code}`)
+        const pin = answer.codes[staffMemberId] ?? ''
+        expect(pin).toMatch(/^[0-9]{4}$/)
+        const [row] = await world.query<{ pin_hmac: string }>(
+          'select pin_hmac from restro.staff_members where id = $1',
+          [staffMemberId],
+        )
+        const hmac = createHmac('sha256', pepper).update(`${world.tenantId}|${pin}`).digest('hex')
+        expect(row?.pin_hmac).toBe(hmac)
+        const entries = await world.query<{ retention: string; details: unknown }>(
+          "select retention, details from restro.log_entries where venue_id = $1 and kind = 'pin.revealed'",
+          [world.venueId],
+        )
+        expect(entries).toHaveLength(1)
+        expect(entries[0]?.retention).toBe('record')
+        expect(JSON.stringify(entries)).not.toContain(pin)
+      } finally {
+        await world.query('delete from restro.log_entries where tenant_id = $1', [world.tenantId])
+        await world.query('delete from restro.staff_assignments where tenant_id = $1', [
+          world.tenantId,
+        ])
+        await world.query('delete from restro.staff_members where tenant_id = $1', [world.tenantId])
+        await world.query('delete from restro.venue_roles where tenant_id = $1', [world.tenantId])
         await removeUser(userId)
       }
     })

@@ -116,6 +116,9 @@ describe('startHealthServer', () => {
         asked.push(request)
         if (request.actor.userId === 'refused') return { status: 'refused', code: 'forbidden' }
         if (request.actor.userId === 'throws') throw new Error('boom')
+        if (!('tableIds' in request)) {
+          return { status: 'accepted', codes: { [request.staffMemberIds[0] ?? '']: '4821' } }
+        }
         return {
           status: 'accepted',
           codes: { [request.tableIds[0] ?? '']: 'Ab3dEfGh1jKlMnOpQrStUv' },
@@ -180,6 +183,12 @@ describe('startHealthServer', () => {
       expect((await reveal(port, { body: 'not json' })).status).toBe(400)
       expect((await reveal(port, { body: { ...REQUEST, tableIds: [] } })).status).toBe(400)
       expect((await reveal(port, { body: { ...REQUEST, extra: 1 } })).status).toBe(400)
+      // Table codes or PINs, never both in one request.
+      const both = { ...REQUEST, staffMemberIds: ['sm_0000000000000000000001'] }
+      expect((await reveal(port, { body: both })).status).toBe(400)
+      // Restro's admin team names no session; a user always does.
+      const sessionless = { ...REQUEST, actor: { kind: 'user', userId: 'user-1' } }
+      expect((await reveal(port, { body: sessionless })).status).toBe(400)
       expect((await reveal(port, { body: 'x'.repeat(40 * 1024) })).status).toBe(413)
       expect(asked).toEqual([])
     })
@@ -205,6 +214,25 @@ describe('startHealthServer', () => {
       expect(failed.status).toBe(500)
       expect(failed.text).not.toContain('boom')
       expect(failures).toHaveLength(1)
+    })
+
+    it('passes a PIN reveal by Restro admin team, with the sign-in time, to the handler (#72)', async () => {
+      const port = await start()
+      server?.setRevealHandler(handler)
+      const body = {
+        tenantId: REQUEST.tenantId,
+        venueId: REQUEST.venueId,
+        staffMemberIds: ['sm_0000000000000000000001'],
+        actor: { kind: 'operator', userId: 'user-2' },
+        signedInAt: '2026-10-22T20:00:00.000Z',
+      }
+      const accepted = await reveal(port, { body })
+      expect(accepted.status).toBe(200)
+      expect(JSON.parse(accepted.text)).toEqual({
+        status: 'accepted',
+        codes: { sm_0000000000000000000001: '4821' },
+      })
+      expect(asked.at(-1)).toEqual(body)
     })
   })
 

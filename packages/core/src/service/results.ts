@@ -22,6 +22,8 @@ export const REFUSAL_CODES = [
   'pin_required',
   /** A settings change needs a person's own sign-in, never a PIN (D122 §7). */
   'own_sign_in_required',
+  /** A settings change needs the password again: the sign-in is older than 15 minutes (D122 §7). */
+  'sign_in_again',
   /** The PIN's person, the shared device or the operator is unknown, archived or revoked. */
   'actor_unknown',
   /** This tenant has no such venue. */

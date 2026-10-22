@@ -1,6 +1,7 @@
 // The engine behind `applyService` (design §2.1, §2.3, §2.4; D72, D117, D122 §9). One command runs
 // as one short tenant transaction, in this order:
-// 1. the command's schema and its origin, before the database is asked;
+// 1. the command's schema and its origin, and for a settings change a fresh sign-in, before the
+//    database is asked;
 // 2. `lock_timeout` 2 s and `statement_timeout` 5 s, then the venue locked `FOR SHARE` and live;
 // 3. the table, where the command names one;
 // 4. the permission, read in the same transaction;
@@ -22,7 +23,13 @@ import { and, eq, sql } from 'drizzle-orm'
 import { lockLiveVenue } from '../apply/venue-lock'
 import { serviceDate } from '../service-day'
 import { findInRing, pushToRing } from './action-ring'
-import { provenanceOf, type ServiceContext, ServiceContextSchema, viaOf } from './context'
+import {
+  isFreshSignIn,
+  provenanceOf,
+  type ServiceContext,
+  ServiceContextSchema,
+  viaOf,
+} from './context'
 import type { CommandRegistry, ServiceTx } from './definition'
 import { resolveGrants } from './grants'
 import { appendLogEntry } from './log'
@@ -53,7 +60,7 @@ class HandlerRefusal extends Error {
 }
 
 /** The Postgres error code anywhere in the error's cause chain (Drizzle wraps driver errors). */
-function postgresCode(error: unknown): string | null {
+export function postgresCode(error: unknown): string | null {
   let current: unknown = error
   for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
     const code = (current as { code?: unknown }).code
@@ -65,8 +72,13 @@ function postgresCode(error: unknown): string | null {
 
 /** What a caller may hand the engine beside the context: keys from its environment. */
 export interface ServiceOptions {
-  /** The worker's public seal key (`SEAL_PUBLIC_KEY`), for the commands that issue a table code. */
+  /**
+   * The worker's public seal key (`SEAL_PUBLIC_KEY`), for the commands that issue a table code or
+   * a PIN.
+   */
   readonly sealPublicKey?: KeyObject | string
+  /** The PIN pepper (`STAFF_PIN_PEPPER`), for the commands that issue a PIN. */
+  readonly pinPepper?: string
 }
 
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
@@ -119,6 +131,9 @@ export async function executeCommand(
   const provenance = provenanceOf(context)
   const via = viaOf(context)
   const now = context.now ?? new Date()
+  if (definition.freshSignIn === true && !isFreshSignIn(context.signedInAt, now)) {
+    return refused(actionId, 'sign_in_again')
+  }
 
   try {
     return await withTenantWrite(pool, context.tenantId, async (tx) => {
@@ -158,8 +173,10 @@ export async function executeCommand(
         now,
         origin: context.origin,
         via,
+        actor: context.actor,
         permissions: grants.permissions,
         sealPublicKey: options.sealPublicKey ?? null,
+        pinPepper: options.pinPepper ?? null,
         log: (entry) =>
           appendLogEntry(
             tx,

@@ -122,6 +122,11 @@ describe.skipIf(!hasDatabase)('organisation = tenant (Better Auth over the app r
     const session = await auth.api.getSession({ headers: new Headers({ cookie }) })
     expect(session?.session.activeOrganizationId).toBe(orgA)
     expect(session?.user.email).toBe(emailA)
+    // A person's own session lasts 30 days from the password (D122 §7, #72).
+    const lasts =
+      new Date(session?.session.expiresAt ?? 0).getTime() -
+      new Date(session?.session.createdAt ?? 0).getTime()
+    expect(Math.abs(lasts - 30 * 24 * 60 * 60_000)).toBeLessThan(60_000)
 
     // A signed-in person still cannot create an organisation (it is switched off for people).
     await expect(
