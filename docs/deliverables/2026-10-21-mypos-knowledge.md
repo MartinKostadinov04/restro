@@ -205,6 +205,10 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-17 · R17 [VENDOR] Apple Pay is "available for myPOS Hosted Web Checkout". Google Pay on the hosted page is not confirmed. Wallets can't be tested in the sandbox (WooCommerce plugin).
 - See "The payment form" for the Embedded SDK conflict.
 - 2026-10-22 · M22c [SAID] **Apple Pay and Google Pay are available only with `IPCPurchase`.** They're missing from every other call, pre-authorisation included.
+- 2026-10-22 · D22 [DOC] M22c linked no page for the wallet answer, and no Checkout API page says it outright. The pages only point the same way:
+  - `IPCPurchase` (developers.mypos.com/apis/checkout-api/purchase) has a `PaymentMethod` field; left empty, the hosted page shows "all payment methods supported by myPOS Checkout";
+  - Purchase Notify's `PaymentType` includes Google Pay (2) and Apple Pay (3);
+  - `IPCPreAuthorization` has no `PaymentMethod` field, and puts the guest "on a page that requests entering payment card details".
 - 2026-10-22 · [READING] With myPOS holds, the guest always types the card in; there's no Apple Pay or Google Pay. Wallets would need an immediate charge (`IPCPurchase`), which D122 §8's hold-first order doesn't use. This is Martin's call (#49 round 2, Q4).
 
 ## Sandbox
