@@ -1,14 +1,27 @@
 # Stack
 
-Oct 8, 2026 · @Martin
+Oct 8, 2026 · @Martin · brought up to date for ordering on Oct 22, 2026 (D110–D124)
 
 Restro runs as one TypeScript repository deployed as two small Node processes, a Next.js web app and a pg-boss worker, on Railway in Amsterdam. Postgres holds both the data and the job queue, Cloudflare R2 serves menus, images and backups, and Cloudflare's free proxy guards the web app. At pilot traffic the platform should cost about $10–15 a month: every choice favours few moving parts and free tiers over scale, because traffic is low (Martin, 2026-10-08).
+
+## Kickoff amendments (2026-10-08)
+
+These override the rest of this tab where they differ; stages are in the Stage plan tab of the live document (not mirrored here).
+
+| Area | Change |
+| --- | --- |
+| Database | Postgres 17 on Supabase (free plan, West EU Ireland, D43, D54), organisation "Restro", projects `restro-staging` and `restro-prod`. Data API off, own hourly backups to R2. Supabase Pro ($25/month) before money flows. Railway runs only web + worker |
+| Barsy freshness | Polling: incremental every 5 min + nightly full pull. No webhooks (D41, D110), so the `barsy-inbox`, `barsy-refetch` and `barsy-health` queues are not started; writes are waiter actions only (D110) and barsy has none yet |
+| Faces | QR → phone only (D38); faces are packages (`packages/faces/*`) that pass one contract |
+| Payments package | Added when paying in the app is built (part 2 of the ordering spec) |
+| Repo | Public GitHub `MartinKostadinov04/restro` (public since 2026-10-19, so CI is free). Pushing to `main` and merging one's own pull request are forbidden by `CLAUDE.md` |
+| Cost | $0 in Stage 1; about $5–10 a month from Stage 3 plus domains; about $30–35 a month once payments run |
 
 ## At a glance
 
 &#91;embedded content: runtime map · 2 processes, 1 database, 3 outside systems\]
 
-Guests load menus from the CDN and send only carts and payments to the web app. The worker alone calls Barsy; Barsy's webhooks land in the web app's inbox.
+Guests load menus from the CDN and talk to the web app only through the guest API (D121): the order, Send and a call to the waiter now, payments in part 2. The worker alone calls a POS, through a connector; webhooks stay out (D41).
 
 ## Choices
 
@@ -22,18 +35,19 @@ Each layer takes the most widely used tool that has a free or usage-priced tier,
 | Web framework | Next.js 16.4.x, the newest minor of the 16.x line (16.x is Active LTS); security patches applied within 48 hours | Most example code of any framework; server-rendered first paint for weak basement signal | Vite + Hono: two apps to wire together |
 | UI | Tailwind CSS, shadcn/ui, react-hook-form + Zod for forms, TanStack Table, Recharts for owner stats | AI writes these reliably; light on the guest's phone | Heavy component suites |
 | Validation | Zod | One validator for the editor, the Barsy adapter, the publisher and the API (checks V1–V12) | — |
-| Database | Postgres 17 on Supabase (EU, Ireland, D43, D54), pinned; database host only, Data API, Auth and Storage off; Pro before money flows | Relational and transactional, as the data model requires; one small instance covers pilot traffic | Serverless Postgres: the worker polls, so it never sleeps and costs more |
+| Database | Postgres 17 on Supabase (EU, Ireland, D43, D54; database host only, Data API, Auth and Storage off; Pro before money flows), pinned | Relational and transactional, as the data model requires; one small instance covers pilot traffic | Serverless Postgres: the worker polls, so it never sleeps and costs more |
 | Data access | Drizzle ORM + drizzle-kit migrations | Reads like SQL, so queries can be reviewed; row-level security policies live in the schema | Prisma: heavier, hides the SQL |
 | Background jobs | pg-boss 12, inside the same Postgres | No extra service; cron schedules, retries with backoff, dead-letter queues, debounce; jobs are queued in the same transaction as the data write (Drizzle adapter) | Inngest or Trigger.dev: another vendor; BullMQ: needs Redis |
 | Files and CDN | Cloudflare R2 (EU jurisdiction) behind Cloudflare's CDN | No egress fees; snapshots, image variants and backups fit the free tier | S3 + CloudFront: egress fees |
 | Images | sharp, in the worker | Makes each CDN variant once | Paid image services |
-| Venue-admin login | Better Auth with its organization plugin | Free; accounts stay in our Postgres; tenant = organization with owner/admin/member roles, invitations, and a staff role that can only mark items sold out. Email and password (magic links optional), so a slow email never locks staff out mid-service | Clerk: another vendor holding staff accounts |
+| Venue-admin login | Better Auth with its organization plugin | Free; accounts stay in our Postgres; tenant = organization with owner/admin/member roles, invitations, and staff roles per venue. Staff on a shared bar device use a PIN, not an account (D122 §7). Email and password (magic links optional), so a slow email never locks the owner out mid-service | Clerk: another vendor holding staff accounts |
 | Email | Resend | Login links, invitations, the daily ops digest | — |
 | Payments | Payments are a connector kind (D98): one `PaymentProvider` interface (hold, capture, release, refund, hosted checkout, status notifications) with capability flags (hold and how long, Apple Pay and Google Pay, split), and one package per provider. myPOS is the first candidate, pending the feasibility check (T80); Stripe is second | The venue is the merchant on its own payment account at the provider, and Restro never holds money; Restro's fee is invoiced to the venue. The platform knows no provider's name. Whether guests can pay through barsy's payment link when they order from the menu is a separate open question (Q39, Q58) | Restro holding funds; building on one provider first |
 | Barsy access | One typed client, split into `read` and `write`; native `fetch` with a 30-second timeout | Agents cannot invent endpoints; every write is a waiter action (D110); webhooks and POS registration stay out (D41) | Ad-hoc calls |
+| POS connectors | A POS-neutral `ServiceConnector` interface owned by the integration layer, one package per connector (`packages/barsy`, `packages/connectors/sim-pos`), and one conformance kit every connector must pass (D122 §3, D124, spec #64) | The pilot's POS has not answered yet, so the platform is built against a simulated POS and proven by the checks a real connector must also pass; a timeout is always "unknown", never a second write | A connector per POS written ad hoc; waiting for the pilot's POS |
 | Dates and money | date-fns + @date-fns/tz; integer minor units; `Intl.NumberFormat` | Past-midnight schedules in Europe/Sofia; Barsy's rounding in one module | Floats |
 | Interface text | next-intl (BG, EN) | Interface strings only; menu text comes from snapshots | — |
-| Tests | Vitest, fast-check, Playwright, MSW with recorded Barsy responses | Agents can check their own work; property tests guard "more cautious than the till" | — |
+| Tests | Vitest, fast-check, Playwright, MSW with recorded Barsy responses and the `sim-pos` simulator | Agents can check their own work; property tests guard "more cautious than the till" | — |
 | Code checks | Biome (lint + format), `tsc --noEmit`, dependency-cruiser | One fast tool, import rules that enforce the architecture, and gitleaks so no secret is ever committed | ESLint + Prettier: more configuration |
 | Hosting | Railway, EU West (Amsterdam): web and worker in one project (Postgres on Supabase, D43) | Always-on processes for the queue; usage-based billing suits low traffic. Cloudflare's free proxy sits in front: rate limits, Turnstile bot checks, and a cached static guest page that keeps menus up even if Railway is down | Vercel: Hobby is non-commercial, Pro is $20 a seat plus a separate worker host. A VPS is cheaper still, but someone has to run the server |
 | Monitoring | Sentry (EU region, no personal data), guest events in our own Postgres, deep health checks, phone alerts through a Telegram bot | Errors; funnel data we own and Martin can query in SQL or Power BI (H1–H3); a phone alert within a minute when orders or money get stuck | PostHog: another vendor and a consent question; paid APM |
@@ -88,18 +102,19 @@ What would raise the bill: Railway Pro at $20 a month (includes $20 of usage, ad
 
 ## Repository and boundaries
 
-One repository holds two deployable apps, five shared packages and one package per payment provider; CI checks which may import which, so the architecture holds even when nobody reads the code line by line.
+One repository holds two deployable apps, six shared packages and one package per payment provider; CI checks which may import which, so the architecture holds even when nobody reads the code line by line.
 
 ```text
 restro/
 ├─ apps/
-│  ├─ web/        Next.js: guest shell + QR face, venue admin, order API, webhook receivers
-│  └─ worker/     Node: pg-boss jobs (Barsy sync, resolve, publish, images, outbox, health, backups)
+│  ├─ web/        Next.js: guest shell + QR face, venue admin, guest API, payment-notice receivers
+│  └─ worker/     Node: pg-boss jobs (POS sync and readings, sending orders, resolve, publish, images, health, backups)
 ├─ packages/
-│  ├─ core/       field types, Zod schemas, apply(), resolver, checks V1–V12, snapshot builder
-│  ├─ shell/      population rules R1–R14 → view model (pure: no React, no database)
+│  ├─ core/       field types, Zod schemas, apply(), applyService() (core/service), resolver, checks V1–V12, snapshot builder
+│  ├─ shell/      population rules R1–R15 → view model (pure: no React, no database)
 │  ├─ db/         Drizzle schema, migrations, row-level security, tenant-scoped client
 │  ├─ barsy/      typed Barsy client (read/ and write/), mappers, recorded fixtures
+│  ├─ connectors/ one package per other connector; sim-pos is the simulated POS (kind `sim`)
 │  ├─ payments/   PaymentProvider interface and capability flags (no provider's name)
 │  └─ <provider>/ one package per payment provider, like barsy/ (myPOS first, pending T80)
 ├─ docs/          decisions, runbooks (restore, onboarding a venue, live-night incidents)
@@ -109,9 +124,9 @@ restro/
 Import rules, checked in CI by dependency-cruiser:
 
 - `shell` and the faces in `apps/web` never import `db`, `barsy` or a payment provider package.
-- Only `core/apply` imports the write side of `db`.
-- Only `apps/worker` imports `barsy`. Its `write` part exposes only waiter actions (D110), such as order placement through the outbox. Webhook subscription and POS registration are setup, not waiter actions, and stay out (D41).
-- `apps/web` never calls Barsy; it reads Barsy state from Postgres and only verifies webhook signatures.
+- Only `core/apply` and `core/service` import the write side of `db` (`db-write-only-from-core-write-paths`); a write-target guard test pins which tables each writes. `@restro/core/service` may be imported only by the guest API routes, the admin's server actions and the worker.
+- Only `apps/worker` imports a connector package, `barsy` or one under `packages/connectors/` (`connectors-only-from-worker`, `web-no-connectors`). A connector's `write` part exposes only waiter actions (D110), such as adding a round to a table's bill. Webhook subscription and POS registration are setup, not waiter actions, and stay out (D41).
+- `apps/web` never calls a POS; it reads POS state from Postgres, and readings and writes are worker jobs whose outcome reaches the phone through the guest state (D121).
 - Only `apps/worker` imports a payment provider package and calls a provider (capture, release, refund, test call). The web app never imports one: its inbox checks a notification's signature through that provider's part in `apps/web/src/connectors/` (where POS-specific web code already lives), stores it, and reads payment state from Postgres (D98).
 - Packages never import apps.
 
@@ -121,15 +136,15 @@ Every non-negotiable rule from the Data architecture tab is backed by a check th
 
 | Rule | Enforced by |
 | --- | --- |
-| 1. One write path | Import rule: only `core/apply` writes; every `field_values` row requires its layer, source and job (NOT NULL) |
-| 2. Every value keeps its source and layer | NOT NULL and check constraints; the `events` table is append-only (the app's database role has no UPDATE or DELETE on it) |
-| 3. External ids stay in the backend | The snapshot Zod schema rejects unknown keys; a contract test fails if a Barsy id appears in any snapshot |
+| 1. One write path | Import rule: only `core/apply` writes menu values, and `core/service` alone writes service tables; every `field_values` row requires its layer, source and job (NOT NULL) |
+| 2. Provenance | NOT NULL and check constraints; the `events` table is append-only (the app's database role has no UPDATE or DELETE on it). Service rows have no layer: `source`, `actor` and `job_id` are NOT NULL, plus `via`, and append-only service tables allow only SELECT and INSERT (D122 §9) |
+| 3. POS ids stay in the backend | The snapshot Zod schema rejects unknown keys; a contract test fails if a POS id appears in any snapshot; a forbidden-values walk checks every guest API answer (D121); a connector's POS ids live in a backend-only reference type |
 | 4. The shell reads only snapshots | Import rule; the shell's only input type is `Snapshot` |
 | 5. Our layers only make the menu more cautious | Property tests (fast-check) on the resolver: whatever the layers hold, an item Barsy hides or takes off sale is never orderable, and an orderable item's price always equals Barsy's |
-| 6. Absence is a deletion only after a complete full pull | Integration test with a failed page in the fixture: nothing is hidden |
-| 7. Restro writes into a POS only as a waiter would (D110) | Menu sync stays read-only; a connector's `write` part exports only waiter actions (open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel), each declared as such and checked by a test; never back-office writes (items, prices, settings, users); tests only on a test installation |
-| 8. Integer minor units, Barsy's rounding | One `money` module; Zod `.int()` on every amount; tests built from Barsy's own calculation examples |
-| 9. Barsy accounts | One API user per integration per environment; unique `pos_registrations.venue_id`; the outbox command schema requires a `uuid`; staging configuration refuses production hosts |
+| 6. Absence is deletion only after a complete full read | Integration test with a failed page in the fixture: nothing is hidden. A reading with any failed part is `complete: false` in the connector interface, and a property test shows a partial reading ends no sitting, clears no order and lifts no pause |
+| 7. Restro writes into a POS only as a waiter would (D110) | Menu sync stays read-only; a connector's `write` part exports only waiter actions (open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel), each declared as such and checked by a test in the connector conformance kit; never back-office writes (items, prices, settings, users); tests only on a test installation |
+| 8. Money is integer minor units, with the POS's rounding | One `money` module; Zod `.int()` on every amount; tests built from Barsy's own calculation examples |
+| 9. POS accounts | One API user per connection per environment; staging configuration refuses production hosts; (later) one POS-registration owner, unique `pos_registrations.venue_id`, and a command schema that requires a server-generated `uuid` |
 
 ## Background jobs
 
@@ -137,16 +152,16 @@ All background work runs as pg-boss queues in the worker. A job that depends on 
 
 | Queue | Started by | Notes |
 | --- | --- | --- |
-| `barsy-inbox` | each stored webhook, same transaction | Parses ids and operations |
-| `barsy-refetch` | `barsy-inbox` | Debounced 10 s per integration, type and id; re-fetches for every venue on the installation |
+| `barsy-inbox` | each stored webhook, same transaction | Not started: webhooks stay out (D41). Parses ids and operations |
+| `barsy-refetch` | `barsy-inbox` | Not started with the webhooks. Debounced 10 s per integration, type and id; re-fetches for every venue on the installation |
 | `barsy-reconcile` | every 10 minutes per venue | Tree checksum, then articles changed since the cursor. If Barsy's timestamps carry no time-zone offset, the overlap widens to 65 minutes so the autumn clock change cannot hide an hour |
 | `barsy-stock` | every 5 minutes, opted-in venues | Optional stock-based sold out |
 | `barsy-full-pull` | nightly per venue, default about 12:00 local (P31, not yet confirmed) | The only job allowed to conclude a deletion |
-| `barsy-health` | daily | Webhook subscriptions; restarts and reconciles a deactivated one |
+| `barsy-health` | daily | Not started with the webhooks. Webhook subscriptions; restarts and reconciles a deactivated one |
 | `menu-resolve` | `apply()`, same transaction | Debounced per menu |
 | `menu-publish` | `menu-resolve` | 30-second merge window; writes snapshot and pointer to R2 |
 | `asset-variants` | new or changed image | Downloads, makes variants with sharp, uploads |
-| `order-outbox` | checkout, as the confirmed payment route defines it | Retries with backoff and the same server-generated `uuid`; test installation only until D33 is met |
+| `order-outbox` | a Send, as D122 §4 defines it (the queue's name is set by the ticket that builds it) | Sends a sent order once, with the server-generated `uuid` where the POS deduplicates, and reads the table back after a timeout instead of sending again; test installation only until D33 is met |
 | `payment-events` | each stored payment notification, same transaction as the inbox write (signature checked in the web app first) | Updates payment, hold and share state |
 | `payment-outbox` | a command that needs money to move: accept (capture), skip after accept (refund), release | Calls the provider with an idempotency key, so a retry never charges twice; retries with backoff (D98, D99) |
 | `request-queue-close` | each venue's service day end, or the DJ closing the night earlier | Releases every unplayed hold through `payment-outbox` and records the night's totals (D99) |
@@ -157,12 +172,16 @@ All background work runs as pg-boss queues in the worker. A job that depends on 
 
 Failed jobs land in a dead-letter queue and show in the pg-boss dashboard, served behind the venue-admin login for Restro staff only.
 
+Ordering adds more worker jobs, named when their tickets are built (spec #64): the readings of a floor and of a table, the read-back after a timeout, the connection breaker's probes and pauses (D120, D122 §6), the pre-opening check, alerts by Web Push and by Telegram (one group per venue, read by long polling, so no new public endpoint), and the retention step of the daily purge. The worker's HTTP server gets one internal endpoint that opens a sealed value for an authorised actor, reachable only over the private network with a service token (D122 §9).
+
 ## Data, tenancy and secrets
 
 One Postgres database holds everything; the database itself, not just the code, keeps venues apart. Inside it, separate schemas hold the core, auth, jobs, guest events, money and bookings. Events and money have no foreign keys into the core except by id, so they can move to their own instance without touching the menu engine (D103).
 
 - **Tenancy.** Every tenant-owned table carries `tenant_id`. Row-level security limits each query to the tenant set for its transaction (`set_config('app.tenant_id', …)`), so a forgotten filter in AI-written code returns nothing instead of another venue's data. The app connects with a role that cannot bypass row-level security; migrations run with a separate owner role.
-- **Guests.** Guests never read the database for the menu: they get snapshots from the CDN. The order API resolves the table token to venue and tenant.
+- **Guests.** Guests never read the database for the menu: they get snapshots from the CDN. The guest API (D121) looks the table code up by its hash and resolves it to venue and tenant; the code travels in a header, never in a query string.
+- **Service data.** The service tables (sittings, orders, readings, the Log and the rest) are tenant-scoped with row-level security in the same pattern and written only by `applyService`. Log entries are classed `night` (kept 31 days) or `record` (kept 18 months), and the daily purge deletes them by date through its own role (D83, D122 §9).
+- **Table codes and PINs.** A table code has at least 128 random bits, stored as a hash with a sealed copy so stickers can be printed again; a staff PIN is stored as a keyed hash for lookup with a sealed copy beside it. Only the worker opens seals (D55, D122 §9).
 - **Guest events.** Append-only, free of personal data, and in their own schema from the start. One ingest module writes them in batches and never joins core tables (D103).
 - **Payment credentials.** Each venue's payment account credentials are sealed in the application like the Barsy credentials below, after the platform checks them with a test call (D98).
 - **Barsy credentials and webhook secrets.** Encrypted in the application (AES-256-GCM) before they are stored. The key for Barsy credentials lives only in the worker's environment; the key for webhook secrets only in the web app's. The Data architecture tab says "secret store, never in the database"; this keeps plaintext out of the database without paying for a secret manager, and needs Martin's OK (P38).
@@ -179,8 +198,10 @@ Code reaches production only through a green pull request and a check on staging
 | --- | --- | --- | --- |
 | Local / agent | Node + Postgres (a container or a dev database) | Recorded fixtures (MSW) only | Building and tests |
 | CI | GitHub Actions with a Postgres service container | Recorded fixtures | Every pull request, and pushes to `main` and the stage branches (`<stage>/foundation`) |
-| Staging | A Railway environment, stopped when idle | Reads: a pilot venue, through its own API user. Writes: the Barsy test installation only (D33) | Martin checks changes before release |
+| Staging | A Railway environment, stopped when idle | Reads: a pilot venue, through its own API user. Writes: the Barsy test installation only (D33). A `sim-pos` server on staging is a later step that needs Martin's OK | Martin checks changes before release |
 | Production | Railway, EU West | Pilot venues, one API user each | Live |
+
+`sim-pos` runs locally and in CI as the pilot POS's stand-in; source kind `sim` is refused by the worker in production and hidden from the source picker there.
 
 1. An agent works on a branch per ticket, following `CLAUDE.md`.
 2. It opens a pull request per ticket into the stage branch. CI runs the type check, lint, import rules, gitleaks, unit, property, integration and contract tests, and the build. Anything red blocks the merge.
@@ -196,7 +217,7 @@ Martin should learn about a problem from an alert or the daily digest, never fro
 
 - **Errors:** Sentry in the web app and the worker (EU region, personal data off), each error tagged with the request or job that caused it.
 - **Logs:** structured JSON logs (pino) in Railway's log view.
-- **Health:** the `health-check` job watches outbox age, payment-to-Barsy delay, snapshot age and webhook lag. A paid order that is not in Barsy within 60 seconds pages Martin through a Telegram bot and switches that venue to menu-only.
+- **Health:** the `health-check` job watches outbox age, payment-to-Barsy delay, snapshot age and webhook lag. When the POS stops answering, or a sent order stays Unconfirmed, ordering pauses and alerts reach staff, the owner and the Restro team (D120, D122 §6). An outside watchdog (Healthchecks.io, pinged every minute) alerts the Restro team when Restro itself stops.
 - **Uptime:** external checks every few minutes on the health endpoint and the webhook URL. Barsy deactivates a webhook subscription after 14 days without a successful delivery.
 - **Guest funnel:** anonymous events (menu opened, item added, checkout started, paid) written to our own Postgres. No third-party analytics and no cookies; Martin can query them in SQL or Power BI. They are the evidence for H1–H3 and feed the owner stats (D31).
 - **Night promise (D102):** the menu never goes down, because it is static files on the CDN. Platform features (service actions, song requests, bookings) may pause for minutes, never hours: within a minute of the platform turning unhealthy the phone shows "requests paused", and the alert reaches Martin by Telegram. No one is on call until clubs pay for it.
@@ -209,13 +230,13 @@ Three items need Martin's OK before setup; everything else waits until a trigger
 - [ ] **P38. Barsy credentials:** encrypt them in the application (key only in the worker's environment) instead of a separate secret manager. Changes the wording "secret store, never in the database" in the Data architecture tab.
 - [ ] **Railway plan at go-live:** Hobby ($5) or Pro ($20). Check at signup whether pull-request environments need Pro.
 - [ ] **Point-in-time recovery** (about $100 a month): decided at go-live with paying clubs, not for the pilot (D103).
-- [ ] **Changes from the 2026-10-08 review, already applied on this tab; veto any:** Next.js 16.4.x; Postgres 17; only the confirmed payment route gets built; a write allowlist for live Barsy; Cloudflare proxy with rate limits and Turnstile from day one; a cached static guest page; guest analytics in our own database instead of PostHog; Telegram alerts and deep health checks; hourly backups during service; no deploys on busy nights; gitleaks.
+- [ ] **Changes from the 2026-10-08 review, already applied on this tab; veto any:** Next.js 16.4.x; Postgres 17; only the confirmed payment route gets built; waiter-only writes (D110, which replaced the write allowlist for live Barsy); Cloudflare proxy with rate limits and Turnstile from day one; a cached static guest page; guest analytics in our own database instead of PostHog; Telegram alerts and deep health checks; hourly backups during service; no deploys on busy nights; gitleaks.
 
 | When this happens | Then |
 | --- | --- |
 | myPOS fails the feasibility check (T80), or a club or market needs another provider | Build the next provider package behind the same `PaymentProvider` interface (Stripe is second, D98) |
 | A reliability incident on a service night, or the bill crossing about $100 a month | Review the plans or move a part. Neon, Railway Postgres or a VPS are acceptable alternatives; on Supabase its Data API, Auth and Storage stay off. The move is a redeploy, prepared by the portability work (T85, D103) |
-| Restro wants a per-transaction fee after the pilot | Invoice the venue, fixed or a percentage computed from Restro's records of captures; split inside the payment only when a provider offers it (D98). The charging model is open (Q77) |
+| Restro wants a per-transaction fee after the pilot | Restro's fee is a fixed subscription (D122 §9), so nothing counts a fee per order; a different model needs its own decision (D98, Q77) |
 | Traffic grows | A second web replica on Railway |
 | The payment flow outgrows pg-boss | Move only that flow to a workflow engine (Inngest or Temporal) |
 | A team joins | Railway Pro (team seats); Sentry Team ($26 a month) |
