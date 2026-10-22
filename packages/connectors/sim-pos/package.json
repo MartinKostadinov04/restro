@@ -1,0 +1,20 @@
+{
+  "name": "@restro/sim-pos",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@restro/core": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "msw": "2.15.0"
+  }
+}
