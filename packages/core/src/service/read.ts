@@ -1,0 +1,471 @@
+// The read side of the service path (design §2.1): `readTableState` for the guest API and
+// `readTonight` for the staff screen, both read-only on `withTenant`. Neither calls a POS.
+// - `readTableState` gives the server's view of one table: its version, its open sitting, the
+//   order, the sitting's sent orders, the leases and pauses that hold it, and when its bill was
+//   last read. The guest API turns it into the phone's `TableState` (#75) and runs the
+//   forbidden-values walk; nothing here is a POS id (rule 3).
+// - `readTonight` gives Tonight's contents, filtered by what the actor holds at the venue: alerts
+//   by their permission, waiter calls to those who answer them, the Log to `log.view`.
+
+import {
+  alerts,
+  billReadings,
+  type DbPool,
+  locks,
+  logEntries,
+  pauses,
+  type ReadTx,
+  sentOrders,
+  sittings,
+  tableOrders,
+  venues,
+  venueTables,
+  waiterCalls,
+  withTenant,
+} from '@restro/db'
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+
+import { serviceDate } from '../service-day'
+import type { ServiceActor } from './context'
+import { resolveGrants } from './grants'
+import type { LeaseScope } from './leases'
+import type { Permission } from './permissions'
+
+/** The sent order states that still hold the table's attention (D116). */
+const OPEN_SENT_ORDER_STATES = [
+  'waiting',
+  'sending',
+  'checking',
+  'awaiting_approval',
+  'unconfirmed',
+]
+
+/** The table's version: the highest of its orders' versions, 0 before its first sitting. */
+async function tableVersion(tx: ReadTx, tableId: string): Promise<number> {
+  const [row] = await tx
+    .select({ version: sql<string>`coalesce(max(${tableOrders.version}), 0)::text` })
+    .from(tableOrders)
+    .where(eq(tableOrders.tableId, tableId))
+  return Number(row?.version ?? 0)
+}
+
+/** A lease as a phone or Tonight may see it: what holds it and for how long. */
+export interface LeaseView {
+  readonly scope: LeaseScope
+  readonly holder: string
+  readonly secondsLeft: number
+}
+
+/** An active pause that stops the table's ordering. */
+export interface PauseView {
+  readonly id: string
+  readonly scope: string
+  readonly cause: string
+  readonly restroStarted: boolean
+  readonly startedAt: Date
+}
+
+/** The server's view of one table. */
+export interface TableStateRead {
+  readonly unchanged: false
+  readonly version: number
+  readonly table: {
+    readonly id: string
+    readonly venueId: string
+    /** Our name over it, else its number. */
+    readonly label: string
+    readonly barId: string | null
+    readonly isPaymentTable: boolean
+    readonly codeGeneration: number
+  }
+  /** The open sitting, or null when the table is not open for phones. */
+  readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+  /** The open sitting's order, or null before its first write. Lines are the guest API's shape. */
+  readonly order: {
+    readonly lines: readonly unknown[]
+    readonly earlier: readonly unknown[] | null
+    readonly earlierAt: Date | null
+    readonly idleExpiresAt: Date | null
+  } | null
+  /** The open sitting's sent orders, newest first, without their lines' backend references. */
+  readonly sentOrders: readonly {
+    readonly id: string
+    readonly kind: string
+    readonly state: string
+    readonly reason: string | null
+    readonly reference: string
+    readonly createdAt: Date
+    readonly settledAt: Date | null
+  }[]
+  /** Leases held on the table or its sitting, by the database's clock. */
+  readonly leases: readonly LeaseView[]
+  /** Active pauses of the table, its bar or the venue. */
+  readonly pauses: readonly PauseView[]
+  /** When the table's bill was last read, or null. The bill itself is the readings ticket's (#74). */
+  readonly reading: {
+    readonly readSeq: number
+    readonly readAt: Date
+    readonly complete: boolean
+  } | null
+}
+
+/** "Nothing changed since `since`": what most polls get. */
+export interface TableStateUnchanged {
+  readonly unchanged: true
+  readonly version: number
+}
+
+/**
+ * Reads one table's state. With `since` equal to the table's version it answers `unchanged`
+ * after one indexed read. Null when the tenant has no such table, or it was deleted.
+ */
+export async function readTableState(
+  pool: DbPool,
+  input: { readonly tenantId: string; readonly tableId: string; readonly since?: number },
+): Promise<TableStateRead | TableStateUnchanged | null> {
+  return withTenant(pool, input.tenantId, async (tx) => {
+    const version = await tableVersion(tx, input.tableId)
+    if (input.since !== undefined && input.since === version) return { unchanged: true, version }
+
+    const [table] = await tx
+      .select()
+      .from(venueTables)
+      .where(and(eq(venueTables.id, input.tableId), isNull(venueTables.archivedAt)))
+    if (table === undefined) return null
+
+    const [sitting] = await tx
+      .select({ id: sittings.id, openedAt: sittings.openedAt })
+      .from(sittings)
+      .where(and(eq(sittings.tableId, table.id), isNull(sittings.endedAt)))
+    const [order] =
+      sitting === undefined
+        ? []
+        : await tx.select().from(tableOrders).where(eq(tableOrders.sittingId, sitting.id))
+    const sent =
+      sitting === undefined
+        ? []
+        : await tx
+            .select({
+              id: sentOrders.id,
+              kind: sentOrders.kind,
+              state: sentOrders.state,
+              reason: sentOrders.reason,
+              reference: sentOrders.reference,
+              createdAt: sentOrders.createdAt,
+              settledAt: sentOrders.settledAt,
+            })
+            .from(sentOrders)
+            .where(eq(sentOrders.sittingId, sitting.id))
+            .orderBy(desc(sentOrders.createdAt))
+
+    const leaseKeys = [table.id, ...(sitting === undefined ? [] : [sitting.id])]
+    const leases = await tx
+      .select({
+        scope: locks.scope,
+        holder: locks.holder,
+        secondsLeft: sql<string>`ceil(extract(epoch from (${locks.deadline} - now())))::text`,
+      })
+      .from(locks)
+      .where(
+        and(
+          inArray(locks.key, leaseKeys),
+          sql`${locks.holder} is not null and ${locks.deadline} > now()`,
+        ),
+      )
+
+    const pauseTargets = [table.id, table.venueId, ...(table.barId === null ? [] : [table.barId])]
+    const active = await tx
+      .select({
+        id: pauses.id,
+        scope: pauses.scope,
+        cause: pauses.cause,
+        restroStarted: pauses.restroStarted,
+        startedAt: pauses.startedAt,
+      })
+      .from(pauses)
+      .where(and(inArray(pauses.targetId, pauseTargets), isNull(pauses.liftedAt)))
+
+    const [reading] = await tx
+      .select({
+        readSeq: billReadings.readSeq,
+        readAt: billReadings.readAt,
+        complete: billReadings.complete,
+      })
+      .from(billReadings)
+      .where(eq(billReadings.tableId, table.id))
+
+    return {
+      unchanged: false,
+      version,
+      table: {
+        id: table.id,
+        venueId: table.venueId,
+        label: table.name ?? table.number ?? '',
+        barId: table.barId,
+        isPaymentTable: table.isPaymentTable,
+        codeGeneration: table.codeGeneration,
+      },
+      sitting: sitting ?? null,
+      order:
+        order === undefined
+          ? null
+          : {
+              lines: order.lines,
+              earlier: order.earlier,
+              earlierAt: order.earlierAt,
+              idleExpiresAt: order.idleExpiresAt,
+            },
+      sentOrders: sent,
+      leases: leases.flatMap((lease) =>
+        lease.holder === null
+          ? []
+          : [
+              {
+                scope: lease.scope as LeaseScope,
+                holder: lease.holder,
+                secondsLeft: Math.max(0, Number(lease.secondsLeft)),
+              },
+            ],
+      ),
+      pauses: active,
+      reading: reading ?? null,
+    }
+  })
+}
+
+/** One table as Tonight lists it. */
+export interface TonightTable {
+  readonly id: string
+  readonly label: string
+  readonly barId: string | null
+  readonly isPaymentTable: boolean
+  /** The open sitting, or null: the table is open for phones exactly while it has one. */
+  readonly sitting: {
+    readonly id: string
+    readonly openedAt: Date
+    readonly openedHow: string
+  } | null
+}
+
+/** What Tonight shows the actor. Parts the actor may not see are left out, not emptied. */
+export interface Tonight {
+  readonly serviceDate: string
+  /** What the actor holds here; the screen hides what the server would refuse anyway. */
+  readonly permissions: readonly Permission[]
+  readonly tables: readonly TonightTable[]
+  /** Tonight's sent orders, newest first. */
+  readonly sentOrders: readonly {
+    readonly id: string
+    readonly tableId: string
+    readonly kind: string
+    readonly state: string
+    readonly reason: string | null
+    readonly reference: string
+    readonly totalMinor: number
+    readonly createdAt: Date
+    readonly settledAt: Date | null
+  }[]
+  /** Open alerts the actor may answer (or that need no permission). */
+  readonly alerts: readonly {
+    readonly id: string
+    readonly kind: string
+    readonly subjectId: string
+    readonly permission: string | null
+    readonly raisedAt: Date
+    readonly details: Record<string, unknown>
+  }[]
+  /** Open waiter calls, for those who answer them (`alerts.answer`); null otherwise. */
+  readonly waiterCalls:
+    | readonly {
+        readonly id: string
+        readonly tableId: string
+        readonly calledAt: Date
+      }[]
+    | null
+  readonly pauses: readonly PauseView[]
+  /** Tonight's Log, newest first, for `log.view`; null otherwise. */
+  readonly log:
+    | readonly {
+        readonly seq: number
+        readonly at: Date
+        readonly kind: string
+        readonly tableId: string | null
+        readonly sentOrderId: string | null
+        readonly fromState: string | null
+        readonly toState: string | null
+        readonly reason: string | null
+        readonly actor: string
+        readonly via: string | null
+      }[]
+    | null
+}
+
+/** Why Tonight was refused. */
+export type TonightRefusal =
+  | 'origin_not_allowed'
+  | 'permission_denied'
+  | 'pin_required'
+  | 'actor_unknown'
+  | 'venue_missing'
+  | 'venue_archived'
+
+/** How many Log entries Tonight shows at once. */
+export const TONIGHT_LOG_LIMIT = 200
+
+/**
+ * Reads Tonight for a staff actor (a signed-in account, a PIN's person or Restro's admin team).
+ * Refused for anyone else, and for an actor who holds no permission at the venue.
+ */
+export async function readTonight(
+  pool: DbPool,
+  input: {
+    readonly tenantId: string
+    readonly venueId: string
+    readonly actor: ServiceActor
+    readonly now?: Date
+  },
+): Promise<
+  | { readonly ok: true; readonly tonight: Tonight }
+  | { readonly ok: false; readonly code: TonightRefusal }
+> {
+  const { actor } = input
+  if (actor.kind !== 'user' && actor.kind !== 'staff' && actor.kind !== 'operator') {
+    return { ok: false, code: 'origin_not_allowed' }
+  }
+  return withTenant(pool, input.tenantId, async (tx) => {
+    const [venue] = await tx.select().from(venues).where(eq(venues.id, input.venueId))
+    if (venue === undefined) return { ok: false, code: 'venue_missing' } as const
+    if (venue.archivedAt !== null) return { ok: false, code: 'venue_archived' } as const
+
+    const grants = await resolveGrants(tx, input.tenantId, venue.id, actor)
+    if (!grants.ok) return { ok: false, code: grants.code } as const
+    if (grants.permissions.size === 0) return { ok: false, code: 'permission_denied' } as const
+    const held = grants.permissions
+
+    const day = serviceDate(input.now ?? new Date(), venue.timezone, venue.serviceDayEndsAt)
+
+    const tables = await tx
+      .select({
+        id: venueTables.id,
+        name: venueTables.name,
+        number: venueTables.number,
+        barId: venueTables.barId,
+        isPaymentTable: venueTables.isPaymentTable,
+        sittingId: sittings.id,
+        openedAt: sittings.openedAt,
+        openedHow: sittings.openedHow,
+      })
+      .from(venueTables)
+      .leftJoin(sittings, and(eq(sittings.tableId, venueTables.id), isNull(sittings.endedAt)))
+      .where(and(eq(venueTables.venueId, venue.id), isNull(venueTables.archivedAt)))
+      .orderBy(venueTables.sortKey, venueTables.id)
+
+    const sent = await tx
+      .select({
+        id: sentOrders.id,
+        tableId: sentOrders.tableId,
+        kind: sentOrders.kind,
+        state: sentOrders.state,
+        reason: sentOrders.reason,
+        reference: sentOrders.reference,
+        totalMinor: sentOrders.totalMinor,
+        createdAt: sentOrders.createdAt,
+        settledAt: sentOrders.settledAt,
+      })
+      .from(sentOrders)
+      .where(
+        and(
+          eq(sentOrders.venueId, venue.id),
+          or(eq(sentOrders.serviceDate, day), inArray(sentOrders.state, OPEN_SENT_ORDER_STATES)),
+        ),
+      )
+      .orderBy(desc(sentOrders.createdAt))
+
+    const audiences = actor.kind === 'operator' ? ['venue', 'restro'] : ['venue']
+    const openAlerts = await tx
+      .select({
+        id: alerts.id,
+        kind: alerts.kind,
+        subjectId: alerts.subjectId,
+        permission: alerts.permission,
+        raisedAt: alerts.raisedAt,
+        details: alerts.details,
+      })
+      .from(alerts)
+      .where(
+        and(
+          eq(alerts.venueId, venue.id),
+          isNull(alerts.doneAt),
+          inArray(alerts.audience, audiences),
+        ),
+      )
+      .orderBy(alerts.raisedAt)
+
+    const calls = held.has('alerts.answer')
+      ? await tx
+          .select({
+            id: waiterCalls.id,
+            tableId: waiterCalls.tableId,
+            calledAt: waiterCalls.calledAt,
+          })
+          .from(waiterCalls)
+          .where(and(eq(waiterCalls.venueId, venue.id), eq(waiterCalls.state, 'open')))
+          .orderBy(waiterCalls.calledAt)
+      : null
+
+    const active = await tx
+      .select({
+        id: pauses.id,
+        scope: pauses.scope,
+        cause: pauses.cause,
+        restroStarted: pauses.restroStarted,
+        startedAt: pauses.startedAt,
+      })
+      .from(pauses)
+      .where(and(eq(pauses.venueId, venue.id), isNull(pauses.liftedAt)))
+      .orderBy(pauses.startedAt)
+
+    const log = held.has('log.view')
+      ? await tx
+          .select({
+            seq: logEntries.seq,
+            at: logEntries.at,
+            kind: logEntries.kind,
+            tableId: logEntries.tableId,
+            sentOrderId: logEntries.sentOrderId,
+            fromState: logEntries.fromState,
+            toState: logEntries.toState,
+            reason: logEntries.reason,
+            actor: logEntries.actor,
+            via: logEntries.via,
+          })
+          .from(logEntries)
+          .where(and(eq(logEntries.venueId, venue.id), eq(logEntries.serviceDate, day)))
+          .orderBy(desc(logEntries.seq))
+          .limit(TONIGHT_LOG_LIMIT)
+      : null
+
+    const tonight: Tonight = {
+      serviceDate: day,
+      permissions: [...held],
+      tables: tables.map((row) => ({
+        id: row.id,
+        label: row.name ?? row.number ?? '',
+        barId: row.barId,
+        isPaymentTable: row.isPaymentTable,
+        sitting:
+          row.sittingId === null || row.openedAt === null || row.openedHow === null
+            ? null
+            : { id: row.sittingId, openedAt: row.openedAt, openedHow: row.openedHow },
+      })),
+      sentOrders: sent,
+      alerts: openAlerts.filter(
+        (alert) => alert.permission === null || held.has(alert.permission as Permission),
+      ),
+      waiterCalls: calls,
+      pauses: active,
+      log,
+    }
+    return { ok: true, tonight } as const
+  })
+}
