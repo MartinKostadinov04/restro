@@ -143,6 +143,23 @@ export async function databaseError(work: Promise<unknown>): Promise<string> {
  * keys). Venues, templates and tenants follow in `cleanUp`.
  */
 export const DOCUMENT_TABLES_CHILDREN_FIRST = [
+  // The ordering tables (migration 0028), children first.
+  'sent_order_notes',
+  'log_entries',
+  'table_orders',
+  'waiter_calls',
+  'sent_orders',
+  'sittings',
+  'locks',
+  'bill_readings',
+  'alerts',
+  'pauses',
+  'service_days',
+  'staff_assignments',
+  'venue_roles',
+  'shared_devices',
+  'staff_members',
+  'push_subscriptions',
   'events',
   'field_values',
   'placements',
@@ -154,6 +171,7 @@ export const DOCUMENT_TABLES_CHILDREN_FIRST = [
   'job_runs',
   'places',
   'tables',
+  'bars',
   'areas',
   'venue_slug_history',
   'barsy_venues',

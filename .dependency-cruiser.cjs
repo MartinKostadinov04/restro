@@ -23,6 +23,18 @@ const NODE_IO_BUILTINS = [
   'tls',
 ].map((name) => `^(node:)?${name}(/|$)`)
 
+/**
+ * Every connector package (CLAUDE.md "Three layers"): barsy's and those under packages/connectors/
+ * (the simulated POS today, D124). Rules that keep connectors out of a layer match all of them, so
+ * no connector, old or new, falls out of a guard.
+ */
+const CONNECTOR_PACKAGES = [
+  '^packages/barsy/',
+  '^@restro/barsy(/|$)',
+  '^packages/connectors/',
+  '^@restro/sim-pos(/|$)',
+]
+
 /** Database drivers and job queues: I/O that shell and faces must never reach. */
 const IO_PACKAGES = ['pg', 'pg-boss', 'postgres'].flatMap((name) => [
   `^${name}(/|$)`,
@@ -37,14 +49,15 @@ module.exports = {
       name: 'pure-layers-no-data-or-apps',
       severity: 'error',
       comment:
-        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy, @restro/assets or anything under apps/.',
+        'packages/shell and packages/faces/* must not import @restro/db, a connector, @restro/core/service, @restro/assets or anything under apps/.',
       from: { path: ['^packages/shell/', '^packages/faces/'] },
       to: {
         path: [
           '^packages/db/',
           '^@restro/db(/|$)',
-          '^packages/barsy/',
-          '^@restro/barsy(/|$)',
+          ...CONNECTOR_PACKAGES,
+          '^packages/core/src/service/',
+          '^@restro/core/service(/|$)',
           '^packages/assets/',
           '^@restro/assets(/|$)',
           '^apps/',
@@ -95,13 +108,16 @@ module.exports = {
       },
     },
 
-    // 2. One write path (rule 1): only apply() may use the write side of the db package, and
-    //    the package has exactly two doors.
+    // 2. One write path per side (rule 1 as D122 §9 puts it): only apply() (the menu side) and
+    //    applyService() (the service side) may use the write side of the db package, and the
+    //    package has exactly two doors. Which tables each one writes is pinned by
+    //    packages/core/src/write-targets.test.ts.
     {
-      name: 'db-write-only-from-core-apply',
+      name: 'db-write-only-from-core-write-paths',
       severity: 'error',
-      comment: 'Only files under packages/core/src/apply/ may import @restro/db/write.',
-      from: { pathNot: ['^packages/core/src/apply/', '^packages/db/'] },
+      comment:
+        'Only files under packages/core/src/apply/ and packages/core/src/service/ may import @restro/db/write.',
+      from: { pathNot: ['^packages/core/src/(apply|service)/', '^packages/db/'] },
       to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
     },
     {
@@ -134,20 +150,42 @@ module.exports = {
       to: { path: '^packages/db/src/(write|purge)(/|\\.|$)' },
     },
 
-    // 3 and 4. barsy is read by the worker only (CLAUDE.md "Never": web never calls barsy).
+    // The service write path is server code: the worker, the guest API's route handlers and the
+    // admin's server actions call it; the shell, a face or a guest page never do.
     {
-      name: 'barsy-only-from-worker',
+      name: 'core-service-only-from-service-callers',
       severity: 'error',
-      comment: 'Only apps/worker may import @restro/barsy (packages/barsy may import itself).',
-      from: { pathNot: ['^apps/worker/', '^packages/barsy/'] },
-      to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
+      comment:
+        "Only apps/worker, the web app's route handlers (apps/web/app/api/) and its server code (apps/web/src/server/, where the server actions live) may import @restro/core/service (packages/core/src/service/).",
+      from: {
+        pathNot: [
+          '^apps/worker/',
+          '^apps/web/app/api/',
+          '^apps/web/src/server/',
+          '^packages/core/src/service/',
+        ],
+      },
+      to: { path: ['^packages/core/src/service/', '^@restro/core/service(/|$)'] },
+    },
+
+    // 3 and 4. Connectors are called by the worker only (CLAUDE.md "Never": the web never calls a
+    //    POS). These replace barsy-only-from-worker and web-no-barsy and cover every connector
+    //    package (D67: a guard only tightens).
+    {
+      name: 'connectors-only-from-worker',
+      severity: 'error',
+      comment:
+        'Only apps/worker may import a connector package (@restro/barsy, anything under packages/connectors/); a connector package may import itself.',
+      from: { pathNot: ['^apps/worker/', '^packages/barsy/', '^packages/connectors/'] },
+      to: { path: CONNECTOR_PACKAGES },
     },
     {
-      name: 'web-no-barsy',
+      name: 'web-no-connectors',
       severity: 'error',
-      comment: 'apps/web must not import @restro/barsy. It reads barsy state from Postgres.',
+      comment:
+        'apps/web must not import a connector package. It reads what a connector reported from Postgres.',
       from: { path: '^apps/web/' },
-      to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
+      to: { path: CONNECTOR_PACKAGES },
     },
 
     // Sealed credentials (D55): the web seals with the worker's public key; only the worker
@@ -174,14 +212,13 @@ module.exports = {
       name: 'assets-no-database-or-barsy',
       severity: 'error',
       comment:
-        'packages/assets (the asset store, shared by apps/web and apps/worker) must not import @restro/db, @restro/barsy or anything under apps/. The stores hold bytes and sign links; the apps own the database rows.',
+        'packages/assets (the asset store, shared by apps/web and apps/worker) must not import @restro/db, a connector or anything under apps/. The stores hold bytes and sign links; the apps own the database rows.',
       from: { path: '^packages/assets/' },
       to: {
         path: [
           '^packages/db/',
           '^@restro/db(/|$)',
-          '^packages/barsy/',
-          '^@restro/barsy(/|$)',
+          ...CONNECTOR_PACKAGES,
           '^apps/',
           '^@restro/(web|worker)(/|$)',
         ],
@@ -217,7 +254,7 @@ module.exports = {
       name: 'guest-page-reads-published-files-only',
       severity: 'error',
       comment:
-        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
+        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/core/service, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
       from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
       to: {
         path: [
@@ -225,6 +262,8 @@ module.exports = {
           '^@restro/db(/|$)',
           '^packages/core/src/apply/',
           '^@restro/core/apply(/|$)',
+          '^packages/core/src/service/',
+          '^@restro/core/service(/|$)',
           '^packages/assets/',
           '^@restro/assets(/|$)',
           '^apps/web/src/server/',

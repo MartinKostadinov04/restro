@@ -7,7 +7,9 @@ import { z } from 'zod'
  * Id kinds: `nd` node, `as` asset, `sn` snapshot, `tb` table, `tn` tenant, `vn` venue,
  * `tp` template, `cs` change set, `ev` event, `jb` job run, `in` integration, `us` user,
  * `sr` source record, `tg` tag (a venue-defined tag of the guest menu, D60), `ar` area (a hall
- * or other group of tables, D95).
+ * or other group of tables, D95). Ordering (D122 §9, D124): `br` bar, `st` sitting, `to` table
+ * order, `ol` order line, `so` sent order, `wc` waiter call, `al` alert, `pa` pause, `rl` venue
+ * role, `sm` staff member, `dv` shared device.
  */
 export const ID_KINDS = [
   'nd',
@@ -25,6 +27,17 @@ export const ID_KINDS = [
   'sr',
   'tg',
   'ar',
+  'br',
+  'st',
+  'to',
+  'ol',
+  'so',
+  'wc',
+  'al',
+  'pa',
+  'rl',
+  'sm',
+  'dv',
 ] as const
 
 /** One of the id kind prefixes. */
@@ -63,6 +76,28 @@ export type UserId = Id<'us'>
 export type SourceRecordId = Id<'sr'>
 /** Id of a venue-defined tag (D60); the snapshot's `tags` vocabulary is keyed by it. */
 export type TagId = Id<'tg'>
+/** Id of a bar of a venue (`bars`, D124 §1): where a table's orders are made. */
+export type BarId = Id<'br'>
+/** Id of a sitting: one group of guests at a table, from opening to its end (D122 §4). */
+export type SittingId = Id<'st'>
+/** Id of a table's shared order (D117). */
+export type TableOrderId = Id<'to'>
+/** Id of one line of a table's order, kept when the line is sent. */
+export type OrderLineId = Id<'ol'>
+/** Id of a sent order; also the key Restro sends where the POS deduplicates (rule 9). */
+export type SentOrderId = Id<'so'>
+/** Id of a guest's call for a waiter. */
+export type WaiterCallId = Id<'wc'>
+/** Id of an alert (D120). */
+export type AlertId = Id<'al'>
+/** Id of a pause of ordering (D120). */
+export type PauseId = Id<'pa'>
+/** Id of a role at a venue. */
+export type VenueRoleId = Id<'rl'>
+/** Id of a staff member of an organisation (D122 §7). */
+export type StaffMemberId = Id<'sm'>
+/** Id of a shared device of a venue (D122 §7). */
+export type SharedDeviceId = Id<'dv'>
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const RANDOM_BYTES = 16

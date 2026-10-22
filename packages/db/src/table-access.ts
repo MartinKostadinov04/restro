@@ -136,6 +136,33 @@ export const TABLE_ACCESS = {
   tombstones: { tenancy: 'system', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },
   purge_log: { tenancy: 'tenant', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },
 
+  // A venue's bars (migration 0028; D124 §1): menu-side, written by `apply()`, archived by the
+  // app, erased by the purge.
+  bars: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
+  // Service data (migration 0028; D122 §9; ticket #66): written only by `applyService`. Rows are
+  // reused, emptied or ended by an update, never deleted by the app; the purge erases them when
+  // their retention ends (31 days, 18 months, or with the venue). The Log and the notes are
+  // append-only.
+  sittings: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  table_orders: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  sent_orders: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  sent_order_notes: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  locks: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  bill_readings: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  log_entries: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  waiter_calls: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  alerts: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  pauses: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  service_days: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  staff_members: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  venue_roles: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  staff_assignments: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  shared_devices: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  push_subscriptions: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // Restro's admin team (D122 §7): the app only reads it; granting is an operator task.
+  operators: { tenancy: 'system', app: ['SELECT'] },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes

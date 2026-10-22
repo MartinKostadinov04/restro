@@ -42,6 +42,9 @@ export const CONNECTORS: ConnectorKind[] = [
   },
   // Mistral Software (Zamboo) is only a research item (T69); no package exists.
   { kind: 'mistral', words: ['mistral', 'zamboo'], dirs: ['packages/connectors/mistral/src'] },
+  // The simulated POS (D124; ticket #66) is POS-neutral by design: it owns no words, so its
+  // package is a wall for every vendor's. Its switches cite questions by number, never the POS.
+  { kind: 'sim', words: [], dirs: ['packages/connectors/sim-pos/src'] },
 ]
 
 /** Every word that names a connector or its vendor. */

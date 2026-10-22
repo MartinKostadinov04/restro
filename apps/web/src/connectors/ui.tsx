@@ -35,7 +35,10 @@ export interface ConnectorUi {
   readonly VenueSourcePart: ComponentType<VenueSourcePartProps> | null
 }
 
-const UI: { readonly [K in IntegrationKind]: ConnectorUi } = {
+/** Kinds core knows that the web app does not offer yet (the simulated POS, #71); see `server.ts`. */
+type NotOfferedKind = 'sim'
+
+const UI: { readonly [K in Exclude<IntegrationKind, NotOfferedKind>]: ConnectorUi } = {
   barsy: {
     InstanceSettingsCard: ({ data, ...rest }) =>
       data.kind === 'barsy' ? <BarsySettingsCard {...rest} data={data} /> : null,
@@ -46,5 +49,7 @@ const UI: { readonly [K in IntegrationKind]: ConnectorUi } = {
 
 /** The screens a connector supplies, or null for a kind this build does not know. */
 export function connectorUi(kind: string): ConnectorUi | null {
-  return isIntegrationKind(kind) ? UI[kind] : null
+  return isIntegrationKind(kind) && Object.hasOwn(UI, kind)
+    ? UI[kind as Exclude<IntegrationKind, NotOfferedKind>]
+    : null
 }
