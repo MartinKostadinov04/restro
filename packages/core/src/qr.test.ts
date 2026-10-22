@@ -1,5 +1,7 @@
 // The QR addresses (brief S3-07, D61): the checks of the base address and the venue's own pattern,
 // the address a code carries, and the stored setting. Pure.
+import { createHash } from 'node:crypto'
+
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
@@ -7,6 +9,7 @@ import { newTableToken } from './ids'
 import {
   checkBaseUrl,
   checkOwnPattern,
+  hashTableCode,
   isLocalHost,
   isTableToken,
   MAX_QR_BASE_URL_LENGTH,
@@ -257,5 +260,26 @@ describe('table names and tokens', () => {
         expect(newTableToken()).not.toContain(barsyId)
       }),
     )
+  })
+})
+
+describe('hashTableCode', () => {
+  it('is the lower-case hex SHA-256 of the UTF-8 code (what the database stores)', async () => {
+    expect(await hashTableCode('abc')).toBe(
+      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    )
+    await fc.assert(
+      fc.asyncProperty(fc.string(), async (code) => {
+        expect(await hashTableCode(code)).toBe(
+          createHash('sha256').update(code, 'utf8').digest('hex'),
+        )
+      }),
+    )
+  })
+
+  it('gives every new code its own 64-character hash', async () => {
+    const hash = await hashTableCode(newTableToken())
+    expect(hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(hash).not.toBe(await hashTableCode(newTableToken()))
   })
 })

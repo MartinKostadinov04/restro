@@ -3,6 +3,8 @@
 // `@restro/db/write`, which only core/apply may import, and purges through `@restro/db/purge`,
 // which only the worker's purge job may import (dependency-cruiser enforces both).
 // This file must never import from ./write or ./purge.
+import { sql } from 'drizzle-orm'
+
 import { type DbPool, runForTenant, runScoped, type Transaction } from './internal/pool'
 import type {
   areas,
@@ -74,6 +76,50 @@ export function withTenant<T>(
  */
 export function withSystem<T>(pool: DbPool, fn: (tx: SystemTx) => Promise<T>): Promise<T> {
   return runScoped(pool, '', 'read write', fn)
+}
+
+/** Where a guest's table code leads (D121): `restro.guest_table_by_code_hash`'s one row. */
+export interface GuestTableByCode {
+  readonly tenantId: string
+  readonly venueId: string
+  readonly tableId: string
+  readonly codeGeneration: number
+  /** `hidden`: the table or its area is hidden; `venue_not_live`: deleted or taken offline. */
+  readonly state: 'live' | 'hidden' | 'venue_not_live'
+}
+
+const CODE_HASH_PATTERN = /^[0-9a-f]{64}$/
+
+/**
+ * Finds the table a guest's code belongs to, before any tenant is known (D121): the one query
+ * that crosses tenants, through the pinned SECURITY DEFINER function (migration 0029). Takes the
+ * code's SHA-256 hex, never the code. Null for an unknown or malformed hash, a deleted table or
+ * a payment table.
+ */
+export async function guestTableByCodeHash(
+  pool: DbPool,
+  codeHash: string,
+): Promise<GuestTableByCode | null> {
+  if (!CODE_HASH_PATTERN.test(codeHash)) return null
+  return runScoped(pool, '', 'read only', async (tx) => {
+    const result = await tx.execute<{
+      tenant_id: string
+      venue_id: string
+      table_id: string
+      code_generation: number
+      state: GuestTableByCode['state']
+    }>(sql`select tenant_id, venue_id, table_id, code_generation, state
+           from restro.guest_table_by_code_hash(${codeHash})`)
+    const row = result.rows[0]
+    if (!row) return null
+    return {
+      tenantId: row.tenant_id,
+      venueId: row.venue_id,
+      tableId: row.table_id,
+      codeGeneration: row.code_generation,
+      state: row.state,
+    }
+  })
 }
 
 /** A row of restro.tenants. */

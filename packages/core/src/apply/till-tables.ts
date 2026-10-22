@@ -218,7 +218,14 @@ export async function mirrorTillTables(
       continue
     }
     // The till's number and hall follow the till; the manager's name, order and hidden stay.
-    const changes: Partial<{ number: string; areaId: string; archivedAt: null; qrToken: null }> = {}
+    const changes: Partial<{
+      number: string
+      areaId: string
+      archivedAt: null
+      qrToken: null
+      qrCodeHash: null
+      qrCodeSealed: null
+    }> = {}
     const wantedNumber = number ?? (table.name === null ? '—' : table.number)
     if (wantedNumber !== null && wantedNumber !== table.number) changes.number = wantedNumber
     if (table.areaId !== area.id) changes.areaId = area.id
@@ -226,6 +233,8 @@ export async function mirrorTillTables(
     if (table.archivedAt !== null) {
       changes.archivedAt = null
       changes.qrToken = null
+      changes.qrCodeHash = null
+      changes.qrCodeSealed = null
     }
     if (Object.keys(changes).length > 0) {
       await tx.update(venueTables).set(changes).where(eq(venueTables.id, table.id))
