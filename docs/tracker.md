@@ -270,6 +270,14 @@ Moved on 10-17: each decision is a file in `docs/decisions/D<n>.md` (full text, 
 - there's a free sandbox with dummy data and a demo environment with real statuses (Restro uses the demo, log row 3.1), and neither runs 3-D Secure.
 
 Still open: the key's permissions (re-asked), the notice signature, retries and duplicates, the Mistral link, and whether a club gets pre-authorisation.
+
+Second answer 10-22 (M22b):
+- everything is per store, and myPOS switches pre-authorisation on once told a store exists (demo and production);
+- there's no limited key, so Restro's code enforces "no refunds" (log row 3.2);
+- notices are checked with the store's myPOS certificate;
+- myPOS knows of no Mistral partnership.
+
+Left: notice retries and duplicates (re-asked with a concrete case), whether a store can have refunds switched off, and the club's eligibility.
 - Q77. Martin: the charging model for song requests and deposits: a fixed monthly fee, a percentage of captures invoiced monthly, or both (D98 keeps it open; no split inside the payment until a provider offers one).
 - Q78. Martin + Claude: the DJ request queue in templates (D99, D105): which slot and contract a template draws it with, and whether every template must draw it; settled when the song-request port (T82) reaches the face contract; until then the functionality file lists it as "decided, not in the contract yet".
 - Q79. Lukanet (Martin sends): is barsy on the NRA list of sales software (СУПТО), and can it accept an outside order as an Annex 42 import before the venue accepts it? The fiscal research of 10-17 (`docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md`, Q5 and L11) reads ЗДДС чл. 118, ал. 18 and Н-18 чл. 52з as: a venue on listed software may take Restro's orders only as an import, at the latest when it accepts the order. Decides how ordering from the menu enters the POS (T83 and the ordering phase); asked with Q8 and Q24.
