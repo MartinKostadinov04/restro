@@ -14,7 +14,7 @@ Read only what your task needs: the big documents are for looking things up, not
 Fact precedence: official POS docs (barsy: docs.lukanet.com) > the architecture doc > the tracker.
 
 ## Scope right now
-QR → phone only (D38). Current phase (D79): the platform's own functionality, data structure and UI on clean connector data, as planned in `docs/adjustments/adjustments_01.md`. The connector foundation (CF-05 to CF-08) and the Mistral connector are parked. No ordering, payment or webhook **backend** code until the tracker says so.
+QR → phone only (D38). Current phase (D79): ordering from the menu is open (Martin 10-21, map #29). Part 1, ordering onto the table's bill and the Tonight screen, is built on the stage branch `or/foundation` from spec #64 and its tickets, against the simulated POS (`sim-pos`) until Mistral answers. Paying in the app (part 2) waits for its own spec. Parked: the connector foundation (CF-05 to CF-08) and the Mistral connector (#48). Never: webhook or POS-registration code (D41), or any write to a live venue's POS (rule 7).
 
 The guest template's service screens (bag, bill, call a waiter, pay, receipt) exist in the face (D71). Guests see them only once the platform supports them, and they follow D72: no local success.
 
