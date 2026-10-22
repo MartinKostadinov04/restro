@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { assertDevEnvironment, readAdminCredentials } from './guard'
+import { assertDevEnvironment, readAdminCredentials, seedsDemoMenu } from './guard'
 
 const local = {
   NODE_ENV: 'development',
@@ -63,5 +63,13 @@ describe('db:seed:dev refusals', () => {
     expect(() =>
       readAdminCredentials({ DEV_ADMIN_EMAIL: 'a@b.test', DEV_ADMIN_PASSWORD: 'short' }),
     ).toThrow(/8 characters/)
+  })
+})
+
+describe('SEED_DEMO_MENU', () => {
+  it('seeds the demo menus (Demo Bar with them) unless it is 0', () => {
+    expect(seedsDemoMenu({})).toBe(true)
+    expect(seedsDemoMenu({ SEED_DEMO_MENU: '1' })).toBe(true)
+    expect(seedsDemoMenu({ SEED_DEMO_MENU: '0' })).toBe(false)
   })
 })

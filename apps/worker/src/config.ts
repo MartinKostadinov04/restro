@@ -76,7 +76,8 @@ export interface BarsyPolicy {
 
 /**
  * The simulated POS's rules in this environment (#71; test-POS design §7 risk 3). `env` is
- * `production` when NODE_ENV or BARSY_ENV says so, and then the worker refuses every `sim`
+ * `production` when NODE_ENV or the deployment's environment label says so (the same label the host
+ * rules above use), and then the worker refuses every `sim`
  * instance: nothing real is ever pointed at a simulator, and no simulator at production. Outside
  * production only a local host (localhost, 127.0.0.1, ::1, *.localhost, *.test) and the hosts
  * listed in SIM_POS_ALLOWED_HOSTS (a staging demo's own host) are accepted.
@@ -300,6 +301,8 @@ function environmentSchema(defaultWorkerId: () => string) {
         ctx.addIssue({ code: 'custom', path: ['PUBLISH_STORE'], message })
         return z.NEVER
       }
+      // The deployment's environment label: the host rules and the simulated POS's policy share it.
+      const label = env.BARSY_ENV
       return {
         databaseUrl: env.DATABASE_URL,
         purgeDatabaseUrl: env.DATABASE_URL_PURGE ?? null,
@@ -312,12 +315,12 @@ function environmentSchema(defaultWorkerId: () => string) {
             ? { publicKey: env.SEAL_PUBLIC_KEY, privateKey: env.SEAL_PRIVATE_KEY }
             : null,
         barsy: {
-          env: env.BARSY_ENV,
+          env: label,
           allowedHostSuffixes: env.BARSY_ALLOWED_HOST_SUFFIXES ?? [...DEFAULT_BARSY_HOST_SUFFIXES],
           productionHosts: parseAllowedHosts(env.BARSY_PRODUCTION_HOSTS),
         },
         sim: {
-          env: env.NODE_ENV === 'production' ? 'production' : env.BARSY_ENV,
+          env: env.NODE_ENV === 'production' ? 'production' : label,
           allowHosts: env.SIM_POS_ALLOWED_HOSTS ?? [],
         },
         assets,

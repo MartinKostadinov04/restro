@@ -5,7 +5,7 @@
 // pause; two venues share one POS instance (picking their halls or bars, taking turns on one
 // budget, stopped together by one connection pause); and a `sim` instance is refused in
 // production, before the host is asked.
-import { JOB_NAMES, newId } from '@restro/core'
+import { type IntegrationId, JOB_NAMES, newId, type VenueId } from '@restro/core'
 import {
   createIntegration,
   mapBarsyVenue,
@@ -122,7 +122,11 @@ describe.skipIf(!hasDatabase)('the floor reading job', () => {
     await upsertBarsyVenues(pool, tenantId, integrationId, [{ bid, name }])
     const mapped = await mapBarsyVenue(pool, tenantId, integrationId, bid, created.id)
     expect(mapped.ok).toBe(true)
-    return { venueId: created.id, bid, integrationId }
+    return {
+      venueId: created.id as VenueId,
+      bid,
+      integrationId: integrationId as IntegrationId,
+    }
   }
 
   const tablesOf = (venueId: string) =>
@@ -149,7 +153,7 @@ describe.skipIf(!hasDatabase)('the floor reading job', () => {
       [venueId],
     )
 
-  const read = (v: { venueId: string; integrationId: string }, deps = {}) => {
+  const read = (v: { venueId: VenueId; integrationId: IntegrationId }, deps = {}) => {
     simClock.advance(1100)
     return readFloorOf(
       env(),

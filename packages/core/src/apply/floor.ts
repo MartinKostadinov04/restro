@@ -234,7 +234,7 @@ async function writePlaces(
   for (const table of listed) {
     seen.add(table.ref.pos)
     const number = cut(table.name, MAX_NUMBER)
-    const hall = table.area === null ? null : table.area
+    const hall = table.area
     const row = byPlaceId.get(table.ref.pos)
     if (row === undefined) {
       await tx.insert(tillPlaces).values({

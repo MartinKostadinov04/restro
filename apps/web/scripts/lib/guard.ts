@@ -42,3 +42,12 @@ export function readAdminCredentials(env: Record<string, string | undefined>): {
   if (password.length < 8) throw new Error('DEV_ADMIN_PASSWORD needs at least 8 characters.')
   return { email, password }
 }
+
+/**
+ * Whether the dev seed writes the demo menus (the Demo Club venue's barsy-shaped menu and Demo Bar's
+ * simulated-POS menu): not when SEED_DEMO_MENU is 0, which leaves the venues empty for a real sync
+ * (the Stage 2 acceptance run). Demo Bar is skipped with it.
+ */
+export function seedsDemoMenu(env: Record<string, string | undefined>): boolean {
+  return env.SEED_DEMO_MENU !== '0'
+}

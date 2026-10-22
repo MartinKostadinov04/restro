@@ -16,7 +16,8 @@ import { and, eq } from 'drizzle-orm'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
-import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
+import { assertDevEnvironment, readAdminCredentials, seedsDemoMenu } from './lib/guard'
+import { seedDemoBar } from './lib/seed-demo-bar'
 import { seedDemoMenu } from './lib/seed-demo-menu'
 
 const ORGANIZATION = { name: 'Demo Club', slug: 'demo-club' }
@@ -96,16 +97,21 @@ async function main(): Promise<void> {
 
   // 5. The demo menu (made-up items), unless SEED_DEMO_MENU=0: then the venue starts empty and
   // its menu comes from a real barsy sync (the Stage 2 acceptance run).
-  const menu =
-    process.env.SEED_DEMO_MENU === '0'
-      ? null
-      : await seedDemoMenu(pool, organizationId, venueId, userId)
+  const menu = seedsDemoMenu(process.env)
+    ? await seedDemoMenu(pool, organizationId, venueId, userId)
+    : null
+
+  // 6. Demo Bar: a venue on a simulated POS (#71), unless SEED_DEMO_MENU=0. Its menu is written
+  // through apply() from the same scenario file the simulator loads; its bars and tables come
+  // from the simulator through the worker's floor reading (start `pnpm sim:serve` and the worker).
+  const demoBar = seedsDemoMenu(process.env) ? await seedDemoBar(pool, organizationId) : null
 
   console.log(
     JSON.stringify({
       level: 'info',
       event: 'seed_dev_done',
       menu,
+      demoBar,
       organization: ORGANIZATION.name,
       organizationId,
       venue: VENUE.name,

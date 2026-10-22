@@ -337,6 +337,9 @@ describe('buildJobs', () => {
     const jobs = await buildJobs(configWithoutKeys, log)
     expect(jobs.map((job) => job.name)).toEqual([
       'worker-heartbeat',
+      // The floor reading (#71) needs no sealing keys: the simulated POS has no credentials.
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -372,6 +375,8 @@ describe('buildJobs', () => {
       JOB_NAMES.placesRead,
       JOB_NAMES.assetFetch,
       JOB_NAMES.barsySyncTick,
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
