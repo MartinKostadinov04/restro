@@ -25,7 +25,7 @@ It is a living file: when an answer arrives, replace the `open` text on that POS
 
 The list does not ask what these settle. Restro writes into a POS only as a waiter would (D110). No webhooks: Restro polls (D41). Approval at the bar is a venue setting for on-the-bill orders, offered only where the POS supports it (D116); orders that arrive late are out of scope for now. A guest's on-the-bill order is added as a round to the table's oldest open POS bill, and opens a new POS bill stamped with Restro's code only when the table has none; a round that times out is checked by reading back, never resent (D115). The guest sees one bill per table: its open POS bills. A pay-first order is its own paid, closed POS bill. Paying early for chosen items is a split. Part payment of an amount on an open POS bill waits for the POS and fiscal answers. Refunds happen at the venue, not through Restro.
 
-Summary: 53 questions, 38 blocking.
+Summary: 56 questions, 40 blocking.
 
 ## 1. Connecting and setup
 
@@ -104,6 +104,11 @@ Summary: 53 questions, 38 blocking.
 ### C53. Can the bar approve or decline an outside order in the POS before it counts, and can Restro read the approval and the decline back?
 **Later.** Approval at the bar is a venue setting, off by default and offered only where the POS answers yes (D116). With it on, an order is Awaiting approval until the bar approves; a decline returns the lines to the guest's bag. Also: does approval apply per POS bill or per round (a round added to a POS bill the bar already approved), how long an order may wait, and does a paid, closed POS bill ever wait for approval (D116 keeps pay-first orders out of approval).
 - barsy: partly known: approval is a mode per cash desk ("Без одобрение", "Ръчен", "Директно след плащане", "Автоматичен"), bills waiting appear under "За потвърждение", and `service_status_id` 2 reads "waiting for approval" (requirements P6.4, api-reference). Which status an API bill gets under each mode, whether `Accounts_place` honours the mode, and how a decline reads back: open: Q82.4, Q82.5.
+- Mistral: open: no public API (T69).
+
+### C54. Can Restro add a round to an open POS bill that staff opened, and what decides it: the API user's rights, a lock on the POS bill, who the POS bill belongs to?
+**Later.** Until it is answered yes, a sent order joins only Restro's own POS bills, and opens one where the POS allows it (D124 §3).
+- barsy: open: not yet asked. `Accounts_place` continues a bill by `account_id` and says nothing about whose bill it is; AccountData carries `is_locked` and a per-user `user_can_edit`, and what either means for a write by the API user is not stated (api-reference; C29 asks about `is_locked`, C9 about the rights). Added 10-22 from the lead's review of PR #88.
 - Mistral: open: no public API (T69).
 
 ## 3. Not sending twice
@@ -200,6 +205,16 @@ Summary: 53 questions, 38 blocking.
 ### C31. If a split, merge or move times out, can Restro tell whether it happened (for example a stamp on the resulting POS bill), and is a repeat harmless?
 **Later.** The first build reads the table back instead.
 - barsy: partly known: `Accounts_divide` takes no code of ours; `Accounts_save_notes` can write notes afterwards (api-reference). Not yet asked (processes section 9).
+- Mistral: open: no public API (T69).
+
+### C55. When Restro splits chosen rows off a POS bill, can it name the exact row, or only an item and a quantity? If only the item, which row does the POS take when two rows share it (staff's or Restro's, with different options or prices)?
+**Blocking.** A guest pays for the row they picked, not another row of the same item.
+- barsy: partly known: `Accounts_divide` takes `orders` as OrderMakeData, an `article_id` and an `amount`, not a row id (api-reference). Which row it takes when two rows share an article: not yet asked. Added 10-22 from the lead's review of PR #88.
+- Mistral: open: no public API (T69).
+
+### C56. On which table does the new POS bill of a split land, and does it read back with that table's open POS bills?
+**Blocking.** Restro reads the split-off POS bill back before taking a payment, and keeps sent orders off it while the payment runs.
+- barsy: open: not yet asked. `Accounts_divide` returns the new bill's id; which `place_id` the new bill gets is not stated (api-reference). Added 10-22 from the lead's review of PR #88.
 - Mistral: open: no public API (T69).
 
 ## 6. Paying and closing
