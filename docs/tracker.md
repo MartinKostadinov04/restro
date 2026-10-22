@@ -278,6 +278,17 @@ Second answer 10-22 (M22b):
 - myPOS knows of no Mistral partnership.
 
 Left: notice retries and duplicates (re-asked with a concrete case), whether a store can have refunds switched off, and the club's eligibility.
+
+Third answer 10-22 (M22c):
+- a club is eligible;
+- a cancel within seconds is free;
+- the tip goes inside the hold;
+- a notice is never resent, and an unconfirmed one reverses the payment;
+- one `OrderID` survives failed attempts;
+- turning refunds off would block the venue's own refunds;
+- Apple Pay and Google Pay come only with an immediate charge, never with a hold (log row 1.10, Martin's call).
+
+Left: the Checkout page in Bulgarian, to try in the demo.
 - Q77. Martin: the charging model for song requests and deposits: a fixed monthly fee, a percentage of captures invoiced monthly, or both (D98 keeps it open; no split inside the payment until a provider offers one).
 - Q78. Martin + Claude: the DJ request queue in templates (D99, D105): which slot and contract a template draws it with, and whether every template must draw it; settled when the song-request port (T82) reaches the face contract; until then the functionality file lists it as "decided, not in the contract yet".
 - Q79. Lukanet (Martin sends): is barsy on the NRA list of sales software (СУПТО), and can it accept an outside order as an Annex 42 import before the venue accepts it? The fiscal research of 10-17 (`docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md`, Q5 and L11) reads ЗДДС чл. 118, ал. 18 and Н-18 чл. 52з as: a venue on listed software may take Restro's orders only as an import, at the latest when it accepts the order. Decides how ordering from the menu enters the POS (T83 and the ordering phase); asked with Q8 and Q24.
