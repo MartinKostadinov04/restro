@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./apply": "./src/apply/index.ts",
+    "./connectors/testing": "./src/connectors/service/testing/index.ts",
     "./seal": "./src/seal/index.ts",
     "./seal-open": "./src/seal/open/index.ts"
   },
