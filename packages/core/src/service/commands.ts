@@ -3,7 +3,7 @@
 // recognised. A command is a stub, refused `not_built`, until its ticket gives it a handler and
 // the rest of its payload: the machinery around them (origins, permissions, provenance, locks,
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
-// table-code commands (#70).
+// table-code commands (#70) and the roles, staff, PINs and shared devices (#72).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -11,11 +11,33 @@
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
-import { type CommandDefinition, defineCommand } from './definition'
+import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
+import {
+  addStaff,
+  archiveRole,
+  archiveStaff,
+  assignStaff,
+  copyRole,
+  DeviceNameSchema,
+  DisplayNameSchema,
+  linkStaffAccount,
+  MAX_REVEALED_PINS,
+  markSharedDevice,
+  PermissionListSchema,
+  RoleNameSchema,
+  RoleRefSchema,
+  renameStaff,
+  resetPin,
+  revealPins,
+  revokeSharedDevice,
+  unassignStaff,
+  updateRole,
+} from './staff'
 import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
 
 const tableId = idSchema('tb')
 const actionId = z.uuid()
+const staffMemberId = idSchema('sm')
 
 /** A guest edit of the table's order (the guest API's, #75). */
 function orderEdit<T extends string>(type: T) {
@@ -43,16 +65,33 @@ function staffOnTable<T extends string>(
 }
 
 /** A staff action on the whole venue. */
-function staffOnVenue<T extends string>(
-  type: T,
-  permission: 'tables.open_close' | 'settings.roles',
-) {
+function staffOnVenue<T extends string>(type: T, permission: 'tables.open_close') {
   return defineCommand({
     schema: z.strictObject({ type: z.literal(type) }),
     origins: ['staff'],
     permission,
     idempotency: 'by_nature',
     handle: null,
+  })
+}
+
+/**
+ * A change to the venue's roles, staff, PINs or shared devices (#72): `settings.roles`, with the
+ * password entered within the last 15 minutes (D122 §7). A repeat makes the change again, or finds
+ * it made and changes nothing.
+ */
+function rolesChange<T extends string, F extends z.ZodRawShape>(
+  type: T,
+  fields: F,
+  handle: CommandHandler<z.infer<z.ZodObject<F & { type: z.ZodLiteral<T> }>>>,
+) {
+  return defineCommand({
+    schema: z.strictObject({ type: z.literal(type), ...fields }),
+    origins: ['staff'],
+    permission: 'settings.roles',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle,
   })
 }
 
@@ -152,8 +191,66 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: revealTableCodes,
   }),
-  'roles.change': staffOnVenue('roles.change', 'settings.roles'), // #72
-  'staff.change': staffOnVenue('staff.change', 'settings.roles'), // #72
+  // #72: roles. A default role is named by its kind (`staff`, `manager`, `owner`).
+  'role.copy': rolesChange(
+    'role.copy',
+    { fromRoleId: RoleRefSchema, name: RoleNameSchema },
+    copyRole,
+  ),
+  'role.update': rolesChange(
+    'role.update',
+    {
+      roleId: idSchema('rl'),
+      name: RoleNameSchema.optional(),
+      permissions: PermissionListSchema.optional(),
+    },
+    updateRole,
+  ),
+  'role.archive': rolesChange('role.archive', { roleId: idSchema('rl') }, archiveRole),
+  // #72: staff members and their assignment at this venue.
+  'staff.add': rolesChange(
+    'staff.add',
+    { displayName: DisplayNameSchema, roleId: RoleRefSchema },
+    addStaff,
+  ),
+  'staff.rename': rolesChange(
+    'staff.rename',
+    { staffMemberId, displayName: DisplayNameSchema },
+    renameStaff,
+  ),
+  'staff.assign': rolesChange(
+    'staff.assign',
+    { staffMemberId, roleId: RoleRefSchema },
+    assignStaff,
+  ),
+  'staff.unassign': rolesChange('staff.unassign', { staffMemberId }, unassignStaff),
+  'staff.archive': rolesChange('staff.archive', { staffMemberId }, archiveStaff),
+  'staff.link_account': rolesChange(
+    'staff.link_account',
+    {
+      staffMemberId,
+      userId: z
+        .string()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/)
+        .nullable(),
+    },
+    linkStaffAccount,
+  ),
+  // #72: PINs. "New PIN" draws another; seeing PINs again is the worker's reveal endpoint, which
+  // opens the sealed copies once this is accepted. Both need a fresh sign-in.
+  'pin.reset': rolesChange('pin.reset', { staffMemberId }, resetPin),
+  'pin.reveal': rolesChange(
+    'pin.reveal',
+    { staffMemberIds: z.array(staffMemberId).min(1).max(MAX_REVEALED_PINS) },
+    revealPins,
+  ),
+  // #72: shared devices (the signed-in session marks itself; revoking is done from another).
+  'device.mark_shared': rolesChange(
+    'device.mark_shared',
+    { name: DeviceNameSchema },
+    markSharedDevice,
+  ),
+  'device.revoke': rolesChange('device.revoke', { deviceId: idSchema('dv') }, revokeSharedDevice),
 
   // Worker (D122 §9: readings, sent orders, pauses, sittings, notices, sweeps, the day's end).
   'reading.record': workerStep('reading.record', { tableId }), // #74

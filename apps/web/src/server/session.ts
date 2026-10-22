@@ -29,6 +29,11 @@ export interface Access {
    * (`ServiceContext.actor.sessionId`), e.g. for a table code's reveal (#70).
    */
   readonly sessionId: string
+  /**
+   * When this session began, i.e. when the person last entered their password (#72): a settings
+   * change asks for it again after 15 minutes (`FRESH_SIGN_IN_MINUTES`, D122 §7).
+   */
+  readonly signedInAt: Date
   readonly organizations: readonly Organization[]
   /** The organisation (tenant) every data query is scoped to; null if they belong to none. */
   readonly organization: Organization | null
@@ -62,6 +67,7 @@ export const getAccess = cache(async (): Promise<Access | null> => {
   return {
     user: { id: session.user.id, name: session.user.name, email: session.user.email },
     sessionId: session.session.id,
+    signedInAt: new Date(session.session.createdAt),
     organizations,
     organization,
   }

@@ -95,6 +95,11 @@ export const ServiceContextSchema = z
     via: z.enum(VIA_VALUES).optional(),
     /** The clock for decisions made in memory (the service day); deadlines use the database's. */
     now: z.date().optional(),
+    /**
+     * When a signed-in actor last entered their password: their session's start. A settings
+     * change needs it within `FRESH_SIGN_IN_MINUTES` (D122 §7).
+     */
+    signedInAt: z.date().optional(),
   })
   .superRefine((context, issues) => {
     if (!ACTOR_KINDS_BY_ORIGIN[context.origin].includes(context.actor.kind)) {
@@ -122,6 +127,23 @@ export interface ServiceContext {
   readonly jobId: string
   readonly via?: Via
   readonly now?: Date
+  readonly signedInAt?: Date
+}
+
+/**
+ * How long after entering their password a person may change settings (D122 §7: the password
+ * again before a settings change after 15 minutes). Better Auth's `freshAge` uses the same.
+ */
+export const FRESH_SIGN_IN_MINUTES = 15
+
+/**
+ * True when a signed-in actor entered their password recently enough to change settings at `now`.
+ * A time in the future (a clock that ran ahead) counts as not fresh.
+ */
+export function isFreshSignIn(signedInAt: Date | undefined, now: Date): boolean {
+  if (signedInAt === undefined) return false
+  const age = now.getTime() - signedInAt.getTime()
+  return age >= -60_000 && age < FRESH_SIGN_IN_MINUTES * 60_000
 }
 
 /** The provenance columns of a service row (rule 2). */

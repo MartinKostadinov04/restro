@@ -34,7 +34,7 @@ import type { JobDefinition, WorkerContext } from './jobs/types'
 import { WORKER_HEARTBEAT_JOB } from './jobs/worker-heartbeat'
 import type { Logger } from './logger'
 import { registerJobs } from './registry'
-import { revealTableCodes } from './reveal'
+import { reveal } from './reveal'
 import { WORKER_VERSION } from './version'
 
 /** How long running jobs get to finish when the worker stops. */
@@ -151,8 +151,8 @@ export async function startWorker(
       const deps = { pool, privateKey: config.seal.privateKey }
       health.setRevealHandler({
         token: config.revealToken,
-        reveal: (request) => revealTableCodes(deps, request),
-        failed: (error) => log.error({ err: error }, 'a table-code reveal failed'),
+        reveal: (request) => reveal(deps, request),
+        failed: (error) => log.error({ err: error }, 'a reveal failed'),
       })
     } else if (config.revealToken !== null) {
       log.warn('REVEAL_SERVICE_TOKEN is set without the seal keys: the reveal endpoint is off')

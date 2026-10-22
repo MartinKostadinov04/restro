@@ -3,11 +3,13 @@
 // would refuse anyway.
 // - An organisation's owner or admin (`auth_member.role`) holds every permission at every venue,
 //   implicitly, so nobody can lock the organisation out.
-// - Anyone else holds their venue role's permissions, through their one assignment at the venue.
+// - Anyone else holds their venue role's permissions, through their one assignment at the venue. A
+//   default role holds what the code says it holds (`DEFAULT_ROLE_PERMISSIONS`), never its stored
+//   copy, so a permission shipped later reaches every venue's defaults at once.
 // - On a shared device every staff write needs the person's own PIN, and that person's role
 //   decides, never the signed-in account's. A PIN never unlocks a settings permission.
 // - Restro's admin team holds its own few permissions at any venue while its grant is active.
-// The roles, staff and PINs themselves are #72's; this is only the check.
+// The roles, staff and PINs themselves are written by `staff.ts` (#72); this is only the check.
 
 import {
   authMember,
@@ -22,7 +24,9 @@ import { and, eq, isNull } from 'drizzle-orm'
 
 import type { ServiceActor } from './context'
 import {
+  DEFAULT_ROLE_PERMISSIONS,
   grantedPermissions,
+  isDefaultRoleKind,
   isSettingsPermission,
   OPERATOR_PERMISSIONS,
   PERMISSIONS,
@@ -76,7 +80,7 @@ async function assignedPermissions(
   staffMemberId: string,
 ): Promise<Permission[]> {
   const [role] = await tx
-    .select({ permissions: venueRoles.permissions })
+    .select({ permissions: venueRoles.permissions, defaultKind: venueRoles.defaultKind })
     .from(staffAssignments)
     .innerJoin(venueRoles, eq(venueRoles.id, staffAssignments.roleId))
     .where(
@@ -88,7 +92,12 @@ async function assignedPermissions(
         isNull(venueRoles.archivedAt),
       ),
     )
-  return role === undefined ? [] : grantedPermissions(role.permissions)
+  if (role === undefined) return []
+  return grantedPermissions(
+    isDefaultRoleKind(role.defaultKind)
+      ? DEFAULT_ROLE_PERMISSIONS[role.defaultKind]
+      : role.permissions,
+  )
 }
 
 /**

@@ -8,12 +8,19 @@ import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import { newId } from '../../ids'
-import { type SealContext, SealError, sealBarsyCredentials, sealSecret } from '../index'
+import {
+  type SealContext,
+  SealError,
+  sealBarsyCredentials,
+  sealSecret,
+  sealStaffPin,
+} from '../index'
 import {
   generateSealKeyPair,
   isSealKeyPair,
   openBarsyCredentials,
   openSecret,
+  openStaffPin,
   parseSealPrivateKey,
 } from './index'
 
@@ -169,6 +176,35 @@ describe('key helpers', () => {
     })
     expect(isSealKeyPair(publicKey, privateKey)).toBe(true)
     expect(isSealKeyPair(publicKey, parseSealPrivateKey(other.privateKey))).toBe(false)
+  })
+})
+
+describe('staff PINs (#72)', () => {
+  const person = { tenantId: newId('tn'), staffMemberId: newId('sm') }
+
+  it('round-trip, bound to the tenant and the person', () => {
+    const sealed = sealStaffPin(keys.publicKey, '4821', person)
+    expect(sealed).not.toContain('4821')
+    expect(openStaffPin(keys.privateKey, sealed, person)).toBe('4821')
+    expect(
+      errorOf(() =>
+        openStaffPin(keys.privateKey, sealed, { ...person, staffMemberId: newId('sm') }),
+      ).code,
+    ).toBe('open_failed')
+    expect(
+      errorOf(() => openStaffPin(keys.privateKey, sealed, { ...person, tenantId: newId('tn') }))
+        .code,
+    ).toBe('open_failed')
+  })
+
+  it('seal and open only four digits', () => {
+    expect(errorOf(() => sealStaffPin(keys.publicKey, '48211', person)).code).toBe(
+      'invalid_payload',
+    )
+    const notPin = sealSecret(keys.publicKey, 'abcd', { purpose: 'staff_pin', ...person })
+    const error = errorOf(() => openStaffPin(keys.privateKey, notPin, person))
+    expect(error.code).toBe('invalid_payload')
+    expect(error.message).not.toContain('abcd')
   })
 })
 
