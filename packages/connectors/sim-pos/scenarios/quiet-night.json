@@ -1,0 +1,19 @@
+{
+  "name": "quiet-night",
+  "extends": "demo-bar",
+  "description": "A slow Tuesday: Table 7 is open with a 46.00 EUR bill Maria started, nothing else, no faults. The dev seed's default.",
+  "bills": [
+    {
+      "table": "up 7",
+      "by": "maria",
+      "minutesAgo": 75,
+      "rows": [
+        { "article": "2001", "quantity": "1" },
+        { "article": "2002", "quantity": "1" },
+        { "article": "2003", "quantity": "1" },
+        { "article": "2102", "quantity": "2" },
+        { "article": "2202", "quantity": "2" }
+      ]
+    }
+  ]
+}

@@ -22,6 +22,7 @@
     "@restro/barsy": "workspace:*",
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
+    "@restro/sim-pos": "workspace:*",
     "drizzle-orm": "0.45.3",
     "pg": "8.23.0",
     "pg-boss": "12.35.1",

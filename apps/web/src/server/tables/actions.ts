@@ -4,16 +4,19 @@
 // asking (`requireTenant`: the tenant is the person's organisation, never the request's), that
 // the venue is theirs and whether their role may change codes, areas, tables and menus (owners
 // and admins), checks the input with Zod and calls service.ts. After a change the venue page and
-// its print sheet are revalidated, so the client gets the fresh tab in the same round trip.
+// its print sheet are revalidated, so the client gets the fresh tab in the same round trip. The
+// one action that changes nothing, `revealCodesAction`, refreshes nothing: the tab asks it for its
+// codes once the page is up (#70).
 import { idSchema } from '@restro/core'
 import { findVenueTable } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { getPool } from '../db'
-import { serverEnv } from '../env'
+import { defaultQrBaseUrl, serverEnv } from '../env'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
+import { revealConfig, revealFor } from '../reveal'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
 import { getVenue } from '../venues'
@@ -32,11 +35,12 @@ import {
   renameAreaOf,
   renameTable,
   renumberTable,
+  revealCodes,
   type TablesScope,
   type TablesServices,
   turnOffCode,
 } from './service'
-import type { TablesActionResult } from './view'
+import type { RevealCodesResult, TablesActionResult } from './view'
 
 const tableId = idSchema('tb')
 const areaId = idSchema('ar')
@@ -68,6 +72,8 @@ const MoveTable = z.strictObject({
   position,
 })
 const OnVenueTable = z.strictObject({ venueId, tableId })
+/** The tables whose codes the tab draws (a venue has far fewer). */
+const RevealTables = z.strictObject({ venueId, tableIds: z.array(tableId).min(1).max(1_000) })
 const MenuRoute = z.strictObject({
   venueId,
   target: z.union([z.strictObject({ areaId }), z.strictObject({ tableId })]),
@@ -117,6 +123,39 @@ async function perform(
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
     logError('tables_action_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+/**
+ * Opens the codes the tab draws (#70), through the worker, which checks the person may see them
+ * and writes the reveal's Log entry. Revalidates nothing: the tab keeps the codes it was given,
+ * and an action's refresh asks for none again.
+ */
+export async function revealCodesAction(input: unknown): Promise<RevealCodesResult> {
+  const parsed = RevealTables.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    // Another tenant's venue and a made-up id both come back as null (row-level security).
+    const found = await getVenue(organization.id, parsed.data.venueId)
+    if (!found) return { ok: false, error: 'not_found' }
+    const actor = { userId: user.id, sessionId }
+    return await revealCodes(
+      {
+        pool: getPool(),
+        tenantId: organization.id,
+        venue: found,
+        canManage: canManageIntegration(organization.role),
+        actor,
+      },
+      defaultQrBaseUrl(),
+      parsed.data.tableIds,
+      revealFor(revealConfig(), { tenantId: organization.id, venueId: found.id, actor }),
+    )
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tables_reveal_failed', error)
     return { ok: false, error: 'failed' }
   }
 }

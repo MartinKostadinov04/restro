@@ -73,6 +73,17 @@ export const JOB_NAMES = {
    */
   placesRead: 'places-read',
   /**
+   * Read the floor of one venue's till venue through the service connector (#71): its tables, the
+   * payment tables among them and the bars where the POS has them. Only the simulated POS reads
+   * a floor today; the worker refuses that kind in production.
+   */
+  floorRead: 'floor-read',
+  /**
+   * Scheduled, every minute (#71): queues `floor-read` for each mapped venue of a connector that
+   * reads its floor whose last read is older than the floor read interval. Not sent by anyone else.
+   */
+  floorReadTick: 'floor-read-tick',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`
@@ -185,6 +196,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyIncremental]: BarsyPullJobSchema,
   [JOB_NAMES.assetFetch]: AssetFetchJobSchema,
   [JOB_NAMES.placesRead]: VenueSyncJobSchema,
+  [JOB_NAMES.floorRead]: VenueSyncJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
@@ -217,6 +229,7 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.assetFetch,
   JOB_NAMES.assetVariants,
   JOB_NAMES.placesRead,
+  JOB_NAMES.floorRead,
 ])
 
 /**
