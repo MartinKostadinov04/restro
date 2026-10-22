@@ -83,6 +83,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       prettyLogs: false,
       seal: world.keys,
       barsy: policy as WorkerConfig['barsy'],
+      sim: { env: 'test', allowHosts: [] },
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
     }

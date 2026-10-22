@@ -347,3 +347,23 @@ export function buildEngine(
   }
   return engine
 }
+
+/**
+ * The login Restro's connector reads the whole floor with: the API login that sees every bar. A
+ * simulated POS with one login per bar (`oneLoginPerBar`, Q19) has none: each of its logins sees
+ * one bar, and one connector per login is not built yet, so a scenario that uses the floor reading
+ * turns the switch off.
+ */
+export function readingLogin(resolved: ResolvedScenario): { user: string; password: string } {
+  const login = resolved.scenario.logins.find(
+    (candidate) =>
+      candidate.kind === 'api' &&
+      (resolved.switches.oneLoginPerBar ? candidate.bars.length > 0 : candidate.bars.length === 0),
+  )
+  if (login === undefined || resolved.switches.oneLoginPerBar) {
+    throw new ScenarioFileError(
+      `${resolved.name}: no login sees every bar (turn oneLoginPerBar off to read the whole floor)`,
+    )
+  }
+  return { user: login.id, password: login.password ?? SIM_PASSWORD }
+}

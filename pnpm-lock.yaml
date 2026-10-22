@@ -162,6 +162,9 @@ importers:
       '@restro/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@restro/sim-pos':
+        specifier: workspace:*
+        version: link:../../packages/connectors/sim-pos
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.0)

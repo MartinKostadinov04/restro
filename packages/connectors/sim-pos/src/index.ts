@@ -45,6 +45,7 @@ export {
   listScenarioNames,
   loadScenarioFile,
   type ResolvedScenario,
+  readingLogin,
   type ScenarioFile,
   ScenarioFileError,
   type ScenarioMenu,

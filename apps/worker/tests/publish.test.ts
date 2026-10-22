@@ -779,6 +779,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         prettyLogs: false,
         seal: null,
         barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+        sim: { env: 'test', allowHosts: [] },
         assets: { kind: 'local', dir: tmpdir() },
         publish: { kind: 'local', dir: root },
       }

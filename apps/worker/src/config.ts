@@ -17,6 +17,7 @@ import {
 import { BARSY_ENVS, type BarsyEnv, parseAllowedHosts } from '@restro/barsy'
 import { parseSealPublicKey } from '@restro/core/seal'
 import { isSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open'
+import type { SimEnv } from '@restro/sim-pos'
 import { z } from 'zod'
 
 /** Port of the health endpoint when WORKER_HEALTH_PORT is not set. */
@@ -52,6 +53,8 @@ export interface WorkerConfig {
   readonly seal: SealKeys | null
   /** Which barsy installations this process may talk to (CLAUDE.md rule 9). */
   readonly barsy: BarsyPolicy
+  /** Which simulated POS hosts this process may talk to, and whether it may at all (#71). */
+  readonly sim: SimPolicy
   /** Where barsy photos are stored: the same store the web app reads (`@restro/assets`). */
   readonly assets: AssetStoreConfig
   /** Where published menus and photo variants go: the store the `/cdn` route (later the CDN) serves. */
@@ -69,6 +72,18 @@ export interface BarsyPolicy {
   readonly allowedHostSuffixes: readonly string[]
   /** Hosts of live venues: every environment except `production` refuses them. */
   readonly productionHosts: readonly string[]
+}
+
+/**
+ * The simulated POS's rules in this environment (#71; test-POS design §7 risk 3). `env` is
+ * `production` when NODE_ENV or BARSY_ENV says so, and then the worker refuses every `sim`
+ * instance: nothing real is ever pointed at a simulator, and no simulator at production. Outside
+ * production only a local host (localhost, 127.0.0.1, ::1, *.localhost, *.test) and the hosts
+ * listed in SIM_POS_ALLOWED_HOSTS (a staging demo's own host) are accepted.
+ */
+export interface SimPolicy {
+  readonly env: SimEnv
+  readonly allowHosts: readonly string[]
 }
 
 /** Default of BARSY_ALLOWED_HOST_SUFFIXES. */
@@ -205,6 +220,7 @@ function environmentSchema(defaultWorkerId: () => string) {
       ),
       BARSY_ALLOWED_HOST_SUFFIXES: z.preprocess(commaList, z.array(z.string()).optional()),
       BARSY_PRODUCTION_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
+      SIM_POS_ALLOWED_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
       // Passed on to @restro/assets (assetStoreConfig), which names the problems itself.
       ASSET_STORE: z.string().optional(),
       LOCAL_ASSET_DIR: z.string().optional(),
@@ -300,6 +316,10 @@ function environmentSchema(defaultWorkerId: () => string) {
           allowedHostSuffixes: env.BARSY_ALLOWED_HOST_SUFFIXES ?? [...DEFAULT_BARSY_HOST_SUFFIXES],
           productionHosts: parseAllowedHosts(env.BARSY_PRODUCTION_HOSTS),
         },
+        sim: {
+          env: env.NODE_ENV === 'production' ? 'production' : env.BARSY_ENV,
+          allowHosts: env.SIM_POS_ALLOWED_HOSTS ?? [],
+        },
         assets,
         publish,
       }
@@ -327,6 +347,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `BARSY_ENV` | development, test, staging or production (the host rules below) | development |
  * | `BARSY_ALLOWED_HOST_SUFFIXES` | comma-separated; an integration host must end with one | .barsyonline.com |
  * | `BARSY_PRODUCTION_HOSTS` | comma-separated hosts of live venues; every env but production refuses them | none |
+ * | `SIM_POS_ALLOWED_HOSTS` | comma-separated hosts a staging demo's simulated POS runs on; local hosts are always allowed; production refuses a `sim` instance outright | none |
  * | `ASSET_STORE`, `LOCAL_ASSET_DIR`, `R2_*` | where barsy photos go (see @restro/assets) | local in development |
  */
 export function loadConfig(
