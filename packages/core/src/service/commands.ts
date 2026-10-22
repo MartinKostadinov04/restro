@@ -11,6 +11,7 @@ import { z } from 'zod'
 
 import { idSchema } from '../ids'
 import { type CommandDefinition, defineCommand } from './definition'
+import { tableReturned, tableVanished } from './floor-pause'
 
 const tableId = idSchema('tb')
 const actionId = z.uuid()
@@ -135,6 +136,9 @@ export const SERVICE_COMMANDS = {
   'staff.change': staffOnVenue('staff.change', 'settings.roles'), // #72
 
   // Worker (D122 §9: readings, sent orders, pauses, sittings, notices, sweeps, the day's end).
+  // The floor reading (#71): a vanished table pauses its sitting, a returned one lifts the pause.
+  'floor.table_vanished': tableVanished(),
+  'floor.table_returned': tableReturned(),
   'reading.record': workerStep('reading.record', { tableId }), // #74
   'sitting.end': workerStep('sitting.end', { tableId }), // #74
   'sent_order.transition': workerStep('sent_order.transition', {
