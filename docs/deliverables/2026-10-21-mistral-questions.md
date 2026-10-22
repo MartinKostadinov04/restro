@@ -9,7 +9,7 @@ The questions were drafted across five files:
 - 24–29: `2026-10-20-ordering-review-merged.md`;
 - 30–37: `2026-10-21-board-review-final.md`.
 
-The receipt-law check added four more, which are folded in here as 21, 36 and 38–39. The numbers are kept so every file still points to the right question. Martin's answers of 10-21 drop 32 and 34, and add 40. The ticket review of 10-21 (`2026-10-21-map-29-ticket-review.md`) adds 41 and a venue question about the payment account.
+The receipt-law check added four more, which are folded in here as 21, 36 and 38–39. The numbers are kept so every file still points to the right question. Martin's answers of 10-21 drop 32 and 34, and add 40. The ticket review of 10-21 (`2026-10-21-map-29-ticket-review.md`) adds 41 and a venue question about the payment account. The simulated POS (#68, 10-22) adds 43.
 
 Not sent yet: Martin sends them and records the date here or in the tracker. When answers come, an agent fills the "Shown" and "Route" columns of the Mistral API checker.
 
@@ -36,6 +36,7 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 - **30.** When all lines are moved off a table, is its bill closed, or empty and still open? How does a read show the difference?
 - **10.** Is one bill per table enforced? Can a table hold a second open bill?
 - **15.** Does a read of a table's bill give each row with who entered it and when? Is a call all-or-nothing? Can an outside app put its own id on a row and read it back? Does a repeated call with the same id create nothing?
+- **43.** Does a read of a table's bill show when the bill was opened and which POS user opened it, so an outside app can tell a bill it opened from one a waiter opened? *(New, 10-22: the simulated POS leaves both unknown until this is answered.)*
 - **13.** What does a bar ticket print: the table, the operator (the POS user), a free-text note? In which language? Does a sale that is opened, paid and closed at once print a ticket?
 - **31.** Can an order written by an outside app carry a free-text note per line and the chosen options? Do they print on the bar ticket?
 - **14.** Is there approval of outside orders? Does the ticket print when the order is entered, or when it is approved?
