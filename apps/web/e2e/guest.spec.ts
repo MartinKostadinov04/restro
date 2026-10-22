@@ -265,14 +265,17 @@ test.describe('the dish page in the address bar', () => {
   test('opening a dish adds #item-<id>; Back closes it and stays on the menu; Forward reopens it', async ({
     page,
   }) => {
-    await open(page, `${GUEST.path}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST.path}?lang=bg#t=${GUEST_TABLE_TOKEN}`)
     const menuUrl = page.url()
+    expect(new URL(menuUrl).hash).toBe(`#t=${GUEST_TABLE_TOKEN}`)
+    // The dish's address takes the fragment; the table's code comes back with Back (#70).
+    const dishUrl = (id: string) => `${menuUrl.split('#')[0]}#item-${id}`
     const mojito = await card(page, 'Мохито').getAttribute('data-item')
     expect(mojito).toMatch(/^nd_/)
 
     await openMojito(page)
     await expect(dishOf(page)).toBeVisible()
-    expect(page.url()).toBe(`${menuUrl}#item-${mojito}`)
+    expect(page.url()).toBe(dishUrl(mojito ?? ''))
 
     await page.goBack()
     await expect(dishOf(page)).toBeHidden()
@@ -283,7 +286,17 @@ test.describe('the dish page in the address bar', () => {
 
     await page.goForward()
     await expect(dishOf(page)).toBeVisible()
-    expect(page.url()).toBe(`${menuUrl}#item-${mojito}`)
+    expect(page.url()).toBe(dishUrl(mojito ?? ''))
+
+    // A fresh load of the dish page in this tab (as a reload there, without the history behind
+    // it): its address carries no code, the tab kept it (#70). Closing the dish cleans the address.
+    await page.goto('about:blank')
+    await page.goto(dishUrl(mojito ?? ''))
+    await expect(dishOf(page)).toBeVisible()
+    await dishOf(page).getByRole('button', { name: 'Обратно към менюто' }).click()
+    await expect(dishOf(page)).toBeHidden()
+    expect(new URL(page.url()).hash).toBe('')
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
   })
 
   test('closing a dish with its own button goes back one step, and one more Back leaves the page', async ({
@@ -488,14 +501,16 @@ test.describe('the template and the look the snapshot names (SH-04)', () => {
 })
 
 test.describe('the address in the browser (D68)', () => {
-  test('a stale slug finds the menu, and the address bar is corrected, keeping ?t= and ?lang=', async ({
+  test('a stale slug finds the menu, and the address bar is corrected, keeping ?lang= and moving an older ?t= into #t=', async ({
     page,
   }) => {
-    const search = `?lang=bg&t=${GUEST_TABLE_TOKEN}`
-    await page.goto(`/m/an-older-name-${GUEST.publicId}${search}`)
+    // A link of before #70 carried the table's code in the query; the page moves it to the fragment.
+    await page.goto(`/m/an-older-name-${GUEST.publicId}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
     await expect.poll(() => new URL(page.url()).pathname).toBe(GUEST_PATH)
-    expect(new URL(page.url()).search).toBe(search)
+    expect(new URL(page.url()).search).toBe('?lang=bg')
+    expect(new URL(page.url()).hash).toBe(`#t=${GUEST_TABLE_TOKEN}`)
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     // The corrected address is the one that reloads.
     await page.reload()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Демо клуб')
@@ -549,10 +564,11 @@ test.describe('the table code', () => {
   }) => {
     const redirect = await request.get(`/t/${GUEST_TABLE_TOKEN}`, { maxRedirects: 0 })
     expect(redirect.status()).toBe(302)
-    expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
+    // The code goes on in the fragment, which no server, log or Referer sees (D122, #70).
+    expect(redirect.headers().location).toBe(`${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
 
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
-    await page.waitForURL(`**${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
+    await page.waitForURL(`**${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     // The Editorial Market shows the table in the bar at the top, next to the language switch.
     await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
@@ -637,7 +653,7 @@ test.describe('what the page asks for (rule 4)', () => {
         bodies.push({ url: url.pathname, text: await response.text() })
       }
     })
-    await open(page, `${GUEST_PATH}?t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
     await page.waitForLoadState('networkidle')
 
     const allowed = (pathname: string) =>
@@ -657,6 +673,8 @@ test.describe('what the page asks for (rule 4)', () => {
       ).toBe(true)
     }
     expect(urls.some((pathname) => pathname.startsWith('/api/'))).toBe(false)
+    // The table's file is named after the code's hash: the code itself is in no request (#70).
+    expect(urls.filter((pathname) => pathname.includes(GUEST_TABLE_TOKEN))).toEqual([])
 
     // None of what came back holds a barsy id (article or category id of the demo installation).
     const externalIds = [
@@ -708,7 +726,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
     for (const lang of ['bg', 'en'] as const) {
       test(`${lang} ${scheme}`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: scheme })
-        await open(page, `${GUEST.path}?lang=${lang}&t=${GUEST_TABLE_TOKEN}`)
+        await open(page, `${GUEST.path}?lang=${lang}#t=${GUEST_TABLE_TOKEN}`)
         // The page follows the guest's screen: a dark page on a dark screen, a light one otherwise.
         const luminance = await page.evaluate(() => {
           const root = document.querySelector('[data-face]:not([data-testid])') as HTMLElement
@@ -728,7 +746,7 @@ test.describe('screenshots (BG and EN, light and dark)', () => {
   test('iPhone 13 sized screen, bg light', async ({ browser }) => {
     const context = await browser.newContext({ ...devices['iPhone 13'], colorScheme: 'light' })
     const page = await context.newPage()
-    await open(page, `${GUEST.path}?lang=bg&t=${GUEST_TABLE_TOKEN}`)
+    await open(page, `${GUEST.path}?lang=bg#t=${GUEST_TABLE_TOKEN}`)
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)

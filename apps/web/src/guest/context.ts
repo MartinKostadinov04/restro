@@ -1,6 +1,7 @@
 // The context the guest page gives the shell (doc "The visualization shell", step 2): the language
-// (the address `?lang=`, then the browser, then the menu's default), the table token from `?t=`
-// (given on only after the published table file confirmed it, see `confirmedTable`) and the
+// (the address `?lang=`, then the browser, then the menu's default), the table code from the
+// address's fragment `#t=` (given on only after the published table file confirmed it, see
+// `confirmedTable`) and the
 // channel. The venue's clock is the shell's own default (Europe/Sofia) until the snapshot
 // carries a time zone. Ordering is off in Stage 3.
 
@@ -58,10 +59,79 @@ export function langParam(locale: Locale): string {
   return locale.split('_')[0] ?? locale
 }
 
-/** The table token in the address (`?t=`), or null when it is missing or cannot be a token. */
-export function readTableToken(search: string): string | null {
-  const token = new URLSearchParams(search).get('t')
-  return token !== null && TABLE_TOKEN_PATTERN.test(token) ? token : null
+/**
+ * The table code in the address, or null when it is missing or cannot be a code. `/t/<code>` puts
+ * it in the fragment (`#t=`, D122): a fragment never reaches a server, a log or a Referer. A code
+ * in the query (`?t=`, links of before #70) still counts; the page moves it into the fragment
+ * (`withCodeInFragment`).
+ */
+export function readTableToken(search: string, fragment = ''): string | null {
+  for (const params of [
+    new URLSearchParams(fragment.replace(/^#/, '')),
+    new URLSearchParams(search),
+  ]) {
+    const token = params.get('t')
+    if (token !== null) return TABLE_TOKEN_PATTERN.test(token) ? token : null
+  }
+  return null
+}
+
+/** The address with a table code in its query moved into the fragment, or null when it has none. */
+export function withCodeInFragment(href: string): string | null {
+  const url = new URL(href)
+  const code = url.searchParams.get('t')
+  if (code === null) return null
+  url.searchParams.delete('t')
+  const fragment = new URLSearchParams(url.hash.replace(/^#/, ''))
+  if (!fragment.has('t')) fragment.set('t', code)
+  url.hash = fragment.toString()
+  return url.toString()
+}
+
+/** What a tab keeps between reloads: its `sessionStorage`. */
+export type TabStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
+/** The tab's storage, or null where the browser gives none (some private modes throw on access). */
+export function tabStorage(): TabStorage | null {
+  try {
+    return window.sessionStorage
+  } catch {
+    return null
+  }
+}
+
+const tableKey = (publicId: string) => `restro.table.${publicId}`
+
+/**
+ * The table code this tab kept for a venue, or null. A dish page's address (`#item-<id>`) takes
+ * the fragment, so a reload there finds no code in the address: the tab's copy keeps the table.
+ * Kept per tab (never in a shared link), checked against the published files like any code.
+ */
+export function rememberedTable(storage: TabStorage | null, publicId: string): string | null {
+  try {
+    const code = storage?.getItem(tableKey(publicId)) ?? null
+    return code !== null && TABLE_TOKEN_PATTERN.test(code) ? code : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Keeps the venue's confirmed table code for this tab, or forgets it (`code` null): after each
+ * load the tab holds exactly the table that load confirmed, so a new code in the address replaces
+ * the old one and an unknown one clears it. Without storage nothing is kept and nothing breaks.
+ */
+export function rememberTable(
+  storage: TabStorage | null,
+  publicId: string,
+  code: string | null,
+): void {
+  try {
+    if (code === null) storage?.removeItem(tableKey(publicId))
+    else storage?.setItem(tableKey(publicId), code)
+  } catch {
+    // Private mode or a full storage: the table lasts until the next reload only.
+  }
 }
 
 /** A table the published files know: the code from the address and how the table is called. */
@@ -72,7 +142,7 @@ export interface ConfirmedTable {
 
 /**
  * The table the shell may be told about (A5-F5). The code in the address is only a claim until
- * `t/<token>.json` has answered for this venue; a well-formed but unknown `?t=` is the same as no
+ * `t/<hash>.json` has answered for this venue; a well-formed but unknown code is the same as no
  * code at all. `found` is the answer to the lookup of `requested` (null while it is out, when the
  * code is unknown, belongs to another venue or could not be read); an answer for another code,
  * left over from before the address changed, counts for nothing.

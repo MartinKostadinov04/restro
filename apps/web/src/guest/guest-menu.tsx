@@ -32,7 +32,17 @@ import { ChosenFace, preloadFace } from '@/faces/chosen-face'
 import { faceEntry } from '@/faces/registry'
 import { FONT_STACKS } from '@/fonts'
 import { CDN_BASE } from './cdn'
-import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
+import {
+  buildContext,
+  chooseLocale,
+  confirmedTable,
+  langParam,
+  readTableToken,
+  rememberedTable,
+  rememberTable,
+  tabStorage,
+  withCodeInFragment,
+} from './context'
 import {
   type GuestAddress,
   GuestLoadError,
@@ -103,12 +113,18 @@ export function GuestMenu(props: GuestMenuProps) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   // The address and the browser are read after mount, so the first client render equals the server's.
   const [search, setSearch] = useState('')
+  const [fragment, setFragment] = useState('')
   const [browser, setBrowser] = useState<readonly string[]>([])
   const [now, setNow] = useState(() => new Date())
   const deps = useMemo<LoadDeps>(() => ({ fetch: (url) => fetch(url), base: CDN_BASE }), [])
 
   useEffect(() => {
+    // A table code in the query (a link of before #70) goes into the fragment, out of the address
+    // the page's later requests and a shared link would carry.
+    const moved = withCodeInFragment(window.location.href)
+    if (moved !== null) window.history.replaceState(null, '', moved)
     setSearch(window.location.search)
+    setFragment(window.location.hash)
     setBrowser(navigator.languages?.length > 0 ? navigator.languages : [navigator.language])
     // Nearly every venue uses the default template: fetch its code now, while the menu's files are
     // still on their way. (A venue that chose another one fetches that when its snapshot arrives.)
@@ -129,11 +145,18 @@ export function GuestMenu(props: GuestMenuProps) {
     }
     setPhase({ kind: 'loading' })
     // The table's code in the address goes with the load: its file may name the menu to show.
-    const token = readTableToken(window.location.search)
+    // Without one (a reload on a dish page, whose address took the fragment), the code this tab
+    // kept for the venue is checked instead.
+    const token = readTableToken(window.location.search, window.location.hash)
+    const storage = tabStorage()
+    const remembered = (venue: string) => rememberedTable(storage, venue)
     const loading =
-      address !== null ? loadMenuAt(deps, address, token) : loadMenu(deps, publicId ?? '', token)
+      address !== null
+        ? loadMenuAt(deps, address, token, remembered)
+        : loadMenu(deps, publicId ?? '', token, remembered)
     loading.then(
       (menu) => {
+        rememberTable(storage, menu.publicId, menu.table?.token ?? null)
         if (!cancelled) setPhase({ kind: 'ready', menu })
       },
       (error: unknown) => {
@@ -170,10 +193,11 @@ export function GuestMenu(props: GuestMenuProps) {
     window.history.replaceState(null, '', url)
   }, [canonicalOrganization, canonicalVenue, indexSlug, loadedPublicId])
 
-  // The code in the address is a claim until the published `t/<token>.json` answered for this venue
+  // The code in the address is a claim until the published `t/<hash>.json` answered for this venue
   // (the loader asked). The banner and the shell's context use the confirmed table only: an
   // unknown code is no code.
-  const requestedToken = readTableToken(search)
+  // Without a code in the address, the claim is the one the tab kept, which the load checked.
+  const requestedToken = readTableToken(search, fragment) ?? loaded?.table?.token ?? null
   const table = confirmedTable(requestedToken, loaded?.table ?? null)
   const tableToken = table?.token ?? null
   const tableLabel = table?.label ?? null

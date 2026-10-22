@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig, requireSealKeys } from './config'
 
 const URL = 'postgres://restro_app:s3cret-pw@localhost:54329/restro'
+/** An obviously fake reveal token, long enough for the 32-character minimum. */
+const REVEAL_TOKEN = `test-reveal-token-${'x'.repeat(24)}`
 
 /** The lines of the error `loadConfig` throws for `env`. */
 function problemsOf(env: Record<string, string | undefined>, defaultWorkerId?: () => string) {
@@ -34,6 +36,8 @@ describe('loadConfig', () => {
       assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
       // And the publish store under .local/cdn.
       publish: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]cdn$/) },
+      revealToken: null,
+      posSync: true,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -54,6 +58,8 @@ describe('loadConfig', () => {
         BARSY_ENV: ' Staging ',
         BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
+        REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
+        WORKER_POS_SYNC: ' OFF ',
       }),
     ).toEqual({
       databaseUrl: URL,
@@ -70,7 +76,22 @@ describe('loadConfig', () => {
       },
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
       publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
+      revealToken: REVEAL_TOKEN,
+      posSync: false,
     })
+  })
+
+  it('refuses a short reveal token and an unknown WORKER_POS_SYNC, without repeating them', () => {
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      REVEAL_SERVICE_TOKEN: 'short-token',
+      WORKER_POS_SYNC: 'sometimes',
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'REVEAL_SERVICE_TOKEN',
+      'WORKER_POS_SYNC',
+    ])
+    expect(lines.join('\n')).not.toMatch(/short-token|sometimes/)
   })
 
   it('refuses unusable barsy and asset settings by name, without repeating the values', () => {

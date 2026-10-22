@@ -49,6 +49,7 @@ export const LOG_KINDS = {
   'staff.changed': 'record',
   'pin.changed': 'record',
   'table_code.reissued': 'record',
+  'table_code.revealed': 'record',
 } as const satisfies Record<string, LogRetention>
 
 /** One kind of Log entry. */

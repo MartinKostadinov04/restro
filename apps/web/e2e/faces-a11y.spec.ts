@@ -54,7 +54,7 @@ async function openMenu(
   await withAudit(page)
   await page.setViewportSize({ width, height: 800 })
   await page.emulateMedia({ colorScheme: scheme })
-  await page.goto(`${visualPath(theme)}?lang=${lang}${table ? `&t=${theme.table}` : ''}`)
+  await page.goto(`${visualPath(theme)}?lang=${lang}${table ? `#t=${theme.table}` : ''}`)
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   // The photos of the first screens (the others are lazy and wait for the guest to scroll).
   await page.waitForFunction(() =>

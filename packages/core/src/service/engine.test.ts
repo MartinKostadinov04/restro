@@ -241,7 +241,7 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
         (await applyService(world.app, { type: 'table.open', tableId }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
       expect(
-        (await applyService(world.app, { type: 'table_code.reissue', tableId }, owner)).result,
+        (await applyService(world.app, { type: 'ordering.pause', barId: null }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
       const actionId = randomUUID()
       const added = await applyService(world.app, { type: 'order.add', tableId, actionId }, guest())

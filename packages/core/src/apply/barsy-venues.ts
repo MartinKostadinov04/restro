@@ -391,7 +391,7 @@ export interface UpsertPlacesResult {
   /**
    * The QR tokens of the tables this run archived (D95): those of places concluded `deleted`,
    * and those the till venue's places no longer point to. The caller queues the token job so
-   * their files `t/<token>.json` are removed too.
+   * their files (`t/<code hash>.json`, `codeFileNames`) are removed too.
    */
   readonly retiredTokens: readonly string[]
   /**

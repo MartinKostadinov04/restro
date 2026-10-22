@@ -130,11 +130,16 @@ async function seed(): Promise<void> {
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
   const store = await createPublishStore(publishStoreConfig(process.env))
   try {
-    const old = await owner.query<{ qr_token: string }>(
-      'select qr_token from restro.tables where tenant_id = $1 and qr_token is not null',
+    // A file is named after the code's hash; one from before #70 after the code itself.
+    const old = await owner.query<{ qr_token: string | null; qr_code_hash: string }>(
+      'select qr_token, qr_code_hash from restro.tables where tenant_id = $1 and qr_code_hash is not null',
       [tenantId],
     )
-    for (const { qr_token } of old.rows) await store.delete(tableTokenPath(qr_token))
+    for (const row of old.rows) {
+      for (const name of [row.qr_code_hash, row.qr_token]) {
+        if (name !== null) await store.delete(tableTokenPath(name))
+      }
+    }
     await owner.query(
       `update restro.tables set qr_token = null, qr_code_hash = null, qr_code_sealed = null,
                                 name = null
@@ -308,11 +313,11 @@ async function worker(): Promise<void> {
       const wanted = await loadTokenFiles(getPool(), payload.tenantId, payload.venueId)
       let written = 0
       for (const file of wanted?.files ?? []) {
-        if ((await store.get(tableTokenPath(file.token))) !== null) written += 1
+        if ((await store.get(tableTokenPath(file.codeHash))) !== null) written += 1
       }
       let removed = 0
-      for (const token of payload.retired) {
-        if ((await store.get(tableTokenPath(token))) === null) removed += 1
+      for (const name of payload.retired) {
+        if ((await store.get(tableTokenPath(name))) === null) removed += 1
       }
       console.log(
         JSON.stringify({

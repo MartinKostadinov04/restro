@@ -2,6 +2,8 @@
 // permission it needs, how a repeat is recognised, and its handler. `commands.ts` lists them all;
 // the engine reads only this shape, so a test can run the machinery with a definition of its own.
 
+import type { KeyObject } from 'node:crypto'
+
 import type { Venue } from '@restro/db'
 import type { z } from 'zod'
 
@@ -36,6 +38,8 @@ export interface ServiceTx extends LeaseTx {
   readonly via: Via
   /** What the actor holds at the venue (empty for guests and the worker). */
   readonly permissions: ReadonlySet<Permission>
+  /** The worker's public seal key, when the caller passed one (a new table code is sealed). */
+  readonly sealPublicKey: KeyObject | string | null
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
 }

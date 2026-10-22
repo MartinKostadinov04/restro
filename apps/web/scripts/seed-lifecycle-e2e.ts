@@ -14,11 +14,10 @@
 // development and the database is on this machine. It prints one JSON line with the ids the test
 // needs (`seed_lifecycle_e2e_done`).
 import { createPublishStore, publishStoreConfig, writeTableTokenFile } from '@restro/assets'
-import { type ChangeSet, newId } from '@restro/core'
+import { type ChangeSet, hashTableCode, newId, newTableToken } from '@restro/core'
 import {
   apply,
   createIntegration,
-  issueTableToken,
   listVenueTables,
   mapBarsyVenue,
   provisionMenu,
@@ -104,6 +103,25 @@ async function clearOrganization(organizationId: string): Promise<void> {
       await owner.query(`delete from restro.${table} where tenant_id = $1`, [organizationId])
     }
     await owner.query(`delete from pgboss.job where data ->> 'tenantId' = $1`, [organizationId])
+  } finally {
+    await owner.end()
+  }
+}
+
+/**
+ * Gives the table a code as one from before #70 is kept (in plain beside its hash, not sealed), as
+ * the database owner: a new code is sealed for the worker, and the test needs to know it. The
+ * worker's seal job seals it like any other old code.
+ */
+async function giveKnownCode(tableId: string): Promise<string> {
+  const owner = new pg.Pool({ connectionString: process.env.DATABASE_URL_OWNER, max: 1 })
+  try {
+    const code = newTableToken()
+    await owner.query(
+      'update restro.tables set qr_token = $1, qr_code_hash = $2, qr_code_sealed = null where id = $3',
+      [code, await hashTableCode(code), tableId],
+    )
+    return code
   } finally {
     await owner.end()
   }
@@ -214,9 +232,7 @@ async function seed(): Promise<void> {
   )
   const [table] = await listVenueTables(pool, organizationId, bar.id)
   if (!table) throw new Error('the table was not stored')
-  const issued = await issueTableToken(pool, organizationId, table.id)
-  if (!issued.ok || issued.table.token === null) throw new Error('the table code was not made')
-  const token = issued.table.token
+  const token = await giveKnownCode(table.id)
 
   const publishStore = await createPublishStore(publishStoreConfig(process.env))
   const published = await publishMenu(pool, organizationId, {
@@ -232,7 +248,7 @@ async function seed(): Promise<void> {
   await writeLiveOverlay(deps, scope)
   // The organisation's index (D84), as the publish job writes it after the files.
   await writeOrganizationIndex(deps, organizationId)
-  await writeTableTokenFile(publishStore, token, {
+  await writeTableTokenFile(publishStore, await hashTableCode(token), {
     venue_public_id: bar.publicId,
     venue_slug: bar.slug,
     table_label: TABLE_LABEL,

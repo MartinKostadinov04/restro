@@ -173,7 +173,7 @@ test('the guest page and the table code work before the venue is deleted', async
   const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
   expect(code.status()).toBe(302)
   expect(code.headers().location).toContain(
-    `/m/${seed.barSlug}-${seed.barPublicId}?t=${seed.token}`,
+    `/m/${seed.barSlug}-${seed.barPublicId}#t=${seed.token}`,
   )
 })
 

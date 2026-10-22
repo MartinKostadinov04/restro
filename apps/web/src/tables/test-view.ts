@@ -26,7 +26,7 @@ export function row(overrides: Partial<TableRowView> & { id: string }): TableRow
     label: null,
     shownAs: null,
     isPublic: true,
-    token: null,
+    hasCode: false,
     address: null,
     qrSvg: null,
     menu: VENUE_MENU,
@@ -51,7 +51,7 @@ export function view(overrides: Partial<TablesView> = {}): TablesView {
     id: 'tb_0000000000000000000002',
     number: '2',
     shownAs: '2',
-    token: TOKEN_A,
+    hasCode: true,
     address: `http://localhost:3000/t/${TOKEN_A}`,
     qrSvg: SVG,
   })
