@@ -32,6 +32,7 @@ describe('loadConfig', () => {
       prettyLogs: true,
       seal: null,
       barsy: { env: 'development', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+      sim: { env: 'development', allowHosts: [] },
       // Local files under the repository's .local/assets unless told otherwise.
       assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
       // And the publish store under .local/cdn.
@@ -58,6 +59,7 @@ describe('loadConfig', () => {
         BARSY_ENV: ' Staging ',
         BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
+        SIM_POS_ALLOWED_HOSTS: 'Demo.Restro.test, sim.staging.example',
         REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
         WORKER_POS_SYNC: ' OFF ',
       }),
@@ -74,11 +76,29 @@ describe('loadConfig', () => {
         allowedHostSuffixes: ['.barsyonline.com', '.barsy.test'],
         productionHosts: ['club.barsyonline.com', 'other.barsyonline.com'],
       },
+      // NODE_ENV is production here, so the simulated POS is refused whatever BARSY_ENV says.
+      sim: { env: 'production', allowHosts: ['demo.restro.test', 'sim.staging.example'] },
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
       publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
       revealToken: REVEAL_TOKEN,
       posSync: false,
     })
+  })
+
+  it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {
+    const stores = {
+      ASSET_STORE: 'local',
+      LOCAL_ASSET_DIR: '/data/assets',
+      PUBLISH_STORE: 'local',
+      LOCAL_PUBLISH_DIR: '/data/cdn',
+    }
+    expect(loadConfig({ DATABASE_URL: URL, NODE_ENV: 'production', ...stores }).sim.env).toBe(
+      'production',
+    )
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'production' }).sim.env).toBe('production')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'staging' }).sim.env).toBe('staging')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'test' }).sim.env).toBe('test')
+    expect(loadConfig({ DATABASE_URL: URL }).sim).toEqual({ env: 'development', allowHosts: [] })
   })
 
   it('refuses a short reveal token and an unknown WORKER_POS_SYNC, without repeating them', () => {

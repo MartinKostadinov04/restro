@@ -83,6 +83,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       prettyLogs: false,
       seal: world.keys,
       barsy: policy as WorkerConfig['barsy'],
+      sim: { env: 'test', allowHosts: [] },
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
       revealToken: null,
@@ -325,7 +326,9 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
 describe('buildJobs', () => {
   const configWithoutKeys = {
     seal: null,
+    posSync: true,
     barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+    sim: { env: 'test', allowHosts: [] },
     assets: { kind: 'local', dir: tmpdir() },
     publish: { kind: 'local', dir: tmpdir() },
   } as unknown as WorkerConfig
@@ -338,6 +341,9 @@ describe('buildJobs', () => {
     const jobs = await buildJobs(configWithoutKeys, log)
     expect(jobs.map((job) => job.name)).toEqual([
       'worker-heartbeat',
+      // The floor reading (#71) needs no sealing keys: the simulated POS has no credentials.
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -373,6 +379,8 @@ describe('buildJobs', () => {
       JOB_NAMES.placesRead,
       JOB_NAMES.assetFetch,
       JOB_NAMES.barsySyncTick,
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
