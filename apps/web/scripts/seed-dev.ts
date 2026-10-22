@@ -16,7 +16,12 @@ import { and, eq } from 'drizzle-orm'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
-import { assertDevEnvironment, readAdminCredentials, seedsDemoMenu } from './lib/guard'
+import {
+  assertDevEnvironment,
+  readAdminCredentials,
+  seedsDemoBar,
+  seedsDemoMenu,
+} from './lib/guard'
 import { seedDemoBar } from './lib/seed-demo-bar'
 import { seedDemoMenu } from './lib/seed-demo-menu'
 
@@ -104,7 +109,7 @@ async function main(): Promise<void> {
   // 6. Demo Bar: a venue on a simulated POS (#71), unless SEED_DEMO_MENU=0. Its menu is written
   // through apply() from the same scenario file the simulator loads; its bars and tables come
   // from the simulator through the worker's floor reading (start `pnpm sim:serve` and the worker).
-  const demoBar = seedsDemoMenu(process.env) ? await seedDemoBar(pool, organizationId) : null
+  const demoBar = seedsDemoBar(process.env) ? await seedDemoBar(pool, organizationId) : null
 
   console.log(
     JSON.stringify({

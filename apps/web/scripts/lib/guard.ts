@@ -51,3 +51,12 @@ export function readAdminCredentials(env: Record<string, string | undefined>): {
 export function seedsDemoMenu(env: Record<string, string | undefined>): boolean {
   return env.SEED_DEMO_MENU !== '0'
 }
+
+/**
+ * Whether the dev seed writes Demo Bar (#71): not when SEED_DEMO_MENU is 0 (it goes with the demo
+ * menus) nor when SEED_DEMO_BAR is 0. The e2e seed sets the second, so the specs that take "the
+ * venue" or "the menu" keep meeting the one demo venue; a spec of Demo Bar seeds it itself.
+ */
+export function seedsDemoBar(env: Record<string, string | undefined>): boolean {
+  return seedsDemoMenu(env) && env.SEED_DEMO_BAR !== '0'
+}
