@@ -31,7 +31,7 @@ export default async function VenueWorkspacePage({
   params,
   searchParams,
 }: PageProps<'/venues/[venueId]'>) {
-  const { organization, user, sessionId } = await requireTenant()
+  const { organization } = await requireTenant()
   // Another tenant's venue and a made-up id both come back as null: row-level security hides
   // the row, so the answer is the same 404 either way.
   const venue = await getVenue(organization.id, (await params).venueId)
@@ -108,12 +108,7 @@ export default async function VenueWorkspacePage({
             ),
             tables: tablesOpen ? (
               <Suspense fallback={<TablesSkeleton />}>
-                <TablesTab
-                  tenantId={organization.id}
-                  role={organization.role}
-                  venue={venue}
-                  actor={{ userId: user.id, sessionId }}
-                />
+                <TablesTab tenantId={organization.id} role={organization.role} venue={venue} />
               </Suspense>
             ) : (
               <TablesSkeleton />

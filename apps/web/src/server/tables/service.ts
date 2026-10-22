@@ -6,10 +6,13 @@
 // writer of the `t/<hash>.json` files.
 //
 // A code is stored as its hash and a copy sealed for the worker (#70, D122 §9): the tab draws the
-// codes the worker reveals to the signed-in owner or admin (one batch per page load, reveal.ts),
+// codes the worker reveals to the signed-in owner or admin (`revealCodes`: once per page load and
+// once per new code, never in the tab's own render, so an action's refresh waits on no worker),
 // and a new code for a table that has one is a re-issue through the service write path
 // (`table_code.reissue`, a `record` Log entry). Nothing here fetches an address: the codes lead to
 // this installation's address (address.ts, D94).
+import { createHash } from 'node:crypto'
+
 import {
   JOB_NAMES,
   type JobPayload,
@@ -62,6 +65,8 @@ import type {
   MenuChoice,
   MenuLevel,
   MenuShown,
+  RevealCodesResult,
+  RevealedCode,
   TableRowView,
   TablesActionResult,
   TablesErrorCode,
@@ -136,6 +141,14 @@ function shown<Level extends MenuLevel>(
   return name === undefined ? null : { id: menuId, name, level }
 }
 
+/**
+ * The card's name for a code (`TableRowView.codeKey`): taken from the stored hash, so it changes
+ * with the code, but it is neither the code nor its hash (the hash names the code's public file).
+ */
+function codeKeyOf(codeHash: string): string {
+  return createHash('sha256').update(`code-key:${codeHash}`).digest('base64url').slice(0, 22)
+}
+
 async function toRow(
   table: VenueTable,
   code: string | null,
@@ -144,6 +157,7 @@ async function toRow(
   render: (text: string) => Promise<string>,
   menu: MenuShown | null,
   routeMenuId: string | null,
+  canReveal: boolean,
 ): Promise<TableRowView> {
   // A hidden table keeps its code for when it is shown again, but its code leads nowhere now.
   const text = code === null || !active ? null : codeAddress(baseUrl, code)
@@ -154,6 +168,10 @@ async function toRow(
     shownAs: tableLabel(table),
     isPublic: !table.hidden,
     hasCode: table.codeHash !== null,
+    codeKey:
+      canReveal && active && baseUrl !== null && table.codeHash !== null
+        ? codeKeyOf(table.codeHash)
+        : null,
     address: text,
     qrSvg: text === null ? null : await render(text),
     menu,
@@ -167,7 +185,8 @@ async function toRow(
  * the installation's address from the environment (D94); `render` makes the SVG of a code (tests
  * pass a plain function); `reveal` opens the codes of the shown tables that have one, in one
  * batch (the worker's reveal endpoint, asked only for an owner or admin; a code it does not give
- * is drawn as none).
+ * is drawn as none). The print sheet passes one; the tab does not: its codes come from
+ * `revealCodes` once the page is up, so its refresh after each action waits on no worker.
  */
 export async function loadTablesView(
   scope: TablesScope,
@@ -223,6 +242,7 @@ export async function loadTablesView(
         render,
         shown(names, resolvedId, level),
         own,
+        scope.canManage,
       )
     }),
   )
@@ -268,6 +288,55 @@ export async function loadTablesView(
         ? null
         : { token: firstCode, shownAs: firstShown.shownAs },
   }
+}
+
+/**
+ * Opens the codes of the tab's tables (#70): the ones asked for that have a code leading
+ * somewhere, in one call to the worker, each with its address and picture. Only an owner or admin
+ * may; a code the worker does not give is left out. Writes nothing itself (the worker writes the
+ * reveal's Log entry) and refreshes nothing.
+ */
+export async function revealCodes(
+  scope: TablesScope,
+  defaultBaseUrl: string | null,
+  tableIds: readonly string[],
+  reveal: RevealCodes,
+  render: (text: string) => Promise<string> = qrSvg,
+): Promise<RevealCodesResult> {
+  if (!scope.canManage) return { ok: false, error: 'forbidden' }
+  const baseUrl = codeBaseUrl(defaultBaseUrl)
+  if (baseUrl === null) return { ok: true, codes: [] }
+  const [areas, tables] = await Promise.all([
+    listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
+    listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
+  ])
+  const asked = new Set(tableIds)
+  const areaHidden = new Map(areas.map((area) => [area.id as string, area.hidden] as const))
+  const revealable = tables.filter(
+    (table) =>
+      asked.has(table.id) &&
+      table.codeHash !== null &&
+      !table.hidden &&
+      areaHidden.get(table.areaId) === false,
+  )
+  if (revealable.length === 0) return { ok: true, codes: [] }
+  const codes = await reveal(revealable.map((table) => table.id))
+  const revealed = await Promise.all(
+    revealable.map(async (table): Promise<RevealedCode | null> => {
+      const token = codes.get(table.id)
+      if (token === undefined || table.codeHash === null) return null
+      const address = codeAddress(baseUrl, token)
+      if (address === null) return null
+      return {
+        id: table.id,
+        codeKey: codeKeyOf(table.codeHash),
+        token,
+        address,
+        qrSvg: await render(address),
+      }
+    }),
+  )
+  return { ok: true, codes: revealed.filter((code) => code !== null) }
 }
 
 // --- the actions ---------------------------------------------------------------------------------

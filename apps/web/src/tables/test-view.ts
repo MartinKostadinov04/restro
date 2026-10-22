@@ -27,6 +27,7 @@ export function row(overrides: Partial<TableRowView> & { id: string }): TableRow
     shownAs: null,
     isPublic: true,
     hasCode: false,
+    codeKey: null,
     address: null,
     qrSvg: null,
     menu: VENUE_MENU,

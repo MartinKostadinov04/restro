@@ -6,7 +6,7 @@
 // menus; everyone else reads and prints. On a venue with a till the areas and tables are the
 // till's (renamed, reordered and hidden here); on a venue made by hand the owner makes them. The
 // data comes from the server component (tables-tab.tsx); every change is a server action that
-// refreshes it.
+// refreshes it. The codes themselves come from the worker once the page is up (use-revealed-codes).
 import { PrinterIcon, QrCodeIcon, TableIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -24,12 +24,13 @@ import {
 } from '@/components/ui/empty'
 import { TillLabelProvider } from '@/fields/till-label'
 import { createAllCodesAction } from '@/server/tables/actions'
-import type { TablesView } from '@/server/tables/view'
+import { type TablesView, withRevealed } from '@/server/tables/view'
 
 import { AddAreaForm } from './add-area-form'
 import { AreaSection } from './area-section'
 import { QrAddressCard } from './qr-address-card'
 import { useFailureText } from './use-failure-text'
+import { useRevealedCodes } from './use-revealed-codes'
 
 export function TablesPanel({ view }: { view: TablesView }) {
   return (
@@ -39,10 +40,11 @@ export function TablesPanel({ view }: { view: TablesView }) {
   )
 }
 
-function Panel({ view }: { view: TablesView }) {
+function Panel({ view: given }: { view: TablesView }) {
   const t = useTranslations('tables')
   const failureText = useFailureText()
   const [pending, startTransition] = useTransition()
+  const view = withRevealed(given, useRevealedCodes(given))
 
   if (view.fromTill && view.total === 0) {
     return (
