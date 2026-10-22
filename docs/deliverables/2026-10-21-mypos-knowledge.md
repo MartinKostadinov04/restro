@@ -16,6 +16,7 @@ The one place for what Restro knows about myPOS, the first payment provider (Mar
 - **Martin**: Martin's own knowledge.
 - **AI-1**: myPOS's first reply to Restro (10-21). It was written by myPOS's AI virtual assistant from general help pages, not by a person. Where it "can't confirm" something, its material is silent; that doesn't mean the thing is missing.
 - **AI-2**: myPOS's AI assistant again (10-21), in a new chat, answering Restro's full list of 47 questions (pasted by Martin). It confirmed little beyond the help pages. For everything it couldn't confirm, it offered to escalate the chat to a person.
+- **M22**: the first answer from a person at myPOS (2026-10-22, by email, pasted by Martin). It answers the seven questions of the follow-up "Restro: молба за технически специалист по интеграция с myPOS Checkout", by number.
 - **H21**: myPOS's help centre, help.mypos.com (en-gb), read by the ordering lead on 10-21. Each line names the article id and the date the article was last updated. The help centre is written mostly for card terminals; online-only points are marked. Searches for embedded, iframe, sandbox, nightclub and bar found nothing, and the Bulgarian help centre returned no results.
 - **P21**: myPOS's public fees page, mypos.com/en-gb/pricing-and-fees/fees, read on 10-21. It is the UK page, in pounds; the Bulgarian figures may differ.
 
@@ -62,6 +63,8 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-21 · AI-1 [SAID] Its material describes no embedded form, only the payment portal.
 - 2026-10-21 · H21 [VENDOR] (6883031967389, updated 2025-12-08) With Checkout, "customers are directed to a secure payment gateway" to enter the card. This matches F21: Checkout redirects.
 - 2026-10-21 · [READING] Plan for myPOS's own page for holds until a person at myPOS confirms an in-page form that can hold a card (#49 round 2, Q3).
+- 2026-10-22 · M22 [SAID] **The Embedded SDK doesn't support pre-authorisation. The only way is the redirect to myPOS's Checkout page.** This settles F21's reading and question 2.
+- 2026-10-22 · [READING] With myPOS, a guest who pays always leaves our page for myPOS's page and comes back. The in-page form settled in round 1 (6.6) can't be kept with myPOS. Martin decides between the redirect and another provider (#49 row 1.3).
 
 ## Pre-authorisation (holding the money)
 
@@ -98,6 +101,7 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - The hold lasts up to 30 days, then is cancelled automatically, with a fee whose amount it didn't give.
   - A completion may be lower than the hold, never higher.
   - Not confirmed: whether the fee applies to `IPCPreAuthCancellation` or to a cancel seconds after the hold; how `IPCPreAuthorization` differs from `Authorization` / `Capture`; whether 3-D Secure runs on the hold.
+- 2026-10-22 · M22 [SAID] When a completion is lower than the hold, myPOS releases the rest on its side. When the guest sees it on the card depends on the card's issuing bank. This answers question 3.
 - 2026-10-21 · [READING] The cardholder's consent fits our flow: the guest confirms the amount and enters the card on myPOS's page before the hold (D122 §8 step 1). The payment screen should say plainly that the amount is held and taken within seconds (#45, #57). Whether a club is eligible is still open (question 11): only the venue's request, or a person at myPOS, can answer it.
 
 ## Tips
@@ -122,6 +126,22 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-17 · F17 [DOC] The signature covers all fields, and the list "can be expanded over time". Any non-200 answer counts as an error. No retry schedule is published.
 - 2026-10-21 · AI-1 [SAID] Nothing specific to online checkout.
 - 2026-10-21 · AI-2 [SAID] It has no confirmed information on `URL_Notify` (question 9).
+- 2026-10-22 · M22 [SAID] `URL_Notify` receives the payment's information, with a link to the Purchase Notify page. It didn't answer how to check the signature, the retry schedule, or duplicates.
+- 2026-10-22 · Purchase Notify page (developers.mypos.com/apis/checkout-api/purchase-notify, read by the lead) [DOC]
+  - **It is sent only for the Purchase method.** Holds use their own notice (`PreAuthorization Notify`, R17).
+  - The fields:
+    - `Amount`, `Currency`, `OrderID` and `IPC_Trnref`;
+    - `RequestDateTime`, and `RequestSTAN`, a number from 1 to 999999 "used for request unique match";
+    - the last four digits of the card and its expiry date;
+    - `PaymentMethod` and `PaymentType` (1 card, 2 Google Pay, 3 Apple Pay, …);
+    - the card brand and type;
+    - the customer's details, when asked for;
+    - `BillingDescriptor`, the text on the guest's card statement;
+    - `Signature`, a SHA-256 hash of all the properties, always the last field.
+  - The answer is HTTP 200 with the text `OK`; anything else counts as an error.
+  - After a successful notice, myPOS sends the guest back to `URL_OK`.
+  - No retry schedule, duplicate rule or verification key is stated on the page.
+- 2026-10-22 · [READING] `PaymentType` 2 (Google Pay) suggests that Google Pay works on the hosted page; not confirmed for holds.
 
 ## Wallets
 
@@ -135,9 +155,17 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
   - 3-D Secure is not performed in the sandbox.
   - Test cards are declined in production.
   - Holds and wallets in the sandbox are not stated.
-- 2026-10-21 · AI-1 [SAID] Its material describes no sandbox for online checkout. **Conflicts** with F17's documentation; trust the documentation. Asked of a person (question 1).
+- ~~2026-10-21 · AI-1 [SAID] Its material describes no sandbox for online checkout. **Conflicts** with F17's documentation; trust the documentation. Asked of a person (question 1).~~ (replaced by the M22 lines below)
 - 2026-10-21 · Martin [SAID] A sandbox exists. Its details, who registers in it and what it costs are unknown.
 - 2026-10-21 · AI-2 [SAID] It has no confirmed answers on the sandbox: who registers, its cost, holds, completion, cancel, status, 3-D Secure, test cards, Apple Pay, Google Pay or `URL_Notify`. It confirmed only that Checkout has a secure payment page, digital wallets and 3-D Secure, without saying whether these work in the sandbox.
+- 2026-10-22 · M22 [SAID] **There are two test environments.**
+  1. **The sandbox** is free and needs no registration (developers.mypos.com/online-payments/initial-setup-and-testing/testing-in-sandbox). Pre-authorisation works in it. There's no 3-D Secure, and requests return dummy data. It can't fully reproduce production, because it doesn't return the same statuses.
+  2. **A demo environment** at demo.mypos.eu needs an account; it doesn't matter to myPOS who registers. It returns the operations' statuses as they really are. It has no 3-D Secure either.
+
+  myPOS asks which of the two Restro will use, so it can send the next instructions. This corrects F17's and the sandbox page's "works just like the real system".
+- 2026-10-22 · [READING] What this means:
+  - **3-D Secure can't be tested** before production, in either environment. It has to be checked once on the venue's live account, with a small real payment, before the pilot (#56).
+  - **The demo environment fits Restro best.** The paying steps depend on real statuses: a timeout is read back, never guessed (D122 §8). Restro registers, so tests never touch the venue's account (CLAUDE.md rule 7). Row 3.1 of the #49 log.
 
 ## Fees
 
@@ -170,25 +198,28 @@ Tags: **[DOC]** developer documentation, **[VENDOR]** a marketing or help page, 
 - 2026-10-21 · AI-1 [SAID] Its receipt answers are about terminals: print, email or SMS, and a pre-auth receipt carries the pre-auth code. Whether myPOS emails the payer after an online payment, and whether the venue can turn that off, is open (question 6).
 - 2026-10-21 · [READING] A myPOS email to the guest must never look like the venue's fiscal receipt (D122 §8).
 - 2026-10-21 · AI-2 [SAID] Again only terminal answers: email, SMS or printed receipts; refunds from the device menu; money arrives in the myPOS account at once. Question 6 is still open.
+- 2026-10-22 · M22 [SAID] myPOS has no function that sends notification emails (asked: its email receipts to the payer after an online payment). This answers question 6.
+- 2026-10-22 · [READING] myPOS sends the guest nothing that could be mistaken for the venue's fiscal receipt. The guest gets only the venue's receipt (D122 §8). The card statement shows `BillingDescriptor`.
 
 ## Mistral
 
 - 2026-10-21 · Mistral list, question 9: does the myPOS partnership include online payments tied to Zamboo receipts? Asked of Mistral, and also of myPOS (question 8).
 - 2026-10-21 · AI-2 [SAID] It has no confirmed information on a Mistral / Zamboo integration.
+- 2026-10-22 · M22 [SAID] "Имаме партньорство с Take A NA" (as pasted). The text seems cut off: it may name another POS company rather than Mistral. Asked again (question 8).
 
 ## Open questions
 
 The first three were asked on 2026-10-21 by Restro through myPOS's contact form (AI-1 answered). The follow-up asking for a person at myPOS was drafted on 2026-10-21 for Martin to send. On 2026-10-21 all of them went to myPOS's AI assistant in a new chat, as 47 questions (AI-2). It answered none of 1–12 fully and offered to escalate the chat to a person. Also on 2026-10-21, one email was drafted for Martin to send as Restro. It lists every fact above for myPOS to confirm or correct, and asks every open question.
 
-1. The sandbox: who registers (Restro or the venue), whether it costs anything, and whether holds, completion, cancel and 3-D Secure work in it.
-2. Whether the Embedded SDK can hold a card, and with which wallets; otherwise, whether the redirecting Checkout is the only way.
-3. Whether a completion below the hold releases the rest at once.
+1. ~~The sandbox: who registers (Restro or the venue), whether it costs anything, and whether holds, completion, cancel and 3-D Secure work in it.~~ Answered 2026-10-22 (M22). Left: which environment Restro uses (the demo, row 3.1), to tell myPOS, and whether completion, cancel and status return real results in the demo.
+2. ~~Whether the Embedded SDK can hold a card, and with which wallets; otherwise, whether the redirecting Checkout is the only way.~~ Answered 2026-10-22 (M22): only the redirect.
+3. ~~Whether a completion below the hold releases the rest at once.~~ Answered 2026-10-22 (M22): myPOS releases it; the bank decides when the guest sees it.
 4. How a software company connects to a venue's account: the store's keys, or the Partner Portal and Identity API; and whether that works for Checkout.
-5. Whether the key the venue gives Restro can be limited to hold, completion, cancel and status, with no refunds.
-6. Turning off myPOS's email to the payer after an online payment.
+5. Whether the key the venue gives Restro can be limited to hold, completion, cancel and status, with no refunds. 2026-10-22 (M22): myPOS didn't understand the question. A clearer version was drafted the same day for Martin to send.
+6. ~~Turning off myPOS's email to the payer after an online payment.~~ Answered 2026-10-22 (M22): myPOS sends no such email.
 7. Whether a tip charged on its own needs the card entered again.
 8. Any myPOS partnership or integration with Mistral / Zamboo.
-9. The notice signature (which key, which field order), the retry schedule, and whether duplicates happen.
+9. The notice signature (which key, which field order), the retry schedule, and whether duplicates happen. 2026-10-22 (M22): only a link to the Purchase Notify page, which doesn't say. Also asked: is there a notice for completion and cancel?
 10. The hold length for a bar or club. (H21 10-21: "up to 30 days" in general.)
 11. Whether a club can get pre-authorisation for online payments through Checkout. Asked by the venue itself, from its registered email, to help@mypos.com (H21 6882468303517). Not asked yet: needs Martin and the venue (#56, #61). 2026-10-21: the email was drafted for the venue to send (in Bulgarian, subject in English as myPOS asks). It also asks questions 3, 10 and 12.
 12. The fee for a cancelled or lapsed hold on the venue's tariff, and whether it applies to an online cancel (`IPCPreAuthCancellation`) as it does at a terminal. The venue can read the amount in its myPOS account. Not asked yet.
