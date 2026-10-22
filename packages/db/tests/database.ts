@@ -139,11 +139,10 @@ export async function databaseError(work: Promise<unknown>): Promise<string> {
 }
 
 /**
- * The tenant tables a clean-up empties for the test tenants, children before parents (foreign
- * keys). Venues, templates and tenants follow in `cleanUp`.
+ * The ordering tables (migration 0028) a clean-up empties first, children before parents. Their
+ * tenancy is tested in service-tables.test.ts; `bars` is emptied after `tables`, which refer to it.
  */
-export const DOCUMENT_TABLES_CHILDREN_FIRST = [
-  // The ordering tables (migration 0028), children first.
+export const ORDERING_TABLES_CHILDREN_FIRST = [
   'sent_order_notes',
   'log_entries',
   'table_orders',
@@ -160,6 +159,13 @@ export const DOCUMENT_TABLES_CHILDREN_FIRST = [
   'shared_devices',
   'staff_members',
   'push_subscriptions',
+] as const
+
+/**
+ * The tenant tables a clean-up empties for the test tenants, children before parents (foreign
+ * keys). Venues, templates and tenants follow in `cleanUp`.
+ */
+export const DOCUMENT_TABLES_CHILDREN_FIRST = [
   'events',
   'field_values',
   'placements',
@@ -171,7 +177,6 @@ export const DOCUMENT_TABLES_CHILDREN_FIRST = [
   'job_runs',
   'places',
   'tables',
-  'bars',
   'areas',
   'venue_slug_history',
   'barsy_venues',
@@ -185,9 +190,10 @@ export async function cleanUp(
   ids: { tenants?: string[]; templates?: string[]; workers?: string[] },
 ): Promise<void> {
   const tenants = ids.tenants ?? []
-  for (const table of DOCUMENT_TABLES_CHILDREN_FIRST) {
+  for (const table of [...ORDERING_TABLES_CHILDREN_FIRST, ...DOCUMENT_TABLES_CHILDREN_FIRST]) {
     await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
   }
+  await owner.query('delete from restro.bars where tenant_id = any($1)', [tenants])
   // The purge's log is not a document table (the app role only reads it), but it names a tenant.
   await owner.query('delete from restro.purge_log where tenant_id = any($1)', [tenants])
   await owner.query('delete from restro.venues where tenant_id = any($1)', [tenants])
