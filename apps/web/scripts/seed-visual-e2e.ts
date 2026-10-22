@@ -31,6 +31,7 @@ import {
   ALLERGENS,
   type AssetId,
   deriveRoles,
+  hashTableCode,
   type MenuSnapshot,
   type NodeId,
   type SnapshotId,
@@ -431,7 +432,7 @@ async function main(): Promise<void> {
       venueIndexBytes({ venue_id: venueId, menu_id: menuId, slug: VISUAL_SLUG }),
       publishPutOptions(venueIndexPath(theme.publicId)),
     )
-    await writeTableTokenFile(store, theme.table, {
+    await writeTableTokenFile(store, await hashTableCode(theme.table), {
       venue_public_id: theme.publicId,
       venue_slug: VISUAL_SLUG,
       table_label: VISUAL_TABLE_LABEL,

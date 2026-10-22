@@ -59,6 +59,16 @@ export interface WorkerConfig {
   readonly assets: AssetStoreConfig
   /** Where published menus and photo variants go: the store the `/cdn` route (later the CDN) serves. */
   readonly publish: PublishStoreConfig
+  /**
+   * The bearer token the web app's server presents to the reveal endpoint (REVEAL_SERVICE_TOKEN,
+   * #70), or null: the endpoint is then off. Needs the seal keys too.
+   */
+  readonly revealToken: string | null
+  /**
+   * False (WORKER_POS_SYNC=off): no POS sync job is registered even with the seal keys set. For
+   * a worker that holds the keys only to seal and reveal table codes (the end-to-end tests).
+   */
+  readonly posSync: boolean
 }
 
 /**
@@ -136,6 +146,9 @@ const BAD_HOST_SUFFIXES =
   'must be a comma-separated list of host suffixes that start with a dot, e.g. .barsyonline.com.'
 const BAD_PRODUCTION_HOSTS =
   'must be a comma-separated list of bare host names (no scheme, port or path).'
+const BAD_REVEAL_TOKEN =
+  'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
+const BAD_POS_SYNC = 'must be on or off.'
 
 const HOST_SUFFIX = /^\.[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
 
@@ -236,6 +249,23 @@ function environmentSchema(defaultWorkerId: () => string) {
       R2_PUBLIC_BUCKET: z.string().optional(),
       SEAL_PUBLIC_KEY: sealKeySchema(parseSealPublicKey, BAD_SEAL_PUBLIC_KEY),
       SEAL_PRIVATE_KEY: sealKeySchema(parseSealPrivateKey, BAD_SEAL_PRIVATE_KEY),
+      REVEAL_SERVICE_TOKEN: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^\S{32,256}$/, { error: BAD_REVEAL_TOKEN })
+          .optional(),
+      ),
+      WORKER_POS_SYNC: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .pipe(z.enum(['on', 'off'], { error: BAD_POS_SYNC }))
+          .default('on'),
+      ),
     })
     .superRefine((env, ctx) => {
       const issue = (variable: string, message: string) =>
@@ -325,6 +355,8 @@ function environmentSchema(defaultWorkerId: () => string) {
         },
         assets,
         publish,
+        revealToken: env.REVEAL_SERVICE_TOKEN ?? null,
+        posSync: env.WORKER_POS_SYNC === 'on',
       }
     })
 }
@@ -352,6 +384,8 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `BARSY_PRODUCTION_HOSTS` | comma-separated hosts of live venues; every env but production refuses them | none |
  * | `SIM_POS_ALLOWED_HOSTS` | comma-separated hosts a staging demo's simulated POS runs on; local hosts are always allowed; production refuses a `sim` instance outright | none |
  * | `ASSET_STORE`, `LOCAL_ASSET_DIR`, `R2_*` | where barsy photos go (see @restro/assets) | local in development |
+ * | `REVEAL_SERVICE_TOKEN` | bearer token of the reveal endpoint (32+ characters); without it the endpoint is off | unset |
+ * | `WORKER_POS_SYNC` | `off` registers no POS sync job even with the seal keys (end-to-end tests) | on |
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,

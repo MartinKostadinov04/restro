@@ -9,10 +9,12 @@ import {
   type KeyObject,
 } from 'node:crypto'
 
+import { TABLE_TOKEN_PATTERN } from '../../guest-files'
 import { type BarsyCredentials, BarsyCredentialsSchema } from '../credentials'
 import {
   decodeEnvelope,
   deriveKey,
+  type IntegrationSealContext,
   keyId,
   parseDerKey,
   publicKeyFromRaw,
@@ -125,7 +127,7 @@ export function openSecret(
 /** Opens sealed barsy credentials and checks their shape (Zod); never puts a value in an error. */
 export function openBarsyCredentials(
   sealed: string,
-  context: SealContext & { readonly privateKey: KeyObject | string },
+  context: IntegrationSealContext & { readonly privateKey: KeyObject | string },
 ): BarsyCredentials {
   const text = openSecret(context.privateKey, sealed, context)
   let json: unknown
@@ -139,4 +141,21 @@ export function openBarsyCredentials(
     throw new SealError('invalid_payload', 'the sealed value is not barsy credentials')
   }
   return parsed.data
+}
+
+/**
+ * Opens a table's sealed code (D122 §9) for the worker's reveal endpoint and checks its shape;
+ * never puts the value in an error. `openSecret`'s errors otherwise: `open_failed` for an envelope
+ * sealed for another table or tenant.
+ */
+export function openTableCode(
+  privateKey: KeyObject | string,
+  sealed: string,
+  context: { readonly tenantId: string; readonly tableId: string },
+): string {
+  const code = openSecret(privateKey, sealed, { purpose: 'table_code', ...context })
+  if (!TABLE_TOKEN_PATTERN.test(code)) {
+    throw new SealError('invalid_payload', 'the sealed value is not a table code')
+  }
+  return code
 }

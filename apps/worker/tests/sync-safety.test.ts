@@ -327,7 +327,7 @@ describe.skipIf(!hasDatabase)('barsy sync safety (CF-02)', () => {
       await fullPull()
       const counts = await placeCounts()
       expect(counts.active).toBe(92)
-      await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+      await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
       world.enqueued.length = 0
       advance(10)
     })
@@ -336,7 +336,7 @@ describe.skipIf(!hasDatabase)('barsy sync safety (CF-02)', () => {
       Number(
         (
           await world.query<{ n: string }>(
-            'select count(*) as n from restro.tables where venue_id = $1 and qr_token is not null',
+            'select count(*) as n from restro.tables where venue_id = $1 and qr_code_hash is not null',
             [world.venueId],
           )
         )[0]?.n,

@@ -36,9 +36,12 @@ export interface TableRowView {
   readonly shownAs: string | null
   /** False for a hidden table (D95): no code that leads anywhere, no guest page. */
   readonly isPublic: boolean
-  /** The QR token, or null when the table has no code. */
-  readonly token: string | null
-  /** The address the code carries, or null (no code, or the installation has no address yet). */
+  /** True when the table has a code (stored as its hash and a sealed copy, #70). */
+  readonly hasCode: boolean
+  /**
+   * The address the code carries, or null: no code, the installation has no address yet, or the
+   * code was not revealed (only owners and admins see codes, through the worker).
+   */
   readonly address: string | null
   /** The code as SVG markup (dark on light, always), or null when there is no address or the table is hidden. */
   readonly qrSvg: string | null
@@ -84,8 +87,8 @@ export interface TablesView {
   /** Tables with a code that leads somewhere (a hidden table's paused code is not counted). */
   readonly coded: number
   /**
-   * The first table with a code (by area and number), for the test link: its token and what the
-   * table is called. Null when no table has a code.
+   * The first table with a code that was revealed (by area and number), for the test link: its
+   * code and what the table is called. Null when no table has one.
    */
   readonly sample: { readonly token: string; readonly shownAs: string | null } | null
 }

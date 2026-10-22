@@ -782,6 +782,8 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         sim: { env: 'test', allowHosts: [] },
         assets: { kind: 'local', dir: tmpdir() },
         publish: { kind: 'local', dir: root },
+        revealToken: null,
+        posSync: true,
       }
       worker = await startWorker(config, { logger, jobs: [...jobs.values()] })
     }, SETUP_TIMEOUT_MS)

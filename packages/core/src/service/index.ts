@@ -11,7 +11,7 @@ import type { DbPool } from '@restro/db'
 
 import { SERVICE_COMMANDS } from './commands'
 import type { ServiceContext } from './context'
-import { executeCommand } from './engine'
+import { executeCommand, type ServiceOptions } from './engine'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 
@@ -34,7 +34,7 @@ export {
   type Via,
 } from './context'
 export type { CommandHandler, Idempotency, ServiceTx } from './definition'
-export { SERVICE_LOCK_TIMEOUT, SERVICE_STATEMENT_TIMEOUT } from './engine'
+export { SERVICE_LOCK_TIMEOUT, SERVICE_STATEMENT_TIMEOUT, type ServiceOptions } from './engine'
 export {
   holdsLease,
   LEASE_SCOPES,
@@ -86,6 +86,7 @@ export {
   ServiceResultSchema,
 } from './results'
 export type { RowLocks, SentOrder, Sitting, TableOrder } from './rows'
+export { MAX_REVEALED_CODES } from './table-codes'
 
 /** Refusals made before the table was found: no table state goes with them. */
 const STATELESS: ReadonlySet<string> = new Set([
@@ -107,14 +108,16 @@ export interface AppliedService {
  * Applies one service command: the only way anything writes the service tables. The result is
  * accepted or refused with a code, never a local success (D72). A guest's command on a table also
  * returns the table's state, read after the commit, so the phone that acted sees its change at
- * once (and the fresh state comes with a refusal).
+ * once (and the fresh state comes with a refusal). `options` carries what some commands need
+ * from the caller's environment (the seal key a new table code is sealed with).
  */
 export async function applyService(
   pool: DbPool,
   command: unknown,
   context: ServiceContext,
+  options: ServiceOptions = {},
 ): Promise<AppliedService> {
-  const result = await executeCommand(pool, SERVICE_COMMANDS, command, context)
+  const result = await executeCommand(pool, SERVICE_COMMANDS, command, context, options)
   const named =
     typeof command === 'object' && command !== null && 'tableId' in command ? command.tableId : null
   const tableId = context.origin === 'guest' && typeof named === 'string' ? named : null

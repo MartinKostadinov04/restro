@@ -2,7 +2,10 @@
 // S5): what the tab reads (tables by area, codes drawn from the installation's address, the menu
 // each area and table shows), what the actions do and queue (a job only when a public file must
 // go, come or change), who may do what, a till's areas and tables against a venue made by hand,
-// the menu routes, and the file downloads. The queue is a fake.
+// the menu routes, and the file downloads. The queue is a fake, and so is the worker's reveal:
+// a code is stored as its hash and a copy only the worker can open (#70), so the fake "reveals"
+// a made-up code per table and the tests compare hashes where they compared codes.
+import { generateKeyPairSync } from 'node:crypto'
 import { type ChangeSet, JOB_NAMES, newId } from '@restro/core'
 import {
   apply,
@@ -24,6 +27,7 @@ import { eq } from 'drizzle-orm'
 import type pg from 'pg'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import type { RevealCodes } from '../reveal'
 import { appDatabaseUrl, hasDatabase, openOwnerPool, testSlug } from '../test-database'
 import { buildQrDownload, fileNamePart, parseFormat } from './download'
 import {
@@ -48,6 +52,13 @@ import {
 } from './service'
 
 const DEFAULT_BASE = 'http://localhost:3000'
+/** The worker's public seal key (base64url DER), as SEAL_PUBLIC_KEY carries it. */
+const SEAL_PUBLIC_KEY = generateKeyPairSync('x25519')
+  .publicKey.export({ type: 'spki', format: 'der' })
+  .toString('base64url')
+/** What the fake reveal gives for a table. */
+const fakeCode = (tableId: string) => `code${tableId.slice(3)}`
+const HASH = /^[0-9a-f]{64}$/
 
 describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -71,7 +82,16 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       sent.push({ name, data: data as Record<string, unknown> })
       return 'job-1'
     },
+    sealPublicKey: SEAL_PUBLIC_KEY,
   }
+  /** Each batch the fake reveal was asked for. */
+  const revealAsked: (readonly string[])[] = []
+  const reveal: RevealCodes = async (tableIds) => {
+    revealAsked.push(tableIds)
+    return new Map(tableIds.map((id) => [id, fakeCode(id)]))
+  }
+  /** The signed-in owner a re-issue's Log entry names (a member of the organisation). */
+  const actor = { userId: `us-tables-${newId('jb').slice(3)}`, sessionId: 'session-tables-test' }
   const errors: string[] = []
   let spy: { mockRestore: () => void }
 
@@ -90,7 +110,12 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     ...overrides,
   })
   const view = async (overrides: Partial<TablesScope> = {}) =>
-    loadTablesView(await scope(overrides), DEFAULT_BASE, async (text) => `<svg>${text}</svg>`)
+    loadTablesView(
+      await scope(overrides),
+      DEFAULT_BASE,
+      async (text) => `<svg>${text}</svg>`,
+      reveal,
+    )
   const handScope = (overrides: Partial<TablesScope> = {}): TablesScope => ({
     pool: app,
     tenantId: tenant,
@@ -99,7 +124,15 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     ...overrides,
   })
   const handView = (overrides: Partial<TablesScope> = {}) =>
-    loadTablesView(handScope(overrides), DEFAULT_BASE, async (text) => `<svg>${text}</svg>`)
+    loadTablesView(handScope(overrides), DEFAULT_BASE, async (text) => `<svg>${text}</svg>`, reveal)
+  /** A table's stored code hash (what its file is named after), or null. */
+  const hashOf = async (tableId: string): Promise<string | null> =>
+    (
+      await owner.query<{ qr_code_hash: string | null }>(
+        'select qr_code_hash from restro.tables where id = $1',
+        [tableId],
+      )
+    ).rows[0]?.qr_code_hash ?? null
   const ok = <T extends { ok: boolean }>(result: T): Extract<T, { ok: true }> => {
     if (!result.ok) throw new Error(`refused: ${JSON.stringify(result)}`)
     return result as Extract<T, { ok: true }>
@@ -151,6 +184,22 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     app = createPool(appDatabaseUrl(), { applicationName: 'restro-web-tables-tests' })
     await provisionTenant(app, { tenantId: tenant, name: 'Tables tab club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
+    // The organisation and its owner are Better Auth's rows: a re-issue checks the person is a
+    // member (the service write path, #70).
+    await owner.query('insert into restro.auth_organization (id, name, slug) values ($1, $2, $3)', [
+      tenant,
+      'Tables tab club',
+      testSlug('tables-org'),
+    ])
+    await owner.query('insert into restro.auth_user (id, name, email) values ($1, $2, $3)', [
+      actor.userId,
+      'Tables owner',
+      `${actor.userId}@example.test`,
+    ])
+    await owner.query(
+      'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+      [`mb-${actor.userId}`, tenant, actor.userId, 'owner'],
+    )
     venue = await provisionVenue(app, tenant, {
       name: 'Tables tab venue',
       slug: testSlug('tables-tab'),
@@ -199,6 +248,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
 
   afterEach(() => {
     sent.length = 0
+    revealAsked.length = 0
     enqueueFails = false
   })
 
@@ -207,6 +257,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     await app?.end()
     if (owner) {
       for (const table of [
+        'log_entries',
         'item_first_published',
         'publish_pointers',
         'snapshots',
@@ -235,6 +286,8 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         ])
       }
       await owner.query('delete from restro.tenants where id = any($1)', [[tenant, otherTenant]])
+      await owner.query('delete from restro.auth_user where id = $1', [actor.userId])
+      await owner.query('delete from restro.auth_organization where id = $1', [tenant])
       await owner.end()
     }
   })
@@ -269,7 +322,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(json).not.toContain('placeId')
       expect(read.halls[1]?.tables[0]).toMatchObject({
         isPublic: true,
-        token: null,
+        hasCode: false,
         address: null,
         qrSvg: null,
         label: null,
@@ -288,6 +341,24 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(other.total).toBe(0)
       expect((await view({ canManage: false })).canManage).toBe(false)
     })
+
+    it('asks the worker for the drawn codes in one batch, and never for a member', async () => {
+      await createAllCodes(await scope(), services)
+      revealAsked.length = 0
+      const read = await view()
+      expect(revealAsked).toHaveLength(1)
+      expect(revealAsked[0]).toHaveLength(read.coded)
+      revealAsked.length = 0
+      const member = await view({ canManage: false })
+      expect(revealAsked).toEqual([])
+      // A member sees which tables have a code, but no code.
+      const rows = member.halls.flatMap((hall) => hall.tables)
+      expect(rows.some((row) => row.hasCode)).toBe(true)
+      expect(rows.every((row) => row.address === null && row.qrSvg === null)).toBe(true)
+      expect(member.sample).toBeNull()
+      // Back to no codes for the tests that follow.
+      for (const row of rows) await turnOffCode(await scope(), services, row.id)
+    })
   })
 
   describe('the actions', () => {
@@ -303,14 +374,24 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       const read = await view()
       expect(read.coded).toBe(4)
       // The hidden table (4) has no code; the first shown one is the sample.
-      expect(read.halls[0]?.tables[0]).toMatchObject({ number: '4', token: null })
+      expect(read.halls[0]?.tables[0]).toMatchObject({ number: '4', hasCode: false })
       const first = read.halls[0]?.tables[1]
-      expect(first?.token).toMatch(/^[0-9A-Za-z]{22}$/)
-      expect(first?.address).toBe(`${DEFAULT_BASE}/t/${first?.token}`)
-      expect(first?.qrSvg).toBe(`<svg>${first?.address}</svg>`)
-      expect(read.sample).toEqual({ token: first?.token, shownAs: 'VIP' })
+      if (!first) throw new Error('no first table')
+      expect(first.hasCode).toBe(true)
+      // Stored as its hash and a sealed copy, never in plain (#70).
+      const stored = await owner.query(
+        'select qr_token, qr_code_hash, qr_code_sealed from restro.tables where id = $1',
+        [first.id],
+      )
+      expect(stored.rows[0]?.qr_token).toBeNull()
+      expect(stored.rows[0]?.qr_code_hash).toMatch(HASH)
+      expect(stored.rows[0]?.qr_code_sealed).toMatch(/^rs1\./)
+      // The address carries the code the worker revealed.
+      expect(first.address).toBe(`${DEFAULT_BASE}/t/${fakeCode(first.id)}`)
+      expect(first.qrSvg).toBe(`<svg>${first.address}</svg>`)
+      expect(read.sample).toEqual({ token: fakeCode(first.id), shownAs: 'VIP' })
       // The nameless table has no code and the area it is in still lists it.
-      expect(read.halls[0]?.tables.at(-1)).toMatchObject({ number: '—', token: null })
+      expect(read.halls[0]?.tables.at(-1)).toMatchObject({ number: '—', hasCode: false })
 
       // Asking again changes nothing and queues nothing.
       sent.length = 0
@@ -322,36 +403,72 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(sent).toEqual([])
     })
 
-    it('a new code names the old token for removal; turning off names it too; both queue the venue', async () => {
-      const before = await rowByNumber('VIP')
-      const renewed = await issueCode(await scope(), services, before.id)
+    it('a new code is a re-issue: it names the old file for removal and writes a record Log entry', async () => {
+      const table = await rowByNumber('VIP')
+      const before = await hashOf(table.id)
+      const generation = async () =>
+        (
+          await owner.query<{ code_generation: number }>(
+            'select code_generation from restro.tables where id = $1',
+            [table.id],
+          )
+        ).rows[0]?.code_generation
+      const generationBefore = await generation()
+      // A re-issue names the person who asked: without their sign-in, it is refused.
+      expect(await issueCode(await scope(), services, table.id)).toEqual({
+        ok: false,
+        error: 'forbidden',
+      })
+      // Without the worker's key no code can be sealed: nothing changes.
+      errors.length = 0
+      expect(
+        await issueCode(
+          await scope({ actor }),
+          { ...services, sealPublicKey: undefined },
+          table.id,
+        ),
+      ).toEqual({ ok: false, error: 'failed' })
+      expect(errors.join('\n')).toContain('table_code_seal_key_missing')
+      expect(await hashOf(table.id)).toBe(before)
+
+      const renewed = await issueCode(await scope({ actor }), services, table.id)
       expect(renewed).toEqual({ ok: true, queued: true })
-      const after = await rowByNumber('VIP')
-      expect(after.token).not.toBe(before.token)
+      const after = await hashOf(table.id)
+      expect(after).toMatch(HASH)
+      expect(after).not.toBe(before)
+      expect(await generation()).toBe((generationBefore ?? 0) + 1)
       expect(sent.at(-1)).toEqual({
         name: JOB_NAMES.publishTableTokens,
-        data: { tenantId: tenant, venueId: venue.id, retired: [before.token] },
+        data: { tenantId: tenant, venueId: venue.id, retired: [before] },
       })
+      const log = await owner.query<{ retention: string; table_id: string; actor: string }>(
+        "select retention, table_id, actor from restro.log_entries where tenant_id = $1 and kind = 'table_code.reissued'",
+        [tenant],
+      )
+      expect(log.rows).toEqual([
+        { retention: 'record', table_id: table.id, actor: `user:${actor.userId}` },
+      ])
 
-      const off = await turnOffCode(await scope(), services, after.id)
+      const off = await turnOffCode(await scope(), services, table.id)
       expect(off).toEqual({ ok: true, queued: true })
-      expect((await rowByNumber('VIP')).token).toBeNull()
-      expect(sent.at(-1)?.data.retired).toEqual([after.token])
+      expect(await hashOf(table.id)).toBeNull()
+      expect((await rowByNumber('VIP')).hasCode).toBe(false)
+      expect(sent.at(-1)?.data.retired).toEqual([after])
 
       // Turning off what is off retires and queues nothing.
       sent.length = 0
-      expect(await turnOffCode(await scope(), services, after.id)).toEqual({
+      expect(await turnOffCode(await scope(), services, table.id)).toEqual({
         ok: true,
         queued: true,
       })
       expect(sent).toEqual([])
-      // And a code can be created again.
-      expect(await issueCode(await scope(), services, after.id)).toEqual({ ok: true, queued: true })
+      // And a code can be created again (a first code needs no Log entry).
+      expect(await issueCode(await scope(), services, table.id)).toEqual({ ok: true, queued: true })
     })
 
     it('a name is queued only for a table that has a code, and it shows on the tab', async () => {
       const coded = await rowByNumber('10')
-      expect(coded.token).not.toBeNull()
+      expect(coded.hasCode).toBe(true)
       sent.length = 0
       expect(await renameTable(await scope(), services, coded.id, '  Corner   10 ')).toEqual({
         ok: true,
@@ -380,15 +497,17 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       })
     })
 
-    it('a change that is saved but could not be queued says so, and logs it without a token', async () => {
+    it('a change that is saved but could not be queued says so, and logs it without a code', async () => {
       const row = await rowByNumber('2')
       enqueueFails = true
       errors.length = 0
-      const result = await issueCode(await scope(), services, row.id)
+      const result = await issueCode(await scope({ actor }), services, row.id)
       expect(result).toEqual({ ok: true, queued: false })
-      expect((await rowByNumber('2')).token).not.toBeNull()
+      const hash = await hashOf(row.id)
+      expect(hash).toMatch(HASH)
       expect(errors.join('\n')).toContain('table_token_job_not_queued')
-      expect(errors.join('\n')).not.toContain((await rowByNumber('2')).token as string)
+      expect(errors.join('\n')).not.toContain(hash as string)
+      expect(errors.join('\n')).not.toContain(fakeCode(row.id))
     })
 
     it('only owners and admins act: a member is refused and nothing changes or is queued', async () => {
@@ -444,8 +563,9 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       })
       const read = await view()
       expect(read.baseUrl).toBe(DEFAULT_BASE)
-      const sample = read.halls.flatMap((hall) => hall.tables).find((row) => row.token !== null)
-      expect(sample?.address).toBe(`${DEFAULT_BASE}/t/${sample?.token}`)
+      const sample = read.halls.flatMap((hall) => hall.tables).find((row) => row.address !== null)
+      if (!sample) throw new Error('no coded table')
+      expect(sample.address).toBe(`${DEFAULT_BASE}/t/${fakeCode(sample.id)}`)
       // The QR is drawn from that address; nothing was fetched.
       expect(sample?.qrSvg).toBe(`<svg>${sample?.address}</svg>`)
     })
@@ -453,26 +573,32 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     it('is tidied, and an address that cannot be used leaves the codes undrawn', async () => {
       const render = async (text: string) => `<svg>${text}</svg>`
       const venueScope = await scope()
-      expect((await loadTablesView(venueScope, 'http://192.168.1.20:3000/', render)).baseUrl).toBe(
-        'http://192.168.1.20:3000',
-      )
+      expect(
+        (await loadTablesView(venueScope, 'http://192.168.1.20:3000/', render, reveal)).baseUrl,
+      ).toBe('http://192.168.1.20:3000')
       for (const unusable of [null, 'club.bg', 'http://club.bg']) {
-        const read = await loadTablesView(venueScope, unusable, render)
+        revealAsked.length = 0
+        const read = await loadTablesView(venueScope, unusable, render, reveal)
         expect(read.baseUrl).toBeNull()
         const rows = read.halls.flatMap((hall) => hall.tables)
         expect(rows.every((row) => row.address === null && row.qrSvg === null)).toBe(true)
-        // The codes exist; they just have no address to carry yet.
-        expect(rows.some((row) => row.token !== null)).toBe(true)
+        // The codes exist; they just have no address to carry yet (so none is revealed).
+        expect(rows.some((row) => row.hasCode)).toBe(true)
+        expect(revealAsked).toEqual([])
       }
     })
   })
 
   describe('the downloads', () => {
-    const deps = () => ({ pool: app, defaultBaseUrl: DEFAULT_BASE })
+    const deps = (codes: RevealCodes = reveal) => ({
+      pool: app,
+      defaultBaseUrl: DEFAULT_BASE,
+      reveal: () => codes,
+    })
 
     it('makes a PNG and an SVG of the address the setting gives, for the right table only', async () => {
       const row = await rowByNumber('2')
-      expect(row.token).not.toBeNull()
+      expect(row.hasCode).toBe(true)
       const png = await buildQrDownload(deps(), tenant, row.id, 'png')
       if (!png.ok) throw new Error('no png')
       expect(png.contentType).toBe('image/png')
@@ -491,6 +617,15 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       // Another organisation, a made-up id and a table without a code are all just "no".
       expect(await buildQrDownload(deps(), otherTenant, row.id, 'png')).toEqual({ ok: false })
       expect(await buildQrDownload(deps(), tenant, 'tb_nope', 'png')).toEqual({ ok: false })
+      // A code the worker does not reveal gives no file.
+      expect(
+        await buildQrDownload(
+          deps(async () => new Map()),
+          tenant,
+          row.id,
+          'png',
+        ),
+      ).toEqual({ ok: false })
       const off = await rowByNumber('VIP')
       await turnOffCode(await scope(), services, off.id)
       expect(await buildQrDownload(deps(), tenant, off.id, 'png')).toEqual({ ok: false })
@@ -512,10 +647,17 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
 
   describe("a venue with a till: the till's areas and tables (D95)", () => {
     const rows = async () => (await view()).halls.flatMap((hall) => hall.tables)
-    const tokensOf = async (...numbers: string[]) =>
-      (await rows())
-        .filter((row) => numbers.includes(row.number ?? ''))
-        .map((row) => row.token as string)
+    const hashesOf = async (...numbers: string[]) =>
+      (
+        await Promise.all(
+          (
+            await rows()
+          )
+            .filter((row) => numbers.includes(row.number ?? ''))
+            .map((row) => hashOf(row.id)),
+        )
+      )
+        .map(String)
         .sort()
 
     it('renames, reorders and hides an area; never creates or deletes one', async () => {
@@ -537,8 +679,8 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect((await view()).halls[1]?.id).toBe(terrace.id)
       expect(sent).toEqual([])
 
-      // Hiding takes the files of its tables away (their tokens stay); showing brings them back.
-      const tokens = await tokensOf('2', '10')
+      // Hiding takes the files of its tables away (their codes stay); showing brings them back.
+      const tokens = await hashesOf('2', '10')
       expect(tokens).toHaveLength(2)
       const codedBefore = (await view()).coded
       expect(await hideArea(await scope(), services, terrace.id, true)).toEqual({
@@ -551,8 +693,11 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       })
       const hidden = (await view()).halls.find((hall) => hall.id === terrace.id)
       expect(hidden?.isPublic).toBe(false)
-      // The codes are paused: the tokens stay on the rows, but they lead nowhere now.
-      expect(hidden?.tables.map((row) => row.token).sort()).toEqual(tokens)
+      // The codes are paused: they stay on the rows, but they lead nowhere now.
+      expect(
+        (await Promise.all((hidden?.tables ?? []).map((row) => hashOf(row.id)))).map(String).sort(),
+      ).toEqual(tokens)
+      expect(hidden?.tables.every((row) => row.hasCode)).toBe(true)
       expect(hidden?.tables.every((row) => row.address === null && row.qrSvg === null)).toBe(true)
       expect((await view()).coded).toBe(codedBefore - 2)
       sent.length = 0
@@ -601,12 +746,14 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       ).toEqual(['2', '10'])
 
       // Hiding a table with a code takes its file away; showing brings it back.
+      const twoHash = await hashOf(two.id)
       expect(await hideTable(await scope(), services, two.id, true)).toEqual({
         ok: true,
         queued: true,
       })
-      expect(sent.at(-1)?.data.retired).toEqual([two.token])
-      expect(await rowByNumber('2')).toMatchObject({ isPublic: false, token: two.token })
+      expect(sent.at(-1)?.data.retired).toEqual([twoHash])
+      expect(await rowByNumber('2')).toMatchObject({ isPublic: false, hasCode: true })
+      expect(await hashOf(two.id)).toBe(twoHash)
       sent.length = 0
       expect(await hideTable(await scope(), services, two.id, false)).toEqual({
         ok: true,
@@ -643,9 +790,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
     const named = async () => (await handView()).halls
     const idsIn = async (areaId: string) =>
       (await named()).find((candidate) => candidate.id === areaId)?.tables.map((r) => r.id)
-    const tokenOf = async (tableId: string) =>
-      (await named()).flatMap((candidate) => candidate.tables).find((r) => r.id === tableId)
-        ?.token as string
+    const tokenOf = async (tableId: string) => (await hashOf(tableId)) as string
 
     it('adds areas and tables, which touch no public file', async () => {
       expect(await addArea(handScope(), '  Main   hall ')).toEqual({ ok: true, queued: true })
@@ -751,7 +896,8 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(await hideTable(handScope(), services, one, true)).toEqual({ ok: true, queued: true })
       expect(sent.at(-1)?.data.retired).toEqual([token])
       const hidden = (await handView()).halls[0]?.tables[0]
-      expect(hidden).toMatchObject({ isPublic: false, token, address: null, qrSvg: null })
+      expect(hidden).toMatchObject({ isPublic: false, hasCode: true, address: null, qrSvg: null })
+      expect(await hashOf(one)).toBe(token)
       expect((await handView()).coded).toBe(2)
       sent.length = 0
       await hideTable(handScope(), services, one, false)
@@ -766,7 +912,11 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       const patioToken = await tokenOf(three)
       expect(await hideArea(handScope(), services, patio, true)).toEqual({ ok: true, queued: true })
       expect(sent.at(-1)?.data.retired).toEqual([patioToken])
-      expect(await issueCode(handScope(), services, three)).toEqual({ ok: false, error: 'hidden' })
+      // A new code for a coded table is a re-issue, which names the person: refused while hidden.
+      expect(await issueCode(handScope({ actor }), services, three)).toEqual({
+        ok: false,
+        error: 'hidden',
+      })
       sent.length = 0
       await hideArea(handScope(), services, patio, false)
       expect(sent).toHaveLength(1)

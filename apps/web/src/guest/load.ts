@@ -20,6 +20,7 @@
 import {
   type CurrentPointer,
   CurrentPointerSchema,
+  hashTableCode,
   isOrganizationSlug,
   isPublicId,
   isVenueSlug,
@@ -102,7 +103,7 @@ export const files = {
     return `${url}?v=${bust.version}${bust.attempt > 1 ? `&r=${bust.attempt}` : ''}`
   },
   snapshot: (base: string, pointer: PointerRef) => join(base, `snap/${pointer.snapshot_id}.json`),
-  table: (base: string, token: string) => join(base, `t/${token}.json`),
+  table: (base: string, codeHash: string) => join(base, `t/${codeHash}.json`),
 }
 
 /** Fetches a file and checks it with `schema`. A 404 is `whenMissing`; anything else wrong is `failed`. */
@@ -289,9 +290,11 @@ export async function loadTableFile(
 ): Promise<TableFile | null> {
   if (!TABLE_TOKEN_PATTERN.test(token)) return null
   try {
+    // The file is named after the code's hash (#70, Web Crypto): the code never goes over the wire.
+    const codeHash = await hashTableCode(token)
     const file = await getFile(
       deps,
-      files.table(deps.base, token),
+      files.table(deps.base, codeHash),
       TableTokenFileSchema,
       'unknown_venue',
     )
@@ -320,15 +323,27 @@ export interface LoadedMenu {
   readonly live: LiveOverlay | null
   /** The venue's public code (what a table's file is matched against). */
   readonly publicId: string
-  /** The table of the code in the address, once its file answered for this venue; else null. */
+  /**
+   * The table of the code in the address (or, without one, of the code this tab kept), once its
+   * file answered for this venue; else null.
+   */
   readonly table: ConfirmedTable | null
   /** The address the page should show (D84), or null when the files do not know the organisation. */
   readonly canonical: GuestAddress | null
 }
 
 /**
- * The rest of the chain from a venue's index: the table's file when a code is in the address
- * (it may name the menu to show), then the pointer, the snapshot and the overlay of that menu.
+ * The code this tab kept for a venue (`rememberedTable`), asked once the venue's public code is
+ * known; the load checks it when the address carries no code.
+ */
+export type RememberedTable = (publicId: string) => string | null
+
+const NOTHING_REMEMBERED: RememberedTable = () => null
+
+/**
+ * The rest of the chain from a venue's index: the table's file when a code is in the address, or
+ * else the one this tab kept for the venue (it may name the menu to show), then the pointer, the
+ * snapshot and the overlay of that menu.
  * The overlay is a refinement: if only it fails, the menu is shown without sold-out marks and
  * the next poll tries again.
  */
@@ -337,8 +352,10 @@ async function loadMenuFrom(
   resolved: { readonly index: VenueIndex; readonly publicId: string },
   token: string | null,
   canonical: GuestAddress | null,
+  remembered: RememberedTable,
 ): Promise<LoadedMenu> {
-  const table = token === null ? null : await loadTableFile(deps, token, resolved.publicId)
+  const claim = token ?? remembered(resolved.publicId)
+  const table = claim === null ? null : await loadTableFile(deps, claim, resolved.publicId)
   const index: VenueIndex =
     table?.menuId == null ? resolved.index : { ...resolved.index, menu_id: table.menuId }
   const pointer = await loadPointer(deps, index)
@@ -362,13 +379,14 @@ export async function loadMenu(
   deps: LoadDeps,
   publicId: string,
   token: string | null = null,
+  remembered: RememberedTable = NOTHING_REMEMBERED,
 ): Promise<LoadedMenu> {
   const index = await loadVenueIndex(deps, publicId)
   const canonical =
     index.organization === undefined
       ? null
       : { organization: index.organization, venue: index.slug }
-  return loadMenuFrom(deps, { index, publicId }, token, canonical)
+  return loadMenuFrom(deps, { index, publicId }, token, canonical, remembered)
 }
 
 /** Follows the whole chain from `/m/<organisation>/<venue>` (D84). */
@@ -376,7 +394,8 @@ export async function loadMenuAt(
   deps: LoadDeps,
   address: GuestAddress,
   token: string | null = null,
+  remembered: RememberedTable = NOTHING_REMEMBERED,
 ): Promise<LoadedMenu> {
   const resolved = await resolveGuestAddress(deps, address)
-  return loadMenuFrom(deps, resolved, token, resolved.canonical)
+  return loadMenuFrom(deps, resolved, token, resolved.canonical, remembered)
 }

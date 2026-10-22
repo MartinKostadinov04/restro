@@ -38,6 +38,28 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The worker's reveal endpoint on the private network (#70), e.g.
+   * `http://worker.railway.internal:8081` (`http://localhost:8081` locally): the Tables screen asks
+   * it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
+   * counts as missing.
+   */
+  WORKER_REVEAL_URL: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    })
+    .pipe(z.url({ protocol: /^https?$/ }).optional()),
+  /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
+  REVEAL_SERVICE_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
 })
 
 /** The settings the server needs. */

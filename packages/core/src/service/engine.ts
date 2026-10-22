@@ -13,6 +13,8 @@
 // The answer is always accepted or refused with a code (D72). Nothing here, and nothing a handler
 // gets, can call a POS or a payment provider: the transaction holds row locks for milliseconds.
 
+import type { KeyObject } from 'node:crypto'
+
 import { type DbPool, sentOrders, tableOrders, venueTables } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, eq, sql } from 'drizzle-orm'
@@ -61,6 +63,12 @@ function postgresCode(error: unknown): string | null {
   return null
 }
 
+/** What a caller may hand the engine beside the context: keys from its environment. */
+export interface ServiceOptions {
+  /** The worker's public seal key (`SEAL_PUBLIC_KEY`), for the commands that issue a table code. */
+  readonly sealPublicKey?: KeyObject | string
+}
+
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
 interface Envelope {
   readonly type: string
@@ -78,6 +86,7 @@ export async function executeCommand(
   registry: CommandRegistry,
   input: unknown,
   contextInput: ServiceContext,
+  options: ServiceOptions = {},
 ): Promise<ServiceResult> {
   const context = ServiceContextSchema.parse(contextInput)
   const rawActionId =
@@ -150,6 +159,7 @@ export async function executeCommand(
         origin: context.origin,
         via,
         permissions: grants.permissions,
+        sealPublicKey: options.sealPublicKey ?? null,
         log: (entry) =>
           appendLogEntry(
             tx,

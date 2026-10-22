@@ -35,6 +35,7 @@ import {
 } from '@restro/assets'
 import {
   type ChangeSet,
+  hashTableCode,
   menuPath,
   type NodeId,
   newId,
@@ -219,7 +220,8 @@ async function main(): Promise<void> {
   await writeLiveOverlay(deps, scope)
   // The organisation's index (D84), as the publish job writes it after the files.
   await writeOrganizationIndex(deps, tenantId)
-  await writeTableTokenFile(publishStore, GUEST_TABLE_TOKEN, {
+  // The file is named after the code's hash (#70).
+  await writeTableTokenFile(publishStore, await hashTableCode(GUEST_TABLE_TOKEN), {
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
     // The demo organisation's slug (D84): `/t/<token>` leads to `/m/demo-club/<venue>`.

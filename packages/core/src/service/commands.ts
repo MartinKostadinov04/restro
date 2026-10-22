@@ -1,8 +1,9 @@
 // The service commands (design §2.1; spec #64 Implementation Decisions 3): one Zod-checked union,
 // each command with the origins it may come from, the permission it needs and how a repeat is
-// recognised. Every command is a stub here, refused `not_built` until its ticket gives it a
-// handler and the rest of its payload: the machinery around them (origins, permissions,
-// provenance, locks, idempotency, the Log, the version) is real and runs for each of them.
+// recognised. A command is a stub, refused `not_built`, until its ticket gives it a handler and
+// the rest of its payload: the machinery around them (origins, permissions, provenance, locks,
+// idempotency, the Log, the version) is real and runs for each of them. Built so far: the
+// table-code commands (#70).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -12,6 +13,7 @@ import { z } from 'zod'
 import { idSchema } from '../ids'
 import { type CommandDefinition, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
 
 const tableId = idSchema('tb')
 const actionId = z.uuid()
@@ -130,8 +132,27 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: null,
   }),
-  // #70 builds the re-issue on this machinery; it is the one writer of `tables.code_generation`.
-  'table_code.reissue': staffOnTable('table_code.reissue', 'settings.codes'),
+  // #70: the one writer of `tables.code_generation`. A repeat issues yet another code, which is
+  // what a manager pressing "new code" twice asks for.
+  'table_code.reissue': defineCommand({
+    schema: z.strictObject({ type: z.literal('table_code.reissue'), tableId }),
+    origins: ['staff'],
+    permission: 'settings.codes',
+    idempotency: 'by_nature',
+    handle: reissueTableCode,
+  }),
+  // #70: the admin sees its tables' codes again (a page of thumbnails, a sticker); the worker's
+  // reveal endpoint opens the sealed copies once this is accepted.
+  'table_code.reveal': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('table_code.reveal'),
+      tableIds: z.array(tableId).min(1).max(MAX_REVEALED_CODES),
+    }),
+    origins: ['staff'],
+    permission: 'settings.codes',
+    idempotency: 'by_nature',
+    handle: revealTableCodes,
+  }),
   'roles.change': staffOnVenue('roles.change', 'settings.roles'), // #72
   'staff.change': staffOnVenue('staff.change', 'settings.roles'), // #72
 

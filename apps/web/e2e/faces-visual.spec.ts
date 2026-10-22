@@ -206,7 +206,7 @@ async function openMenu(
       },
     })
   })
-  await page.goto(`${visualPath(theme)}?lang=${lang}&t=${theme.table}`)
+  await page.goto(`${visualPath(theme)}?lang=${lang}#t=${theme.table}`)
   await expect(page.locator(`[data-face="${FACE_ID}"]:not([data-testid])`)).toBeVisible()
   await expect(page.locator('[data-item]').first()).toBeVisible()
   await loadPhotos(page)

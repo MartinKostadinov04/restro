@@ -128,6 +128,8 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       sim: { env: 'test', allowHosts: [] },
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
+      revealToken: null,
+      posSync: true,
     }
     const logger = await createLogger({
       level: 'debug',

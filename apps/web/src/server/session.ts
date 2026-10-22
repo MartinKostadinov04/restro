@@ -24,6 +24,11 @@ export interface Organization {
 /** A signed-in person and the organisation they are working in. */
 export interface Access {
   readonly user: { readonly id: string; readonly name: string; readonly email: string }
+  /**
+   * The session's id (not its token): what the service write path names as the actor's sign-in
+   * (`ServiceContext.actor.sessionId`), e.g. for a table code's reveal (#70).
+   */
+  readonly sessionId: string
   readonly organizations: readonly Organization[]
   /** The organisation (tenant) every data query is scoped to; null if they belong to none. */
   readonly organization: Organization | null
@@ -56,6 +61,7 @@ export const getAccess = cache(async (): Promise<Access | null> => {
   const organization = organizations.find((org) => org.id === activeId) ?? organizations[0] ?? null
   return {
     user: { id: session.user.id, name: session.user.name, email: session.user.email },
+    sessionId: session.session.id,
     organizations,
     organization,
   }

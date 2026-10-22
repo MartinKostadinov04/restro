@@ -2,9 +2,10 @@
 // config so a test can read them without loading the config (which reads the root .env.local).
 //
 // `Referrer-Policy: no-referrer` on `/m/*` (the menu) and `/t/*` (a table's QR address): the table
-// code is the only access control there is (D27) and it sits in the address (`/m/<venue>?t=<code>`).
-// Without a policy the browser sends that address as `Referer` to every other origin the page
-// loads from, such as a CDN that serves the photos (A5-F5).
+// code is the only access control there is (D27) and it sits in the address (`/t/<code>`, then
+// the fragment of `/m/<venue>#t=<code>`, D122 §9; an older link may still carry `?t=`). Without a
+// policy the browser sends the address as `Referer` to every other origin the page loads from,
+// such as a CDN that serves the photos (A5-F5).
 
 /** One entry of Next.js's `headers()`. */
 export interface HeaderRule {
