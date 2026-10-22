@@ -326,7 +326,9 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
 describe('buildJobs', () => {
   const configWithoutKeys = {
     seal: null,
+    posSync: true,
     barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+    sim: { env: 'test', allowHosts: [] },
     assets: { kind: 'local', dir: tmpdir() },
     publish: { kind: 'local', dir: tmpdir() },
   } as unknown as WorkerConfig
