@@ -85,6 +85,8 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       barsy: policy as WorkerConfig['barsy'],
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
+      revealToken: null,
+      posSync: true,
     }
     worker = await startWorker(config, {
       logger,
@@ -352,7 +354,7 @@ describe('buildJobs', () => {
     for (const warning of warnings) expect(warning).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
-  it('with the keys it adds the five sync jobs and the one tick to the publish jobs', async () => {
+  it('with the keys it adds the five sync jobs, the one tick and seal-table-codes to the publish jobs', async () => {
     const world = await import('../src/config').then(async ({ loadConfig }) => {
       const { generateSealKeyPair } = await import('@restro/core/seal-open')
       const pair = generateSealKeyPair()
@@ -378,7 +380,31 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      JOB_NAMES.sealTableCodes,
     ])
+  })
+
+  it('with the keys and WORKER_POS_SYNC=off it seals table codes but registers no sync job, and warns', async () => {
+    const config = await import('../src/config').then(async ({ loadConfig }) => {
+      const { generateSealKeyPair } = await import('@restro/core/seal-open')
+      const pair = generateSealKeyPair()
+      return loadConfig({
+        DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+        SEAL_PUBLIC_KEY: pair.publicKey,
+        SEAL_PRIVATE_KEY: pair.privateKey,
+        WORKER_POS_SYNC: 'off',
+      })
+    })
+    const warnings: string[] = []
+    const jobs = await buildJobs(config, {
+      warn: (message: string) => warnings.push(message),
+    } as never)
+    const names = jobs.map((job) => job.name)
+    expect(names).toContain(JOB_NAMES.sealTableCodes)
+    expect(names).toContain(JOB_NAMES.publishTableTokens)
+    expect(names).not.toContain(JOB_NAMES.barsyFullPull)
+    expect(names).not.toContain(JOB_NAMES.barsySyncTick)
+    expect(warnings.some((warning) => warning.includes('WORKER_POS_SYNC'))).toBe(true)
   })
 
   it('with DATABASE_URL_PURGE it adds the two purge jobs (D83); without it, nothing is ever erased', async () => {

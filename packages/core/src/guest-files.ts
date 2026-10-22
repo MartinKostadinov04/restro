@@ -9,7 +9,7 @@
 //                               starts (D84)
 //   v/<venue public code>.json  {venue_id, menu_id, slug, organization}  what the old address
 //                               `/m/<slug>-<code>` shows, and where it redirects to (D68 → D84)
-//   t/<table token>.json        {venue_public_id, venue_slug, organization_slug, table_label, menu_id}
+//   t/<code's SHA-256>.json     {venue_public_id, venue_slug, organization_slug, table_label, menu_id}
 //                               what a table's QR code means and which menu it opens (D95)
 //   m/<menu>/<venue>/current.json  {snapshot_id, version, hash}  which snapshot is current
 //
@@ -74,6 +74,12 @@ export const PublicIdSchema = z
 /** A table token: opaque and URL-safe, 8 to 128 characters (S3-07 decides how tokens are made). */
 export const TABLE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
 
+/**
+ * A table code's SHA-256, lower-case hex (`hashTableCode`): what its published file is named by
+ * (`t/<hash>.json`) and the database looks it up by (D122 §9). The code itself is never a file name.
+ */
+export const TABLE_CODE_HASH_PATTERN = /^[0-9a-f]{64}$/
+
 /** An organisation slug as a schema (`demo-club`): lower-case kebab-case, 1 to 63 characters. */
 export const OrganizationSlugSchema = z
   .string()
@@ -135,7 +141,7 @@ export const OrganizationFileSchema = z.union([OrganizationIndexSchema, Organiza
 /** The content of `o/<slug>.json`. */
 export type OrganizationFile = z.output<typeof OrganizationFileSchema>
 
-/** `t/<token>.json`: the venue a table code belongs to, how its table is called, and which menu it shows. */
+/** `t/<code hash>.json`: the venue a table code belongs to, how its table is called, and which menu it shows. */
 export const TableTokenFileSchema = z.strictObject({
   /** The venue's public code: what `/t/<token>` and the guest page match the table against. */
   venue_public_id: PublicIdSchema,
@@ -154,7 +160,7 @@ export const TableTokenFileSchema = z.strictObject({
    */
   menu_id: idSchema('nd').optional(),
 })
-/** The content of `t/<token>.json`. */
+/** The content of `t/<code hash>.json`. */
 export type TableTokenFile = z.output<typeof TableTokenFileSchema>
 
 /** `m/<menu>/<venue>/current.json`: which snapshot is current. */

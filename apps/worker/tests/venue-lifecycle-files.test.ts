@@ -386,9 +386,14 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       )
       const tokens: string[] = []
       for (const table of await listVenueTables(world.pool, world.tenantId, world.venueId)) {
-        const issued = await issueTableToken(world.pool, world.tenantId, table.id)
+        const issued = await issueTableToken(
+          world.pool,
+          world.tenantId,
+          table.id,
+          world.publicKeyText,
+        )
         if (!issued.ok) throw new Error(issued.reason)
-        tokens.push(issued.table.token ?? '')
+        tokens.push(issued.table.codeHash ?? '')
       }
       await runJob(JOB_NAMES.publishTableTokens, {
         tenantId: world.tenantId,
@@ -416,11 +421,11 @@ describe.skipIf(!hasDatabase)('a deleted venue and the files guests read (CF-18)
       // /t/<token> finds nothing: "not active".
       expect(await files(tokens)).toEqual([null, null])
       // The codes were not retired: they are still on the tables.
-      const stored = await world.query<{ qr_token: string }>(
-        'select qr_token from restro.tables where venue_id = $1',
+      const stored = await world.query<{ qr_code_hash: string }>(
+        'select qr_code_hash from restro.tables where venue_id = $1',
         [world.venueId],
       )
-      expect(stored.map((row) => row.qr_token).sort()).toEqual([...tokens].sort())
+      expect(stored.map((row) => row.qr_code_hash).sort()).toEqual([...tokens].sort())
 
       // A repeated job finds the work done.
       await runJob(JOB_NAMES.publishTableTokens, {

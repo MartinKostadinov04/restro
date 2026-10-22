@@ -29,9 +29,14 @@ describe('the service commands', () => {
     }
   })
 
-  it('lists the table-code re-issue for #70, needing settings.codes', () => {
-    expect(SERVICE_COMMANDS['table_code.reissue'].permission).toBe('settings.codes')
-    expect(SERVICE_COMMANDS['table_code.reissue'].handle).toBeNull()
+  it('builds the table-code commands (#70), both needing settings.codes', () => {
+    for (const type of ['table_code.reissue', 'table_code.reveal'] as const) {
+      expect(SERVICE_COMMANDS[type].permission, type).toBe('settings.codes')
+      expect(SERVICE_COMMANDS[type].handle, type).not.toBeNull()
+    }
+    const reveal = SERVICE_COMMANDS['table_code.reveal'].schema
+    expect(reveal.safeParse({ type: 'table_code.reveal', tableIds: [] }).success).toBe(false)
+    expect(reveal.safeParse({ type: 'table_code.reveal', tableIds: [TABLE] }).success).toBe(true)
   })
 
   it('parses a command through the union and refuses unknown fields', () => {

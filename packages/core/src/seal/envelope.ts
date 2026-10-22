@@ -5,7 +5,8 @@
 //   X25519 ephemeral ECDH with the recipient's public key
 //   → HKDF-SHA256 (salt = ephemeral public key ‖ recipient public key, info `restro-seal-v1`)
 //   → AES-256-GCM, random 12-byte nonce, 16-byte tag,
-//     AAD `restro-seal-v1|<tenantId>|<integrationId>|<host>`
+//     AAD `restro-seal-v1|<tenantId>|<integrationId>|<host>` (credentials) or
+//         `restro-seal-v1|table_code|<tenantId>|<tableId>` (a table's code, D122 §9)
 //
 //   envelope = `rs1.<kid>.<ephPub>.<nonce>.<ciphertext‖tag>`, each part base64url (no padding)
 //   kid      = the first 8 bytes of SHA-256(recipient public key)
@@ -37,8 +38,8 @@ const BASE64URL = /^[A-Za-z0-9_-]*$/
 /** A bare host name, optionally with a port: what `integrations.host` holds. */
 const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[0-9]{1,5})?$/
 
-/** What an envelope is bound to (its AAD). */
-export interface SealContext {
+/** What an integration's sealed credentials are bound to (its AAD). */
+export interface IntegrationSealContext {
   /** Our tenant id (`tn_…`). */
   readonly tenantId: string
   /** Our integration id (`in_…`). */
@@ -48,14 +49,40 @@ export interface SealContext {
 }
 
 /**
- * The AAD for a context: `restro-seal-v1|<tenantId>|<integrationId>|<host>`, the host in lower
- * case. Throws `invalid_context` for a malformed part, so no separator can be smuggled in.
+ * What a table's sealed code is bound to (D122 §9): the tenant and the table. Copied onto another
+ * table, the envelope does not open, so a code can never be shown as another table's.
+ */
+export interface TableCodeSealContext {
+  readonly purpose: 'table_code'
+  /** Our tenant id (`tn_…`). */
+  readonly tenantId: string
+  /** Our table id (`tb_…`). */
+  readonly tableId: string
+}
+
+/** What an envelope is bound to (its AAD). */
+export type SealContext = IntegrationSealContext | TableCodeSealContext
+
+/**
+ * The AAD for a context: `restro-seal-v1|<tenantId>|<integrationId>|<host>` (the host in lower
+ * case) for credentials, `restro-seal-v1|table_code|<tenantId>|<tableId>` for a table's code. The
+ * second part tells them apart: a tenant id always starts with `tn_`. Throws `invalid_context` for
+ * a malformed part, so no separator can be smuggled in.
  */
 export function sealAad(context: SealContext): string {
-  const host = typeof context.host === 'string' ? context.host.trim().toLowerCase() : ''
   if (!isId('tn', context.tenantId)) {
     throw new SealError('invalid_context', 'the seal context needs a tn_ tenant id')
   }
+  if ('purpose' in context) {
+    if (context.purpose !== 'table_code' || !isId('tb', context.tableId)) {
+      throw new SealError(
+        'invalid_context',
+        'the seal context of a table code needs a tb_ table id',
+      )
+    }
+    return `${SEAL_INFO}|table_code|${context.tenantId}|${context.tableId}`
+  }
+  const host = typeof context.host === 'string' ? context.host.trim().toLowerCase() : ''
   if (!isId('in', context.integrationId)) {
     throw new SealError('invalid_context', 'the seal context needs an in_ integration id')
   }

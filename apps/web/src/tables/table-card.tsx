@@ -89,7 +89,7 @@ export function TableCard({
   useEffect(() => setName(row.label ?? ''), [row.label])
   useEffect(() => setNumber(row.number ?? ''), [row.number])
 
-  const hasCode = row.token !== null
+  const hasCode = row.hasCode
   const active = row.isPublic && areaPublic
   const codeStatus = hasCode ? (active ? 'codeActive' : 'codePaused') : 'codeNone'
 

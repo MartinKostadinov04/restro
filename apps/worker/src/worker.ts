@@ -1,7 +1,7 @@
 // The worker process: pg-boss on our Postgres, the registered jobs, the health endpoint.
 //
 // Start order (any failure undoes what already started and rethrows):
-//   1. health endpoint (an unusable port fails fast; probes see 503 "starting" until step 5);
+//   1. health endpoint (an unusable port fails fast; probes see 503 "starting" until step 6);
 //   2. the @restro/db pool, and one scoped transaction to prove the database is reachable and
 //      that the role cannot bypass row-level security (UnsafeDatabaseRoleError otherwise). This
 //      happens BEFORE pg-boss, so a mistaken owner URL never gets to create tables;
@@ -9,8 +9,10 @@
 //      role may only use and create in it) and `migrate: true` (pg-boss installs and upgrades
 //      its own tables);
 //   4. the jobs from jobs/index.ts (registry.ts), plus one immediate heartbeat so /health turns
-//      green within seconds instead of after the first cron tick;
-//   5. "worker started".
+//      green within seconds instead of after the first cron tick, and one `seal-table-codes` run
+//      (#70) so a deploy moves the table codes still in plain at once;
+//   5. the reveal endpoint, when REVEAL_SERVICE_TOKEN and the seal keys are set (reveal.ts);
+//   6. "worker started".
 //
 // Stop order (stop() is idempotent; the signal handling lives in shutdown.ts):
 //   1. /health starts answering 503 "stopping";
@@ -19,6 +21,7 @@
 //      pool is closed;
 //   3. the @restro/db pool is closed;
 //   4. the health endpoint is closed last, so the process stays probe-able until the end.
+import { JOB_NAMES } from '@restro/core'
 import { createPool, type DbPool, withSystem } from '@restro/db'
 import { PgBoss } from 'pg-boss'
 
@@ -31,6 +34,7 @@ import type { JobDefinition, WorkerContext } from './jobs/types'
 import { WORKER_HEARTBEAT_JOB } from './jobs/worker-heartbeat'
 import type { Logger } from './logger'
 import { registerJobs } from './registry'
+import { revealTableCodes } from './reveal'
 import { WORKER_VERSION } from './version'
 
 /** How long running jobs get to finish when the worker stops. */
@@ -79,6 +83,7 @@ export async function startWorker(
 
   /** Closes whatever was opened. Every step runs; the first failure is rethrown at the end. */
   async function closeAll(graceful: boolean): Promise<void> {
+    health?.setRevealHandler(null)
     const failures: unknown[] = []
     const attempt = async (what: string, close: () => Promise<unknown>) => {
       try {
@@ -138,6 +143,19 @@ export async function startWorker(
     await registerJobs(boss, jobs, context)
     if (jobs.some((job) => job.name === WORKER_HEARTBEAT_JOB)) {
       await boss.send(WORKER_HEARTBEAT_JOB, {})
+    }
+    if (jobs.some((job) => job.name === JOB_NAMES.sealTableCodes)) {
+      await boss.send(JOB_NAMES.sealTableCodes, {})
+    }
+    if (config.revealToken !== null && config.seal !== null) {
+      const deps = { pool, privateKey: config.seal.privateKey }
+      health.setRevealHandler({
+        token: config.revealToken,
+        reveal: (request) => revealTableCodes(deps, request),
+        failed: (error) => log.error({ err: error }, 'a table-code reveal failed'),
+      })
+    } else if (config.revealToken !== null) {
+      log.warn('REVEAL_SERVICE_TOKEN is set without the seal keys: the reveal endpoint is off')
     }
   } catch (error) {
     // Nothing is running yet that needs a grace period.

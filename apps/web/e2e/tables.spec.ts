@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -115,6 +116,8 @@ async function addressOf(row: Locator): Promise<string> {
   return address
 }
 const tokenOf = async (row: Locator) => (await addressOf(row)).split('/').at(-1) ?? ''
+/** A code's published file and its tombstone are named after its SHA-256 (#70), never the code. */
+const hashOf = (token: string) => createHash('sha256').update(token).digest('hex')
 
 /** The SVG the row shows, from its `<img>`. */
 async function pictureOf(row: Locator): Promise<string> {
@@ -139,7 +142,7 @@ function runWorker(): WorkerJob[] {
 
 /** What the published file of a code says. */
 async function fileOf(token: string) {
-  const response = await page.request.get(`/cdn/t/${token}.json`)
+  const response = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
   expect(response.status()).toBe(200)
   return (await response.json()) as { table_label: string; menu_id: string | null }
 }
@@ -276,8 +279,8 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 
   const redirect = await page.request.get(`/t/${token}`, { maxRedirects: 0 })
   expect(redirect.status()).toBe(302)
-  expect(redirect.headers().location).toBe(`${GUEST_PATH}?t=${token}`)
-  const file = await page.request.get(`/cdn/t/${token}.json`)
+  expect(redirect.headers().location).toBe(`${GUEST_PATH}#t=${token}`)
+  const file = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
   // The file also says which menu the code opens (D95): the venue's live menu, published.
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
@@ -289,7 +292,7 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 
   const guest = await guestPhone(context)
   await guest.goto(`${origin}/t/${token}`)
-  await guest.waitForURL(`**${GUEST_PATH}?t=${token}`)
+  await guest.waitForURL(`**${GUEST_PATH}#t=${token}`)
   await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(guest.getByText('Маса 1', { exact: true })).toBeVisible()
   await guest.screenshot({ path: shot('guest-table-1-bg') })
@@ -308,7 +311,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   const jobs = runWorker()
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.every((job) => job.retired.length === 0)).toBe(true)
-  const file = await page.request.get(`/cdn/t/${token}.json`)
+  const file = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
   expect(await file.json()).toEqual({
     venue_public_id: venue.publicId,
     venue_slug: GUEST_SLUG,
@@ -326,7 +329,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   await input.fill('')
   await act(() => input.press('Enter'))
   runWorker()
-  expect(await (await page.request.get(`/cdn/t/${token}.json`)).json()).toMatchObject({
+  expect(await (await page.request.get(`/cdn/t/${hashOf(token)}.json`)).json()).toMatchObject({
     table_label: '5',
   })
 })
@@ -368,10 +371,10 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     await expect(six.getByTestId('code-status')).toHaveText('Кодът е спрян')
     await expect(six.getByTestId('qr-thumb')).toHaveCount(0)
     await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
-    const hiding = runWorker().find((job) => job.retired.includes(token))
-    expect(hiding?.retired).toEqual([token])
+    const hiding = runWorker().find((job) => job.retired.includes(hashOf(token)))
+    expect(hiding?.retired).toEqual([hashOf(token)])
     expect(hiding?.result.removed).toBe(1)
-    expect((await page.request.get(`/cdn/t/${token}.json`)).status()).toBe(404)
+    expect((await page.request.get(`/cdn/t/${hashOf(token)}.json`)).status()).toBe(404)
     expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
 
     // The print sheet leaves a hidden table out (and its code is not drawn there).
@@ -503,10 +506,10 @@ test('"New code" asks first, and the old sticker then says the code is not activ
 
   // The job the tab queued names the old token: the worker takes its file out.
   const jobs = runWorker()
-  const retiring = jobs.find((job) => job.retired.includes(oldToken))
-  expect(retiring?.retired).toEqual([oldToken])
+  const retiring = jobs.find((job) => job.retired.includes(hashOf(oldToken)))
+  expect(retiring?.retired).toEqual([hashOf(oldToken)])
   expect(retiring?.result.removed).toBe(1)
-  expect((await page.request.get(`/cdn/t/${oldToken}.json`)).status()).toBe(404)
+  expect((await page.request.get(`/cdn/t/${hashOf(oldToken)}.json`)).status()).toBe(404)
   expect((await page.request.get(`/t/${oldToken}`, { maxRedirects: 0 })).status()).toBe(404)
   expect((await page.request.get(`/t/${newToken}`, { maxRedirects: 0 })).status()).toBe(302)
 
@@ -539,7 +542,7 @@ test('the address card is read-only, and its test link is opened by the browser'
   await page.screenshot({ path: shot('address-card-bg') })
   runWorker()
   const [popup] = await Promise.all([context.waitForEvent('page'), link.click()])
-  await popup.waitForURL(`**${GUEST_PATH}?t=${token}`)
+  await popup.waitForURL(`**${GUEST_PATH}#t=${token}`)
   await popup.close()
 })
 
@@ -682,7 +685,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
 
   const jobs = runWorker()
-  expect(jobs.find((job) => job.retired.includes(token))?.retired).toEqual([token])
+  expect(jobs.find((job) => job.retired.includes(hashOf(token)))?.retired).toEqual([hashOf(token)])
   expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
 
   // And a code can be made again, a different one.

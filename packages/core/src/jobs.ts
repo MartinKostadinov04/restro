@@ -30,8 +30,18 @@ export const JOB_NAMES = {
   publishLiveTick: 'publish-live-tick',
   /** Make the webp variants of one photo for the publish store. */
   assetVariants: 'asset-variants',
-  /** Write the `t/<token>.json` files of a venue's table codes and remove the retired ones (S3-07). */
+  /**
+   * Write the `t/<code hash>.json` files of a venue's table codes and remove the retired ones
+   * (S3-07; named by the code's SHA-256 since #70).
+   */
   publishTableTokens: 'publish-table-tokens',
+  /**
+   * Scheduled, and sent by the worker at its start (#70, D122 §9): seals every table code still
+   * stored in plain, writes the venue's files under the codes' hashes, removes the files named by
+   * the plain code, then clears the plain code. Safe to run again; a run cut short is finished by
+   * the next. Not sent by anyone else.
+   */
+  sealTableCodes: 'seal-table-codes',
   /**
    * Write an organisation's index `o/<slug>.json` and the redirect files of its earlier slugs
    * (D84): after a rename of the organisation, a venue, or a change of a venue's state. The
@@ -147,8 +157,9 @@ export type AssetVariantsJob = z.output<typeof AssetVariantsJobSchema>
 export const MAX_RETIRED_TOKENS = 500
 
 /**
- * `publish-table-tokens` (S3-07): the venue whose table files `t/<token>.json` are brought up to
- * date, and the tokens that stopped working since (their files are removed). The job writes the
+ * `publish-table-tokens` (S3-07): the venue whose table files `t/<code hash>.json` are brought up
+ * to date, and the hashes of the codes that stopped working since (their files are removed). The
+ * pattern also takes a plain code, so a job queued before #70 still removes its file. The job writes the
  * file of EVERY active code of the venue, so what it writes does not depend on the payload; only
  * `retired` does, which is why two jobs of one venue are merged only when `retired` is the same.
  */

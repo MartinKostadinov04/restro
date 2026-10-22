@@ -4,7 +4,8 @@
 //   purge-venue   a deleted venue, now ("Delete permanently"): its own rows go (areas, tables,
 //                 routes, menus with their sections, the items only its menus placed, its values
 //                 and change log, tags, versions, address names, the venue row), its public code
-//                 and table tokens are tombstoned (never reissued), its files are taken off the
+//                 and table codes are tombstoned (never reissued; a code by its hash since #70),
+//                 its files are taken off the
 //                 CDN and the organisation's index written again. Items the till or another
 //                 venue still uses stay.
 //   purge-tick    daily: what is due in every organisation: venues 30 days in the bin, binned
@@ -48,7 +49,7 @@ import {
   type VersionRow,
   versionsToPurge,
 } from '@restro/core'
-import { venueServesTill } from '@restro/core/apply'
+import { codeFileNames, venueServesTill } from '@restro/core/apply'
 import {
   areas,
   authOrganization,
@@ -283,7 +284,7 @@ export type PurgeVenueResult =
   | {
       readonly status: 'purged'
       readonly counts: Counts
-      /** What was tombstoned. */
+      /** The table codes tombstoned, by their hashes. */
       readonly tokens: readonly string[]
       readonly publicId: string
       /** Files taken off the publish store. */
@@ -303,12 +304,11 @@ export async function purgeVenue(
     if (await venueServesTill(tx, venueId)) return { status: 'still_linked' } as const
 
     const counts: Counts = {}
-    const tokens = (
-      await tx
-        .select({ token: venueTables.qrToken })
-        .from(venueTables)
-        .where(and(eq(venueTables.venueId, venueId), isNotNull(venueTables.qrToken)))
-    ).flatMap((row) => (row.token === null ? [] : [row.token]))
+    const codes = await tx
+      .select({ qrToken: venueTables.qrToken, qrCodeHash: venueTables.qrCodeHash })
+      .from(venueTables)
+      .where(and(eq(venueTables.venueId, venueId), isNotNull(venueTables.qrCodeHash)))
+    const tokens = codes.flatMap((row) => (row.qrCodeHash === null ? [] : [row.qrCodeHash]))
     const menuRows = await tx
       .select({ id: menus.id, rootNodeId: menus.rootNodeId })
       .from(menus)
@@ -397,6 +397,7 @@ export async function purgeVenue(
       status: 'purged',
       counts,
       tokens,
+      codeFiles: codes.flatMap(codeFileNames),
       publicId: venue.publicId,
       menuIds: menuRows.map((menu) => menu.id),
       snapshotIds,
@@ -406,7 +407,7 @@ export async function purgeVenue(
 
   const files = [
     venueIndexPath(erased.publicId),
-    ...erased.tokens.map(tableTokenPath),
+    ...erased.codeFiles.map(tableTokenPath),
     ...erased.menuIds.flatMap((menuId) => [
       currentPath(menuId as NodeId, venueId as VenueId),
       livePath(menuId as NodeId, venueId as VenueId),
@@ -746,7 +747,11 @@ export async function purgeTables(
   const due = cutoff(now, TABLE_BIN_DAYS)
   const gone = await withTenantPurge(deps.purgePool, tenantId, async (tx) => {
     const tableRows = await tx
-      .select({ id: venueTables.id, token: venueTables.qrToken })
+      .select({
+        id: venueTables.id,
+        qrToken: venueTables.qrToken,
+        qrCodeHash: venueTables.qrCodeHash,
+      })
       .from(venueTables)
       .where(
         and(
@@ -763,7 +768,7 @@ export async function purgeTables(
       )
     const tableIds = tableRows.map((row) => row.id)
     const areaIds = areaRows.map((row) => row.id)
-    if (tableIds.length === 0 && areaIds.length === 0) return { tables: 0, areas: 0, tokens: [] }
+    if (tableIds.length === 0 && areaIds.length === 0) return { tables: 0, areas: 0, files: [] }
     const counts: Counts = {}
     if (tableIds.length > 0) {
       count(
@@ -798,12 +803,16 @@ export async function purgeTables(
         await tx.delete(areas).where(inArray(areas.id, areaIds)).returning({ id: areas.id }),
       )
     }
-    const tokens = tableRows.flatMap((row) => (row.token === null ? [] : [row.token]))
-    await tombstone(tx, tenantId, 'table_token', tokens)
+    const hashes = tableRows.flatMap((row) => (row.qrCodeHash === null ? [] : [row.qrCodeHash]))
+    await tombstone(tx, tenantId, 'table_token', hashes)
     await logPurge(tx, tenantId, 'tables', venueId, counts)
-    return { tables: tableIds.length, areas: areaIds.length, tokens }
+    return {
+      tables: tableIds.length,
+      areas: areaIds.length,
+      files: tableRows.flatMap(codeFileNames),
+    }
   })
-  for (const token of gone.tokens) await deps.store.delete(tableTokenPath(token))
+  for (const name of gone.files) await deps.store.delete(tableTokenPath(name))
   return { tables: gone.tables, areas: gone.areas }
 }
 

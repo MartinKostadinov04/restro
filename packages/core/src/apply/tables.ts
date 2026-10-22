@@ -4,19 +4,27 @@
 // A venue's tables are its own rows (`areas`, `tables`), whatever filled them: a connector's
 // mirror (`till-tables.ts`, through the integration layer) or the owner's hands. The platform
 // knows no POS here: a table has a number (the till's or the owner's), a name of ours, an order,
-// a hidden flag and, once the manager gives it one, a QR token (22 random base62 characters,
-// never derived from any id: rule 3). On a venue that serves a till, areas and tables are made
-// and taken away by the till alone: the manager renames, reorders and hides (D95). A venue with
-// no till is the owner's: areas and tables are created and deleted here too.
+// a hidden flag and, once the manager gives it one, a QR code (22 random base62 characters,
+// never derived from any id: rule 3). The code is stored only as its SHA-256 and a copy sealed
+// for the worker (D122 §9, #70): the guest route finds a table by the hash, and the admin sees the
+// code again only through the worker's reveal endpoint. On a venue that serves a till, areas and
+// tables are made and taken away by the till alone: the manager renames, reorders and hides (D95).
+// A venue with no till is the owner's: areas and tables are created and deleted here too.
 //
 // None of this is the menu document, so these writers do not go through apply(); only this folder
 // may import the write side of the database (rule 1's door).
 //
-// The writers only change rows. The public file `t/<token>.json` is written and removed by the
+// The writers only change rows. The public file `t/<code hash>.json` is written and removed by the
 // worker's `publish-table-tokens` job (one writer of the publish store), which every writer here
-// reports the work for: `venueId` (whose job to queue) and `retired` (tokens whose file must go;
-// a hidden table keeps its token but has no file, so hiding retires the file, not the token).
+// reports the work for: `venueId` (whose job to queue) and `retired` (the names of the files that
+// must go: the code's hash and, for a code still stored in plain from before #70, the plain code;
+// a hidden table keeps its code but has no file, so hiding retires the file, not the code).
+//
+// A first code is issued here; a code is re-issued only through the service write path
+// (`table_code.reissue`, which counts the table's code generation and logs it), with
+// `reissueTableCodeIn` below as the part that writes the code columns.
 
+import type { KeyObject } from 'node:crypto'
 import {
   type AreaRow as Area,
   areas,
@@ -28,8 +36,9 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
+
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { tillVenueLinks } from '../connectors/till-venues'
@@ -52,9 +61,13 @@ import {
   type VenueQr,
   VenueQrSchema,
 } from '../qr'
+import { sealTableCode } from '../seal'
 import { sortKeyBetween } from '../sort-keys'
+import { codeFileNames } from './code-files'
 import { resolveRoutesIn } from './menu-routes'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
+
+export { codeFileNames } from './code-files'
 
 /** The longest area name. */
 export const MAX_AREA_NAME_LENGTH = 60
@@ -79,11 +92,17 @@ export interface VenueTable {
   /** Our name for it, or null (guests then see `number`). */
   readonly name: string | null
   readonly sortKey: string
-  /** A hidden table has no guest page (D95); its token, if any, is kept for when it is shown. */
+  /** A hidden table has no guest page (D95); its code, if any, is kept for when it is shown. */
   readonly hidden: boolean
-  /** The QR token, or null when the table has no code. */
-  readonly token: string | null
+  /**
+   * The SHA-256 of the table's code (hex), or null when the table has no code. The code itself is
+   * stored only sealed; the worker's reveal endpoint opens it for the admin (D122 §9).
+   */
+  readonly codeHash: string | null
 }
+
+/** The worker's public seal key (`SEAL_PUBLIC_KEY`): a new code is stored sealed with it. */
+export type SealPublicKey = KeyObject | string
 
 /** What guests call a table: our name, else its number (one of the two is always there). */
 export function tableLabel(table: Pick<VenueTable, 'name' | 'number'>): string {
@@ -106,6 +125,10 @@ export type TableWriteError =
   | 'no_label'
   /** The table or its area is hidden: it gets no code (D95). */
   | 'hidden'
+  /** The table has a code already: a new one is a re-issue (`table_code.reissue`). */
+  | 'has_code'
+  /** The table has no code to re-issue. */
+  | 'no_code'
   /** The venue's areas and tables come from its till: they are not created or deleted here. */
   | 'from_till'
 
@@ -124,8 +147,8 @@ export interface TableChange {
   /** Our venue the table belongs to: the token job to queue is for this venue. */
   readonly venueId: VenueId
   readonly table: VenueTable
-  /** A token whose file must be removed because of this change (retired or hidden). Else null. */
-  readonly retired: string | null
+  /** The files that must be removed because of this change (a code retired or hidden). */
+  readonly retired: readonly string[]
 }
 
 /** What a writer that changed one area answers. */
@@ -133,7 +156,7 @@ export interface AreaChange {
   readonly ok: true
   readonly venueId: VenueId
   readonly area: VenueArea
-  /** Tokens whose files must go because of this change (the area's tables, hidden or deleted). */
+  /** Files that must go because of this change (the area's tables, hidden or deleted). */
   readonly retired: readonly string[]
 }
 
@@ -171,7 +194,7 @@ function toTable(row: Table): VenueTable {
     name: row.name,
     sortKey: row.sortKey,
     hidden: row.hidden,
-    token: row.qrToken,
+    codeHash: row.qrCodeHash,
   }
 }
 
@@ -256,7 +279,7 @@ export async function findVenueTable(
 export interface TokenFiles {
   readonly venuePublicId: string
   readonly venueSlug: string
-  /** The organisation's slug (D84: `/t/<token>` leads to `/m/<organisation>/<venue>`), or null when unknown. */
+  /** The organisation's slug (D84: `/t/<code>` leads to `/m/<organisation>/<venue>`), or null when unknown. */
   readonly organizationSlug: string | null
   /**
    * The venue was deleted (D76): it should have no files at all (`files` is empty, whatever its
@@ -266,7 +289,8 @@ export interface TokenFiles {
   /** The venue was unpublished (D86): no files either, until the next publish. */
   readonly unpublished: boolean
   readonly files: readonly {
-    readonly token: string
+    /** The code's SHA-256: the file is `t/<codeHash>.json`. */
+    readonly codeHash: string
     readonly tableLabel: string
     /** The menu the code opens (D95), or null when the venue has nothing published. */
     readonly menuId: string | null
@@ -274,7 +298,7 @@ export interface TokenFiles {
 }
 
 /**
- * The files `t/<token>.json` a venue should have: one per table with a code that is shown (the
+ * The files `t/<code hash>.json` a venue should have: one per table with a code that is shown (the
  * table and its area not hidden, neither deleted). A deleted venue (`archived`) should have none.
  * Null when the tenant has no such venue.
  */
@@ -322,11 +346,11 @@ export async function loadTokenFiles(
       )
       .orderBy(asc(venueTables.id))
     const routes = await resolveRoutesIn(tx, venueId)
-    const files: { token: string; tableLabel: string; menuId: string | null }[] = []
+    const files: { codeHash: string; tableLabel: string; menuId: string | null }[] = []
     for (const { table } of rows) {
-      if (table.qrToken === null) continue
+      if (table.qrCodeHash === null) continue
       files.push({
-        token: table.qrToken,
+        codeHash: table.qrCodeHash,
         tableLabel: tableLabel(table),
         menuId: routes.tables.get(table.id as TableId) ?? null,
       })
@@ -420,39 +444,50 @@ async function updatedArea(tx: WriteTx, areaId: string, set: Partial<Area>): Pro
 }
 
 /**
- * A token no purged table ever had (D83: a tombstoned token is never reissued, so an old sticker
- * can never lead to another table). Drawn again on the rare hit.
+ * A code no purged table ever had, with its hash (D83: a tombstoned code is never reissued, so an
+ * old sticker can never lead to another table). The purge tombstones the hash since #70 and the
+ * plain code before it, so both are looked up. Drawn again on the rare hit.
  */
-async function freshToken(tx: WriteTx): Promise<string> {
+async function freshToken(tx: WriteTx): Promise<{ code: string; codeHash: string }> {
   for (let attempt = 0; attempt < 8; attempt++) {
-    const token = newTableToken()
+    const code = newTableToken()
+    const codeHash = await hashTableCode(code)
     const [taken] = await tx
       .select({ value: tombstones.value })
       .from(tombstones)
-      .where(and(eq(tombstones.kind, 'table_token'), eq(tombstones.value, token)))
-    if (taken === undefined) return token
+      .where(and(eq(tombstones.kind, 'table_token'), inArray(tombstones.value, [code, codeHash])))
+    if (taken === undefined) return { code, codeHash }
   }
   throw new Error('could not draw a table code that was never purged')
 }
 
-/** A fresh code as the columns store it: the code and its hash, never one without the other. */
+/**
+ * A fresh code as the columns store it: its hash and its sealed copy, never the code in plain
+ * (D122 §9). The seal is bound to the tenant and the table, so it opens for no other row.
+ */
 async function freshCode(
   tx: WriteTx,
-): Promise<{ qrToken: string; qrCodeHash: string; qrCodeSealed: null }> {
-  const qrToken = await freshToken(tx)
-  return { qrToken, qrCodeHash: await hashTableCode(qrToken), qrCodeSealed: null }
+  publicKey: SealPublicKey,
+  table: { readonly tenantId: string; readonly id: string },
+): Promise<{ qrToken: null; qrCodeHash: string; qrCodeSealed: string }> {
+  const { code, codeHash } = await freshToken(tx)
+  return {
+    qrToken: null,
+    qrCodeHash: codeHash,
+    qrCodeSealed: sealTableCode(publicKey, code, { tenantId: table.tenantId, tableId: table.id }),
+  }
 }
 
 /** No code: every form of it goes together (`tables_qr_code_complete`). */
 const NO_CODE = { qrToken: null, qrCodeHash: null, qrCodeSealed: null } as const
 
-/** The tokens of the area's live tables (their files go when the area is hidden or deleted). */
-async function tokensOfArea(tx: WriteTx, areaId: string): Promise<string[]> {
+/** The code files of the area's live tables (they go when the area is hidden or deleted). */
+async function codeFilesOfArea(tx: WriteTx, areaId: string): Promise<string[]> {
   const rows = await tx
-    .select({ token: venueTables.qrToken })
+    .select({ qrToken: venueTables.qrToken, qrCodeHash: venueTables.qrCodeHash })
     .from(venueTables)
     .where(and(eq(venueTables.areaId, areaId), isNull(venueTables.archivedAt)))
-  return rows.flatMap((row) => (row.token === null ? [] : [row.token])).sort()
+  return rows.flatMap(codeFileNames).sort()
 }
 
 /** The live tables of an area in their order, without `except`. */
@@ -472,14 +507,15 @@ async function orderedTables(
 // --- writing: one table -------------------------------------------------------------------------
 
 /**
- * Gives a table a new code: a table without one gets its first, a table with one gets a different
- * one and the old token is returned as `retired` (the printed sticker stops working). Refused for
- * a hidden table or one in a hidden area (`hidden`, D95).
+ * Gives a table without a code its first one, stored sealed with the worker's key. Refused for a
+ * hidden table or one in a hidden area (`hidden`, D95) and for a table that has a code
+ * (`has_code`: a new code is a re-issue, through `table_code.reissue`).
  */
 export async function issueTableToken(
   pool: DbPool,
   tenantId: string,
   tableId: string,
+  publicKey: SealPublicKey,
 ): Promise<TableChange | TableWriteRefusal> {
   return withTenantWrite(pool, tenantId, async (tx) => {
     const found = await lockTable(tx, tableId)
@@ -487,17 +523,48 @@ export async function issueTableToken(
     if (found.table.hidden || found.area.hidden) {
       return refusal('hidden', 'a hidden table gets no code')
     }
-    const updated = await updatedTable(tx, found.table.id, await freshCode(tx))
+    if (found.table.qrCodeHash !== null) {
+      return refusal('has_code', 'the table has a code: a new one is a re-issue')
+    }
+    const code = await freshCode(tx, publicKey, found.table)
+    const updated = await updatedTable(tx, found.table.id, code)
     return {
       ok: true,
       venueId: found.table.venueId as VenueId,
       table: toTable(updated),
-      retired: found.table.qrToken,
+      retired: [],
     } as const
   })
 }
 
-/** Turns a table's code off: its token is returned as `retired` (null if it had none). */
+/**
+ * Gives a table that has a code a different one, inside the caller's transaction: the old code's
+ * files are returned as `retired` (the printed sticker stops working). Only the service write path
+ * calls it (`table_code.reissue`, which also counts the table's code generation and writes the
+ * Log entry); refused for a hidden table (`hidden`) and a table without a code (`no_code`).
+ */
+export async function reissueTableCodeIn(
+  tx: WriteTx,
+  tableId: string,
+  publicKey: SealPublicKey,
+): Promise<TableChange | TableWriteRefusal> {
+  const found = await lockTable(tx, tableId)
+  if ('ok' in found) return found
+  if (found.table.hidden || found.area.hidden) {
+    return refusal('hidden', 'a hidden table gets no code')
+  }
+  if (found.table.qrCodeHash === null) return refusal('no_code', 'the table has no code')
+  const code = await freshCode(tx, publicKey, found.table)
+  const updated = await updatedTable(tx, found.table.id, code)
+  return {
+    ok: true,
+    venueId: found.table.venueId as VenueId,
+    table: toTable(updated),
+    retired: codeFileNames(found.table),
+  } as const
+}
+
+/** Turns a table's code off: its files are returned as `retired` (none if it had no code). */
 export async function retireTableToken(
   pool: DbPool,
   tenantId: string,
@@ -507,11 +574,16 @@ export async function retireTableToken(
     const found = await lockTable(tx, tableId)
     if ('ok' in found) return found
     const venueId = found.table.venueId as VenueId
-    if (found.table.qrToken === null) {
-      return { ok: true, venueId, table: toTable(found.table), retired: null }
+    if (found.table.qrCodeHash === null) {
+      return { ok: true, venueId, table: toTable(found.table), retired: [] }
     }
     const updated = await updatedTable(tx, found.table.id, NO_CODE)
-    return { ok: true, venueId, table: toTable(updated), retired: found.table.qrToken } as const
+    return {
+      ok: true,
+      venueId,
+      table: toTable(updated),
+      retired: codeFileNames(found.table),
+    } as const
   })
 }
 
@@ -540,7 +612,7 @@ export async function setTableName(
       ok: true,
       venueId: found.table.venueId as VenueId,
       table: toTable(updated),
-      retired: null,
+      retired: [],
     } as const
   })
 }
@@ -577,15 +649,15 @@ export async function setTableNumber(
       ok: true,
       venueId: found.table.venueId as VenueId,
       table: toTable(updated),
-      retired: null,
+      retired: [],
     } as const
   })
 }
 
 /**
- * Hides a table (its code stops leading anywhere while hidden: the token is kept and returned as
- * `retired` so its file goes) or shows it again (the file comes back with the venue's next
- * token job; `retired` is null).
+ * Hides a table (its code stops leading anywhere while hidden: the code is kept and its files are
+ * returned as `retired`) or shows it again (the file comes back with the venue's next token job;
+ * `retired` is empty).
  */
 export async function setTableHidden(
   pool: DbPool,
@@ -598,14 +670,14 @@ export async function setTableHidden(
     if ('ok' in found) return found
     const venueId = found.table.venueId as VenueId
     if (found.table.hidden === hidden) {
-      return { ok: true, venueId, table: toTable(found.table), retired: null }
+      return { ok: true, venueId, table: toTable(found.table), retired: [] }
     }
     const updated = await updatedTable(tx, found.table.id, { hidden })
     return {
       ok: true,
       venueId,
       table: toTable(updated),
-      retired: hidden ? found.table.qrToken : null,
+      retired: hidden ? codeFileNames(found.table) : [],
     } as const
   })
 }
@@ -634,7 +706,7 @@ export async function moveTable(
     if (input.after !== null && at === -1) return refusal('unknown_table', UNKNOWN_TABLE)
     const sortKey = sortKeyBetween(siblings[at]?.sortKey ?? null, siblings[at + 1]?.sortKey ?? null)
     const updated = await updatedTable(tx, found.table.id, { areaId: area.id, sortKey })
-    return { ok: true, venueId, table: toTable(updated), retired: null } as const
+    return { ok: true, venueId, table: toTable(updated), retired: [] } as const
   })
 }
 
@@ -664,7 +736,7 @@ export async function renameArea(
   })
 }
 
-/** Hides an area and its tables (their files go; the tokens stay), or shows it again. */
+/** Hides an area and its tables (their files go; the codes stay), or shows it again. */
 export async function setAreaHidden(
   pool: DbPool,
   tenantId: string,
@@ -677,7 +749,7 @@ export async function setAreaHidden(
     const venueId = area.venueId as VenueId
     if (area.hidden === hidden) return { ok: true, venueId, area: toArea(area), retired: [] }
     const updated = await updatedArea(tx, area.id, { hidden })
-    const retired = hidden ? await tokensOfArea(tx, area.id) : []
+    const retired = hidden ? await codeFilesOfArea(tx, area.id) : []
     return { ok: true, venueId, area: toArea(updated), retired } as const
   })
 }
@@ -798,14 +870,14 @@ export async function createTable(
       ok: true,
       venueId: area.venueId as VenueId,
       table: toTable(row),
-      retired: null,
+      retired: [],
     } as const
   })
 }
 
 /**
  * Deletes a table of a venue that has no till (D95): it is archived and its code retired (its
- * file goes; the token stays on the row so the purge can tombstone it, D83).
+ * file goes; the hash stays on the row so the purge can tombstone it, D83).
  */
 export async function deleteTable(
   pool: DbPool,
@@ -823,7 +895,7 @@ export async function deleteTable(
       ok: true,
       venueId: found.table.venueId as VenueId,
       table: toTable(updated),
-      retired: found.table.qrToken,
+      retired: codeFileNames(found.table),
     } as const
   })
 }
@@ -840,7 +912,7 @@ export async function deleteArea(
     if (await servesTill(tx, area.venueId)) {
       return refusal('from_till', 'the areas of this venue come from its till')
     }
-    const retired = await tokensOfArea(tx, area.id)
+    const retired = await codeFilesOfArea(tx, area.id)
     const now = new Date()
     await tx
       .update(venueTables)
@@ -861,6 +933,7 @@ export async function issueAllTableTokens(
   pool: DbPool,
   tenantId: string,
   venueId: string,
+  publicKey: SealPublicKey,
 ): Promise<IssueAllResult> {
   if (!isId('vn', venueId)) return refusal('invalid_input', 'venueId must be a vn_ id')
   return withTenantWrite(pool, tenantId, async (tx) => {
@@ -875,7 +948,7 @@ export async function issueAllTableTokens(
           eq(venueTables.venueId, venueId),
           isNull(venueTables.archivedAt),
           eq(venueTables.hidden, false),
-          isNull(venueTables.qrToken),
+          isNull(venueTables.qrCodeHash),
           isNull(areas.archivedAt),
           eq(areas.hidden, false),
         ),
@@ -886,7 +959,7 @@ export async function issueAllTableTokens(
       candidates.length === 0
         ? []
         : await tx
-            .select({ id: venueTables.id })
+            .select({ id: venueTables.id, tenantId: venueTables.tenantId })
             .from(venueTables)
             .where(
               and(
@@ -896,7 +969,7 @@ export async function issueAllTableTokens(
                 ),
                 isNull(venueTables.archivedAt),
                 eq(venueTables.hidden, false),
-                isNull(venueTables.qrToken),
+                isNull(venueTables.qrCodeHash),
               ),
             )
             .orderBy(asc(venueTables.id))
@@ -904,7 +977,7 @@ export async function issueAllTableTokens(
     for (const row of rows) {
       await tx
         .update(venueTables)
-        .set(await freshCode(tx))
+        .set(await freshCode(tx, publicKey, row))
         .where(eq(venueTables.id, row.id))
     }
     return {
@@ -913,6 +986,113 @@ export async function issueAllTableTokens(
       issued: rows.length,
       skippedNoLabel: 0,
     } as const
+  })
+}
+
+// --- codes stored in plain before #70 -----------------------------------------------------------
+
+/** A table code still stored in plain (from before #70), as the `seal-table-codes` job sees it. */
+export interface PlainTableCode {
+  readonly tableId: TableId
+  readonly venueId: VenueId
+  readonly code: string
+  readonly codeHash: string
+}
+
+/**
+ * Stores the sealed copy of up to `limit` of the tenant's codes that are still in plain and have
+ * none (the first step of the `seal-table-codes` job). The plain code stays until its old file is
+ * gone (`clearPlainTableCodes`). Answers how many it sealed; running it again seals the rest.
+ */
+export async function sealPlainTableCodes(
+  pool: DbPool,
+  tenantId: string,
+  publicKey: SealPublicKey,
+  limit = 500,
+): Promise<number> {
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    const rows = await tx
+      .select({ id: venueTables.id, tenantId: venueTables.tenantId, code: venueTables.qrToken })
+      .from(venueTables)
+      .where(and(isNotNull(venueTables.qrToken), isNull(venueTables.qrCodeSealed)))
+      .orderBy(asc(venueTables.id))
+      .limit(limit)
+      .for('update')
+    for (const row of rows) {
+      if (row.code === null) continue
+      await tx
+        .update(venueTables)
+        .set({ qrCodeSealed: sealTableCode(publicKey, row.code, { tenantId, tableId: row.id }) })
+        .where(eq(venueTables.id, row.id))
+    }
+    return rows.length
+  })
+}
+
+/**
+ * Up to `limit` of the tenant's codes still stored in plain whose sealed copy is stored: the ones
+ * whose old file `t/<code>.json` the job removes before it clears them.
+ */
+export async function listPlainTableCodes(
+  pool: DbPool,
+  tenantId: string,
+  limit = 500,
+): Promise<PlainTableCode[]> {
+  const rows = await withTenant(pool, tenantId, (tx) =>
+    tx
+      .select({
+        id: venueTables.id,
+        venueId: venueTables.venueId,
+        code: venueTables.qrToken,
+        codeHash: venueTables.qrCodeHash,
+      })
+      .from(venueTables)
+      .where(and(isNotNull(venueTables.qrToken), isNotNull(venueTables.qrCodeSealed)))
+      .orderBy(asc(venueTables.id))
+      .limit(limit),
+  )
+  return rows.flatMap((row) =>
+    row.code === null || row.codeHash === null
+      ? []
+      : [
+          {
+            tableId: row.id as TableId,
+            venueId: row.venueId as VenueId,
+            code: row.code,
+            codeHash: row.codeHash,
+          },
+        ],
+  )
+}
+
+/**
+ * Drops the plain copy of codes whose sealed copy is stored (the last step of `seal-table-codes`,
+ * once their old files are gone). A table whose code changed since it was listed is left alone.
+ * Answers how many it cleared.
+ */
+export async function clearPlainTableCodes(
+  pool: DbPool,
+  tenantId: string,
+  codes: readonly Pick<PlainTableCode, 'tableId' | 'code'>[],
+): Promise<number> {
+  if (codes.length === 0) return 0
+  return withTenantWrite(pool, tenantId, async (tx) => {
+    let cleared = 0
+    for (const { tableId, code } of codes) {
+      const rows = await tx
+        .update(venueTables)
+        .set({ qrToken: null })
+        .where(
+          and(
+            eq(venueTables.id, tableId),
+            eq(venueTables.qrToken, code),
+            isNotNull(venueTables.qrCodeSealed),
+          ),
+        )
+        .returning({ id: venueTables.id })
+      cleared += rows.length
+    }
+    return cleared
   })
 }
 

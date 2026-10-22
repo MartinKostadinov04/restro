@@ -37,3 +37,7 @@ export function logError(event: string, error?: unknown): void {
 export function logInfo(event: string, fields: Record<string, string | number> = {}): void {
   console.info(JSON.stringify({ level: 'info', event, ...fields }))
 }
+
+export function logWarn(event: string, fields: Record<string, string | number> = {}): void {
+  console.warn(JSON.stringify({ level: 'warn', event, ...fields }))
+}

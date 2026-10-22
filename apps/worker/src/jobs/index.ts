@@ -6,7 +6,8 @@
 // sealing keys (they open the integrations' credentials) and the asset store, so they are built
 // from the configuration by `buildJobs`: without SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY the worker
 // still starts, runs the heartbeat and the publish jobs, and registers no sync job (one warning
-// in the log).
+// in the log). `seal-table-codes` (#70) needs only the public key; WORKER_POS_SYNC=off keeps the
+// sync jobs out while the keys are set.
 import { randomBytes } from 'node:crypto'
 
 import { createAssetStore, createPublishStore } from '@restro/assets'
@@ -16,6 +17,7 @@ import type { Logger } from '../logger'
 import { createBarsyJobs } from './barsy'
 import { createPublishJobs } from './publish'
 import { createPurgeJobs } from './purge'
+import { createSealTableCodesJob } from './seal-table-codes'
 import type { JobDefinition } from './types'
 import { workerHeartbeat } from './worker-heartbeat'
 
@@ -43,14 +45,20 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error
     log.warn(
-      'SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY are not set: the barsy sync jobs are not registered',
+      'SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY are not set: the barsy sync jobs and seal-table-codes are not registered',
     )
     return [...jobs, ...publishJobs, ...purgeJobs]
+  }
+  const sealJobs = [createSealTableCodesJob({ publishStore, publicKey: keys.publicKey })]
+  if (!config.posSync) {
+    log.warn('WORKER_POS_SYNC is off: the POS sync jobs are not registered')
+    return [...jobs, ...publishJobs, ...purgeJobs, ...sealJobs]
   }
   return [
     ...jobs,
     ...createBarsyJobs({ keys, policy: config.barsy, store: assetStore }),
     ...publishJobs,
     ...purgeJobs,
+    ...sealJobs,
   ]
 }

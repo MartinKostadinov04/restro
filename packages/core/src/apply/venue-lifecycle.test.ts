@@ -3,6 +3,8 @@
 // delete that releases the till link in the same transaction (and rolls both back together), the
 // idempotence of archive and restore, tenant isolation, one table over every guarded writer, the
 // guard inside apply(), and that a save and a delete never interleave (the row lock).
+import { generateKeyPairSync } from 'node:crypto'
+
 import { barsyVenues, createPool, type DbPool, venues, withTenant } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
 import { eq } from 'drizzle-orm'
@@ -26,6 +28,9 @@ import {
   unpublishVenue,
 } from './venue-lifecycle'
 import { lockLiveVenue } from './venue-lock'
+
+/** The worker's public seal key, for the table codes these tests issue (#70). */
+const { publicKey } = generateKeyPairSync('x25519')
 
 /** A pool that is never used: the input checks run before any query. */
 const unusedPool = {} as DbPool
@@ -219,9 +224,9 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       const tables = await listVenueTables(app, tenant, venueId)
       const codes: string[] = []
       for (const table of tables) {
-        const issued = await issueTableToken(app, tenant, table.id)
+        const issued = await issueTableToken(app, tenant, table.id, publicKey)
         if (!issued.ok) throw new Error(issued.reason)
-        codes.push(issued.table.token ?? '')
+        codes.push(issued.table.codeHash ?? '')
       }
       const before = await rowOf(venueId)
       expect(before?.archived_at).toBeNull()
@@ -240,11 +245,11 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       // for a restore).
       const menu = await owner.query('select id from restro.menus where id = $1', [menuId])
       expect(menu.rowCount).toBe(1)
-      const stored = await owner.query<{ qr_token: string }>(
-        'select qr_token from restro.tables where venue_id = $1',
+      const stored = await owner.query<{ qr_code_hash: string }>(
+        'select qr_code_hash from restro.tables where venue_id = $1',
         [venueId],
       )
-      expect(stored.rows.map((row) => row.qr_token).sort()).toEqual([...codes].sort())
+      expect(stored.rows.map((row) => row.qr_code_hash).sort()).toEqual([...codes].sort())
       expect(await listVenueTables(app, tenant, venueId)).toHaveLength(codes.length)
       // The token job sees a deleted venue.
       await expect(loadTokenFiles(app, tenant, venueId)).resolves.toMatchObject({
@@ -347,7 +352,7 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       const till = await linkTill(venueId)
       await upsertPlaces(app, tenant, integrationId, till, [place('r1', '1')], { pagesOk: [true] })
       const [table] = await listVenueTables(app, tenant, venueId)
-      const issued = await issueTableToken(app, tenant, table?.id ?? '')
+      const issued = await issueTableToken(app, tenant, table?.id ?? '', publicKey)
       if (!issued.ok) throw new Error(issued.reason)
       await archiveVenue(app, tenant, venueId)
       // The delete released the till venue and remembered it (adjustments V1).
@@ -369,7 +374,7 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       expect((await linkOf(till))?.venueId).toBe(venueId)
       expect((await settingsOf(venueId))?.till_before_delete).toBeUndefined()
       const back = await listVenueTables(app, tenant, venueId)
-      expect(back.map((row) => row.token)).toEqual([issued.table.token])
+      expect(back.map((row) => row.codeHash)).toEqual([issued.table.codeHash])
       // The venue is live for the writers again.
       await expect(renameVenue(app, tenant, venueId, 'Renamed after')).resolves.toMatchObject({
         changed: true,
@@ -475,9 +480,9 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       })
       const tokens: string[] = []
       for (const table of await listVenueTables(app, tenant, venueId)) {
-        const issued = await issueTableToken(app, tenant, table.id)
+        const issued = await issueTableToken(app, tenant, table.id, publicKey)
         if (!issued.ok) throw new Error(issued.reason)
-        tokens.push(issued.table.token ?? '')
+        tokens.push(issued.table.codeHash ?? '')
       }
 
       const first = await unpublishVenue(app, tenant, venueId)
@@ -486,9 +491,9 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       // Both sides sorted here (the database's order by collates differently in CI).
       expect([...first.tableTokens].sort()).toEqual([...tokens].sort())
       // The tokens stay on the tables: the next publish brings the files back.
-      expect((await listVenueTables(app, tenant, venueId)).map((row) => row.token).sort()).toEqual(
-        [...tokens].sort(),
-      )
+      expect(
+        (await listVenueTables(app, tenant, venueId)).map((row) => row.codeHash).sort(),
+      ).toEqual([...tokens].sort())
 
       const again = await unpublishVenue(app, tenant, venueId)
       expect(again).toEqual({
@@ -578,7 +583,7 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       ],
       [
         'issueAllTableTokens',
-        (venueId) => applyEntry.issueAllTableTokens(app, tenant, venueId),
+        (venueId) => applyEntry.issueAllTableTokens(app, tenant, venueId, publicKey),
         'venue_archived',
         'unknown_venue',
       ],
@@ -709,11 +714,11 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       await upsertPlaces(app, tenant, integrationId, till, [place('g1', '1')], { pagesOk: [true] })
       const [table] = await listVenueTables(app, tenant, venueId)
       const tableId = table?.id ?? ''
-      const issued = await issueTableToken(app, tenant, tableId)
+      const issued = await issueTableToken(app, tenant, tableId, publicKey)
       if (!issued.ok) throw new Error(issued.reason)
       await archiveDirectly(venueId)
       const refused = { ok: false, error: 'venue_archived' }
-      await expect(issueTableToken(app, tenant, tableId)).resolves.toMatchObject(refused)
+      await expect(issueTableToken(app, tenant, tableId, publicKey)).resolves.toMatchObject(refused)
       await expect(applyEntry.retireTableToken(app, tenant, tableId)).resolves.toMatchObject(
         refused,
       )
@@ -721,11 +726,11 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
         refused,
       )
       // The code is untouched.
-      const stored = await owner.query<{ qr_token: string }>(
-        'select qr_token from restro.tables where id = $1',
+      const stored = await owner.query<{ qr_code_hash: string }>(
+        'select qr_code_hash from restro.tables where id = $1',
         [tableId],
       )
-      expect(stored.rows[0]?.qr_token).toBe(issued.table.token)
+      expect(stored.rows[0]?.qr_code_hash).toBe(issued.table.codeHash)
     })
 
     it("does not take a venue's lock away from the reader of its published scopes", async () => {

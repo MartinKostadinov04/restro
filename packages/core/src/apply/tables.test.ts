@@ -3,7 +3,10 @@
 // default, the till's changes against the manager's, deletion, linking), opaque unique tokens,
 // issue / new code / turn off, names, hiding and moving, the "create all" action, the owner's own
 // areas and tables on a venue without a till, the venue's QR setting and tenant isolation
-// (row-level security). Skipped without a database (like the other integration tests here).
+// (row-level security). Codes are stored as a hash and a sealed copy (#70). Skipped without a
+// database (like the other integration tests here).
+import { generateKeyPairSync } from 'node:crypto'
+
 import { createPool, type DbPool, places, venues, venueTables, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import fc from 'fast-check'
@@ -11,7 +14,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { newId } from '../ids'
-import { isTableToken, qrAddress, readVenueQr } from '../qr'
+import { qrAddress, readVenueQr } from '../qr'
 import { mapBarsyVenue, type PlaceInput, upsertBarsyVenues, upsertPlaces } from './barsy-venues'
 import { provisionTenant, provisionVenue } from './provision'
 import { createIntegration } from './sources'
@@ -40,6 +43,10 @@ import { setVenueTheme } from './venue-theme'
 
 const DAY = 24 * 60 * 60 * 1000
 const TOKEN = /^[0-9A-Za-z]{22}$/
+/** A code as the tables store it since #70: its SHA-256 hash. */
+const HASH = /^[0-9a-f]{64}$/
+/** The worker's public seal key, for the codes these tests issue. */
+const { publicKey } = generateKeyPairSync('x25519')
 
 describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app role)', () => {
   const tenant = newId('tn')
@@ -151,9 +158,9 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       expect(byArea('Terrace').map((table) => table.number)).toEqual(['2', '10'])
       expect(byArea('Garden').map((table) => table.number)).toEqual(['8'])
       expect(byArea('Tables').map((table) => table.number)).toEqual(['1'])
-      expect(tables.every((table) => TOKEN.test(table.id.slice(3)) && table.token === null)).toBe(
-        true,
-      )
+      expect(
+        tables.every((table) => TOKEN.test(table.id.slice(3)) && table.codeHash === null),
+      ).toBe(true)
       // Each place points at its table.
       const rows = await withTenant(app, tenant, (tx) =>
         tx.select({ tableId: places.tableId }).from(places).where(eq(places.bid, bid)),
@@ -211,30 +218,41 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
   })
 
   describe('issueTableToken, retireTableToken', () => {
-    it('gives a table a random opaque code, a different one when asked again, and none on turn-off', async () => {
+    it('gives a table a random opaque code, stored as its hash and a sealed copy; refuses a second; none on turn-off', async () => {
       const { venue } = await freshVenue([place('9001', '1'), place('9002', '2')])
       const one = await byNum(venue, '1')
-      expect(one.token).toBeNull()
+      expect(one.codeHash).toBeNull()
 
-      const first = ok(await issueTableToken(app, tenant, one.id))
+      const first = ok(await issueTableToken(app, tenant, one.id, publicKey))
       expect(first.venueId).toBe(venue)
-      expect(first.retired).toBeNull()
-      expect(first.table.token).toMatch(TOKEN)
-      expect(isTableToken(first.table.token)).toBe(true)
+      expect(first.retired).toEqual([])
+      expect(first.table.codeHash).toMatch(HASH)
+      const [row] = await withTenant(app, tenant, (tx) =>
+        tx.select().from(venueTables).where(eq(venueTables.id, one.id)),
+      )
+      // Never in plain (D122 §9): the hash, and a copy only the worker can open.
+      expect(row).toMatchObject({ qrToken: null, qrCodeHash: first.table.codeHash })
+      expect(row?.qrCodeSealed).toMatch(/^rs1\./)
 
-      const second = ok(await issueTableToken(app, tenant, one.id))
-      expect(second.retired).toBe(first.table.token)
-      expect(second.table.token).not.toBe(first.table.token)
+      // A new code is a re-issue, the service's (`table_code.reissue`).
+      expect(await issueTableToken(app, tenant, one.id, publicKey)).toMatchObject({
+        ok: false,
+        error: 'has_code',
+      })
 
       const off = ok(await retireTableToken(app, tenant, one.id))
-      expect(off.retired).toBe(second.table.token)
-      expect(off.table.token).toBeNull()
+      expect(off.retired).toEqual([first.table.codeHash])
+      expect(off.table.codeHash).toBeNull()
       // Turning off what is off is not an error and retires nothing.
-      expect(await retireTableToken(app, tenant, one.id)).toMatchObject({ ok: true, retired: null })
-      expect((await byNum(venue, '1')).token).toBeNull()
+      expect(await retireTableToken(app, tenant, one.id)).toMatchObject({ ok: true, retired: [] })
+      expect((await byNum(venue, '1')).codeHash).toBeNull()
+      const [cleared] = await withTenant(app, tenant, (tx) =>
+        tx.select().from(venueTables).where(eq(venueTables.id, one.id)),
+      )
+      expect(cleared).toMatchObject({ qrToken: null, qrCodeHash: null, qrCodeSealed: null })
     })
 
-    it('property: tokens are unique and never contain a till place id or the table id', async () => {
+    it('property: codes are unique, stored only as a hash and a sealed copy, and never name a till place or the table', async () => {
       const seen = new Set<string>()
       await fc.assert(
         fc.asyncProperty(
@@ -243,19 +261,23 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
             const { venue } = await freshVenue(
               placeIds.map((id) => place(id, `T${id.slice(0, 4)}`)),
             )
-            const issued = await issueAllTableTokens(app, tenant, venue)
+            const issued = await issueAllTableTokens(app, tenant, venue, publicKey)
             expect(issued).toMatchObject({ ok: true, issued: placeIds.length })
             const rows = await withTenant(app, tenant, (tx) =>
               tx.select().from(venueTables).where(eq(venueTables.venueId, venue)),
             )
             expect(rows).toHaveLength(placeIds.length)
             for (const row of rows) {
-              const token = row.qrToken
-              expect(token).toMatch(TOKEN)
-              for (const placeId of placeIds) expect(token).not.toContain(placeId)
-              expect(token).not.toContain(row.id.slice(3))
-              expect(seen.has(token as string)).toBe(false)
-              seen.add(token as string)
+              expect(row.qrToken).toBeNull()
+              const hash = row.qrCodeHash
+              expect(hash).toMatch(HASH)
+              expect(row.qrCodeSealed).toMatch(/^rs1\./)
+              for (const stored of [hash, row.qrCodeSealed]) {
+                for (const placeId of placeIds) expect(stored).not.toContain(placeId)
+                expect(stored).not.toContain(row.id.slice(3))
+              }
+              expect(seen.has(hash as string)).toBe(false)
+              seen.add(hash as string)
             }
           },
         ),
@@ -270,35 +292,35 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       ])
       const one = await byNum(venue, '1')
       expect(one.hidden).toBe(true)
-      expect(await issueTableToken(app, tenant, one.id)).toMatchObject({
+      expect(await issueTableToken(app, tenant, one.id, publicKey)).toMatchObject({
         ok: false,
         error: 'hidden',
       })
       ok(await setTableHidden(app, tenant, one.id, false))
-      expect(await issueTableToken(app, tenant, one.id)).toMatchObject({ ok: true })
+      expect(await issueTableToken(app, tenant, one.id, publicKey)).toMatchObject({ ok: true })
 
       const two = await byNum(venue, '2')
       const back = (await areasOf(venue)).find((area) => area.id === two.areaId)
       if (!back) throw new Error('no area')
       const hiddenArea = ok(await setAreaHidden(app, tenant, back.id, true))
       expect(hiddenArea.area.hidden).toBe(true)
-      expect(await issueTableToken(app, tenant, two.id)).toMatchObject({
+      expect(await issueTableToken(app, tenant, two.id, publicKey)).toMatchObject({
         ok: false,
         error: 'hidden',
       })
       ok(await setAreaHidden(app, tenant, back.id, false))
-      expect(await issueTableToken(app, tenant, two.id)).toMatchObject({ ok: true })
+      expect(await issueTableToken(app, tenant, two.id, publicKey)).toMatchObject({ ok: true })
     })
 
     it('knows no table with a malformed id, another tenant’s id or a deleted table', async () => {
       const { venue } = await freshVenue([place('9201', '1')])
       const mine = await byNum(venue, '1')
-      expect(await issueTableToken(app, tenant, 'tb_nope')).toMatchObject({
+      expect(await issueTableToken(app, tenant, 'tb_nope', publicKey)).toMatchObject({
         ok: false,
         error: 'unknown_table',
       })
       // Row-level security: the other tenant's pool cannot see this tenant's table.
-      expect(await issueTableToken(app, otherTenant, mine.id)).toMatchObject({
+      expect(await issueTableToken(app, otherTenant, mine.id, publicKey)).toMatchObject({
         ok: false,
         error: 'unknown_table',
       })
@@ -321,7 +343,7 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       const { venue } = await freshVenue([place('9301', '5')])
       const table = await byNum(venue, '5')
       const set = await setTableName(app, tenant, table.id, '  VIP   corner  ')
-      expect(set).toMatchObject({ ok: true, retired: null, table: { name: 'VIP corner' } })
+      expect(set).toMatchObject({ ok: true, retired: [], table: { name: 'VIP corner' } })
       expect(await setTableName(app, tenant, table.id, '   ')).toMatchObject({
         ok: true,
         table: { name: null },
@@ -340,19 +362,21 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
   })
 
   describe('setTableHidden, moveTable, moveArea', () => {
-    it('hiding keeps the token but names it for removal; showing brings the file back', async () => {
+    it('hiding keeps the code but names its file for removal; showing brings the file back', async () => {
       const { venue } = await freshVenue([place('9321', '1')])
       const one = await byNum(venue, '1')
-      const issued = ok(await issueTableToken(app, tenant, one.id))
-      const token = issued.table.token as string
+      const issued = ok(await issueTableToken(app, tenant, one.id, publicKey))
+      const codeHash = issued.table.codeHash as string
       const hidden = ok(await setTableHidden(app, tenant, one.id, true))
-      expect(hidden).toMatchObject({ retired: token, table: { hidden: true, token } })
+      expect(hidden).toMatchObject({ retired: [codeHash], table: { hidden: true, codeHash } })
       expect((await loadTokenFiles(app, tenant, venue))?.files).toEqual([])
       // Hiding what is hidden changes nothing.
-      expect(await setTableHidden(app, tenant, one.id, true)).toMatchObject({ retired: null })
+      expect(await setTableHidden(app, tenant, one.id, true)).toMatchObject({ retired: [] })
       const shown = ok(await setTableHidden(app, tenant, one.id, false))
-      expect(shown).toMatchObject({ retired: null, table: { hidden: false, token } })
-      expect((await loadTokenFiles(app, tenant, venue))?.files.map((f) => f.token)).toEqual([token])
+      expect(shown).toMatchObject({ retired: [], table: { hidden: false, codeHash } })
+      expect((await loadTokenFiles(app, tenant, venue))?.files.map((f) => f.codeHash)).toEqual([
+        codeHash,
+      ])
     })
 
     it('moves a table within and between areas, and reorders areas', async () => {
@@ -406,13 +430,13 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
 
     it('hiding an area names the codes of its tables for removal and keeps them', async () => {
       const { venue } = await freshVenue([place('1', '1', 'A'), place('2', '2', 'A')])
-      ok(await issueAllTableTokens(app, tenant, venue))
-      const tokens = (await tablesOf(venue)).map((t) => t.token as string).sort()
+      ok(await issueAllTableTokens(app, tenant, venue, publicKey))
+      const tokens = (await tablesOf(venue)).map((t) => t.codeHash as string).sort()
       const [a] = await areasOf(venue)
       if (!a) throw new Error('no area')
       expect(ok(await setAreaHidden(app, tenant, a.id, true)).retired).toEqual(tokens)
       expect((await loadTokenFiles(app, tenant, venue))?.files).toEqual([])
-      expect((await tablesOf(venue)).map((t) => t.token as string).sort()).toEqual(tokens)
+      expect((await tablesOf(venue)).map((t) => t.codeHash as string).sort()).toEqual(tokens)
       expect(ok(await setAreaHidden(app, tenant, a.id, false)).retired).toEqual([])
       expect((await loadTokenFiles(app, tenant, venue))?.files).toHaveLength(2)
       expect(await renameArea(app, tenant, a.id, ' ')).toMatchObject({
@@ -431,24 +455,24 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
         place('9404', '4'),
       ])
       const two = await byNum(venue, '2')
-      const existing = ok(await issueTableToken(app, tenant, two.id))
+      const existing = ok(await issueTableToken(app, tenant, two.id, publicKey))
 
       // Table 4 goes missing (a complete pull that does not list it): its table stays.
       await pull(venueBid, [place('9401', '1'), place('9402', '2'), place('9403', null)])
 
-      const result = await issueAllTableTokens(app, tenant, venue)
+      const result = await issueAllTableTokens(app, tenant, venue, publicKey)
       expect(result).toMatchObject({ ok: true, venueId: venue, issued: 2, skippedNoLabel: 0 })
       const tables = await tablesOf(venue)
-      expect(tables.find((table) => table.number === '1')?.token).toMatch(TOKEN)
-      expect(tables.find((table) => table.number === '2')?.token).toBe(existing.table.token)
-      expect(tables.find((table) => table.number === '4')?.token).toMatch(TOKEN)
+      expect(tables.find((table) => table.number === '1')?.codeHash).toMatch(HASH)
+      expect(tables.find((table) => table.number === '2')?.codeHash).toBe(existing.table.codeHash)
+      expect(tables.find((table) => table.number === '4')?.codeHash).toMatch(HASH)
       expect(tables.find((table) => table.number === '—')).toMatchObject({
         hidden: true,
-        token: null,
+        codeHash: null,
       })
 
       // Nothing left to do: asking again changes nothing.
-      expect(await issueAllTableTokens(app, tenant, venue)).toMatchObject({
+      expect(await issueAllTableTokens(app, tenant, venue, publicKey)).toMatchObject({
         ok: true,
         issued: 0,
         skippedNoLabel: 0,
@@ -456,10 +480,10 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
     })
 
     it('refuses a malformed venue id, and a venue of another tenant', async () => {
-      expect(await issueAllTableTokens(app, tenant, 'vn_nope')).toMatchObject({
+      expect(await issueAllTableTokens(app, tenant, 'vn_nope', publicKey)).toMatchObject({
         error: 'invalid_input',
       })
-      expect(await issueAllTableTokens(app, tenant, otherVenueId)).toMatchObject({
+      expect(await issueAllTableTokens(app, tenant, otherVenueId, publicKey)).toMatchObject({
         ok: false,
         error: 'unknown_venue',
       })
@@ -473,7 +497,7 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
         place('9502', '8'),
         place('9503', null),
       ])
-      await issueAllTableTokens(app, tenant, venue)
+      await issueAllTableTokens(app, tenant, venue, publicKey)
       const eight = await byNum(venue, '8')
       await setTableName(app, tenant, eight.id, 'VIP 3')
 
@@ -483,8 +507,8 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       expect(files?.venuePublicId).toMatch(/^[a-z0-9]{12}$/)
       expect(files?.files.map((file) => file.tableLabel).sort()).toEqual(['7', 'VIP 3'])
       const seven = await byNum(venue, '7')
-      expect(files?.files.find((file) => file.token === seven.token)).toEqual({
-        token: seven.token,
+      expect(files?.files.find((file) => file.codeHash === seven.codeHash)).toEqual({
+        codeHash: seven.codeHash,
         tableLabel: '7',
         menuId: null,
       })
@@ -494,19 +518,19 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
   })
 
   describe('a table the till deletes', () => {
-    it('keeps its code while it is only missing, loses it when deleted, and the token comes back to be removed', async () => {
+    it('keeps its code while it is only missing, loses it when deleted, and the code comes back to be removed', async () => {
       const { venue, bid: venueBid } = await freshVenue([place('9601', '1'), place('9602', '2')])
-      await issueAllTableTokens(app, tenant, venue)
+      await issueAllTableTokens(app, tenant, venue, publicKey)
       const two = await byNum(venue, '2')
-      const token = two.token as string
+      const token = two.codeHash as string
 
       // Not listed in a complete pull: missing; its sticker still works.
       const gone = await pull(venueBid, [place('9601', '1')])
       expect(gone).toMatchObject({ missing: 1, deleted: 0, retiredTokens: [] })
-      expect((await byNum(venue, '2')).token).toBe(token)
-      expect((await loadTokenFiles(app, tenant, venue))?.files.map((file) => file.token)).toContain(
-        token,
-      )
+      expect((await byNum(venue, '2')).codeHash).toBe(token)
+      expect(
+        (await loadTokenFiles(app, tenant, venue))?.files.map((file) => file.codeHash),
+      ).toContain(token)
 
       // A pull with a failed page concludes nothing.
       const failed = await upsertPlaces(app, tenant, integrationId, venueBid, [], {
@@ -514,7 +538,7 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
         now: new Date(Date.now() + 8 * DAY),
       })
       expect(failed).toMatchObject({ deleted: 0, retiredTokens: [], complete: false })
-      expect((await byNum(venue, '2')).token).toBe(token)
+      expect((await byNum(venue, '2')).codeHash).toBe(token)
 
       // Still absent after the grace period: deleted, and the table is archived without its code.
       const late = await pull(venueBid, [place('9601', '1')], new Date(Date.now() + 8 * DAY))
@@ -522,19 +546,19 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       const rows = await withTenant(app, tenant, (tx) =>
         tx.select().from(venueTables).where(eq(venueTables.id, two.id)),
       )
-      // The token stays on the archived row (the purge tombstones it, D83); its file is gone.
-      expect(rows[0]).toMatchObject({ qrToken: token })
+      // The code stays on the archived row (the purge tombstones its hash, D83); its file is gone.
+      expect(rows[0]).toMatchObject({ qrCodeHash: token })
       expect(rows[0]?.archivedAt).toBeInstanceOf(Date)
       expect((await tablesOf(venue)).map((table) => table.number)).toEqual(['1'])
       expect((await loadTokenFiles(app, tenant, venue))?.files).toHaveLength(1)
-      expect(await issueTableToken(app, tenant, two.id)).toMatchObject({
+      expect(await issueTableToken(app, tenant, two.id, publicKey)).toMatchObject({
         ok: false,
         error: 'unknown_table',
       })
 
       // Listed again: the table comes back, without a code.
       await pull(venueBid, [place('9601', '1'), place('9602', '2')], new Date(Date.now() + 9 * DAY))
-      expect(await byNum(venue, '2')).toMatchObject({ id: two.id, token: null })
+      expect(await byNum(venue, '2')).toMatchObject({ id: two.id, codeHash: null })
     })
   })
 
@@ -554,7 +578,7 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
       const bar = ok(
         await createTable(app, tenant, { areaId: garden.area.id, name: 'Bar', number: null }),
       )
-      expect(one.table).toMatchObject({ number: '1', name: null, hidden: false, token: null })
+      expect(one.table).toMatchObject({ number: '1', name: null, hidden: false, codeHash: null })
       expect(bar.table).toMatchObject({ number: null, name: 'Bar' })
       expect((await tablesOf(venue)).map((t) => t.id)).toEqual([one.table.id, bar.table.id])
       expect(
@@ -578,11 +602,11 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
         error: 'no_label',
       })
 
-      ok(await issueAllTableTokens(app, tenant, venue))
-      const oneToken = (await byNum(venue, '1')).token as string
-      const sevenToken = (await byNum(venue, '7')).token as string
+      ok(await issueAllTableTokens(app, tenant, venue, publicKey))
+      const oneToken = (await byNum(venue, '1')).codeHash as string
+      const sevenToken = (await byNum(venue, '7')).codeHash as string
       const deleted = ok(await deleteTable(app, tenant, one.table.id))
-      expect(deleted.retired).toBe(oneToken)
+      expect(deleted.retired).toEqual([oneToken])
       expect((await tablesOf(venue)).map((t) => t.number)).toEqual(['7'])
       const gone = ok(await deleteArea(app, tenant, garden.area.id))
       expect(gone.retired).toEqual([sevenToken])
