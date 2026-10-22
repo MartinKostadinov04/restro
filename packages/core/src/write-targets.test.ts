@@ -39,11 +39,12 @@ const SERVICE_TABLES: Readonly<Record<string, string>> = {
 }
 
 /**
- * What core/service may write, by Drizzle export: empty until #69 builds `applyService`, which
- * adds each table it writes (only ever names from SERVICE_TABLES, plus `venueTables` for
- * `code_generation` alone).
+ * What core/service may write, by Drizzle export (only ever names from SERVICE_TABLES, plus
+ * `venueTables` for `code_generation` alone). #69's machinery writes the table's order (its
+ * version and ring of action ids), the lease rows and the Log; each later command adds the tables
+ * it writes.
  */
-const SERVICE_WRITE_TARGETS: readonly string[] = []
+const SERVICE_WRITE_TARGETS: readonly string[] = ['tableOrders', 'locks', 'logEntries']
 
 function sourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return []
