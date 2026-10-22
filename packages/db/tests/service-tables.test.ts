@@ -391,7 +391,7 @@ describe.skipIf(!hasDatabase)('ordering tables (migration 0028)', () => {
       withTenantWrite(app, a.tenantId, (tx) =>
         tx
           .update(venueTables)
-          .set({ isPaymentTable: true, qrToken: 'qr-test-token' })
+          .set({ isPaymentTable: true, qrToken: 'qr-test-token', qrCodeHash: HEX64 })
           .where(eq(venueTables.id, a.tableId)),
       ),
     )

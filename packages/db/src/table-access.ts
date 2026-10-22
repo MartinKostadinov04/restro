@@ -198,6 +198,16 @@ export const APP_DELETE_TABLES = [
   'source_links',
 ] as const
 
+/**
+ * The only routines in `restro` a role may EXECUTE, by signature, with their grantees; `pnpm
+ * db:roles` revokes EXECUTE on every other routine. Today one: D121's guest lookup, the pinned
+ * SECURITY DEFINER function (migration 0029, tests/rls-guard.test.ts). Adding one is a
+ * guardrail change.
+ */
+export const ROUTINE_ACCESS = {
+  'guest_table_by_code_hash(text)': [APP_ROLE],
+} as const satisfies Record<string, readonly string[]>
+
 /** Schema privileges of the app role. It may never CREATE in `restro`. */
 export const APP_SCHEMA_PRIVILEGES = {
   [APP_SCHEMA]: ['USAGE'],

@@ -135,9 +135,12 @@ async function seed(): Promise<void> {
       [tenantId],
     )
     for (const { qr_token } of old.rows) await store.delete(tableTokenPath(qr_token))
-    await owner.query('update restro.tables set qr_token = null, name = null where venue_id = $1', [
-      venueId,
-    ])
+    await owner.query(
+      `update restro.tables set qr_token = null, qr_code_hash = null, qr_code_sealed = null,
+                                name = null
+       where venue_id = $1`,
+      [venueId],
+    )
     await owner.query(`update restro.venues set settings = settings - 'qr' where id = $1`, [
       venueId,
     ])

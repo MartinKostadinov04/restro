@@ -1175,6 +1175,17 @@ export const venueTables = restro.table(
     /** The QR token on its sticker (the guest files' token pattern), or null when it has no code. */
     qrToken: text('qr_token'),
     /**
+     * SHA-256 of the code, lower-case hex: what a guest's code is looked up by (D122 §9,
+     * `restro.guest_table_by_code_hash`). Set exactly when the table has a code. No slow hash:
+     * the code has at least 128 random bits.
+     */
+    qrCodeHash: text('qr_code_hash'),
+    /**
+     * The code sealed with the worker's public key (D55), so stickers can be printed again; only
+     * the worker opens it. Null until the code is sealed (#70: the plain `qr_token` then goes).
+     */
+    qrCodeSealed: text('qr_code_sealed'),
+    /**
      * The bar that serves it, read from the POS's floor (D122 §7); null where the POS has no bars
      * or can't say (D124 §1). Written by `apply()`.
      */
@@ -1198,6 +1209,7 @@ export const venueTables = restro.table(
   (t) => [
     unique('tables_tenant_id_id_unique').on(t.tenantId, t.id),
     unique('tables_qr_token_unique').on(t.qrToken),
+    unique('tables_qr_code_hash_unique').on(t.qrCodeHash),
     foreignKey({
       name: 'tables_venue_fk',
       columns: [t.tenantId, t.venueId],
@@ -1227,11 +1239,24 @@ export const venueTables = restro.table(
     check('tables_has_label', sql`${t.name} is not null or ${t.number} is not null`),
     check('tables_code_generation_positive', sql`${t.codeGeneration} >= 1`),
     // A payment table never carries a code a guest could scan (D122 §8).
-    check('tables_payment_table_no_code', sql`not ${t.isPaymentTable} or ${t.qrToken} is null`),
+    check('tables_payment_table_no_code', sql`not ${t.isPaymentTable} or ${t.qrCodeHash} is null`),
     check('tables_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
     check(
       'tables_qr_token_format',
       sql`${t.qrToken} is null or ${t.qrToken} ~ '^[A-Za-z0-9_-]{8,128}$'`,
+    ),
+    check(
+      'tables_qr_code_hash_format',
+      sql`${t.qrCodeHash} is null or ${t.qrCodeHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      'tables_qr_code_sealed_format',
+      sql`${t.qrCodeSealed} is null or (${t.qrCodeSealed} ~ '^rs1\\.' and length(${t.qrCodeSealed}) <= 1024)`,
+    ),
+    // A code is the hash plus its plain or sealed form; no form without the hash, no hash alone.
+    check(
+      'tables_qr_code_complete',
+      sql`(${t.qrCodeHash} is null) = (${t.qrToken} is null and ${t.qrCodeSealed} is null)`,
     ),
   ],
 )
