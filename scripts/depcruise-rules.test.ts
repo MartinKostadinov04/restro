@@ -597,6 +597,52 @@ describe('a face imports only react and the shell (SH-04)', () => {
   })
 })
 
+describe('the connector conformance kit is for tests only (#65)', () => {
+  const kit: Files = {
+    ...base,
+    'packages/core/src/connectors/service/testing/index.ts': "import './toy-pos'",
+    'packages/core/src/connectors/service/testing/toy-pos.ts': 'export const toy = 1',
+  }
+
+  it('rejects the kit from a connector, an app and core, by name and by path', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/barsy/src/service/reader.ts': "import '@restro/core/connectors/testing'",
+        'apps/worker/src/sync.ts':
+          "import '../../../packages/core/src/connectors/service/testing/index'",
+        'packages/core/src/connectors/service/index.ts': "import './testing/index'",
+      },
+      ['connector-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('allows it in tests and test-* helpers, and inside the kit itself', async () => {
+    await expectRules(
+      {
+        ...kit,
+        'packages/barsy/src/service/conformance.test.ts':
+          "import '@restro/core/connectors/testing'",
+        'packages/barsy/src/service/test-harness.ts':
+          "import '../../../core/src/connectors/service/testing/index'",
+      },
+      [],
+    )
+  })
+
+  it('does not exempt a production file that merely has "test" in its name', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/barsy/src/service/contest.ts': "import '@restro/core/connectors/testing'",
+      },
+      ['connector-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(1)
+  })
+})
+
 describe('the purge role: only the worker purge job imports @restro/db/purge (D83)', () => {
   const withPurge: Files = {
     ...base,

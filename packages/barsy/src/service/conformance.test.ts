@@ -86,8 +86,16 @@ serviceReadSuite({
         }),
       )
     },
-    failReads() {
-      mock.server.use(http.post(ANY, () => new HttpResponse('internal error', { status: 500 })))
+    failReadsFrom(n) {
+      // Counts the calls from now on; a call before the nth falls through to the recordings.
+      let seen = 0
+      mock.server.use(
+        http.post(ANY, () => {
+          seen += 1
+          if (seen >= n) return new HttpResponse('internal error', { status: 500 })
+          return undefined
+        }),
+      )
     },
     refuseLogin() {
       mock.setFixtures([unauthorised, places])

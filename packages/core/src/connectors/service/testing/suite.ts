@@ -142,11 +142,19 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
       )
     }
     check(
-      'a stalled round is unknown within the write timeout, never refused, written once',
+      'a round under stalled writes is unknown within the write timeout, never refused, written once',
       writeTimeoutCheck,
       harness,
     )
-    check('the read steps write nothing', writesAreDeclaredCheck, harness)
-    check('the payment route: isolate, read back, undo, close once', paymentRouteCheck, harness)
+    check(
+      'the read steps (table, floor, isolated bill) write nothing',
+      writesAreDeclaredCheck,
+      harness,
+    )
+    check(
+      'the payment route, by capability: isolating moves exactly the pick, undo, close once',
+      paymentRouteCheck,
+      harness,
+    )
   })
 }

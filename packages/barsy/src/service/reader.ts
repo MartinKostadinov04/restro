@@ -84,12 +84,14 @@ export function createBarsyServiceReader(options: BarsyServiceReaderOptions): Se
 
     // https://docs.lukanet.com/barsy.api/methods/misc/ping_user.html: "checks that the API is
     // reachable and the user's credentials are valid", returns 1. A read: it writes nothing.
-    // barsy reports no mode, no degraded state and no fiscal device here, so those are null/false.
+    // barsy reports no mode, no degraded state and no fiscal device here, so those are null.
+    // D120's probe also checks the cash desk: Poses_getcurrent (documented, a read that also
+    // gives the fiscal printer) is the follow-up once #47 can record it on the test installation.
     async probe(ctx: ServiceContext): Promise<ProbeResult> {
       try {
         const answer = await within(ctx.timings.probeBudgetMs, () => client.pingUser({ bid }))
         if (answer === LATE) return { kind: 'unknown', reason: 'the probe ran past its budget' }
-        return { kind: 'answered', mode: null, degraded: false, fiscalDevice: null }
+        return { kind: 'answered', mode: null, degraded: null, fiscalDevice: null }
       } catch (error) {
         if (error instanceof BarsyAuthError) {
           return {

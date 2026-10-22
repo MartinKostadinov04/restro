@@ -9,6 +9,7 @@ import {
   AvailabilitySchema,
   FloorSchema,
   ProbeResultSchema,
+  type Reading,
   readingSchema,
   TableBillsSchema,
 } from '../schemas'
@@ -136,15 +137,40 @@ export const floorCheck: Check<ReadHarness> = async (harness) => {
   return problems
 }
 
-/** A failed part: the floor reads incomplete, never a shorter list (rule 6). */
-export const floorFailedPartCheck: Check<ReadHarness> = async (harness) => {
+/**
+ * Reads once on a healthy POS to count the read calls a whole reading takes (k), then once for
+ * each n = 1..k with the reads failing from the nth on: each of those must come back incomplete,
+ * never as the pages that did answer (rule 6).
+ */
+async function failedPartProblems<T>(
+  harness: ReadHarness,
+  label: string,
+  schema: { safeParse(v: unknown): { success: boolean; error?: unknown } },
+  read: () => Promise<Reading<T>>,
+): Promise<string[]> {
   await harness.pos.reset()
-  harness.faults.failReads()
-  const reading = await harness.connector.readFloor(kitContext(harness))
-  const problems = schemaProblems('the floor reading', FloorReadingSchema, reading)
-  if (reading.complete) problems.push('a floor read with a failed part came back complete')
+  const healthy = await read()
+  if (!healthy.complete) return [`the ${label} read incomplete on a healthy POS: ${healthy.reason}`]
+  const reads = harness.pos.calls().filter((call) => !call.write).length
+  if (reads === 0) return [`reading the ${label} made no POS call the harness saw`]
+  const problems: string[] = []
+  for (let n = 1; n <= reads; n += 1) {
+    await harness.pos.reset()
+    harness.faults.failReadsFrom(n)
+    const reading = await read()
+    problems.push(...schemaProblems(`the ${label} reading`, schema, reading))
+    if (reading.complete) {
+      problems.push(`a ${label} read whose call ${n} of ${reads} failed came back complete`)
+    }
+  }
   return problems
 }
+
+/** A failed part: the floor reads incomplete, never a shorter list (rule 6). */
+export const floorFailedPartCheck: Check<ReadHarness> = (harness) =>
+  failedPartProblems(harness, 'floor', FloorReadingSchema, () =>
+    harness.connector.readFloor(kitContext(harness)),
+  )
 
 /** A stalled POS: the floor reads incomplete within its read timeout. */
 export const floorTimeoutCheck: Check<ReadHarness> = async (harness) => {
@@ -171,6 +197,14 @@ export const tableCheck: Check<ReadHarness> = async (harness) => {
   const problems = schemaProblems('the table reading', TableReadingSchema, reading)
   if (!reading.complete) return [...problems, `the table read incomplete: ${reading.reason}`]
   const caps = harness.connector.capabilities
+  // Oldest first: the platform joins the first open bill it is given (D115, chooseTargetBill).
+  const times = reading.value.bills.map((bill) => bill.openedAt)
+  for (let i = 1; i < times.length; i += 1) {
+    const [earlier, later] = [times[i - 1], times[i]]
+    if (earlier != null && later != null && Date.parse(later) < Date.parse(earlier)) {
+      problems.push(`the table's bills are not oldest first: ${later} comes after ${earlier}`)
+    }
+  }
   for (const bill of reading.value.bills) {
     if (!caps.billOpeningTime && bill.openedAt !== null) {
       problems.push('a bill has an opening time, but billOpeningTime is not declared')
@@ -198,12 +232,9 @@ export const tableCheck: Check<ReadHarness> = async (harness) => {
 export const tableFailedPartCheck: Check<ReadHarness> = async (harness) => {
   const scenario = harness.table
   if ('none' in scenario) return []
-  await harness.pos.reset()
-  harness.faults.failReads()
-  const reading = await harness.connector.readTable(kitContext(harness), scenario.ref)
-  const problems = schemaProblems('the table reading', TableReadingSchema, reading)
-  if (reading.complete) problems.push('a table read with a failed part came back complete')
-  return problems
+  return failedPartProblems(harness, 'table', TableReadingSchema, () =>
+    harness.connector.readTable(kitContext(harness), scenario.ref),
+  )
 }
 
 /** Where declared, every asked item is answered once; nothing is written. */

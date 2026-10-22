@@ -31,10 +31,21 @@ export interface ConformancePos {
 export interface ConformanceFaults {
   /** Every POS call from now on hangs and never answers. */
   stall(): void
-  /** Every read from now on fails (an error answer for each page). */
-  failReads(): void
+  /**
+   * From the `n`th read call after this one on (1-based), every read fails with an error answer;
+   * the reads before it answer. The kit runs it for each read a whole reading takes, so a reading
+   * that drops a failed page and returns the rest as complete is caught (rule 6). Later reads
+   * fail too, so a connector that retries a failed page is not mistaken for one that drops it.
+   */
+  failReadsFrom(n: number): void
   /** The POS refuses the login's credentials, where the harness can say so. */
   refuseLogin?(): void
+}
+
+/** The faults the write checks need beyond the read checks. */
+export interface WriteFaults extends ConformanceFaults {
+  /** Every write from now on hangs and never answers; reads still answer. */
+  stallWrites(): void
 }
 
 /** A table to read and what its reading must be, or why the harness has none. */
@@ -71,7 +82,7 @@ export interface WaiterDriver {
     table: PosRef,
     options: { readonly openedAt: Date; readonly byRestro: boolean },
   ): Promise<PosRef>
-  /** A payment table, where the POS isolates by moving lines to a table; else null. */
+  /** A payment table, where the POS isolates by moving lines to a table (`moveLinesToTable`); else null. */
   paymentTable(): Promise<PosRef | null>
   /** Closes the bill right before the connector's next write lands, where the harness can. */
   closeBillBeforeNextWrite?(bill: PosRef): void
@@ -80,6 +91,7 @@ export interface WaiterDriver {
 /** What the write checks need beyond the read checks. */
 export interface WriteHarness extends ReadHarness {
   readonly connector: ServiceConnector
+  readonly faults: WriteFaults
   readonly waiter: WaiterDriver
 }
 

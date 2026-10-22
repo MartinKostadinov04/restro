@@ -210,6 +210,28 @@ module.exports = {
       to: { path: ['^packages/shell/src/money-math\\.ts$', '^@restro/shell/money(/|$)'] },
     },
 
+    // The connector conformance kit (#65) is a test harness, like the shell's `testing` fixtures:
+    // its toy POS and fault switches must never reach a connector's or an app's own code.
+    {
+      name: 'connector-kit-only-from-tests',
+      severity: 'error',
+      comment:
+        'Only tests (*.test.ts) and test-* helpers may import the connector conformance kit, @restro/core/connectors/testing (packages/core/src/connectors/service/testing/); the kit may import its own files.',
+      from: {
+        pathNot: [
+          '\\.test\\.[jt]sx?$',
+          '(^|/)test-[^/]+\\.[jt]sx?$',
+          '^packages/core/src/connectors/service/testing/',
+        ],
+      },
+      to: {
+        path: [
+          '^packages/core/src/connectors/service/testing/',
+          '^@restro/core/connectors/testing(/|$)',
+        ],
+      },
+    },
+
     // The guest page (rule 4): it reads published files and nothing else. Its code (app/m and
     // src/guest) never imports the database, apply(), the asset and publish stores, or the
     // server-only helpers of the web app; it calls no server action either.

@@ -24,9 +24,6 @@ export const BARSY_SERVICE_CAPABILITIES: ServiceCapabilities = {
   closeWithPaymentType: true,
   // Accounts_place with payments and flag_close_account (methods/accounts/place.html).
   openPayCloseInOneCall: true,
-  // Accounts_place continues "an existing" bill by account_id; nothing limits it to bills the
-  // API user opened (methods/accounts/place.html).
-  addToStaffOpenedBill: true,
   // AccountData.create_date (methods/accounts/get.html).
   billOpeningTime: true,
   // Not claimed:
@@ -38,5 +35,8 @@ export const BARSY_SERVICE_CAPABILITIES: ServiceCapabilities = {
   //   notesReachTicket, receiptNumberOnClose, electronicFiscalReceipt, trainingMode,
   //     itemAvailability: not stated;
   //   ownLineReference: order_ref_id exists, how it is set is not stated (C21, Q82.3);
-  //   idempotentAdd: account.uuid guards a new bill only; a repeated add is open (C20).
+  //   idempotentAdd: account.uuid guards a new bill only; a repeated add is open (C20);
+  //   addToStaffOpenedBill: Accounts_place continues a bill by account_id, but the docs are
+  //     silent on whose bill; AccountData's is_locked and per-user user_can_edit suggest limits
+  //     whose meaning for an API write is not stated (C54).
 }

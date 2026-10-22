@@ -136,7 +136,7 @@ export const ProbeResultSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('answered'),
     mode: z.enum(['live', 'training']).nullable(),
-    degraded: z.boolean(),
+    degraded: z.boolean().nullable(),
     fiscalDevice: z.enum(['ok', 'fault']).nullable(),
   }),
   z.strictObject({ kind: z.literal('refused'), refusal: RefusalSchema }),

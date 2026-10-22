@@ -3,15 +3,20 @@
 // the problems it found. "Adds to the oldest bill" is conditional on the declared capabilities:
 // the expected answer is what `chooseTargetBill` says for that declaration.
 
+import type { ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector } from '../connector'
-import type { PosRef } from '../pos-ref'
+import { type PosRef, posRef, samePosRef } from '../pos-ref'
 import {
   type AddLinesRequest,
   AddLinesResultSchema,
+  type BillLine,
   EmptyResultSchema,
   IsolatedBillSchema,
+  type IsolatedHandle,
+  type IsolateLinesRequest,
   IsolateLinesResultSchema,
   PayAndCloseResultSchema,
+  type PosBill,
   readingSchema,
   type TableBills,
   type WriteOutcome,
@@ -204,8 +209,9 @@ export const closedBillCheck: Check<WriteHarness> = async (harness) => {
 }
 
 /**
- * A stalled POS: the round answers `unknown` within the write timeout, never `refused`, and is
- * written at most once, also after it answered (D115: read back, never sent twice).
+ * Writes hang while reads answer: the round reaches the POS, answers `unknown` within the write
+ * timeout, never `refused`, and is written exactly once, also through the read-back window after
+ * it answered (D115: read back, never sent twice).
  */
 export const writeTimeoutCheck: Check<WriteHarness> = async (harness) => {
   await harness.pos.reset()
@@ -214,7 +220,7 @@ export const writeTimeoutCheck: Check<WriteHarness> = async (harness) => {
   await harness.waiter.openBill(table, { openedAt: new Date(now - HOUR), byRestro: true })
   const request = await addRequest(harness, table)
   const callsBefore = harness.pos.calls().length
-  harness.faults.stall()
+  harness.faults.stallWrites()
   const { value, ms } = await timed(() => harness.connector.addLines(kitContext(harness), request))
   const problems = outcomeProblems(AddOutcomeSchema, 'the add outcome', value)
   if (value.kind !== 'unknown')
@@ -222,12 +228,14 @@ export const writeTimeoutCheck: Check<WriteHarness> = async (harness) => {
   if (ms > KIT_TIMINGS.writeTimeoutMs + KIT_MARGIN_MS) {
     problems.push(`a stalled round took ${Math.round(ms)} ms: it ignores the write timeout`)
   }
-  await new Promise((resolve) => setTimeout(resolve, KIT_TIMINGS.writeTimeoutMs))
+  await new Promise((resolve) => setTimeout(resolve, KIT_TIMINGS.readBackWindowMs))
   const writes = harness.pos
     .calls()
     .slice(callsBefore)
     .filter((call) => call.write)
-  if (writes.length > 1) {
+  if (writes.length === 0) {
+    problems.push('the stalled round never reached the POS: no write was attempted')
+  } else if (writes.length > 1) {
     problems.push(
       `a stalled round was written ${writes.length} times: ${writes.map((w) => w.name).join(', ')}`,
     )
@@ -236,77 +244,193 @@ export const writeTimeoutCheck: Check<WriteHarness> = async (harness) => {
 }
 
 /**
- * The payment route (part 2, conformance-tested now): isolate then read back gives exactly the
- * picked lines; undo restores the real table's total; a close succeeds once and a second is
- * refused.
+ * How the declared capabilities isolate a guest's lines (D122 §8, fix 7+8): split them off onto
+ * a second bill of the same table, move them to a payment table at a one-bill POS, or not at all.
  */
-export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
+export type IsolationRoute = 'split' | 'payment_table' | 'none'
+
+export function isolationRoute(capabilities: ServiceCapabilities): IsolationRoute {
+  if (capabilities.severalBillsPerTable) return 'split'
+  if (capabilities.moveLinesToTable) return 'payment_table'
+  return 'none'
+}
+
+const total = (bills: TableBills | null) =>
+  bills === null ? 0 : bills.bills.reduce((sum, bill) => sum + bill.totalMinor, 0)
+const lineKey = (line: BillLine) => `${line.item?.pos ?? '-'}|${line.quantity}|${line.amountMinor}`
+const keys = (lines: readonly BillLine[]) => lines.map(lineKey).sort()
+const findBill = (bills: TableBills, ref: PosRef): PosBill | undefined =>
+  bills.bills.find((bill) => samePosRef(bill.ref, ref))
+
+interface PaymentSetUp {
+  readonly table: PosRef
+  readonly before: TableBills
+  readonly bill: PosBill
+  readonly line: BillLine
+}
+
+/** The payment route set up: a bill with one line, then Restro's round of two of one item. */
+async function paymentSetUp(harness: WriteHarness): Promise<PaymentSetUp | string> {
   await harness.pos.reset()
-  const connector: ServiceConnector = harness.connector
   const ctx = kitContext(harness)
   const table = await harness.waiter.emptyTable()
   const now = ctx.now().getTime()
   await harness.waiter.openBill(table, { openedAt: new Date(now - HOUR), byRestro: true })
-  const add = await connector.addLines(ctx, await addRequest(harness, table))
+  const request = await addRequest(harness, table)
+  const add = await harness.connector.addLines(ctx, request)
   if (add.kind !== 'done')
-    return [`setting up the payment route: the round came back ${describe(add)}`]
+    return `setting up the payment route: the round came back ${describe(add)}`
   const before = await readComplete(harness, table)
-  if (typeof before === 'string') return [before]
-  const bill = before.bills[0]
-  const line = bill?.lines[0]
-  if (bill === undefined || line === undefined)
-    return ['setting up the payment route: no line to pick']
-  const paymentTable = await harness.waiter.paymentTable()
-  const isolateRequest = {
+  if (typeof before === 'string') return before
+  const item = request.lines[0]?.item
+  for (const bill of before.bills) {
+    const line = bill.lines.find(
+      (l) =>
+        l.item !== null && item !== undefined && samePosRef(l.item, item) && l.quantity === '2',
+    )
+    if (line !== undefined) return { table, before, bill, line }
+  }
+  return "setting up the payment route: the round's line is not on the table"
+}
+
+/** Reads the real table, and the payment table where the route moves lines there. */
+async function readRoute(
+  harness: WriteHarness,
+  table: PosRef,
+  paymentTable: PosRef | null,
+): Promise<{ readonly real: TableBills; readonly payment: TableBills | null } | string> {
+  const real = await readComplete(harness, table)
+  if (typeof real === 'string') return real
+  if (paymentTable === null) return { real, payment: null }
+  const payment = await readComplete(harness, paymentTable)
+  if (typeof payment === 'string') return payment
+  return { real, payment }
+}
+
+/**
+ * The payment route (part 2, conformance-tested now), by the declared capabilities:
+ *   - isolating moves exactly the pick: the table's total is unchanged, the original bill lost
+ *     exactly the picked part and the isolated bill holds exactly it (a move, never a copy);
+ *   - a split-off bill that reads on the real table is under payment, so no send joins it;
+ *   - part of a line's quantity is isolated only where declared, else refused `not_supported`;
+ *   - undo restores the real table's total; a close succeeds once and a second is refused;
+ *   - where the POS can isolate neither way, isolating is refused `not_supported`.
+ */
+export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
+  const connector: ServiceConnector = harness.connector
+  const caps = connector.capabilities
+  const ctx = kitContext(harness)
+  const setUp = await paymentSetUp(harness)
+  if (typeof setUp === 'string') return [setUp]
+  const { table, before, bill, line } = setUp
+  const route = isolationRoute(caps)
+  const paymentTable = route === 'payment_table' ? await harness.waiter.paymentTable() : null
+  if (route === 'payment_table' && paymentTable === null) {
+    return ['moveLinesToTable is declared, but the harness gives no payment table']
+  }
+  const part = caps.movePartOfLineQuantity
+  const isolateRequest: IsolateLinesRequest = {
     table,
-    picks: [{ bill: bill.ref, line: line.ref, quantity: line.quantity }],
+    picks: [{ bill: bill.ref, line: line.ref, quantity: part ? '1' : line.quantity }],
     paymentTable,
     ref: 'kit-isolate',
   }
   const problems: string[] = []
 
+  const refusedAsUnsupported = async (request: IsolateLinesRequest, why: string) => {
+    const outcome = await connector.isolateLines(ctx, request)
+    problems.push(...outcomeProblems(IsolateOutcomeSchema, 'the isolate outcome', outcome))
+    if (outcome.kind !== 'refused' || outcome.refusal.code !== 'not_supported') {
+      problems.push(`${why}, but isolating came back ${describe(outcome)}, not not_supported`)
+    }
+    const after = await readRoute(harness, table, paymentTable)
+    if (typeof after === 'string') problems.push(after)
+    else if (JSON.stringify(after.real) !== JSON.stringify(before)) {
+      problems.push(`${why}, but isolating changed the table`)
+    }
+  }
+  if (route === 'none') {
+    await refusedAsUnsupported(
+      isolateRequest,
+      'neither severalBillsPerTable nor moveLinesToTable is declared',
+    )
+    return problems
+  }
+  if (!part) {
+    await refusedAsUnsupported(
+      { ...isolateRequest, picks: [{ bill: bill.ref, line: line.ref, quantity: '1' }] },
+      'movePartOfLineQuantity is not declared',
+    )
+  }
+
   const isolated = await connector.isolateLines(ctx, isolateRequest)
   problems.push(...outcomeProblems(IsolateOutcomeSchema, 'the isolate outcome', isolated))
   if (isolated.kind !== 'done') return [...problems, `isolating came back ${describe(isolated)}`]
-  const back = await connector.readIsolated(ctx, isolated.result.isolated)
+  const handle: IsolatedHandle = isolated.result.isolated
+  const handleTable = route === 'split' ? table : paymentTable
+  if (handleTable !== null && !samePosRef(handle.table, handleTable)) {
+    problems.push(`the isolated bill is on ${handle.table.pos}, not ${handleTable.pos}`)
+  }
+
+  const back = await connector.readIsolated(ctx, handle)
   problems.push(...outcomeProblems(IsolatedReadingSchema, 'the isolated reading', back))
   if (!back.complete || back.value.bill === null) {
     return [...problems, 'the isolated bill did not read back']
   }
-  const got = back.value.bill.lines.map((l) => `${l.item?.pos}:${l.quantity}:${l.amountMinor}`)
-  const want = [`${line.item?.pos}:${line.quantity}:${line.amountMinor}`]
-  if (JSON.stringify(got) !== JSON.stringify(want)) {
+  const isolatedLines = back.value.bill.lines
+  const isolatedAmount = isolatedLines.reduce((sum, l) => sum + l.amountMinor, 0)
+  const item = line.item?.pos ?? '-'
+  const picked = part ? `${item}|1|${isolatedAmount}` : lineKey(line)
+  if (JSON.stringify(keys(isolatedLines)) !== JSON.stringify([picked])) {
     problems.push(
-      `the isolated bill holds ${got.join(', ')}, not exactly the pick ${want.join(', ')}`,
+      `the isolated bill holds ${keys(isolatedLines).join(', ')}, not exactly the pick ${picked}`,
     )
   }
 
-  const undo = await connector.undoIsolate(ctx, {
-    isolated: isolated.result.isolated,
-    table,
-    ref: 'kit-undo',
-  })
+  const moved = await readRoute(harness, table, paymentTable)
+  if (typeof moved === 'string') return [...problems, moved]
+  const movedTotal = total(moved.real) + total(moved.payment)
+  if (movedTotal !== total(before)) {
+    problems.push(
+      `isolating changed the total from ${total(before)} to ${movedTotal}: the lines were copied, not moved`,
+    )
+  }
+  const remainder = part ? [`${item}|1|${line.amountMinor - isolatedAmount}`] : []
+  const wanted = [...bill.lines.filter((l) => l !== line).map(lineKey), ...remainder].sort()
+  const original = findBill(moved.real, bill.ref)
+  const left = original === undefined ? [] : keys(original.lines)
+  if (JSON.stringify(left) !== JSON.stringify(wanted)) {
+    problems.push(
+      `after isolating, the original bill holds ${left.join(', ') || 'nothing'}, not ${wanted.join(', ') || 'nothing'}`,
+    )
+  }
+  const onTable = findBill(moved.real, handle.ref)
+  if (onTable !== undefined && !onTable.paymentInFlight) {
+    problems.push('the isolated bill reads on the real table without paymentInFlight')
+  }
+
+  const undo = await connector.undoIsolate(ctx, { isolated: handle, table, ref: 'kit-undo' })
   problems.push(...outcomeProblems(UndoOutcomeSchema, 'the undo outcome', undo))
   if (undo.kind !== 'done') return [...problems, `undoing came back ${describe(undo)}`]
-  const restored = await readComplete(harness, table)
+  const restored = await readRoute(harness, table, paymentTable)
   if (typeof restored === 'string') return [...problems, restored]
-  const total = (bills: TableBills) => bills.bills.reduce((sum, b) => sum + b.totalMinor, 0)
-  if (total(restored) !== total(before)) {
-    problems.push(`undo left the table at ${total(restored)}, not ${total(before)}`)
+  if (total(restored.real) !== total(before)) {
+    problems.push(`undo left the table at ${total(restored.real)}, not ${total(before)}`)
   }
+  if (total(restored.payment) !== 0) problems.push('undo left lines on the payment table')
 
   const again = await connector.isolateLines(ctx, { ...isolateRequest, ref: 'kit-isolate-2' })
   if (again.kind !== 'done') return [...problems, `isolating again came back ${describe(again)}`]
   const close = {
     isolated: again.result.isolated,
-    amountMinor: line.amountMinor,
+    amountMinor: isolatedAmount,
     paymentType: null,
     ref: 'kit-close',
   }
   const first = await connector.payAndClose(ctx, close)
   problems.push(...outcomeProblems(CloseOutcomeSchema, 'the close outcome', first))
   if (first.kind !== 'done') return [...problems, `the close came back ${describe(first)}`]
-  if (!harness.connector.capabilities.receiptNumberOnClose && first.result.receiptNumber !== null) {
+  if (!caps.receiptNumberOnClose && first.result.receiptNumber !== null) {
     problems.push('the close gives a receipt number, but receiptNumberOnClose is not declared')
   }
   const second = await connector.payAndClose(ctx, { ...close, ref: 'kit-close-2' })
@@ -315,15 +439,29 @@ export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
   return problems
 }
 
-/** Every write leaves only waiter actions on the wire: nothing but the steps' own calls. */
+/** The read steps write nothing: the table, the floor and an isolated bill. */
 export const writesAreDeclaredCheck: Check<WriteHarness> = async (harness) => {
   // The calls themselves are POS-specific; the guard on the write module (guard.ts) is what
   // pins them to D110. Here the kit only checks that a read step wrote nothing on the way.
-  await harness.pos.reset()
-  const table = await harness.waiter.emptyTable()
+  const ctx = kitContext(harness)
+  const route = isolationRoute(harness.connector.capabilities)
+  const setUp = await paymentSetUp(harness)
+  let table = await harness.waiter.emptyTable()
+  let handle: IsolatedHandle = { ref: posRef('kit-no-such-bill'), table }
+  if (typeof setUp !== 'string' && route !== 'none') {
+    table = setUp.table
+    const isolated = await harness.connector.isolateLines(ctx, {
+      table,
+      picks: [{ bill: setUp.bill.ref, line: setUp.line.ref, quantity: setUp.line.quantity }],
+      paymentTable: route === 'payment_table' ? await harness.waiter.paymentTable() : null,
+      ref: 'kit-isolate-read',
+    })
+    if (isolated.kind === 'done') handle = isolated.result.isolated
+  }
   const callsBefore = harness.pos.calls().length
-  await harness.connector.readTable(kitContext(harness), table)
-  await harness.connector.readFloor(kitContext(harness))
+  await harness.connector.readTable(ctx, table)
+  await harness.connector.readFloor(ctx)
+  await harness.connector.readIsolated(ctx, handle)
   const wrote = harness.pos
     .calls()
     .slice(callsBefore)
