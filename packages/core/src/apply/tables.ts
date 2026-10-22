@@ -45,6 +45,7 @@ import {
 import {
   checkBaseUrl,
   checkOwnPattern,
+  hashTableCode,
   MAX_TABLE_LABEL_LENGTH,
   QR_MODES,
   type QrAddressProblem,
@@ -434,6 +435,17 @@ async function freshToken(tx: WriteTx): Promise<string> {
   throw new Error('could not draw a table code that was never purged')
 }
 
+/** A fresh code as the columns store it: the code and its hash, never one without the other. */
+async function freshCode(
+  tx: WriteTx,
+): Promise<{ qrToken: string; qrCodeHash: string; qrCodeSealed: null }> {
+  const qrToken = await freshToken(tx)
+  return { qrToken, qrCodeHash: await hashTableCode(qrToken), qrCodeSealed: null }
+}
+
+/** No code: every form of it goes together (`tables_qr_code_complete`). */
+const NO_CODE = { qrToken: null, qrCodeHash: null, qrCodeSealed: null } as const
+
 /** The tokens of the area's live tables (their files go when the area is hidden or deleted). */
 async function tokensOfArea(tx: WriteTx, areaId: string): Promise<string[]> {
   const rows = await tx
@@ -475,7 +487,7 @@ export async function issueTableToken(
     if (found.table.hidden || found.area.hidden) {
       return refusal('hidden', 'a hidden table gets no code')
     }
-    const updated = await updatedTable(tx, found.table.id, { qrToken: await freshToken(tx) })
+    const updated = await updatedTable(tx, found.table.id, await freshCode(tx))
     return {
       ok: true,
       venueId: found.table.venueId as VenueId,
@@ -498,7 +510,7 @@ export async function retireTableToken(
     if (found.table.qrToken === null) {
       return { ok: true, venueId, table: toTable(found.table), retired: null }
     }
-    const updated = await updatedTable(tx, found.table.id, { qrToken: null })
+    const updated = await updatedTable(tx, found.table.id, NO_CODE)
     return { ok: true, venueId, table: toTable(updated), retired: found.table.qrToken } as const
   })
 }
@@ -892,7 +904,7 @@ export async function issueAllTableTokens(
     for (const row of rows) {
       await tx
         .update(venueTables)
-        .set({ qrToken: await freshToken(tx) })
+        .set(await freshCode(tx))
         .where(eq(venueTables.id, row.id))
     }
     return {

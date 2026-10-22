@@ -18,7 +18,9 @@
 //   than in the connection string because Supabase's session pooler ignores startup parameters
 //   (T46), while Postgres applies a role's own settings itself when a session starts;
 // - it fails if a table exists in `restro` that TABLE_ACCESS does not list, so a new table
-//   cannot ship without someone deciding what each role may do with it.
+//   cannot ship without someone deciding what each role may do with it;
+// - it may EXECUTE exactly the routines ROUTINE_ACCESS gives it, and nobody else but the owner
+//   holds EXECUTE on any routine in `restro`.
 import pg from 'pg'
 
 import {
@@ -27,6 +29,7 @@ import {
   APP_SCHEMA_PRIVILEGES,
   PURGE_ROLE,
   PURGE_SCHEMA_PRIVILEGES,
+  ROUTINE_ACCESS,
   TABLE_ACCESS,
   type TableAccess,
   type TablePrivilege,
@@ -88,6 +91,8 @@ const ROLES: readonly RoleSpec[] = [
 const ROLE_NAMES = ROLES.map((role) => role.name)
 
 const tableAccess: Record<string, TableAccess> = TABLE_ACCESS
+
+const routineAccess: Record<string, readonly string[]> = ROUTINE_ACCESS
 
 interface RoleRow {
   rolsuper: boolean
@@ -188,6 +193,17 @@ const OTHER_TABLE_GRANTEES = `
     and a.grantee <> c.relowner and coalesce(g.rolname, 'PUBLIC') <> all($3::text[])
   group by 1, 2`
 
+// `object` is the routine's regprocedure text (schema-qualified, quoted as needed), so it can be
+// used as is in a REVOKE.
+const OTHER_ROUTINE_GRANTEES = `
+  select p.oid::pg_catalog.regprocedure::text as object, coalesce(g.rolname, 'PUBLIC') as grantee
+  from pg_catalog.pg_proc p
+  cross join lateral pg_catalog.aclexplode(p.proacl) a
+  left join pg_catalog.pg_roles g on g.oid = a.grantee
+  where p.pronamespace = $1::regnamespace and a.grantee <> p.proowner
+    and coalesce(g.rolname, 'PUBLIC') <> all($2::text[])
+  group by 1, 2`
+
 function granteeSql(client: Client, grantee: string): string {
   return grantee === 'PUBLIC' ? 'public' : id(client, grantee)
 }
@@ -268,6 +284,18 @@ async function grantTables(client: Client): Promise<void> {
     const role = id(client, spec.name)
     await client.query(`revoke all on all sequences in schema ${schema} from ${role}`)
     await client.query(`revoke all on all routines in schema ${schema} from ${role}`)
+  }
+  const otherRoutineGrantees = await otherGrantees(client, OTHER_ROUTINE_GRANTEES, [APP_SCHEMA])
+  for (const { object, grantee } of otherRoutineGrantees) {
+    await client.query(`revoke all on function ${object} from ${granteeSql(client, grantee)}`)
+  }
+  // Then the few routines a role may call (ROUTINE_ACCESS), each to its listed roles only.
+  for (const [signature, grantees] of Object.entries(routineAccess)) {
+    for (const grantee of grantees) {
+      await client.query(
+        `grant execute on function ${schema}.${signature} to ${id(client, grantee)}`,
+      )
+    }
   }
 }
 
@@ -377,11 +405,33 @@ async function verify(client: Client): Promise<void> {
         problems.push(`${spec.name}: ${privilege} on ${APP_SCHEMA}.${relname}: ${granted}`)
       }
     }
+
+    // EXECUTE on exactly the routines ROUTINE_ACCESS gives this role (directly or via PUBLIC).
+    const routineGrants = await client.query<{ signature: string; granted: boolean }>(
+      `select p.proname || '(' || pg_catalog.oidvectortypes(p.proargtypes) || ')' as signature,
+              has_function_privilege($1, p.oid, 'EXECUTE') as granted
+       from pg_catalog.pg_proc p where p.pronamespace = $2::regnamespace`,
+      [spec.name, APP_SCHEMA],
+    )
+    for (const { signature, granted } of routineGrants.rows) {
+      const wanted = routineAccess[signature]?.includes(spec.name) ?? false
+      if (granted !== wanted) {
+        problems.push(`${spec.name}: EXECUTE on ${APP_SCHEMA}.${signature}: ${granted}`)
+      }
+    }
+    for (const [signature, grantees] of Object.entries(routineAccess)) {
+      if (
+        grantees.includes(spec.name) &&
+        !routineGrants.rows.some((r) => r.signature === signature)
+      )
+        problems.push(`${APP_SCHEMA}.${signature} does not exist: run pnpm db:migrate first`)
+    }
   }
 
   const strangers = [
     ...(await otherGrantees(client, OTHER_SCHEMA_GRANTEES, [ALL_SCHEMAS])),
     ...(await otherGrantees(client, OTHER_TABLE_GRANTEES, [APP_SCHEMA, RELATION_KINDS])),
+    ...(await otherGrantees(client, OTHER_ROUTINE_GRANTEES, [APP_SCHEMA])),
   ]
   for (const { object, grantee } of strangers) {
     problems.push(`${grantee} still holds privileges on ${object} (granted by another role?)`)

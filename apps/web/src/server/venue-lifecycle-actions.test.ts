@@ -400,10 +400,10 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       )
       await owner.query(
         `insert into restro.tables
-           (id, tenant_id, venue_id, area_id, number, sort_key, qr_token)
+           (id, tenant_id, venue_id, area_id, number, sort_key, qr_token, qr_code_hash)
          select 'tb_many' || lpad(n::text, 15, '0'), $1, $2, $3, n::text, 'a' || lpad(n::text, 3, '0'),
-                $4 || lpad(n::text, 8, '0')
-         from generate_series(1, 501) as n`,
+                code, encode(sha256(convert_to(code, 'UTF8')), 'hex')
+         from generate_series(1, 501) as n, lateral (select $4 || lpad(n::text, 8, '0') as code) c`,
         [tenant, venue.id, area, randomUUID().replaceAll('-', '').slice(0, 14)],
       )
       expect(
