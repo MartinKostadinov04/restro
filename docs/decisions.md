@@ -23,7 +23,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D16](decisions/D16.md) | Sync a copy of barsy's data into our own model | applied |
 | [D17](decisions/D17.md) | Architecture = the Menu Engine doc including its nine rules | applied |
 | [D18](decisions/D18.md) | The waiter must learn of every app order inside the venue's existing barsy setup,… | firm |
-| [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | superseded by D124 and D125 |
+| [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | superseded by D126 and D125 |
 | [D20](decisions/D20.md) | Our own section map, generated from barsy's category tree, editable per venue | firm; see D47 |
 | [D21](decisions/D21.md) | New barsy items publish automatically | firm; see D50 |
 | [D22](decisions/D22.md) | Sold-out items are greyed out with no order button | firm; source is D46 |
@@ -102,7 +102,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D95](decisions/D95.md) | Areas and tables: barsy's halls and tables | firm |
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
 | [D97](decisions/D97.md) | Venue page tabs: Composer | firm |
-| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D124 (Stripe first) and D125 (its open line closed) |
+| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D126 (Stripe first) and D125 (its open line closed) |
 | [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
@@ -126,9 +126,9 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118; refined by D121 (a shorter consent screen); refined by D122 |
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117; refined by D122 |
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
-| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D124 |
-| [D124](decisions/D124.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
-| [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D124, D41 and D110; supersedes D19; closes D98's open line |
+| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D126 |
+| [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
+| [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
 | [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
 
 ## Not repeated here

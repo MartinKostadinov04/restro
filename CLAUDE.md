@@ -15,7 +15,7 @@ Read only what your task needs; the big documents are for looking things up (Mar
 Fact precedence: official POS docs (barsy: docs.lukanet.com) > the architecture doc > the tracker.
 
 ## Scope right now
-QR → phone only (D38). Current phase (D79): the platform's own functionality, data structure and UI on clean connector data (`docs/adjustments/adjustments_01.md`); the connector foundation (CF-05 to CF-08) and the Mistral connector are parked. Open on the `or/` stage branches: ordering (D122) and Stripe payments (D124, D125).
+QR → phone only (D38). Current phase (D79): the platform's own functionality, data structure and UI on clean connector data (`docs/adjustments/adjustments_01.md`); the connector foundation (CF-05 to CF-08) and the Mistral connector are parked. Open on the `or/` stage branches: ordering (D122) and Stripe payments (D126, D125).
 
 ## Three layers (keep them apart)
 1. **Platform:** everything once the data is in our own model (venues, menus, composer, design, tables, publishing, the guest page); no vendor name, no POS-specific field.
