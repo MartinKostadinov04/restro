@@ -48,7 +48,7 @@ Create `packages/faces/<id>` directly: guide §12.1 steps 4 and 5, following the
 
 ## 5. Run the face's tests
 
-`pnpm vitest run --project packages/faces/<id> --reporter=dot`, then CLAUDE.md's done-gate (`pnpm lint && pnpm typecheck && pnpm deps:check`). At most two sessions run tests at once, and a subagent running tests counts as one. Done when all are green.
+`pnpm vitest run --project packages/faces/<id> --reporter=dot`, then CLAUDE.md's done-gate (`pnpm lint && pnpm typecheck && pnpm deps:check`). Tests run within `docs/agents/lead.md`'s limits. Done when all are green.
 
 ## 6. Record the design
 
