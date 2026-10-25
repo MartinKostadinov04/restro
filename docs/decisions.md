@@ -102,7 +102,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D95](decisions/D95.md) | Areas and tables: barsy's halls and tables | firm |
 | [D96](decisions/D96.md) | Versions: live + up to 2 restorable, non-live purged after 30 days, change log 2 months | firm |
 | [D97](decisions/D97.md) | Venue page tabs: Composer | firm |
-| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D124 (Stripe first) |
+| [D98](decisions/D98.md) | Payments are a connector kind; the venue is the merchant; Restro never holds money | firm; refined by D124 (Stripe first) and D125 (its open line closed) |
 | [D99](decisions/D99.md) | Song requests: a paid priority queue the DJ runs, holds captured on accept | direction; prototype to be ported (T82), access to be grilled (T81) |
 | [D100](decisions/D100.md) | A guest feature declares whether it needs a table code | firm; refines D71 |
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
@@ -127,7 +127,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117; refined by D122 |
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
 | [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D124 |
-| [D124](decisions/D124.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122 |
+| [D124](decisions/D124.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
+| [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98 and D124; closes D98's open line |
 | [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
 
 ## Not repeated here
