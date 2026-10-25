@@ -1,0 +1,236 @@
+// The provider notices job (#108; D127 1.4, D125 3.5 and 3.8, design §8).
+//
+//   provider-notices  every minute: handle the stored notices not handled yet, oldest first
+//
+// The notice route only stores a verified notice (the row is the job: a transactional outbox).
+// This job acts on it, and never on the notice's own content:
+// - its handler is picked by the platform's kind (`refund`, `dispute`); a kind with no handler
+//   (`other`) is marked handled with no action;
+// - the account it names is mapped to its venue through `payment_accounts`; a notice for no
+//   account of ours is marked handled, and logged;
+// - the payment is read back from the provider (`readNoticeSubject`), which gives the refund
+//   total and the dispute as they stand now, so a notice that comes twice, late or out of order
+//   records the same values; an incomplete reading concludes nothing and the notice waits;
+// - what the reading says is recorded through core/service (`payment.observe`), as the worker;
+// - Restro never refunds: no provider call here moves money.
+// A notice whose provider this worker does not have, or whose reading failed or found our side
+// not ready, stays for the next run; one still waiting after a day is logged as an error.
+//
+// One run at a time (`exclusive`): two runs reading the same payment could otherwise record an
+// older reading after a newer one.
+
+import { JOB_NAMES, type PaymentProvider, type ProviderNotice, providerRef } from '@restro/core'
+import {
+  type AccountVenue,
+  applyService,
+  markProviderNoticeHandled,
+  paymentAccountVenues,
+  type StoredProviderNotice,
+  unhandledProviderNotices,
+} from '@restro/core/service'
+import type { DbPool } from '@restro/db'
+
+import type { Logger } from '../logger'
+import { defineJob, type JobDefinition } from './types'
+
+/** The most notices one run handles; the rest wait a minute. */
+export const NOTICE_BATCH = 100
+
+/** A notice still waiting after this long is logged as an error. */
+export const NOTICE_LATE_MS = 24 * 60 * 60 * 1000
+
+/** Refusals that a later run may get past: a lock held elsewhere, our capture not recorded yet. */
+const TRANSIENT_REFUSALS: readonly string[] = ['busy', 'payment_not_captured']
+
+/** The providers this worker reads notices back from, by kind (#107 adds the first real one). */
+export type NoticeProviders = ReadonlyMap<string, Pick<PaymentProvider, 'readNoticeSubject'>>
+
+export interface ProviderNoticesDeps {
+  readonly providers: NoticeProviders
+}
+
+/** What became of one notice. */
+export type NoticeOutcome =
+  /** Recorded: the payment's refund total or dispute changed. */
+  | 'recorded'
+  /** The reading matched what we had. */
+  | 'unchanged'
+  /** A kind with no handler, marked handled with no action. */
+  | 'no_handler'
+  /** No account named, or none of ours: marked handled. */
+  | 'unknown_account'
+  /** The provider found no payment of ours behind it: marked handled. */
+  | 'not_ours'
+  /** Refused for good (another payment, another amount, an archived venue): marked handled. */
+  | 'refused'
+  /** Left for the next run: no provider here, a failed or incomplete reading, a transient refusal. */
+  | 'waiting'
+
+function asNotice(stored: StoredProviderNotice): ProviderNotice {
+  return {
+    id: stored.eventId,
+    type: stored.type,
+    kind: stored.kind,
+    accountRef: stored.accountRef === null ? null : providerRef(stored.accountRef),
+    objectRef: stored.objectRef === null ? null : providerRef(stored.objectRef),
+  }
+}
+
+/** Handles one stored notice. Never throws for what a provider or a refusal causes. */
+export async function handleProviderNotice(
+  env: {
+    readonly pool: DbPool
+    readonly log: Logger
+    readonly jobId: string
+    readonly accounts: (providerKind: string) => Promise<ReadonlyMap<string, AccountVenue>>
+  },
+  stored: StoredProviderNotice,
+  deps: ProviderNoticesDeps,
+): Promise<NoticeOutcome> {
+  const { pool, log } = env
+  const about = { seq: stored.seq, providerKind: stored.providerKind, kind: stored.kind }
+  const handled = async (outcome: NoticeOutcome): Promise<NoticeOutcome> => {
+    await markProviderNoticeHandled(pool, stored.seq)
+    return outcome
+  }
+
+  if (stored.kind !== 'refund' && stored.kind !== 'dispute') return handled('no_handler')
+
+  const provider = deps.providers.get(stored.providerKind)
+  if (provider === undefined) return 'waiting'
+
+  const venue =
+    stored.accountRef === null
+      ? undefined
+      : (await env.accounts(stored.providerKind)).get(stored.accountRef)
+  if (stored.accountRef === null || venue === undefined) {
+    log.warn(about, 'a provider notice names no account of ours; marked handled')
+    return handled('unknown_account')
+  }
+
+  let reading: Awaited<ReturnType<PaymentProvider['readNoticeSubject']>>
+  try {
+    reading = await provider.readNoticeSubject(providerRef(stored.accountRef), asNotice(stored))
+  } catch (error) {
+    log.warn({ ...about, err: error }, "a provider notice's payment could not be read back")
+    return 'waiting'
+  }
+  if (!reading.complete) {
+    log.warn({ ...about, reason: reading.reason }, "a provider notice's reading was incomplete")
+    return 'waiting'
+  }
+  if (reading.value === null) {
+    log.info(about, 'a provider notice is about no payment of ours; marked handled')
+    return handled('not_ours')
+  }
+
+  const payment = reading.value
+  let result: Awaited<ReturnType<typeof applyService>>['result']
+  try {
+    ;({ result } = await applyService(
+      pool,
+      {
+        type: 'payment.observe',
+        paymentId: payment.paymentId,
+        providerKind: stored.providerKind,
+        providerPaymentRef: payment.ref.provider,
+        capturedMinor: payment.capturedMinor,
+        refundedMinor: payment.refundedMinor,
+        dispute: payment.dispute,
+      },
+      {
+        tenantId: venue.tenantId,
+        venueId: venue.venueId,
+        origin: 'worker',
+        actor: { kind: 'system' },
+        jobId: env.jobId,
+        via: 'provider',
+      },
+    ))
+  } catch (error) {
+    log.warn({ ...about, err: error }, "a provider notice's reading could not be recorded")
+    return 'waiting'
+  }
+  if (result.status === 'accepted') {
+    return handled(result.details.changed === true ? 'recorded' : 'unchanged')
+  }
+  if (TRANSIENT_REFUSALS.includes(result.code)) return 'waiting'
+  log.warn(
+    { ...about, code: result.code, reason: result.details.reason ?? null },
+    "a provider notice's reading was refused; marked handled",
+  )
+  return handled('refused')
+}
+
+/** One run: the unhandled notices, oldest first, at most `NOTICE_BATCH`. */
+export async function handleProviderNotices(
+  env: { readonly pool: DbPool; readonly log: Logger; readonly now: () => Date; jobId: string },
+  deps: ProviderNoticesDeps,
+): Promise<Readonly<Record<NoticeOutcome | 'late', number>>> {
+  const counts: Record<NoticeOutcome | 'late', number> = {
+    recorded: 0,
+    unchanged: 0,
+    no_handler: 0,
+    unknown_account: 0,
+    not_ours: 0,
+    refused: 0,
+    waiting: 0,
+    late: 0,
+  }
+  const notices = await unhandledProviderNotices(env.pool, NOTICE_BATCH)
+  if (notices.length === 0) return counts
+  // Each provider's accounts are read once per run, when a notice needs them.
+  const accounts = new Map<string, Promise<ReadonlyMap<string, AccountVenue>>>()
+  const accountsOf = (providerKind: string) => {
+    let found = accounts.get(providerKind)
+    if (found === undefined) {
+      found = paymentAccountVenues(env.pool, providerKind)
+      accounts.set(providerKind, found)
+    }
+    return found
+  }
+  const now = env.now().getTime()
+  for (const notice of notices) {
+    const outcome = await handleProviderNotice(
+      { pool: env.pool, log: env.log, jobId: env.jobId, accounts: accountsOf },
+      notice,
+      deps,
+    )
+    counts[outcome] += 1
+    if (outcome === 'waiting' && now - notice.receivedAt.getTime() >= NOTICE_LATE_MS) {
+      counts.late += 1
+    }
+  }
+  if (counts.late > 0) {
+    env.log.error({ late: counts.late }, 'provider notices are still not handled after a day')
+  }
+  return counts
+}
+
+/** The provider notices job. */
+export function createProviderNoticesJob(deps: ProviderNoticesDeps): JobDefinition {
+  return defineJob({
+    name: JOB_NAMES.providerNotices,
+    schedule: { cron: '* * * * *', tz: 'Europe/Sofia' },
+    options: {
+      policy: 'exclusive',
+      // The next run comes in a minute and takes what this one left; a failed one is not retried.
+      queue: {
+        retryLimit: 0,
+        expireInSeconds: 5 * 60,
+        retentionSeconds: 10 * 60,
+        deleteAfterSeconds: 60 * 60,
+      },
+    },
+    async handler(jobs, context) {
+      const jobId = jobs[0]?.id ?? 'provider-notices'
+      const counts = await handleProviderNotices(
+        { pool: context.pool, log: context.log, now: context.now, jobId },
+        deps,
+      )
+      const { late: _late, ...outcomes } = counts
+      const seen = Object.values(outcomes).reduce((sum, count) => sum + count, 0)
+      context.log[seen > 0 ? 'info' : 'debug'](counts, 'provider notices')
+    },
+  }) as JobDefinition
+}

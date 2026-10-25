@@ -90,6 +90,12 @@ export const JOB_NAMES = {
    * (daily at 12:00).
    */
   barsySyncTick: 'barsy-sync-tick',
+  /**
+   * Scheduled, every minute (#108): handles the stored provider notices (the notice route only
+   * stores them): reads each one's payment back from its provider and records the refund total
+   * and the dispute (`payment.observe`). Not sent by anyone else.
+   */
+  providerNotices: 'provider-notices',
 } as const
 
 /** One of the queue names. */
