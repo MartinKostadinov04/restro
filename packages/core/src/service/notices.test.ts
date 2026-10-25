@@ -136,12 +136,12 @@ describe.skipIf(!hasDatabase)('recording a provider notice (as the restro_app ro
     expect(stored.rowCount).toBe(0)
   })
 
-  it('lists the unhandled notices oldest first and marks each handled once', async () => {
+  it('lists the unhandled notices in the order stored and marks each handled once', async () => {
     const a = notice('dispute')
     const b = notice('other')
     await record(a)
     await record(b)
-    const mine = (await unhandledProviderNotices(world.app, 1_000)).filter((n) =>
+    const mine = (await unhandledProviderNotices(world.app, { limit: 1_000 })).filter((n) =>
       [a.id, b.id].includes(n.eventId),
     )
     expect(mine.map((n) => [n.eventId, n.kind])).toEqual([
@@ -153,9 +153,29 @@ describe.skipIf(!hasDatabase)('recording a provider notice (as the restro_app ro
     expect(first).toMatchObject({ accountRef: 'acct_notices', objectRef: 'ch_1', live: false })
     expect(await markProviderNoticeHandled(world.app, first.seq)).toBe(true)
     expect(await markProviderNoticeHandled(world.app, first.seq)).toBe(false)
-    const left = await unhandledProviderNotices(world.app, 1_000)
+    const left = await unhandledProviderNotices(world.app, { limit: 1_000 })
     expect(left.map((n) => n.eventId)).not.toContain(a.id)
     expect(left.map((n) => n.eventId)).toContain(b.id)
+  })
+
+  it('pages the unhandled notices by seq, and only of the provider kinds asked for', async () => {
+    const ids = [notice(), notice(), notice()]
+    for (const input of ids) await record(input, 'page-pay')
+    const elsewhere = notice()
+    await record(elsewhere, 'unwired-pay')
+    const kinds = ['page-pay']
+    const first = await unhandledProviderNotices(world.app, { limit: 2, providerKinds: kinds })
+    expect(first.map((n) => n.eventId)).toEqual([ids[0]?.id, ids[1]?.id])
+    const rest = await unhandledProviderNotices(world.app, {
+      limit: 2,
+      afterSeq: first.at(-1)?.seq,
+      providerKinds: kinds,
+    })
+    expect(rest.map((n) => n.eventId)).toEqual([ids[2]?.id])
+    expect(await unhandledProviderNotices(world.app, { limit: 10, providerKinds: [] })).toEqual([])
+    const all = await unhandledProviderNotices(world.app, { limit: 1_000 })
+    expect(all.map((n) => n.eventId)).toContain(elsewhere.id)
+    expect(all.map((n) => n.seq)).toEqual([...all.map((n) => n.seq)].sort((x, y) => x - y))
   })
 
   it("finds an account's venue across tenants, by provider kind", async () => {

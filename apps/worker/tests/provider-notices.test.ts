@@ -1,8 +1,10 @@
 // The provider notices job (#108) on Postgres, as the restro_app role, with a provider that reads
 // back what each test sets: a refund and a dispute are recorded as the reading's absolute values,
 // a duplicate or an older notice read late changes nothing, a kind with no handler and a notice
-// for no account of ours are marked handled, and an incomplete reading, a provider this worker
-// does not have and a payment not captured yet leave the notice for the next run.
+// for no account of ours are marked handled, an incomplete reading and a payment not captured yet
+// leave the notice for the next run, and a provider this worker does not have is not read at all.
+// Notices that keep waiting never hide newer ones: a run pages past them, and goes on next time
+// from where its cap stopped it.
 import { randomUUID } from 'node:crypto'
 
 import {
@@ -17,7 +19,12 @@ import { recordProviderNotice } from '@restro/core/service/notices'
 import { createPool, type DbPool } from '@restro/db'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { handleProviderNotices, type NoticeProviders } from '../src/jobs/provider-notices'
+import {
+  handleProviderNotices,
+  type NoticeProviders,
+  newNoticeRunState,
+  type ProviderNoticesDeps,
+} from '../src/jobs/provider-notices'
 import { createLogger } from '../src/logger'
 import {
   allowSlowSetup,
@@ -181,8 +188,12 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     return id
   }
 
-  const run = () =>
-    handleProviderNotices({ pool, log, now: () => clock, jobId: 'jb-test' }, { providers })
+  const run = (state = newNoticeRunState(), limits: ProviderNoticesDeps['limits'] = undefined) =>
+    handleProviderNotices(
+      { pool, log, now: () => clock, jobId: 'jb-test' },
+      limits === undefined ? { providers } : { providers, limits },
+      state,
+    )
   const handled = async (eventId: string) =>
     (
       await query<{ handled: boolean }>(
@@ -248,7 +259,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     expect(asked.length - before).toBe(1)
   })
 
-  it('leaves for the next run an incomplete reading, an unknown provider and a payment not captured yet', async () => {
+  it('leaves for the next run an incomplete reading and a payment not captured yet, and does not read an unknown provider', async () => {
     const target = await payment()
     readings.set('re_20', 'incomplete')
     const incomplete = await notice('refund', 're_20')
@@ -256,15 +267,24 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     const held = await payment(false)
     readings.set('re_22', reading(held, 0))
     const early = await notice('refund', 're_22')
-    expect(await run()).toMatchObject({ waiting: 3, late: 0 })
+    const state = newNoticeRunState()
+    expect(await run(state)).toMatchObject({ waiting: 2, late: 0 })
     for (const id of [incomplete, elsewhere, early]) expect(await handled(id)).toBe(false)
 
-    // A day later they are logged as late; once the reading succeeds, the notice is handled.
+    // A day later they are logged as late, each once a day; once the reading succeeds, the
+    // notice is handled.
     clock = new Date(Date.now() + 25 * 60 * 60 * 1000)
     readings.set('re_20', reading(target, 300))
-    expect(await run()).toMatchObject({ recorded: 1, waiting: 2, late: 2 })
+    const lateLines = () =>
+      logLines.filter((line) => line.includes('still not handled after a day'))
+    expect(await run(state)).toMatchObject({ recorded: 1, waiting: 1, late: 1 })
     expect(await handled(incomplete)).toBe(true)
-    expect(logLines.some((line) => line.includes('still not handled after a day'))).toBe(true)
+    expect(lateLines()).toHaveLength(1)
+    expect(await run(state)).toMatchObject({ waiting: 1, late: 1 })
+    expect(lateLines()).toHaveLength(1)
+    clock = new Date(clock.getTime() + 25 * 60 * 60 * 1000)
+    await run(state)
+    expect(lateLines()).toHaveLength(2)
     clock = new Date()
     await query('update restro.provider_notices set handled_at = now() where event_id = any($1)', [
       [elsewhere, early],
@@ -281,5 +301,43 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     const line = logLines.find((entry) => entry.includes('payment_mismatch'))
     expect(line).toContain('captured_amount')
     expect(line).not.toContain(target.ref)
+  })
+
+  /** Stores `count` refund notices whose reading stays incomplete; returns their event ids. */
+  async function waitingNotices(count: number): Promise<string[]> {
+    readings.set('re_wait', 'incomplete')
+    const ids: string[] = []
+    for (let i = 0; i < count; i += 1) ids.push(await notice('refund', 're_wait'))
+    return ids
+  }
+  const handleAll = (ids: string[]) =>
+    query('update restro.provider_notices set handled_at = now() where event_id = any($1)', [ids])
+
+  it('records a newer notice in the same run behind more than a page of notices that wait', async () => {
+    const waiting = await waitingNotices(120)
+    const target = await payment()
+    readings.set('re_40', reading(target, 700))
+    const newer = await notice('refund', 're_40')
+    expect(await run()).toMatchObject({ recorded: 1, waiting: 120 })
+    expect(await handled(newer)).toBe(true)
+    expect(await stored(target.id)).toMatchObject({ refunded_minor: '700' })
+    await handleAll(waiting)
+  })
+
+  it('goes on from where its cap stopped it, and round to the start', async () => {
+    const limits = { page: 2, perRun: 3 }
+    const state = newNoticeRunState()
+    const waiting = await waitingNotices(5)
+    const target = await payment()
+    readings.set('re_50', reading(target, 900))
+    const newer = await notice('refund', 're_50')
+    // Run 1 looks at three that wait; run 2 the other two and the newer one.
+    expect(await run(state, limits)).toMatchObject({ waiting: 3, recorded: 0 })
+    expect(await run(state, limits)).toMatchObject({ waiting: 2, recorded: 1 })
+    expect(await handled(newer)).toBe(true)
+    // Run 3 goes round to the start: the first three again, within its cap.
+    expect(await run(state, limits)).toMatchObject({ waiting: 3, recorded: 0 })
+    expect(state.resumeAfter).toBeGreaterThan(0)
+    await handleAll(waiting)
   })
 })

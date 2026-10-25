@@ -1,6 +1,6 @@
 // The provider notices job (#108; D127 1.4, D125 3.5 and 3.8, design §8).
 //
-//   provider-notices  every minute: handle the stored notices not handled yet, oldest first
+//   provider-notices  every minute: handle the stored notices not handled yet, in the order stored
 //
 // The notice route only stores a verified notice (the row is the job: a transactional outbox).
 // This job acts on it, and never on the notice's own content:
@@ -13,8 +13,13 @@
 //   records the same values; an incomplete reading concludes nothing and the notice waits;
 // - what the reading says is recorded through core/service (`payment.observe`), as the worker;
 // - Restro never refunds: no provider call here moves money.
-// A notice whose provider this worker does not have, or whose reading failed or found our side
-// not ready, stays for the next run; one still waiting after a day is logged as an error.
+// A notice whose reading failed or found our side not ready stays for the next run; one still
+// waiting after a day is logged as an error, once a day. A notice of a provider this worker does
+// not have is not read at all: it waits, unlooked at, until that provider is wired.
+//
+// A run pages through the waiting notices by `seq`, so notices that keep waiting never hide the
+// ones stored after them. It looks at most `NOTICE_RUN_CAP` notices, or as many as it gets
+// through in `NOTICE_RUN_BUDGET_MS`; the next run goes on from where it stopped.
 //
 // One run at a time (`exclusive`): two runs reading the same payment could otherwise record an
 // older reading after a newer one.
@@ -33,8 +38,14 @@ import type { DbPool } from '@restro/db'
 import type { Logger } from '../logger'
 import { defineJob, type JobDefinition } from './types'
 
-/** The most notices one run handles; the rest wait a minute. */
-export const NOTICE_BATCH = 100
+/** The notices read in one page. */
+export const NOTICE_PAGE = 100
+
+/** The most notices one run looks at; the next run goes on from there. */
+export const NOTICE_RUN_CAP = 1_000
+
+/** A run takes no new page after this long (the next run starts a minute after this one). */
+export const NOTICE_RUN_BUDGET_MS = 45_000
 
 /** A notice still waiting after this long is logged as an error. */
 export const NOTICE_LATE_MS = 24 * 60 * 60 * 1000
@@ -47,7 +58,19 @@ export type NoticeProviders = ReadonlyMap<string, Pick<PaymentProvider, 'readNot
 
 export interface ProviderNoticesDeps {
   readonly providers: NoticeProviders
+  /** The page size and the per-run cap; the defaults above unless a test sets them. */
+  readonly limits?: { readonly page: number; readonly perRun: number }
 }
+
+/** What the job keeps from one run to the next, in memory (a restart starts over). */
+export interface NoticeRunState {
+  /** The next run starts after this `seq`; 0 for the start. */
+  resumeAfter: number
+  /** When each late notice was last logged, by `seq`, so each is logged once a day. */
+  readonly lateLoggedAt: Map<number, number>
+}
+
+export const newNoticeRunState = (): NoticeRunState => ({ resumeAfter: 0, lateLoggedAt: new Map() })
 
 /** What became of one notice. */
 export type NoticeOutcome =
@@ -162,10 +185,11 @@ export async function handleProviderNotice(
   return handled('refused')
 }
 
-/** One run: the unhandled notices, oldest first, at most `NOTICE_BATCH`. */
+/** One run: the unhandled notices of the providers this worker has, page by page by `seq`. */
 export async function handleProviderNotices(
   env: { readonly pool: DbPool; readonly log: Logger; readonly now: () => Date; jobId: string },
   deps: ProviderNoticesDeps,
+  state: NoticeRunState = newNoticeRunState(),
 ): Promise<Readonly<Record<NoticeOutcome | 'late', number>>> {
   const counts: Record<NoticeOutcome | 'late', number> = {
     recorded: 0,
@@ -177,8 +201,9 @@ export async function handleProviderNotices(
     waiting: 0,
     late: 0,
   }
-  const notices = await unhandledProviderNotices(env.pool, NOTICE_BATCH)
-  if (notices.length === 0) return counts
+  const providerKinds = [...deps.providers.keys()]
+  if (providerKinds.length === 0) return counts
+  const { page, perRun } = deps.limits ?? { page: NOTICE_PAGE, perRun: NOTICE_RUN_CAP }
   // Each provider's accounts are read once per run, when a notice needs them.
   const accounts = new Map<string, Promise<ReadonlyMap<string, AccountVenue>>>()
   const accountsOf = (providerKind: string) => {
@@ -189,26 +214,61 @@ export async function handleProviderNotices(
     }
     return found
   }
-  const now = env.now().getTime()
-  for (const notice of notices) {
-    const outcome = await handleProviderNotice(
-      { pool: env.pool, log: env.log, jobId: env.jobId, accounts: accountsOf },
-      notice,
-      deps,
-    )
-    counts[outcome] += 1
-    if (outcome === 'waiting' && now - notice.receivedAt.getTime() >= NOTICE_LATE_MS) {
-      counts.late += 1
-    }
+  const started = env.now().getTime()
+  for (const [seq, loggedAt] of state.lateLoggedAt) {
+    if (started - loggedAt >= NOTICE_LATE_MS) state.lateLoggedAt.delete(seq)
   }
-  if (counts.late > 0) {
-    env.log.error({ late: counts.late }, 'provider notices are still not handled after a day')
+  const newlyLate: number[] = []
+  // From where the last run stopped to the end, then from the start up to there.
+  const resumedAt = state.resumeAfter
+  let wrapped = resumedAt === 0
+  let after = resumedAt
+  let looked = 0
+  let reachedEnd = false
+  while (looked < perRun && env.now().getTime() - started < NOTICE_RUN_BUDGET_MS) {
+    const limit = Math.min(page, perRun - looked)
+    const read = await unhandledProviderNotices(env.pool, { limit, afterSeq: after, providerKinds })
+    const notices = wrapped && resumedAt > 0 ? read.filter((n) => n.seq <= resumedAt) : read
+    for (const notice of notices) {
+      const outcome = await handleProviderNotice(
+        { pool: env.pool, log: env.log, jobId: env.jobId, accounts: accountsOf },
+        notice,
+        deps,
+      )
+      counts[outcome] += 1
+      if (outcome === 'waiting' && started - notice.receivedAt.getTime() >= NOTICE_LATE_MS) {
+        counts.late += 1
+        if (!state.lateLoggedAt.has(notice.seq)) {
+          state.lateLoggedAt.set(notice.seq, started)
+          newlyLate.push(notice.seq)
+        }
+      }
+      after = notice.seq
+    }
+    looked += notices.length
+    if (notices.length === limit) continue
+    if (!wrapped) {
+      wrapped = true
+      after = 0
+      continue
+    }
+    reachedEnd = true
+    break
+  }
+  // A run that went all the way round starts the next one from the start.
+  state.resumeAfter = reachedEnd ? 0 : after
+  if (newlyLate.length > 0) {
+    env.log.error(
+      { late: newlyLate.length, seqs: newlyLate },
+      'provider notices are still not handled after a day',
+    )
   }
   return counts
 }
 
 /** The provider notices job. */
 export function createProviderNoticesJob(deps: ProviderNoticesDeps): JobDefinition {
+  const state = newNoticeRunState()
   return defineJob({
     name: JOB_NAMES.providerNotices,
     schedule: { cron: '* * * * *', tz: 'Europe/Sofia' },
@@ -227,6 +287,7 @@ export function createProviderNoticesJob(deps: ProviderNoticesDeps): JobDefiniti
       const counts = await handleProviderNotices(
         { pool: context.pool, log: context.log, now: context.now, jobId },
         deps,
+        state,
       )
       const { late: _late, ...outcomes } = counts
       const seen = Object.values(outcomes).reduce((sum, count) => sum + count, 0)

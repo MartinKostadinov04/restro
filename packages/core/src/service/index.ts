@@ -87,6 +87,7 @@ export {
   markProviderNoticeHandled,
   paymentAccountVenues,
   type StoredProviderNotice,
+  type UnhandledNoticesPage,
   unhandledProviderNotices,
 } from './provider-notices'
 export {

@@ -1,5 +1,5 @@
 // The worker's side of the provider notices (#108; D127 1.4, design §8): the stored notices not
-// handled yet, oldest first; marking one handled; and the venue a provider account belongs to.
+// handled yet, page by page; marking one handled; and the venue a provider account belongs to.
 // The notice route only stores (`./notices.ts`); the `provider-notices` job reads each notice's
 // payment back from the provider and records it with `payment.observe`.
 
@@ -13,7 +13,7 @@ import {
   withSystem,
   withTenant,
 } from '@restro/db'
-import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 /** A notice's kind in the platform's words, which picks the worker's handler. */
 export type StoredNoticeKind = (typeof PROVIDER_NOTICE_KINDS)[number]
@@ -31,11 +31,25 @@ export interface StoredProviderNotice {
   readonly receivedAt: Date
 }
 
-/** The notices not handled yet, oldest first, at most `limit`. */
+/** Which unhandled notices to read: a page of a keyset walk by `seq`. */
+export interface UnhandledNoticesPage {
+  /** At most this many. */
+  readonly limit: number
+  /** Only notices after this `seq` (0 for the start). */
+  readonly afterSeq?: number
+  /** Only notices of these provider kinds (all when left out). */
+  readonly providerKinds?: readonly string[]
+}
+
+/**
+ * The notices not handled yet, in the order they were stored (`seq`). A caller pages through
+ * them with `afterSeq`, so notices that keep waiting never hide the ones stored after them.
+ */
 export async function unhandledProviderNotices(
   pool: DbPool,
-  limit: number,
+  page: UnhandledNoticesPage,
 ): Promise<StoredProviderNotice[]> {
+  if (page.providerKinds?.length === 0) return []
   const rows = await withSystem(pool, (tx) =>
     tx
       .select({
@@ -50,9 +64,17 @@ export async function unhandledProviderNotices(
         receivedAt: providerNotices.receivedAt,
       })
       .from(providerNotices)
-      .where(isNull(providerNotices.handledAt))
-      .orderBy(asc(providerNotices.receivedAt), asc(providerNotices.seq))
-      .limit(limit),
+      .where(
+        and(
+          isNull(providerNotices.handledAt),
+          gt(providerNotices.seq, page.afterSeq ?? 0),
+          page.providerKinds === undefined
+            ? undefined
+            : inArray(providerNotices.providerKind, [...page.providerKinds]),
+        ),
+      )
+      .orderBy(asc(providerNotices.seq))
+      .limit(page.limit),
   )
   return rows.map((row) => ({ ...row, kind: row.kind as StoredNoticeKind }))
 }
