@@ -5,7 +5,7 @@
 
 import type { ServiceConnector, ServiceReader } from '../connector'
 import type { PosRef } from '../pos-ref'
-import type { TableBills } from '../schemas'
+import type { PosBill, TableBills } from '../schemas'
 import type { ServiceTimings } from '../timings'
 import type { WaiterActionDeclaration } from '../waiter-actions'
 
@@ -46,6 +46,11 @@ export interface ConformanceFaults {
 export interface WriteFaults extends ConformanceFaults {
   /** Every write from now on hangs and never answers; reads still answer. */
   stallWrites(): void
+  /**
+   * The next write lands, then hangs and never answers; later calls answer. Where the harness
+   * has it, a retried close with a tip is checked (D115).
+   */
+  stallNextWrite?(): void
 }
 
 /** A table to read and what its reading must be, or why the harness has none. */
@@ -86,6 +91,12 @@ export interface WaiterDriver {
   paymentTable(): Promise<PosRef | null>
   /** Closes the bill right before the connector's next write lands, where the harness can. */
   closeBillBeforeNextWrite?(bill: PosRef): void
+  /**
+   * A closed POS bill as the till shows it: its lines and its total, null where it is not closed.
+   * The tip check needs it where `recordTipOnClose` is declared (D127); the interface reads no
+   * closed bill, so the waiter looks.
+   */
+  closedBill?(bill: PosRef): Promise<PosBill | null>
 }
 
 /** What the write checks need beyond the read checks. */

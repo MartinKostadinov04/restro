@@ -11,6 +11,7 @@ import {
   DecimalQuantitySchema,
   FloorSchema,
   OrderQuantitySchema,
+  PayAndCloseRequestSchema,
   RefusalSchema,
   readingSchema,
   writeOutcomeSchema,
@@ -95,6 +96,23 @@ describe('the seam schemas', () => {
       ServiceCapabilitiesSchema.safeParse({ ...NO_SERVICE_CAPABILITIES, webhooks: true }).success,
     ).toBe(false)
     expect(SERVICE_CAPABILITIES).toContain('addToStaffOpenedBill')
+  })
+
+  it('a close carries its tip inside the amount, in whole minor units (D127, rule 8)', () => {
+    const close = {
+      isolated: { ref: posRef('acc 1'), table: posRef('pay 1') },
+      amountMinor: 1250,
+      tipMinor: 250,
+      paymentType: null,
+      ref: 'py_1-close',
+    }
+    expect(PayAndCloseRequestSchema.safeParse(close).success).toBe(true)
+    expect(PayAndCloseRequestSchema.safeParse({ ...close, tipMinor: 0 }).success).toBe(true)
+    expect(PayAndCloseRequestSchema.safeParse({ ...close, tipMinor: 1251 }).success).toBe(false)
+    expect(PayAndCloseRequestSchema.safeParse({ ...close, tipMinor: 2.5 }).success).toBe(false)
+    expect(PayAndCloseRequestSchema.safeParse({ ...close, tipMinor: -1 }).success).toBe(false)
+    const { tipMinor: _, ...noTip } = close
+    expect(PayAndCloseRequestSchema.safeParse(noTip).success).toBe(false)
   })
 
   it('every timing has its source named, and the defaults pass their schema', () => {

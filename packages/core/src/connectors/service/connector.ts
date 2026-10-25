@@ -54,7 +54,10 @@ export interface ServiceReader {
 
 /** The whole interface: the reads and the four waiter-action writes. */
 export interface ServiceConnector extends ServiceReader {
-  /** Add a round to the table's bill: the bill `chooseTargetBill` picks, or a new one where allowed. */
+  /**
+   * Add a round to the table's bill: the bill `chooseTargetBill` picks, or a new one where
+   * allowed. A new one is named in the result where `firstItemsOpenBill` is declared (pay-first).
+   */
   addLines(ctx: ServiceContext, request: AddLinesRequest): Promise<WriteOutcome<AddLinesResult>>
   /** Part 2: isolate the picked lines for paying (D122 §8 step 3). */
   isolateLines(
@@ -63,7 +66,12 @@ export interface ServiceConnector extends ServiceReader {
   ): Promise<WriteOutcome<IsolateLinesResult>>
   /** Part 2: read the isolated bill back (the last check before close and capture). */
   readIsolated(ctx: ServiceContext, isolated: IsolatedHandle): Promise<Reading<IsolatedBill>>
-  /** Part 2: close the isolated bill with its payment. A second close is refused. */
+  /**
+   * Part 2: close the isolated bill with its payment, the tip on the same bill and receipt where
+   * `recordTipOnClose` is declared (D127); undeclared, a tip above 0 is refused before any write.
+   * Adding the tip is part of taking the payment, as a waiter does at the till (D110). A second
+   * close is refused.
+   */
   payAndClose(
     ctx: ServiceContext,
     request: PayAndCloseRequest,

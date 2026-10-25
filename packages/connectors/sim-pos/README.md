@@ -5,7 +5,7 @@ The simulated POS (#68, #51 design §2): what the platform's ordering and paymen
 Four parts:
 
 - **The engine** (`src/engine`): a pure state machine with an injected clock and a seeded random source, and no I/O. It answers POS-shaped calls for outside apps (`engine.call`) and offers the waiter's side (`engine.waiter.*`). Its whole state is one JSON object (`snapshot`, `load`, `digest`).
-- **The switches** (`src/switches.ts`): every behaviour the facts don't fix, each starting on its cautious answer, each citing its open question (Q-number). Two profiles: `cautious` and `pilot` (cautious plus moving rows and closing with a payment type).
+- **The switches** (`src/switches.ts`): every behaviour the facts don't fix, each starting on its cautious answer, each citing its open question (Q-number). Two profiles: `cautious` and `pilot` (cautious plus moving rows and closing with a payment type). Both keep `tipAsLine` off (Q41 is open); switched on, and given the tip article (`tipItem`), the connector declares `recordTipOnClose` and closes a tip as one row of that article on the same bill (D127).
 - **The wire** (`src/wire`): POS-shaped HTTP over the engine. Ids of every shape, number-shaped ones as JSON numbers; money as JSON floats (or decimal text); Basic authentication; paged lists with a stated count.
 - **The connector** (`src/connector.ts`): the `ServiceConnector` of `@restro/core` over the wire, declaring what the switches allow. Writes only through `src/write` (D110, declared in `src/waiter-actions.ts`).
 
@@ -40,6 +40,7 @@ Tables are named by number (`7`) or by the POS's own id. `SIM_POS_URL` (default 
 - `quiet-night` (the default): Table 7 is open with Maria's 46.00 EUR bill, no faults.
 - `busy-friday`: every table has a bill, one with half a portion and one with a bill-level charge; seeded chaos draws a slow answer, a failed call or a dropped list item on about one call in twenty, and prints its seed so a run can be replayed.
 - `payment-trouble`: a waiter's round slips into a move, a close prints no receipt, a line is voided after the guest confirmed, a bill is locked on a terminal.
+- `tip-on-close`: Table 7's 46.00 EUR bill on a POS that takes a tip as one row of its Tip article (`tipAsLine`), so a guest's tip lands on the same bill and receipt (D127).
 
 A file holds the floor, catalogue, logins and open bills, the profile and switches, the faults, a `setup` list of waiter operations, and, for the dev seed, the `menu` the venue's owner would have made. Demo Bar runs the `pilot` profile with the bars read (`readsTableBar`) and one login for every bar (`oneLoginPerBar` off), so the floor reading sees both bars.
 

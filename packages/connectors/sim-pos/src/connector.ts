@@ -31,6 +31,7 @@ import {
   type RefusalScope,
   type ServiceConnector,
   samePosRef,
+  subtractMinor,
   type TableBills,
 } from '@restro/core'
 import { z } from 'zod'
@@ -49,6 +50,11 @@ export interface SimPosConnectorOptions {
   readonly currency?: Currency
   /** The logins whose rows read as Restro's (`whoEnteredLine`). Default: this login. */
   readonly restroLogins?: readonly string[]
+  /**
+   * The POS's tip article: a tip on close is one row of it (`tipAsLine`, Q41; D127's tip line in
+   * group А). Without it `recordTipOnClose` is not declared, whatever the switches allow.
+   */
+  readonly tipItem?: string
 }
 
 /** A POS answer the connector cannot take: an undefined behaviour, a malformed request, or a shape it doesn't know. */
@@ -204,7 +210,12 @@ function thousandths(text: string): number | null {
 // ---------------------------------------------------------------------------------------------
 
 export function createSimPosConnector(options: SimPosConnectorOptions): ServiceConnector {
-  const capabilities = capabilitiesOf(options.switches)
+  const tipItem = options.tipItem ?? null
+  const declared = capabilitiesOf(options.switches)
+  const capabilities = Object.freeze({
+    ...declared,
+    recordTipOnClose: declared.recordTipOnClose && tipItem !== null,
+  })
   const client: SimClient = simClient(options.transport, options.login)
   const currency: Currency = options.currency ?? 'EUR'
   const restro = new Set(options.restroLogins ?? [options.login.user])
@@ -453,8 +464,60 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
     },
 
     async payAndClose(ctx, request) {
+      // D127: a tip goes on the same bill and receipt, or it isn't taken. Nothing is written.
+      if (request.tipMinor > 0 && (!capabilities.recordTipOnClose || tipItem === null)) {
+        return refusal('not_supported', 'bill', 'the POS records no tip from Restro')
+      }
       if (!capabilities.closeWithPaymentType) {
         return refusal('not_supported', 'bill', 'the POS takes no payment from Restro')
+      }
+      if (request.tipMinor > 0 && tipItem !== null) {
+        // The tip row and the close are two calls: read first, so a bill that won't close for
+        // this amount gets no tip row; then the row, as a waiter adds it at the till, then the
+        // close. A tip row that landed before a failed close stays for staff (undoIsolate).
+        const reading = await within(ctx.timings.readTimeoutMs, (signal) =>
+          tableBills(request.isolated.table, signal),
+        )
+        if (!reading.complete) {
+          return unknown(
+            `the isolated bill read incomplete, nothing was written: ${reading.reason}`,
+          )
+        }
+        const bill = reading.value.bills.find((b) => samePosRef(b.ref, request.isolated.ref))
+        if (bill === undefined) return refusal('bill_closed', 'bill', 'the bill is no longer open')
+        const balance = subtractMinor(bill.totalMinor, bill.paidMinor)
+        // A retry after a timeout (D115): this close's tip row may already be on the bill. It is
+        // found by Restro's reference where the POS carries one, else as the tip article's row of
+        // exactly this tip; then it is not posted again and the bill closes as it stands.
+        const landed = bill.lines.some(
+          (line) =>
+            line.item?.pos === tipItem &&
+            (capabilities.ownLineReference
+              ? line.restroRef === request.ref
+              : line.amountMinor === request.tipMinor),
+        )
+        const expected = landed ? balance : addMinor(balance, request.tipMinor)
+        if (expected !== request.amountMinor) {
+          return refusal('amount_mismatch', 'bill', 'the bill and the tip are not the amount')
+        }
+        if (!landed) {
+          const tip = {
+            bill: bill.ref.pos,
+            rows: [
+              {
+                article: tipItem,
+                quantity: '1',
+                amount: minorToDecimal(request.tipMinor),
+                ...(capabilities.ownLineReference ? { ref: request.ref } : {}),
+              },
+            ],
+            ...(capabilities.idempotentAdd ? { ref: `${request.ref}-tip` } : {}),
+          }
+          const added = await within(ctx.timings.writeTimeoutMs, (signal) =>
+            write.postRows(client, request.isolated.table.pos, tip, signal),
+          )
+          if (!ok(added)) return failureOf(added)
+        }
       }
       const body = {
         payments: [
@@ -482,6 +545,10 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       const isolated = reading.value.bills.find((b) => samePosRef(b.ref, request.isolated.ref))
       if (isolated === undefined) {
         return refusal('bill_closed', 'bill', 'the isolated bill is no longer open')
+      }
+      if (tipItem !== null && isolated.lines.some((line) => line.item?.pos === tipItem)) {
+        // A tip row from a close that failed: moved back, it would charge the table a tip.
+        return refusal('not_supported', 'bill', 'a tip is on this bill: staff take it off')
       }
       if (isolated.lines.length > 0) {
         let to: { table: string; bill?: string } = { table: request.table.pos }
