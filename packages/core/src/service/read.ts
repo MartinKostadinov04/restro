@@ -1,9 +1,10 @@
 // The read side of the service path (design §2.1): `readTableState` for the guest API and
 // `readTonight` for the staff screen, both read-only on `withTenant`. Neither calls a POS.
 // - `readTableState` gives the server's view of one table: its version, its open sitting, the
-//   order, the sitting's sent orders, the leases and pauses that hold it, and when its bill was
-//   last read. The guest API turns it into the phone's `TableState` (#75) and runs the
-//   forbidden-values walk; nothing here is a POS id (rule 3).
+//   order, the sitting's sent orders, the leases and pauses that hold it, and its bill as the
+//   latest reading shows it (#74). The guest API turns it into the phone's `TableState` (#75) and
+//   runs the forbidden-values walk (`billBackendValues`, `forbiddenPaths`); nothing here is a POS
+//   id (rule 3).
 // - `readTonight` gives Tonight's contents, filtered by what the actor holds at the venue: alerts
 //   by their permission, waiter calls to those who answer them, the Log to `log.view`.
 
@@ -26,6 +27,7 @@ import {
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 import { serviceDate } from '../service-day'
+import { type BillView, billView, parseStoredBills } from './bill'
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
@@ -101,12 +103,18 @@ export interface TableStateRead {
   readonly leases: readonly LeaseView[]
   /** Active pauses of the table, its bar or the venue. */
   readonly pauses: readonly PauseView[]
-  /** When the table's bill was last read, or null. The bill itself is the readings ticket's (#74). */
+  /** When the table's bill was last read, or null. */
   readonly reading: {
     readonly readSeq: number
     readonly readAt: Date
     readonly complete: boolean
   } | null
+  /**
+   * The open sitting's bill, as the last complete reading showed it (`complete` false when a later
+   * one failed); null when the table is closed or not read since its sitting opened. Our ids and
+   * names only: the POS's references stay in the row.
+   */
+  readonly bill: BillView | null
 }
 
 /** "Nothing changed since `since`": what most polls get. */
@@ -190,6 +198,7 @@ export async function readTableState(
         readSeq: billReadings.readSeq,
         readAt: billReadings.readAt,
         complete: billReadings.complete,
+        bills: billReadings.bills,
       })
       .from(billReadings)
       .where(eq(billReadings.tableId, table.id))
@@ -228,7 +237,18 @@ export async function readTableState(
             ],
       ),
       pauses: active,
-      reading: reading ?? null,
+      reading:
+        reading === undefined
+          ? null
+          : { readSeq: reading.readSeq, readAt: reading.readAt, complete: reading.complete },
+      bill:
+        reading === undefined || sitting === undefined || reading.readAt < sitting.openedAt
+          ? null
+          : billView({
+              readAt: reading.readAt,
+              complete: reading.complete,
+              bills: parseStoredBills(reading.bills),
+            }),
     }
   })
 }

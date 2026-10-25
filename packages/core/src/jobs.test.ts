@@ -44,6 +44,16 @@ describe('job names and payloads', () => {
     expect(jobSingletonKey(JOB_NAMES.barsyConnect, { tenantId, integrationId })).toBe(integrationId)
   })
 
+  it('a table reading is keyed by its table: one reading per table at a time (#74)', () => {
+    const tableId = newId('tb')
+    const job = prepareJob(JOB_NAMES.tableRead, { tenantId, venueId, tableId })
+    expect(job.singletonKey).toBe(tableId)
+    expect(EXCLUSIVE_JOBS.has(JOB_NAMES.tableRead)).toBe(true)
+    expect(() =>
+      prepareJob(JOB_NAMES.tableRead, { tenantId, venueId, tableId: newId('nd') }),
+    ).toThrow()
+  })
+
   it('two venues of one integration never share a pull key, so neither pull drops the other', () => {
     const other = newId('vn')
     const keys = [venueId, other].map(

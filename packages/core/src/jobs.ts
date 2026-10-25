@@ -84,6 +84,18 @@ export const JOB_NAMES = {
    */
   floorReadTick: 'floor-read-tick',
   /**
+   * Read one table's POS bills through the service connector and record the reading (#74): the
+   * bill every phone at the table is served, and the sitting's end when it shows the bill closed.
+   * One per table at a time. The minute tick queues it for open tables; the guest API queues it
+   * when a guest opens a bill read more than 15 s ago (`wantsFreshReading`).
+   */
+  tableRead: 'table-read',
+  /**
+   * Scheduled, every minute (#74): queues `table-read` for each table open for phones whose bill
+   * was not read within the table read interval. Not sent by anyone else.
+   */
+  tableReadTick: 'table-read-tick',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`
@@ -109,6 +121,13 @@ export type BarsyConnectJob = z.output<typeof BarsyConnectJobSchema>
  */
 export const VenueSyncJobSchema = z.strictObject({ tenantId, integrationId, venueId })
 export type VenueSyncJob = z.output<typeof VenueSyncJobSchema>
+
+/**
+ * `table-read`: one table of one venue (`tb_`, never the POS's id for it). The worker finds the
+ * table's POS instance itself, so a sender needs no more than the guest API knows.
+ */
+export const TableReadJobSchema = z.strictObject({ tenantId, venueId, tableId: idSchema('tb') })
+export type TableReadJob = z.output<typeof TableReadJobSchema>
 
 /** `barsy-full-pull` and `barsy-incremental`: `venueId` is OUR venue (`vn_`), never a barsy `bid`. */
 export const BarsyPullJobSchema = VenueSyncJobSchema
@@ -197,6 +216,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.assetFetch]: AssetFetchJobSchema,
   [JOB_NAMES.placesRead]: VenueSyncJobSchema,
   [JOB_NAMES.floorRead]: VenueSyncJobSchema,
+  [JOB_NAMES.tableRead]: TableReadJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
@@ -230,6 +250,7 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.assetVariants,
   JOB_NAMES.placesRead,
   JOB_NAMES.floorRead,
+  JOB_NAMES.tableRead,
 ])
 
 /**
@@ -282,6 +303,9 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
       return (data as PublishOrganizationIndexJob).tenantId
     case JOB_NAMES.purgeVenue:
       return (data as PurgeVenueJob).venueId
+    case JOB_NAMES.tableRead:
+      // One reading job per table (#74): a second send while one is queued or running is dropped.
+      return (data as TableReadJob).tableId
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
       const scope = data as PublishScopeJob

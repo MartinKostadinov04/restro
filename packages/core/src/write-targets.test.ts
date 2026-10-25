@@ -62,10 +62,11 @@ const repoRoot = join(srcRoot, '..', '..', '..')
  * version and ring of action ids), the lease rows and the Log; #71's floor commands write the
  * pause of a vanished table; each later command adds the tables it writes (#70: `venueTables`, for
  * the re-issue's code generation; #72: the staff side, i.e. people, roles, assignments and shared
- * devices, never `operators`; #73: the sittings).
+ * devices, never `operators`; #73: the sittings; #74: the readings of a table's bill).
  */
 const SERVICE_WRITE_TARGETS: readonly string[] = [
   'sittings',
+  'billReadings',
   'tableOrders',
   'locks',
   'logEntries',

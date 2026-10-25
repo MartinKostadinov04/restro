@@ -7,7 +7,8 @@
 // from the configuration by `buildJobs`: without SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY the worker
 // still starts, runs the heartbeat, the floor reading and the publish jobs, and registers no sync job (one warning
 // in the log). `seal-table-codes` (#70) needs only the public key; WORKER_POS_SYNC=off keeps the
-// sync jobs out while the keys are set.
+// sync jobs out while the keys are set. The table readings (#74) run beside the floor reading
+// when BILL_ID_KEY is set (one warning in the log when it is not).
 import { randomBytes } from 'node:crypto'
 
 import { createAssetStore, createPublishStore } from '@restro/assets'
@@ -18,6 +19,7 @@ import { createBarsyJobs } from './barsy'
 import { createFloorJobs } from './floor'
 import { createPublishJobs } from './publish'
 import { createPurgeJobs } from './purge'
+import { createReadingJobs } from './readings'
 import { createSealTableCodesJob } from './seal-table-codes'
 import type { JobDefinition } from './types'
 import { workerHeartbeat } from './worker-heartbeat'
@@ -34,7 +36,16 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   // The floor reading (#71) needs no credentials (the simulated POS has none) and no sealing keys,
   // so every worker runs it unless WORKER_POS_SYNC is off (it is a POS read); a `sim` instance is
   // refused in production inside it.
-  const floorJobs = createFloorJobs({ sim: config.sim })
+  // The table readings (#74) are POS reads like the floor's; they need the bill-id key, without
+  // which no reading is recorded (the log says so once).
+  const billIdKey = config.billIdKey ?? null
+  if (config.posSync && billIdKey === null) {
+    log.warn('BILL_ID_KEY is not set: the table reading jobs are not registered')
+  }
+  const floorJobs = [
+    ...createFloorJobs({ sim: config.sim }),
+    ...(billIdKey === null ? [] : createReadingJobs({ sim: config.sim, billIdKey })),
+  ]
   // The purge (D83) runs only where the purge role's connection is set; without it nothing is
   // ever erased, and the log says so once.
   const purgeDatabaseUrl = config.purgeDatabaseUrl ?? null
