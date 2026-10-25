@@ -60,6 +60,8 @@ export class ToyPos {
   log: PosCall[] = []
   stalled = false
   stalledWrites = false
+  /** The next write lands, then hangs. */
+  stallNextWrite = false
   readsSeen = 0
   /** Reads fail from this read count on; null when they answer. */
   failFrom: number | null = null
@@ -76,6 +78,7 @@ export class ToyPos {
     this.log = []
     this.stalled = false
     this.stalledWrites = false
+    this.stallNextWrite = false
     this.readsSeen = 0
     this.failFrom = null
     this.closeBeforeWrite = null
@@ -91,6 +94,11 @@ export class ToyPos {
   call<T>(name: string, write: boolean, run: () => T): Promise<T> {
     this.log.push({ name, write })
     if (this.stalled || (write && this.stalledWrites)) return new Promise<T>(() => {})
+    if (write && this.stallNextWrite) {
+      this.stallNextWrite = false
+      run()
+      return new Promise<T>(() => {})
+    }
     if (!write) {
       this.readsSeen += 1
       if (this.failFrom !== null && this.readsSeen >= this.failFrom) {
@@ -480,6 +488,9 @@ export function toyHarness(
       },
       stallWrites() {
         pos.stalledWrites = true
+      },
+      stallNextWrite() {
+        pos.stallNextWrite = true
       },
       failReadsFrom(n) {
         pos.failFrom = pos.readsSeen + n

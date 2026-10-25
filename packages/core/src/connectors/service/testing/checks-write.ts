@@ -464,43 +464,13 @@ function extraLines(lines: readonly BillLine[], base: readonly BillLine[]): Bill
  */
 export const tipOnCloseCheck: Check<WriteHarness> = async (harness) => {
   const connector: ServiceConnector = harness.connector
-  const caps = connector.capabilities
-  const ctx = kitContext(harness)
-  const setUp = await paymentSetUp(harness)
+  const setUp = await tipSetUp(harness)
   if (typeof setUp === 'string') return [setUp]
-  const { table, before, bill, line } = setUp
-  const route = isolationRoute(caps)
-  if (caps.recordTipOnClose && (route === 'none' || !caps.closeWithPaymentType)) {
-    return ['recordTipOnClose is declared, but the POS cannot isolate a bill and close it']
-  }
-  let handle: IsolatedHandle = { ref: posRef('kit-no-such-bill'), table }
-  let isolatedLines: readonly BillLine[] = []
-  if (route !== 'none') {
-    const paymentTable = route === 'payment_table' ? await harness.waiter.paymentTable() : null
-    const isolated = await connector.isolateLines(ctx, {
-      table,
-      picks: [{ bill: bill.ref, line: line.ref, quantity: line.quantity }],
-      paymentTable,
-      ref: 'kit-isolate-tip',
-    })
-    if (isolated.kind !== 'done') return [`isolating came back ${describe(isolated)}`]
-    handle = isolated.result.isolated
-    const back = await connector.readIsolated(ctx, handle)
-    if (!back.complete || back.value.bill === null) return ['the isolated bill did not read back']
-    isolatedLines = back.value.bill.lines
-  }
-  const linesMinor = isolatedLines.reduce((sum, l) => addMinor(sum, l.amountMinor), 0)
   const callsBefore = harness.pos.calls().length
-  const outcome = await connector.payAndClose(ctx, {
-    isolated: handle,
-    amountMinor: addMinor(linesMinor, KIT_TIP_MINOR),
-    tipMinor: KIT_TIP_MINOR,
-    paymentType: null,
-    ref: 'kit-close-tip',
-  })
+  const outcome = await connector.payAndClose(kitContext(harness), tipClose(setUp, 'kit-close-tip'))
   const problems = outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome)
 
-  if (!caps.recordTipOnClose) {
+  if (!connector.capabilities.recordTipOnClose) {
     if (outcome.kind !== 'refused' || outcome.refusal.code !== 'not_supported') {
       problems.push(
         `recordTipOnClose is not declared, but a close with a tip came back ${describe(outcome)}, not not_supported`,
@@ -517,12 +487,104 @@ export const tipOnCloseCheck: Check<WriteHarness> = async (harness) => {
   if (outcome.kind !== 'done') {
     return [...problems, `the close with a tip came back ${describe(outcome)}`]
   }
+  return [...problems, ...(await closedWithTipProblems(harness, setUp))]
+}
+
+/**
+ * A retried close with a tip (D115, D127), where `recordTipOnClose` is declared: the close's
+ * first write lands and its answer never comes, so the close is unknown; the same close sent
+ * again (the platform's next step) is done, or answers that the bill is already closed. Either
+ * way the bill closes once, with one tip line: a retry that posts the tip again, or reads its own
+ * tip as a wrong amount, fails.
+ */
+export const tipRetryCheck: Check<WriteHarness> = async (harness) => {
+  const stallNextWrite = harness.faults.stallNextWrite
+  if (!harness.connector.capabilities.recordTipOnClose || stallNextWrite === undefined) return []
+  const setUp = await tipSetUp(harness)
+  if (typeof setUp === 'string') return [setUp]
+  const ctx = kitContext(harness)
+  const request = tipClose(setUp, 'kit-close-tip-retry')
+  stallNextWrite.call(harness.faults)
+  const first = await harness.connector.payAndClose(ctx, request)
+  const problems = outcomeProblems(CloseOutcomeSchema, 'the first close outcome', first)
+  if (first.kind !== 'unknown') {
+    problems.push(`a close whose write hung came back ${describe(first)}, not unknown`)
+  }
+  const retry = await harness.connector.payAndClose(ctx, request)
+  problems.push(...outcomeProblems(CloseOutcomeSchema, 'the retried close outcome', retry))
+  const settled =
+    retry.kind === 'done' ||
+    (retry.kind === 'refused' &&
+      (retry.refusal.code === 'already_done' || retry.refusal.code === 'bill_closed'))
+  if (!settled) {
+    return [...problems, `the retried close with a tip came back ${describe(retry)}, not done`]
+  }
+  return [...problems, ...(await closedWithTipProblems(harness, setUp))]
+}
+
+interface TipSetUp {
+  readonly table: PosRef
+  readonly before: TableBills
+  readonly handle: IsolatedHandle
+  readonly isolatedLines: readonly BillLine[]
+  readonly linesMinor: number
+}
+
+/** A bill isolated as the payment route does it, ready to close with the kit's tip. */
+async function tipSetUp(harness: WriteHarness): Promise<TipSetUp | string> {
+  const connector: ServiceConnector = harness.connector
+  const caps = connector.capabilities
+  const ctx = kitContext(harness)
+  const setUp = await paymentSetUp(harness)
+  if (typeof setUp === 'string') return setUp
+  const { table, before, bill, line } = setUp
+  const route = isolationRoute(caps)
+  if (caps.recordTipOnClose && (route === 'none' || !caps.closeWithPaymentType)) {
+    return 'recordTipOnClose is declared, but the POS cannot isolate a bill and close it'
+  }
+  let handle: IsolatedHandle = { ref: posRef('kit-no-such-bill'), table }
+  let isolatedLines: readonly BillLine[] = []
+  if (route !== 'none') {
+    const paymentTable = route === 'payment_table' ? await harness.waiter.paymentTable() : null
+    const isolated = await connector.isolateLines(ctx, {
+      table,
+      picks: [{ bill: bill.ref, line: line.ref, quantity: line.quantity }],
+      paymentTable,
+      ref: 'kit-isolate-tip',
+    })
+    if (isolated.kind !== 'done') return `isolating came back ${describe(isolated)}`
+    handle = isolated.result.isolated
+    const back = await connector.readIsolated(ctx, handle)
+    if (!back.complete || back.value.bill === null) return 'the isolated bill did not read back'
+    isolatedLines = back.value.bill.lines
+  }
+  const linesMinor = isolatedLines.reduce((sum, l) => addMinor(sum, l.amountMinor), 0)
+  return { table, before, handle, isolatedLines, linesMinor }
+}
+
+function tipClose(setUp: TipSetUp, ref: string) {
+  return {
+    isolated: setUp.handle,
+    amountMinor: addMinor(setUp.linesMinor, KIT_TIP_MINOR),
+    tipMinor: KIT_TIP_MINOR,
+    paymentType: null,
+    ref,
+  }
+}
+
+/**
+ * The closed bill, as the waiter sees it: the isolated lines plus at most one tip line of exactly
+ * the tip, with a total of lines plus tip; nothing of the tip lands on the real table.
+ */
+async function closedWithTipProblems(harness: WriteHarness, setUp: TipSetUp): Promise<string[]> {
+  const { table, before, handle, isolatedLines, linesMinor } = setUp
   const closedBill = harness.waiter.closedBill
   if (closedBill === undefined) {
-    return [...problems, 'recordTipOnClose is declared, but the harness cannot show a closed bill']
+    return ['recordTipOnClose is declared, but the harness cannot show a closed bill']
   }
   const closed = await closedBill.call(harness.waiter, handle.ref)
-  if (closed === null) return [...problems, 'the bill with the tip did not close']
+  if (closed === null) return ['the bill with the tip did not close']
+  const problems: string[] = []
   const wanted = addMinor(linesMinor, KIT_TIP_MINOR)
   if (closed.totalMinor !== wanted) {
     problems.push(

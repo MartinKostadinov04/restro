@@ -34,6 +34,7 @@ import {
   paymentRouteCheck,
   staffBillCheck,
   tipOnCloseCheck,
+  tipRetryCheck,
   writesAreDeclaredCheck,
   writeTimeoutCheck,
   yesterdaysBillCheck,
@@ -181,6 +182,17 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
         tipOnCloseCheck,
         harness,
       )
+      if (harness.faults.stallNextWrite === undefined) {
+        it.todo(
+          'a retried close with a tip closes once, one tip (the harness cannot stall one write)',
+        )
+      } else {
+        check(
+          'a close with a tip retried after its write hung closes once, with one tip',
+          tipRetryCheck,
+          harness,
+        )
+      }
     }
   })
 }

@@ -46,6 +46,11 @@ export interface ConformanceFaults {
 export interface WriteFaults extends ConformanceFaults {
   /** Every write from now on hangs and never answers; reads still answer. */
   stallWrites(): void
+  /**
+   * The next write lands, then hangs and never answers; later calls answer. Where the harness
+   * has it, a retried close with a tip is checked (D115).
+   */
+  stallNextWrite?(): void
 }
 
 /** A table to read and what its reading must be, or why the harness has none. */

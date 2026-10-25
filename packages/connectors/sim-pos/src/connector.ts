@@ -486,25 +486,38 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         const bill = reading.value.bills.find((b) => samePosRef(b.ref, request.isolated.ref))
         if (bill === undefined) return refusal('bill_closed', 'bill', 'the bill is no longer open')
         const balance = subtractMinor(bill.totalMinor, bill.paidMinor)
-        if (addMinor(balance, request.tipMinor) !== request.amountMinor) {
+        // A retry after a timeout (D115): this close's tip row may already be on the bill. It is
+        // found by Restro's reference where the POS carries one, else as the tip article's row of
+        // exactly this tip; then it is not posted again and the bill closes as it stands.
+        const landed = bill.lines.some(
+          (line) =>
+            line.item?.pos === tipItem &&
+            (capabilities.ownLineReference
+              ? line.restroRef === request.ref
+              : line.amountMinor === request.tipMinor),
+        )
+        const expected = landed ? balance : addMinor(balance, request.tipMinor)
+        if (expected !== request.amountMinor) {
           return refusal('amount_mismatch', 'bill', 'the bill and the tip are not the amount')
         }
-        const tip = {
-          bill: bill.ref.pos,
-          rows: [
-            {
-              article: tipItem,
-              quantity: '1',
-              amount: minorToDecimal(request.tipMinor),
-              ...(capabilities.ownLineReference ? { ref: request.ref } : {}),
-            },
-          ],
-          ...(capabilities.idempotentAdd ? { ref: `${request.ref}-tip` } : {}),
+        if (!landed) {
+          const tip = {
+            bill: bill.ref.pos,
+            rows: [
+              {
+                article: tipItem,
+                quantity: '1',
+                amount: minorToDecimal(request.tipMinor),
+                ...(capabilities.ownLineReference ? { ref: request.ref } : {}),
+              },
+            ],
+            ...(capabilities.idempotentAdd ? { ref: `${request.ref}-tip` } : {}),
+          }
+          const added = await within(ctx.timings.writeTimeoutMs, (signal) =>
+            write.postRows(client, request.isolated.table.pos, tip, signal),
+          )
+          if (!ok(added)) return failureOf(added)
         }
-        const added = await within(ctx.timings.writeTimeoutMs, (signal) =>
-          write.postRows(client, request.isolated.table.pos, tip, signal),
-        )
-        if (!ok(added)) return failureOf(added)
       }
       const body = {
         payments: [

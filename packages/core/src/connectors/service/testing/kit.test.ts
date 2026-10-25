@@ -17,11 +17,12 @@ import {
   paymentRouteCheck,
   staffBillCheck,
   tipOnCloseCheck,
+  tipRetryCheck,
   writeTimeoutCheck,
 } from './checks-write'
 import { posIdLeaks, waiterActionProblems } from './guard'
 import { serviceConnectorSuite } from './suite'
-import { TOY_CAPABILITIES, ToyPos, toyConnector, toyHarness } from './toy-pos'
+import { TOY_CAPABILITIES, TOY_TIP_ITEM, ToyPos, toyConnector, toyHarness } from './toy-pos'
 
 /** One bill per table: lines are isolated by moving them to a payment table, whole lines only. */
 const ONE_BILL: ServiceCapabilities = {
@@ -340,6 +341,39 @@ describe('the kit catches a connector that is wrong', () => {
     // Restro's round of two of art#2 at 12.00, isolated whole.
     expect(problems).toContain(
       `the closed bill's total is 2400, not its lines plus the tip (${2400 + KIT_TIP_MINOR})`,
+    )
+  })
+
+  it('a retried close with a tip that posts its tip again', async () => {
+    // The tip as its own write before the close, never looking for a tip row that already landed.
+    const harness = variant(
+      (pos, base) => ({
+        async payAndClose(ctx, request) {
+          const tip = pos.call('bills.add', true, () => {
+            pos.bills
+              .find((bill) => bill.id === request.isolated.ref.pos)
+              ?.lines.push({
+                id: pos.nextId('row:'),
+                item: TOY_TIP_ITEM,
+                quantity: 1000,
+                amountMinor: request.tipMinor,
+                enteredBy: 'restro',
+              })
+            return true
+          })
+          const late = new Promise<false>((resolve) =>
+            setTimeout(() => resolve(false), ctx.timings.writeTimeoutMs),
+          )
+          if (!(await Promise.race([tip, late]))) {
+            return { kind: 'unknown', reason: 'the tip row timed out' }
+          }
+          return base.payAndClose(ctx, { ...request, tipMinor: 0 })
+        },
+      }),
+      TIP_ON_CLOSE,
+    )
+    expect(await tipRetryCheck(harness)).toContain(
+      'the retried close with a tip came back refused amount_mismatch, not done',
     )
   })
 

@@ -20,15 +20,20 @@ import { ManualClock } from './engine/clock'
 import { billTotal, SimEngine } from './engine/engine'
 import { quantityText } from './engine/units'
 import { buildEngine, loadScenarioFile } from './scenario-file'
-import { switchesOf } from './switches'
+import { type SimSwitches, switchesOf } from './switches'
 import { inProcessTransport, STEP_MS, simPosHarness } from './testing'
 
 /** The default scenario's articles a guest can order (the tip article is not one). */
 const ARTICLES = ['1001', 'gin tonic', 'a3e0c6d2-5b14-4e89-9f70-c2d41b8e6a37', '1004', 'shot 5']
 
-function tipHarness(): WriteHarness & { readonly engine: SimEngine } {
+function tipHarness(
+  changes: Partial<SimSwitches> = {},
+): WriteHarness & { readonly engine: SimEngine } {
   const clock = new ManualClock()
-  const engine = new SimEngine({ switches: switchesOf('pilot', { tipAsLine: true }), clock })
+  const engine = new SimEngine({
+    switches: switchesOf('pilot', { tipAsLine: true, ...changes }),
+    clock,
+  })
   const harness = simPosHarness({
     name: 'tip',
     engine,
@@ -167,6 +172,65 @@ describe('a tip on close (D127, rule 8)', () => {
     })
     expect(close).toMatchObject({ kind: 'refused', refusal: { code: 'amount_mismatch' } })
     expect(writes()).toBe(before)
+  })
+})
+
+// A retry after a timeout (D115): the platform sends the same close again, with the same ref. The
+// tip row that landed the first time is found and not posted again; the bill closes once.
+describe.each([
+  { found: 'by its amount', changes: {} },
+  { found: "by Restro's reference", changes: { lineCarriesCallerRef: true } },
+])('a retried close with a tip, its tip row found $found', ({ changes }) => {
+  async function setUp() {
+    const harness = tipHarness(changes)
+    const { connector, engine, waiter } = harness
+    const ctx = kitContext(harness)
+    await harness.pos.reset()
+    const table = await waiter.emptyTable()
+    const paymentTable = await waiter.paymentTable()
+    if (paymentTable === null) throw new Error('the pilot profile moves rows')
+    engine.waiter.addRound(table.pos, [{ article: '1001', quantity: '2' }])
+    const handle = await isolateAll(connector, ctx, table, paymentTable)
+    const request = {
+      isolated: handle,
+      amountMinor: 900 + 150,
+      tipMinor: 150,
+      paymentType: null,
+      ref: 'tip-close',
+    }
+    const closed = () => {
+      const bill = engine.state.bills.find((b) => b.id === handle.ref.pos)
+      if (bill === undefined) throw new Error('the isolated bill is gone')
+      return {
+        state: bill.state,
+        total: billTotal(bill),
+        tips: bill.rows.filter((row) => row.article === '1099').map((row) => row.amountMinor),
+        payments: bill.payments.map((payment) => payment.amountMinor),
+      }
+    }
+    return { connector, engine, ctx, request, closed }
+  }
+
+  it('the tip post lands, then times out: the retry closes once with one tip row', async () => {
+    const { connector, engine, ctx, request, closed } = await setUp()
+    engine.faults.add({ on: 'addRows', times: 1, fault: { kind: 'landsThenHangs' } })
+    const first = await connector.payAndClose(ctx, request)
+    expect(first.kind).toBe('unknown')
+    expect(closed()).toMatchObject({ state: 'open', tips: [150], payments: [] })
+    const retry = await connector.payAndClose(ctx, request)
+    expect(retry.kind).toBe('done')
+    expect(closed()).toStrictEqual({ state: 'closed', total: 1050, tips: [150], payments: [1050] })
+  })
+
+  it('the tip row lands and the close times out: the retry closes, still one tip row', async () => {
+    const { connector, engine, ctx, request, closed } = await setUp()
+    engine.faults.add({ on: 'closeBill', times: 1, fault: { kind: 'hang' } })
+    const first = await connector.payAndClose(ctx, request)
+    expect(first.kind).toBe('unknown')
+    expect(closed()).toMatchObject({ state: 'open', tips: [150], payments: [] })
+    const retry = await connector.payAndClose(ctx, request)
+    expect(retry.kind).toBe('done')
+    expect(closed()).toStrictEqual({ state: 'closed', total: 1050, tips: [150], payments: [1050] })
   })
 })
 

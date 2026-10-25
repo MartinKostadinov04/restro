@@ -100,6 +100,8 @@ export function simPosHarness(options: SimHarnessOptions): WriteHarness {
         }),
       stallWrites: () =>
         engine.faults.add({ on: 'write', times: Infinity, fault: { kind: 'landsThenHangs' } }),
+      stallNextWrite: () =>
+        engine.faults.add({ on: 'write', times: 1, fault: { kind: 'landsThenHangs' } }),
     },
     table: { ref: posRef(READ_TABLE), expected: expectedReading(engine, login.id) },
     writeModule: write,
