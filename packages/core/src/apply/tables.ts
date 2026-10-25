@@ -94,6 +94,8 @@ export interface VenueTable {
   readonly sortKey: string
   /** A hidden table has no guest page (D95); its code, if any, is kept for when it is shown. */
   readonly hidden: boolean
+  /** A payment table of its bar (D122 §8): hidden, with no code, never opened for phones. */
+  readonly isPaymentTable: boolean
   /**
    * The SHA-256 of the table's code (hex), or null when the table has no code. The code itself is
    * stored only sealed; the worker's reveal endpoint opens it for the admin (D122 §9).
@@ -131,6 +133,8 @@ export type TableWriteError =
   | 'no_code'
   /** The venue's areas and tables come from its till: they are not created or deleted here. */
   | 'from_till'
+  /** A payment table gets no code and no guest page (D122 §7): it stays hidden. */
+  | 'payment_table'
 
 /** A refused write. `field` and `problem` say which setting and why, for a bad address. */
 export interface TableWriteRefusal {
@@ -194,6 +198,7 @@ function toTable(row: Table): VenueTable {
     name: row.name,
     sortKey: row.sortKey,
     hidden: row.hidden,
+    isPaymentTable: row.isPaymentTable,
     codeHash: row.qrCodeHash,
   }
 }
@@ -363,6 +368,7 @@ export async function loadTokenFiles(
 
 const UNKNOWN_TABLE = 'this venue has no such table'
 const UNKNOWN_AREA = 'this venue has no such area'
+const PAYMENT_TABLE = 'a payment table gets no code and no guest page'
 
 /** The venue locked live for an edit of its tables; a refusal for a missing or deleted venue. */
 async function lockVenue(
@@ -520,6 +526,7 @@ export async function issueTableToken(
   return withTenantWrite(pool, tenantId, async (tx) => {
     const found = await lockTable(tx, tableId)
     if ('ok' in found) return found
+    if (found.table.isPaymentTable) return refusal('payment_table', PAYMENT_TABLE)
     if (found.table.hidden || found.area.hidden) {
       return refusal('hidden', 'a hidden table gets no code')
     }
@@ -550,6 +557,7 @@ export async function reissueTableCodeIn(
 ): Promise<TableChange | TableWriteRefusal> {
   const found = await lockTable(tx, tableId)
   if ('ok' in found) return found
+  if (found.table.isPaymentTable) return refusal('payment_table', PAYMENT_TABLE)
   if (found.table.hidden || found.area.hidden) {
     return refusal('hidden', 'a hidden table gets no code')
   }
@@ -585,6 +593,45 @@ export async function retireTableToken(
       retired: codeFileNames(found.table),
     } as const
   })
+}
+
+/** What `setPaymentTableIn` answers: the change, and whether the mark was another before. */
+export interface PaymentTableChange extends TableChange {
+  readonly changed: boolean
+}
+
+/**
+ * Marks a table as a payment table of its bar (D122 §7, §8) or takes the mark away, inside the
+ * caller's transaction. A payment table is never opened for phones and never has a code, so the
+ * mark hides the table and retires its code (its files are returned as `retired`). Taking the
+ * mark away leaves the table hidden and without a code: the manager shows it and gives it one.
+ * Only the service write path calls it (`table.mark_payment`, which checks the permission and
+ * that the table is not open for phones, and writes the Log entry). The floor reading keeps a
+ * manager's mark: it follows only a POS that reports its own (floor.ts).
+ */
+export async function setPaymentTableIn(
+  tx: WriteTx,
+  tableId: string,
+  isPaymentTable: boolean,
+): Promise<PaymentTableChange | TableWriteRefusal> {
+  const found = await lockTable(tx, tableId)
+  if ('ok' in found) return found
+  const venueId = found.table.venueId as VenueId
+  if (found.table.isPaymentTable === isPaymentTable) {
+    return { ok: true, venueId, table: toTable(found.table), retired: [], changed: false }
+  }
+  const updated = await updatedTable(
+    tx,
+    found.table.id,
+    isPaymentTable ? { isPaymentTable, hidden: true, ...NO_CODE } : { isPaymentTable },
+  )
+  return {
+    ok: true,
+    venueId,
+    table: toTable(updated),
+    retired: isPaymentTable ? codeFileNames(found.table) : [],
+    changed: true,
+  }
 }
 
 /**
@@ -657,7 +704,7 @@ export async function setTableNumber(
 /**
  * Hides a table (its code stops leading anywhere while hidden: the code is kept and its files are
  * returned as `retired`) or shows it again (the file comes back with the venue's next token job;
- * `retired` is empty).
+ * `retired` is empty). A payment table is not shown (`payment_table`): it has no guest page.
  */
 export async function setTableHidden(
   pool: DbPool,
@@ -672,6 +719,7 @@ export async function setTableHidden(
     if (found.table.hidden === hidden) {
       return { ok: true, venueId, table: toTable(found.table), retired: [] }
     }
+    if (!hidden && found.table.isPaymentTable) return refusal('payment_table', PAYMENT_TABLE)
     const updated = await updatedTable(tx, found.table.id, { hidden })
     return {
       ok: true,
@@ -927,7 +975,8 @@ export async function deleteArea(
 
 /**
  * Gives a code to every shown table of the venue that has none (hidden tables and tables of
- * hidden areas get none, D95). Tables that have a code are left alone.
+ * hidden areas get none, D95; nor do payment tables, D122 §7). Tables that have a code are left
+ * alone.
  */
 export async function issueAllTableTokens(
   pool: DbPool,
@@ -948,6 +997,7 @@ export async function issueAllTableTokens(
           eq(venueTables.venueId, venueId),
           isNull(venueTables.archivedAt),
           eq(venueTables.hidden, false),
+          eq(venueTables.isPaymentTable, false),
           isNull(venueTables.qrCodeHash),
           isNull(areas.archivedAt),
           eq(areas.hidden, false),
@@ -969,6 +1019,7 @@ export async function issueAllTableTokens(
                 ),
                 isNull(venueTables.archivedAt),
                 eq(venueTables.hidden, false),
+                eq(venueTables.isPaymentTable, false),
                 isNull(venueTables.qrCodeHash),
               ),
             )

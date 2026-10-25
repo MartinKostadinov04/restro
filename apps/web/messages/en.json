@@ -1669,6 +1669,7 @@
       "no_label": "A table needs a name or a number.",
       "hidden": "A hidden table gets no code. Show it first.",
       "from_till": "This venue's areas and tables come from {source}: you can rename, reorder and hide them, not create, delete or renumber them.",
+      "payment_table": "A payment table takes payments only: it gets no code and stays hidden.",
       "unknown_menu": "This menu is not available any more. Choose another one.",
       "failed": "Something went wrong. Try again."
     },
