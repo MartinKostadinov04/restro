@@ -157,6 +157,26 @@ Tags: **[DOC]** developer documentation, **[PRICE PAGE]** a stripe.com price pag
 - 2026-10-25 · S25 [DOC] (api/payment_intents/object, payments/place-a-hold-on-a-payment-method) A PaymentIntent is read back with GET (with the `Stripe-Account` header for a direct charge); its `status` is one of `requires_payment_method`, `requires_confirmation`, `requires_action`, `processing`, `requires_capture`, `canceled`, `succeeded`; `amount_capturable` and `amount_received` give the held and captured amounts; `latest_charge` expanded gives `payment_method_details.card.capture_before`, `three_d_secure`, `multicapture` and `incremental_authorization` data. A cancelled one also has `cancellation_reason` and `canceled_at`.
 - 2026-10-25 · S25 [NOT FOUND] Whether idempotency keys are scoped per connected account (the page says keys must be unique "within your account over the last 24 hours" and doesn't mention the `Stripe-Account` header). [READING] use a globally unique key per operation, for example a UUID per saga step.
 
+## Learning Stripe as an agent (read 10-25)
+
+- 2026-10-25 · S25 [DOC] (docs.stripe.com/llms.txt) Stripe publishes an index of its docs for language models. Every docs page is also served as Markdown by adding `.md` to its address (e.g. `docs.stripe.com/mcp.md`). Neither needs an account.
+- 2026-10-25 · S25 [DOC] (docs.stripe.com/mcp) Stripe's official MCP server is at `https://mcp.stripe.com`. Its tools:
+  - `search_stripe_documentation`, which searches the docs and support articles;
+  - `stripe_api_search` and `stripe_api_details`, which describe API methods;
+  - `stripe_implementation_planner`;
+  - `stripe_api_read` and `stripe_api_write`, which act on a Stripe account. Stripe asks a human to confirm some writes, refunds among them.
+- 2026-10-25 · S25 [DOC] (same) Signing in is by OAuth (a person grants access per live account or sandbox, with permissions set per environment) or by an "agent API key" with chosen permissions. From December 2026 it refuses full secret keys and restricted keys without the Agent tag. A platform can act for a connected account with an agent key and the `Stripe-Account` header; OAuth can't.
+- 2026-10-25 · S25 [DOC] (same) Stripe's recommended setup is its agent plugin (`npm install -g @stripe/cli`, then `stripe agent setup`): it configures the MCP server and installs Stripe's skills.
+- 2026-10-25 · Anthropic plugin directory: Stripe's own plugin ("stripe", partner tier, source github.com/stripe/ai, version 0.11.24). It contains:
+  - skills: stripe-docs, stripe-best-practices, connect-recommend, connect-required-verification-information, upgrade-stripe and others;
+  - commands: test-cards and explain-error;
+  - the MCP server;
+  - hooks on session start, on every prompt and after tool use.
+- 2026-10-25 · [READING] For Restro:
+  - Docs research needs no account: the `.md` pages and `llms.txt` work today.
+  - The MCP server and plugin need Restro's own Stripe account. They are used only against a sandbox, with an agent key that can read and search but not write, and never with a venue's account (rule 7).
+  - Adopting the plugin goes through D106's gate first. Its hooks run on every prompt.
+
 ## Open
 
 1. ~~Whether a cancelled hold (an uncaptured payment) costs anything. Not checked yet.~~ Answered by C21's reading (fees are per successful payment); confirm in the sandbox's balance. 10-25: S25 [DOC] (refunds) says cancelling before completion is at no cost; confirm once in the sandbox's balance.

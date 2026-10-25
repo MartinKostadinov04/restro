@@ -15,7 +15,7 @@ Read only what your task needs; the big documents are for looking things up (Mar
 Fact precedence: official POS docs (barsy: docs.lukanet.com) > the architecture doc > the tracker.
 
 ## Scope right now
-QR → phone only (D38). Current phase (D79): the platform's own functionality, data structure and UI on clean connector data (`docs/adjustments/adjustments_01.md`); the connector foundation (CF-05 to CF-08) and the Mistral connector are parked. No ordering, payment or webhook **backend** code until the tracker says so.
+QR → phone only (D38). Current phase (D79): the platform's own functionality, data structure and UI on clean connector data (`docs/adjustments/adjustments_01.md`); the connector foundation (CF-05 to CF-08) and the Mistral connector are parked. Open on the `or/` stage branches: ordering (D122) and Stripe payments (D124, D125).
 
 ## Three layers (keep them apart)
 1. **Platform:** everything once the data is in our own model (venues, menus, composer, design, tables, publishing, the guest page); no vendor name, no POS-specific field.
@@ -31,7 +31,7 @@ QR → phone only (D38). Current phase (D79): the platform's own functionality, 
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
 5. **Our layers only make the menu more cautious than the POS.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
 6. **Absence is deletion only after a complete full read.** A read with any failed page concludes nothing.
-7. **Restro writes into a POS only as a waiter would (D110).** Through the API it does what a waiter does at the POS's front end: open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel within the POS's own rules. Never back-office work (items, prices, settings, users). Menu sync stays read-only. No webhooks, no POS registration (D41). Development and tests never run against a live venue's POS.
+7. **Restro writes into a POS only as a waiter would (D110).** Through the API it does what a waiter does at the POS's front end: open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel within the POS's own rules. Never back-office work (items, prices, settings, users). Menu sync stays read-only. No POS webhooks or registration (D41); provider notices are fine (D125). Development and tests never run against a live venue's POS.
 8. **Money is integer minor units** with the POS's rounding, through the `money` module only. barsy sends prices as JSON floats: parse losslessly, convert from the decimal string, round half-up. Never `x * 100`, never floats in storage.
 9. **POS accounts:** one API user per connection per environment; staging config refuses production hosts; (later) one POS-registration owner and server-generated order uuids.
 

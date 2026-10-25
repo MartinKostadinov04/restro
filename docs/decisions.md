@@ -23,7 +23,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D16](decisions/D16.md) | Sync a copy of barsy's data into our own model | applied |
 | [D17](decisions/D17.md) | Architecture = the Menu Engine doc including its nine rules | applied |
 | [D18](decisions/D18.md) | The waiter must learn of every app order inside the venue's existing barsy setup,… | firm |
-| [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | pending (Q39, Q55, Q58) |
+| [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | superseded by D124 and D125 |
 | [D20](decisions/D20.md) | Our own section map, generated from barsy's category tree, editable per venue | firm; see D47 |
 | [D21](decisions/D21.md) | New barsy items publish automatically | firm; see D50 |
 | [D22](decisions/D22.md) | Sold-out items are greyed out with no order button | firm; source is D46 |
@@ -45,7 +45,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D38](decisions/D38.md) | Channel: QR to phone only | firm |
 | [D39](decisions/D39.md) | Staged proof of concept on one venue | firm |
 | [D40](decisions/D40.md) | Build the doc's document model plus a generic shell/face contract | firm |
-| [D41](decisions/D41.md) | barsy freshness by polling | firm; refined by D110 |
+| [D41](decisions/D41.md) | barsy freshness by polling | firm; refined by D110 and D125 (POS webhooks only) |
 | [D42](decisions/D42.md) | Allergens are a plain EU-14 enum_set attribute | firm |
 | [D43](decisions/D43.md) | Supabase Postgres only, free plan, restro-staging and restro-prod, Data API off | refined by D54 |
 | [D44](decisions/D44.md) | E:\Restro is the repo | firm |
@@ -114,7 +114,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
-| [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41 |
+| [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41; refined by D125 (scope line, provider notices) |
 | [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) and D120 (table and venue pauses); refined by D122 |
 | [D112](decisions/D112.md) | How an order reaches the POS and how a bill is paid | firm; supersedes D5 with D111 and D113; refines D14; reopens D30; refined by D115 (rounds on the table's POS bill), D116 and D117 (the shared bag; a mixed bag no longer waits); refined by D122 |
 | [D113](decisions/D113.md) | Payment mode per item, with one switch per table; Restro is the gatekeeper | firm; supersedes D5 with D111 and D112; refines D29; refined by D122 |
@@ -128,7 +128,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
 | [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D124 |
 | [D124](decisions/D124.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
-| [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98 and D124; closes D98's open line |
+| [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D124, D41 and D110; supersedes D19; closes D98's open line |
 | [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
 
 ## Not repeated here
