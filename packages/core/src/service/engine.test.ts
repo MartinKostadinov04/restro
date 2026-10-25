@@ -238,7 +238,7 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
       const tableId = world.tables[0] as string
       const owner = staff(user(ownerId))
       expect(
-        (await applyService(world.app, { type: 'table.open', tableId }, owner)).result,
+        (await applyService(world.app, { type: 'table.resume', tableId }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
       expect(
         (await applyService(world.app, { type: 'ordering.pause', barId: null }, owner)).result,

@@ -3,8 +3,8 @@
 // recognised. A command is a stub, refused `not_built`, until its ticket gives it a handler and
 // the rest of its payload: the machinery around them (origins, permissions, provenance, locks,
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
-// table-code commands (#70), the floor reading's worker steps (#71) and the roles, staff, PINs and
-// shared devices (#72).
+// table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
+// shared devices (#72), and tables open for phones with their sittings (#73).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -14,6 +14,14 @@ import { z } from 'zod'
 import { idSchema } from '../ids'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import {
+  closeAllTables,
+  closeTable,
+  markPaymentTable,
+  newGuests,
+  openAllTables,
+  openTable,
+} from './sittings'
 import {
   addStaff,
   archiveRole,
@@ -56,24 +64,29 @@ function orderEdit<T extends string>(type: T) {
 function staffOnTable<T extends string>(
   type: T,
   permission: 'tables.open_close' | 'tables.resume' | 'settings.codes',
+  handle: CommandHandler<{ readonly type: T; readonly tableId: string }> | null = null,
 ) {
   return defineCommand({
     schema: z.strictObject({ type: z.literal(type), tableId }),
     origins: ['staff'],
     permission,
     idempotency: 'by_nature',
-    handle: null,
+    handle,
   })
 }
 
 /** A staff action on the whole venue. */
-function staffOnVenue<T extends string>(type: T, permission: 'tables.open_close') {
+function staffOnVenue<T extends string>(
+  type: T,
+  permission: 'tables.open_close',
+  handle: CommandHandler<{ readonly type: T }>,
+) {
   return defineCommand({
     schema: z.strictObject({ type: z.literal(type) }),
     origins: ['staff'],
     permission,
     idempotency: 'by_nature',
-    handle: null,
+    handle,
   })
 }
 
@@ -134,11 +147,39 @@ export const SERVICE_COMMANDS = {
   }),
 
   // Staff (Tonight, D122 §7).
-  'table.open': staffOnTable('table.open', 'tables.open_close'), // #73
-  'table.close': staffOnTable('table.close', 'tables.open_close'), // #73
-  'table.new_guests': staffOnTable('table.new_guests', 'tables.open_close'), // #73
-  'tables.open_all': staffOnVenue('tables.open_all', 'tables.open_close'), // #73
-  'tables.close_all': staffOnVenue('tables.close_all', 'tables.open_close'), // #73
+  // #73: open for phones, the sitting and its end by staff. "Open" on an open table says who
+  // opened it; "New guests" names the sitting it ends, so a repeat after the new group sat down
+  // changes nothing.
+  'table.open': staffOnTable('table.open', 'tables.open_close', openTable),
+  'table.close': staffOnTable('table.close', 'tables.open_close', closeTable),
+  'table.new_guests': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('table.new_guests'),
+      tableId,
+      sittingId: idSchema('st').optional(),
+    }),
+    origins: ['staff'],
+    permission: 'tables.open_close',
+    idempotency: 'by_nature',
+    handle: newGuests,
+  }),
+  'tables.open_all': staffOnVenue('tables.open_all', 'tables.open_close', openAllTables),
+  'tables.close_all': staffOnVenue('tables.close_all', 'tables.open_close', closeAllTables),
+  // #73: a payment table (D122 §7, §8) is a menu-side mark (core/apply hides the table and retires
+  // its code), run here for the permission and the `record` Log entry. A settings change: the
+  // person's own sign-in of the last 15 minutes.
+  'table.mark_payment': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('table.mark_payment'),
+      tableId,
+      isPaymentTable: z.boolean(),
+    }),
+    origins: ['staff'],
+    permission: 'settings.payment_tables',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: markPaymentTable,
+  }),
   'table.resume': staffOnTable('table.resume', 'tables.resume'), // #79
   'ordering.pause': defineCommand({
     // #79: all bars, or one.

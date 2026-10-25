@@ -34,6 +34,14 @@ export const REFUSAL_CODES = [
   'table_missing',
   /** The table has no open sitting: it is not open for phones (D122 §4). */
   'table_not_open',
+  /** A payment table takes payments only: it is never opened for phones (D122 §7, §8). */
+  'payment_table',
+  /** The table or its area is hidden: it has no guest page, so it is not opened for phones (D95). */
+  'table_hidden',
+  /** The table left the POS's floor and its pause is active: it opens again once it is back (#71). */
+  'table_vanished',
+  /** The table is open for phones: close it before it becomes a payment table. */
+  'table_open',
   /** A row it needs is locked by another write longer than `lock_timeout`; try again. */
   'busy',
   /** The command exists but its ticket has not built it yet. */

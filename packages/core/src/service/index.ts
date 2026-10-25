@@ -101,6 +101,7 @@ export {
   ServiceResultSchema,
 } from './results'
 export type { RowLocks, SentOrder, Sitting, TableOrder } from './rows'
+export { SITTING_END_REASONS, type SittingEndReason } from './sittings'
 export { MAX_REVEALED_PINS } from './staff'
 export {
   type DeviceView,

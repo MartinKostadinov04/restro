@@ -150,6 +150,8 @@ export type TablesErrorCode =
   | 'hidden'
   /** The venue's areas and tables come from its till: not created, deleted or renumbered here. */
   | 'from_till'
+  /** A payment table gets no code and no guest page (D122 §7): it stays hidden. */
+  | 'payment_table'
   /** The menu is not one of the venue's, or it is in the bin. */
   | 'unknown_menu'
   | 'failed'

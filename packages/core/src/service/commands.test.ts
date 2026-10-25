@@ -82,6 +82,35 @@ describe('the service commands', () => {
     ).toBe(false)
   })
 
+  it('builds the sitting commands (#73) on tables.open_close, and the payment-table mark', () => {
+    const types = [
+      'table.open',
+      'table.close',
+      'table.new_guests',
+      'tables.open_all',
+      'tables.close_all',
+    ] as const
+    for (const type of types) {
+      const definition = SERVICE_COMMANDS[type]
+      expect(definition.permission, type).toBe('tables.open_close')
+      expect(definition.origins, type).toEqual(['staff'])
+      expect(definition.idempotency, type).toBe('by_nature')
+      expect(definition.handle, type).not.toBeNull()
+    }
+    const renew = SERVICE_COMMANDS['table.new_guests'].schema
+    expect(renew.safeParse({ type: 'table.new_guests', tableId: TABLE }).success).toBe(true)
+    expect(
+      renew.safeParse({ type: 'table.new_guests', tableId: TABLE, sittingId: TABLE }).success,
+    ).toBe(false)
+    const mark = SERVICE_COMMANDS['table.mark_payment']
+    expect(mark.permission).toBe('settings.payment_tables')
+    expect(mark.freshSignIn).toBe(true)
+    expect(
+      mark.schema.safeParse({ type: 'table.mark_payment', tableId: TABLE, isPaymentTable: true })
+        .success,
+    ).toBe(true)
+  })
+
   it('parses a command through the union and refuses unknown fields', () => {
     const add = { type: 'order.add', tableId: TABLE, actionId: crypto.randomUUID() }
     expect(ServiceCommandSchema.parse(add)).toEqual(add)

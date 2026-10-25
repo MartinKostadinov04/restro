@@ -123,6 +123,30 @@ export class RowLocks {
     return (await this.tableOrders([tableId])).get(tableId) ?? null
   }
 
+  /**
+   * Records a sitting this transaction opened and creates its order row with the table's next
+   * version, so a phone that saw the table closed sees it open (or a new group) at its next poll.
+   * The table's sitting must be locked `update` already (`openSitting`); an order row of an
+   * earlier sitting this transaction held is replaced by the new one.
+   */
+  async orderOfNewSitting(sitting: Sitting): Promise<TableOrder> {
+    if (this.#sittingStrength.get(sitting.tableId) !== 'update') {
+      throw new LockOrderError(
+        `open a sitting of ${sitting.tableId} only after locking its sittings for update`,
+      )
+    }
+    this.#ledger.claim('table_order', [sitting.tableId])
+    this.#openSittings.set(sitting.tableId, sitting)
+    const row = await this.#createOrderOf(sitting)
+    this.#orders.set(sitting.tableId, row)
+    return row
+  }
+
+  /** Records that this transaction ended the table's open sitting. */
+  forgetSitting(tableId: string): void {
+    this.#openSittings.set(tableId, null)
+  }
+
   /** Locks these sent orders, in id order; returns the ones that exist, by id. */
   async sentOrders(ids: readonly string[]): Promise<Map<string, SentOrder>> {
     const fresh = this.#ledger.claim('sent_order', ids)

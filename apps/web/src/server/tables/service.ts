@@ -359,6 +359,7 @@ const REFUSALS: Record<TableWriteRefusal['error'], TablesErrorCode> = {
   // Another person's change crossed this one (the screen was stale): nothing was written.
   has_code: 'failed',
   no_code: 'failed',
+  payment_table: 'payment_table',
 }
 
 /** The service write path's refusals of a re-issue, as the screen says them. */
@@ -374,6 +375,8 @@ function serviceRefusal(code: RefusalCode | (string & {})): TablesErrorCode {
       return 'not_found'
     case 'hidden':
       return 'hidden'
+    case 'payment_table':
+      return 'payment_table'
     default:
       return 'failed'
   }
