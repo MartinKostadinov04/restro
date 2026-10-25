@@ -176,6 +176,7 @@ Tags: **[DOC]** developer documentation, **[PRICE PAGE]** a stripe.com price pag
   - Docs research needs no account: the `.md` pages and `llms.txt` work today.
   - The MCP server and plugin need Restro's own Stripe account. They are used only against a sandbox, with an agent key that can read and search but not write, and never with a venue's account (rule 7).
   - Adopting the plugin goes through D106's gate first. Its hooks run on every prompt.
+- 2026-10-25 · D106's check done (`2026-10-25-stripe-plugin-check.md`, read at `8bbcc4b`, v0.11.29): don't install the plugin whole (`stripe-pay`, `stripe-projects` and `stripe-directory` act on everyday trigger words). Copy only `stripe-best-practices`' text, pinned, with Restro overrides, if Martin agrees.
 
 ## Open
 
