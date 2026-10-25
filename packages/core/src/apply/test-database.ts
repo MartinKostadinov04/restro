@@ -71,6 +71,11 @@ export function openOwnerPool(): pg.Pool {
 
 /** Tenant tables emptied by `cleanUp`, children before parents (foreign keys). */
 const TABLES_CHILDREN_FIRST = [
+  // The paying tables (migration 0030), before the service tables they refer to.
+  'payment_steps',
+  'payment_lines',
+  'payments',
+  'payment_accounts',
   // The service tables (migration 0028), written by core/service's tests.
   'sent_order_notes',
   'log_entries',

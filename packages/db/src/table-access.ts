@@ -163,6 +163,19 @@ export const TABLE_ACCESS = {
   // Restro's admin team (D122 §7): the app only reads it; granting is an operator task.
   operators: { tenancy: 'system', app: ['SELECT'] },
 
+  // Service data for paying (migration 0030; D127 §Records; ticket #104): written only by
+  // `applyService`, never deleted by the app; the purge erases a payment's rows when its 18 months
+  // end, or with the venue. The steps are append-only (D127 3.9).
+  payments: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  payment_lines: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  payment_steps: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  payment_accounts: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // The provider's notices: platform-level, no tenant (the worker maps the account to a venue).
+  // The web app and the worker share the app role, so the route's insert-only reach is pinned
+  // by dependency-cruiser (`notice-route-records-only`), not by a grant; no role deletes a row
+  // until #112 sets their retention.
+  provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes

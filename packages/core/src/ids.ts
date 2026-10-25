@@ -9,7 +9,7 @@ import { z } from 'zod'
  * `sr` source record, `tg` tag (a venue-defined tag of the guest menu, D60), `ar` area (a hall
  * or other group of tables, D95). Ordering (D122 §9, D124): `br` bar, `st` sitting, `to` table
  * order, `ol` order line, `so` sent order, `wc` waiter call, `al` alert, `pa` pause, `rl` venue
- * role, `sm` staff member, `dv` shared device.
+ * role, `sm` staff member, `dv` shared device. Paying (D127): `py` payment.
  */
 export const ID_KINDS = [
   'nd',
@@ -38,6 +38,7 @@ export const ID_KINDS = [
   'rl',
   'sm',
   'dv',
+  'py',
 ] as const
 
 /** One of the id kind prefixes. */
@@ -98,6 +99,8 @@ export type VenueRoleId = Id<'rl'>
 export type StaffMemberId = Id<'sm'>
 /** Id of a shared device of a venue (D122 §7). */
 export type SharedDeviceId = Id<'dv'>
+/** Id of a payment from a phone (D127); also the key of its provider calls' idempotency. */
+export type PaymentId = Id<'py'>
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const RANDOM_BYTES = 16
