@@ -17,7 +17,6 @@ on:
       # instead of on the local PC (Martin 10-11). A task branch gets its run through its pull
       # request into the stage branch (Martin 10-17), whatever the branch is named.
       - '**/foundation'
-      - 's1/**'
     paths-ignore:
       - 'docs/**'
       - '**/*.md'

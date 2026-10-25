@@ -398,6 +398,76 @@ describe('rules 3 and 4: only the worker imports a connector', () => {
   })
 })
 
+describe('paying: the worker calls the provider, the web only through its connectors (D127)', () => {
+  const pay: Files = {
+    ...base,
+    'packages/payments/sim-pay/src/index.ts': 'export const simPay = 1',
+    'packages/core/src/service/index.ts': 'export const applyService = 1',
+    'packages/core/src/service/notices.ts': 'export const recordProviderNotice = 1',
+  }
+
+  it('rejects a payment provider package from the web app, core, the shell and the assets store', async () => {
+    const lines = await expectRules(
+      {
+        ...pay,
+        'apps/web/app/api/payments/notices/stripe/route.ts': "import '@restro/stripe'",
+        'apps/web/src/connectors/sim-pay/form.ts':
+          "import '../../../../../packages/payments/sim-pay/src/index'",
+        'packages/core/src/service/pay.ts': "import '@restro/sim-pay'",
+        'packages/shell/src/pay.ts': "import '@restro/stripe/browser'",
+        'packages/assets/src/pay.ts': "import '@restro/sim-pay'",
+      },
+      ['payments-only-from-worker'],
+    )
+    expect(lines).toHaveLength(5)
+  })
+
+  it("rejects the provider's libraries in the web app outside its connector folders", async () => {
+    const lines = await expectRules(
+      {
+        ...pay,
+        'apps/web/app/api/payments/notices/stripe/route.ts': "import 'stripe'",
+        'apps/web/src/guest/pay.tsx': "import '@stripe/stripe-js'",
+        'apps/web/src/connectors/data.ts': "import '@stripe/react-stripe-js'",
+      },
+      ['web-provider-only-through-connectors'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('lets the notice route import only the notices module of core/service', async () => {
+    const lines = await expectRules(
+      {
+        ...pay,
+        'apps/web/app/api/payments/notices/stripe/route.ts':
+          "import '@restro/core/service'\nimport '../../../../../../../packages/core/src/service/index'",
+      },
+      ['notice-route-records-only'],
+    )
+    expect(lines).toHaveLength(2)
+  })
+
+  it('allows the worker, a provider package itself, the connector folders and the notices module', async () => {
+    await expectRules(
+      {
+        ...pay,
+        'apps/worker/src/jobs/pay.ts':
+          "import '@restro/sim-pay'\nimport '../../../../packages/payments/sim-pay/src/index'",
+        'packages/payments/sim-pay/src/engine.ts': "import './index'",
+        'apps/web/src/connectors/stripe/notice.ts': "import 'stripe'",
+        'apps/web/src/connectors/stripe/form.tsx': "import '@stripe/react-stripe-js'",
+        'apps/web/app/api/payments/notices/stripe/route.ts':
+          "import '@restro/core/service/notices'\nimport '../../../../../../../packages/core/src/service/notices'\nimport '../../../../../src/connectors/stripe/notice'",
+        'apps/web/app/api/order/route.ts': "import '@restro/core/service'",
+        'packages/core/src/service/notices/record.ts': 'export const record = 1',
+        'apps/web/app/api/payments/notices/sim-pay/route.ts':
+          "import '../../../../../../../packages/core/src/service/notices/record'",
+      },
+      [],
+    )
+  })
+})
+
 describe('sealed credentials: only the worker opens them (D55)', () => {
   const seal: Files = {
     'packages/core/src/seal/index.ts': 'export const seal = 1',

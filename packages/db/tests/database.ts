@@ -139,7 +139,18 @@ export async function databaseError(work: Promise<unknown>): Promise<string> {
 }
 
 /**
- * The ordering tables (migration 0028) a clean-up empties first, children before parents. Their
+ * The paying tables (migration 0030) a clean-up empties before the ordering tables they refer to.
+ * Their tenancy is tested in payment-tables.test.ts.
+ */
+export const PAYING_TABLES_CHILDREN_FIRST = [
+  'payment_steps',
+  'payment_lines',
+  'payments',
+  'payment_accounts',
+] as const
+
+/**
+ * The ordering tables (migration 0028) a clean-up empties next, children before parents. Their
  * tenancy is tested in service-tables.test.ts; `bars` is emptied after `tables`, which refer to it.
  */
 export const ORDERING_TABLES_CHILDREN_FIRST = [
@@ -190,7 +201,11 @@ export async function cleanUp(
   ids: { tenants?: string[]; templates?: string[]; workers?: string[] },
 ): Promise<void> {
   const tenants = ids.tenants ?? []
-  for (const table of [...ORDERING_TABLES_CHILDREN_FIRST, ...DOCUMENT_TABLES_CHILDREN_FIRST]) {
+  for (const table of [
+    ...PAYING_TABLES_CHILDREN_FIRST,
+    ...ORDERING_TABLES_CHILDREN_FIRST,
+    ...DOCUMENT_TABLES_CHILDREN_FIRST,
+  ]) {
     await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
   }
   await owner.query('delete from restro.bars where tenant_id = any($1)', [tenants])

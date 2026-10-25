@@ -1,5 +1,5 @@
 # Production deploy freeze: no deploys Thu-Sun 18:00 to 08:00 Europe/Sofia
-# (CLAUDE.md "Git"; docs/architecture/stack.md "Environments and delivery", step 6).
+# (docs/agents/lead.md; docs/architecture/stack.md "Environments and delivery", step 6).
 # The rule itself, with its tests, is scripts/freeze-window.mjs.
 #
 # A pull request into `production` fails inside the window unless it carries the label
