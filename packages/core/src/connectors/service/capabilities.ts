@@ -23,7 +23,10 @@ export const SERVICE_CAPABILITIES = [
   'tableBar',
   /** Several bills on one table. */
   'severalBillsPerTable',
-  /** First items open a bill: a sent order may open a POS bill on a table with none (D122 §4). */
+  /**
+   * First items open a bill: a sent order may open a POS bill on a table with none (D122 §4).
+   * Declared, `addLines` that opens one returns its reference (pay-first, D127, #113).
+   */
   'firstItemsOpenBill',
   /** Read closed bills. */
   'readClosedBills',
@@ -49,6 +52,12 @@ export const SERVICE_CAPABILITIES = [
   'addToStaffOpenedBill',
   /** A reading gives each POS bill's opening time (D124 §2: else "never yesterday's bill" can't be checked). */
   'billOpeningTime',
+  /**
+   * A tip on close lands on the same POS bill and fiscal receipt, the connector's own way: a tip
+   * field, or one tip line in tax group А with no VAT (D127, design §10). Undeclared, a close
+   * with a tip above 0 is refused `not_supported` before any write, and no tip is offered.
+   */
+  'recordTipOnClose',
 ] as const
 
 /** One service capability. */

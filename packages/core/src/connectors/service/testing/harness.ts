@@ -5,7 +5,7 @@
 
 import type { ServiceConnector, ServiceReader } from '../connector'
 import type { PosRef } from '../pos-ref'
-import type { TableBills } from '../schemas'
+import type { PosBill, TableBills } from '../schemas'
 import type { ServiceTimings } from '../timings'
 import type { WaiterActionDeclaration } from '../waiter-actions'
 
@@ -86,6 +86,12 @@ export interface WaiterDriver {
   paymentTable(): Promise<PosRef | null>
   /** Closes the bill right before the connector's next write lands, where the harness can. */
   closeBillBeforeNextWrite?(bill: PosRef): void
+  /**
+   * A closed POS bill as the till shows it: its lines and its total, null where it is not closed.
+   * The tip check needs it where `recordTipOnClose` is declared (D127); the interface reads no
+   * closed bill, so the waiter looks.
+   */
+  closedBill?(bill: PosRef): Promise<PosBill | null>
 }
 
 /** What the write checks need beyond the read checks. */

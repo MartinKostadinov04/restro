@@ -4,7 +4,13 @@
 // nothing about any real POS. Ids take varied shapes on purpose (#51's overfitting guard). Its
 // lists answer one entry per page, so a reading takes several calls and a failed page can bite.
 
-import { decimalToMinor, minorToDecimal, ratioOfMinor, subtractMinor } from '../../../money'
+import {
+  addMinor,
+  decimalToMinor,
+  minorToDecimal,
+  ratioOfMinor,
+  subtractMinor,
+} from '../../../money'
 import { NO_SERVICE_CAPABILITIES, type ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector, ServiceContext } from '../connector'
 import { type PosRef, posRef } from '../pos-ref'
@@ -45,6 +51,8 @@ export interface ToyPage<T> {
 
 const PRICES: Record<string, number> = { 'art#1': 450, 'art#2': 1200 }
 export const TOY_PAYMENT_TABLE = 'tbl/pay'
+/** The toy's tip item: a tip is one line of it, of the tip's amount (D127's tip line). */
+export const TOY_TIP_ITEM = 'art#tip'
 
 export class ToyPos {
   tables = new Map<string, { name: string; area: string }>()
@@ -180,6 +188,29 @@ export const TOY_CAPABILITIES: ServiceCapabilities = {
   billOpeningTime: true,
 }
 
+function billOut(bill: ToyBill, capabilities: ServiceCapabilities): PosBill {
+  return {
+    ref: posRef(bill.id),
+    totalMinor: bill.lines.reduce((sum, line) => addMinor(sum, line.amountMinor), 0),
+    paidMinor: 0,
+    openedAt: capabilities.billOpeningTime ? bill.openedAt.toISOString() : null,
+    openedByRestro: bill.byRestro,
+    paymentInFlight: bill.from !== null,
+    lines: bill.lines.map(
+      (line): BillLine => ({
+        ref: posRef(line.id),
+        item: posRef(line.item),
+        name: null,
+        quantity: quantityText(line.quantity),
+        amountMinor: line.amountMinor,
+        enteredBy: capabilities.whoEnteredLine ? line.enteredBy : null,
+        enteredAt: null,
+        restroRef: null,
+      }),
+    ),
+  }
+}
+
 type RefusalCode =
   | 'bill_closed'
   | 'already_done'
@@ -188,35 +219,16 @@ type RefusalCode =
   | 'not_supported'
 
 export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): ServiceConnector {
-  function billOut(bill: ToyBill): PosBill {
-    return {
-      ref: posRef(bill.id),
-      totalMinor: bill.lines.reduce((sum, line) => sum + line.amountMinor, 0),
-      paidMinor: 0,
-      openedAt: capabilities.billOpeningTime ? bill.openedAt.toISOString() : null,
-      openedByRestro: bill.byRestro,
-      paymentInFlight: bill.from !== null,
-      lines: bill.lines.map(
-        (line): BillLine => ({
-          ref: posRef(line.id),
-          item: posRef(line.item),
-          name: null,
-          quantity: quantityText(line.quantity),
-          amountMinor: line.amountMinor,
-          enteredBy: capabilities.whoEnteredLine ? line.enteredBy : null,
-          enteredAt: null,
-          restroRef: null,
-        }),
-      ),
-    }
-  }
-
   async function read(ctx: ServiceContext, table: PosRef): Promise<Reading<TableBills>> {
     const bills = await readPages(pos, ctx, 'bills.page', (index) => pos.billPage(table.pos, index))
     if (!bills.complete) return bills
     return {
       complete: true,
-      value: { table, currency: 'EUR', bills: bills.value.map(billOut) },
+      value: {
+        table,
+        currency: 'EUR',
+        bills: bills.value.map((bill) => billOut(bill, capabilities)),
+      },
     }
   }
 
@@ -338,11 +350,25 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
       return { complete: true, value: { currency: 'EUR', bill } }
     },
     payAndClose(ctx, request) {
+      if (request.tipMinor > 0 && !capabilities.recordTipOnClose) {
+        return Promise.resolve(refused('not_supported'))
+      }
       return write(ctx, 'bills.close', () => {
         const bill = pos.bills.find((b) => b.id === request.isolated.ref.pos)
         if (bill === undefined || bill.closed) return refused('already_done')
-        const total = bill.lines.reduce((sum, line) => sum + line.amountMinor, 0)
-        if (total !== request.amountMinor) return refused('amount_mismatch')
+        const total = bill.lines.reduce((sum, line) => addMinor(sum, line.amountMinor), 0)
+        if (addMinor(total, request.tipMinor) !== request.amountMinor) {
+          return refused('amount_mismatch')
+        }
+        if (request.tipMinor > 0) {
+          bill.lines.push({
+            id: pos.nextId('row:'),
+            item: TOY_TIP_ITEM,
+            quantity: 1000,
+            amountMinor: request.tipMinor,
+            enteredBy: 'restro',
+          })
+        }
         bill.closed = true
         return { kind: 'done', result: { receiptNumber: null } }
       })
@@ -379,6 +405,10 @@ export function toyWaiter(pos: ToyPos, capabilities = TOY_CAPABILITIES): WaiterD
     },
     closeBillBeforeNextWrite(bill) {
       pos.closeBeforeWrite = bill.pos
+    },
+    async closedBill(ref) {
+      const bill = pos.bills.find((b) => b.id === ref.pos && b.closed)
+      return bill === undefined ? null : billOut(bill, capabilities)
     },
   }
 }

@@ -11,9 +11,14 @@ export interface RowOut {
   readonly note?: string | null
   readonly options?: readonly string[]
   readonly ref?: string
+  /** Only on a row of the tip article, as part of a close (D127): never a price (rule 5). */
+  readonly amount?: string
 }
 
-/** A round onto a table's bill, or onto a new one (`bill: 'new'`): add a round, open a bill. */
+/**
+ * A round onto a table's bill, or onto a new one (`bill: 'new'`): add a round, open a bill. The
+ * tip row of a close goes through it too, as a waiter keys the tip in at the till (D110).
+ */
 export function postRows(
   client: SimClient,
   table: string,

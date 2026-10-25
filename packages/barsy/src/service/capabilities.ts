@@ -38,5 +38,7 @@ export const BARSY_SERVICE_CAPABILITIES: ServiceCapabilities = {
   //   idempotentAdd: account.uuid guards a new bill only; a repeated add is open (C20);
   //   addToStaffOpenedBill: Accounts_place continues a bill by account_id, but the docs are
   //     silent on whose bill; AccountData's is_locked and per-user user_can_edit suggest limits
-  //     whose meaning for an API write is not stated (C54).
+  //     whose meaning for an API write is not stated (C54);
+  //   recordTipOnClose: whether the API can add the "Бакшиш" item to a bill, and its fiscal
+  //     setup, wait on Lukanet (D127 §Open); until then no tip is offered on barsy.
 }

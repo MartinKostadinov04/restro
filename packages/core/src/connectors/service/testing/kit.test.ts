@@ -11,7 +11,14 @@ import {
   probeTimeoutCheck,
   tableFailedPartCheck,
 } from './checks-read'
-import { paymentRouteCheck, staffBillCheck, writeTimeoutCheck } from './checks-write'
+import {
+  KIT_TIP_MINOR,
+  newBillReferenceCheck,
+  paymentRouteCheck,
+  staffBillCheck,
+  tipOnCloseCheck,
+  writeTimeoutCheck,
+} from './checks-write'
 import { posIdLeaks, waiterActionProblems } from './guard'
 import { serviceConnectorSuite } from './suite'
 import { TOY_CAPABILITIES, ToyPos, toyConnector, toyHarness } from './toy-pos'
@@ -24,6 +31,13 @@ const ONE_BILL: ServiceCapabilities = {
   moveLinesToTable: true,
 }
 
+/** Bills split on their table and closed with a payment type, the tip as one line (D127). */
+const TIP_ON_CLOSE: ServiceCapabilities = {
+  ...TOY_CAPABILITIES,
+  closeWithPaymentType: true,
+  recordTipOnClose: true,
+}
+
 // The kit on a connector that is right (the whole suite passes) and on connectors that are wrong
 // on purpose (each check finds its fault). The toy POS is the kit's own test double, not #68.
 
@@ -33,6 +47,9 @@ serviceConnectorSuite(
     (pos) => toyConnector(pos, ONE_BILL),
     'toy with one bill per table and a payment table, no first items, no staff bills',
   ),
+)
+serviceConnectorSuite(
+  toyHarness((pos) => toyConnector(pos, TIP_ON_CLOSE), 'toy recording a tip on close'),
 )
 
 function variant(
@@ -292,6 +309,52 @@ describe('the kit catches a connector that is wrong', () => {
         p.startsWith('movePartOfLineQuantity is not declared, but isolating came back done'),
       ),
     ).toBe(true)
+  })
+
+  it('a tip closed onto the bill where recordTipOnClose is not declared', async () => {
+    const harness = variant((pos) => ({
+      payAndClose(ctx, request) {
+        return toyConnector(pos, TIP_ON_CLOSE).payAndClose(ctx, request)
+      },
+    }))
+    const problems = await tipOnCloseCheck(harness)
+    expect(
+      problems.some((p) =>
+        p.startsWith('recordTipOnClose is not declared, but a close with a tip came back done'),
+      ),
+    ).toBe(true)
+    expect(problems).toContain('a refused tip still wrote to the POS: bills.close')
+  })
+
+  it('a tip dropped on close where recordTipOnClose is declared', async () => {
+    const harness = variant(
+      (_pos, base) => ({
+        payAndClose(ctx, request) {
+          const amountMinor = request.amountMinor - request.tipMinor
+          return base.payAndClose(ctx, { ...request, amountMinor, tipMinor: 0 })
+        },
+      }),
+      TIP_ON_CLOSE,
+    )
+    const problems = await tipOnCloseCheck(harness)
+    // Restro's round of two of art#2 at 12.00, isolated whole.
+    expect(problems).toContain(
+      `the closed bill's total is 2400, not its lines plus the tip (${2400 + KIT_TIP_MINOR})`,
+    )
+  })
+
+  it('a round that opens a bill without naming it, where first items open a bill', async () => {
+    const harness = variant((_pos, base) => ({
+      async addLines(ctx, request) {
+        const outcome = await base.addLines(ctx, request)
+        return outcome.kind === 'done'
+          ? { kind: 'done', result: { ...outcome.result, bill: null } }
+          : outcome
+      },
+    }))
+    expect(await newBillReferenceCheck(harness)).toContain(
+      'the round opened a POS bill but did not name it',
+    )
   })
 
   it('a write that is not a waiter action, and an operation past the seam', () => {

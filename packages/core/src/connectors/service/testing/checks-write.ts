@@ -3,6 +3,7 @@
 // the problems it found. "Adds to the oldest bill" is conditional on the declared capabilities:
 // the expected answer is what `chooseTargetBill` says for that declaration.
 
+import { addMinor, subtractMinor } from '../../../money'
 import type { ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector } from '../connector'
 import { type PosRef, posRef, samePosRef } from '../pos-ref'
@@ -424,6 +425,7 @@ export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
   const close = {
     isolated: again.result.isolated,
     amountMinor: isolatedAmount,
+    tipMinor: 0,
     paymentType: null,
     ref: 'kit-close',
   }
@@ -436,6 +438,143 @@ export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
   const second = await connector.payAndClose(ctx, { ...close, ref: 'kit-close-2' })
   if (second.kind !== 'refused')
     problems.push(`a second close came back ${describe(second)}, not refused`)
+  return problems
+}
+
+/** The tip the kit gives: odd on purpose, so a tip read as a fraction or rounded shows. */
+export const KIT_TIP_MINOR = 137
+
+/** What `lines` holds beyond `base`, line by line (item, quantity, amount). */
+function extraLines(lines: readonly BillLine[], base: readonly BillLine[]): BillLine[] {
+  const left = base.map(lineKey)
+  return lines.filter((line) => {
+    const at = left.indexOf(lineKey(line))
+    if (at === -1) return true
+    left.splice(at, 1)
+    return false
+  })
+}
+
+/**
+ * A tip on close (D127, design §10), on a bill isolated as the payment route does it:
+ *   - where `recordTipOnClose` is declared, the close is done, and the closed bill (as the waiter
+ *     sees it) holds the isolated lines plus at most one tip line of exactly the tip, with a total
+ *     of lines plus tip; nothing of the tip lands on the real table;
+ *   - undeclared, a tip above 0 is refused `not_supported` and nothing reaches the POS.
+ */
+export const tipOnCloseCheck: Check<WriteHarness> = async (harness) => {
+  const connector: ServiceConnector = harness.connector
+  const caps = connector.capabilities
+  const ctx = kitContext(harness)
+  const setUp = await paymentSetUp(harness)
+  if (typeof setUp === 'string') return [setUp]
+  const { table, before, bill, line } = setUp
+  const route = isolationRoute(caps)
+  if (caps.recordTipOnClose && (route === 'none' || !caps.closeWithPaymentType)) {
+    return ['recordTipOnClose is declared, but the POS cannot isolate a bill and close it']
+  }
+  let handle: IsolatedHandle = { ref: posRef('kit-no-such-bill'), table }
+  let isolatedLines: readonly BillLine[] = []
+  if (route !== 'none') {
+    const paymentTable = route === 'payment_table' ? await harness.waiter.paymentTable() : null
+    const isolated = await connector.isolateLines(ctx, {
+      table,
+      picks: [{ bill: bill.ref, line: line.ref, quantity: line.quantity }],
+      paymentTable,
+      ref: 'kit-isolate-tip',
+    })
+    if (isolated.kind !== 'done') return [`isolating came back ${describe(isolated)}`]
+    handle = isolated.result.isolated
+    const back = await connector.readIsolated(ctx, handle)
+    if (!back.complete || back.value.bill === null) return ['the isolated bill did not read back']
+    isolatedLines = back.value.bill.lines
+  }
+  const linesMinor = isolatedLines.reduce((sum, l) => addMinor(sum, l.amountMinor), 0)
+  const callsBefore = harness.pos.calls().length
+  const outcome = await connector.payAndClose(ctx, {
+    isolated: handle,
+    amountMinor: addMinor(linesMinor, KIT_TIP_MINOR),
+    tipMinor: KIT_TIP_MINOR,
+    paymentType: null,
+    ref: 'kit-close-tip',
+  })
+  const problems = outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome)
+
+  if (!caps.recordTipOnClose) {
+    if (outcome.kind !== 'refused' || outcome.refusal.code !== 'not_supported') {
+      problems.push(
+        `recordTipOnClose is not declared, but a close with a tip came back ${describe(outcome)}, not not_supported`,
+      )
+    }
+    const wrote = harness.pos
+      .calls()
+      .slice(callsBefore)
+      .filter((call) => call.write)
+    for (const call of wrote) problems.push(`a refused tip still wrote to the POS: ${call.name}`)
+    return problems
+  }
+
+  if (outcome.kind !== 'done') {
+    return [...problems, `the close with a tip came back ${describe(outcome)}`]
+  }
+  const closedBill = harness.waiter.closedBill
+  if (closedBill === undefined) {
+    return [...problems, 'recordTipOnClose is declared, but the harness cannot show a closed bill']
+  }
+  const closed = await closedBill.call(harness.waiter, handle.ref)
+  if (closed === null) return [...problems, 'the bill with the tip did not close']
+  const wanted = addMinor(linesMinor, KIT_TIP_MINOR)
+  if (closed.totalMinor !== wanted) {
+    problems.push(
+      `the closed bill's total is ${closed.totalMinor}, not its lines plus the tip (${wanted})`,
+    )
+  }
+  const missing = extraLines(isolatedLines, closed.lines)
+  if (missing.length > 0) problems.push(`the closed bill lost ${missing.map(lineKey).join(', ')}`)
+  const extra = extraLines(closed.lines, isolatedLines)
+  if (extra.length > 1) {
+    problems.push(`the tip landed as ${extra.length} lines: ${extra.map(lineKey).join(', ')}`)
+  } else if (extra[0] !== undefined && extra[0].amountMinor !== KIT_TIP_MINOR) {
+    problems.push(`the tip line is ${extra[0].amountMinor}, not the tip ${KIT_TIP_MINOR}`)
+  }
+  const real = await readComplete(harness, table)
+  if (typeof real === 'string') return [...problems, real]
+  const left = subtractMinor(total(before), linesMinor)
+  if (total(real) !== left) {
+    problems.push(`after the close the real table is at ${total(real)}, not ${left}`)
+  }
+  return problems
+}
+
+/**
+ * Pay-first (D127, #113), where `firstItemsOpenBill` is declared: a round on an empty payment
+ * table (an empty table where the POS has none) opens a bill, names it, and a reading of the
+ * table then finds that bill holding the round.
+ */
+export const newBillReferenceCheck: Check<WriteHarness> = async (harness) => {
+  if (!harness.connector.capabilities.firstItemsOpenBill) return []
+  await harness.pos.reset()
+  const table = (await harness.waiter.paymentTable()) ?? (await harness.waiter.emptyTable())
+  const before = await readComplete(harness, table)
+  if (typeof before === 'string') return [before]
+  if (before.bills.length > 0) return [`the empty table ${table.pos} already has a POS bill`]
+  const request = await addRequest(harness, table)
+  const outcome = await harness.connector.addLines(kitContext(harness), request)
+  const problems = outcomeProblems(AddOutcomeSchema, 'the add outcome', outcome)
+  if (outcome.kind !== 'done') return [...problems, `the round came back ${describe(outcome)}`]
+  if (!outcome.result.opened) problems.push('the round did not say it opened a POS bill')
+  const ref = outcome.result.bill
+  if (ref === null) return [...problems, 'the round opened a POS bill but did not name it']
+  const after = await readComplete(harness, table)
+  if (typeof after === 'string') return [...problems, after]
+  const found = findBill(after, ref)
+  if (found === undefined) {
+    problems.push(`a reading of the table does not find ${ref.pos}, the bill the round named`)
+  } else if (found.lines.length !== request.lines.length) {
+    problems.push(
+      `${ref.pos} holds ${found.lines.length} lines, not the round's ${request.lines.length}`,
+    )
+  }
   return problems
 }
 
