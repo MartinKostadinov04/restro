@@ -5,6 +5,7 @@ import type { PaymentHarness } from '@restro/core/connectors/payment-testing'
 
 import { ManualClock } from '../clock'
 import { SimPayEngine, type SimPaySwitches } from '../engine'
+import { simPayNotice } from '../notices'
 import { createSimPayProvider } from '../provider'
 
 export interface SimPayHarnessOptions {
@@ -12,7 +13,10 @@ export interface SimPayHarnessOptions {
   readonly switches?: Partial<SimPaySwitches>
 }
 
-/** A fresh engine with one connected account, behind the provider, with every fault wired. */
+/**
+ * A fresh engine with two connected accounts (the suite's, and another whose reads must see none
+ * of its objects), behind the provider, with every fault and the venue's and bank's actions wired.
+ */
 export function simPayHarness(options: SimPayHarnessOptions): PaymentHarness & {
   readonly engine: SimPayEngine
   readonly clock: ManualClock
@@ -20,6 +24,7 @@ export function simPayHarness(options: SimPayHarnessOptions): PaymentHarness & {
   const clock = new ManualClock()
   const engine = new SimPayEngine({ clock, switches: options.switches })
   const account = engine.addAccount()
+  const otherAccount = engine.addAccount()
   const provider = createSimPayProvider({ env: 'test', engine })
   return {
     name: options.name,
@@ -51,5 +56,14 @@ export function simPayHarness(options: SimPayHarnessOptions): PaymentHarness & {
       },
       failReads: () => engine.failReads(),
     },
+    outside: {
+      refundsInDashboard: async (accountRef, paymentRef, amountMinor) =>
+        simPayNotice(engine.venue.refundsInDashboard(accountRef, paymentRef, amountMinor)),
+      bankOpensDispute: async (accountRef, paymentRef) =>
+        simPayNotice(engine.bank.opensDispute(accountRef, paymentRef)),
+      disputeCloses: async (accountRef, disputeRef, outcome) =>
+        simPayNotice(engine.bank.closesDispute(accountRef, disputeRef, outcome)),
+    },
+    otherAccount,
   }
 }

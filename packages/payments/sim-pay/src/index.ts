@@ -12,4 +12,12 @@ export {
   type SimPaySwitches,
 } from './engine'
 export { checkSimPayEnv, SIM_PAY_ENVS, type SimPayEnv, SimPayNotAllowedError } from './env'
+export {
+  SIM_PAY_SIGNATURE_HEADER,
+  type SimPayEvent,
+  type SimPayWireNotice,
+  signSimPayNotice,
+  simPayNotice,
+  simPayNoticeKind,
+} from './notices'
 export { createSimPayProvider, SIM_PAY_KIND, type SimPayProviderOptions } from './provider'

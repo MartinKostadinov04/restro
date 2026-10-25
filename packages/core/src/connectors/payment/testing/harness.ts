@@ -7,7 +7,7 @@
 import type { Currency } from '../../../money'
 import type { PaymentProvider } from '../provider'
 import type { ProviderRef } from '../provider-ref'
-import type { ProviderFormValues } from '../schemas'
+import type { ProviderFormValues, ProviderNotice } from '../schemas'
 
 /** The steps a fault can hit: the provider writes about a payment. */
 export const FAULT_STEPS = ['createHold', 'capture', 'release'] as const
@@ -54,6 +54,29 @@ export interface PaymentFaults {
   failReads?(): void
 }
 
+/**
+ * What happens at the provider outside Restro (#108): the venue refunds in its own dashboard, the
+ * guest's bank disputes a payment. Each returns once the provider has done it, with the notice the
+ * provider sends about it, as the web's verifier passes it on. Restro itself never refunds
+ * (D125 3.5): a harness does these as the venue and the bank would, in its sandbox only.
+ */
+export interface OutsideActions {
+  /** The venue refunds `amountMinor` of a captured payment in its provider dashboard. */
+  refundsInDashboard?(
+    accountRef: ProviderRef,
+    paymentRef: ProviderRef,
+    amountMinor: number,
+  ): Promise<ProviderNotice>
+  /** The guest's bank opens a dispute on a captured payment. */
+  bankOpensDispute?(accountRef: ProviderRef, paymentRef: ProviderRef): Promise<ProviderNotice>
+  /** The dispute (the opening notice's object) closes, won by the venue or lost. */
+  disputeCloses?(
+    accountRef: ProviderRef,
+    disputeRef: ProviderRef,
+    outcome: 'won' | 'lost',
+  ): Promise<ProviderNotice>
+}
+
 export interface PaymentHarness {
   /** The provider's name in test titles. */
   readonly name: string
@@ -73,4 +96,8 @@ export interface PaymentHarness {
   movedMinor(): Promise<number>
   readonly guest: GuestDriver
   readonly faults: PaymentFaults
+  /** The venue and the bank at the provider; an action left out shows its check as a todo. */
+  readonly outside?: OutsideActions
+  /** A second venue account, whose reads must see nothing of `account`'s. */
+  readonly otherAccount?: ProviderRef
 }

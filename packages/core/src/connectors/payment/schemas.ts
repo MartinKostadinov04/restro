@@ -8,7 +8,7 @@
 //   - a reading with any failed part is `complete: false` and concludes nothing.
 //
 // There is no refund (D125 3.5, D127 4.4): a refund is the venue's, in its own dashboard, and
-// Restro only observes it through notices.
+// Restro only observes it through notices, by reading the payment back (`readNoticeSubject`).
 
 import { z } from 'zod'
 
@@ -134,6 +134,15 @@ export const THREE_DS_RESULTS = [
 ] as const
 export type ThreeDsResult = (typeof THREE_DS_RESULTS)[number]
 
+/**
+ * Where a dispute on a payment stands, in the platform's words (#108), whatever the provider
+ * calls its states: `open` while the guest's bank asks or reviews (an early warning included),
+ * `won` once it closed with the venue keeping the money, `lost` once the money went back. The
+ * same words as `payments.dispute` (`PAYMENT_DISPUTE_STATES` in `@restro/db`).
+ */
+export const PAYMENT_DISPUTE_STATES = ['open', 'won', 'lost'] as const
+export type PaymentDisputeState = (typeof PAYMENT_DISPUTE_STATES)[number]
+
 /** A provider payment, read back (`readPayment`, `findByPaymentId`) or answered by a write. */
 export const ProviderPaymentSchema = z
   .strictObject({
@@ -150,6 +159,13 @@ export const ProviderPaymentSchema = z
     heldMinor: MinorSchema,
     /** What was captured: above zero once `captured`, else zero; never above `amountMinor`. */
     capturedMinor: MinorSchema,
+    /**
+     * What the venue refunded in its own dashboard, in total so far (#108): an absolute amount,
+     * never a change; zero for none; never above `capturedMinor`.
+     */
+    refundedMinor: MinorSchema,
+    /** The latest dispute on the payment, as it stands now; null for none. Only once captured. */
+    dispute: z.enum(PAYMENT_DISPUTE_STATES).nullable(),
     /** When the provider drops the hold uncaptured, once it is held and the provider says. */
     captureBefore: InstantSchema.nullable(),
     threeDs: z.enum(THREE_DS_RESULTS).nullable(),
@@ -174,8 +190,44 @@ export const ProviderPaymentSchema = z
     if (payment.capturedMinor > payment.amountMinor) {
       problem('more is captured than the hold was created for', 'capturedMinor')
     }
+    if (payment.refundedMinor > payment.capturedMinor) {
+      problem('more is refunded than was captured', 'refundedMinor')
+    }
+    if (payment.dispute !== null && payment.status !== 'captured') {
+      problem('only a captured payment can be disputed', 'dispute')
+    }
   })
 export type ProviderPayment = z.output<typeof ProviderPaymentSchema>
+
+// ---------------------------------------------------------------------------------------------
+// Notices (D127 1.4, design §8; ticket #108)
+
+/**
+ * What a provider's notice is about, in the platform's words: the provider's web part maps its own
+ * event types to these, so no provider event name picks platform behaviour. `other` has no
+ * handler: the worker marks it handled and does nothing. The same words as
+ * `provider_notices.kind` (`PROVIDER_NOTICE_KINDS` in `@restro/db`).
+ */
+export const PROVIDER_NOTICE_KINDS = ['refund', 'dispute', 'other'] as const
+export type ProviderNoticeKind = (typeof PROVIDER_NOTICE_KINDS)[number]
+
+/**
+ * A provider notice, verified: which event, of what type, about which object of which account.
+ * It is a pointer, never the facts: the worker reads the object back from the provider before it
+ * records anything, so a forged, stale or out-of-order body changes nothing (D125 3.8).
+ */
+export const ProviderNoticeSchema = z.strictObject({
+  /** The provider's event id: the notice is stored once by it. */
+  id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$/),
+  /** The provider's event type, as it names it: stored for the Restro team's Log, never acted on. */
+  type: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/),
+  kind: z.enum(PROVIDER_NOTICE_KINDS),
+  /** The venue's account the event came from; null for a platform-level event. */
+  accountRef: ProviderRefSchema.nullable(),
+  /** The object the event is about (a payment, a refund, a dispute), read back before acting. */
+  objectRef: ProviderRefSchema.nullable(),
+})
+export type ProviderNotice = z.output<typeof ProviderNoticeSchema>
 
 /**
  * What the page's card form needs to mount (design §10): opaque to the platform, which stores
@@ -279,6 +331,7 @@ export const PAYMENT_ANSWER_SCHEMAS = {
   createHold: paymentWriteOutcomeSchema(CreateHoldResultSchema),
   findByPaymentId: readingSchema(ProviderPaymentSchema.nullable()),
   readPayment: readingSchema(ProviderPaymentSchema),
+  readNoticeSubject: readingSchema(ProviderPaymentSchema.nullable()),
   capture: paymentWriteOutcomeSchema(ProviderPaymentSchema),
   release: paymentWriteOutcomeSchema(ProviderPaymentSchema),
 } as const

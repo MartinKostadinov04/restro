@@ -13,6 +13,7 @@ import {
   capabilitiesCheck,
   connectionCheck,
   declineCheck,
+  disputeReadBackCheck,
   expiryCheck,
   failedReadsCheck,
   guestStepCheck,
@@ -25,9 +26,11 @@ import {
   moneyOnlyByCaptureCheck,
   oneCaptureCheck,
   operationsCheck,
+  otherAccountCheck,
   type PaymentCheck,
   partialCaptureCheck,
   reconnectCheck,
+  refundReadBackCheck,
   refusedCheck,
   releaseCheck,
   storedErrorCheck,
@@ -61,6 +64,7 @@ function checkIf(
 
 export function paymentProviderSuite(harness: PaymentHarness): void {
   const { faults, guest } = harness
+  const outside = harness.outside ?? {}
   describe(`${harness.name}: payment provider conformance`, () => {
     check('offers the interface steps and nothing else: no refund', operationsCheck, harness)
     check('declares its kind and every capability', capabilitiesCheck, harness)
@@ -109,6 +113,27 @@ export function paymentProviderSuite(harness: PaymentHarness): void {
       failedReadsCheck,
       harness,
       'fail reads',
+    )
+    checkIf(
+      outside.refundsInDashboard !== undefined,
+      "a refund in the venue's dashboard reads back as the total refunded",
+      refundReadBackCheck,
+      harness,
+      "refund in the venue's dashboard",
+    )
+    checkIf(
+      outside.bankOpensDispute !== undefined && outside.disputeCloses !== undefined,
+      'a dispute reads back where it stands now',
+      disputeReadBackCheck,
+      harness,
+      'open and close a dispute',
+    )
+    checkIf(
+      outside.refundsInDashboard !== undefined && harness.otherAccount !== undefined,
+      "another account reads nothing of this account's objects",
+      otherAccountCheck,
+      harness,
+      'refund and name a second account',
     )
     for (const step of FAULT_STEPS) {
       checkIf(

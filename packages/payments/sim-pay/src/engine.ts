@@ -9,7 +9,9 @@
 //   - the same idempotency key with the same request answers the stored answer again (a stored
 //     server error included); with another request it is refused (`key_reused`);
 //   - a hold not captured by its `captureBefore` is dropped (read as released);
-//   - two payments carrying one payment id make the read-back incomplete: it concludes nothing.
+//   - two payments carrying one payment id make the read-back incomplete: it concludes nothing;
+//   - a refund or a dispute happens outside Restro (`venue`, `bank`, test controls), leaves a
+//     notice in the outbox (`takeNotices`), and reads back as it stands now (#108).
 
 import {
   addMinor,
@@ -19,6 +21,7 @@ import {
   type CreateHoldResult,
   type Currency,
   type EmptyResult,
+  type PaymentDisputeState,
   type PaymentId,
   type PaymentRefusal,
   type PaymentRefusalCode,
@@ -27,6 +30,7 @@ import {
   type PrepareDomainRequest,
   type ProviderFormValues,
   ProviderFormValuesSchema,
+  type ProviderNotice,
   type ProviderPayment,
   type ProviderRef,
   providerRef,
@@ -34,10 +38,12 @@ import {
   type ReleaseRequest,
   type StartConnectionRequest,
   type StartConnectionResult,
+  subtractMinor,
   type ThreeDsResult,
 } from '@restro/core'
 
 import type { Clock } from './clock'
+import type { SimPayEvent } from './notices'
 
 const DAY_MS = 86_400_000
 
@@ -78,7 +84,10 @@ interface SimAccount {
   canTakePayments: boolean
   missing: string[]
   readonly domains: Set<string>
-  /** Money moved on the account, in minor units: the sum of its captures. */
+  /**
+   * Money Restro moved on the account, in minor units: the sum of its captures. A refund or a
+   * dispute, which happen outside Restro, is not in it.
+   */
   movedMinor: number
 }
 
@@ -94,6 +103,10 @@ interface SimPayment {
   readonly needsStep: boolean
   heldMinor: number
   capturedMinor: number
+  /** What the venue refunded in its dashboard, in total. */
+  refundedMinor: number
+  /** The latest dispute's ref, once the guest's bank opened one. */
+  disputeRef: string | null
   /** The hold ran out uncaptured (`captureBefore` passed). */
   expired: boolean
   captureBefore: Date | null
@@ -122,6 +135,11 @@ export class SimPayEngine {
   readonly #payments = new Map<string, SimPayment>()
   readonly #stored = new Map<string, Stored>()
   readonly #faults = new Map<SimPayStep, SimPayFault>()
+  /** A refund or a dispute's ref to its payment's (and a dispute's state). */
+  readonly #refunds = new Map<string, { readonly payment: string }>()
+  readonly #disputes = new Map<string, { readonly payment: string; state: PaymentDisputeState }>()
+  /** The notices the provider sent and nobody took yet. */
+  #outbox: SimPayEvent[] = []
   #failReads = false
   #nextHoldNeedsStep = false
   #counter = 0
@@ -192,6 +210,63 @@ export class SimPayEngine {
     this.#faults.clear()
     this.#failReads = false
     this.#nextHoldNeedsStep = false
+  }
+
+  /** The notices sent since the last call, oldest first; the outbox is emptied. */
+  takeNotices(): SimPayEvent[] {
+    const notices = this.#outbox
+    this.#outbox = []
+    return notices
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // The venue and the guest's bank, outside Restro (tests and the harness only, #108). Restro
+  // never refunds (D125 3.5): these stand for what the venue does in its own dashboard and what
+  // the guest's bank does, and each sends the provider's notice about it.
+
+  readonly venue = {
+    /** The venue refunds part or all of a captured payment in its dashboard. */
+    refundsInDashboard: (
+      accountRef: ProviderRef,
+      paymentRef: ProviderRef,
+      amountMinor: number,
+    ): SimPayEvent => {
+      const payment = this.#capturedPayment(accountRef, paymentRef)
+      const left = subtractMinor(payment.capturedMinor, payment.refundedMinor)
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > left) {
+        throw new Error(`a refund of ${amountMinor} where ${left} is left to refund`)
+      }
+      payment.refundedMinor = addMinor(payment.refundedMinor, amountMinor)
+      const ref = `simrefund_${this.#next()}`
+      this.#refunds.set(ref, { payment: payment.ref.provider })
+      return this.#send('refund.made', payment.account, ref, this.switches.refundNotices)
+    },
+  }
+
+  readonly bank = {
+    /** The guest's bank disputes a captured payment. */
+    opensDispute: (accountRef: ProviderRef, paymentRef: ProviderRef): SimPayEvent => {
+      const payment = this.#capturedPayment(accountRef, paymentRef)
+      const ref = `simdispute_${this.#next()}`
+      this.#disputes.set(ref, { payment: payment.ref.provider, state: 'open' })
+      payment.disputeRef = ref
+      return this.#send('dispute.opened', payment.account, ref, true)
+    },
+    /** The dispute closes: won, the venue keeps the money; lost, the money goes back. */
+    closesDispute: (
+      accountRef: ProviderRef,
+      disputeRef: ProviderRef,
+      outcome: 'won' | 'lost',
+    ): SimPayEvent => {
+      const dispute = this.#disputes.get(disputeRef.provider)
+      const payment = dispute === undefined ? undefined : this.#payments.get(dispute.payment)
+      if (dispute === undefined || payment?.account !== accountRef.provider) {
+        throw new Error(`no dispute ${disputeRef.provider} on this account`)
+      }
+      if (dispute.state !== 'open') throw new Error(`the dispute is ${dispute.state} already`)
+      dispute.state = outcome
+      return this.#send('dispute.closed', payment.account, disputeRef.provider, true)
+    },
   }
 
   // -------------------------------------------------------------------------------------------
@@ -269,6 +344,8 @@ export class SimPayEngine {
         needsStep: this.#takeNextHoldNeedsStep(),
         heldMinor: 0,
         capturedMinor: 0,
+        refundedMinor: 0,
+        disputeRef: null,
         expired: false,
         captureBefore: null,
         threeDs: null,
@@ -296,6 +373,23 @@ export class SimPayEngine {
     if (payment === undefined || payment.account !== accountRef.provider) {
       return { complete: false, reason: 'no such payment on this account' }
     }
+    return complete(this.#view(payment))
+  }
+
+  /**
+   * The payment a notice is about, as it stands now: the notice's object (a payment, a refund or a
+   * dispute) leads to its payment. Null for an object of another account or one it never made.
+   */
+  readNoticeSubject(
+    accountRef: ProviderRef,
+    notice: ProviderNotice,
+  ): Reading<ProviderPayment | null> {
+    if (this.#failReads) return { complete: false, reason: 'the notice read failed part-way' }
+    if (notice.objectRef === null) return complete(null)
+    const ref = notice.objectRef.provider
+    const paymentRef = this.#refunds.get(ref)?.payment ?? this.#disputes.get(ref)?.payment ?? ref
+    const payment = this.#payments.get(paymentRef)
+    if (payment === undefined || payment.account !== accountRef.provider) return complete(null)
     return complete(this.#view(payment))
   }
 
@@ -424,6 +518,28 @@ export class SimPayEngine {
     return payment
   }
 
+  #capturedPayment(accountRef: ProviderRef, ref: ProviderRef): SimPayment {
+    const payment = this.#payments.get(ref.provider)
+    if (payment === undefined || payment.account !== accountRef.provider) {
+      throw new Error(`no payment ${ref.provider} on this account`)
+    }
+    if (payment.status !== 'captured') throw new Error(`the payment is ${payment.status}`)
+    return payment
+  }
+
+  /** The provider's notice about an object of the account; `sent` puts it in the outbox. */
+  #send(type: SimPayEvent['type'], account: string, object: string, sent: boolean): SimPayEvent {
+    const event: SimPayEvent = {
+      id: `simevt_${this.#next()}`,
+      type,
+      account,
+      object,
+      livemode: false,
+    }
+    if (sent) this.#outbox.push(event)
+    return event
+  }
+
   #guestPayment(ref: ProviderRef): SimPayment {
     const payment = this.#payments.get(ref.provider)
     if (payment === undefined) throw new Error(`no payment ${ref.provider}`)
@@ -467,6 +583,11 @@ export class SimPayEngine {
       amountMinor: payment.amountMinor,
       heldMinor: payment.heldMinor,
       capturedMinor: payment.capturedMinor,
+      refundedMinor: payment.refundedMinor,
+      dispute:
+        payment.disputeRef === null
+          ? null
+          : (this.#disputes.get(payment.disputeRef)?.state ?? null),
       captureBefore: payment.captureBefore?.toISOString() ?? null,
       threeDs: payment.threeDs,
       authorisationCode: payment.authorisationCode,
