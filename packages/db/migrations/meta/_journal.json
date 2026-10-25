@@ -218,6 +218,13 @@
       "when": 1792930025977,
       "tag": "0030_payment_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792966652682,
+      "tag": "0031_payment_observed",
+      "breakpoints": true
     }
   ]
 }
