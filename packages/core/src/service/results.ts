@@ -46,6 +46,12 @@ export const REFUSAL_CODES = [
   'busy',
   /** The command exists but its ticket has not built it yet. */
   'not_built',
+  /** The venue has no such payment (#108: a notice about a payment Restro did not make). */
+  'payment_missing',
+  /** The provider's reading does not match the payment: another provider payment or amount. */
+  'payment_mismatch',
+  /** The payment is not captured on Restro's side yet; a later reading tries again. */
+  'payment_not_captured',
 ] as const
 
 /** One refusal code. */

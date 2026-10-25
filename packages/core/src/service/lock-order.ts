@@ -21,6 +21,8 @@ export const LOCK_RANKS = [
   'pause',
   'alert',
   'staff',
+  // A payment (#108's `payment.observe` locks it alone; the paying route places its own locks).
+  'payment',
 ] as const
 
 /** One kind of row. */

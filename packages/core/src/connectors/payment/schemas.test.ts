@@ -1,3 +1,4 @@
+import * as db from '@restro/db'
 import { describe, expect, it } from 'vitest'
 
 import { newId } from '../../ids'
@@ -6,7 +7,9 @@ import { providerRef } from './provider-ref'
 import {
   IdempotencyKeySchema,
   PAYMENT_ANSWER_SCHEMAS,
+  PAYMENT_DISPUTE_STATES,
   PaymentRefusalSchema,
+  PROVIDER_NOTICE_KINDS,
   ProviderFormValuesSchema,
   ProviderNoticeSchema,
   ProviderPaymentSchema,
@@ -118,6 +121,11 @@ describe('the provider notice', () => {
     ]) {
       expect(ProviderNoticeSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
     }
+  })
+
+  it("uses the database's words for a notice's kind and a payment's dispute (migration 0031)", () => {
+    expect(PROVIDER_NOTICE_KINDS).toEqual(db.PROVIDER_NOTICE_KINDS)
+    expect(PAYMENT_DISPUTE_STATES).toEqual(db.PAYMENT_DISPUTE_STATES)
   })
 })
 
