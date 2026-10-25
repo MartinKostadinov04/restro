@@ -131,6 +131,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D124](decisions/D124.md) | Fitting any POS: an optional bar, never yesterday's bill, a fallback when a waiter's bill is closed to outside apps, card holds for paying, training mode only on a test installation, the POS's stock replaces the owner's sold-out switch | firm; refines D112, D115, D122 |
 | [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
+| [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

@@ -41,7 +41,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 - `packages/shell` and `packages/faces/*` never import `db`, a connector, `apps/*`, or anything with I/O.
 - A face imports only its own package, `react`, `react-dom` and `@restro/shell` (not `@restro/core`, not `@restro/shell/testing` outside tests); guest pages never import a face's `/preview`, and only a face's `preview/` folder may use `@restro/shell/money`.
 - Only `core/apply` imports the write side of `db`.
-- Only `apps/worker` imports a connector package (`barsy`).
+- Only `apps/worker` imports a connector package (`barsy`) or a payment provider package. The web app checks a provider's notice signatures and loads its card form only through `apps/web/src/connectors/<kind>/` (D127).
 - Packages never import apps.
 
 ## Never
