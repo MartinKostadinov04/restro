@@ -3,6 +3,7 @@ packages:
   - packages/*
   - packages/faces/*
   - packages/connectors/*
+  - packages/payments/*
 
 # pnpm 10 does not run dependency install scripts unless they are listed here.
 # Add a package only after checking why it needs a build step.

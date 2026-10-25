@@ -13,7 +13,7 @@ These override the rest of this tab where they differ; stages are in the Stage p
 | Database | Postgres 17 on Supabase (free plan, West EU Ireland, D43, D54), organisation "Restro", projects `restro-staging` and `restro-prod`. Data API off, own hourly backups to R2. Supabase Pro ($25/month) before money flows. Railway runs only web + worker |
 | Barsy freshness | Polling: incremental every 5 min + nightly full pull. No webhooks (D41, D110), so the `barsy-inbox`, `barsy-refetch` and `barsy-health` queues are not started; writes are waiter actions only (D110) and barsy has none yet |
 | Faces | QR → phone only (D38); faces are packages (`packages/faces/*`) that pass one contract |
-| Payments package | `packages/payments` holds the `PaymentProvider` interface and the conformance suite; the simulated provider `sim-pay` (`packages/payments/sim-pay`) and the first real provider, Stripe (`packages/payments/stripe`, D126, D127), are packages beside them. Built with paying in the app (part 2, spec #102) |
+| Payments package | The `PaymentProvider` interface, its capability flags and the conformance suite are core's (`packages/core/src/connectors/payment/`, the suite `@restro/core/connectors/payment-testing`); `packages/payments` holds one package per provider: the simulated provider `sim-pay` (`packages/payments/sim-pay`) and the first real provider, Stripe (`packages/payments/stripe`, D126, D127). Built with paying in the app (part 2, spec #102) |
 | Repo | Public GitHub `MartinKostadinov04/restro` (public since 2026-10-19, so CI is free). Pushing to `main` and merging one's own pull request are forbidden by `CLAUDE.md` |
 | Cost | $0 in Stage 1; about $5–10 a month from Stage 3 plus domains; about $30–35 a month once payments run |
 
@@ -115,7 +115,7 @@ restro/
 │  ├─ db/         Drizzle schema, migrations, row-level security, tenant-scoped client
 │  ├─ barsy/      typed Barsy client (read/ and write/), mappers, recorded fixtures
 │  ├─ connectors/ one package per other connector; sim-pos is the simulated POS (kind `sim`)
-│  └─ payments/   PaymentProvider interface, capability flags and the conformance suite (no provider's name); one package per provider beside them: sim-pay (packages/payments/sim-pay, the simulated provider) and stripe (packages/payments/stripe, the first real one, D126)
+│  └─ payments/   one package per provider (the PaymentProvider interface, capability flags and conformance suite are core's, packages/core/src/connectors/payment/, no provider's name): sim-pay (packages/payments/sim-pay, the simulated provider) and stripe (packages/payments/stripe, the first real one, D126)
 ├─ docs/          decisions, runbooks (restore, onboarding a venue, live-night incidents)
 └─ CLAUDE.md      conventions, commands, the nine rules, what agents must never do
 ```
