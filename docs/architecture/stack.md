@@ -1,6 +1,6 @@
 # Stack
 
-Oct 8, 2026 · @Martin · brought up to date for ordering on Oct 22, 2026 (D110–D124)
+Oct 8, 2026 · @Martin · brought up to date for ordering on Oct 22, 2026 (D110–D124) and for paying on Oct 25, 2026 (D125–D127)
 
 Restro runs as one TypeScript repository deployed as two small Node processes, a Next.js web app and a pg-boss worker, on Railway in Amsterdam. Postgres holds both the data and the job queue, Cloudflare R2 serves menus, images and backups, and Cloudflare's free proxy guards the web app. At pilot traffic the platform should cost about $10–15 a month: every choice favours few moving parts and free tiers over scale, because traffic is low (Martin, 2026-10-08).
 
@@ -13,7 +13,7 @@ These override the rest of this tab where they differ; stages are in the Stage p
 | Database | Postgres 17 on Supabase (free plan, West EU Ireland, D43, D54), organisation "Restro", projects `restro-staging` and `restro-prod`. Data API off, own hourly backups to R2. Supabase Pro ($25/month) before money flows. Railway runs only web + worker |
 | Barsy freshness | Polling: incremental every 5 min + nightly full pull. No webhooks (D41, D110), so the `barsy-inbox`, `barsy-refetch` and `barsy-health` queues are not started; writes are waiter actions only (D110) and barsy has none yet |
 | Faces | QR → phone only (D38); faces are packages (`packages/faces/*`) that pass one contract |
-| Payments package | Added when paying in the app is built (part 2 of the ordering spec) |
+| Payments package | `packages/payments` holds the `PaymentProvider` interface and the conformance suite; the simulated provider `sim-pay` (`packages/payments/sim-pay`) and the first real provider, Stripe (`packages/payments/stripe`, D126, D127), are packages beside them. Built with paying in the app (part 2, spec #102) |
 | Repo | Public GitHub `MartinKostadinov04/restro` (public since 2026-10-19, so CI is free). Pushing to `main` and merging one's own pull request are forbidden by `CLAUDE.md` |
 | Cost | $0 in Stage 1; about $5–10 a month from Stage 3 plus domains; about $30–35 a month once payments run |
 
@@ -21,7 +21,7 @@ These override the rest of this tab where they differ; stages are in the Stage p
 
 &#91;embedded content: runtime map · 2 processes, 1 database, 3 outside systems\]
 
-Guests load menus from the CDN and talk to the web app only through the guest API (D121): the order, Send and a call to the waiter now, payments in part 2. The worker alone calls a POS, through a connector; webhooks stay out (D41).
+Guests load menus from the CDN and talk to the web app only through the guest API (D121): the order, Send, a call to the waiter and, from part 2, paying (D127). The worker alone calls a POS, through a connector, and alone calls a payment provider; POS webhooks stay out (D41), while a provider's signed notices reach one web route (D125, D127).
 
 ## Choices
 
@@ -42,12 +42,12 @@ Each layer takes the most widely used tool that has a free or usage-priced tier,
 | Images | sharp, in the worker | Makes each CDN variant once | Paid image services |
 | Venue-admin login | Better Auth with its organization plugin | Free; accounts stay in our Postgres; tenant = organization with owner/admin/member roles, invitations, and staff roles per venue. Staff on a shared bar device use a PIN, not an account (D122 §7). Email and password (magic links optional), so a slow email never locks the owner out mid-service | Clerk: another vendor holding staff accounts |
 | Email | Resend | Login links, invitations, the daily ops digest | — |
-| Payments | Payments are a connector kind (D98): one `PaymentProvider` interface (hold, capture, release, refund, hosted checkout, status notifications) with capability flags (hold and how long, Apple Pay and Google Pay, split), and one package per provider. myPOS is the first candidate, pending the feasibility check (T80); Stripe is second | The venue is the merchant on its own payment account at the provider, and Restro never holds money; Restro's fee is invoiced to the venue. The platform knows no provider's name. Whether guests can pay through barsy's payment link when they order from the menu is a separate open question (Q39, Q58) | Restro holding funds; building on one provider first |
+| Payments | Payments are a connector kind (D98): one `PaymentProvider` interface (create a hold, read a payment, capture, release, connect the venue's account, check notices; no refund, D122 §8) with capability flags (hold window, partial capture, Apple Pay and Google Pay, refund notices, smallest payment), and one package per provider. Stripe is the first provider (D126, D125): Payment Intents with manual capture, direct charges on the venue's own account, the card form in the page (`@stripe/stripe-js` in `apps/web`, `stripe` in `packages/payments/stripe`). The worker makes every provider call; the web app takes the guest's pay commands, receives signed notices and loads the card form (D127) | The venue is the merchant on its own account at the provider, and Restro never holds money; Restro's fee is its subscription (D122 §9). The platform knows no provider's name. Stripe holds a wallet card inside Restro's own page, which is what D122 §8's order needs; its documentation and test mode are public. | Restro holding funds; Checkout Sessions (they need the guest's email, D125); myPOS first (parked, D126); building on one provider only |
 | Barsy access | One typed client, split into `read` and `write`; native `fetch` with a 30-second timeout | Agents cannot invent endpoints; every write is a waiter action (D110); webhooks and POS registration stay out (D41) | Ad-hoc calls |
 | POS connectors | A POS-neutral `ServiceConnector` interface owned by the integration layer, one package per connector (`packages/barsy`, `packages/connectors/sim-pos`), and one conformance kit every connector must pass (D122 §3, D124, spec #64) | The pilot's POS has not answered yet, so the platform is built against a simulated POS and proven by the checks a real connector must also pass; a timeout is always "unknown", never a second write | A connector per POS written ad hoc; waiting for the pilot's POS |
 | Dates and money | date-fns + @date-fns/tz; integer minor units; `Intl.NumberFormat` | Past-midnight schedules in Europe/Sofia; Barsy's rounding in one module | Floats |
 | Interface text | next-intl (BG, EN) | Interface strings only; menu text comes from snapshots | — |
-| Tests | Vitest, fast-check, Playwright, MSW with recorded Barsy responses and the `sim-pos` simulator | Agents can check their own work; property tests guard "more cautious than the till" | — |
+| Tests | Vitest, fast-check, Playwright, MSW with recorded Barsy responses, the `sim-pos` simulator, and `sim-pay` with the first provider's sandbox for payments | Agents can check their own work; property tests guard "more cautious than the till" | — |
 | Code checks | Biome (lint + format), `tsc --noEmit`, dependency-cruiser | One fast tool, import rules that enforce the architecture, and gitleaks so no secret is ever committed | ESLint + Prettier: more configuration |
 | Hosting | Railway, EU West (Amsterdam): web and worker in one project (Postgres on Supabase, D43) | Always-on processes for the queue; usage-based billing suits low traffic. Cloudflare's free proxy sits in front: rate limits, Turnstile bot checks, and a cached static guest page that keeps menus up even if Railway is down | Vercel: Hobby is non-commercial, Pro is $20 a seat plus a separate worker host. A VPS is cheaper still, but someone has to run the server |
 | Monitoring | Sentry (EU region, no personal data), guest events in our own Postgres, deep health checks, phone alerts through a Telegram bot | Errors; funnel data we own and Martin can query in SQL or Power BI (H1–H3); a phone alert within a minute when orders or money get stuck | PostHog: another vendor and a consent question; paid APM |
@@ -115,8 +115,7 @@ restro/
 │  ├─ db/         Drizzle schema, migrations, row-level security, tenant-scoped client
 │  ├─ barsy/      typed Barsy client (read/ and write/), mappers, recorded fixtures
 │  ├─ connectors/ one package per other connector; sim-pos is the simulated POS (kind `sim`)
-│  ├─ payments/   PaymentProvider interface and capability flags (no provider's name)
-│  └─ <provider>/ one package per payment provider, like barsy/ (myPOS first, pending T80)
+│  └─ payments/   PaymentProvider interface, capability flags and the conformance suite (no provider's name); one package per provider beside them: sim-pay (packages/payments/sim-pay, the simulated provider) and stripe (packages/payments/stripe, the first real one, D126)
 ├─ docs/          decisions, runbooks (restore, onboarding a venue, live-night incidents)
 └─ CLAUDE.md      conventions, commands, the nine rules, what agents must never do
 ```
@@ -124,10 +123,12 @@ restro/
 Import rules, checked in CI by dependency-cruiser:
 
 - `shell` and the faces in `apps/web` never import `db`, `barsy` or a payment provider package.
-- Only `core/apply` and `core/service` import the write side of `db` (`db-write-only-from-core-write-paths`); a write-target guard test pins which tables each writes. `@restro/core/service` may be imported only by the guest API routes, the admin's server actions, the worker, and the payment provider notice route, which calls only `recordProviderNotice` (D127).
+- Only `core/apply` and `core/service` import the write side of `db` (`db-write-only-from-core-write-paths`); a write-target guard test pins which tables each writes. `@restro/core/service` may be imported only by the guest API routes, the admin's server actions, the worker, and the payment provider notice route, which may import only the subpath `@restro/core/service/notices` (`recordProviderNotice`, D127).
 - Only `apps/worker` imports a connector package, `barsy` or one under `packages/connectors/` (`connectors-only-from-worker`, `web-no-connectors`). A connector's `write` part exposes only waiter actions (D110), such as adding a round to a table's bill. Webhook subscription and POS registration are setup, not waiter actions, and stay out (D41).
 - `apps/web` never calls a POS; it reads POS state from Postgres, and readings and writes are worker jobs whose outcome reaches the phone through the guest state (D121).
-- Only `apps/worker` imports a payment provider package and calls a provider (hold, read, capture, release, test call; never a refund, D122 §8). The web app never imports one: its notice route checks a notice's signature through that provider's part in `apps/web/src/connectors/` (where POS-specific web code already lives), stores it in the platform-level `provider_notices` inbox, and reads payment state from Postgres (D98, D127). The guest page loads the provider's card form from the same folder (D127).
+- Only `apps/worker` imports a payment provider package and calls a provider (hold, read, capture, release, test call; never a refund, D122 §8). The web app never imports one: its notice route checks a notice's signature through that provider's part in `apps/web/src/connectors/` (where POS-specific web code already lives), stores it in the platform-level `provider_notices` inbox, and reads payment state from Postgres (D98, D127). The guest page loads the provider's card form from the same folder (D127), into a slot the template places: a face never loads a provider library (D72).
+- Paying has its own rules: `payments-only-from-worker` (only `apps/worker`, and the provider packages themselves, import anything under `packages/payments/`), `web-provider-only-through-connectors` (`stripe` and `@stripe/*` only in `apps/web/src/connectors/<kind>/`) and `notice-route-records-only` (the notice route, `apps/web/app/api/payments/notices/`, imports from `core/service` only `@restro/core/service/notices`). `scripts/no-refunds.test.ts` keeps a refund call out of Restro's payment code, and the vendor-word walls keep the provider's name in `packages/payments/stripe/src` and `apps/web/src/connectors/stripe`; the simulated provider owns no word.
+- The payment libraries are named by the build tickets, `stripe` in `packages/payments/stripe` and `@stripe/stripe-js` in `apps/web` (D127); a ticket that does not name a dependency adds none.
 - Packages never import apps.
 
 ## How the nine rules are enforced
@@ -142,7 +143,7 @@ Every non-negotiable rule from the Data architecture tab is backed by a check th
 | 4. The shell reads only snapshots | Import rule; the shell's only input type is `Snapshot` |
 | 5. Our layers only make the menu more cautious | Property tests (fast-check) on the resolver: whatever the layers hold, an item Barsy hides or takes off sale is never orderable, and an orderable item's price always equals Barsy's |
 | 6. Absence is deletion only after a complete full read | Integration test with a failed page in the fixture: nothing is hidden. A reading with any failed part is `complete: false` in the connector interface, and a property test shows a partial reading ends no sitting, clears no order and lifts no pause |
-| 7. Restro writes into a POS only as a waiter would (D110) | Menu sync stays read-only; a connector's `write` part exports only waiter actions (open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel), each declared as such and checked by a test in the connector conformance kit; never back-office writes (items, prices, settings, users); tests only on a test installation |
+| 7. Restro writes into a POS only as a waiter would (D110) | Menu sync stays read-only; a connector's `write` part exports only waiter actions (open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel), each declared as such and checked by a test in the connector conformance kit; never back-office writes (items, prices, settings, users); tests only on a test installation. Provider notices are fine (D125): the notice route only checks and stores them. A guardrail test keeps a refund call out of Restro's payment code, and the provider key cannot refund (D122 §8, D125, D127) |
 | 8. Money is integer minor units, with the POS's rounding | One `money` module; Zod `.int()` on every amount; tests built from Barsy's own calculation examples |
 | 9. POS accounts | One API user per connection per environment; staging configuration refuses production hosts; (later) one POS-registration owner, unique `pos_registrations.venue_id`, and a command schema that requires a server-generated `uuid` |
 
@@ -162,9 +163,10 @@ All background work runs as pg-boss queues in the worker. A job that depends on 
 | `menu-publish` | `menu-resolve` | 30-second merge window; writes snapshot and pointer to R2 |
 | `asset-variants` | new or changed image | Downloads, makes variants with sharp, uploads |
 | `order-outbox` | a Send, as D122 §4 defines it (the queue's name is set by the ticket that builds it) | Sends a sent order once, with the server-generated `uuid` where the POS deduplicates, and reads the table back after a timeout instead of sending again; test installation only until D33 is met |
-| `payment-events` | each stored payment notification, same transaction as the inbox write (signature checked in the web app first) | Updates payment, hold and share state |
-| `payment-outbox` | a command that needs money to move: accept (capture), skip after accept (refund), release | Calls the provider with an idempotency key, so a retry never charges twice; retries with backoff (D98, D99) |
-| `request-queue-close` | each venue's service day end, or the DJ closing the night earlier | Releases every unplayed hold through `payment-outbox` and records the night's totals (D99) |
+| `payment-events` | each stored provider notice, same transaction as the inbox write (signature checked in the web app first, D127) | Maps the provider account to its venue, reads the object back from the provider and updates the payment or the connection; never acts on the event's own copy (D125) |
+| `payment` (name set by the ticket that builds it) | a guest's `pay.start`, `pay.returned` or `pay.cancel`, a stored notice, and the recovery job | Every provider call and the whole route: price, create the hold, read it back, queue for a payment table, move the lines, check, close, capture or release (D122 §8, D127). A short check interval so a job starts within about a second, and a `singletonKey` per payment so one job per payment runs at a time. An idempotency key on every provider write, so a retry never charges twice; never a refund |
+| `payment-recovery` | worker start, then every 30 s | Finds payments whose last recorded step is `attempting` or unchanged for too long, and finishes, undoes or proves the close from that step; reminds staff about `unconfirmed` holds (D127) |
+| `request-queue-close` | each venue's service day end, or the DJ closing the night earlier | Releases every unplayed hold through the `payment` queue and records the night's totals (D99) |
 | `health-check` | every minute | Outbox age, payment-to-Barsy delay, snapshot age, webhook lag. Past a limit it switches that venue to menu-only and alerts by Telegram |
 | `reconcile-money` | nightly, after the service day ends | Payments vs Barsy bills vs our orders (P8) |
 | `db-backup` | hourly during service hours, nightly otherwise | `pg_dump` to R2, kept 30 days |
@@ -172,7 +174,7 @@ All background work runs as pg-boss queues in the worker. A job that depends on 
 
 Failed jobs land in a dead-letter queue and show in the pg-boss dashboard, served behind the venue-admin login for Restro staff only.
 
-Ordering adds more worker jobs, named when their tickets are built (spec #64): the readings of a floor and of a table, the read-back after a timeout, the connection breaker's probes and pauses (D120, D122 §6), the pre-opening check, alerts by Web Push and by Telegram (one group per venue, read by long polling, so no new public endpoint), and the retention step of the daily purge. The worker's HTTP server gets one internal endpoint that opens a sealed value for an authorised actor, reachable only over the private network with a service token (D122 §9).
+Paying (spec #102) runs on the `payment` queue and the recovery job above, and the provider breaker's probes and pauses follow D120's rule per venue account. Ordering adds more worker jobs, named when their tickets are built (spec #64): the readings of a floor and of a table, the read-back after a timeout, the connection breaker's probes and pauses (D120, D122 §6), the pre-opening check, alerts by Web Push and by Telegram (one group per venue, read by long polling, so no new public endpoint), and the retention step of the daily purge. The worker's HTTP server gets one internal endpoint that opens a sealed value for an authorised actor, reachable only over the private network with a service token (D122 §9).
 
 ## Data, tenancy and secrets
 
@@ -180,14 +182,14 @@ One Postgres database holds everything; the database itself, not just the code, 
 
 - **Tenancy.** Every tenant-owned table carries `tenant_id`. Row-level security limits each query to the tenant set for its transaction (`set_config('app.tenant_id', …)`), so a forgotten filter in AI-written code returns nothing instead of another venue's data. The app connects with a role that cannot bypass row-level security; migrations run with a separate owner role.
 - **Guests.** Guests never read the database for the menu: they get snapshots from the CDN. The guest API (D121) looks the table code up by its hash and resolves it to venue and tenant; the code travels in a header, never in a query string.
-- **Service data.** The service tables (sittings, orders, readings, the Log and the rest) are tenant-scoped with row-level security in the same pattern and written only by `applyService`. Log entries are classed `night` (kept 31 days) or `record` (kept 18 months), and the daily purge deletes them by date through its own role (D83, D122 §9).
+- **Service data.** The service tables (sittings, orders, readings, the Log, payments and the rest) are tenant-scoped with row-level security in the same pattern and written only in `core/service`, by `applyService`. Paying adds `payments` (`py_` ids), `payment_lines`, `payment_steps`, `payment_accounts` (written by the worker through `applyService`) and `provider_notices`. The one exception to tenant scope is `provider_notices`, the platform-level inbox of a payment provider's notices: it has no venue and no tenant, no role deletes a notice (retention comes with #112), and the notice route's reach is pinned by the dependency rule `notice-route-records-only` (D127). Log entries are classed `night` (kept 31 days) or `record` (kept 18 months), and the daily purge deletes them by date through its own role (D83, D122 §9).
 - **Table codes and PINs.** A table code has at least 128 random bits, stored as a hash with a sealed copy so stickers can be printed again; a staff PIN is stored as a keyed hash for lookup with a sealed copy beside it. Only the worker opens seals (D55, D122 §9).
 - **Guest events.** Append-only, free of personal data, and in their own schema from the start. One ingest module writes them in batches and never joins core tables (D103).
-- **Payment credentials.** Each venue's payment account credentials are sealed in the application like the Barsy credentials below, after the platform checks them with a test call (D98).
+- **Payment accounts and keys.** Restro never sees a venue's provider password or key: the owner connects through the provider's own hosted form, and Restro keeps only the account's reference (D125). Restro's own restricted provider key lives only in the worker's environment, and the signing secret for notices only in the web app's. The guest's payment handle is stored as a hash and never logged (D127).
 - **Barsy credentials and webhook secrets.** Encrypted in the application (AES-256-GCM) before they are stored. The key for Barsy credentials lives only in the worker's environment; the key for webhook secrets only in the web app's. The Data architecture tab says "secret store, never in the database"; this keeps plaintext out of the database without paying for a secret manager, and needs Martin's OK (P38).
 - **Backups.** `pg_dump` to R2 every hour during service hours and nightly otherwise, kept 30 days. Supabase's own backups are a second copy; point-in-time recovery is decided at go-live with paying clubs. A restore from the R2 dumps is rehearsed at least once before the first club goes live (D103), from the runbook in `docs/`.
 - **Retention.** Database space is limited by the Supabase plan, and privacy law needs limits anyway: raw Barsy records, the webhook and payment inboxes, events, IP addresses and device ids each get a retention period, set with the legal check (D25).
-- **Card data.** None touches our servers: guests pay on the payment provider's hosted checkout (D98).
+- **Card data.** None touches our servers: the card form is the provider's own, loaded into the guest page, and the card goes from the browser to the provider (D98, D127). No card digits and no phone, device or IP identifier are stored with a payment.
 - **EU and privacy.** Railway Amsterdam, Supabase Ireland (D54), R2 with EU jurisdiction, Sentry's EU region with personal data switched off. Before the first guest: a privacy notice and terms for guests, and a data processing agreement with each venue that says who is controller and who is processor.
 
 ## Environments and delivery
@@ -203,6 +205,8 @@ Code reaches production only through a green pull request and a check on staging
 
 `sim-pos` runs locally and in CI as the pilot POS's stand-in; source kind `sim` is refused by the worker in production and hidden from the source picker there.
 
+Paying follows the same rule (rule 7, D125): locally and in CI it runs against `sim-pay`, and the first real provider is tested only in its sandbox, with the provider's test accounts, never on a venue's live account. A notice whose live or test flag does not match the environment is refused.
+
 1. An agent works on a branch per ticket, following `CLAUDE.md`.
 2. It opens a pull request per ticket into the stage branch. CI runs the type check, lint, import rules, gitleaks, unit, property, integration and contract tests, and the build. Anything red blocks the merge.
 3. A second agent reviews the pull request against `CLAUDE.md` and the nine rules (optional: Claude Code's GitHub Action).
@@ -217,7 +221,7 @@ Martin should learn about a problem from an alert or the daily digest, never fro
 
 - **Errors:** Sentry in the web app and the worker (EU region, personal data off), each error tagged with the request or job that caused it.
 - **Logs:** structured JSON logs (pino) in Railway's log view.
-- **Health:** the `health-check` job watches outbox age, payment-to-Barsy delay, snapshot age and webhook lag. When the POS stops answering, or a sent order stays Unconfirmed, ordering pauses and alerts reach staff, the owner and the Restro team (D120, D122 §6). An outside watchdog (Healthchecks.io, pinged every minute) alerts the Restro team when Restro itself stops.
+- **Health:** the `health-check` job watches outbox age, payment-to-Barsy delay, snapshot age and webhook lag. When the POS stops answering, or a sent order stays Unconfirmed, ordering pauses and alerts reach staff, the owner and the Restro team (D120, D122 §6). When the payment provider stops answering for a venue's account, or Restro loses access to it, paying pauses (ordering to the bill goes on) and owners and managers are alerted (D120, D125, D127). An outside watchdog (Healthchecks.io, pinged every minute) alerts the Restro team when Restro itself stops.
 - **Uptime:** external checks every few minutes on the health endpoint and the webhook URL. Barsy deactivates a webhook subscription after 14 days without a successful delivery.
 - **Guest funnel:** anonymous events (menu opened, item added, checkout started, paid) written to our own Postgres. No third-party analytics and no cookies; Martin can query them in SQL or Power BI. They are the evidence for H1–H3 and feed the owner stats (D31).
 - **Night promise (D102):** the menu never goes down, because it is static files on the CDN. Platform features (service actions, song requests, bookings) may pause for minutes, never hours: within a minute of the platform turning unhealthy the phone shows "requests paused", and the alert reaches Martin by Telegram. No one is on call until clubs pay for it.
@@ -234,7 +238,7 @@ Three items need Martin's OK before setup; everything else waits until a trigger
 
 | When this happens | Then |
 | --- | --- |
-| myPOS fails the feasibility check (T80), or a club or market needs another provider | Build the next provider package behind the same `PaymentProvider` interface (Stripe is second, D98) |
+| A club or a market needs another payment provider (myPOS is parked, D126) | Build the next provider package behind the same `PaymentProvider` interface (D98) |
 | A reliability incident on a service night, or the bill crossing about $100 a month | Review the plans or move a part. Neon, Railway Postgres or a VPS are acceptable alternatives; on Supabase its Data API, Auth and Storage stay off. The move is a redeploy, prepared by the portability work (T85, D103) |
 | Restro wants a per-transaction fee after the pilot | Restro's fee is a fixed subscription (D122 §9), so nothing counts a fee per order; a different model needs its own decision (D98, Q77) |
 | Traffic grows | A second web replica on Railway |
