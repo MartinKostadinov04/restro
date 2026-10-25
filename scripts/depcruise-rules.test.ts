@@ -459,6 +459,9 @@ describe('paying: the worker calls the provider, the web only through its connec
         'apps/web/app/api/payments/notices/stripe/route.ts':
           "import '@restro/core/service/notices'\nimport '../../../../../../../packages/core/src/service/notices'\nimport '../../../../../src/connectors/stripe/notice'",
         'apps/web/app/api/order/route.ts': "import '@restro/core/service'",
+        'packages/core/src/service/notices/record.ts': 'export const record = 1',
+        'apps/web/app/api/payments/notices/sim-pay/route.ts':
+          "import '../../../../../../../packages/core/src/service/notices/record'",
       },
       [],
     )

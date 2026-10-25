@@ -18,8 +18,10 @@ const SKIPPED_DIRS = new Set(['node_modules', '.next', 'dist', 'build', 'coverag
 const REFUND_CALLS: readonly RegExp[] = [
   // An SDK resource: `stripe.refunds.create(…)`, `client.refunds.update(…)`.
   /\brefunds\s*\??\.\s*(?:create|update|cancel)\s*\(/i,
-  // The HTTP API, any provider: `/v1/refunds`, `/refunds`, `/refund`.
-  /['"`][^'"`\n]*\/refunds?\b/i,
+  // The HTTP API, any provider: `/v1/refunds`, `/payments/<id>/refund`. Not a module path such as
+  // './refunds': observing refund notices is allowed (D127 4.4).
+  /['"`][^'"`\n]*\/v\d+\/refunds?\b/i,
+  /['"`][^'"`\n]*\/(?:payments?|charges?|transactions?)\/[^'"`\n]*\/refunds?\b/i,
   // A method or helper: `.refund(…)`, `createRefund(…)`, `issue_refund(…)`.
   /\.\s*refund\s*\(/i,
   /\b(?:create|issue|make|send|start|do)_?refund\s*\(/i,
@@ -57,7 +59,7 @@ describe('the no-refund guard', () => {
       'await stripe.refunds.create({ payment_intent: id })',
       'await client.refunds?.create(params)',
       "await fetch('https://api.stripe.com/v1/refunds', init)",
-      "const url = base + '/payments/' + id + '/refund'",
+      "await post('/payments/py_1/refund')",
       'await provider.refund(paymentRef)',
       'await createRefund(payment)',
       'issue_refund(id)',
@@ -68,6 +70,8 @@ describe('the no-refund guard', () => {
       '// Restro never refunds; the venue refunds in its own dashboard.',
       "const reason = 'no refund from the app'",
       'refundable: false',
+      "import { recordRefundNotice } from './refunds'",
+      "const help = '/refund-policy'",
     ]) {
       expect(refundCalls(prose), prose).toEqual([])
     }

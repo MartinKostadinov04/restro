@@ -30,6 +30,8 @@ export type ConnectorKind = {
   words: string[]
   /** Source folders of the package. Folders that do not exist (yet) are fine. */
   dirs: string[]
+  /** A payment provider rather than a POS (D127): its words stay out of the POS's shared files. */
+  payment?: true
 }
 
 /** Registered connector kinds, POS and payment provider alike. A new kind adds its words to the
@@ -53,12 +55,14 @@ export const CONNECTORS: ConnectorKind[] = [
     kind: 'stripe',
     words: ['stripe'],
     dirs: ['packages/payments/stripe/src', 'apps/web/src/connectors/stripe'],
+    payment: true,
   },
   // The simulated payment provider (#103) owns no words, like the simulated POS.
   {
     kind: 'sim-pay',
     words: [],
     dirs: ['packages/payments/sim-pay/src', 'apps/web/src/connectors/sim-pay'],
+    payment: true,
   },
 ]
 
@@ -76,9 +80,6 @@ const CONNECTOR_ZONES: Zone[] = CONNECTORS.map(
   }),
 )
 
-/** The payment providers' kinds (D127): their words stay out of the POS connectors' files. */
-const PAYMENT_KINDS = ['stripe', 'sim-pay']
-
 /** Zones, most specific first: a file belongs to the first zone that includes it. */
 export const ZONES: Zone[] = [
   ...CONNECTOR_ZONES,
@@ -88,7 +89,7 @@ export const ZONES: Zone[] = [
     name: 'web-connectors',
     mode: 'wall',
     include: ['apps/web/src/connectors'],
-    ownWords: CONNECTORS.filter((connector) => !PAYMENT_KINDS.includes(connector.kind)).flatMap(
+    ownWords: CONNECTORS.filter((connector) => !connector.payment).flatMap(
       (connector) => connector.words,
     ),
   },

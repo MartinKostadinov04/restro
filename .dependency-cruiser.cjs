@@ -226,11 +226,11 @@ module.exports = {
       name: 'notice-route-records-only',
       severity: 'error',
       comment:
-        'The notice route (apps/web/app/api/payments/notices/) may import from @restro/core/service only its notices module (`@restro/core/service/notices`, `recordProviderNotice`): it stores the notice, and a worker job acts on it.',
+        'The notice route (apps/web/app/api/payments/notices/) may import from @restro/core/service only its notices module (`@restro/core/service/notices`, a file or a folder, exporting `recordProviderNotice`): it stores the notice, and a worker job acts on it.',
       from: { path: '^apps/web/app/api/payments/notices/' },
       to: {
         path: ['^packages/core/src/service/', '^@restro/core/service(/|$)'],
-        pathNot: ['^packages/core/src/service/notices\\.ts$', '^@restro/core/service/notices$'],
+        pathNot: ['^packages/core/src/service/notices(\\.ts$|/)', '^@restro/core/service/notices$'],
       },
     },
 
