@@ -25,6 +25,21 @@ export {
 } from '../pin-guard'
 export { ACTION_RING_SIZE } from './action-ring'
 export {
+  type BillLineView,
+  type BillPartView,
+  type BillView,
+  billBackendValues,
+  checkBillIdKey,
+  FRESH_READING_MS,
+  forbiddenPaths,
+  MIN_BILL_ID_KEY_LENGTH,
+  type ReadBill,
+  type ReadLine,
+  type TableReading,
+  TableReadingSchema,
+  wantsFreshReading,
+} from './bill'
+export {
   SERVICE_COMMANDS,
   type ServiceCommand,
   ServiceCommandSchema,

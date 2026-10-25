@@ -65,6 +65,11 @@ export interface WorkerConfig {
    */
   readonly revealToken: string | null
   /**
+   * The key of a reading's bill and line ids (BILL_ID_KEY, #74), or null: the table readings are
+   * then not registered.
+   */
+  readonly billIdKey: string | null
+  /**
    * False (WORKER_POS_SYNC=off): no POS sync job is registered even with the seal keys set. For
    * a worker that holds the keys only to seal and reveal table codes (the end-to-end tests).
    */
@@ -147,6 +152,8 @@ const BAD_HOST_SUFFIXES =
 const BAD_PRODUCTION_HOSTS =
   'must be a comma-separated list of bare host names (no scheme, port or path).'
 const BAD_REVEAL_TOKEN =
+  'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
+const BAD_BILL_ID_KEY =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
 const BAD_POS_SYNC = 'must be on or off.'
 
@@ -257,6 +264,14 @@ function environmentSchema(defaultWorkerId: () => string) {
           .regex(/^\S{32,256}$/, { error: BAD_REVEAL_TOKEN })
           .optional(),
       ),
+      BILL_ID_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^\S{32,256}$/, { error: BAD_BILL_ID_KEY })
+          .optional(),
+      ),
       WORKER_POS_SYNC: z.preprocess(
         unsetWhenBlank,
         z
@@ -356,6 +371,7 @@ function environmentSchema(defaultWorkerId: () => string) {
         assets,
         publish,
         revealToken: env.REVEAL_SERVICE_TOKEN ?? null,
+        billIdKey: env.BILL_ID_KEY ?? null,
         posSync: env.WORKER_POS_SYNC === 'on',
       }
     })
@@ -385,6 +401,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `SIM_POS_ALLOWED_HOSTS` | comma-separated hosts a staging demo's simulated POS runs on; local hosts are always allowed; production refuses a `sim` instance outright | none |
  * | `ASSET_STORE`, `LOCAL_ASSET_DIR`, `R2_*` | where barsy photos go (see @restro/assets) | local in development |
  * | `REVEAL_SERVICE_TOKEN` | bearer token of the reveal endpoint (32+ characters); without it the endpoint is off | unset |
+ * | `BILL_ID_KEY` | key of a reading's `rd_` and `bn_` ids (32+ characters, #74); without it no table reading runs | unset |
  * | `WORKER_POS_SYNC` | `off` registers no POS sync job even with the seal keys (end-to-end tests) | on |
  */
 export function loadConfig(

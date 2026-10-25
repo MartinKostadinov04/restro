@@ -9,18 +9,14 @@
 import { z } from 'zod'
 
 import { CurrencySchema } from '../../money'
+import { DecimalQuantitySchema } from '../../quantity'
 import { PosRefSchema } from './pos-ref'
 
 // ---------------------------------------------------------------------------------------------
 // Values
 
-/**
- * A quantity as the POS sent it, as decimal text ("2", "0.5", "-1"): never a float (rule 8). A
- * line total is never recomputed from quantity × price; the POS's own line amount is carried.
- */
-export const DecimalQuantitySchema = z
-  .string()
-  .regex(/^-?(0|[1-9]\d{0,14})(\.\d{1,6})?$/, 'a decimal quantity as text, such as "2" or "0.5"')
+/** A quantity as the POS sent it, as decimal text (`quantity.ts`, shared with the bill). */
+export { DecimalQuantitySchema }
 
 /** A quantity Restro sends: decimal text above zero. */
 export const OrderQuantitySchema = DecimalQuantitySchema.refine(

@@ -112,7 +112,7 @@ export type FloorOutcome =
     }
 
 /** An instance's active connection pause, if any (the instance owns it, not a venue). */
-async function connectionPaused(
+export async function connectionPaused(
   pool: DbPool,
   tenantId: string,
   integrationId: string,
@@ -302,7 +302,8 @@ export async function readFloorOf(
   return finish('completed', { kind: 'read', counters, notes }, counters, notes)
 }
 
-const SHARED_BUDGETS = new InstanceBudgets()
+/** The instance budgets of this process: the floor and table reads share them. */
+export const SHARED_BUDGETS = new InstanceBudgets()
 
 /** The mapped venues of the floor-reading kinds, with when each was last read. */
 export async function floorTargets(pool: DbPool, sim: SimPolicy) {

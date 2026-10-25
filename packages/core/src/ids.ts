@@ -1,5 +1,8 @@
 // Opaque, kind-prefixed ids (CLAUDE.md "Ids"; doc "Identity and linking"). Never sequential,
-// never derived from a barsy id: `kind_` + 22 base62 characters encoding 128 random bits.
+// never derived from a barsy id: `kind_` + 22 base62 characters encoding 128 random bits. The
+// one exception is a reading's bill and line ids (#74): 128 bits of a keyed HMAC of the tenant
+// and the POS row (`idFromBytes`), so they stay the same across readings and still reveal
+// nothing about the POS id without the key.
 
 import { z } from 'zod'
 
@@ -9,7 +12,8 @@ import { z } from 'zod'
  * `sr` source record, `tg` tag (a venue-defined tag of the guest menu, D60), `ar` area (a hall
  * or other group of tables, D95). Ordering (D122 §9, D124): `br` bar, `st` sitting, `to` table
  * order, `ol` order line, `so` sent order, `wc` waiter call, `al` alert, `pa` pause, `rl` venue
- * role, `sm` staff member, `dv` shared device. Paying (D127): `py` payment.
+ * role, `sm` staff member, `dv` shared device. Paying (D127): `py` payment. Readings (#74): `rd`
+ * one POS bill of a table's reading, `bn` one line of it.
  */
 export const ID_KINDS = [
   'nd',
@@ -39,6 +43,8 @@ export const ID_KINDS = [
   'sm',
   'dv',
   'py',
+  'rd',
+  'bn',
 ] as const
 
 /** One of the id kind prefixes. */
@@ -101,6 +107,10 @@ export type StaffMemberId = Id<'sm'>
 export type SharedDeviceId = Id<'dv'>
 /** Id of a payment from a phone (D127); also the key of its provider calls' idempotency. */
 export type PaymentId = Id<'py'>
+/** Id of one POS bill of a table's reading (#74): stable across readings, never the POS's id. */
+export type BillId = Id<'rd'>
+/** Id of one line of a POS bill of a table's reading (#74), stable across readings. */
+export type BillLineId = Id<'bn'>
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const RANDOM_BYTES = 16
@@ -114,9 +124,14 @@ function isIdKind(value: unknown): value is IdKind {
 
 /** 22 base62 characters from 16 bytes of `crypto.getRandomValues` (128 random bits). */
 function randomBase62Body(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(RANDOM_BYTES))
+  return base62Body(crypto.getRandomValues(new Uint8Array(RANDOM_BYTES)))
+}
+
+/** 22 base62 characters encoding the first 16 bytes. */
+function base62Body(bytes: Uint8Array): string {
+  if (bytes.length < RANDOM_BYTES) throw new TypeError(`an id needs ${RANDOM_BYTES} bytes`)
   let value = 0n
-  for (const byte of bytes) value = (value << 8n) | BigInt(byte)
+  for (const byte of bytes.subarray(0, RANDOM_BYTES)) value = (value << 8n) | BigInt(byte)
   let body = ''
   for (let i = 0; i < BODY_LENGTH; i++) {
     body = BASE62[Number(value % 62n)] + body
@@ -129,6 +144,15 @@ function randomBase62Body(): string {
 export function newId<K extends IdKind>(kind: K): Id<K> {
   if (!isIdKind(kind)) throw new TypeError(`unknown id kind: ${String(kind)}`)
   return `${kind}_${randomBase62Body()}`
+}
+
+/**
+ * An id made from the first 16 bytes given: for ids that must stay the same for the same thing,
+ * where the bytes are a keyed HMAC (a reading's bill and line ids, #74). Never pass raw POS data.
+ */
+export function idFromBytes<K extends IdKind>(kind: K, bytes: Uint8Array): Id<K> {
+  if (!isIdKind(kind)) throw new TypeError(`unknown id kind: ${String(kind)}`)
+  return `${kind}_${base62Body(bytes)}`
 }
 
 /**

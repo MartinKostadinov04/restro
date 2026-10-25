@@ -129,6 +129,7 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
       revealToken: null,
+      billIdKey: null,
       posSync: true,
     }
     const logger = await createLogger({

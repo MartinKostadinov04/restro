@@ -77,8 +77,11 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### See the bill
 - **Shell key:** `bill` (slot `menu.bill`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the table's bill as the host holds it (rounds from guests and staff, line statuses, total); the template adds up nothing.
-- **Where:** §5.5, §10.2, §10.3; D71, D72
+- **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing:
+  - its lines, from guests and staff alike, nothing marking a line as "from your phones": the name of our own item, or "Other item" (worded by the shell) where the POS line is no item of ours; the quantity as the POS gives it, which may be a decimal ("0.5"); the POS's own signed amount, so a discount shows negative and a free line at 0, as the POS gives them;
+  - the POS's total, what is paid and what is still owed, and a part being paid marked as such;
+  - when it was read. When the latest reading failed, the last good bill is drawn marked as not up to date, never an empty bill. Opening the bill asks the host for a fresh reading when the one shown is older than 15 seconds.
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D111
 
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)

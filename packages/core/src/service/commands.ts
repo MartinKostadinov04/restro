@@ -4,7 +4,8 @@
 // the rest of its payload: the machinery around them (origins, permissions, provenance, locks,
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
 // table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
-// shared devices (#72), and tables open for phones with their sittings (#73).
+// shared devices (#72), tables open for phones with their sittings (#73), and the readings of a
+// table's bill with the sitting's end by a reading (#74).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -14,6 +15,7 @@ import { z } from 'zod'
 import { idSchema } from '../ids'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import { recordReading } from './readings'
 import {
   closeAllTables,
   closeTable,
@@ -299,8 +301,8 @@ export const SERVICE_COMMANDS = {
   // The floor reading (#71): a vanished table pauses its sitting, a returned one lifts the pause.
   'floor.table_vanished': tableVanished(),
   'floor.table_returned': tableReturned(),
-  'reading.record': workerStep('reading.record', { tableId }), // #74
-  'sitting.end': workerStep('sitting.end', { tableId }), // #74
+  // #74: a reading of the table's bill, which ends the sitting when it shows the bill closed.
+  'reading.record': recordReading(),
   'sent_order.transition': workerStep('sent_order.transition', {
     sentOrderId: idSchema('so'),
   }), // #77

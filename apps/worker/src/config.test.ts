@@ -38,6 +38,7 @@ describe('loadConfig', () => {
       // And the publish store under .local/cdn.
       publish: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]cdn$/) },
       revealToken: null,
+      billIdKey: null,
       posSync: true,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
@@ -61,6 +62,7 @@ describe('loadConfig', () => {
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
         SIM_POS_ALLOWED_HOSTS: 'Demo.Restro.test, sim.staging.example',
         REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
+        BILL_ID_KEY: ` ${'k'.repeat(40)} `,
         WORKER_POS_SYNC: ' OFF ',
       }),
     ).toEqual({
@@ -81,6 +83,7 @@ describe('loadConfig', () => {
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
       publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
       revealToken: REVEAL_TOKEN,
+      billIdKey: 'k'.repeat(40),
       posSync: false,
     })
   })
@@ -101,17 +104,19 @@ describe('loadConfig', () => {
     expect(loadConfig({ DATABASE_URL: URL }).sim).toEqual({ env: 'development', allowHosts: [] })
   })
 
-  it('refuses a short reveal token and an unknown WORKER_POS_SYNC, without repeating them', () => {
+  it('refuses a short reveal token or bill-id key and an unknown WORKER_POS_SYNC, without repeating them', () => {
     const lines = problemsOf({
       DATABASE_URL: URL,
       REVEAL_SERVICE_TOKEN: 'short-token',
+      BILL_ID_KEY: 'short-key',
       WORKER_POS_SYNC: 'sometimes',
     })
     expect(lines.map((line) => line.split(' ')[0])).toEqual([
       'REVEAL_SERVICE_TOKEN',
+      'BILL_ID_KEY',
       'WORKER_POS_SYNC',
     ])
-    expect(lines.join('\n')).not.toMatch(/short-token|sometimes/)
+    expect(lines.join('\n')).not.toMatch(/short-token|short-key|sometimes/)
   })
 
   it('refuses unusable barsy and asset settings by name, without repeating the values', () => {

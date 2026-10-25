@@ -87,6 +87,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
       revealToken: null,
+      billIdKey: null,
       posSync: true,
     }
     worker = await startWorker(config, {
@@ -353,10 +354,12 @@ describe('buildJobs', () => {
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
     ])
-    // One warning per missing setting: the sealing keys, and the purge connection (D83).
-    expect(warnings).toHaveLength(2)
+    // One warning per missing setting: the sealing keys, the purge connection (D83) and the
+    // bill-id key of the table readings (#74).
+    expect(warnings).toHaveLength(3)
     expect(warnings.some((warning) => warning.includes('SEAL_PUBLIC_KEY'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('BILL_ID_KEY'))).toBe(true)
     for (const warning of warnings) expect(warning).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
@@ -430,5 +433,27 @@ describe('buildJobs', () => {
       JOB_NAMES.purgeTick,
     ])
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(false)
+  })
+
+  it('with BILL_ID_KEY it adds the table reading and its tick beside the floor reading (#74)', async () => {
+    const { loadConfig } = await import('../src/config')
+    const config = loadConfig({
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      BILL_ID_KEY: 'k'.repeat(40),
+    })
+    const warnings: string[] = []
+    const jobs = await buildJobs(config, {
+      warn: (message: string) => warnings.push(message),
+    } as never)
+    const names = jobs.map((job) => job.name)
+    expect(
+      names.slice(names.indexOf(JOB_NAMES.floorRead), names.indexOf(JOB_NAMES.floorRead) + 4),
+    ).toEqual([
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
+      JOB_NAMES.tableRead,
+      JOB_NAMES.tableReadTick,
+    ])
+    expect(warnings.some((warning) => warning.includes('BILL_ID_KEY'))).toBe(false)
   })
 })

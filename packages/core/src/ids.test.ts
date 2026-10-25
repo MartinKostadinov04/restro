@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ID_KINDS, type IdKind, idSchema, isId, newId } from './ids'
+import { ID_KINDS, type IdKind, idFromBytes, idSchema, isId, newId } from './ids'
 
 describe('newId', () => {
   it('makes kind_ + 22 base62 characters for every kind', () => {
@@ -52,5 +52,23 @@ describe('isId', () => {
     const schema = idSchema('as')
     expect(schema.safeParse(newId('as')).success).toBe(true)
     expect(schema.safeParse(newId('nd')).success).toBe(false)
+  })
+})
+
+describe('idFromBytes (#74)', () => {
+  it('makes a valid id of the kind from the first 16 bytes, the same each time', () => {
+    const bytes = Uint8Array.from({ length: 32 }, (_, i) => i * 7)
+    const id = idFromBytes('rd', bytes)
+    expect(isId('rd', id)).toBe(true)
+    expect(idFromBytes('rd', bytes)).toBe(id)
+    expect(idFromBytes('bn', bytes).slice(3)).toBe(id.slice(3))
+    const tail = Uint8Array.from(bytes)
+    tail[20] = 255
+    expect(idFromBytes('rd', tail)).toBe(id)
+  })
+
+  it('refuses fewer than 16 bytes and an unknown kind', () => {
+    expect(() => idFromBytes('rd', new Uint8Array(15))).toThrow(TypeError)
+    expect(() => idFromBytes('xx' as IdKind, new Uint8Array(16))).toThrow(TypeError)
   })
 })
