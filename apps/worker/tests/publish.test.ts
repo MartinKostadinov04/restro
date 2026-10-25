@@ -783,6 +783,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         assets: { kind: 'local', dir: tmpdir() },
         publish: { kind: 'local', dir: root },
         revealToken: null,
+        billIdKey: null,
         posSync: true,
       }
       worker = await startWorker(config, { logger, jobs: [...jobs.values()] })

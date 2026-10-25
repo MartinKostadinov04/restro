@@ -44,6 +44,8 @@ export interface ServiceTx extends LeaseTx {
   readonly sealPublicKey: KeyObject | string | null
   /** The PIN pepper, when the caller passed one (a new PIN's HMAC is keyed with it). */
   readonly pinPepper: string | null
+  /** The bill-id key, when the caller passed one (a reading's `rd_` and `bn_` ids, #74). */
+  readonly billIdKey: string | null
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
 }

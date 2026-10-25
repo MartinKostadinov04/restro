@@ -21,7 +21,15 @@
 // Locks: the table rows first (`FOR SHARE` to open, `FOR UPDATE` to mark a payment table), so an
 // open and a mark never cross; then the sittings and the order rows in the fixed order (rows.ts).
 
-import { areas, logEntries, pauses, sittings, tableOrders, venueTables } from '@restro/db'
+import {
+  areas,
+  billReadings,
+  logEntries,
+  pauses,
+  sittings,
+  tableOrders,
+  venueTables,
+} from '@restro/db'
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { setPaymentTableIn } from '../apply/tables'
@@ -189,9 +197,9 @@ async function startSitting(
 
 /**
  * Ends an open sitting, which the caller locked `update`: its order is emptied (lines, the earlier
- * order, the ring of recent actions), the table's version rises, the sitting gets its end and
- * reason, and the Log says so. Nothing is deleted. The readings ticket (#74) ends a sitting
- * through this too.
+ * order, the ring of recent actions), the reading of the table's bill is emptied (kept for
+ * minutes, never as a record), the table's version rises, the sitting gets its end and reason,
+ * and the Log says so. Nothing is deleted. A reading ends a sitting through this too (#74).
  */
 export async function endSitting(
   stx: ServiceTx,
@@ -216,6 +224,11 @@ export async function endSitting(
     if (emptied !== undefined) stx.rows.rememberOrder(emptied)
     stx.rows.touch(sitting.tableId)
   }
+  stx.rows.claim('bill_reading', [sitting.tableId])
+  await stx.tx
+    .update(billReadings)
+    .set({ bills: [], ...stx.provenance })
+    .where(eq(billReadings.tableId, sitting.tableId))
   await stx.tx
     .update(sittings)
     .set({ endedAt: sql`now()`, endReason: reason, ...stx.provenance, updatedAt: sql`now()` })

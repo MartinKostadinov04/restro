@@ -79,6 +79,8 @@ export interface ServiceOptions {
   readonly sealPublicKey?: KeyObject | string
   /** The PIN pepper (`STAFF_PIN_PEPPER`), for the commands that issue a PIN. */
   readonly pinPepper?: string
+  /** The bill-id key (`BILL_ID_KEY`), for recording a reading of a table's bill (#74). */
+  readonly billIdKey?: string
 }
 
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
@@ -177,6 +179,7 @@ export async function executeCommand(
         permissions: grants.permissions,
         sealPublicKey: options.sealPublicKey ?? null,
         pinPepper: options.pinPepper ?? null,
+        billIdKey: options.billIdKey ?? null,
         log: (entry) =>
           appendLogEntry(
             tx,
