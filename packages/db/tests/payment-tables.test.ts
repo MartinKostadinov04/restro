@@ -340,14 +340,14 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       ),
     )
     expect(withDeadline).toMatch(/locks_holder_deadline/)
-    const slotWithout = await databaseError(
-      withTenantWrite(app, a.tenantId, (tx) =>
-        tx
-          .insert(locks)
-          .values({ ...base, scope: 'order_slot', key: a.tableId, holder: a.paymentId }),
-      ),
-    )
-    expect(slotWithout).toMatch(/locks_holder_deadline/)
+    for (const scope of ['order_slot', 'order_payment', 'bill_payment'] as const) {
+      const heldWithout = await databaseError(
+        withTenantWrite(app, a.tenantId, (tx) =>
+          tx.insert(locks).values({ ...base, scope, key: a.tableId, holder: a.paymentId }),
+        ),
+      )
+      expect(heldWithout, scope).toMatch(/locks_holder_deadline/)
+    }
     // Nothing takes over a deadline-free hold: the take's condition never sees it expire.
     const { rows } = await owner.query(
       `select coalesce(deadline < now(), false) as expired from restro.locks
