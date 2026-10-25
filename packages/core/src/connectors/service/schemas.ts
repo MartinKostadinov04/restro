@@ -99,17 +99,23 @@ export const RefusalSchema = z
   })
 export type Refusal = z.output<typeof RefusalSchema>
 
-/** What a write step answers: done, a definite "no", or `unknown` (a timeout: read back, D115). */
-export function writeOutcomeSchema<R extends z.ZodType>(result: R) {
+/**
+ * What a write step answers: done, a definite "no", or `unknown` (a timeout: read back, D115).
+ * The payment provider seam reuses it with its own refusal (`connectors/payment`).
+ */
+export function writeOutcomeSchema<R extends z.ZodType, F extends z.ZodType = typeof RefusalSchema>(
+  result: R,
+  refusal: F = RefusalSchema as unknown as F,
+) {
   return z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('done'), result }),
-    z.strictObject({ kind: z.literal('refused'), refusal: RefusalSchema }),
+    z.strictObject({ kind: z.literal('refused'), refusal }),
     z.strictObject({ kind: z.literal('unknown'), reason: z.string().max(500) }),
   ])
 }
-export type WriteOutcome<R> =
+export type WriteOutcome<R, F = Refusal> =
   | { readonly kind: 'done'; readonly result: R }
-  | { readonly kind: 'refused'; readonly refusal: Refusal }
+  | { readonly kind: 'refused'; readonly refusal: F }
   | { readonly kind: 'unknown'; readonly reason: string }
 
 /** What a read answers. An incomplete reading concludes nothing (rule 6), never a shorter list. */

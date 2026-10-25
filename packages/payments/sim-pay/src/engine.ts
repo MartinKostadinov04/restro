@@ -1,0 +1,497 @@
+// The simulated provider's engine (#103): venue accounts, payments, an idempotency store and a
+// ledger of money moved, in memory, with an injected clock and no I/O. It claims nothing about
+// any real provider: what a careful provider does is built in, each choice the platform could
+// lean on starts on its cautious answer (`SimPaySwitches`), and faults are scripted one call at a
+// time (`SimPayFaults`).
+//
+// The rules it keeps:
+//   - only `capture` moves money, once, never above the hold; a smaller capture releases the rest;
+//   - the same idempotency key with the same request answers the stored answer again (a stored
+//     server error included); with another request it is refused (`key_reused`);
+//   - a hold not captured by its `captureBefore` is dropped (read as released);
+//   - two payments carrying one payment id make the read-back incomplete: it concludes nothing.
+
+import {
+  addMinor,
+  type CaptureRequest,
+  type ConnectionStatus,
+  type CreateHoldRequest,
+  type CreateHoldResult,
+  type Currency,
+  type EmptyResult,
+  type PaymentId,
+  type PaymentRefusal,
+  type PaymentRefusalCode,
+  type PaymentWallet,
+  type PaymentWriteOutcome,
+  type PrepareDomainRequest,
+  type ProviderFormValues,
+  ProviderFormValuesSchema,
+  type ProviderPayment,
+  type ProviderRef,
+  providerRef,
+  type Reading,
+  type ReleaseRequest,
+  type StartConnectionRequest,
+  type StartConnectionResult,
+  type ThreeDsResult,
+} from '@restro/core'
+
+import type { Clock } from './clock'
+
+const DAY_MS = 86_400_000
+
+/** What the simulated provider declares; each starts on the cautious answer. */
+export interface SimPaySwitches {
+  /** The hold window, in days. */
+  readonly holdDays: number
+  /** A smaller capture takes that much and releases the rest. */
+  readonly partialCapture: boolean
+  /** Wallets in the card form: none, so a feature that needs one stays off. */
+  readonly wallets: readonly PaymentWallet[]
+  /** No refund notices, so the platform's fallback (the daily list) is exercised. */
+  readonly refundNotices: boolean
+  /** The smallest amount, in minor units, per currency. */
+  readonly minimumMinor: { readonly [C in Currency]: number }
+}
+
+export const CAUTIOUS_SWITCHES: SimPaySwitches = Object.freeze({
+  holdDays: 7,
+  partialCapture: true,
+  wallets: [],
+  refundNotices: false,
+  minimumMinor: Object.freeze({ EUR: 50 }),
+})
+
+/** The writes a fault can hit. */
+export type SimPayStep = 'createHold' | 'capture' | 'release'
+
+/** What a scripted fault does to the next call of its step. */
+export type SimPayFault =
+  | { readonly kind: 'land_then_timeout' }
+  | { readonly kind: 'timeout_before' }
+  | { readonly kind: 'refuse'; readonly code?: PaymentRefusalCode }
+  | { readonly kind: 'server_error' }
+
+interface SimAccount {
+  readonly ref: ProviderRef
+  canTakePayments: boolean
+  missing: string[]
+  readonly domains: Set<string>
+  /** Money moved on the account, in minor units: the sum of its captures. */
+  movedMinor: number
+}
+
+interface SimPayment {
+  readonly ref: ProviderRef
+  readonly account: string
+  readonly paymentId: PaymentId
+  readonly currency: Currency
+  readonly amountMinor: number
+  status: ProviderPayment['status']
+  needsGuestAction: boolean
+  /** The bank asks the guest for a step when the guest pays. */
+  readonly needsStep: boolean
+  heldMinor: number
+  capturedMinor: number
+  /** The hold ran out uncaptured (`captureBefore` passed). */
+  expired: boolean
+  captureBefore: Date | null
+  threeDs: ThreeDsResult | null
+  authorisationCode: string | null
+}
+
+interface Stored {
+  readonly step: string
+  readonly request: string
+  readonly answer: PaymentWriteOutcome<unknown>
+}
+
+export class SimPayEngine {
+  readonly switches: SimPaySwitches
+  readonly #clock: Clock
+  readonly #accounts = new Map<string, SimAccount>()
+  readonly #payments = new Map<string, SimPayment>()
+  readonly #stored = new Map<string, Stored>()
+  readonly #faults = new Map<SimPayStep, SimPayFault>()
+  #failReads = false
+  #nextHoldNeedsStep = false
+  #counter = 0
+
+  constructor(options: { readonly clock: Clock; readonly switches?: Partial<SimPaySwitches> }) {
+    this.#clock = options.clock
+    this.switches = Object.freeze({ ...CAUTIOUS_SWITCHES, ...options.switches })
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Set-up and inspection (tests, the harness)
+
+  /** A venue account that has finished connecting and can take payments. */
+  addAccount(): ProviderRef {
+    const account = this.#newAccount()
+    account.canTakePayments = true
+    account.missing = []
+    return account.ref
+  }
+
+  /** The owner finishes the hosted form: the account can take payments. */
+  finishConnecting(accountRef: ProviderRef): void {
+    const account = this.#account(accountRef)
+    if (account === undefined) throw new Error(`no account ${accountRef.provider}`)
+    account.canTakePayments = true
+    account.missing = []
+  }
+
+  /** Money moved on the account so far, in minor units. */
+  movedMinor(accountRef: ProviderRef): number {
+    return this.#account(accountRef)?.movedMinor ?? 0
+  }
+
+  /** Every payment carrying `paymentId` on the account (the property test counts them). */
+  paymentsOf(accountRef: ProviderRef, paymentId: PaymentId): ProviderPayment[] {
+    return [...this.#payments.values()]
+      .filter((p) => p.account === accountRef.provider && p.paymentId === paymentId)
+      .map((p) => this.#view(p))
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Faults
+
+  /** The next call of `step` meets `fault`. */
+  fault(step: SimPayStep, fault: SimPayFault): void {
+    this.#faults.set(step, fault)
+  }
+
+  /** Every read from now on fails part-way, until `clearFaults`. */
+  failReads(): void {
+    this.#failReads = true
+  }
+
+  /** The next hold's bank asks the guest for a step (3-D Secure). */
+  nextHoldNeedsStep(): void {
+    this.#nextHoldNeedsStep = true
+  }
+
+  clearFaults(): void {
+    this.#faults.clear()
+    this.#failReads = false
+    this.#nextHoldNeedsStep = false
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // The guest at the card form
+
+  readonly guest = {
+    /** A card the bank accepts: held, unless the bank asks for a step first. */
+    pay: (paymentRef: ProviderRef): void => {
+      const payment = this.#guestPayment(paymentRef)
+      if (payment.needsStep) {
+        payment.needsGuestAction = true
+        return
+      }
+      this.#hold(payment, 'authenticated')
+    },
+    /** The guest finishes the bank's step. */
+    completeStep: (paymentRef: ProviderRef): void => {
+      const payment = this.#guestPayment(paymentRef)
+      if (!payment.needsGuestAction) throw new Error('the bank asked for no step')
+      this.#hold(payment, 'authenticated')
+    },
+    /** A card the bank declines. */
+    decline: (paymentRef: ProviderRef): void => {
+      const payment = this.#guestPayment(paymentRef)
+      payment.status = 'failed'
+      payment.needsGuestAction = false
+      payment.threeDs = 'failed'
+    },
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // The provider's steps
+
+  startConnection(request: StartConnectionRequest): PaymentWriteOutcome<StartConnectionResult> {
+    return this.#write(null, 'startConnection', request, () => {
+      const account =
+        request.accountRef === null ? this.#newAccount() : this.#account(request.accountRef)
+      if (account === undefined) return refused('not_found', 'account')
+      return done({
+        accountRef: account.ref,
+        redirectUrl: `https://connect.sim-pay.test/onboard/${account.ref.provider}`,
+      })
+    })
+  }
+
+  readConnection(accountRef: ProviderRef): Reading<ConnectionStatus> {
+    if (this.#failReads) return { complete: false, reason: 'the account read failed part-way' }
+    const account = this.#account(accountRef)
+    if (account === undefined) return complete({ canTakePayments: false, missing: ['account'] })
+    return complete({ canTakePayments: account.canTakePayments, missing: [...account.missing] })
+  }
+
+  prepareDomain(request: PrepareDomainRequest): PaymentWriteOutcome<EmptyResult> {
+    return this.#accountWrite(request.accountRef, 'prepareDomain', request, (account) => {
+      if (this.switches.wallets.length === 0) return refused('not_supported', 'account')
+      account.domains.add(request.host)
+      return done({})
+    })
+  }
+
+  createHold(request: CreateHoldRequest): PaymentWriteOutcome<CreateHoldResult> {
+    return this.#accountWrite(request.accountRef, 'createHold', request, (account) => {
+      if (request.amountMinor < this.switches.minimumMinor[request.currency]) {
+        return refused('amount_too_small', 'payment')
+      }
+      const ref = providerRef(`simpay_${this.#next()}`)
+      this.#payments.set(ref.provider, {
+        ref,
+        account: account.ref.provider,
+        paymentId: request.paymentId,
+        currency: request.currency,
+        amountMinor: request.amountMinor,
+        status: 'awaiting_guest',
+        needsGuestAction: false,
+        needsStep: this.#takeNextHoldNeedsStep(),
+        heldMinor: 0,
+        capturedMinor: 0,
+        expired: false,
+        captureBefore: null,
+        threeDs: null,
+        authorisationCode: null,
+      })
+      return done({ paymentRef: ref, form: formValues(account.ref, ref) })
+    })
+  }
+
+  findByPaymentId(accountRef: ProviderRef, paymentId: PaymentId): Reading<ProviderPayment | null> {
+    if (this.#failReads) return { complete: false, reason: 'the search failed part-way' }
+    const found = [...this.#payments.values()].filter(
+      (p) => p.account === accountRef.provider && p.paymentId === paymentId,
+    )
+    if (found.length > 1) {
+      return { complete: false, reason: 'more than one payment carries this payment id' }
+    }
+    const [payment] = found
+    return complete(payment === undefined ? null : this.#view(payment))
+  }
+
+  readPayment(accountRef: ProviderRef, paymentRef: ProviderRef): Reading<ProviderPayment> {
+    if (this.#failReads) return { complete: false, reason: 'the payment read failed part-way' }
+    const payment = this.#payments.get(paymentRef.provider)
+    if (payment === undefined || payment.account !== accountRef.provider) {
+      return { complete: false, reason: 'no such payment on this account' }
+    }
+    return complete(this.#view(payment))
+  }
+
+  capture(request: CaptureRequest): PaymentWriteOutcome<ProviderPayment> {
+    return this.#accountWrite(request.accountRef, 'capture', request, (account) => {
+      const payment = this.#paymentOf(account, request.paymentRef)
+      if (payment === undefined) return refused('not_found', 'payment')
+      if (payment.status === 'captured') return refused('already_captured', 'payment')
+      if (payment.status !== 'held') {
+        return refused(payment.expired ? 'hold_expired' : 'not_held', 'payment')
+      }
+      if (request.amountMinor > payment.heldMinor) return refused('amount_above_hold', 'payment')
+      if (request.amountMinor < payment.heldMinor && !this.switches.partialCapture) {
+        return refused('partial_not_supported', 'payment')
+      }
+      payment.status = 'captured'
+      payment.capturedMinor = request.amountMinor
+      payment.heldMinor = 0
+      account.movedMinor = addMinor(account.movedMinor, request.amountMinor)
+      return done(this.#view(payment))
+    })
+  }
+
+  release(request: ReleaseRequest): PaymentWriteOutcome<ProviderPayment> {
+    return this.#accountWrite(request.accountRef, 'release', request, (account) => {
+      const payment = this.#paymentOf(account, request.paymentRef)
+      if (payment === undefined) return refused('not_found', 'payment')
+      if (payment.status === 'captured') return refused('already_captured', 'payment')
+      payment.status = 'released'
+      payment.needsGuestAction = false
+      payment.heldMinor = 0
+      return done(this.#view(payment))
+    })
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Inside
+
+  /**
+   * One write: the idempotency store first, then the scripted fault, then the step. Every
+   * answer that started executing (done, refused, a server error) is stored for its key.
+   */
+  #write<R>(
+    accountRef: ProviderRef | null,
+    step: string,
+    request: { readonly idempotencyKey: string },
+    run: (account: SimAccount | null) => PaymentWriteOutcome<R>,
+  ): PaymentWriteOutcome<R> {
+    const account = accountRef === null ? null : this.#account(accountRef)
+    if (account === undefined) return refused('access_lost', 'account')
+    const storeKey = `${accountRef?.provider ?? '-'}|${request.idempotencyKey}`
+    const { idempotencyKey: _key, ...rest } = request
+    const digest = `${step}:${JSON.stringify(rest)}`
+    const stored = this.#stored.get(storeKey)
+    if (stored !== undefined) {
+      if (stored.request !== digest) return refused('key_reused', 'payment')
+      return stored.answer as PaymentWriteOutcome<R>
+    }
+    const fault = this.#takeFault(step)
+    if (fault?.kind === 'timeout_before') return timedOut()
+    let answer: PaymentWriteOutcome<R>
+    if (fault?.kind === 'server_error') {
+      answer = {
+        kind: 'unknown',
+        reason: 'the provider answered a server error, stored for this key',
+      }
+    } else if (fault?.kind === 'refuse') {
+      answer = refused(
+        fault.code ?? defaultRefusal(step),
+        scopeOf(fault.code ?? defaultRefusal(step)),
+      )
+    } else if (account !== null && !account.canTakePayments && step !== 'prepareDomain') {
+      answer = refused('account_restricted', 'account')
+    } else {
+      answer = run(account)
+    }
+    this.#stored.set(storeKey, { step, request: digest, answer })
+    return fault?.kind === 'land_then_timeout' ? timedOut() : answer
+  }
+
+  /** A write about one account: the account is known (`#write` refused an unknown one). */
+  #accountWrite<R>(
+    accountRef: ProviderRef,
+    step: SimPayStep | 'prepareDomain',
+    request: { readonly idempotencyKey: string },
+    run: (account: SimAccount) => PaymentWriteOutcome<R>,
+  ): PaymentWriteOutcome<R> {
+    return this.#write(accountRef, step, request, (account) =>
+      account === null ? refused('access_lost', 'account') : run(account),
+    )
+  }
+
+  #takeFault(step: string): SimPayFault | undefined {
+    if (step !== 'createHold' && step !== 'capture' && step !== 'release') return undefined
+    const fault = this.#faults.get(step)
+    this.#faults.delete(step)
+    return fault
+  }
+
+  #takeNextHoldNeedsStep(): boolean {
+    const needs = this.#nextHoldNeedsStep
+    this.#nextHoldNeedsStep = false
+    return needs
+  }
+
+  #newAccount(): SimAccount {
+    const account: SimAccount = {
+      ref: providerRef(`simacct_${this.#next()}`),
+      canTakePayments: false,
+      missing: ['business details', 'bank account'],
+      domains: new Set(),
+      movedMinor: 0,
+    }
+    this.#accounts.set(account.ref.provider, account)
+    return account
+  }
+
+  #account(ref: ProviderRef): SimAccount | undefined {
+    return this.#accounts.get(ref.provider)
+  }
+
+  #paymentOf(account: SimAccount, ref: ProviderRef): SimPayment | undefined {
+    const payment = this.#payments.get(ref.provider)
+    if (payment?.account !== account.ref.provider) return undefined
+    this.#expire(payment)
+    return payment
+  }
+
+  #guestPayment(ref: ProviderRef): SimPayment {
+    const payment = this.#payments.get(ref.provider)
+    if (payment === undefined) throw new Error(`no payment ${ref.provider}`)
+    this.#expire(payment)
+    if (payment.status !== 'awaiting_guest') {
+      throw new Error(`the guest cannot pay a payment that is ${payment.status}`)
+    }
+    return payment
+  }
+
+  #hold(payment: SimPayment, threeDs: ThreeDsResult): void {
+    payment.status = 'held'
+    payment.needsGuestAction = false
+    payment.heldMinor = payment.amountMinor
+    payment.captureBefore = new Date(this.#clock.now().getTime() + this.switches.holdDays * DAY_MS)
+    payment.threeDs = threeDs
+    payment.authorisationCode = `SIM${String(this.#next()).padStart(3, '0')}`
+  }
+
+  /** A hold past its `captureBefore` is dropped, as the provider would drop it. */
+  #expire(payment: SimPayment): void {
+    if (
+      payment.status === 'held' &&
+      payment.captureBefore !== null &&
+      this.#clock.now().getTime() >= payment.captureBefore.getTime()
+    ) {
+      payment.status = 'released'
+      payment.heldMinor = 0
+      payment.expired = true
+    }
+  }
+
+  #view(payment: SimPayment): ProviderPayment {
+    this.#expire(payment)
+    return {
+      ref: payment.ref,
+      paymentId: payment.paymentId,
+      status: payment.status,
+      needsGuestAction: payment.needsGuestAction,
+      currency: payment.currency,
+      amountMinor: payment.amountMinor,
+      heldMinor: payment.heldMinor,
+      capturedMinor: payment.capturedMinor,
+      captureBefore: payment.captureBefore?.toISOString() ?? null,
+      threeDs: payment.threeDs,
+      authorisationCode: payment.authorisationCode,
+    }
+  }
+
+  #next(): number {
+    this.#counter += 1
+    return this.#counter
+  }
+}
+
+function done<R>(result: R): PaymentWriteOutcome<R> {
+  return { kind: 'done', result }
+}
+
+function refused<R>(
+  code: PaymentRefusalCode,
+  scope: PaymentRefusal['scope'],
+): PaymentWriteOutcome<R> {
+  return { kind: 'refused', refusal: { code, scope, detail: null } }
+}
+
+function timedOut<R>(): PaymentWriteOutcome<R> {
+  return { kind: 'unknown', reason: 'the call timed out' }
+}
+
+function complete<T>(value: T): Reading<T> {
+  return { complete: true, value }
+}
+
+/** A capture refused after the venue's close (D127 3.14); any other step loses its access. */
+function defaultRefusal(step: string): PaymentRefusalCode {
+  return step === 'capture' ? 'capture_refused' : 'access_lost'
+}
+
+function scopeOf(code: PaymentRefusalCode): PaymentRefusal['scope'] {
+  return code === 'access_lost' || code === 'account_restricted' ? 'account' : 'payment'
+}
+
+/** What the page's card form for the simulator needs (#108 mounts it). */
+function formValues(account: ProviderRef, payment: ProviderRef): ProviderFormValues {
+  return ProviderFormValuesSchema.parse({ account: account.provider, payment: payment.provider })
+}
