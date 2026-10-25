@@ -39,6 +39,49 @@ describe('the service commands', () => {
     expect(reveal.safeParse({ type: 'table_code.reveal', tableIds: [TABLE] }).success).toBe(true)
   })
 
+  it('builds the people commands (#72): settings.roles, from a person, with a fresh sign-in', () => {
+    const types = [
+      'role.copy',
+      'role.update',
+      'role.archive',
+      'staff.add',
+      'staff.rename',
+      'staff.assign',
+      'staff.unassign',
+      'staff.archive',
+      'staff.link_account',
+      'pin.reset',
+      'pin.reveal',
+      'device.mark_shared',
+      'device.revoke',
+    ] as const
+    for (const type of types) {
+      const definition = SERVICE_COMMANDS[type]
+      expect(definition.permission, type).toBe('settings.roles')
+      expect(definition.origins, type).toEqual(['staff'])
+      expect(definition.freshSignIn, type).toBe(true)
+      expect(definition.handle, type).not.toBeNull()
+    }
+    const add = SERVICE_COMMANDS['staff.add'].schema
+    expect(add.safeParse({ type: 'staff.add', displayName: 'Ana', roleId: 'staff' }).success).toBe(
+      true,
+    )
+    expect(add.safeParse({ type: 'staff.add', displayName: 'Ana', roleId: 'boss' }).success).toBe(
+      false,
+    )
+    expect(add.safeParse({ type: 'staff.add', displayName: '', roleId: 'staff' }).success).toBe(
+      false,
+    )
+    const update = SERVICE_COMMANDS['role.update'].schema
+    expect(
+      update.safeParse({
+        type: 'role.update',
+        roleId: 'rl_0123456789ABCDEFGHIJKL',
+        permissions: ['x'],
+      }).success,
+    ).toBe(false)
+  })
+
   it('parses a command through the union and refuses unknown fields', () => {
     const add = { type: 'order.add', tableId: TABLE, actionId: crypto.randomUUID() }
     expect(ServiceCommandSchema.parse(add)).toEqual(add)

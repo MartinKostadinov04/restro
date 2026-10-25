@@ -52,6 +52,19 @@ export const ServerEnvSchema = z.object({
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     })
     .pipe(z.url({ protocol: /^https?$/ }).optional()),
+  /**
+   * The PIN pepper (#72, D122 §7): the key of `HMAC(pepper, tenant ‖ pin)`, by which a shared
+   * device finds the person a PIN names. Web app only, 32 characters or more (checked where it is
+   * used, so a bad value never takes the whole app down). Without it no PIN is made or checked.
+   * Empty counts as missing. A new pepper makes every PIN unknown: each needs "New PIN".
+   */
+  STAFF_PIN_PEPPER: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
   /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
   REVEAL_SERVICE_TOKEN: z
     .string()

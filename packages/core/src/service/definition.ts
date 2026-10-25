@@ -7,7 +7,7 @@ import type { KeyObject } from 'node:crypto'
 import type { Venue } from '@restro/db'
 import type { z } from 'zod'
 
-import type { ServiceOrigin, Via } from './context'
+import type { ServiceActor, ServiceOrigin, Via } from './context'
 import type { LeaseTx } from './leases'
 import type { LogEntryInput } from './log'
 import type { Permission } from './permissions'
@@ -36,10 +36,14 @@ export interface ServiceTx extends LeaseTx {
   readonly now: Date
   readonly origin: ServiceOrigin
   readonly via: Via
+  /** Who acts, as the caller resolved it and the engine checked it. */
+  readonly actor: ServiceActor
   /** What the actor holds at the venue (empty for guests and the worker). */
   readonly permissions: ReadonlySet<Permission>
   /** The worker's public seal key, when the caller passed one (a new table code is sealed). */
   readonly sealPublicKey: KeyObject | string | null
+  /** The PIN pepper, when the caller passed one (a new PIN's HMAC is keyed with it). */
+  readonly pinPepper: string | null
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
 }
@@ -63,6 +67,11 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
   readonly origins: readonly ServiceOrigin[]
   /** What a staff actor must hold; null for guest and worker commands. */
   readonly permission: Permission | null
+  /**
+   * A settings change: a signed-in actor must have entered their password within
+   * `FRESH_SIGN_IN_MINUTES` (D122 §7), or it is refused `sign_in_again`. Left out: not needed.
+   */
+  readonly freshSignIn?: boolean
   readonly idempotency: Idempotency
   /** The handler, or null while the command is not built (refused `not_built`). */
   readonly handle: CommandHandler<z.infer<S>> | null

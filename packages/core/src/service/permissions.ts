@@ -1,8 +1,8 @@
 // The venue permissions of the service side (D122 §7; design `2026-10-21-service-data-design.md`
 // §5; spec #64 Implementation Decisions 12). A fixed list in code: a venue role holds some of
 // them, organisation owners and admins hold all of them implicitly, and Restro's admin team holds
-// its own few. Which permissions each default role carries is #72's; this file is only the list
-// the commands declare and the check reads.
+// its own few. The default roles (Staff, Manager, Owner) carry the design's §5 table, fixed here:
+// a venue can't change them, it copies one to make its own (D122 §7; decision log 4.5).
 //
 // Pure data: no I/O.
 
@@ -66,6 +66,52 @@ export function isSettingsPermission(permission: Permission): boolean {
  * rights and manages staff PINs (`settings.roles`), and lifts any pause (`ordering.lift`).
  */
 export const OPERATOR_PERMISSIONS: readonly Permission[] = ['settings.roles', 'ordering.lift']
+
+/** The default roles every venue has (D122 §7; decision log 4.4: the names are Martin's). */
+export const DEFAULT_ROLE_KINDS = ['staff', 'manager', 'owner'] as const
+
+/** One default role. */
+export type DefaultRoleKind = (typeof DEFAULT_ROLE_KINDS)[number]
+
+/** True for a default role's kind. */
+export function isDefaultRoleKind(value: unknown): value is DefaultRoleKind {
+  return typeof value === 'string' && (DEFAULT_ROLE_KINDS as readonly string[]).includes(value)
+}
+
+/** The stored name of each default role; a screen words it through its own strings. */
+export const DEFAULT_ROLE_NAMES: Readonly<Record<DefaultRoleKind, string>> = {
+  staff: 'Staff',
+  manager: 'Manager',
+  owner: 'Owner',
+}
+
+/** What staff hold: tables, pauses, alerts and the night's first sections (design §5). */
+const STAFF_PERMISSIONS: readonly Permission[] = [
+  'tables.open_close',
+  'tables.resume',
+  'ordering.pause',
+  'alerts.answer',
+  'night.view',
+]
+
+/**
+ * What each default role holds (design §5's table; D122 §7). A manager also lifts a pause, marks
+ * sold out, sees the Log and the whole night, and follows up money; the owner holds every
+ * permission. A permission added to the list later reaches a default role only through this table,
+ * and so reaches every venue at once (decision log 4.5).
+ */
+export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<DefaultRoleKind, readonly Permission[]>> = {
+  staff: STAFF_PERMISSIONS,
+  manager: [
+    ...STAFF_PERMISSIONS,
+    'ordering.lift',
+    'sold_out',
+    'log.view',
+    'night.view_full',
+    'money.follow_up',
+  ],
+  owner: PERMISSIONS,
+}
 
 /**
  * The permissions a role's stored list grants: the keys on the list, in the list's order. A key

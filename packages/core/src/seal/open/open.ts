@@ -24,6 +24,7 @@ import {
   TAG_BYTES,
 } from '../envelope'
 import { SealError } from '../errors'
+import { STAFF_PIN_PATTERN } from '../staff-pin'
 
 const PRIVATE_KEY_FORMAT =
   'the seal private key must be base64url DER (PKCS8) of an X25519 private key (pnpm keys:seal)'
@@ -158,4 +159,21 @@ export function openTableCode(
     throw new SealError('invalid_payload', 'the sealed value is not a table code')
   }
   return code
+}
+
+/**
+ * Opens a staff member's sealed PIN (D122 §7) for the worker's reveal endpoint and checks its
+ * shape; never puts the value in an error. `open_failed` for an envelope sealed for another
+ * person or tenant.
+ */
+export function openStaffPin(
+  privateKey: KeyObject | string,
+  sealed: string,
+  context: { readonly tenantId: string; readonly staffMemberId: string },
+): string {
+  const pin = openSecret(privateKey, sealed, { purpose: 'staff_pin', ...context })
+  if (!STAFF_PIN_PATTERN.test(pin)) {
+    throw new SealError('invalid_payload', 'the sealed value is not a PIN')
+  }
+  return pin
 }

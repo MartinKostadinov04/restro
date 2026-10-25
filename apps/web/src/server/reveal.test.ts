@@ -3,7 +3,7 @@
 import { MAX_REVEALED_CODES } from '@restro/core/service'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { revealFor } from './reveal'
+import { revealFor, revealPinsFor } from './reveal'
 
 const CONFIG = { url: 'http://worker.test:8081/', token: 'x'.repeat(40) }
 const TARGET = {
@@ -101,6 +101,49 @@ describe('the reveal client', () => {
     ])
     expect(errors.join('\n')).not.toContain(code('tb_1'))
     expect(errors.join('\n')).not.toContain(CONFIG.token)
+  })
+
+  it('asks for PINs with the sign-in time, as the venue own person or as Restro admin team (#72)', async () => {
+    const calls: Call[] = []
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init })
+      const body = JSON.parse(String(init.body)) as { staffMemberIds: string[] }
+      return Response.json({
+        status: 'accepted',
+        codes: Object.fromEntries(body.staffMemberIds.map((id) => [id, '4821'])),
+      })
+    }) as unknown as typeof fetch
+    const signedInAt = new Date('2026-10-22T20:00:00.000Z')
+    const pins = await revealPinsFor(
+      CONFIG,
+      { ...TARGET, actor: { ...TARGET.actor, signedInAt } },
+      fetchImpl,
+    )(['sm_1'])
+    expect([...pins]).toEqual([['sm_1', '4821']])
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+      tenantId: 'tn_test',
+      venueId: 'vn_test',
+      staffMemberIds: ['sm_1'],
+      actor: { kind: 'user', userId: 'us_owner', sessionId: 'session-1' },
+      signedInAt: '2026-10-22T20:00:00.000Z',
+    })
+    await revealPinsFor(
+      CONFIG,
+      { ...TARGET, actor: { ...TARGET.actor, operator: true } },
+      fetchImpl,
+    )(['sm_1'])
+    expect(JSON.parse(String(calls[1]?.init.body)).actor).toEqual({
+      kind: 'operator',
+      userId: 'us_owner',
+    })
+  })
+
+  it('gives no PINs for a refusal and logs none', async () => {
+    const { fetchImpl } = worker(() =>
+      Response.json({ status: 'refused', code: 'sign_in_again' }, { status: 403 }),
+    )
+    expect((await revealPinsFor(CONFIG, TARGET, fetchImpl)(['sm_1'])).size).toBe(0)
+    expect(errors.map((line) => JSON.parse(line).event)).toEqual(['staff_pin_reveal_refused'])
   })
 
   it('leaves out a table the worker gives no code for', async () => {
