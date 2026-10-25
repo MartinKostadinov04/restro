@@ -272,6 +272,23 @@ describe.skipIf(!hasDatabase)('readings of the table bill (as the restro_app rol
     expect(await sitting(sittingId)).toMatchObject({ ended_at: null, had_bill_lines: false })
   })
 
+  it('a first reading that is partial shows no bill, ends nothing, and leaves the table due', async () => {
+    const tableId = table(0)
+    const sittingId = await world.openSitting(tableId)
+    expect(await record(tableId, partial)).toEqual({
+      recorded: true,
+      complete: false,
+      ended: false,
+    })
+    expect((await state(tableId)).bill).toBeNull()
+    expect(await sitting(sittingId)).toMatchObject({ ended_at: null })
+    // "Never read well": older than the sitting, so the tick and a guest's open read it again.
+    const read = await row(tableId)
+    expect(read?.complete).toBe(false)
+    expect(read?.read_at.getTime()).toBe(0)
+    expect(read?.bills).toEqual([])
+  })
+
   it('ends the sitting when its bill closes after it held lines, and clears the reading', async () => {
     const tableId = table(1)
     const sittingId = (await state(tableId)).sitting?.id ?? null

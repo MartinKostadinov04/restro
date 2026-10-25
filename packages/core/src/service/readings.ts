@@ -164,14 +164,16 @@ export function recordReading() {
 
       const reading = command.reading
       if (!reading.complete) {
-        // Rule 6: the bill and its age stay those of the last complete reading.
+        // Rule 6: the bill and its age stay those of the last complete reading. With none yet,
+        // the row's time is the epoch, "never read well": older than any sitting, so no bill is
+        // shown (never an empty one) and the table stays due for a reading.
         if (before === undefined) {
           await stx.tx.insert(billReadings).values({
             tenantId: stx.tenantId,
             venueId: stx.venueId,
             tableId: command.tableId,
             readSeq: 1,
-            readAt: sql`now()`,
+            readAt: sql`to_timestamp(0)`,
             complete: false,
             bills: [],
             ...stx.provenance,
@@ -182,7 +184,8 @@ export function recordReading() {
             .set({ readSeq: sql`${billReadings.readSeq} + 1`, complete: false, ...stx.provenance })
             .where(eq(billReadings.tableId, command.tableId))
         }
-        if (before?.complete !== false) stx.rows.touch(command.tableId)
+        // A phone sees the change only where a bill was shown: it is now marked not up to date.
+        if (before?.complete === true) stx.rows.touch(command.tableId)
         return accepted(null, { details: { recorded: true, complete: false, ended: false } })
       }
 
