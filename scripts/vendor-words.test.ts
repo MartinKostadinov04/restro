@@ -365,6 +365,31 @@ describe("a connector's own package: its words are fine, another kind's are not"
     expect(lines.map((line) => `${line.zone} ${line.line}`)).toEqual(['connector:mistral 1'])
   })
 
+  it("keeps the payment provider's name in its own package and web folder (#104)", () => {
+    const stripeConst = 'export const stripeKey = 1\n'
+    expect(
+      violationsFor({
+        'packages/payments/stripe/src/client.ts': stripeConst,
+        'apps/web/src/connectors/stripe/pay.tsx': stripeConst,
+        'apps/web/src/connectors/data.ts': barsyConst,
+      }),
+    ).toEqual([])
+    const lines = violationsFor({
+      'packages/payments/sim-pay/src/provider.ts': stripeConst,
+      'apps/web/src/connectors/barsy/server.ts': stripeConst,
+      'apps/web/src/connectors/stripe/pay.tsx': barsyConst,
+      'apps/web/src/connectors/data.ts': stripeConst,
+      'apps/worker/src/jobs/pay.ts': stripeConst,
+    })
+    expect(lines.map((line) => line.zone).sort()).toEqual([
+      'connector:barsy',
+      'connector:sim-pay',
+      'connector:stripe',
+      'web-connectors',
+      'worker',
+    ])
+  })
+
   it('does not scan a connector package outside src, nor its testing folder', () => {
     expect(
       violationsFor({

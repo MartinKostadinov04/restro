@@ -5,7 +5,7 @@
 // Only tightens (D67): a new target for core/service is added to SERVICE_WRITE_TARGETS by the
 // ticket that writes it, and never a menu-side table.
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -16,7 +16,7 @@ const serviceRoot = join(srcRoot, 'service')
 
 /**
  * The service side: the Drizzle exports and Postgres names of the tables only `applyService`
- * writes (migration 0028). `tables.code_generation` belongs here too (see below).
+ * writes (migrations 0028 and 0030). `tables.code_generation` belongs here too (see below).
  */
 const SERVICE_TABLES: Readonly<Record<string, string>> = {
   sittings: 'sittings',
@@ -36,7 +36,25 @@ const SERVICE_TABLES: Readonly<Record<string, string>> = {
   sharedDevices: 'shared_devices',
   pushSubscriptions: 'push_subscriptions',
   operators: 'operators',
+  // Paying (D127, #104): no code writes them yet; the tickets that do add them to
+  // SERVICE_WRITE_TARGETS.
+  payments: 'payments',
+  paymentLines: 'payment_lines',
+  paymentSteps: 'payment_steps',
+  paymentAccounts: 'payment_accounts',
+  providerNotices: 'provider_notices',
 }
+
+/** The paying tables: written by core/service and nowhere else in the repo (#104). */
+const PAYING_TABLES = [
+  'payments',
+  'paymentLines',
+  'paymentSteps',
+  'paymentAccounts',
+  'providerNotices',
+] as const
+
+const repoRoot = join(srcRoot, '..', '..', '..')
 
 /**
  * What core/service may write, by Drizzle export (only ever names from SERVICE_TABLES, plus
@@ -62,8 +80,12 @@ function sourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return []
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name)
-    if (entry.isDirectory()) return sourceFiles(path)
-    return entry.name.endsWith('.ts') && !/\.(test|spec)\.ts$/.test(entry.name) ? [path] : []
+    if (entry.isDirectory()) {
+      return ['node_modules', '.next', 'dist', 'e2e', 'tests'].includes(entry.name)
+        ? []
+        : sourceFiles(path)
+    }
+    return /\.tsx?$/.test(entry.name) && !/\.(test|spec)\.tsx?$/.test(entry.name) ? [path] : []
   })
 }
 
@@ -156,6 +178,25 @@ describe('the write-target guard', () => {
         ...sqlWriteTargets(text).filter((name) => !allowedSql.has(name)),
       ].map((name) => `${rel(file)}: ${name}`)
     })
+    expect(found).toEqual([])
+  })
+
+  it('nothing outside core/service writes a paying table, anywhere in the repo', () => {
+    const drizzleNames = new Set<string>(PAYING_TABLES)
+    const sqlNames = new Set(PAYING_TABLES.map((name) => SERVICE_TABLES[name]))
+    const files = ['apps', 'packages'].flatMap((top) => sourceFiles(join(repoRoot, top)))
+    expect(files.length).toBeGreaterThan(100)
+    const outside = (dir: string) => (file: string) => !file.startsWith(dir + sep)
+    const found = files
+      .filter(outside(serviceRoot))
+      .filter(outside(join(repoRoot, 'packages', 'db')))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8')
+        return [
+          ...drizzleWriteTargets(text).filter((name) => drizzleNames.has(name)),
+          ...sqlWriteTargets(text).filter((name) => sqlNames.has(name)),
+        ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
+      })
     expect(found).toEqual([])
   })
 

@@ -14,6 +14,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgSchema,
   primaryKey,
   text,
@@ -1965,7 +1966,10 @@ export const locks = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     venueId: text('venue_id').notNull(),
-    /** Order slot per table, order payment per sitting, bill payment per table, payment table. */
+    /**
+     * Order slot per table, order payment per sitting, bill payment per table, payment table (held
+     * with no deadline, D127).
+     */
     scope: text('scope').notNull(),
     /** Our id of what is held. */
     key: text('key').notNull(),
@@ -1991,7 +1995,13 @@ export const locks = restro.table(
       'locks_holder_format',
       sql`${t.holder} is null or ${t.holder} ~ '^(so|py)_[0-9A-Za-z]+$'`,
     ),
-    check('locks_holder_deadline', sql`${t.holder} is null or ${t.deadline} is not null`),
+    // A held lease runs out at its deadline, except a payment table: a payment owns it until the
+    // payment is final and a read shows the table empty, and no lock runs out meanwhile (D127,
+    // #104). Its holder has no deadline at all, so nothing can take it over.
+    check(
+      'locks_holder_deadline',
+      sql`${t.holder} is null or (${t.deadline} is not null) = (${t.scope} <> 'payment_table')`,
+    ),
     check('locks_fence', sql`${t.fence} >= 0`),
     ...provenanceChecks('locks', t),
   ],
@@ -2488,4 +2498,384 @@ export const operators = restro.table(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (t) => [check('operators_granted_by_length', sql`char_length(${t.grantedBy}) between 1 and 120`)],
+)
+
+// --- Service data for paying (part 2, D127 §Records; design
+// `docs/deliverables/2026-10-25-guest-payment-design.md` §7; ticket #104). Written only by
+// `applyService`, like the ordering tables above, with the same provenance columns. A payment's
+// amounts are integer minor units (rule 8). Never stored: card digits, a guest's phone, device or
+// IP, or the payment handle itself (only its hash). Columns marked *backend* hold POS or provider
+// references that never reach a guest (rule 3).
+
+/** The states of a payment (D127 §The route; design §5): the route's steps and its final states. */
+export const PAYMENT_STATES = [
+  'requested',
+  'priced',
+  'awaiting_guest',
+  'held',
+  'queued',
+  'isolated',
+  'entered',
+  'checked',
+  'closed',
+  'cancelling',
+  'captured',
+  'released',
+  'unconfirmed',
+  'stranded',
+  'capture_failed',
+] as const
+
+/** The final states: a payment in one is settled (design §5.1). */
+export const PAYMENT_FINAL_STATES = [
+  'captured',
+  'released',
+  'unconfirmed',
+  'stranded',
+  'capture_failed',
+] as const
+
+/** The outcomes of a payment step (design §5.1). */
+export const PAYMENT_STEP_OUTCOMES = ['attempting', 'done', 'refused', 'unknown'] as const
+
+/** The states of a venue's payment account. */
+export const PAYMENT_ACCOUNT_STATES = [
+  'connecting',
+  'connected',
+  'lost_access',
+  'disconnected',
+] as const
+
+/** `'a', 'b'` for a SQL `in (...)` list of fixed words. */
+const sqlWords = (words: readonly string[]) =>
+  sql.raw(`(${words.map((word) => `'${word}'`).join(', ')})`)
+
+/** A provider kind, as its package names itself (`sim`, and the first real provider's). */
+const PROVIDER_KIND_PATTERN = sql.raw(`'^[a-z][a-z0-9-]{0,31}$'`)
+/** A reference the provider gave (a payment, an account, an event): opaque and short. */
+const PROVIDER_REF_PATTERN = sql.raw(`'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$'`)
+
+/**
+ * A payment (`py_`) from a phone: lines of a table's bill paid by card (`on_bill`), or a pay-first
+ * round paid before it reaches the POS (`pay_first`). The worker drives it through the route as
+ * compare-and-sets on `state`; every POS and provider write is a `payment_steps` row first.
+ */
+export const payments = restro.table(
+  'payments',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    /** The real table whose bill is paid. */
+    tableId: text('table_id').notNull(),
+    sittingId: text('sitting_id').notNull(),
+    /** The table's bar at the start, whose queue it joins; null = the venue's queue (D124 §1). */
+    barId: text('bar_id'),
+    /** A pay-first payment's sent order. */
+    sentOrderId: text('sent_order_id'),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    kind: text('kind').notNull(),
+    state: text('state').notNull(),
+    /** Why it was released or refused, a code from core's list; null otherwise. */
+    reason: text('reason'),
+    /** The sha-256 of the paying phone's payment handle; the handle itself is never stored. */
+    handleHash: text('handle_hash').notNull(),
+    /** The phone's action id (idempotency); cleared at the end of the service day. */
+    actionId: text('action_id'),
+    /** The total held: the POS's own line amounts plus the tip; null until priced. */
+    amountMinor: bigint('amount_minor', { mode: 'number' }),
+    /** The tip inside the amount; 0 for none (D127). */
+    tipMinor: bigint('tip_minor', { mode: 'number' }).notNull().default(0),
+    /** What was captured, once captured: never above the amount held. */
+    capturedMinor: bigint('captured_minor', { mode: 'number' }),
+    /** ISO 4217, upper case. */
+    currency: text('currency').notNull(),
+    /** The phone must confirm by then (design §6: 2 minutes, extended while the bank asks). */
+    confirmBy: timestamp('confirm_by', { withTimezone: true }),
+    /** The provider's session ends then (design §6: 10 minutes). */
+    sessionEndsAt: timestamp('session_ends_at', { withTimezone: true }),
+    /** The wait for a free payment table ends then (design §6: 60 seconds from `held`). */
+    queueEndsAt: timestamp('queue_ends_at', { withTimezone: true }),
+    /** The payment table it owns, from `queued` until final and the table reads empty. */
+    paymentTableId: text('payment_table_id'),
+    providerKind: text('provider_kind').notNull(),
+    /** *Backend*: the provider's id of the payment. */
+    providerPaymentRef: text('provider_payment_ref'),
+    /** When the provider drops the hold uncaptured, as the provider reports it. */
+    captureBefore: timestamp('capture_before', { withTimezone: true }),
+    /** The fiscal receipt's number and the fiscal memory's, once the close or a read shows them. */
+    receiptNumber: text('receipt_number'),
+    fiscalMemoryNumber: text('fiscal_memory_number'),
+    /** Dispute evidence read from the provider at capture: the bank's check and its code. */
+    threeDsResult: text('three_ds_result'),
+    authorisationCode: text('authorisation_code'),
+    /** When it reached a final state. */
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    /** Set when it is final: 18 months on (D122 §8, D127 4.2); the purge only compares it. */
+    retainUntil: timestamp('retain_until', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('payments_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('payments_tenant_id_action_id_unique').on(t.tenantId, t.actionId),
+    unique('payments_handle_hash_unique').on(t.handleHash),
+    venueFk('payments', t),
+    tableFk('payments', t),
+    foreignKey({
+      name: 'payments_sitting_fk',
+      columns: [t.tenantId, t.sittingId],
+      foreignColumns: [sittings.tenantId, sittings.id],
+    }),
+    foreignKey({
+      name: 'payments_bar_fk',
+      columns: [t.tenantId, t.barId],
+      foreignColumns: [bars.tenantId, bars.id],
+    }),
+    foreignKey({
+      name: 'payments_sent_order_fk',
+      columns: [t.tenantId, t.sentOrderId],
+      foreignColumns: [sentOrders.tenantId, sentOrders.id],
+    }),
+    foreignKey({
+      name: 'payments_payment_table_fk',
+      columns: [t.tenantId, t.paymentTableId],
+      foreignColumns: [venueTables.tenantId, venueTables.id],
+    }),
+    // A provider's payment belongs to one payment of ours.
+    uniqueIndex('payments_provider_payment_unique')
+      .on(t.providerKind, t.providerPaymentRef)
+      .where(sql`${t.providerPaymentRef} is not null`),
+    // The recovery job, and "Being paid" on the table's state: payments that are not final.
+    index('payments_open_idx').on(t.venueId, t.state).where(sql`${t.settledAt} is null`),
+    index('payments_table_id_created_at_idx').on(t.tableId, t.createdAt.desc()),
+    index('payments_retain_until_idx').on(t.retainUntil),
+    check('payments_id_format', sql`${t.id} ~ '^py_[0-9A-Za-z]+$'`),
+    check('payments_kind', sql`${t.kind} in ('on_bill', 'pay_first')`),
+    check('payments_state', sql`${t.state} in ${sqlWords(PAYMENT_STATES)}`),
+    check(
+      'payments_pay_first_sent_order',
+      sql`(${t.kind} = 'pay_first') = (${t.sentOrderId} is not null)`,
+    ),
+    check('payments_reason', sql`${t.reason} is null or ${t.reason} ~ ${NAME_PATTERN}`),
+    check('payments_handle_hash', sql`${t.handleHash} ~ '^[0-9a-f]{64}$'`),
+    check('payments_action_id', sql`${t.actionId} is null or ${t.actionId} ~ ${NAME_PATTERN}`),
+    check(
+      'payments_amounts',
+      sql`${t.tipMinor} >= 0 and (${t.amountMinor} is null or ${t.amountMinor} >= ${t.tipMinor})`,
+    ),
+    check(
+      'payments_captured_minor',
+      sql`${t.capturedMinor} is null or (${t.amountMinor} is not null and ${t.capturedMinor} between 0 and ${t.amountMinor})`,
+    ),
+    check('payments_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
+    check('payments_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check(
+      'payments_provider_payment_ref',
+      sql`${t.providerPaymentRef} is null or ${t.providerPaymentRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'payments_fiscal_numbers',
+      sql`(${t.receiptNumber} is null or char_length(${t.receiptNumber}) between 1 and 64) and (${t.fiscalMemoryNumber} is null or char_length(${t.fiscalMemoryNumber}) between 1 and 64)`,
+    ),
+    check(
+      'payments_evidence',
+      sql`(${t.threeDsResult} is null or ${t.threeDsResult} ~ ${NAME_PATTERN}) and (${t.authorisationCode} is null or char_length(${t.authorisationCode}) between 1 and 64)`,
+    ),
+    check(
+      'payments_settled',
+      sql`(${t.settledAt} is not null) = (${t.state} in ${sqlWords(PAYMENT_FINAL_STATES)})`,
+    ),
+    ...provenanceChecks('payments', t),
+  ],
+)
+
+/**
+ * One picked line of a payment: what the guest saw and confirmed, and the POS line it is
+ * (backend only). Written when the payment is priced; the last check compares the POS against it.
+ */
+export const paymentLines = restro.table(
+  'payment_lines',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    /** The line's place in the payment, from 1. */
+    position: integer('position').notNull(),
+    /** *Backend*: the POS line reference (rule 3); null for a pay-first line until entered. */
+    posLineRef: text('pos_line_ref'),
+    /** The quantity picked, an exact decimal (rule 8: never a float). */
+    quantity: numeric('quantity', { precision: 21, scale: 6 }).notNull(),
+    /** The POS's own amount for that quantity, never price × quantity (D127 3.2). */
+    posAmountMinor: bigint('pos_amount_minor', { mode: 'number' }).notNull(),
+    /** The name the guest saw. */
+    displayName: text('display_name').notNull(),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'payment_lines_pk', columns: [t.tenantId, t.paymentId, t.position] }),
+    venueFk('payment_lines', t),
+    foreignKey({
+      name: 'payment_lines_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    // "Being paid" per line: the POS lines in a venue's payments.
+    index('payment_lines_pos_line_ref_idx')
+      .on(t.venueId, t.posLineRef)
+      .where(sql`${t.posLineRef} is not null`),
+    check('payment_lines_position', sql`${t.position} >= 1`),
+    check('payment_lines_quantity', sql`${t.quantity} > 0`),
+    check(
+      'payment_lines_pos_line_ref',
+      sql`${t.posLineRef} is null or char_length(${t.posLineRef}) between 1 and 255`,
+    ),
+    check('payment_lines_display_name', sql`char_length(${t.displayName}) between 1 and 200`),
+    ...provenanceChecks('payment_lines', t),
+  ],
+)
+
+/**
+ * One POS or provider write of a payment, append-only (D127 3.9): recorded `attempting` before the
+ * call, then a new row with the outcome. The recovery job resumes from the last one.
+ */
+export const paymentSteps = restro.table(
+  'payment_steps',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    /** The call, e.g. `createHold`, `isolateLines`, `payAndClose`, `capture`. */
+    step: text('step').notNull(),
+    outcome: text('outcome').notNull(),
+    /** The connector's or provider's answer in short: a code, never a raw response. */
+    answer: text('answer'),
+    /** The idempotency key the call carried. */
+    idempotencyKey: text('idempotency_key'),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    venueFk('payment_steps', t),
+    foreignKey({
+      name: 'payment_steps_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    index('payment_steps_payment_id_seq_idx').on(t.paymentId, t.seq.desc()),
+    check('payment_steps_step', sql`${t.step} ~ ${NAME_PATTERN}`),
+    check('payment_steps_outcome', sql`${t.outcome} in ${sqlWords(PAYMENT_STEP_OUTCOMES)}`),
+    check(
+      'payment_steps_answer',
+      sql`${t.answer} is null or char_length(${t.answer}) between 1 and 500`,
+    ),
+    check(
+      'payment_steps_idempotency_key',
+      sql`${t.idempotencyKey} is null or ${t.idempotencyKey} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    ...provenanceChecks('payment_steps', t),
+  ],
+)
+
+/**
+ * A venue's payment account at its provider (D125 §The venue's side; #109 writes it): which
+ * provider, the account (backend only), and the connection as last read. The provider-side checks
+ * of D125 2.3 are stored as read; the till-side ones (the card payment type, marked payment
+ * tables) come from the venue's own data when the settings show what's missing.
+ */
+export const paymentAccounts = restro.table(
+  'payment_accounts',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    providerKind: text('provider_kind').notNull(),
+    /** *Backend*: the provider's id of the venue's account; null until the provider made one. */
+    accountRef: text('account_ref'),
+    /** The account's name as the provider shows it, for "Connected" in the settings. */
+    accountName: text('account_name'),
+    state: text('state').notNull(),
+    /** The provider-side checks as last read (D125 2.3); core checks the keys with Zod. */
+    checks: jsonb('checks').$type<Record<string, unknown>>().notNull().default({}),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+    connectedAt: timestamp('connected_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'payment_accounts_pk', columns: [t.tenantId, t.venueId] }),
+    venueFk('payment_accounts', t),
+    // A notice names the account and the worker finds its venue by it: an account is one venue's.
+    uniqueIndex('payment_accounts_account_unique')
+      .on(t.providerKind, t.accountRef)
+      .where(sql`${t.accountRef} is not null`),
+    check('payment_accounts_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check(
+      'payment_accounts_account_ref',
+      sql`${t.accountRef} is null or ${t.accountRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'payment_accounts_account_name',
+      sql`${t.accountName} is null or char_length(${t.accountName}) between 1 and 200`,
+    ),
+    check('payment_accounts_state', sql`${t.state} in ${sqlWords(PAYMENT_ACCOUNT_STATES)}`),
+    check(
+      'payment_accounts_connected_has_account',
+      sql`${t.state} not in ('connected', 'lost_access') or ${t.accountRef} is not null`,
+    ),
+    check('payment_accounts_checks_object', sql`jsonb_typeof(${t.checks}) = 'object'`),
+    ...provenanceChecks('payment_accounts', t),
+  ],
+)
+
+/**
+ * The provider's notices (D127 §Where things run; design §8): platform-level, with no venue and
+ * no tenant. The notice route stores each event once by its id and queues a worker job; the
+ * worker reads the object back from the provider and maps the account to its venue.
+ */
+export const providerNotices = restro.table(
+  'provider_notices',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    providerKind: text('provider_kind').notNull(),
+    /** The provider's event id. */
+    eventId: text('event_id').notNull(),
+    /** The provider's live/test flag; the route refuses one that doesn't match this environment. */
+    live: boolean('live').notNull(),
+    /** *Backend*: the account the event is about, or null for a platform event. */
+    accountRef: text('account_ref'),
+    /** The event's type as the provider names it. */
+    type: text('type').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    unique('provider_notices_event_unique').on(t.providerKind, t.eventId),
+    index('provider_notices_unhandled_idx').on(t.receivedAt).where(sql`${t.handledAt} is null`),
+    check('provider_notices_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check('provider_notices_event_id', sql`${t.eventId} ~ ${PROVIDER_REF_PATTERN}`),
+    check(
+      'provider_notices_account_ref',
+      sql`${t.accountRef} is null or ${t.accountRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check('provider_notices_type', sql`${t.type} ~ ${NAME_PATTERN}`),
+    check(
+      'provider_notices_handled_after_received',
+      sql`${t.handledAt} is null or ${t.handledAt} >= ${t.receivedAt}`,
+    ),
+    ...provenanceChecks('provider_notices', t),
+  ],
 )

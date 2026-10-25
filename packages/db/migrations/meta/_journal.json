@@ -211,6 +211,13 @@
       "when": 1792657412529,
       "tag": "0029_table_code_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792930025977,
+      "tag": "0030_payment_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,21 @@ const CONNECTOR_PACKAGES = [
   '^@restro/sim-pos(/|$)',
 ]
 
+/**
+ * Every payment provider package (D127, #104): those under packages/payments/ (the simulated
+ * provider `sim-pay` and Stripe's). Only the worker calls a provider.
+ */
+const PAYMENT_PACKAGES = ['^packages/payments/', '^@restro/(sim-pay|stripe)(/|$)']
+
+/**
+ * A payment provider's own libraries, server SDK and browser card form alike (D126, D127). The web
+ * app reaches them only through its connector folders (apps/web/src/connectors/<kind>/).
+ */
+const PROVIDER_LIBRARIES = ['stripe', '@stripe'].flatMap((name) => [
+  `^${name}(/|$)`,
+  `(^|/)node_modules/${name}/`,
+])
+
 /** Database drivers and job queues: I/O that shell and faces must never reach. */
 const IO_PACKAGES = ['pg', 'pg-boss', 'postgres'].flatMap((name) => [
   `^${name}(/|$)`,
@@ -186,6 +201,37 @@ module.exports = {
         'apps/web must not import a connector package. It reads what a connector reported from Postgres.',
       from: { path: '^apps/web/' },
       to: { path: CONNECTOR_PACKAGES },
+    },
+
+    // Paying (D127, #104). The worker makes every call to a payment provider; the web app only
+    // checks a notice's signature and loads the provider's card form, each through its connector
+    // folder; the notice route records the notice and does nothing else.
+    {
+      name: 'payments-only-from-worker',
+      severity: 'error',
+      comment:
+        'Only apps/worker may import a payment provider package (anything under packages/payments/); a provider package may import itself.',
+      from: { pathNot: ['^apps/worker/', '^packages/payments/'] },
+      to: { path: PAYMENT_PACKAGES },
+    },
+    {
+      name: 'web-provider-only-through-connectors',
+      severity: 'error',
+      comment:
+        "apps/web may import a payment provider's libraries (stripe, @stripe/*) only in apps/web/src/connectors/<kind>/.",
+      from: { path: '^apps/web/', pathNot: '^apps/web/src/connectors/[^/]+/' },
+      to: { path: PROVIDER_LIBRARIES },
+    },
+    {
+      name: 'notice-route-records-only',
+      severity: 'error',
+      comment:
+        'The notice route (apps/web/app/api/payments/notices/) may import from @restro/core/service only its notices module (`@restro/core/service/notices`, `recordProviderNotice`): it stores the notice, and a worker job acts on it.',
+      from: { path: '^apps/web/app/api/payments/notices/' },
+      to: {
+        path: ['^packages/core/src/service/', '^@restro/core/service(/|$)'],
+        pathNot: ['^packages/core/src/service/notices\\.ts$', '^@restro/core/service/notices$'],
+      },
     },
 
     // Sealed credentials (D55): the web seals with the worker's public key; only the worker
