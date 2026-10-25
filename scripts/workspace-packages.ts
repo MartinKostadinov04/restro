@@ -8,7 +8,13 @@ import { join } from 'node:path'
 // in the same change.
 //
 // Each entry is a folder whose direct children are packages.
-export const workspaceParents = ['apps', 'packages', 'packages/faces', 'packages/connectors']
+export const workspaceParents = [
+  'apps',
+  'packages',
+  'packages/faces',
+  'packages/connectors',
+  'packages/payments',
+]
 
 /** Package folders (relative, with "/") that have a package.json, found under `workspaceParents`. */
 export function vitestPackageDirs(root: string): string[] {

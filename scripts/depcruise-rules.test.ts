@@ -795,6 +795,55 @@ describe('the connector conformance kit is for tests only (#65)', () => {
   })
 })
 
+describe('the payment conformance suite is for tests only (#103)', () => {
+  const kit: Files = {
+    ...base,
+    'packages/core/src/connectors/payment/testing/index.ts': "import './checks'",
+    'packages/core/src/connectors/payment/testing/checks.ts': 'export const checks = 1',
+    'packages/payments/sim-pay/src/index.ts': 'export const simPay = 1',
+  }
+
+  it('rejects the suite from a provider package, an app and core, by name and by path', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/payments/sim-pay/src/provider.ts':
+          "import '@restro/core/connectors/payment-testing'",
+        'apps/worker/src/jobs/pay.ts':
+          "import '../../../../packages/core/src/connectors/payment/testing/index'",
+        'packages/core/src/connectors/payment/index.ts': "import './testing/index'",
+      },
+      ['payment-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(3)
+  })
+
+  it('allows it in tests and test-* helpers, and inside the suite itself', async () => {
+    await expectRules(
+      {
+        ...kit,
+        'packages/payments/sim-pay/src/conformance.test.ts':
+          "import '@restro/core/connectors/payment-testing'",
+        'packages/payments/sim-pay/src/testing/test-harness.ts':
+          "import '../../../../core/src/connectors/payment/testing/index'",
+      },
+      [],
+    )
+  })
+
+  it('does not exempt a production file that merely has "test" in its name', async () => {
+    const lines = await expectRules(
+      {
+        ...kit,
+        'packages/payments/sim-pay/src/contest.ts':
+          "import '@restro/core/connectors/payment-testing'",
+      },
+      ['payment-kit-only-from-tests'],
+    )
+    expect(lines).toHaveLength(1)
+  })
+})
+
 describe('the purge role: only the worker purge job imports @restro/db/purge (D83)', () => {
   const withPurge: Files = {
     ...base,

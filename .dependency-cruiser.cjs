@@ -314,6 +314,27 @@ module.exports = {
         ],
       },
     },
+    // The payment conformance suite (#103) likewise: it registers Vitest tests and drives a
+    // provider through faults, so only a provider package's tests reach it.
+    {
+      name: 'payment-kit-only-from-tests',
+      severity: 'error',
+      comment:
+        'Only tests (*.test.ts) and test-* helpers may import the payment conformance suite, @restro/core/connectors/payment-testing (packages/core/src/connectors/payment/testing/); the suite may import its own files.',
+      from: {
+        pathNot: [
+          '\\.test\\.[jt]sx?$',
+          '(^|/)test-[^/]+\\.[jt]sx?$',
+          '^packages/core/src/connectors/payment/testing/',
+        ],
+      },
+      to: {
+        path: [
+          '^packages/core/src/connectors/payment/testing/',
+          '^@restro/core/connectors/payment-testing(/|$)',
+        ],
+      },
+    },
 
     // The guest page (rule 4): it reads published files and nothing else. Its code (app/m and
     // src/guest) never imports the database, apply(), the asset and publish stores, or the

@@ -152,6 +152,7 @@ describe('the real workspace', () => {
       'packages/*',
       'packages/faces/*',
       'packages/connectors/*',
+      'packages/payments/*',
     ])
   })
 })
