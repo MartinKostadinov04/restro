@@ -27,6 +27,7 @@ import {
   operationsCheck,
   type PaymentCheck,
   partialCaptureCheck,
+  reconnectCheck,
   refusedCheck,
   releaseCheck,
   storedErrorCheck,
@@ -64,6 +65,7 @@ export function paymentProviderSuite(harness: PaymentHarness): void {
     check('offers the interface steps and nothing else: no refund', operationsCheck, harness)
     check('declares its kind and every capability', capabilitiesCheck, harness)
     check('connecting and reading the connection move no money', connectionCheck, harness)
+    check('an unfinished account gets a fresh link for the same account', reconnectCheck, harness)
     check('a hold is found by our payment id, and holds once the guest pays', holdCheck, harness)
     check('a hold below the minimum is refused and leaves nothing', minimumCheck, harness)
     check('the same key creates one payment', idempotentCreateCheck, harness)

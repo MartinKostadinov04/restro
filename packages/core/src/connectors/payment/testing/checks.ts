@@ -277,6 +277,39 @@ export const connectionCheck = check(async (run) => {
   await run.expectMoved('connecting', before)
 })
 
+/**
+ * An account that has not finished connecting gets a fresh link for the same account: the owner
+ * who left the hosted form half-way must be able to come back to it.
+ */
+export const reconnectCheck = check(async (run) => {
+  const before = await run.moved()
+  const venueId = newId('vn')
+  const connect = async (accountRef: ProviderRef | null, attempt: number) =>
+    run.parse(
+      'startConnection',
+      await run.h.provider.startConnection({
+        venueId,
+        accountRef,
+        returnUrl: `https://${run.h.guestHost}/admin/settings/paying?connected=1`,
+        refreshUrl: `https://${run.h.guestHost}/admin/settings/paying?retry=1`,
+        idempotencyKey: `${venueId}:connect:${attempt}`,
+      }),
+    )
+  const first = run.done('startConnection', await connect(null, 1))
+  const status = run.complete(
+    'readConnection',
+    run.parse('readConnection', await run.h.provider.readConnection(first.accountRef)),
+  )
+  run.expect(!status.canTakePayments, 'an account that just started connecting takes payments')
+  run.expect(status.missing.length > 0, 'an unfinished account names nothing it still needs')
+  const again = run.done('startConnection', await connect(first.accountRef, 2))
+  run.expect(
+    sameProviderRef(again.accountRef, first.accountRef),
+    'a fresh link for an unfinished account names another account',
+  )
+  await run.expectMoved('reconnecting', before)
+})
+
 // ---------------------------------------------------------------------------------------------
 // Paying
 

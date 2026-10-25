@@ -31,9 +31,11 @@ export const PaymentIdSchema = idSchema('py')
 
 /**
  * An idempotency key: the same key with the same request makes the provider do the step once and
- * answer the same again (D125 3.9). The platform derives it from the payment and its step.
+ * answer the same again (D125 3.9). The platform derives it from the payment and its step. The
+ * pattern is the database's (`payment_steps.idempotency_key`, `PROVIDER_REF_PATTERN`: the first
+ * character alphanumeric), capped at 200, so every key the seam accepts can be stored.
  */
-export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,200}$/)
+export const IdempotencyKeySchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/)
 
 /** An amount the provider is asked to hold or capture: whole minor units above zero (rule 8). */
 export const PositiveMinorSchema = z.int().positive().max(Number.MAX_SAFE_INTEGER)

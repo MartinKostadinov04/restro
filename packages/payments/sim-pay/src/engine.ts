@@ -107,6 +107,14 @@ interface Stored {
   readonly answer: PaymentWriteOutcome<unknown>
 }
 
+/**
+ * The account-level steps an account that cannot take payments still answers. Releasing a hold is
+ * the cautious step, so the guest's money is not left held until the hold runs out; capture stays
+ * refused. A choice of the simulator: it claims nothing about what a real provider does.
+ * (`startConnection` never reaches the account check: it names no account to `#write`.)
+ */
+const RESTRICTED_ALLOWS: ReadonlySet<string> = new Set(['prepareDomain', 'release'])
+
 export class SimPayEngine {
   readonly switches: SimPaySwitches
   readonly #clock: Clock
@@ -140,6 +148,14 @@ export class SimPayEngine {
     if (account === undefined) throw new Error(`no account ${accountRef.provider}`)
     account.canTakePayments = true
     account.missing = []
+  }
+
+  /** The provider restricts the account (it needs more from the owner): it takes no payments. */
+  restrictAccount(accountRef: ProviderRef, missing: readonly string[]): void {
+    const account = this.#account(accountRef)
+    if (account === undefined) throw new Error(`no account ${accountRef.provider}`)
+    account.canTakePayments = false
+    account.missing = [...missing]
   }
 
   /** Money moved on the account so far, in minor units. */
@@ -351,7 +367,7 @@ export class SimPayEngine {
         fault.code ?? defaultRefusal(step),
         scopeOf(fault.code ?? defaultRefusal(step)),
       )
-    } else if (account !== null && !account.canTakePayments && step !== 'prepareDomain') {
+    } else if (account !== null && !account.canTakePayments && !RESTRICTED_ALLOWS.has(step)) {
       answer = refused('account_restricted', 'account')
     } else {
       answer = run(account)

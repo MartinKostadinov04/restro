@@ -103,10 +103,18 @@ export type Refusal = z.output<typeof RefusalSchema>
  * What a write step answers: done, a definite "no", or `unknown` (a timeout: read back, D115).
  * The payment provider seam reuses it with its own refusal (`connectors/payment`).
  */
-export function writeOutcomeSchema<R extends z.ZodType, F extends z.ZodType = typeof RefusalSchema>(
+export function writeOutcomeSchema<R extends z.ZodType>(
   result: R,
-  refusal: F = RefusalSchema as unknown as F,
-) {
+): ReturnType<typeof outcomeSchema<R, typeof RefusalSchema>>
+export function writeOutcomeSchema<R extends z.ZodType, F extends z.ZodType>(
+  result: R,
+  refusal: F,
+): ReturnType<typeof outcomeSchema<R, F>>
+export function writeOutcomeSchema(result: z.ZodType, refusal: z.ZodType = RefusalSchema) {
+  return outcomeSchema(result, refusal)
+}
+
+function outcomeSchema<R extends z.ZodType, F extends z.ZodType>(result: R, refusal: F) {
   return z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('done'), result }),
     z.strictObject({ kind: z.literal('refused'), refusal }),

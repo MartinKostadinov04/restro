@@ -4,6 +4,7 @@ import { newId } from '../../ids'
 import { paymentCapabilitiesProblems } from './capabilities'
 import { providerRef } from './provider-ref'
 import {
+  IdempotencyKeySchema,
   PAYMENT_ANSWER_SCHEMAS,
   PaymentRefusalSchema,
   ProviderFormValuesSchema,
@@ -66,6 +67,17 @@ describe('the provider payment', () => {
     expect(
       PAYMENT_ANSWER_SCHEMAS.readPayment.safeParse({ complete: false, value: held }).success,
     ).toBe(false)
+  })
+})
+
+describe('the idempotency key', () => {
+  it('takes what the database stores: a first character alphanumeric, at most 200', () => {
+    for (const key of ['py_1:hold:0', 'a', `a${'b'.repeat(199)}`]) {
+      expect(IdempotencyKeySchema.safeParse(key).success, key).toBe(true)
+    }
+    for (const key of ['_py', '.py', ':py', '-py', '', `a${'b'.repeat(200)}`, 'py 1']) {
+      expect(IdempotencyKeySchema.safeParse(key).success, key).toBe(false)
+    }
   })
 })
 
