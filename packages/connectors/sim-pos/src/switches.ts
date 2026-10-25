@@ -183,6 +183,9 @@ export function capabilitiesOf(switches: SimSwitches): ServiceCapabilities {
     ownLineReference: switches.lineCarriesCallerRef,
     idempotentAdd: switches.repeatSafeAdd,
     addToStaffOpenedBill: switches.addToStaffOpenedBill,
+    // A tip row would wait at the bar with approval on, and closing over a waiting row is
+    // undefined (Q14): not claimed then. The connector also needs the tip article to claim it.
+    recordTipOnClose: switches.tipAsLine && !switches.approvalAtBar,
     // No switch and no question for these two: not claimed (D124 §2 can't be checked here).
     itemAvailability: false,
     billOpeningTime: false,

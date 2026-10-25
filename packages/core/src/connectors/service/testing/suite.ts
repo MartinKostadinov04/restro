@@ -29,9 +29,12 @@ import {
   closedBillCheck,
   emptyTableCheck,
   excludedBillCheck,
+  newBillReferenceCheck,
   oldestBillCheck,
   paymentRouteCheck,
   staffBillCheck,
+  tipOnCloseCheck,
+  tipRetryCheck,
   writesAreDeclaredCheck,
   writeTimeoutCheck,
   yesterdaysBillCheck,
@@ -116,6 +119,13 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
       emptyTableCheck,
       harness,
     )
+    if (harness.connector.capabilities.firstItemsOpenBill) {
+      check(
+        'a round on an empty payment table names the bill it opened, and a reading finds it (pay-first)',
+        newBillReferenceCheck,
+        harness,
+      )
+    }
     check('a round joins the oldest POS bill of tonight', oldestBillCheck, harness)
     check(
       'a round joins a staff-opened bill only where declared (D124 §3)',
@@ -156,5 +166,33 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
       paymentRouteCheck,
       harness,
     )
+    if (!harness.connector.capabilities.recordTipOnClose) {
+      check(
+        'a close with a tip is refused not_supported before any write (recordTipOnClose undeclared)',
+        tipOnCloseCheck,
+        harness,
+      )
+    } else if (harness.waiter.closedBill === undefined) {
+      it.todo(
+        'a tip on close lands on the same bill, its total lines plus tip (the harness cannot show a closed bill)',
+      )
+    } else {
+      check(
+        'a tip on close lands on the same bill as one line or field, its total lines plus tip',
+        tipOnCloseCheck,
+        harness,
+      )
+      if (harness.faults.stallNextWrite === undefined) {
+        it.todo(
+          'a retried close with a tip closes once, one tip (the harness cannot stall one write)',
+        )
+      } else {
+        check(
+          'a close with a tip retried after its write hung closes once, with one tip',
+          tipRetryCheck,
+          harness,
+        )
+      }
+    }
   })
 }

@@ -1,7 +1,8 @@
 // The conformance kit on the simulated POS (#68 done-when): both profiles, in process and over
 // HTTP through MSW, plus one run with every capability the switches can declare switched on, so
 // the kit's declared branches (several bills, first items open a bill, part quantities, who
-// entered a line, Restro's reference, bars, receipt numbers, training mode) run too.
+// entered a line, Restro's reference, bars, receipt numbers, training mode, a tip on close) run
+// too. Both profiles keep the tip switch off (Q41 is open); `pilot` runs once more with it on.
 
 import { serviceConnectorSuite } from '@restro/core/connectors/testing'
 import { setupServer } from 'msw/node'
@@ -35,7 +36,15 @@ const overHttp = PROFILE_NAMES.map((profile) => ({
   base: `http://${profile}.sim-pos.localhost`,
   ...engineOf(profile),
 }))
-const server = setupServer(...overHttp.flatMap(({ engine, base }) => simPosHandlers(engine, base)))
+const tipInProcess = engineOf('pilot', { tipAsLine: true })
+const tipOverHttp = {
+  base: 'http://pilot-tip.sim-pos.localhost',
+  ...engineOf('pilot', { tipAsLine: true }),
+}
+const server = setupServer(
+  ...overHttp.flatMap(({ engine, base }) => simPosHandlers(engine, base)),
+  ...simPosHandlers(tipOverHttp.engine, tipOverHttp.base),
+)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 
@@ -50,6 +59,23 @@ for (const { profile, base, clock, engine } of overHttp) {
   )
 }
 
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot with a tip line on close, in process',
+    engine: tipInProcess.engine,
+    clock: tipInProcess.clock,
+    transport: inProcessTransport(tipInProcess.engine),
+  }),
+)
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot with a tip line on close, over HTTP',
+    engine: tipOverHttp.engine,
+    clock: tipOverHttp.clock,
+    transport: fetchTransport(tipOverHttp.base, { env: 'test' }),
+  }),
+)
+
 const wide = engineOf('pilot', {
   billsPerTable: 'several',
   firstItemsOpenBill: true,
@@ -62,6 +88,7 @@ const wide = engineOf('pilot', {
   notesReachTicket: true,
   receiptNumberOnClose: true,
   trainingMode: true,
+  tipAsLine: true,
 })
 serviceConnectorSuite(
   simPosHarness({

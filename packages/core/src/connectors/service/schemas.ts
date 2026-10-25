@@ -305,6 +305,10 @@ export type AddLinesRequest = z.output<typeof AddLinesRequestSchema>
 
 /** Which POS bill the lines went onto, where the POS says. */
 export const AddLinesResultSchema = z.strictObject({
+  /**
+   * Null only where the POS doesn't say. Where `firstItemsOpenBill` is declared, a round that
+   * opened a bill always names it: pay-first finds its round by it (D127, #113; the kit checks).
+   */
   bill: PosRefSchema.nullable(),
   opened: z.boolean(),
 })
@@ -341,13 +345,24 @@ export const IsolateLinesResultSchema = z.strictObject({ isolated: IsolatedHandl
 export type IsolateLinesResult = z.output<typeof IsolateLinesResultSchema>
 
 /** Close the isolated bill with its payment (D122 §8 step 4). */
-export const PayAndCloseRequestSchema = z.strictObject({
-  isolated: IsolatedHandleSchema,
-  amountMinor: MinorSchema,
-  /** The POS's payment type, where `closeWithPaymentType` is declared; else null. */
-  paymentType: PosRefSchema.nullable(),
-  ref: WriteRefSchema,
-})
+export const PayAndCloseRequestSchema = z
+  .strictObject({
+    isolated: IsolatedHandleSchema,
+    /** The whole payment: the isolated bill's own amount plus the tip (D127 §The route). */
+    amountMinor: MinorSchema,
+    /**
+     * The tip inside `amountMinor`, 0 for none. It goes on the same bill and fiscal receipt where
+     * `recordTipOnClose` is declared; elsewhere a tip above 0 is refused before any write (D127).
+     */
+    tipMinor: MinorSchema,
+    /** The POS's payment type, where `closeWithPaymentType` is declared; else null. */
+    paymentType: PosRefSchema.nullable(),
+    ref: WriteRefSchema,
+  })
+  .refine((request) => request.tipMinor <= request.amountMinor, {
+    message: 'the tip is inside the amount, never above it',
+    path: ['tipMinor'],
+  })
 export type PayAndCloseRequest = z.output<typeof PayAndCloseRequestSchema>
 
 export const PayAndCloseResultSchema = z.strictObject({
