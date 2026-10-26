@@ -47,7 +47,7 @@ const OLD_DAY = '2025-04-01'
 const UNTIL_DUE = '2026-10-26T11:59:59Z'
 const UNTIL_KEPT = '2026-10-26T12:00:01Z'
 const SEED = ['restro', 'system', 'test-seed'] as const
-const quiet = { warn: () => undefined }
+const quiet = { info: () => undefined, warn: () => undefined }
 let references = 0
 
 describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () => {
@@ -453,6 +453,28 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     )
     expect(kept?.retain_until?.getTime() ?? 0).toBeGreaterThan(Date.now() + 500 * 24 * 3600 * 1000)
     expect((await dueServiceDays(pool, new Date())).filter((day) => day.venueId === v)).toEqual([])
+  })
+
+  it('keeps the later days of a venue open while an earlier one is refused', async () => {
+    const { venueId: v, tableId: t } = await venueWithTable('Waiting Bar')
+    const first = await sitting(v, t, '2026-01-10', null)
+    const inFlight = await sentOrder(v, t, first, '2026-01-10', null)
+    await query(`update restro.sent_orders set state = 'waiting' where id = $1`, [inFlight])
+    await sitting(v, t, '2026-01-11', null)
+    const closedDays = () =>
+      query('select service_date::text as d from restro.service_days where venue_id = $1', [v])
+
+    const waits: unknown[] = []
+    const log = { info: (fields: unknown) => waits.push(fields), warn: () => undefined }
+    await closeServiceDays(pool, new Date(), log)
+    expect(await closedDays()).toEqual([])
+    expect(waits).toContainEqual(
+      expect.objectContaining({ venueId: v, serviceDate: '2026-01-10', code: 'orders_open' }),
+    )
+
+    await query(`update restro.sent_orders set state = 'added' where id = $1`, [inFlight])
+    await closeServiceDays(pool, new Date(), quiet)
+    expect(await closedDays()).toHaveLength(2)
   })
 
   it('erases every service row of a purged venue', async () => {

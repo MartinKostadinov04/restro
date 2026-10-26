@@ -11,15 +11,21 @@
 // The 31-day rows (notes, waiter calls, alerts, pauses, `night` Log entries) carry no column of
 // their own: the purge counts their 31 days from their service day (`serviceRetentionCutoffs`).
 // A day is closed once: a repeat finds its `service_days` row and changes nothing (`by_state`).
+// A day whose payments or sent orders are still moving waits (`payments_open`, `orders_open`): a
+// payment held, cancelling or awaiting the guest at the day's end goes on afterwards, so the
+// totals would undercount, and its action id is what answers a repeat of `pay.start`. A payment is
+// final once `settled_at` is set (0030's `payments_settled`), a sent order once it is in one of
+// `SETTLED_STATES`. The worker tries again on its next run.
 //
 // Locks, in the fixed order: the day's sittings (by table), its sent orders, its payments.
 
 import { payments, sentOrders, serviceDays, sittings } from '@restro/db'
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
 
 import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { accepted, refused, type ServiceResult } from './results'
+import { SETTLED_STATES } from './sent-order'
 
 /** What `service_days.totals` holds for a closed day: counts and minor-unit sums only. */
 export interface ServiceDayTotals {
@@ -34,7 +40,10 @@ export interface ServiceDayTotals {
   readonly alerts: number
   readonly pauses: number
   readonly payments: number
-  /** What the day's payments captured, tips included, in minor units. */
+  /**
+   * What the day's payments captured, tips included, in minor units: the amount at close, before
+   * any later refund (`refunded_minor`).
+   */
   readonly capturedMinor: number
   readonly tipMinor: number
 }
@@ -81,7 +90,8 @@ async function totalsOf(stx: ServiceTx, day: string): Promise<ServiceDayTotals> 
 
 /**
  * `service_day.close`: closes one ended service day of the venue (see the header). Refused
- * `day_not_ended` for today's service day or a later one.
+ * `day_not_ended` for today's service day or a later one, `payments_open` while a payment of the
+ * day is not final and `orders_open` while a sent order of the day is not.
  */
 export async function closeServiceDay(
   stx: ServiceTx,
@@ -135,6 +145,30 @@ export async function closeServiceDay(
       .orderBy(payments.id)
       .for('update')
   }
+  const [livePayment] = await stx.tx
+    .select({ id: payments.id })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.venueId, stx.venueId),
+        eq(payments.serviceDate, day),
+        isNull(payments.settledAt),
+      ),
+    )
+    .limit(1)
+  if (livePayment !== undefined) return refused(null, 'payments_open')
+  const [liveOrder] = await stx.tx
+    .select({ id: sentOrders.id })
+    .from(sentOrders)
+    .where(
+      and(
+        eq(sentOrders.venueId, stx.venueId),
+        eq(sentOrders.serviceDate, day),
+        notInArray(sentOrders.state, [...SETTLED_STATES]),
+      ),
+    )
+    .limit(1)
+  if (liveOrder !== undefined) return refused(null, 'orders_open')
 
   // 18 months from now: the day has ended, so this is never earlier than 18 months from its end.
   const until = recordRetainUntil(await stx.dbNow())

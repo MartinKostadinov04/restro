@@ -7,8 +7,9 @@
 //
 // A venue's day ends at its own hour in its own time zone, so the tick runs hourly rather than
 // once at 07:00 Sofia. `service_day.close` changes nothing for a day already closed, so a run that
-// races another is harmless. A day that fails is logged and skipped, and the venue's later days
-// wait for the next run, so the days close in order.
+// races another is harmless. A day that fails, or is refused because a payment or sent order of
+// it is still moving (`payments_open`, `orders_open`), is logged and skipped, and the venue's later
+// days wait for the next run, so the days close in order.
 
 import { randomUUID } from 'node:crypto'
 
@@ -65,16 +66,19 @@ export async function dueServiceDays(pool: DbPool, now: Date): Promise<DueServic
   return due
 }
 
-/** Closes every due service day; answers how many were closed. A venue stops at its first failure. */
+/**
+ * Closes every due service day; answers how many were closed. A venue stops at its first day that
+ * fails or is refused.
+ */
 export async function closeServiceDays(
   pool: DbPool,
   now: Date,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, 'info' | 'warn'>,
 ): Promise<number> {
   let closed = 0
-  const failed = new Set<string>()
+  const stopped = new Set<string>()
   for (const day of await dueServiceDays(pool, now)) {
-    if (failed.has(day.venueId)) continue
+    if (stopped.has(day.venueId)) continue
     try {
       const { result } = await applyService(
         pool,
@@ -87,9 +91,16 @@ export async function closeServiceDays(
           jobId: `service-day-${randomUUID()}`,
         },
       )
-      if (result.status === 'accepted' && result.details.changed === true) closed += 1
+      if (result.status === 'refused') {
+        // Expected and bounded: the day waits until its payments and sent orders are final.
+        stopped.add(day.venueId)
+        log.info(
+          { venueId: day.venueId, serviceDate: day.serviceDate, code: result.code },
+          'a service day waits',
+        )
+      } else if (result.details.changed === true) closed += 1
     } catch (error) {
-      failed.add(day.venueId)
+      stopped.add(day.venueId)
       log.warn(
         { venueId: day.venueId, serviceDate: day.serviceDate, err: error },
         'a service day could not be closed',
