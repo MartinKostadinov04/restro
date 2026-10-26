@@ -7,7 +7,9 @@
 // shared devices (#72), tables open for phones with their sittings (#73), the readings of a
 // table's bill with the sitting's end by a reading (#74), the table's shared order (#75), Send and
 // a sent order's way to the POS (#77), a payment's refund and dispute as read back after a
-// provider's notice (#108), and the waiter call with its Handled and its lapse (#81).
+// provider's notice (#108), the waiter call with its Handled and its lapse (#81), and the alerts'
+// lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
+// Push (#83).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -16,6 +18,20 @@ import { z } from 'zod'
 
 import { idSchema } from '../ids'
 import { ORDER_EDIT_MAX_AGE_MS, ORDER_LIMITS } from '../table-order'
+import {
+  AlertDeliveredSchema,
+  AlertSuppressedSchema,
+  alertDelivered,
+  alertDone,
+  alertSuppressed,
+  PushExpireSchema,
+  PushRevokeSchema,
+  PushSubscribeSchema,
+  pushExpire,
+  pushRevoke,
+  pushSubscribe,
+  syncPauseAlerts,
+} from './alerts'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
@@ -258,13 +274,57 @@ export const SERVICE_COMMANDS = {
   'table.resume': staffOnTable('table.resume', 'tables.resume', resumeTable),
   'ordering.pause': pauseOrdering(),
   'ordering.lift': liftOrdering(),
+  // #83: Done in Tonight or from the venue's Telegram group (`via`), and what the worker sends.
   'alert.done': defineCommand({
-    // #83
     schema: z.strictObject({ type: z.literal('alert.done'), alertId: idSchema('al') }),
     origins: ['staff'],
     permission: 'alerts.answer',
     idempotency: 'by_nature',
-    handle: null,
+    handle: alertDone,
+  }),
+  'alert.delivered': defineCommand({
+    schema: AlertDeliveredSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: alertDelivered,
+  }),
+  'alert.suppressed': defineCommand({
+    schema: AlertSuppressedSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: alertSuppressed,
+  }),
+  'alerts.sync_pauses': defineCommand({
+    schema: z.strictObject({ type: z.literal('alerts.sync_pauses') }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: syncPauseAlerts,
+  }),
+  // #83: a signed-in account's installed device for Web Push (D122 §7).
+  'push.subscribe': defineCommand({
+    schema: PushSubscribeSchema,
+    origins: ['staff'],
+    permission: 'alerts.answer',
+    idempotency: 'by_nature',
+    handle: pushSubscribe,
+  }),
+  'push.revoke': defineCommand({
+    schema: PushRevokeSchema,
+    origins: ['staff'],
+    permission: 'alerts.answer',
+    idempotency: 'by_nature',
+    handle: pushRevoke,
+  }),
+  // The push service said the device is gone (404 or 410): the worker ends it.
+  'push.expire': defineCommand({
+    schema: PushExpireSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: pushExpire,
   }),
   'waiter_call.done': defineCommand({
     // #81

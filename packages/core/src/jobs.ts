@@ -139,6 +139,17 @@ export const JOB_NAMES = {
    * and the dispute (`payment.observe`). Not sent by anyone else.
    */
   providerNotices: 'provider-notices',
+  /**
+   * Scheduled, every minute (#83, D120): runs the alert delivery pass every few seconds for the
+   * minute: keeps pauses as alerts, then sends what is due by Web Push and Telegram. Not sent by
+   * anyone else.
+   */
+  alertDelivery: 'alert-delivery',
+  /**
+   * Scheduled, every minute (#83, D120): pings the outside watchdog (Healthchecks.io) after a
+   * database read. Not sent by anyone else.
+   */
+  healthcheckPing: 'healthcheck-ping',
 } as const
 
 /** One of the queue names. */

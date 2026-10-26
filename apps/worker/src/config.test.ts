@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig, requireSealKeys } from './config'
 
 const URL = 'postgres://restro_app:s3cret-pw@localhost:54329/restro'
+/** What the alerts' settings are when none is set (#83). */
+const NO_ALERTS = { telegramToken: null, teamChatId: null, healthchecksUrl: null, vapid: null }
+/** A made-up bot token in the shape Telegram's BotFather gives. */
+const BOT_TOKEN = `123456789:${'A'.repeat(35)}`
 /** An obviously fake reveal token, long enough for the 32-character minimum. */
 const REVEAL_TOKEN = `test-reveal-token-${'x'.repeat(24)}`
 
@@ -41,6 +45,7 @@ describe('loadConfig', () => {
       billIdKey: null,
       posSync: true,
       send: true,
+      alerts: NO_ALERTS,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -88,9 +93,52 @@ describe('loadConfig', () => {
       billIdKey: 'k'.repeat(40),
       posSync: false,
       send: true,
+      alerts: NO_ALERTS,
     })
     // Unset, the Send follows the sync.
     expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
+  })
+
+  it('reads the alerts’ settings (#83) and keeps the secrets out of the errors', () => {
+    const vapid = {
+      VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`,
+      VAPID_PRIVATE_KEY: 'q'.repeat(43),
+      VAPID_SUBJECT: 'mailto:ops@restro.example',
+    }
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        TELEGRAM_BOT_TOKEN: ` ${BOT_TOKEN} `,
+        TELEGRAM_TEAM_CHAT_ID: ' -1001234567890 ',
+        HEALTHCHECKS_PING_URL: ' https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee ',
+        ...vapid,
+      }).alerts,
+    ).toEqual({
+      telegramToken: BOT_TOKEN,
+      teamChatId: '-1001234567890',
+      healthchecksUrl: 'https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      vapid: {
+        publicKey: vapid.VAPID_PUBLIC_KEY,
+        privateKey: vapid.VAPID_PRIVATE_KEY,
+        subject: vapid.VAPID_SUBJECT,
+      },
+    })
+
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      TELEGRAM_BOT_TOKEN: 'not-a-token-s3cret',
+      TELEGRAM_TEAM_CHAT_ID: 'my-chat',
+      HEALTHCHECKS_PING_URL: 'http://hc-ping.com/plain',
+      VAPID_PUBLIC_KEY: vapid.VAPID_PUBLIC_KEY,
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'TELEGRAM_BOT_TOKEN',
+      'TELEGRAM_TEAM_CHAT_ID',
+      'HEALTHCHECKS_PING_URL',
+      'VAPID_PRIVATE_KEY',
+      'VAPID_SUBJECT',
+    ])
+    expect(lines.join('\n')).not.toMatch(/s3cret|my-chat|plain/)
   })
 
   it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {
