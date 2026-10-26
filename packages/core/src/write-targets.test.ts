@@ -83,6 +83,9 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   'sharedDevices',
   'alerts',
   'waiterCalls',
+  // #83: a signed-in account registers an installed device for Web Push; the worker ends one the
+  // push service refused.
+  'pushSubscriptions',
   // #108: the notice route stores a provider's notice, the worker marks it handled and records
   // the payment's refund and dispute as read back.
   'providerNotices',

@@ -146,6 +146,17 @@ export const JOB_NAMES = {
    */
   providerNotices: 'provider-notices',
   /**
+   * Scheduled, every minute (#83, D120): runs the alert delivery pass every few seconds for the
+   * minute: keeps pauses as alerts, then sends what is due by Web Push and Telegram. Not sent by
+   * anyone else.
+   */
+  alertDelivery: 'alert-delivery',
+  /**
+   * Scheduled, every minute (#83, D120): pings the outside watchdog (Healthchecks.io) after a
+   * database read. Not sent by anyone else.
+   */
+  healthcheckPing: 'healthcheck-ping',
+  /**
    * Take one payment forward from where it stands (#110; design §5.1): read the table fresh and
    * price it, create the hold, release a cancelled one. Queued by `pay.start`, and again by the
    * paying phone's poll while the payment waits for the worker. One per payment at a time.

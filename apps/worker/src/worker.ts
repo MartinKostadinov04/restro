@@ -12,10 +12,11 @@
 //      green within seconds instead of after the first cron tick, and one `seal-table-codes` run
 //      (#70) so a deploy moves the table codes still in plain at once;
 //   5. the reveal endpoint, when REVEAL_SERVICE_TOKEN and the seal keys are set (reveal.ts);
-//   6. "worker started".
+//   6. the Telegram long poll for Done presses, when TELEGRAM_BOT_TOKEN is set (#83);
+//   7. "worker started".
 //
 // Stop order (stop() is idempotent; the signal handling lives in shutdown.ts):
-//   1. /health starts answering 503 "stopping";
+//   1. /health starts answering 503 "stopping"; the Telegram poll stops;
 //   2. `boss.stop({ graceful: true, timeout: 20000 })`: no new work is fetched, running jobs get
 //      up to 20 seconds to finish, then are failed and retried by the next worker; pg-boss's own
 //      pool is closed;
@@ -24,7 +25,8 @@
 import { JOB_NAMES } from '@restro/core'
 import { createPool, type DbPool, withSystem } from '@restro/db'
 import { PgBoss } from 'pg-boss'
-
+import { createTelegramClient } from './alerts/telegram'
+import { type Poller, startTelegramPoller } from './alerts/telegram-poller'
 import type { WorkerConfig } from './config'
 import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
 import { WorkerStatus } from './health'
@@ -85,6 +87,7 @@ export async function startWorker(
   let health: HealthServer | undefined
   let pool: DbPool | undefined
   let boss: PgBoss | undefined
+  let poller: Poller | undefined
 
   /** Closes whatever was opened. Every step runs; the first failure is rethrown at the end. */
   async function closeAll(graceful: boolean): Promise<void> {
@@ -98,6 +101,7 @@ export async function startWorker(
         log.error({ err: error }, `could not close ${what}`)
       }
     }
+    if (poller) await attempt('the Telegram poll', () => (poller as Poller).stop())
     if (boss) {
       const queue = boss
       await attempt('pg-boss', () => queue.stop({ graceful, timeout: SHUTDOWN_TIMEOUT_MS }))
@@ -161,6 +165,16 @@ export async function startWorker(
       })
     } else if (config.revealToken !== null) {
       log.warn('REVEAL_SERVICE_TOKEN is set without the seal keys: the reveal endpoint is off')
+    }
+    // "Done" from the venue's Telegram group (#83): long polling, so no public endpoint.
+    const telegramToken = config.alerts?.telegramToken ?? null
+    if (telegramToken !== null) {
+      poller = startTelegramPoller({
+        pool,
+        telegram: createTelegramClient({ token: telegramToken }),
+        log,
+        now,
+      })
     }
   } catch (error) {
     // Nothing is running yet that needs a grace period.

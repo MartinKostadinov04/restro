@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isoInTimeZone,
   liveEditions,
+  localInstant,
   serviceDate,
   serviceDayStartsAt,
   serviceEditionId,
@@ -70,5 +71,29 @@ describe('the editions of a service day (S3-08)', () => {
     expect(liveEditions('vn_x', '2026-10-09')).toEqual(['venue:vn_x', 'service:2026-10-09'])
     // A snapshot never names a service day, whatever the day is.
     expect(snapshotEditions('vn_x').some((id) => id.startsWith('service:'))).toBe(false)
+  })
+})
+
+describe('localInstant (a wall-clock time of a service day, as an instant)', () => {
+  it('reads an evening time on the day itself', () => {
+    expect(localInstant('2026-10-09', '22:00', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-09T19:00:00.000Z', // 22:00 EEST
+    )
+  })
+
+  it('puts a time before the end of the day on the next calendar date', () => {
+    expect(localInstant('2026-10-09', '02:30', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-09T23:30:00.000Z', // 02:30 EEST on the 10th
+    )
+  })
+
+  it('follows the offset of that date, across the autumn change', () => {
+    // 2026-10-25 03:30 local is after the clocks went back (EET, +02:00).
+    expect(localInstant('2026-10-24', '03:30', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-25T01:30:00.000Z',
+    )
+    expect(localInstant('2026-10-25', '23:00', SOFIA, '07:00').toISOString()).toBe(
+      '2026-10-25T21:00:00.000Z',
+    )
   })
 })
