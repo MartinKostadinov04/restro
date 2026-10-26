@@ -421,7 +421,15 @@ async function cancel(
       await settle()
       return
     }
-    // Nothing Restro may do about it (it never refunds): the payment stays for a person to see.
+    // A refusal may only mean the hold is gone already (failed, or dropped by the provider):
+    // read it back (D127 3.4), and settle a payment that holds nothing and never will.
+    const read = await provider.readPayment(accountRef, providerRef(paymentRef))
+    if (read.complete && isOver(read.value)) {
+      await settle()
+      return
+    }
+    // Nothing Restro may do about it (it never refunds): the payment stays `cancelling` for
+    // #112's recovery to read back until the provider drops the hold.
     env.log.error(
       { paymentId: payment.id, code: outcome.refusal.code },
       'the provider refused to release a payment Restro cancelled',

@@ -24,7 +24,7 @@ import { z } from 'zod'
 
 import { type BillId, type BillLineId, idFromBytes, idSchema, type NodeId } from '../ids'
 import { LOCALES, type LocalizedText, LocalizedTextSchema } from '../locales'
-import { CurrencySchema } from '../money'
+import { CurrencySchema, sumSignedMinor } from '../money'
 import { DecimalQuantitySchema } from '../quantity'
 
 /** A reading older than this is read again when a guest opens the bill (D111). */
@@ -232,15 +232,16 @@ export function billView(input: {
   /** *Backend*: the POS lines in a payment that isn't final (`payment_lines.open`). */
   readonly beingPaid?: ReadonlySet<string>
 }): BillView {
-  const totalMinor = input.bills.reduce((sum, bill) => sum + bill.totalMinor, 0)
-  const paidMinor = input.bills.reduce((sum, bill) => sum + bill.paidMinor, 0)
+  // The POS's amounts are signed (rule 8: through the money module).
+  const totalMinor = sumSignedMinor(input.bills.map((bill) => bill.totalMinor))
+  const paidMinor = sumSignedMinor(input.bills.map((bill) => bill.paidMinor))
   return {
     readAt: input.readAt,
     complete: input.complete,
     currency: input.bills[0]?.currency ?? null,
     totalMinor,
     paidMinor,
-    owedMinor: totalMinor - paidMinor,
+    owedMinor: sumSignedMinor([totalMinor, -paidMinor]),
     bills: input.bills.map((bill) => ({
       id: bill.id,
       beingPaid: bill.paymentInFlight,

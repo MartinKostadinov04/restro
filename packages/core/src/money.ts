@@ -125,6 +125,25 @@ export function addMinor(a: number, b: number): number {
   return sum
 }
 
+/**
+ * Sums signed amounts of integer minor units (rule 8), for the POS's own amounts, which can be
+ * negative (a discount line, a bill's total): `sumSignedMinor([3600, -100])` → `3500`. Throws
+ * `MoneyError` unless every amount and the sum are safe integers.
+ */
+export function sumSignedMinor(amounts: readonly number[]): number {
+  let sum = 0n
+  for (const amount of amounts) {
+    if (!Number.isSafeInteger(amount)) {
+      throw new MoneyError(`minor units must be a safe integer, got ${amount}`)
+    }
+    sum += BigInt(amount)
+  }
+  if (sum > BigInt(Number.MAX_SAFE_INTEGER) || sum < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new MoneyError(`sum too large: ${amounts.join(' + ')}`)
+  }
+  return Number(sum)
+}
+
 /** Throws unless `amount` is a non-negative safe integer (prices, deltas and totals, check V2). */
 function assertMinor(amount: number, what: string): void {
   if (!Number.isSafeInteger(amount) || amount < 0) {
