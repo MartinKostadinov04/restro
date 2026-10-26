@@ -244,9 +244,9 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
         (await applyService(world.app, { type: 'ordering.pause', barId: null }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
       const actionId = randomUUID()
-      const added = await applyService(world.app, { type: 'order.add', tableId, actionId }, guest())
-      expect(added.result).toEqual(refused(actionId, 'not_built'))
-      expect(added.state).toMatchObject({ unchanged: false, table: { id: tableId } })
+      const sent = await applyService(world.app, { type: 'order.send', tableId, actionId }, guest())
+      expect(sent.result).toEqual(refused(actionId, 'not_built'))
+      expect(sent.state).toMatchObject({ unchanged: false, table: { id: tableId } })
     })
 
     it('refuses a table of another venue as missing, and a guest sending a staff command', async () => {
@@ -255,7 +255,7 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
         const actionId = randomUUID()
         const missing = await applyService(
           world.app,
-          { type: 'order.add', tableId: elsewhere.tables[0], actionId },
+          { type: 'order.send', tableId: elsewhere.tables[0], actionId },
           guest(),
         )
         expect(missing).toEqual({ result: refused(actionId, 'table_missing'), state: null })

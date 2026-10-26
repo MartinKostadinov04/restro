@@ -100,8 +100,23 @@ export const ServiceContextSchema = z
      * change needs it within `FRESH_SIGN_IN_MINUTES` (D122 §7).
      */
     signedInAt: z.date().optional(),
+    /**
+     * A guest's table code, as its SHA-256 hex (D121): the guest API puts it here, and the command
+     * is refused `code_retired` unless the table still has this code and a guest page.
+     */
+    tableCodeHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
   })
   .superRefine((context, issues) => {
+    if (context.tableCodeHash !== undefined && context.origin !== 'guest') {
+      issues.addIssue({
+        code: 'custom',
+        path: ['tableCodeHash'],
+        message: 'only a guest command carries a table code',
+      })
+    }
     if (!ACTOR_KINDS_BY_ORIGIN[context.origin].includes(context.actor.kind)) {
       issues.addIssue({
         code: 'custom',
@@ -128,6 +143,7 @@ export interface ServiceContext {
   readonly via?: Via
   readonly now?: Date
   readonly signedInAt?: Date
+  readonly tableCodeHash?: string
 }
 
 /**

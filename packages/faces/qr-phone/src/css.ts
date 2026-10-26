@@ -147,6 +147,13 @@ export const FACE_CSS = `
   @keyframes rq-fade { from { opacity: 0; } }
   @keyframes rq-pulse { 50% { opacity: 0.55; } }
 }
+/* The table's shared order (#75): plain controls, at least 44px to tap. */
+.rq-add, .rq-order button { min-height: 44px; min-width: 44px; padding: 0 14px; border: 1px solid var(--rq-border, ButtonBorder); border-radius: var(--rq-radius, 8px); background: var(--rq-surface, Canvas); color: var(--rq-text, CanvasText); font: inherit; }
+.rq-add { justify-self: start; }
+.rq-order { margin-top: 24px; padding: 16px; border: 1px solid var(--rq-border, ButtonBorder); border-radius: var(--rq-radius, 8px); background: var(--rq-surface, Canvas); }
+.rq-order-lines { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.rq-order-controls { display: inline-flex; gap: 6px; margin-left: 8px; }
+.rq-order-hint { color: var(--rq-muted, GrayText); }
 @media (prefers-reduced-motion: reduce) {
   .rq-root * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -166,7 +166,7 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     expect(state.order).toBeNull()
     expect(
       await readTableState(world.app, { tenantId: world.tenantId, tableId, since: state.version }),
-    ).toEqual({ unchanged: true, version: state.version })
+    ).toMatchObject({ unchanged: true, version: state.version, nextChangeAt: null })
     expect(
       await readTableState(world.app, {
         tenantId: world.tenantId,

@@ -6,7 +6,13 @@
 import type { Allergen, DietaryLabel, Locale, MeasurementUnit } from '@restro/core'
 
 import type { ServiceKind } from './features'
-import type { BillLineStatus, PayMethod, PayScope, RequestStatus } from './service-vocabulary'
+import type {
+  BillLineStatus,
+  GuestRefusalCode,
+  PayMethod,
+  PayScope,
+  RequestStatus,
+} from './service-vocabulary'
 
 /**
  * The words of a guest page that are not menu text (S3-03: the phone face and its loader). Menu
@@ -172,6 +178,30 @@ export interface ServiceStrings {
   readonly print: string
   readonly receiptActionDone: string
   readonly receiptActionFailed: string
+  // The table's shared order (#75).
+  readonly tableOrder: string
+  readonly emptyOrder: string
+  /** A line drawn before the server answered. */
+  readonly saving: string
+  /** "Burger removed", with its Undo. */
+  readonly removedNamed: (name: string) => string
+  readonly undo: string
+  /** The order set aside when nobody touched it for a while. */
+  readonly earlierOrder: string
+  readonly restore: string
+  /** A pay-first item: it is not ordered from the phone. */
+  readonly orderFromWaiter: string
+  /** A bill line with no item of ours. */
+  readonly otherItem: string
+  /** A line held by a payment. */
+  readonly heldLine: string
+  readonly orderingPaused: string
+  readonly orderingClosed: string
+  /** The phone has not reached the server for a while. */
+  readonly offline: string
+  /** Why a command was refused, by code; `refusedOther` for any other code. */
+  readonly refusals: { readonly [C in GuestRefusalCode]: string }
+  readonly refusedOther: string
 }
 
 /** The words of one language. `lang` is the language the strings are really in. */
@@ -395,6 +425,32 @@ const EN: Strings = {
     print: 'Ask waiter to print',
     receiptActionDone: 'Done: request sent',
     receiptActionFailed: 'That did not go through. Try again.',
+    tableOrder: 'Table order',
+    emptyOrder: 'Nothing on the table order yet.',
+    saving: 'Saving…',
+    removedNamed: (name) => `${name} removed`,
+    undo: 'Undo',
+    earlierOrder: 'Earlier order',
+    restore: 'Restore',
+    orderFromWaiter: 'Order this from your waiter',
+    otherItem: 'Other item',
+    heldLine: 'Being paid',
+    orderingPaused: 'Ordering from phones is paused. Ask your waiter.',
+    orderingClosed: 'This table is not taking orders from phones right now.',
+    offline: 'Trying to reconnect…',
+    refusals: {
+      order_changed: 'Someone at your table changed this. Here is the latest order.',
+      line_held: 'This is being paid and can no longer change.',
+      undo_expired: 'It is too late to undo that.',
+      order_full: 'The order is full. Send it or remove something first.',
+      quantity_limit: 'That is as many as one line can hold.',
+      stale_action: 'That took too long to arrive. Try again.',
+      rate_limited: 'Too many changes at once. Wait a moment.',
+      table_not_open: 'This table is not taking orders from phones right now.',
+      code_retired: 'This table code has changed. Scan the code on your table again.',
+      not_built: 'This is not available yet.',
+    },
+    refusedOther: 'That did not work. Try again.',
   },
 }
 
@@ -598,6 +654,32 @@ const BG: Strings = {
     print: 'Помоли за разпечатка',
     receiptActionDone: 'Готово: заявката е изпратена',
     receiptActionFailed: 'Не се получи. Опитайте отново.',
+    tableOrder: 'Поръчка на масата',
+    emptyOrder: 'В поръчката на масата още няма нищо.',
+    saving: 'Записване…',
+    removedNamed: (name) => `${name} е премахнато`,
+    undo: 'Отмени',
+    earlierOrder: 'Предишна поръчка',
+    restore: 'Върни',
+    orderFromWaiter: 'Поръчайте това от сервитьора',
+    otherItem: 'Друг артикул',
+    heldLine: 'Плаща се',
+    orderingPaused: 'Поръчките от телефон са спрени. Попитайте сервитьора.',
+    orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
+    offline: 'Опитваме да се свържем отново…',
+    refusals: {
+      order_changed: 'Някой на масата промени това. Ето последната поръчка.',
+      line_held: 'Това се плаща и вече не може да се променя.',
+      undo_expired: 'Твърде късно е за отмяна.',
+      order_full: 'Поръчката е пълна. Изпратете я или премахнете нещо.',
+      quantity_limit: 'Един ред не може да побере повече.',
+      stale_action: 'Това пристигна твърде късно. Опитайте отново.',
+      rate_limited: 'Твърде много промени наведнъж. Изчакайте малко.',
+      table_not_open: 'Тази маса не приема поръчки от телефон в момента.',
+      code_retired: 'Кодът на масата е сменен. Сканирайте отново кода на масата.',
+      not_built: 'Това още не е налично.',
+    },
+    refusedOther: 'Не се получи. Опитайте отново.',
   },
 }
 

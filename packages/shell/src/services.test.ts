@@ -22,6 +22,7 @@ void _parsedIsACommand
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const nd = (n: number): `nd_${string}` => `nd_${String(n).padStart(22, '0')}`
+const ol = (n: number): `ol_${string}` => `ol_${String(n).padStart(22, '0')}`
 
 const line = { itemId: nd(1), optionIds: [nd(2), nd(3)], qty: 2, note: 'no onion' }
 
@@ -50,6 +51,12 @@ const VALID: readonly GuestCommand[] = [
   },
   { kind: 'pay.start', actionId: uuid(6), quoteId: 'q-1', method: 'card' },
   { kind: 'receipt.action', actionId: uuid(7), receiptId: 'rc-1', action: 'pdf' },
+  // The shared order's edits (#75).
+  { kind: 'order.add', actionId: uuid(8), ...line },
+  { kind: 'order.change', actionId: uuid(9), lineId: ol(1), delta: -1 },
+  { kind: 'order.remove', actionId: uuid(10), lineId: ol(1) },
+  { kind: 'order.undo', actionId: uuid(11), lineId: ol(1) },
+  { kind: 'order.restore', actionId: uuid(12), setAsideAt: 1_760_000_000_000 },
 ]
 
 const ok = (value: unknown) => GuestCommandSchema.safeParse(value).success
@@ -58,6 +65,17 @@ const order = (changes: Record<string, unknown>) => ({ ...VALID[0], ...changes }
 const quote = (changes: Record<string, unknown>) => ({ ...VALID[3], ...changes })
 
 describe('GuestCommandSchema', () => {
+  it('refuses an order edit out of its bounds (#75)', () => {
+    const change = { kind: 'order.change', actionId: uuid(1), lineId: ol(1) }
+    expect(ok({ ...change, delta: 0 })).toBe(false)
+    expect(ok({ ...change, delta: 51 })).toBe(false)
+    expect(ok({ ...change, delta: 1.5 })).toBe(false)
+    expect(ok({ ...change, delta: 50, lineId: nd(1) })).toBe(false)
+    expect(ok({ kind: 'order.add', actionId: uuid(1), ...line, qty: 0 })).toBe(false)
+    expect(ok({ kind: 'order.add', actionId: uuid(1), ...line, price: 100 })).toBe(false)
+    expect(ok({ kind: 'order.restore', actionId: uuid(1), setAsideAt: -1 })).toBe(false)
+  })
+
   it('accepts a valid command of every kind', () => {
     for (const command of VALID) {
       const result = GuestCommandSchema.safeParse(command)

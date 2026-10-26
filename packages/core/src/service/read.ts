@@ -10,6 +10,7 @@
 
 import {
   alerts,
+  areas,
   billReadings,
   type DbPool,
   locks,
@@ -27,7 +28,8 @@ import {
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 import { serviceDate } from '../service-day'
-import { type BillView, billView, parseStoredBills } from './bill'
+import { nextOrderChangeAt, orderFromRow } from '../table-order'
+import { type BillView, billBackendValues, billView, parseStoredBills } from './bill'
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
@@ -71,6 +73,10 @@ export interface PauseView {
 export interface TableStateRead {
   readonly unchanged: false
   readonly version: number
+  /** The database's clock at the read: what Undo windows and idle times are measured against. */
+  readonly now: Date
+  /** When time alone next changes the order (an Undo closing, the idle time); null for never. */
+  readonly nextChangeAt: Date | null
   readonly table: {
     readonly id: string
     readonly venueId: string
@@ -115,25 +121,121 @@ export interface TableStateRead {
    * names only: the POS's references stay in the row.
    */
   readonly bill: BillView | null
+  /**
+   * *Backend*: every POS reference and POS text of the stored reading, for the forbidden-values
+   * walk over what the phone is answered (rule 3). Never sent.
+   */
+  readonly backendValues: ReadonlySet<string>
 }
 
 /** "Nothing changed since `since`": what most polls get. */
 export interface TableStateUnchanged {
   readonly unchanged: true
   readonly version: number
+  readonly now: Date
+  /** When time alone next changes the open sitting's order (an Undo closing, the idle time). */
+  readonly nextChangeAt: Date | null
+  /** Whether the table has an open sitting. */
+  readonly open: boolean
+  /**
+   * When the open sitting's bill was last read, as `TableStateRead.bill.readAt`: null when the
+   * table is closed or not read since its sitting opened. A reading that found the same bill
+   * leaves the version as it was, so a poll on the bill learns its age here (#75, D111).
+   */
+  readonly billReadAt: Date | null
+}
+
+/** The database's clock, to the millisecond. */
+async function databaseNow(tx: ReadTx): Promise<Date> {
+  const clock = await tx.execute<{ ms: string }>(
+    sql`select floor(extract(epoch from now()) * 1000)::text as ms`,
+  )
+  return new Date(Number(clock.rows[0]?.ms))
+}
+
+/** When time alone next changes an order row, or null. */
+function nextChangeOf(
+  order: {
+    readonly lines: unknown
+    readonly earlier: unknown
+    readonly earlierAt: Date | null
+    readonly idleExpiresAt: Date | null
+  } | null,
+): Date | null {
+  if (order === null) return null
+  const at = nextOrderChangeAt(orderFromRow(order))
+  return at === null ? null : new Date(at)
 }
 
 /**
  * Reads one table's state. With `since` equal to the table's version it answers `unchanged`
- * after one indexed read. Null when the tenant has no such table, or it was deleted.
+ * after one indexed read. Null when the tenant has no such table, or it was deleted; with
+ * `tableCodeHash` (the guest API's read, D121) also when the code is no longer the table's or the
+ * table lost its guest page, checked in the same transaction.
  */
 export async function readTableState(
   pool: DbPool,
-  input: { readonly tenantId: string; readonly tableId: string; readonly since?: number },
+  input: {
+    readonly tenantId: string
+    readonly tableId: string
+    readonly since?: number
+    readonly tableCodeHash?: string
+  },
 ): Promise<TableStateRead | TableStateUnchanged | null> {
   return withTenant(pool, input.tenantId, async (tx) => {
+    if (input.tableCodeHash !== undefined) {
+      const [page] = await tx
+        .select({ id: venueTables.id })
+        .from(venueTables)
+        .innerJoin(areas, eq(areas.id, venueTables.areaId))
+        .where(
+          and(
+            eq(venueTables.id, input.tableId),
+            eq(venueTables.qrCodeHash, input.tableCodeHash),
+            isNull(venueTables.archivedAt),
+            eq(venueTables.isPaymentTable, false),
+            eq(venueTables.hidden, false),
+            eq(areas.hidden, false),
+            isNull(areas.archivedAt),
+          ),
+        )
+      if (page === undefined) return null
+    }
     const version = await tableVersion(tx, input.tableId)
-    if (input.since !== undefined && input.since === version) return { unchanged: true, version }
+    if (input.since !== undefined && input.since === version) {
+      const [open] = await tx
+        .select({
+          openedAt: sittings.openedAt,
+          readAt: billReadings.readAt,
+          lines: tableOrders.lines,
+          earlier: tableOrders.earlier,
+          earlierAt: tableOrders.earlierAt,
+          idleExpiresAt: tableOrders.idleExpiresAt,
+        })
+        .from(sittings)
+        .leftJoin(tableOrders, eq(tableOrders.sittingId, sittings.id))
+        .leftJoin(billReadings, eq(billReadings.tableId, sittings.tableId))
+        .where(and(eq(sittings.tableId, input.tableId), isNull(sittings.endedAt)))
+      return {
+        unchanged: true,
+        version,
+        now: await databaseNow(tx),
+        nextChangeAt:
+          open === undefined || open.lines === null
+            ? null
+            : nextChangeOf({
+                lines: open.lines,
+                earlier: open.earlier,
+                earlierAt: open.earlierAt,
+                idleExpiresAt: open.idleExpiresAt,
+              }),
+        open: open !== undefined,
+        billReadAt:
+          open === undefined || open.readAt === null || open.readAt < open.openedAt
+            ? null
+            : open.readAt,
+      }
+    }
 
     const [table] = await tx
       .select()
@@ -203,9 +305,12 @@ export async function readTableState(
       .from(billReadings)
       .where(eq(billReadings.tableId, table.id))
 
+    const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
     return {
       unchanged: false,
       version,
+      now: await databaseNow(tx),
+      nextChangeAt: nextChangeOf(order ?? null),
       table: {
         id: table.id,
         venueId: table.venueId,
@@ -244,11 +349,8 @@ export async function readTableState(
       bill:
         reading === undefined || sitting === undefined || reading.readAt < sitting.openedAt
           ? null
-          : billView({
-              readAt: reading.readAt,
-              complete: reading.complete,
-              bills: parseStoredBills(reading.bills),
-            }),
+          : billView({ readAt: reading.readAt, complete: reading.complete, bills: stored }),
+      backendValues: billBackendValues(stored),
     }
   })
 }

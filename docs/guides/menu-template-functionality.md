@@ -86,8 +86,13 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
 - **Status:** drawn, platform parked
-- **Drawn means:** a control on each orderable item, marked `item.add`, that puts the dish in the bag; the bag with the item's choices (modifier groups and options), quantities and a note, a send that waits for the host's answer, and a rejected order that keeps the bag.
-- **Where:** §5.5, §7.2, §10.2, §10.3, §10.5; D71, D72
+- **Drawn means:** (the platform runs the shared order since #75, on the hidden reference template only; Send follows in #77) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options), quantity and note; a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
+  - every phone at the table sees and edits the same lines (`services.state.order`); a line someone else added is drawn like one's own, and the template marks no line as "mine";
+  - a line the host is still saving (`pending`) is drawn as such; a refused edit goes back to what the server holds and shows the shell's words for its refusal code (`refusals`), never a success of its own;
+  - a line being paid (`held`) has no controls; a pay-first line (`mode: pay_first`) says "Order this from your waiter" (`orderFromWaiter`);
+  - a removed line stays for 10 seconds with Undo (`removed`, `undoSeconds`), and an order left idle for 30 minutes is set aside as the "Earlier order" with Restore (`earlier`);
+  - when the host says ordering is paused or the table closed (`ordering.state`), or that the phone is offline (`offline`), the template says so with the shell's words.
+- **Where:** §5.5, §7.2, §10.2, §10.3, §10.5; D71, D72, D117, D121
 
 ### Pay
 - **Shell key:** `pay` (slot `menu.pay`)

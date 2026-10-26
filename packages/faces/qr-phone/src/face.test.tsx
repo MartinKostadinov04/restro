@@ -1,4 +1,10 @@
-import { buildViewModel, imageSlotsFor, type ViewModel, validateManifest } from '@restro/shell'
+import {
+  buildViewModel,
+  EMPTY_SERVICE_STATE,
+  imageSlotsFor,
+  type ViewModel,
+  validateManifest,
+} from '@restro/shell'
 import {
   type ContractHost,
   faceContractSuite,
@@ -51,7 +57,8 @@ describe('the qr-phone manifest', () => {
       paging: null,
       allergen_mode: 'inline_codes',
       no_image_layout: 'text_only',
-      ordering: false,
+      // The table's shared order (#75).
+      ordering: true,
     })
     expect(QR_PHONE_MANIFEST.slots['item.image']).toEqual({
       optional: true,
@@ -226,8 +233,8 @@ describe('what the face draws', () => {
 })
 
 describe('the manifest: guest features (R15)', () => {
-  it('has the filter chips as its only guest control, and no options', () => {
-    expect(QR_PHONE_MANIFEST.features).toEqual(['filters'])
+  it('has the filter chips and the shared order (#75) as its guest controls, and no options', () => {
+    expect(QR_PHONE_MANIFEST.features).toEqual(['filters', 'ordering'])
     expect(QR_PHONE_MANIFEST.options).toEqual({})
   })
 })
@@ -322,3 +329,106 @@ describe('model helpers', () => {
 
 // The tests every face has to pass (brief SH-03): manifest, contract on every fixture, theme-only CSS.
 faceContractSuite('qr-phone', { manifest: QR_PHONE_MANIFEST, render, css: FACE_CSS })
+
+describe('the shared order (#75)', () => {
+  const view = viewOf('features-on')
+  const items = view.sections.flatMap((section) => section.items)
+  const negroni = items[0]
+  const mojito = items[1]
+  if (negroni === undefined || mojito === undefined) throw new Error('the fixture has no items')
+  const lineId = (n: number) => `ol_${'0'.repeat(21)}${n}` as const
+  const services = {
+    state: {
+      ...EMPTY_SERVICE_STATE,
+      ordering: { state: 'on' as const },
+      order: {
+        lines: [
+          {
+            id: lineId(1),
+            itemId: negroni.id,
+            optionIds: [],
+            qty: 2,
+            note: '',
+            mode: 'on_bill' as const,
+            held: false,
+            pending: false,
+          },
+          {
+            id: lineId(2),
+            itemId: mojito.id,
+            optionIds: [],
+            qty: 1,
+            note: '',
+            mode: 'pay_first' as const,
+            held: true,
+            pending: false,
+          },
+        ],
+        removed: [
+          {
+            id: lineId(3),
+            itemId: mojito.id,
+            optionIds: [],
+            qty: 1,
+            note: '',
+            mode: 'on_bill' as const,
+            undoSeconds: 7,
+          },
+        ],
+        earlier: {
+          setAsideAt: 1_700_000_000_000,
+          lines: [
+            {
+              id: lineId(4),
+              itemId: negroni.id,
+              optionIds: [],
+              qty: 1,
+              note: '',
+              mode: 'on_bill' as const,
+            },
+          ],
+        },
+      },
+    },
+    dispatch: () => Promise.reject(new Error('not in a static render')),
+  }
+  const html = withoutStyle(renderToStaticMarkup(<QrPhoneFace view={view} services={services} />))
+  const doc = parseHtml(html)
+
+  it('draws the order panel and an Add on each orderable item', () => {
+    expect(withAttribute(doc, 'data-slot', 'menu.bag')).toHaveLength(1)
+    const orderable = items.filter((item) => item.order.controls).length
+    expect(orderable).toBeGreaterThan(0)
+    expect(withAttribute(doc, 'data-slot', 'item.add')).toHaveLength(orderable)
+  })
+
+  it('draws each line with its quantity, and no controls on a held line', () => {
+    const [first, held] = withAttribute(doc, 'data-order-line', lineId(1)).concat(
+      withAttribute(doc, 'data-order-line', lineId(2)),
+    )
+    expect(first === undefined ? '' : textOf(first)).toContain('Negroni')
+    expect(first === undefined ? '' : textOf(first)).toContain('× 2')
+    expect(held === undefined ? '' : textOf(held)).toContain('Being paid')
+    expect(held === undefined ? '' : textOf(held)).not.toContain('Remove')
+  })
+
+  it('says a pay-first item is ordered from the waiter', () => {
+    expect(html).toContain('Order this from your waiter')
+  })
+
+  it('offers Undo on a removed line and Restore on the earlier order', () => {
+    expect(withAttribute(doc, 'data-removed-line', lineId(3))).toHaveLength(1)
+    expect(html).toContain('Mojito removed')
+    expect(html).toContain('Undo')
+    expect(withAttribute(doc, 'data-earlier-order', '')).toHaveLength(1)
+    expect(html).toContain('Restore')
+  })
+
+  it('draws no order where the shell left ordering off', () => {
+    const off = withoutStyle(
+      renderToStaticMarkup(<QrPhoneFace view={viewOf('features-off')} services={services} />),
+    )
+    expect(off).not.toContain('data-slot="menu.bag"')
+    expect(off).not.toContain('data-slot="item.add"')
+  })
+})

@@ -50,6 +50,26 @@ export {
   formatField,
   type SnapshotFieldType,
 } from './fields'
+export {
+  GUEST_API_MAX_BYTES,
+  GUEST_API_VIEWS,
+  type GuestActionAnswer,
+  GuestActionAnswerSchema,
+  type GuestActionRequest,
+  GuestActionRequestSchema,
+  type GuestApiError,
+  GuestApiErrorSchema,
+  type GuestApiView,
+  GuestCommandResultSchema,
+  type GuestStateAnswer,
+  GuestStateAnswerSchema,
+  GuestStateQuerySchema,
+  type GuestTableState,
+  GuestTableStateSchema,
+  GuestUnchangedSchema,
+  isGuestRefusalCode,
+  TABLE_AUTH_SCHEME,
+} from './guest-api'
 export { pickVariant } from './images'
 export {
   ALLERGEN_MODES,
@@ -99,9 +119,12 @@ export {
   type BillView,
   type CommandResult,
   EMPTY_SERVICE_STATE,
+  GUEST_REFUSAL_CODES,
   type GuestCommand,
   GuestCommandSchema,
+  type GuestRefusalCode,
   type OrderLine,
+  type OrderLineView,
   PAY_METHODS,
   PAY_SCOPES,
   type PayMethod,
@@ -116,6 +139,7 @@ export {
   SERVICE_LIMITS,
   type ServiceBinding,
   type ServiceState,
+  type TableOrderView,
   type VatLine,
 } from './services'
 export { type GuestStrings, type ServiceStrings, type Strings, stringsFor } from './strings'

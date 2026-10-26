@@ -112,7 +112,16 @@ describe('the service commands', () => {
   })
 
   it('parses a command through the union and refuses unknown fields', () => {
-    const add = { type: 'order.add', tableId: TABLE, actionId: crypto.randomUUID() }
+    const add = {
+      type: 'order.add',
+      tableId: TABLE,
+      actionId: crypto.randomUUID(),
+      ageMs: 120,
+      itemId: `nd_${'1'.repeat(22)}`,
+      optionIds: [],
+      qty: 1,
+      note: '',
+    }
     expect(ServiceCommandSchema.parse(add)).toEqual(add)
     expect(ServiceCommandSchema.safeParse({ ...add, priceMinor: 1 }).success).toBe(false)
   })

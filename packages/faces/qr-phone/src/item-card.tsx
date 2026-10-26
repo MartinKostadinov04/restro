@@ -3,10 +3,18 @@
 // allergen codes, the custom fields and the modifier groups. Every slot carries `data-slot`, and
 // the card carries `data-item`, which is what the contract tests read.
 
-import type { GuestStrings, ViewImage, ViewItem, ViewModel, ViewText } from '@restro/shell'
+import type {
+  GuestStrings,
+  ServiceStrings,
+  ViewImage,
+  ViewItem,
+  ViewModel,
+  ViewText,
+} from '@restro/shell'
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 
 import { assetUrl, bcp47, langOf } from './model'
+import { AddButton, type CommandDraft } from './table-order'
 
 /** What every card needs from the page. */
 export interface CardContext {
@@ -15,6 +23,11 @@ export interface CardContext {
   readonly assetBase: string
   /** Opens the allergen sheet for an item (the element that asked gets the focus back). */
   readonly openAllergens: (item: ViewItem, trigger: HTMLElement) => void
+  /** The table's shared order (#75), when the shell turned ordering on; null otherwise. */
+  readonly ordering: {
+    readonly strings: ServiceStrings
+    readonly send: (command: CommandDraft) => void
+  } | null
 }
 
 /** A text in its own language: `lang` is set only when it differs from the page. */
@@ -296,6 +309,10 @@ export function ItemCard({
               </p>
             ))}
           </div>
+        ) : null}
+
+        {ctx.ordering !== null && item.order.controls ? (
+          <AddButton item={item} strings={ctx.ordering.strings} send={ctx.ordering.send} />
         ) : null}
 
         {item.order.askWaiter !== null ? (
