@@ -206,6 +206,7 @@ export {
   type SendMenuItem,
 } from './send-menu'
 export {
+  AVAILABILITY_READS,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
   BUDGET_WAIT_MS,
@@ -231,5 +232,6 @@ export {
   type StaffSettingsRefusal,
   type StaffView,
 } from './staff-read'
+export { OUT_OF_STOCK_ALERT, type StockNotice } from './stock'
 export { MAX_REVEALED_CODES } from './table-codes'
 export { waiterCallLapsesAt } from './waiter-call'

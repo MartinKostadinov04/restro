@@ -17,6 +17,7 @@ import { logError } from '../log'
 import { canMarkSoldOut } from '../roles'
 import { requireTenant } from '../session'
 import { setItemsSoldOut } from '../sold-out/service'
+import { venueHasTill } from '../venues'
 import {
   keepOverride,
   loadHistory,
@@ -82,7 +83,9 @@ async function session(ids: z.infer<typeof Ids>): Promise<Session> {
       pool: getPool(),
       tenantId: organization.id,
       ...ids,
-      canMarkSoldOut: canMarkSoldOut(organization.role),
+      // On a POS venue the POS says what ran out: no sold-out switch (D124 §6, #80).
+      canMarkSoldOut:
+        canMarkSoldOut(organization.role) && !(await venueHasTill(organization.id, ids.venueId)),
     },
     services: {
       store: await getAssetStore(),

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { SERVICE_TIMINGS } from '../timings'
 import {
+  AVAILABILITY_READS,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
   BUDGET_WAIT_MS,
@@ -16,10 +17,10 @@ describe('the slot lease of each state', () => {
     const write = BUDGET_WAIT_MS + SERVICE_TIMINGS.writeTimeoutMs
     const probe = BUDGET_WAIT_MS + SERVICE_TIMINGS.probeBudgetMs
     const lease = slotLeaseSeconds()
-    // The breaker's probe before the read (#79), then the read with its tries and pauses.
+    // The probe (#79), the availability read (#80), then the read with its tries and pauses.
     expect(lease.start * 1_000).toBeGreaterThanOrEqual(
       probe +
-        BEFORE_READ_TRIES * read +
+        (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
         (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS +
         LEASE_MARGIN_MS,
     )

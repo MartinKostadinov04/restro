@@ -33,6 +33,7 @@ import { createPublishJobs } from './publish'
 import { createPurgeJobs } from './purge'
 import { createReadingJobs } from './readings'
 import { createSealTableCodesJob } from './seal-table-codes'
+import { createStockJobs } from './stock'
 import type { JobDefinition } from './types'
 import { workerHeartbeat } from './worker-heartbeat'
 
@@ -65,7 +66,10 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   ]
   // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a
   // `sim` instance is refused in production inside it.
-  const sendJobs = config.send ? createSendJobs({ sim: config.sim }) : []
+  // Stock from the POS (#80) runs with it: a mark is found by a Send, and taken off by the tick.
+  const sendJobs = config.send
+    ? [...createSendJobs({ sim: config.sim }), ...createStockJobs({ sim: config.sim })]
+    : []
   const connectionJobs =
     config.send || config.posSync ? createConnectionJobs({ sim: config.sim }) : []
   // The purge (D83) runs only where the purge role's connection is set; without it nothing is
