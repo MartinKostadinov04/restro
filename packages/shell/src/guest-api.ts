@@ -128,6 +128,14 @@ export const GuestTableStateSchema = z.strictObject({
       }),
     )
     .max(50),
+  /** The table's latest waiter call while open, and for a few minutes after it ended (#81). */
+  waiterCall: z
+    .strictObject({
+      id: idSchema('wc'),
+      state: z.enum(['open', 'done', 'lapsed']),
+      calledAgoSeconds: seconds,
+    })
+    .nullable(),
   bill: z
     .strictObject({
       readAgoSeconds: seconds,

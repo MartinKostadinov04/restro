@@ -64,7 +64,7 @@ const repoRoot = join(srcRoot, '..', '..', '..')
  * the re-issue's code generation; #72: the staff side, i.e. people, roles, assignments and shared
  * devices, never `operators`; #73: the sittings; #74: the readings of a table's bill; #75: the
  * alert of a table's order rate trip, to Restro's admin team; #108: the provider's notices and a
- * payment's refund and dispute; #77: the sent orders and their notes).
+ * payment's refund and dispute; #81: the waiter calls; #77: the sent orders and their notes).
  */
 const SERVICE_WRITE_TARGETS: readonly string[] = [
   'sittings',
@@ -81,6 +81,7 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   'staffAssignments',
   'sharedDevices',
   'alerts',
+  'waiterCalls',
   // #108: the notice route stores a provider's notice, the worker marks it handled and records
   // the payment's refund and dispute as read back.
   'providerNotices',

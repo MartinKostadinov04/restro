@@ -206,11 +206,16 @@ export interface ServiceStrings {
   readonly locationAllow: string
   readonly locationNotNow: string
   readonly locationChecking: string
-  /** The failed check's heading; it offers `locationCallWaiter` and `locationCancel`. */
+  /**
+   * The failed check's heading; it offers `locationCallWaiter` (where the venue takes calls) or
+   * the still card `locationOrderFromWaiter` (where it does not), and `locationCancel`.
+   */
   readonly locationFailed: string
   /** The failed check's small print: why, and how to allow location next time. */
   readonly locationWhy: string
   readonly locationCallWaiter: string
+  /** The still card where the venue takes no waiter calls (D122 §4): never a button. */
+  readonly locationOrderFromWaiter: string
   readonly locationCancel: string
   /** Where the venue checks and the phone isn't located yet: why the order and bill are hidden. */
   readonly locationNeeded: string
@@ -486,6 +491,7 @@ const EN: Strings = {
     locationWhy:
       'Your phone did not share a precise location, or it showed you elsewhere. To try again, allow location for this page and turn on precise location.',
     locationCallWaiter: 'Call a waiter',
+    locationOrderFromWaiter: 'Please order from your waiter',
     locationCancel: 'Cancel',
     locationNeeded: 'Allow location to see and add to your table’s order and bill.',
     locationAllowAgain: 'Allow location',
@@ -746,6 +752,7 @@ const BG: Strings = {
     locationWhy:
       'Телефонът ви не сподели точно местоположение или показа, че сте другаде. За да опитате отново, разрешете местоположението за тази страница и включете точното местоположение.',
     locationCallWaiter: 'Повикай сервитьор',
+    locationOrderFromWaiter: 'Моля, поръчайте от сервитьора',
     locationCancel: 'Отказ',
     locationNeeded:
       'Разрешете местоположението, за да виждате и добавяте към поръчката и сметката на масата.',

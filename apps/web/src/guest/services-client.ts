@@ -51,6 +51,7 @@ import {
   type LocationControls,
   type LocationView,
   type OrderLineView,
+  type RequestView,
   type SentOrderView,
   type ServiceState,
   TABLE_AUTH_SCHEME,
@@ -256,6 +257,17 @@ export function orderView(
   }
 }
 
+/**
+ * The table's waiter call as the face's request (#81): one call per table, so its id is also its
+ * action id (the sheet then shows it as the open request). A call nobody answered in time is one
+ * the team could not take ("Ask your waiter").
+ */
+function requestOf(call: NonNullable<GuestTableState['waiterCall']>): RequestView {
+  const status: RequestView['status'] =
+    call.state === 'open' ? 'sent' : call.state === 'done' ? 'done' : 'rejected'
+  return { id: call.id, actionId: call.id, kind: 'waiter', status, note: '' }
+}
+
 /** A client for one table. Call `start()` to begin polling. */
 export function createTableServices(deps: TableServicesDeps): TableServices {
   const random = deps.random ?? Math.random
@@ -307,6 +319,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
       order: server?.order == null ? null : orderView(server.order, pending, now),
+      requests: server?.waiterCall == null ? [] : [requestOf(server.waiterCall)],
       ordering: retired
         ? { state: 'closed' }
         : server === null

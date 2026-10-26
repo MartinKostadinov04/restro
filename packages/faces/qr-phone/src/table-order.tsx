@@ -225,7 +225,12 @@ export function OrderPanel({
           {strings.offline}
         </p>
       ) : null}
-      <LocationPanel services={services} strings={strings} send={send} />
+      <LocationPanel
+        services={services}
+        strings={strings}
+        send={send}
+        callWaiter={view.features.callWaiter !== null}
+      />
       {ordering === 'paused' ? <p className="rq-note">{strings.orderingPaused}</p> : null}
       {ordering === 'closed' ? <p className="rq-note">{strings.orderingClosed}</p> : null}
       {notice !== null ? (
@@ -325,17 +330,21 @@ export function OrderPanel({
 
 /**
  * The location check (#76, D122 §4), drawn from the host's `location`: the consent screen (Allow /
- * Not now), "Checking your location…", the failed check (Call a waiter / Cancel), and, while the
+ * Not now), "Checking your location…", the failed check (Call a waiter, or the still card "Please
+ * order from your waiter" where the venue takes no calls, and Cancel), and, while the
  * phone has no pass, why the order and the bill are hidden with the guest's own "Allow location".
  */
 export function LocationPanel({
   services,
   strings,
   send,
+  callWaiter,
 }: {
   readonly services: ServiceBinding | undefined
   readonly strings: ServiceStrings
   readonly send: (command: CommandDraft) => void
+  /** The venue takes waiter calls (`view.features.callWaiter`); otherwise the still card shows. */
+  readonly callWaiter: boolean
 }) {
   const location = services?.state.location ?? null
   const controls = services?.location
@@ -369,15 +378,23 @@ export function LocationPanel({
         <div className="rq-location" role="alert" data-location-prompt="failed">
           <p className="rq-note">{strings.locationFailed}</p>
           <p className="rq-order-hint">{strings.locationWhy}</p>
-          <button
-            type="button"
-            onClick={() => {
-              send({ kind: 'service.request', request: 'waiter', note: '' })
-              controls.dismiss()
-            }}
-          >
-            {strings.locationCallWaiter}
-          </button>{' '}
+          {callWaiter ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  send({ kind: 'service.request', request: 'waiter', note: '' })
+                  controls.dismiss()
+                }}
+              >
+                {strings.locationCallWaiter}
+              </button>{' '}
+            </>
+          ) : (
+            <p className="rq-note" data-location-still-card="">
+              {strings.locationOrderFromWaiter}
+            </p>
+          )}
           <button type="button" onClick={() => controls.dismiss()}>
             {strings.locationCancel}
           </button>

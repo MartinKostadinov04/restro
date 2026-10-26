@@ -436,7 +436,12 @@ describe('the shared order (#75)', () => {
 describe('the location check (#76)', () => {
   const view = viewOf('features-on')
   const controls = { allow: async () => null, decline() {}, reopen() {}, dismiss() {} }
-  const draw = (prompt: 'none' | 'consent' | 'checking' | 'failed', state = 'needed' as const) => {
+  const noCalls = { ...view, features: { ...view.features, callWaiter: null } }
+  const draw = (
+    prompt: 'none' | 'consent' | 'checking' | 'failed',
+    state = 'needed' as const,
+    shown = view,
+  ) => {
     const services = {
       state: {
         ...EMPTY_SERVICE_STATE,
@@ -447,7 +452,9 @@ describe('the location check (#76)', () => {
       dispatch: () => Promise.reject(new Error('not in a static render')),
       location: controls,
     }
-    const html = withoutStyle(renderToStaticMarkup(<QrPhoneFace view={view} services={services} />))
+    const html = withoutStyle(
+      renderToStaticMarkup(<QrPhoneFace view={shown} services={services} />),
+    )
     return { html, doc: parseHtml(html) }
   }
 
@@ -460,10 +467,20 @@ describe('the location check (#76)', () => {
     expect(html).toContain('Not now')
   })
 
-  it('offers Call a waiter and Cancel when the check fails', () => {
+  it('offers Call a waiter and Cancel when the check fails where the venue takes calls', () => {
     const { html, doc } = draw('failed')
     expect(withAttribute(doc, 'data-location-prompt', 'failed')).toHaveLength(1)
     expect(html).toContain('Call a waiter')
+    expect(html).not.toContain('Please order from your waiter')
+    expect(html).toContain('Cancel')
+  })
+
+  it('shows the still card, never a Call a waiter button, where the venue takes no calls', () => {
+    const { html, doc } = draw('failed', 'needed', noCalls)
+    expect(withAttribute(doc, 'data-location-prompt', 'failed')).toHaveLength(1)
+    expect(withAttribute(doc, 'data-location-still-card', '')).toHaveLength(1)
+    expect(html).toContain('Please order from your waiter')
+    expect(html).not.toContain('Call a waiter')
     expect(html).toContain('Cancel')
   })
 

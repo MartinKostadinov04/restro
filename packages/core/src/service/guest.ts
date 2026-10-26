@@ -79,6 +79,9 @@ export const GUEST_POLL_MS = { fast: 2_000, menu: 10_000 } as const
 /** How long a sent order that ended stays in the state (D122 §2: 15 minutes). */
 const ENDED_SENT_ORDER_MS = 15 * 60_000
 
+/** How long a waiter call that ended (handled, lapsed) stays in the state, so a phone sees it. */
+const ENDED_WAITER_CALL_MS = 5 * 60_000
+
 /** One line of the order as a phone sees it: no price, no name. */
 export interface GuestOrderLine {
   readonly id: string
@@ -155,6 +158,15 @@ export interface GuestTableState {
     /** Seconds since it was sent, for the time "Show this to your waiter" gives. */
     readonly sentAgoSeconds: number
   }[]
+  /**
+   * The table's latest waiter call while it is open, and for a few minutes after it was handled
+   * or lapsed; null otherwise (#81). Not hidden by the location check: a call is not located.
+   */
+  readonly waiterCall: {
+    readonly id: string
+    readonly state: 'open' | 'done' | 'lapsed'
+    readonly calledAgoSeconds: number
+  } | null
   /** The table's bill as the last complete reading showed it, or null. */
   readonly bill: {
     readonly readAgoSeconds: number
@@ -459,6 +471,17 @@ export function projectGuestState(
                 },
         },
     sentOrders,
+    waiterCall:
+      read.sitting === null ||
+      read.waiterCall === null ||
+      (read.waiterCall.endedAt !== null &&
+        now - read.waiterCall.endedAt.getTime() > ENDED_WAITER_CALL_MS)
+        ? null
+        : {
+            id: read.waiterCall.id,
+            state: read.waiterCall.state,
+            calledAgoSeconds: seconds(now - read.waiterCall.calledAt.getTime()),
+          },
     bill:
       bill === null
         ? null
@@ -701,9 +724,10 @@ export interface GuestActed {
 }
 
 /**
- * The guest commands that reach the engine, each with its tap's age. The phone's own location
- * check is answered here; anything else the shell knows (a waiter call, paying) is answered
- * `not_built` until its ticket.
+ * The guest commands that reach the engine, each with its tap's age. A Send is guarded here
+ * (limits, location, Turnstile) before it reaches the engine, and the phone's own location check is
+ * answered here; anything else the shell knows (paying) is answered `not_built` until its ticket.
+ * The shell's `service.request` is a call for a waiter (#81).
  */
 const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.add',
@@ -712,6 +736,7 @@ const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.undo',
   'order.restore',
   'order.send',
+  'waiter.call',
 ])
 
 /** The commands this module answers without the engine: "Allow location". */
@@ -763,7 +788,10 @@ export async function guestAct(
 ): Promise<GuestActed | GuestStateless> {
   const target = await targetOf(pool, input.code)
   if (target === null) return { ok: false, code: 'code_retired' }
-  const { type, actionId } = input.command
+  const { actionId } = input.command
+  // The shell's request is a call for a waiter: its kind and note go no further (D122 §4: no text
+  // from the guest), and it is never located.
+  const type = input.command.type === 'service.request' ? 'waiter.call' : input.command.type
   const reject = (code: string): GuestActed => ({
     ok: true,
     result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
@@ -883,7 +911,10 @@ export async function guestAct(
     }
   }
 
-  const command = { ...input.command, tableId: target.tableId, ageMs: input.ageMs }
+  const command =
+    type === 'waiter.call'
+      ? { type, actionId, tableId: target.tableId, ageMs: input.ageMs }
+      : { ...input.command, tableId: target.tableId, ageMs: input.ageMs }
   // A Send prices its lines from the table's menu, read before the transaction; the pass's consent
   // version goes on the sent order with the pass's sitting (D119).
   const sendMenu =
