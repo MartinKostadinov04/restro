@@ -163,7 +163,15 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
     tableId = world.tables[0] as string
     await world.owner.query(
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
-      [world.venueId, JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false })],
+      // The pace is #78's to test (send-guards.test.ts): these tests send many rounds on one table.
+      [
+        world.venueId,
+        JSON.stringify({
+          ...DEFAULT_ORDERING_SETTINGS,
+          locationCheck: false,
+          pacePer15Minutes: null,
+        }),
+      ],
     )
     const code = `code${randomUUID().replaceAll('-', '')}`
     codeHash = await hashTableCode(code)

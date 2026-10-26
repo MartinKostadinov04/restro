@@ -127,6 +127,22 @@ export interface PricedLine {
 }
 
 /**
+ * True when the menu can take the line tonight: its item is on the menu, priced, orderable and not
+ * sold out, and every option is one the item has. A line that isn't stays on the order at Send,
+ * greyed, and Send offers the others (#78).
+ */
+export function lineAvailable(
+  menu: SendMenu,
+  line: Pick<SendLineInput, 'itemId' | 'optionIds'>,
+): boolean {
+  const item = menu.items.get(line.itemId)
+  if (item === undefined || !item.orderable || item.soldOut || item.priceMinor === null) {
+    return false
+  }
+  return line.optionIds.every((optionId) => item.options.has(optionId))
+}
+
+/**
  * Prices the lines against the menu. A line whose item is not on the menu, not orderable, sold
  * out tonight, or names an option the item does not have is `item_unavailable` (rule 5: Restro
  * never sends what the guest could not order).
@@ -145,7 +161,7 @@ export function priceSentLines(
   let total = 0
   for (const line of lines) {
     const item = menu.items.get(line.itemId)
-    if (item === undefined || !item.orderable || item.soldOut || item.priceMinor === null) {
+    if (item === undefined || item.priceMinor === null || !lineAvailable(menu, line)) {
       return { ok: false, code: 'item_unavailable', itemId: line.itemId }
     }
     let unit = item.priceMinor

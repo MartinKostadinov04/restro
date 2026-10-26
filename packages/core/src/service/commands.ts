@@ -175,13 +175,15 @@ export const SERVICE_COMMANDS = {
     handle: tidyTableOrder,
   }),
   // #77: Send. The lines are the order's as the guest saw them; a repeat gets the sent order the
-  // action made. A deliberate repeat after the duplicate warning is a new action (#78).
+  // action made. A deliberate repeat after the duplicate warning is a new action naming the sent
+  // order it repeats (#78).
   'order.send': defineCommand({
     schema: z.strictObject({
       type: z.literal('order.send'),
       tableId,
       actionId,
       ageMs,
+      confirmDuplicateOf: idSchema('so').optional(),
       lines: z
         .array(
           z.strictObject({

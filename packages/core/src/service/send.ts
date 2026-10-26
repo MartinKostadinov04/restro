@@ -5,9 +5,14 @@
 // 2. the lines the Send names must be the order's live lines that no payment holds, as the guest
 //    saw them (`order_changed`), and there must be some (`order_empty`);
 // 3. each line is priced from the table's menu (the snapshot plus tonight's sold-out marks, which
-//    the guest API read before the transaction): an item that is gone, not orderable or sold out
-//    refuses the Send (`item_unavailable`) and the lines stay on the order;
-// 4. the lines leave the order, a `waiting` sent order is written with a short reference a waiter
+//    the guest API read before the transaction). A line the menu can't take tonight (gone, not
+//    orderable, sold out) stays on the order and the Send goes without it ("Send the other 4",
+//    #78); a Send that names such a line refuses (`item_unavailable`, with how many others could
+//    go) and the lines stay on the order;
+// 4. the guards (`send-guards.ts`, #78): the same round in the last 15 minutes asks first
+//    (`duplicate_order`, until a new action confirms it), and a round over the venue's cap or past
+//    its pace refuses (`guard_tripped`) and pauses the table for "ask your waiter";
+// 5. the lines leave the order, a `waiting` sent order is written with a short reference a waiter
 //    reads (K7Q), each line's note is kept apart (`sent_order_notes`), and the table is touched.
 // The worker takes it from there (`sent-order.ts`): Restro never calls the POS here.
 
@@ -15,21 +20,17 @@ import { randomInt } from 'node:crypto'
 
 import { pauses, sentOrderNotes, sentOrders, venueTables } from '@restro/db'
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
-import { z } from 'zod'
 
-import { idSchema, newId } from '../ids'
-import {
-  ORDER_LIMITS,
-  orderFromRow,
-  type SendRequestLine,
-  takeSentLines,
-  tidyOrder,
-} from '../table-order'
+import { newId } from '../ids'
+import { readOrderingSettings } from '../ordering-settings'
+import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '../table-order'
 import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
 import { accepted, refused, type ServiceResult } from './results'
-import { priceSentLines } from './send-menu'
+import { findDuplicate, recentSentOrders, type SendGuard, tripGuard } from './send-guards'
+import { lineAvailable, priceSentLines } from './send-menu'
+import { type SentOrderLine, SentOrderLineSchema } from './sent-lines'
 
 /** The letters a reference is drawn from: no 0/O, 1/I/L, 2/Z, 5/S, 8/B, G or so look-alikes. */
 export const REFERENCE_ALPHABET = 'ACDEFHJKMNPQRTUVWXY34679'
@@ -53,38 +54,19 @@ export const SEND_REFUSALS = [
   'order_changed',
   'order_empty',
   'item_unavailable',
+  'duplicate_order',
+  'guard_tripped',
 ] as const
 
-/** One line of a sent order as stored (`sent_orders.lines`): no note (it is kept apart). */
-export const SentOrderLineSchema = z.strictObject({
-  id: idSchema('ol'),
-  itemId: idSchema('nd'),
-  optionIds: z.array(idSchema('nd')).max(ORDER_LIMITS.options),
-  qty: z.int().min(1).max(ORDER_LIMITS.quantity),
-  /** The unit price: the item's plus its options' deltas, in minor units. */
-  unitMinor: z.int().nonnegative(),
-  /** The POS's name where the item came from one, else the menu's (for staff, never a guest). */
-  name: z.string().max(200),
-  optionNames: z.array(z.string().max(200)).max(ORDER_LIMITS.options),
-})
-
-/** One stored line of a sent order. */
-export type SentOrderLine = z.output<typeof SentOrderLineSchema>
-
-/** The stored lines of a sent order, each checked; a line that fails is dropped. */
-export function sentOrderLinesOf(stored: unknown): SentOrderLine[] {
-  if (!Array.isArray(stored)) return []
-  return stored.flatMap((entry) => {
-    const parsed = SentOrderLineSchema.safeParse(entry)
-    return parsed.success ? [parsed.data] : []
-  })
-}
+export { type SentOrderLine, SentOrderLineSchema, sentOrderLinesOf } from './sent-lines'
 
 /** The `order.send` command, as its schema parses it. */
 export interface SendCommand {
   readonly tableId: string
   readonly actionId: string
   readonly lines: readonly SendRequestLine[]
+  /** The sent order the guest's "Send another" answered (a new action after `duplicate_order`). */
+  readonly confirmDuplicateOf?: string | undefined
 }
 
 /** True when ordering at this table is paused: the table itself, its bar or the whole venue. */
@@ -122,10 +104,40 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
 
   const now = await stx.dbNow()
   const current = tidyOrder(orderFromRow(row), now.getTime()).order
-  const taken = takeSentLines(current, command.lines, now.getTime())
+  const keptBack = (line: { readonly itemId: string; readonly optionIds: readonly string[] }) =>
+    !lineAvailable(menu, line)
+  const named = command.lines.find(keptBack)
+  if (named !== undefined) {
+    const others = current.lines.filter(
+      (line) => line.removedAt === null && line.heldBy === null && !keptBack(line),
+    ).length
+    return refused(actionId, 'item_unavailable', { itemId: named.itemId, others })
+  }
+  const taken = takeSentLines(current, command.lines, now.getTime(), keptBack)
   if (!taken.ok) return refused(actionId, taken.code)
   const priced = priceSentLines(menu, taken.lines)
   if (!priced.ok) return refused(actionId, priced.code, { itemId: priced.itemId })
+
+  const target = { tableId, sittingId: row.sittingId }
+  const duplicate = await findDuplicate(stx, target, taken.lines, now)
+  if (duplicate !== null && command.confirmDuplicateOf !== duplicate.sentOrderId) {
+    return refused(actionId, 'duplicate_order', {
+      duplicateOf: duplicate.sentOrderId,
+      minutesAgo: duplicate.minutesAgo,
+    })
+  }
+  const settings = readOrderingSettings(stx.venue.settings)
+  const trip = (guard: SendGuard, details: Readonly<Record<string, number>>): ServiceResult => {
+    stx.keepOnRefusal(() => tripGuard(stx, { guard, ...target, details }))
+    return refused(actionId, 'guard_tripped', { guard, ...details })
+  }
+  if (settings.capMinor !== null && priced.totalMinor > settings.capMinor) {
+    return trip('cap', { capMinor: settings.capMinor, totalMinor: priced.totalMinor })
+  }
+  const pace = settings.pacePer15Minutes
+  if (pace !== null && (await recentSentOrders(stx, tableId, now)) >= pace) {
+    return trip('pace', { pacePer15Minutes: pace })
+  }
 
   const lines: SentOrderLine[] = taken.lines.map((line, index) => {
     const price = priced.lines[index]

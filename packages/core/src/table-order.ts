@@ -373,14 +373,17 @@ export interface SendRequestLine {
 
 /**
  * Takes the lines a Send names out of the order. The Send must name the order's live lines that
- * no payment holds, each once with its quantity: anything else is `order_changed` (someone changed
- * the order since the guest looked), and an order with no such line is `order_empty`. The lines
- * leave the order entirely (no Undo: they are on their way to the bar); the idle time restarts.
+ * no payment holds and `keepBack` doesn't keep (#78: a sold-out line stays, greyed, and Send
+ * offers "Send the other 4"), each once with its quantity: anything else is `order_changed`
+ * (someone changed the order since the guest looked), and an order with no such line is
+ * `order_empty`. The lines leave the order entirely (no Undo: they are on their way to the bar);
+ * the idle time restarts.
  */
 export function takeSentLines(
   order: TableOrderDraft,
   requested: readonly SendRequestLine[],
   now: number,
+  keepBack: (line: TableOrderLine) => boolean = () => false,
 ):
   | {
       readonly ok: true
@@ -388,7 +391,9 @@ export function takeSentLines(
       readonly lines: readonly TableOrderLine[]
     }
   | { readonly ok: false; readonly code: 'order_changed' | 'order_empty' } {
-  const sendable = order.lines.filter((line) => live(line) && line.heldBy === null)
+  const sendable = order.lines.filter(
+    (line) => live(line) && line.heldBy === null && !keepBack(line),
+  )
   if (sendable.length === 0) return { ok: false, code: 'order_empty' }
   if (requested.length !== sendable.length) return { ok: false, code: 'order_changed' }
   const wanted = new Map<string, number>()
