@@ -4,11 +4,17 @@
 // Remove, a removed line's Undo, the earlier order's Restore, and the host's word when ordering is
 // paused or the table is closed. Everything drawn comes from the host's state (D72); the host may
 // draw an edit before the server answers, and says so per line (`pending`).
+//
+// Send (#77, D116, D122 §5): "Send 3 items" sends the order's on-the-bill lines and waits for the
+// host's answer; the table's sent orders follow with their state on every phone ("Sending…" only
+// on the phone that sent, "Being sent" on the others), "Not confirmed: show K7Q to your waiter",
+// and the "Show this to your waiter" panel any phone can open.
 
 import {
   type CommandResult,
   type GuestCommand,
   isGuestRefusalCode,
+  type SentOrderView,
   type ServiceBinding,
   type ServiceStrings,
   type ViewItem,
@@ -47,32 +53,129 @@ export function itemsById(view: ViewModel): ReadonlyMap<string, ViewItem> {
   return found
 }
 
-/** Sends commands and keeps the last refusal's words. */
-export function useOrderCommands(services: ServiceBinding | undefined, strings: ServiceStrings) {
+/** Sends commands and keeps the last refusal's words; `view` names the item a refused Send names. */
+export function useOrderCommands(
+  services: ServiceBinding | undefined,
+  strings: ServiceStrings,
+  view?: ViewModel,
+) {
   const [notice, setNotice] = useState<string | null>(null)
+  const items = useMemo(() => (view === undefined ? null : itemsById(view)), [view])
   const send = useCallback(
-    async (command: CommandDraft) => {
-      if (services === undefined) return
+    async (command: CommandDraft): Promise<CommandResult | null> => {
+      if (services === undefined) return null
       setNotice(null)
       let result: CommandResult
       try {
         result = await services.dispatch({ ...command, actionId: newActionId() } as GuestCommand)
       } catch {
         setNotice(strings.refusedOther)
-        return
+        return null
       }
       if (result.status === 'rejected') {
         const code = result.code ?? null
         // The location panel answers these itself (the consent screen, the failed check).
-        if (code === 'location_needed' || code === 'location_failed') return
+        if (code === 'location_needed' || code === 'location_failed') return result
+        const named =
+          code === 'item_unavailable' && result.subjectId != null
+            ? items?.get(result.subjectId)?.name.text
+            : undefined
         setNotice(
-          code !== null && isGuestRefusalCode(code) ? strings.refusals[code] : strings.refusedOther,
+          named !== undefined
+            ? strings.itemUnavailableNamed(named)
+            : code !== null && isGuestRefusalCode(code)
+              ? strings.refusals[code]
+              : strings.refusedOther,
         )
       }
+      return result
     },
-    [services, strings],
+    [services, strings, items],
   )
   return { send, notice }
+}
+
+/** What a sent order says on this phone (D116, D122 §5). */
+export function sentWords(sent: SentOrderView, strings: ServiceStrings): string {
+  switch (sent.state) {
+    case 'sending':
+      return sent.mine ? strings.sendingNow : strings.beingSent
+    case 'awaiting_approval':
+      return strings.sentAwaitingApproval
+    case 'added':
+      return strings.sentAdded
+    case 'not_sent':
+      if (sent.reason === 'ordering_paused') return strings.sentNotSentPaused
+      return sent.reason === 'needs_first_item' ? strings.sentNotSentFirstItem : strings.sentNotSent
+    case 'unconfirmed':
+      return strings.sentUnconfirmed(sent.ref)
+  }
+}
+
+/** The time a sent order went, as the phone's clock shows it ("19:42"). */
+function clockOf(at: number): string {
+  const date = new Date(at)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * The table's sent orders, each with its state, and the "Show this to your waiter" panel: the
+ * reference in large type, the time and the items, black on white (D120).
+ */
+export function SentOrders({
+  services,
+  strings,
+  nameOf,
+}: {
+  readonly services: ServiceBinding | undefined
+  readonly strings: ServiceStrings
+  readonly nameOf: (itemId: string) => string
+}) {
+  const [shown, setShown] = useState<string | null>(null)
+  const sentOrders = services?.state.sentOrders ?? []
+  if (sentOrders.length === 0) return null
+  const open = sentOrders.find((sent) => sent.id === shown) ?? null
+  return (
+    <div className="rq-sent" data-sent-orders="">
+      <ul className="rq-order-lines">
+        {sentOrders.map((sent) => (
+          <li key={sent.id} data-sent-order={sent.id} data-sent-state={sent.state}>
+            <p className="rq-order-hint">
+              {sent.lines.map((line) => `${line.qty} × ${nameOf(line.itemId)}`).join(', ')}
+            </p>
+            <p className={sent.state === 'unconfirmed' ? 'rq-note' : undefined} role="status">
+              {sentWords(sent, strings)}
+            </p>
+            <button type="button" onClick={() => setShown(sent.id)}>
+              {strings.showWaiter}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {open !== null ? (
+        <div
+          className="rq-waiter"
+          role="dialog"
+          aria-label={strings.showWaiter}
+          data-show-waiter=""
+        >
+          <p className="rq-waiter-ref">{open.ref}</p>
+          <p>{clockOf(open.sentAt)}</p>
+          <ul>
+            {open.lines.map((line, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a sent order's lines never change or reorder
+              <li key={`${line.itemId}-${index}`}>
+                {line.qty} × {nameOf(line.itemId)}
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => setShown(null)}>
+            {strings.showWaiterClose}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /** The order panel. */
@@ -86,14 +189,34 @@ export function OrderPanel({
   readonly view: ViewModel
   readonly services: ServiceBinding | undefined
   readonly strings: ServiceStrings
-  readonly send: (command: CommandDraft) => void
+  readonly send: (command: CommandDraft) => unknown
   readonly notice: string | null
 }) {
   const items = useMemo(() => itemsById(view), [view])
+  const [sending, setSending] = useState(false)
   const order = services?.state.order ?? null
   const ordering = services?.state.ordering?.state ?? 'on'
   const nameOf = (itemId: string) => items.get(itemId)?.name.text ?? strings.otherItem
   const lines = order?.lines ?? []
+  // A Send takes the lines on the bill that no payment holds and the server already has.
+  const sendable = lines.filter((line) => line.mode === 'on_bill' && !line.held && !line.pending)
+  const count = sendable.reduce((sum, line) => sum + line.qty, 0)
+  const sendOrder = async () => {
+    setSending(true)
+    try {
+      await send({
+        kind: 'order.send',
+        lines: sendable.map((line) => ({
+          itemId: line.itemId,
+          optionIds: line.optionIds,
+          qty: line.qty,
+          note: line.note,
+        })),
+      })
+    } finally {
+      setSending(false)
+    }
+  }
   return (
     <section className="rq-order" data-slot="menu.bag" aria-label={strings.tableOrder}>
       <h2>{strings.tableOrder}</h2>
@@ -189,6 +312,18 @@ export function OrderPanel({
           </button>
         </div>
       ) : null}
+      {count > 0 && ordering === 'on' ? (
+        <button
+          type="button"
+          className="rq-send"
+          data-send=""
+          disabled={sending}
+          onClick={() => void sendOrder()}
+        >
+          {sending ? strings.sendingNow : strings.sendItems(count)}
+        </button>
+      ) : null}
+      <SentOrders services={services} strings={strings} nameOf={nameOf} />
     </section>
   )
 }

@@ -155,6 +155,12 @@ export const FACE_CSS = `
 .rq-order-controls { display: inline-flex; gap: 6px; margin-left: 8px; }
 .rq-order-hint { color: var(--rq-muted, GrayText); }
 .rq-location { display: grid; gap: 8px; margin: 8px 0 16px; justify-items: start; }
+/* Send (#77): the sent orders, and the panel a guest shows a waiter: dark on light whatever the
+   theme (the light scheme's Canvas and CanvasText, D120's 21:1), the reference at 48px. */
+.rq-send { margin-top: 8px; font-weight: 600; }
+.rq-sent { margin-top: 16px; }
+.rq-waiter { margin-top: 12px; padding: 16px; border-radius: var(--rq-radius, 8px); color-scheme: light; background: Canvas; color: CanvasText; }
+.rq-waiter-ref { margin: 0; font-size: 48px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.1; }
 @media (prefers-reduced-motion: reduce) {
   .rq-root * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

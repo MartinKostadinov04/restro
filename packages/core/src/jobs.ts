@@ -103,6 +103,20 @@ export const JOB_NAMES = {
    */
   orderTidyTick: 'order-tidy-tick',
   /**
+   * Send a table's waiting sent orders to its POS, one at a time (#77, D115): take the table's
+   * slot, read the bill, add the round once, and when the answer is unknown read it back for a
+   * minute. The guest API queues it after an accepted Send; the sweep queues it for a table with a
+   * waiting sent order and no slot holder. Stately per table: a Send while one runs waits behind it.
+   */
+  orderSend: 'order-send',
+  /**
+   * Scheduled, every minute (#77): settles the sent order of each table whose slot lease passed
+   * its deadline (`sent_order.expire`: Unconfirmed when it may have reached the POS), and queues
+   * `order-send` for each table with a waiting sent order and no slot holder. Not sent by anyone
+   * else.
+   */
+  orderSlotSweep: 'order-slot-sweep',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`
@@ -153,6 +167,10 @@ export type VenueSyncJob = z.output<typeof VenueSyncJobSchema>
  */
 export const TableReadJobSchema = z.strictObject({ tenantId, venueId, tableId: idSchema('tb') })
 export type TableReadJob = z.output<typeof TableReadJobSchema>
+
+/** Payload of `order-send`: the table whose waiting sent orders go to its POS. */
+export const OrderSendJobSchema = TableReadJobSchema
+export type OrderSendJob = TableReadJob
 
 /** `barsy-full-pull` and `barsy-incremental`: `venueId` is OUR venue (`vn_`), never a barsy `bid`. */
 export const BarsyPullJobSchema = VenueSyncJobSchema
@@ -246,6 +264,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.placesRead]: VenueSyncJobSchema,
   [JOB_NAMES.floorRead]: VenueSyncJobSchema,
   [JOB_NAMES.tableRead]: TableReadJobSchema,
+  [JOB_NAMES.orderSend]: OrderSendJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
@@ -297,6 +316,7 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishTableTokens,
   JOB_NAMES.publishOrganizationIndex,
   JOB_NAMES.purgeVenue,
+  JOB_NAMES.orderSend,
   // A payment's step: a send while one runs waits behind it, so a notice that comes during a check
   // is read again after it (#110).
   JOB_NAMES.paymentPrepare,
@@ -345,6 +365,9 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
     case JOB_NAMES.tableRead:
       // One reading job per table (#74): a second send while one is queued or running is dropped.
       return (data as TableReadJob).tableId
+    case JOB_NAMES.orderSend:
+      // One sender per table (#77); a Send while it runs queues one more run behind it.
+      return (data as OrderSendJob).tableId
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
       const scope = data as PublishScopeJob

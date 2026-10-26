@@ -14,7 +14,6 @@ import {
   newId,
   type PaymentJob,
   providerRef,
-  type ServiceReader,
   type VenueId,
 } from '@restro/core'
 import {
@@ -392,13 +391,7 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     const { id } = await pay(0, 100)
     const noTip: typeof serviceConnectorFor = (integration, sim) => {
       const connector = serviceConnectorFor(integration, sim)
-      return {
-        kind: connector.kind,
-        capabilities: { ...connector.capabilities, recordTipOnClose: false },
-        probe: (ctx) => connector.probe(ctx),
-        readFloor: (ctx) => connector.readFloor(ctx),
-        readTable: (ctx, table) => connector.readTable(ctx, table),
-      } satisfies ServiceReader
+      return { ...connector, capabilities: { ...connector.capabilities, recordTipOnClose: false } }
     }
     expect(await preparePayment(env(), target(id), deps({ connectorFor: noTip }))).toEqual({
       kind: 'at',

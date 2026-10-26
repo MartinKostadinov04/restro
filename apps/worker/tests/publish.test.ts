@@ -785,6 +785,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         revealToken: null,
         billIdKey: null,
         posSync: true,
+        send: false,
       }
       worker = await startWorker(config, { logger, jobs: [...jobs.values()] })
     }, SETUP_TIMEOUT_MS)

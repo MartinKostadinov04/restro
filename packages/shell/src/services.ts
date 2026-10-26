@@ -274,7 +274,10 @@ export interface CommandResult {
   readonly ref: string | null
   /** Why the host said no (`GUEST_REFUSAL_CODES`), for the face to word; null or absent otherwise. */
   readonly code?: string | null
-  /** What the command made or acted on (the order line an `order.add` made), or null. */
+  /**
+   * What the command made or acted on (the order line an `order.add` made, the sent order a Send
+   * made, the item an `item_unavailable` names), or null.
+   */
   readonly subjectId?: string | null
 }
 
@@ -394,6 +397,32 @@ export interface TableOrderView {
   } | null
 }
 
+/**
+ * One sent order of the table (#77, D116, D122 §5): what a Send made, shown on every phone while it
+ * is in flight and for 15 minutes after it ends. Its lines are no longer on the order.
+ */
+export interface SentOrderView {
+  readonly id: string
+  /**
+   * `sending` until the POS has it or certainly not; `awaiting_approval` only where the POS
+   * approves orders at the bar; `unconfirmed` when Restro could not tell (the table pauses).
+   */
+  readonly state: 'sending' | 'awaiting_approval' | 'added' | 'not_sent' | 'unconfirmed'
+  /** Why it ended Not sent or Unconfirmed (`ordering_paused`, `check_timed_out`…), or null. */
+  readonly reason: string | null
+  /** The short reference a waiter reads (K7Q). */
+  readonly ref: string
+  readonly lines: readonly {
+    readonly itemId: NodeId
+    readonly optionIds: readonly NodeId[]
+    readonly qty: number
+  }[]
+  /** When it was sent, in milliseconds since the epoch by the phone's clock. */
+  readonly sentAt: number
+  /** Sent from this phone: only this phone shows "Sending…" (D122 §5). */
+  readonly mine: boolean
+}
+
 /** Where the phone stands with the location check (#76), and what the face shows for it. */
 export interface LocationView {
   /**
@@ -448,6 +477,8 @@ export interface ServiceState {
   readonly offline?: boolean
   /** The location check (#76); absent where the host does not check. */
   readonly location?: LocationView | null
+  /** The table's sent orders (#77), newest first; absent where the host has none. */
+  readonly sentOrders?: readonly SentOrderView[]
 }
 
 /** What a host binds to a face: the state to draw and the way to send a command. */

@@ -1,0 +1,156 @@
+import { describe, expect, it } from 'vitest'
+
+import { checkLanded, type SentLineShape } from './landed'
+import { posRef } from './pos-ref'
+import type { BillLine, PosBill, TableBills } from './schemas'
+
+const REF = 'so_round'
+
+function line(id: string, item: string, quantity: string, extra: Partial<BillLine> = {}): BillLine {
+  return {
+    ref: posRef(id),
+    item: posRef(item),
+    name: null,
+    quantity,
+    amountMinor: 500,
+    enteredBy: null,
+    enteredAt: null,
+    restroRef: null,
+    ...extra,
+  }
+}
+
+function bill(id: string, lines: BillLine[]): PosBill {
+  return {
+    ref: posRef(id),
+    totalMinor: 0,
+    paidMinor: 0,
+    openedAt: null,
+    openedByRestro: null,
+    paymentInFlight: false,
+    lines,
+  }
+}
+
+function table(...bills: PosBill[]): TableBills {
+  return { table: posRef('t7'), currency: 'EUR', bills }
+}
+
+const sent: SentLineShape[] = [
+  { item: posRef('gin'), quantity: '2' },
+  { item: posRef('cola'), quantity: '1' },
+]
+
+const NONE = { ownLineReference: false, whoEnteredLine: false }
+const before = table(bill('b1', [line('l1', 'beer', '1')]))
+
+describe('checkLanded (D115, #77)', () => {
+  describe('without any way to tell our lines', () => {
+    it('is absent while the bill is as it was', () => {
+      expect(checkLanded({ before, after: before, sent, ref: REF, capabilities: NONE })).toEqual({
+        kind: 'absent',
+      })
+    })
+
+    it('lands when exactly our round appeared, quantities compared as decimal text', () => {
+      const after = table(
+        bill('b1', [
+          line('l1', 'beer', '1'),
+          line('l2', 'gin', '2.000'),
+          line('l3', 'cola', '1.0'),
+        ]),
+      )
+      const verdict = checkLanded({ before, after, sent, ref: REF, capabilities: NONE })
+      expect(verdict).toEqual({
+        kind: 'landed',
+        bill: posRef('b1'),
+        lines: [posRef('l2'), posRef('l3')],
+      })
+    })
+
+    it('is ambiguous when a waiter slipped an identical round in as well', () => {
+      const after = table(
+        bill('b1', [
+          line('l1', 'beer', '1'),
+          line('l2', 'gin', '2'),
+          line('l3', 'cola', '1'),
+          line('l4', 'gin', '2'),
+          line('l5', 'cola', '1'),
+        ]),
+      )
+      expect(checkLanded({ before, after, sent, ref: REF, capabilities: NONE }).kind).toBe(
+        'ambiguous',
+      )
+    })
+
+    it('is ambiguous, never absent or landed, when a line went or changed', () => {
+      const gone = table(bill('b1', [line('l2', 'gin', '2'), line('l3', 'cola', '1')]))
+      expect(checkLanded({ before, after: gone, sent, ref: REF, capabilities: NONE }).kind).toBe(
+        'ambiguous',
+      )
+      const changed = table(bill('b1', [line('l1', 'beer', '3')]))
+      expect(checkLanded({ before, after: changed, sent, ref: REF, capabilities: NONE }).kind).toBe(
+        'ambiguous',
+      )
+    })
+
+    it('is ambiguous when only other new lines appeared', () => {
+      const after = table(bill('b1', [line('l1', 'beer', '1'), line('l9', 'wine', '1')]))
+      expect(checkLanded({ before, after, sent, ref: REF, capabilities: NONE }).kind).toBe(
+        'ambiguous',
+      )
+    })
+  })
+
+  describe('with the POS saying who entered a line', () => {
+    const who = { ownLineReference: false, whoEnteredLine: true }
+    it("counts Restro's new lines only: a waiter's identical round doesn't make it doubtful", () => {
+      const after = table(
+        bill('b1', [
+          line('l1', 'beer', '1'),
+          line('l2', 'gin', '2', { enteredBy: 'staff' }),
+          line('l3', 'cola', '1', { enteredBy: 'staff' }),
+          line('l4', 'gin', '2', { enteredBy: 'restro' }),
+          line('l5', 'cola', '1', { enteredBy: 'restro' }),
+        ]),
+      )
+      expect(checkLanded({ before, after, sent, ref: REF, capabilities: who })).toEqual({
+        kind: 'landed',
+        bill: posRef('b1'),
+        lines: [posRef('l4'), posRef('l5')],
+      })
+    })
+
+    it('is absent with no new line of ours', () => {
+      const after = table(bill('b1', [line('l1', 'beer', '1'), line('l2', 'gin', '2')]))
+      expect(checkLanded({ before, after, sent, ref: REF, capabilities: who })).toEqual({
+        kind: 'absent',
+      })
+    })
+  })
+
+  describe("with Restro's reference read back", () => {
+    const own = { ownLineReference: true, whoEnteredLine: false }
+    it('finds the round by its reference, on a second bill too', () => {
+      const after = table(
+        bill('b1', [line('l1', 'beer', '1'), line('l2', 'gin', '2')]),
+        bill('b2', [
+          line('l4', 'gin', '2', { restroRef: REF }),
+          line('l5', 'cola', '1', { restroRef: REF }),
+        ]),
+      )
+      expect(checkLanded({ before, after, sent, ref: REF, capabilities: own })).toEqual({
+        kind: 'landed',
+        bill: posRef('b2'),
+        lines: [posRef('l4'), posRef('l5')],
+      })
+    })
+
+    it('is ambiguous when the lines with our reference are not our round', () => {
+      const after = table(bill('b1', [line('l4', 'gin', '1', { restroRef: REF })]))
+      expect(checkLanded({ before, after, sent, ref: REF, capabilities: own }).kind).toBe(
+        'ambiguous',
+      )
+    })
+  })
+})

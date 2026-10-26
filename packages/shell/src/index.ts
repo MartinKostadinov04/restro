@@ -154,6 +154,7 @@ export {
   type RequestStatus,
   type RequestView,
   SERVICE_LIMITS,
+  type SentOrderView,
   type ServiceBinding,
   type ServiceState,
   type TableOrderView,

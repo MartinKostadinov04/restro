@@ -234,7 +234,8 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
   })
 
   describe('the real commands', () => {
-    it('refuses every command not built yet as not_built, with a fresh state for a guest', async () => {
+    // Every guest command is built (Send, #77; the waiter call, #81): only staff commands are left.
+    it('refuses every command not built yet as not_built', async () => {
       const tableId = world.tables[0] as string
       const owner = staff(user(ownerId))
       expect(
@@ -243,10 +244,6 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
       expect(
         (await applyService(world.app, { type: 'ordering.pause', barId: null }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
-      const actionId = randomUUID()
-      const sent = await applyService(world.app, { type: 'order.send', tableId, actionId }, guest())
-      expect(sent.result).toEqual(refused(actionId, 'not_built'))
-      expect(sent.state).toMatchObject({ unchanged: false, table: { id: tableId } })
     })
 
     it('refuses a table of another venue as missing, and a guest sending a staff command', async () => {
@@ -255,7 +252,7 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
         const actionId = randomUUID()
         const missing = await applyService(
           world.app,
-          { type: 'order.send', tableId: elsewhere.tables[0], actionId },
+          { type: 'waiter.call', tableId: elsewhere.tables[0], actionId, ageMs: 0 },
           guest(),
         )
         expect(missing).toEqual({ result: refused(actionId, 'table_missing'), state: null })

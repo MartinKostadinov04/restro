@@ -38,6 +38,8 @@ const SEAL_KEYS = e2eSealEnvironment()
 const REVEAL_SERVICE_TOKEN = 'e2e-only-reveal-token-not-used-anywhere-else-0123456789'
 // The worker's health port, which also serves the reveal endpoint; it moves with E2E_PORT.
 const WORKER_PORT = PORT + 2
+// The simulated POS the Send's test adds rounds to (#77; never a real one); it moves with E2E_PORT.
+const SIM_PORT = PORT + 3
 
 const serverEnvironment = (origin: string) => ({
   ...(process.env as Record<string, string>),
@@ -55,18 +57,20 @@ const serverEnvironment = (origin: string) => ({
   // The location pass's key (#76), for the test servers only; a real one comes from the environment.
   GUEST_PASS_KEY:
     process.env.GUEST_PASS_KEY ?? 'e2e-only-guest-pass-key-not-used-anywhere-else-0123456789',
-  // Cloudflare's published test secret, which passes every token (#110: the paying test's Pay goes
-  // through Turnstile). A real secret is never set here.
-  TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
   // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
+  // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test
+  // (#77) and the Pay's (#110): without a secret every Send and Pay fails the human check. The
+  // build needs the matching test site key, NEXT_PUBLIC_TURNSTILE_SITE_KEY (CI sets it; the test
+  // stubs Cloudflare's script).
+  TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY ?? '1x0000000000000000000000000000000AA',
 })
 
 // The REAL worker runs beside the web servers, for the Publish tab (brief S3-05): "Publish" only
 // queues a job, and the worker publishes it. It holds this run's key pair (never a developer's
 // from the root .env.local: these values win over the runner's own environment), so it reveals
 // and seals table codes (#70); with WORKER_POS_SYNC=off it registers no POS sync job, so it never
-// calls a till.
+// calls a till. WORKER_SEND=on runs the Send (#77), which only reaches the simulated POS here.
 const workerEnvironment = {
   ...serverEnvironment(ORIGIN),
   WORKER_ID: 'e2e-worker',
@@ -74,6 +78,7 @@ const workerEnvironment = {
   LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
   ...SEAL_KEYS.worker,
   WORKER_POS_SYNC: 'off',
+  WORKER_SEND: 'on',
 }
 
 export default defineConfig({
@@ -130,6 +135,13 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: workerEnvironment,
+    },
+    {
+      // Starts on Demo Bar; the Send's test loads the scenario it needs through the control calls.
+      command: `pnpm --dir ../.. sim:serve --scenario demo-bar --port ${SIM_PORT}`,
+      url: `http://127.0.0.1:${SIM_PORT}/control`,
+      reuseExistingServer: false,
+      timeout: 60_000,
     },
   ],
 })

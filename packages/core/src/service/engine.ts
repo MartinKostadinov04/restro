@@ -43,6 +43,7 @@ import { tripOrderRate } from './order-rate'
 import { isSettingsPermission } from './permissions'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
+import type { SendMenu } from './send-menu'
 
 /** How long a service write waits for a row lock before it answers `busy` (design §2.3). */
 export const SERVICE_LOCK_TIMEOUT = '2s'
@@ -88,6 +89,8 @@ export interface ServiceOptions {
   readonly pinPepper?: string
   /** The bill-id key (`BILL_ID_KEY`), for recording a reading of a table's bill (#74). */
   readonly billIdKey?: string
+  /** The table's menu for a Send (`loadSendMenu`), read before the transaction (#77). */
+  readonly sendMenu?: SendMenu
 }
 
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
@@ -233,6 +236,7 @@ export async function executeCommand(
         pinPepper: options.pinPepper ?? null,
         billIdKey: options.billIdKey ?? null,
         consentVersion: context.consentVersion ?? null,
+        sendMenu: options.sendMenu ?? null,
         dbNow,
         log: (entry) =>
           appendLogEntry(

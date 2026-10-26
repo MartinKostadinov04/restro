@@ -1,0 +1,14 @@
+{
+  "name": "send-lands-then-hangs",
+  "extends": "demo-bar",
+  "description": "The Send's end-to-end test (#77): Table 1 is open with a Mojito Maria put on, and the first round Restro adds lands but its answer never comes, so the Send must find it by reading the bill back.",
+  "bills": [
+    {
+      "table": "30001",
+      "by": "maria",
+      "minutesAgo": 20,
+      "rows": [{ "article": "2003", "quantity": "1" }]
+    }
+  ],
+  "faults": [{ "on": "addRows", "from": 1, "times": 1, "fault": { "kind": "landsThenHangs" } }]
+}

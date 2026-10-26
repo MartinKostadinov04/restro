@@ -64,11 +64,13 @@ const repoRoot = join(srcRoot, '..', '..', '..')
  * the re-issue's code generation; #72: the staff side, i.e. people, roles, assignments and shared
  * devices, never `operators`; #73: the sittings; #74: the readings of a table's bill; #75: the
  * alert of a table's order rate trip, to Restro's admin team; #108: the provider's notices and a
- * payment's refund and dispute; #81: the waiter calls; #110: a payment's lines and its provider
- * steps).
+ * payment's refund and dispute; #81: the waiter calls; #77: the sent orders and their notes; #110:
+ * a payment's lines and its provider steps).
  */
 const SERVICE_WRITE_TARGETS: readonly string[] = [
   'sittings',
+  'sentOrders',
+  'sentOrderNotes',
   'billReadings',
   'tableOrders',
   'locks',

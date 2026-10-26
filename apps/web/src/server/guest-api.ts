@@ -17,6 +17,8 @@
 // by the paths it got wrong, never by its values (a position among them). A guard's trip is one
 // log line with the venue and the table, nothing more.
 //
+// Send (#77): an accepted Send queues the worker's `order-send` for the table; the web itself never
+// calls the POS.
 // Paying (#110, D127): the payment handle comes back to the phone in the answer to its `pay.start`
 // and goes out in `X-Restro-Payment`, never in an address or a body. Nothing logs it; core keeps
 // only its sha-256. Each pay command queues the worker's next step of the payment.
@@ -26,6 +28,7 @@
 import {
   issuePaths,
   JOB_NAMES,
+  OrderSendJobSchema,
   PaymentJobSchema,
   TABLE_TOKEN_PATTERN,
   TableReadJobSchema,
@@ -77,6 +80,12 @@ export interface GuestApiDeps {
   readonly passKey?: string | null
   /** Turnstile's siteverify at Send and Pay; without it every Send and Pay fails the check. */
   readonly humanCheck?: HumanCheck
+  /** Queues the worker's Send for a table (#77); tests pass their own. */
+  readonly queueSend?: (target: {
+    readonly tenantId: string
+    readonly venueId: string
+    readonly tableId: string
+  }) => Promise<unknown>
   /** Queues the worker's next step of a payment (#110); tests pass their own. */
   readonly queuePayment?: (target: PaymentTarget, job: 'prepare' | 'check') => Promise<unknown>
 }
@@ -247,6 +256,14 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
       ...(parsed.data.check === undefined ? {} : { check: parsed.data.check }),
       passKey: deps.passKey ?? null,
       ...(deps.humanCheck === undefined ? {} : { humanCheck: deps.humanCheck }),
+      queueSend: async (target) => {
+        // The sent order is written: a Send that can't be queued now is queued by the worker's
+        // sweep within a minute, so the guest still gets their answer.
+        const queue = deps.queueSend ?? queueTableSend
+        await Promise.resolve(queue(target)).catch((error: unknown) =>
+          logError('guest_send_not_queued', error),
+        )
+      },
       ...(handle === undefined ? {} : { handle }),
       ...paymentQueue(deps),
       onGuard: logGuard,
@@ -293,6 +310,7 @@ export function guestApiDeps(pool: DbPool): GuestApiDeps {
     queueReading: queueTableReading,
     passKey: env.GUEST_PASS_KEY ?? null,
     humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
+    queueSend: queueTableSend,
     queuePayment: queuePaymentStep,
   }
 }
@@ -313,4 +331,13 @@ export async function queueTableReading(target: {
   readonly tableId: string
 }): Promise<void> {
   await enqueueJob(JOB_NAMES.tableRead, TableReadJobSchema.parse(target))
+}
+
+/** The app's queue for a table's Send (`order-send`, one per table at a time, #77). */
+export async function queueTableSend(target: {
+  readonly tenantId: string
+  readonly venueId: string
+  readonly tableId: string
+}): Promise<void> {
+  await enqueueJob(JOB_NAMES.orderSend, OrderSendJobSchema.parse(target))
 }

@@ -137,6 +137,16 @@ export const GuestTableStateSchema = z.strictObject({
         state: z.enum(['sending', 'awaiting_approval', 'added', 'not_sent', 'unconfirmed']),
         reason: z.string().max(64).nullable(),
         ref: z.string().max(32),
+        lines: z
+          .array(
+            z.strictObject({
+              itemId: idSchema('nd'),
+              optionIds: z.array(idSchema('nd')).max(SERVICE_LIMITS.options),
+              qty: z.int().min(1).max(SERVICE_LIMITS.quantity),
+            }),
+          )
+          .max(SERVICE_LIMITS.lines),
+        sentAgoSeconds: seconds,
       }),
     )
     .max(50),

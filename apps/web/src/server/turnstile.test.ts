@@ -59,6 +59,9 @@ describe('the Turnstile check', () => {
     const none = answer(200, { success: true, 'error-codes': [] })
     expect(await turnstileCheck(TEST_SECRET, none)('token', ACTION_ID, 'pay')).toBe('passed')
     expect(await turnstileCheck(SECRET, none)('token', ACTION_ID, 'pay')).toBe('failed')
+    // The test secret's answer for the dummy token, with its hostname (#77).
+    const named = answer(200, { success: true, 'error-codes': [], hostname: 'example.com' })
+    expect(await turnstileCheck(TEST_SECRET, named)('token', ACTION_ID, 'send')).toBe('passed')
   })
 
   it('is unavailable only when siteverify is down', async () => {

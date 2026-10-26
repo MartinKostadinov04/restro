@@ -4,6 +4,7 @@
 
 export * from './capabilities'
 export type { ServiceConnector, ServiceContext, ServiceReader } from './connector'
+export * from './landed'
 export * from './pos-ref'
 export * from './schemas'
 export * from './target-bill'

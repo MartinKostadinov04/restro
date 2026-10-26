@@ -240,8 +240,32 @@ describe('POST /api/guest/actions', () => {
       phone: PHONE,
       passKey: deps.passKey,
       humanCheck,
+      queueSend: expect.any(Function),
       onGuard: expect.any(Function),
     })
+  })
+
+  it('answers an accepted Send even when its job could not be queued (the sweep queues it, #77)', async () => {
+    const request = add()
+    const target = { tenantId: newId('tn'), venueId: newId('vn'), tableId: newId('tb') }
+    const result = {
+      actionId: request.command.actionId,
+      status: 'accepted',
+      code: null,
+      subjectId: newId('so'),
+      ref: 'K7Q',
+    }
+    core.guestAct.mockImplementation(async (_pool: unknown, input: GuestActInput) => {
+      await input.queueSend?.(target)
+      return { ok: true, result, state: state(2), pass: null, handle: null, retryAfter: null }
+    })
+    const queueSend = vi.fn(async () => {
+      throw new Error('the queue is down')
+    })
+    const response = await handleGuestAction(post(request), { ...deps, queueSend })
+    expect(response.status).toBe(200)
+    expect(queueSend).toHaveBeenCalledWith(target)
+    expect((await response.json()).result).toEqual(result)
   })
 
   it('refuses a command without a phone value of the right shape with 400', async () => {
