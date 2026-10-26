@@ -1,31 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ButtonPress, TelegramClient, TelegramUpdate } from './telegram'
+import type { TelegramClient, TelegramUpdate } from './telegram'
 import { TelegramError } from './telegram'
 import { startTelegramPoller } from './telegram-poller'
 
 const quiet = { warn: () => undefined, info: () => undefined }
-const NOT_A_BUTTON: ButtonPress = {
-  callbackId: 'cb',
-  userId: '1',
-  chatId: '-1',
-  messageId: 1,
-  text: '',
-  data: 'nope',
-}
-
 /** A client whose polls are answered one at a time by the script; the last one waits to be aborted. */
 function scripted(script: (Error | TelegramUpdate[])[]) {
   const offsets: number[] = []
-  const answered: string[] = []
   const client: TelegramClient = {
     async sendMessage() {
       throw new Error('not used')
     },
     async editMessage() {},
-    async answerCallback(_id, text) {
-      answered.push(text)
-    },
+    async answerCallback() {},
     async getUpdates({ offset, signal }) {
       offsets.push(offset)
       const next = script.shift()
@@ -36,7 +24,7 @@ function scripted(script: (Error | TelegramUpdate[])[]) {
       })
     },
   }
-  return { client, offsets, answered }
+  return { client, offsets }
 }
 
 const waitUntil = async (condition: () => boolean) => {
@@ -46,13 +34,13 @@ const waitUntil = async (condition: () => boolean) => {
 
 describe('the Telegram poller', () => {
   it('asks again from the update after the last one it handled', async () => {
-    const { client, offsets, answered } = scripted([
+    const { client, offsets } = scripted([
       [
-        { updateId: 7, press: NOT_A_BUTTON },
+        { updateId: 7, press: null },
         { updateId: 8, press: null },
       ],
     ])
-    // The press names no alert, so the handler answers without touching the database.
+    // Neither update is a button press, so the handler is not reached and the database is not used.
     const poller = startTelegramPoller({
       pool: {} as never,
       telegram: client,
@@ -61,7 +49,6 @@ describe('the Telegram poller', () => {
     })
     await waitUntil(() => offsets.length >= 2)
     expect(offsets.slice(0, 2)).toEqual([0, 9])
-    expect(answered).toEqual(['That button is not for an alert.'])
     await poller.stop()
   })
 

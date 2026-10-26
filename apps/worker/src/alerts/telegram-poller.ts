@@ -11,7 +11,14 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { applyService, doneLine } from '@restro/core/service'
+import {
+  type AlertLocale,
+  alertLocale,
+  applyService,
+  doneLine,
+  type TelegramAnswer,
+  telegramAnswer,
+} from '@restro/core/service'
 import {
   authOrganization,
   type DbPool,
@@ -42,6 +49,7 @@ interface VenueOfChat {
   readonly tenantId: string
   readonly venueId: string
   readonly timezone: string
+  readonly locale: AlertLocale
 }
 
 /** The live venue whose Telegram group this is, or null. */
@@ -52,7 +60,7 @@ async function venueOfChat(pool: DbPool, chatId: string): Promise<VenueOfChat | 
   for (const organisation of organisations) {
     const [venue] = await withTenant(pool, organisation.id, (tx) =>
       tx
-        .select({ id: venues.id, timezone: venues.timezone })
+        .select({ id: venues.id, timezone: venues.timezone, defaultLocale: venues.defaultLocale })
         .from(venues)
         .where(
           and(
@@ -62,24 +70,36 @@ async function venueOfChat(pool: DbPool, chatId: string): Promise<VenueOfChat | 
         ),
     )
     if (venue !== undefined) {
-      return { tenantId: organisation.id, venueId: venue.id, timezone: venue.timezone }
+      return {
+        tenantId: organisation.id,
+        venueId: venue.id,
+        timezone: venue.timezone,
+        locale: alertLocale(venue.defaultLocale),
+      }
     }
   }
   return null
 }
 
-/** Handles one press of a Done button. Never throws. */
+/**
+ * Handles one press of a Done button. Never throws. The bot answers in the venue's language
+ * (English where the group belongs to no venue).
+ */
 export async function handlePress(deps: PollerDeps, press: ButtonPress): Promise<void> {
-  const answer = (text: string) =>
-    deps.telegram.answerCallback(press.callbackId, text).catch(() => undefined)
+  let locale: AlertLocale = 'en'
+  const answer = (what: TelegramAnswer) =>
+    deps.telegram
+      .answerCallback(press.callbackId, telegramAnswer(locale, what))
+      .catch(() => undefined)
   try {
-    if (!ALERT_ID.test(press.data)) {
-      await answer('That button is not for an alert.')
-      return
-    }
     const venue = await venueOfChat(deps.pool, press.chatId)
     if (venue === null) {
-      await answer('This group is not linked to a venue in Restro.')
+      await answer('no_venue')
+      return
+    }
+    locale = venue.locale
+    if (!ALERT_ID.test(press.data)) {
+      await answer('not_an_alert')
       return
     }
     // The person: a staff member linked to this Telegram user, with a Restro account.
@@ -96,7 +116,7 @@ export async function handlePress(deps: PollerDeps, press: ButtonPress): Promise
         ),
     )
     if (member?.userId == null) {
-      await answer('Your Telegram is not linked to a Restro account.')
+      await answer('not_linked')
       return
     }
     const { result } = await applyService(
@@ -112,15 +132,11 @@ export async function handlePress(deps: PollerDeps, press: ButtonPress): Promise
       },
     )
     if (result.status === 'refused') {
-      await answer(
-        result.code === 'permission_denied'
-          ? 'Your role cannot answer alerts here.'
-          : 'This alert cannot be marked Done.',
-      )
+      await answer(result.code === 'permission_denied' ? 'denied' : 'cannot')
       return
     }
     if (result.details.changed !== true) {
-      await answer('Already done.')
+      await answer('already')
       return
     }
     // The message says who and when; it is recorded, so the sweep does not edit it again.
@@ -128,7 +144,7 @@ export async function handlePress(deps: PollerDeps, press: ButtonPress): Promise
     await deps.telegram
       .editMessage(
         { chatId: press.chatId, messageId: press.messageId },
-        `${press.text}\n\n${doneLine(member.name, at, venue.timezone)}`,
+        `${press.text}\n\n${doneLine(member.name, at, venue.timezone, locale)}`,
       )
       .catch((error: unknown) =>
         deps.log.warn({ err: error }, 'the Done message could not be edited'),
@@ -149,10 +165,10 @@ export async function handlePress(deps: PollerDeps, press: ButtonPress): Promise
         jobId: `telegram-edit-${randomUUID()}`,
       },
     )
-    await answer('Done.')
+    await answer('done')
   } catch (error) {
     deps.log.warn({ err: error }, 'a Done press could not be handled')
-    await answer('Something went wrong. Try again in Tonight.')
+    await answer('failed')
   }
 }
 

@@ -46,13 +46,19 @@ export {
   TABLE_CODE_BLOCK_KIND,
 } from './alert-rules'
 export {
+  type AlertLocale,
   type AlertMessage,
   type AlertWords,
+  alertLocale,
   alertMessage,
   digestMessage,
   doneLine,
   linkedMessage,
   type MessageContext,
+  reminderMessage,
+  type TelegramAnswer,
+  tableLabel,
+  telegramAnswer,
 } from './alert-text'
 export { endpointHashOf, PAUSE_RETURN_MS } from './alerts'
 export { type AppliedService, applyService } from './apply-service'

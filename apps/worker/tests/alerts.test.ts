@@ -222,6 +222,9 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       if (result.status !== 'accepted') throw new Error(`subscribe refused: ${result.code}`)
     }
   }
+  /** The venue's default language: the texts follow it (bg_BG is Bulgarian, anything else English). */
+  const setLocale = (locale: 'bg_BG' | 'en_US') =>
+    query('update restro.venues set default_locale = $2 where id = $1', [venueId, locale])
   const wipe = async () => {
     await query('delete from restro.alerts where venue_id = $1', [venueId])
     await query('delete from restro.pauses where venue_id = $1', [venueId])
@@ -233,7 +236,10 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     retryAfter.clear()
     nextMessage = 100
     offsetMs = 0
-    if (ownerId !== undefined) await subscribeDevices()
+    if (ownerId !== undefined) {
+      await subscribeDevices()
+      await setLocale('en_US')
+    }
   }
 
   beforeAll(async () => {
@@ -266,6 +272,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     await addStaff('Pavel', ['tables.open_close'], plainId, '777')
     await setOrdering({})
     await subscribeDevices()
+    await setLocale('en_US')
   }, 240_000)
 
   afterAll(async () => {
@@ -461,6 +468,73 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         [venueId],
       )) as { n: number }[]
       expect(rows[0]?.n).toBe(1)
+    })
+  })
+
+  describe('in Bulgarian, for a venue whose default language is bg_BG', () => {
+    beforeEach(() => setLocale('bg_BG'))
+
+    it('words an Unconfirmed order for the push, the venue group and the Restro team', async () => {
+      await seedAlert('order_unconfirmed')
+      await pass()
+      expect(pushed[0]?.payload).toMatchObject({
+        title: 'Маса 7: изпратена поръчка без потвърждение',
+        body: '2 × Gin tonic, номер K7Q. Проверете сметката в POS системата.',
+      })
+      expect(sent.map((m) => m.text.split('\n')[0])).toEqual([
+        'Маса 7: изпратена поръчка без потвърждение',
+        'Club Nova: Маса 7: изпратена поръчка без потвърждение',
+      ])
+    })
+
+    it('words a pause, a reminder to the owners and "back"', async () => {
+      await applyService(pool, { type: 'ordering.pause', barId: null }, user(ownerId))
+      await pass()
+      expect(pushed[0]?.payload.title).toBe('Поръчките в Club Nova са спрени')
+      pushed.length = 0
+      offsetMs = 61 * 60_000
+      await pass()
+      expect(pushed[0]?.payload.title).toBe('Поръчките в Club Nova все още са спрени')
+      offsetMs = 0
+      const [row] = (await query(
+        'select id from restro.pauses where venue_id = $1 and lifted_at is null',
+        [venueId],
+      )) as { id: string }[]
+      await applyService(pool, { type: 'ordering.lift', pauseId: row?.id as string }, user(ownerId))
+      await pass()
+      sent.length = 0
+      offsetMs = 11 * 60_000
+      await pass()
+      expect(sent.map((m) => m.text)).toEqual([
+        'Поръчките в Club Nova са пуснати отново',
+        'Поръчките в Club Nova са пуснати отново',
+      ])
+    })
+
+    it('words the edit to Done and the bot’s answers', async () => {
+      const id = await seedAlert('order_unconfirmed')
+      await pass()
+      edits.length = 0
+      const press = (userId: string) => ({
+        callbackId: `cb-${randomUUID()}`,
+        userId,
+        chatId: VENUE_CHAT,
+        messageId: 100,
+        text: 'Маса 7: изпратена поръчка без потвърждение',
+        data: id,
+      })
+      const deps = { pool, telegram, log: quiet, now }
+      await handlePress(deps, press('999'))
+      await handlePress(deps, press('777'))
+      await handlePress(deps, press('555'))
+      await handlePress(deps, press('555'))
+      expect(answers).toEqual([
+        'Вашият Telegram не е свързан с акаунт в Restro.',
+        'Ролята ви не може да отговаря на сигнали тук.',
+        'Готово.',
+        'Вече е готово.',
+      ])
+      expect(edits[0]?.text).toMatch(/\n\nГотово от Maria, \d\d:\d\d$/)
     })
   })
 

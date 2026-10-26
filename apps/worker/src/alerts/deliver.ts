@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { connectorLabel, isIntegrationKind, readOrderingSettings } from '@restro/core'
 import {
   type AlertMessage,
+  alertLocale,
   alertMessage,
   applyService,
   type DeliveryStep,
@@ -25,8 +26,10 @@ import {
   type PlannedAlert,
   planDelivery,
   readDelivery,
+  reminderMessage,
   ruleOf,
   serviceHoursWindow,
+  tableLabel,
 } from '@restro/core/service'
 import {
   alerts,
@@ -77,12 +80,6 @@ export function pushUrlOf(venueId: string): string {
   return `/venues/${venueId}`
 }
 
-/** `Table 7` for a table: our name for it, else its number. */
-function tableLabelOf(table: { name: string | null; number: string | null }): string | null {
-  if (table.name !== null) return table.name
-  return table.number === null ? null : `Table ${table.number}`
-}
-
 interface Recipient {
   readonly userId: string
   readonly owner: boolean
@@ -94,6 +91,7 @@ interface VenueForDelivery {
   readonly name: string
   readonly timezone: string
   readonly serviceDayEndsAt: string
+  readonly defaultLocale: string
   readonly settings: Record<string, unknown>
 }
 
@@ -122,6 +120,7 @@ export async function deliverAlerts(deps: DeliveryDeps): Promise<number> {
           name: venues.name,
           timezone: venues.timezone,
           serviceDayEndsAt: venues.serviceDayEndsAt,
+          defaultLocale: venues.defaultLocale,
           settings: venues.settings,
         })
         .from(venues)
@@ -348,11 +347,11 @@ async function wordsFor(
         .from(venueTables)
         .where(and(eq(venueTables.venueId, venue.id), inArray(venueTables.id, tableIds)))
       for (const table of tables) {
-        const label = tableLabelOf(table)
+        const label = tableLabel(alertLocale(venue.defaultLocale), table)
         if (label !== null) tableLabels.set(table.id, label)
       }
     }
-    let source = 'the POS'
+    let source = alertLocale(venue.defaultLocale) === 'bg' ? 'POS системата' : 'the POS'
     if (tableIds.length > 0) {
       const [served] = await tx
         .select({ kind: integrations.kind })
@@ -388,6 +387,7 @@ function messageOf(input: StepInput, alert: LoadedAlert): AlertMessage {
         ? alert.subjectId
         : null
   const context: MessageContext = {
+    locale: alertLocale(venue.defaultLocale),
     venueName: venue.name,
     tableLabel: tableId === null ? null : (words.tableLabels.get(tableId) ?? null),
     source: words.source,
@@ -399,13 +399,14 @@ function messageOf(input: StepInput, alert: LoadedAlert): AlertMessage {
   )
   // A reminder says so, except a pause, whose own words already say "still".
   return input.step.step === 'reminder' && alert.planned.kind !== PAUSED_KIND
-    ? { ...base, title: `Reminder: ${base.title}` }
+    ? reminderMessage(base, alertLocale(venue.defaultLocale))
     : base
 }
 
 /** Sends one planned message and records it. True when it went (so a later pass need not). */
 async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> {
   const { step, carried, venue, tenantId } = input
+  const locale = alertLocale(venue.defaultLocale)
   if (carried.length === 0) return true
   const messages = carried.map((alert) => messageOf(input, alert))
   const record = (extra: { telegramRef?: string } = {}) =>
@@ -429,7 +430,7 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
         const targets = input.recipients.filter((recipient) => !step.ownersOnly || recipient.owner)
         const devices = targets.flatMap((recipient) => recipient.devices)
         if (devices.length === 0) return false
-        const message = digestMessage(messages, venue.name)
+        const message = digestMessage(messages, venue.name, locale)
         const payload = {
           title: message.title,
           body: message.body,
@@ -465,7 +466,7 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
           const ref = parseRef(alert.telegramRef)
           if (ref === null) return true
           const by = await doneByName(deps.pool, tenantId, alert.doneBy)
-          const text = `${linkedMessage(message)}\n\n${doneLine(by, alert.doneAt ?? deps.now(), venue.timezone)}`
+          const text = `${linkedMessage(message)}\n\n${doneLine(by, alert.doneAt ?? deps.now(), venue.timezone, locale)}`
           await telegram.editMessage(ref, text)
           await record()
           return true
