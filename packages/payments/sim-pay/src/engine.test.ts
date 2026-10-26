@@ -1,6 +1,7 @@
 // The simulated provider's account rules (#103 review): an unfinished account gets a fresh link
 // for itself, an account it never made is not found, and a restricted account still releases a
-// hold but captures nothing.
+// hold but captures nothing. #110: an engine given a run puts it in every ref it makes, so a
+// restarted engine never reuses a ref an earlier run stored.
 
 import { newId, providerRef } from '@restro/core'
 import { describe, expect, it } from 'vitest'
@@ -18,6 +19,17 @@ const urls = {
   returnUrl: 'https://pay.sim-pay.test/admin/settings/paying?connected=1',
   refreshUrl: 'https://pay.sim-pay.test/admin/settings/paying?retry=1',
 }
+
+describe('a run', () => {
+  it('goes inside every ref, and is letters and digits only', () => {
+    const clock = new ManualClock()
+    expect(new SimPayEngine({ clock }).addAccount().provider).toBe('simacct_1')
+    expect(new SimPayEngine({ clock, run: 'r2a' }).addAccount().provider).toBe('simacct_r2a_1')
+    for (const run of ['', 'a_b', 'x'.repeat(33)]) {
+      expect(() => new SimPayEngine({ clock, run })).toThrow()
+    }
+  })
+})
 
 describe('connecting', () => {
   it('gives an unfinished account a fresh link for the same account', async () => {

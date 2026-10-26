@@ -2,7 +2,6 @@
 // something for a while, never a phone. One row of `locks` per thing that can be held, reused all
 // night and never deleted:
 // - `order_slot` per table: one sent order in flight (D115);
-// - `order_payment` per sitting and `bill_payment` per table: one payment at a time (D112);
 // - `payment_table` per payment table (D122 §8).
 //
 // A take is the service path's one conditional statement: it either wins or changes nothing. It
@@ -19,12 +18,7 @@ import type { Provenance } from './context'
 import type { RowLocks } from './rows'
 
 /** What a lease holds. */
-export const LEASE_SCOPES = [
-  'order_slot',
-  'order_payment',
-  'bill_payment',
-  'payment_table',
-] as const
+export const LEASE_SCOPES = ['order_slot', 'payment_table'] as const
 
 /** One lease scope. */
 export type LeaseScope = (typeof LEASE_SCOPES)[number]

@@ -1,7 +1,8 @@
 // The guest API's request limits kept in memory (D122 §4, design §7; ticket #76):
 // - per phone, by the random value the page makes at load (never stored, forgotten within minutes,
 //   so one person can't block the friends at their table): 30 additions a minute, one Send per
-//   15 s, 10 Sends in 10 minutes, 5 location tries in 10 minutes;
+//   15 s, 10 Sends in 10 minutes, 5 location tries in 10 minutes, one Pay per 15 s and 5 in 10
+//   minutes (#110), and one payment that isn't final (`openPayment`);
 // - per table code, by its hash: 20 requests a second, reads and commands together.
 // The table's own 60 order changes a minute stay in the engine (counted from the order's ring), and
 // D118's cap and pace at Send.
@@ -25,6 +26,10 @@ export const GUEST_LIMITS = {
   sendGap: { max: 1, windowMs: 15_000 },
   /** 10 Sends in 10 minutes per phone. */
   sends: { max: 10, windowMs: 10 * 60_000 },
+  /** One Pay per 15 s per phone (design §9). */
+  payGap: { max: 1, windowMs: 15_000 },
+  /** 5 Pays in 10 minutes per phone. */
+  pays: { max: 5, windowMs: 10 * 60_000 },
   /** Requests that carry a position, per phone. */
   locationTries: { max: 5, windowMs: 10 * 60_000 },
   /** Every request of one table code. */
@@ -74,9 +79,25 @@ export class GuestLimiter {
     return { ok: true }
   }
 
+  /** The phone's payment that may not be final yet, by the phone's key (design §9: one each). */
+  private readonly payments = new Map<string, string>()
+
+  /** The payment this phone started last, while it may still be open. */
+  openPayment(subject: string): string | null {
+    return this.payments.get(subject) ?? null
+  }
+
+  /** Remembers the phone's latest payment; whether it is final is read from the database. */
+  setOpenPayment(subject: string, paymentId: string): void {
+    // Bounded like the windows: forgetting one costs a phone at most a second open payment.
+    if (this.payments.size >= MAX_KEYS) this.payments.clear()
+    this.payments.set(subject, paymentId)
+  }
+
   /** Forgets everything (tests). */
   clear(): void {
     this.hits.clear()
+    this.payments.clear()
   }
 
   private store(key: string, recent: number[], now: number): void {

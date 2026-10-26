@@ -26,6 +26,8 @@ async function capturedPayment(switches: Partial<SimPaySwitches> = {}) {
   if (created.kind !== 'done') throw new Error('no hold')
   const ref = created.result.paymentRef
   engine.guest.pay(ref)
+  // The hold's own notice (#110) is not what these tests are about.
+  expect(engine.takeNotices().map((e) => e.type)).toEqual(['payment.held'])
   await provider.capture({
     accountRef: account,
     paymentRef: ref,
@@ -54,6 +56,41 @@ describe('the outbox', () => {
     const closed = engine.bank.closesDispute(account, providerRef(opened.object), 'lost')
     expect(engine.takeNotices().map((e) => e.type)).toEqual(['dispute.opened', 'dispute.closed'])
     expect(closed.object).toBe(opened.object)
+  })
+})
+
+describe("the guest's card at the form (#110)", () => {
+  it('sends a payment notice when the card is held or declined, and reads it back', async () => {
+    const engine = new SimPayEngine({ clock: new ManualClock() })
+    const provider = createSimPayProvider({ env: 'test', engine })
+    const account = engine.addAccount()
+    const hold = async () => {
+      const paymentId = newId('py')
+      const created = await provider.createHold({
+        paymentId,
+        accountRef: account,
+        amountMinor: 1_000,
+        currency: 'EUR',
+        idempotencyKey: `${paymentId}:hold`,
+        description: 'Club, table 4',
+      })
+      if (created.kind !== 'done') throw new Error('no hold')
+      return created.result.paymentRef
+    }
+    const held = await hold()
+    engine.guest.pay(held)
+    const declined = await hold()
+    engine.guest.decline(declined)
+    const notices = engine.takeNotices()
+    expect(notices.map((e) => [e.type, e.object])).toEqual([
+      ['payment.held', held.provider],
+      ['payment.failed', declined.provider],
+    ])
+    const [heldNotice] = notices.map(simPayNotice)
+    if (heldNotice === undefined) throw new Error('no notice')
+    expect(heldNotice.kind).toBe('payment')
+    const reading = await provider.readNoticeSubject(account, heldNotice)
+    expect(reading.complete && reading.value?.status).toBe('held')
   })
 })
 

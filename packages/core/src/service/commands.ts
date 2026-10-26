@@ -8,8 +8,9 @@
 // table's bill with the sitting's end by a reading (#74), the table's shared order (#75), Send and
 // a sent order's way to the POS (#77), a payment's refund and dispute as read back after a
 // provider's notice (#108), the waiter call with its Handled and its lapse (#81), the notice of an
-// item out of stock in the POS (#80), and the alerts' lifecycle: Done, what was sent to whom, the
-// pauses kept as alerts and the staff devices for Web Push (#83).
+// item out of stock in the POS (#80), paying on the bill up to a held card (#110), and the alerts'
+// lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
+// Push (#83).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -43,6 +44,16 @@ import {
   sweepPauses,
   transitionPause,
 } from './pauses'
+import {
+  payCancel,
+  paymentCheck,
+  paymentHoldCreated,
+  paymentPrice,
+  paymentSettle,
+  paymentStep,
+  payReturned,
+  payStart,
+} from './pay'
 import { paymentObserve } from './payment-observe'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
@@ -227,6 +238,11 @@ export const SERVICE_COMMANDS = {
     maxAgeMs: ORDER_EDIT_MAX_AGE_MS,
     handle: sendOrder,
   }),
+  // #110: paying on the bill, from Pay to a held card. The phone names its payment by the handle's
+  // hash, which the guest API makes; the handle itself never reaches the engine.
+  'pay.start': payStart(),
+  'pay.returned': payReturned(),
+  'pay.cancel': payCancel(),
   // #81: a second tap returns the open call. Not located; no text, no identity.
   'waiter.call': defineCommand({
     schema: z.strictObject({ type: z.literal('waiter.call'), tableId, actionId, ageMs }),
@@ -432,6 +448,12 @@ export const SERVICE_COMMANDS = {
   'notice.record': stockNotice(),
   // #108: a refund or a dispute, read back from the provider after its notice.
   'payment.observe': paymentObserve(),
+  // #110: the worker's steps from `requested` to `held`, each a compare-and-set on the payment.
+  'payment.price': paymentPrice(),
+  'payment.hold_created': paymentHoldCreated(),
+  'payment.check': paymentCheck(),
+  'payment.settle': paymentSettle(),
+  'payment.step': paymentStep(),
   // #81: a call nobody answered in the venue's time, or whose sitting ended, lapses.
   'waiter_call.lapse': defineCommand({
     schema: z.strictObject({ type: z.literal('waiter_call.lapse'), waiterCallId: idSchema('wc') }),

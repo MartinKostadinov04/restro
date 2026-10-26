@@ -8,6 +8,9 @@ describe('the guest limits in memory', () => {
       additions: { max: 30, windowMs: 60_000 },
       sendGap: { max: 1, windowMs: 15_000 },
       sends: { max: 10, windowMs: 600_000 },
+      // #110: one Pay per 15 s and 5 in 10 minutes per phone (D127 §Limits).
+      payGap: { max: 1, windowMs: 15_000 },
+      pays: { max: 5, windowMs: 600_000 },
       locationTries: { max: 5, windowMs: 600_000 },
       codeRequests: { max: 20, windowMs: 1_000 },
     })

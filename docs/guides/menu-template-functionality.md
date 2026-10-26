@@ -91,7 +91,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 - **Status:** drawn, platform parked
 - **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
   - its lines, from guests and staff alike, nothing marking a line as "from your phones": the name of our own item, or "Other item" (worded by the shell) where the POS line is no item of ours; the quantity as the POS gives it, which may be a decimal ("0.5"); the POS's own signed amount, so a discount shows negative and a free line at 0, as the POS gives them;
-  - the POS's total, what is paid and what is still owed, and a part being paid marked as such;
+  - the POS's total, what is paid and what is still owed, and a part being paid marked as such: a bill or a line with `beingPaid` is in some phone's payment that isn't final (#110), drawn greyed with no controls and nothing else, never who pays, how much or for how long; it ungreys when that payment ends;
   - when it was read. When the latest reading failed, the last good bill is drawn marked as not up to date, never an empty bill. Opening the bill asks the host for a fresh reading when the one shown is older than 15 seconds.
 - **Where:** §5.5, §10.2, §10.3; D71, D72, D111
 
@@ -117,7 +117,13 @@ A service control is drawn only when its `view.features` field is on, and carrie
 - **Shell key:** `pay` (slot `menu.pay`)
 - **Status:** drawn, platform parked
 - **Drawn means:** the choice of scope (all, a share, only mine), tip and promo code, and method, drawn from the host's quote, each method control marked `pay.method`; the template computes no total, tip, VAT or split.
-- **Where:** §5.5, §10.2, §10.3; D71, D72
+- **Platform (#110, D127; not wired to a template yet):** the guest API runs paying by card on the hidden reference path:
+  - `pay.start` picks whole lines of the bill, or the whole bill, sends each picked line as the phone saw it (the knock, D111), an optional tip (an amount or a percent, starting at none), and Turnstile's token; it greys the lines for every phone (`beingPaid`) and answers a payment handle;
+  - only the paying phone holds the handle and sends it in `X-Restro-Payment`, never in an address; `GET /api/guest/payment` answers that phone alone the payment's state, lines, amount, tip and, only while the guest is at the card form, the provider's form values;
+  - `pay.returned` after the card form, and `pay.cancel` before the hold is made, which ungreys the lines;
+  - the refusals the template words through the shell (#45): `paying_not_offered`, `paying_paused`, `being_paid`, `bill_changed`, `below_minimum`, `ask_waiter_to_split` (part of a line, a part-paid bill or a whole-bill discount), `turnstile`, `rate_limited`, `sitting_ended`, `too_late`, `unknown_payment`;
+  - the hold is the POS's own amounts plus the tip, and a tip is offered only where the POS can record one on closing the bill. No local success (D72): the template draws what the host's payment answer says.
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D127
 
 ### Get the receipt
 - **Shell key:** none; a screen of the pay feature (`#receipt`)

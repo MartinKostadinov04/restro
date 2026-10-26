@@ -162,6 +162,9 @@ importers:
       '@restro/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@restro/sim-pay':
+        specifier: workspace:*
+        version: link:../../packages/payments/sim-pay
       '@restro/sim-pos':
         specifier: workspace:*
         version: link:../../packages/connectors/sim-pos

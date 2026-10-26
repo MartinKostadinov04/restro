@@ -1973,10 +1973,7 @@ export const locks = restro.table(
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
     venueId: text('venue_id').notNull(),
-    /**
-     * Order slot per table, order payment per sitting, bill payment per table, payment table (held
-     * with no deadline, D127).
-     */
+    /** Order slot per table, payment table (held with no deadline, D127). */
     scope: text('scope').notNull(),
     /** Our id of what is held. */
     key: text('key').notNull(),
@@ -1993,10 +1990,7 @@ export const locks = restro.table(
   (t) => [
     primaryKey({ name: 'locks_pk', columns: [t.tenantId, t.scope, t.key] }),
     venueFk('locks', t),
-    check(
-      'locks_scope',
-      sql`${t.scope} in ('order_slot', 'order_payment', 'bill_payment', 'payment_table')`,
-    ),
+    check('locks_scope', sql`${t.scope} in ('order_slot', 'payment_table')`),
     check('locks_key_format', sql`${t.key} ~ '^[a-z]{2}_[0-9A-Za-z]+$'`),
     check(
       'locks_holder_format',
@@ -2565,7 +2559,7 @@ export const PAYMENT_DISPUTE_STATES = ['open', 'won', 'lost'] as const
  * its own event types to these, so no provider event name reaches the platform. `other` has no
  * handler: the worker marks it handled and does nothing.
  */
-export const PROVIDER_NOTICE_KINDS = ['refund', 'dispute', 'other'] as const
+export const PROVIDER_NOTICE_KINDS = ['payment', 'refund', 'dispute', 'other'] as const
 
 /** `'a', 'b'` for a SQL `in (...)` list of fixed words. */
 const sqlWords = (words: readonly string[]) =>
@@ -2631,6 +2625,12 @@ export const payments = restro.table(
     providerKind: text('provider_kind').notNull(),
     /** *Backend*: the provider's id of the payment. */
     providerPaymentRef: text('provider_payment_ref'),
+    /**
+     * *Backend*: what the paying phone's card form needs (the provider's form values, e.g. a client
+     * secret), only while `awaiting_guest`: set in the step that enters it, cleared in the one that
+     * leaves it, served only to the phone holding the payment's handle (#110).
+     */
+    formValues: jsonb('form_values').$type<Record<string, unknown>>(),
     /** When the provider drops the hold uncaptured, as the provider reports it. */
     captureBefore: timestamp('capture_before', { withTimezone: true }),
     /** The fiscal receipt's number and the fiscal memory's, once the close or a read shows them. */
@@ -2722,6 +2722,10 @@ export const payments = restro.table(
       sql`(${t.threeDsResult} is null or ${t.threeDsResult} ~ ${NAME_PATTERN}) and (${t.authorisationCode} is null or char_length(${t.authorisationCode}) between 1 and 64)`,
     ),
     check(
+      'payments_form_values',
+      sql`${t.formValues} is null or (${t.state} = 'awaiting_guest' and jsonb_typeof(${t.formValues}) = 'object')`,
+    ),
+    check(
       'payments_settled',
       sql`(${t.settledAt} is not null) = (${t.state} in ${sqlWords(PAYMENT_FINAL_STATES)})`,
     ),
@@ -2751,6 +2755,11 @@ export const paymentLines = restro.table(
     posAmountMinor: bigint('pos_amount_minor', { mode: 'number' }).notNull(),
     /** The name the guest saw. */
     displayName: text('display_name').notNull(),
+    /**
+     * True while its payment is not final; the database clears it when the payment settles. A POS
+     * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
+     */
+    open: boolean('open').notNull().default(true),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2767,6 +2776,9 @@ export const paymentLines = restro.table(
     index('payment_lines_pos_line_ref_idx')
       .on(t.venueId, t.posLineRef)
       .where(sql`${t.posLineRef} is not null`),
+    uniqueIndex('payment_lines_open_line_unique')
+      .on(t.tenantId, t.venueId, t.posLineRef)
+      .where(sql`${t.open} and ${t.posLineRef} is not null`),
     check('payment_lines_position', sql`${t.position} >= 1`),
     check('payment_lines_quantity', sql`${t.quantity} > 0`),
     check(

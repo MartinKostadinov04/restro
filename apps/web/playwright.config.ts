@@ -60,8 +60,9 @@ const serverEnvironment = (origin: string) => ({
   // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
   // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test
-  // (#77): without a secret every Send fails the human check. The build needs the matching test
-  // site key, NEXT_PUBLIC_TURNSTILE_SITE_KEY (CI sets it; the test stubs Cloudflare's script).
+  // (#77) and the Pay's (#110): without a secret every Send and Pay fails the human check. The
+  // build needs the matching test site key, NEXT_PUBLIC_TURNSTILE_SITE_KEY (CI sets it; the test
+  // stubs Cloudflare's script).
   TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY ?? '1x0000000000000000000000000000000AA',
 })
 
