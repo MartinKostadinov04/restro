@@ -37,7 +37,7 @@ import {
 } from './checks'
 import { FAULT_STEPS, type PaymentHarness } from './harness'
 
-/** A sandbox answers in seconds; the simulated provider at once. */
+/** A sandbox answers in seconds; the simulated provider at once (`checkTimeoutMs` overrides). */
 const SLOW = 30_000
 
 function check(title: string, run: PaymentCheck, harness: PaymentHarness): void {
@@ -46,7 +46,7 @@ function check(title: string, run: PaymentCheck, harness: PaymentHarness): void 
     async () => {
       expect(await run(harness)).toStrictEqual([])
     },
-    SLOW,
+    harness.checkTimeoutMs ?? SLOW,
   )
 }
 
