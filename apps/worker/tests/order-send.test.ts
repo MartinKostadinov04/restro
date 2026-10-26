@@ -11,7 +11,7 @@
 // and the job in any order: no sent order ever reaches the POS twice, and none loses a line (each
 // ends Added and on the bill, Not sent with its lines back on the table's order, or Unconfirmed
 // with an alert for the staff).
-import { type IntegrationId, newId, type VenueId } from '@restro/core'
+import { type IntegrationId, newId, SERVICE_TIMINGS, type VenueId } from '@restro/core'
 import {
   createIntegration,
   mapBarsyVenue,
@@ -20,6 +20,7 @@ import {
   setFloorSource,
   upsertBarsyVenues,
 } from '@restro/core/apply'
+import { BUDGET_WAIT_MS, SLOT_CHECKING_SECONDS } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
 import { createSimServer, ManualClock, type SimFault, type SimServer } from '@restro/sim-pos'
 import fc from 'fast-check'
@@ -28,6 +29,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import { sendTableOrders, slotTargets } from '../src/jobs/order-send'
 import { createLogger } from '../src/logger'
+import { serviceConnectorFor } from '../src/service-connectors'
 import {
   allowSlowSetup,
   createTestDatabase,
@@ -69,6 +71,8 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
 
   const policy = { env: 'test', allowHosts: [] } as const
   const env = () => ({ pool, log, now: () => new Date() })
+  /** The fake clock the read-back window runs on: the fake sleeps and slow reads move it. */
+  let elapsed = 0
   const deps = () => ({
     sim: policy,
     budgets: new InstanceBudgets(),
@@ -81,8 +85,10 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     readBackEveryMs: 1_000,
     // Each wait moves the simulator's clock past its one-second rate limit; nothing really sleeps.
     sleep: async (ms: number) => {
+      elapsed += ms
       simClock.advance(Math.max(ms, 1_100))
     },
+    clock: () => elapsed,
   })
 
   beforeAll(async () => {
@@ -320,6 +326,47 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     ])
     expect(addCalls()).toBe(0)
     sim.host.engine.faults.clear()
+  })
+
+  it('settles a round it cannot find within its checking lease, however slow each read', async () => {
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    // The real timings, every read as slow as it may be (its wait for a turn, then its timeout),
+    // and a round whose answer never comes and which never lands.
+    let checkingFrom: number | null = null
+    const outcomes = await sendTableOrders(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        ...deps(),
+        timings: SERVICE_TIMINGS,
+        readBackEveryMs: undefined,
+        connectorFor: (integration, policy) => {
+          const real = serviceConnectorFor(integration, policy)
+          return {
+            ...real,
+            readTable: async (context, table) => {
+              const reading = await real.readTable(context, table)
+              elapsed += BUDGET_WAIT_MS + SERVICE_TIMINGS.readTimeoutMs
+              return reading
+            },
+            addLines: async () => {
+              checkingFrom = elapsed
+              return { kind: 'unknown', reason: 'no answer' }
+            },
+          }
+        },
+      },
+    )
+    // The worker settled it itself: the sweep had nothing to expire.
+    expect(outcomes).toEqual([
+      { kind: 'settled', sentOrderId: id, state: 'unconfirmed', reason: 'check_timed_out' },
+    ])
+    expect(checkingFrom).not.toBeNull()
+    const took = elapsed - (checkingFrom ?? 0)
+    expect(took).toBeGreaterThanOrEqual(SERVICE_TIMINGS.readBackWindowMs)
+    expect(took).toBeLessThan(SLOT_CHECKING_SECONDS * 1_000)
+    expect(addCalls()).toBe(0)
   })
 
   it('never sends an item the POS has no link for', async () => {

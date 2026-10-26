@@ -169,6 +169,14 @@ export {
   type SendMenuItem,
 } from './send-menu'
 export {
+  BEFORE_READ_PAUSE_MS,
+  BEFORE_READ_TRIES,
+  BUDGET_WAIT_MS,
+  READ_BACK_EVERY_MS,
+  type SlotLeaseSeconds,
+  slotLeaseSeconds,
+} from './send-timings'
+export {
   ORDER_UNCONFIRMED_ALERT,
   ORDER_UNCONFIRMED_CAUSE,
   SETTLED_STATES,

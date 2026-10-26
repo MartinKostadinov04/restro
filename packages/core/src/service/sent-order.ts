@@ -42,13 +42,15 @@ import { writeOrder } from './order'
 import { accepted, refused, type ServiceResult } from './results'
 import type { SentOrder } from './rows'
 import { orderingPaused, sentOrderLinesOf, sentOrderNotesOf } from './send'
+import { slotLeaseSeconds } from './send-timings'
 
+const SLOT_LEASE = slotLeaseSeconds()
 /** How long a start holds the table's slot: the read before the write, with its retries. */
-export const SLOT_START_SECONDS = 90
-/** How long the slot is held from `sending`: the write and its timeout. */
-export const SLOT_SENDING_SECONDS = 60
-/** How long the slot is held from `checking`: the read-back window (60 s) and a margin. */
-export const SLOT_CHECKING_SECONDS = 90
+export const SLOT_START_SECONDS = SLOT_LEASE.start
+/** How long the slot is held from `sending`: the write, and its one more try. */
+export const SLOT_SENDING_SECONDS = SLOT_LEASE.sending
+/** How long the slot is held from `checking`: the read-back window and the last read. */
+export const SLOT_CHECKING_SECONDS = SLOT_LEASE.checking
 
 /** The cause of the table pause an Unconfirmed sent order raises. */
 export const ORDER_UNCONFIRMED_CAUSE = 'order_unconfirmed'

@@ -18,6 +18,10 @@
 //    unknown → `checking`, and the table is read back for about a minute (`readBackWindowMs`):
 //    the round found → Added; anything Restro can't tell from staff's (a waiter's identical
 //    round) → Unconfirmed; nothing within the window → Unconfirmed. Never sent again (D115).
+// Every POS call is bounded here (its turn at the instance's budget, then its timeout) and the
+// read-back ends on a clock deadline, so a run settles within its slot lease (`send-timings.ts`
+// in core derives each lease from the same timings): the sweep never settles a sent order this
+// worker is still reading back.
 // A note goes to the POS only where it reaches the ticket (`notesReachTicket`). A paused
 // connection sends nothing (#79 owns its breaker): the sent order is Not sent.
 
@@ -40,7 +44,15 @@ import {
   type TableBills,
   TableBillsSchema,
 } from '@restro/core'
-import { applyService, type SentOrderLine, sentOrderLinesOf } from '@restro/core/service'
+import {
+  applyService,
+  BEFORE_READ_PAUSE_MS,
+  BEFORE_READ_TRIES,
+  BUDGET_WAIT_MS,
+  READ_BACK_EVERY_MS,
+  type SentOrderLine,
+  sentOrderLinesOf,
+} from '@restro/core/service'
 import {
   authOrganization,
   type DbPool,
@@ -65,14 +77,9 @@ import {
   serviceConnectorFor,
   serviceContext,
 } from '../service-connectors'
+import type { Limiter } from '../sync/limiter'
 import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
-
-/** Tries of the read before the round. */
-export const BEFORE_READ_TRIES = 3
-
-/** How often the table is read back while a round is `checking`. */
-export const READ_BACK_EVERY_MS = 5_000
 
 /** The most sent orders one run sends: the rest wait for the next run (the sweep queues it). */
 export const SENDS_PER_RUN = 20
@@ -94,6 +101,8 @@ export interface SendJobDeps {
   readonly readBackEveryMs?: number
   /** Waits between read-backs and tries; tests pass a fake. */
   readonly sleep?: (ms: number) => Promise<void>
+  /** The clock the read-back window runs on, in milliseconds; tests pass the fake sleep's. */
+  readonly clock?: () => number
 }
 
 /** How one sent order ended in this run. */
@@ -108,6 +117,47 @@ export type SendOutcome =
   | { readonly kind: 'lost'; readonly sentOrderId: string }
 
 const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** How a bounded POS call ended. */
+type Bounded<T> =
+  | { readonly kind: 'answered'; readonly value: T }
+  /** No turn at the instance's budget within `BUDGET_WAIT_MS`: the call never left. */
+  | { readonly kind: 'no_turn' }
+  /** It left and outlived its timeout: it may still land. */
+  | { readonly kind: 'late' }
+
+/**
+ * Runs a POS call through the instance's budget, bounded here: the connector gets the same
+ * timeout in its context, but the slot lease must not rest on every connector keeping it.
+ */
+async function bounded<T>(
+  budget: Limiter,
+  timeoutMs: number,
+  call: () => Promise<T>,
+): Promise<Bounded<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let gaveUp = false
+  const ended = new Promise<Bounded<T>>((resolve, reject) => {
+    const giveUp = (as: Bounded<T>) => () => {
+      gaveUp = true
+      resolve(as)
+    }
+    timer = setTimeout(giveUp({ kind: 'no_turn' }), BUDGET_WAIT_MS)
+    budget
+      .run(async () => {
+        if (gaveUp) return
+        clearTimeout(timer)
+        timer = setTimeout(giveUp({ kind: 'late' }), timeoutMs)
+        resolve({ kind: 'answered', value: await call() })
+      })
+      .catch(reject)
+  })
+  try {
+    return await ended
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 /** What the worker knows of one sent order before it calls the POS. */
 interface Prepared {
@@ -203,8 +253,16 @@ async function sendOne(
   const context = serviceContext(env.now, timings)
   const readTable = async (): Promise<Reading<TableBills>> => {
     try {
-      const answer = await budget.run(() => prepared.connector.readTable(context, prepared.table))
-      const parsed = readingSchema(TableBillsSchema).safeParse(answer)
+      const answer = await bounded(budget, timings.readTimeoutMs, () =>
+        prepared.connector.readTable(context, prepared.table),
+      )
+      if (answer.kind !== 'answered') {
+        return {
+          complete: false,
+          reason: answer.kind === 'late' ? 'the read timed out' : 'the POS was busy',
+        }
+      }
+      const parsed = readingSchema(TableBillsSchema).safeParse(answer.value)
       return parsed.success
         ? parsed.data
         : { complete: false, reason: 'the reading did not have the expected shape' }
@@ -216,7 +274,7 @@ async function sendOne(
 
   let before: Reading<TableBills> = { complete: false, reason: 'not read yet' }
   for (let attempt = 0; attempt < BEFORE_READ_TRIES && !before.complete; attempt++) {
-    if (attempt > 0) await sleep(1_000)
+    if (attempt > 0) await sleep(BEFORE_READ_PAUSE_MS)
     before = await readTable()
   }
   if (!before.complete) return settle('not_sent', 'pos_unreachable')
@@ -233,7 +291,14 @@ async function sendOne(
   const capabilities = prepared.connector.capabilities
   const add = async () => {
     try {
-      return await budget.run(() => prepared.connector.addLines(context, request))
+      const answer = await bounded(budget, timings.writeTimeoutMs, () =>
+        prepared.connector.addLines(context, request),
+      )
+      if (answer.kind === 'answered') return answer.value
+      // No turn: the round never left. Late: it may still land, so it is read back.
+      return answer.kind === 'no_turn'
+        ? ({ kind: 'no_turn' } as const)
+        : ({ kind: 'unknown', reason: 'the add timed out' } as const)
     } catch (error) {
       // A throw after the request left may mean it landed: treated as unknown, never resent.
       env.log.warn({ sentOrderId, err: error }, 'the round could not be added')
@@ -245,6 +310,7 @@ async function sendOne(
     // The bill closed between the read and the add; nothing was written, so one more try.
     outcome = await add()
   }
+  if (outcome.kind === 'no_turn') return settle('not_sent', 'pos_unreachable')
   if (outcome.kind === 'done') {
     const posBillRef = outcome.result.bill === null ? {} : { posBillRef: outcome.result.bill.pos }
     return settle(capabilities.approvalAtBar ? 'awaiting_approval' : 'added', null, posBillRef)
@@ -255,7 +321,11 @@ async function sendOne(
   if (!(await move('checking'))) return { kind: 'lost', sentOrderId }
   const sent = prepared.lines.map((line) => ({ item: line.item, quantity: line.quantity }))
   const every = deps.readBackEveryMs ?? READ_BACK_EVERY_MS
-  for (let waited = 0; waited < timings.readBackWindowMs; waited += every) {
+  const clock = deps.clock ?? (() => env.now().getTime())
+  // The window runs on the clock, reads included: no read starts after it ends, so the run
+  // settles within the checking lease (the window, the last read, a margin).
+  const deadline = clock() + timings.readBackWindowMs
+  while (clock() + every <= deadline) {
     await sleep(every)
     const after = await readTable()
     if (!after.complete) continue
