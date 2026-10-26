@@ -539,6 +539,12 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       paymentIdOf(await start(phone(), ['L1']))
     })
 
+    it('invalid_command: a tip given as an amount above the picked lines', async () => {
+      expect(await refusal(await start(phone(), ['L3'], { tipMinor: 301 }))).toBe('invalid_command')
+      const id = paymentIdOf(await start(phone(), ['L3'], { tipMinor: 300 }))
+      expect((await stored(id))?.tip_minor).toBe('300')
+    })
+
     it('ask_waiter_to_split: part of a line', async () => {
       const first = (await bill())[0] as BillLine
       const part = await phone().act({

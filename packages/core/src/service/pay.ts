@@ -387,6 +387,10 @@ export function payStart() {
       const linesMinor = signedSumMinor(lines.map(({ line }) => line.amountMinor))
       if (linesMinor === null || linesMinor === 0) return refuse('ask_waiter_to_split')
       const tipMinor = tipOf(command.tip, linesMinor)
+      // A tip given as an amount stops at the lines' own amount (100 %, as a percent tip does).
+      if (command.tip.kind === 'amount' && tipMinor > linesMinor) {
+        return refused(command.actionId, 'invalid_command')
+      }
       const amountMinor = addMinor(linesMinor, tipMinor)
       // The venue's own floor here; the provider's minimum is checked when the worker prices it.
       const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
@@ -575,6 +579,8 @@ export function paymentPrice() {
         await release(stx, payment, tableOpen, reason)
         return at(command, payment, 'released', true)
       }
+      // Only the picked lines are compared here: the bill-level checks (a part-paid bill, a whole-bill
+      // discount) are made at `pay.start` only; a bill changed since is for #111's check of the moved lines.
       if (changed || picked.length === 0) return releaseFor('bill_changed')
       if (payment.tipMinor > 0 && !command.tipAllowed) return releaseFor('paying_not_offered')
       const amountMinor = holdAmountMinor(
