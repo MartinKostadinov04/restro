@@ -1,7 +1,9 @@
 // Send (D115–D117; ticket #77): the guest's `order.send`. The engine has already checked the
 // table code, the location pass's sitting, locked the table's order and looked the action id up
 // (a repeat gets the sent order it made). Here, under the order's lock:
-// 1. a table, bar or venue whose ordering is paused refuses the Send (`ordering_paused`, D120);
+// 1. a table, bar or venue whose ordering is paused refuses the Send (`ordering_paused`, D120), and
+//    so does a night that is not open for phones: before opening, after last orders, a closed
+//    weekday (`ordering_closed`, #82);
 // 2. the lines the Send names must be the order's live lines that no payment holds, as the guest
 //    saw them (`order_changed`), and there must be some (`order_empty`);
 // 3. each line is priced from the table's menu (the snapshot plus tonight's sold-out marks, which
@@ -25,6 +27,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 
 import { newId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
+import { guestNight, phonesMaySend } from '../service-hours'
 import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '../table-order'
 import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
@@ -60,6 +63,7 @@ export function drawReference(length = REFERENCE_LENGTH): string {
 /** Why a Send was refused, beside the engine's codes. */
 export const SEND_REFUSALS = [
   'ordering_paused',
+  'ordering_closed',
   'menu_unavailable',
   'order_changed',
   'order_empty',
@@ -109,6 +113,14 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
     .where(eq(venueTables.id, tableId))
   const barId = table?.barId ?? null
   if (await orderingPaused(stx, tableId, barId)) return refused(actionId, 'ordering_paused')
+  // The venue's night (#82): not before opening, not after last orders, not on a closed weekday.
+  const hours = guestNight(
+    readOrderingSettings(stx.venue.settings),
+    stx.venue.timezone,
+    stx.venue.serviceDayEndsAt,
+    stx.now,
+  )
+  if (!phonesMaySend(hours)) return refused(actionId, 'ordering_closed')
   const menu = stx.sendMenu
   if (menu === null) return refused(actionId, 'menu_unavailable')
 

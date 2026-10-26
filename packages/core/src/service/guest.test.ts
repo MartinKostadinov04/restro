@@ -8,7 +8,7 @@
 // engine's own.
 import { randomUUID } from 'node:crypto'
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
@@ -132,7 +132,49 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
         version: first.version,
         next: 2_000,
         location: 'off',
+        night: 'open',
       } satisfies GuestUnchanged,
+    })
+  })
+
+  describe('the night of the venue (#82)', () => {
+    const night = { opens: '22:00', lastOrders: '04:30', closes: '05:30' }
+    const setHours = async (hours: Record<string, unknown>) => {
+      await world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings, '{ordering,serviceHours}', $2::jsonb) where id = $1`,
+        [world.venueId, JSON.stringify(hours)],
+      )
+    }
+    afterEach(async () => {
+      vi.useRealTimers()
+      await setHours(DEFAULT_ORDERING_SETTINGS.serviceHours)
+    })
+    const at = (iso: string) => vi.useFakeTimers({ toFake: ['Date'], now: new Date(iso) })
+
+    it('tells a venue with no hours nothing: open', async () => {
+      expect((await state()).ordering.night).toEqual({ state: 'open', at: null })
+    })
+
+    it('tells the phone Last orders at 04:30 ten minutes before, then closed for tonight', async () => {
+      await setHours({ ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: night })
+      // Friday 2026-10-23, Sofia UTC+3: opens 19:00Z, last orders 01:30Z next day.
+      at('2026-10-23T12:00:00Z')
+      expect((await state()).ordering.night).toEqual({ state: 'opens_later', at: '22:00' })
+      at('2026-10-23T20:00:00Z')
+      expect((await state()).ordering.night).toEqual({ state: 'open', at: null })
+      at('2026-10-24T01:20:00Z')
+      expect((await state()).ordering.night).toEqual({ state: 'last_orders', at: '04:30' })
+      at('2026-10-24T01:30:00Z')
+      expect((await state()).ordering.night).toEqual({ state: 'closed', at: null })
+    })
+
+    it('says so under an unchanged version too, so a phone that only waits hears it', async () => {
+      await setHours({ ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: night })
+      at('2026-10-23T20:00:00Z')
+      const first = await state()
+      at('2026-10-24T01:20:00Z')
+      const again = await guestState(world.app, { code, view: 'order', since: first.version })
+      expect(again).toMatchObject({ ok: true, answer: { unchanged: true, night: 'last_orders' } })
     })
   })
 

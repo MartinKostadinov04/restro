@@ -71,6 +71,8 @@ export const GUEST_REFUSAL_CODES = [
   'human_check',
   /** Send (#77): ordering is paused at the table, its bar or the venue. */
   'ordering_paused',
+  /** Send (#82): the venue's night is not open for phones: before opening, after last orders. */
+  'ordering_closed',
   /** Send: the table's menu is not published, so nothing can be priced. */
   'menu_unavailable',
   /** Send: nothing on the order to send. */

@@ -38,6 +38,29 @@ export const ServiceHoursSchema = z.strictObject(
   },
 )
 
+/** Each weekday's hours. */
+export type ServiceHours = z.infer<typeof ServiceHoursSchema>
+
+/** The default pre-opening check (D120, D122 §4): from 2 hours before, every 10 minutes, an alert at 30. */
+export const DEFAULT_PRE_OPENING_RULE = { startMinutes: 120, everyMinutes: 10, alertMinutes: 30 }
+
+/** When the check of everything Restro needs from the POS runs before opening (D120, D122 §4). */
+export const PreOpeningRuleSchema = z
+  .strictObject({
+    /** The check starts this long before opening. */
+    startMinutes: z.number().int().min(30).max(360),
+    /** It runs this often. */
+    everyMinutes: z.number().int().min(5).max(60),
+    /** From this long before opening a failed check alerts. */
+    alertMinutes: z.number().int().min(10).max(120),
+  })
+  .refine((rule) => rule.alertMinutes <= rule.startMinutes, {
+    message: 'the alert cannot come before the check starts',
+  })
+
+/** The pre-opening check's timing. */
+export type PreOpeningRule = z.infer<typeof PreOpeningRuleSchema>
+
 /** A spot on the map: the venue's point for the location check (D118). */
 export const VenueSpotSchema = z.strictObject({
   lat: z.number().min(-90).max(90),
@@ -68,6 +91,8 @@ export const OrderingSettingsSchema = z.strictObject({
   passMinutes: z.number().int().min(30).max(360),
   /** When ordering from phones runs, per weekday. */
   serviceHours: ServiceHoursSchema,
+  /** The check before opening; settings saved before it existed take the defaults. */
+  preOpeningCheck: PreOpeningRuleSchema.default(DEFAULT_PRE_OPENING_RULE),
   /**
    * When an unanswered waiter call lapses, minutes (#50 decides; 15 until then). Whether guests
    * can call at all is the venue's guest feature `call_waiter` (D71), not a key here.
@@ -92,6 +117,7 @@ export const DEFAULT_ORDERING_SETTINGS: OrderingSettings = {
   radiusMetres: 150,
   passMinutes: 120,
   serviceHours: { mon: null, tue: null, wed: null, thu: null, fri: null, sat: null, sun: null },
+  preOpeningCheck: DEFAULT_PRE_OPENING_RULE,
   callLapseMinutes: 15,
   alertRecipientUserIds: [],
   telegramChatId: null,
@@ -120,9 +146,11 @@ function sinceServiceDayStart(time: string, dayEndsAt: string): number {
 export function serviceHoursProblem(hours: ServiceHoursOfDay, dayEndsAt: string): string | null {
   const opens = sinceServiceDayStart(hours.opens, dayEndsAt)
   const lastOrders = sinceServiceDayStart(hours.lastOrders, dayEndsAt)
-  const closes = sinceServiceDayStart(hours.closes, dayEndsAt)
+  // Closing at the very moment the day ends is the day's end, not its start.
+  const closes = sinceServiceDayStart(hours.closes, dayEndsAt) || MINUTES_PER_DAY
   if (!(opens < lastOrders)) return 'last orders must come after opening'
   if (!(lastOrders <= closes)) return 'closing must not come before last orders'
+  if (closes >= MINUTES_PER_DAY) return 'closing must be before the service day ends'
   if (lastOrders > MINUTES_PER_DAY - LAST_ORDERS_BEFORE_DAY_END_MINUTES) {
     return `last orders must be at least ${LAST_ORDERS_BEFORE_DAY_END_MINUTES} minutes before the service day ends`
   }

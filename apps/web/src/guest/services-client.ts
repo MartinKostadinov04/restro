@@ -324,7 +324,11 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         ? { state: 'closed' }
         : server === null
           ? null
-          : { state: server.ordering.state, notesAndOptions: server.ordering.notesAndOptions },
+          : {
+              state: server.ordering.state,
+              notesAndOptions: server.ordering.notesAndOptions,
+              night: server.ordering.night,
+            },
       offline: offline(),
       sentOrders: (server?.sentOrders ?? []).map(
         (sent): SentOrderView => ({
@@ -407,7 +411,12 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         lastAnswerAt = deps.now()
         // An edit on its way brings its own fresh state; a poll from before it would draw it twice.
         if (!answer.unchanged && pending.length === 0) accept(answer)
-        if (answer.unchanged && server !== null && answer.location !== server.location.state) {
+        if (
+          answer.unchanged &&
+          server !== null &&
+          (answer.location !== server.location.state ||
+            answer.night !== server.ordering.night.state)
+        ) {
           whole = true
           wait = 0
         } else {

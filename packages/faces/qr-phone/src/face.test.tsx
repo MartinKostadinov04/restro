@@ -695,3 +695,64 @@ describe('the location check (#76)', () => {
     expect(draw('checking').html).toContain('Checking your location')
   })
 })
+
+describe('the night of the venue (#82)', () => {
+  const view = viewOf('features-on')
+  const negroni = view.sections.flatMap((section) => section.items)[0]
+  if (negroni === undefined) throw new Error('the fixture has no items')
+  const draw = (night: {
+    state: 'open' | 'last_orders' | 'opens_later' | 'closed'
+    at: string | null
+  }) => {
+    const services = {
+      state: {
+        ...EMPTY_SERVICE_STATE,
+        ordering: { state: 'on' as const, notesAndOptions: false, night },
+        order: {
+          lines: [
+            {
+              id: `ol_${'0'.repeat(22)}` as const,
+              itemId: negroni.id,
+              optionIds: [],
+              qty: 1,
+              note: '',
+              mode: 'on_bill' as const,
+              held: false,
+              pending: false,
+            },
+          ],
+          removed: [],
+          earlier: null,
+        },
+      },
+      dispatch: () => Promise.reject(new Error('not in a static render')),
+    }
+    const html = withoutStyle(renderToStaticMarkup(<QrPhoneFace view={view} services={services} />))
+    return { html, doc: parseHtml(html) }
+  }
+
+  it('sends normally while open, with no notice', () => {
+    const { html, doc } = draw({ state: 'open', at: null })
+    expect(withAttribute(doc, 'data-send', '')).toHaveLength(1)
+    expect(html).not.toContain('Last orders at')
+  })
+
+  it('says Last orders at 04:30 and still lets the guest send', () => {
+    const { html, doc } = draw({ state: 'last_orders', at: '04:30' })
+    expect(html).toContain('Last orders at 04:30')
+    expect(withAttribute(doc, 'data-last-orders', '')).toHaveLength(1)
+    expect(withAttribute(doc, 'data-send', '')).toHaveLength(1)
+  })
+
+  it('says ordering from phones has closed for tonight, and takes Send away', () => {
+    const { html, doc } = draw({ state: 'closed', at: null })
+    expect(html).toContain('Ordering from phones has closed for tonight')
+    expect(withAttribute(doc, 'data-send', '')).toHaveLength(0)
+  })
+
+  it('says when ordering opens, and takes Send away until then', () => {
+    const { html, doc } = draw({ state: 'opens_later', at: '22:00' })
+    expect(html).toContain('Ordering from phones opens at 22:00')
+    expect(withAttribute(doc, 'data-send', '')).toHaveLength(0)
+  })
+})

@@ -65,6 +65,12 @@ export const PAYMENT_HANDLE_PATTERN = /^[A-Za-z0-9_-]{22}$/
 /** Where the phone stands with the location check: none at the venue, a pass, or none yet. */
 export const GUEST_LOCATION_STATES = ['off', 'needed', 'held'] as const
 
+/**
+ * Where the venue's night stands for a phone (#82, D122 §4): open, in the last-orders notice,
+ * not open yet, or closed for tonight.
+ */
+export const NIGHT_STATES = ['open', 'last_orders', 'opens_later', 'closed'] as const
+
 /** The oldest tap the API takes, in milliseconds (a day; an order edit is refused past 30 s). */
 const MAX_AGE_MS = 24 * 60 * 60_000
 
@@ -94,6 +100,14 @@ export const GuestTableStateSchema = z.strictObject({
   ordering: z.strictObject({
     state: z.enum(['on', 'paused', 'closed']),
     notesAndOptions: z.boolean(),
+    /** The venue's night (#82): `at` is the wall-clock time the words name, `HH:MM`. */
+    night: z.strictObject({
+      state: z.enum(NIGHT_STATES),
+      at: z
+        .string()
+        .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
+        .nullable(),
+    }),
   }),
   /**
    * The location check (#76): `needed` leaves out the order, the sent orders and the bill until
@@ -209,6 +223,8 @@ export const GuestUnchangedSchema = z.strictObject({
   next: z.int().positive(),
   /** When it differs from the state the phone holds, the phone asks for the whole state again. */
   location: z.enum(GUEST_LOCATION_STATES),
+  /** Likewise for the night: time alone changes it (#82). */
+  night: z.enum(NIGHT_STATES),
 })
 
 /** What `GET /api/guest/state` answers with 200. */
