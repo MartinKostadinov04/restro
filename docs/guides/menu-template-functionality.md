@@ -81,7 +81,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 - **Drawn means:** (the platform runs it since #76, on the hidden reference template only) where the venue checks location, a phone needs a pass from the table's current sitting before it sees the table's order and bill or adds to or changes a line on the bill; removing a line, Undo and paying never need one. The host asks and checks; the template only draws what `location.prompt` says, with the shell's words:
   - `consent`: the consent text (`locationConsent`, naming the venue from `location.venueName`) with "Allow" (`allow()`) and "Not now" (`decline()`), never a promise of anything else; nothing is asked before the guest tries something that needs it;
   - `checking`: "Checking your location…" while the phone reads its position;
-  - `failed`: "We could not confirm you are at the venue" with why, and two ways on: "Call a waiter" (sends a `waiter` request, then `dismiss()`) and "Cancel" (`dismiss()`);
+  - `failed`: "We could not confirm you are at the venue" with why, and two ways on: where the venue takes waiter calls (`view.features.callWaiter` is not null), "Call a waiter" (sends a `waiter` request, then `dismiss()`); where it does not, the still card "Please order from your waiter" (`locationOrderFromWaiter`), never a button; and always "Cancel" (`dismiss()`);
   - while `location.state` is `needed` and no prompt is up: why the order and the bill are hidden, and the guest's own "Allow location" (`reopen()`), which brings the consent back after a "Not now";
   - the position never reaches the template: it goes from the host to the server and nowhere else, and the template stores, logs and shows none of it.
 - **Where:** §10.2, §10.3; D72, D118, D122
