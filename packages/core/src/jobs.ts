@@ -127,6 +127,12 @@ export const JOB_NAMES = {
    */
   connectionTick: 'connection-tick',
   /**
+   * Scheduled, every 5 minutes (#80): takes stock marks off again. It reads the marked items where
+   * the POS instance declares item availability (a complete reading that says one is back clears
+   * its mark), and lapses the marks of an earlier service day. Not sent by anyone else.
+   */
+  stockTick: 'stock-tick',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`

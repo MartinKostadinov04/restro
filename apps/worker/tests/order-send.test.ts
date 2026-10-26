@@ -29,6 +29,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { ConnectionBreakers } from '../src/jobs/breaker'
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import { sendTableOrders, slotTargets } from '../src/jobs/order-send'
+import { stockTick } from '../src/jobs/stock'
 import { createLogger } from '../src/logger'
 import { serviceConnectorFor } from '../src/service-connectors'
 import {
@@ -227,6 +228,14 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       .bills.filter((bill) => bill.table === POS_TABLE && bill.state === 'open')
       .flatMap((bill) => bill.rows.map((row) => [row.article, row.quantity]))
 
+  /** The POS layer's `for_sale` rows of the linked items (stock marks, #80). */
+  const stockMarks = () =>
+    query<{ node_id: string; value: unknown; layer: string }>(
+      `select node_id, value, layer from restro.field_values
+        where field_key = 'for_sale' and node_id = any($1) order by node_id`,
+      [[itemA, itemB]],
+    )
+
   const addCalls = () => sim.host.engine.calls().filter((call) => call.method === 'addRows').length
 
   const orderLines = async () =>
@@ -305,12 +314,138 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
   it("settles the POS's no as Not sent with its code, the lines back on the order", async () => {
     firstItem()
     const id = await waiting([{ itemId: itemA, qty: 3, unitMinor: 1050 }])
-    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'refuse', code: 'sold_out' } })
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'refuse', code: 'bill_locked' } })
     const [outcome] = await run()
     expect(outcome).toMatchObject({ kind: 'settled', sentOrderId: id, state: 'not_sent' })
-    expect((await sentOrder(id))?.state).toBe('not_sent')
+    expect((await sentOrder(id))?.reason).toBe('bill_locked')
     expect((await orderLines()).map((line) => [line.itemId, line.qty])).toEqual([[itemA, 3]])
     expect(onBill()).toEqual([[FIRST, 1000]])
+    expect(await stockMarks()).toEqual([])
+  })
+
+  describe('stock from the POS (#80)', () => {
+    /** The jobs a run queued (`publish-live` after a stock mark). */
+    let queued: { name: string; data: object }[] = []
+    const queue = {
+      send: async (name: string, data: object) => {
+        queued.push({ name, data })
+        return 'job'
+      },
+    }
+    /** The sim connector as one that declares item availability, the POS saying `out` ran out. */
+    const withAvailability =
+      (out: () => ReadonlySet<string>): typeof serviceConnectorFor =>
+      (integration, policy) => {
+        const real = serviceConnectorFor(integration, policy)
+        return {
+          ...real,
+          capabilities: { ...real.capabilities, itemAvailability: true },
+          readAvailability: async (_context, items) => ({
+            complete: true,
+            value: { items: items.map((item) => ({ item, available: !out().has(item.pos) })) },
+          }),
+        }
+      }
+    const sendWith = (connectorFor?: typeof serviceConnectorFor) =>
+      sendTableOrders(
+        { ...env(), queue },
+        { tenantId, venueId: demo.venueId, tableId },
+        connectorFor === undefined ? deps() : { ...deps(), connectorFor },
+      )
+    const stockAlerts = () =>
+      query<{ subject_id: string; done: boolean; name: string }>(
+        `select subject_id, done_at is not null as done, details->>'name' as name
+           from restro.alerts where kind = 'item_out_of_stock' order by raised_at`,
+      )
+    const flagged = async (id: string) =>
+      (
+        await query<{ lines: { itemId: string; outOfStock?: true }[] }>(
+          'select lines from restro.sent_orders where id = $1',
+          [id],
+        )
+      )[0]?.lines.flatMap((line) => (line.outOfStock === true ? [line.itemId] : []))
+
+    beforeEach(async () => {
+      queued = []
+      await query(
+        `delete from restro.field_values where field_key = 'for_sale' and node_id = any($1)`,
+        [[itemA, itemB]],
+      )
+      await query(`delete from restro.alerts where kind = 'item_out_of_stock'`)
+    })
+
+    it('a POS refusal that names the line: Not sent, the item marked, Tonight told', async () => {
+      firstItem()
+      const id = await waiting([
+        { itemId: itemB, qty: 1, unitMinor: 1100 },
+        { itemId: itemA, qty: 3, unitMinor: 1050 },
+      ])
+      // A waiter marks the article sold out at the till: the POS refuses that line by its index.
+      sim.host.engine.waiter.markSoldOut(ARTICLE_B)
+      const [outcome] = await sendWith()
+      expect(outcome).toEqual({
+        kind: 'settled',
+        sentOrderId: id,
+        state: 'not_sent',
+        reason: 'item_unavailable',
+      })
+      // Nothing of that order reached the POS; every line is back on the table's order.
+      expect(onBill()).toEqual([[FIRST, 1000]])
+      expect((await orderLines()).map((line) => line.itemId).sort()).toEqual([itemA, itemB].sort())
+      // The refused line is flagged, its item marked and announced.
+      expect(await flagged(id)).toEqual([itemB])
+      expect(await stockMarks()).toEqual([{ node_id: itemB, value: false, layer: 'till' }])
+      expect(await stockAlerts()).toEqual([{ subject_id: itemB, done: false, name: 'Item' }])
+    })
+
+    it('the availability read before a Send: nothing is sent, the run-out item marked', async () => {
+      firstItem()
+      const id = await waiting([
+        { itemId: itemA, qty: 1, unitMinor: 1050 },
+        { itemId: itemB, qty: 2, unitMinor: 1100 },
+      ])
+      const out = new Set([ARTICLE_B])
+      expect(await sendWith(withAvailability(() => out))).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'item_unavailable' },
+      ])
+      expect(addCalls()).toBe(0)
+      expect(await flagged(id)).toEqual([itemB])
+      expect(await stockMarks()).toEqual([{ node_id: itemB, value: false, layer: 'till' }])
+      expect(await stockAlerts()).toEqual([{ subject_id: itemB, done: false, name: 'Item' }])
+
+      // The tick asks the POS again: still out, the mark stays; back, the mark and the alert end.
+      const tick = () =>
+        stockTick({ ...env(), queue }, { ...deps(), connectorFor: withAvailability(() => out) })
+      expect(await tick()).toEqual({ cleared: 0 })
+      out.clear()
+      expect(await tick()).toEqual({ cleared: 1 })
+      expect(await stockMarks()).toEqual([])
+      expect(await stockAlerts()).toEqual([{ subject_id: itemB, done: true, name: 'Item' }])
+    })
+
+    it('sends as before when every item is available, and lapses a mark nobody takes back', async () => {
+      firstItem()
+      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      expect(await sendWith(withAvailability(() => new Set()))).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'added', reason: null },
+      ])
+      expect(await stockMarks()).toEqual([])
+
+      // A refusal-only POS (the sim declares no read): its mark lapses with the service day.
+      const refused = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      sim.host.engine.waiter.markSoldOut(ARTICLE_A)
+      expect((await sendWith())[0]).toMatchObject({
+        sentOrderId: refused,
+        reason: 'item_unavailable',
+      })
+      expect(await stockTick({ ...env(), queue }, deps())).toEqual({ cleared: 0 })
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60_000)
+      expect(await stockTick({ ...env(), now: () => tomorrow, queue }, deps())).toEqual({
+        cleared: 1,
+      })
+      expect(await stockMarks()).toEqual([])
+      expect((await stockAlerts()).map((alert) => alert.done)).toEqual([true])
+    })
   })
 
   it('pauses the connection when the POS refuses the login: Not sent, and the next waits', async () => {

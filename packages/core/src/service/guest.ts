@@ -161,6 +161,8 @@ export interface GuestTableState {
       readonly itemId: string
       readonly optionIds: readonly string[]
       readonly qty: number
+      /** The POS said this item ran out, so the order ended Not sent (#80). */
+      readonly outOfStock?: true
     }[]
     /** Seconds since it was sent, for the time "Show this to your waiter" gives. */
     readonly sentAgoSeconds: number

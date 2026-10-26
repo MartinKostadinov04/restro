@@ -92,6 +92,8 @@ export async function setItemsSoldOut(
     changed = result.applied
   } catch (error) {
     if (error instanceof SoldOutError) {
+      // A POS venue's stock is the POS's (D124 §6): marking there is not allowed.
+      if (error.code === 'pos_venue') return fail('not_allowed')
       return fail(error.code === 'invalid_input' ? 'invalid' : 'not_found')
     }
     if (error instanceof ApplyError) {
