@@ -58,13 +58,17 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
     { pos: 'L2', quantity: '1', amountMinor: 450 },
     { pos: 'L3', quantity: '1', amountMinor: 300 },
   ]
-  const reading = (lines = LINES) => ({
+  /** `totalMinor` other than the lines' sum is a bill-level discount (D122 §8). */
+  const reading = (
+    lines = LINES,
+    totalMinor = lines.reduce((sum, line) => sum + line.amountMinor, 0),
+  ) => ({
     complete: true as const,
     currency: 'EUR',
     bills: [
       {
         pos: 'B1',
-        totalMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0),
+        totalMinor,
         paidMinor: 0,
         openedAt: '2026-10-26T20:00:00.000Z',
         openedByRestro: false,
@@ -93,10 +97,10 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
   const worker = async (command: Record<string, unknown>) =>
     (await applyService(world.app, command, workerContext())).result
 
-  async function record(lines = LINES) {
+  async function record(lines = LINES, totalMinor?: number) {
     const { result } = await applyService(
       world.app,
-      { type: 'reading.record', tableId, reading: reading(lines) },
+      { type: 'reading.record', tableId, reading: reading(lines, totalMinor) },
       {
         tenantId: world.tenantId,
         venueId: world.venueId,
@@ -555,6 +559,25 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
         tipPercent: null,
       })
       expect(await refusal(part)).toBe('ask_waiter_to_split')
+    })
+
+    it('ask_waiter_to_split: any pick on a bill with a whole-bill discount (D122 §8)', async () => {
+      // Two 20.00 lines, 36.00 on the bill: the lines alone would hold the full prices.
+      await record(
+        [
+          { pos: 'L1', quantity: '1', amountMinor: 2_000 },
+          { pos: 'L2', quantity: '1', amountMinor: 2_000 },
+        ],
+        3_600,
+      )
+      expect(await refusal(await start(phone(), ['L1']))).toBe('ask_waiter_to_split')
+      expect(await refusal(await start(phone(), ['L1', 'L2']))).toBe('ask_waiter_to_split')
+      expect(await refusal(await start(phone(), 'whole'))).toBe('ask_waiter_to_split')
+      const open = await world.owner.query(
+        'select 1 from restro.payments where table_id = $1 and settled_at is null',
+        [tableId],
+      )
+      expect(open.rowCount).toBe(0)
     })
 
     it('turnstile: the check said no, fail closed', async () => {

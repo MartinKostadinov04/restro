@@ -352,15 +352,13 @@ export function payStart() {
           return refuse('bill_changed')
         }
       }
-      // A bill a payment already isolated is being paid; a part-paid bill, or a whole bill whose
-      // total isn't its lines (a bill-level discount, D122 §8), only a waiter can split.
+      // A bill a payment already isolated is being paid; a part-paid bill, or a bill whose total
+      // isn't its lines (a bill-level discount, D122 §8), only a waiter can split: the hold is the
+      // picked lines' amounts, so any pick from it, the whole bill too, would charge too much.
       for (const bill of new Set(lines.map(({ bill }) => bill))) {
         if (bill.paymentInFlight) return refuse('being_paid')
         if (bill.paidMinor > 0) return refuse('ask_waiter_to_split')
-        if (
-          command.pick.kind === 'whole' &&
-          signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor
-        ) {
+        if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
           return refuse('ask_waiter_to_split')
         }
       }
