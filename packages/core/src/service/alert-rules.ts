@@ -23,6 +23,14 @@ export const PRE_OPENING_KIND = 'pre_opening_check'
 export const TABLE_CODE_BLOCK_KIND = 'table_code_block'
 /** An item the POS says ran out (#80): a notice for Tonight, never pushed. */
 export const OUT_OF_STOCK_KIND = 'item_out_of_stock'
+/** A card payment's close could not be confirmed (#111): a manager or owner answers it. */
+export const PAYMENT_UNCONFIRMED_KIND = 'payment_unconfirmed'
+/** A card payment was stopped at its last check, before the close (#111). */
+export const PAYMENT_CHECK_FAILED_KIND = 'payment_check_failed'
+/** A payment's lines could not be moved back from its payment table (#111). */
+export const PAYMENT_STRANDED_KIND = 'payment_stranded'
+/** A closed bill's card payment could not be captured (#111): the owners are told. */
+export const PAYMENT_CAPTURE_FAILED_KIND = 'payment_capture_failed'
 
 const MINUTE = 60_000
 
@@ -39,6 +47,8 @@ export interface ReceiverRule {
     /** Push only: the reminder goes to the venue's owners, not to every ticked account. */
     readonly ownersOnly: boolean
   } | null
+  /** Push only: every message of the kind goes to the venue's owners only (money, #111). */
+  readonly ownersOnly?: boolean
 }
 
 /** The rules of one kind. */
@@ -120,6 +130,38 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   [TABLE_CODE_BLOCK_KIND]: { ...NOBODY, team: teamDigest() },
   // Tonight is told about stock (#80); a phone is not.
   [OUT_OF_STOCK_KIND]: NOBODY,
+  // Money the staff must act on (#111): an unconfirmed close and stuck lines are reminded once
+  // after 10 minutes, as an Unconfirmed order is (D120); a stopped payment is told once.
+  [PAYMENT_UNCONFIRMED_KIND]: {
+    ...NOBODY,
+    push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
+    venueTelegram: venueGroup,
+    team: teamDigest(),
+  },
+  [PAYMENT_STRANDED_KIND]: {
+    ...NOBODY,
+    push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
+    venueTelegram: venueGroup,
+    team: teamDigest(),
+  },
+  [PAYMENT_CHECK_FAILED_KIND]: {
+    ...NOBODY,
+    push: staffPush(),
+    venueTelegram: venueGroup,
+    team: teamDigest(),
+  },
+  // A capture that failed is the owners' (the money of a closed bill): pushed to them at once,
+  // reminded once after an hour, and the Restro team is told at once; not the venue's group.
+  [PAYMENT_CAPTURE_FAILED_KIND]: {
+    ...NOBODY,
+    push: {
+      firstDelayMs: 0,
+      minGapMs: 0,
+      reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
+      ownersOnly: true,
+    },
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
 }
 
 /** The rule of a kind; one this ticket does not know follows its audience (venue, or Restro's team). */

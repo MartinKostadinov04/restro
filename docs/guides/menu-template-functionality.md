@@ -124,6 +124,11 @@ A service control is drawn only when its `view.features` field is on, and carrie
   - `pay.returned` after the card form, and `pay.cancel` before the hold is made, which ungreys the lines;
   - the refusals the template words through the shell (#45): `paying_not_offered`, `paying_paused`, `being_paid`, `bill_changed`, `below_minimum`, `ask_waiter_to_split` (part of a line, a part-paid bill or a whole-bill discount), `turnstile`, `rate_limited`, `sitting_ended`, `too_late`, `unknown_payment`;
   - the hold is the POS's own amounts plus the tip, and a tip is offered only where the POS can record one on closing the bill. No local success (D72): the template draws what the host's payment answer says.
+  - after the hold the payment moves on with no guest step (#111), and the paying phone's payment answer says where it stands: `held` and `queued` (waiting for a payment table, at most a minute), `isolated` and `checked` (the lines left the table's bill and were checked), `closed` (the POS closed their bill), then `captured`, the paid screen ("Paid"). The template draws one waiting state for everything before `captured`, with no step of the till named. It can also end:
+    - `released` (the hold is let go, the lines ungrey) with a reason the template words: `busy` (no payment table freed in a minute), `paying_paused`, `bill_changed`, `ask_waiter_to_split`, `check_failed` (the bill changed at the last check) or `isolate_refused`;
+    - `unconfirmed`: the till didn't confirm the close; staff check it, so the template says the venue is checking the payment and asks nothing more of the guest. A manager's "Receipt printed" moves it on to `captured`, "No receipt" to `released`;
+    - `stranded` (the lines could not go back to the table; staff are told) and `capture_failed` (the bill closed but the card was not charged; the owners are told): the template never asks the guest to pay again;
+  - paying pauses with ordering (the venue's, its bar's, the table's or the connection's pause): a `pay.start` is refused `paying_paused`, and a payment still waiting for a payment table ends `released` `paying_paused`. A payment whose lines already moved runs to its end.
 - **Where:** §5.5, §10.2, §10.3; D71, D72, D127
 
 ### Get the receipt

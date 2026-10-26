@@ -147,6 +147,34 @@ const KINDS: readonly [string, Record<string, unknown>, Step, string, string][] 
     'Out of stock in barsy: an item. Greyed out on the menu.',
     'Изчерпано в barsy: артикул. Посивено в менюто.',
   ],
+  [
+    'payment_unconfirmed',
+    {},
+    'new',
+    'Table 7: a card payment is unconfirmed',
+    'Маса 7: плащане с карта без потвърждение',
+  ],
+  [
+    'payment_check_failed',
+    {},
+    'new',
+    'Table 7: a card payment was stopped before closing',
+    'Маса 7: плащане с карта е спряно преди приключване',
+  ],
+  [
+    'payment_stranded',
+    {},
+    'new',
+    'Table 7: items are stuck on a payment table',
+    'Маса 7: артикули останаха на маса за плащане',
+  ],
+  [
+    'payment_capture_failed',
+    {},
+    'new',
+    'Club Nova: a closed bill’s card payment couldn’t be taken (Table 7)',
+    'Club Nova: плащане с карта по приключена сметка не можа да бъде взето (Маса 7)',
+  ],
   ['something_new', { secret: 'x' }, 'new', 'Club Nova: something_new', 'Club Nova: something_new'],
 ]
 
