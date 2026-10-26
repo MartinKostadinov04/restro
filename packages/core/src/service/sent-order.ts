@@ -24,7 +24,7 @@
 // Lock order (`lock-order.ts`): the table's order, the sent orders, the lease, the pause, the alert.
 
 import { alerts, pauses, sentOrders } from '@restro/db'
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
@@ -298,6 +298,37 @@ async function lockAround(
   return { sent, waiting: waiting.filter((id) => sent.get(id)?.state === 'waiting') }
 }
 
+/**
+ * Settles the waiting sent orders of these tables as Not sent (`ordering_paused`) with their lines
+ * back: ordering paused there (#79, D120). One a worker has started (it holds the table's slot)
+ * is left to its worker, whose move to Sending finds the pause; one in Sending or Checking
+ * finishes its read-back. The caller holds the tables' orders. Returns how many it settled.
+ */
+export async function settleWaiting(stx: ServiceTx, tableIds: readonly string[]): Promise<number> {
+  if (tableIds.length === 0) return 0
+  const rows = await stx.tx
+    .select({ id: sentOrders.id })
+    .from(sentOrders)
+    .where(and(inArray(sentOrders.tableId, [...tableIds]), eq(sentOrders.state, 'waiting')))
+  if (rows.length === 0) return 0
+  const locked = await stx.rows.sentOrders(rows.map((row) => row.id))
+  let settled = 0
+  for (const sent of [...locked.values()].sort((a, b) => compareCreated(a, b))) {
+    if (sent.state !== 'waiting') continue
+    const lease = await readLease(stx.tx, slotOf(sent.tableId))
+    if (lease?.holder === sent.id) continue
+    await moveSentOrder(stx, sent, { to: 'not_sent', reason: 'ordering_paused' }, null, [])
+    settled++
+  }
+  return settled
+}
+
+/** Oldest first, so lines come back in the order they were sent. */
+function compareCreated(a: SentOrder, b: SentOrder): number {
+  const byTime = a.createdAt.getTime() - b.createdAt.getTime()
+  return byTime !== 0 ? byTime : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
 /** `sent_order.start`. */
 export async function startSentOrder(
   stx: ServiceTx,
@@ -371,6 +402,11 @@ export async function transitionSentOrder(
   }
   const claim: LeaseClaim = { ...slotOf(sent.tableId), holder: sent.id, fence: command.fence }
   if (!(await holdsLease(stx, claim))) return refused(null, 'lease_lost')
+  // Ordering paused while the worker prepared the write (#79): it never goes to the POS.
+  if (command.to === 'sending' && (await orderingPaused(stx, sent.tableId, sent.barId))) {
+    await moveSentOrder(stx, sent, { to: 'not_sent', reason: 'ordering_paused' }, claim, [])
+    return accepted(null, { details: { changed: true, state: 'not_sent' } })
+  }
   const behind = waiting.flatMap((id) => {
     const one = locked.get(id)
     return one === undefined || one.id === sent.id ? [] : [one]

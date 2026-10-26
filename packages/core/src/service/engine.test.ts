@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import { hasDatabase } from '../apply/test-database'
-import { idSchema } from '../ids'
+import { idSchema, newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext, Via } from './context'
 import { type CommandRegistry, defineCommand } from './definition'
@@ -236,13 +236,10 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
   describe('the real commands', () => {
     // Every guest command is built (Send, #77; the waiter call, #81): only staff commands are left.
     it('refuses every command not built yet as not_built', async () => {
-      const tableId = world.tables[0] as string
       const owner = staff(user(ownerId))
       expect(
-        (await applyService(world.app, { type: 'table.resume', tableId }, owner)).result,
-      ).toEqual(refused(null, 'not_built'))
-      expect(
-        (await applyService(world.app, { type: 'ordering.pause', barId: null }, owner)).result,
+        (await applyService(world.app, { type: 'alert.done', alertId: newId('al') }, owner))
+          .result,
       ).toEqual(refused(null, 'not_built'))
     })
 
