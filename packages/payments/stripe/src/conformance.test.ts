@@ -1,9 +1,14 @@
 // The payment conformance suite on the Stripe provider (#107 acceptance). By default it plays the
 // recordings in `fixtures/recordings/` back through MSW (CI). To record them again against the
-// sandbox ("Restro Sandbox", never a live account), with the sandbox key in the environment:
+// sandbox ("Restro Sandbox", never a live account), with both sandbox keys in the environment:
 //
-//   STRIPE_CONFORMANCE=record STRIPE_SECRET_KEY=sk_test_… \
+//   STRIPE_CONFORMANCE=record STRIPE_SECRET_KEY=rk_test_… STRIPE_HARNESS_KEY=rk_test_… \
 //     pnpm vitest run --project packages/payments/stripe src/conformance.test.ts
+//
+// `STRIPE_SECRET_KEY` is the platform's restricted key (`restro-platform-sandbox`): the provider
+// and the guest use it. `STRIPE_HARNESS_KEY` is the harness's own restricted key
+// (`restro-harness-sandbox`) for what the platform's key may not do: read the balance, refund and
+// answer a dispute.
 //
 // `STRIPE_HARNESS_ACCOUNT` and `STRIPE_HARNESS_OTHER_ACCOUNT` name the sandbox's connected
 // accounts to record on; a recording keeps the ones it ran on.
@@ -40,19 +45,20 @@ const ACCOUNT = process.env.STRIPE_HARNESS_ACCOUNT ?? 'acct_1UUjd8H6CXJeKV2v'
 const OTHER_ACCOUNT = process.env.STRIPE_HARNESS_OTHER_ACCOUNT ?? 'acct_1UUjixH6CXaVmuUR'
 
 /**
- * Checks not recorded yet, each with why. The connection check needs an account that can take
- * payments, which only the venue's owner gets to, through Stripe's hosted onboarding in a
- * browser (a Stripe login of their own): the harness account has not been through it.
+ * Checks not recorded yet, each with why. The connection check reads the account's balance
+ * (`movedMinor`), which needs the harness's own key (10-26: the harness account finished hosted
+ * onboarding; the platform's key was refused `balance_read`).
  */
 const PENDING: Readonly<Record<string, string>> = {
   'connecting and reading the connection move no money':
-    'the harness account has not finished hosted onboarding, so it cannot take payments (#107)',
+    'waiting on the harness key (STRIPE_HARNESS_KEY) to record it (#107)',
 }
 
-function sandboxKey(): string {
-  const key = process.env.STRIPE_SECRET_KEY ?? ''
+/** A key from the environment, refused unless it is a sandbox key; the error names only the variable. */
+function sandboxKey(name: 'STRIPE_SECRET_KEY' | 'STRIPE_HARNESS_KEY'): string {
+  const key = process.env[name] ?? ''
   if (stripeKeyMode(key) !== 'test') {
-    throw new Error('recording needs a sandbox key (sk_test_ or rk_test_) in STRIPE_SECRET_KEY')
+    throw new Error(`recording needs a sandbox key (sk_test_ or rk_test_) in ${name}`)
   }
   return key
 }
@@ -111,6 +117,7 @@ function notice(
   }
 }
 
+// On the harness's key (Charges and Refunds Write, Disputes Write), never the platform's.
 function outside({ stripe, until }: OutsideTools) {
   const on = (accountRef: ProviderRef) => ({ stripeAccount: accountRef.provider })
   return {
@@ -166,7 +173,8 @@ function outside({ stripe, until }: OutsideTools) {
 paymentProviderSuite(
   stripeHarness({
     name: 'stripe (sandbox recordings)',
-    key: RECORD ? sandboxKey() : 'sk_test_playback0',
+    key: RECORD ? sandboxKey('STRIPE_SECRET_KEY') : 'sk_test_playback0',
+    harnessKey: RECORD ? sandboxKey('STRIPE_HARNESS_KEY') : 'sk_test_playback1',
     fetch: RECORD ? recordingFetch(() => tape) : (input, init) => globalThis.fetch(input, init),
     tape: () => tape,
     title: () => title,
