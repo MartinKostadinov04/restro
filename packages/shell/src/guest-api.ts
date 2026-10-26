@@ -121,6 +121,8 @@ export const GuestTableStateSchema = z.strictObject({
               itemId: idSchema('nd'),
               optionIds: z.array(idSchema('nd')).max(SERVICE_LIMITS.options),
               qty: z.int().min(1).max(SERVICE_LIMITS.quantity),
+              /** The POS said this item ran out, so the order ended Not sent (#80). */
+              outOfStock: z.literal(true).optional(),
             }),
           )
           .max(SERVICE_LIMITS.lines),

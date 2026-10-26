@@ -66,6 +66,8 @@ export const SentOrderLineSchema = z.strictObject({
   /** The POS's name where the item came from one, else the menu's (for staff, never a guest). */
   name: z.string().max(200),
   optionNames: z.array(z.string().max(200)).max(ORDER_LIMITS.options),
+  /** Set when the order ended Not sent because the POS says this item ran out (#80). */
+  outOfStock: z.literal(true).optional(),
 })
 
 /** One stored line of a sent order. */

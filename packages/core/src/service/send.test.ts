@@ -364,6 +364,34 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
     expect((await slot())?.holder).toBeNull()
   })
 
+  it('flags the lines of run-out items when the POS refuses them, and gives every line back (#80)', async () => {
+    await add(gin, 1)
+    await add(beer, 2)
+    const id = (await send()).result.details.sentOrderId as string
+    const taken = await start()
+    expect(
+      await step({
+        type: 'sent_order.transition',
+        sentOrderId: id,
+        fence: taken.fence,
+        to: 'not_sent',
+        reason: 'item_unavailable',
+        outOfStock: [gin],
+      }),
+    ).toMatchObject({ status: 'accepted' })
+    const stored = (await sentOrder(id)).lines as { itemId: string; outOfStock?: true }[]
+    expect(stored.map((line) => [line.itemId, line.outOfStock ?? false])).toEqual([
+      [gin, true],
+      [beer, false],
+    ])
+    expect((await orderLines()).map((line) => [line.itemId, line.qty]).sort()).toEqual(
+      [
+        [gin, 1],
+        [beer, 2],
+      ].sort(),
+    )
+  })
+
   it('settles a sent order Not sent when its sitting ended, never handing the lines to the next group', async () => {
     await add(beer, 1)
     const id = (await send()).result.details.sentOrderId as string

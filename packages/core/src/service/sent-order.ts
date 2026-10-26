@@ -41,7 +41,7 @@ import {
 import { writeOrder } from './order'
 import { accepted, refused, type ServiceResult } from './results'
 import type { SentOrder } from './rows'
-import { orderingPaused, sentOrderLinesOf, sentOrderNotesOf } from './send'
+import { orderingPaused, type SentOrderLine, sentOrderLinesOf, sentOrderNotesOf } from './send'
 import { slotLeaseSeconds } from './send-timings'
 
 const SLOT_LEASE = slotLeaseSeconds()
@@ -105,6 +105,7 @@ async function moveSentOrder(
     readonly billBeforeMinor?: number
     readonly posBillRef?: string
     readonly matchedLines?: readonly string[]
+    readonly outOfStock?: readonly string[]
   },
   claim: LeaseClaim | null,
   behind: readonly SentOrder[],
@@ -121,6 +122,9 @@ async function moveSentOrder(
         : {}),
       ...(change.posBillRef === undefined ? {} : { posBillRef: change.posBillRef }),
       ...(change.matchedLines === undefined ? {} : { matchedLines: [...change.matchedLines] }),
+      ...(to === 'not_sent' && change.outOfStock !== undefined && change.outOfStock.length > 0
+        ? { lines: markOutOfStock(sent.lines, change.outOfStock) }
+        : {}),
       ...(settles ? { settledAt: sql`now()` } : {}),
       ...stx.provenance,
       updatedAt: sql`now()`,
@@ -169,6 +173,17 @@ async function moveSentOrder(
   if (settles && claim !== null) await releaseLease(stx, claim)
   if (to === 'unconfirmed') await pauseAndAlert(stx, sent)
   stx.rows.touch(sent.tableId)
+}
+
+/**
+ * The stored lines with the ones of run-out items flagged (#80): the guest sees which lines the
+ * POS refused, greyed with "Mojito is out of stock", and sends the rest with one more tap.
+ */
+function markOutOfStock(stored: unknown, itemIds: readonly string[]): SentOrderLine[] {
+  const out = new Set(itemIds)
+  return sentOrderLinesOf(stored).map((line) =>
+    out.has(line.itemId) ? { ...line, outOfStock: true as const } : line,
+  )
 }
 
 /**
@@ -345,6 +360,8 @@ export interface TransitionCommand {
   readonly billBeforeMinor?: number | undefined
   readonly posBillRef?: string | undefined
   readonly matchedLines?: readonly string[] | undefined
+  /** Not sent because the POS says these items ran out: their lines are flagged (#80). */
+  readonly outOfStock?: readonly string[] | undefined
 }
 
 /** `sent_order.transition`. */
@@ -386,6 +403,7 @@ export async function transitionSentOrder(
         : { billBeforeMinor: command.billBeforeMinor }),
       ...(command.posBillRef === undefined ? {} : { posBillRef: command.posBillRef }),
       ...(command.matchedLines === undefined ? {} : { matchedLines: command.matchedLines }),
+      ...(command.outOfStock === undefined ? {} : { outOfStock: command.outOfStock }),
     },
     claim,
     behind,
@@ -439,6 +457,7 @@ export const SENT_ORDER_COMMANDS = {
       billBeforeMinor: z.int().nonnegative().optional(),
       posBillRef: z.string().min(1).max(200).optional(),
       matchedLines: z.array(z.string().min(1).max(200)).max(200).optional(),
+      outOfStock: z.array(idSchema('nd')).max(200).optional(),
     }),
     origins: ['worker'],
     permission: null,

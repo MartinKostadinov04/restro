@@ -167,7 +167,8 @@ async function StructureSubtab({
         defaultLocale={defaultLocale}
         enabledLocales={enabledLocales}
         currency={currency}
-        canMarkSoldOut={canMarkSoldOut(role)}
+        // On a POS venue the POS says what ran out: no sold-out switch here (D124 §6, #80).
+        canMarkSoldOut={canMarkSoldOut(role) && !hasTill}
         canCreateItem={manager}
         hasTill={hasTill}
         canDelete={manager}

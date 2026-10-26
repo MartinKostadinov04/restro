@@ -152,6 +152,7 @@ export {
   type TableOrderView,
   type VatLine,
 } from './services'
+export { isOutOfStock, refusedOutOfStock } from './stock'
 export { type GuestStrings, type ServiceStrings, type Strings, stringsFor } from './strings'
 export { fallbackChain, pickText } from './text'
 export {

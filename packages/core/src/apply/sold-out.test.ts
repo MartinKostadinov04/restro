@@ -11,6 +11,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ChangeSet } from '../change-set'
+import { tillVenueLinks } from '../connectors/till-venues'
 import { sha256Hex } from '../hash'
 import { type NodeId, newId } from '../ids'
 import { apply } from './apply'
@@ -458,6 +459,31 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
         (row) => row.layer === 'edition:service:2026-10-09',
       )
       expect(tonight).toEqual([])
+    })
+
+    it("refuses a mark on a POS venue, where stock is the POS's (D124 §6, #80)", async () => {
+      const posVenue = (
+        await provisionVenue(app, tenant, { name: 'Till bar', slug: testSlug('till-bar') })
+      ).id
+      await withTenantWrite(app, tenant, (tx) =>
+        tx.insert(tillVenueLinks).values({
+          tenantId: tenant,
+          integrationId: integration,
+          bid: 7,
+          name: 'Till bar',
+          venueId: posVenue,
+        }),
+      )
+      const onPos = (soldOut: boolean) =>
+        setSoldOutTonight(
+          app,
+          tenant,
+          { venueId: posVenue, itemIds: [barsyOn], soldOut, actor: manager },
+          { now: night },
+        )
+      await expect(onPos(true)).rejects.toMatchObject({ code: 'pos_venue' })
+      // Taking a mark off is still allowed: it can only make the menu as the POS says.
+      await expect(onPos(false)).resolves.toMatchObject({ rejected: [] })
     })
 
     it('refuses an unknown venue', async () => {

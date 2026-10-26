@@ -433,6 +433,57 @@ describe('the shared order (#75)', () => {
   })
 })
 
+describe('out of stock at Send (#80)', () => {
+  const view = viewOf('features-on')
+  const items = view.sections.flatMap((section) => section.items)
+  const negroni = items[0]
+  const mojito = items[1]
+  if (negroni === undefined || mojito === undefined) throw new Error('the fixture has no items')
+  const lineId = (n: number) => `ol_${'0'.repeat(21)}${n}` as const
+  const line = (n: number, itemId: typeof negroni.id, qty: number) => ({
+    id: lineId(n),
+    itemId,
+    optionIds: [],
+    qty,
+    note: '',
+    mode: 'on_bill' as const,
+    held: false,
+    pending: false,
+  })
+  const services = {
+    state: {
+      ...EMPTY_SERVICE_STATE,
+      ordering: { state: 'on' as const },
+      order: { lines: [line(1, negroni.id, 2), line(2, mojito.id, 1)], removed: [], earlier: null },
+      sentOrders: [
+        {
+          id: 'so_1',
+          state: 'not_sent' as const,
+          reason: 'item_unavailable',
+          ref: 'K7Q',
+          lines: [
+            { itemId: negroni.id, optionIds: [], qty: 2 },
+            { itemId: mojito.id, optionIds: [], qty: 1, outOfStock: true as const },
+          ],
+          sentAt: 1_700_000_000_000,
+          mine: true,
+        },
+      ],
+    },
+    dispatch: () => Promise.reject(new Error('not in a static render')),
+  }
+  const html = withoutStyle(renderToStaticMarkup(<QrPhoneFace view={view} services={services} />))
+  const doc = parseHtml(html)
+
+  it('greys the run-out line with its name and offers to send the rest', () => {
+    const [out] = withAttribute(doc, 'data-out-of-stock', '')
+    expect(withAttribute(doc, 'data-out-of-stock', '')).toHaveLength(1)
+    expect(out === undefined ? '' : textOf(out)).toContain(`${mojito.name.text} is out of stock`)
+    expect(html).toContain('Send the other 2 items')
+    expect(html).toContain('Nothing was sent: something ran out.')
+  })
+})
+
 describe('the location check (#76)', () => {
   const view = viewOf('features-on')
   const controls = { allow: async () => null, decline() {}, reopen() {}, dismiss() {} }

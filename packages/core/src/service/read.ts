@@ -110,6 +110,8 @@ export interface TableStateRead {
       readonly itemId: string
       readonly optionIds: readonly string[]
       readonly qty: number
+      /** The POS said this item ran out, so the order ended Not sent (#80). */
+      readonly outOfStock?: true
     }[]
   }[]
   /**
@@ -369,6 +371,7 @@ export async function readTableState(
           itemId: line.itemId,
           optionIds: line.optionIds,
           qty: line.qty,
+          ...(line.outOfStock === true ? { outOfStock: true } : {}),
         })),
       })),
       waiterCall:

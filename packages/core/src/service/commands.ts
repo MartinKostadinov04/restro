@@ -7,7 +7,8 @@
 // shared devices (#72), tables open for phones with their sittings (#73), the readings of a
 // table's bill with the sitting's end by a reading (#74), the table's shared order (#75), Send and
 // a sent order's way to the POS (#77), a payment's refund and dispute as read back after a
-// provider's notice (#108), and the waiter call with its Handled and its lapse (#81).
+// provider's notice (#108), the waiter call with its Handled and its lapse (#81), and the notice
+// of an item out of stock in the POS (#80).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -52,6 +53,7 @@ import {
   unassignStaff,
   updateRole,
 } from './staff'
+import { stockNotice } from './stock'
 import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
 import { callWaiter, lapseWaiterCall, waiterCallDone } from './waiter-call'
 
@@ -368,7 +370,8 @@ export const SERVICE_COMMANDS = {
   // #77: a sent order's way to the POS: the slot, each state, and the sweep of a dead worker's.
   ...SENT_ORDER_COMMANDS,
   'pause.transition': workerStep('pause.transition', { pauseId: idSchema('pa') }), // #79
-  'notice.record': workerStep('notice.record', {}), // #80
+  // #80: Tonight's notice of an item the POS says ran out, and its end when the item is back.
+  'notice.record': stockNotice(),
   // #108: a refund or a dispute, read back from the provider after its notice.
   'payment.observe': paymentObserve(),
   // #81: a call nobody answered in the venue's time, or whose sitting ended, lapses.

@@ -243,6 +243,12 @@ export interface ServiceStrings {
   readonly showWaiterClose: string
   /** A Send refused for one item: names it. */
   readonly itemUnavailableNamed: (name: string) => string
+  /** A line of the order whose item ran out (#80): greyed, and left out of the next Send. */
+  readonly outOfStockNamed: (name: string) => string
+  /** Not sent because the POS said items ran out: nothing was sent, the rest can go. */
+  readonly sentNotSentOutOfStock: string
+  /** The Send button when out-of-stock lines stay behind: "Send the other 2 items". */
+  readonly sendOthers: (count: number) => string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
   readonly refusals: { readonly [C in GuestRefusalCode]: string }
   readonly refusedOther: string
@@ -507,6 +513,9 @@ const EN: Strings = {
     showWaiter: 'Show this to your waiter',
     showWaiterClose: 'Close',
     itemUnavailableNamed: (name) => `${name} is no longer available. Remove it and send again.`,
+    outOfStockNamed: (name) => `${name} is out of stock`,
+    sentNotSentOutOfStock: 'Nothing was sent: something ran out. Send the rest when you’re ready.',
+    sendOthers: (count) => (count === 1 ? 'Send the other item' : `Send the other ${count} items`),
     refusals: {
       order_changed: 'Someone at your table changed this. Here is the latest order.',
       line_held: 'This is being paid and can no longer change.',
@@ -770,6 +779,11 @@ const BG: Strings = {
     showWaiter: 'Покажете това на сервитьора',
     showWaiterClose: 'Затвори',
     itemUnavailableNamed: (name) => `${name} вече не е налично. Премахнете го и изпратете отново.`,
+    outOfStockNamed: (name) => `${name} е изчерпано`,
+    sentNotSentOutOfStock:
+      'Нищо не беше изпратено: нещо се изчерпа. Изпратете останалото, когато сте готови.',
+    sendOthers: (count) =>
+      count === 1 ? 'Изпрати другия артикул' : `Изпрати другите ${count} артикула`,
     refusals: {
       order_changed: 'Някой на масата промени това. Ето последната поръчка.',
       line_held: 'Това се плаща и вече не може да се променя.',

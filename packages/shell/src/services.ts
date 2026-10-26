@@ -416,6 +416,11 @@ export interface SentOrderView {
     readonly itemId: NodeId
     readonly optionIds: readonly NodeId[]
     readonly qty: number
+    /**
+     * The POS said this item ran out, so the order ended Not sent (`item_unavailable`, #80): the
+     * face greys the line on the order ("Mojito is out of stock") and sends the rest.
+     */
+    readonly outOfStock?: true
   }[]
   /** When it was sent, in milliseconds since the epoch by the phone's clock. */
   readonly sentAt: number

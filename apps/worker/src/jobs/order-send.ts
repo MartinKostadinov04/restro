@@ -24,6 +24,10 @@
 // worker is still reading back.
 // A note goes to the POS only where it reaches the ticket (`notesReachTicket`). A paused
 // connection sends nothing (#79 owns its breaker): the sent order is Not sent.
+// Stock (#80, `stock.ts`): where the connector declares `itemAvailability`, the lines' items are
+// read right before the table; one the POS says ran out settles the whole sent order Not sent
+// (`item_unavailable`, its lines flagged and given back) before anything is sent, and marks the
+// item sold out. Elsewhere the POS's refusal that names a line does the same after the add.
 
 import { randomUUID } from 'node:crypto'
 
@@ -40,6 +44,7 @@ import {
   SERVICE_TIMINGS,
   type ServiceConnector,
   type ServiceTimings,
+  samePosRef,
   serviceDayStartsAt,
   type TableBills,
   TableBillsSchema,
@@ -48,7 +53,6 @@ import {
   applyService,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
-  BUDGET_WAIT_MS,
   READ_BACK_EVERY_MS,
   type SentOrderLine,
   sentOrderLinesOf,
@@ -77,9 +81,10 @@ import {
   serviceConnectorFor,
   serviceContext,
 } from '../service-connectors'
-import type { Limiter } from '../sync/limiter'
+import { bounded } from './bounded'
 import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
-import { defineJob, type JobDefinition, type WorkerContext } from './types'
+import { noteStock, readAvailability } from './stock'
+import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
 
 /** The most sent orders one run sends: the rest wait for the next run (the sweep queues it). */
 export const SENDS_PER_RUN = 20
@@ -88,6 +93,8 @@ export interface SendEnvironment {
   readonly pool: DbPool
   readonly log: Logger
   readonly now: () => Date
+  /** Queues `publish-live` after a stock mark (#80); tests may leave it out. */
+  readonly queue?: JobQueue
 }
 
 export interface SendJobDeps {
@@ -118,53 +125,14 @@ export type SendOutcome =
 
 const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-/** How a bounded POS call ended. */
-type Bounded<T> =
-  | { readonly kind: 'answered'; readonly value: T }
-  /** No turn at the instance's budget within `BUDGET_WAIT_MS`: the call never left. */
-  | { readonly kind: 'no_turn' }
-  /** It left and outlived its timeout: it may still land. */
-  | { readonly kind: 'late' }
-
-/**
- * Runs a POS call through the instance's budget, bounded here: the connector gets the same
- * timeout in its context, but the slot lease must not rest on every connector keeping it.
- */
-async function bounded<T>(
-  budget: Limiter,
-  timeoutMs: number,
-  call: () => Promise<T>,
-): Promise<Bounded<T>> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let gaveUp = false
-  const ended = new Promise<Bounded<T>>((resolve, reject) => {
-    const giveUp = (as: Bounded<T>) => () => {
-      gaveUp = true
-      resolve(as)
-    }
-    timer = setTimeout(giveUp({ kind: 'no_turn' }), BUDGET_WAIT_MS)
-    budget
-      .run(async () => {
-        if (gaveUp) return
-        clearTimeout(timer)
-        timer = setTimeout(giveUp({ kind: 'late' }), timeoutMs)
-        resolve({ kind: 'answered', value: await call() })
-      })
-      .catch(reject)
-  })
-  try {
-    return await ended
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 /** What the worker knows of one sent order before it calls the POS. */
 interface Prepared {
   readonly integrationId: string
   readonly connector: ServiceConnector
   readonly table: ReturnType<typeof posRef>
   readonly lines: readonly OrderLine[]
+  /** The stored lines, in the same order as `lines`: a line refusal's index names one. */
+  readonly sentLines: readonly SentOrderLine[]
   readonly serviceDayStartsAt: Date
 }
 
@@ -225,6 +193,7 @@ async function sendOne(
       readonly billBeforeMinor?: number
       readonly posBillRef?: string
       readonly matchedLines?: readonly string[]
+      readonly outOfStock?: readonly string[]
     } = {},
   ): Promise<boolean> => {
     const details = await step(
@@ -251,6 +220,44 @@ async function sendOne(
   const sleep = deps.sleep ?? sleepFor
   const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(prepared.integrationId)
   const context = serviceContext(env.now, timings)
+  const target = {
+    tenantId: payload.tenantId,
+    venueId: payload.venueId,
+    integrationId: prepared.integrationId,
+  }
+  /** Not sent for these run-out items: their lines are flagged, every line is given back. */
+  const outOfStock = (itemIds: readonly string[]) =>
+    settle('not_sent', 'item_unavailable', { outOfStock: [...new Set(itemIds)] })
+
+  // The availability read right before the Send, where declared (#80). Incomplete: go on, the
+  // POS's own refusal still protects.
+  const availability = await readAvailability(
+    prepared.connector,
+    budget,
+    env.now,
+    timings,
+    prepared.lines.map((line) => line.item),
+  )
+  if (availability.complete) {
+    const findings = prepared.sentLines.flatMap((line, index) => {
+      const pos = prepared.lines[index]?.item
+      const answers = availability.value.items.filter(
+        (answer) => pos !== undefined && samePosRef(answer.item, pos),
+      )
+      if (answers.length === 0) return []
+      return [
+        {
+          itemId: line.itemId,
+          name: line.name,
+          available: answers.every((answer) => answer.available),
+        },
+      ]
+    })
+    await noteStock(env, target, 'availability', findings)
+    const out = findings.filter((found) => !found.available).map((found) => found.itemId)
+    if (out.length > 0) return outOfStock(out)
+  }
+
   const readTable = async (): Promise<Reading<TableBills>> => {
     try {
       const answer = await bounded(budget, timings.readTimeoutMs, () =>
@@ -315,7 +322,18 @@ async function sendOne(
     const posBillRef = outcome.result.bill === null ? {} : { posBillRef: outcome.result.bill.pos }
     return settle(capabilities.approvalAtBar ? 'awaiting_approval' : 'added', null, posBillRef)
   }
-  if (outcome.kind === 'refused') return settle('not_sent', outcome.refusal.code)
+  if (outcome.kind === 'refused') {
+    const { refusal } = outcome
+    const line = refusal.line === null ? undefined : prepared.sentLines[refusal.line]
+    if (refusal.code === 'item_unavailable' && line !== undefined) {
+      // The POS names the line it refused (#80): the item ran out there.
+      await noteStock(env, target, 'refusal', [
+        { itemId: line.itemId, name: line.name, available: false },
+      ])
+      return outOfStock([line.itemId])
+    }
+    return settle('not_sent', refusal.code)
+  }
 
   // Unknown: read back, never send again (D115).
   if (!(await move('checking'))) return { kind: 'lost', sentOrderId }
@@ -430,6 +448,7 @@ async function prepare(
     connector,
     table: posRef(found.place.placeId),
     lines,
+    sentLines: found.lines,
     serviceDayStartsAt: serviceDayStartsAt(env.now(), found.venue.timezone, found.venue.dayEndsAt),
   }
 }
@@ -523,7 +542,7 @@ export function createSendJobs(deps: SendJobDeps): JobDefinition[] {
         if (!parsed.success)
           throw new Error(`the ${JOB_NAMES.orderSend} job has an invalid payload`)
         const outcomes = await sendTableOrders(
-          { pool: context.pool, log: context.log, now: context.now },
+          { pool: context.pool, log: context.log, now: context.now, queue: context.queue },
           parsed.data,
           deps,
         )

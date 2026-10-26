@@ -14,6 +14,8 @@ import {
   type CommandResult,
   type GuestCommand,
   isGuestRefusalCode,
+  isOutOfStock,
+  refusedOutOfStock,
   type SentOrderView,
   type ServiceBinding,
   type ServiceStrings,
@@ -106,6 +108,7 @@ export function sentWords(sent: SentOrderView, strings: ServiceStrings): string 
       return strings.sentAdded
     case 'not_sent':
       if (sent.reason === 'ordering_paused') return strings.sentNotSentPaused
+      if (sent.reason === 'item_unavailable') return strings.sentNotSentOutOfStock
       return sent.reason === 'needs_first_item' ? strings.sentNotSentFirstItem : strings.sentNotSent
     case 'unconfirmed':
       return strings.sentUnconfirmed(sent.ref)
@@ -198,8 +201,15 @@ export function OrderPanel({
   const ordering = services?.state.ordering?.state ?? 'on'
   const nameOf = (itemId: string) => items.get(itemId)?.name.text ?? strings.otherItem
   const lines = order?.lines ?? []
-  // A Send takes the lines on the bill that no payment holds and the server already has.
-  const sendable = lines.filter((line) => line.mode === 'on_bill' && !line.held && !line.pending)
+  // What ran out (#80): sold out on the menu, or named by the POS when it refused the last Send.
+  const refused = refusedOutOfStock(services?.state.sentOrders)
+  const outOfStock = (line: { readonly itemId: string }) =>
+    isOutOfStock(line.itemId, items.get(line.itemId), refused)
+  // A Send takes the lines on the bill that no payment holds and the server already has, and
+  // leaves the out-of-stock ones behind, greyed: the guest sends the rest with one tap.
+  const ready = lines.filter((line) => line.mode === 'on_bill' && !line.held && !line.pending)
+  const sendable = ready.filter((line) => !outOfStock(line))
+  const leftBehind = sendable.length < ready.length
   const count = sendable.reduce((sum, line) => sum + line.qty, 0)
   const sendOrder = async () => {
     setSending(true)
@@ -247,9 +257,14 @@ export function OrderPanel({
             data-item-id={line.itemId}
             data-qty={line.qty}
             data-pending={line.pending ? '' : undefined}
+            data-out-of-stock={outOfStock(line) ? '' : undefined}
+            className={outOfStock(line) ? 'rq-order-out' : undefined}
           >
             <span className="rq-order-name">{nameOf(line.itemId)}</span>{' '}
             <span className="rq-order-qty">× {line.qty}</span>
+            {outOfStock(line) ? (
+              <p className="rq-note">{strings.outOfStockNamed(nameOf(line.itemId))}</p>
+            ) : null}
             {line.pending ? <span className="rq-order-hint"> {strings.saving}</span> : null}
             {line.mode === 'pay_first' ? (
               <p className="rq-note">{strings.orderFromWaiter}</p>
@@ -320,7 +335,11 @@ export function OrderPanel({
           disabled={sending}
           onClick={() => void sendOrder()}
         >
-          {sending ? strings.sendingNow : strings.sendItems(count)}
+          {sending
+            ? strings.sendingNow
+            : leftBehind
+              ? strings.sendOthers(count)
+              : strings.sendItems(count)}
         </button>
       ) : null}
       <SentOrders services={services} strings={strings} nameOf={nameOf} />

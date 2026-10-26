@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { SERVICE_TIMINGS } from '../timings'
 import {
+  AVAILABILITY_READS,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
   BUDGET_WAIT_MS,
@@ -16,7 +17,9 @@ describe('the slot lease of each state', () => {
     const write = BUDGET_WAIT_MS + SERVICE_TIMINGS.writeTimeoutMs
     const lease = slotLeaseSeconds()
     expect(lease.start * 1_000).toBeGreaterThanOrEqual(
-      BEFORE_READ_TRIES * read + (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS + LEASE_MARGIN_MS,
+      (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
+        (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS +
+        LEASE_MARGIN_MS,
     )
     // The write, and its one more try after a closed bill.
     expect(lease.sending * 1_000).toBeGreaterThanOrEqual(2 * write + LEASE_MARGIN_MS)
