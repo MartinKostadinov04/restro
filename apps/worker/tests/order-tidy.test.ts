@@ -1,13 +1,13 @@
 // The idle order job (#75) on Postgres: an order nobody touched for the idle time is set aside as
 // the table's earlier order, once; an order still in use and a table with no open sitting are left
-// alone, so a run that races a phone changes nothing.
+// alone, so a run that races a phone changes nothing; a table that throws is skipped, not the run.
 import { randomUUID } from 'node:crypto'
 
 import { hashTableCode, newId, serviceDate } from '@restro/core'
 import { createArea, createTable, provisionTenant, provisionVenue } from '@restro/core/apply'
 import { forgetGuestCodes, guestAct, guestState } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { idleOrders, tidyIdleOrders } from '../src/jobs/order-tidy'
 import {
@@ -19,7 +19,25 @@ import {
   withOwnerClient,
 } from './database'
 
+// The table whose `order.tidy` throws, for the one test that wants a failing table.
+const failing = vi.hoisted(() => ({ tableId: null as string | null }))
+vi.mock('@restro/core/service', async (original) => {
+  const service = await original<typeof import('@restro/core/service')>()
+  return {
+    ...service,
+    applyService: (...args: Parameters<typeof service.applyService>) => {
+      const command = args[1] as { readonly tableId?: string }
+      if (command.tableId !== undefined && command.tableId === failing.tableId) {
+        return Promise.reject(new Error('the table could not be tidied'))
+      }
+      return service.applyService(...args)
+    },
+  }
+})
+
 allowSlowSetup()
+
+const quiet = { warn: () => undefined }
 
 describe.skipIf(!hasDatabase)('the idle order job', () => {
   let db: TestDatabase
@@ -44,7 +62,7 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
     venueId = venue.id
     const area = await createArea(pool, tenantId, venue.id, 'Hall')
     if (!area.ok) throw new Error(area.reason)
-    for (const number of ['1', '2']) {
+    for (const number of ['1', '2', '3', '4']) {
       const table = await createTable(pool, tenantId, { areaId: area.area.id, name: null, number })
       if (!table.ok) throw new Error(table.reason)
       tables.push(table.table.id)
@@ -97,8 +115,8 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
       [idle],
     )
     expect(await idleOrders(pool, new Date())).toEqual([{ tenantId, venueId, tableId: idle }])
-    expect(await tidyIdleOrders(pool, new Date())).toBe(1)
-    expect(await tidyIdleOrders(pool, new Date())).toBe(0)
+    expect(await tidyIdleOrders(pool, new Date(), quiet)).toBe(1)
+    expect(await tidyIdleOrders(pool, new Date(), quiet)).toBe(0)
 
     forgetGuestCodes()
     const read = async (code: string) => {
@@ -127,6 +145,25 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
       [busy],
     )
     expect(await idleOrders(pool, new Date())).toEqual([])
-    expect(await tidyIdleOrders(pool, new Date())).toBe(0)
+    expect(await tidyIdleOrders(pool, new Date(), quiet)).toBe(0)
+  })
+
+  it('logs a table that throws and still sets aside the others', async () => {
+    const [broken, fine] = tables.slice(2) as [string, string]
+    await query(
+      `update restro.table_orders set idle_expires_at = now() - interval '1 second'
+        where table_id = any($1)`,
+      [[broken, fine]],
+    )
+    failing.tableId = broken
+    const warn = vi.fn()
+    try {
+      expect(await tidyIdleOrders(pool, new Date(), { warn })).toBe(1)
+    } finally {
+      failing.tableId = null
+    }
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toMatchObject({ tableId: broken, err: expect.any(Error) })
+    expect(await idleOrders(pool, new Date())).toEqual([{ tenantId, venueId, tableId: broken }])
   })
 })

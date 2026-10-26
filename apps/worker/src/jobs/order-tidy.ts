@@ -7,6 +7,7 @@
 // A phone's read of the table does the same before it answers, so a table being read never waits
 // for this tick; the tick covers the tables nobody reads, so the order is aside when a phone comes
 // back. `order.tidy` changes nothing when nothing is due, so a run that races a phone is harmless.
+// A table that fails is logged and skipped, so it never holds up the tables after it.
 
 import { randomUUID } from 'node:crypto'
 
@@ -22,6 +23,7 @@ import {
 } from '@restro/db'
 import { and, eq, isNull, lte } from 'drizzle-orm'
 
+import type { Logger } from '../logger'
 import { defineJob, type JobDefinition } from './types'
 
 /** One table whose order is due to be set aside. */
@@ -50,22 +52,30 @@ export async function idleOrders(pool: DbPool, now: Date): Promise<IdleOrder[]> 
   return due
 }
 
-/** Sets aside every idle order; answers how many were set aside. */
-export async function tidyIdleOrders(pool: DbPool, now: Date): Promise<number> {
+/** Sets aside every idle order; answers how many were set aside. A table that throws is skipped. */
+export async function tidyIdleOrders(
+  pool: DbPool,
+  now: Date,
+  log: Pick<Logger, 'warn'>,
+): Promise<number> {
   let tidied = 0
   for (const order of await idleOrders(pool, now)) {
-    const { result } = await applyService(
-      pool,
-      { type: 'order.tidy', tableId: order.tableId },
-      {
-        tenantId: order.tenantId,
-        venueId: order.venueId,
-        origin: 'worker',
-        actor: { kind: 'system' },
-        jobId: `order-tidy-${randomUUID()}`,
-      },
-    )
-    if (result.status === 'accepted' && result.details.changed === true) tidied += 1
+    try {
+      const { result } = await applyService(
+        pool,
+        { type: 'order.tidy', tableId: order.tableId },
+        {
+          tenantId: order.tenantId,
+          venueId: order.venueId,
+          origin: 'worker',
+          actor: { kind: 'system' },
+          jobId: `order-tidy-${randomUUID()}`,
+        },
+      )
+      if (result.status === 'accepted' && result.details.changed === true) tidied += 1
+    } catch (error) {
+      log.warn({ tableId: order.tableId, err: error }, 'an idle order could not be set aside')
+    }
   }
   return tidied
 }
@@ -83,7 +93,7 @@ export const orderTidyTick: JobDefinition = defineJob({
     },
   },
   async handler(_jobs, context) {
-    const tidied = await tidyIdleOrders(context.pool, context.now())
+    const tidied = await tidyIdleOrders(context.pool, context.now(), context.log)
     if (tidied > 0) context.log.info({ tidied }, 'idle orders set aside')
   },
 })

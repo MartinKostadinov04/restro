@@ -104,6 +104,38 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
     })
   })
 
+  it('asks for a fresh bill reading while a phone polls the bill with its version', async () => {
+    // The sitting opened a minute ago; its bill was read 20 s ago, with a bill that did not
+    // change the version. Each poll on the bill asks again; a fresh reading asks nothing.
+    await world.owner.query(
+      `update restro.sittings set opened_at = now() - interval '1 minute'
+        where table_id = $1 and ended_at is null`,
+      [tableId],
+    )
+    const recordReading = (age: string) =>
+      world.owner.query(
+        `insert into restro.bill_readings
+           (tenant_id, venue_id, table_id, read_at, complete, source, actor, job_id)
+         values ($1, $2, $3, now() - $4::interval, true, 'worker', 'system', 'test-reading')
+         on conflict (tenant_id, table_id) do update set read_at = excluded.read_at`,
+        [world.tenantId, world.venueId, tableId, age],
+      )
+    await recordReading('20 seconds')
+    const { version } = await state('menu')
+    const queued: string[] = []
+    const queueReading = async (target: { readonly tableId: string }) => {
+      queued.push(target.tableId)
+    }
+    const poll = await guestState(world.app, { code, view: 'bill', since: version, queueReading })
+    expect(poll).toMatchObject({ ok: true, answer: { unchanged: true, version } })
+    expect(queued).toEqual([tableId])
+
+    await recordReading('1 second')
+    await guestState(world.app, { code, view: 'bill', since: version, queueReading })
+    await guestState(world.app, { code, view: 'menu', since: version, queueReading })
+    expect(queued).toEqual([tableId])
+  })
+
   it('shares one order between two phones: adds merge, a repeat gets its first answer', async () => {
     const actionId = randomUUID()
     const add = { type: 'order.add', actionId, itemId: item, optionIds: [], qty: 1, note: '' }

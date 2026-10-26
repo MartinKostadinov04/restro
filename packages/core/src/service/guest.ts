@@ -352,23 +352,27 @@ export async function guestState(
     if (state === null) return { ok: false, code: 'code_retired' }
   }
 
-  if (state.unchanged) {
-    return {
-      ok: true,
-      answer: { unchanged: true, version: state.version, next: cadence(input.view, false) },
-    }
-  }
+  // A poll on the bill asks for a fresh reading on both paths: a reading that found the same bill
+  // leaves the version, so most bill polls are answered unchanged.
+  const open = state.unchanged ? state.open : state.sitting !== null
+  const billReadAt = state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null)
   if (
     input.view === 'bill' &&
-    state.sitting !== null &&
+    open &&
     input.queueReading !== undefined &&
-    wantsFreshReading(state.bill?.readAt ?? null, state.now)
+    wantsFreshReading(billReadAt, state.now)
   ) {
     await input.queueReading({
       tenantId: target.tenantId,
       venueId: target.venueId,
       tableId: target.tableId,
     })
+  }
+  if (state.unchanged) {
+    return {
+      ok: true,
+      answer: { unchanged: true, version: state.version, next: cadence(input.view, false) },
+    }
   }
   return { ok: true, answer: walked(projectGuestState(state, input.view), state) }
 }

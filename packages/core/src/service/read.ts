@@ -135,6 +135,14 @@ export interface TableStateUnchanged {
   readonly now: Date
   /** When time alone next changes the open sitting's order (an Undo closing, the idle time). */
   readonly nextChangeAt: Date | null
+  /** Whether the table has an open sitting. */
+  readonly open: boolean
+  /**
+   * When the open sitting's bill was last read, as `TableStateRead.bill.readAt`: null when the
+   * table is closed or not read since its sitting opened. A reading that found the same bill
+   * leaves the version as it was, so a poll on the bill learns its age here (#75, D111).
+   */
+  readonly billReadAt: Date | null
 }
 
 /** The database's clock, to the millisecond. */
@@ -197,19 +205,35 @@ export async function readTableState(
     if (input.since !== undefined && input.since === version) {
       const [open] = await tx
         .select({
+          openedAt: sittings.openedAt,
+          readAt: billReadings.readAt,
           lines: tableOrders.lines,
           earlier: tableOrders.earlier,
           earlierAt: tableOrders.earlierAt,
           idleExpiresAt: tableOrders.idleExpiresAt,
         })
-        .from(tableOrders)
-        .innerJoin(sittings, eq(sittings.id, tableOrders.sittingId))
-        .where(and(eq(tableOrders.tableId, input.tableId), isNull(sittings.endedAt)))
+        .from(sittings)
+        .leftJoin(tableOrders, eq(tableOrders.sittingId, sittings.id))
+        .leftJoin(billReadings, eq(billReadings.tableId, sittings.tableId))
+        .where(and(eq(sittings.tableId, input.tableId), isNull(sittings.endedAt)))
       return {
         unchanged: true,
         version,
         now: await databaseNow(tx),
-        nextChangeAt: nextChangeOf(open ?? null),
+        nextChangeAt:
+          open === undefined || open.lines === null
+            ? null
+            : nextChangeOf({
+                lines: open.lines,
+                earlier: open.earlier,
+                earlierAt: open.earlierAt,
+                idleExpiresAt: open.idleExpiresAt,
+              }),
+        open: open !== undefined,
+        billReadAt:
+          open === undefined || open.readAt === null || open.readAt < open.openedAt
+            ? null
+            : open.readAt,
       }
     }
 
