@@ -4,29 +4,34 @@
 // phone sent reaches the log. #76: a command needs the phone value header; the pass travels in its
 // header both ways and comes back in the answer; a body that fails its schema is logged by its
 // paths only; a limit's trip is a 429 with Retry-After; a guard's trip is one line with the venue
-// and the table. The module itself is tested on Postgres in core (`guest.test.ts`,
-// `guest-location.test.ts`).
+// and the table. #110: the payment handle travels only in `X-Restro-Payment`, back in a pay
+// command's answer, and `GET /api/guest/payment` answers only a handle of the right shape. The
+// module itself is tested on Postgres in core (`guest.test.ts`, `guest-location.test.ts`,
+// `pay.test.ts`).
 import { newId } from '@restro/core'
 import type { DbPool } from '@restro/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const core = vi.hoisted(() => ({ guestState: vi.fn(), guestAct: vi.fn() }))
+const core = vi.hoisted(() => ({ guestState: vi.fn(), guestAct: vi.fn(), guestPayment: vi.fn() }))
 const log = vi.hoisted(() => ({ logError: vi.fn(), logInfo: vi.fn(), logWarn: vi.fn() }))
 
 vi.mock('@restro/core/service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@restro/core/service')>()),
   guestState: core.guestState,
   guestAct: core.guestAct,
+  guestPayment: core.guestPayment,
 }))
 vi.mock('./log', () => log)
 
 const { ForbiddenValueError } = await import('@restro/core/service')
 type GuestActInput = import('@restro/core/service').GuestActInput
-const { handleGuestAction, handleGuestState, readCapped, tableCodeOf } = await import('./guest-api')
+const { handleGuestAction, handleGuestPayment, handleGuestState, readCapped, tableCodeOf } =
+  await import('./guest-api')
 
 const CODE = 'table-code-1234'
 const PHONE = 'phone-value-aaaaaaaaaa'
 const PASS = 'eyJ2IjoxfQ.c2VhbA'
+const HANDLE = 'aaaaaaaaaaaaaaaaaaaaaA'
 /** Only the stubbed module gets the pool, so a refusal that never calls it never asked the database. */
 const pool = { sentinel: 'pool' } as unknown as DbPool
 const humanCheck = vi.fn(async () => 'passed' as const)
@@ -84,6 +89,7 @@ function expectGuestHeaders(response: Response) {
 beforeEach(() => {
   core.guestState.mockReset()
   core.guestAct.mockReset()
+  core.guestPayment.mockReset()
   log.logError.mockReset()
   log.logInfo.mockReset()
   log.logWarn.mockReset()
@@ -212,12 +218,18 @@ describe('POST /api/guest/actions', () => {
       result,
       state: state(2),
       pass: 'fresh-pass',
+      handle: null,
       retryAfter: null,
     })
     const response = await handleGuestAction(post(request), deps)
     expect(response.status).toBe(200)
     expectGuestHeaders(response)
-    expect(await response.json()).toEqual({ result, state: state(2), pass: 'fresh-pass' })
+    expect(await response.json()).toEqual({
+      result,
+      state: state(2),
+      pass: 'fresh-pass',
+      handle: null,
+    })
     const { kind, ...fields } = request.command
     expect(core.guestAct).toHaveBeenCalledWith(pool, {
       code: CODE,
@@ -255,6 +267,7 @@ describe('POST /api/guest/actions', () => {
       },
       state: null,
       pass: null,
+      handle: null,
       retryAfter: null,
     })
     const check = {
@@ -302,6 +315,7 @@ describe('POST /api/guest/actions', () => {
       },
       state: null,
       pass: null,
+      handle: null,
       retryAfter: 10,
     })
     const response = await handleGuestAction(post(add()), deps)
@@ -315,5 +329,107 @@ describe('POST /api/guest/actions', () => {
     const response = await handleGuestAction(post(add()), deps)
     expect(response.status).toBe(500)
     expect(JSON.stringify(log.logError.mock.calls)).not.toContain(CODE)
+  })
+})
+
+describe('the payment handle', () => {
+  const returned = () => ({
+    command: { kind: 'pay.returned', actionId: crypto.randomUUID() },
+    ageMs: 50,
+  })
+  const answered = (handle: string | null) => ({
+    ok: true,
+    result: { actionId: null, status: 'accepted', code: null, subjectId: newId('py'), ref: null },
+    state: state(3),
+    pass: null,
+    handle,
+    retryAfter: null,
+  })
+  const payment = (auth: string | null = `Table ${CODE}`, extra: Record<string, string> = {}) =>
+    new Request('http://localhost/api/guest/payment', {
+      headers: { ...(auth === null ? {} : { Authorization: auth }), ...extra },
+    })
+
+  it('hands core the handle from its header, and only one of the right shape', async () => {
+    core.guestAct.mockResolvedValue(answered(null))
+    const headers = { 'X-Restro-Phone': PHONE, 'X-Restro-Payment': HANDLE }
+    await handleGuestAction(post(returned(), `Table ${CODE}`, headers), deps)
+    expect(core.guestAct).toHaveBeenLastCalledWith(
+      pool,
+      expect.objectContaining({ handle: HANDLE }),
+    )
+    for (const bad of ['short', `${HANDLE}x`, `${HANDLE.slice(1)}!`]) {
+      const extra = { 'X-Restro-Phone': PHONE, 'X-Restro-Payment': bad }
+      await handleGuestAction(post(returned(), `Table ${CODE}`, extra), deps)
+      expect(core.guestAct.mock.lastCall?.[1]).not.toHaveProperty('handle')
+    }
+  })
+
+  it('answers a new handle in the body, and never logs it', async () => {
+    core.guestAct.mockResolvedValue(answered(HANDLE))
+    const response = await handleGuestAction(post(returned()), deps)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ handle: HANDLE })
+    expect(JSON.stringify([log.logInfo.mock.calls, log.logWarn.mock.calls])).not.toContain(HANDLE)
+  })
+
+  it('queues the payment’s step through the app’s queue, and logs a queue that fails', async () => {
+    const queuePayment = vi.fn(async () => {
+      throw new Error('queue down')
+    })
+    const target = { tenantId: newId('tn'), venueId: newId('vn'), paymentId: newId('py') }
+    core.guestAct.mockImplementation(async (_pool, input: GuestActInput) => {
+      await input.queuePayment?.(target, 'prepare')
+      return answered(null)
+    })
+    const response = await handleGuestAction(post(returned()), { ...deps, queuePayment })
+    expect(response.status).toBe(200)
+    expect(queuePayment).toHaveBeenCalledWith(target, 'prepare')
+    expect(log.logError).toHaveBeenCalledWith('guest_payment_not_queued', expect.any(Error))
+  })
+
+  it('answers GET /api/guest/payment 401 without a code and 404 without a handle', async () => {
+    const noCode = await handleGuestPayment(payment(null, { 'X-Restro-Payment': HANDLE }), deps)
+    expect(noCode.status).toBe(401)
+    for (const extra of [{}, { 'X-Restro-Payment': 'short' }] as Record<string, string>[]) {
+      const response = await handleGuestPayment(payment(`Table ${CODE}`, extra), deps)
+      expect(response.status).toBe(404)
+      expect(await response.json()).toEqual({ code: 'unknown_payment' })
+      expectGuestHeaders(response)
+    }
+    expect(core.guestPayment).not.toHaveBeenCalled()
+  })
+
+  it('answers the paying phone its payment, and 404 a handle core does not know', async () => {
+    const answer = {
+      id: newId('py'),
+      state: 'awaiting_guest',
+      reason: null,
+      currency: 'EUR',
+      amountMinor: 1_430,
+      tipMinor: 130,
+      lines: [{ name: 'Gin tonic', quantity: '2', amountMinor: 1_000 }],
+      form: { provider: 'sim', values: { clientSecret: 'secret' }, confirmSeconds: 120 },
+      next: 1_000,
+    }
+    core.guestPayment.mockResolvedValue({ ok: true, answer })
+    const response = await handleGuestPayment(
+      payment(`Table ${CODE}`, { 'X-Restro-Payment': HANDLE }),
+      deps,
+    )
+    expect(response.status).toBe(200)
+    expectGuestHeaders(response)
+    expect(await response.json()).toEqual(answer)
+    expect(core.guestPayment).toHaveBeenCalledWith(
+      pool,
+      expect.objectContaining({ code: CODE, handle: HANDLE }),
+    )
+
+    core.guestPayment.mockResolvedValue({ ok: false, code: 'unknown_payment' })
+    const unknown = await handleGuestPayment(
+      payment(`Table ${CODE}`, { 'X-Restro-Payment': HANDLE }),
+      deps,
+    )
+    expect(unknown.status).toBe(404)
   })
 })

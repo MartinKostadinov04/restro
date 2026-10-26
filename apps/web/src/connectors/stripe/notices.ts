@@ -42,6 +42,9 @@ export function stripeNoticeKind(type: string): ProviderNoticeKind {
     return 'refund'
   }
   if (type.startsWith('charge.dispute.')) return 'dispute'
+  // A guest's payment moved: held, needing the bank's step, failed or cancelled (#110). Restro
+  // reads the PaymentIntent back; the notice is only a nudge.
+  if (type.startsWith('payment_intent.')) return 'payment'
   return 'other'
 }
 

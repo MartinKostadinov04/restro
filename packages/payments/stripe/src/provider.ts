@@ -320,7 +320,9 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
     if (objectId === undefined) return { ok: true, value: null }
     // The object of each event type (https://docs.stripe.com/api/events/types.md): a charge for
     // `charge.refunded`, a refund for `charge.refund.updated` and `refund.*`, a dispute for
-    // `charge.dispute.*` (the same table as apps/web/src/connectors/stripe/notices.ts).
+    // `charge.dispute.*` (the same table as apps/web/src/connectors/stripe/notices.ts), and the
+    // PaymentIntent itself for `payment_intent.*` (#110).
+    if (notice.type.startsWith('payment_intent.')) return { ok: true, value: objectId }
     let read: Got<{ payment_intent?: string | null | undefined }>
     if (notice.type.startsWith('charge.dispute.')) {
       // GET /v1/disputes/:id (https://docs.stripe.com/api/disputes/retrieve.md)

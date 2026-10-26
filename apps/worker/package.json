@@ -23,6 +23,7 @@
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
     "@restro/sim-pos": "workspace:*",
+    "@restro/sim-pay": "workspace:*",
     "@restro/stripe": "workspace:*",
     "drizzle-orm": "0.45.3",
     "pg": "8.23.0",

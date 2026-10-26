@@ -55,6 +55,9 @@ const serverEnvironment = (origin: string) => ({
   // The location pass's key (#76), for the test servers only; a real one comes from the environment.
   GUEST_PASS_KEY:
     process.env.GUEST_PASS_KEY ?? 'e2e-only-guest-pass-key-not-used-anywhere-else-0123456789',
+  // Cloudflare's published test secret, which passes every token (#110: the paying test's Pay goes
+  // through Turnstile). A real secret is never set here.
+  TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
   // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
 })

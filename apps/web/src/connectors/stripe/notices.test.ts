@@ -100,7 +100,17 @@ describe("Stripe's notices", () => {
     ]) {
       expect(stripeNoticeKind(type), type).toBe('dispute')
     }
-    for (const type of ['payment_intent.succeeded', 'account.updated', 'charge.captured']) {
+    // A guest's payment (#110): the PaymentIntent's own events.
+    for (const type of [
+      'payment_intent.amount_capturable_updated',
+      'payment_intent.requires_action',
+      'payment_intent.payment_failed',
+      'payment_intent.canceled',
+      'payment_intent.succeeded',
+    ]) {
+      expect(stripeNoticeKind(type), type).toBe('payment')
+    }
+    for (const type of ['account.updated', 'charge.captured', 'payout.paid']) {
       expect(stripeNoticeKind(type), type).toBe('other')
     }
   })

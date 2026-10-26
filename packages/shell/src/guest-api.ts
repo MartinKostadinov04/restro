@@ -6,8 +6,18 @@
 // The table's code travels in the `Authorization: Table <code>` header, never in a body or an
 // address. Every id is ours (`ol_`, `nd_`, `tb_`…); nothing here can carry a POS id, an internal
 // name or a price of an order line (rule 3); a bill line's amount is the bill's own.
+//
+// Paying (#110, D127): `pay.start`, `pay.returned` and `pay.cancel` go through the same POST. The
+// paying phone gets a payment handle in the answer to its `pay.start` and sends it back in
+// `X-Restro-Payment`, never in an address or a body; `GET /api/guest/payment` answers that phone
+// alone, with its payment and, while the card is being collected, the provider's form values.
 
-import { GuestPositionSchema, idSchema, LocalizedTextSchema } from '@restro/core'
+import {
+  DecimalQuantitySchema,
+  GuestPositionSchema,
+  idSchema,
+  LocalizedTextSchema,
+} from '@restro/core'
 import { z } from 'zod'
 
 import { GUEST_REFUSAL_CODES } from './service-vocabulary'
@@ -39,6 +49,18 @@ export const GUEST_PASS_HEADER = 'X-Restro-Pass'
 
 /** The Turnstile action a Send's widget names, and siteverify's answer must name (#76). */
 export const TURNSTILE_SEND_ACTION = 'order_send'
+
+/** The Turnstile action a `pay.start`'s widget names (#110, D127 §Limits). */
+export const TURNSTILE_PAY_ACTION = 'pay_start'
+
+/**
+ * The header of the payment handle (D127 2.2): the secret only the paying phone holds, kept in
+ * `sessionStorage`. Never in an address or a body, never logged; only its hash is stored.
+ */
+export const GUEST_PAYMENT_HEADER = 'X-Restro-Payment'
+
+/** A payment handle: 16 random bytes (128 bits), base64url. */
+export const PAYMENT_HANDLE_PATTERN = /^[A-Za-z0-9_-]{22}$/
 
 /** Where the phone stands with the location check: none at the venue, a pass, or none yet. */
 export const GUEST_LOCATION_STATES = ['off', 'needed', 'held'] as const
@@ -141,6 +163,8 @@ export const GuestTableStateSchema = z.strictObject({
                   name: LocalizedTextSchema.nullable(),
                   quantity: z.string().max(32),
                   amountMinor: minor,
+                  /** In a payment that isn't final (D127 2.4): no payer, amount or timer. */
+                  beingPaid: z.boolean(),
                 }),
               )
               .max(500),
@@ -195,9 +219,65 @@ export const GuestCheckSchema = z.strictObject({
 /** What the page adds to a command. */
 export type GuestCheck = z.output<typeof GuestCheckSchema>
 
+/** A bill line's id (`bn_`), as the table's state shows it. */
+const BillLineIdSchema = idSchema('bn')
+
+/** The most bill lines one payment picks. */
+const PAY_LINES_MAX = 200
+
+/**
+ * The guest's pay commands (#110, D127; design §3). `pay.start` picks whole lines of the bill (a
+ * line's whole quantity, as the bill shows it) or the whole bill, and sends every picked line as the
+ * phone saw it (the knock, D111). At most one of `tipMinor` and `tipPercent` is set; neither is no
+ * tip (it starts at zero, D127). `pay.returned` and `pay.cancel` name the payment by the handle in
+ * `X-Restro-Payment`.
+ */
+export const GuestPayCommandSchema = z.discriminatedUnion('kind', [
+  z
+    .strictObject({
+      kind: z.literal('pay.start'),
+      actionId: z.uuid(),
+      pick: z.discriminatedUnion('kind', [
+        z.strictObject({
+          kind: z.literal('lines'),
+          lines: z
+            .array(z.strictObject({ lineId: BillLineIdSchema, quantity: DecimalQuantitySchema }))
+            .min(1)
+            .max(PAY_LINES_MAX),
+        }),
+        z.strictObject({ kind: z.literal('whole') }),
+      ]),
+      seen: z
+        .array(
+          z.strictObject({
+            lineId: BillLineIdSchema,
+            quantity: DecimalQuantitySchema,
+            amountMinor: minor,
+          }),
+        )
+        .min(1)
+        .max(PAY_LINES_MAX),
+      tipMinor: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
+      tipPercent: z.int().min(1).max(SERVICE_LIMITS.tipPercentMax).nullable(),
+    })
+    .refine((command) => command.tipMinor === null || command.tipPercent === null, {
+      message: 'set either tipMinor or tipPercent, not both',
+      path: ['tipPercent'],
+    }),
+  z.strictObject({ kind: z.literal('pay.returned'), actionId: z.uuid() }),
+  z.strictObject({ kind: z.literal('pay.cancel'), actionId: z.uuid() }),
+])
+
+/** A guest pay command. */
+export type GuestPayCommand = z.input<typeof GuestPayCommandSchema>
+
 /** The body of `POST /api/guest/actions`. */
 export const GuestActionRequestSchema = z.strictObject({
-  command: GuestCommandSchema,
+  /**
+   * A face's command, or a pay command. The pay commands come first: the face contract's own
+   * `pay.start` (a quote and a method, D71) still parses as the face's and is answered `not_built`.
+   */
+  command: z.union([GuestPayCommandSchema, GuestCommandSchema]),
   /** Milliseconds since the guest's tap (a retry sends the same tap's age, grown). */
   ageMs: z.int().nonnegative().max(MAX_AGE_MS),
   view: z.enum(GUEST_API_VIEWS).default('order'),
@@ -222,14 +302,78 @@ export const GuestActionAnswerSchema = z.strictObject({
   state: GuestTableStateSchema.nullable(),
   /** A fresh location pass for the phone to send back in `X-Restro-Pass`, or null. */
   pass: z.string().min(1).max(1_024).nullable(),
+  /**
+   * The payment handle, only in the answer to the `pay.start` that made (or repeats) the payment:
+   * the page keeps it in `sessionStorage` and sends it in `X-Restro-Payment`. Null otherwise.
+   */
+  handle: z.string().regex(PAYMENT_HANDLE_PATTERN).nullable(),
 })
 
 /** What `POST /api/guest/actions` answers with 200. */
 export type GuestActionAnswer = z.output<typeof GuestActionAnswerSchema>
 
-/** The answer of a request the API refused before any command ran (401, 400, 413, 429). */
+/** The states of a payment a paying phone sees (the database's, D127; design §4). */
+export const GUEST_PAYMENT_STATES = [
+  'requested',
+  'priced',
+  'awaiting_guest',
+  'held',
+  'queued',
+  'isolated',
+  'entered',
+  'checked',
+  'closed',
+  'cancelling',
+  'captured',
+  'released',
+  'unconfirmed',
+  'stranded',
+  'capture_failed',
+] as const
+
+/**
+ * What `GET /api/guest/payment` answers the paying phone with 200 (#110): where its payment stands,
+ * the lines and the amounts once priced, and the provider's form values while the card is being
+ * collected (`awaiting_guest`). The form's values are the one provider value a guest answer
+ * carries, and only this one (rule 3, D127).
+ */
+export const GuestPaymentAnswerSchema = z.strictObject({
+  id: idSchema('py'),
+  state: z.enum(GUEST_PAYMENT_STATES),
+  /** Why the payment ended or is ending (`bill_changed`, `cancelled`, `expired`...), or null. */
+  reason: z.string().max(64).nullable(),
+  currency: z.string().length(3),
+  /** The hold: the lines plus the tip, once priced; null before. */
+  amountMinor: minor.nullable(),
+  tipMinor: minor,
+  lines: z
+    .array(
+      z.strictObject({
+        name: z.string().max(200),
+        quantity: z.string().max(32),
+        amountMinor: minor,
+      }),
+    )
+    .max(PAY_LINES_MAX),
+  /** The card form: which provider's, and the values it needs. Only while `awaiting_guest`. */
+  form: z
+    .strictObject({
+      provider: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/),
+      values: z.record(z.string().max(64), z.string().max(2_000)),
+      /** Seconds the guest has to confirm. */
+      confirmSeconds: seconds,
+    })
+    .nullable(),
+  /** Milliseconds to the next poll. */
+  next: z.int().positive(),
+})
+
+/** What `GET /api/guest/payment` answers with 200. */
+export type GuestPaymentAnswer = z.output<typeof GuestPaymentAnswerSchema>
+
+/** The answer of a request the API refused before any command ran (401, 400, 404, 413, 429). */
 export const GuestApiErrorSchema = z.strictObject({
-  code: z.enum(['code_retired', 'invalid_request', 'too_large', 'rate_limited']),
+  code: z.enum(['code_retired', 'invalid_request', 'too_large', 'rate_limited', 'unknown_payment']),
 })
 
 /** The answer of a request the API refused before any command ran. */

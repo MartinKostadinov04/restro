@@ -1,7 +1,8 @@
-// The guest API's two handlers (D121; design `2026-10-20-guest-api-design.md` §2–§5; ticket #75):
+// The guest API's handlers (D121; design `2026-10-20-guest-api-design.md` §2–§5; tickets #75, #110):
 //
 //   GET  /api/guest/state?since=<version>&view=menu|order|bill   the table's state, or "unchanged"
 //   POST /api/guest/actions                                      one guest command, and the state
+//   GET  /api/guest/payment                                      the paying phone's own payment
 //
 // The table's code comes in `Authorization: Table <code>`, never in the address or the body. A
 // code of the wrong shape is answered 401 before the database is asked. Bodies are read up to
@@ -16,29 +17,45 @@
 // by the paths it got wrong, never by its values (a position among them). A guard's trip is one
 // log line with the venue and the table, nothing more.
 //
+// Paying (#110, D127): the payment handle comes back to the phone in the answer to its `pay.start`
+// and goes out in `X-Restro-Payment`, never in an address or a body. Nothing logs it; core keeps
+// only its sha-256. Each pay command queues the worker's next step of the payment.
+//
 // The logic sits here, apart from the route files, so tests can call it with their own pool.
 
-import { issuePaths, JOB_NAMES, TABLE_TOKEN_PATTERN, TableReadJobSchema } from '@restro/core'
+import {
+  issuePaths,
+  JOB_NAMES,
+  PaymentJobSchema,
+  TABLE_TOKEN_PATTERN,
+  TableReadJobSchema,
+} from '@restro/core'
 import {
   ForbiddenValueError,
   type GuardEvent,
   type GuestActInput,
   guestAct,
+  guestPayment,
   guestState,
   type HumanCheck,
   MAX_PASS_LENGTH,
+  type PaymentTarget,
+  type QueuePayment,
 } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import {
   GUEST_API_MAX_BYTES,
   GUEST_PASS_HEADER,
+  GUEST_PAYMENT_HEADER,
   GUEST_PHONE_HEADER,
   GUEST_PHONE_PATTERN,
   GuestActionAnswerSchema,
   GuestActionRequestSchema,
   type GuestApiError,
+  GuestPaymentAnswerSchema,
   GuestStateAnswerSchema,
   GuestStateQuerySchema,
+  PAYMENT_HANDLE_PATTERN,
   TABLE_AUTH_SCHEME,
 } from '@restro/shell'
 
@@ -58,8 +75,10 @@ export interface GuestApiDeps {
   }) => Promise<unknown>
   /** `GUEST_PASS_KEY`, or null when the app has none (no pass is issued or held then). */
   readonly passKey?: string | null
-  /** Turnstile's siteverify at Send; without it every Send fails the check. */
+  /** Turnstile's siteverify at Send and Pay; without it every Send and Pay fails the check. */
   readonly humanCheck?: HumanCheck
+  /** Queues the worker's next step of a payment (#110); tests pass their own. */
+  readonly queuePayment?: (target: PaymentTarget, job: 'prepare' | 'check') => Promise<unknown>
 }
 
 const HEADERS = {
@@ -89,6 +108,26 @@ export function tableCodeOf(request: Request): string | null {
 export function passOf(request: Request): string | undefined {
   const pass = request.headers.get(GUEST_PASS_HEADER)?.trim()
   return pass === undefined || pass === '' || pass.length > MAX_PASS_LENGTH ? undefined : pass
+}
+
+/** The payment handle from `X-Restro-Payment`, or undefined when absent or misshapen. */
+export function paymentHandleOf(request: Request): string | undefined {
+  const handle = request.headers.get(GUEST_PAYMENT_HEADER)?.trim()
+  return handle !== undefined && PAYMENT_HANDLE_PATTERN.test(handle) ? handle : undefined
+}
+
+/** The queue as core takes it: a job that can't be queued is logged, never a failed command. */
+function paymentQueue(deps: GuestApiDeps): { readonly queuePayment?: QueuePayment } {
+  const queue = deps.queuePayment
+  if (queue === undefined) return {}
+  return {
+    queuePayment: async (target, job) => {
+      // The phone's poll of its payment queues the step again.
+      await Promise.resolve(queue(target, job)).catch((error: unknown) =>
+        logError('guest_payment_not_queued', error),
+      )
+    },
+  }
 }
 
 /** Logs a guard's trip: what tripped, the venue and the table, nothing about the phone. */
@@ -196,6 +235,7 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
   }
   const { kind, ...fields } = parsed.data.command
   const command: GuestActInput['command'] = { type: kind, ...fields }
+  const handle = paymentHandleOf(request)
   try {
     const acted = await guestAct(deps.pool, {
       code,
@@ -207,6 +247,8 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
       ...(parsed.data.check === undefined ? {} : { check: parsed.data.check }),
       passKey: deps.passKey ?? null,
       ...(deps.humanCheck === undefined ? {} : { humanCheck: deps.humanCheck }),
+      ...(handle === undefined ? {} : { handle }),
+      ...paymentQueue(deps),
       onGuard: logGuard,
     })
     if (!acted.ok) return stateless(acted)
@@ -214,10 +256,32 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
       return refuse('rate_limited', 429, { 'Retry-After': String(acted.retryAfter) })
     }
     return json(
-      GuestActionAnswerSchema.parse({ result: acted.result, state: acted.state, pass: acted.pass }),
+      GuestActionAnswerSchema.parse({
+        result: acted.result,
+        state: acted.state,
+        pass: acted.pass,
+        handle: acted.handle,
+      }),
     )
   } catch (error) {
     return failed('guest_action_failed', error)
+  }
+}
+
+/** `GET /api/guest/payment`: the paying phone's own payment, by the handle it holds (#110). */
+export async function handleGuestPayment(request: Request, deps: GuestApiDeps): Promise<Response> {
+  const code = tableCodeOf(request)
+  if (code === null) return refuse('code_retired', 401)
+  const handle = paymentHandleOf(request)
+  if (handle === undefined) return refuse('unknown_payment', 404)
+  try {
+    const read = await guestPayment(deps.pool, { code, handle, ...paymentQueue(deps) })
+    if (!read.ok) {
+      return read.code === 'unknown_payment' ? refuse('unknown_payment', 404) : stateless(read)
+    }
+    return json(GuestPaymentAnswerSchema.parse(read.answer))
+  } catch (error) {
+    return failed('guest_payment_failed', error)
   }
 }
 
@@ -229,7 +293,17 @@ export function guestApiDeps(pool: DbPool): GuestApiDeps {
     queueReading: queueTableReading,
     passKey: env.GUEST_PASS_KEY ?? null,
     humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
+    queuePayment: queuePaymentStep,
   }
+}
+
+/** The app's queue for a payment's next step (`payment-prepare`, `payment-check`; one per payment). */
+export async function queuePaymentStep(
+  target: PaymentTarget,
+  job: 'prepare' | 'check',
+): Promise<void> {
+  const data = PaymentJobSchema.parse(target)
+  await enqueueJob(job === 'prepare' ? JOB_NAMES.paymentPrepare : JOB_NAMES.paymentCheck, data)
 }
 
 /** The app's queue for a table's reading (`table-read`, one per table at a time). */

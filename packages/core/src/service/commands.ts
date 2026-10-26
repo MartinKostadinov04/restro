@@ -5,8 +5,9 @@
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
 // table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
 // shared devices (#72), tables open for phones with their sittings (#73), the readings of a
-// table's bill with the sitting's end by a reading (#74), the table's shared order (#75), and a
-// payment's refund and dispute as read back after a provider's notice (#108).
+// table's bill with the sitting's end by a reading (#74), the table's shared order (#75), a
+// payment's refund and dispute as read back after a provider's notice (#108), and paying on the
+// bill up to a held card (#110).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -18,6 +19,16 @@ import { ORDER_EDIT_MAX_AGE_MS, ORDER_LIMITS } from '../table-order'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
+import {
+  payCancel,
+  paymentCheck,
+  paymentHoldCreated,
+  paymentPrice,
+  paymentSettle,
+  paymentStep,
+  payReturned,
+  payStart,
+} from './pay'
 import { paymentObserve } from './payment-observe'
 import { recordReading } from './readings'
 import {
@@ -178,6 +189,11 @@ export const SERVICE_COMMANDS = {
     idempotency: 'sent_order',
     handle: null,
   }),
+  // #110: paying on the bill, from Pay to a held card. The phone names its payment by the handle's
+  // hash, which the guest API makes; the handle itself never reaches the engine.
+  'pay.start': payStart(),
+  'pay.returned': payReturned(),
+  'pay.cancel': payCancel(),
   'waiter.call': defineCommand({
     // #81: a second tap returns the open call.
     schema: z.strictObject({ type: z.literal('waiter.call'), tableId, actionId }),
@@ -349,6 +365,12 @@ export const SERVICE_COMMANDS = {
   'notice.record': workerStep('notice.record', {}), // #80
   // #108: a refund or a dispute, read back from the provider after its notice.
   'payment.observe': paymentObserve(),
+  // #110: the worker's steps from `requested` to `held`, each a compare-and-set on the payment.
+  'payment.price': paymentPrice(),
+  'payment.hold_created': paymentHoldCreated(),
+  'payment.check': paymentCheck(),
+  'payment.settle': paymentSettle(),
+  'payment.step': paymentStep(),
   sweep: workerStep('sweep', {}), // #79, #81
   'service_day.close': workerStep('service_day.close', {
     serviceDate: z.iso.date(),

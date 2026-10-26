@@ -4,14 +4,16 @@
 //
 // The notice route only stores a verified notice (the row is the job: a transactional outbox).
 // This job acts on it, and never on the notice's own content:
-// - its handler is picked by the platform's kind (`refund`, `dispute`); a kind with no handler
-//   (`other`) is marked handled with no action;
+// - its handler is picked by the platform's kind (`refund`, `dispute`, `payment`); a kind with no
+//   handler (`other`) is marked handled with no action;
 // - the account it names is mapped to its venue through `payment_accounts`; a notice for no
 //   account of ours is marked handled, and logged;
 // - the payment is read back from the provider (`readNoticeSubject`), which gives the refund
 //   total and the dispute as they stand now, so a notice that comes twice, late or out of order
 //   records the same values; an incomplete reading concludes nothing and the notice waits;
 // - what the reading says is recorded through core/service (`payment.observe`), as the worker;
+//   a `payment` notice (the guest at the card form, #110) queues the payment's check instead,
+//   which reads the provider again and moves the payment on;
 // - Restro never refunds: no provider call here moves money.
 // A notice whose reading failed or found our side not ready stays for the next run; one still
 // waiting after a day is logged as an error, once a day. A notice of a provider this worker does
@@ -24,7 +26,13 @@
 // One run at a time (`exclusive`): two runs reading the same payment could otherwise record an
 // older reading after a newer one.
 
-import { JOB_NAMES, type PaymentProvider, type ProviderNotice, providerRef } from '@restro/core'
+import {
+  JOB_NAMES,
+  type PaymentProvider,
+  type ProviderNotice,
+  prepareJob,
+  providerRef,
+} from '@restro/core'
 import {
   type AccountVenue,
   applyService,
@@ -36,7 +44,7 @@ import {
 import type { DbPool } from '@restro/db'
 
 import type { Logger } from '../logger'
-import { defineJob, type JobDefinition } from './types'
+import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** The notices read in one page. */
 export const NOTICE_PAGE = 100
@@ -76,6 +84,8 @@ export const newNoticeRunState = (): NoticeRunState => ({ resumeAfter: 0, lateLo
 export type NoticeOutcome =
   /** Recorded: the payment's refund total or dispute changed. */
   | 'recorded'
+  /** A guest payment's notice: its check was queued. */
+  | 'queued'
   /** The reading matched what we had. */
   | 'unchanged'
   /** A kind with no handler, marked handled with no action. */
@@ -106,6 +116,8 @@ export async function handleProviderNotice(
     readonly log: Logger
     readonly jobId: string
     readonly accounts: (providerKind: string) => Promise<ReadonlyMap<string, AccountVenue>>
+    /** Where a guest payment's check is queued; without it a `payment` notice waits. */
+    readonly queue?: JobQueue
   },
   stored: StoredProviderNotice,
   deps: ProviderNoticesDeps,
@@ -117,7 +129,9 @@ export async function handleProviderNotice(
     return outcome
   }
 
-  if (stored.kind !== 'refund' && stored.kind !== 'dispute') return handled('no_handler')
+  if (stored.kind !== 'refund' && stored.kind !== 'dispute' && stored.kind !== 'payment') {
+    return handled('no_handler')
+  }
 
   const provider = deps.providers.get(stored.providerKind)
   if (provider === undefined) return 'waiting'
@@ -148,6 +162,22 @@ export async function handleProviderNotice(
   }
 
   const payment = reading.value
+  if (stored.kind === 'payment') {
+    // The check reads the provider itself and moves the payment on under its own lock (#110).
+    if (env.queue === undefined) return 'waiting'
+    try {
+      const job = prepareJob(JOB_NAMES.paymentCheck, {
+        tenantId: venue.tenantId,
+        venueId: venue.venueId,
+        paymentId: payment.paymentId,
+      })
+      await env.queue.send(JOB_NAMES.paymentCheck, job.data, { singletonKey: job.singletonKey })
+    } catch (error) {
+      log.warn({ ...about, err: error }, "a guest payment's check could not be queued")
+      return 'waiting'
+    }
+    return handled('queued')
+  }
   let result: Awaited<ReturnType<typeof applyService>>['result']
   try {
     ;({ result } = await applyService(
@@ -187,12 +217,19 @@ export async function handleProviderNotice(
 
 /** One run: the unhandled notices of the providers this worker has, page by page by `seq`. */
 export async function handleProviderNotices(
-  env: { readonly pool: DbPool; readonly log: Logger; readonly now: () => Date; jobId: string },
+  env: {
+    readonly pool: DbPool
+    readonly log: Logger
+    readonly now: () => Date
+    jobId: string
+    readonly queue?: JobQueue
+  },
   deps: ProviderNoticesDeps,
   state: NoticeRunState = newNoticeRunState(),
 ): Promise<Readonly<Record<NoticeOutcome | 'late', number>>> {
   const counts: Record<NoticeOutcome | 'late', number> = {
     recorded: 0,
+    queued: 0,
     unchanged: 0,
     no_handler: 0,
     unknown_account: 0,
@@ -231,7 +268,13 @@ export async function handleProviderNotices(
     const notices = wrapped && resumedAt > 0 ? read.filter((n) => n.seq <= resumedAt) : read
     for (const notice of notices) {
       const outcome = await handleProviderNotice(
-        { pool: env.pool, log: env.log, jobId: env.jobId, accounts: accountsOf },
+        {
+          pool: env.pool,
+          log: env.log,
+          jobId: env.jobId,
+          accounts: accountsOf,
+          ...(env.queue === undefined ? {} : { queue: env.queue }),
+        },
         notice,
         deps,
       )
@@ -285,7 +328,7 @@ export function createProviderNoticesJob(deps: ProviderNoticesDeps): JobDefiniti
     async handler(jobs, context) {
       const jobId = jobs[0]?.id ?? 'provider-notices'
       const counts = await handleProviderNotices(
-        { pool: context.pool, log: context.log, now: context.now, jobId },
+        { pool: context.pool, log: context.log, now: context.now, jobId, queue: context.queue },
         deps,
         state,
       )

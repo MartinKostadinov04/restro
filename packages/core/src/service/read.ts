@@ -2,9 +2,9 @@
 // `readTonight` for the staff screen, both read-only on `withTenant`. Neither calls a POS.
 // - `readTableState` gives the server's view of one table: its version, its open sitting, the
 //   order, the sitting's sent orders, the leases and pauses that hold it, and its bill as the
-//   latest reading shows it (#74). The guest API turns it into the phone's `TableState` (#75) and
-//   runs the forbidden-values walk (`billBackendValues`, `forbiddenPaths`); nothing here is a POS
-//   id (rule 3).
+//   latest reading shows it (#74), with the lines being paid (#110). The guest API turns it into
+//   the phone's `TableState` (#75) and runs the forbidden-values walk (`billBackendValues`,
+//   `forbiddenPaths`); nothing here is a POS id or a provider value (rule 3).
 // - `readTonight` gives Tonight's contents, filtered by what the actor holds at the venue: alerts
 //   by their permission, waiter calls to those who answer them, the Log to `log.view`.
 
@@ -16,6 +16,8 @@ import {
   locks,
   logEntries,
   pauses,
+  paymentLines,
+  payments,
   type ReadTx,
   sentOrders,
   sittings,
@@ -306,6 +308,35 @@ export async function readTableState(
       .where(eq(billReadings.tableId, table.id))
 
     const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
+    // The table's payments that aren't final (#110): their lines read `beingPaid`, and their
+    // provider values join the walk, so no other answer can carry them (rule 3).
+    const open = await tx
+      .select({ id: payments.id, ref: payments.providerPaymentRef, form: payments.formValues })
+      .from(payments)
+      .where(and(eq(payments.tableId, table.id), isNull(payments.settledAt)))
+    const greyed =
+      open.length === 0
+        ? []
+        : await tx
+            .select({ ref: paymentLines.posLineRef })
+            .from(paymentLines)
+            .where(
+              and(
+                inArray(
+                  paymentLines.paymentId,
+                  open.map((payment) => payment.id),
+                ),
+                eq(paymentLines.open, true),
+              ),
+            )
+    const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
+    const backendValues = billBackendValues(stored)
+    for (const payment of open) {
+      if (payment.ref !== null) backendValues.add(payment.ref)
+      for (const value of Object.values(payment.form ?? {})) {
+        if (typeof value === 'string') backendValues.add(value)
+      }
+    }
     return {
       unchanged: false,
       version,
@@ -349,8 +380,13 @@ export async function readTableState(
       bill:
         reading === undefined || sitting === undefined || reading.readAt < sitting.openedAt
           ? null
-          : billView({ readAt: reading.readAt, complete: reading.complete, bills: stored }),
-      backendValues: billBackendValues(stored),
+          : billView({
+              readAt: reading.readAt,
+              complete: reading.complete,
+              bills: stored,
+              beingPaid,
+            }),
+      backendValues,
     }
   })
 }

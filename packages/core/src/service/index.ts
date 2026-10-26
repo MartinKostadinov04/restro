@@ -65,6 +65,8 @@ export {
   type GuestCommandResult,
   type GuestLocation,
   type GuestLocationState,
+  type GuestPaymentInput,
+  type GuestPaymentView,
   type GuestRefusal,
   type GuestStateInput,
   type GuestStateless,
@@ -72,11 +74,16 @@ export {
   type GuestUnchanged,
   type GuestView,
   guestAct,
+  guestPayment,
   guestResult,
   guestState,
   type HumanCheck,
+  type HumanCheckUse,
   type HumanCheckVerdict,
+  hashPaymentHandle,
+  type PaymentTarget,
   projectGuestState,
+  type QueuePayment,
 } from './guest'
 export { GUEST_LIMITS, type GuestLimit, GuestLimiter, type GuestLimitName } from './guest-limits'
 export { identifyStaffByPin, type PinIdentity } from './identify'
@@ -114,6 +121,16 @@ export {
   retentionOf,
 } from './log'
 export { ORDER_RATE_ALERT } from './order-rate'
+export {
+  holdAmountMinor,
+  isFinalPaymentState,
+  PAY_REFUSALS,
+  PAYMENT_CONFIRM_MS,
+  PAYMENT_SESSION_MS,
+  signedSumMinor,
+  TABLE_OPEN_PAYMENTS,
+  tipOf,
+} from './pay'
 export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,

@@ -5,9 +5,11 @@ import {
   GUEST_PHONE_PATTERN,
   GuestActionAnswerSchema,
   GuestActionRequestSchema,
+  GuestPaymentAnswerSchema,
   GuestStateAnswerSchema,
   GuestStateQuerySchema,
   isGuestRefusalCode,
+  PAYMENT_HANDLE_PATTERN,
 } from './guest-api'
 import { GUEST_REFUSAL_CODES } from './service-vocabulary'
 
@@ -94,10 +96,12 @@ describe('the guest API wire shapes (#75)', () => {
       subjectId: null,
       ref: null,
     }
-    const answer = { result, state: null, pass: null }
+    const answer = { result, state: null, pass: null, handle: null }
     expect(GuestActionAnswerSchema.parse(answer)).toEqual(answer)
     expect(GuestActionAnswerSchema.parse({ ...answer, state: STATE }).state).toEqual(STATE)
     expect(GuestActionAnswerSchema.safeParse({ result, state: null }).success).toBe(false)
+    const handle = 'A'.repeat(22)
+    expect(GuestActionAnswerSchema.parse({ ...answer, handle }).handle).toBe(handle)
   })
 
   it('hides the order and the bill while the phone has no pass (#76)', () => {
@@ -131,6 +135,48 @@ describe('the guest API wire shapes (#75)', () => {
     expect(GUEST_PHONE_PATTERN.test('A'.repeat(22))).toBe(true)
     expect(GUEST_PHONE_PATTERN.test('A'.repeat(21))).toBe(false)
     expect(GUEST_PHONE_PATTERN.test(`${'A'.repeat(21)}!`)).toBe(false)
+  })
+
+  it('takes a pay.start of whole lines or the whole bill, with at most one kind of tip (#110)', () => {
+    const bn = (n: number) => `bn_${String(n).padStart(22, '0')}`
+    const seen = [{ lineId: bn(1), quantity: '2', amountMinor: 1_000 }]
+    const start = {
+      kind: 'pay.start',
+      actionId: uuid,
+      pick: { kind: 'lines', lines: [{ lineId: bn(1), quantity: '2' }] },
+      seen,
+      tipMinor: null,
+      tipPercent: 10,
+    }
+    const parse = (command: unknown) => GuestActionRequestSchema.safeParse({ command, ageMs: 1 })
+    expect(parse(start).success).toBe(true)
+    expect(parse({ ...start, pick: { kind: 'whole' } }).success).toBe(true)
+    expect(parse({ kind: 'pay.returned', actionId: uuid }).success).toBe(true)
+    expect(parse({ kind: 'pay.cancel', actionId: uuid }).success).toBe(true)
+    expect(parse({ ...start, tipMinor: 100 }).success).toBe(false)
+    expect(parse({ ...start, pick: { kind: 'lines', lines: [] } }).success).toBe(false)
+    expect(parse({ kind: 'pay.cancel', actionId: uuid, handle: 'A'.repeat(22) }).success).toBe(
+      false,
+    )
+  })
+
+  it('answers the paying phone its payment, the form only as the provider’s values (#110)', () => {
+    const answer = {
+      id: `py_${'0'.repeat(22)}`,
+      state: 'awaiting_guest',
+      reason: null,
+      currency: 'EUR',
+      amountMinor: 1_430,
+      tipMinor: 130,
+      lines: [{ name: 'Gin tonic', quantity: '2', amountMinor: 1_000 }],
+      form: { provider: 'stripe', values: { clientSecret: 'pi_x_secret_y' }, confirmSeconds: 120 },
+      next: 1_000,
+    }
+    expect(GuestPaymentAnswerSchema.parse(answer)).toEqual(answer)
+    expect(GuestPaymentAnswerSchema.safeParse({ ...answer, payer: 'x' }).success).toBe(false)
+    expect(GuestPaymentAnswerSchema.safeParse({ ...answer, state: 'paid' }).success).toBe(false)
+    expect(PAYMENT_HANDLE_PATTERN.test('A'.repeat(22))).toBe(true)
+    expect(PAYMENT_HANDLE_PATTERN.test('A'.repeat(23))).toBe(false)
   })
 
   it('knows every refusal code the shell words, and an 8 KB cap', () => {

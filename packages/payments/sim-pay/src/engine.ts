@@ -11,7 +11,8 @@
 //   - a hold not captured by its `captureBefore` is dropped (read as released);
 //   - two payments carrying one payment id make the read-back incomplete: it concludes nothing;
 //   - a refund or a dispute happens outside Restro (`venue`, `bank`, test controls), leaves a
-//     notice in the outbox (`takeNotices`), and reads back as it stands now (#108).
+//     notice in the outbox (`takeNotices`), and reads back as it stands now (#108);
+//   - the guest's card held or declined at the form leaves a `payment.*` notice too (#110).
 
 import {
   addMinor,
@@ -143,10 +144,24 @@ export class SimPayEngine {
   #failReads = false
   #nextHoldNeedsStep = false
   #counter = 0
+  /** Put inside every ref this engine makes, so a restarted engine never reuses a stored one. */
+  readonly #run: string
 
-  constructor(options: { readonly clock: Clock; readonly switches?: Partial<SimPaySwitches> }) {
+  constructor(options: {
+    readonly clock: Clock
+    readonly switches?: Partial<SimPaySwitches>
+    /**
+     * Letters and digits put in every ref (`simpay_<run>_1`). An engine that outlives one database
+     * (the e2e harness, a demo) passes a fresh one per start; tests leave it out (`simpay_1`).
+     */
+    readonly run?: string
+  }) {
     this.#clock = options.clock
     this.switches = Object.freeze({ ...CAUTIOUS_SWITCHES, ...options.switches })
+    if (options.run !== undefined && !/^[A-Za-z0-9]{1,32}$/.test(options.run)) {
+      throw new Error('a run is 1 to 32 letters or digits')
+    }
+    this.#run = options.run === undefined ? '' : `${options.run}_`
   }
 
   // -------------------------------------------------------------------------------------------
@@ -237,7 +252,7 @@ export class SimPayEngine {
         throw new Error(`a refund of ${amountMinor} where ${left} is left to refund`)
       }
       payment.refundedMinor = addMinor(payment.refundedMinor, amountMinor)
-      const ref = `simrefund_${this.#next()}`
+      const ref = `simrefund_${this.#tag()}`
       this.#refunds.set(ref, { payment: payment.ref.provider })
       return this.#send('refund.made', payment.account, ref, this.switches.refundNotices)
     },
@@ -247,7 +262,7 @@ export class SimPayEngine {
     /** The guest's bank disputes a captured payment. */
     opensDispute: (accountRef: ProviderRef, paymentRef: ProviderRef): SimPayEvent => {
       const payment = this.#capturedPayment(accountRef, paymentRef)
-      const ref = `simdispute_${this.#next()}`
+      const ref = `simdispute_${this.#tag()}`
       this.#disputes.set(ref, { payment: payment.ref.provider, state: 'open' })
       payment.disputeRef = ref
       return this.#send('dispute.opened', payment.account, ref, true)
@@ -294,6 +309,7 @@ export class SimPayEngine {
       payment.status = 'failed'
       payment.needsGuestAction = false
       payment.threeDs = 'failed'
+      this.#send('payment.failed', payment.account, payment.ref.provider, true)
     },
   }
 
@@ -332,7 +348,7 @@ export class SimPayEngine {
       if (request.amountMinor < this.switches.minimumMinor[request.currency]) {
         return refused('amount_too_small', 'payment')
       }
-      const ref = providerRef(`simpay_${this.#next()}`)
+      const ref = providerRef(`simpay_${this.#tag()}`)
       this.#payments.set(ref.provider, {
         ref,
         account: account.ref.provider,
@@ -497,7 +513,7 @@ export class SimPayEngine {
 
   #newAccount(): SimAccount {
     const account: SimAccount = {
-      ref: providerRef(`simacct_${this.#next()}`),
+      ref: providerRef(`simacct_${this.#tag()}`),
       canTakePayments: false,
       missing: ['business details', 'bank account'],
       domains: new Set(),
@@ -530,7 +546,7 @@ export class SimPayEngine {
   /** The provider's notice about an object of the account; `sent` puts it in the outbox. */
   #send(type: SimPayEvent['type'], account: string, object: string, sent: boolean): SimPayEvent {
     const event: SimPayEvent = {
-      id: `simevt_${this.#next()}`,
+      id: `simevt_${this.#tag()}`,
       type,
       account,
       object,
@@ -557,6 +573,7 @@ export class SimPayEngine {
     payment.captureBefore = new Date(this.#clock.now().getTime() + this.switches.holdDays * DAY_MS)
     payment.threeDs = threeDs
     payment.authorisationCode = `SIM${String(this.#next()).padStart(3, '0')}`
+    this.#send('payment.held', payment.account, payment.ref.provider, true)
   }
 
   /** A hold past its `captureBefore` is dropped, as the provider would drop it. */
@@ -597,6 +614,11 @@ export class SimPayEngine {
   #next(): number {
     this.#counter += 1
     return this.#counter
+  }
+
+  /** The next ref's tail: the run, then the counter. */
+  #tag(): string {
+    return `${this.#run}${this.#next()}`
   }
 }
 
