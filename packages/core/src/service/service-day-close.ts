@@ -184,6 +184,8 @@ export async function closeServiceDay(
     .set({
       retainUntil: later(sentOrders.retainUntil),
       actionId: null,
+      // Matching a late landing stops with the day (#135); the POS ids go with it.
+      landingBasis: null,
       ...stx.provenance,
       updatedAt: sql`now()`,
     })
