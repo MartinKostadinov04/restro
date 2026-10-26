@@ -238,8 +238,7 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
     it('refuses every command not built yet as not_built', async () => {
       const owner = staff(user(ownerId))
       expect(
-        (await applyService(world.app, { type: 'alert.done', alertId: newId('al') }, owner))
-          .result,
+        (await applyService(world.app, { type: 'alert.done', alertId: newId('al') }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
     })
 

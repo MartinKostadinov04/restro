@@ -35,7 +35,10 @@ describe.skipIf(!hasDatabase)('pauses (as the restro_app role)', () => {
   const menu: SendMenu = {
     currency: 'EUR',
     items: new Map([
-      [beer, { priceMinor: 450, orderable: true, soldOut: false, name: 'Beer', options: new Map() }],
+      [
+        beer,
+        { priceMinor: 450, orderable: true, soldOut: false, name: 'Beer', options: new Map() },
+      ],
     ]),
   }
 
@@ -59,8 +62,7 @@ describe.skipIf(!hasDatabase)('pauses (as the restro_app role)', () => {
     jobId: `req-${randomUUID()}`,
     via: 'tonight',
   })
-  const owner = () =>
-    staff({ kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` })
+  const owner = () => staff({ kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` })
   const operator = () => staff({ kind: 'operator', userId: operatorId })
   const worker = (venueId = world.venueId): ServiceContext => ({
     tenantId: world.tenantId,
@@ -187,7 +189,8 @@ describe.skipIf(!hasDatabase)('pauses (as the restro_app role)', () => {
 
   async function tablePauses(tableId: string) {
     const state = await readTableState(world.app, { tenantId: world.tenantId, tableId })
-    return (state?.pauses ?? []).map((pause) => pause.scope)
+    if (state === null || state.unchanged) throw new Error(`no reading of ${tableId}`)
+    return state.pauses.map((pause) => pause.scope)
   }
 
   beforeAll(async () => {
@@ -199,7 +202,11 @@ describe.skipIf(!hasDatabase)('pauses (as the restro_app role)', () => {
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
       [
         world.venueId,
-        JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false, pacePer15Minutes: null }),
+        JSON.stringify({
+          ...DEFAULT_ORDERING_SETTINGS,
+          locationCheck: false,
+          pacePer15Minutes: null,
+        }),
       ],
     )
     for (const tableId of world.tables) {
@@ -262,10 +269,7 @@ describe.skipIf(!hasDatabase)('pauses (as the restro_app role)', () => {
       expect(again).toMatchObject({ details: { already: true, pauseId: paused.details.pauseId } })
 
       // A manager lifts it, and ordering is on again.
-      const lifted = await run(
-        { type: 'ordering.lift', pauseId: paused.details.pauseId },
-        owner(),
-      )
+      const lifted = await run({ type: 'ordering.lift', pauseId: paused.details.pauseId }, owner())
       expect(lifted).toMatchObject({ status: 'accepted', details: { lifted: true } })
       expect(await liftedReason(paused.details.pauseId as string)).toMatchObject({
         lift_reason: LIFT_REASONS.lifted,

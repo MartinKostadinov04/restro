@@ -22,8 +22,13 @@
 // read-back ends on a clock deadline, so a run settles within its slot lease (`send-timings.ts`
 // in core derives each lease from the same timings): the sweep never settles a sent order this
 // worker is still reading back.
-// A note goes to the POS only where it reaches the ticket (`notesReachTicket`). A paused
-// connection sends nothing (#79 owns its breaker): the sent order is Not sent.
+// A note goes to the POS only where it reaches the ticket (`notesReachTicket`).
+// The connection's breaker (#79, ./breaker.ts) hears every call: a read or an add that answered
+// is a good call, one that failed or came late a failed call, an add that timed out a write
+// timeout, a refusal of the login or the venue pauses at once, an Unconfirmed order counts toward
+// the pause. A paused connection sends nothing: the sent order is Not sent (`ordering_paused`),
+// also when the pause lands between the start and `sending`. After a write timed out the next
+// order waits for a good probe, run here before the read.
 
 import { randomUUID } from 'node:crypto'
 
@@ -48,7 +53,7 @@ import {
   applyService,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
-  BUDGET_WAIT_MS,
+  type BreakerEvent,
   READ_BACK_EVERY_MS,
   type SentOrderLine,
   sentOrderLinesOf,
@@ -77,9 +82,10 @@ import {
   serviceConnectorFor,
   serviceContext,
 } from '../service-connectors'
-import type { Limiter } from '../sync/limiter'
+import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
+import { bounded, probeConnection } from './connection'
 import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
-import { defineJob, type JobDefinition, type WorkerContext } from './types'
+import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
 
 /** The most sent orders one run sends: the rest wait for the next run (the sweep queues it). */
 export const SENDS_PER_RUN = 20
@@ -88,11 +94,15 @@ export interface SendEnvironment {
   readonly pool: DbPool
   readonly log: Logger
   readonly now: () => Date
+  /** Queues the breaker's next probe. */
+  readonly queue?: JobQueue | undefined
 }
 
 export interface SendJobDeps {
   readonly sim: SimPolicy
   readonly budgets?: InstanceBudgets
+  /** The connection breakers; tests pass their own. */
+  readonly breakers?: ConnectionBreakers
   /** Builds the connector of an instance; tests pass their own. */
   readonly connectorFor?: typeof serviceConnectorFor
   /** The seam's timings; tests shorten them. */
@@ -118,46 +128,8 @@ export type SendOutcome =
 
 const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-/** How a bounded POS call ended. */
-type Bounded<T> =
-  | { readonly kind: 'answered'; readonly value: T }
-  /** No turn at the instance's budget within `BUDGET_WAIT_MS`: the call never left. */
-  | { readonly kind: 'no_turn' }
-  /** It left and outlived its timeout: it may still land. */
-  | { readonly kind: 'late' }
-
-/**
- * Runs a POS call through the instance's budget, bounded here: the connector gets the same
- * timeout in its context, but the slot lease must not rest on every connector keeping it.
- */
-async function bounded<T>(
-  budget: Limiter,
-  timeoutMs: number,
-  call: () => Promise<T>,
-): Promise<Bounded<T>> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let gaveUp = false
-  const ended = new Promise<Bounded<T>>((resolve, reject) => {
-    const giveUp = (as: Bounded<T>) => () => {
-      gaveUp = true
-      resolve(as)
-    }
-    timer = setTimeout(giveUp({ kind: 'no_turn' }), BUDGET_WAIT_MS)
-    budget
-      .run(async () => {
-        if (gaveUp) return
-        clearTimeout(timer)
-        timer = setTimeout(giveUp({ kind: 'late' }), timeoutMs)
-        resolve({ kind: 'answered', value: await call() })
-      })
-      .catch(reject)
-  })
-  try {
-    return await ended
-  } finally {
-    clearTimeout(timer)
-  }
-}
+/** The refusal scopes that are the connection's, not the round's: they pause at once. */
+const LOGIN_SCOPES: ReadonlySet<string> = new Set(['login', 'venue'])
 
 /** What the worker knows of one sent order before it calls the POS. */
 interface Prepared {
@@ -226,48 +198,68 @@ async function sendOne(
       readonly posBillRef?: string
       readonly matchedLines?: readonly string[]
     } = {},
-  ): Promise<boolean> => {
-    const details = await step(
+  ): Promise<Readonly<Record<string, unknown>> | null> =>
+    step(
       env,
       payload,
       { type: 'sent_order.transition', sentOrderId, fence, to, ...extra },
       integrationId,
     )
-    return details !== null
-  }
   const settle = async (to: string, reason: string | null, extra = {}): Promise<SendOutcome> =>
-    (await move(to, { ...(reason === null ? {} : { reason }), ...extra }))
+    (await move(to, { ...(reason === null ? {} : { reason }), ...extra })) !== null
       ? { kind: 'settled', sentOrderId, state: to, reason }
       : { kind: 'lost', sentOrderId }
 
   const prepared = await prepare(env, payload, sentOrderId, deps)
   if (!('connector' in prepared)) return settle('not_sent', prepared.reason)
   integrationId = prepared.integrationId
-  if (await connectionPaused(env.pool, payload.tenantId, prepared.integrationId)) {
-    return settle('not_sent', 'ordering_paused')
-  }
+  const paused = () => connectionPaused(env.pool, payload.tenantId, prepared.integrationId)
+  if (await paused()) return settle('not_sent', 'ordering_paused')
 
   const timings = deps.timings ?? SERVICE_TIMINGS
   const sleep = deps.sleep ?? sleepFor
   const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(prepared.integrationId)
+  const breakers = deps.breakers ?? SHARED_BREAKERS
+  const connection = { tenantId: payload.tenantId, integrationId: prepared.integrationId }
+  const record = (event: BreakerEvent) => breakers.record(env, connection, event)
+  const clock = deps.clock ?? (() => env.now().getTime())
   const context = serviceContext(env.now, timings)
+
+  // A write timed out on this connection: a good probe first.
+  if ((await breakers.gate(env, connection)) === 'hold') {
+    const probed = await probeConnection(env, connection, prepared.connector, {
+      budgets: deps.budgets,
+      breakers,
+      clock,
+    })
+    if (probed !== 'good') {
+      return settle('not_sent', (await paused()) ? 'ordering_paused' : 'pos_unreachable')
+    }
+  }
+
   const readTable = async (): Promise<Reading<TableBills>> => {
     try {
+      const started = clock()
       const answer = await bounded(budget, timings.readTimeoutMs, () =>
         prepared.connector.readTable(context, prepared.table),
       )
       if (answer.kind !== 'answered') {
+        // No turn: the read never left, so the connection is not to blame.
+        if (answer.kind === 'late') await record({ kind: 'call', ok: false })
         return {
           complete: false,
           reason: answer.kind === 'late' ? 'the read timed out' : 'the POS was busy',
         }
       }
       const parsed = readingSchema(TableBillsSchema).safeParse(answer.value)
+      const complete = parsed.success && parsed.data.complete
+      await record({ kind: 'call', ok: complete, elapsedMs: clock() - started })
       return parsed.success
         ? parsed.data
         : { complete: false, reason: 'the reading did not have the expected shape' }
     } catch (error) {
       env.log.warn({ tableId: payload.tableId, err: error }, 'the table could not be read')
+      await record({ kind: 'call', ok: false })
       return { complete: false, reason: 'the table could not be read' }
     }
   }
@@ -279,7 +271,12 @@ async function sendOne(
   }
   if (!before.complete) return settle('not_sent', 'pos_unreachable')
   const billBeforeMinor = before.value.bills.reduce((sum, bill) => sum + bill.totalMinor, 0)
-  if (!(await move('sending', { billBeforeMinor }))) return { kind: 'lost', sentOrderId }
+  const sending = await move('sending', { billBeforeMinor })
+  if (sending === null) return { kind: 'lost', sentOrderId }
+  // A pause landed since the start: the step settled it Not sent and freed the slot.
+  if (sending.state === 'not_sent') {
+    return { kind: 'settled', sentOrderId, state: 'not_sent', reason: 'ordering_paused' }
+  }
 
   const request = {
     table: prepared.table,
@@ -311,6 +308,14 @@ async function sendOne(
     outcome = await add()
   }
   if (outcome.kind === 'no_turn') return settle('not_sent', 'pos_unreachable')
+  if (outcome.kind === 'refused' && LOGIN_SCOPES.has(outcome.refusal.scope)) {
+    // The login or the venue was refused: the connection pauses at once.
+    await record({ kind: 'refused', cause: outcome.refusal.code })
+  } else if (outcome.kind === 'unknown') {
+    await record({ kind: 'write_timeout' })
+  } else {
+    await record({ kind: 'call', ok: true })
+  }
   if (outcome.kind === 'done') {
     const posBillRef = outcome.result.bill === null ? {} : { posBillRef: outcome.result.bill.pos }
     return settle(capabilities.approvalAtBar ? 'awaiting_approval' : 'added', null, posBillRef)
@@ -321,7 +326,11 @@ async function sendOne(
   if (!(await move('checking'))) return { kind: 'lost', sentOrderId }
   const sent = prepared.lines.map((line) => ({ item: line.item, quantity: line.quantity }))
   const every = deps.readBackEveryMs ?? READ_BACK_EVERY_MS
-  const clock = deps.clock ?? (() => env.now().getTime())
+  const unconfirmed = async (reason: string) => {
+    const settled = await settle('unconfirmed', reason)
+    if (settled.kind === 'settled') await record({ kind: 'unconfirmed', tableId: payload.tableId })
+    return settled
+  }
   // The window runs on the clock, reads included: no read starts after it ends, so the run
   // settles within the checking lease (the window, the last read, a margin).
   const deadline = clock() + timings.readBackWindowMs
@@ -344,10 +353,10 @@ async function sendOne(
     }
     if (verdict.kind === 'ambiguous') {
       env.log.info({ sentOrderId, why: verdict.reason }, 'a round could not be told apart')
-      return settle('unconfirmed', 'check_ambiguous')
+      return unconfirmed('check_ambiguous')
     }
   }
-  return settle('unconfirmed', 'check_timed_out')
+  return unconfirmed('check_timed_out')
 }
 
 /**
@@ -523,7 +532,7 @@ export function createSendJobs(deps: SendJobDeps): JobDefinition[] {
         if (!parsed.success)
           throw new Error(`the ${JOB_NAMES.orderSend} job has an invalid payload`)
         const outcomes = await sendTableOrders(
-          { pool: context.pool, log: context.log, now: context.now },
+          { pool: context.pool, log: context.log, now: context.now, queue: context.queue },
           parsed.data,
           deps,
         )

@@ -74,15 +74,29 @@ function probeUntil(
 describe('what starts a connection pause', () => {
   it('pauses when no call has succeeded for 60 s with at least 3 attempts', () => {
     const { state, actions } = tripped()
-    expect(actions).toEqual([{ at: 60 * S, kind: 'pause', cause: 'pos_unreachable', unstable: false }])
+    expect(actions).toEqual([
+      { at: 60 * S, kind: 'pause', cause: 'pos_unreachable', unstable: false },
+    ])
     expect(breakerGate(state, 60 * S)).toBe('paused')
   })
 
   it('does not pause on three quick failures, nor on a minute with one good call', () => {
-    expect(run([[0, fail], [S, fail], [2 * S, fail]]).actions).toEqual([])
     expect(
-      run([[0, fail], [20 * S, fail], [40 * S, ok], [50 * S, fail], [70 * S, fail], [80 * S, fail]])
-        .actions,
+      run([
+        [0, fail],
+        [S, fail],
+        [2 * S, fail],
+      ]).actions,
+    ).toEqual([])
+    expect(
+      run([
+        [0, fail],
+        [20 * S, fail],
+        [40 * S, ok],
+        [50 * S, fail],
+        [70 * S, fail],
+        [80 * S, fail],
+      ]).actions,
     ).toEqual([])
   })
 
@@ -152,7 +166,13 @@ describe('how it lifts', () => {
       [0.999, 78 * S],
     ] as const) {
       const state = run(trip, closedBreaker(), () => r).state
-      const probes = probeUntil(state, 60 * S, 60 * S + 3 * MIN, () => bad, () => r).probes
+      const probes = probeUntil(
+        state,
+        60 * S,
+        60 * S + 3 * MIN,
+        () => bad,
+        () => r,
+      ).probes
       expect(Math.abs((probes[0] as number) - first)).toBeLessThanOrEqual(S)
     }
   })
@@ -230,16 +250,37 @@ describe('the five-minute watch after a lift', () => {
   })
 
   it('pauses again on 2 failed calls in a row, not on one', () => {
-    expect(run([[3 * MIN, fail], [3 * MIN + S, ok], [3 * MIN + 2 * S, fail]], lifted()).actions).toEqual(
-      [],
-    )
-    expect(run([[3 * MIN, fail], [3 * MIN + S, fail]], lifted()).actions).toEqual([
-      { at: 3 * MIN + S, kind: 'pause', cause: 'pos_unreachable', unstable: false },
-    ])
+    expect(
+      run(
+        [
+          [3 * MIN, fail],
+          [3 * MIN + S, ok],
+          [3 * MIN + 2 * S, fail],
+        ],
+        lifted(),
+      ).actions,
+    ).toEqual([])
+    expect(
+      run(
+        [
+          [3 * MIN, fail],
+          [3 * MIN + S, fail],
+        ],
+        lifted(),
+      ).actions,
+    ).toEqual([{ at: 3 * MIN + S, kind: 'pause', cause: 'pos_unreachable', unstable: false }])
   })
 
   it('after the watch, one failure is only one failure', () => {
-    expect(run([[8 * MIN, fail], [8 * MIN + S, fail]], lifted()).actions).toEqual([])
+    expect(
+      run(
+        [
+          [8 * MIN, fail],
+          [8 * MIN + S, fail],
+        ],
+        lifted(),
+      ).actions,
+    ).toEqual([])
   })
 })
 
@@ -308,7 +349,9 @@ describe('the state', () => {
       fc.constant({ kind: 'write_timeout' } as const),
       fc.constant({ kind: 'tick' } as const),
       fc.constant({ kind: 'refused', cause: 'credentials' } as const),
-      fc.constantFrom('tb_1', 'tb_2', 'tb_3').map((tableId) => ({ kind: 'unconfirmed', tableId }) as const),
+      fc
+        .constantFrom('tb_1', 'tb_2', 'tb_3')
+        .map((tableId) => ({ kind: 'unconfirmed', tableId }) as const),
     )
     fc.assert(
       fc.property(

@@ -33,8 +33,8 @@ import { type BillView, billBackendValues, billView, parseStoredBills } from './
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
-import type { Permission } from './permissions'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
+import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
 
 /** The sent order states that still hold the table's attention (D116). */

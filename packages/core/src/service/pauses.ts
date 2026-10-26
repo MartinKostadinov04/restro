@@ -517,7 +517,10 @@ export function sweepPauses() {
             eq(pauses.scope, 'table'),
             eq(pauses.cause, ORDER_UNCONFIRMED_CAUSE),
             isNull(pauses.liftedAt),
-            lte(pauses.startedAt, sql`now() - make_interval(secs => ${UNCONFIRMED_PAUSE_MS / 1000})`),
+            lte(
+              pauses.startedAt,
+              sql`now() - make_interval(secs => ${UNCONFIRMED_PAUSE_MS / 1000})`,
+            ),
           ),
         )
       const tables = await holdTables(
