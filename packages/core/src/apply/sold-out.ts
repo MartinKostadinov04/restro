@@ -15,6 +15,10 @@
 // never a write, and `validateWrite` refuses a `true` on an edition layer anyway (`less_cautious`).
 // Clearing our mark can only reveal the layers below, so an item barsy has off sale (the barsy
 // layer says `false`, and `all_true` lets any `false` win) stays off sale whatever is sent here.
+//
+// Only a hand-made venue marks (D124 §6, #80): on a POS venue stock lives in the POS, and the
+// POS's own word marks an item run out (`stock.ts`). A mark is refused there `pos_venue`; taking
+// an earlier mark off is still allowed (it lapses with its day anyway).
 
 import { type DbPool, nodes } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
@@ -26,6 +30,7 @@ import { idSchema, newId } from '../ids'
 import { serviceDate, serviceEditionLayer } from '../service-day'
 import { type ApplyResult, applyInTransaction } from './apply'
 import { lockTenantDocument } from './lock'
+import { venueServesTill } from './venue-lifecycle'
 import { lockLiveVenue, venueRefusalText } from './venue-lock'
 
 /** The most items one call marks or unmarks. */
@@ -52,6 +57,8 @@ export type SoldOutErrorCode =
   | 'venue_archived'
   /** One of the ids is not an active item of this tenant. */
   | 'unknown_item'
+  /** The venue's menu comes from a POS: stock is the POS's (D124 §6). */
+  | 'pos_venue'
 
 /** Thrown when a mark or unmark is refused. Nothing is written. */
 export class SoldOutError extends Error {
@@ -95,6 +102,9 @@ export async function setSoldOutTonight(
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockTenantDocument(tx, tenantId)
     const day = await currentServiceDay(tx, venueId, now)
+    if (soldOut && (await venueServesTill(tx, venueId))) {
+      throw new SoldOutError('pos_venue', 'on a POS venue an item runs out in the POS')
+    }
     await assertActiveItems(tx, unique)
     const layer = serviceEditionLayer(day)
     const ops: ChangeSetOp[] = unique.map((id) =>

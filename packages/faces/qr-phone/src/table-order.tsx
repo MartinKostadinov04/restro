@@ -19,6 +19,8 @@ import {
   type CommandResult,
   type GuestCommand,
   isGuestRefusalCode,
+  isOutOfStock,
+  refusedOutOfStock,
   type SentOrderView,
   type ServiceBinding,
   type ServiceStrings,
@@ -118,6 +120,7 @@ export function sentWords(sent: SentOrderView, strings: ServiceStrings): string 
       return strings.sentAdded
     case 'not_sent':
       if (sent.reason === 'ordering_paused') return strings.sentNotSentPaused
+      if (sent.reason === 'item_unavailable') return strings.sentNotSentOutOfStock
       return sent.reason === 'needs_first_item' ? strings.sentNotSentFirstItem : strings.sentNotSent
     case 'unconfirmed':
       return strings.sentUnconfirmed(sent.ref)
@@ -259,7 +262,10 @@ export function OrderPanel({
   const notesAtStaff = services?.state.ordering?.notesAndOptions !== true
   const nameOf = (itemId: string) => items.get(itemId)?.name.text ?? strings.otherItem
   const lines = order?.lines ?? []
-  const soldOut = (itemId: string) => items.get(itemId)?.state.code === 'sold_out'
+  // Sold out on the menu, or named by the POS when it refused the last Send (#80): greyed, kept
+  // on the order and left out of the next Send.
+  const refused = refusedOutOfStock(services?.state.sentOrders)
+  const soldOut = (itemId: string) => isOutOfStock(itemId, items.get(itemId), refused)
   // A Send takes the lines on the bill that no payment holds and the server already has, and
   // leaves the sold-out ones on the order.
   const live = lines.filter((line) => line.mode === 'on_bill' && !line.held && !line.pending)

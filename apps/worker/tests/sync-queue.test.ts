@@ -352,6 +352,8 @@ describe('buildJobs', () => {
       // The Send (#77) needs no sealing keys either.
       JOB_NAMES.orderSend,
       JOB_NAMES.orderSlotSweep,
+      // Stock from the POS (#80) runs with the Send.
+      JOB_NAMES.stockTick,
       // The connection probe (#79) runs wherever a POS is read or written to.
       JOB_NAMES.connectionProbe,
       JOB_NAMES.connectionTick,
@@ -401,6 +403,8 @@ describe('buildJobs', () => {
       // The Send (#77) needs no sealing keys either.
       JOB_NAMES.orderSend,
       JOB_NAMES.orderSlotSweep,
+      // Stock from the POS (#80) runs with the Send.
+      JOB_NAMES.stockTick,
       JOB_NAMES.connectionProbe,
       JOB_NAMES.connectionTick,
       JOB_NAMES.publishMenu,
@@ -452,6 +456,7 @@ describe('buildJobs', () => {
     )
     expect(names).toContain(JOB_NAMES.orderSend)
     expect(names).toContain(JOB_NAMES.orderSlotSweep)
+    expect(names).toContain(JOB_NAMES.stockTick)
     expect(names).not.toContain(JOB_NAMES.floorRead)
   })
 

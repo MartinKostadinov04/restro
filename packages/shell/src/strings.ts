@@ -257,6 +257,8 @@ export interface ServiceStrings {
   readonly sendOthers: (count: number) => string
   /** Where the POS doesn't take notes and options: the fixed line instead of a note field. */
   readonly notesAtStaff: string
+  /** Not sent because the POS said items ran out (#80): nothing was sent, the rest can go. */
+  readonly sentNotSentOutOfStock: string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
   readonly refusals: { readonly [C in GuestRefusalCode]: string }
   readonly refusedOther: string
@@ -532,6 +534,7 @@ const EN: Strings = {
     lineSoldOut: 'Sold out',
     sendOthers: (count) => `Send the other ${count}`,
     notesAtStaff: 'Allergies or special requests? Tell the staff.',
+    sentNotSentOutOfStock: 'Nothing was sent: something ran out. Send the rest when you’re ready.',
     refusals: {
       order_changed: 'Someone at your table changed this. Here is the latest order.',
       line_held: 'This is being paid and can no longer change.',
@@ -810,6 +813,8 @@ const BG: Strings = {
     lineSoldOut: 'Изчерпано',
     sendOthers: (count) => `Изпрати останалите ${count}`,
     notesAtStaff: 'Алергии или специални желания? Кажете на персонала.',
+    sentNotSentOutOfStock:
+      'Нищо не беше изпратено: нещо се изчерпа. Изпратете останалото, когато сте готови.',
     refusals: {
       order_changed: 'Някой на масата промени това. Ето последната поръчка.',
       line_held: 'Това се плаща и вече не може да се променя.',

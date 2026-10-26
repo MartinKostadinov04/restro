@@ -1948,5 +1948,10 @@
       "servicesNoneOn": "No service is switched on. Switch them on in Guest features above, then press Refresh.",
       "menu": "Menu: {name}"
     }
+  },
+  "tonight": {
+    "notices": {
+      "item_out_of_stock": "Out of stock in {source}: {item}. Greyed out on the menu."
+    }
   }
 }
