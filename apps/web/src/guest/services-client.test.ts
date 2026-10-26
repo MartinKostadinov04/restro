@@ -40,6 +40,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
     },
     order: location === 'needed' ? null : { lines, removed: [], earlier: null },
     sentOrders: [],
+    waiterCall: null,
     bill: null,
   } satisfies GuestTableState
 }
@@ -204,6 +205,55 @@ describe('the services client', () => {
     })
     expect(result).toMatchObject({ status: 'rejected', code: 'line_held' })
     expect(h.client.getState().order?.lines).toMatchObject([{ id: lineId, qty: 2 }])
+  })
+
+  it('shows the table’s waiter call as a request, and sends the face’s request as it is', async () => {
+    const callId = newId('wc')
+    const call = (state: 'open' | 'done' | 'lapsed') => ({
+      ...tableState(2),
+      waiterCall: { id: callId, state, calledAgoSeconds: 4 },
+    })
+    let answered: unknown = tableState(1)
+    const h = harness((url) =>
+      url.endsWith('/actions')
+        ? json(200, {
+            result: {
+              actionId: crypto.randomUUID(),
+              status: 'accepted',
+              code: null,
+              subjectId: null,
+              ref: null,
+            },
+            state: call('open'),
+            pass: null,
+          })
+        : json(200, answered),
+    )
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().requests).toEqual([])
+    const actionId = crypto.randomUUID()
+    await h.client.dispatch({ kind: 'service.request', actionId, request: 'waiter', note: '' })
+    expect(JSON.parse(String(h.calls.at(-1)?.init.body)).command).toEqual({
+      kind: 'service.request',
+      actionId,
+      request: 'waiter',
+      note: '',
+    })
+    expect(h.client.getState().requests).toEqual([
+      { id: callId, actionId: callId, kind: 'waiter', status: 'sent', note: '' },
+    ])
+    for (const [server, status] of [
+      ['done', 'done'],
+      ['lapsed', 'rejected'],
+    ] as const) {
+      answered = { ...call(server), version: 3 }
+      await h.tick()
+      expect(h.client.getState().requests).toMatchObject([{ id: callId, status }])
+    }
+    answered = { ...tableState(4) }
+    await h.tick()
+    expect(h.client.getState().requests).toEqual([])
   })
 
   it('takes an edit back when its answer is lost, and polls at once to see what happened', async () => {

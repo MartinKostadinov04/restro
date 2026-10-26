@@ -39,6 +39,7 @@ const STATE = {
     earlier: null,
   },
   sentOrders: [],
+  waiterCall: null,
   bill: null,
 }
 
