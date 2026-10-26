@@ -120,7 +120,8 @@ async function main(): Promise<void> {
   if (!mapped.ok) throw new Error('the venue could not be mapped to the simulated POS')
   await setFloorSource(pool, tenantId, {
     venueId,
-    source: { halls: null, bars: null, paymentTables: [] },
+    // PM1 and PM2 are the payment tables the route moves a payment's lines to (#111).
+    source: { halls: null, bars: null, paymentTables: ['PM1', 'PM2'] },
   })
   const floor = await readFloorOf(
     { pool, ...env },

@@ -53,6 +53,10 @@ export const LOG_KINDS = {
   'device.changed': 'record',
   'table_code.reissued': 'record',
   'table_code.revealed': 'record',
+  // A payment's route (#111): held, moved, closed, captured, released, unconfirmed, capture failed,
+  // and the staff's answers to an unconfirmed close. Money records, kept with the payment.
+  'payment.state': 'record',
+  'payment.answered': 'record',
 } as const satisfies Record<string, LogRetention>
 
 /** One kind of Log entry. */
@@ -79,6 +83,7 @@ const LogDetailsSchema = z.record(
 export const LogEntryInputSchema = z.strictObject({
   kind: z.enum(Object.keys(LOG_KINDS) as [LogKind, ...LogKind[]]),
   sentOrderId: idSchema('so').optional(),
+  paymentId: idSchema('py').optional(),
   tableId: idSchema('tb').optional(),
   sittingId: idSchema('st').optional(),
   fromState: CodeSchema.optional(),
@@ -119,6 +124,7 @@ export async function appendLogEntry(
     serviceDate: scope.serviceDate,
     kind: entry.kind,
     sentOrderId: entry.sentOrderId ?? null,
+    paymentId: entry.paymentId ?? null,
     tableId: entry.tableId ?? null,
     sittingId: entry.sittingId ?? null,
     fromState: entry.fromState ?? null,

@@ -1,4 +1,4 @@
-// Paying for lines of the bill (#110), on a production build, against the simulated POS and the
+// Paying for lines of the bill (#110, #111), on a production build, against the simulated POS and the
 // simulated card provider. No template draws paying yet, so the phones are the guest API's own
 // callers, each with its own phone value, as the page will be. The other half of the test is the
 // pay harness on the worker's side (apps/worker/src/e2e/pay-harness.ts): the web app may not import
@@ -7,8 +7,10 @@
 //
 // One phone pays for a line: it is greyed for a friend's phone (`beingPaid`), the payer's phone
 // reads its payment by the handle in `X-Restro-Payment` until the card form, the guest pays at the
-// form, and after `pay.returned` the payment is `held`. Another phone starts a Pay of another line
-// and cancels it: the line ungreys. Neither the handle, the provider's references nor the form's
+// form, and after `pay.returned` the payment is held and the route takes it on (#111): its line
+// moves to a payment table, the last check, the close and the capture, and the payment is
+// `captured` ("Paid") while the table's bill no longer shows the line. Another phone starts a Pay
+// of another line and cancels it: the line ungreys. Neither the handle, the provider's references nor the form's
 // values show in any table state, and the handle is in no address.
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
@@ -154,7 +156,7 @@ const payStart = (lines: readonly Line[]) => ({
   tipPercent: null,
 })
 
-test('a guest pays for a line: a friend sees it greyed, the card form holds it', async ({
+test('a guest pays for a line: a friend sees it greyed, then Paid takes it off the bill', async ({
   request,
 }) => {
   test.setTimeout(150_000)
@@ -185,14 +187,19 @@ test('a guest pays for a line: a friend sees it greyed, the card form holds it',
   const formValues = Object.values(atForm.form?.values ?? {})
   expect(formValues.length).toBeGreaterThan(0)
 
-  // The guest pays at the form and comes back: the payment is held, the line still greyed.
+  // The guest pays at the form and comes back: held, then the route closes the line's bill on
+  // its payment table and captures the hold. The table's bill no longer shows the line.
   harness.stdin.write(`pay ${paymentId}\n`)
   await harnessSaid('pay_harness_paid', paymentId)
   const returned = await payer.act({ kind: 'pay.returned', actionId: randomUUID() })
   expect(returned.result.status).toBe('accepted')
-  await expect.poll(async () => (await payer.payment()).state, SETTLED).toBe('held')
-  expect((await payer.payment()).form).toBeNull()
-  expect((await friend.lines()).find((l) => l.id === line.id)?.beingPaid).toBe(true)
+  await expect.poll(async () => (await payer.payment()).state, SETTLED).toBe('captured')
+  const paid = await payer.payment()
+  expect(paid.form).toBeNull()
+  expect(paid.amountMinor).toBe(line.amountMinor)
+  await expect
+    .poll(async () => (await friend.lines()).some((l) => l.id === line.id), SETTLED)
+    .toBe(false)
 
   // No table state carries the handle or the form's values, to either phone.
   for (const text of [...friend.seen, ...payer.seen.filter((t) => !t.includes('"handle":"'))]) {

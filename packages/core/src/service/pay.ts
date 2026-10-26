@@ -45,6 +45,7 @@ import { parseStoredBills, type StoredBill, type StoredBillLine } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { accepted, refused, type ServiceResult } from './results'
+import { orderingPaused } from './send'
 
 /** Why a guest's pay command was refused (design §3; the template words each, #45). */
 export const PAY_REFUSALS = [
@@ -78,6 +79,8 @@ export const PAYMENT_CONFIRM_MS = 2 * 60_000
 export const PAYMENT_SESSION_MS = 10 * 60_000
 /** At most this many payments that aren't final per table (design §9). */
 export const TABLE_OPEN_PAYMENTS = 3
+/** How long a held payment waits for a free payment table (design §6: 60 seconds from `held`). */
+export const PAYMENT_QUEUE_MS = 60_000
 
 /** The payment states before a hold is made: a cancel still wins. */
 const BEFORE_HOLD = ['requested', 'priced', 'awaiting_guest'] as const
@@ -136,7 +139,7 @@ const TipSchema = z.discriminatedUnion('kind', [
 // Pure helpers
 
 /** A decimal quantity as a scaled integer (6 places), so "2", "2.0" and "2.000000" compare equal. */
-function quantityKey(quantity: string): bigint {
+export function quantityKey(quantity: string): bigint {
   const negative = quantity.startsWith('-')
   const [whole = '0', fraction = ''] = (negative ? quantity.slice(1) : quantity).split('.')
   const scaled = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0').slice(0, 6) || '0')
@@ -179,7 +182,7 @@ function displayNameOf(line: StoredBillLine): string {
 // ---------------------------------------------------------------------------------------------
 // Reads under the transaction
 
-type PaymentRow = typeof payments.$inferSelect
+export type PaymentRow = typeof payments.$inferSelect
 
 /** The payment, locked; the table's order row first (lock order), so a change can touch the table. */
 async function lockPayment(
@@ -221,17 +224,21 @@ async function storedBillsOf(
   return parseStoredBills(reading.bills)
 }
 
-/** Settles a payment `released` (the trigger closes its lines) and ungreys them for every phone. */
-async function release(
+/**
+ * Settles a payment `released` (or another final state: the route's `stranded`), the trigger
+ * closes its lines, and ungreys them for every phone. Logged.
+ */
+export async function release(
   stx: ServiceTx,
   payment: PaymentRow,
   tableOpen: boolean,
   reason: string,
+  state: 'released' | 'stranded' = 'released',
 ): Promise<void> {
   await stx.tx
     .update(payments)
     .set({
-      state: 'released',
+      state,
       reason,
       formValues: null,
       settledAt: sql`now()`,
@@ -241,6 +248,27 @@ async function release(
     })
     .where(eq(payments.id, payment.id))
   if (tableOpen) stx.rows.touch(payment.tableId)
+  await logPayment(stx, payment, state, reason)
+}
+
+/** The Log's line of a payment's step on its route (#111): a money record, kept 18 months. */
+export async function logPayment(
+  stx: ServiceTx,
+  payment: Pick<PaymentRow, 'id' | 'tableId' | 'sittingId' | 'state'>,
+  to: string,
+  reason: string | null = null,
+  details?: Readonly<Record<string, string | number | boolean | null>>,
+): Promise<void> {
+  await stx.log({
+    kind: 'payment.state',
+    paymentId: payment.id,
+    tableId: payment.tableId,
+    sittingId: payment.sittingId,
+    fromState: payment.state,
+    toState: to,
+    ...(reason === null ? {} : { reason }),
+    ...(details === undefined ? {} : { details: { ...details } }),
+  })
 }
 
 /** An accepted answer that names the payment and where it stands. */
@@ -314,6 +342,14 @@ export function payStart() {
       if (order === null) return refuse('sitting_ended')
       const sitting = await stx.rows.openSitting(command.tableId)
       if (sitting === null) return refuse('sitting_ended')
+      const [table] = await stx.tx
+        .select({ barId: venueTables.barId })
+        .from(venueTables)
+        .where(eq(venueTables.id, command.tableId))
+      // Paying pauses with ordering: the table's, its bar's, the venue's or the connection's (#111).
+      if (await orderingPaused(stx, command.tableId, table?.barId ?? null)) {
+        return refuse('paying_paused')
+      }
       const bills = await storedBillsOf(stx, command.tableId, sitting.openedAt)
       if (bills === null) return refuse('bill_changed')
 
@@ -393,10 +429,6 @@ export function payStart() {
       const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
       if (amountMinor < floor) return refuse('below_minimum')
 
-      const [table] = await stx.tx
-        .select({ barId: venueTables.barId })
-        .from(venueTables)
-        .where(eq(venueTables.id, command.tableId))
       const id = newId('py')
       const currency = lines[0]?.bill.currency ?? 'EUR'
       await stx.tx.insert(payments).values({
@@ -701,10 +733,13 @@ export function paymentCheck() {
         read.amountMinor === payment.amountMinor &&
         read.currency === payment.currency
       ) {
+        // The wait for a payment table starts here (design §6, #111).
+        const heldAt = (await stx.dbNow()).getTime()
         await stx.tx
           .update(payments)
           .set({
             state: 'held',
+            queueEndsAt: new Date(heldAt + PAYMENT_QUEUE_MS),
             formValues: null,
             captureBefore: read.captureBefore === null ? null : new Date(read.captureBefore),
             threeDsResult: read.threeDs,
@@ -713,6 +748,7 @@ export function paymentCheck() {
             updatedAt: sql`now()`,
           })
           .where(eq(payments.id, payment.id))
+        await logPayment(stx, payment, 'held')
         return at(command, payment, 'held', true)
       }
       if (read.status === 'released') {
@@ -750,7 +786,9 @@ export function paymentCheck() {
 
 /**
  * `payment.settle`: the worker releases a payment that holds nothing at the provider (any more):
- * a cancel it carried out, or a hold the provider refused. Only from the states named.
+ * a cancel it carried out, or a hold the provider refused. Only from the states named. A payment
+ * whose close was attempted is never released (#111), unless a manager or owner answered "No
+ * receipt"; one whose lines could not move back settles `stranded`.
  */
 export function paymentSettle() {
   return defineCommand({
@@ -768,14 +806,42 @@ export function paymentSettle() {
       if (locked === null) return refused(null, 'payment_missing')
       const { payment, tableOpen } = locked
       if (payment.state !== command.from) return at(command, payment, payment.state, false)
-      await release(stx, payment, tableOpen, payment.reason ?? command.reason)
-      return at(command, payment, 'released', true)
+      const reason = payment.reason ?? command.reason
+      // `stranded` comes only from `payment.undone`, which keeps the same rule itself.
+      const answered = reason === 'no_receipt' || reason === 'stranded'
+      if (!answered && (await closeAttempted(stx, payment.id))) {
+        return refused(null, 'close_attempted')
+      }
+      const state = reason === 'stranded' ? 'stranded' : 'released'
+      await release(stx, payment, tableOpen, reason, state)
+      return at(command, payment, state, true)
     },
   })
 }
 
+/** The POS and provider writes a payment records (D127 3.9; #111 adds the POS's and capture). */
+export const PAYMENT_STEP_NAMES = [
+  'createHold',
+  'findByPaymentId',
+  'release',
+  'isolateLines',
+  'undoIsolate',
+  'payAndClose',
+  'capture',
+] as const
+
+/** True once a close of the payment's bill was attempted: from then on it is never undone (#111). */
+export async function closeAttempted(stx: ServiceTx, id: string): Promise<boolean> {
+  const [step] = await stx.tx
+    .select({ seq: paymentSteps.seq })
+    .from(paymentSteps)
+    .where(and(eq(paymentSteps.paymentId, id), eq(paymentSteps.step, 'payAndClose')))
+    .limit(1)
+  return step !== undefined
+}
+
 /**
- * `payment.step`: one provider write, recorded `attempting` before the call and with its outcome
+ * `payment.step`: one POS or provider write, recorded `attempting` before the call and with its outcome
  * after (append-only, D127 3.9). The answer is a short code, never the provider's response; the
  * form's values never go here.
  */
@@ -784,7 +850,7 @@ export function paymentStep() {
     schema: z.strictObject({
       type: z.literal('payment.step'),
       paymentId,
-      step: z.enum(['createHold', 'findByPaymentId', 'release']),
+      step: z.enum(PAYMENT_STEP_NAMES),
       outcome: z.enum(['attempting', 'done', 'refused', 'unknown']),
       answer: CodeSchema.nullable(),
       idempotencyKey: ProviderRefTextSchema,

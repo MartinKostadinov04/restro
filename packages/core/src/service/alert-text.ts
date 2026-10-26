@@ -68,6 +68,14 @@ interface Strings {
   readonly unstable: (venue: string, source: string) => string
   readonly codeBlock: (venue: string) => string
   readonly outOfStock: (source: string, item: string | null) => string
+  readonly paymentUnconfirmed: (table: string) => string
+  readonly paymentUnconfirmedBody: (source: string) => string
+  readonly paymentCheckFailed: (table: string) => string
+  readonly paymentCheckFailedBody: string
+  readonly paymentStranded: (table: string) => string
+  readonly paymentStrandedBody: (source: string) => string
+  readonly paymentCaptureFailed: (venue: string, table: string) => string
+  readonly paymentCaptureFailedBody: (source: string) => string
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
@@ -92,6 +100,18 @@ const EN: Strings = {
   codeBlock: (venue) => `${venue}: a network was blocked after too many wrong table codes`,
   outOfStock: (source, item) =>
     `Out of stock in ${source}: ${item ?? 'an item'}. Greyed out on the menu.`,
+  paymentUnconfirmed: (table) => `${table}: a card payment is unconfirmed`,
+  paymentUnconfirmedBody: (source) =>
+    `Check in ${source} whether its receipt printed, then answer in Restro.`,
+  paymentCheckFailed: (table) => `${table}: a card payment was stopped before closing`,
+  paymentCheckFailedBody:
+    "The bill or the card's hold changed before it closed. The card was not charged.",
+  paymentStranded: (table) => `${table}: items are stuck on a payment table`,
+  paymentStrandedBody: (source) => `Move them back to the table in ${source}.`,
+  paymentCaptureFailed: (venue, table) =>
+    `${venue}: a closed bill’s card payment couldn’t be taken (${table})`,
+  paymentCaptureFailedBody: (source) =>
+    `The bill is closed in ${source}, but the card was not charged.`,
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
@@ -122,6 +142,18 @@ const BG: Strings = {
   unstable: (venue, source) => `${venue}: връзката с ${source} е нестабилна`,
   codeBlock: (venue) => `${venue}: мрежа е блокирана след твърде много грешни кодове на маси`,
   outOfStock: (source, item) => `Изчерпано в ${source}: ${item ?? 'артикул'}. Посивено в менюто.`,
+  paymentUnconfirmed: (table) => `${table}: плащане с карта без потвърждение`,
+  paymentUnconfirmedBody: (source) =>
+    `Проверете в ${source} дали бележката е отпечатана и отговорете в Restro.`,
+  paymentCheckFailed: (table) => `${table}: плащане с карта е спряно преди приключване`,
+  paymentCheckFailedBody:
+    'Сметката или блокираната сума по картата се промени преди приключване. Картата не е таксувана.',
+  paymentStranded: (table) => `${table}: артикули останаха на маса за плащане`,
+  paymentStrandedBody: (source) => `Върнете ги на масата в ${source}.`,
+  paymentCaptureFailed: (venue, table) =>
+    `${venue}: плащане с карта по приключена сметка не можа да бъде взето (${table})`,
+  paymentCaptureFailedBody: (source) =>
+    `Сметката е приключена в ${source}, но картата не е таксувана.`,
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
@@ -202,6 +234,17 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
       return { title: words.codeBlock(venueName), body: '' }
     case 'item_out_of_stock':
       return { title: words.outOfStock(source, asText(alert.details.name)), body: '' }
+    case 'payment_unconfirmed':
+      return { title: words.paymentUnconfirmed(table), body: words.paymentUnconfirmedBody(source) }
+    case 'payment_check_failed':
+      return { title: words.paymentCheckFailed(table), body: words.paymentCheckFailedBody }
+    case 'payment_stranded':
+      return { title: words.paymentStranded(table), body: words.paymentStrandedBody(source) }
+    case 'payment_capture_failed':
+      return {
+        title: words.paymentCaptureFailed(venueName, table),
+        body: words.paymentCaptureFailedBody(source),
+      }
     default:
       return { title: `${venueName}: ${alert.kind}`, body: '' }
   }

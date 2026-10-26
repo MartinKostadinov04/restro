@@ -56,6 +56,7 @@ import {
   payReturned,
   payStart,
 } from './pay'
+import { PAY_ROUTE_COMMANDS } from './pay-route'
 import { paymentObserve } from './payment-observe'
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
@@ -447,6 +448,9 @@ export const SERVICE_COMMANDS = {
   'payment.check': paymentCheck(),
   'payment.settle': paymentSettle(),
   'payment.step': paymentStep(),
+  // #111: the route after the hold: the queue, the turn, the move, the last check, the close, the
+  // capture, the undo, and a manager's answer to an unconfirmed close.
+  ...PAY_ROUTE_COMMANDS,
   // #81: a call nobody answered in the venue's time, or whose sitting ended, lapses.
   'waiter_call.lapse': defineCommand({
     schema: z.strictObject({ type: z.literal('waiter_call.lapse'), waiterCallId: idSchema('wc') }),
