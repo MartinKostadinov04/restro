@@ -354,6 +354,52 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     expect((await lines()).every((line) => !line.beingPaid)).toBe(true)
   })
 
+  /** A Pay at the card form that the guest cancels: `cancelling`, with its provider payment. */
+  async function cancelled() {
+    const { id, handle } = await pay(0)
+    await preparePayment(env(), target(id), deps())
+    const answer = await guestAct(pool, {
+      code,
+      command: { type: 'pay.cancel', actionId: randomUUID() },
+      ageMs: 10,
+      view: 'bill',
+      phone: randomUUID(),
+      limiter: LOOSE,
+      handle,
+      queuePayment: async () => {},
+    })
+    expect(answer).toMatchObject({ ok: true, result: { status: 'accepted' } })
+    return { id, ref: providerRef((await stored(id))?.provider_payment_ref ?? '') }
+  }
+
+  it('settles a cancelled Pay whose release is refused once the provider holds nothing', async () => {
+    // The release is refused, but the payment failed at the provider already: nothing is held.
+    const over = await cancelled()
+    engine.guest.decline(over.ref)
+    engine.fault('release', { kind: 'refuse', code: 'not_supported' })
+    expect(await preparePayment(env(), target(over.id), deps())).toEqual({
+      kind: 'at',
+      state: 'released',
+    })
+    expect((await steps(over.id)).filter(([step]) => step === 'release')).toEqual([
+      ['release', 'attempting', null, `${over.id}:release`],
+      ['release', 'refused', 'not_supported', `${over.id}:release`],
+    ])
+  })
+
+  it('leaves a cancelled Pay whose release is refused while the provider still has it', async () => {
+    // It stays `cancelling` for the recovery to read back (#112).
+    const open = await cancelled()
+    engine.fault('release', { kind: 'refuse', code: 'not_supported' })
+    expect(await preparePayment(env(), target(open.id), deps())).toEqual({
+      kind: 'at',
+      state: 'cancelling',
+    })
+    expect(engine.paymentsOf(providerRef(accountRef), open.id as never)).toEqual([
+      expect.objectContaining({ status: 'awaiting_guest' }),
+    ])
+  })
+
   it('settles a hold the provider refuses, and ungreys the lines', async () => {
     const { id } = await pay(0)
     engine.fault('createHold', { kind: 'refuse', code: 'account_restricted' })

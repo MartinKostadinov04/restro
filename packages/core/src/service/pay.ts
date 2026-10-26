@@ -38,7 +38,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
-import { addMinor, percentOfMinor, subtractMinor } from '../money'
+import { addMinor, percentOfMinor, sumSignedMinor } from '../money'
 import { readPayingSettings } from '../paying-settings'
 import { DecimalQuantitySchema } from '../quantity'
 import { parseStoredBills, type StoredBill, type StoredBillLine } from './bill'
@@ -152,13 +152,12 @@ export function sameQuantity(a: string, b: string): boolean {
 }
 
 /**
- * The sum of signed POS amounts (a discount line is negative), through the money module: the
- * positives added, the negatives taken off. Null when it would be below zero.
+ * The sum of signed POS amounts (a discount line is negative), through the money module. Null
+ * when it would be below zero.
  */
 export function signedSumMinor(amounts: readonly number[]): number | null {
-  const plus = amounts.filter((amount) => amount >= 0).reduce((sum, a) => addMinor(sum, a), 0)
-  const minus = amounts.filter((amount) => amount < 0).reduce((sum, a) => addMinor(sum, -a), 0)
-  return minus > plus ? null : subtractMinor(plus, minus)
+  const sum = sumSignedMinor(amounts)
+  return sum < 0 ? null : sum
 }
 
 /** The tip in minor units for lines worth `linesMinor`. */
@@ -388,15 +387,13 @@ export function payStart() {
           return refuse('bill_changed')
         }
       }
-      // A bill a payment already isolated is being paid; a part-paid bill, or a whole bill whose
-      // total isn't its lines (a bill-level discount, D122 §8), only a waiter can split.
+      // A bill a payment already isolated is being paid; a part-paid bill, or a bill whose total
+      // isn't its lines (a bill-level discount, D122 §8), only a waiter can split: the hold is the
+      // picked lines' amounts, so any pick from it, the whole bill too, would charge too much.
       for (const bill of new Set(lines.map(({ bill }) => bill))) {
         if (bill.paymentInFlight) return refuse('being_paid')
         if (bill.paidMinor > 0) return refuse('ask_waiter_to_split')
-        if (
-          command.pick.kind === 'whole' &&
-          signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor
-        ) {
+        if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
           return refuse('ask_waiter_to_split')
         }
       }
