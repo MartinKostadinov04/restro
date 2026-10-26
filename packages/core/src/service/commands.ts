@@ -6,8 +6,8 @@
 // table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
 // shared devices (#72), tables open for phones with their sittings (#73), the readings of a
 // table's bill with the sitting's end by a reading (#74), the table's shared order (#75), a
-// payment's refund and dispute as read back after a provider's notice (#108), and paying on the
-// bill up to a held card (#110).
+// payment's refund and dispute as read back after a provider's notice (#108), the waiter call
+// with its Handled and its lapse (#81), and paying on the bill up to a held card (#110).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -61,6 +61,7 @@ import {
   updateRole,
 } from './staff'
 import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
+import { callWaiter, lapseWaiterCall, waiterCallDone } from './waiter-call'
 
 const tableId = idSchema('tb')
 const actionId = z.uuid()
@@ -194,13 +195,14 @@ export const SERVICE_COMMANDS = {
   'pay.start': payStart(),
   'pay.returned': payReturned(),
   'pay.cancel': payCancel(),
+  // #81: a second tap returns the open call. Not located; no text, no identity.
   'waiter.call': defineCommand({
-    // #81: a second tap returns the open call.
-    schema: z.strictObject({ type: z.literal('waiter.call'), tableId, actionId }),
+    schema: z.strictObject({ type: z.literal('waiter.call'), tableId, actionId, ageMs }),
     origins: ['guest'],
     permission: null,
     idempotency: 'by_nature',
-    handle: null,
+    maxAgeMs: ORDER_EDIT_MAX_AGE_MS,
+    handle: callWaiter,
   }),
 
   // Staff (Tonight, D122 §7).
@@ -268,7 +270,7 @@ export const SERVICE_COMMANDS = {
     origins: ['staff'],
     permission: 'alerts.answer',
     idempotency: 'by_nature',
-    handle: null,
+    handle: waiterCallDone,
   }),
   // #70: the one writer of `tables.code_generation`. A repeat issues yet another code, which is
   // what a manager pressing "new code" twice asks for.
@@ -371,7 +373,15 @@ export const SERVICE_COMMANDS = {
   'payment.check': paymentCheck(),
   'payment.settle': paymentSettle(),
   'payment.step': paymentStep(),
-  sweep: workerStep('sweep', {}), // #79, #81
+  // #81: a call nobody answered in the venue's time, or whose sitting ended, lapses.
+  'waiter_call.lapse': defineCommand({
+    schema: z.strictObject({ type: z.literal('waiter_call.lapse'), waiterCallId: idSchema('wc') }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: lapseWaiterCall,
+  }),
+  sweep: workerStep('sweep', {}), // #79
   'service_day.close': workerStep('service_day.close', {
     serviceDate: z.iso.date(),
   }), // #84

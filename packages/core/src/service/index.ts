@@ -181,3 +181,4 @@ export {
   type StaffView,
 } from './staff-read'
 export { MAX_REVEALED_CODES } from './table-codes'
+export { waiterCallLapsesAt } from './waiter-call'

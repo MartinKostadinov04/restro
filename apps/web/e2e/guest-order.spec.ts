@@ -8,8 +8,9 @@
 //
 // The venue checks location (#76): a phone sees the order only once it holds a pass. The first
 // phone gets one by adding (the consent screen, Allow, and the add goes through), the second by its
-// own "Allow location"; a phone across town is told the check failed and offered "Call a waiter"
-// and "Cancel". The position goes only in a command's body, never in an address.
+// own "Allow location"; a phone across town is told the check failed and shown the still card
+// "Please order from your waiter" (the page does not take waiter calls until Tonight does, #85, so
+// the "Call a waiter" button is the face tests' case) and "Cancel". The position goes only in a command's body, never in an address.
 import { type Browser, devices, expect, type Page, type Request, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
@@ -119,7 +120,7 @@ test('two phones on one table see one order', async ({ browser }) => {
   }
 })
 
-test('a phone across town is told the check failed, and offered a waiter or Cancel', async ({
+test('a phone across town is told the check failed, and shown the still card or Cancel', async ({
   browser,
 }) => {
   const far = await phone(browser, ACROSS_TOWN)
@@ -128,7 +129,9 @@ test('a phone across town is told the check failed, and offered a waiter or Canc
     await prompt(far.page, 'consent').getByRole('button', { name: 'Allow', exact: true }).click()
     const failed = prompt(far.page, 'failed')
     await expect(failed).toBeVisible(SEEN)
-    await expect(failed.getByRole('button', { name: 'Call a waiter' })).toBeVisible()
+    // No dead button: the page takes no waiter calls yet, so the still card stands in its place.
+    await expect(failed.getByText('Please order from your waiter')).toBeVisible()
+    await expect(failed.getByRole('button', { name: 'Call a waiter' })).toHaveCount(0)
     await failed.getByRole('button', { name: 'Cancel' }).click()
     await expect(failed).toHaveCount(0)
     await expect(lines(far.page)).toHaveCount(0)
