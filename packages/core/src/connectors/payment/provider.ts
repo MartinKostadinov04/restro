@@ -6,7 +6,8 @@
 //
 // Every provider id crosses inside a `ProviderRef` (rule 3); money is whole minor units (rule 8);
 // a timeout is `unknown` and is read back by our payment id (D125 3.9); a partial reading
-// concludes nothing. Only `capture` moves money. There is no refund (D125 3.5, D127 4.4).
+// concludes nothing. Only `capture` moves money. There is no refund (D125 3.5, D127 4.4): a
+// refund or a dispute is only read back, after a notice (`readNoticeSubject`, #108).
 
 import type { PaymentId } from '../../ids'
 import type { EmptyResult, Reading, WriteOutcome } from '../service/schemas'
@@ -19,6 +20,7 @@ import type {
   CreateHoldResult,
   PaymentRefusal,
   PrepareDomainRequest,
+  ProviderNotice,
   ProviderPayment,
   ReleaseRequest,
   StartConnectionRequest,
@@ -36,6 +38,7 @@ export const PAYMENT_PROVIDER_STEPS = [
   'createHold',
   'findByPaymentId',
   'readPayment',
+  'readNoticeSubject',
   'capture',
   'release',
 ] as const
@@ -75,29 +78,45 @@ export interface PaymentProvider {
   ): Promise<Reading<ProviderPayment | null>>
   /** The payment's status, amounts, `captureBefore`, the bank's check and its code. */
   readPayment(accountRef: ProviderRef, paymentRef: ProviderRef): Promise<Reading<ProviderPayment>>
+  /**
+   * The payment a notice is about, read back from the provider as it stands now (#108): the
+   * object the notice names (a payment, a refund, a dispute) leads to its payment. Null when the
+   * object is not this account's, or leads to no payment Restro made. The notice's own body is
+   * never trusted: the amounts and the dispute come from this reading.
+   */
+  readNoticeSubject(
+    accountRef: ProviderRef,
+    notice: ProviderNotice,
+  ): Promise<Reading<ProviderPayment | null>>
   /** Capture once, at most the hold, idempotent by key: the only step that moves money. */
   capture(request: CaptureRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
   /** Release a payment that is not captured, idempotent by key; nothing moves. */
   release(request: ReleaseRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
 }
 
-/** A provider notice, verified: which event, of what type, about which object of which account. */
-export interface ProviderNotice {
-  /** The provider's event id: the notice is stored once by it (D125 3.8). */
-  readonly id: string
-  /** The provider's event type, as it names it. */
-  readonly type: string
-  /** The venue's account the event came from; null for a platform-level event. */
-  readonly accountRef: ProviderRef | null
-  /** The object the event is about (a payment, a refund, a dispute), read back before acting. */
-  readonly objectRef: ProviderRef | null
-}
+/**
+ * Why the notice route refused a notice, the only thing its log line says (#108):
+ *   - `unsigned`: no signature header, or none of the provider's scheme;
+ *   - `bad_signature`: no signature matches the body;
+ *   - `stale`: signed outside the tolerance (a replay);
+ *   - `malformed`: the body is not the provider's event;
+ *   - `wrong_mode`: a live event in a test environment, or a test event in production.
+ */
+export const NOTICE_REFUSAL_REASONS = [
+  'unsigned',
+  'bad_signature',
+  'stale',
+  'malformed',
+  'wrong_mode',
+] as const
+export type NoticeRefusalReason = (typeof NOTICE_REFUSAL_REASONS)[number]
 
 /**
  * The web's part of a provider (D127 1.4, design §8): checks a notice's signature by hand, with
- * no provider SDK, and that its live/test flag matches this environment. Implemented per provider
- * in `apps/web/src/connectors/<kind>/` (#108); the notice route records what it returns and
- * nothing else, and a worker job reads the object back from the provider.
+ * no provider SDK, that its live/test flag matches this environment, and maps the provider's
+ * event type to a `ProviderNoticeKind`. Implemented per provider in
+ * `apps/web/src/connectors/<kind>/` (#108); the notice route records what it returns and nothing
+ * else, and a worker job reads the object back from the provider.
  */
 export interface ProviderNoticeVerifier {
   readonly kind: string
@@ -107,5 +126,5 @@ export interface ProviderNoticeVerifier {
     secret: string,
     now: Date,
     live: boolean,
-  ): { ok: true; notice: ProviderNotice } | { ok: false; reason: string }
+  ): { ok: true; notice: ProviderNotice } | { ok: false; reason: NoticeRefusalReason }
 }

@@ -299,8 +299,8 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
     const insert = () =>
       appRaw.query(
         `insert into restro.provider_notices
-           (provider_kind, event_id, live, account_ref, type, source, actor, job_id)
-         values ('sim', $1, false, 'acct_1', 'payment_intent.succeeded', 'provider', 'system', 'req_1')
+           (provider_kind, event_id, live, account_ref, type, kind, object_ref, source, actor, job_id)
+         values ('sim', $1, false, 'acct_1', 'payment_intent.succeeded', 'other', 'pi_1', 'provider', 'system', 'req_1')
          on conflict (provider_kind, event_id) do nothing`,
         [eventId],
       )
@@ -317,6 +317,20 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       ),
     )
     expect(handledEarly).toMatch(/provider_notices_handled_after_received/)
+  })
+
+  it("keeps a notice's kind in the platform's words (migration 0031)", async () => {
+    const eventId = `evt_${testId('x').slice(2)}`
+    eventIds.push(eventId)
+    const message = await databaseError(
+      appRaw.query(
+        `insert into restro.provider_notices
+           (provider_kind, event_id, live, type, kind, source, actor, job_id)
+         values ('sim', $1, false, 'charge.refunded', 'charge.refunded', 'provider', 'system', 'req_1')`,
+        [eventId],
+      ),
+    )
+    expect(message).toMatch(/provider_notices_kind/)
   })
 
   it('holds a payment table with no deadline, and every other lease with one (D127)', async () => {
@@ -357,7 +371,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
     expect(rows[0]?.expired).toBe(false)
   })
 
-  it('keeps the tip inside the amount and the capture under it', async () => {
+  it('keeps the tip inside the amount, the capture under it and a refund under the capture', async () => {
     const cases: [Partial<typeof payments.$inferInsert>, RegExp][] = [
       [{ amountMinor: 500, tipMinor: 600 }, /payments_amounts/],
       [{ tipMinor: -1 }, /payments_amounts/],
@@ -368,6 +382,11 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       [{ state: 'captured' }, /payments_settled/],
       [{ kind: 'pay_first' }, /payments_pay_first_sent_order/],
       [{ handleHash: 'not-a-hash' }, /payments_handle_hash/],
+      // Migration 0031: a refund only of what was captured, a dispute in the platform's words.
+      [{ refundedMinor: 1 }, /payments_refunded_minor/],
+      [{ amountMinor: 500, capturedMinor: 400, refundedMinor: 401 }, /payments_refunded_minor/],
+      [{ refundedMinor: -1 }, /payments_refunded_minor/],
+      [{ dispute: 'needs_response' }, /payments_dispute/],
     ]
     for (const [patch, error] of cases) {
       const message = await databaseError(

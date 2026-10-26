@@ -9,11 +9,12 @@ import { addMinor, subtractMinor } from '../../../money'
 import type { Reading } from '../../service/schemas'
 import { paymentCapabilitiesProblems } from '../capabilities'
 import type { PaymentWriteOutcome } from '../provider'
-import { type ProviderRef, sameProviderRef } from '../provider-ref'
+import { type ProviderRef, providerRef, sameProviderRef } from '../provider-ref'
 import {
   type CreateHoldResult,
   PAYMENT_ANSWER_SCHEMAS,
   type PaymentRefusalCode,
+  type ProviderNotice,
   type ProviderPayment,
   type ProviderPaymentStatus,
 } from '../schemas'
@@ -176,6 +177,14 @@ class Run {
     return this.parse('release', answer) as PaymentWriteOutcome<ProviderPayment>
   }
 
+  /** The payment a notice is about, read back on `account` (this run's own by default). */
+  async subject(
+    notice: ProviderNotice,
+    account = this.account,
+  ): Promise<Reading<ProviderPayment | null>> {
+    return this.parse('readNoticeSubject', await this.h.provider.readNoticeSubject(account, notice))
+  }
+
   /** A new hold the guest has not paid yet. */
   async awaiting(): Promise<{ paymentId: PaymentId; guest: GuestPayment }> {
     const paymentId = newId('py')
@@ -196,6 +205,43 @@ class Run {
       `the hold holds ${payment.heldMinor}, not ${this.amount}`,
     )
     return { paymentId, ref: guest.paymentRef }
+  }
+
+  /** A new payment captured for `amount`. */
+  async captured(): Promise<{ paymentId: PaymentId; ref: ProviderRef }> {
+    const held = await this.held()
+    this.done('capture', await this.capture(held.ref, this.amount, `${held.paymentId}:capture`))
+    return held
+  }
+
+  /** The notice is about this account, of the kind expected, and names its object. */
+  expectNotice(label: string, notice: ProviderNotice, kind: ProviderNotice['kind']): void {
+    this.expect(notice.kind === kind, `${label}: the notice is of kind ${notice.kind}, not ${kind}`)
+    this.expect(
+      notice.accountRef !== null && sameProviderRef(notice.accountRef, this.account),
+      `${label}: the notice names another account`,
+    )
+    this.expect(notice.objectRef !== null, `${label}: the notice names no object`)
+  }
+
+  /** Reads the notice back and checks it leads to the captured payment. */
+  async expectSubject(
+    label: string,
+    notice: ProviderNotice,
+    paymentId: PaymentId,
+    ref: ProviderRef,
+  ): Promise<ProviderPayment> {
+    const payment = this.complete(label, await this.subject(notice))
+    if (payment === null) this.fail(`${label}: the notice of this account reads no payment`)
+    this.expect(
+      sameProviderRef(payment.ref, ref) && payment.paymentId === paymentId,
+      `${label}: the notice reads another payment`,
+    )
+    this.expect(
+      payment.status === 'captured' && payment.capturedMinor === this.amount,
+      `${label}: the payment reads ${payment.status} with ${payment.capturedMinor} captured`,
+    )
+    return payment
   }
 }
 
@@ -683,4 +729,73 @@ export const failedReadsCheck = check(async (run) => {
   run.expect(!read.complete, 'a failed payment read answered as complete')
   const connection = run.parse('readConnection', await run.h.provider.readConnection(run.account))
   run.expect(!connection.complete, 'a failed connection read answered as complete')
+})
+
+// ---------------------------------------------------------------------------------------------
+// Notices (#108): the venue refunds and the bank disputes outside Restro; a notice is read back
+
+/**
+ * A refund in the venue's dashboard reads back, from the provider, as the total refunded so far:
+ * an older notice read after a second refund reads the new total, never its own part. Reading
+ * moves no money, and a failed read is incomplete.
+ */
+export const refundReadBackCheck = check(async (run) => {
+  const refunds = fault(run, run.h.outside?.refundsInDashboard, 'refund in the venue dashboard')
+  const { paymentId, ref } = await run.captured()
+  const first = await refunds(run.account, ref, 300)
+  run.expectNotice('the refund', first, 'refund')
+  const before = await run.moved()
+  const read = await run.expectSubject('the refund read-back', first, paymentId, ref)
+  await run.expectMoved('reading a notice back', before)
+  run.expect(read.refundedMinor === 300, `the refund reads ${read.refundedMinor}, not 300`)
+  run.expect(read.dispute === null, 'a refunded payment reads a dispute')
+  await refunds(run.account, ref, 200)
+  const again = await run.expectSubject('the first notice, read late', first, paymentId, ref)
+  run.expect(
+    again.refundedMinor === 500,
+    `after two refunds the payment reads ${again.refundedMinor} refunded, not the total 500`,
+  )
+  const failReads = run.h.faults.failReads
+  if (failReads !== undefined) {
+    failReads()
+    const failed = await run.subject(first)
+    run.expect(!failed.complete, 'a failed read of a notice answered as complete')
+  }
+})
+
+/**
+ * A dispute reads back where it stands now: open, then lost (or won) once it closed, and the
+ * opening notice read late reads the closed state.
+ */
+export const disputeReadBackCheck = check(async (run) => {
+  const opens = fault(run, run.h.outside?.bankOpensDispute, 'open a dispute')
+  const closes = fault(run, run.h.outside?.disputeCloses, 'close a dispute')
+  for (const outcome of ['lost', 'won'] as const) {
+    const { paymentId, ref } = await run.captured()
+    const opened = await opens(run.account, ref)
+    run.expectNotice('the opened dispute', opened, 'dispute')
+    const open = await run.expectSubject('the opened dispute', opened, paymentId, ref)
+    run.expect(open.dispute === 'open', `an opened dispute reads ${open.dispute}, not open`)
+    if (opened.objectRef === null) return
+    const closed = await closes(run.account, opened.objectRef, outcome)
+    run.expectNotice('the closed dispute', closed, 'dispute')
+    const ended = await run.expectSubject('the closed dispute', closed, paymentId, ref)
+    run.expect(ended.dispute === outcome, `a ${outcome} dispute reads ${ended.dispute}`)
+    const late = await run.expectSubject('the opening notice, read late', opened, paymentId, ref)
+    run.expect(late.dispute === outcome, `the opening notice read late reads ${late.dispute}`)
+  }
+})
+
+/** Another account reads nothing of this account's objects, nor an object no one has. */
+export const otherAccountCheck = check(async (run) => {
+  const refunds = fault(run, run.h.outside?.refundsInDashboard, 'refund in the venue dashboard')
+  const other = fault(run, run.h.otherAccount, 'name a second account')
+  const { ref } = await run.captured()
+  const notice = await refunds(run.account, ref, 100)
+  const elsewhere = run.complete('a read on another account', await run.subject(notice, other))
+  run.expect(elsewhere === null, "another account reads this account's refund")
+  if (notice.objectRef === null) return
+  const unknown = { ...notice, objectRef: providerRef(`${notice.objectRef.provider}x9`) }
+  const nothing = run.complete('a read of an unknown object', await run.subject(unknown))
+  run.expect(nothing === null, 'an object the provider does not have reads a payment')
 })

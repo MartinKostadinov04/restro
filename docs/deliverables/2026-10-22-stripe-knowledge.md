@@ -7,6 +7,7 @@ The one place for what Restro knows about Stripe, the possible second payment pr
 - **S22**: docs.stripe.com, read by the ordering lead on 10-22. Each line names the page.
 - **C21**: `2026-10-21-mypos-vs-stripe-cost.md` (Sonnet research, Stripe's and myPOS's public price pages, 10-21).
 - **S25**: docs.stripe.com, read by a research agent on 10-25 (and stripe.com/en-bg/pricing and stripe.com/en-bg/connect/pricing for the price lines). Each line names the page.
+- **S26**: docs.stripe.com, read by the #108 agent (the provider notice inbox) on 10-26. Each line names the page.
 
 Tags: **[DOC]** developer documentation, **[PRICE PAGE]** a stripe.com price page, **[READING]** our interpretation, **[NOT FOUND]** the docs don't say.
 
@@ -177,6 +178,14 @@ Tags: **[DOC]** developer documentation, **[PRICE PAGE]** a stripe.com price pag
   - The MCP server and plugin need Restro's own Stripe account. They are used only against a sandbox, with an agent key that can read and search but not write, and never with a venue's account (rule 7).
   - Adopting the plugin goes through D106's gate first. Its hooks run on every prompt.
 - 2026-10-25 · D106's check done (`2026-10-25-stripe-plugin-check.md`, read at `8bbcc4b`, v0.11.29): don't install the plugin whole (`stripe-pay`, `stripe-projects` and `stripe-directory` act on everyday trigger words). Copy only `stripe-best-practices`' text, pinned, with Restro overrides, if Martin agrees.
+
+## Notices for refunds and disputes (read 10-26, #108)
+
+- 2026-10-26 · S26 [DOC] (webhooks) The signature check by hand: split `Stripe-Signature` on `,`, take `t` and every `v1`; compute HMAC-SHA256 of `t + "." + raw body` with the endpoint secret; compare in constant time; any `v1` may match; `v0` is for test signatures and is ignored; reject a timestamp outside the tolerance (libraries: 300 s).
+- 2026-10-26 · S26 [DOC] (api/events/types) Refund events: `charge.refunded` (a charge refunded, also partially), `charge.refund.updated`, `refund.created`, `refund.updated`, `refund.failed`. Dispute events: `charge.dispute.created`, `.updated`, `.closed`, `.funds_withdrawn`, `.funds_reinstated`. `data.object` is the charge for `charge.refunded` ("including partial refunds"), a refund for `charge.refund.updated` and `refund.*`, a dispute for `charge.dispute.*`; `charge.dispute.closed` comes when the status becomes `lost`, `warning_closed` or `won`.
+- 2026-10-26 · S26 [DOC] (api/charges/object, api/disputes/object) A charge carries `amount_captured` and `amount_refunded` (smallest currency unit; "can be less than the amount … if a partial refund was issued"), `refunded` (true only when fully refunded) and `disputed`. A dispute carries `charge` and `payment_intent` (the ids it is about). A dispute's `status` is one of `warning_needs_response`, `warning_under_review`, `warning_closed`, `needs_response`, `under_review`, `won`, `lost`, `prevented`.
+- 2026-10-26 · [READING] For Restro (#108): a notice is only a pointer. The web stores it once by event id and answers 2xx; the worker reads the charge or dispute back from Stripe with `Stripe-Account` and records `amount_refunded` as the payment's refund total (absolute, so a duplicate or out-of-order event records the same value). Mapping of a dispute for #107 to settle: the `warning_*`, `needs_response` and `under_review` states → open; `won` → won; `lost` → lost; `warning_closed` and `prevented` → no dispute (an inquiry closed without a chargeback) — to confirm in a sandbox.
+- 2026-10-26 · [READING] A production Connect endpoint also receives test events (S25, connect/webhooks): the route acknowledges a test event in production (and a live one elsewhere) with 2xx without storing it, so Stripe does not retry it for three days.
 
 ## Open
 

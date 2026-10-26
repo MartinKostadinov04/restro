@@ -353,6 +353,8 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      // The provider notices (#108) need no POS and no sealing key.
+      JOB_NAMES.providerNotices,
     ])
     // One warning per missing setting: the sealing keys, the purge connection (D83) and the
     // bill-id key of the table readings (#74).
@@ -391,6 +393,7 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      JOB_NAMES.providerNotices,
       JOB_NAMES.sealTableCodes,
     ])
   })

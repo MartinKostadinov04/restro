@@ -4,8 +4,9 @@
 // the rest of its payload: the machinery around them (origins, permissions, provenance, locks,
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
 // table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
-// shared devices (#72), tables open for phones with their sittings (#73), and the readings of a
-// table's bill with the sitting's end by a reading (#74).
+// shared devices (#72), tables open for phones with their sittings (#73), the readings of a
+// table's bill with the sitting's end by a reading (#74), and a payment's refund and dispute as
+// read back after a provider's notice (#108).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -15,6 +16,7 @@ import { z } from 'zod'
 import { idSchema } from '../ids'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import { paymentObserve } from './payment-observe'
 import { recordReading } from './readings'
 import {
   closeAllTables,
@@ -308,6 +310,8 @@ export const SERVICE_COMMANDS = {
   }), // #77
   'pause.transition': workerStep('pause.transition', { pauseId: idSchema('pa') }), // #79
   'notice.record': workerStep('notice.record', {}), // #80
+  // #108: a refund or a dispute, read back from the provider after its notice.
+  'payment.observe': paymentObserve(),
   sweep: workerStep('sweep', {}), // #75, #79, #81
   'service_day.close': workerStep('service_day.close', {
     serviceDate: z.iso.date(),

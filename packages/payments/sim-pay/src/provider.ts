@@ -9,6 +9,7 @@ import {
   PaymentIdSchema,
   type PaymentProvider,
   PrepareDomainRequestSchema,
+  ProviderNoticeSchema,
   ProviderRefSchema,
   ReleaseRequestSchema,
   StartConnectionRequestSchema,
@@ -50,6 +51,11 @@ export function createSimPayProvider(options: SimPayProviderOptions): PaymentPro
       engine.findByPaymentId(ProviderRefSchema.parse(accountRef), PaymentIdSchema.parse(paymentId)),
     readPayment: async (accountRef, paymentRef) =>
       engine.readPayment(ProviderRefSchema.parse(accountRef), ProviderRefSchema.parse(paymentRef)),
+    readNoticeSubject: async (accountRef, notice) =>
+      engine.readNoticeSubject(
+        ProviderRefSchema.parse(accountRef),
+        ProviderNoticeSchema.parse(notice),
+      ),
     capture: async (request) => engine.capture(CaptureRequestSchema.parse(request)),
     release: async (request) => engine.release(ReleaseRequestSchema.parse(request)),
   }

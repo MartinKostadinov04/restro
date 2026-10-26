@@ -16,8 +16,10 @@ import {
   moneyOnlyByCaptureCheck,
   oneCaptureCheck,
   operationsCheck,
+  otherAccountCheck,
   type PaymentCheck,
   partialCaptureCheck,
+  refundReadBackCheck,
   releaseCheck,
 } from './checks'
 import type { PaymentHarness } from './harness'
@@ -30,6 +32,8 @@ type Bug =
   | 'releaseMoves'
   | 'timeoutAsRefusal'
   | 'partialReadComplete'
+  | 'refundAsDelta'
+  | 'readsOtherAccount'
 
 function toyHarness(bug?: Bug): PaymentHarness {
   const payments = new Map<string, ProviderPayment>()
@@ -39,6 +43,9 @@ function toyHarness(bug?: Bug): PaymentHarness {
   let lose = false
   let failReads = false
   const account = providerRef('toy_account')
+  const otherAccount = providerRef('toy_other')
+  /** The venue's refunds in its dashboard: the refund's ref to its payment's and its amount. */
+  const refunds = new Map<string, { paymentRef: string; amountMinor: number }>()
 
   function once<R>(key: string, run: () => PaymentWriteOutcome<R>): PaymentWriteOutcome<R> {
     if (lose) {
@@ -95,6 +102,8 @@ function toyHarness(bug?: Bug): PaymentHarness {
           amountMinor: request.amountMinor,
           heldMinor: 0,
           capturedMinor: 0,
+          refundedMinor: 0,
+          dispute: null,
           captureBefore: null,
           threeDs: null,
           authorisationCode: null,
@@ -115,6 +124,18 @@ function toyHarness(bug?: Bug): PaymentHarness {
       return payment === undefined
         ? { complete: false, reason: 'no such payment' }
         : { complete: true, value: payment }
+    },
+    readNoticeSubject: async (accountRef, notice) => {
+      if (failReads && bug !== 'partialReadComplete') return { complete: false, reason: 'failed' }
+      const refund = notice.objectRef === null ? undefined : refunds.get(notice.objectRef.provider)
+      if (refund === undefined) return { complete: true, value: null }
+      if (accountRef.provider !== account.provider && bug !== 'readsOtherAccount') {
+        return { complete: true, value: null }
+      }
+      const payment = payments.get(refund.paymentRef) as ProviderPayment
+      const value =
+        bug === 'refundAsDelta' ? { ...payment, refundedMinor: refund.amountMinor } : payment
+      return { complete: true, value }
     },
     capture: async (request) =>
       once(`capture:${request.idempotencyKey}`, () => {
@@ -169,6 +190,22 @@ function toyHarness(bug?: Bug): PaymentHarness {
         })
       },
     },
+    outside: {
+      refundsInDashboard: async (_account, paymentRef, amountMinor) => {
+        const payment = payments.get(paymentRef.provider) as ProviderPayment
+        update(paymentRef.provider, { refundedMinor: payment.refundedMinor + amountMinor })
+        const ref = `toy_refund_${refunds.size + 1}`
+        refunds.set(ref, { paymentRef: paymentRef.provider, amountMinor })
+        return {
+          id: `toy_event_${refunds.size}`,
+          type: 'refund.made',
+          kind: 'refund',
+          accountRef: account,
+          objectRef: providerRef(ref),
+        }
+      },
+    },
+    otherAccount,
     faults: {
       timeOutBeforeLanding: () => {
         lose = true
@@ -190,6 +227,8 @@ const CASES: readonly [Bug | undefined, PaymentCheck][] = [
   [undefined, moneyOnlyByCaptureCheck],
   [undefined, lostTimeoutCheck('capture')],
   [undefined, failedReadsCheck],
+  [undefined, refundReadBackCheck],
+  [undefined, otherAccountCheck],
   ['refundMethod', operationsCheck],
   ['doubleCapture', oneCaptureCheck],
   ['captureAboveHold', partialCaptureCheck],
@@ -197,6 +236,8 @@ const CASES: readonly [Bug | undefined, PaymentCheck][] = [
   ['releaseMoves', releaseCheck],
   ['timeoutAsRefusal', lostTimeoutCheck('capture')],
   ['partialReadComplete', failedReadsCheck],
+  ['refundAsDelta', refundReadBackCheck],
+  ['readsOtherAccount', otherAccountCheck],
 ]
 
 describe('the payment conformance suite on a toy provider', () => {
