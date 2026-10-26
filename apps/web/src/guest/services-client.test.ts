@@ -171,6 +171,7 @@ describe('the services client', () => {
         result: { actionId, status: 'accepted', code: null, subjectId: lineId, ref: null },
         state: tableState(2, [line(lineId, 1)]),
         pass: null,
+        handle: null,
       }),
     )
     expect(await sent).toMatchObject({ status: 'accepted', subjectId: lineId })
@@ -192,6 +193,7 @@ describe('the services client', () => {
         },
         state: tableState(3, [line(lineId, 2)]),
         pass: null,
+        handle: null,
       })
     })
     h.client.start()
@@ -269,6 +271,7 @@ describe('the services client', () => {
         result: { actionId, status: 'rejected', code: 'not_built', subjectId: null, ref: null },
         state: null,
         pass: null,
+        handle: null,
       }),
     )
     expect(await sent).toMatchObject({ status: 'rejected', code: 'not_built' })
@@ -311,15 +314,26 @@ function checkingServer(failed = false) {
       ref: null,
     })
     if (body.check?.location === undefined) {
-      return json(200, { result: result('rejected', 'location_needed'), state: null, pass: null })
+      return json(200, {
+        result: result('rejected', 'location_needed'),
+        state: null,
+        pass: null,
+        handle: null,
+      })
     }
     if (failed) {
-      return json(200, { result: result('rejected', 'location_failed'), state: null, pass: null })
+      return json(200, {
+        result: result('rejected', 'location_failed'),
+        state: null,
+        pass: null,
+        handle: null,
+      })
     }
     return json(200, {
       result: result('accepted', null),
       state: tableState(2, [], 'held'),
       pass: 'pass-1',
+      handle: null,
     })
   }
   return { bodies, headers, answer }
@@ -476,6 +490,7 @@ describe('the services client and the location check', () => {
               },
               state: null,
               pass: null,
+              handle: null,
             })
           : json(200, tableState(1)),
       { humanToken: async () => 'token-1' },
