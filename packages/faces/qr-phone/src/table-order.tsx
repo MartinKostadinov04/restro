@@ -9,6 +9,11 @@
 // host's answer; the table's sent orders follow with their state on every phone ("Sending…" only
 // on the phone that sent, "Being sent" on the others), "Not confirmed: show K7Q to your waiter",
 // and the "Show this to your waiter" panel any phone can open.
+//
+// Send's guards (#78, D117): a line the live overlay shows sold out stays on the order, marked,
+// and the button says "Send the other 4"; a round the table sent in the last 15 minutes asks
+// "Same as 4 minutes ago. Send another?" (closing itself after 60 s), and Send another is a new
+// action naming that sent order.
 
 import {
   type CommandResult,
@@ -20,7 +25,7 @@ import {
   type ViewItem,
   type ViewModel,
 } from '@restro/shell'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 /** A command before its action id is made (one per kind, as the union says). */
 export type CommandDraft = GuestCommand extends infer C
@@ -74,8 +79,15 @@ export function useOrderCommands(
       }
       if (result.status === 'rejected') {
         const code = result.code ?? null
-        // The location panel answers these itself (the consent screen, the failed check).
-        if (code === 'location_needed' || code === 'location_failed') return result
+        // The location panel answers these itself (the consent screen, the failed check), and the
+        // order panel the duplicate check.
+        if (
+          code === 'location_needed' ||
+          code === 'location_failed' ||
+          code === 'duplicate_order'
+        ) {
+          return result
+        }
         const named =
           code === 'item_unavailable' && result.subjectId != null
             ? items?.get(result.subjectId)?.name.text
@@ -178,6 +190,44 @@ export function SentOrders({
   )
 }
 
+/** How long the duplicate check stays open (D117: "auto-closes after 60 s"). */
+export const DUPLICATE_ASK_SECONDS = 60
+
+/** Whole minutes since the table sent `sentOrderId`, or null when this phone doesn't see it. */
+export function minutesSinceSent(
+  sentOrders: readonly SentOrderView[],
+  sentOrderId: string,
+  now: number,
+): number | null {
+  const sent = sentOrders.find((order) => order.id === sentOrderId)
+  return sent === undefined ? null : Math.max(0, Math.floor((now - sent.sentAt) / 60_000))
+}
+
+/** The duplicate check: "Same as 4 minutes ago. Send another?" with Send another and Cancel. */
+export function DuplicateCheck({
+  minutes,
+  strings,
+  onSend,
+  onCancel,
+}: {
+  readonly minutes: number | null
+  readonly strings: ServiceStrings
+  readonly onSend: () => void
+  readonly onCancel: () => void
+}) {
+  return (
+    <div className="rq-ask" role="alertdialog" aria-modal="false" data-duplicate-check="">
+      <p>{minutes === null ? strings.refusals.duplicate_order : strings.duplicateAsk(minutes)}</p>
+      <button type="button" onClick={onSend}>
+        {strings.sendAnother}
+      </button>{' '}
+      <button type="button" onClick={onCancel}>
+        {strings.duplicateCancel}
+      </button>
+    </div>
+  )
+}
+
 /** The order panel. */
 export function OrderPanel({
   view,
@@ -189,22 +239,36 @@ export function OrderPanel({
   readonly view: ViewModel
   readonly services: ServiceBinding | undefined
   readonly strings: ServiceStrings
-  readonly send: (command: CommandDraft) => unknown
+  readonly send: (command: CommandDraft) => Promise<CommandResult | null>
   readonly notice: string | null
 }) {
   const items = useMemo(() => itemsById(view), [view])
   const [sending, setSending] = useState(false)
+  const [asked, setAsked] = useState<{
+    readonly minutes: number | null
+    readonly of: string
+  } | null>(null)
+  useEffect(() => {
+    if (asked === null) return
+    const timer = setTimeout(() => setAsked(null), DUPLICATE_ASK_SECONDS * 1000)
+    return () => clearTimeout(timer)
+  }, [asked])
   const order = services?.state.order ?? null
   const ordering = services?.state.ordering?.state ?? 'on'
   const nameOf = (itemId: string) => items.get(itemId)?.name.text ?? strings.otherItem
   const lines = order?.lines ?? []
-  // A Send takes the lines on the bill that no payment holds and the server already has.
-  const sendable = lines.filter((line) => line.mode === 'on_bill' && !line.held && !line.pending)
+  const soldOut = (itemId: string) => items.get(itemId)?.state.code === 'sold_out'
+  // A Send takes the lines on the bill that no payment holds and the server already has, and
+  // leaves the sold-out ones on the order.
+  const live = lines.filter((line) => line.mode === 'on_bill' && !line.held && !line.pending)
+  const sendable = live.filter((line) => !soldOut(line.itemId))
+  const keptBack = live.length > sendable.length
   const count = sendable.reduce((sum, line) => sum + line.qty, 0)
-  const sendOrder = async () => {
+  const sendOrder = async (confirmDuplicateOf?: string) => {
+    setAsked(null)
     setSending(true)
     try {
-      await send({
+      const result = await send({
         kind: 'order.send',
         lines: sendable.map((line) => ({
           itemId: line.itemId,
@@ -212,7 +276,15 @@ export function OrderPanel({
           qty: line.qty,
           note: line.note,
         })),
+        ...(confirmDuplicateOf === undefined ? {} : { confirmDuplicateOf }),
       })
+      if (result?.code === 'duplicate_order' && result.subjectId != null) {
+        const sentOrders = services?.state.sentOrders ?? []
+        setAsked({
+          of: result.subjectId,
+          minutes: minutesSinceSent(sentOrders, result.subjectId, Date.now()),
+        })
+      }
     } finally {
       setSending(false)
     }
@@ -247,9 +319,13 @@ export function OrderPanel({
             data-item-id={line.itemId}
             data-qty={line.qty}
             data-pending={line.pending ? '' : undefined}
+            data-sold-out={soldOut(line.itemId) ? '' : undefined}
           >
             <span className="rq-order-name">{nameOf(line.itemId)}</span>{' '}
             <span className="rq-order-qty">× {line.qty}</span>
+            {soldOut(line.itemId) ? (
+              <span className="rq-order-hint"> {strings.lineSoldOut}</span>
+            ) : null}
             {line.pending ? <span className="rq-order-hint"> {strings.saving}</span> : null}
             {line.mode === 'pay_first' ? (
               <p className="rq-note">{strings.orderFromWaiter}</p>
@@ -312,7 +388,14 @@ export function OrderPanel({
           </button>
         </div>
       ) : null}
-      {count > 0 && ordering === 'on' ? (
+      {asked !== null ? (
+        <DuplicateCheck
+          minutes={asked.minutes}
+          strings={strings}
+          onSend={() => void sendOrder(asked.of)}
+          onCancel={() => setAsked(null)}
+        />
+      ) : count > 0 && ordering === 'on' ? (
         <button
           type="button"
           className="rq-send"
@@ -320,7 +403,11 @@ export function OrderPanel({
           disabled={sending}
           onClick={() => void sendOrder()}
         >
-          {sending ? strings.sendingNow : strings.sendItems(count)}
+          {sending
+            ? strings.sendingNow
+            : keptBack
+              ? strings.sendOthers(count)
+              : strings.sendItems(count)}
         </button>
       ) : null}
       <SentOrders services={services} strings={strings} nameOf={nameOf} />

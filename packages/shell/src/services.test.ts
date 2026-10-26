@@ -76,6 +76,12 @@ describe('GuestCommandSchema', () => {
     expect(ok({ kind: 'order.restore', actionId: uuid(1), setAsideAt: -1 })).toBe(false)
   })
 
+  it('takes a Send again only naming a sent order (#78: "Send another")', () => {
+    expect(ok(order({ confirmDuplicateOf: `so_${'0'.repeat(21)}1` }))).toBe(true)
+    expect(ok(order({ confirmDuplicateOf: nd(1) }))).toBe(false)
+    expect(ok(order({ confirmDuplicateOf: '' }))).toBe(false)
+  })
+
   it('accepts a valid command of every kind', () => {
     for (const command of VALID) {
       const result = GuestCommandSchema.safeParse(command)

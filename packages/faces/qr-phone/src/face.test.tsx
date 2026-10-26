@@ -2,6 +2,7 @@ import {
   buildViewModel,
   EMPTY_SERVICE_STATE,
   imageSlotsFor,
+  stringsFor,
   type ViewModel,
   validateManifest,
 } from '@restro/shell'
@@ -30,6 +31,7 @@ import {
   themeVariables,
 } from './model'
 import { QrPhoneNotice, QrPhoneSkeleton } from './notices'
+import { DuplicateCheck, minutesSinceSent } from './table-order'
 
 const render = (view: ViewModel, host?: ContractHost) =>
   renderToStaticMarkup(<QrPhoneFace view={view} languages={host?.languages} />)
@@ -430,6 +432,108 @@ describe('the shared order (#75)', () => {
     )
     expect(off).not.toContain('data-slot="menu.bag"')
     expect(off).not.toContain('data-slot="item.add"')
+  })
+})
+
+describe("Send's guards (#78)", () => {
+  const view = viewOf('features-on')
+  const items = view.sections.flatMap((section) => section.items)
+  const negroni = items[0]
+  const mojito = items[1]
+  if (negroni === undefined || mojito === undefined) throw new Error('the fixture has no items')
+  // The live overlay marks the Mojito sold out.
+  const soldOutView: ViewModel = {
+    ...view,
+    sections: view.sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) =>
+        item.id === mojito.id
+          ? { ...item, state: { ...item.state, code: 'sold_out' as const } }
+          : item,
+      ),
+    })),
+  }
+  const line = (
+    n: number,
+    itemId: ViewModel['sections'][number]['items'][number]['id'],
+    qty: number,
+  ) => ({
+    id: `ol_${'0'.repeat(21)}${n}` as const,
+    itemId,
+    optionIds: [],
+    qty,
+    note: '',
+    mode: 'on_bill' as const,
+    held: false,
+    pending: false,
+  })
+  const draw = (shown: ViewModel) => {
+    const services = {
+      state: {
+        ...EMPTY_SERVICE_STATE,
+        ordering: { state: 'on' as const },
+        order: {
+          lines: [line(1, negroni.id, 3), line(2, mojito.id, 1)],
+          removed: [],
+          earlier: null,
+        },
+      },
+      dispatch: () => Promise.reject(new Error('not in a static render')),
+    }
+    const html = withoutStyle(
+      renderToStaticMarkup(<QrPhoneFace view={shown} services={services} />),
+    )
+    return { html, doc: parseHtml(html) }
+  }
+
+  it('marks a sold-out line, keeps it on the order and offers "Send the other N"', () => {
+    const { html, doc } = draw(soldOutView)
+    const [marked] = withAttribute(doc, 'data-sold-out', '')
+    expect(marked === undefined ? '' : textOf(marked)).toContain('Sold out')
+    expect(withAttribute(doc, 'data-sold-out', '')).toHaveLength(1)
+    expect(html).toContain('Send the other 3')
+    expect(html).not.toContain('Send 4 items')
+  })
+
+  it('says "Send N items" when nothing is sold out', () => {
+    const { html, doc } = draw(view)
+    expect(withAttribute(doc, 'data-sold-out', '')).toHaveLength(0)
+    expect(html).toContain('Send 4 items')
+  })
+
+  it('asks "Same as 4 minutes ago. Send another?" with Send another and Cancel', () => {
+    const strings = stringsFor('en_US').services
+    const ask = (minutes: number | null) =>
+      renderToStaticMarkup(
+        <DuplicateCheck
+          minutes={minutes}
+          strings={strings}
+          onSend={() => {}}
+          onCancel={() => {}}
+        />,
+      )
+    expect(ask(4)).toContain('Same as 4 minutes ago. Send another?')
+    expect(ask(4)).toContain('Send another')
+    expect(ask(4)).toContain('Cancel')
+    expect(ask(0)).toContain('Same as a moment ago')
+    expect(ask(null)).toContain(strings.refusals.duplicate_order)
+  })
+
+  it('counts the minutes since the sent order the check names', () => {
+    const sentAt = 1_700_000_000_000
+    const sent = [
+      {
+        id: 'so_1',
+        ref: 'K7Q',
+        state: 'added' as const,
+        reason: null,
+        mine: true,
+        sentAt,
+        lines: [],
+      },
+    ]
+    expect(minutesSinceSent(sent as never, 'so_1', sentAt + 4 * 60_000 + 59_000)).toBe(4)
+    expect(minutesSinceSent(sent as never, 'so_2', sentAt)).toBeNull()
   })
 })
 

@@ -123,6 +123,8 @@ export type GuestCommand =
       readonly kind: 'order.send'
       readonly actionId: string
       readonly lines: readonly OrderLine[]
+      /** The sent order a duplicate check named, when the guest chose "Send another" (#78). */
+      readonly confirmDuplicateOf?: string
     }
   | {
       readonly kind: 'service.request'
@@ -218,6 +220,7 @@ export const GuestCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('order.send'),
     actionId: ActionIdSchema,
     lines: z.array(OrderLineSchema).min(1).max(SERVICE_LIMITS.lines),
+    confirmDuplicateOf: idSchema('so').optional(),
   }),
   z.strictObject({
     kind: z.literal('service.request'),

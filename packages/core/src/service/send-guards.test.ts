@@ -15,6 +15,8 @@ import { hashTableCode } from '../qr'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { applyService } from './apply-service'
 import type { ServiceContext } from './context'
+import { guestResult } from './guest'
+import { refused } from './results'
 import { GUARD_TRIPPED_CAUSE, ORDER_PACE_ALERT, roundKey } from './send-guards'
 import type { SendMenu } from './send-menu'
 
@@ -42,6 +44,15 @@ describe('roundKey', () => {
     expect(roundKey([{ itemId: gin, optionIds: [lime], qty: 1 }])).not.toBe(
       roundKey([{ itemId: gin, optionIds: [], qty: 1 }]),
     )
+  })
+})
+
+describe("a duplicate Send's answer to the phone", () => {
+  it('names the sent order it repeats, so the phone can ask "Same as 4 minutes ago"', () => {
+    const duplicateOf = newId('so')
+    expect(
+      guestResult(refused('a1', 'duplicate_order', { duplicateOf, minutesAgo: 4 })),
+    ).toMatchObject({ status: 'rejected', code: 'duplicate_order', subjectId: duplicateOf })
   })
 })
 

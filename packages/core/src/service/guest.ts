@@ -643,8 +643,13 @@ function guestContext(
 
 /** The answer a phone gets for a service result. */
 export function guestResult(result: ServiceResult): GuestCommandResult {
-  // The line an add made, the sent order a Send made, or the item a refused Send names.
-  const subject = result.details.lineId ?? result.details.sentOrderId ?? result.details.itemId
+  // The line an add made, the sent order a Send made or repeats (#78), or the item a refused Send
+  // names.
+  const subject =
+    result.details.lineId ??
+    result.details.sentOrderId ??
+    result.details.duplicateOf ??
+    result.details.itemId
   return {
     actionId: result.actionId,
     status: result.status === 'accepted' ? 'accepted' : 'rejected',
