@@ -354,13 +354,22 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       ),
     )
     expect(withDeadline).toMatch(/locks_holder_deadline/)
-    for (const scope of ['order_slot', 'order_payment', 'bill_payment'] as const) {
+    for (const scope of ['order_slot'] as const) {
       const heldWithout = await databaseError(
         withTenantWrite(app, a.tenantId, (tx) =>
           tx.insert(locks).values({ ...base, scope, key: a.tableId, holder: a.paymentId }),
         ),
       )
       expect(heldWithout, scope).toMatch(/locks_holder_deadline/)
+    }
+    // Migration 0032: D112's payment leases are gone; a line is in one open payment instead.
+    for (const scope of ['order_payment', 'bill_payment']) {
+      const gone = await databaseError(
+        withTenantWrite(app, a.tenantId, (tx) =>
+          tx.insert(locks).values({ ...base, scope, key: a.tableId }),
+        ),
+      )
+      expect(gone, scope).toMatch(/locks_scope/)
     }
     // Nothing takes over a deadline-free hold: the take's condition never sees it expire.
     const { rows } = await owner.query(
@@ -464,5 +473,86 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       ),
     )
     expect(noRef).toMatch(/payment_accounts_connected_has_account/)
+  })
+
+  it('holds the form values only while the payment awaits the guest (migration 0032)', async () => {
+    const form = { clientSecret: 'secret_1' }
+    for (const state of ['requested', 'priced', 'held', 'cancelling'] as const) {
+      const message = await databaseError(
+        withTenantWrite(app, a.tenantId, (tx) =>
+          tx.insert(payments).values(paymentRow(a, { state, formValues: form })),
+        ),
+      )
+      expect(message, state).toMatch(/payments_form_values/)
+    }
+    const awaiting = paymentRow(a, { state: 'awaiting_guest', formValues: form })
+    await withTenantWrite(app, a.tenantId, (tx) => tx.insert(payments).values(awaiting))
+    // Leaving `awaiting_guest` without clearing them is refused by the database itself.
+    const kept = await databaseError(
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx.update(payments).set({ state: 'held' }).where(eq(payments.id, awaiting.id)),
+      ),
+    )
+    expect(kept).toMatch(/payments_form_values/)
+    const notObject = await databaseError(
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx.execute(
+          sql`update restro.payments set form_values = '"secret"'::jsonb where id = ${awaiting.id}`,
+        ),
+      ),
+    )
+    expect(notObject).toMatch(/payments_form_values/)
+  })
+
+  it('keeps a POS line in one open payment, and frees it when that payment settles (migration 0032)', async () => {
+    const line = (paymentId: string) => ({
+      tenantId: a.tenantId,
+      venueId: a.venueId,
+      paymentId,
+      position: 1,
+      posLineRef: 'line-open',
+      quantity: '1',
+      posAmountMinor: 500,
+      displayName: 'Beer',
+      ...PROVENANCE,
+    })
+    const first = paymentRow(a)
+    const second = paymentRow(a)
+    await withTenantWrite(app, a.tenantId, async (tx) => {
+      await tx.insert(payments).values([first, second])
+      await tx.insert(paymentLines).values(line(first.id))
+    })
+    const twice = await databaseError(
+      withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentLines).values(line(second.id))),
+    )
+    expect(twice).toMatch(/payment_lines_open_line_unique/)
+    // Another tenant's line with the same POS reference is its own.
+    await withTenantWrite(app, b.tenantId, async (tx) => {
+      const other = paymentRow(b)
+      await tx.insert(payments).values(other)
+      await tx
+        .insert(paymentLines)
+        .values({ ...line(other.id), tenantId: b.tenantId, venueId: b.venueId })
+    })
+    // Settling the first payment closes its lines in the same statement, with its provenance.
+    await withTenantWrite(app, a.tenantId, (tx) =>
+      tx
+        .update(payments)
+        .set({
+          state: 'released',
+          settledAt: sql`now()`,
+          retainUntil: sql`now() + interval '18 months'`,
+          source: 'guest',
+          actor: 'guest',
+          jobId: 'req_settle',
+        })
+        .where(eq(payments.id, first.id)),
+    )
+    const { rows } = await owner.query(
+      'select open, source, actor, job_id from restro.payment_lines where payment_id = $1',
+      [first.id],
+    )
+    expect(rows).toEqual([{ open: false, source: 'guest', actor: 'guest', job_id: 'req_settle' }])
+    await withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentLines).values(line(second.id)))
   })
 })

@@ -13,6 +13,8 @@
 // when it is not). The Send jobs (#77) add guests' rounds to a POS as a waiter would; WORKER_SEND
 // switches them (unset, they follow WORKER_POS_SYNC), and they need no sealing key. The connection
 // probe (#79) runs wherever a POS is read or written to: a breaker that pauses must probe to lift.
+// The payment jobs (#110) read the POS too, so they run beside the floor reading when the worker
+// has a payment provider.
 import { randomBytes } from 'node:crypto'
 
 import { createAssetStore, createPublishStore } from '@restro/assets'
@@ -25,6 +27,7 @@ import { createConnectionJobs } from './connection'
 import { createFloorJobs } from './floor'
 import { createSendJobs } from './order-send'
 import { orderTidyTick } from './order-tidy'
+import { createPaymentJobs } from './payments'
 import { createProviderNoticesJob } from './provider-notices'
 import { createPublishJobs } from './publish'
 import { createPurgeJobs } from './purge'
@@ -44,7 +47,8 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const publishStore = await createPublishStore(config.publish)
   const publishJobs = createPublishJobs({ publishStore, assetStore })
   // The provider notices (#108) need no POS and no sealing key: every worker handles them.
-  const noticeJobs = [createProviderNoticesJob({ providers: paymentProviders() })]
+  const providers = paymentProviders()
+  const noticeJobs = [createProviderNoticesJob({ providers })]
   // The floor reading (#71) needs no credentials (the simulated POS has none) and no sealing keys,
   // so every worker runs it unless WORKER_POS_SYNC is off (it is a POS read); a `sim` instance is
   // refused in production inside it.
@@ -57,6 +61,8 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const floorJobs = [
     ...createFloorJobs({ sim: config.sim }),
     ...(billIdKey === null ? [] : createReadingJobs({ sim: config.sim, billIdKey })),
+    // Paying (#110) prices from a fresh POS reading and holds through a provider.
+    ...(providers.size === 0 ? [] : createPaymentJobs({ sim: config.sim, providers })),
   ]
   // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a
   // `sim` instance is refused in production inside it.

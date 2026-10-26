@@ -79,8 +79,8 @@ export const ServerEnvSchema = z.object({
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
   /**
-   * Turnstile's secret key (#76, D119): siteverify at an on-the-bill Send. Without it every Send
-   * fails the check (fail closed). Empty counts as missing.
+   * Turnstile's secret key (#76, D119): siteverify at an on-the-bill Send and at a Pay (#110).
+   * Without it every Send and Pay fails the check (fail closed). Empty counts as missing.
    */
   TURNSTILE_SECRET_KEY: z
     .string()

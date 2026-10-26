@@ -105,12 +105,16 @@ async function removeStaleSchedules(
 
 /**
  * Creates every job's queues, starts its worker and (re)writes its schedule. Idempotent: it
- * runs on every start. pg-boss must be started (its tables exist).
+ * runs on every start. pg-boss must be started (its tables exist). With `schedules: false` (a
+ * worker beside the deployment's own on the same queue, like the e2e pay harness) it writes no
+ * schedule and removes none: the schedules are the full worker's, and a partial list would
+ * remove every tick it doesn't carry.
  */
 export async function registerJobs(
   boss: PgBoss,
   jobs: readonly JobDefinition[],
   context: WorkerContext,
+  { schedules = true }: { readonly schedules?: boolean } = {},
 ): Promise<void> {
   assertValidJobs(jobs)
   for (const job of jobs) {
@@ -119,13 +123,13 @@ export async function registerJobs(
     await ensureQueue(boss, deadLetter, { retentionSeconds: DEAD_LETTER_RETENTION_SECONDS })
     await ensureQueue(boss, job.name, { ...job.options.queue, deadLetter }, job.options.policy)
     await boss.work(job.name, job.options.work ?? {}, guarded(job, context))
-    if (job.schedule) {
+    if (schedules && job.schedule) {
       await boss.schedule(job.name, job.schedule.cron, null, { tz: job.schedule.tz ?? 'UTC' })
     }
     context.log.info(
-      { job: job.name, schedule: job.schedule?.cron ?? null, deadLetter },
+      { job: job.name, schedule: schedules ? (job.schedule?.cron ?? null) : null, deadLetter },
       'job registered',
     )
   }
-  await removeStaleSchedules(boss, jobs, context)
+  if (schedules) await removeStaleSchedules(boss, jobs, context)
 }

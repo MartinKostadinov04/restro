@@ -22,6 +22,7 @@ const SimPayEventSchema = z.object({
 
 /** The platform's kind of a simulator event type; anything else is `other`. */
 export function simPayNoticeKind(type: string): ProviderNoticeKind {
+  if (type === 'payment.held' || type === 'payment.failed') return 'payment'
   if (type === 'refund.made') return 'refund'
   if (type === 'dispute.opened' || type === 'dispute.closed') return 'dispute'
   return 'other'

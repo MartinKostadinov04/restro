@@ -29,18 +29,27 @@
 // order's next change runs `order.tidy` first, so every phone sees it at its next poll (design §6,
 // `next_change_at`). The web never calls a POS: opening the bill queues a fresh reading for the
 // worker when the shared one is older than 15 s (`wantsFreshReading`, #74).
+//
+// Paying (#110, D127): `pay.start` takes the phone's limits (one Pay per 15 s, five per 10 minutes,
+// one open payment), then Turnstile, then the engine; its answer carries a fresh payment handle,
+// of which only the sha-256 goes further. `pay.returned` and `pay.cancel` name the payment by that
+// handle. Each queues the worker's next step. `guestPayment` answers the paying phone alone: the
+// form's values, the one provider value a guest answer carries, are in no other answer (the walk).
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
 import {
+  billReadings,
   type DbPool,
   guestTableByCodeHash,
+  paymentLines,
+  payments,
   sentOrders,
   sittings,
   venues,
   withTenant,
 } from '@restro/db'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
 import type { LocalizedText } from '../locales'
@@ -54,7 +63,7 @@ import { type OrderingSettings, readOrderingSettings } from '../ordering-setting
 import { hashTableCode } from '../qr'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
 import { applyService } from './apply-service'
-import { forbiddenPaths, wantsFreshReading } from './bill'
+import { billBackendValues, forbiddenPaths, parseStoredBills, wantsFreshReading } from './bill'
 import type { ServiceContext } from './context'
 import { GuestLimiter, type GuestLimitName, type LimitAnswer } from './guest-limits'
 import {
@@ -63,6 +72,7 @@ import {
   passHolds,
   sealLocationPass,
 } from './location-pass'
+import { isFinalPaymentState } from './pay'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
@@ -195,6 +205,8 @@ export interface GuestTableState {
         readonly name: LocalizedText | null
         readonly quantity: string
         readonly amountMinor: number
+        /** In a payment that isn't final (D127 2.4): no payer, amount or timer. */
+        readonly beingPaid: boolean
       }[]
     }[]
   } | null
@@ -512,6 +524,7 @@ export function projectGuestState(
                 name: line.name,
                 quantity: line.quantity,
                 amountMinor: line.amountMinor,
+                beingPaid: line.beingPaid,
               })),
             })),
           },
@@ -653,13 +666,14 @@ function guestContext(
 
 /** The answer a phone gets for a service result. */
 export function guestResult(result: ServiceResult): GuestCommandResult {
-  // The line an add made, the sent order a Send made or repeats (#78), or the item a refused Send
-  // names.
+  // The line an add made, the sent order a Send made or repeats (#78), the item a refused Send
+  // names, or the payment a Pay made.
   const subject =
     result.details.lineId ??
     result.details.sentOrderId ??
     result.details.duplicateOf ??
-    result.details.itemId
+    result.details.itemId ??
+    result.details.paymentId
   return {
     actionId: result.actionId,
     status: result.status === 'accepted' ? 'accepted' : 'rejected',
@@ -672,8 +686,28 @@ export function guestResult(result: ServiceResult): GuestCommandResult {
 /** What Turnstile's siteverify said of a token (the web's call; design §5). */
 export type HumanCheckVerdict = 'passed' | 'failed' | 'unavailable'
 
+/** What a token was made for: a Send, or a Pay (each widget names its own action). */
+export type HumanCheckUse = 'send' | 'pay'
+
 /** Calls siteverify for `token` with `actionId` as its idempotency key. */
-export type HumanCheck = (token: string, actionId: string) => Promise<HumanCheckVerdict>
+export type HumanCheck = (
+  token: string,
+  actionId: string,
+  use: HumanCheckUse,
+) => Promise<HumanCheckVerdict>
+
+/** A payment's id with its venue: what the worker's payment jobs name. */
+export interface PaymentTarget {
+  readonly tenantId: string
+  readonly venueId: string
+  readonly paymentId: string
+}
+
+/**
+ * Queues the worker's next step of a payment (#110): `prepare` prices it and makes the hold, or
+ * cancels it; `check` reads the hold from the provider. Errors are the caller's.
+ */
+export type QueuePayment = (target: PaymentTarget, job: 'prepare' | 'check') => Promise<void>
 
 /** A guard that stopped a command, or Turnstile let through while down: counted, never the position. */
 export interface GuardEvent {
@@ -714,6 +748,10 @@ export interface GuestActInput {
   readonly passKey?: string | null
   /** Turnstile's siteverify; without it a Send is refused `human_check` (fail closed). */
   readonly humanCheck?: HumanCheck
+  /** The payment handle from `X-Restro-Payment` (`pay.returned`, `pay.cancel`); never logged. */
+  readonly handle?: string
+  /** Queues the worker's next step of a payment; without it the phone's poll queues it. */
+  readonly queuePayment?: QueuePayment
   /** Counts a guard's trip (the web logs it with the venue and the table, nothing else). */
   readonly onGuard?: (event: GuardEvent) => void
   readonly jobId?: string
@@ -736,6 +774,8 @@ export interface GuestActed {
   readonly pass: string | null
   /** Seconds the phone should wait before it tries again (a rate trip), or null. */
   readonly retryAfter: number | null
+  /** The payment handle, only in the answer to a `pay.start` that made or repeats a payment. */
+  readonly handle: string | null
 }
 
 /**
@@ -753,6 +793,9 @@ const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.send',
   'waiter.call',
 ])
+
+/** The guest's pay commands (#110): guarded here, then the engine. Never located (D122 §4). */
+const PAY_TYPES: ReadonlySet<string> = new Set(['pay.start', 'pay.returned', 'pay.cancel'])
 
 /** The commands this module answers without the engine: "Allow location". */
 const GUARDED_HERE: ReadonlySet<string> = new Set(['location.check'])
@@ -813,6 +856,7 @@ export async function guestAct(
     state: null,
     pass: null,
     retryAfter: null,
+    handle: null,
   })
   const count = (kind: GuardEvent['kind']) =>
     input.onGuard?.({ kind, venueId: target.venueId, tableId: target.tableId })
@@ -822,6 +866,7 @@ export async function guestAct(
     count('code_limited')
     return limited(codeLimit)
   }
+  if (PAY_TYPES.has(type)) return payAct(pool, input, target, count)
   if (!GUEST_COMMAND_TYPES.has(type) && !GUARDED_HERE.has(type)) return reject('not_built')
 
   // A Send's first answer comes before every guard, Turnstile's siteverify above all (its token
@@ -884,7 +929,7 @@ export async function guestAct(
     const verdict =
       token === undefined || input.humanCheck === undefined
         ? 'failed'
-        : await input.humanCheck(token, actionId)
+        : await input.humanCheck(token, actionId, 'send')
     if (verdict === 'failed') {
       count('human_check_failed')
       return { ...reject('human_check'), pass }
@@ -900,6 +945,7 @@ export async function guestAct(
         state: null,
         pass: null,
         retryAfter: null,
+        handle: null,
       }
     }
     if (claims === null) return reject('table_not_open')
@@ -923,6 +969,7 @@ export async function guestAct(
           ),
       pass: holds ? pass : null,
       retryAfter: null,
+      handle: null,
     }
   }
 
@@ -975,5 +1022,321 @@ export async function guestAct(
     state: projected,
     pass: holds ? pass : null,
     retryAfter: result.status === 'refused' && result.code === 'rate_limited' ? 10 : null,
+    handle: null,
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Paying (#110)
+
+/** The sha-256 of a payment handle, hex: all that is stored of it (D127 2.2). */
+export function hashPaymentHandle(handle: string): string {
+  return createHash('sha256').update(handle, 'utf8').digest('hex')
+}
+
+/** A payment handle's shape: 16 random bytes, base64url (the shell's `PAYMENT_HANDLE_PATTERN`). */
+const HANDLE_PATTERN = /^[A-Za-z0-9_-]{22}$/
+
+/** How long the paying phone waits between polls of its payment. */
+const PAYMENT_POLL_MS = 2_000
+
+/** The payment a `pay.start` with this action id made at this table, or null. */
+async function paymentByAction(
+  pool: DbPool,
+  target: CodeTarget,
+  actionId: string,
+): Promise<{ readonly id: string } | null> {
+  return withTenant(pool, target.tenantId, async (tx) => {
+    const [made] = await tx
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(eq(payments.actionId, actionId), eq(payments.tableId, target.tableId)))
+    return made ?? null
+  })
+}
+
+/** True when the payment is final (or gone): the phone may start another. */
+async function paymentEnded(pool: DbPool, target: CodeTarget, paymentId: string): Promise<boolean> {
+  return withTenant(pool, target.tenantId, async (tx) => {
+    const [found] = await tx
+      .select({ state: payments.state })
+      .from(payments)
+      .where(eq(payments.id, paymentId))
+    return found === undefined || isFinalPaymentState(found.state)
+  })
+}
+
+/** The tip a `pay.start` names, in the engine's words: it starts at zero (D127). */
+function tipOfCommand(command: GuestActInput['command']) {
+  const { tipMinor, tipPercent } = command
+  if (typeof tipMinor === 'number' && tipMinor > 0) return { kind: 'amount', minor: tipMinor }
+  if (typeof tipPercent === 'number') return { kind: 'percent', percent: tipPercent }
+  return { kind: 'none' }
+}
+
+/** A pay command: the phone's guards, the engine, and the worker's next step. */
+async function payAct(
+  pool: DbPool,
+  input: GuestActInput,
+  target: CodeTarget,
+  count: (kind: GuardEvent['kind']) => void,
+): Promise<GuestActed | GuestStateless> {
+  const { type, actionId } = input.command
+  const reject = (code: string): GuestActed => ({
+    ok: true,
+    result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
+    state: null,
+    pass: null,
+    retryAfter: null,
+    handle: null,
+  })
+  const limits = input.limiter ?? limiter
+  const subject = `${target.hash}:${input.phone}`
+  let handle: string | null = null
+  let command: { readonly type: string; readonly actionId: string } & Record<string, unknown>
+
+  if (type === 'pay.start') {
+    // A repeat of the same tap (its answer was lost) skips the guards: its Turnstile token is
+    // spent, and the payment is already counted. The engine gives it a fresh handle.
+    const repeat = await paymentByAction(pool, target, actionId)
+    if (repeat === null) {
+      const phoneLimit = limits.take(subject, ['payGap', 'pays'], Date.now())
+      if (!phoneLimit.ok) {
+        count('phone_limited')
+        return limited(phoneLimit)
+      }
+      const open = limits.openPayment(subject)
+      if (open !== null && !(await paymentEnded(pool, target, open))) return reject('rate_limited')
+      // Turnstile at every Pay (D127 §Limits): fail closed, open only when siteverify is down.
+      const token = input.check?.humanToken
+      const verdict =
+        token === undefined || input.humanCheck === undefined
+          ? 'failed'
+          : await input.humanCheck(token, actionId, 'pay')
+      if (verdict === 'failed') {
+        count('human_check_failed')
+        return reject('turnstile')
+      }
+      if (verdict === 'unavailable') count('human_check_open')
+    }
+    handle = randomBytes(16).toString('base64url')
+    command = {
+      type,
+      actionId,
+      tableId: target.tableId,
+      ageMs: input.ageMs,
+      handleHash: hashPaymentHandle(handle),
+      pick: input.command.pick,
+      seen: input.command.seen,
+      tip: tipOfCommand(input.command),
+    }
+  } else {
+    if (input.handle === undefined || !HANDLE_PATTERN.test(input.handle)) {
+      return reject('unknown_payment')
+    }
+    command = {
+      type,
+      actionId,
+      tableId: target.tableId,
+      ageMs: input.ageMs,
+      handleHash: hashPaymentHandle(input.handle),
+    }
+  }
+
+  const { result, state } = await applyService(
+    pool,
+    command,
+    guestContext(target, input.jobId, null),
+  )
+  if (result.status === 'refused' && result.code === 'code_retired') {
+    return { ok: false, code: 'code_retired' }
+  }
+  const paymentId = result.details.paymentId
+  if (result.status === 'accepted' && typeof paymentId === 'string') {
+    const paid = { tenantId: target.tenantId, venueId: target.venueId, paymentId }
+    const next = result.details.state
+    if (type === 'pay.start') limits.setOpenPayment(subject, paymentId)
+    // The worker takes it from here; a job that can't be queued is queued again by the phone's
+    // poll of its payment (`guestPayment`).
+    const job =
+      type === 'pay.start' || next === 'cancelling'
+        ? 'prepare'
+        : next === 'awaiting_guest'
+          ? 'check'
+          : null
+    if (job !== null) await input.queuePayment?.(paid, job)
+  }
+
+  // Paying is never located: the state is drawn as the phone's pass allows (D122 §4).
+  const guard = await readGuard(pool, target)
+  if (guard === null) return { ok: false, code: 'code_retired' }
+  const now = Date.now()
+  const claims = guard.settings.locationCheck
+    ? heldClaims(input.pass, input.passKey, target, guard.sittingId, now)
+    : null
+  const holds =
+    claims !== null && (state === null || state.unchanged || state.sitting?.id === claims.sittingId)
+  const projected =
+    state === null || state.unchanged
+      ? null
+      : walked(
+          projectGuestState(state, input.view, locationOf(guard, holds ? claims : null, now)),
+          state,
+        )
+  return {
+    ok: true,
+    result: guestResult(result),
+    state: projected,
+    pass: null,
+    retryAfter: null,
+    handle: result.status === 'accepted' ? handle : null,
+  }
+}
+
+/** What the paying phone sees of its payment (the shell's `GuestPaymentAnswer`). */
+export interface GuestPaymentView {
+  readonly id: string
+  readonly state: string
+  readonly reason: string | null
+  readonly currency: string
+  readonly amountMinor: number | null
+  readonly tipMinor: number
+  readonly lines: readonly {
+    readonly name: string
+    readonly quantity: string
+    readonly amountMinor: number
+  }[]
+  /** The card form: only while the payment awaits the guest. */
+  readonly form: {
+    readonly provider: string
+    readonly values: Readonly<Record<string, string>>
+    readonly confirmSeconds: number
+  } | null
+  readonly next: number
+}
+
+/** What `guestPayment` needs from its caller. */
+export interface GuestPaymentInput {
+  /** The table code from `Authorization: Table <code>`. */
+  readonly code: string
+  /** The payment handle from `X-Restro-Payment`: never logged, never stored. */
+  readonly handle: string
+  readonly limiter?: GuestLimiter
+  /** Queues the worker's next step when the payment waits on it (recovery after a lost job). */
+  readonly queuePayment?: QueuePayment
+}
+
+/** The states the worker moves on: a poll that finds one queues the step again. */
+const WORKER_STEP: Readonly<Record<string, 'prepare' | 'check'>> = {
+  requested: 'prepare',
+  priced: 'prepare',
+  cancelling: 'prepare',
+}
+
+/** A decimal quantity as the bill shows it: "2.000000" is "2", "0.500000" is "0.5". */
+function shownQuantity(quantity: string): string {
+  return quantity.includes('.') ? quantity.replace(/\.?0+$/, '') : quantity
+}
+
+/**
+ * Reads the paying phone's own payment (`GET /api/guest/payment`, #110). The handle names it, and
+ * the table's code must still lead to its table. The answer is walked against every backend value
+ * of the table's bill and the payment; the form's values are the one provider value it carries.
+ */
+export async function guestPayment(
+  pool: DbPool,
+  input: GuestPaymentInput,
+): Promise<
+  | { readonly ok: true; readonly answer: GuestPaymentView }
+  | GuestStateless
+  | { readonly ok: false; readonly code: 'unknown_payment' }
+> {
+  const target = await targetOf(pool, input.code)
+  if (target === null) return { ok: false, code: 'code_retired' }
+  const codeLimit = (input.limiter ?? limiter).take(target.hash, ['codeRequests'], Date.now())
+  if (!codeLimit.ok) return limited(codeLimit)
+  if (!HANDLE_PATTERN.test(input.handle)) return { ok: false, code: 'unknown_payment' }
+  const handleHash = hashPaymentHandle(input.handle)
+
+  const found = await withTenant(pool, target.tenantId, async (tx) => {
+    const [payment] = await tx
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.handleHash, handleHash),
+          eq(payments.tableId, target.tableId),
+          eq(payments.venueId, target.venueId),
+        ),
+      )
+    if (payment === undefined) return null
+    const lines = await tx
+      .select({
+        ref: paymentLines.posLineRef,
+        name: paymentLines.displayName,
+        quantity: paymentLines.quantity,
+        amountMinor: paymentLines.posAmountMinor,
+      })
+      .from(paymentLines)
+      .where(eq(paymentLines.paymentId, payment.id))
+      .orderBy(asc(paymentLines.position))
+    const [reading] = await tx
+      .select({ bills: billReadings.bills })
+      .from(billReadings)
+      .where(eq(billReadings.tableId, target.tableId))
+    return { payment, lines, now: new Date(), bills: reading?.bills }
+  })
+  if (found === null) return { ok: false, code: 'unknown_payment' }
+  const { payment, lines } = found
+
+  const step = WORKER_STEP[payment.state]
+  const overdue =
+    payment.state === 'awaiting_guest' &&
+    payment.confirmBy !== null &&
+    payment.confirmBy.getTime() <= found.now.getTime()
+  const job = step ?? (overdue ? 'check' : null)
+  if (job !== null) {
+    await input.queuePayment?.(
+      { tenantId: target.tenantId, venueId: target.venueId, paymentId: payment.id },
+      job,
+    )
+  }
+
+  const values: Record<string, string> = {}
+  for (const [key, value] of Object.entries(payment.formValues ?? {})) {
+    if (typeof value === 'string') values[key] = value
+  }
+  const answer: GuestPaymentView = {
+    id: payment.id,
+    state: payment.state,
+    reason: payment.reason,
+    currency: payment.currency,
+    amountMinor: payment.amountMinor,
+    tipMinor: payment.tipMinor,
+    lines: lines.map((line) => ({
+      name: line.name,
+      quantity: shownQuantity(line.quantity),
+      amountMinor: line.amountMinor,
+    })),
+    form:
+      payment.state === 'awaiting_guest' && payment.formValues !== null
+        ? {
+            provider: payment.providerKind,
+            values,
+            confirmSeconds: seconds(
+              (payment.confirmBy?.getTime() ?? found.now.getTime()) - found.now.getTime(),
+            ),
+          }
+        : null,
+    next: PAYMENT_POLL_MS,
+  }
+  // Every value of the bill and the payment that is the backend's, the provider's reference and
+  // the form's values among them: none may appear outside the form (rule 3).
+  const backend = billBackendValues(parseStoredBills(found.bills))
+  for (const line of lines) if (line.ref !== null) backend.add(line.ref)
+  if (payment.providerPaymentRef !== null) backend.add(payment.providerPaymentRef)
+  for (const value of Object.values(values)) backend.add(value)
+  const paths = forbiddenPaths({ ...answer, form: null }, backend)
+  if (paths.length > 0) throw new ForbiddenValueError(paths)
+  return { ok: true, answer }
 }

@@ -145,6 +145,18 @@ export const JOB_NAMES = {
    * and the dispute (`payment.observe`). Not sent by anyone else.
    */
   providerNotices: 'provider-notices',
+  /**
+   * Take one payment forward from where it stands (#110; design §5.1): read the table fresh and
+   * price it, create the hold, release a cancelled one. Queued by `pay.start`, and again by the
+   * paying phone's poll while the payment waits for the worker. One per payment at a time.
+   */
+  paymentPrepare: 'payment-prepare',
+  /**
+   * Read one payment's hold back from its provider (#110): queued by `pay.returned`, a provider's
+   * `payment` notice, a cancel and the paying phone's poll past the confirm deadline. Takes the
+   * payment forward the same way as `payment-prepare`. One per payment at a time.
+   */
+  paymentCheck: 'payment-check',
 } as const
 
 /** One of the queue names. */
@@ -255,6 +267,10 @@ export type PublishTableTokensJob = z.output<typeof PublishTableTokensJobSchema>
 export const PublishOrganizationIndexJobSchema = z.strictObject({ tenantId })
 export type PublishOrganizationIndexJob = z.output<typeof PublishOrganizationIndexJobSchema>
 
+/** `payment-prepare` and `payment-check`: one payment (`py_`) of one venue. */
+export const PaymentJobSchema = z.strictObject({ tenantId, venueId, paymentId: idSchema('py') })
+export type PaymentJob = z.output<typeof PaymentJobSchema>
+
 /** `purge-venue`: one deleted venue, erased now. */
 export const PurgeVenueJobSchema = z.strictObject({ tenantId, venueId })
 export type PurgeVenueJob = z.output<typeof PurgeVenueJobSchema>
@@ -277,6 +293,8 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.publishTableTokens]: PublishTableTokensJobSchema,
   [JOB_NAMES.publishOrganizationIndex]: PublishOrganizationIndexJobSchema,
   [JOB_NAMES.purgeVenue]: PurgeVenueJobSchema,
+  [JOB_NAMES.paymentPrepare]: PaymentJobSchema,
+  [JOB_NAMES.paymentCheck]: PaymentJobSchema,
 } as const
 
 /** The jobs a producer may send (the ticks are only ever created by the scheduler). */
@@ -321,6 +339,10 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.purgeVenue,
   JOB_NAMES.orderSend,
   JOB_NAMES.connectionProbe,
+  // A payment's step: a send while one runs waits behind it, so a notice that comes during a check
+  // is read again after it (#110).
+  JOB_NAMES.paymentPrepare,
+  JOB_NAMES.paymentCheck,
 ])
 
 /**
@@ -358,6 +380,10 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
       return (data as PublishOrganizationIndexJob).tenantId
     case JOB_NAMES.purgeVenue:
       return (data as PurgeVenueJob).venueId
+    case JOB_NAMES.paymentPrepare:
+    case JOB_NAMES.paymentCheck:
+      // One per payment (#110).
+      return (data as PaymentJob).paymentId
     case JOB_NAMES.tableRead:
       // One reading job per table (#74): a second send while one is queued or running is dropped.
       return (data as TableReadJob).tableId

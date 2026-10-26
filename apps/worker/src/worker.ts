@@ -44,6 +44,11 @@ export interface StartWorkerOptions {
   readonly logger: Logger
   /** The jobs to run. Default: the list in jobs/index.ts. Tests pass their own. */
   readonly jobs?: readonly JobDefinition[]
+  /**
+   * False for a worker beside the deployment's own on the same queue (the e2e pay harness): it
+   * leaves the schedules alone (registry.ts). Default true.
+   */
+  readonly schedules?: boolean
   readonly now?: () => Date
   readonly version?: string
 }
@@ -140,7 +145,7 @@ export async function startWorker(
       status,
       queue: boss,
     }
-    await registerJobs(boss, jobs, context)
+    await registerJobs(boss, jobs, context, { schedules: options.schedules ?? true })
     if (jobs.some((job) => job.name === WORKER_HEARTBEAT_JOB)) {
       await boss.send(WORKER_HEARTBEAT_JOB, {})
     }

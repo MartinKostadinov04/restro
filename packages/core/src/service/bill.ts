@@ -196,6 +196,8 @@ export interface BillLineView {
   readonly quantity: string
   /** The POS's own line amount, signed: a discount or a free line as the POS gives it. */
   readonly amountMinor: number
+  /** The line is in a payment that isn't final (#110): no payer, amount or timer. */
+  readonly beingPaid: boolean
 }
 
 /** One POS bill as a phone sees it. */
@@ -227,6 +229,8 @@ export function billView(input: {
   readonly readAt: Date
   readonly complete: boolean
   readonly bills: readonly StoredBill[]
+  /** *Backend*: the POS lines in a payment that isn't final (`payment_lines.open`). */
+  readonly beingPaid?: ReadonlySet<string>
 }): BillView {
   const totalMinor = input.bills.reduce((sum, bill) => sum + bill.totalMinor, 0)
   const paidMinor = input.bills.reduce((sum, bill) => sum + bill.paidMinor, 0)
@@ -247,6 +251,7 @@ export function billView(input: {
         name: line.name,
         quantity: line.quantity,
         amountMinor: line.amountMinor,
+        beingPaid: input.beingPaid?.has(line.pos) ?? false,
       })),
     })),
   }

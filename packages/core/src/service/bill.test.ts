@@ -151,8 +151,10 @@ describe('storedBills and billView', () => {
     // Line "1" reads like a quantity shown anyway, and the till's text like our name.
     expect(forbidden.has('1')).toBe(false)
     expect(forbiddenPaths(view, forbidden)).toEqual([])
+    // `beingPaid` says only that a payment holds the line (#110): no payer, amount or timer.
     expect(Object.keys(view.bills[0]?.lines[0] ?? {}).sort()).toEqual([
       'amountMinor',
+      'beingPaid',
       'id',
       'name',
       'quantity',

@@ -167,7 +167,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
 
   /** Stores a notice as the route does; returns its event id. */
   async function notice(
-    kind: 'refund' | 'dispute' | 'other',
+    kind: 'refund' | 'dispute' | 'payment' | 'other',
     objectRef: string,
     options: { account?: string | null; providerKind?: string } = {},
   ): Promise<string> {
@@ -232,6 +232,46 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     expect(await stored(target.id)).toMatchObject({ refunded_minor: '1200' })
     // Nothing is handled twice.
     expect(await run()).toMatchObject({ recorded: 0, unchanged: 0 })
+  })
+
+  it("queues a guest payment's check for a payment notice, and leaves it waiting without a queue", async () => {
+    const target = await payment(false)
+    readings.set('pi_1', {
+      ...reading(target, 0),
+      status: 'held',
+      heldMinor: 2_000,
+      capturedMinor: 0,
+    })
+    const waiting = await notice('payment', 'pi_1')
+    expect(await run()).toMatchObject({ waiting: 1, queued: 0 })
+    expect(await handled(waiting)).toBe(false)
+
+    const sent: { name: string; data: object; options?: object }[] = []
+    const counts = await handleProviderNotices(
+      {
+        pool,
+        log,
+        now: () => clock,
+        jobId: 'jb-test',
+        queue: {
+          async send(name, data, options) {
+            sent.push({ name, data, ...(options === undefined ? {} : { options }) })
+            return 'job-1'
+          },
+        },
+      },
+      { providers },
+    )
+    expect(counts).toMatchObject({ queued: 1 })
+    expect(await handled(waiting)).toBe(true)
+    // The check reads the provider again itself: the notice's own reading records nothing.
+    expect(sent).toEqual([
+      {
+        name: 'payment-check',
+        data: { tenantId, venueId, paymentId: target.id },
+        options: { singletonKey: target.id },
+      },
+    ])
   })
 
   it('records a dispute opened and then lost', async () => {

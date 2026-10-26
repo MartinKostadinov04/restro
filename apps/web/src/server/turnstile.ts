@@ -1,5 +1,5 @@
-// Turnstile's server check (D119, D121; design §5; ticket #76): the web's `HumanCheck` for an
-// on-the-bill Send. Docs: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+// Turnstile's server check (D119, D121; design §5; tickets #76, #110): the web's `HumanCheck` for an
+// on-the-bill Send and for a Pay (D127 §Limits); each widget names its own action. Docs: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
 //
 //   POST https://challenges.cloudflare.com/turnstile/v0/siteverify
 //        secret, response (the token, at most 2048 characters), idempotency_key
@@ -11,7 +11,7 @@
 // its own `internal-error`) is it `unavailable`, which core lets through and counts.
 
 import type { HumanCheck, HumanCheckVerdict } from '@restro/core/service'
-import { TURNSTILE_SEND_ACTION } from '@restro/shell'
+import { TURNSTILE_PAY_ACTION, TURNSTILE_SEND_ACTION } from '@restro/shell'
 import { z } from 'zod'
 
 /** The address of siteverify. */
@@ -36,7 +36,7 @@ export function turnstileCheck(
   secret: string | undefined,
   fetcher: typeof fetch = fetch,
 ): HumanCheck {
-  return async (token, actionId): Promise<HumanCheckVerdict> => {
+  return async (token, actionId, use): Promise<HumanCheckVerdict> => {
     if (secret === undefined) return 'failed'
     let response: Response
     try {
@@ -56,14 +56,11 @@ export function turnstileCheck(
     const answer = parsed.data
     if (answer['error-codes'].includes('internal-error')) return 'unavailable'
     if (!answer.success) return 'failed'
-    // A token of a widget run for another action is not this Send's. Cloudflare's test secrets
-    // answer the action `test` or none at all (as the `1x…AA` secret does for the dummy token),
-    // which only they may.
-    if (isTestSecret(secret)) {
-      return [undefined, 'test', TURNSTILE_SEND_ACTION].includes(answer.action)
-        ? 'passed'
-        : 'failed'
-    }
-    return answer.action === TURNSTILE_SEND_ACTION ? 'passed' : 'failed'
+    // A token of a widget run for another action is not this Send's or Pay's. Cloudflare's test
+    // secrets answer the action `test` or none at all (the `1x…AA` secret for the dummy token, seen
+    // 2026-10-26), which only they may.
+    const action = use === 'pay' ? TURNSTILE_PAY_ACTION : TURNSTILE_SEND_ACTION
+    const expected = isTestSecret(secret) ? [undefined, 'test', action] : [action]
+    return expected.includes(answer.action) ? 'passed' : 'failed'
   }
 }

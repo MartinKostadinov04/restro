@@ -204,11 +204,12 @@ export type ProviderPayment = z.output<typeof ProviderPaymentSchema>
 
 /**
  * What a provider's notice is about, in the platform's words: the provider's web part maps its own
- * event types to these, so no provider event name picks platform behaviour. `other` has no
- * handler: the worker marks it handled and does nothing. The same words as
- * `provider_notices.kind` (`PROVIDER_NOTICE_KINDS` in `@restro/db`).
+ * event types to these, so no provider event name picks platform behaviour. `payment` is a change
+ * to a payment's hold (the guest paid, declined or the bank asked): the worker checks that
+ * payment (#110). `other` has no handler: the worker marks it handled and does nothing. The same
+ * words as `provider_notices.kind` (`PROVIDER_NOTICE_KINDS` in `@restro/db`).
  */
-export const PROVIDER_NOTICE_KINDS = ['refund', 'dispute', 'other'] as const
+export const PROVIDER_NOTICE_KINDS = ['payment', 'refund', 'dispute', 'other'] as const
 export type ProviderNoticeKind = (typeof PROVIDER_NOTICE_KINDS)[number]
 
 /**
@@ -230,9 +231,13 @@ export const ProviderNoticeSchema = z.strictObject({
 export type ProviderNotice = z.output<typeof ProviderNoticeSchema>
 
 /**
- * What the page's card form needs to mount (design §10): opaque to the platform, which stores
- * nothing of it and hands it to the paying phone only. A provider package fills it; the
- * platform never reads a key of it.
+ * What the page's card form needs to mount (design §10), e.g. a client secret: opaque to the
+ * platform, which never reads a key of it. A provider package fills it. It is stored only in
+ * `payments.form_values` and only while the payment is `awaiting_guest`: set in the step that
+ * enters that state, cleared (NULL) in the same update that leaves it, whatever the next state,
+ * and served only by `GET /api/guest/payment` to the phone holding that payment's handle. It is
+ * never written to `payment_steps`, events, the Log, a job's data or output, or a log line: the
+ * `createHold` step records the payment reference only (#110).
  */
 export const ProviderFormValuesSchema = z
   .record(z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/), z.string().min(1).max(2000))

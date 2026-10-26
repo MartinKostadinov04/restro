@@ -64,7 +64,8 @@ const repoRoot = join(srcRoot, '..', '..', '..')
  * the re-issue's code generation; #72: the staff side, i.e. people, roles, assignments and shared
  * devices, never `operators`; #73: the sittings; #74: the readings of a table's bill; #75: the
  * alert of a table's order rate trip, to Restro's admin team; #108: the provider's notices and a
- * payment's refund and dispute; #81: the waiter calls; #77: the sent orders and their notes).
+ * payment's refund and dispute; #81: the waiter calls; #77: the sent orders and their notes; #110:
+ * a payment's lines and its provider steps).
  */
 const SERVICE_WRITE_TARGETS: readonly string[] = [
   'sittings',
@@ -86,6 +87,10 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   // the payment's refund and dispute as read back.
   'providerNotices',
   'payments',
+  // #110: the pay commands write a payment's lines (greyed while it isn't final) and the steps
+  // recorded `attempting` before each provider call.
+  'paymentLines',
+  'paymentSteps',
 ]
 
 function sourceFiles(dir: string): string[] {
