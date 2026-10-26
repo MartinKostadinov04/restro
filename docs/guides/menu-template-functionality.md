@@ -70,9 +70,10 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### Call a waiter
 - **Shell key:** `callWaiter` (manifest `call_waiter`, slot `menu.call_waiter`); request kinds `waiter`, `bill`, `water`, `cutlery`, `terminal`, `other`
-- **Status:** drawn, platform parked
+- **Status:** drawn; the platform takes the call since #81 (the request kind and the note are not kept: see below)
 - **Drawn means:** a control that offers the request kinds the venue allowed, a note, the state of each request and a way to withdraw it.
-- **Where:** §5.5, §10.2, §10.3; D71, D72
+- **What the platform does (#81, D122 §4):** the host answers a `service.request` as one call for the table, whatever its kind and note: it keeps no text and no identity. It needs the table open for phones, not a location pass. A second tap while a call is open returns that call. The call appears in `state.requests` as one request (`kind: waiter`): `sent` while open, `done` when staff mark it Handled, and `rejected` when nobody answered in the venue's time (15 minutes by default), which the template words as "Ask your waiter". The host refuses `calls_off` where the venue has not switched the service on: the template draws the still card "Please order from your waiter" there, never a button. Withdrawing a call (`service.cancel`) is not built.
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D122 §4
 
 ### Confirm being at the table (the location check)
 - **Shell key:** none (host `services.state.location` and `services.location`)

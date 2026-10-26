@@ -42,6 +42,7 @@ function state(version = 1) {
     location: { state: 'held', passSeconds: 600, dayEndsInSeconds: 3_600, venueName: 'Club' },
     order: { lines: [], removed: [], earlier: null },
     sentOrders: [],
+    waiterCall: null,
     bill: null,
   }
 }

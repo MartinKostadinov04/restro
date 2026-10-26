@@ -105,6 +105,16 @@ export interface TableStateRead {
     readonly createdAt: Date
     readonly settledAt: Date | null
   }[]
+  /**
+   * The open sitting's latest waiter call (#81), open or ended; null when it has none. `endedAt` is
+   * when it was handled or lapsed. Never who handled it (rule 3).
+   */
+  readonly waiterCall: {
+    readonly id: string
+    readonly state: 'open' | 'done' | 'lapsed'
+    readonly calledAt: Date
+    readonly endedAt: Date | null
+  } | null
   /** Leases held on the table or its sitting, by the database's clock. */
   readonly leases: readonly LeaseView[]
   /** Active pauses of the table, its bar or the venue. */
@@ -268,6 +278,22 @@ export async function readTableState(
             .where(eq(sentOrders.sittingId, sitting.id))
             .orderBy(desc(sentOrders.createdAt))
 
+    const [call] =
+      sitting === undefined
+        ? []
+        : await tx
+            .select({
+              id: waiterCalls.id,
+              state: waiterCalls.state,
+              calledAt: waiterCalls.calledAt,
+              doneAt: waiterCalls.doneAt,
+              updatedAt: waiterCalls.updatedAt,
+            })
+            .from(waiterCalls)
+            .where(eq(waiterCalls.sittingId, sitting.id))
+            .orderBy(desc(waiterCalls.calledAt))
+            .limit(1)
+
     const leaseKeys = [table.id, ...(sitting === undefined ? [] : [sitting.id])]
     const leases = await tx
       .select({
@@ -330,6 +356,15 @@ export async function readTableState(
               idleExpiresAt: order.idleExpiresAt,
             },
       sentOrders: sent,
+      waiterCall:
+        call === undefined
+          ? null
+          : {
+              id: call.id,
+              state: call.state as 'open' | 'done' | 'lapsed',
+              calledAt: call.calledAt,
+              endedAt: call.state === 'open' ? null : (call.doneAt ?? call.updatedAt),
+            },
       leases: leases.flatMap((lease) =>
         lease.holder === null
           ? []

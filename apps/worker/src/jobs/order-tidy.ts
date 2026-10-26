@@ -2,7 +2,8 @@
 //
 //   order-tidy-tick  every minute: for each open table whose order nobody touched for the idle
 //                    time, runs `order.tidy` through `applyService`, which sets the order aside
-//                    as the table's earlier order ("Earlier order · Restore")
+//                    as the table's earlier order ("Earlier order · Restore"); the same tick
+//                    lapses the waiter calls nobody answered (./waiter-call-lapse.ts, #81)
 //
 // A phone's read of the table does the same before it answers, so a table being read never waits
 // for this tick; the tick covers the tables nobody reads, so the order is aside when a phone comes
@@ -25,6 +26,7 @@ import { and, eq, isNull, lte } from 'drizzle-orm'
 
 import type { Logger } from '../logger'
 import { defineJob, type JobDefinition } from './types'
+import { lapseWaiterCalls } from './waiter-call-lapse'
 
 /** One table whose order is due to be set aside. */
 export interface IdleOrder {
@@ -95,5 +97,7 @@ export const orderTidyTick: JobDefinition = defineJob({
   async handler(_jobs, context) {
     const tidied = await tidyIdleOrders(context.pool, context.now(), context.log)
     if (tidied > 0) context.log.info({ tidied }, 'idle orders set aside')
+    const lapsed = await lapseWaiterCalls(context.pool, context.now(), context.log)
+    if (lapsed > 0) context.log.info({ lapsed }, 'waiter calls lapsed')
   },
 })
