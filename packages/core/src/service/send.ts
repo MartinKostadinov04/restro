@@ -21,7 +21,7 @@
 import { randomInt } from 'node:crypto'
 
 import { pauses, sentOrderNotes, sentOrders, venueTables } from '@restro/db'
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 
 import { newId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
@@ -29,6 +29,7 @@ import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '..
 import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
+import { activePausesOfTable } from './pause-scope'
 import { accepted, refused, type ServiceResult } from './results'
 import {
   findDuplicate,
@@ -80,21 +81,19 @@ export interface SendCommand {
   readonly confirmDuplicateOf?: string | undefined
 }
 
-/** True when ordering at this table is paused: the table itself, its bar or the whole venue. */
+/**
+ * True when ordering at this table is paused: the table itself, its bar, the whole venue, or the
+ * POS connection the venue orders through (#79, `pause-scope.ts`).
+ */
 export async function orderingPaused(
   stx: ServiceTx,
   tableId: string,
   barId: string | null,
 ): Promise<boolean> {
-  const targets = [
-    and(eq(pauses.scope, 'table'), eq(pauses.targetId, tableId)),
-    and(eq(pauses.scope, 'venue'), eq(pauses.targetId, stx.venueId)),
-  ]
-  if (barId !== null) targets.push(and(eq(pauses.scope, 'bar'), eq(pauses.targetId, barId)))
   const [active] = await stx.tx
     .select({ id: pauses.id })
     .from(pauses)
-    .where(and(eq(pauses.venueId, stx.venueId), isNull(pauses.liftedAt), or(...targets)))
+    .where(activePausesOfTable({ id: tableId, venueId: stx.venueId, barId }))
     .limit(1)
   return active !== undefined
 }

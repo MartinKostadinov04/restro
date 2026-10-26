@@ -19,6 +19,14 @@ import { ORDER_EDIT_MAX_AGE_MS, ORDER_LIMITS } from '../table-order'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
+import {
+  liftOrdering,
+  pauseConnection,
+  pauseOrdering,
+  resumeTable,
+  sweepPauses,
+  transitionPause,
+} from './pauses'
 import { paymentObserve } from './payment-observe'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
@@ -246,23 +254,10 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: markPaymentTable,
   }),
-  'table.resume': staffOnTable('table.resume', 'tables.resume'), // #79
-  'ordering.pause': defineCommand({
-    // #79: all bars, or one.
-    schema: z.strictObject({ type: z.literal('ordering.pause'), barId: idSchema('br').nullable() }),
-    origins: ['staff'],
-    permission: 'ordering.pause',
-    idempotency: 'by_nature',
-    handle: null,
-  }),
-  'ordering.lift': defineCommand({
-    // #79
-    schema: z.strictObject({ type: z.literal('ordering.lift'), pauseId: idSchema('pa') }),
-    origins: ['staff'],
-    permission: 'ordering.lift',
-    idempotency: 'by_nature',
-    handle: null,
-  }),
+  // #79: staff lift a table's Unconfirmed or guard pause; pause all bars or one; a manager lifts.
+  'table.resume': staffOnTable('table.resume', 'tables.resume', resumeTable),
+  'ordering.pause': pauseOrdering(),
+  'ordering.lift': liftOrdering(),
   'alert.done': defineCommand({
     // #83
     schema: z.strictObject({ type: z.literal('alert.done'), alertId: idSchema('al') }),
@@ -369,7 +364,9 @@ export const SERVICE_COMMANDS = {
   'reading.record': recordReading(),
   // #77: a sent order's way to the POS: the slot, each state, and the sweep of a dead worker's.
   ...SENT_ORDER_COMMANDS,
-  'pause.transition': workerStep('pause.transition', { pauseId: idSchema('pa') }), // #79
+  // #79: the breaker pauses a POS connection, probes it and lifts it.
+  'connection.pause': pauseConnection(),
+  'pause.transition': transitionPause(),
   'notice.record': workerStep('notice.record', {}), // #80
   // #108: a refund or a dispute, read back from the provider after its notice.
   'payment.observe': paymentObserve(),
@@ -381,7 +378,8 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_state',
     handle: lapseWaiterCall,
   }),
-  sweep: workerStep('sweep', {}), // #79
+  // #79: the minute tick lifts the Unconfirmed table pauses older than 15 minutes.
+  sweep: sweepPauses(),
   'service_day.close': workerStep('service_day.close', {
     serviceDate: z.iso.date(),
   }), // #84

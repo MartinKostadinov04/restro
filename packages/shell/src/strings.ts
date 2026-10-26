@@ -195,9 +195,10 @@ export interface ServiceStrings {
   readonly otherItem: string
   /** A line held by a payment. */
   readonly heldLine: string
+  /** Ordering is paused (staff, Restro, the connection, the table; #79): the order is kept. */
   readonly orderingPaused: string
   readonly orderingClosed: string
-  /** The phone has not reached the server for a while. */
+  /** The phone has not reached the server for a while (a weak signal): nothing new was sent. */
   readonly offline: string
   // The location check (#76, D119, D122 §4). The consent words are versioned by core's
   // `LOCATION_CONSENT_VERSION`: changing them means raising it, so phones are asked again.
@@ -492,9 +493,9 @@ const EN: Strings = {
     orderFromWaiter: 'Order this from your waiter',
     otherItem: 'Other item',
     heldLine: 'Being paid',
-    orderingPaused: 'Ordering from phones is paused. Ask your waiter.',
+    orderingPaused: 'Ordering is paused right now, please order from a waiter.',
     orderingClosed: 'This table is not taking orders from phones right now.',
-    offline: 'Trying to reconnect…',
+    offline: 'Weak connection. Nothing new was sent yet, we keep trying.',
     locationConsent: (venue) =>
       `${venue} and Restro check your location so only guests at the table can see and order onto its bill. Never stored. You can stop anytime and order from your waiter instead.`,
     locationAllow: 'Allow',
@@ -768,9 +769,9 @@ const BG: Strings = {
     orderFromWaiter: 'Поръчайте това от сервитьора',
     otherItem: 'Друг артикул',
     heldLine: 'Плаща се',
-    orderingPaused: 'Поръчките от телефон са спрени. Попитайте сервитьора.',
+    orderingPaused: 'Поръчките са спрени в момента, моля, поръчайте от сервитьор.',
     orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
-    offline: 'Опитваме да се свържем отново…',
+    offline: 'Слаба връзка. Нищо ново не е изпратено още, продължаваме да опитваме.',
     locationConsent: (venue) =>
       `${venue} и Restro проверяват местоположението ви, за да могат само гостите на масата да виждат сметката ѝ и да поръчват към нея. Не се съхранява. Можете да спрете по всяко време и да поръчате от сервитьора.`,
     locationAllow: 'Разреши',
