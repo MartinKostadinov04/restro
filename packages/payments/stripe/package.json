@@ -1,0 +1,20 @@
+{
+  "name": "@restro/stripe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@restro/core": "workspace:*",
+    "stripe": "23.0.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "msw": "2.15.0"
+  }
+}

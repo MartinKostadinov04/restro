@@ -100,4 +100,9 @@ export interface PaymentHarness {
   readonly outside?: OutsideActions
   /** A second venue account, whose reads must see nothing of `account`'s. */
   readonly otherAccount?: ProviderRef
+  /**
+   * How long one check may take, in milliseconds; 30 s when left out. A sandbox that closes a
+   * dispute in seconds needs longer for the dispute check while recording (#107).
+   */
+  readonly checkTimeoutMs?: number
 }
