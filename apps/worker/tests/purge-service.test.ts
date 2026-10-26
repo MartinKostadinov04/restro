@@ -136,13 +136,19 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     )
     return id
   }
-  async function alert(venue: string, day: string) {
+  async function alert(
+    venue: string,
+    day: string,
+    kind = 'pos.unreachable',
+    subjectId = venue,
+    done = false,
+  ) {
     const id = newId('al')
     await query(
       `insert into restro.alerts
-         (id, tenant_id, venue_id, service_date, kind, subject_id, source, actor, job_id)
-       values ($1, $2, $3, $4, 'pos.unreachable', $3, $5, $6, $7)`,
-      [id, tenantId, venue, day, ...SEED],
+         (id, tenant_id, venue_id, service_date, kind, subject_id, done_at, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, case when $7 then now() else null end, $8, $9, $10)`,
+      [id, tenantId, venue, day, kind, subjectId, done, ...SEED],
     )
     return id
   }
@@ -475,6 +481,24 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     await query(`update restro.sent_orders set state = 'added' where id = $1`, [inFlight])
     await closeServiceDays(pool, new Date(), quiet)
     expect(await closedDays()).toHaveLength(2)
+  })
+
+  it('keeps the open alert of a pause still on, however old, and erases done ones', async () => {
+    const { venueId: v } = await venueWithTable('Paused Bar')
+    const fortyDaysAgo = '2026-09-16'
+    const onPause = await pause(v, fortyDaysAgo, false)
+    const open = await alert(v, fortyDaysAgo, 'ordering_paused', onPause)
+    const donePause = await alert(v, fortyDaysAgo, 'ordering_paused', newId('pa'), true)
+    const doneOther = await alert(v, fortyDaysAgo, 'pos.unreachable', v, true)
+    // An open alert someone must press Done on still goes after 31 days (the default for now).
+    const openOther = await alert(v, fortyDaysAgo, 'pos.unreachable', v)
+
+    await purgeService({ purgePool }, { tenantId, now: NOW })
+    expect(await exists('pauses', onPause)).toBe(true)
+    expect(await exists('alerts', open)).toBe(true)
+    for (const id of [donePause, doneOther, openOther]) {
+      expect(await exists('alerts', id), id).toBe(false)
+    }
   })
 
   it('erases every service row of a purged venue', async () => {
