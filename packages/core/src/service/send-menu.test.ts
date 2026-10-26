@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { newId } from '../ids'
 import { drawReference, REFERENCE_ALPHABET } from './send'
-import { priceSentLines, type SendMenu, type SendMenuItem } from './send-menu'
+import { priceSentLines, requiresOptions, type SendMenu, type SendMenuItem } from './send-menu'
 
 const beer = newId('nd')
 const gin = newId('nd')
@@ -96,5 +96,15 @@ describe('drawReference (#77)', () => {
     expect(REFERENCE_ALPHABET).not.toMatch(/[0O1IL2Z5S8BG]/)
     for (let i = 0; i < 200; i++) expect(drawReference()).toMatch(/^[ACDEFHJKMNPQRTUVWXY34679]{3}$/)
     expect(drawReference(4)).toHaveLength(4)
+  })
+})
+
+describe('requiresOptions (#78)', () => {
+  it('is true only where a group of the item asks for a choice', () => {
+    const groups = { size: { min: 1 }, extras: { min: 0 } }
+    expect(requiresOptions(['extras', 'size'], groups)).toBe(true)
+    expect(requiresOptions(['extras'], groups)).toBe(false)
+    expect(requiresOptions(['gone'], groups)).toBe(false)
+    expect(requiresOptions([], groups)).toBe(false)
   })
 })

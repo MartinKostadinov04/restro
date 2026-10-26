@@ -7,10 +7,13 @@
 import { createPool, type DbPool } from '@restro/db'
 import type pg from 'pg'
 
+import { upsertBarsyVenues } from '../apply/barsy-venues'
 import { provisionTenant, provisionVenue } from '../apply/provision'
+import { createIntegration } from '../apply/sources'
 import { createArea, createTable } from '../apply/tables'
 import { appDatabaseUrl, cleanUp, openOwnerPool, testSlug } from '../apply/test-database'
 import { newId } from '../ids'
+import { storedServiceCapabilities } from '../service-capabilities-config'
 import { serviceDate } from '../service-day'
 
 /** The provenance of seeded rows. */
@@ -34,6 +37,12 @@ export interface ServiceWorld {
   addOperator(userId: string, revoked?: boolean): Promise<void>
   /** Opens a sitting on the table (what `table.open` will do) and returns its id. */
   openSitting(tableId: string, serviceDate?: string): Promise<string>
+  /**
+   * Serves the four tables from one POS instance whose recorded declaration is `capabilities`
+   * (code names, as a connector declares them; what the floor reading records, #78). Called
+   * again, it replaces the declaration.
+   */
+  declareCapabilities(capabilities: Readonly<Record<string, boolean>>): Promise<void>
   /** A sent order of the table's open sitting, made by `actionId`. */
   addSentOrder(input: {
     readonly tableId: string
@@ -70,6 +79,7 @@ export async function openServiceWorld(name: string): Promise<ServiceWorld> {
   }
 
   const today = (): string => serviceDate(new Date(), venue.timezone, venue.serviceDayEndsAt)
+  let instanceId: string | null = null
 
   return {
     app,
@@ -149,6 +159,30 @@ export async function openServiceWorld(name: string): Promise<ServiceWorld> {
         [id, tenantId, venue.id, tableId, serviceDate, ...SEED],
       )
       return id
+    },
+
+    async declareCapabilities(capabilities) {
+      if (instanceId === null) {
+        const created = await createIntegration(app, tenantId, {
+          kind: 'sim',
+          host: `${tenantId.slice(3, 15).toLowerCase()}.service-world.test`,
+        })
+        instanceId = created.id
+        await upsertBarsyVenues(app, tenantId, created.id, [{ bid: 1, name: 'Club' }])
+        for (const tableId of tables) {
+          await owner.query(
+            `insert into restro.places (id, tenant_id, integration_id, bid, place_id, place_num, is_public, table_id)
+             values ($1, $2, $3, 1, $4, $4, true, $1)`,
+            [tableId, tenantId, created.id, tableId],
+          )
+        }
+      }
+      await owner.query(
+        `update restro.integrations
+            set config = config || jsonb_build_object('service_capabilities', $2::jsonb)
+          where id = $1`,
+        [instanceId, JSON.stringify(storedServiceCapabilities(capabilities))],
+      )
     },
 
     async addSentOrder(input) {

@@ -90,7 +90,11 @@ export const GuestTableStateSchema = z.strictObject({
   /** Milliseconds to the next poll. */
   next: z.int().positive(),
   table: z.strictObject({ label: z.string().max(64) }),
-  ordering: z.strictObject({ state: z.enum(['on', 'paused', 'closed']) }),
+  /** `notesAndOptions`: notes and options reach the POS's ticket (#78). */
+  ordering: z.strictObject({
+    state: z.enum(['on', 'paused', 'closed']),
+    notesAndOptions: z.boolean(),
+  }),
   /**
    * The location check (#76): `needed` leaves out the order, the sent orders and the bill until
    * the phone holds a pass of the table's current sitting.

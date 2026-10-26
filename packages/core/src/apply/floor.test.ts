@@ -8,12 +8,14 @@ import fc from 'fast-check'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { type Floor, posRef, type Reading } from '../connectors/service'
+import { type Floor, NO_SERVICE_CAPABILITIES, posRef, type Reading } from '../connectors/service'
 import { newId } from '../ids'
+import { readServiceCapabilities } from '../service-capabilities-config'
 import { mapBarsyVenue, upsertBarsyVenues } from './barsy-venues'
 import { applyFloor, setFloorSource } from './floor'
 import { provisionTenant, provisionVenue } from './provision'
 import { createIntegration } from './sources'
+import { readSyncState, updateSyncState } from './sync-config'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
 interface T {
@@ -328,6 +330,56 @@ describe.skipIf(!hasDatabase)('the floor reading (as the restro_app role)', () =
     const overlapping = await read(second, complete(FLOOR))
     expect(overlapping).toMatchObject({ kind: 'applied', listed: 0, skippedClaimed: 6 })
     expect(await tablesOf(second.venueId)).toHaveLength(0)
+  })
+
+  it("records the connector's declaration with a complete reading, once, leaving config.sync alone (#78)", async () => {
+    const at = await venue('Capabilities Bar')
+    const cursor = '2026-10-26T20:00:00.000+00:00'
+    expect(await updateSyncState(app, tenant, at.integrationId, at.bid, { cursor })).toBe(true)
+    const configOf = async () =>
+      (
+        await owner.query('select config from restro.integrations where id = $1', [
+          at.integrationId,
+        ])
+      ).rows[0]?.config
+    const declared = { ...NO_SERVICE_CAPABILITIES, notesReachTicket: true }
+    const tick = (capabilities: typeof declared, reading: Reading<Floor> = complete(FLOOR)) =>
+      applyFloor(app, tenant, {
+        integrationId: at.integrationId,
+        bid: at.bid,
+        jobId: newId('jb'),
+        reading,
+        capabilities,
+      })
+
+    // Rule 6: an incomplete reading records nothing either.
+    expect(await tick(declared, { complete: false, reason: 'page 2 failed' })).toMatchObject({
+      kind: 'incomplete',
+    })
+    expect(readServiceCapabilities(await configOf())).toEqual({
+      notesReachTicket: false,
+      firstItemsOpenBill: false,
+    })
+
+    expect(await tick(declared)).toMatchObject({ kind: 'applied', capabilitiesRecorded: true })
+    const config = await configOf()
+    expect(readServiceCapabilities(config)).toEqual({
+      notesReachTicket: true,
+      firstItemsOpenBill: false,
+    })
+    expect(config.service_capabilities).toMatchObject({ notes_reach_ticket: true })
+    expect(readSyncState(config, at.bid)).toEqual({ cursor })
+
+    // The same declaration writes nothing again; a changed one is recorded.
+    expect(await tick(declared)).toMatchObject({ capabilitiesRecorded: false })
+    expect(
+      await tick({ ...declared, notesReachTicket: false, firstItemsOpenBill: true }),
+    ).toMatchObject({ capabilitiesRecorded: true })
+    expect(readServiceCapabilities(await configOf())).toEqual({
+      notesReachTicket: false,
+      firstItemsOpenBill: true,
+    })
+    expect(readSyncState(await configOf(), at.bid)).toEqual({ cursor })
   })
 
   it('answers not_linked for a till venue that serves no venue', async () => {
