@@ -8,9 +8,10 @@
 // table's bill with the sitting's end by a reading (#74), the table's shared order (#75), Send and
 // a sent order's way to the POS (#77), a payment's refund and dispute as read back after a
 // provider's notice (#108), the waiter call with its Handled and its lapse (#81), the notice of an
-// item out of stock in the POS (#80), paying on the bill up to a held card (#110), and the alerts'
+// item out of stock in the POS (#80), paying on the bill up to a held card (#110), the alerts'
 // lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
-// Push (#83).
+// Push (#83), the closing hour and the pre-opening check (#82), and the end of a service day
+// (#84).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -60,6 +61,7 @@ import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
+import { closeServiceDay } from './service-day-close'
 import {
   closeAllTables,
   closeTable,
@@ -164,17 +166,6 @@ function rolesChange<T extends string, F extends z.ZodRawShape>(
     freshSignIn: true,
     idempotency: 'by_nature',
     handle,
-  })
-}
-
-/** A worker step. */
-function workerStep<T extends string, F extends z.ZodRawShape>(type: T, fields: F) {
-  return defineCommand({
-    schema: z.strictObject({ type: z.literal(type), ...fields }),
-    origins: ['worker'],
-    permission: null,
-    idempotency: 'by_state',
-    handle: null,
   })
 }
 
@@ -476,9 +467,14 @@ export const SERVICE_COMMANDS = {
   }),
   // #82: a failed pre-opening check alerts the venue's staff and Restro's admin team, once a night.
   'hours.pre_opening_alert': preOpeningAlert(),
-  'service_day.close': workerStep('service_day.close', {
-    serviceDate: z.iso.date(),
-  }), // #84
+  // #84: an ended service day's retention, its cleared action ids and its totals.
+  'service_day.close': defineCommand({
+    schema: z.strictObject({ type: z.literal('service_day.close'), serviceDate: z.iso.date() }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: closeServiceDay,
+  }),
 } as const satisfies Record<string, CommandDefinition>
 
 /** One command type. */

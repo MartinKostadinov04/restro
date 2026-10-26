@@ -14,6 +14,7 @@ import type { WriteTx } from '@restro/db/write'
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
+import { serviceDate } from '../service-day'
 import { type Provenance, VIA_VALUES, type Via } from './context'
 
 /** How long a Log entry is kept (D122 §7, §9). */
@@ -140,4 +141,37 @@ export function recordRetainUntil(from: Date): Date {
   const until = new Date(from.getTime())
   until.setUTCMonth(until.getUTCMonth() + RECORD_RETENTION_MONTHS)
   return until
+}
+
+/**
+ * `months` calendar months before `at`, at the same time of day. A day the earlier month lacks
+ * (the 31st, a 29 February) becomes that month's last day, so the result is never later than the
+ * true one: a cutoff made from it can only keep a row longer.
+ */
+export function monthsBefore(at: Date, months: number): Date {
+  const year = at.getUTCFullYear()
+  const month = at.getUTCMonth() - months
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  const until = new Date(at.getTime())
+  until.setUTCFullYear(year, month, Math.min(at.getUTCDate(), lastDay))
+  return until
+}
+
+/**
+ * The first service day still kept at `now`, per retention class, in the venue's own service days
+ * (its time zone and the hour its day ends): a row of service day D is due for the purge when D
+ * comes before it. `night` keeps a day for 31 days after it ended; `record` for 18 months. A day
+ * is due only once it ended that long ago: the service day of the instant 31 days (18 months)
+ * back had not ended then, so every earlier day had.
+ */
+export function serviceRetentionCutoffs(
+  now: Date,
+  timezone: string,
+  dayEndsAt: string,
+): { readonly night: string; readonly record: string } {
+  const nightAgo = new Date(now.getTime() - NIGHT_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+  return {
+    night: serviceDate(nightAgo, timezone, dayEndsAt),
+    record: serviceDate(monthsBefore(now, RECORD_RETENTION_MONTHS), timezone, dayEndsAt),
+  }
 }

@@ -175,10 +175,12 @@ export {
   type LogEntryInput,
   type LogKind,
   type LogRetention,
+  monthsBefore,
   NIGHT_RETENTION_DAYS,
   RECORD_RETENTION_MONTHS,
   recordRetainUntil,
   retentionOf,
+  serviceRetentionCutoffs,
 } from './log'
 export { ORDER_RATE_ALERT } from './order-rate'
 export {
