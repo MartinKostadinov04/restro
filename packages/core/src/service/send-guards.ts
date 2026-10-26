@@ -10,9 +10,15 @@
 //   waiter" that lifts at a staff Resume or the sitting's end (#79), one `guard.tripped` Log entry
 //   per table, guard and minute, and for the pace an alert to Restro's admin team, one open per
 //   table (D118: a table that hits the pace limit alerts the Restro team).
+// - what the POS takes (D122 §3, D122 §4), from the capabilities the floor reading recorded
+//   (`integrations.config.service_capabilities`; undeclared is the cautious answer): where notes
+//   and options don't reach the ticket, a line with a note or options, or an item that must have
+//   options, is ordered from the waiter (`order_from_waiter`); where first items don't open a bill,
+//   a table a fresh complete reading shows with no POS bill asks the waiter to put the first item
+//   on (`needs_first_item`). With no fresh reading the Send goes and the POS answers (#77).
 // Pay-first sent orders are never guarded (D118): money coming in is no risk.
 
-import { alerts, logEntries, pauses, sentOrders } from '@restro/db'
+import { alerts, billReadings, logEntries, pauses, sentOrders } from '@restro/db'
 import { and, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 
 import { newId } from '../ids'
@@ -30,6 +36,12 @@ export const GUARD_TRIPPED_CAUSE = 'guard_tripped'
 
 /** The alert a pace trip raises for Restro's admin team. */
 export const ORDER_PACE_ALERT = 'order_pace'
+
+/**
+ * How old a table's reading may be for its "no POS bill" to hold at Send: two of the reading
+ * job's minute ticks. An older one may miss the bill a waiter has opened since.
+ */
+export const FIRST_ITEM_READING_MAX_AGE_MS = 2 * 60_000
 
 /** The guards that trip. */
 export type SendGuard = 'cap' | 'pace'
@@ -126,6 +138,28 @@ export async function recentSentOrders(
       ),
     )
   return row?.n ?? 0
+}
+
+/**
+ * True when a complete reading of the table, at most two minutes old, shows no open POS bill.
+ * No reading, an incomplete one or an older one concludes nothing (rule 6): false.
+ */
+export async function tableHasNoPosBill(
+  stx: ServiceTx,
+  tableId: string,
+  now: Date,
+): Promise<boolean> {
+  const [reading] = await stx.tx
+    .select({
+      readAt: billReadings.readAt,
+      complete: billReadings.complete,
+      bills: billReadings.bills,
+    })
+    .from(billReadings)
+    .where(eq(billReadings.tableId, tableId))
+  if (reading === undefined || !reading.complete) return false
+  if (now.getTime() - reading.readAt.getTime() > FIRST_ITEM_READING_MAX_AGE_MS) return false
+  return reading.bills.length === 0
 }
 
 /**

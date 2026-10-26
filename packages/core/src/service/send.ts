@@ -9,9 +9,11 @@
 //    orderable, sold out) stays on the order and the Send goes without it ("Send the other 4",
 //    #78); a Send that names such a line refuses (`item_unavailable`, with how many others could
 //    go) and the lines stay on the order;
-// 4. the guards (`send-guards.ts`, #78): the same round in the last 15 minutes asks first
-//    (`duplicate_order`, until a new action confirms it), and a round over the venue's cap or past
-//    its pace refuses (`guard_tripped`) and pauses the table for "ask your waiter";
+// 4. the guards (`send-guards.ts`, #78): what the POS can't take goes through the waiter (a note or
+//    options that don't reach the ticket: `order_from_waiter`; a table with no POS bill where
+//    first items don't open one: `needs_first_item`); the same round in the last 15 minutes asks
+//    first (`duplicate_order`, until a new action confirms it); and a round over the venue's cap
+//    or past its pace refuses (`guard_tripped`) and pauses the table for "ask your waiter";
 // 5. the lines leave the order, a `waiting` sent order is written with a short reference a waiter
 //    reads (K7Q), each line's note is kept apart (`sent_order_notes`), and the table is touched.
 // The worker takes it from there (`sent-order.ts`): Restro never calls the POS here.
@@ -28,9 +30,16 @@ import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
 import { accepted, refused, type ServiceResult } from './results'
-import { findDuplicate, recentSentOrders, type SendGuard, tripGuard } from './send-guards'
+import {
+  findDuplicate,
+  recentSentOrders,
+  type SendGuard,
+  tableHasNoPosBill,
+  tripGuard,
+} from './send-guards'
 import { lineAvailable, priceSentLines } from './send-menu'
 import { type SentOrderLine, SentOrderLineSchema } from './sent-lines'
+import { readTableCapabilities } from './table-capabilities'
 
 /** The letters a reference is drawn from: no 0/O, 1/I/L, 2/Z, 5/S, 8/B, G or so look-alikes. */
 export const REFERENCE_ALPHABET = 'ACDEFHJKMNPQRTUVWXY34679'
@@ -54,6 +63,8 @@ export const SEND_REFUSALS = [
   'order_changed',
   'order_empty',
   'item_unavailable',
+  'order_from_waiter',
+  'needs_first_item',
   'duplicate_order',
   'guard_tripped',
 ] as const
@@ -117,6 +128,21 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
   if (!taken.ok) return refused(actionId, taken.code)
   const priced = priceSentLines(menu, taken.lines)
   if (!priced.ok) return refused(actionId, priced.code, { itemId: priced.itemId })
+
+  const capabilities = await readTableCapabilities(stx.tx, tableId)
+  if (!capabilities.notesReachTicket) {
+    const waiter = taken.lines.find(
+      (line) =>
+        line.optionIds.length > 0 ||
+        line.note.trim() !== '' ||
+        menu.items.get(line.itemId)?.requiredOptions === true,
+    )
+    if (waiter !== undefined)
+      return refused(actionId, 'order_from_waiter', { itemId: waiter.itemId })
+  }
+  if (!capabilities.firstItemsOpenBill && (await tableHasNoPosBill(stx, tableId, now))) {
+    return refused(actionId, 'needs_first_item')
+  }
 
   const target = { tableId, sittingId: row.sittingId }
   const duplicate = await findDuplicate(stx, target, taken.lines, now)

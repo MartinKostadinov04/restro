@@ -117,7 +117,8 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
     expect(first).toMatchObject({
       unchanged: false,
       next: 10_000,
-      ordering: { state: 'on' },
+      // No POS instance serves the table, so nothing says notes reach a ticket (#78).
+      ordering: { state: 'on', notesAndOptions: false },
       order: { lines: [], removed: [], earlier: null },
       sentOrders: [],
       bill: null,

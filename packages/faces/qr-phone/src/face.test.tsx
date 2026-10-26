@@ -467,11 +467,14 @@ describe("Send's guards (#78)", () => {
     held: false,
     pending: false,
   })
-  const draw = (shown: ViewModel) => {
+  const draw = (shown: ViewModel, notesAndOptions?: boolean) => {
     const services = {
       state: {
         ...EMPTY_SERVICE_STATE,
-        ordering: { state: 'on' as const },
+        ordering: {
+          state: 'on' as const,
+          ...(notesAndOptions === undefined ? {} : { notesAndOptions }),
+        },
         order: {
           lines: [line(1, negroni.id, 3), line(2, mojito.id, 1)],
           removed: [],
@@ -517,6 +520,50 @@ describe("Send's guards (#78)", () => {
     expect(ask(4)).toContain('Cancel')
     expect(ask(0)).toContain('Same as a moment ago')
     expect(ask(null)).toContain(strings.refusals.duplicate_order)
+  })
+
+  it('says "Tell the staff" where notes and options do not reach the ticket', () => {
+    for (const declared of [undefined, false]) {
+      const { doc } = draw(view, declared)
+      const [line] = withAttribute(doc, 'data-notes-at-staff', '')
+      expect(line === undefined ? '' : textOf(line)).toBe(
+        'Allergies or special requests? Tell the staff.',
+      )
+    }
+    expect(withAttribute(draw(view, true).doc, 'data-notes-at-staff', '')).toHaveLength(0)
+  })
+
+  it('orders an item that needs a choice from the waiter where options do not reach the ticket', () => {
+    const shot: ViewModel = {
+      ...view,
+      sections: view.sections.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.id === negroni.id
+            ? {
+                ...item,
+                order: { ...item.order, controls: true },
+                modifierGroups: [
+                  {
+                    id: 'nd_0000000000000000000000g1' as never,
+                    name: negroni.name,
+                    min: 1,
+                    max: 1,
+                    required: true,
+                    options: [],
+                  },
+                ],
+              }
+            : item,
+        ),
+      })),
+    }
+    const asked = withAttribute(draw(shot).doc, 'data-order-from-waiter', '')
+    expect(asked).toHaveLength(1)
+    expect(asked[0] === undefined ? '' : textOf(asked[0])).toBe('Order this from your waiter')
+    expect(draw(shot).html).not.toContain(`Add ${negroni.name.text}`)
+    expect(withAttribute(draw(shot, true).doc, 'data-order-from-waiter', '')).toHaveLength(0)
+    expect(draw(shot, true).html).toContain(`Add ${negroni.name.text}`)
   })
 
   it('counts the minutes since the sent order the check names', () => {

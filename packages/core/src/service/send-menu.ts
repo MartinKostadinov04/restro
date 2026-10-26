@@ -29,6 +29,8 @@ export interface SendMenuItem {
   readonly soldOut: boolean
   readonly name: string
   readonly options: ReadonlyMap<string, SendMenuOption>
+  /** A modifier group of the item asks for at least one choice (`min` 1 or more). */
+  readonly requiredOptions?: boolean
 }
 
 /** The table's menu for a Send. */
@@ -101,6 +103,7 @@ export async function loadSendMenu(
       }
     }
     items.set(id, {
+      requiredOptions: requiresOptions(item.modifier_groups, body.modifier_groups),
       priceMinor: item.price?.amount_minor ?? null,
       orderable: item.orderable,
       soldOut: soldOut.has(id) || item.availability.state === 'sold_out',
@@ -109,6 +112,14 @@ export async function loadSendMenu(
     })
   }
   return { currency: body.currency, items }
+}
+
+/** True when one of the item's modifier groups asks for at least one choice. */
+export function requiresOptions(
+  groupIds: readonly string[],
+  groups: Readonly<Record<string, { readonly min: number } | undefined>>,
+): boolean {
+  return groupIds.some((groupId) => (groups[groupId]?.min ?? 0) > 0)
 }
 
 /** One line a Send names. */

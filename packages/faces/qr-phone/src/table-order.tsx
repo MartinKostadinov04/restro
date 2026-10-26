@@ -255,6 +255,8 @@ export function OrderPanel({
   }, [asked])
   const order = services?.state.order ?? null
   const ordering = services?.state.ordering?.state ?? 'on'
+  // No note field here: where the POS's ticket takes no notes (#78), the guest tells the staff.
+  const notesAtStaff = services?.state.ordering?.notesAndOptions !== true
   const nameOf = (itemId: string) => items.get(itemId)?.name.text ?? strings.otherItem
   const lines = order?.lines ?? []
   const soldOut = (itemId: string) => items.get(itemId)?.state.code === 'sold_out'
@@ -388,6 +390,11 @@ export function OrderPanel({
           </button>
         </div>
       ) : null}
+      {notesAtStaff && lines.length > 0 ? (
+        <p className="rq-note" data-notes-at-staff="">
+          {strings.notesAtStaff}
+        </p>
+      ) : null}
       {asked !== null ? (
         <DuplicateCheck
           minutes={asked.minutes}
@@ -499,16 +506,28 @@ export function LocationPanel({
   }
 }
 
-/** The "Add" button of an orderable item. */
+/**
+ * The "Add" button of an orderable item. Where options do not reach the POS's ticket (#78), an item
+ * that needs a choice is ordered from the waiter instead.
+ */
 export function AddButton({
   item,
   strings,
   send,
+  notesAndOptions,
 }: {
   readonly item: ViewItem
   readonly strings: ServiceStrings
   readonly send: (command: CommandDraft) => void
+  readonly notesAndOptions: boolean
 }) {
+  if (!notesAndOptions && item.modifierGroups.some((group) => group.required)) {
+    return (
+      <p className="rq-note" data-order-from-waiter="">
+        {strings.orderFromWaiter}
+      </p>
+    )
+  }
   return (
     <button
       type="button"

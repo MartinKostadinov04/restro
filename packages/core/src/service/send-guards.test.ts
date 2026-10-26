@@ -3,7 +3,10 @@
 // again; a Not sent order or another sitting is no duplicate; a round over the cap or past the pace
 // refuses, pauses the table for "ask your waiter" and writes one Log entry per table, guard and
 // minute; a pace trip raises one alert to Restro's admin team; a sold-out line stays on the order
-// while the others go. Database parts skipped without a database.
+// while the others go; where the POS takes no notes or options, a line with them or an item that
+// must have options is ordered from the waiter; where first items don't open a bill, a table a
+// fresh reading shows with no bill asks the waiter for the first item. Database parts skipped
+// without a database.
 import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -63,6 +66,8 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
   let codeHash: string
   const beer = newId('nd')
   const cola = newId('nd')
+  const shot = newId('nd')
+  const lime = newId('nd')
 
   const menu: SendMenu = {
     currency: 'EUR',
@@ -72,6 +77,17 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
         { priceMinor: 450, orderable: true, soldOut: false, name: 'Beer', options: new Map() },
       ],
       [cola, { priceMinor: 300, orderable: true, soldOut: true, name: 'Cola', options: new Map() }],
+      [
+        shot,
+        {
+          priceMinor: 400,
+          orderable: true,
+          soldOut: false,
+          name: 'Shot',
+          options: new Map([[lime, { deltaMinor: 0, name: 'Lime' }]]),
+          requiredOptions: true,
+        },
+      ],
     ]),
   }
 
@@ -96,7 +112,7 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     )
   }
 
-  async function add(itemId: string, qty: number, note = '') {
+  async function add(itemId: string, qty: number, note = '', optionIds: string[] = []) {
     const { result } = await applyService(
       world.app,
       {
@@ -105,7 +121,7 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
         actionId: randomUUID(),
         ageMs: 50,
         itemId,
-        optionIds: [],
+        optionIds,
         qty,
         note,
       },
@@ -229,7 +245,25 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
       [tableId, 'staff_closed'],
     )
     sittingId = await world.openSitting(tableId)
+    await world.declareCapabilities({ notesReachTicket: false, firstItemsOpenBill: false })
+    await world.owner.query('delete from restro.bill_readings where table_id = $1', [tableId])
   })
+
+  /** Empties the order (what Remove on each line would do). */
+  const clearOrder = () =>
+    world.owner.query(
+      `update restro.table_orders set lines = '[]'::jsonb where table_id = $1 and sitting_id = $2`,
+      [tableId, sittingId],
+    )
+
+  /** A complete reading of the table, `age` old, with no open POS bill. */
+  const readNoBill = (age: string) =>
+    world.owner.query(
+      `insert into restro.bill_readings
+         (tenant_id, venue_id, table_id, read_at, complete, source, actor, job_id)
+       values ($1, $2, $3, now() - $4::interval, true, 'worker', 'system', 'test-reading')`,
+      [world.tenantId, world.venueId, tableId, age],
+    )
 
   it('asks before sending the same round again, and sends it on a new action naming the first', async () => {
     await add(beer, 2)
@@ -238,6 +272,7 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     const firstId = first.details.sentOrderId as string
 
     // The same items and quantities, even with a note, split over two lines.
+    await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: false })
     await add(beer, 1, 'cold')
     await add(beer, 1)
     const asked = await send()
@@ -329,6 +364,47 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     expect(await trips('order_pace')).toBe(1)
     expect(await openPaceAlerts()).toHaveLength(1)
     expect(await activePauses()).toHaveLength(1)
+  })
+
+  it('orders from the waiter what the POS takes no note or option of, until it declares it does', async () => {
+    await add(beer, 1, 'no ice')
+    expect(await send()).toMatchObject({
+      status: 'refused',
+      code: 'order_from_waiter',
+      details: { itemId: beer },
+    })
+    // An item that must have options can't go without them either.
+    await clearOrder()
+    await add(shot, 1)
+    expect(await send()).toMatchObject({ code: 'order_from_waiter', details: { itemId: shot } })
+    expect(await sentOrdersOfTable()).toBe(0)
+
+    await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: false })
+    await clearOrder()
+    await add(shot, 1, 'salt', [lime])
+    expect((await send()).status).toBe('accepted')
+  })
+
+  it('asks the waiter for the first item where a fresh reading shows no POS bill', async () => {
+    await readNoBill('20 seconds')
+    await add(beer, 1)
+    expect(await send()).toMatchObject({ status: 'refused', code: 'needs_first_item' })
+    expect(await orderLines()).toHaveLength(1)
+
+    // An old reading concludes nothing: the Send goes and the POS answers.
+    await world.owner.query(
+      `update restro.bill_readings set read_at = now() - interval '5 minutes' where table_id = $1`,
+      [tableId],
+    )
+    expect((await send()).status).toBe('accepted')
+
+    // Where first items open a bill, a fresh empty reading is no reason to refuse.
+    await world.owner.query('update restro.bill_readings set read_at = now() where table_id = $1', [
+      tableId,
+    ])
+    await world.declareCapabilities({ notesReachTicket: false, firstItemsOpenBill: true })
+    await add(beer, 2)
+    expect((await send()).status).toBe('accepted')
   })
 
   it('sends the other lines and keeps a sold-out one on the order', async () => {

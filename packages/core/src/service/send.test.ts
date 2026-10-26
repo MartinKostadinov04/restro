@@ -173,6 +173,9 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
         }),
       ],
     )
+    // These tests send notes and options and open the POS bill with the first items; what a POS
+    // that takes neither does is #78's (send-guards.test.ts).
+    await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: true })
     const code = `code${randomUUID().replaceAll('-', '')}`
     codeHash = await hashTableCode(code)
     await world.owner.query(

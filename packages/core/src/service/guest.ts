@@ -120,7 +120,14 @@ export interface GuestTableState {
   /** Milliseconds to the next poll. */
   readonly next: number
   readonly table: { readonly label: string }
-  readonly ordering: { readonly state: 'on' | 'paused' | 'closed' }
+  /**
+   * `notesAndOptions`: notes and options reach the POS's ticket (#78); else the template draws no
+   * note field, and items that must have options are ordered from the waiter.
+   */
+  readonly ordering: {
+    readonly state: 'on' | 'paused' | 'closed'
+    readonly notesAndOptions: boolean
+  }
   readonly location: GuestLocation
   /** The table's order; null without a pass where the venue checks location (D122 §4). */
   readonly order: {
@@ -422,6 +429,7 @@ export function projectGuestState(
     table: { label: read.table.label },
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
+      notesAndOptions: read.notesAndOptions,
     },
     location,
     order: !sees
