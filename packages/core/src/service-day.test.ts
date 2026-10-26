@@ -4,6 +4,7 @@ import {
   isoInTimeZone,
   liveEditions,
   serviceDate,
+  serviceDayStartsAt,
   serviceEditionId,
   serviceEditionLayer,
   snapshotEditions,
@@ -27,6 +28,18 @@ describe('serviceDate (D45: the night belongs to the evening it started)', () =>
   it('refuses a malformed end of day or time zone', () => {
     expect(() => serviceDate(new Date(), SOFIA, '7am')).toThrow(RangeError)
     expect(() => serviceDate(new Date(), 'Mars/Olympus', '07:00')).toThrow(RangeError)
+  })
+})
+
+describe('serviceDayStartsAt (#77: a bill from last night is never joined)', () => {
+  it.each([
+    ['2026-10-09T21:30:00Z', '07:00', '2026-10-09T04:00:00.000Z'], // 00:30 local: began 07:00 the 9th
+    ['2026-10-10T04:00:00Z', '07:00', '2026-10-10T04:00:00.000Z'], // the first second of a day
+    ['2026-10-10T03:59:59Z', '07:00', '2026-10-09T04:00:00.000Z'],
+    ['2026-10-10T12:00:00Z', '00:00', '2026-10-09T21:00:00.000Z'], // midnight local
+    ['2026-03-29T10:00:00Z', '07:00', '2026-03-29T04:00:00.000Z'], // after spring-forward (EEST)
+  ])('at %s with the day ending at %s, the day began at %s', (at, endsAt, expected) => {
+    expect(serviceDayStartsAt(new Date(at), SOFIA, endsAt).toISOString()).toBe(expected)
   })
 })
 

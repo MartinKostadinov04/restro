@@ -67,6 +67,10 @@ jobs:
       # registers no purge job and a "Delete permanently" is never queued (D83).
       DATABASE_URL_PURGE: postgres://restro_purge:ci-only-purge-not-a-secret@localhost:5432/restro
       NEXT_TELEMETRY_DISABLED: '1'
+      # Cloudflare's published Turnstile test site key (.env.example), built into the guest page so
+      # the Send's end-to-end test (#77) runs the human check; the test secret is in the Playwright
+      # config. Not a secret.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000BB
 
     steps:
       # Full history, because gitleaks scans every commit of the push or pull request.

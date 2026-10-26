@@ -10,7 +10,9 @@ import {
   orderFromRow,
   orderLineIdFor,
   orderToRow,
+  returnSentLines,
   type TableOrderDraft,
+  takeSentLines,
   tidyOrder,
   UNDO_WINDOW_MS,
 } from './table-order'
@@ -185,5 +187,69 @@ describe('the table order', () => {
     const row = orderToRow(tidyOrder(removed.order, NOW + ORDER_IDLE_MS).order)
     const back = orderFromRow({ ...row, earlier: [...(row.earlier ?? []), { id: 'x' }] })
     expect(back).toEqual(tidyOrder(removed.order, NOW + ORDER_IDLE_MS).order)
+  })
+})
+
+describe('the lines a Send takes and gives back (#77)', () => {
+  const two = run(run(EMPTY_TABLE_ORDER, add(2, 'no ice')).order, {
+    type: 'order.add',
+    itemId: lime,
+    optionIds: [],
+    qty: 1,
+    note: '',
+  }).order
+  const asSeen = two.lines.map((line) => ({
+    itemId: line.itemId,
+    optionIds: line.optionIds,
+    qty: line.qty,
+    note: line.note,
+  }))
+
+  it('takes every live line as the guest saw it, in any order, and leaves none behind', () => {
+    const taken = takeSentLines(two, [...asSeen].reverse(), NOW)
+    if (!taken.ok) throw new Error(taken.code)
+    expect(taken.lines.map((line) => line.id)).toEqual(two.lines.map((line) => line.id))
+    expect(taken.order.lines).toEqual([])
+  })
+
+  it('refuses a Send that differs from the order in any line or quantity', () => {
+    expect(takeSentLines(two, asSeen.slice(0, 1), NOW)).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+    const more = asSeen.map((line, index) => (index === 0 ? { ...line, qty: 3 } : line))
+    expect(takeSentLines(two, more, NOW)).toEqual({ ok: false, code: 'order_changed' })
+    expect(takeSentLines(EMPTY_TABLE_ORDER, asSeen, NOW)).toEqual({
+      ok: false,
+      code: 'order_empty',
+    })
+  })
+
+  it('leaves a held line and a removed line alone', () => {
+    const [first, second] = two.lines
+    if (first === undefined || second === undefined) throw new Error('two lines expected')
+    const held: TableOrderDraft = {
+      ...two,
+      lines: [
+        { ...first, heldBy: 'py_x' },
+        { ...second, removedAt: NOW - 1_000 },
+      ],
+    }
+    expect(takeSentLines(held, asSeen, NOW)).toEqual({ ok: false, code: 'order_empty' })
+    const oneHeld: TableOrderDraft = { ...two, lines: [{ ...first, heldBy: 'py_x' }, second] }
+    const taken = takeSentLines(oneHeld, asSeen.slice(1), NOW)
+    if (!taken.ok) throw new Error(taken.code)
+    expect(taken.order.lines).toEqual([{ ...first, heldBy: 'py_x' }])
+  })
+
+  it('gives lines back merged into identical ones, under a fresh id where theirs is taken', () => {
+    const taken = takeSentLines(two, asSeen, NOW)
+    if (!taken.ok) throw new Error(taken.code)
+    const meanwhile = run(taken.order, add(1, 'no ice')).order
+    const fresh = newId('ol')
+    const back = returnSentLines(meanwhile, taken.lines, NOW, () => fresh)
+    expect(back.lines).toHaveLength(2)
+    expect(back.lines.find((line) => line.itemId === gin)).toMatchObject({ qty: 3 })
+    expect(back.lines.find((line) => line.itemId === lime)).toMatchObject({ qty: 1 })
   })
 })

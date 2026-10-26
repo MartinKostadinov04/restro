@@ -316,12 +316,68 @@ describe('the services client', () => {
     expect(h.client.getState()).toBe(before)
     release(
       json(200, {
-        result: { actionId, status: 'rejected', code: 'not_built', subjectId: null, ref: null },
+        result: { actionId, status: 'rejected', code: 'order_empty', subjectId: null, ref: null },
         state: null,
         pass: null,
       }),
     )
-    expect(await sent).toMatchObject({ status: 'rejected', code: 'not_built' })
+    expect(await sent).toMatchObject({ status: 'rejected', code: 'order_empty' })
+  })
+
+  it('shows "Sending…" only on the phone whose Send made the sent order (#77)', async () => {
+    const sentId = newId('so')
+    const sent = (state: 'sending' | 'added') => ({
+      ...tableState(2),
+      sentOrders: [
+        {
+          id: sentId,
+          state,
+          reason: null,
+          ref: 'K7Q',
+          lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
+          sentAgoSeconds: 30,
+        },
+      ],
+    })
+    const answer = (url: string, init: RequestInit) =>
+      url.endsWith('/actions')
+        ? json(200, {
+            result: {
+              actionId: JSON.parse(String(init.body)).command.actionId,
+              status: 'accepted',
+              code: null,
+              subjectId: sentId,
+              ref: 'K7Q',
+            },
+            state: sent('sending'),
+            pass: null,
+          })
+        : json(200, sent('sending'))
+    const mine = harness(answer)
+    mine.client.start()
+    await mine.tick()
+    const result = await mine.client.dispatch({
+      kind: 'order.send',
+      actionId: crypto.randomUUID(),
+      lines: [{ itemId: ITEM, optionIds: [], qty: 2, note: '' }],
+    })
+    expect(result).toMatchObject({ status: 'accepted', ref: 'K7Q', subjectId: sentId })
+    expect(mine.client.getState().sentOrders).toEqual([
+      {
+        id: sentId,
+        state: 'sending',
+        reason: null,
+        ref: 'K7Q',
+        lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
+        sentAt: 1_000_000 - 30_000,
+        mine: true,
+      },
+    ])
+
+    const other = harness(answer)
+    other.client.start()
+    await other.tick()
+    expect(other.client.getState().sentOrders).toMatchObject([{ id: sentId, mine: false }])
   })
 })
 
@@ -520,7 +576,7 @@ describe('the services client and the location check', () => {
               result: {
                 actionId: JSON.parse(String(init.body)).command.actionId,
                 status: 'rejected',
-                code: 'not_built',
+                code: 'human_check',
                 subjectId: null,
                 ref: null,
               },

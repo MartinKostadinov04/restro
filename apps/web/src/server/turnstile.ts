@@ -57,10 +57,13 @@ export function turnstileCheck(
     if (answer['error-codes'].includes('internal-error')) return 'unavailable'
     if (!answer.success) return 'failed'
     // A token of a widget run for another action is not this Send's. Cloudflare's test secrets
-    // answer the action `test`, which only they may.
-    const expected = isTestSecret(secret)
-      ? ['test', TURNSTILE_SEND_ACTION]
-      : [TURNSTILE_SEND_ACTION]
-    return expected.includes(answer.action ?? '') ? 'passed' : 'failed'
+    // answer the action `test` or none at all (as the `1x…AA` secret does for the dummy token),
+    // which only they may.
+    if (isTestSecret(secret)) {
+      return [undefined, 'test', TURNSTILE_SEND_ACTION].includes(answer.action)
+        ? 'passed'
+        : 'failed'
+    }
+    return answer.action === TURNSTILE_SEND_ACTION ? 'passed' : 'failed'
   }
 }

@@ -34,6 +34,7 @@ import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
 import type { Permission } from './permissions'
+import { sentOrderLinesOf } from './send'
 
 /** The sent order states that still hold the table's attention (D116). */
 const OPEN_SENT_ORDER_STATES = [
@@ -104,6 +105,12 @@ export interface TableStateRead {
     readonly reference: string
     readonly createdAt: Date
     readonly settledAt: Date | null
+    /** What was sent: our item and option ids and the quantity, never the stored names. */
+    readonly lines: readonly {
+      readonly itemId: string
+      readonly optionIds: readonly string[]
+      readonly qty: number
+    }[]
   }[]
   /**
    * The open sitting's latest waiter call (#81), open or ended; null when it has none. `endedAt` is
@@ -273,6 +280,7 @@ export async function readTableState(
               reference: sentOrders.reference,
               createdAt: sentOrders.createdAt,
               settledAt: sentOrders.settledAt,
+              lines: sentOrders.lines,
             })
             .from(sentOrders)
             .where(eq(sentOrders.sittingId, sitting.id))
@@ -355,7 +363,14 @@ export async function readTableState(
               earlierAt: order.earlierAt,
               idleExpiresAt: order.idleExpiresAt,
             },
-      sentOrders: sent,
+      sentOrders: sent.map(({ lines, ...row }) => ({
+        ...row,
+        lines: sentOrderLinesOf(lines).map((line) => ({
+          itemId: line.itemId,
+          optionIds: line.optionIds,
+          qty: line.qty,
+        })),
+      })),
       waiterCall:
         call === undefined
           ? null

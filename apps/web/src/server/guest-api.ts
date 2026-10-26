@@ -16,9 +16,18 @@
 // by the paths it got wrong, never by its values (a position among them). A guard's trip is one
 // log line with the venue and the table, nothing more.
 //
+// Send (#77): an accepted Send queues the worker's `order-send` for the table; the web itself never
+// calls the POS.
+//
 // The logic sits here, apart from the route files, so tests can call it with their own pool.
 
-import { issuePaths, JOB_NAMES, TABLE_TOKEN_PATTERN, TableReadJobSchema } from '@restro/core'
+import {
+  issuePaths,
+  JOB_NAMES,
+  OrderSendJobSchema,
+  TABLE_TOKEN_PATTERN,
+  TableReadJobSchema,
+} from '@restro/core'
 import {
   ForbiddenValueError,
   type GuardEvent,
@@ -60,6 +69,12 @@ export interface GuestApiDeps {
   readonly passKey?: string | null
   /** Turnstile's siteverify at Send; without it every Send fails the check. */
   readonly humanCheck?: HumanCheck
+  /** Queues the worker's Send for a table (#77); tests pass their own. */
+  readonly queueSend?: (target: {
+    readonly tenantId: string
+    readonly venueId: string
+    readonly tableId: string
+  }) => Promise<unknown>
 }
 
 const HEADERS = {
@@ -207,6 +222,14 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
       ...(parsed.data.check === undefined ? {} : { check: parsed.data.check }),
       passKey: deps.passKey ?? null,
       ...(deps.humanCheck === undefined ? {} : { humanCheck: deps.humanCheck }),
+      queueSend: async (target) => {
+        // The sent order is written: a Send that can't be queued now is queued by the worker's
+        // sweep within a minute, so the guest still gets their answer.
+        const queue = deps.queueSend ?? queueTableSend
+        await Promise.resolve(queue(target)).catch((error: unknown) =>
+          logError('guest_send_not_queued', error),
+        )
+      },
       onGuard: logGuard,
     })
     if (!acted.ok) return stateless(acted)
@@ -229,6 +252,7 @@ export function guestApiDeps(pool: DbPool): GuestApiDeps {
     queueReading: queueTableReading,
     passKey: env.GUEST_PASS_KEY ?? null,
     humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
+    queueSend: queueTableSend,
   }
 }
 
@@ -239,4 +263,13 @@ export async function queueTableReading(target: {
   readonly tableId: string
 }): Promise<void> {
   await enqueueJob(JOB_NAMES.tableRead, TableReadJobSchema.parse(target))
+}
+
+/** The app's queue for a table's Send (`order-send`, one per table at a time, #77). */
+export async function queueTableSend(target: {
+  readonly tenantId: string
+  readonly venueId: string
+  readonly tableId: string
+}): Promise<void> {
+  await enqueueJob(JOB_NAMES.orderSend, OrderSendJobSchema.parse(target))
 }

@@ -69,6 +69,14 @@ export const GUEST_REFUSAL_CODES = [
   'location_failed',
   /** Turnstile's check at Send failed (#76). */
   'human_check',
+  /** Send (#77): ordering is paused at the table, its bar or the venue. */
+  'ordering_paused',
+  /** Send: the table's menu is not published, so nothing can be priced. */
+  'menu_unavailable',
+  /** Send: nothing on the order to send. */
+  'order_empty',
+  /** Send: an item is gone, not orderable or sold out (`subjectId` names it); the order stays. */
+  'item_unavailable',
   /** Not available yet. */
   'not_built',
 ] as const

@@ -2,7 +2,8 @@
 // loads: a face that breaks R6, R7 or R9 cannot even be imported, let alone installed.
 //
 // It draws the table's shared order (#75) with the minimum controls the Playwright specs need: an
-// "Add" on each orderable item and the order panel (`menu.bag`). It sends no order (#77).
+// "Add" on each orderable item and the order panel (`menu.bag`), with Send and the sent orders'
+// states (#77).
 
 import { type FaceManifest, validateManifest } from '@restro/shell'
 

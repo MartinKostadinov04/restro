@@ -153,6 +153,37 @@ export {
   ServiceResultSchema,
 } from './results'
 export type { RowLocks, SentOrder, Sitting, TableOrder } from './rows'
+export {
+  drawReference,
+  REFERENCE_ALPHABET,
+  SEND_REFUSALS,
+  type SentOrderLine,
+  SentOrderLineSchema,
+  sentOrderLinesOf,
+} from './send'
+export {
+  loadSendMenu,
+  type PricedLine,
+  priceSentLines,
+  type SendMenu,
+  type SendMenuItem,
+} from './send-menu'
+export {
+  BEFORE_READ_PAUSE_MS,
+  BEFORE_READ_TRIES,
+  BUDGET_WAIT_MS,
+  READ_BACK_EVERY_MS,
+  type SlotLeaseSeconds,
+  slotLeaseSeconds,
+} from './send-timings'
+export {
+  ORDER_UNCONFIRMED_ALERT,
+  ORDER_UNCONFIRMED_CAUSE,
+  SETTLED_STATES,
+  SLOT_CHECKING_SECONDS,
+  SLOT_SENDING_SECONDS,
+  SLOT_START_SECONDS,
+} from './sent-order'
 export { SITTING_END_REASONS, type SittingEndReason } from './sittings'
 export { MAX_REVEALED_PINS } from './staff'
 export {

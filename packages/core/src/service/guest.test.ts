@@ -293,9 +293,13 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
     })
   })
 
-  it('answers a Send as not_built until #77 builds it, past Turnstile', async () => {
-    const answer = await act({ type: 'order.send' })
-    expect(answer.result).toMatchObject({ status: 'rejected', code: 'not_built' })
+  it('refuses a Send while the table has no published menu, and the lines stay (#77)', async () => {
+    await act({ type: 'order.add', itemId: item, optionIds: [], qty: 2, note: '' })
+    const lines = [{ itemId: item, optionIds: [], qty: 2, note: '' }]
+    const answer = await act({ type: 'order.send', lines })
+    expect(answer.result).toMatchObject({ status: 'rejected', code: 'menu_unavailable' })
+    expect(orderOf(await state()).lines).toMatchObject([{ itemId: item, qty: 2 }])
+    expect((await state()).sentOrders).toEqual([])
   })
 
   it('sets an idle order aside on the next read, and brings it back with Restore', async () => {

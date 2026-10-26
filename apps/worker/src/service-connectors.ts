@@ -1,5 +1,6 @@
 // The service connector of an integration (#71; spec #64 Implementation Decisions 1 and 2): the one
-// place that turns an `integrations` row into a `ServiceReader` the floor reading can call. Only
+// place that turns an `integrations` row into a `ServiceConnector` the floor reading, the table
+// readings and the send (#77) call. Only
 // `apps/worker` imports a connector package, so this is where the simulated POS is built.
 //
 // A `sim` instance is refused in production, before anything is built or any host is asked: the
@@ -13,7 +14,7 @@
 // scenarios share Demo Bar's switches; a server running different ones makes the connector throw
 // loudly on a behaviour the simulator does not define, never guess.
 
-import { SERVICE_TIMINGS, type ServiceReader, type ServiceTimings } from '@restro/core'
+import { SERVICE_TIMINGS, type ServiceConnector, type ServiceTimings } from '@restro/core'
 import type { Integration } from '@restro/db'
 import {
   createSimPosConnector,
@@ -62,7 +63,7 @@ export function assertSimAllowed(policy: SimPolicy): void {
 export function serviceConnectorFor(
   integration: Pick<Integration, 'kind' | 'host' | 'config'>,
   policy: SimPolicy,
-): ServiceReader {
+): ServiceConnector {
   if (integration.kind !== SIM_KIND) {
     throw new ServiceConnectorRefused(
       'no_service_connector',

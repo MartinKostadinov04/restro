@@ -20,6 +20,9 @@
 //   asks again. The pass the server hands back is kept in the tab's session storage and sent in
 //   `X-Restro-Pass`; every command carries `X-Restro-Phone`, the value made at load. A Send asks
 //   the page for Turnstile's token first.
+// - Send (#77, D122 §5): the table's sent orders come with the state, and the client marks the ones
+//   this phone's Sends made (`mine`, from the accepted answer's subject), so only this phone shows
+//   "Sending…". The mark lives in this page's memory: a reload shows them as any phone's.
 //
 // Pure TypeScript with its timers, clock and fetch passed in, so tests drive it without a page.
 
@@ -49,6 +52,7 @@ import {
   type LocationView,
   type OrderLineView,
   type RequestView,
+  type SentOrderView,
   type ServiceState,
   TABLE_AUTH_SCHEME,
 } from '@restro/shell'
@@ -282,6 +286,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   let whole = false
   let pass: string | null = deps.memory?.get(PASS_KEY) ?? null
   let prompt: LocationView['prompt'] = 'none'
+  /** The sent orders this phone's Sends made. */
+  const mine = new Set<string>()
   /** The edit kept while the consent screen is up, with its tap's time. */
   let waiting: { readonly command: GuestCommand; readonly tappedAt: number } | null = null
 
@@ -320,6 +326,17 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           ? null
           : { state: server.ordering.state },
       offline: offline(),
+      sentOrders: (server?.sentOrders ?? []).map(
+        (sent): SentOrderView => ({
+          id: sent.id,
+          state: sent.state,
+          reason: sent.reason,
+          ref: sent.ref,
+          lines: sent.lines,
+          sentAt: now - sent.sentAgoSeconds * 1000,
+          mine: mine.has(sent.id),
+        }),
+      ),
       location:
         server === null || server.location.state === 'off'
           ? null
@@ -493,6 +510,13 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     }
     lastAnswerAt = deps.now()
     if (body.pass !== null) keepPass(body.pass)
+    if (
+      command.kind === 'order.send' &&
+      body.result.status === 'accepted' &&
+      body.result.subjectId !== null
+    ) {
+      mine.add(body.result.subjectId)
+    }
     if (body.state !== null) accept(body.state)
     return settle(
       answer(body.result.status, body.result.code, {

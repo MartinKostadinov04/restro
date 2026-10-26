@@ -256,7 +256,7 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
   const serviceStrings = stringsFor(locale).services
   // The table's shared order (#75): only where the shell turned ordering on (R15).
   const orderingOn = view.features.ordering
-  const { send, notice } = useOrderCommands(services, serviceStrings)
+  const { send, notice } = useOrderCommands(services, serviceStrings, view)
   const ordering = useMemo(
     () => (orderingOn ? { strings: serviceStrings, send } : null),
     [orderingOn, serviceStrings, send],

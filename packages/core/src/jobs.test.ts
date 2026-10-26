@@ -54,6 +54,14 @@ describe('job names and payloads', () => {
     ).toThrow()
   })
 
+  it('a Send is keyed by its table, stately: a Send while one runs waits behind it (#77)', () => {
+    const tableId = newId('tb')
+    const job = prepareJob(JOB_NAMES.orderSend, { tenantId, venueId, tableId })
+    expect(job.singletonKey).toBe(tableId)
+    expect(STATELY_JOBS.has(JOB_NAMES.orderSend)).toBe(true)
+    expect(isProducedJob(JOB_NAMES.orderSlotSweep)).toBe(false)
+  })
+
   it('two venues of one integration never share a pull key, so neither pull drops the other', () => {
     const other = newId('vn')
     const keys = [venueId, other].map(

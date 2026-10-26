@@ -98,13 +98,16 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
 - **Status:** drawn, platform parked
-- **Drawn means:** (the platform runs the shared order since #75, on the hidden reference template only; Send follows in #77; where the venue checks location, adding and changing lines and seeing the order need a pass, #76) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options), quantity and note; a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
+- **Drawn means:** (the platform runs the shared order since #75 and Send since #77, on the hidden reference template only; where the venue checks location, adding and changing lines and seeing the order need a pass, #76) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options), quantity and note; a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
   - every phone at the table sees and edits the same lines (`services.state.order`); a line someone else added is drawn like one's own, and the template marks no line as "mine";
   - a line the host is still saving (`pending`) is drawn as such; a refused edit goes back to what the server holds and shows the shell's words for its refusal code (`refusals`), never a success of its own;
   - a line being paid (`held`) has no controls; a pay-first line (`mode: pay_first`) says "Order this from your waiter" (`orderFromWaiter`);
   - a removed line stays for 10 seconds with Undo (`removed`, `undoSeconds`), and an order left idle for 30 minutes is set aside as the "Earlier order" with Restore (`earlier`);
-  - when the host says ordering is paused or the table closed (`ordering.state`), or that the phone is offline (`offline`), the template says so with the shell's words.
-- **Where:** §5.5, §7.2, §10.2, §10.3, §10.5; D71, D72, D117, D121
+  - when the host says ordering is paused or the table closed (`ordering.state`), or that the phone is offline (`offline`), the template says so with the shell's words;
+  - Send (#77) says how many items go ("Send 3 items", `sendItems`), sends the on-the-bill lines no payment holds as an `order.send`, and draws nothing new until the host answers; there is no cancel after Send (D116). A refused Send keeps the order and shows the refusal's words; `item_unavailable` names the item (`subjectId`, `itemUnavailableNamed`);
+  - the table's sent orders (`services.state.sentOrders`, newest first) show on every phone with their state: "Sending…" (`sendingNow`) only where `mine` is true, "Being sent" (`beingSent`) on the other phones, then "Added to your bill", "Waiting for the bar to take it" (only where the POS approves at the bar), "We couldn't send your order, please call a waiter" (Not sent; its lines are back on the order; "Ask your waiter to put your first item on" where only a waiter opens the POS bill, `sentNotSentFirstItem`), or "Not confirmed: show K7Q to your waiter" (`sentUnconfirmed`, for 15 minutes; the table's ordering pauses);
+  - any phone can open "Show this to your waiter" for a sent order: its reference at least 40 px and at least 7:1 contrast, the time it was sent and its items (D120).
+- **Where:** §5.5, §7.2, §10.2, §10.3, §10.5; D71, D72, D116, D117, D120, D121, D122
 
 ### Pay
 - **Shell key:** `pay` (slot `menu.pay`)

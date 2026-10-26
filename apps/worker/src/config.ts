@@ -74,6 +74,12 @@ export interface WorkerConfig {
    * a worker that holds the keys only to seal and reveal table codes (the end-to-end tests).
    */
   readonly posSync: boolean
+  /**
+   * True: the Send jobs run (`order-send` and its sweep, #77), which add rounds to a POS as a
+   * waiter would (rule 7). WORKER_SEND, on or off; unset follows WORKER_POS_SYNC. The end-to-end
+   * tests turn it on with the sync off, against the simulated POS only.
+   */
+  readonly send: boolean
 }
 
 /**
@@ -281,6 +287,15 @@ function environmentSchema(defaultWorkerId: () => string) {
           .pipe(z.enum(['on', 'off'], { error: BAD_POS_SYNC }))
           .default('on'),
       ),
+      WORKER_SEND: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .pipe(z.enum(['on', 'off'], { error: BAD_POS_SYNC }))
+          .optional(),
+      ),
     })
     .superRefine((env, ctx) => {
       const issue = (variable: string, message: string) =>
@@ -373,6 +388,7 @@ function environmentSchema(defaultWorkerId: () => string) {
         revealToken: env.REVEAL_SERVICE_TOKEN ?? null,
         billIdKey: env.BILL_ID_KEY ?? null,
         posSync: env.WORKER_POS_SYNC === 'on',
+        send: (env.WORKER_SEND ?? env.WORKER_POS_SYNC) === 'on',
       }
     })
 }
@@ -403,6 +419,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `REVEAL_SERVICE_TOKEN` | bearer token of the reveal endpoint (32+ characters); without it the endpoint is off | unset |
  * | `BILL_ID_KEY` | key of a reading's `rd_` and `bn_` ids (32+ characters, #74); without it no table reading runs | unset |
  * | `WORKER_POS_SYNC` | `off` registers no POS sync job even with the seal keys (end-to-end tests) | on |
+ * | `WORKER_SEND` | `on` or `off`: the Send jobs (#77), which add rounds to a POS | as `WORKER_POS_SYNC` |
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
