@@ -26,14 +26,24 @@
 //   stays). A table marked a payment table becomes hidden: it gets no code and no guest page.
 // - Provenance (rule 2): the tables have no provenance columns, so the run is the provenance: the
 //   caller passes the `jb_` id of its job run, which this checks and returns.
+// - What the connector declared (`capabilities`, D122 §3) is recorded with a complete reading in
+//   `integrations.config.service_capabilities` (#78), so the service path and the guest API can
+//   read it without a connector: merged into the config inside this transaction, the other keys
+//   (`sync`…) untouched, and only when it changed.
 
-import { bars, type DbPool, venues, venueTables } from '@restro/db'
+import { bars, type DbPool, integrations, venues, venueTables } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, eq, inArray, ne } from 'drizzle-orm'
+import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import type { LinkStateName } from '../change-set'
-import { type Floor, FloorSchema, type Reading } from '../connectors/service'
+import {
+  type Floor,
+  FloorSchema,
+  type Reading,
+  type ServiceCapabilities,
+  ServiceCapabilitiesSchema,
+} from '../connectors/service'
 import { tillPlaces, tillVenueLinks } from '../connectors/till-venues'
 import {
   type FloorSource,
@@ -42,6 +52,10 @@ import {
   readFloorSource,
 } from '../floor-source'
 import { isId, newId } from '../ids'
+import {
+  SERVICE_CAPABILITIES_CONFIG_KEY,
+  storedServiceCapabilities,
+} from '../service-capabilities-config'
 import { absenceHold } from '../sync/absence-hold'
 import { lockTenantDocument } from './lock'
 import { mirrorTillTables } from './till-tables'
@@ -62,6 +76,8 @@ export interface ApplyFloorInput {
   readonly jobId: string
   /** What the connector's `readFloor` answered. */
   readonly reading: Reading<Floor>
+  /** What the connector declares (`connector.capabilities`): recorded with a complete reading. */
+  readonly capabilities?: ServiceCapabilities
   readonly now?: Date
 }
 
@@ -93,6 +109,8 @@ export type FloorApplied =
       readonly barsSkipped: number
       /** The codes of tables the mirror archived (their files must go). */
       readonly retiredTokens: readonly string[]
+      /** The connector's declaration was recorded because it changed (#78). */
+      readonly capabilitiesRecorded: boolean
     }
 
 function cut(text: string, length: number): string {
@@ -116,6 +134,8 @@ export async function applyFloor(
   // Rule 6: an incomplete reading is refused here, before the database is asked.
   if (!input.reading.complete) return { kind: 'incomplete', reason: input.reading.reason }
   const floor = FloorSchema.parse(input.reading.value)
+  const capabilities =
+    input.capabilities === undefined ? null : ServiceCapabilitiesSchema.parse(input.capabilities)
   const now = input.now ?? new Date()
 
   return withTenantWrite(pool, tenantId, async (tx) => {
@@ -171,6 +191,8 @@ export async function applyFloor(
       now,
     })
     await writeTableFacts(tx, listedTables, tableOf, barResult.ids, mirror.created, source)
+    const capabilitiesRecorded =
+      capabilities !== null && (await recordCapabilities(tx, input.integrationId, capabilities))
 
     return {
       kind: 'applied',
@@ -187,8 +209,34 @@ export async function applyFloor(
       skippedClaimed: serving.length - listedTables.length,
       barsSkipped: barResult.skipped,
       retiredTokens: mirror.retiredTokens,
+      capabilitiesRecorded,
     } as const
   })
+}
+
+/**
+ * Records the connector's declaration in `integrations.config.service_capabilities`: one atomic
+ * merge that leaves the other keys alone, and no write when the stored value is the same.
+ */
+async function recordCapabilities(
+  tx: WriteTx,
+  integrationId: string,
+  capabilities: ServiceCapabilities,
+): Promise<boolean> {
+  const stored = JSON.stringify(storedServiceCapabilities(capabilities))
+  const rows = await tx
+    .update(integrations)
+    .set({
+      config: sql`${integrations.config} || jsonb_build_object(${SERVICE_CAPABILITIES_CONFIG_KEY}::text, ${stored}::jsonb)`,
+    })
+    .where(
+      and(
+        eq(integrations.id, integrationId),
+        sql`${integrations.config} -> ${SERVICE_CAPABILITIES_CONFIG_KEY}::text is distinct from ${stored}::jsonb`,
+      ),
+    )
+    .returning({ id: integrations.id })
+  return rows.length > 0
 }
 
 /** The POS ids (of `candidates`) another till venue of the same instance already serves. */
