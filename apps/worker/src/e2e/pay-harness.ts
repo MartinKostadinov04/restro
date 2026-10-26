@@ -179,9 +179,12 @@ async function main(): Promise<void> {
   )
   if (reading.kind !== 'recorded') throw new Error(`the bill was not read: ${reading.kind}`)
 
-  // 3. The worker: the table reading and the payment jobs only.
+  // 3. The worker: the table reading and the payment jobs only. It shares the e2e worker's queue,
+  // so it leaves the schedules alone: its short list would remove that worker's ticks for the
+  // specs after this one (live.json's remake among them).
   const worker = await startWorker(config, {
     logger: log,
+    schedules: false,
     jobs: [
       ...createReadingJobs({ sim: config.sim, billIdKey: BILL_ID_KEY }),
       ...createPaymentJobs({ sim: config.sim, providers: new Map([[SIM_PAY_KIND, provider]]) }),

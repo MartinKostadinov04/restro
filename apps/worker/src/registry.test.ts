@@ -146,6 +146,19 @@ describe('registerJobs', () => {
     await expect(registerJobs(boss, [job('a'), job('a')], ctx)).rejects.toThrow(/twice/)
     expect(calls).toEqual([])
   })
+  it("with schedules off, writes no schedule and leaves another worker's alone", async () => {
+    const { boss, calls } = fakeBoss([
+      { name: 'menu-publish-tick', key: '' },
+      { name: 'reading', key: '' },
+    ])
+    const { ctx } = await context()
+    await registerJobs(boss, [job('reading', { schedule: { cron: '* * * * *' } })], ctx, {
+      schedules: false,
+    })
+    const scheduling = calls.filter(([method]) => method === 'schedule' || method === 'unschedule')
+    expect(scheduling).toEqual([])
+    expect(calls.some(([method, name]) => method === 'work' && name === 'reading')).toBe(true)
+  })
 })
 
 describe('the handler the registry gives pg-boss', () => {
