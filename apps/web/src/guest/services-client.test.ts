@@ -1,29 +1,50 @@
 // The guest page's services client (#75), driven without a page: its fetch, clock and timers are
 // the test's. It polls with `since` at the server's cadence and backs off when polls fail; an
 // order edit is drawn at once and taken back when refused or lost (D72: no local success); a 429
-// waits its Retry-After and a 401 stops the table for good.
-import { newId, orderLineIdFor } from '@restro/core'
+// waits its Retry-After and a 401 stops the table for good. The location check (#76): the consent
+// screen the first time, the edit sent again with the position after "Allow", the pass kept and
+// sent back, "Not now" remembered, a failed check offered; Turnstile's token at Send.
+import { type GuestPosition, LOCATION_CONSENT_VERSION, newId, orderLineIdFor } from '@restro/core'
 import type { GuestCommand, GuestTableState } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
-import { createTableServices, OFFLINE_AFTER_MS, POLL_BACKOFF_MS } from './services-client'
+import {
+  CONSENT_KEY,
+  createTableServices,
+  newPhoneValue,
+  OFFLINE_AFTER_MS,
+  PASS_KEY,
+  POLL_BACKOFF_MS,
+  type TableServicesDeps,
+} from './services-client'
 
 const ITEM = newId('nd')
 
-function tableState(version: number, lines: GuestTableState['order']['lines'] = []) {
+type Lines = NonNullable<GuestTableState['order']>['lines']
+type LocationState = GuestTableState['location']['state']
+
+const PHONE = 'phone-value-aaaaaaaaaa'
+
+function tableState(version: number, lines: Lines = [], location: LocationState = 'off') {
   return {
     unchanged: false,
     version,
     next: lines.length > 0 ? 2_000 : 10_000,
     table: { label: '7' },
     ordering: { state: 'on' },
-    order: { lines, removed: [], earlier: null },
+    location: {
+      state: location,
+      passSeconds: location === 'held' ? 7_000 : null,
+      dayEndsInSeconds: 3_600,
+      venueName: 'Club',
+    },
+    order: location === 'needed' ? null : { lines, removed: [], earlier: null },
     sentOrders: [],
     bill: null,
   } satisfies GuestTableState
 }
 
-function line(id: string, qty: number): GuestTableState['order']['lines'][number] {
+function line(id: string, qty: number): Lines[number] {
   return {
     id: id as never,
     itemId: ITEM,
@@ -43,12 +64,16 @@ const json = (status: number, body: unknown, headers: Record<string, string> = {
   })
 
 /** A client on a fake clock, fetch and timers. `answer` decides each response. */
-function harness(answer: (url: string, init: RequestInit) => Response | Promise<Response>) {
+function harness(
+  answer: (url: string, init: RequestInit) => Response | Promise<Response>,
+  more: Partial<TableServicesDeps> = {},
+) {
   let clock = 1_000_000
   const timers: { run: () => void; ms: number; cancelled: boolean }[] = []
   const calls: { url: string; init: RequestInit }[] = []
   const client = createTableServices({
     code: 'table-code-123',
+    phone: PHONE,
     now: () => clock,
     random: () => 0.5,
     fetch: async (url, init) => {
@@ -62,6 +87,7 @@ function harness(answer: (url: string, init: RequestInit) => Response | Promise<
         timer.cancelled = true
       }
     },
+    ...more,
   })
   return {
     client,
@@ -144,6 +170,7 @@ describe('the services client', () => {
       json(200, {
         result: { actionId, status: 'accepted', code: null, subjectId: lineId, ref: null },
         state: tableState(2, [line(lineId, 1)]),
+        pass: null,
       }),
     )
     expect(await sent).toMatchObject({ status: 'accepted', subjectId: lineId })
@@ -164,6 +191,7 @@ describe('the services client', () => {
           ref: null,
         },
         state: tableState(3, [line(lineId, 2)]),
+        pass: null,
       })
     })
     h.client.start()
@@ -240,8 +268,223 @@ describe('the services client', () => {
       json(200, {
         result: { actionId, status: 'rejected', code: 'not_built', subjectId: null, ref: null },
         state: null,
+        pass: null,
       }),
     )
     expect(await sent).toMatchObject({ status: 'rejected', code: 'not_built' })
+  })
+})
+
+/** A tab's session storage in a map. */
+function memory(seed: Record<string, string> = {}) {
+  const kept = new Map(Object.entries(seed))
+  return {
+    kept,
+    get: (key: string) => kept.get(key) ?? null,
+    set: (key: string, value: string) => void kept.set(key, value),
+    remove: (key: string) => void kept.delete(key),
+  }
+}
+
+const AT_THE_BAR: GuestPosition = { lat: 42.6977, lng: 23.3219, accuracyM: 20 }
+
+/**
+ * A server where the venue checks location: a command without a position is `location_needed`;
+ * with one it is accepted (and hands out `pass-1`) unless `failed`. Records each command's body.
+ */
+function checkingServer(failed = false) {
+  const bodies: { command: GuestCommand; check?: Record<string, unknown> }[] = []
+  const headers: Record<string, string>[] = []
+  const answer = (url: string, init: RequestInit): Response => {
+    headers.push(init.headers as Record<string, string>)
+    if (!url.endsWith('/actions')) {
+      const held = (init.headers as Record<string, string>)['X-Restro-Pass'] === 'pass-1'
+      return json(200, tableState(1, [], held ? 'held' : 'needed'))
+    }
+    const body = JSON.parse(String(init.body))
+    bodies.push(body)
+    const result = (status: string, code: string | null) => ({
+      actionId: body.command.actionId,
+      status,
+      code,
+      subjectId: null,
+      ref: null,
+    })
+    if (body.check?.location === undefined) {
+      return json(200, { result: result('rejected', 'location_needed'), state: null, pass: null })
+    }
+    if (failed) {
+      return json(200, { result: result('rejected', 'location_failed'), state: null, pass: null })
+    }
+    return json(200, {
+      result: result('accepted', null),
+      state: tableState(2, [], 'held'),
+      pass: 'pass-1',
+    })
+  }
+  return { bodies, headers, answer }
+}
+
+describe('the services client and the location check', () => {
+  it('makes a phone value of 22 base64url characters, and sends it on every command', async () => {
+    expect(newPhoneValue(new Uint8Array(16).fill(255))).toBe('_____________________w')
+    const server = checkingServer()
+    const h = harness(server.answer, { memory: memory() })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(add())
+    expect(server.headers.at(-1)).toMatchObject({ 'X-Restro-Phone': PHONE })
+    expect(server.headers[0]).not.toHaveProperty('X-Restro-Phone')
+  })
+
+  it('asks for consent the first time, then sends the kept edit with the position', async () => {
+    const server = checkingServer()
+    const kept = memory()
+    const located: string[] = []
+    const h = harness(server.answer, {
+      memory: kept,
+      locate: async () => {
+        located.push('asked')
+        return AT_THE_BAR
+      },
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().location).toEqual({
+      state: 'needed',
+      prompt: 'none',
+      consent: 'unknown',
+      venueName: 'Club',
+    })
+    const command = add()
+    expect(await h.client.dispatch(command)).toMatchObject({ code: 'location_needed' })
+    expect(located).toEqual([])
+    expect(h.client.getState().location?.prompt).toBe('consent')
+
+    const allowed = await h.client.location.allow()
+    expect(allowed).toMatchObject({ status: 'accepted', actionId: command.actionId })
+    expect(server.bodies.at(-1)).toMatchObject({
+      command: { actionId: command.actionId },
+      check: { location: AT_THE_BAR, consentVersion: LOCATION_CONSENT_VERSION },
+    })
+    expect(h.client.getState().location).toMatchObject({
+      state: 'held',
+      prompt: 'none',
+      consent: 'allowed',
+    })
+    expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
+    expect(kept.kept.get(CONSENT_KEY)).toMatch(/^allowed:v1:\d+$/)
+    // The pass goes back on the next poll, never in the address.
+    await h.tick()
+    expect(server.headers.at(-1)).toMatchObject({ 'X-Restro-Pass': 'pass-1' })
+    expect(h.calls.at(-1)?.url).not.toContain('pass')
+  })
+
+  it('locates without asking once the guest allowed it today', async () => {
+    const server = checkingServer()
+    const dayEnds = 1_000_000 + 3_600_000
+    const h = harness(server.answer, {
+      memory: memory({ [CONSENT_KEY]: `allowed:${LOCATION_CONSENT_VERSION}:${dayEnds}` }),
+      locate: async () => AT_THE_BAR,
+    })
+    h.client.start()
+    await h.tick()
+    expect(await h.client.dispatch(add())).toMatchObject({ status: 'accepted' })
+    expect(server.bodies).toHaveLength(2)
+  })
+
+  it('asks again for consent to an older text, or after the service day ended', async () => {
+    for (const seed of [`allowed:v0:${2_000_000}`, `allowed:${LOCATION_CONSENT_VERSION}:999999`]) {
+      const h = harness(checkingServer().answer, { memory: memory({ [CONSENT_KEY]: seed }) })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(add())
+      expect(h.client.getState().location).toMatchObject({ prompt: 'consent', consent: 'unknown' })
+    }
+  })
+
+  it('offers the failed check when the phone gives no position or is elsewhere, and Cancel', async () => {
+    for (const [failed, locate] of [
+      [false, async () => null],
+      [true, async () => AT_THE_BAR],
+    ] as const) {
+      const h = harness(checkingServer(failed).answer, { memory: memory(), locate })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(add())
+      expect(await h.client.location.allow()).toMatchObject({ code: 'location_failed' })
+      expect(h.client.getState().location?.prompt).toBe('failed')
+      h.client.location.dismiss()
+      expect(h.client.getState().location?.prompt).toBe('none')
+    }
+  })
+
+  it('remembers "Not now" for the day, and asks again only on the guest’s own tap', async () => {
+    const kept = memory()
+    const h = harness(checkingServer().answer, { memory: kept, locate: async () => AT_THE_BAR })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(add())
+    h.client.location.decline()
+    expect(h.client.getState().location).toMatchObject({ prompt: 'none', consent: 'declined' })
+    expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+    expect(h.client.getState().location?.prompt).toBe('none')
+    h.client.location.reopen()
+    expect(h.client.getState().location?.prompt).toBe('consent')
+    // Nothing waits: "Allow" gets the pass with the phone's own check.
+    expect(await h.client.location.allow()).toBeNull()
+    expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
+  })
+
+  it('drops a kept pass the server no longer holds', async () => {
+    const kept = memory({ [PASS_KEY]: 'pass-old' })
+    const h = harness(() => json(200, tableState(1, [], 'needed')), { memory: kept })
+    h.client.start()
+    await h.tick()
+    expect(h.calls[0]?.init.headers).toMatchObject({ 'X-Restro-Pass': 'pass-old' })
+    expect(kept.kept.has(PASS_KEY)).toBe(false)
+  })
+
+  it('asks for the whole state when an unchanged answer’s location differs', async () => {
+    let n = 0
+    const h = harness(() => {
+      n += 1
+      return n === 1
+        ? json(200, tableState(4, [], 'held'))
+        : json(200, { unchanged: true, version: 4, next: 10_000, location: 'needed' })
+    })
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    expect(h.calls[1]?.url).toContain('since=4')
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.calls[2]?.url).toBe('/api/guest/state?view=menu')
+  })
+
+  it('sends Turnstile’s token with a Send', async () => {
+    const h = harness(
+      (url, init) =>
+        url.endsWith('/actions')
+          ? json(200, {
+              result: {
+                actionId: JSON.parse(String(init.body)).command.actionId,
+                status: 'rejected',
+                code: 'not_built',
+                subjectId: null,
+                ref: null,
+              },
+              state: null,
+              pass: null,
+            })
+          : json(200, tableState(1)),
+      { humanToken: async () => 'token-1' },
+    )
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch({ kind: 'order.send', actionId: crypto.randomUUID(), lines: [] })
+    expect(JSON.parse(String(h.calls.at(-1)?.init.body))).toMatchObject({
+      check: { humanToken: 'token-1' },
+    })
   })
 })

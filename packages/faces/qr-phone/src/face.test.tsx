@@ -432,3 +432,46 @@ describe('the shared order (#75)', () => {
     expect(off).not.toContain('data-slot="item.add"')
   })
 })
+
+describe('the location check (#76)', () => {
+  const view = viewOf('features-on')
+  const controls = { allow: async () => null, decline() {}, reopen() {}, dismiss() {} }
+  const draw = (prompt: 'none' | 'consent' | 'checking' | 'failed', state = 'needed' as const) => {
+    const services = {
+      state: {
+        ...EMPTY_SERVICE_STATE,
+        ordering: { state: 'on' as const },
+        order: null,
+        location: { state, prompt, consent: 'unknown' as const, venueName: 'Club Nova' },
+      },
+      dispatch: () => Promise.reject(new Error('not in a static render')),
+      location: controls,
+    }
+    const html = withoutStyle(renderToStaticMarkup(<QrPhoneFace view={view} services={services} />))
+    return { html, doc: parseHtml(html) }
+  }
+
+  it('asks for consent in D122’s words, naming the venue, with Allow and Not now', () => {
+    const { html, doc } = draw('consent')
+    expect(withAttribute(doc, 'data-location-prompt', 'consent')).toHaveLength(1)
+    expect(html).toContain('Club Nova and Restro check your location')
+    expect(html).not.toMatch(/\bpay\b/i)
+    expect(html).toContain('Allow')
+    expect(html).toContain('Not now')
+  })
+
+  it('offers Call a waiter and Cancel when the check fails', () => {
+    const { html, doc } = draw('failed')
+    expect(withAttribute(doc, 'data-location-prompt', 'failed')).toHaveLength(1)
+    expect(html).toContain('Call a waiter')
+    expect(html).toContain('Cancel')
+  })
+
+  it('says why the order is hidden, with the guest’s own Allow location, and no empty order', () => {
+    const { html, doc } = draw('none')
+    expect(withAttribute(doc, 'data-location-prompt', 'none')).toHaveLength(1)
+    expect(html).toContain('Allow location')
+    expect(html).not.toContain('Nothing on the table order yet')
+    expect(draw('checking').html).toContain('Checking your location')
+  })
+})

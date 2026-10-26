@@ -46,6 +46,11 @@ export interface ServiceTx extends LeaseTx {
   readonly pinPepper: string | null
   /** The bill-id key, when the caller passed one (a reading's `rd_` and `bn_` ids, #74). */
   readonly billIdKey: string | null
+  /**
+   * The location consent version of a located guest command (D119, #76): what a sent order
+   * records. Null for any other command.
+   */
+  readonly consentVersion: string | null
   /** The database's clock, read once per command: the clock of deadlines (Undo, idle). */
   dbNow(): Promise<Date>
   /** Appends a Log entry with this command's venue, day and provenance. */

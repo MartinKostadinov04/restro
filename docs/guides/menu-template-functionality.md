@@ -74,10 +74,21 @@ A service control is drawn only when its `view.features` field is on, and carrie
 - **Drawn means:** a control that offers the request kinds the venue allowed, a note, the state of each request and a way to withdraw it.
 - **Where:** §5.5, §10.2, §10.3; D71, D72
 
+### Confirm being at the table (the location check)
+- **Shell key:** none (host `services.state.location` and `services.location`)
+- **Status:** drawn, platform parked
+- **Drawn means:** (the platform runs it since #76, on the hidden reference template only) where the venue checks location, a phone needs a pass from the table's current sitting before it sees the table's order and bill or adds to or changes a line on the bill; removing a line, Undo and paying never need one. The host asks and checks; the template only draws what `location.prompt` says, with the shell's words:
+  - `consent`: the consent text (`locationConsent`, naming the venue from `location.venueName`) with "Allow" (`allow()`) and "Not now" (`decline()`), never a promise of anything else; nothing is asked before the guest tries something that needs it;
+  - `checking`: "Checking your location…" while the phone reads its position;
+  - `failed`: "We could not confirm you are at the venue" with why, and two ways on: "Call a waiter" (sends a `waiter` request, then `dismiss()`) and "Cancel" (`dismiss()`);
+  - while `location.state` is `needed` and no prompt is up: why the order and the bill are hidden, and the guest's own "Allow location" (`reopen()`), which brings the consent back after a "Not now";
+  - the position never reaches the template: it goes from the host to the server and nowhere else, and the template stores, logs and shows none of it.
+- **Where:** §10.2, §10.3; D72, D118, D122
+
 ### See the bill
 - **Shell key:** `bill` (slot `menu.bill`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing:
+- **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
   - its lines, from guests and staff alike, nothing marking a line as "from your phones": the name of our own item, or "Other item" (worded by the shell) where the POS line is no item of ours; the quantity as the POS gives it, which may be a decimal ("0.5"); the POS's own signed amount, so a discount shows negative and a free line at 0, as the POS gives them;
   - the POS's total, what is paid and what is still owed, and a part being paid marked as such;
   - when it was read. When the latest reading failed, the last good bill is drawn marked as not up to date, never an empty bill. Opening the bill asks the host for a fresh reading when the one shown is older than 15 seconds.
@@ -86,7 +97,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
 - **Status:** drawn, platform parked
-- **Drawn means:** (the platform runs the shared order since #75, on the hidden reference template only; Send follows in #77) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options), quantity and note; a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
+- **Drawn means:** (the platform runs the shared order since #75, on the hidden reference template only; Send follows in #77; where the venue checks location, adding and changing lines and seeing the order need a pass, #76) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options), quantity and note; a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
   - every phone at the table sees and edits the same lines (`services.state.order`); a line someone else added is drawn like one's own, and the template marks no line as "mine";
   - a line the host is still saving (`pending`) is drawn as such; a refused edit goes back to what the server holds and shows the shell's words for its refusal code (`refusals`), never a success of its own;
   - a line being paid (`held`) has no controls; a pay-first line (`mode: pay_first`) says "Order this from your waiter" (`orderFromWaiter`);

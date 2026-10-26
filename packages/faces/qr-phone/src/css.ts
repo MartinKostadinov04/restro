@@ -154,6 +154,7 @@ export const FACE_CSS = `
 .rq-order-lines { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
 .rq-order-controls { display: inline-flex; gap: 6px; margin-left: 8px; }
 .rq-order-hint { color: var(--rq-muted, GrayText); }
+.rq-location { display: grid; gap: 8px; margin: 8px 0 16px; justify-items: start; }
 @media (prefers-reduced-motion: reduce) {
   .rq-root * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

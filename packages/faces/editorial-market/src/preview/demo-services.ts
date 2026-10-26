@@ -514,6 +514,8 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
         case 'order.remove':
         case 'order.undo':
         case 'order.restore':
+        // The location check (#76) runs only on a real table, never in the preview.
+        case 'location.check':
           return answer(command, 'rejected')
       }
     },

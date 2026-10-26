@@ -10,13 +10,30 @@
 // Every answer is `no-store` and `no-referrer`. Nothing about the request (its header, its body,
 // the code) is logged. The web calls no POS: a bill read only queues the worker's reading.
 //
+// The location check and the limits (#76, D122 §4): a command carries `X-Restro-Phone`, the random
+// value the page made at load (the per-phone limits' key, in memory only); the phone's location
+// pass travels in `X-Restro-Pass` on both requests. A request body that fails its schema is logged
+// by the paths it got wrong, never by its values (a position among them). A guard's trip is one
+// log line with the venue and the table, nothing more.
+//
 // The logic sits here, apart from the route files, so tests can call it with their own pool.
 
-import { JOB_NAMES, TABLE_TOKEN_PATTERN, TableReadJobSchema } from '@restro/core'
-import { ForbiddenValueError, type GuestActInput, guestAct, guestState } from '@restro/core/service'
+import { issuePaths, JOB_NAMES, TABLE_TOKEN_PATTERN, TableReadJobSchema } from '@restro/core'
+import {
+  ForbiddenValueError,
+  type GuardEvent,
+  type GuestActInput,
+  guestAct,
+  guestState,
+  type HumanCheck,
+  MAX_PASS_LENGTH,
+} from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import {
   GUEST_API_MAX_BYTES,
+  GUEST_PASS_HEADER,
+  GUEST_PHONE_HEADER,
+  GUEST_PHONE_PATTERN,
   GuestActionAnswerSchema,
   GuestActionRequestSchema,
   type GuestApiError,
@@ -25,8 +42,10 @@ import {
   TABLE_AUTH_SCHEME,
 } from '@restro/shell'
 
+import { serverEnv } from './env'
 import { enqueueJob } from './jobs'
-import { logError } from './log'
+import { logError, logInfo, logWarn } from './log'
+import { turnstileCheck } from './turnstile'
 
 /** What the handlers need from the app. */
 export interface GuestApiDeps {
@@ -37,6 +56,10 @@ export interface GuestApiDeps {
     readonly venueId: string
     readonly tableId: string
   }) => Promise<unknown>
+  /** `GUEST_PASS_KEY`, or null when the app has none (no pass is issued or held then). */
+  readonly passKey?: string | null
+  /** Turnstile's siteverify at Send; without it every Send fails the check. */
+  readonly humanCheck?: HumanCheck
 }
 
 const HEADERS = {
@@ -60,6 +83,17 @@ export function tableCodeOf(request: Request): string | null {
   const [scheme, code, ...rest] = header.trim().split(/\s+/)
   if (scheme !== TABLE_AUTH_SCHEME || code === undefined || rest.length > 0) return null
   return TABLE_TOKEN_PATTERN.test(code) ? code : null
+}
+
+/** The phone's location pass from `X-Restro-Pass`, or undefined when absent or too long. */
+export function passOf(request: Request): string | undefined {
+  const pass = request.headers.get(GUEST_PASS_HEADER)?.trim()
+  return pass === undefined || pass === '' || pass.length > MAX_PASS_LENGTH ? undefined : pass
+}
+
+/** Logs a guard's trip: what tripped, the venue and the table, nothing about the phone. */
+function logGuard(event: GuardEvent): void {
+  logInfo('guest_guard', { guard: event.kind, venueId: event.venueId, tableId: event.tableId })
 }
 
 /** The body as text, or `too_large` past `max` bytes: the stream is cut, not read to its end. */
@@ -95,6 +129,23 @@ function failed(event: string, error: unknown): Response {
   return json({ code: 'failed' }, 500)
 }
 
+/** The pass as an input field, or nothing (core's inputs take no undefined values). */
+function pass(request: Request): { readonly pass?: string } {
+  const found = passOf(request)
+  return found === undefined ? {} : { pass: found }
+}
+
+/** A request core answered without a state: a retired code, or a limit's trip. */
+function stateless(
+  answer:
+    | { readonly code: 'code_retired' }
+    | { readonly code: 'rate_limited'; readonly retryAfter: number },
+): Response {
+  return answer.code === 'rate_limited'
+    ? refuse('rate_limited', 429, { 'Retry-After': String(answer.retryAfter) })
+    : refuse('code_retired', 401)
+}
+
 /** `GET /api/guest/state`. */
 export async function handleGuestState(request: Request, deps: GuestApiDeps): Promise<Response> {
   const code = tableCodeOf(request)
@@ -108,6 +159,8 @@ export async function handleGuestState(request: Request, deps: GuestApiDeps): Pr
       code,
       view: query.data.view,
       ...(query.data.since === undefined ? {} : { since: query.data.since }),
+      ...pass(request),
+      passKey: deps.passKey ?? null,
       queueReading: async (target) => {
         // A reading that can't be queued leaves the last one on the screen: never a failed read.
         await Promise.resolve(deps.queueReading(target)).catch((error: unknown) =>
@@ -115,7 +168,7 @@ export async function handleGuestState(request: Request, deps: GuestApiDeps): Pr
         )
       },
     })
-    if (!read.ok) return refuse(read.code, 401)
+    if (!read.ok) return stateless(read)
     return json(GuestStateAnswerSchema.parse(read.answer))
   } catch (error) {
     return failed('guest_state_failed', error)
@@ -126,6 +179,8 @@ export async function handleGuestState(request: Request, deps: GuestApiDeps): Pr
 export async function handleGuestAction(request: Request, deps: GuestApiDeps): Promise<Response> {
   const code = tableCodeOf(request)
   if (code === null) return refuse('code_retired', 401)
+  const phone = request.headers.get(GUEST_PHONE_HEADER)
+  if (phone === null || !GUEST_PHONE_PATTERN.test(phone)) return refuse('invalid_request', 400)
   const body = await readCapped(request)
   if (!body.ok) return refuse('too_large', 413)
   let parsedJson: unknown
@@ -135,7 +190,10 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
     return refuse('invalid_request', 400)
   }
   const parsed = GuestActionRequestSchema.safeParse(parsedJson)
-  if (!parsed.success) return refuse('invalid_request', 400)
+  if (!parsed.success) {
+    logWarn('guest_action_invalid', { paths: issuePaths(parsed.error).join(',') })
+    return refuse('invalid_request', 400)
+  }
   const { kind, ...fields } = parsed.data.command
   const command: GuestActInput['command'] = { type: kind, ...fields }
   try {
@@ -144,14 +202,33 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
       command,
       ageMs: parsed.data.ageMs,
       view: parsed.data.view,
+      phone,
+      ...pass(request),
+      ...(parsed.data.check === undefined ? {} : { check: parsed.data.check }),
+      passKey: deps.passKey ?? null,
+      ...(deps.humanCheck === undefined ? {} : { humanCheck: deps.humanCheck }),
+      onGuard: logGuard,
     })
-    if (!acted.ok) return refuse(acted.code, 401)
+    if (!acted.ok) return stateless(acted)
     if (acted.retryAfter !== null) {
       return refuse('rate_limited', 429, { 'Retry-After': String(acted.retryAfter) })
     }
-    return json(GuestActionAnswerSchema.parse({ result: acted.result, state: acted.state }))
+    return json(
+      GuestActionAnswerSchema.parse({ result: acted.result, state: acted.state, pass: acted.pass }),
+    )
   } catch (error) {
     return failed('guest_action_failed', error)
+  }
+}
+
+/** The handlers' dependencies in the app: its pool, the job queue, the pass key and Turnstile. */
+export function guestApiDeps(pool: DbPool): GuestApiDeps {
+  const env = serverEnv()
+  return {
+    pool,
+    queueReading: queueTableReading,
+    passKey: env.GUEST_PASS_KEY ?? null,
+    humanCheck: turnstileCheck(env.TURNSTILE_SECRET_KEY),
   }
 }
 

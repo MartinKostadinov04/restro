@@ -63,6 +63,8 @@ export function useOrderCommands(services: ServiceBinding | undefined, strings: 
       }
       if (result.status === 'rejected') {
         const code = result.code ?? null
+        // The location panel answers these itself (the consent screen, the failed check).
+        if (code === 'location_needed' || code === 'location_failed') return
         setNotice(
           code !== null && isGuestRefusalCode(code) ? strings.refusals[code] : strings.refusedOther,
         )
@@ -100,6 +102,7 @@ export function OrderPanel({
           {strings.offline}
         </p>
       ) : null}
+      <LocationPanel services={services} strings={strings} send={send} />
       {ordering === 'paused' ? <p className="rq-note">{strings.orderingPaused}</p> : null}
       {ordering === 'closed' ? <p className="rq-note">{strings.orderingClosed}</p> : null}
       {notice !== null ? (
@@ -107,7 +110,7 @@ export function OrderPanel({
           {notice}
         </p>
       ) : null}
-      {lines.length === 0 ? <p>{strings.emptyOrder}</p> : null}
+      {lines.length === 0 && order !== null ? <p>{strings.emptyOrder}</p> : null}
       <ul className="rq-order-lines">
         {lines.map((line) => (
           <li
@@ -183,6 +186,78 @@ export function OrderPanel({
       ) : null}
     </section>
   )
+}
+
+/**
+ * The location check (#76, D122 §4), drawn from the host's `location`: the consent screen (Allow /
+ * Not now), "Checking your location…", the failed check (Call a waiter / Cancel), and, while the
+ * phone has no pass, why the order and the bill are hidden with the guest's own "Allow location".
+ */
+export function LocationPanel({
+  services,
+  strings,
+  send,
+}: {
+  readonly services: ServiceBinding | undefined
+  readonly strings: ServiceStrings
+  readonly send: (command: CommandDraft) => void
+}) {
+  const location = services?.state.location ?? null
+  const controls = services?.location
+  if (location === null || controls === undefined) return null
+  switch (location.prompt) {
+    case 'consent':
+      return (
+        <div
+          className="rq-location"
+          role="dialog"
+          aria-modal="false"
+          data-location-prompt="consent"
+        >
+          <p>{strings.locationConsent(location.venueName)}</p>
+          <button type="button" onClick={() => void controls.allow()}>
+            {strings.locationAllow}
+          </button>{' '}
+          <button type="button" onClick={() => controls.decline()}>
+            {strings.locationNotNow}
+          </button>
+        </div>
+      )
+    case 'checking':
+      return (
+        <p className="rq-note" role="status" data-location-prompt="checking">
+          {strings.locationChecking}
+        </p>
+      )
+    case 'failed':
+      return (
+        <div className="rq-location" role="alert" data-location-prompt="failed">
+          <p className="rq-note">{strings.locationFailed}</p>
+          <p className="rq-order-hint">{strings.locationWhy}</p>
+          <button
+            type="button"
+            onClick={() => {
+              send({ kind: 'service.request', request: 'waiter', note: '' })
+              controls.dismiss()
+            }}
+          >
+            {strings.locationCallWaiter}
+          </button>{' '}
+          <button type="button" onClick={() => controls.dismiss()}>
+            {strings.locationCancel}
+          </button>
+        </div>
+      )
+    case 'none':
+      return location.state === 'needed' ? (
+        <div className="rq-location" data-location-prompt="none">
+          <p className="rq-order-hint">{strings.locationNeeded}</p>
+          <button type="button" onClick={() => controls.reopen()}>
+            {strings.locationAllowAgain}
+          </button>
+        </div>
+      ) : null
+  }
 }
 
 /** The "Add" button of an orderable item. */

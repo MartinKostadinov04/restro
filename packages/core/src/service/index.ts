@@ -58,18 +58,27 @@ export {
   forgetGuestCodes,
   GUEST_POLL_MS,
   GUEST_VIEWS,
+  type GuardEvent,
+  type GuestActed,
   type GuestActInput,
+  type GuestCheck,
   type GuestCommandResult,
+  type GuestLocation,
+  type GuestLocationState,
   type GuestRefusal,
   type GuestStateInput,
+  type GuestStateless,
   type GuestTableState,
   type GuestUnchanged,
   type GuestView,
   guestAct,
   guestResult,
   guestState,
+  type HumanCheck,
+  type HumanCheckVerdict,
   projectGuestState,
 } from './guest'
+export { GUEST_LIMITS, type GuestLimit, GuestLimiter, type GuestLimitName } from './guest-limits'
 export { identifyStaffByPin, type PinIdentity } from './identify'
 export {
   holdsLease,
@@ -83,6 +92,15 @@ export {
   type TakeResult,
   takeLease,
 } from './leases'
+export {
+  checkPassKey,
+  type LocationPassClaims,
+  MAX_PASS_LENGTH,
+  MIN_PASS_KEY_LENGTH,
+  openLocationPass,
+  passHolds,
+  sealLocationPass,
+} from './location-pass'
 export { LOCK_RANKS, LockOrderError, type LockRank } from './lock-order'
 export {
   appendLogEntry,

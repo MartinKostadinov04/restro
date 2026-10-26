@@ -63,6 +63,12 @@ export const GUEST_REFUSAL_CODES = [
   'table_not_open',
   /** The table's code is no longer its code: scan the table's code again. */
   'code_retired',
+  /** The phone must be located first (#76): the face shows the consent screen. */
+  'location_needed',
+  /** The phone could not be confirmed at the venue (#76): Call a waiter or Cancel. */
+  'location_failed',
+  /** Turnstile's check at Send failed (#76). */
+  'human_check',
   /** Not available yet. */
   'not_built',
 ] as const

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   GUEST_API_MAX_BYTES,
+  GUEST_PHONE_PATTERN,
   GuestActionAnswerSchema,
   GuestActionRequestSchema,
   GuestStateAnswerSchema,
@@ -20,6 +21,7 @@ const STATE = {
   next: 2_000,
   table: { label: '12' },
   ordering: { state: 'on' },
+  location: { state: 'off', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
   order: {
     lines: [
       {
@@ -43,7 +45,7 @@ const STATE = {
 describe('the guest API wire shapes (#75)', () => {
   it('reads a full state and an unchanged answer, and nothing in between', () => {
     expect(GuestStateAnswerSchema.parse(STATE)).toEqual(STATE)
-    const unchanged = { unchanged: true, version: 3, next: 10_000 }
+    const unchanged = { unchanged: true, version: 3, next: 10_000, location: 'off' }
     expect(GuestStateAnswerSchema.parse(unchanged)).toEqual(unchanged)
     expect(GuestStateAnswerSchema.safeParse({ ...unchanged, order: STATE.order }).success).toBe(
       false,
@@ -92,8 +94,43 @@ describe('the guest API wire shapes (#75)', () => {
       subjectId: null,
       ref: null,
     }
-    expect(GuestActionAnswerSchema.parse({ result, state: null })).toEqual({ result, state: null })
-    expect(GuestActionAnswerSchema.parse({ result, state: STATE }).state).toEqual(STATE)
+    const answer = { result, state: null, pass: null }
+    expect(GuestActionAnswerSchema.parse(answer)).toEqual(answer)
+    expect(GuestActionAnswerSchema.parse({ ...answer, state: STATE }).state).toEqual(STATE)
+    expect(GuestActionAnswerSchema.safeParse({ result, state: null }).success).toBe(false)
+  })
+
+  it('hides the order and the bill while the phone has no pass (#76)', () => {
+    const needed = {
+      ...STATE,
+      location: { state: 'needed', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
+      order: null,
+    }
+    expect(GuestStateAnswerSchema.parse(needed)).toEqual(needed)
+  })
+
+  it('takes a check with a position, a consent version and a token, and nothing more (#76)', () => {
+    const command = { kind: 'order.remove', actionId: uuid, lineId: ol(1) }
+    const check = {
+      location: { lat: 42.6977, lng: 23.3219, accuracyM: 12 },
+      consentVersion: 'v1',
+      humanToken: 'token',
+    }
+    expect(GuestActionRequestSchema.parse({ command, ageMs: 1, check }).check).toEqual(check)
+    const extra = { ...check, ip: '1.2.3.4' }
+    expect(GuestActionRequestSchema.safeParse({ command, ageMs: 1, check: extra }).success).toBe(
+      false,
+    )
+    const far = { ...check, location: { lat: 91, lng: 0, accuracyM: 1 } }
+    expect(GuestActionRequestSchema.safeParse({ command, ageMs: 1, check: far }).success).toBe(
+      false,
+    )
+  })
+
+  it('knows the phone value’s shape (#76)', () => {
+    expect(GUEST_PHONE_PATTERN.test('A'.repeat(22))).toBe(true)
+    expect(GUEST_PHONE_PATTERN.test('A'.repeat(21))).toBe(false)
+    expect(GUEST_PHONE_PATTERN.test(`${'A'.repeat(21)}!`)).toBe(false)
   })
 
   it('knows every refusal code the shell words, and an 8 KB cap', () => {
