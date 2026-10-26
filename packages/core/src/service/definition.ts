@@ -12,6 +12,7 @@ import type { LeaseTx } from './leases'
 import type { LogEntryInput } from './log'
 import type { Permission } from './permissions'
 import type { ServiceResult } from './results'
+import type { SendMenu } from './send-menu'
 
 /**
  * How a repeated command is recognised (design §2.4):
@@ -51,6 +52,11 @@ export interface ServiceTx extends LeaseTx {
    * records. Null for any other command.
    */
   readonly consentVersion: string | null
+  /**
+   * The table's menu with tonight's sold-out marks, which the guest API read before a Send (#77);
+   * null for any other command.
+   */
+  readonly sendMenu: SendMenu | null
   /** The database's clock, read once per command: the clock of deadlines (Undo, idle). */
   dbNow(): Promise<Date>
   /** Appends a Log entry with this command's venue, day and provenance. */

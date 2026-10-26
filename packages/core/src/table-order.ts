@@ -358,3 +358,98 @@ export function orderToRow(order: TableOrderDraft): {
     idleExpiresAt: order.idleExpiresAt === null ? null : new Date(order.idleExpiresAt),
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Send (#77): the lines a Send takes out of the order, and the lines a sent order that was not
+// sent gives back
+
+/** One line a Send names: what the guest saw on the order. */
+export interface SendRequestLine {
+  readonly itemId: string
+  readonly optionIds: readonly string[]
+  readonly qty: number
+  readonly note: string
+}
+
+/**
+ * Takes the lines a Send names out of the order. The Send must name the order's live lines that
+ * no payment holds, each once with its quantity: anything else is `order_changed` (someone changed
+ * the order since the guest looked), and an order with no such line is `order_empty`. The lines
+ * leave the order entirely (no Undo: they are on their way to the bar); the idle time restarts.
+ */
+export function takeSentLines(
+  order: TableOrderDraft,
+  requested: readonly SendRequestLine[],
+  now: number,
+):
+  | {
+      readonly ok: true
+      readonly order: TableOrderDraft
+      readonly lines: readonly TableOrderLine[]
+    }
+  | { readonly ok: false; readonly code: 'order_changed' | 'order_empty' } {
+  const sendable = order.lines.filter((line) => live(line) && line.heldBy === null)
+  if (sendable.length === 0) return { ok: false, code: 'order_empty' }
+  if (requested.length !== sendable.length) return { ok: false, code: 'order_changed' }
+  const wanted = new Map<string, number>()
+  for (const line of requested) {
+    const key = `${orderLineKey(line)}|${line.qty}`
+    wanted.set(key, (wanted.get(key) ?? 0) + 1)
+  }
+  for (const line of sendable) {
+    const key = `${orderLineKey(line)}|${line.qty}`
+    const left = wanted.get(key) ?? 0
+    if (left === 0) return { ok: false, code: 'order_changed' }
+    wanted.set(key, left - 1)
+  }
+  const lines = order.lines.filter((line) => !sendable.includes(line))
+  return {
+    ok: true,
+    order: {
+      lines,
+      earlier: order.earlier,
+      idleExpiresAt: lines.some(live) ? now + ORDER_IDLE_MS : null,
+    },
+    lines: sendable,
+  }
+}
+
+/**
+ * Puts the lines of a sent order that was not sent back on the order (D116: "your lines are back,
+ * Try again"), each merged into an identical live line where the merge stays within the quantity
+ * limit, else as a line of its own. Never refused and never dropped: the limits bound what a guest
+ * adds, not what comes back. A returned line keeps its id unless the order has one by that id.
+ */
+export function returnSentLines(
+  order: TableOrderDraft,
+  returned: readonly {
+    readonly id: string
+    readonly itemId: string
+    readonly optionIds: readonly string[]
+    readonly qty: number
+    readonly note: string
+  }[],
+  now: number,
+  newLineId: () => string,
+): TableOrderDraft {
+  let lines: TableOrderLine[] = [...order.lines]
+  for (const back of returned) {
+    const line: TableOrderLine = {
+      id: lines.some((other) => other.id === back.id) ? newLineId() : back.id,
+      itemId: back.itemId,
+      optionIds: [...back.optionIds].sort(),
+      qty: back.qty,
+      note: back.note.trim(),
+      rev: 0,
+      heldBy: null,
+      removedAt: null,
+    }
+    const merged = mergeInto(lines, line)
+    lines = typeof merged === 'string' ? [...lines, line] : merged.lines
+  }
+  return {
+    lines,
+    earlier: order.earlier,
+    idleExpiresAt: lines.some(live) ? now + ORDER_IDLE_MS : order.idleExpiresAt,
+  }
+}

@@ -5,8 +5,9 @@
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
 // table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
 // shared devices (#72), tables open for phones with their sittings (#73), the readings of a
-// table's bill with the sitting's end by a reading (#74), the table's shared order (#75), and a
-// payment's refund and dispute as read back after a provider's notice (#108).
+// table's bill with the sitting's end by a reading (#74), the table's shared order (#75), Send and
+// a sent order's way to the POS (#77), and a payment's refund and dispute as read back after a
+// provider's notice (#108).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -20,6 +21,8 @@ import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
 import { paymentObserve } from './payment-observe'
 import { recordReading } from './readings'
+import { sendOrder } from './send'
+import { SENT_ORDER_COMMANDS } from './sent-order'
 import {
   closeAllTables,
   closeTable,
@@ -170,13 +173,31 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_state',
     handle: tidyTableOrder,
   }),
+  // #77: Send. The lines are the order's as the guest saw them; a repeat gets the sent order the
+  // action made. A deliberate repeat after the duplicate warning is a new action (#78).
   'order.send': defineCommand({
-    // #77; a deliberate repeat after the duplicate warning is a new action (#78).
-    schema: z.strictObject({ type: z.literal('order.send'), tableId, actionId }),
+    schema: z.strictObject({
+      type: z.literal('order.send'),
+      tableId,
+      actionId,
+      ageMs,
+      lines: z
+        .array(
+          z.strictObject({
+            itemId: idSchema('nd'),
+            optionIds: z.array(idSchema('nd')).max(ORDER_LIMITS.options),
+            qty: z.int().min(1).max(ORDER_LIMITS.quantity),
+            note: z.string().max(ORDER_LIMITS.note),
+          }),
+        )
+        .min(1)
+        .max(ORDER_LIMITS.lines),
+    }),
     origins: ['guest'],
     permission: null,
     idempotency: 'sent_order',
-    handle: null,
+    maxAgeMs: ORDER_EDIT_MAX_AGE_MS,
+    handle: sendOrder,
   }),
   'waiter.call': defineCommand({
     // #81: a second tap returns the open call.
@@ -342,9 +363,8 @@ export const SERVICE_COMMANDS = {
   'floor.table_returned': tableReturned(),
   // #74: a reading of the table's bill, which ends the sitting when it shows the bill closed.
   'reading.record': recordReading(),
-  'sent_order.transition': workerStep('sent_order.transition', {
-    sentOrderId: idSchema('so'),
-  }), // #77
+  // #77: a sent order's way to the POS: the slot, each state, and the sweep of a dead worker's.
+  ...SENT_ORDER_COMMANDS,
   'pause.transition': workerStep('pause.transition', { pauseId: idSchema('pa') }), // #79
   'notice.record': workerStep('notice.record', {}), // #80
   // #108: a refund or a dispute, read back from the provider after its notice.

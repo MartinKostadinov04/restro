@@ -216,6 +216,28 @@ export interface ServiceStrings {
   readonly locationNeeded: string
   /** The guest's own tap that reopens the consent screen after "Not now". */
   readonly locationAllowAgain: string
+  // Send and its states (#77, D116, D122 §5).
+  /** The Send button: "Send 3 items". */
+  readonly sendItems: (count: number) => string
+  /** A Send on its way, on the sending phone only. */
+  readonly sendingNow: string
+  /** A sent order in flight, on the other phones. */
+  readonly beingSent: string
+  readonly sentAdded: string
+  /** Only where the POS approves orders at the bar. */
+  readonly sentAwaitingApproval: string
+  readonly sentNotSent: string
+  /** Not sent because ordering paused (an order behind an Unconfirmed one, or a pause). */
+  readonly sentNotSentPaused: string
+  /** Not sent because only a waiter opens the table's POS bill (`needs_first_item`, D115). */
+  readonly sentNotSentFirstItem: string
+  /** "Not confirmed: show K7Q to your waiter", for 15 minutes on every phone. */
+  readonly sentUnconfirmed: (ref: string) => string
+  /** Opens the panel any phone can show a waiter: the items, the time and the reference. */
+  readonly showWaiter: string
+  readonly showWaiterClose: string
+  /** A Send refused for one item: names it. */
+  readonly itemUnavailableNamed: (name: string) => string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
   readonly refusals: { readonly [C in GuestRefusalCode]: string }
   readonly refusedOther: string
@@ -467,6 +489,18 @@ const EN: Strings = {
     locationCancel: 'Cancel',
     locationNeeded: 'Allow location to see and add to your table’s order and bill.',
     locationAllowAgain: 'Allow location',
+    sendItems: (count) => (count === 1 ? 'Send 1 item' : `Send ${count} items`),
+    sendingNow: 'Sending…',
+    beingSent: 'Being sent',
+    sentAdded: 'Added to your bill',
+    sentAwaitingApproval: 'Waiting for the bar to take it',
+    sentNotSent: 'We couldn’t send your order, please call a waiter.',
+    sentNotSentPaused: 'Ordering is paused, please call a waiter.',
+    sentNotSentFirstItem: 'Ask your waiter to put your first item on, then send again.',
+    sentUnconfirmed: (ref) => `Not confirmed: show ${ref} to your waiter`,
+    showWaiter: 'Show this to your waiter',
+    showWaiterClose: 'Close',
+    itemUnavailableNamed: (name) => `${name} is no longer available. Remove it and send again.`,
     refusals: {
       order_changed: 'Someone at your table changed this. Here is the latest order.',
       line_held: 'This is being paid and can no longer change.',
@@ -480,6 +514,10 @@ const EN: Strings = {
       location_needed: 'Allow location to order onto the bill.',
       location_failed: 'We could not confirm you are at the venue.',
       human_check: 'We could not check this request. Try again.',
+      ordering_paused: 'Ordering is paused, please call a waiter.',
+      menu_unavailable: 'The menu is being updated. Try again in a moment.',
+      order_empty: 'There is nothing to send yet.',
+      item_unavailable: 'Something in your order is no longer available. Remove it and send again.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
@@ -712,6 +750,19 @@ const BG: Strings = {
     locationNeeded:
       'Разрешете местоположението, за да виждате и добавяте към поръчката и сметката на масата.',
     locationAllowAgain: 'Разреши местоположението',
+    sendItems: (count) => (count === 1 ? 'Изпрати 1 артикул' : `Изпрати ${count} артикула`),
+    sendingNow: 'Изпраща се…',
+    beingSent: 'Изпраща се',
+    sentAdded: 'Добавено към сметката ви',
+    sentAwaitingApproval: 'Чака бара да я приеме',
+    sentNotSent: 'Не успяхме да изпратим поръчката ви, моля, повикайте сервитьор.',
+    sentNotSentPaused: 'Поръчките са спрени, моля, повикайте сервитьор.',
+    sentNotSentFirstItem:
+      'Помолете сервитьора да маркира първия ви артикул, после изпратете отново.',
+    sentUnconfirmed: (ref) => `Непотвърдено: покажете ${ref} на сервитьора`,
+    showWaiter: 'Покажете това на сервитьора',
+    showWaiterClose: 'Затвори',
+    itemUnavailableNamed: (name) => `${name} вече не е налично. Премахнете го и изпратете отново.`,
     refusals: {
       order_changed: 'Някой на масата промени това. Ето последната поръчка.',
       line_held: 'Това се плаща и вече не може да се променя.',
@@ -725,6 +776,10 @@ const BG: Strings = {
       location_needed: 'Разрешете местоположението, за да поръчвате към сметката.',
       location_failed: 'Не успяхме да потвърдим, че сте в заведението.',
       human_check: 'Не успяхме да проверим заявката. Опитайте отново.',
+      ordering_paused: 'Поръчките са спрени, моля, повикайте сервитьор.',
+      menu_unavailable: 'Менюто се обновява. Опитайте отново след малко.',
+      order_empty: 'Още няма какво да се изпрати.',
+      item_unavailable: 'Нещо от поръчката ви вече не е налично. Премахнете го и изпратете отново.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',

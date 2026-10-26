@@ -44,9 +44,14 @@ describe('the Turnstile check', () => {
     }
   })
 
-  it('takes the test secret’s `test` action', async () => {
+  it('takes the test secret’s `test` action, or none (its answer for the dummy token)', async () => {
     const fetcher = answer(200, { success: true, action: 'test' })
     expect(await turnstileCheck(TEST_SECRET, fetcher)('token', ACTION_ID)).toBe('passed')
+    const none = answer(200, { success: true, 'error-codes': [], hostname: 'example.com' })
+    expect(await turnstileCheck(TEST_SECRET, none)('token', ACTION_ID)).toBe('passed')
+    // A live secret's answer without the Send's action never passes.
+    const liveNone = answer(200, { success: true, 'error-codes': [] })
+    expect(await turnstileCheck(SECRET, liveNone)('token', ACTION_ID)).toBe('failed')
   })
 
   it('is unavailable only when siteverify is down', async () => {

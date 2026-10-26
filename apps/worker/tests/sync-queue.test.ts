@@ -89,6 +89,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       revealToken: null,
       billIdKey: null,
       posSync: true,
+      send: false,
     }
     worker = await startWorker(config, {
       logger,
@@ -328,6 +329,7 @@ describe('buildJobs', () => {
   const configWithoutKeys = {
     seal: null,
     posSync: true,
+    send: true,
     barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
     sim: { env: 'test', allowHosts: [] },
     assets: { kind: 'local', dir: tmpdir() },
@@ -347,6 +349,9 @@ describe('buildJobs', () => {
       // The floor reading (#71) needs no sealing keys: the simulated POS has no credentials.
       JOB_NAMES.floorRead,
       JOB_NAMES.floorReadTick,
+      // The Send (#77) needs no sealing keys either.
+      JOB_NAMES.orderSend,
+      JOB_NAMES.orderSlotSweep,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -390,6 +395,9 @@ describe('buildJobs', () => {
       JOB_NAMES.barsySyncTick,
       JOB_NAMES.floorRead,
       JOB_NAMES.floorReadTick,
+      // The Send (#77) needs no sealing keys either.
+      JOB_NAMES.orderSend,
+      JOB_NAMES.orderSlotSweep,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -422,7 +430,24 @@ describe('buildJobs', () => {
     expect(names).toContain(JOB_NAMES.publishTableTokens)
     expect(names).not.toContain(JOB_NAMES.barsyFullPull)
     expect(names).not.toContain(JOB_NAMES.barsySyncTick)
+    // The Send follows the sync unless WORKER_SEND says otherwise (#77).
+    expect(names).not.toContain(JOB_NAMES.orderSend)
     expect(warnings.some((warning) => warning.includes('WORKER_POS_SYNC'))).toBe(true)
+  })
+
+  it('WORKER_SEND=on registers the Send with the sync off: the end-to-end worker (#77)', async () => {
+    const { loadConfig } = await import('../src/config')
+    const config = loadConfig({
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      WORKER_POS_SYNC: 'off',
+      WORKER_SEND: 'on',
+    })
+    const names = (await buildJobs(config, { warn: () => undefined } as never)).map(
+      (job) => job.name,
+    )
+    expect(names).toContain(JOB_NAMES.orderSend)
+    expect(names).toContain(JOB_NAMES.orderSlotSweep)
+    expect(names).not.toContain(JOB_NAMES.floorRead)
   })
 
   it('with DATABASE_URL_PURGE it adds the two purge jobs (D83); without it, nothing is ever erased', async () => {

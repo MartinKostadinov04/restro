@@ -131,6 +131,7 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       revealToken: null,
       billIdKey: null,
       posSync: true,
+      send: false,
     }
     const logger = await createLogger({
       level: 'debug',

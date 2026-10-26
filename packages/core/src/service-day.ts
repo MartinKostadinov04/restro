@@ -139,3 +139,21 @@ export function isoInTimeZone(at: Date, timeZone: string): string {
     `${pad(local.second)}${sign}${pad(Math.floor(offset / 60))}:${pad(offset % 60)}`
   )
 }
+
+/**
+ * The instant the service day of `at` began (to the second): the end of the day before. What a
+ * connector compares a bill's opening with, so a bill left open from last night is never joined
+ * (#77). Found by halving the 26 hours before `at`, so a daylight-saving change needs no rule.
+ */
+export function serviceDayStartsAt(at: Date, timeZone: string, dayEndsAt: string): Date {
+  const today = serviceDate(at, timeZone, dayEndsAt)
+  let low = at.getTime() - 26 * 3_600_000
+  let high = at.getTime()
+  // `low` is always in an earlier day, `high` in today's.
+  while (high - low > 1_000) {
+    const middle = Math.floor((low + high) / 2)
+    if (serviceDate(new Date(middle), timeZone, dayEndsAt) === today) high = middle
+    else low = middle
+  }
+  return new Date(Math.floor(high / 1_000) * 1_000)
+}

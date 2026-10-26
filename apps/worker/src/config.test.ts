@@ -40,6 +40,7 @@ describe('loadConfig', () => {
       revealToken: null,
       billIdKey: null,
       posSync: true,
+      send: true,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -64,6 +65,7 @@ describe('loadConfig', () => {
         REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
         BILL_ID_KEY: ` ${'k'.repeat(40)} `,
         WORKER_POS_SYNC: ' OFF ',
+        WORKER_SEND: ' On ',
       }),
     ).toEqual({
       databaseUrl: URL,
@@ -85,7 +87,10 @@ describe('loadConfig', () => {
       revealToken: REVEAL_TOKEN,
       billIdKey: 'k'.repeat(40),
       posSync: false,
+      send: true,
     })
+    // Unset, the Send follows the sync.
+    expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
   })
 
   it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {

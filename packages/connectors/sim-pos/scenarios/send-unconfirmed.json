@@ -1,0 +1,22 @@
+{
+  "name": "send-unconfirmed",
+  "extends": "demo-bar",
+  "description": "The Send's end-to-end test (#77): Table 1 is open with a Mojito Maria put on; as Restro adds its first round a waiter puts the same round on, and Restro's answer never comes, so reading the bill back cannot tell the two apart and the Send ends Unconfirmed.",
+  "bills": [
+    {
+      "table": "30001",
+      "by": "maria",
+      "minutesAgo": 20,
+      "rows": [{ "article": "2003", "quantity": "1" }]
+    }
+  ],
+  "faults": [
+    {
+      "on": "addRows",
+      "from": 1,
+      "times": 1,
+      "fault": { "kind": "waiterRoundSlipsIn", "identical": true }
+    },
+    { "on": "addRows", "from": 1, "times": 1, "fault": { "kind": "landsThenHangs" } }
+  ]
+}

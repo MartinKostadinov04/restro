@@ -23,7 +23,11 @@ import { accepted, refused, type ServiceResult } from './results'
 import type { TableOrder } from './rows'
 
 /** Writes the order to its row and touches the table. */
-async function writeOrder(stx: ServiceTx, row: TableOrder, order: TableOrderDraft): Promise<void> {
+export async function writeOrder(
+  stx: ServiceTx,
+  row: TableOrder,
+  order: TableOrderDraft,
+): Promise<void> {
   const [written] = await stx.tx
     .update(tableOrders)
     .set({ ...orderToRow(order), ...stx.provenance, updatedAt: sql`now()` })

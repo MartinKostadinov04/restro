@@ -310,7 +310,7 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
   })
 
   describe('Turnstile at Send', () => {
-    const send = { type: 'order.send' }
+    const send = { type: 'order.send', lines: [{ itemId: item, optionIds: [], qty: 1, note: '' }] }
     const checks: string[] = []
     const verdictOf =
       (verdict: Awaited<ReturnType<HumanCheck>>): HumanCheck =>
@@ -344,8 +344,8 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
         { ...send, actionId },
         { pass, check: { humanToken: 'token' }, humanCheck: verdictOf('unavailable') },
       )
-      // Past every guard; #77 builds the Send itself.
-      expect(open.result).toMatchObject({ actionId, code: 'not_built' })
+      // Past every guard: the Send itself refuses it (this venue publishes no menu).
+      expect(open.result).toMatchObject({ actionId, code: 'menu_unavailable' })
       expect(checks).toEqual([actionId])
       expect(guards.map((event) => event.kind)).toEqual(['human_check_open'])
     })
@@ -375,10 +375,10 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
       limiter = limits({ sendGap: GUEST_LIMITS.sendGap, sends: GUEST_LIMITS.sends })
       const { pass } = await locatedAdd()
       const token = { check: { humanToken: 'token' }, humanCheck: verdictOf('passed') }
-      expect((await act(send, { pass, ...token })).result.code).toBe('not_built')
+      expect((await act(send, { pass, ...token })).result.code).toBe('menu_unavailable')
       await expect(act(send, { pass, ...token })).rejects.toThrow(/rate_limited/)
       const friend = await act(send, { pass, ...token, phone: 'phone-two-bbbbbbbbbbbbb' })
-      expect(friend.result.code).toBe('not_built')
+      expect(friend.result.code).toBe('menu_unavailable')
     })
   })
 })

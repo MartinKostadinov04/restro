@@ -15,7 +15,9 @@
 //    (fail closed; open only when siteverify itself is down, and counted). Removing a line and
 //    Undo are never located, and neither is paying;
 // 5. for a command: the action id's first answer, the tap's age, the code again, the pass's
-//    sitting, the table's rate and the command itself, all inside `applyService`;
+//    sitting, the table's rate and the command itself, all inside `applyService`. A Send (#77)
+//    first reads the table's menu (`loadSendMenu`) to price its lines, and an accepted one queues
+//    the worker's `order-send` for the table (the sweep queues it again if that fails);
 // 6. the answer: the server's view projected to what a phone may see (`GuestTableState`), run
 //    through the forbidden-values walk (rule 3) before it leaves. Where the venue checks location,
 //    a phone without a pass that holds sees no order, no sent orders and no bill.
@@ -63,6 +65,7 @@ import {
 } from './location-pass'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
+import { loadSendMenu } from './send-menu'
 
 /** The screens a phone polls from (design §6): the menu polls slower than the order and the bill. */
 export const GUEST_VIEWS = ['menu', 'order', 'bill'] as const
@@ -141,7 +144,16 @@ export interface GuestTableState {
     readonly id: string
     readonly state: 'sending' | 'awaiting_approval' | 'added' | 'not_sent' | 'unconfirmed'
     readonly reason: string | null
+    /** The short reference a waiter reads (K7Q). */
     readonly ref: string
+    /** What was sent, for "Show this to your waiter" (the face names the items from the menu). */
+    readonly lines: readonly {
+      readonly itemId: string
+      readonly optionIds: readonly string[]
+      readonly qty: number
+    }[]
+    /** Seconds since it was sent, for the time "Show this to your waiter" gives. */
+    readonly sentAgoSeconds: number
   }[]
   /** The table's bill as the last complete reading showed it, or null. */
   readonly bill: {
@@ -374,7 +386,18 @@ export function projectGuestState(
     const state = SENT_ORDER_STATES[sent.state]
     if (state === undefined) return []
     const ended = sent.settledAt !== null && now - sent.settledAt.getTime() > ENDED_SENT_ORDER_MS
-    return ended ? [] : [{ id: sent.id, state, reason: sent.reason, ref: sent.reference }]
+    return ended
+      ? []
+      : [
+          {
+            id: sent.id,
+            state,
+            reason: sent.reason,
+            ref: sent.reference,
+            lines: sent.lines,
+            sentAgoSeconds: seconds(now - sent.createdAt.getTime()),
+          },
+        ]
   })
   const inFlight = sentOrders.some(
     (sent) => sent.state === 'sending' || sent.state === 'awaiting_approval',
@@ -597,12 +620,13 @@ function guestContext(
 
 /** The answer a phone gets for a service result. */
 export function guestResult(result: ServiceResult): GuestCommandResult {
-  const lineId = result.details.lineId
+  // The line an add made, the sent order a Send made, or the item a refused Send names.
+  const subject = result.details.lineId ?? result.details.sentOrderId ?? result.details.itemId
   return {
     actionId: result.actionId,
     status: result.status === 'accepted' ? 'accepted' : 'rejected',
     code: result.status === 'refused' ? result.code : null,
-    subjectId: typeof lineId === 'string' ? lineId : null,
+    subjectId: typeof subject === 'string' ? subject : null,
     ref: result.status === 'accepted' ? result.ref : null,
   }
 }
@@ -657,6 +681,12 @@ export interface GuestActInput {
   readonly jobId?: string
   /** The limits' counts; this process's own unless a test passes another. */
   readonly limiter?: GuestLimiter
+  /** Queues the worker's Send for the table (the web's job queue); errors are the caller's. */
+  readonly queueSend?: (target: {
+    readonly tenantId: string
+    readonly venueId: string
+    readonly tableId: string
+  }) => Promise<void>
 }
 
 /** What `guestAct` answers when it reached the table. */
@@ -671,9 +701,9 @@ export interface GuestActed {
 }
 
 /**
- * The guest commands that reach the engine, each with its tap's age. A Send and the phone's own
- * location check are guarded here; anything else the shell knows (a waiter call, paying) is
- * answered `not_built` until its ticket (#77 onwards).
+ * The guest commands that reach the engine, each with its tap's age. The phone's own location
+ * check is answered here; anything else the shell knows (a waiter call, paying) is answered
+ * `not_built` until its ticket.
  */
 const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.add',
@@ -681,10 +711,11 @@ const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.remove',
   'order.undo',
   'order.restore',
+  'order.send',
 ])
 
-/** The commands this module guards without the engine: a Send (until #77) and "Allow location". */
-const GUARDED_HERE: ReadonlySet<string> = new Set(['order.send', 'location.check'])
+/** The commands this module answers without the engine: "Allow location". */
+const GUARDED_HERE: ReadonlySet<string> = new Set(['location.check'])
 
 /**
  * True for a command that must come from a phone at the venue (D121, D122 §4): one that adds or
@@ -751,19 +782,21 @@ export async function guestAct(
   if (!GUEST_COMMAND_TYPES.has(type) && !GUARDED_HERE.has(type)) return reject('not_built')
 
   // A Send's first answer comes before every guard, Turnstile's siteverify above all (its token
-  // works once). Until #77 builds Send nothing can have made one.
+  // works once): a repeat skips the phone's limits, the location and Turnstile, and the engine
+  // answers it with the sent order it made.
   const repeatSend = type === 'order.send' && (await sentOrderMade(pool, target, actionId))
-  if (repeatSend) return reject('not_built')
 
   const position = input.check?.location
-  const phoneLimit = (input.limiter ?? limiter).take(
-    `${target.hash}:${input.phone}`,
-    phoneLimits(input.command, position !== undefined),
-    Date.now(),
-  )
-  if (!phoneLimit.ok) {
-    count('phone_limited')
-    return limited(phoneLimit)
+  if (!repeatSend) {
+    const phoneLimit = (input.limiter ?? limiter).take(
+      `${target.hash}:${input.phone}`,
+      phoneLimits(input.command, position !== undefined),
+      Date.now(),
+    )
+    if (!phoneLimit.ok) {
+      count('phone_limited')
+      return limited(phoneLimit)
+    }
   }
 
   const guard = await readGuard(pool, target)
@@ -772,7 +805,7 @@ export async function guestAct(
   const checks = guard.settings.locationCheck
   let claims = checks ? heldClaims(input.pass, input.passKey, target, guard.sittingId, now) : null
   let pass: string | null = null
-  const located = checks && isLocated(type)
+  const located = checks && isLocated(type) && !repeatSend
 
   if (located && claims === null) {
     if (position === undefined || input.check?.consentVersion !== LOCATION_CONSENT_VERSION) {
@@ -802,7 +835,7 @@ export async function guestAct(
     pass = sealLocationPass(fresh, input.passKey)
   }
 
-  if (type === 'order.send') {
+  if (type === 'order.send' && !repeatSend) {
     // Turnstile at an on-the-bill Send only (D119, D121): every line is on the bill for now.
     const token = input.check?.humanToken
     const verdict =
@@ -814,8 +847,6 @@ export async function guestAct(
       return { ...reject('human_check'), pass }
     }
     if (verdict === 'unavailable') count('human_check_open')
-    // #77 builds the Send; the pass's consent version then goes on the sent order (D119).
-    return { ...reject('not_built'), pass }
   }
 
   if (type === 'location.check') {
@@ -853,13 +884,31 @@ export async function guestAct(
   }
 
   const command = { ...input.command, tableId: target.tableId, ageMs: input.ageMs }
+  // A Send prices its lines from the table's menu, read before the transaction; the pass's consent
+  // version goes on the sent order with the pass's sitting (D119).
+  const sendMenu =
+    type === 'order.send' && !repeatSend
+      ? await loadSendMenu(pool, {
+          tenantId: target.tenantId,
+          venueId: target.venueId,
+          tableId: target.tableId,
+        })
+      : null
   const { result, state } = await applyService(
     pool,
     command,
     guestContext(target, input.jobId, located ? claims : null),
+    sendMenu === null ? {} : { sendMenu },
   )
   if (result.status === 'refused' && result.code === 'code_retired') {
     return { ok: false, code: 'code_retired' }
+  }
+  if (type === 'order.send' && result.status === 'accepted' && input.queueSend !== undefined) {
+    await input.queueSend({
+      tenantId: target.tenantId,
+      venueId: target.venueId,
+      tableId: target.tableId,
+    })
   }
   // The engine refuses a located command whose pass names a sitting that has since ended.
   const lost = result.status === 'refused' && result.code === 'location_needed'
