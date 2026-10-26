@@ -5,6 +5,8 @@
 // 2. `lock_timeout` 2 s and `statement_timeout` 5 s, then the venue locked `FOR SHARE` and live;
 // 3. the table, where the command names one, and for a guest the table code it came with: the
 //    code must still be the table's and the table must still have a guest page (`code_retired`);
+//    for a located guest command, the sitting its location pass names must still be the table's
+//    open sitting (`location_needed`, #76);
 // 4. the permission, read in the same transaction;
 // 5. `not_built` for a command whose ticket hasn't built it;
 // 6. the repeat check: the order row's ring of action ids, or the sent order made by the same
@@ -19,7 +21,7 @@
 
 import type { KeyObject } from 'node:crypto'
 
-import { areas, type DbPool, sentOrders, tableOrders, venueTables } from '@restro/db'
+import { areas, type DbPool, sentOrders, sittings, tableOrders, venueTables } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 
@@ -181,6 +183,21 @@ export async function executeCommand(
                 )
         if (guestPage.length === 0) throw new Refusal(refused(actionId, 'code_retired'))
       }
+      if (context.sittingId !== undefined) {
+        // A located command (#76): its pass names a sitting, which must still be the table's open
+        // one. Checked here, under the venue's lock, so a sitting ended since the pass was read
+        // stops it.
+        const [open] =
+          command.tableId === undefined
+            ? []
+            : await tx
+                .select({ id: sittings.id })
+                .from(sittings)
+                .where(and(eq(sittings.tableId, command.tableId), isNull(sittings.endedAt)))
+        if (open?.id !== context.sittingId) {
+          throw new Refusal(refused(actionId, 'location_needed'))
+        }
+      }
 
       const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor)
       if (!grants.ok) throw new Refusal(refused(actionId, grants.code))
@@ -215,6 +232,7 @@ export async function executeCommand(
         sealPublicKey: options.sealPublicKey ?? null,
         pinPepper: options.pinPepper ?? null,
         billIdKey: options.billIdKey ?? null,
+        consentVersion: context.consentVersion ?? null,
         dbNow,
         log: (entry) =>
           appendLogEntry(

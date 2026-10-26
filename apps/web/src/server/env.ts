@@ -65,6 +65,30 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The key that seals the guests' location passes (#76, D121): HMAC-SHA256, web app only, 32
+   * characters or more (checked where it is used). Without it no pass is issued, so a venue that
+   * checks location takes no additions from phones. A new key ends every pass: phones locate
+   * again. Empty counts as missing.
+   */
+  GUEST_PASS_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
+   * Turnstile's secret key (#76, D119): siteverify at an on-the-bill Send. Without it every Send
+   * fails the check (fail closed). Empty counts as missing.
+   */
+  TURNSTILE_SECRET_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
   /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
   REVEAL_SERVICE_TOKEN: z
     .string()

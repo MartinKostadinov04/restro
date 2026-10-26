@@ -1,16 +1,27 @@
-// The guest API's one deep module (D121; design `2026-10-20-guest-api-design.md` §1–§8; ticket
-// #75). The routes `GET /api/guest/state` and `POST /api/guest/actions` are thin adapters: they
-// read the header and the body, call `guestState` or `guestAct`, and send what comes back. This
-// module owns the order of the checks:
+// The guest API's one deep module (D121; design `2026-10-20-guest-api-design.md` §1–§8; tickets
+// #75, #76). The routes `GET /api/guest/state` and `POST /api/guest/actions` are thin adapters:
+// they read the headers and the body, call `guestState` or `guestAct`, and send what comes back.
+// This module owns the order of the checks:
 //
 // 1. the code's shape, before the database (a wrong shape is `code_retired` at once);
 // 2. the code's table, through the pinned lookup (`guestTableByCodeHash`), remembered for 30 s
 //    as a hint only: the tenant it names is re-checked in every transaction against the code's
 //    hash, so a re-issued or hidden code fails at once;
-// 3. for a command: the action id's first answer, the tap's age, the code again, the table's rate
-//    and the command itself, all inside `applyService`;
-// 4. the answer: the server's view projected to what a phone may see (`GuestTableState`), run
-//    through the forbidden-values walk (rule 3) before it leaves.
+// 3. the table code's request rate (20 a second), and for a command the phone's own limits
+//    (`guest-limits.ts`); a Send's first answer is looked up before them and before Turnstile;
+// 4. for a located command (D118, D121, D122 §4: one that adds or changes an on-the-bill line, a
+//    Send with on-the-bill lines, the phone's own "Allow location"): a location pass that holds,
+//    or the position checked in memory and dropped, then a fresh pass. A Send also needs Turnstile
+//    (fail closed; open only when siteverify itself is down, and counted). Removing a line and
+//    Undo are never located, and neither is paying;
+// 5. for a command: the action id's first answer, the tap's age, the code again, the pass's
+//    sitting, the table's rate and the command itself, all inside `applyService`;
+// 6. the answer: the server's view projected to what a phone may see (`GuestTableState`), run
+//    through the forbidden-values walk (rule 3) before it leaves. Where the venue checks location,
+//    a phone without a pass that holds sees no order, no sent orders and no bill.
+//
+// The position is never written, logged, returned or passed on: it lives in this request's memory
+// for the circle test and nothing else.
 //
 // Time alone changes the order too (an Undo closing, an idle order set aside): a read past the
 // order's next change runs `order.tidy` first, so every phone sees it at its next poll (design §6,
@@ -19,15 +30,37 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { type DbPool, guestTableByCodeHash } from '@restro/db'
+import {
+  type DbPool,
+  guestTableByCodeHash,
+  sentOrders,
+  sittings,
+  venues,
+  withTenant,
+} from '@restro/db'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
 import type { LocalizedText } from '../locales'
+import {
+  type GuestPosition,
+  LOCATION_CONSENT_VERSION,
+  locationPassExpiry,
+  locationVerdict,
+} from '../location-check'
+import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
 import { hashTableCode } from '../qr'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
 import { applyService } from './apply-service'
 import { forbiddenPaths, wantsFreshReading } from './bill'
 import type { ServiceContext } from './context'
+import { GuestLimiter, type GuestLimitName, type LimitAnswer } from './guest-limits'
+import {
+  type LocationPassClaims,
+  openLocationPass,
+  passHolds,
+  sealLocationPass,
+} from './location-pass'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 
@@ -57,6 +90,23 @@ export interface GuestOrderLine {
   readonly held: string | null
 }
 
+/**
+ * Where the phone stands with the location check (#76): `off` at a venue without it, `held` with a
+ * pass that holds, `needed` without one (the order and the bill are then left out).
+ */
+export type GuestLocationState = 'off' | 'needed' | 'held'
+
+/** The location part of a phone's state. */
+export interface GuestLocation {
+  readonly state: GuestLocationState
+  /** Seconds the pass still lasts, or null without one. */
+  readonly passSeconds: number | null
+  /** Seconds to the end of the venue's service day: how long a phone remembers its consent. */
+  readonly dayEndsInSeconds: number
+  /** The venue's name, which the consent text names ("[Venue] and Restro check…"). */
+  readonly venueName: string
+}
+
 /** What a phone may see of its table (design §3, with D122's words). */
 export interface GuestTableState {
   readonly unchanged: false
@@ -65,6 +115,8 @@ export interface GuestTableState {
   readonly next: number
   readonly table: { readonly label: string }
   readonly ordering: { readonly state: 'on' | 'paused' | 'closed' }
+  readonly location: GuestLocation
+  /** The table's order; null without a pass where the venue checks location (D122 §4). */
   readonly order: {
     readonly lines: readonly GuestOrderLine[]
     /** Removed lines while their Undo lasts. */
@@ -83,7 +135,7 @@ export interface GuestTableState {
       readonly setAsideAgoSeconds: number
       readonly lines: readonly Omit<GuestOrderLine, 'rev' | 'held'>[]
     } | null
-  }
+  } | null
   /** The sitting's sent orders in flight or ended in the last 15 minutes, newest first. */
   readonly sentOrders: readonly {
     readonly id: string
@@ -120,6 +172,8 @@ export interface GuestUnchanged {
   readonly unchanged: true
   readonly version: number
   readonly next: number
+  /** The phone asks for the whole state again when this differs from the one it holds. */
+  readonly location: GuestLocationState
 }
 
 /** A command's answer as a phone gets it. */
@@ -135,6 +189,11 @@ export interface GuestCommandResult {
 /** Why a guest is answered with no state at all. */
 export type GuestRefusal = 'code_retired'
 
+/** A request answered with no state: an unknown code, or a table code past its request rate. */
+export type GuestStateless =
+  | { readonly ok: false; readonly code: GuestRefusal }
+  | { readonly ok: false; readonly code: 'rate_limited'; readonly retryAfter: number }
+
 /** Thrown when an answer would carry a backend value: a bug, answered 500 and never sent. */
 export class ForbiddenValueError extends Error {
   constructor(readonly paths: readonly string[]) {
@@ -148,6 +207,12 @@ interface CodeTarget {
   readonly venueId: string
   readonly tableId: string
   readonly hash: string
+  /**
+   * The code's generation. Fixed for the life of a hash: a re-issue gives a new code (a new hash)
+   * and raises the generation in one transaction, so the memo never holds a stale generation for
+   * a code that still works.
+   */
+  readonly codeGeneration: number
 }
 
 /** How long the code → table memo trusts an answer (design §2: a hint only). */
@@ -155,9 +220,13 @@ const MEMO_MS = 30_000
 const MEMO_SIZE = 4_000
 const memo = new Map<string, { readonly target: CodeTarget | null; readonly until: number }>()
 
-/** Forgets every remembered code (tests). */
+/** The request limits of this process: counts in memory only, never stored (D122 §4). */
+const limiter = new GuestLimiter()
+
+/** Forgets every remembered code and every limit's counts (tests). */
 export function forgetGuestCodes(): void {
   memo.clear()
+  limiter.clear()
 }
 
 async function targetOf(pool: DbPool, code: string): Promise<CodeTarget | null> {
@@ -170,11 +239,93 @@ async function targetOf(pool: DbPool, code: string): Promise<CodeTarget | null> 
   const target =
     found === null || found.state !== 'live'
       ? null
-      : { tenantId: found.tenantId, venueId: found.venueId, tableId: found.tableId, hash }
+      : {
+          tenantId: found.tenantId,
+          venueId: found.venueId,
+          tableId: found.tableId,
+          hash,
+          codeGeneration: found.codeGeneration,
+        }
   // Bounded: a full memo starts again (it is a hint, so forgetting costs one lookup each).
   if (memo.size >= MEMO_SIZE) memo.clear()
   memo.set(hash, { target, until: now + MEMO_MS })
   return target
+}
+
+/** What the guards need to know of the venue and the table, read once per request. */
+interface GuardRead {
+  readonly venueName: string
+  readonly settings: OrderingSettings
+  readonly timezone: string
+  readonly dayEndsAt: string
+  /** The table's open sitting, or null. */
+  readonly sittingId: string | null
+}
+
+async function readGuard(pool: DbPool, target: CodeTarget): Promise<GuardRead | null> {
+  return withTenant(pool, target.tenantId, async (tx) => {
+    const [venue] = await tx
+      .select({
+        name: venues.name,
+        settings: venues.settings,
+        timezone: venues.timezone,
+        dayEndsAt: venues.serviceDayEndsAt,
+      })
+      .from(venues)
+      .where(eq(venues.id, target.venueId))
+    if (venue === undefined) return null
+    const [open] = await tx
+      .select({ id: sittings.id })
+      .from(sittings)
+      .where(and(eq(sittings.tableId, target.tableId), isNull(sittings.endedAt)))
+    return {
+      venueName: venue.name,
+      settings: readOrderingSettings(venue.settings),
+      timezone: venue.timezone,
+      dayEndsAt: venue.dayEndsAt,
+      sittingId: open?.id ?? null,
+    }
+  })
+}
+
+/** The claims of a presented pass that holds at this table now, or null. */
+function heldClaims(
+  pass: string | undefined,
+  passKey: string | null | undefined,
+  target: CodeTarget,
+  sittingId: string | null,
+  now: number,
+): LocationPassClaims | null {
+  if (pass === undefined || passKey == null) return null
+  const claims = openLocationPass(pass, passKey)
+  if (claims === null) return null
+  return passHolds(claims, {
+    venueId: target.venueId,
+    codeGeneration: target.codeGeneration,
+    sittingId,
+    now: new Date(now),
+  })
+    ? claims
+    : null
+}
+
+/** The location part of the answer. */
+function locationOf(
+  guard: GuardRead,
+  claims: LocationPassClaims | null,
+  now: number,
+): GuestLocation {
+  const dayEnds = locationPassExpiry(new Date(now), 24 * 60, guard.timezone, guard.dayEndsAt)
+  const dayEndsInSeconds = seconds(dayEnds.getTime() - now)
+  if (!guard.settings.locationCheck) {
+    return { state: 'off', passSeconds: null, dayEndsInSeconds, venueName: guard.venueName }
+  }
+  return {
+    state: claims === null ? 'needed' : 'held',
+    passSeconds: claims === null ? null : seconds(claims.expiresAt - now),
+    dayEndsInSeconds,
+    venueName: guard.venueName,
+  }
 }
 
 const SENT_ORDER_STATES: Readonly<Record<string, GuestTableState['sentOrders'][number]['state']>> =
@@ -195,14 +346,31 @@ function cadence(view: GuestView, inFlight: boolean): number {
   return view === 'menu' && !inFlight ? GUEST_POLL_MS.menu : GUEST_POLL_MS.fast
 }
 
-/** The server's view of the table as a phone may see it (rule 3: our ids and names only). */
-export function projectGuestState(read: TableStateRead, view: GuestView): GuestTableState {
+/** The location part when the caller gives none (a venue that doesn't check). */
+const LOCATION_OFF: GuestLocation = {
+  state: 'off',
+  passSeconds: null,
+  dayEndsInSeconds: 0,
+  venueName: '',
+}
+
+/**
+ * The server's view of the table as a phone may see it (rule 3: our ids and names only). Where the
+ * venue checks location, a phone without a pass that holds (`location.state` `needed`) gets no
+ * order, no sent orders and no bill (D122 §4).
+ */
+export function projectGuestState(
+  read: TableStateRead,
+  view: GuestView,
+  location: GuestLocation = LOCATION_OFF,
+): GuestTableState {
   const now = read.now.getTime()
+  const sees = location.state !== 'needed'
   const order =
     read.sitting === null || read.order === null
       ? null
       : orderFromRow({ ...read.order, earlier: read.order.earlier })
-  const sentOrders = read.sentOrders.flatMap((sent) => {
+  const sentOrders = (sees ? read.sentOrders : []).flatMap((sent) => {
     const state = SENT_ORDER_STATES[sent.state]
     if (state === undefined) return []
     const ended = sent.settledAt !== null && now - sent.settledAt.getTime() > ENDED_SENT_ORDER_MS
@@ -211,7 +379,7 @@ export function projectGuestState(read: TableStateRead, view: GuestView): GuestT
   const inFlight = sentOrders.some(
     (sent) => sent.state === 'sending' || sent.state === 'awaiting_approval',
   )
-  const bill = read.bill
+  const bill = sees ? read.bill : null
   return {
     unchanged: false,
     version: read.version,
@@ -220,50 +388,53 @@ export function projectGuestState(read: TableStateRead, view: GuestView): GuestT
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
     },
-    order: {
-      lines: (order?.lines ?? [])
-        .filter((line) => line.removedAt === null)
-        .map((line) => ({
-          id: line.id,
-          itemId: line.itemId,
-          optionIds: line.optionIds,
-          qty: line.qty,
-          note: line.note,
-          rev: line.rev,
-          // Nothing in the menu says an item is paid first yet: every line is on the bill.
-          mode: 'on_bill' as const,
-          held: line.heldBy,
-        })),
-      removed: (order?.lines ?? []).flatMap((line) =>
-        line.removedAt === null || now - line.removedAt > UNDO_WINDOW_MS
-          ? []
-          : [
-              {
-                id: line.id,
-                itemId: line.itemId,
-                optionIds: line.optionIds,
-                qty: line.qty,
-                note: line.note,
-                undoSeconds: seconds(UNDO_WINDOW_MS - (now - line.removedAt)),
-              },
-            ],
-      ),
-      earlier:
-        order?.earlier == null
-          ? null
-          : {
-              setAsideAt: order.earlier.at,
-              setAsideAgoSeconds: seconds(now - order.earlier.at),
-              lines: order.earlier.lines.map((line) => ({
-                id: line.id,
-                itemId: line.itemId,
-                optionIds: line.optionIds,
-                qty: line.qty,
-                note: line.note,
-                mode: 'on_bill' as const,
-              })),
-            },
-    },
+    location,
+    order: !sees
+      ? null
+      : {
+          lines: (order?.lines ?? [])
+            .filter((line) => line.removedAt === null)
+            .map((line) => ({
+              id: line.id,
+              itemId: line.itemId,
+              optionIds: line.optionIds,
+              qty: line.qty,
+              note: line.note,
+              rev: line.rev,
+              // Nothing in the menu says an item is paid first yet: every line is on the bill.
+              mode: 'on_bill' as const,
+              held: line.heldBy,
+            })),
+          removed: (order?.lines ?? []).flatMap((line) =>
+            line.removedAt === null || now - line.removedAt > UNDO_WINDOW_MS
+              ? []
+              : [
+                  {
+                    id: line.id,
+                    itemId: line.itemId,
+                    optionIds: line.optionIds,
+                    qty: line.qty,
+                    note: line.note,
+                    undoSeconds: seconds(UNDO_WINDOW_MS - (now - line.removedAt)),
+                  },
+                ],
+          ),
+          earlier:
+            order?.earlier == null
+              ? null
+              : {
+                  setAsideAt: order.earlier.at,
+                  setAsideAgoSeconds: seconds(now - order.earlier.at),
+                  lines: order.earlier.lines.map((line) => ({
+                    id: line.id,
+                    itemId: line.itemId,
+                    optionIds: line.optionIds,
+                    qty: line.qty,
+                    note: line.note,
+                    mode: 'on_bill' as const,
+                  })),
+                },
+        },
     sentOrders,
     bill:
       bill === null
@@ -298,6 +469,11 @@ function walked<T>(answer: T, read: TableStateRead | null): T {
   return answer
 }
 
+/** A limit's refusal as the route sends it. */
+function limited(answer: Extract<LimitAnswer, { ok: false }>): GuestStateless {
+  return { ok: false, code: 'rate_limited', retryAfter: Math.max(1, seconds(answer.retryAfterMs)) }
+}
+
 /** What a read of the state needs from its caller. */
 export interface GuestStateInput {
   /** The table code from the `Authorization: Table <code>` header. */
@@ -305,8 +481,14 @@ export interface GuestStateInput {
   /** The version the phone has, or undefined for the whole state. */
   readonly since?: number
   readonly view: GuestView
+  /** The location pass the phone holds, from its header, or undefined. */
+  readonly pass?: string
+  /** `GUEST_PASS_KEY`, or null when the app has none (no pass then holds). */
+  readonly passKey?: string | null
   /** The request's id, for the provenance of the changes time made. */
   readonly jobId?: string
+  /** The limits' counts; this process's own unless a test passes another. */
+  readonly limiter?: GuestLimiter
   /** Queues a fresh reading of the table's bill (the web's job queue); errors are the caller's. */
   readonly queueReading?: (target: {
     readonly tenantId: string
@@ -320,11 +502,19 @@ export async function guestState(
   pool: DbPool,
   input: GuestStateInput,
 ): Promise<
-  | { readonly ok: true; readonly answer: GuestTableState | GuestUnchanged }
-  | { readonly ok: false; readonly code: GuestRefusal }
+  { readonly ok: true; readonly answer: GuestTableState | GuestUnchanged } | GuestStateless
 > {
   const target = await targetOf(pool, input.code)
   if (target === null) return { ok: false, code: 'code_retired' }
+  const codeLimit = (input.limiter ?? limiter).take(target.hash, ['codeRequests'], Date.now())
+  if (!codeLimit.ok) return limited(codeLimit)
+  const guard = await readGuard(pool, target)
+  if (guard === null) return { ok: false, code: 'code_retired' }
+  const now = Date.now()
+  const claims = guard.settings.locationCheck
+    ? heldClaims(input.pass, input.passKey, target, guard.sittingId, now)
+    : null
+
   const read = (since?: number) =>
     readTableState(pool, {
       tenantId: target.tenantId,
@@ -351,14 +541,19 @@ export async function guestState(
     state = await read(input.since)
     if (state === null) return { ok: false, code: 'code_retired' }
   }
+  // The sitting may have ended between the guard's read and this one: the pass holds only for the
+  // sitting the state shows.
+  const holds = claims !== null && (state.unchanged || state.sitting?.id === claims.sittingId)
+  const location = locationOf(guard, holds ? claims : null, now)
 
   // A poll on the bill asks for a fresh reading on both paths: a reading that found the same bill
-  // leaves the version, so most bill polls are answered unchanged.
+  // leaves the version, so most bill polls are answered unchanged. Only a phone that may see it.
   const open = state.unchanged ? state.open : state.sitting !== null
   const billReadAt = state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null)
   if (
     input.view === 'bill' &&
     open &&
+    location.state !== 'needed' &&
     input.queueReading !== undefined &&
     wantsFreshReading(billReadAt, state.now)
   ) {
@@ -371,13 +566,22 @@ export async function guestState(
   if (state.unchanged) {
     return {
       ok: true,
-      answer: { unchanged: true, version: state.version, next: cadence(input.view, false) },
+      answer: {
+        unchanged: true,
+        version: state.version,
+        next: cadence(input.view, false),
+        location: location.state,
+      },
     }
   }
-  return { ok: true, answer: walked(projectGuestState(state, input.view), state) }
+  return { ok: true, answer: walked(projectGuestState(state, input.view, location), state) }
 }
 
-function guestContext(target: CodeTarget, jobId: string | undefined): ServiceContext {
+function guestContext(
+  target: CodeTarget,
+  jobId: string | undefined,
+  located: LocationPassClaims | null,
+): ServiceContext {
   return {
     tenantId: target.tenantId,
     venueId: target.venueId,
@@ -385,6 +589,9 @@ function guestContext(target: CodeTarget, jobId: string | undefined): ServiceCon
     actor: { kind: 'guest' },
     jobId: jobId ?? `guest-${randomUUID()}`,
     tableCodeHash: target.hash,
+    ...(located === null
+      ? {}
+      : { sittingId: located.sittingId, consentVersion: located.consentVersion }),
   }
 }
 
@@ -400,6 +607,34 @@ export function guestResult(result: ServiceResult): GuestCommandResult {
   }
 }
 
+/** What Turnstile's siteverify said of a token (the web's call; design §5). */
+export type HumanCheckVerdict = 'passed' | 'failed' | 'unavailable'
+
+/** Calls siteverify for `token` with `actionId` as its idempotency key. */
+export type HumanCheck = (token: string, actionId: string) => Promise<HumanCheckVerdict>
+
+/** A guard that stopped a command, or Turnstile let through while down: counted, never the position. */
+export interface GuardEvent {
+  readonly kind:
+    | 'location_failed'
+    | 'phone_limited'
+    | 'code_limited'
+    | 'human_check_failed'
+    | 'human_check_open'
+  readonly venueId: string
+  readonly tableId: string
+}
+
+/** What the page adds to a command: the position, the consent and Turnstile's token. */
+export interface GuestCheck {
+  /** Checked in memory and dropped: never written, logged or passed on. */
+  readonly location?: GuestPosition
+  /** The consent text version the guest allowed (`LOCATION_CONSENT_VERSION`). */
+  readonly consentVersion?: string
+  /** Turnstile's token, at Send. */
+  readonly humanToken?: string
+}
+
 /** What a command needs from its caller. */
 export interface GuestActInput {
   readonly code: string
@@ -408,12 +643,37 @@ export interface GuestActInput {
   /** Milliseconds since the guest's tap. */
   readonly ageMs: number
   readonly view: GuestView
+  /** The random value the page made at load: the per-phone limits' key, never stored. */
+  readonly phone: string
+  /** The location pass the phone holds, or undefined. */
+  readonly pass?: string
+  readonly check?: GuestCheck
+  /** `GUEST_PASS_KEY`; without it no pass is issued or held, and located commands are refused. */
+  readonly passKey?: string | null
+  /** Turnstile's siteverify; without it a Send is refused `human_check` (fail closed). */
+  readonly humanCheck?: HumanCheck
+  /** Counts a guard's trip (the web logs it with the venue and the table, nothing else). */
+  readonly onGuard?: (event: GuardEvent) => void
   readonly jobId?: string
+  /** The limits' counts; this process's own unless a test passes another. */
+  readonly limiter?: GuestLimiter
+}
+
+/** What `guestAct` answers when it reached the table. */
+export interface GuestActed {
+  readonly ok: true
+  readonly result: GuestCommandResult
+  readonly state: GuestTableState | null
+  /** A fresh location pass for the phone to keep, or null. */
+  readonly pass: string | null
+  /** Seconds the phone should wait before it tries again (a rate trip), or null. */
+  readonly retryAfter: number | null
 }
 
 /**
- * The guest commands this module passes on, each with its tap's age. Any other kind the shell
- * knows (a Send, a waiter call, paying) is answered `not_built` until its ticket (#77 onwards).
+ * The guest commands that reach the engine, each with its tap's age. A Send and the phone's own
+ * location check are guarded here; anything else the shell knows (a waiter call, paying) is
+ * answered `not_built` until its ticket (#77 onwards).
  */
 const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.add',
@@ -423,47 +683,202 @@ const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
   'order.restore',
 ])
 
+/** The commands this module guards without the engine: a Send (until #77) and "Allow location". */
+const GUARDED_HERE: ReadonlySet<string> = new Set(['order.send', 'location.check'])
+
+/**
+ * True for a command that must come from a phone at the venue (D121, D122 §4): one that adds or
+ * changes an on-the-bill line, a Send with on-the-bill lines, and the phone's own check. Removing a
+ * line and Undo never are. Every line is on the bill until the menu can say an item is paid first,
+ * so every addition, change and Send is.
+ */
+function isLocated(type: string): boolean {
+  return (
+    type === 'order.add' ||
+    type === 'order.change' ||
+    type === 'order.restore' ||
+    type === 'order.send' ||
+    type === 'location.check'
+  )
+}
+
+/** The per-phone limits a command counts against. */
+function phoneLimits(command: GuestActInput['command'], withPosition: boolean): GuestLimitName[] {
+  const names: GuestLimitName[] = withPosition ? ['locationTries'] : []
+  const addition =
+    command.type === 'order.add' ||
+    command.type === 'order.restore' ||
+    (command.type === 'order.change' && typeof command.delta === 'number' && command.delta > 0)
+  if (addition) names.push('additions')
+  if (command.type === 'order.send') names.push('sendGap', 'sends')
+  return names
+}
+
+/** True when a Send with this action id already made a sent order (its first answer wins). */
+async function sentOrderMade(pool: DbPool, target: CodeTarget, actionId: string): Promise<boolean> {
+  return withTenant(pool, target.tenantId, async (tx) => {
+    const [made] = await tx
+      .select({ id: sentOrders.id })
+      .from(sentOrders)
+      .where(eq(sentOrders.actionId, actionId))
+    return made !== undefined
+  })
+}
+
 /** Applies one guest command and answers with the fresh state. */
 export async function guestAct(
   pool: DbPool,
   input: GuestActInput,
-): Promise<
-  | {
-      readonly ok: true
-      readonly result: GuestCommandResult
-      readonly state: GuestTableState | null
-      /** Seconds the phone should wait before it tries again (a rate trip), or null. */
-      readonly retryAfter: number | null
-    }
-  | { readonly ok: false; readonly code: GuestRefusal }
-> {
+): Promise<GuestActed | GuestStateless> {
   const target = await targetOf(pool, input.code)
   if (target === null) return { ok: false, code: 'code_retired' }
-  if (!GUEST_COMMAND_TYPES.has(input.command.type)) {
+  const { type, actionId } = input.command
+  const reject = (code: string): GuestActed => ({
+    ok: true,
+    result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
+    state: null,
+    pass: null,
+    retryAfter: null,
+  })
+  const count = (kind: GuardEvent['kind']) =>
+    input.onGuard?.({ kind, venueId: target.venueId, tableId: target.tableId })
+
+  const codeLimit = (input.limiter ?? limiter).take(target.hash, ['codeRequests'], Date.now())
+  if (!codeLimit.ok) {
+    count('code_limited')
+    return limited(codeLimit)
+  }
+  if (!GUEST_COMMAND_TYPES.has(type) && !GUARDED_HERE.has(type)) return reject('not_built')
+
+  // A Send's first answer comes before every guard, Turnstile's siteverify above all (its token
+  // works once). Until #77 builds Send nothing can have made one.
+  const repeatSend = type === 'order.send' && (await sentOrderMade(pool, target, actionId))
+  if (repeatSend) return reject('not_built')
+
+  const position = input.check?.location
+  const phoneLimit = (input.limiter ?? limiter).take(
+    `${target.hash}:${input.phone}`,
+    phoneLimits(input.command, position !== undefined),
+    Date.now(),
+  )
+  if (!phoneLimit.ok) {
+    count('phone_limited')
+    return limited(phoneLimit)
+  }
+
+  const guard = await readGuard(pool, target)
+  if (guard === null) return { ok: false, code: 'code_retired' }
+  const now = Date.now()
+  const checks = guard.settings.locationCheck
+  let claims = checks ? heldClaims(input.pass, input.passKey, target, guard.sittingId, now) : null
+  let pass: string | null = null
+  const located = checks && isLocated(type)
+
+  if (located && claims === null) {
+    if (position === undefined || input.check?.consentVersion !== LOCATION_CONSENT_VERSION) {
+      return reject('location_needed')
+    }
+    if (input.passKey == null) throw new Error('GUEST_PASS_KEY is not set: no location pass')
+    // The position's one use: the circle test. It goes nowhere else.
+    if (locationVerdict(position, guard.settings.spot, guard.settings.radiusMetres) !== 'inside') {
+      count('location_failed')
+      return reject('location_failed')
+    }
+    if (guard.sittingId === null) return reject('table_not_open')
+    const fresh: LocationPassClaims = {
+      v: 1,
+      venueId: target.venueId as LocationPassClaims['venueId'],
+      sittingId: guard.sittingId as LocationPassClaims['sittingId'],
+      codeGeneration: target.codeGeneration,
+      expiresAt: locationPassExpiry(
+        new Date(now),
+        guard.settings.passMinutes,
+        guard.timezone,
+        guard.dayEndsAt,
+      ).getTime(),
+      consentVersion: LOCATION_CONSENT_VERSION,
+    }
+    claims = fresh
+    pass = sealLocationPass(fresh, input.passKey)
+  }
+
+  if (type === 'order.send') {
+    // Turnstile at an on-the-bill Send only (D119, D121): every line is on the bill for now.
+    const token = input.check?.humanToken
+    const verdict =
+      token === undefined || input.humanCheck === undefined
+        ? 'failed'
+        : await input.humanCheck(token, actionId)
+    if (verdict === 'failed') {
+      count('human_check_failed')
+      return { ...reject('human_check'), pass }
+    }
+    if (verdict === 'unavailable') count('human_check_open')
+    // #77 builds the Send; the pass's consent version then goes on the sent order (D119).
+    return { ...reject('not_built'), pass }
+  }
+
+  if (type === 'location.check') {
+    if (!checks) {
+      return {
+        ok: true,
+        result: { actionId, status: 'accepted', code: null, subjectId: null, ref: null },
+        state: null,
+        pass: null,
+        retryAfter: null,
+      }
+    }
+    if (claims === null) return reject('table_not_open')
+    const state = await readTableState(pool, {
+      tenantId: target.tenantId,
+      tableId: target.tableId,
+      tableCodeHash: target.hash,
+    })
+    if (state === null) return { ok: false, code: 'code_retired' }
+    const holds = !state.unchanged && state.sitting?.id === claims.sittingId
     return {
       ok: true,
-      result: {
-        actionId: input.command.actionId,
-        status: 'rejected',
-        code: 'not_built',
-        subjectId: null,
-        ref: null,
-      },
-      state: null,
+      result: holds
+        ? { actionId, status: 'accepted', code: null, subjectId: null, ref: null }
+        : { actionId, status: 'rejected', code: 'location_needed', subjectId: null, ref: null },
+      state: state.unchanged
+        ? null
+        : walked(
+            projectGuestState(state, input.view, locationOf(guard, holds ? claims : null, now)),
+            state,
+          ),
+      pass: holds ? pass : null,
       retryAfter: null,
     }
   }
+
   const command = { ...input.command, tableId: target.tableId, ageMs: input.ageMs }
-  const { result, state } = await applyService(pool, command, guestContext(target, input.jobId))
+  const { result, state } = await applyService(
+    pool,
+    command,
+    guestContext(target, input.jobId, located ? claims : null),
+  )
   if (result.status === 'refused' && result.code === 'code_retired') {
     return { ok: false, code: 'code_retired' }
   }
+  // The engine refuses a located command whose pass names a sitting that has since ended.
+  const lost = result.status === 'refused' && result.code === 'location_needed'
+  const holds =
+    !lost &&
+    claims !== null &&
+    (state === null || state.unchanged || state.sitting?.id === claims.sittingId)
   const projected =
-    state === null || state.unchanged ? null : walked(projectGuestState(state, input.view), state)
+    state === null || state.unchanged
+      ? null
+      : walked(
+          projectGuestState(state, input.view, locationOf(guard, holds ? claims : null, now)),
+          state,
+        )
   return {
     ok: true,
     result: guestResult(result),
     state: projected,
+    pass: holds ? pass : null,
     retryAfter: result.status === 'refused' && result.code === 'rate_limited' ? 10 : null,
   }
 }

@@ -199,6 +199,23 @@ export interface ServiceStrings {
   readonly orderingClosed: string
   /** The phone has not reached the server for a while. */
   readonly offline: string
+  // The location check (#76, D119, D122 §4). The consent words are versioned by core's
+  // `LOCATION_CONSENT_VERSION`: changing them means raising it, so phones are asked again.
+  /** The consent screen's text, naming the venue. */
+  readonly locationConsent: (venue: string) => string
+  readonly locationAllow: string
+  readonly locationNotNow: string
+  readonly locationChecking: string
+  /** The failed check's heading; it offers `locationCallWaiter` and `locationCancel`. */
+  readonly locationFailed: string
+  /** The failed check's small print: why, and how to allow location next time. */
+  readonly locationWhy: string
+  readonly locationCallWaiter: string
+  readonly locationCancel: string
+  /** Where the venue checks and the phone isn't located yet: why the order and bill are hidden. */
+  readonly locationNeeded: string
+  /** The guest's own tap that reopens the consent screen after "Not now". */
+  readonly locationAllowAgain: string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
   readonly refusals: { readonly [C in GuestRefusalCode]: string }
   readonly refusedOther: string
@@ -438,6 +455,18 @@ const EN: Strings = {
     orderingPaused: 'Ordering from phones is paused. Ask your waiter.',
     orderingClosed: 'This table is not taking orders from phones right now.',
     offline: 'Trying to reconnect…',
+    locationConsent: (venue) =>
+      `${venue} and Restro check your location so only guests at the table can see and order onto its bill. Never stored. You can stop anytime and order from your waiter instead.`,
+    locationAllow: 'Allow',
+    locationNotNow: 'Not now',
+    locationChecking: 'Checking your location…',
+    locationFailed: 'We could not confirm you are at the venue.',
+    locationWhy:
+      'Your phone did not share a precise location, or it showed you elsewhere. To try again, allow location for this page and turn on precise location.',
+    locationCallWaiter: 'Call a waiter',
+    locationCancel: 'Cancel',
+    locationNeeded: 'Allow location to see and add to your table’s order and bill.',
+    locationAllowAgain: 'Allow location',
     refusals: {
       order_changed: 'Someone at your table changed this. Here is the latest order.',
       line_held: 'This is being paid and can no longer change.',
@@ -448,6 +477,9 @@ const EN: Strings = {
       rate_limited: 'Too many changes at once. Wait a moment.',
       table_not_open: 'This table is not taking orders from phones right now.',
       code_retired: 'This table code has changed. Scan the code on your table again.',
+      location_needed: 'Allow location to order onto the bill.',
+      location_failed: 'We could not confirm you are at the venue.',
+      human_check: 'We could not check this request. Try again.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
@@ -667,6 +699,19 @@ const BG: Strings = {
     orderingPaused: 'Поръчките от телефон са спрени. Попитайте сервитьора.',
     orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
     offline: 'Опитваме да се свържем отново…',
+    locationConsent: (venue) =>
+      `${venue} и Restro проверяват местоположението ви, за да могат само гостите на масата да виждат сметката ѝ и да поръчват към нея. Не се съхранява. Можете да спрете по всяко време и да поръчате от сервитьора.`,
+    locationAllow: 'Разреши',
+    locationNotNow: 'Не сега',
+    locationChecking: 'Проверяваме местоположението ви…',
+    locationFailed: 'Не успяхме да потвърдим, че сте в заведението.',
+    locationWhy:
+      'Телефонът ви не сподели точно местоположение или показа, че сте другаде. За да опитате отново, разрешете местоположението за тази страница и включете точното местоположение.',
+    locationCallWaiter: 'Повикай сервитьор',
+    locationCancel: 'Отказ',
+    locationNeeded:
+      'Разрешете местоположението, за да виждате и добавяте към поръчката и сметката на масата.',
+    locationAllowAgain: 'Разреши местоположението',
     refusals: {
       order_changed: 'Някой на масата промени това. Ето последната поръчка.',
       line_held: 'Това се плаща и вече не може да се променя.',
@@ -677,6 +722,9 @@ const BG: Strings = {
       rate_limited: 'Твърде много промени наведнъж. Изчакайте малко.',
       table_not_open: 'Тази маса не приема поръчки от телефон в момента.',
       code_retired: 'Кодът на масата е сменен. Сканирайте отново кода на масата.',
+      location_needed: 'Разрешете местоположението, за да поръчвате към сметката.',
+      location_failed: 'Не успяхме да потвърдим, че сте в заведението.',
+      human_check: 'Не успяхме да проверим заявката. Опитайте отново.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',

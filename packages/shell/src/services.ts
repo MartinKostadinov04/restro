@@ -17,6 +17,13 @@
 // may draw an edit at once (optimistic) and takes it back when the server refuses it, and the
 // server's next state is always the truth. A Send is never drawn before the server answers.
 //
+// The location check (D118, D121, D122 §4; #76): where the venue checks, only phones at the table
+// may add or change on-the-bill lines, send them, or see the order and the bill. The face never
+// sees a position, a pass or a Turnstile token: the host answers an edit `location_needed`, the
+// face draws the consent screen (`state.location.prompt`), and the guest's "Allow" goes through
+// `binding.location`, which locates the phone and carries the waiting edit on. A failed check
+// offers "Call a waiter" and "Cancel".
+//
 // The shapes fit the Stage 4 design (docs/reviews/connector-architecture/A5-guest-outbound.md
 // 5.1): commands carry our own ids (`nd_` for items and options) and never a price, a barsy id or
 // a table token, and the guest's view of an order is "received / sent / problem".
@@ -110,6 +117,8 @@ export type GuestCommand =
   | { readonly kind: 'order.undo'; readonly actionId: string; readonly lineId: string }
   /** Brings back the earlier order set aside at `setAsideAt` (milliseconds since the epoch). */
   | { readonly kind: 'order.restore'; readonly actionId: string; readonly setAsideAt: number }
+  /** The guest's own "Allow location": locates the phone to see the order and the bill (#76). */
+  | { readonly kind: 'location.check'; readonly actionId: string }
   | {
       readonly kind: 'order.send'
       readonly actionId: string
@@ -200,6 +209,10 @@ export const GuestCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('order.restore'),
     actionId: ActionIdSchema,
     setAsideAt: z.int().nonnegative(),
+  }),
+  z.strictObject({
+    kind: z.literal('location.check'),
+    actionId: ActionIdSchema,
   }),
   z.strictObject({
     kind: z.literal('order.send'),
@@ -381,6 +394,40 @@ export interface TableOrderView {
   } | null
 }
 
+/** Where the phone stands with the location check (#76), and what the face shows for it. */
+export interface LocationView {
+  /**
+   * `off`: the venue doesn't check. `held`: this phone was located for the table's sitting.
+   * `needed`: not yet, so the host has no order and no bill to draw.
+   */
+  readonly state: 'off' | 'needed' | 'held'
+  /**
+   * What the face shows now: nothing; the consent screen (`locationConsent`, Allow / Not now);
+   * "Checking your location…"; or the failed check (`locationFailed`, Call a waiter / Cancel).
+   */
+  readonly prompt: 'none' | 'consent' | 'checking' | 'failed'
+  /** The guest's answer to the consent screen this service day. */
+  readonly consent: 'unknown' | 'allowed' | 'declined'
+  /** The venue's name, for the consent text. */
+  readonly venueName: string
+}
+
+/** The guest's answers to the location screens; the host does the rest. */
+export interface LocationControls {
+  /**
+   * "Allow" on the consent screen: the host records the consent for the service day, locates the
+   * phone and carries on with the edit that was waiting (or only gets the pass). The answer is
+   * that edit's, or null when nothing was waiting.
+   */
+  readonly allow: () => Promise<CommandResult | null>
+  /** "Not now": remembered for the service day; the waiting edit is dropped. */
+  readonly decline: () => void
+  /** The guest's own "Allow location" tap after "Not now": shows the consent screen again. */
+  readonly reopen: () => void
+  /** "Cancel" on the failed check: back to the order. */
+  readonly dismiss: () => void
+}
+
 /** Everything the host knows that a face may draw. */
 export interface ServiceState {
   readonly revision: number
@@ -399,12 +446,16 @@ export interface ServiceState {
   readonly ordering?: { readonly state: 'on' | 'paused' | 'closed' } | null
   /** True when the host has not reached the server for a while: what is drawn may be old. */
   readonly offline?: boolean
+  /** The location check (#76); absent where the host does not check. */
+  readonly location?: LocationView | null
 }
 
 /** What a host binds to a face: the state to draw and the way to send a command. */
 export interface ServiceBinding {
   readonly state: ServiceState
   readonly dispatch: (command: GuestCommand) => Promise<CommandResult>
+  /** The answers to the location screens (#76); absent where the host does not check. */
+  readonly location?: LocationControls
 }
 
 /** A state with nothing in it: no bill, no request, no quote, no receipt. */

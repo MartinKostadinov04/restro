@@ -53,6 +53,10 @@ export {
 export {
   GUEST_API_MAX_BYTES,
   GUEST_API_VIEWS,
+  GUEST_LOCATION_STATES,
+  GUEST_PASS_HEADER,
+  GUEST_PHONE_HEADER,
+  GUEST_PHONE_PATTERN,
   type GuestActionAnswer,
   GuestActionAnswerSchema,
   type GuestActionRequest,
@@ -60,6 +64,8 @@ export {
   type GuestApiError,
   GuestApiErrorSchema,
   type GuestApiView,
+  type GuestCheck,
+  GuestCheckSchema,
   GuestCommandResultSchema,
   type GuestStateAnswer,
   GuestStateAnswerSchema,
@@ -69,6 +75,7 @@ export {
   GuestUnchangedSchema,
   isGuestRefusalCode,
   TABLE_AUTH_SCHEME,
+  TURNSTILE_SEND_ACTION,
 } from './guest-api'
 export { pickVariant } from './images'
 export {
@@ -123,6 +130,8 @@ export {
   type GuestCommand,
   GuestCommandSchema,
   type GuestRefusalCode,
+  type LocationControls,
+  type LocationView,
   type OrderLine,
   type OrderLineView,
   PAY_METHODS,
