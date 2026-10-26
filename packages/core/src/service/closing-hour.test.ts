@@ -3,11 +3,12 @@
 // `closing_hour` and a Log entry per table; before it, on a closed weekday and in a venue with no
 // hours it changes nothing; a repeat finds nothing to close; and only the worker may send it.
 // Skipped without a database.
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
+import { newId } from '../ids'
 import { DEFAULT_ORDERING_SETTINGS, type ServiceHours } from '../ordering-settings'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { applyService } from './apply-service'
@@ -148,6 +149,83 @@ describe.skipIf(!hasDatabase)('the closing hour (as the restro_app role)', () =>
       details: { closed: 1 },
     })
     expect((await sittingState(sittings[0] as string))?.end_reason).toBe('closing_hour')
+  })
+
+  describe('a payment still in progress (D122: a sitting ends only after the close and capture)', () => {
+    const seedPayment = async (tableId: string, sittingId: string, state: string) => {
+      const id = newId('py')
+      await world.owner.query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+            currency, provider_kind, source, actor, job_id)
+         select $1, $2, $3, $4, $5, service_date, 'on_bill', $6, $7, 'EUR', 'sim', 'restro', 'system', 'test-seed'
+           from restro.sittings where id = $5`,
+        [
+          id,
+          world.tenantId,
+          world.venueId,
+          tableId,
+          sittingId,
+          state,
+          createHash('sha256').update(id).digest('hex'),
+        ],
+      )
+      return id
+    }
+    const settle = (id: string) =>
+      world.owner.query(
+        `update restro.payments set state = 'captured', captured_minor = 0, amount_minor = 0,
+                settled_at = now(), retain_until = now() + interval '18 months' where id = $1`,
+        [id],
+      )
+
+    it('keeps the paying table open and closes the others on the first tick', async () => {
+      const [paying, other, another] = await openTables(3)
+      await seedPayment(world.tables[0] as string, paying as string, 'awaiting_guest')
+      expect(await closeTables('2026-10-24T02:30:00Z')).toMatchObject({ details: { closed: 2 } })
+      expect((await sittingState(paying as string))?.ended_at).toBeNull()
+      expect((await sittingState(other as string))?.end_reason).toBe('closing_hour')
+      expect((await sittingState(another as string))?.end_reason).toBe('closing_hour')
+    })
+
+    it('waits while the payment is held, and closes the table at the tick after it settles', async () => {
+      const [paying] = await openTables(1)
+      const payment = await seedPayment(world.tables[0] as string, paying as string, 'held')
+      expect(await closeTables('2026-10-24T02:30:00Z')).toMatchObject({ details: { closed: 0 } })
+      expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 0 } })
+      expect((await sittingState(paying as string))?.ended_at).toBeNull()
+
+      await settle(payment)
+      expect(await closeTables('2026-10-24T02:32:00Z')).toMatchObject({ details: { closed: 1 } })
+      expect(await sittingState(paying as string)).toMatchObject({ end_reason: 'closing_hour' })
+    })
+
+    it('closes a table whose only payment already settled', async () => {
+      const [paid] = await openTables(1)
+      await settle(await seedPayment(world.tables[0] as string, paid as string, 'held'))
+      expect(await closeTables('2026-10-24T02:30:00Z')).toMatchObject({ details: { closed: 1 } })
+    })
+
+    it('leaves staff closes as they are: Close all ends a paying table too', async () => {
+      const [paying] = await openTables(1)
+      await seedPayment(world.tables[0] as string, paying as string, 'awaiting_guest')
+      const result = (
+        await applyService(
+          world.app,
+          { type: 'tables.close_all' },
+          {
+            tenantId: world.tenantId,
+            venueId: world.venueId,
+            origin: 'staff',
+            actor: { kind: 'user', userId: await world.addUser('owner'), sessionId: 'sess-1' },
+            jobId: `req-${randomUUID()}`,
+            signedInAt: new Date(),
+          },
+        )
+      ).result
+      expect(result).toMatchObject({ status: 'accepted', details: { closed: 1 } })
+      expect((await sittingState(paying as string))?.end_reason).toBe('staff_closed')
+    })
   })
 
   it("is the worker's alone", async () => {
