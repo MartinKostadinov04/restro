@@ -203,9 +203,9 @@ describe.skipIf(!hasDatabase)('the late landing of an Unconfirmed sent order', (
   }
 
   /** A sent order whose write lands only after the read-back window: Unconfirmed. */
-  async function unconfirmed(qty = 2): Promise<string> {
+  async function unconfirmed(qty = 2, fault: 'landsLate' | 'hang' = 'landsLate'): Promise<string> {
     const id = await waiting(qty)
-    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'landsLate' } })
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: fault } })
     const outcomes = await sendTableOrders(
       env(),
       { tenantId, venueId: demo.venueId, tableId },
@@ -352,5 +352,61 @@ describe.skipIf(!hasDatabase)('the late landing of an Unconfirmed sent order', (
     expect(await read()).toMatchObject({ kind: 'recorded', complete: true })
     expect(await landedEntries(id)).toEqual([])
     expect((await sentOrder(id))?.matched_lines).toBeNull()
+  })
+
+  /** Staff resumed the table: the next sent order may go (a second on, past the POS rate limit). */
+  const resume = async () => {
+    simClock.advance(1100)
+    await query(
+      `update restro.pauses set lifted_at = now() where target_id = $1 and lifted_at is null`,
+      [tableId],
+    )
+  }
+
+  it('does not take a later identical round that was confirmed for the Unconfirmed one (A never reached the POS, B did and was Added)', async () => {
+    const a = await unconfirmed(2, 'hang')
+    await resume()
+    const b = await waiting(2)
+    await sendTableOrders(env(), { tenantId, venueId: demo.venueId, tableId }, deps())
+    expect((await sentOrder(b))?.state).toBe('added')
+    simClock.advance(LATE_MS)
+    expect(await read()).toMatchObject({ kind: 'recorded', complete: true })
+    expect(onBill()).toEqual([
+      [FIRST, 1000],
+      [ARTICLE_A, 2000],
+    ])
+    expect(await landedEntries(a)).toEqual([])
+    expect((await sentOrder(a))?.matched_lines).toBeNull()
+  })
+
+  it('does not take the lines the read-back matched for another sent order (B confirmed by the read-back)', async () => {
+    const a = await unconfirmed(2, 'hang')
+    await resume()
+    const b = await waiting(2)
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'landsThenHangs' } })
+    await sendTableOrders(env(), { tenantId, venueId: demo.venueId, tableId }, deps())
+    const added = await sentOrder(b)
+    expect(added?.state).toBe('added')
+    expect(added?.matched_lines).toHaveLength(1)
+    expect(await read()).toMatchObject({ kind: 'recorded', complete: true })
+    expect(await landedEntries(a)).toEqual([])
+    expect((await sentOrder(a))?.matched_lines).toBeNull()
+    expect((await sentOrder(b))?.matched_lines).toEqual(added?.matched_lines)
+  })
+
+  it('writes nothing for two Unconfirmed sent orders that would take the same lines', async () => {
+    const first = await unconfirmed(2, 'hang')
+    await resume()
+    const second = await unconfirmed(2, 'landsLate')
+    simClock.advance(LATE_MS)
+    expect(await read()).toMatchObject({ kind: 'recorded', complete: true })
+    expect(onBill()).toEqual([
+      [FIRST, 1000],
+      [ARTICLE_A, 2000],
+    ])
+    expect(await landedEntries(first)).toEqual([])
+    expect(await landedEntries(second)).toEqual([])
+    expect((await sentOrder(first))?.matched_lines).toBeNull()
+    expect((await sentOrder(second))?.matched_lines).toBeNull()
   })
 })

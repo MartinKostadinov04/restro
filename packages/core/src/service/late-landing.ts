@@ -14,6 +14,8 @@
 //   the night's mismatch row: an Unconfirmed sent order that holds matched lines is one Restro
 //   found on the bill afterwards (the end-of-night page, #86, lists it apart from the ones still
 //   unfound);
+// - a line another sent order of the sitting holds is never this one's, and two candidates that
+//   would take the same lines both stay unmatched (a guess is worse than the alert);
 // - it never changes the state back to Added and never resends: staff settle it from the alert
 //   (#83, #85).
 //
@@ -72,28 +74,85 @@ function linesOf(bills: readonly StoredBill[]): MatchLine[] {
 }
 
 /**
+ * The POS lines other sent orders of the sitting already hold (their `matched_lines`, whatever the
+ * state), and the orders that reached the POS without naming their lines (Added or Awaiting
+ * approval by the write's own answer), with the time they were sent.
+ */
+async function othersOf(
+  stx: ServiceTx,
+  sittingId: string,
+  candidates: ReadonlySet<string>,
+): Promise<{ claimed: Set<string>; reached: Date[] }> {
+  const rows = await stx.tx
+    .select({
+      id: sentOrders.id,
+      state: sentOrders.state,
+      sentAt: sentOrders.sentAt,
+      matchedLines: sentOrders.matchedLines,
+    })
+    .from(sentOrders)
+    .where(eq(sentOrders.sittingId, sittingId))
+  const claimed = new Set<string>()
+  const reached: Date[] = []
+  for (const row of rows) {
+    if (candidates.has(row.id)) continue
+    for (const line of row.matchedLines ?? []) claimed.add(String(line))
+    if ((row.state === 'added' || row.state === 'awaiting_approval') && row.sentAt !== null) {
+      reached.push(row.sentAt)
+    }
+  }
+  return { claimed, reached }
+}
+
+/**
  * Matches these candidates with a complete reading and records the ones that landed late. Returns
- * the ids it recorded.
+ * the ids it recorded. Where the sent order can't be told from another's, nothing is written:
+ * - a line another sent order of the sitting already holds is not this one's (a later identical
+ *   round that was confirmed must not be taken for the Unconfirmed one);
+ * - where the POS marks no line of Restro's (`ownLineReference` off), a sent order that reached
+ *   the POS after this one was sent leaves its lines indistinguishable, so this one is left;
+ * - two candidates that would take the same lines both stay unmatched.
  */
 export async function recordLateLandings(
   stx: ServiceTx,
   candidates: readonly SentOrder[],
   bills: readonly StoredBill[],
 ): Promise<string[]> {
-  const recorded: string[] = []
-  const taken = new Set<string>()
+  const first = candidates[0]
+  if (first === undefined) return []
+  const others = await othersOf(stx, first.sittingId, new Set(candidates.map((one) => one.id)))
+  const after = linesOf(bills).filter((line) => !others.claimed.has(line.line))
+
+  const landed = new Map<string, { bill: string | null; lines: readonly string[] }>()
   for (const sent of candidates) {
     const basis = LandingBasisSchema.safeParse(sent.landingBasis)
     if (!basis.success) continue
+    if (
+      !basis.data.capabilities.ownLineReference &&
+      sent.sentAt !== null &&
+      others.reached.some((at) => at.getTime() > (sent.sentAt as Date).getTime())
+    ) {
+      continue
+    }
     const verdict = matchLanded({
       before: basis.data.before,
-      after: linesOf(bills).filter((line) => !taken.has(line.line)),
+      after,
       sent: basis.data.sent,
       ref: sent.id,
       capabilities: basis.data.capabilities,
     })
-    if (verdict.kind !== 'landed') continue
-    for (const line of verdict.lines) taken.add(line)
+    if (verdict.kind === 'landed') landed.set(sent.id, verdict)
+  }
+  const uses = new Map<string, number>()
+  for (const verdict of landed.values()) {
+    for (const line of verdict.lines) uses.set(line, (uses.get(line) ?? 0) + 1)
+  }
+
+  const recorded: string[] = []
+  for (const sent of candidates) {
+    const verdict = landed.get(sent.id)
+    if (verdict === undefined) continue
+    if (verdict.lines.some((line) => (uses.get(line) ?? 0) > 1)) continue
     await stx.tx
       .update(sentOrders)
       .set({
