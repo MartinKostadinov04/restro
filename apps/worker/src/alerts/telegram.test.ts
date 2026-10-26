@@ -180,3 +180,105 @@ describe('the Telegram client', () => {
     expect(calls[0]?.signal).toBeDefined()
   })
 })
+
+/** A fetch that never answers: it settles only when its signal aborts, as a hung connection does. */
+function hangingFetch() {
+  const signals: AbortSignal[] = []
+  const fetchImpl = (_input: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal
+      if (signal === undefined || signal === null) return
+      signals.push(signal)
+      const stop = () => reject(signal.reason)
+      if (signal.aborted) stop()
+      else signal.addEventListener('abort', stop, { once: true })
+    })
+  return { signals, fetchImpl }
+}
+
+describe('the Telegram client’s time limit', () => {
+  const answeredNothing = 'Telegram sendMessage failed: Telegram did not answer in time'
+
+  it('gives up on a call Telegram never answers, without the address or the token', async () => {
+    const { fetchImpl } = hangingFetch()
+    const client = createTelegramClient({ token: TOKEN, fetch: fetchImpl, timeoutMs: 20 })
+    const failure = await client.sendMessage('-1', 'x').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(TelegramError)
+    expect((failure as TelegramError).status).toBeNull()
+    expect((failure as Error).message).toBe(answeredNothing)
+    expect(String((failure as Error).stack)).not.toContain(TOKEN)
+  })
+
+  it('limits every call, not only the long poll', async () => {
+    for (const run of [
+      (client: ReturnType<typeof createTelegramClient>) =>
+        client.editMessage({ chatId: '-1', messageId: 1 }, 'x'),
+      (client: ReturnType<typeof createTelegramClient>) => client.answerCallback('cb', 'x'),
+    ]) {
+      const { fetchImpl } = hangingFetch()
+      const client = createTelegramClient({ token: TOKEN, fetch: fetchImpl, timeoutMs: 20 })
+      const failure = await run(client).catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(TelegramError)
+      expect((failure as TelegramError).status).toBeNull()
+    }
+  })
+
+  it('gives up when Telegram answers but the body never arrives', async () => {
+    const client = createTelegramClient({
+      token: TOKEN,
+      timeoutMs: 20,
+      fetch: async (_input, init) =>
+        ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+                once: true,
+              })
+            }),
+        }) as unknown as Response,
+    })
+    const failure = await client.sendMessage('-1', 'x').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(TelegramError)
+    expect((failure as Error).message).toBe(answeredNothing)
+  })
+
+  it('gives the long poll its own seconds plus the limit', async () => {
+    const { signals, fetchImpl } = hangingFetch()
+    const client = createTelegramClient({ token: TOKEN, fetch: fetchImpl, timeoutMs: 60 })
+    const started = Date.now()
+    const failure = await client
+      .getUpdates({ offset: 0, timeoutSeconds: 0.1 })
+      .catch((error: unknown) => error)
+    expect(signals).toHaveLength(1)
+    expect(failure).toBeInstanceOf(TelegramError)
+    expect((failure as Error).message).toBe(
+      'Telegram getUpdates failed: Telegram did not answer in time',
+    )
+    // 0.1 s of polling + 60 ms: not the 60 ms of a plain call.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(150)
+  })
+
+  it('tells the caller’s stop from a timeout: a stop is rethrown as it is', async () => {
+    const { fetchImpl } = hangingFetch()
+    const client = createTelegramClient({ token: TOKEN, fetch: fetchImpl, timeoutMs: 5_000 })
+    const controller = new AbortController()
+    const pending = client
+      .getUpdates({ offset: 0, timeoutSeconds: 25, signal: controller.signal })
+      .catch((error: unknown) => error)
+    controller.abort()
+    const failure = await pending
+    expect(failure).not.toBeInstanceOf(TelegramError)
+    expect((failure as Error).name).toBe('AbortError')
+  })
+
+  it('does not time out a call that answers in time', async () => {
+    const { fetchImpl } = fakeFetch([
+      { json: { ok: true, result: { message_id: 1, chat: { id: -1 } } } },
+    ])
+    const client = createTelegramClient({ token: TOKEN, fetch: fetchImpl, timeoutMs: 20 })
+    await expect(client.sendMessage('-1', 'x')).resolves.toEqual({ chatId: '-1', messageId: 1 })
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+})

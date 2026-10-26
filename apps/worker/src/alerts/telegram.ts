@@ -68,37 +68,57 @@ interface Options {
   readonly token: string
   /** Replaced in tests. */
   readonly fetch?: Fetch
+  /**
+   * How long a call may wait for Telegram, in milliseconds (a long poll gets its own seconds on
+   * top). Without a limit one hanging connection holds the worker's serial delivery pass. Short in
+   * tests.
+   */
+  readonly timeoutMs?: number
 }
 
 const API = 'https://api.telegram.org'
 
+/** How long Telegram gets to answer before the call is given up (R11). */
+const CALL_TIMEOUT_MS = 10_000
+
 /** The Bot API client for one bot. */
 export function createTelegramClient(options: Options): TelegramClient {
   const fetchImpl: Fetch = options.fetch ?? fetch
+  const limitMs = options.timeoutMs ?? CALL_TIMEOUT_MS
 
   async function call(
     method: string,
     body: Record<string, unknown>,
-    signal?: AbortSignal,
+    { signal, waitMs = 0 }: { signal?: AbortSignal; waitMs?: number } = {},
   ): Promise<unknown> {
+    const timeout = AbortSignal.timeout(waitMs + limitMs)
+    const combined = AbortSignal.any([timeout, ...(signal ? [signal] : [])])
+    // The caller's stop is told apart from our timeout: a stop is rethrown as it came.
+    const failure = (error: unknown): unknown => {
+      if (signal?.aborted === true) return error
+      // The network error's own text can carry the address, which holds the token.
+      return timeout.aborted
+        ? new TelegramError(method, null, 'Telegram did not answer in time')
+        : new TelegramError(method, null, 'could not reach Telegram')
+    }
     let response: Response
     try {
       response = await fetchImpl(`${API}/bot${options.token}/${method}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-        ...(signal === undefined ? {} : { signal }),
+        signal: combined,
       })
     } catch (error) {
-      if (signal?.aborted === true) throw error
-      // The network error's own text can carry the address, which holds the token.
-      throw new TelegramError(method, null, 'could not reach Telegram')
+      throw failure(error)
     }
     let payload: { ok?: boolean; result?: unknown; description?: unknown } = {}
     try {
       payload = (await response.json()) as typeof payload
-    } catch {
-      // A body that is not JSON is reported by the status below.
+    } catch (error) {
+      // A body that is not JSON is reported by the status below; one that never came, or was
+      // stopped, is not.
+      if (signal?.aborted === true || timeout.aborted) throw failure(error)
     }
     if (!response.ok || payload.ok !== true) {
       const description =
@@ -145,7 +165,7 @@ export function createTelegramClient(options: Options): TelegramClient {
       const result = (await call(
         'getUpdates',
         { offset, timeout: timeoutSeconds, allowed_updates: ['callback_query'] },
-        signal,
+        { ...(signal === undefined ? {} : { signal }), waitMs: timeoutSeconds * 1000 },
       )) as {
         update_id: number
         callback_query?: {
