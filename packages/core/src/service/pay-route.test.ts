@@ -10,9 +10,28 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
+import { SERVICE_TIMINGS } from '../timings'
 import { applyService, type ServiceContext } from './index'
-import { lastCheck } from './pay-route'
+import {
+  lastCheck,
+  PAYMENT_TURN_SECONDS,
+  PAYMENT_WRITE_PAUSE_MS,
+  paymentTurnSeconds,
+} from './pay-route'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
+import { BUDGET_WAIT_MS, LEASE_MARGIN_MS } from './send-timings'
+
+describe("the real table's write turn", () => {
+  it('lasts a whole move: three reads, the pause and the write, each with its turn at the POS', () => {
+    const read = BUDGET_WAIT_MS + SERVICE_TIMINGS.readTimeoutMs
+    const write = BUDGET_WAIT_MS + SERVICE_TIMINGS.writeTimeoutMs
+    const move = 3 * read + PAYMENT_WRITE_PAUSE_MS + write + LEASE_MARGIN_MS
+    expect(PAYMENT_TURN_SECONDS * 1_000).toBeGreaterThanOrEqual(move)
+    // It follows the timings.
+    const slower = { ...SERVICE_TIMINGS, writeTimeoutMs: SERVICE_TIMINGS.writeTimeoutMs + 30_000 }
+    expect(paymentTurnSeconds(slower)).toBe(PAYMENT_TURN_SECONDS + 30)
+  })
+})
 
 describe('the last check', () => {
   const confirmed = [
@@ -25,6 +44,7 @@ describe('the last check', () => {
       { quantity: '1', amountMinor: 450 },
     ],
   ) => ({
+    bills: 1,
     totalMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0),
     paidMinor: 0,
     lines,
@@ -38,6 +58,10 @@ describe('the last check', () => {
 
   it('fails a closed bill, a part-paid one, a total off its lines, and a line slipped in', () => {
     expect(check({ isolated: null })).toEqual({ ok: false, why: 'no_bill' })
+    expect(check({ isolated: { ...bill(), bills: 2 } })).toEqual({
+      ok: false,
+      why: 'several_bills',
+    })
     expect(check({ isolated: { ...bill(), paidMinor: 100 } })).toEqual({
       ok: false,
       why: 'part_paid',

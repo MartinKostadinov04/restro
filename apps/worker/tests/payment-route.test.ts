@@ -8,7 +8,9 @@
 // can't go back are stranded; a refused capture is the owners'. The model test runs two guests'
 // payments on one table under random fault scripts and checks four invariants: a capture only
 // after proof of a close; no release once a close was attempted; a line never in two payments; a
-// payment table never used by two payments at once.
+// payment table never used by two payments at once. A write that lands late, inside the read-back
+// window, is read back and never sent again; two runs of one payment at once (a job pg-boss ran
+// again while its first run went on) move the lines once and close the bill once.
 import { randomUUID } from 'node:crypto'
 
 import {
@@ -38,6 +40,7 @@ import {
   type GuestLimitName,
   guestAct,
   guestState,
+  LEASE_MARGIN_MS,
 } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
 import {
@@ -47,8 +50,10 @@ import {
   SimPayEngine,
 } from '@restro/sim-pay'
 import {
+  buildEngine,
   createSimServer,
   type FaultRule,
+  loadScenarioFile,
   ManualClock as SimPosClock,
   type SimServer,
 } from '@restro/sim-pos'
@@ -58,8 +63,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import {
   checkPayment,
+  createPaymentJobs,
+  PAYMENT_RUN_MS,
   type PaymentJobDeps,
+  type PaymentRunOutcome,
   PaymentStepRetry,
+  paymentStepMs,
   preparePayment,
 } from '../src/jobs/payments'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
@@ -85,6 +94,10 @@ const PAYMENT_TABLES = ['39001', 'pay main 2']
 const CALL_MS = 500
 /** Short write and read timeouts, so a hanging call is `unknown` quickly. */
 const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: 300 }
+/** A late write lands this long after its call: inside the read-back window (D115's minute). */
+const LATE_LANDING_MS = 20_000
+/** How much time passes between two runs of a job: its read-back, on both clocks. */
+const BETWEEN_RUNS_MS = 5_000
 
 const LOOSE = new GuestLimiter(
   Object.fromEntries(
@@ -94,6 +107,19 @@ const LOOSE = new GuestLimiter(
 
 /** The states a run ends in when nobody needs to act. */
 const SETTLED = ['captured', 'released', 'stranded', 'capture_failed']
+
+describe('the prepare job', () => {
+  it('gives a run its deadline and one step more before pg-boss runs it again', () => {
+    const [prepare] = createPaymentJobs({
+      sim: { env: 'test', allowHosts: [] },
+      providers: new Map(),
+    })
+    const expire = (prepare?.options.queue.expireInSeconds ?? 0) * 1_000
+    expect(expire).toBeGreaterThanOrEqual(
+      PAYMENT_RUN_MS + paymentStepMs(SERVICE_TIMINGS) + LEASE_MARGIN_MS,
+    )
+  })
+})
 
 describe.skipIf(!hasDatabase)('the payment route', () => {
   let db: TestDatabase
@@ -110,7 +136,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   let code: string
   let accountRef: string
   /** Called before every connector method, with its name and arguments (a test's waiter). */
-  let beforeCall: (method: string, args: unknown[]) => void = () => {}
+  let beforeCall: (method: string, args: unknown[]) => void | Promise<void> = () => {}
   const sent: { name: string; data: object; options?: object }[] = []
   const queue: JobQueue = {
     async send(name, data, options) {
@@ -137,7 +163,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         return (...args: unknown[]) => {
           // Each call takes a moment on the simulator's clock, as one over the network does.
           simClock.advance(CALL_MS)
-          beforeCall(String(name), args)
+          const before = beforeCall(String(name), args)
+          if (before instanceof Promise) return before.then(() => value.apply(target, args))
           return value.apply(target, args)
         }
       },
@@ -234,8 +261,12 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     sent.length = 0
     beforeCall = () => {}
     engine.clearFaults()
-    // A fresh till, with the pilot's limit of calls per second.
-    sim.host.load('demo-bar')
+    // A fresh till, with the pilot's limit of calls per second; a late write lands in the window.
+    const scenario = loadScenarioFile('demo-bar')
+    sim.host.engine = buildEngine(
+      { ...scenario, switches: { ...scenario.switches, lateLandingMs: LATE_LANDING_MS } },
+      { clock: simClock },
+    )
     // What earlier tests left: their payments over, their payment tables free.
     await query(
       `update restro.payments set state = 'released', reason = 'test', form_values = null,
@@ -336,13 +367,16 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
 
   /**
    * Runs the prepare job as pg-boss would, a retry after each step that concluded nothing, until
-   * the payment is settled with its table free, or waits for a person (unconfirmed).
+   * the payment is settled with its table free, or waits for a person (unconfirmed). Between two
+   * runs a few seconds pass, on the simulator's clock and on the database's for the payment's
+   * steps (their read-back windows).
    */
-  async function drive(id: string, runs = 12) {
+  async function drive(id: string, runs = 40, overrides: Partial<PaymentJobDeps> = {}) {
     const retries: string[] = []
     for (let run = 0; run < runs; run += 1) {
+      if (run > 0) await pass(id, BETWEEN_RUNS_MS)
       try {
-        await preparePayment(env(), target(id), deps())
+        await preparePayment(env(), target(id), deps(overrides))
       } catch (error) {
         if (!(error instanceof PaymentStepRetry)) throw error
         retries.push(error.message)
@@ -359,6 +393,18 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     }
     return { row: await stored(id), retries }
   }
+
+  /** Time passes for the payment's recorded steps and on the simulator. */
+  async function pass(id: string, ms: number) {
+    simClock.advance(ms)
+    await query(
+      `update restro.payment_steps set at = at - make_interval(secs => $2) where payment_id = $1`,
+      [id, ms / 1_000],
+    )
+  }
+  /** The calls of one POS method the simulator received. */
+  const calls = (method: string) =>
+    sim.host.engine.calls().filter((call) => call.method === method).length
 
   const stored = async (id: string) =>
     (
@@ -471,6 +517,17 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       expect((await steps(id)).filter((step) => step.startsWith('isolateLines'))).toContain(
         'isolateLines:unknown:late',
       )
+      expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+      expect(paymentTablesEmpty()).toBe(true)
+    })
+
+    it('the move, landing late inside the read-back window: read back, never sent again', async () => {
+      const id = await held(1)
+      fault({ on: 'moveRows', fault: { kind: 'landsLate' } })
+      const { row } = await drive(id)
+      expect(row).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(calls('moveRows')).toBe(1)
+      expect((await steps(id)).filter((step) => step === 'isolateLines:attempting')).toHaveLength(1)
       expect(rowsOn(POS_TABLE)).toEqual(['2001'])
       expect(paymentTablesEmpty()).toBe(true)
     })
@@ -608,9 +665,11 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   it('strands lines the POS would not move back, and tells staff', async () => {
     const id = await held(1)
     slipRoundOntoPaymentTable()
-    fault({ on: 'moveRows', from: 2, fault: { kind: 'refuse', code: 'bill_locked' } })
+    // A waiter keeps the bill: tried again for the read-back window, then stranded.
+    fault({ on: 'moveRows', from: 2, times: 100, fault: { kind: 'refuse', code: 'bill_locked' } })
     const { row } = await drive(id)
     expect(row).toMatchObject({ state: 'stranded', reason: 'stranded' })
+    expect(calls('moveRows')).toBeGreaterThan(2)
     expect(await alertsOf(id)).toEqual([
       'payment_check_failed:alerts.answer',
       'payment_stranded:alerts.answer',
@@ -682,6 +741,47 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     expect((await drive(id)).row).toMatchObject({ state: 'captured' })
   })
 
+  describe('two runs of one payment at once (a job pg-boss ran again while its first went on)', () => {
+    it('from the hold: the lines move once, the bill closes once, captured', async () => {
+      const id = await held(1)
+      // One worker's two runs share its budgets at the POS.
+      const shared = deps()
+      await Promise.allSettled([
+        preparePayment(env(), target(id), shared),
+        preparePayment(env(), target(id), shared),
+      ])
+      const { row } = await drive(id)
+      expect(row).toMatchObject({
+        state: 'captured',
+        captured_minor: '2200',
+        payment_table_id: null,
+      })
+      expect(calls('moveRows')).toBe(1)
+      expect(calls('closeBill')).toBe(1)
+      expect(await alertsOf(id)).toEqual([])
+      expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+    })
+
+    it('while the first is inside the close: the second waits, and the close is proven', async () => {
+      const id = await held(1)
+      let second: PaymentRunOutcome | null = null
+      beforeCall = async (method) => {
+        if (method !== 'payAndClose' || second !== null) return
+        second = await preparePayment(env(), target(id), deps())
+      }
+      // A close slow enough for the second run to look while it is out.
+      const { row } = await drive(id, 40, { timings: { ...TIMINGS, writeTimeoutMs: 10_000 } })
+      expect(second).toEqual({ kind: 'at', state: 'checked' })
+      expect(row).toMatchObject({
+        state: 'captured',
+        captured_minor: '2200',
+        payment_table_id: null,
+      })
+      expect(calls('closeBill')).toBe(1)
+      expect(await alertsOf(id)).toEqual([])
+    })
+  })
+
   it('cancels a payment busy for a minute with no free payment table', async () => {
     for (const table of PAYMENT_TABLES)
       sim.host.engine.waiter.addRound(table, [{ article: '2001' }])
@@ -702,13 +802,16 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     const POS_FAULTS: FaultRule[] = [
       { on: 'moveRows', fault: { kind: 'hang' } },
       { on: 'moveRows', fault: { kind: 'landsThenHangs' } },
+      { on: 'moveRows', fault: { kind: 'landsLate' } },
       { on: 'moveRows', fault: { kind: 'fail' } },
       { on: 'moveRows', fault: { kind: 'refuse', code: 'bill_locked' } },
       { on: 'moveRows', from: 2, fault: { kind: 'hang' } },
       { on: 'moveRows', from: 2, fault: { kind: 'landsThenHangs' } },
+      { on: 'moveRows', from: 2, fault: { kind: 'landsLate' } },
       { on: 'moveRows', from: 2, fault: { kind: 'refuse', code: 'bill_locked' } },
       { on: 'closeBill', fault: { kind: 'hang' } },
       { on: 'closeBill', fault: { kind: 'landsThenHangs' } },
+      { on: 'closeBill', fault: { kind: 'landsLate' } },
       { on: 'closeBill', fault: { kind: 'fail' } },
       { on: 'closeBill', fault: { kind: 'refuse', code: 'bill_locked' } },
     ]

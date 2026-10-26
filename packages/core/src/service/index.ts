@@ -211,6 +211,8 @@ export {
   PAYMENT_ANSWERS,
   PAYMENT_LONG_WAIT_MS,
   PAYMENT_TURN_SECONDS,
+  PAYMENT_WRITE_PAUSE_MS,
+  paymentTurnSeconds,
 } from './pay-route'
 export {
   DEFAULT_ROLE_KINDS,
@@ -271,6 +273,7 @@ export {
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
   BUDGET_WAIT_MS,
+  LEASE_MARGIN_MS,
   READ_BACK_EVERY_MS,
   type SlotLeaseSeconds,
   slotLeaseSeconds,

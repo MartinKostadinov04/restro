@@ -37,6 +37,7 @@ import { z } from 'zod'
 import { idSchema, newId } from '../ids'
 import { addMinor } from '../money'
 import { DecimalQuantitySchema } from '../quantity'
+import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 import {
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
@@ -67,9 +68,25 @@ import {
 import type { Permission } from './permissions'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import { orderingPaused } from './send'
+import { BUDGET_WAIT_MS, LEASE_MARGIN_MS } from './send-timings'
 
-/** How long one hold of the real table's write turn lasts: one move or one undo with its reads. */
-export const PAYMENT_TURN_SECONDS = 60
+/** The pause before each POS write of the route, inside the POS's calls per second (5 for the pilot). */
+export const PAYMENT_WRITE_PAUSE_MS = 1_000
+
+/**
+ * How long one hold of the real table's write turn lasts, in whole seconds, for these timings: one
+ * move with its reads (the payment table and the real table before it, one read back after it),
+ * the pause and the write. One undo (a read, the write, a read back) fits too. Derived from the
+ * timings as the send's slot leases are (`slotLeaseSeconds`), so the turn never passes mid-move.
+ */
+export function paymentTurnSeconds(timings: ServiceTimings = SERVICE_TIMINGS): number {
+  const read = BUDGET_WAIT_MS + timings.readTimeoutMs
+  const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
+  return Math.ceil((3 * read + PAYMENT_WRITE_PAUSE_MS + write + LEASE_MARGIN_MS) / 1_000)
+}
+
+/** The real table's write turn for the default timings. */
+export const PAYMENT_TURN_SECONDS = paymentTurnSeconds()
 
 /** A wait for a payment table longer than this is counted (#111). */
 export const PAYMENT_LONG_WAIT_MS = 10_000
@@ -429,9 +446,12 @@ export function paymentTurn() {
       if (!moving) return refused(null, 'payment_moved_on', { state: payment.state })
       const held = locked.leases.get(leaseLedgerKey(lease))?.holder ?? null
       if (held === payment.id) {
-        // A run that died while it held the turn: this run takes it again, with a new fence.
+        // The payment's own turn. Passed: a run that died holding it, and this run takes it again
+        // with a new fence. Not passed: another run of this payment is still moving its lines (a
+        // job retried while its first run went on), and this one waits.
         const state = await readLease(stx.tx, lease)
-        await releaseLease(stx, { ...lease, holder: payment.id, fence: state?.fence ?? 0 })
+        if (state?.expired !== true) return at(payment, payment.state, false, { turn: 'busy' })
+        await releaseLease(stx, { ...lease, holder: payment.id, fence: state.fence })
       } else if (held !== null) {
         // A send in flight, or one whose worker died: the sweep settles it first.
         return at(payment, payment.state, false, { turn: 'busy' })
@@ -518,6 +538,8 @@ export function lastCheck(input: {
     readonly amountMinor: number
   }[]
   readonly isolated: {
+    /** The open bills on the payment table: one, the payment's own. */
+    readonly bills: number
     readonly totalMinor: number
     readonly paidMinor: number
     readonly lines: readonly { readonly quantity: string; readonly amountMinor: number }[]
@@ -531,6 +553,8 @@ export function lastCheck(input: {
 }): LastCheck {
   const bill = input.isolated
   if (bill === null || bill.lines.length === 0) return { ok: false, why: 'no_bill' }
+  // Another bill on the payment table too (a waiter's): the close could not tell them apart.
+  if (bill.bills > 1) return { ok: false, why: 'several_bills' }
   if (bill.paidMinor > 0) return { ok: false, why: 'part_paid' }
   if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
     return { ok: false, why: 'total_changed' }
@@ -575,6 +599,7 @@ export function paymentChecked() {
       paymentId,
       isolated: z
         .strictObject({
+          bills: z.int().positive().max(100),
           totalMinor: z.int(),
           paidMinor: MinorSchema,
           lines: z.array(ReadLineSchema).max(500),

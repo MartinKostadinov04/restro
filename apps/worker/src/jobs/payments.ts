@@ -27,9 +27,14 @@
 // - A `sim` instance is refused in production before its host is asked. Restro never refunds.
 // - The route (#111): every POS write is a `payment.step` too, recorded inside the instance's
 //   budget right before the call, so a write that never left is never counted as attempted. An
-//   unknown move or undo is read back from the payment table; an unknown close is never read back
-//   as a close (an empty payment table is no proof): it is `unconfirmed` for a manager or owner.
+//   unknown move or undo is read back from the payment table for the read-back window and never
+//   sent again inside it (D127 3.4); an unknown close is never read back as a close (an empty
+//   payment table is no proof): it is `unconfirmed` for a manager or owner. A close is sent once.
 //   An unknown capture is read back from the provider and tried again with the same key.
+// - One run of a payment at a time: a run takes no new step past `PAYMENT_RUN_MS` and queues the
+//   next, and pg-boss gives it longer than that and one step (`PAYMENT_PREPARE_EXPIRE_SECONDS`)
+//   before it fails it and runs it again. Should two runs meet anyway, the real table's turn is
+//   the payment's until its lease passes, and a close in flight is waited for, not taken for lost.
 
 import {
   addMinor,
@@ -58,10 +63,14 @@ import {
 } from '@restro/core'
 import {
   applyService,
+  BUDGET_WAIT_MS,
   isFinalPaymentState,
+  LEASE_MARGIN_MS,
   PAYMENT_CONFIRM_MS,
   PAYMENT_LONG_WAIT_MS,
   type PAYMENT_STEP_NAMES,
+  PAYMENT_WRITE_PAUSE_MS,
+  READ_BACK_EVERY_MS,
 } from '@restro/core/service'
 import {
   type DbPool,
@@ -76,7 +85,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
@@ -100,13 +109,36 @@ const ACCOUNT_REFUSALS: readonly string[] = ['access_lost', 'account_restricted'
 
 /** The most steps one prepare run takes: from `held` to captured and the table freed is about 8. */
 const PREPARE_STEPS = 16
-/**
- * How long the route waits after its reads before a POS write, so the write and the connector's
- * own reads before it fall in a second of their own: a POS limits a login's calls per second (Q28).
- */
-const WRITE_PAUSE_MS = 1_000
 /** How soon a payment waiting for a payment table, or for the real table's turn, looks again. */
 const WAIT_SECONDS = 2
+/** How soon a POS write whose outcome is unknown is read back again. */
+const READ_BACK_SECONDS = READ_BACK_EVERY_MS / 1_000
+
+/**
+ * How long one prepare run takes new steps: past it, the run queues the next and ends. A run of
+ * many steps (each POS call waits for its turn and its answer) would otherwise outlive pg-boss's
+ * expiry, which fails a run still going and starts the same payment again beside it.
+ */
+export const PAYMENT_RUN_MS = 120_000
+
+/** The provider's own limit on one call: the Stripe client's timeout, with no retries of its own. */
+const PROVIDER_CALL_MS = 20_000
+
+/**
+ * The longest one route step takes for these timings: the last check's three POS reads and the
+ * hold's read at the provider, the pause and the close, each POS call with its turn at the budget.
+ */
+export function paymentStepMs(timings: ServiceTimings = SERVICE_TIMINGS): number {
+  const read = BUDGET_WAIT_MS + timings.readTimeoutMs
+  const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
+  return 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write
+}
+
+/**
+ * How long pg-boss lets one prepare run go before it fails it and runs it again: past the run's
+ * deadline and one step begun just before it, with a margin (as `order-send`'s five minutes).
+ */
+export const PAYMENT_PREPARE_EXPIRE_SECONDS = 5 * 60
 
 export interface PaymentJobDeps {
   readonly sim: SimPolicy
@@ -515,7 +547,7 @@ interface PaymentPos {
   readonly paused: boolean
   readonly timings: ServiceTimings
   readonly context: ReturnType<typeof serviceContext>
-  /** The wait before a write (`WRITE_PAUSE_MS`). */
+  /** The wait before a write (`PAYMENT_WRITE_PAUSE_MS`). */
   readonly pause: () => Promise<void>
 }
 
@@ -556,7 +588,7 @@ async function posOf(
     paused: await connectionPaused(env.pool, target.tenantId, integration.id),
     timings,
     context: serviceContext(env.now, timings),
-    pause: () => (deps.sleep ?? sleepFor)(WRITE_PAUSE_MS),
+    pause: () => (deps.sleep ?? sleepFor)(PAYMENT_WRITE_PAUSE_MS),
   }
 }
 
@@ -610,6 +642,10 @@ async function writePos<R>(
   let answer: Bounded<WriteOutcome<R>>
   try {
     answer = await bounded(pos.budget, pos.timings.writeTimeoutMs, async () => {
+      // A close is sent once: another run of this payment that got its turn first has sent it.
+      if (step === 'payAndClose' && (await callsOf(env, target, step)) !== null) {
+        throw new PaymentStepRetry('the close was attempted already')
+      }
       await record('attempting')
       attempted = true
       return call()
@@ -651,20 +687,50 @@ async function takeTurn(env: PaymentEnvironment, target: PaymentJob): Promise<nu
   return taken.details.turn === 'taken' && typeof fence === 'number' ? fence : null
 }
 
-/** True once the payment's `step` was attempted (a `payAndClose` step: its close). */
-async function wasAttempted(
+/** The calls of one POS write so far: how the latest ended, how long ago it and the first left. */
+interface StepCalls {
+  /** The latest row: `attempting` (no answer recorded yet), `done`, `refused` or `unknown`. */
+  readonly outcome: string
+  readonly lastAgeMs: number
+  readonly firstAgeMs: number
+}
+
+/**
+ * The payment's calls of `step`, or null before the first. Ages are on the database's clock, as
+ * the leases' deadlines are, so every worker reads the same window.
+ */
+async function callsOf(
   env: PaymentEnvironment,
   target: PaymentJob,
-  step: 'isolateLines' | 'payAndClose',
-) {
+  step: 'isolateLines' | 'undoIsolate' | 'payAndClose',
+): Promise<StepCalls | null> {
+  const left = sql`${paymentSteps.outcome} = 'attempting'`
   const [row] = await withTenant(env.pool, target.tenantId, (tx) =>
     tx
-      .select({ seq: paymentSteps.seq })
+      .select({
+        outcome: sql<
+          string | null
+        >`(array_agg(${paymentSteps.outcome} order by ${paymentSteps.seq} desc))[1]`,
+        lastAgeMs: sql<string | null>`(extract(epoch from now() - max(${paymentSteps.at})
+          filter (where ${left})) * 1000)::text`,
+        firstAgeMs: sql<string | null>`(extract(epoch from now() - min(${paymentSteps.at})
+          filter (where ${left})) * 1000)::text`,
+      })
       .from(paymentSteps)
-      .where(and(eq(paymentSteps.paymentId, target.paymentId), eq(paymentSteps.step, step)))
-      .limit(1),
+      .where(and(eq(paymentSteps.paymentId, target.paymentId), eq(paymentSteps.step, step))),
   )
-  return row !== undefined
+  if (row?.outcome === null || row?.outcome === undefined) return null
+  return {
+    outcome: row.outcome,
+    lastAgeMs: Number(row.lastAgeMs ?? 0),
+    firstAgeMs: Number(row.firstAgeMs ?? 0),
+  }
+}
+
+/** A write whose latest call may still land: left with no answer, or an unknown one. */
+function mayStillLand(calls: StepCalls, timings: ServiceTimings): boolean {
+  const open = calls.outcome === 'attempting' || calls.outcome === 'unknown'
+  return open && calls.lastAgeMs < timings.readBackWindowMs
 }
 
 /**
@@ -763,6 +829,10 @@ const isolateStep: RouteStep = async (env, target, payment, deps) => {
   }
   try {
     const outcome = await isolate(env, target, payment, pos, paymentTable)
+    if (outcome === 'later') {
+      await queuePrepare(env, target, READ_BACK_SECONDS)
+      return 'wait'
+    }
     await route(env, target, { type: 'payment.isolated', ...outcome })
     return 'next'
   } finally {
@@ -770,21 +840,30 @@ const isolateStep: RouteStep = async (env, target, payment, deps) => {
   }
 }
 
+/** The move landed: the lines are on the payment table. */
+const MOVED = { outcome: 'moved', code: null } as const
+
+/**
+ * The move, or `later` while one whose outcome is unknown may still land. At most three reads
+ * and one write, all inside the real table's turn (`paymentTurnSeconds`).
+ */
 async function isolate(
   env: PaymentEnvironment,
   target: PaymentJob,
   payment: PaymentRow,
   pos: PaymentPos,
   paymentTable: PosRef,
-): Promise<{ readonly outcome: 'moved' | 'refused'; readonly code: string | null }> {
-  // A run after an earlier move: what is on the payment table is that move, landed. (A first move
-  // is not read for: the connector reads the payment table itself, and every read counts towards
-  // the POS's calls per second.)
-  if (
-    (await wasAttempted(env, target, 'isolateLines')) &&
-    (await readPos(pos, paymentTable)).bills.length > 0
-  ) {
-    return { outcome: 'moved', code: null }
+): Promise<{ readonly outcome: 'moved' | 'refused'; readonly code: string | null } | 'later'> {
+  // After an earlier move, what is on the payment table is that move, landed. One whose outcome
+  // is unknown may land late: inside the read-back window it is read back, never sent again
+  // (D127 3.4, design §5.3). Past it, it is sent again only from a real table that still has the
+  // lines and an empty payment table. (A first move is not read for: the connector reads the
+  // payment table itself, and every read counts towards the POS's calls per second.)
+  const earlier = await callsOf(env, target, 'isolateLines')
+  const landed = async () => (await readPos(pos, paymentTable)).bills.length > 0
+  if (earlier !== null) {
+    if (await landed()) return MOVED
+    if (mayStillLand(earlier, pos.timings)) return 'later'
   }
   const real = await readPos(pos, pos.table)
   const lines = await withTenant(env.pool, target.tenantId, (tx) =>
@@ -798,8 +877,11 @@ async function isolate(
   for (const line of lines) {
     const bill = real.bills.find((b) => b.lines.some((l) => l.ref.pos === line.pos))
     const found = bill?.lines.find((l) => l.ref.pos === line.pos)
-    if (bill === undefined || found === undefined)
+    if (bill === undefined || found === undefined) {
+      // Gone from the real table after an earlier move: that move may have landed since.
+      if (earlier !== null && (await landed())) return MOVED
       return { outcome: 'refused', code: 'line_refused' }
+    }
     // The POS's own text for a whole line; the picked part as an exact decimal otherwise.
     const whole = quantityText(found.quantity) === quantityText(line.quantity)
     picks.push({
@@ -813,11 +895,15 @@ async function isolate(
   const outcome = await writePos(env, target, pos, 'isolateLines', ref, () =>
     pos.connector.isolateLines(pos.context, { table: pos.table, picks, paymentTable, ref }),
   )
-  if (outcome.kind === 'done') return { outcome: 'moved', code: null }
-  if (outcome.kind === 'refused') return { outcome: 'refused', code: outcome.refusal.code }
-  // Unknown: read it back. Nothing on the payment table yet concludes nothing (it may land).
-  if ((await readPos(pos, paymentTable)).bills.length > 0) return { outcome: 'moved', code: null }
-  throw new PaymentStepRetry('the move has an unknown outcome')
+  if (outcome.kind === 'done') return MOVED
+  if (outcome.kind === 'refused') {
+    // After an earlier move, a refusal (the payment table busy, a line gone) may be that move.
+    if (earlier !== null && (await landed())) return MOVED
+    return { outcome: 'refused', code: outcome.refusal.code }
+  }
+  // Unknown: read it back now, and on the next runs for the window. Nothing on the payment table
+  // yet concludes nothing (it may land).
+  return (await landed()) ? MOVED : 'later'
 }
 
 /** A decimal quantity without trailing zeros ("2.000000" → "2", "0.500000" → "0.5"). */
@@ -832,8 +918,16 @@ function quantityText(quantity: string): string {
  * attempted, nothing but its proof closes it: an unknown is `unconfirmed`.
  */
 const checkAndClose: RouteStep = async (env, target, payment, deps) => {
-  if (payment.state === 'checked' && (await wasAttempted(env, target, 'payAndClose'))) {
-    // A run that died inside the close: its outcome is unknown, whatever the tables show now.
+  const close = payment.state === 'checked' ? await callsOf(env, target, 'payAndClose') : null
+  if (close !== null) {
+    // A close was attempted. Another run may still be inside it, its answer on the way: it has
+    // one write's longest time. Past that, the run that sent it died inside the close, and its
+    // outcome is unknown whatever the tables show now.
+    const timings = deps.timings ?? SERVICE_TIMINGS
+    if (close.lastAgeMs < BUDGET_WAIT_MS + timings.writeTimeoutMs + LEASE_MARGIN_MS) {
+      await queuePrepare(env, target, WAIT_SECONDS)
+      return 'wait'
+    }
     await route(env, target, {
       type: 'payment.closed',
       outcome: 'unknown',
@@ -888,6 +982,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       isolated === null
         ? null
         : {
+            bills: onTable.bills.length,
             totalMinor:
               bill?.totalMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.totalMinor), 0),
             paidMinor:
@@ -1024,6 +1119,10 @@ const undoStep: RouteStep = async (env, target, payment, deps) => {
   }
   try {
     const outcome = await undo(env, target, payment, pos, paymentTable)
+    if (outcome === 'later') {
+      await queuePrepare(env, target, READ_BACK_SECONDS)
+      return 'wait'
+    }
     await route(env, target, { type: 'payment.undone', outcome })
     return 'next'
   } finally {
@@ -1037,20 +1136,31 @@ async function undo(
   payment: PaymentRow,
   pos: PaymentPos,
   paymentTable: PosRef,
-): Promise<'returned' | 'stranded'> {
+): Promise<'returned' | 'stranded' | 'later'> {
   const onTable = await readPos(pos, paymentTable)
+  const earlier = await callsOf(env, target, 'undoIsolate')
+  // A move back whose outcome is unknown may land late: inside the read-back window it is read
+  // back, never sent again (D127 3.4, design §5.3).
+  if (onTable.bills.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
+    return 'later'
+  }
   for (const [index, bill] of onTable.bills.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
     const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
     const outcome = await writePos(env, target, pos, 'undoIsolate', ref, () =>
       pos.connector.undoIsolate(pos.context, { isolated, table: pos.table, ref }),
     )
-    if (outcome.kind === 'refused' && outcome.refusal.code !== 'bill_closed') return 'stranded'
+    if (outcome.kind === 'refused') {
+      if (outcome.refusal.code === 'bill_closed') continue
+      // A waiter holding the bill, or the POS busy, passes: tried again for the read-back window
+      // from the first move back, then the lines are stranded for staff.
+      const passing = outcome.refusal.code === 'bill_locked' || outcome.refusal.code === 'busy'
+      const since = earlier?.firstAgeMs ?? 0
+      return passing && since < pos.timings.readBackWindowMs ? 'later' : 'stranded'
+    }
     if (outcome.kind === 'unknown') {
       const back = await readPos(pos, paymentTable)
-      if (back.bills.some((b) => b.ref.pos === bill.ref.pos)) {
-        throw new PaymentStepRetry('the undo has an unknown outcome')
-      }
+      if (back.bills.some((b) => b.ref.pos === bill.ref.pos)) return 'later'
     }
   }
   return 'returned'
@@ -1141,7 +1251,13 @@ export async function preparePayment(
   deps: PaymentJobDeps,
 ): Promise<PaymentRunOutcome> {
   let last: string | null = null
+  const started = env.now().getTime()
   for (let steps = 0; steps < PREPARE_STEPS; steps += 1) {
+    // Past the run's deadline: the next run goes on from here.
+    if (env.now().getTime() - started >= PAYMENT_RUN_MS) {
+      await queuePrepare(env, target)
+      break
+    }
     const payment = await paymentOf(env, target)
     if (payment === null) return { kind: 'missing' }
     // A step that left the payment where it was is done for this run.
@@ -1252,7 +1368,12 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
     }
   const prepare = defineJob<PaymentJob>({
     name: JOB_NAMES.paymentPrepare,
-    options: { policy: 'stately', queue, work: { pollingIntervalSeconds: 1 } },
+    options: {
+      policy: 'stately',
+      // Never failed (and run again beside itself) while a run is still going.
+      queue: { ...queue, expireInSeconds: PAYMENT_PREPARE_EXPIRE_SECONDS },
+      work: { pollingIntervalSeconds: 1 },
+    },
     handler: run(JOB_NAMES.paymentPrepare, preparePayment),
   })
   const check = defineJob<PaymentJob>({
