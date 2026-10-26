@@ -212,6 +212,7 @@ Tags: **[DOC]** developer documentation, **[SANDBOX]** what Stripe's sandbox ans
   - `STRIPE_SECRET_KEY`, the platform's restricted key `restro-platform-sandbox` (permissions above): the provider under test, and the harness's guest confirming a PaymentIntent with a test card.
   - `STRIPE_HARNESS_KEY`, the harness's own restricted sandbox key `restro-harness-sandbox`, made by Martin in the Dashboard: the harness's "did money move" read (`GET /v1/balance_transactions`, Balance Read), the venue's Dashboard refund (`POST /v1/refunds`, Charges and Refunds Write) and the bank's dispute (`GET /v1/disputes`, `POST /v1/disputes/:id`, `GET /v1/disputes/:id`, Disputes Write), all with `Stripe-Account`. Only the conformance suite in record mode reads it; the app never does.
   - Recording refuses unless both are sandbox keys (`sk_test_`/`rk_test_`). Neither key is in a recording: a cassette keeps responses only, never a request or its headers.
+- 2026-10-26 · L26 [SANDBOX] With both keys, the connection check ("connecting and reading the connection move no money") recorded: `GET /v1/balance_transactions` on the harness account answered 200 with `restro-harness-sandbox`, and the provider's `startConnection`, account read and `POST /v1/payment_method_domains` answered 200 with `restro-platform-sandbox`. The run made one new connected account in the sandbox (`acct_1UUu4oH6CXfbXxAw`, with an onboarding link) and answered the harness account's existing payment method domain again.
 
 ## Open
 

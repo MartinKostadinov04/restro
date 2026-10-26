@@ -44,15 +44,8 @@ const DIR = fileURLToPath(new URL('../fixtures/recordings', import.meta.url))
 const ACCOUNT = process.env.STRIPE_HARNESS_ACCOUNT ?? 'acct_1UUjd8H6CXJeKV2v'
 const OTHER_ACCOUNT = process.env.STRIPE_HARNESS_OTHER_ACCOUNT ?? 'acct_1UUjixH6CXaVmuUR'
 
-/**
- * Checks not recorded yet, each with why. The connection check reads the account's balance
- * (`movedMinor`), which needs the harness's own key (10-26: the harness account finished hosted
- * onboarding; the platform's key was refused `balance_read`).
- */
-const PENDING: Readonly<Record<string, string>> = {
-  'connecting and reading the connection move no money':
-    'waiting on the harness key (STRIPE_HARNESS_KEY) to record it (#107)',
-}
+/** Checks not recorded yet, each with why: none since 10-26. */
+const PENDING: Readonly<Record<string, string>> = {}
 
 /** A key from the environment, refused unless it is a sandbox key; the error names only the variable. */
 function sandboxKey(name: 'STRIPE_SECRET_KEY' | 'STRIPE_HARNESS_KEY'): string {
