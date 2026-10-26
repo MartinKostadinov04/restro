@@ -96,6 +96,13 @@ export const JOB_NAMES = {
    */
   tableReadTick: 'table-read-tick',
   /**
+   * Scheduled, every minute (#75, D121): sets aside the order of each open table that nobody
+   * touched for the idle time ("Earlier order · Restore"), through `applyService` (`order.tidy`).
+   * A phone's read does the same at once; this tick covers the tables nobody is reading. Not sent
+   * by anyone else.
+   */
+  orderTidyTick: 'order-tidy-tick',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`

@@ -34,3 +34,8 @@ export const TAG_PUBLIC_ID = 'tagfixture01'
 // Like the tagged menu it has no venue row, so its public code is a fixed one.
 export const LOOK_SLUG = 'look-fixture'
 export const LOOK_PUBLIC_ID = 'lookfixture1'
+// The shared order (#75): two phones on one table of a venue of its own. The menu is the shell's
+// `features-on` fixture drawn by the reference template, under a fixed code like the look's; the
+// table, its code and its sitting are real rows (scripts/seed-order-e2e.ts prints the code).
+export const ORDER_SLUG = 'order-fixture'
+export const ORDER_PUBLIC_ID = 'orderfixture'

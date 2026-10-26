@@ -12,6 +12,11 @@
 // it adds no bill round, confirms no waiter and reports no payment by itself. Every amount a
 // face shows comes from the host as `ViewMoney`, except the bag estimate (bag.ts).
 //
+// The table's shared order (D117, D121; #75): every phone at a table edits one order. The face
+// sends `order.add`, `order.change`, `order.remove`, `order.undo` and `order.restore`; the host
+// may draw an edit at once (optimistic) and takes it back when the server refuses it, and the
+// server's next state is always the truth. A Send is never drawn before the server answers.
+//
 // The shapes fit the Stage 4 design (docs/reviews/connector-architecture/A5-guest-outbound.md
 // 5.1): commands carry our own ids (`nd_` for items and options) and never a price, a barsy id or
 // a table token, and the guest's view of an order is "received / sent / problem".
@@ -36,6 +41,8 @@ import type { ViewText } from './text'
 export {
   BILL_LINE_STATUSES,
   type BillLineStatus,
+  GUEST_REFUSAL_CODES,
+  type GuestRefusalCode,
   PAY_METHODS,
   PAY_SCOPES,
   type PayMethod,
@@ -83,6 +90,27 @@ export interface OrderLine {
  */
 export type GuestCommand =
   | {
+      /** Puts an item on the table's order (merged into an identical line). */
+      readonly kind: 'order.add'
+      readonly actionId: string
+      readonly itemId: NodeId
+      readonly optionIds: readonly NodeId[]
+      readonly qty: number
+      readonly note: string
+    }
+  | {
+      /** Changes a line's quantity by `delta`; down to nothing removes it. */
+      readonly kind: 'order.change'
+      readonly actionId: string
+      readonly lineId: string
+      readonly delta: number
+    }
+  | { readonly kind: 'order.remove'; readonly actionId: string; readonly lineId: string }
+  /** Brings back a removed line while its Undo lasts. */
+  | { readonly kind: 'order.undo'; readonly actionId: string; readonly lineId: string }
+  /** Brings back the earlier order set aside at `setAsideAt` (milliseconds since the epoch). */
+  | { readonly kind: 'order.restore'; readonly actionId: string; readonly setAsideAt: number }
+  | {
       readonly kind: 'order.send'
       readonly actionId: string
       readonly lines: readonly OrderLine[]
@@ -122,6 +150,7 @@ export type GuestCommand =
 
 const ActionIdSchema = z.uuid()
 const HostIdSchema = z.string().min(1).max(64)
+const OrderLineIdSchema = idSchema('ol')
 
 const OrderLineSchema = z.strictObject({
   itemId: idSchema('nd'),
@@ -139,6 +168,39 @@ const OrderLineSchema = z.strictObject({
  * scope is `split`, and at most one of `tipPercent` and `tipMinor` is set.
  */
 export const GuestCommandSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('order.add'),
+    actionId: ActionIdSchema,
+    itemId: idSchema('nd'),
+    optionIds: z.array(idSchema('nd')).max(SERVICE_LIMITS.options),
+    qty: z.int().min(1).max(SERVICE_LIMITS.quantity),
+    note: z.string().max(SERVICE_LIMITS.note),
+  }),
+  z.strictObject({
+    kind: z.literal('order.change'),
+    actionId: ActionIdSchema,
+    lineId: OrderLineIdSchema,
+    delta: z
+      .int()
+      .min(-SERVICE_LIMITS.quantity)
+      .max(SERVICE_LIMITS.quantity)
+      .refine((delta) => delta !== 0, 'a change of nothing'),
+  }),
+  z.strictObject({
+    kind: z.literal('order.remove'),
+    actionId: ActionIdSchema,
+    lineId: OrderLineIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('order.undo'),
+    actionId: ActionIdSchema,
+    lineId: OrderLineIdSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('order.restore'),
+    actionId: ActionIdSchema,
+    setAsideAt: z.int().nonnegative(),
+  }),
   z.strictObject({
     kind: z.literal('order.send'),
     actionId: ActionIdSchema,
@@ -197,6 +259,10 @@ export interface CommandResult {
   readonly message: ViewText | null
   /** A short reference to show the guest (for example to quote to staff), or null. */
   readonly ref: string | null
+  /** Why the host said no (`GUEST_REFUSAL_CODES`), for the face to word; null or absent otherwise. */
+  readonly code?: string | null
+  /** What the command made or acted on (the order line an `order.add` made), or null. */
+  readonly subjectId?: string | null
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -285,6 +351,36 @@ export interface ReceiptView {
   readonly actions: { readonly pdf: boolean; readonly email: boolean; readonly print: boolean }
 }
 
+/** One line of the table's shared order: our ids, never a price or a name (the face looks them up). */
+export interface OrderLineView {
+  readonly id: string
+  readonly itemId: NodeId
+  readonly optionIds: readonly NodeId[]
+  readonly qty: number
+  readonly note: string
+  /** `pay_first`: the item is ordered from the waiter ("Order this from your waiter"). */
+  readonly mode: 'on_bill' | 'pay_first'
+  /** Held by a payment: no change, no removal. */
+  readonly held: boolean
+  /** Drawn before the server answered (an optimistic edit), taken back if it is refused. */
+  readonly pending: boolean
+}
+
+/** The table's shared order as the host has it. */
+export interface TableOrderView {
+  readonly lines: readonly OrderLineView[]
+  /** Lines removed in the last seconds, each with its Undo. */
+  readonly removed: readonly (Omit<OrderLineView, 'held' | 'pending'> & {
+    /** Seconds the Undo still lasts. */
+    readonly undoSeconds: number
+  })[]
+  /** The order set aside when it went idle ("Earlier order · Restore"), or null. */
+  readonly earlier: {
+    readonly setAsideAt: number
+    readonly lines: readonly Omit<OrderLineView, 'held' | 'pending'>[]
+  } | null
+}
+
 /** Everything the host knows that a face may draw. */
 export interface ServiceState {
   readonly revision: number
@@ -294,6 +390,15 @@ export interface ServiceState {
   readonly requests: readonly RequestView[]
   readonly quote: PayQuote | null
   readonly receipt: ReceiptView | null
+  /** The table's shared order (#75); absent where the host has none. */
+  readonly order?: TableOrderView | null
+  /**
+   * Whether the table takes orders from phones now: `paused` by staff, `closed` when the table
+   * is not open. Absent where the host does not say.
+   */
+  readonly ordering?: { readonly state: 'on' | 'paused' | 'closed' } | null
+  /** True when the host has not reached the server for a while: what is drawn may be old. */
+  readonly offline?: boolean
 }
 
 /** What a host binds to a face: the state to draw and the way to send a command. */

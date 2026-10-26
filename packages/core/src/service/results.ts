@@ -9,7 +9,7 @@ import { z } from 'zod'
 
 /**
  * Why a command was refused. The machinery's codes are here; the tickets that build a command add
- * its own (the guest API's `order_changed`, `line_held`, `undo_expired`, …).
+ * its own (the shared order's are `ORDER_EDIT_REFUSALS`: `order_changed`, `line_held`, …).
  */
 export const REFUSAL_CODES = [
   /** The command failed its schema. */
@@ -46,6 +46,12 @@ export const REFUSAL_CODES = [
   'busy',
   /** The command exists but its ticket has not built it yet. */
   'not_built',
+  /** A guest's table code is no longer the table's, or the table lost its guest page (D121). */
+  'code_retired',
+  /** The guest's tap is older than the command allows (30 s for an order edit, D121). */
+  'stale_action',
+  /** The table edited its order more than 60 times in the last minute (D121, #75). */
+  'rate_limited',
 ] as const
 
 /** One refusal code. */

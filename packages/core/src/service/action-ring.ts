@@ -18,6 +18,8 @@ export const RingEntrySchema = z.strictObject({
   result: ServiceResultSchema,
   /** The order's version after the action. */
   version: z.number().int().nonnegative(),
+  /** When the action was taken (the database's clock), for the per-table rate (#75). */
+  at: z.iso.datetime({ offset: true }).optional(),
 })
 
 /** One remembered action. */
@@ -35,6 +37,13 @@ export function readRing(stored: unknown): RingEntry[] {
 /** The first answer to `actionId`, or null when the ring doesn't remember it. */
 export function findInRing(stored: unknown, actionId: string): ServiceResult | null {
   return readRing(stored).find((entry) => entry.actionId === actionId)?.result ?? null
+}
+
+/** How many remembered actions were taken after `since`. */
+export function actionsSince(stored: unknown, since: Date): number {
+  return readRing(stored).filter(
+    (entry) => entry.at !== undefined && Date.parse(entry.at) > since.getTime(),
+  ).length
 }
 
 /** The ring with `entry` added last, the oldest entries dropped past 64. */

@@ -46,6 +46,8 @@ export interface ServiceTx extends LeaseTx {
   readonly pinPepper: string | null
   /** The bill-id key, when the caller passed one (a reading's `rd_` and `bn_` ids, #74). */
   readonly billIdKey: string | null
+  /** The database's clock, read once per command: the clock of deadlines (Undo, idle). */
+  dbNow(): Promise<Date>
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
 }
@@ -75,6 +77,12 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
    */
   readonly freshSignIn?: boolean
   readonly idempotency: Idempotency
+  /**
+   * The oldest a command may be, in milliseconds since the guest's tap (its `ageMs`): an older one
+   * is refused `stale_action` after the repeat check, so a phone back from a lost signal never
+   * lands an old tap (D121). Left out: no limit.
+   */
+  readonly maxAgeMs?: number
   /** The handler, or null while the command is not built (refused `not_built`). */
   readonly handle: CommandHandler<z.infer<S>> | null
 }

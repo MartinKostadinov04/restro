@@ -4,8 +4,8 @@
 // the rest of its payload: the machinery around them (origins, permissions, provenance, locks,
 // idempotency, the Log, the version) is real and runs for each of them. Built so far: the
 // table-code commands (#70), the floor reading's worker steps (#71), the roles, staff, PINs and
-// shared devices (#72), tables open for phones with their sittings (#73), and the readings of a
-// table's bill with the sitting's end by a reading (#74).
+// shared devices (#72), tables open for phones with their sittings (#73), the readings of a
+// table's bill with the sitting's end by a reading (#74), and the table's shared order (#75).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -13,8 +13,10 @@
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
+import { ORDER_EDIT_MAX_AGE_MS, ORDER_LIMITS } from '../table-order'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
 import { recordReading } from './readings'
 import {
   closeAllTables,
@@ -51,14 +53,23 @@ const tableId = idSchema('tb')
 const actionId = z.uuid()
 const staffMemberId = idSchema('sm')
 
-/** A guest edit of the table's order (the guest API's, #75). */
-function orderEdit<T extends string>(type: T) {
+/** Milliseconds since the guest's tap (D121): the guest API copies it from the request. */
+const ageMs = z
+  .int()
+  .nonnegative()
+  .max(24 * 60 * 60_000)
+const lineId = idSchema('ol')
+
+/** A guest edit of the table's order (the guest API's, #75): remembered in the ring, 30 s old at most. */
+function orderEdit<T extends string, F extends z.ZodRawShape>(type: T, fields: F) {
   return defineCommand({
-    schema: z.strictObject({ type: z.literal(type), tableId, actionId }),
+    schema: z.strictObject({ type: z.literal(type), tableId, actionId, ageMs, ...fields }),
     origins: ['guest'],
     permission: null,
     idempotency: 'order_ring',
-    handle: null,
+    maxAgeMs: ORDER_EDIT_MAX_AGE_MS,
+    // The generic shape loses each edit's fields; the schema above is the edit's own.
+    handle: (stx, command) => editOrder(stx, command as unknown as OrderEditCommand),
   })
 }
 
@@ -126,11 +137,37 @@ function workerStep<T extends string, F extends z.ZodRawShape>(type: T, fields: 
 /** Every service command by type, with the ticket that builds it. */
 export const SERVICE_COMMANDS = {
   // Guest (the guest API, D121).
-  'order.add': orderEdit('order.add'), // #75
-  'order.change': orderEdit('order.change'), // #75
-  'order.remove': orderEdit('order.remove'), // #75
-  'order.undo': orderEdit('order.undo'), // #75
-  'order.restore': orderEdit('order.restore'), // #75
+  // #75: the table's shared order. Identical lines merge; a change below 1 removes the line, with
+  // Undo for a few seconds; Restore brings the earlier order back, merged.
+  'order.add': orderEdit('order.add', {
+    itemId: idSchema('nd'),
+    optionIds: z.array(idSchema('nd')).max(ORDER_LIMITS.options),
+    qty: z.int().min(1).max(ORDER_LIMITS.quantity),
+    note: z.string().max(ORDER_LIMITS.note),
+  }),
+  'order.change': orderEdit('order.change', {
+    lineId,
+    delta: z
+      .int()
+      .min(-ORDER_LIMITS.quantity)
+      .max(ORDER_LIMITS.quantity)
+      .refine((delta) => delta !== 0),
+  }),
+  'order.remove': orderEdit('order.remove', { lineId }),
+  'order.undo': orderEdit('order.undo', { lineId }),
+  'order.restore': orderEdit('order.restore', { setAsideAt: z.int().nonnegative() }),
+  // #75: what time alone changes (an Undo closing, an idle order set aside), run by the guest API
+  // before it answers a read past the order's next change, and by the worker's minute tick.
+  // What time alone changes (an Undo closing, an idle order set aside): the worker's minute tick,
+  // and the guest API before it answers a read past the order's next change. Never a guest's own
+  // command (it has no action id): both run it as the system.
+  'order.tidy': defineCommand({
+    schema: z.strictObject({ type: z.literal('order.tidy'), tableId }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: tidyTableOrder,
+  }),
   'order.send': defineCommand({
     // #77; a deliberate repeat after the duplicate warning is a new action (#78).
     schema: z.strictObject({ type: z.literal('order.send'), tableId, actionId }),
@@ -308,7 +345,7 @@ export const SERVICE_COMMANDS = {
   }), // #77
   'pause.transition': workerStep('pause.transition', { pauseId: idSchema('pa') }), // #79
   'notice.record': workerStep('notice.record', {}), // #80
-  sweep: workerStep('sweep', {}), // #75, #79, #81
+  sweep: workerStep('sweep', {}), // #79, #81
   'service_day.close': workerStep('service_day.close', {
     serviceDate: z.iso.date(),
   }), // #84

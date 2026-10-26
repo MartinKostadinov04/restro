@@ -507,6 +507,14 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
             say('Demo: sent to your phone.', 'Демо: изпратено към телефона ви.'),
           )
         }
+
+        // The table's shared order (#75): this template keeps its own bag, so the demo has none.
+        case 'order.add':
+        case 'order.change':
+        case 'order.remove':
+        case 'order.undo':
+        case 'order.restore':
+          return answer(command, 'rejected')
       }
     },
     [wait, answer, nextId, commit, later, setLineStatus],

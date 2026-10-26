@@ -56,6 +56,7 @@ import {
   loadSnapshot,
   refetchLiveForSnapshot,
 } from './load'
+import { SHARED_ORDER_FACES, useTableServices } from './use-table-services'
 
 type Phase =
   | { readonly kind: 'loading' }
@@ -287,6 +288,11 @@ export function GuestMenu(props: GuestMenuProps) {
   // which photo sizes the shell asks for.
   const faceId = snapshot?.presentation?.face
   const entry = useMemo(() => faceEntry(faceId), [faceId])
+  // The table's shared order (#75), where the template draws it and the page has a table: the
+  // guest API's client, and ordering on in the shell's context (the venue's own switch for
+  // ordering, in the snapshot's features, still decides).
+  const sharedOrder = tableToken !== null && SHARED_ORDER_FACES.has(entry.id)
+  const services = useTableServices(sharedOrder ? tableToken : null)
   const view = useMemo(
     () =>
       snapshot === null
@@ -294,9 +300,9 @@ export function GuestMenu(props: GuestMenuProps) {
         : buildViewModel(
             snapshot,
             live,
-            buildContext({ locale, now, tableToken, manifest: entry.manifest }),
+            buildContext({ locale, now, tableToken, manifest: entry.manifest, sharedOrder }),
           ),
-    [snapshot, live, locale, now, tableToken, entry],
+    [snapshot, live, locale, now, tableToken, entry, sharedOrder],
   )
 
   const switchLanguage = useCallback((next: Locale) => {
@@ -364,6 +370,7 @@ export function GuestMenu(props: GuestMenuProps) {
       fontStacks={FONT_STACKS}
       scheme={view.theme.scheme}
       options={snapshot.presentation?.options}
+      {...(services === undefined ? {} : { services })}
     />
   )
 }

@@ -3,11 +3,14 @@
 // 1. the command's schema and its origin, and for a settings change a fresh sign-in, before the
 //    database is asked;
 // 2. `lock_timeout` 2 s and `statement_timeout` 5 s, then the venue locked `FOR SHARE` and live;
-// 3. the table, where the command names one;
+// 3. the table, where the command names one, and for a guest the table code it came with: the
+//    code must still be the table's and the table must still have a guest page (`code_retired`);
 // 4. the permission, read in the same transaction;
 // 5. `not_built` for a command whose ticket hasn't built it;
 // 6. the repeat check: the order row's ring of action ids, or the sent order made by the same
-//    action id; a repeat gets the first answer;
+//    action id; a repeat gets the first answer. Then the tap's age (`stale_action`) and, for an
+//    order edit, the table's rate (`rate_limited`, 60 a minute): neither goes into the ring, and a
+//    rate trip writes its Log entry and its alert to Restro's admin team (#75);
 // 7. the handler, inside a savepoint, so a refusal rolls its writes back;
 // 8. the version of every table the handler touched rises once, and an order edit's answer goes
 //    into the ring.
@@ -16,13 +19,14 @@
 
 import type { KeyObject } from 'node:crypto'
 
-import { type DbPool, sentOrders, tableOrders, venueTables } from '@restro/db'
+import { areas, type DbPool, sentOrders, tableOrders, venueTables } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
 import { serviceDate } from '../service-day'
-import { findInRing, pushToRing } from './action-ring'
+import { ORDER_CHANGES_PER_MINUTE } from '../table-order'
+import { actionsSince, findInRing, pushToRing } from './action-ring'
 import {
   isFreshSignIn,
   provenanceOf,
@@ -33,6 +37,7 @@ import {
 import type { CommandRegistry, ServiceTx } from './definition'
 import { resolveGrants } from './grants'
 import { appendLogEntry } from './log'
+import { tripOrderRate } from './order-rate'
 import { isSettingsPermission } from './permissions'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
@@ -88,6 +93,8 @@ interface Envelope {
   readonly type: string
   readonly tableId?: string
   readonly actionId?: string
+  /** Milliseconds since the guest's tap, for a command with a `maxAgeMs`. */
+  readonly ageMs?: number
 }
 
 /**
@@ -153,6 +160,27 @@ export async function executeCommand(
           .where(and(eq(venueTables.id, command.tableId), eq(venueTables.venueId, venue.id)))
         if (table === undefined) throw new Refusal(refused(actionId, 'table_missing'))
       }
+      if (context.tableCodeHash !== undefined) {
+        const guestPage =
+          command.tableId === undefined
+            ? []
+            : await tx
+                .select({ id: venueTables.id })
+                .from(venueTables)
+                .innerJoin(areas, eq(areas.id, venueTables.areaId))
+                .where(
+                  and(
+                    eq(venueTables.id, command.tableId),
+                    eq(venueTables.qrCodeHash, context.tableCodeHash),
+                    isNull(venueTables.archivedAt),
+                    eq(venueTables.isPaymentTable, false),
+                    eq(venueTables.hidden, false),
+                    eq(areas.hidden, false),
+                    isNull(areas.archivedAt),
+                  ),
+                )
+        if (guestPage.length === 0) throw new Refusal(refused(actionId, 'code_retired'))
+      }
 
       const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor)
       if (!grants.ok) throw new Refusal(refused(actionId, grants.code))
@@ -164,6 +192,13 @@ export async function executeCommand(
 
       const rows = new RowLocks(tx, context.tenantId, venue.id, provenance)
       const day = serviceDate(now, venue.timezone, venue.serviceDayEndsAt)
+      let clock: Promise<Date> | null = null
+      const dbNow = (): Promise<Date> => {
+        clock ??= tx
+          .execute<{ ms: string }>(sql`select floor(extract(epoch from now()) * 1000)::text as ms`)
+          .then((result) => new Date(Number(result.rows[0]?.ms)))
+        return clock
+      }
       const stx: ServiceTx = {
         tx,
         tenantId: context.tenantId,
@@ -180,6 +215,7 @@ export async function executeCommand(
         sealPublicKey: options.sealPublicKey ?? null,
         pinPepper: options.pinPepper ?? null,
         billIdKey: options.billIdKey ?? null,
+        dbNow,
         log: (entry) =>
           appendLogEntry(
             tx,
@@ -200,6 +236,25 @@ export async function executeCommand(
           ? findInRing(order.recentActions, actionId)
           : await sentOrderAnswer(tx, actionId)
         if (first !== null) return first
+      }
+      if (
+        definition.maxAgeMs !== undefined &&
+        command.ageMs !== undefined &&
+        command.ageMs > definition.maxAgeMs
+      ) {
+        throw new Refusal(refused(actionId, 'stale_action'))
+      }
+      if (ring && command.tableId !== undefined) {
+        const order = rows.heldOrder(command.tableId)
+        const minuteAgo = new Date((await dbNow()).getTime() - 60_000)
+        if (
+          order !== null &&
+          actionsSince(order.recentActions, minuteAgo) >= ORDER_CHANGES_PER_MINUTE
+        ) {
+          // Committed: the trip's Log entry and alert stay, and the refusal is not remembered.
+          await tripOrderRate(stx, command.tableId, order.sittingId)
+          return refused(actionId, 'rate_limited', { perMinute: ORDER_CHANGES_PER_MINUTE })
+        }
       }
 
       await tx.execute(sql`savepoint service_command`)
@@ -223,7 +278,12 @@ export async function executeCommand(
           await tx
             .update(tableOrders)
             .set({
-              recentActions: pushToRing(order.recentActions, { actionId, result, version }),
+              recentActions: pushToRing(order.recentActions, {
+                actionId,
+                result,
+                version,
+                at: (await dbNow()).toISOString(),
+              }),
               ...provenance,
               updatedAt: sql`now()`,
             })

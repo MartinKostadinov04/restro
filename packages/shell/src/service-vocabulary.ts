@@ -39,3 +39,33 @@ export const REQUEST_STATUSES = [
 
 /** One request status. */
 export type RequestStatus = (typeof REQUEST_STATUSES)[number]
+
+/**
+ * The reasons a guest command is refused that a face words (the shell's `refusals` strings). A
+ * code not listed here is worded as a general "That didn't work".
+ */
+export const GUEST_REFUSAL_CODES = [
+  /** The line changed under the guest (another phone): the fresh order is drawn. */
+  'order_changed',
+  /** The line is held by a payment: it can't be changed or removed. */
+  'line_held',
+  /** The Undo of a removed line has closed. */
+  'undo_expired',
+  /** The order holds as many lines as it may. */
+  'order_full',
+  /** A line holds as many as it may. */
+  'quantity_limit',
+  /** The tap is too old to apply (the phone was offline). */
+  'stale_action',
+  /** The table edits its order too fast: wait a moment. */
+  'rate_limited',
+  /** The table is not open for phones. */
+  'table_not_open',
+  /** The table's code is no longer its code: scan the table's code again. */
+  'code_retired',
+  /** Not available yet. */
+  'not_built',
+] as const
+
+/** One of the refusal codes a face words. */
+export type GuestRefusalCode = (typeof GUEST_REFUSAL_CODES)[number]

@@ -163,13 +163,17 @@ export function buildContext(input: {
   readonly now: Date
   readonly tableToken: string | null
   readonly manifest: FaceManifest
+  /** The page binds the table's shared order (#75): ordering is supported for this template. */
+  readonly sharedOrder?: boolean
 }): ShellContextInput {
+  const sharedOrder = input.sharedOrder === true
   return {
     locale: input.locale,
     now: input.now.toISOString(),
     channel: 'qr',
     tableToken: input.tableToken,
-    orderingEnabled: false,
+    orderingEnabled: sharedOrder,
+    capabilities: { ordering: sharedOrder },
     // One device pixel per CSS pixel: the face lets the browser choose among the photo files (srcset).
     images: imageSlotsFor(input.manifest, 1),
   }
