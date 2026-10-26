@@ -13,7 +13,8 @@
 //                 links, the items that came only from them and no menu places, their sections
 //                 that sit in no menu any more),
 //                 deleted areas and tables, versions past the rule in ../../core's
-//                 `versionsToPurge`, the change log past two months.
+//                 `versionsToPurge`, the change log past two months, and the service rows past
+//                 their retention (#84, D111, D122 §7: `purgeService`).
 //
 // Every purge is one transaction on the purge role, scoped to the tenant (row-level security
 // applies to that role as to the app's), and ends with a content-free `purge_log` row. The files
@@ -50,9 +51,11 @@ import {
   versionsToPurge,
 } from '@restro/core'
 import { codeFileNames, venueServesTill } from '@restro/core/apply'
+import { serviceRetentionCutoffs } from '@restro/core/service'
 import {
   areas,
   authOrganization,
+  billReadings,
   createPool,
   type DbPool,
   events,
@@ -79,7 +82,7 @@ import {
   withTenant,
 } from '@restro/db'
 import { type PurgeTx, withTenantPurge } from '@restro/db/purge'
-import { and, eq, inArray, isNotNull, isNull, lt, lte, notExists, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, lte, notExists, type SQL, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
@@ -265,10 +268,55 @@ async function tombstone(
     .onConflictDoNothing()
 }
 
+/**
+ * Deletes the rows of `table` (a constant name of this file, never input) matching `where`;
+ * answers one entry per row deleted.
+ */
+async function deleteRows(tx: PurgeTx, table: string, where: SQL): Promise<readonly unknown[]> {
+  const result = await tx.execute(
+    sql`delete from restro.${sql.raw(table)} where ${where} returning 1 as gone`,
+  )
+  return result.rows
+}
+
+/**
+ * Every service row of a venue (#84, D83: a venue purge erases all of them), children before the
+ * rows they name: the paying, the night's rows, the Log, the readings and locks, sent orders,
+ * sittings, the closed days, the venue's roles, assignments and shared devices. The organisation's
+ * staff members are not the venue's and stay (the staff step lets them go).
+ */
+const VENUE_SERVICE_TABLES = [
+  'payment_steps',
+  'payment_lines',
+  'payments',
+  'payment_accounts',
+  'sent_order_notes',
+  'table_orders',
+  'waiter_calls',
+  'alerts',
+  'pauses',
+  'log_entries',
+  'bill_readings',
+  'locks',
+  // One statement for all of them: a duplicate's `duplicate_of` is checked at its end.
+  'sent_orders',
+  'sittings',
+  'service_days',
+  'staff_assignments',
+  'venue_roles',
+  'shared_devices',
+] as const
+
+async function deleteVenueService(tx: PurgeTx, venueId: string, counts: Counts): Promise<void> {
+  for (const table of VENUE_SERVICE_TABLES) {
+    count(counts, table, await deleteRows(tx, table, sql`venue_id = ${venueId}`))
+  }
+}
+
 async function logPurge(
   tx: PurgeTx,
   tenantId: string,
-  kind: 'venue' | 'menu' | 'instance' | 'versions' | 'tables',
+  kind: 'venue' | 'menu' | 'instance' | 'versions' | 'tables' | 'service',
   subjectId: string,
   counts: Counts,
 ): Promise<void> {
@@ -317,6 +365,7 @@ export async function purgeVenue(
       await tx.select({ id: snapshots.id }).from(snapshots).where(eq(snapshots.venueId, venueId))
     ).map((row) => row.id)
 
+    await deleteVenueService(tx, venueId, counts)
     count(
       counts,
       'menu_routes',
@@ -333,6 +382,8 @@ export async function purgeVenue(
         .where(eq(venueTables.venueId, venueId))
         .returning({ id: venueTables.id }),
     )
+    // After the tables, which name their bar.
+    count(counts, 'bars', await deleteRows(tx, 'bars', sql`venue_id = ${venueId}`))
     count(
       counts,
       'areas',
@@ -758,6 +809,15 @@ export async function purgeTables(
           eq(venueTables.venueId, venueId),
           isNotNull(venueTables.archivedAt),
           lte(venueTables.archivedAt, due),
+          // A table its kept service rows still name waits for them (#84: 18 months for a
+          // sitting or a sent order); the service step lets them go first.
+          sql`not exists (select 1 from restro.sittings s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.sent_orders s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.table_orders s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.waiter_calls s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.payments s
+                           where s.table_id = ${venueTables.id}
+                              or s.payment_table_id = ${venueTables.id})`,
         ),
       )
     const areaRows = await tx
@@ -771,6 +831,14 @@ export async function purgeTables(
     if (tableIds.length === 0 && areaIds.length === 0) return { tables: 0, areas: 0, files: [] }
     const counts: Counts = {}
     if (tableIds.length > 0) {
+      count(
+        counts,
+        'bill_readings',
+        await tx
+          .delete(billReadings)
+          .where(inArray(billReadings.tableId, tableIds))
+          .returning({ id: billReadings.tableId }),
+      )
       count(
         counts,
         'menu_routes',
@@ -825,6 +893,147 @@ export async function purgeChangeLog(
   return withTenantPurge(deps.purgePool, input.tenantId, async (tx) => {
     const rows = await tx.delete(events).where(lt(events.at, before)).returning({ id: events.seq })
     return { events: rows.length }
+  })
+}
+
+/** `id in (...)` over `ids`; false for none. */
+function idIn(column: string, ids: readonly string[]): SQL {
+  if (ids.length === 0) return sql`false`
+  return sql`${sql.raw(column)} in (${sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  )})`
+}
+
+/**
+ * The service rows of one organisation past their retention (#84; D111, D122 §7, design §4), in
+ * one transaction, children before the rows they name. Per venue, in its own time zone and
+ * service day (`serviceRetentionCutoffs`: a day is due only once it ended that long ago):
+ *
+ *   - after 31 days: the notes, the waiter calls, the alerts, the lifted pauses (an active pause
+ *     is never erased: it makes the menu more cautious, rule 5), the table orders of ended
+ *     sittings, and the `night` Log entries;
+ *   - after 18 months: the `record` Log entries;
+ *   - at their `retain_until` (18 months after their day ended, set by `service_day.close`): the
+ *     sent orders no payment and no kept duplicate names, then the ended sittings nothing names
+ *     any more. A row without `retain_until` is never due.
+ *
+ * Then the archived staff members past their `retain_until` that no `record` entry names any
+ * more, with their assignments. `service_days` keeps the totals. A run that erases anything
+ * writes one content-free `purge_log` row of kind `service` with the counts.
+ */
+export async function purgeService(
+  deps: { readonly purgePool: DbPool },
+  input: { readonly tenantId: string; readonly now: Date },
+): Promise<{ counts: Counts }> {
+  const { tenantId, now } = input
+  return withTenantPurge(deps.purgePool, tenantId, async (tx) => {
+    const counts: Counts = {}
+    const venueRows = await tx
+      .select({ id: venues.id, timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
+      .from(venues)
+    for (const venue of venueRows) {
+      const { night, record } = serviceRetentionCutoffs(now, venue.timezone, venue.dayEndsAt)
+      const ofVenue = sql`venue_id = ${venue.id}`
+      // The sent orders due: past their date, named by no payment, and not the original of a
+      // kept duplicate (the kept rows are closed over `duplicate_of`).
+      const dueSent = await tx.execute<{ id: string }>(sql`
+        with recursive kept(id) as (
+          select o.id from restro.sent_orders o
+           where o.venue_id = ${venue.id}
+             and (o.retain_until is null or o.retain_until > ${now}
+                  or exists (select 1 from restro.payments p where p.sent_order_id = o.id))
+          union
+          select s.duplicate_of from restro.sent_orders s join kept on s.id = kept.id
+           where s.duplicate_of is not null
+        )
+        select o.id from restro.sent_orders o
+         where o.venue_id = ${venue.id}
+           and not exists (select 1 from kept where kept.id = o.id)`)
+      const sentIds = dueSent.rows.map((row) => row.id)
+      count(
+        counts,
+        'sent_order_notes',
+        await deleteRows(
+          tx,
+          'sent_order_notes',
+          sql`${ofVenue} and (service_date < ${night} or ${idIn('sent_order_id', sentIds)})`,
+        ),
+      )
+      count(
+        counts,
+        'table_orders',
+        await deleteRows(
+          tx,
+          'table_orders',
+          sql`${ofVenue} and sitting_id in (select id from restro.sittings
+                                             where venue_id = ${venue.id} and ended_at is not null
+                                               and service_date < ${night})`,
+        ),
+      )
+      for (const table of ['waiter_calls', 'alerts'] as const) {
+        count(
+          counts,
+          table,
+          await deleteRows(tx, table, sql`${ofVenue} and service_date < ${night}`),
+        )
+      }
+      count(
+        counts,
+        'pauses',
+        await deleteRows(
+          tx,
+          'pauses',
+          sql`${ofVenue} and service_date < ${night} and lifted_at is not null`,
+        ),
+      )
+      count(
+        counts,
+        'log_entries',
+        await deleteRows(
+          tx,
+          'log_entries',
+          sql`${ofVenue} and ((retention = 'night' and service_date < ${night})
+                           or (retention = 'record' and service_date < ${record}))`,
+        ),
+      )
+      count(counts, 'sent_orders', await deleteRows(tx, 'sent_orders', idIn('id', sentIds)))
+      count(
+        counts,
+        'sittings',
+        await deleteRows(
+          tx,
+          'sittings',
+          sql`${ofVenue} and ended_at is not null and retain_until is not null
+              and retain_until <= ${now}
+              and not exists (select 1 from restro.sent_orders s where s.sitting_id = sittings.id)
+              and not exists (select 1 from restro.table_orders s where s.sitting_id = sittings.id)
+              and not exists (select 1 from restro.waiter_calls s where s.sitting_id = sittings.id)
+              and not exists (select 1 from restro.payments s where s.sitting_id = sittings.id)`,
+        ),
+      )
+    }
+    // Archived staff members, once no record entry names them (as its actor or in its details).
+    const archivedAndFree = sql`archived_at is not null and retain_until is not null
+      and retain_until <= ${now}
+      and not exists (select 1 from restro.log_entries l
+                       where l.retention = 'record'
+                         and (l.actor = 'staff:' || staff_members.id
+                              or l.details ->> 'staffMemberId' = staff_members.id))`
+    count(
+      counts,
+      'staff_assignments',
+      await deleteRows(
+        tx,
+        'staff_assignments',
+        sql`staff_member_id in (select id from restro.staff_members where ${archivedAndFree})`,
+      ),
+    )
+    count(counts, 'staff_members', await deleteRows(tx, 'staff_members', archivedAndFree))
+    if (Object.values(counts).some((rows) => rows > 0)) {
+      await logPurge(tx, tenantId, 'service', tenantId, counts)
+    }
+    return { counts }
   })
 }
 
@@ -954,6 +1163,7 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
                 tables: 0,
                 areas: 0,
                 events: 0,
+                service: 0,
               }
               const scoped = { purgePool, pool: context.pool, store: deps.publishStore }
               for (const venue of due.binnedVenues) {
@@ -988,6 +1198,8 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
                 counters.areas = (counters.areas ?? 0) + result.areas
               }
               counters.events = (await purgeChangeLog(scoped, { tenantId, now })).events
+              const service = await purgeService(scoped, { tenantId, now })
+              counters.service = Object.values(service.counts).reduce((sum, rows) => sum + rows, 0)
               return { counters, notes: ['the daily purge ran'] }
             },
           )

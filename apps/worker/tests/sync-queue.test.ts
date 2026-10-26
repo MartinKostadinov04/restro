@@ -346,6 +346,8 @@ describe('buildJobs', () => {
       'worker-heartbeat',
       // The idle order job (#75) needs nothing but the database.
       JOB_NAMES.orderTidyTick,
+      // The end of the service day (#84) neither.
+      JOB_NAMES.serviceDayTick,
       // The floor reading (#71) needs no sealing keys: the simulated POS has no credentials.
       JOB_NAMES.floorRead,
       JOB_NAMES.floorReadTick,
@@ -392,6 +394,8 @@ describe('buildJobs', () => {
       'worker-heartbeat',
       // The idle order job (#75) needs nothing but the database.
       JOB_NAMES.orderTidyTick,
+      // The end of the service day (#84) neither.
+      JOB_NAMES.serviceDayTick,
       JOB_NAMES.barsyConnect,
       JOB_NAMES.barsyFullPull,
       JOB_NAMES.barsyIncremental,

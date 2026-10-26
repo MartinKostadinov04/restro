@@ -91,6 +91,8 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   // recorded `attempting` before each provider call.
   'paymentLines',
   'paymentSteps',
+  // #84: the end of a service day keeps its totals.
+  'serviceDays',
 ]
 
 function sourceFiles(dir: string): string[] {

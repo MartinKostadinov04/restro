@@ -103,6 +103,12 @@ export const JOB_NAMES = {
    */
   orderTidyTick: 'order-tidy-tick',
   /**
+   * Scheduled, every hour (#84, D111): closes each venue's ended service days through
+   * `applyService` (`service_day.close`): the day's sittings and sent orders are kept 18 months,
+   * its action ids are cleared and its totals kept in `service_days`. Not sent by anyone else.
+   */
+  serviceDayTick: 'service-day-tick',
+  /**
    * Send a table's waiting sent orders to its POS, one at a time (#77, D115): take the table's
    * slot, read the bill, add the round once, and when the answer is unknown read it back for a
    * minute. The guest API queues it after an accepted Send; the sweep queues it for a table with a
