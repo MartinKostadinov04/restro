@@ -16,9 +16,6 @@ import { fileURLToPath } from 'node:url'
 
 import { type APIRequestContext, expect, test } from '@playwright/test'
 
-const PORT = Number(process.env.E2E_PORT ?? 3100)
-/** The harness's worker health port: beside the e2e worker's (PORT + 2). */
-const HARNESS_PORT = PORT + 3
 /** Cloudflare's dummy token, which its test secret passes (playwright.config.ts). */
 const HUMAN_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX'
 const SETTLED = { timeout: 60_000, intervals: [500, 1_000] }
@@ -49,7 +46,7 @@ test.beforeAll(async () => {
   const workerDir = fileURLToPath(new URL('../../worker/', import.meta.url))
   harness = spawn(process.execPath, ['--import', 'tsx', 'src/e2e/pay-harness.ts'], {
     cwd: workerDir,
-    env: { ...process.env, PAY_HARNESS_PORT: String(HARNESS_PORT), LOG_LEVEL: 'warn' },
+    env: { ...process.env, LOG_LEVEL: 'warn' },
   })
   let buffer = ''
   harness.stdout.setEncoding('utf8')

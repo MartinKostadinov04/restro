@@ -78,7 +78,6 @@ async function main(): Promise<void> {
   const config = loadConfig({
     ...process.env,
     WORKER_ID: 'e2e-pay-harness',
-    WORKER_HEALTH_PORT: required('PAY_HARNESS_PORT'),
     WORKER_POS_SYNC: 'off',
   })
   const log = await createLogger({
@@ -181,15 +180,19 @@ async function main(): Promise<void> {
 
   // 3. The worker: the table reading and the payment jobs only. It shares the e2e worker's queue,
   // so it leaves the schedules alone: its short list would remove that worker's ticks for the
-  // specs after this one (live.json's remake among them).
-  const worker = await startWorker(config, {
-    logger: log,
-    schedules: false,
-    jobs: [
-      ...createReadingJobs({ sim: config.sim, billIdKey: BILL_ID_KEY }),
-      ...createPaymentJobs({ sim: config.sim, providers: new Map([[SIM_PAY_KIND, provider]]) }),
-    ],
-  })
+  // specs after this one (live.json's remake among them). Its health endpoint takes any free port
+  // (0): the ports beside the web's are the e2e worker's and the simulated POS's.
+  const worker = await startWorker(
+    { ...config, healthPort: 0 },
+    {
+      logger: log,
+      schedules: false,
+      jobs: [
+        ...createReadingJobs({ sim: config.sim, billIdKey: BILL_ID_KEY }),
+        ...createPaymentJobs({ sim: config.sim, providers: new Map([[SIM_PAY_KIND, provider]]) }),
+      ],
+    },
+  )
 
   let stopping = false
   const stop = async (exitCode: number) => {
