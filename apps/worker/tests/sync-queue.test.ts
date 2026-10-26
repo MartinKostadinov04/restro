@@ -352,6 +352,9 @@ describe('buildJobs', () => {
       // The Send (#77) needs no sealing keys either.
       JOB_NAMES.orderSend,
       JOB_NAMES.orderSlotSweep,
+      // The connection probe (#79) runs wherever a POS is read or written to.
+      JOB_NAMES.connectionProbe,
+      JOB_NAMES.connectionTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -398,6 +401,8 @@ describe('buildJobs', () => {
       // The Send (#77) needs no sealing keys either.
       JOB_NAMES.orderSend,
       JOB_NAMES.orderSlotSweep,
+      JOB_NAMES.connectionProbe,
+      JOB_NAMES.connectionTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,

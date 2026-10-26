@@ -33,6 +33,7 @@ import { type BillView, billBackendValues, billView, parseStoredBills } from './
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
+import { activePausesOfTable, pausesOfVenue } from './pause-scope'
 import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
 
@@ -317,7 +318,6 @@ export async function readTableState(
         ),
       )
 
-    const pauseTargets = [table.id, table.venueId, ...(table.barId === null ? [] : [table.barId])]
     const active = await tx
       .select({
         id: pauses.id,
@@ -327,7 +327,7 @@ export async function readTableState(
         startedAt: pauses.startedAt,
       })
       .from(pauses)
-      .where(and(inArray(pauses.targetId, pauseTargets), isNull(pauses.liftedAt)))
+      .where(activePausesOfTable(table))
 
     const [reading] = await tx
       .select({
@@ -594,7 +594,7 @@ export async function readTonight(
         startedAt: pauses.startedAt,
       })
       .from(pauses)
-      .where(and(eq(pauses.venueId, venue.id), isNull(pauses.liftedAt)))
+      .where(and(pausesOfVenue(venue.id), isNull(pauses.liftedAt)))
       .orderBy(pauses.startedAt)
 
     const log = held.has('log.view')
