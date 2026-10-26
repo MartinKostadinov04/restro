@@ -2,6 +2,7 @@ import {
   buildViewModel,
   EMPTY_SERVICE_STATE,
   imageSlotsFor,
+  stringsFor,
   type ViewModel,
   validateManifest,
 } from '@restro/shell'
@@ -30,6 +31,7 @@ import {
   themeVariables,
 } from './model'
 import { QrPhoneNotice, QrPhoneSkeleton } from './notices'
+import { DuplicateCheck, minutesSinceSent } from './table-order'
 
 const render = (view: ViewModel, host?: ContractHost) =>
   renderToStaticMarkup(<QrPhoneFace view={view} languages={host?.languages} />)
@@ -433,15 +435,30 @@ describe('the shared order (#75)', () => {
   })
 })
 
-describe('out of stock at Send (#80)', () => {
+describe("Send's guards (#78)", () => {
   const view = viewOf('features-on')
   const items = view.sections.flatMap((section) => section.items)
   const negroni = items[0]
   const mojito = items[1]
   if (negroni === undefined || mojito === undefined) throw new Error('the fixture has no items')
-  const lineId = (n: number) => `ol_${'0'.repeat(21)}${n}` as const
-  const line = (n: number, itemId: typeof negroni.id, qty: number) => ({
-    id: lineId(n),
+  // The live overlay marks the Mojito sold out.
+  const soldOutView: ViewModel = {
+    ...view,
+    sections: view.sections.map((section) => ({
+      ...section,
+      items: section.items.map((item) =>
+        item.id === mojito.id
+          ? { ...item, state: { ...item.state, code: 'sold_out' as const } }
+          : item,
+      ),
+    })),
+  }
+  const line = (
+    n: number,
+    itemId: ViewModel['sections'][number]['items'][number]['id'],
+    qty: number,
+  ) => ({
+    id: `ol_${'0'.repeat(21)}${n}` as const,
     itemId,
     optionIds: [],
     qty,
@@ -450,6 +467,140 @@ describe('out of stock at Send (#80)', () => {
     held: false,
     pending: false,
   })
+  const draw = (shown: ViewModel, notesAndOptions?: boolean) => {
+    const services = {
+      state: {
+        ...EMPTY_SERVICE_STATE,
+        ordering: {
+          state: 'on' as const,
+          ...(notesAndOptions === undefined ? {} : { notesAndOptions }),
+        },
+        order: {
+          lines: [line(1, negroni.id, 3), line(2, mojito.id, 1)],
+          removed: [],
+          earlier: null,
+        },
+      },
+      dispatch: () => Promise.reject(new Error('not in a static render')),
+    }
+    const html = withoutStyle(
+      renderToStaticMarkup(<QrPhoneFace view={shown} services={services} />),
+    )
+    return { html, doc: parseHtml(html) }
+  }
+
+  it('marks a sold-out line, keeps it on the order and offers "Send the other N"', () => {
+    const { html, doc } = draw(soldOutView)
+    const [marked] = withAttribute(doc, 'data-sold-out', '')
+    expect(marked === undefined ? '' : textOf(marked)).toContain('Sold out')
+    expect(withAttribute(doc, 'data-sold-out', '')).toHaveLength(1)
+    expect(html).toContain('Send the other 3')
+    expect(html).not.toContain('Send 4 items')
+  })
+
+  it('says "Send N items" when nothing is sold out', () => {
+    const { html, doc } = draw(view)
+    expect(withAttribute(doc, 'data-sold-out', '')).toHaveLength(0)
+    expect(html).toContain('Send 4 items')
+  })
+
+  it('asks "Same as 4 minutes ago. Send another?" with Send another and Cancel', () => {
+    const strings = stringsFor('en_US').services
+    const ask = (minutes: number | null) =>
+      renderToStaticMarkup(
+        <DuplicateCheck
+          minutes={minutes}
+          strings={strings}
+          onSend={() => {}}
+          onCancel={() => {}}
+        />,
+      )
+    expect(ask(4)).toContain('Same as 4 minutes ago. Send another?')
+    expect(ask(4)).toContain('Send another')
+    expect(ask(4)).toContain('Cancel')
+    expect(ask(0)).toContain('Same as a moment ago')
+    expect(ask(null)).toContain(strings.refusals.duplicate_order)
+  })
+
+  it('says "Tell the staff" where notes and options do not reach the ticket', () => {
+    for (const declared of [undefined, false]) {
+      const { doc } = draw(view, declared)
+      const [line] = withAttribute(doc, 'data-notes-at-staff', '')
+      expect(line === undefined ? '' : textOf(line)).toBe(
+        'Allergies or special requests? Tell the staff.',
+      )
+    }
+    expect(withAttribute(draw(view, true).doc, 'data-notes-at-staff', '')).toHaveLength(0)
+  })
+
+  it('orders an item that needs a choice from the waiter where options do not reach the ticket', () => {
+    const shot: ViewModel = {
+      ...view,
+      sections: view.sections.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.id === negroni.id
+            ? {
+                ...item,
+                order: { ...item.order, controls: true },
+                modifierGroups: [
+                  {
+                    id: 'nd_0000000000000000000000g1' as never,
+                    name: negroni.name,
+                    min: 1,
+                    max: 1,
+                    required: true,
+                    options: [],
+                  },
+                ],
+              }
+            : item,
+        ),
+      })),
+    }
+    const asked = withAttribute(draw(shot).doc, 'data-order-from-waiter', '')
+    expect(asked).toHaveLength(1)
+    expect(asked[0] === undefined ? '' : textOf(asked[0])).toBe('Order this from your waiter')
+    expect(draw(shot).html).not.toContain(`Add ${negroni.name.text}`)
+    expect(withAttribute(draw(shot, true).doc, 'data-order-from-waiter', '')).toHaveLength(0)
+    expect(draw(shot, true).html).toContain(`Add ${negroni.name.text}`)
+  })
+
+  it('counts the minutes since the sent order the check names', () => {
+    const sentAt = 1_700_000_000_000
+    const sent = [
+      {
+        id: 'so_1',
+        ref: 'K7Q',
+        state: 'added' as const,
+        reason: null,
+        mine: true,
+        sentAt,
+        lines: [],
+      },
+    ]
+    expect(minutesSinceSent(sent as never, 'so_1', sentAt + 4 * 60_000 + 59_000)).toBe(4)
+    expect(minutesSinceSent(sent as never, 'so_2', sentAt)).toBeNull()
+  })
+})
+
+describe('out of stock at Send (#80)', () => {
+  const view = viewOf('features-on')
+  const items = view.sections.flatMap((section) => section.items)
+  const negroni = items[0]
+  const mojito = items[1]
+  if (negroni === undefined || mojito === undefined) throw new Error('the fixture has no items')
+  const line = (n: number, itemId: typeof negroni.id, qty: number) => ({
+    id: `ol_${'0'.repeat(21)}${n}` as const,
+    itemId,
+    optionIds: [],
+    qty,
+    note: '',
+    mode: 'on_bill' as const,
+    held: false,
+    pending: false,
+  })
+  // The POS refused the last Send for the Mojito; the menu does not show it sold out yet.
   const services = {
     state: {
       ...EMPTY_SERVICE_STATE,
@@ -475,11 +626,12 @@ describe('out of stock at Send (#80)', () => {
   const html = withoutStyle(renderToStaticMarkup(<QrPhoneFace view={view} services={services} />))
   const doc = parseHtml(html)
 
-  it('greys the run-out line with its name and offers to send the rest', () => {
-    const [out] = withAttribute(doc, 'data-out-of-stock', '')
-    expect(withAttribute(doc, 'data-out-of-stock', '')).toHaveLength(1)
-    expect(out === undefined ? '' : textOf(out)).toContain(`${mojito.name.text} is out of stock`)
-    expect(html).toContain('Send the other 2 items')
+  it('greys the run-out line as sold out and offers to send the rest', () => {
+    const [out] = withAttribute(doc, 'data-sold-out', '')
+    expect(withAttribute(doc, 'data-sold-out', '')).toHaveLength(1)
+    expect(out === undefined ? '' : textOf(out)).toContain(mojito.name.text)
+    expect(out === undefined ? '' : textOf(out)).toContain('Sold out')
+    expect(html).toContain('Send the other 2')
     expect(html).toContain('Nothing was sent: something ran out.')
   })
 })

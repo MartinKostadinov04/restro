@@ -27,6 +27,8 @@ export interface CardContext {
   readonly ordering: {
     readonly strings: ServiceStrings
     readonly send: (command: CommandDraft) => void
+    /** Notes and options reach the POS's ticket (#78); false when the host does not say. */
+    readonly notesAndOptions: boolean
   } | null
 }
 
@@ -312,7 +314,12 @@ export function ItemCard({
         ) : null}
 
         {ctx.ordering !== null && item.order.controls ? (
-          <AddButton item={item} strings={ctx.ordering.strings} send={ctx.ordering.send} />
+          <AddButton
+            item={item}
+            strings={ctx.ordering.strings}
+            send={ctx.ordering.send}
+            notesAndOptions={ctx.ordering.notesAndOptions}
+          />
         ) : null}
 
         {item.order.askWaiter !== null ? (

@@ -195,9 +195,10 @@ export interface ServiceStrings {
   readonly otherItem: string
   /** A line held by a payment. */
   readonly heldLine: string
+  /** Ordering is paused (staff, Restro, the connection, the table; #79): the order is kept. */
   readonly orderingPaused: string
   readonly orderingClosed: string
-  /** The phone has not reached the server for a while. */
+  /** The phone has not reached the server for a while (a weak signal): nothing new was sent. */
   readonly offline: string
   // The location check (#76, D119, D122 §4). The consent words are versioned by core's
   // `LOCATION_CONSENT_VERSION`: changing them means raising it, so phones are asked again.
@@ -243,12 +244,21 @@ export interface ServiceStrings {
   readonly showWaiterClose: string
   /** A Send refused for one item: names it. */
   readonly itemUnavailableNamed: (name: string) => string
-  /** A line of the order whose item ran out (#80): greyed, and left out of the next Send. */
-  readonly outOfStockNamed: (name: string) => string
-  /** Not sent because the POS said items ran out: nothing was sent, the rest can go. */
-  readonly sentNotSentOutOfStock: string
-  /** The Send button when out-of-stock lines stay behind: "Send the other 2 items". */
+  // Send's guards (#78, D117, D122 §4).
+  /** The duplicate check: "Same as 4 minutes ago. Send another?" (closes after 60 s). */
+  readonly duplicateAsk: (minutes: number) => string
+  /** Sends the same round again, as a new action. */
+  readonly sendAnother: string
+  /** Closes the duplicate check: back to the order. */
+  readonly duplicateCancel: string
+  /** A line the menu shows sold out: it stays on the order, greyed, and is not sent. */
+  readonly lineSoldOut: string
+  /** The Send button when sold-out lines stay behind: "Send the other 4". */
   readonly sendOthers: (count: number) => string
+  /** Where the POS doesn't take notes and options: the fixed line instead of a note field. */
+  readonly notesAtStaff: string
+  /** Not sent because the POS said items ran out (#80): nothing was sent, the rest can go. */
+  readonly sentNotSentOutOfStock: string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
   readonly refusals: { readonly [C in GuestRefusalCode]: string }
   readonly refusedOther: string
@@ -485,9 +495,9 @@ const EN: Strings = {
     orderFromWaiter: 'Order this from your waiter',
     otherItem: 'Other item',
     heldLine: 'Being paid',
-    orderingPaused: 'Ordering from phones is paused. Ask your waiter.',
+    orderingPaused: 'Ordering is paused right now, please order from a waiter.',
     orderingClosed: 'This table is not taking orders from phones right now.',
-    offline: 'Trying to reconnect…',
+    offline: 'Weak connection. Nothing new was sent yet, we keep trying.',
     locationConsent: (venue) =>
       `${venue} and Restro check your location so only guests at the table can see and order onto its bill. Never stored. You can stop anytime and order from your waiter instead.`,
     locationAllow: 'Allow',
@@ -513,9 +523,18 @@ const EN: Strings = {
     showWaiter: 'Show this to your waiter',
     showWaiterClose: 'Close',
     itemUnavailableNamed: (name) => `${name} is no longer available. Remove it and send again.`,
-    outOfStockNamed: (name) => `${name} is out of stock`,
+    duplicateAsk: (minutes) =>
+      minutes < 1
+        ? 'Same as a moment ago. Send another?'
+        : minutes === 1
+          ? 'Same as 1 minute ago. Send another?'
+          : `Same as ${minutes} minutes ago. Send another?`,
+    sendAnother: 'Send another',
+    duplicateCancel: 'Cancel',
+    lineSoldOut: 'Sold out',
+    sendOthers: (count) => `Send the other ${count}`,
+    notesAtStaff: 'Allergies or special requests? Tell the staff.',
     sentNotSentOutOfStock: 'Nothing was sent: something ran out. Send the rest when you’re ready.',
-    sendOthers: (count) => (count === 1 ? 'Send the other item' : `Send the other ${count} items`),
     refusals: {
       order_changed: 'Someone at your table changed this. Here is the latest order.',
       line_held: 'This is being paid and can no longer change.',
@@ -533,6 +552,10 @@ const EN: Strings = {
       menu_unavailable: 'The menu is being updated. Try again in a moment.',
       order_empty: 'There is nothing to send yet.',
       item_unavailable: 'Something in your order is no longer available. Remove it and send again.',
+      order_from_waiter: 'Something in your order has to be ordered from your waiter.',
+      needs_first_item: 'Ask your waiter to put your first item on, then send again.',
+      duplicate_order: 'Your table sent the same order a few minutes ago.',
+      guard_tripped: 'Ask your waiter to take this order.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
@@ -749,9 +772,9 @@ const BG: Strings = {
     orderFromWaiter: 'Поръчайте това от сервитьора',
     otherItem: 'Друг артикул',
     heldLine: 'Плаща се',
-    orderingPaused: 'Поръчките от телефон са спрени. Попитайте сервитьора.',
+    orderingPaused: 'Поръчките са спрени в момента, моля, поръчайте от сервитьор.',
     orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
-    offline: 'Опитваме да се свържем отново…',
+    offline: 'Слаба връзка. Нищо ново не е изпратено още, продължаваме да опитваме.',
     locationConsent: (venue) =>
       `${venue} и Restro проверяват местоположението ви, за да могат само гостите на масата да виждат сметката ѝ и да поръчват към нея. Не се съхранява. Можете да спрете по всяко време и да поръчате от сервитьора.`,
     locationAllow: 'Разреши',
@@ -779,11 +802,19 @@ const BG: Strings = {
     showWaiter: 'Покажете това на сервитьора',
     showWaiterClose: 'Затвори',
     itemUnavailableNamed: (name) => `${name} вече не е налично. Премахнете го и изпратете отново.`,
-    outOfStockNamed: (name) => `${name} е изчерпано`,
+    duplicateAsk: (minutes) =>
+      minutes < 1
+        ? 'Същото като преди малко. Да изпратим ли още едно?'
+        : minutes === 1
+          ? 'Същото като преди 1 минута. Да изпратим ли още едно?'
+          : `Същото като преди ${minutes} минути. Да изпратим ли още едно?`,
+    sendAnother: 'Изпрати още едно',
+    duplicateCancel: 'Отказ',
+    lineSoldOut: 'Изчерпано',
+    sendOthers: (count) => `Изпрати останалите ${count}`,
+    notesAtStaff: 'Алергии или специални желания? Кажете на персонала.',
     sentNotSentOutOfStock:
       'Нищо не беше изпратено: нещо се изчерпа. Изпратете останалото, когато сте готови.',
-    sendOthers: (count) =>
-      count === 1 ? 'Изпрати другия артикул' : `Изпрати другите ${count} артикула`,
     refusals: {
       order_changed: 'Някой на масата промени това. Ето последната поръчка.',
       line_held: 'Това се плаща и вече не може да се променя.',
@@ -801,6 +832,10 @@ const BG: Strings = {
       menu_unavailable: 'Менюто се обновява. Опитайте отново след малко.',
       order_empty: 'Още няма какво да се изпрати.',
       item_unavailable: 'Нещо от поръчката ви вече не е налично. Премахнете го и изпратете отново.',
+      order_from_waiter: 'Нещо от поръчката ви трябва да поръчате от сервитьора.',
+      needs_first_item: 'Помолете сервитьора да маркира първия ви артикул, после изпратете отново.',
+      duplicate_order: 'Масата ви изпрати същата поръчка преди малко.',
+      guard_tripped: 'Помолете сервитьора да приеме тази поръчка.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',

@@ -15,9 +15,12 @@ describe('the slot lease of each state', () => {
   it('outlasts the slowest run of its step, with a margin', () => {
     const read = BUDGET_WAIT_MS + SERVICE_TIMINGS.readTimeoutMs
     const write = BUDGET_WAIT_MS + SERVICE_TIMINGS.writeTimeoutMs
+    const probe = BUDGET_WAIT_MS + SERVICE_TIMINGS.probeBudgetMs
     const lease = slotLeaseSeconds()
+    // The probe (#79), the availability read (#80), then the read with its tries and pauses.
     expect(lease.start * 1_000).toBeGreaterThanOrEqual(
-      (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
+      probe +
+        (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
         (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS +
         LEASE_MARGIN_MS,
     )
@@ -40,5 +43,7 @@ describe('the slot lease of each state', () => {
   it('moves with the timings', () => {
     const longer = { ...SERVICE_TIMINGS, readBackWindowMs: 120_000 }
     expect(slotLeaseSeconds(longer).checking).toBe(slotLeaseSeconds().checking + 60)
+    const slowerProbe = { ...SERVICE_TIMINGS, probeBudgetMs: SERVICE_TIMINGS.probeBudgetMs + 5_000 }
+    expect(slotLeaseSeconds(slowerProbe).start).toBe(slotLeaseSeconds().start + 5)
   })
 })

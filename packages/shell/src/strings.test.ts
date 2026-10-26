@@ -34,6 +34,31 @@ describe('the guest strings', () => {
     })
   })
 
+  it("words Send's guards in both languages (#78, D117)", () => {
+    const en = stringsFor('en_US').services
+    const bg = stringsFor('bg_BG').services
+    expect(en.duplicateAsk(4)).toBe('Same as 4 minutes ago. Send another?')
+    expect(en.duplicateAsk(1)).toBe('Same as 1 minute ago. Send another?')
+    expect(en.sendOthers(4)).toBe('Send the other 4')
+    expect(en.notesAtStaff).toBe('Allergies or special requests? Tell the staff.')
+    for (const table of [en, bg]) {
+      for (const words of [
+        table.duplicateAsk(0),
+        table.duplicateAsk(12),
+        table.sendAnother,
+        table.duplicateCancel,
+        table.lineSoldOut,
+        table.sendOthers(2),
+        table.notesAtStaff,
+        table.refusals.duplicate_order,
+        table.refusals.guard_tripped,
+      ]) {
+        expect(words.trim()).not.toBe('')
+      }
+    }
+    expect(bg.duplicateAsk(4)).not.toBe(en.duplicateAsk(4))
+  })
+
   it('reads English for every language but Bulgarian', () => {
     expect(stringsFor('de_DE').guest.back).toBe('Back to menu')
     expect(stringsFor('bg_BG').guest.back).toBe('Обратно към менюто')

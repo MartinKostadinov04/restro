@@ -242,6 +242,22 @@ describe('the lines a Send takes and gives back (#77)', () => {
     expect(taken.order.lines).toEqual([{ ...first, heldBy: 'py_x' }])
   })
 
+  it('sends the other lines and keeps back the ones the menu cannot take (Send the other N)', () => {
+    const [first, second] = two.lines
+    if (first === undefined || second === undefined) throw new Error('two lines expected')
+    const soldOut = (line: { readonly id: string }) => line.id === first.id
+    const taken = takeSentLines(two, asSeen.slice(1), NOW, soldOut)
+    if (!taken.ok) throw new Error(taken.code)
+    expect(taken.lines.map((line) => line.id)).toEqual([second.id])
+    expect(taken.order.lines).toEqual([first])
+    // Naming the kept-back line is a Send that differs from what may go.
+    expect(takeSentLines(two, asSeen, NOW, soldOut)).toEqual({ ok: false, code: 'order_changed' })
+    expect(takeSentLines(two, asSeen.slice(1), NOW, () => true)).toEqual({
+      ok: false,
+      code: 'order_empty',
+    })
+  })
+
   it('gives lines back merged into identical ones, under a fresh id where theirs is taken', () => {
     const taken = takeSentLines(two, asSeen, NOW)
     if (!taken.ok) throw new Error(taken.code)

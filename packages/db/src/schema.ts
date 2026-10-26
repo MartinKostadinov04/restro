@@ -480,6 +480,13 @@ export interface IntegrationConfig {
    * Absent means true. S3-04 turns this into a setting of the Integration tab.
    */
   publish_after_sync?: boolean
+  /**
+   * What the instance's service connector declares its POS lets Restro do (D122 §3), snake_case
+   * (`notes_reach_ticket`, `first_items_open_bill`…): written by every complete floor reading
+   * (core's `applyFloor`, #78) and read through core's `readServiceCapabilities`, where missing
+   * means not declared. Any connector with a floor reading gets it.
+   */
+  service_capabilities?: Record<string, boolean>
 }
 
 /**

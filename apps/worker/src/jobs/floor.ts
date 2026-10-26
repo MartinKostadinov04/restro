@@ -52,6 +52,7 @@ import {
   serviceContext,
 } from '../service-connectors'
 import { createLimiter, type Limiter } from '../sync/limiter'
+import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
 
 const MINUTE = 60_000
@@ -92,6 +93,8 @@ export interface FloorEnvironment {
 export interface FloorJobDeps {
   readonly sim: SimPolicy
   readonly budgets?: InstanceBudgets
+  /** The connection breakers (#79): every read is a call on the connection. */
+  readonly breakers?: ConnectionBreakers
   /** Builds the connector of an instance; tests pass their own. */
   readonly connectorFor?: typeof serviceConnectorFor
 }
@@ -203,14 +206,22 @@ export async function readFloorOf(
   }
 
   const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(integrationId)
+  const call = (ok: boolean) =>
+    (deps.breakers ?? SHARED_BREAKERS).record(
+      env,
+      { tenantId, integrationId },
+      { kind: 'call', ok },
+    )
   let reading: Awaited<ReturnType<ServiceReader['readFloor']>>
   try {
     reading = await budget.run(() => connector.readFloor(serviceContext(now)))
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'the floor could not be read'
     log.warn({ integrationId, venueId, err: error }, 'the floor could not be read')
+    await call(false)
     return finish('failed', { kind: 'failed', reason }, {}, [`failed: ${reason}`])
   }
+  await call(reading.complete)
   if (!reading.complete) {
     // Rule 6: nothing is concluded. `applyFloor` would refuse it too; the run says why.
     return finish('failed', { kind: 'incomplete', reason: reading.reason }, {}, [
@@ -225,6 +236,7 @@ export async function readFloorOf(
       bid: link.bid,
       jobId: run.id,
       reading,
+      capabilities: connector.capabilities,
       now: now(),
     })
   } catch (error) {

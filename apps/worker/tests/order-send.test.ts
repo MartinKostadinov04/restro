@@ -26,6 +26,7 @@ import { createSimServer, ManualClock, type SimFault, type SimServer } from '@re
 import fc from 'fast-check'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { ConnectionBreakers } from '../src/jobs/breaker'
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import { sendTableOrders, slotTargets } from '../src/jobs/order-send'
 import { stockTick } from '../src/jobs/stock'
@@ -74,9 +75,11 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
   const env = () => ({ pool, log, now: () => new Date() })
   /** The fake clock the read-back window runs on: the fake sleeps and slow reads move it. */
   let elapsed = 0
-  const deps = () => ({
+  /** A fresh breaker per run, so one test's write timeout holds no later test's order. */
+  const deps = (breakers = new ConnectionBreakers(() => 0.5)) => ({
     sim: policy,
     budgets: new InstanceBudgets(),
+    breakers,
     timings: {
       probeBudgetMs: 3_000,
       readTimeoutMs: 5_000,
@@ -150,8 +153,8 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     sim.host.load('demo-bar')
     simClock.advance(1100)
     await query(
-      'update restro.pauses set lifted_at = now() where target_id = $1 and lifted_at is null',
-      [tableId],
+      'update restro.pauses set lifted_at = now() where target_id = any($1) and lifted_at is null',
+      [[tableId, demo.integrationId]],
     )
     await query(
       `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
@@ -215,7 +218,8 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       )
     )[0]
 
-  const run = () => sendTableOrders(env(), { tenantId, venueId: demo.venueId, tableId }, deps())
+  const run = (breakers?: ConnectionBreakers) =>
+    sendTableOrders(env(), { tenantId, venueId: demo.venueId, tableId }, deps(breakers))
 
   /** Each row on the table's open bills: its article and quantity (in thousandths). */
   const onBill = () =>
@@ -442,6 +446,69 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       expect(await stockMarks()).toEqual([])
       expect((await stockAlerts()).map((alert) => alert.done)).toEqual([true])
     })
+  })
+
+  it('pauses the connection when the POS refuses the login: Not sent, and the next waits', async () => {
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'refuse', code: 'credentials' } })
+    expect(await run()).toEqual([
+      { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'credentials' },
+    ])
+    expect(
+      await query(
+        `select cause, restro_started from restro.pauses
+         where scope = 'connection' and target_id = $1 and lifted_at is null`,
+        [demo.integrationId],
+      ),
+    ).toEqual([{ cause: 'credentials', restro_started: true }])
+
+    // Another worker, another breaker: the pause row stops the next order before the POS (the
+    // start settles it, so the run sends nothing).
+    simClock.advance(1100)
+    const next = await waiting([{ itemId: itemB, qty: 1, unitMinor: 1100 }])
+    expect(await run()).toEqual([])
+    expect(await sentOrder(next)).toMatchObject({ state: 'not_sent', reason: 'ordering_paused' })
+    expect(addCalls()).toBe(1)
+  })
+
+  it('after a write timed out, the next order goes only after a good probe', async () => {
+    firstItem()
+    const breakers = new ConnectionBreakers(() => 0.5)
+    const connection = { tenantId, integrationId: demo.integrationId }
+    const first = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'landsThenHangs' } })
+    expect(await run(breakers)).toEqual([
+      { kind: 'settled', sentOrderId: first, state: 'added', reason: null },
+    ])
+    expect(await breakers.gate(env(), connection)).toBe('hold')
+
+    // A fresh simulator (the hung call no longer holds its one concurrent slot); the hold is the
+    // breaker's, in this process.
+    sim.host.load('demo-bar')
+    simClock.advance(1100)
+    firstItem()
+    const second = await waiting([{ itemId: itemB, qty: 1, unitMinor: 1100 }])
+    const pings = () => sim.host.engine.calls().filter((call) => call.method === 'ping').length
+    const before = pings()
+    // The simulator's clock moves only on the fake sleeps: past its rate limit after the probe.
+    const connectorFor: typeof serviceConnectorFor = (integration, simPolicy) => {
+      const real = serviceConnectorFor(integration, simPolicy)
+      return {
+        ...real,
+        probe: async (ctx) => {
+          const answer = await real.probe(ctx)
+          simClock.advance(1100)
+          return answer
+        },
+      }
+    }
+    const payload = { tenantId, venueId: demo.venueId, tableId }
+    expect(await sendTableOrders(env(), payload, { ...deps(breakers), connectorFor })).toEqual([
+      { kind: 'settled', sentOrderId: second, state: 'added', reason: null },
+    ])
+    expect(pings()).toBe(before + 1)
+    expect(await breakers.gate(env(), connection)).toBe('open')
   })
 
   it('is Not sent on an empty table where only a waiter opens a bill (needs_first_item)', async () => {

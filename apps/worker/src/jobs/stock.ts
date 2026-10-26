@@ -54,8 +54,8 @@ import {
   serviceContext,
 } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
-import { bounded } from './bounded'
-import { type InstanceBudgets, SHARED_BUDGETS } from './floor'
+import { bounded } from './connection'
+import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
 import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** How often the tick asks the POS about marked items, and lapses an earlier day's marks. */
@@ -67,7 +67,7 @@ export interface StockEnvironment {
   readonly log: Logger
   readonly now: () => Date
   /** Queues `publish-live`; left out, the live overlay catches up with its own tick. */
-  readonly queue?: JobQueue
+  readonly queue?: JobQueue | undefined
 }
 
 /** What the tick needs to reach a POS instance (a part of the send jobs' dependencies). */
@@ -159,9 +159,13 @@ async function announce(
   }
 }
 
+/** How one availability read went, for the connection's breaker (#79): as the table read's. */
+export type HearCall = (call: { readonly ok: boolean; readonly elapsedMs?: number }) => unknown
+
 /**
  * Reads the availability of these POS items, bounded by the instance's budget. Incomplete when
  * the connector declares no read, the POS was busy or slow, or the answer had the wrong shape.
+ * `hear` is told each call that left (a read with no turn never did, so it is not to blame).
  */
 export async function readAvailability(
   connector: ServiceConnector,
@@ -169,21 +173,28 @@ export async function readAvailability(
   now: () => Date,
   timings: ServiceTimings,
   items: readonly PosRef[],
+  hear: HearCall = () => undefined,
 ): Promise<Reading<Availability>> {
   const read = connector.readAvailability
   if (!connector.capabilities.itemAvailability || read === undefined || items.length === 0) {
     return { complete: false, reason: 'no availability read' }
   }
+  const started = Date.now()
   try {
     const answer = await bounded(budget, timings.readTimeoutMs, () =>
       read.call(connector, serviceContext(now, timings), [...items]),
     )
-    if (answer.kind !== 'answered') return { complete: false, reason: 'the read did not answer' }
+    if (answer.kind !== 'answered') {
+      if (answer.kind === 'late') await hear({ ok: false })
+      return { complete: false, reason: 'the read did not answer' }
+    }
     const parsed = readingSchema(AvailabilitySchema).safeParse(answer.value)
+    await hear({ ok: parsed.success && parsed.data.complete, elapsedMs: Date.now() - started })
     return parsed.success
       ? parsed.data
       : { complete: false, reason: 'the reading did not have the expected shape' }
   } catch {
+    await hear({ ok: false })
     return { complete: false, reason: 'the availability could not be read' }
   }
 }
@@ -251,6 +262,10 @@ async function askAgain(
   })
   const { integration, links } = found
   if (integration === undefined || integration.removedAt !== null || links.length === 0) {
+    return { marked: [], cleared: [] }
+  }
+  // A paused connection is the breaker's to probe (#79): the tick asks again after the lift.
+  if (await connectionPaused(env.pool, target.tenantId, target.integrationId)) {
     return { marked: [], cleared: [] }
   }
   let connector: ServiceConnector

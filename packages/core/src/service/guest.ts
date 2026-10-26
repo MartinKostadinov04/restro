@@ -120,7 +120,14 @@ export interface GuestTableState {
   /** Milliseconds to the next poll. */
   readonly next: number
   readonly table: { readonly label: string }
-  readonly ordering: { readonly state: 'on' | 'paused' | 'closed' }
+  /**
+   * `notesAndOptions`: notes and options reach the POS's ticket (#78); else the template draws no
+   * note field, and items that must have options are ordered from the waiter.
+   */
+  readonly ordering: {
+    readonly state: 'on' | 'paused' | 'closed'
+    readonly notesAndOptions: boolean
+  }
   readonly location: GuestLocation
   /** The table's order; null without a pass where the venue checks location (D122 §4). */
   readonly order: {
@@ -424,6 +431,7 @@ export function projectGuestState(
     table: { label: read.table.label },
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
+      notesAndOptions: read.notesAndOptions,
     },
     location,
     order: !sees
@@ -645,8 +653,13 @@ function guestContext(
 
 /** The answer a phone gets for a service result. */
 export function guestResult(result: ServiceResult): GuestCommandResult {
-  // The line an add made, the sent order a Send made, or the item a refused Send names.
-  const subject = result.details.lineId ?? result.details.sentOrderId ?? result.details.itemId
+  // The line an add made, the sent order a Send made or repeats (#78), or the item a refused Send
+  // names.
+  const subject =
+    result.details.lineId ??
+    result.details.sentOrderId ??
+    result.details.duplicateOf ??
+    result.details.itemId
   return {
     actionId: result.actionId,
     status: result.status === 'accepted' ? 'accepted' : 'rejected',

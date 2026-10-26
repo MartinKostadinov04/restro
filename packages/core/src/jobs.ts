@@ -117,6 +117,16 @@ export const JOB_NAMES = {
    */
   orderSlotSweep: 'order-slot-sweep',
   /**
+   * Probe one POS instance's connection (#79, D120): while it is paused, and for the five minutes
+   * after a lift. Each run sends the next at the breaker's next probe time. Stately per instance.
+   */
+  connectionProbe: 'connection-probe',
+  /**
+   * Scheduled, every minute (#79): queues `connection-probe` for each paused connection, so a
+   * restarted worker probes again at the time the pause row says. Not sent by anyone else.
+   */
+  connectionTick: 'connection-tick',
+  /**
    * Scheduled, every 5 minutes (#80): takes stock marks off again. It reads the marked items where
    * the POS instance declares item availability (a complete reading that says one is back clears
    * its mark), and lapses the marks of an earlier service day. Not sent by anyone else.
@@ -161,6 +171,10 @@ export type VenueSyncJob = z.output<typeof VenueSyncJobSchema>
  */
 export const TableReadJobSchema = z.strictObject({ tenantId, venueId, tableId: idSchema('tb') })
 export type TableReadJob = z.output<typeof TableReadJobSchema>
+
+/** `connection-probe`: one POS instance (the instance owns the connection, not a venue). */
+export const ConnectionProbeJobSchema = z.strictObject({ tenantId, integrationId })
+export type ConnectionProbeJob = z.output<typeof ConnectionProbeJobSchema>
 
 /** Payload of `order-send`: the table whose waiting sent orders go to its POS. */
 export const OrderSendJobSchema = TableReadJobSchema
@@ -255,6 +269,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.floorRead]: VenueSyncJobSchema,
   [JOB_NAMES.tableRead]: TableReadJobSchema,
   [JOB_NAMES.orderSend]: OrderSendJobSchema,
+  [JOB_NAMES.connectionProbe]: ConnectionProbeJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
@@ -305,6 +320,7 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishOrganizationIndex,
   JOB_NAMES.purgeVenue,
   JOB_NAMES.orderSend,
+  JOB_NAMES.connectionProbe,
 ])
 
 /**

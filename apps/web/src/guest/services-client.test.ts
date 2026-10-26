@@ -31,7 +31,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
     version,
     next: lines.length > 0 ? 2_000 : 10_000,
     table: { label: '7' },
-    ordering: { state: 'on' },
+    ordering: { state: 'on', notesAndOptions: false },
     location: {
       state: location,
       passSeconds: location === 'held' ? 7_000 : null,
@@ -129,7 +129,7 @@ describe('the services client', () => {
     expect(first?.init.headers).toEqual({ Authorization: 'Table table-code-123' })
     expect(first?.init.referrerPolicy).toBe('no-referrer')
     expect(h.client.getState().order).toEqual({ lines: [], removed: [], earlier: null })
-    expect(h.client.getState().ordering).toEqual({ state: 'on' })
+    expect(h.client.getState().ordering).toEqual({ state: 'on', notesAndOptions: false })
     expect(h.nextWait()).toBe(10_000)
     await h.tick()
     expect(h.calls[1]?.url).toBe('/api/guest/state?view=menu&since=4')

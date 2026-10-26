@@ -154,9 +154,7 @@ export const FACE_CSS = `
 .rq-order-lines { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
 .rq-order-controls { display: inline-flex; gap: 6px; margin-left: 8px; }
 .rq-order-hint { color: var(--rq-muted, GrayText); }
-/* An out-of-stock line (#80): greyed, its words still readable, left out of the next Send. */
-.rq-order-out .rq-order-name, .rq-order-out .rq-order-qty { color: var(--rq-muted, GrayText); text-decoration: line-through; }
-.rq-location { display: grid; gap: 8px; margin: 8px 0 16px; justify-items: start; }
+.rq-location, .rq-ask { display: grid; gap: 8px; margin: 8px 0 16px; justify-items: start; }
 /* Send (#77): the sent orders, and the panel a guest shows a waiter: dark on light whatever the
    theme (the light scheme's Canvas and CanvasText, D120's 21:1), the reference at 48px. */
 .rq-send { margin-top: 8px; font-weight: 600; }

@@ -30,7 +30,10 @@ export const BUDGET_WAIT_MS = 15_000
 export const LEASE_MARGIN_MS = 15_000
 
 export interface SlotLeaseSeconds {
-  /** From `sent_order.start`: the availability read, the read before the round with its tries. */
+  /**
+   * From `sent_order.start`: the probe the breaker may ask for first (#79, after a write timed
+   * out), then the availability read (#80) and the read before the round, with its tries and pauses.
+   */
   readonly start: number
   /** From `sending`: the write, and the one more try after a closed bill. */
   readonly sending: number
@@ -42,10 +45,12 @@ export interface SlotLeaseSeconds {
 export function slotLeaseSeconds(timings: ServiceTimings = SERVICE_TIMINGS): SlotLeaseSeconds {
   const read = BUDGET_WAIT_MS + timings.readTimeoutMs
   const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
+  const probe = BUDGET_WAIT_MS + timings.probeBudgetMs
   const seconds = (ms: number) => Math.ceil((ms + LEASE_MARGIN_MS) / 1_000)
   return {
     start: seconds(
-      (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
+      probe +
+        (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
         (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS,
     ),
     sending: seconds(2 * write),

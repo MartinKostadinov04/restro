@@ -61,6 +61,13 @@ export interface ServiceTx extends LeaseTx {
   dbNow(): Promise<Date>
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
+  /**
+   * Sets writes aside for the handler's refusal: they run after its savepoint is rolled back, in
+   * the same transaction, so what a refusal leaves behind (a guard trip's pause, Log entry and
+   * alert, #78) is kept while the rest of the handler's writes are not. Never run when the handler
+   * accepts.
+   */
+  keepOnRefusal(write: () => Promise<void>): void
 }
 
 /**

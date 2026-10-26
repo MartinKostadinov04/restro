@@ -354,6 +354,9 @@ describe('buildJobs', () => {
       JOB_NAMES.orderSlotSweep,
       // Stock from the POS (#80) runs with the Send.
       JOB_NAMES.stockTick,
+      // The connection probe (#79) runs wherever a POS is read or written to.
+      JOB_NAMES.connectionProbe,
+      JOB_NAMES.connectionTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -402,6 +405,8 @@ describe('buildJobs', () => {
       JOB_NAMES.orderSlotSweep,
       // Stock from the POS (#80) runs with the Send.
       JOB_NAMES.stockTick,
+      JOB_NAMES.connectionProbe,
+      JOB_NAMES.connectionTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,

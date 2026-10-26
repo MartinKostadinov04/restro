@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import { hasDatabase } from '../apply/test-database'
-import { idSchema } from '../ids'
+import { idSchema, newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext, Via } from './context'
 import { type CommandRegistry, defineCommand } from './definition'
@@ -47,6 +47,32 @@ const REGISTRY: CommandRegistry = {
       stx.rows.touch(command.tableId)
       await stx.log({ kind: 'waiter_call.lapsed', tableId: command.tableId })
       return refused(command.actionId, 'line_held')
+    },
+  }),
+  'test.trip': defineCommand({
+    schema: onTable('test.trip'),
+    origins: ['guest'],
+    permission: null,
+    idempotency: 'order_ring',
+    handle: async (stx, command) => {
+      await stx.log({ kind: 'waiter_call.lapsed', tableId: command.tableId })
+      stx.keepOnRefusal(async () => {
+        stx.rows.touch(command.tableId)
+        await stx.log({ kind: 'guard.tripped', tableId: command.tableId, reason: 'test_trip' })
+      })
+      return refused(command.actionId, 'line_held')
+    },
+  }),
+  'test.kept': defineCommand({
+    schema: onTable('test.kept'),
+    origins: ['guest'],
+    permission: null,
+    idempotency: 'order_ring',
+    handle: async (stx, command) => {
+      stx.keepOnRefusal(async () => {
+        await stx.log({ kind: 'guard.tripped', tableId: command.tableId, reason: 'test_kept' })
+      })
+      return accepted(command.actionId)
     },
   }),
   'test.send': defineCommand({
@@ -236,13 +262,9 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
   describe('the real commands', () => {
     // Every guest command is built (Send, #77; the waiter call, #81): only staff commands are left.
     it('refuses every command not built yet as not_built', async () => {
-      const tableId = world.tables[0] as string
       const owner = staff(user(ownerId))
       expect(
-        (await applyService(world.app, { type: 'table.resume', tableId }, owner)).result,
-      ).toEqual(refused(null, 'not_built'))
-      expect(
-        (await applyService(world.app, { type: 'ordering.pause', barId: null }, owner)).result,
+        (await applyService(world.app, { type: 'alert.done', alertId: newId('al') }, owner)).result,
       ).toEqual(refused(null, 'not_built'))
     })
 
@@ -328,6 +350,27 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
 
       expect(await run(command, guest())).toEqual(answer)
       expect(calls.refuse).toBe(before + 1)
+    })
+
+    it('keeps the writes a refusing handler set aside for its refusal, and only for a refusal', async () => {
+      // The table the rollback test opened.
+      const tableId = world.tables[2] as string
+      await run({ type: 'test.edit', tableId, actionId: randomUUID() }, guest())
+      const version = await versionOf(tableId)
+      const logged = (await logOf(tableId)).length
+
+      const command = { type: 'test.trip', tableId, actionId: randomUUID() }
+      expect(await run(command, guest())).toEqual(refused(command.actionId, 'line_held'))
+      // The handler's own entry is rolled back; the kept one stays and the table's version rises.
+      const kinds = (await logOf(tableId)).slice(logged).map((entry) => entry.kind)
+      expect(kinds).toEqual(['guard.tripped'])
+      expect(await versionOf(tableId)).toBe(version + 1)
+
+      // An accepted handler's kept writes never run.
+      await run({ type: 'test.kept', tableId, actionId: randomUUID() }, guest())
+      expect((await logOf(tableId)).slice(logged).map((entry) => entry.kind)).toEqual([
+        'guard.tripped',
+      ])
     })
 
     it('answers a repeated Send with the sent order its action id made', async () => {

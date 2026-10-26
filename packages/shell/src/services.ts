@@ -123,6 +123,8 @@ export type GuestCommand =
       readonly kind: 'order.send'
       readonly actionId: string
       readonly lines: readonly OrderLine[]
+      /** The sent order a duplicate check named, when the guest chose "Send another" (#78). */
+      readonly confirmDuplicateOf?: string
     }
   | {
       readonly kind: 'service.request'
@@ -218,6 +220,7 @@ export const GuestCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('order.send'),
     actionId: ActionIdSchema,
     lines: z.array(OrderLineSchema).min(1).max(SERVICE_LIMITS.lines),
+    confirmDuplicateOf: idSchema('so').optional(),
   }),
   z.strictObject({
     kind: z.literal('service.request'),
@@ -475,9 +478,15 @@ export interface ServiceState {
   readonly order?: TableOrderView | null
   /**
    * Whether the table takes orders from phones now: `paused` by staff, `closed` when the table
-   * is not open. Absent where the host does not say.
+   * is not open. Absent where the host does not say. `notesAndOptions` (#78): true where notes
+   * and options reach the POS's ticket; false or absent, the template draws no note field (it
+   * shows `notesAtStaff` instead) and an item that must have options says "Order this from your
+   * waiter" instead of an add control.
    */
-  readonly ordering?: { readonly state: 'on' | 'paused' | 'closed' } | null
+  readonly ordering?: {
+    readonly state: 'on' | 'paused' | 'closed'
+    readonly notesAndOptions?: boolean
+  } | null
   /** True when the host has not reached the server for a while: what is drawn may be old. */
   readonly offline?: boolean
   /** The location check (#76); absent where the host does not check. */
