@@ -355,8 +355,9 @@ export async function closeAllTables(stx: ServiceTx): Promise<ServiceResult> {
  * Ends every open sitting of the venue for `reason`: "Close all", and the closing hour (#82).
  * With `keepPaying` (the closing hour), a table whose sitting has a payment not yet settled is
  * left open for a later run: D122 ends such a sitting only after the close and capture, and
- * closing it would kill a card form or lose the route of a held payment. A payment's own
- * deadlines (2 and 10 minutes) bound the wait.
+ * closing it would kill a card form or lose the route of a held payment. The wait is bounded by
+ * the payment's own deadlines (2 and 10 minutes) or, once it is held, by the close and capture
+ * (#111).
  */
 export async function closeOpenTables(
   stx: ServiceTx,
