@@ -13,6 +13,7 @@ import {
   percentOfMinor,
   ratioOfMinor,
   subtractMinor,
+  sumSignedMinor,
 } from './money'
 
 /**
@@ -71,6 +72,31 @@ describe('addMinor', () => {
 
 /** Everything the whole-number helpers must refuse: floats, negatives, NaN, infinities, unsafe. */
 const NOT_MINOR = [12.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]
+
+describe('sumSignedMinor', () => {
+  it('sums signed POS amounts', () => {
+    expect(sumSignedMinor([3600, -100])).toBe(3500)
+    expect(sumSignedMinor([100, -3600])).toBe(-3500)
+    expect(sumSignedMinor([])).toBe(0)
+  })
+
+  it('refuses floats, unsafe integers and a sum past the safe range (rule 8)', () => {
+    for (const bad of [1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+      expect(() => sumSignedMinor([1, bad]), `1 + ${bad}`).toThrow(MoneyError)
+    }
+    expect(() => sumSignedMinor([Number.MAX_SAFE_INTEGER, 1])).toThrow(MoneyError)
+    expect(() => sumSignedMinor([Number.MIN_SAFE_INTEGER, -1])).toThrow(MoneyError)
+  })
+
+  it('is the exact sum on every safe list (property)', () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: -(2 ** 40), max: 2 ** 40 })), (amounts) => {
+        const exact = amounts.reduce((sum, a) => sum + BigInt(a), 0n)
+        expect(BigInt(sumSignedMinor(amounts))).toBe(exact)
+      }),
+    )
+  })
+})
 
 describe('subtractMinor', () => {
   it('subtracts integer minor units', () => {

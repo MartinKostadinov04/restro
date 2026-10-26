@@ -52,6 +52,7 @@ import {
   type ServiceTimings,
   samePosRef,
   serviceDayStartsAt,
+  sumSignedMinor,
   type TableBills,
   TableBillsSchema,
 } from '@restro/core'
@@ -319,7 +320,7 @@ async function sendOne(
     before = await readTable()
   }
   if (!before.complete) return settle('not_sent', 'pos_unreachable')
-  const billBeforeMinor = before.value.bills.reduce((sum, bill) => sum + bill.totalMinor, 0)
+  const billBeforeMinor = sumSignedMinor(before.value.bills.map((bill) => bill.totalMinor))
   const sending = await move('sending', { billBeforeMinor })
   if (sending === null) return { kind: 'lost', sentOrderId }
   // A pause landed since the start: the step settled it Not sent and freed the slot.
