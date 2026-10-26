@@ -161,7 +161,12 @@ export function planDelivery(input: PlanInput): DeliveryPlan {
       const stateOf = (alert: PlannedAlert) => alert.delivery[receiver]
       const open = ofKind.filter((alert) => alert.doneAt === null)
       const speaking = rule.outsideServiceHours || window.inService
-      const add = (step: Step, group: readonly PlannedAlert[], ownersOnly = false) => {
+      // A kind for the owners only (money, #111) keeps every message to them.
+      const add = (
+        step: Step,
+        group: readonly PlannedAlert[],
+        ownersOnly = forReceiver.ownersOnly ?? false,
+      ) => {
         if (group.length === 0) return
         if (receiver === 'venueTelegram') {
           for (const alert of group) {
@@ -219,7 +224,7 @@ export function planDelivery(input: PlanInput): DeliveryPlan {
             Date.parse(state.lastAt) + reminder.afterMs <= nowMs
           )
         })
-        add('reminder', due, reminder.ownersOnly)
+        add('reminder', due, reminder.ownersOnly || (forReceiver.ownersOnly ?? false))
       }
 
       // Told it ended, once it has stayed over.

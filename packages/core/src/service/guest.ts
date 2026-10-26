@@ -1264,7 +1264,16 @@ const WORKER_STEP: Readonly<Record<string, 'prepare' | 'check'>> = {
   requested: 'prepare',
   priced: 'prepare',
   cancelling: 'prepare',
+  // The route after the hold (#111).
+  held: 'prepare',
+  queued: 'prepare',
+  isolated: 'prepare',
+  checked: 'prepare',
+  closed: 'prepare',
 }
+
+/** An unconfirmed close a manager or owner answered: the worker captures or puts the lines back. */
+const ANSWERED = ['receipt_printed', 'no_receipt']
 
 /** A decimal quantity as the bill shows it: "2.000000" is "2", "0.500000" is "0.5". */
 function shownQuantity(quantity: string): string {
@@ -1322,7 +1331,11 @@ export async function guestPayment(
   if (found === null) return { ok: false, code: 'unknown_payment' }
   const { payment, lines } = found
 
-  const step = WORKER_STEP[payment.state]
+  const step =
+    WORKER_STEP[payment.state] ??
+    (payment.state === 'unconfirmed' && ANSWERED.includes(payment.reason ?? '')
+      ? 'prepare'
+      : undefined)
   const overdue =
     payment.state === 'awaiting_guest' &&
     payment.confirmBy !== null &&
