@@ -121,16 +121,19 @@ export interface ProbeDeps {
   readonly clock?: (() => number) | undefined
 }
 
-/** Probes the connection once and feeds the breaker; `no_turn` when the probe never left. */
-export async function probeConnection(
-  env: BreakerEnvironment,
+/**
+ * Asks the connector's read-only probe once, through the instance's budget, and judges the answer;
+ * `no_turn` when the probe never left. Records nothing: `probeConnection` feeds the breaker, and
+ * the pre-opening check (#82) records what it needs itself.
+ */
+export async function probeOnce(
+  env: Pick<BreakerEnvironment, 'log' | 'now'>,
   ref: ConnectionRef,
   connector: Pick<ServiceReader, 'probe'>,
   deps: ProbeDeps,
-): Promise<ProbeVerdict['outcome'] | 'no_turn'> {
+): Promise<ProbeVerdict | 'no_turn'> {
   const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(ref.integrationId)
   const clock = deps.clock ?? (() => performance.now())
-  let verdict: ProbeVerdict
   try {
     const answer = await bounded(budget, BREAKER.probeBudgetMs, async () => {
       const started = clock()
@@ -138,18 +141,26 @@ export async function probeConnection(
       return { result, elapsedMs: clock() - started }
     })
     if (answer.kind === 'no_turn') return 'no_turn'
-    if (answer.kind === 'late') {
-      verdict = { outcome: 'bad', cause: null }
-    } else {
-      const parsed = ProbeResultSchema.safeParse(answer.value.result)
-      verdict = parsed.success
-        ? judgeProbe(parsed.data, answer.value.elapsedMs)
-        : { outcome: 'bad', cause: null }
-    }
+    if (answer.kind === 'late') return { outcome: 'bad', cause: null }
+    const parsed = ProbeResultSchema.safeParse(answer.value.result)
+    return parsed.success
+      ? judgeProbe(parsed.data, answer.value.elapsedMs)
+      : { outcome: 'bad', cause: null }
   } catch (error) {
     env.log.warn({ integrationId: ref.integrationId, err: error }, 'the probe failed')
-    verdict = { outcome: 'bad', cause: null }
+    return { outcome: 'bad', cause: null }
   }
+}
+
+/** Probes the connection once and feeds the breaker; `no_turn` when the probe never left. */
+export async function probeConnection(
+  env: BreakerEnvironment,
+  ref: ConnectionRef,
+  connector: Pick<ServiceReader, 'probe'>,
+  deps: ProbeDeps,
+): Promise<ProbeVerdict['outcome'] | 'no_turn'> {
+  const verdict = await probeOnce(env, ref, connector, deps)
+  if (verdict === 'no_turn') return 'no_turn'
   await (deps.breakers ?? SHARED_BREAKERS).record(env, ref, { kind: 'probe', ...verdict })
   return verdict.outcome
 }

@@ -33,6 +33,7 @@ import {
   pushSubscribe,
   syncPauseAlerts,
 } from './alerts'
+import { closeAtClosingHour } from './closing-hour'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
@@ -55,6 +56,7 @@ import {
   payStart,
 } from './pay'
 import { paymentObserve } from './payment-observe'
+import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
@@ -464,6 +466,16 @@ export const SERVICE_COMMANDS = {
   }),
   // #79: the minute tick lifts the Unconfirmed table pauses older than 15 minutes.
   sweep: sweepPauses(),
+  // #82: at the venue's closing hour the minute tick closes every table for phones.
+  'hours.close_tables': defineCommand({
+    schema: z.strictObject({ type: z.literal('hours.close_tables') }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: closeAtClosingHour,
+  }),
+  // #82: a failed pre-opening check alerts the venue's staff and Restro's admin team, once a night.
+  'hours.pre_opening_alert': preOpeningAlert(),
   'service_day.close': workerStep('service_day.close', {
     serviceDate: z.iso.date(),
   }), // #84

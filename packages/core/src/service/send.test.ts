@@ -54,7 +54,7 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
     ]),
   }
 
-  const guest = (located = true): ServiceContext => ({
+  const guest = (located = true, now?: Date): ServiceContext => ({
     tenantId: world.tenantId,
     venueId: world.venueId,
     origin: 'guest',
@@ -62,6 +62,7 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
     jobId: `guest-${randomUUID()}`,
     tableCodeHash: codeHash,
     ...(located ? { sittingId, consentVersion: 'v1' } : {}),
+    ...(now === undefined ? {} : { now }),
   })
 
   const worker = (): ServiceContext => ({
@@ -111,7 +112,11 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
 
   /** A Send of the order's live lines as they stand. */
   async function send(
-    options: { readonly actionId?: string; readonly sendMenu?: SendMenu | null } = {},
+    options: {
+      readonly actionId?: string
+      readonly sendMenu?: SendMenu | null
+      readonly now?: Date
+    } = {},
   ) {
     const lines = (await orderLines()).map(({ itemId, optionIds, qty, note }) => ({
       itemId,
@@ -129,7 +134,7 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
         ageMs: 50,
         lines,
       },
-      guest(),
+      guest(true, options.now),
       sendMenu === null ? {} : { sendMenu },
     )
   }
@@ -317,6 +322,37 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
       [sittingId],
     )
     expect(rows[0]?.n).toBe(0)
+  })
+
+  it('follows the service hours (#82): sends while open and in the last-orders notice, refuses before opening and after last orders; the lines stay', async () => {
+    const night = { opens: '22:00', lastOrders: '04:30', closes: '05:30' }
+    const hours = { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: night }
+    await world.owner.query(
+      `update restro.venues set settings = jsonb_set(settings, '{ordering,serviceHours}', $2::jsonb) where id = $1`,
+      [world.venueId, JSON.stringify(hours)],
+    )
+    try {
+      await add(beer, 1)
+      // Friday 2026-10-23 (Sofia, UTC+3): opens 19:00Z, last orders 01:30Z next day.
+      const refusedAt = async (iso: string) => (await send({ now: new Date(iso) })).result
+      expect(await refusedAt('2026-10-23T18:59:00Z')).toMatchObject({ code: 'ordering_closed' })
+      expect(await refusedAt('2026-10-24T01:30:00Z')).toMatchObject({ code: 'ordering_closed' })
+      // Thursday night: a closed weekday.
+      expect(await refusedAt('2026-10-22T20:00:00Z')).toMatchObject({ code: 'ordering_closed' })
+      expect((await orderLines()).map((line) => [line.itemId, line.qty])).toEqual([[beer, 1]])
+
+      const inNotice = await send({ now: new Date('2026-10-24T01:25:00Z') })
+      expect(inNotice.result).toMatchObject({ status: 'accepted' })
+      await add(gin, 1)
+      expect((await send({ now: new Date('2026-10-23T20:00:00Z') })).result).toMatchObject({
+        status: 'accepted',
+      })
+    } finally {
+      await world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings, '{ordering,serviceHours}', $2::jsonb) where id = $1`,
+        [world.venueId, JSON.stringify(DEFAULT_ORDERING_SETTINGS.serviceHours)],
+      )
+    }
   })
 
   it('takes the slot for one sent order at a time and settles it Added', async () => {

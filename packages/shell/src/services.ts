@@ -486,6 +486,15 @@ export interface ServiceState {
   readonly ordering?: {
     readonly state: 'on' | 'paused' | 'closed'
     readonly notesAndOptions?: boolean
+    /**
+     * The venue's night (#82): `last_orders` shows "Last orders at {at}", `closed` "Ordering from
+     * phones has closed for tonight" and `opens_later` the opening time; the last two take the
+     * send control away. Absent where the host does not say.
+     */
+    readonly night?: {
+      readonly state: 'open' | 'last_orders' | 'opens_later' | 'closed'
+      readonly at: string | null
+    }
   } | null
   /** True when the host has not reached the server for a while: what is drawn may be old. */
   readonly offline?: boolean

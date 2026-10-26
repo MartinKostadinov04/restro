@@ -61,6 +61,7 @@ import {
 } from '../location-check'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
 import { hashTableCode } from '../qr'
+import { type GuestNight, guestNight } from '../service-hours'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
 import { applyService } from './apply-service'
 import { billBackendValues, forbiddenPaths, parseStoredBills, wantsFreshReading } from './bill'
@@ -137,6 +138,8 @@ export interface GuestTableState {
   readonly ordering: {
     readonly state: 'on' | 'paused' | 'closed'
     readonly notesAndOptions: boolean
+    /** The venue's night (#82): "Last orders at 04:30", "closed for tonight", opening later. */
+    readonly night: GuestNight
   }
   readonly location: GuestLocation
   /** The table's order; null without a pass where the venue checks location (D122 §4). */
@@ -219,6 +222,8 @@ export interface GuestUnchanged {
   readonly next: number
   /** The phone asks for the whole state again when this differs from the one it holds. */
   readonly location: GuestLocationState
+  /** Likewise for the night (#82): time alone changes it, under an unchanged version. */
+  readonly night: GuestNight['state']
 }
 
 /** A command's answer as a phone gets it. */
@@ -392,6 +397,13 @@ function cadence(view: GuestView, inFlight: boolean): number {
 }
 
 /** The location part when the caller gives none (a venue that doesn't check). */
+const NIGHT_OPEN: GuestNight = { state: 'open', at: null }
+
+/** The venue's night as a phone is told it, at `now` (milliseconds). */
+function nightOf(guard: GuardRead, now: number): GuestNight {
+  return guestNight(guard.settings, guard.timezone, guard.dayEndsAt, new Date(now))
+}
+
 const LOCATION_OFF: GuestLocation = {
   state: 'off',
   passSeconds: null,
@@ -408,6 +420,7 @@ export function projectGuestState(
   read: TableStateRead,
   view: GuestView,
   location: GuestLocation = LOCATION_OFF,
+  night: GuestNight = NIGHT_OPEN,
 ): GuestTableState {
   const now = read.now.getTime()
   const sees = location.state !== 'needed'
@@ -444,6 +457,7 @@ export function projectGuestState(
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       notesAndOptions: read.notesAndOptions,
+      night,
     },
     location,
     order: !sees
@@ -640,10 +654,14 @@ export async function guestState(
         version: state.version,
         next: cadence(input.view, false),
         location: location.state,
+        night: nightOf(guard, now).state,
       },
     }
   }
-  return { ok: true, answer: walked(projectGuestState(state, input.view, location), state) }
+  return {
+    ok: true,
+    answer: walked(projectGuestState(state, input.view, location, nightOf(guard, now)), state),
+  }
 }
 
 function guestContext(
@@ -964,7 +982,12 @@ export async function guestAct(
       state: state.unchanged
         ? null
         : walked(
-            projectGuestState(state, input.view, locationOf(guard, holds ? claims : null, now)),
+            projectGuestState(
+              state,
+              input.view,
+              locationOf(guard, holds ? claims : null, now),
+              nightOf(guard, now),
+            ),
             state,
           ),
       pass: holds ? pass : null,
@@ -1013,7 +1036,12 @@ export async function guestAct(
     state === null || state.unchanged
       ? null
       : walked(
-          projectGuestState(state, input.view, locationOf(guard, holds ? claims : null, now)),
+          projectGuestState(
+            state,
+            input.view,
+            locationOf(guard, holds ? claims : null, now),
+            nightOf(guard, now),
+          ),
           state,
         )
   return {
@@ -1180,7 +1208,12 @@ async function payAct(
     state === null || state.unchanged
       ? null
       : walked(
-          projectGuestState(state, input.view, locationOf(guard, holds ? claims : null, now)),
+          projectGuestState(
+            state,
+            input.view,
+            locationOf(guard, holds ? claims : null, now),
+            nightOf(guard, now),
+          ),
           state,
         )
   return {

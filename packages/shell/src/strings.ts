@@ -198,6 +198,12 @@ export interface ServiceStrings {
   /** Ordering is paused (staff, Restro, the connection, the table; #79): the order is kept. */
   readonly orderingPaused: string
   readonly orderingClosed: string
+  /** The last-orders notice, shown 10 minutes before them (#82): "Last orders at 04:30". */
+  readonly lastOrdersAt: (time: string) => string
+  /** After last orders, and all night on a closed weekday (#82). */
+  readonly orderingClosedTonight: string
+  /** Before the venue opens for phones (#82). */
+  readonly orderingOpensAt: (time: string) => string
   /** The phone has not reached the server for a while (a weak signal): nothing new was sent. */
   readonly offline: string
   // The location check (#76, D119, D122 §4). The consent words are versioned by core's
@@ -497,6 +503,9 @@ const EN: Strings = {
     heldLine: 'Being paid',
     orderingPaused: 'Ordering is paused right now, please order from a waiter.',
     orderingClosed: 'This table is not taking orders from phones right now.',
+    lastOrdersAt: (time) => `Last orders at ${time}`,
+    orderingClosedTonight: 'Ordering from phones has closed for tonight',
+    orderingOpensAt: (time) => `Ordering from phones opens at ${time}`,
     offline: 'Weak connection. Nothing new was sent yet, we keep trying.',
     locationConsent: (venue) =>
       `${venue} and Restro check your location so only guests at the table can see and order onto its bill. Never stored. You can stop anytime and order from your waiter instead.`,
@@ -549,6 +558,7 @@ const EN: Strings = {
       location_failed: 'We could not confirm you are at the venue.',
       human_check: 'We could not check this request. Try again.',
       ordering_paused: 'Ordering is paused, please call a waiter.',
+      ordering_closed: 'Ordering from phones is closed right now. Please order from a waiter.',
       menu_unavailable: 'The menu is being updated. Try again in a moment.',
       order_empty: 'There is nothing to send yet.',
       item_unavailable: 'Something in your order is no longer available. Remove it and send again.',
@@ -774,6 +784,9 @@ const BG: Strings = {
     heldLine: 'Плаща се',
     orderingPaused: 'Поръчките са спрени в момента, моля, поръчайте от сервитьор.',
     orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
+    lastOrdersAt: (time) => `Последни поръчки в ${time}`,
+    orderingClosedTonight: 'Поръчките от телефон приключиха за тази вечер',
+    orderingOpensAt: (time) => `Поръчките от телефон започват в ${time}`,
     offline: 'Слаба връзка. Нищо ново не е изпратено още, продължаваме да опитваме.',
     locationConsent: (venue) =>
       `${venue} и Restro проверяват местоположението ви, за да могат само гостите на масата да виждат сметката ѝ и да поръчват към нея. Не се съхранява. Можете да спрете по всяко време и да поръчате от сервитьора.`,
@@ -829,6 +842,7 @@ const BG: Strings = {
       location_failed: 'Не успяхме да потвърдим, че сте в заведението.',
       human_check: 'Не успяхме да проверим заявката. Опитайте отново.',
       ordering_paused: 'Поръчките са спрени, моля, повикайте сервитьор.',
+      ordering_closed: 'Поръчките от телефон са затворени в момента. Моля, поръчайте от сервитьор.',
       menu_unavailable: 'Менюто се обновява. Опитайте отново след малко.',
       order_empty: 'Още няма какво да се изпрати.',
       item_unavailable: 'Нещо от поръчката ви вече не е налично. Премахнете го и изпратете отново.',

@@ -60,4 +60,35 @@ describe('ordering settings', () => {
       serviceHoursProblem({ opens: '22:00', lastOrders: '04:00', closes: '03:00' }, '07:00'),
     ).toMatch(/closing/)
   })
+
+  it('refuses a closing time at or after the POS day close, so tables close first', () => {
+    expect(
+      serviceHoursProblem({ opens: '22:00', lastOrders: '05:00', closes: '07:00' }, '07:00'),
+    ).toMatch(/before the service day ends/)
+    expect(
+      serviceHoursProblem({ opens: '22:00', lastOrders: '05:00', closes: '06:59' }, '07:00'),
+    ).toBeNull()
+  })
+
+  it('checks the pre-opening check: 2 hours, every 10 minutes, an alert at 30 by default', () => {
+    expect(DEFAULT_ORDERING_SETTINGS.preOpeningCheck).toEqual({
+      startMinutes: 120,
+      everyMinutes: 10,
+      alertMinutes: 30,
+    })
+    const at = (preOpeningCheck: unknown) =>
+      OrderingSettingsSchema.safeParse({ ...DEFAULT_ORDERING_SETTINGS, preOpeningCheck }).success
+    expect(at({ startMinutes: 60, everyMinutes: 15, alertMinutes: 20 })).toBe(true)
+    expect(at({ startMinutes: 120, everyMinutes: 4, alertMinutes: 30 })).toBe(false)
+    expect(at({ startMinutes: 60, everyMinutes: 10, alertMinutes: 90 })).toBe(false)
+    expect(at({ startMinutes: 120, everyMinutes: 10, alertMinutes: 30, extra: 1 })).toBe(false)
+  })
+
+  it('reads settings saved before the pre-opening check existed with its defaults', () => {
+    const { preOpeningCheck: _dropped, ...older } = DEFAULT_ORDERING_SETTINGS
+    expect(readOrderingSettings({ ordering: { ...older, capMinor: 9_000 } })).toEqual({
+      ...DEFAULT_ORDERING_SETTINGS,
+      capMinor: 9_000,
+    })
+  })
 })
