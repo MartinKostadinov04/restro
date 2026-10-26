@@ -26,6 +26,7 @@ import {
   billReadings,
   logEntries,
   pauses,
+  payments,
   sittings,
   tableOrders,
   venueTables,
@@ -350,10 +351,17 @@ export async function closeAllTables(stx: ServiceTx): Promise<ServiceResult> {
   return closeOpenTables(stx, 'staff_closed')
 }
 
-/** Ends every open sitting of the venue for `reason`: "Close all", and the closing hour (#82). */
+/**
+ * Ends every open sitting of the venue for `reason`: "Close all", and the closing hour (#82).
+ * With `keepPaying` (the closing hour), a table whose sitting has a payment not yet settled is
+ * left open for a later run: D122 ends such a sitting only after the close and capture, and
+ * closing it would kill a card form or lose the route of a held payment. A payment's own
+ * deadlines (2 and 10 minutes) bound the wait.
+ */
 export async function closeOpenTables(
   stx: ServiceTx,
   reason: SittingEndReason,
+  options: { readonly keepPaying?: boolean } = {},
 ): Promise<ServiceResult> {
   const seen = await stx.tx
     .select({ tableId: sittings.tableId })
@@ -361,13 +369,34 @@ export async function closeOpenTables(
     .where(and(eq(sittings.venueId, stx.venueId), isNull(sittings.endedAt)))
   const tableIds = seen.map((row) => row.tableId).sort()
   const open = await stx.rows.openSittings(tableIds, 'update')
-  const ending = tableIds.flatMap((tableId) => {
+  const locked = tableIds.flatMap((tableId) => {
     const sitting = open.get(tableId)
     return sitting === null || sitting === undefined ? [] : [sitting]
   })
+  const paying =
+    options.keepPaying === true
+      ? await sittingsWithOpenPayment(
+          stx,
+          locked.map((sitting) => sitting.id),
+        )
+      : new Set<string>()
+  const ending = locked.filter((sitting) => !paying.has(sitting.id))
   await stx.rows.tableOrders(ending.map((sitting) => sitting.tableId))
   for (const sitting of ending) await endSitting(stx, sitting, reason)
   return accepted(null, { details: { closed: ending.length } })
+}
+
+/** Which of these sittings have a payment that has not reached a final state. */
+async function sittingsWithOpenPayment(
+  stx: ServiceTx,
+  sittingIds: readonly string[],
+): Promise<Set<string>> {
+  if (sittingIds.length === 0) return new Set()
+  const rows = await stx.tx
+    .selectDistinct({ sittingId: payments.sittingId })
+    .from(payments)
+    .where(and(inArray(payments.sittingId, [...sittingIds]), isNull(payments.settledAt)))
+  return new Set(rows.map((row) => row.sittingId))
 }
 
 /**
