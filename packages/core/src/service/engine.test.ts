@@ -25,6 +25,14 @@ const onTable = <T extends string>(type: T) =>
 
 /** Test definitions that drive the machinery the real commands will use. */
 const REGISTRY: CommandRegistry = {
+  // A command whose ticket has not built it (every real one is built now, #83).
+  'test.unbuilt': defineCommand({
+    schema: z.strictObject({ type: z.literal('test.unbuilt') }),
+    origins: ['staff'],
+    permission: 'alerts.answer',
+    idempotency: 'by_nature',
+    handle: null,
+  }),
   'test.edit': defineCommand({
     schema: onTable('test.edit'),
     origins: ['guest'],
@@ -260,12 +268,11 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
   })
 
   describe('the real commands', () => {
-    // Every guest command is built (Send, #77; the waiter call, #81): only staff commands are left.
-    it('refuses every command not built yet as not_built', async () => {
+    // Every command is built (the last, `alert.done`, by #83), so a definition of the test's own
+    // stands in for one that is not.
+    it('refuses a command not built yet as not_built', async () => {
       const owner = staff(user(ownerId))
-      expect(
-        (await applyService(world.app, { type: 'alert.done', alertId: newId('al') }, owner)).result,
-      ).toEqual(refused(null, 'not_built'))
+      expect(await run({ type: 'test.unbuilt' }, owner)).toEqual(refused(null, 'not_built'))
     })
 
     it('refuses a table of another venue as missing, and a guest sending a staff command', async () => {

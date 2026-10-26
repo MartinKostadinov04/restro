@@ -80,6 +80,35 @@ export interface WorkerConfig {
    * tests turn it on with the sync off, against the simulated POS only.
    */
   readonly send: boolean
+  /**
+   * How alerts reach people (#83). Always set by {@link loadConfig}; optional in the type so a
+   * test's hand-written configuration need not name it. Never logged: it holds secrets.
+   */
+  readonly alerts?: AlertsConfig
+}
+
+/**
+ * Where alerts go (#83; D120, D122 §7). Every part is optional: without the bot token nothing is
+ * sent to Telegram and no Done is heard; without the VAPID keys nothing is pushed; without the
+ * Healthchecks address Restro pings no watchdog.
+ */
+export interface AlertsConfig {
+  /** The bot's token (TELEGRAM_BOT_TOKEN). A secret: never logged, never in a URL we log. */
+  readonly telegramToken: string | null
+  /** The Restro team's own chat (TELEGRAM_TEAM_CHAT_ID), negative for a group. */
+  readonly teamChatId: string | null
+  /** The address Restro pings every minute (HEALTHCHECKS_PING_URL); the watchdog is outside. */
+  readonly healthchecksUrl: string | null
+  /** The Web Push identity of this Restro (VAPID_*), or null: nothing is pushed. */
+  readonly vapid: VapidKeys | null
+}
+
+/** The Web Push application server keys (RFC 8292). */
+export interface VapidKeys {
+  readonly publicKey: string
+  readonly privateKey: string
+  /** A `mailto:` or `https:` address the push services can reach us at. */
+  readonly subject: string
 }
 
 /**
@@ -162,6 +191,15 @@ const BAD_REVEAL_TOKEN =
 const BAD_BILL_ID_KEY =
   'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
 const BAD_POS_SYNC = 'must be on or off.'
+const BAD_TELEGRAM_TOKEN = 'must be the bot token BotFather gave (digits, a colon, then letters).'
+const BAD_TELEGRAM_CHAT = 'must be a Telegram chat id: digits, with a minus sign for a group.'
+const BAD_HEALTHCHECKS_URL = 'must be an https:// address.'
+const BAD_VAPID_PUBLIC_KEY =
+  'must be a base64url public key (pnpm exec web-push generate-vapid-keys).'
+const BAD_VAPID_PRIVATE_KEY = 'must be a base64url private key. It goes with VAPID_PUBLIC_KEY.'
+const VAPID_PRIVATE_KEY_MISSING = 'is not set. It goes with VAPID_PUBLIC_KEY.'
+const VAPID_PUBLIC_KEY_MISSING = 'is not set. It goes with VAPID_PRIVATE_KEY.'
+const BAD_VAPID_SUBJECT = 'must be a mailto: or https: address. It goes with the VAPID keys.'
 
 const HOST_SUFFIX = /^\.[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
 
@@ -287,6 +325,54 @@ function environmentSchema(defaultWorkerId: () => string) {
           .pipe(z.enum(['on', 'off'], { error: BAD_POS_SYNC }))
           .default('on'),
       ),
+      TELEGRAM_BOT_TOKEN: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^[0-9]{5,20}:[A-Za-z0-9_-]{30,80}$/, { error: BAD_TELEGRAM_TOKEN })
+          .optional(),
+      ),
+      TELEGRAM_TEAM_CHAT_ID: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^-?[0-9]{1,20}$/, { error: BAD_TELEGRAM_CHAT })
+          .optional(),
+      ),
+      HEALTHCHECKS_PING_URL: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^https:\/\/[^\s]+$/, { error: BAD_HEALTHCHECKS_URL })
+          .optional(),
+      ),
+      VAPID_PUBLIC_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9_-]{60,120}$/, { error: BAD_VAPID_PUBLIC_KEY })
+          .optional(),
+      ),
+      VAPID_PRIVATE_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9_-]{30,80}$/, { error: BAD_VAPID_PRIVATE_KEY })
+          .optional(),
+      ),
+      VAPID_SUBJECT: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/, { error: BAD_VAPID_SUBJECT })
+          .optional(),
+      ),
       WORKER_SEND: z.preprocess(
         unsetWhenBlank,
         z
@@ -309,6 +395,15 @@ function environmentSchema(defaultWorkerId: () => string) {
       }
       if (publicKey !== null && privateKey !== null && !isSealKeyPair(publicKey, privateKey)) {
         issue('SEAL_PRIVATE_KEY', SEAL_KEYS_DO_NOT_MATCH)
+      }
+      if (env.VAPID_PUBLIC_KEY !== undefined && env.VAPID_PRIVATE_KEY === undefined) {
+        issue('VAPID_PRIVATE_KEY', VAPID_PRIVATE_KEY_MISSING)
+      }
+      if (env.VAPID_PUBLIC_KEY === undefined && env.VAPID_PRIVATE_KEY !== undefined) {
+        issue('VAPID_PUBLIC_KEY', VAPID_PUBLIC_KEY_MISSING)
+      }
+      if (env.VAPID_PUBLIC_KEY !== undefined && env.VAPID_SUBJECT === undefined) {
+        issue('VAPID_SUBJECT', BAD_VAPID_SUBJECT)
       }
       if (env.BARSY_ALLOWED_HOST_SUFFIXES?.some((suffix) => !HOST_SUFFIX.test(suffix))) {
         issue('BARSY_ALLOWED_HOST_SUFFIXES', BAD_HOST_SUFFIXES)
@@ -389,6 +484,21 @@ function environmentSchema(defaultWorkerId: () => string) {
         billIdKey: env.BILL_ID_KEY ?? null,
         posSync: env.WORKER_POS_SYNC === 'on',
         send: (env.WORKER_SEND ?? env.WORKER_POS_SYNC) === 'on',
+        alerts: {
+          telegramToken: env.TELEGRAM_BOT_TOKEN ?? null,
+          teamChatId: env.TELEGRAM_TEAM_CHAT_ID ?? null,
+          healthchecksUrl: env.HEALTHCHECKS_PING_URL ?? null,
+          vapid:
+            env.VAPID_PUBLIC_KEY !== undefined &&
+            env.VAPID_PRIVATE_KEY !== undefined &&
+            env.VAPID_SUBJECT !== undefined
+              ? {
+                  publicKey: env.VAPID_PUBLIC_KEY,
+                  privateKey: env.VAPID_PRIVATE_KEY,
+                  subject: env.VAPID_SUBJECT,
+                }
+              : null,
+        },
       }
     })
 }
@@ -420,6 +530,10 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `BILL_ID_KEY` | key of a reading's `rd_` and `bn_` ids (32+ characters, #74); without it no table reading runs | unset |
  * | `WORKER_POS_SYNC` | `off` registers no POS sync job even with the seal keys (end-to-end tests) | on |
  * | `WORKER_SEND` | `on` or `off`: the Send jobs (#77), which add rounds to a POS | as `WORKER_POS_SYNC` |
+ * | `TELEGRAM_BOT_TOKEN` | the alerts bot's token (#83); without it nothing goes to Telegram | unset |
+ * | `TELEGRAM_TEAM_CHAT_ID` | the Restro team's Telegram chat; without it the team is not messaged | unset |
+ * | `HEALTHCHECKS_PING_URL` | the https address pinged every minute (the outside watchdog) | unset |
+ * | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web Push identity (all three, or none) | unset |
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
