@@ -51,7 +51,7 @@ import {
   versionsToPurge,
 } from '@restro/core'
 import { codeFileNames, venueServesTill } from '@restro/core/apply'
-import { NIGHT_RETENTION_DAYS, serviceRetentionCutoffs } from '@restro/core/service'
+import { ALERT_RULES, NIGHT_RETENTION_DAYS, serviceRetentionCutoffs } from '@restro/core/service'
 import {
   areas,
   authOrganization,
@@ -896,6 +896,11 @@ export async function purgeChangeLog(
   })
 }
 
+/** The alert kinds that end by themselves (`closesItself`): nobody presses Done on them. */
+const SELF_CLOSING_KINDS = Object.entries(ALERT_RULES)
+  .filter(([, rule]) => rule.closesItself)
+  .map(([kind]) => kind)
+
 /** `id in (...)` over `ids`; false for none. */
 function idIn(column: string, ids: readonly string[]): SQL {
   if (ids.length === 0) return sql`false`
@@ -910,9 +915,10 @@ function idIn(column: string, ids: readonly string[]): SQL {
  * one transaction, children before the rows they name. Per venue, in its own time zone and
  * service day (`serviceRetentionCutoffs`: a day is due only once it ended that long ago):
  *
- *   - after 31 days: the notes, the waiter calls, the alerts, the lifted pauses (an active pause
- *     is never erased: it makes the menu more cautious, rule 5), the table orders of ended
- *     sittings, and the `night` Log entries;
+ *   - after 31 days: the notes, the waiter calls, the alerts (but an open one of a kind that ends
+ *     by itself, a pause's, stays while it is open), the lifted pauses (an active pause is never
+ *     erased: it makes the menu more cautious, rule 5), the table orders of ended sittings, and
+ *     the `night` Log entries;
  *   - after 18 months: the `record` Log entries;
  *   - at their `retain_until` (18 months after their day ended, set by `service_day.close`): the
  *     sent orders no payment and no kept duplicate names, then the ended sittings nothing names
@@ -973,13 +979,23 @@ export async function purgeService(
                                                and service_date < ${night})`,
         ),
       )
-      for (const table of ['waiter_calls', 'alerts'] as const) {
-        count(
-          counts,
-          table,
-          await deleteRows(tx, table, sql`${ofVenue} and service_date < ${night}`),
-        )
-      }
+      count(
+        counts,
+        'waiter_calls',
+        await deleteRows(tx, 'waiter_calls', sql`${ofVenue} and service_date < ${night}`),
+      )
+      // An open alert that ends by itself (a pause's) stays while it is open: erased under a pause
+      // still on, it would be raised again as new and told to everyone a second time.
+      count(
+        counts,
+        'alerts',
+        await deleteRows(
+          tx,
+          'alerts',
+          sql`${ofVenue} and service_date < ${night}
+              and (done_at is not null or not (${idIn('kind', SELF_CLOSING_KINDS)}))`,
+        ),
+      )
       count(
         counts,
         'pauses',
