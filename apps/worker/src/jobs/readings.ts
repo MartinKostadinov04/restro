@@ -56,6 +56,7 @@ import {
   serviceConnectorFor,
   serviceContext,
 } from '../service-connectors'
+import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
 import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
 
@@ -128,6 +129,8 @@ export interface ReadingJobDeps {
   /** The key of a reading's bill and line ids (`BILL_ID_KEY`). */
   readonly billIdKey: string
   readonly budgets?: InstanceBudgets
+  /** The connection breakers (#79): every read is a call on the connection. */
+  readonly breakers?: ConnectionBreakers
   readonly readingBudgets?: ReadingBudgets
   /** Builds the connector of an instance; tests pass their own. */
   readonly connectorFor?: typeof serviceConnectorFor
@@ -219,6 +222,11 @@ export async function readTableOf(
     log.warn({ integrationId, tableId, err: error }, 'the table could not be read')
     reading = { complete: false, reason: 'the table could not be read' }
   }
+  await (deps.breakers ?? SHARED_BREAKERS).record(
+    env,
+    { tenantId, integrationId },
+    { kind: 'call', ok: reading.complete },
+  )
 
   const { result } = await applyService(
     pool,

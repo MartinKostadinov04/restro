@@ -36,6 +36,7 @@ import { setPaymentTableIn } from '../apply/tables'
 import { newId } from '../ids'
 import type { ServiceTx } from './definition'
 import { TABLE_VANISHED_CAUSE } from './floor-pause'
+import { LIFT_REASONS, liftTablePauses } from './pauses'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import type { Sitting } from './rows'
 
@@ -235,6 +236,9 @@ export async function endSitting(
     .where(eq(sittings.id, sitting.id))
   stx.rows.forgetSitting(sitting.tableId)
   await stx.log({ kind: 'sitting.ended', tableId: sitting.tableId, sittingId: sitting.id, reason })
+  // The sitting's end lifts its table's Unconfirmed and guard pauses (#79); a vanished table's
+  // pause stays until a reading lists the table again.
+  await liftTablePauses(stx, sitting.tableId, LIFT_REASONS.sittingEnded)
 }
 
 /** How the table's last sitting ended, for "Close" on a closed table; empty when it never opened. */

@@ -17,8 +17,16 @@
 // Locks, in the fixed order: the sitting `update` (the reading may end it), the order, the
 // reading's row.
 
-import { billReadings, fieldValues, nodes, payments, sittings, sourceLinks } from '@restro/db'
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import {
+  billReadings,
+  fieldValues,
+  nodes,
+  pauses,
+  payments,
+  sittings,
+  sourceLinks,
+} from '@restro/db'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import type { Layer, Scope, Source } from '../change-set'
@@ -34,12 +42,15 @@ import {
   billView,
   type LineItem,
   parseStoredBills,
+  type StoredBill,
   sittingEndsByReading,
   storedBills,
   TableReadingSchema,
 } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
+import { LIFT_REASONS, liftTablePauses } from './pauses'
 import { accepted } from './results'
+import { ORDER_UNCONFIRMED_CAUSE } from './sent-order'
 import { endSitting } from './sittings'
 
 const ITEM_NAME = findField(VENUE_MENU_TEMPLATE, 'item', 'name')
@@ -137,6 +148,51 @@ function shown(row: { complete: boolean; bills: unknown } | null): string {
     bills: parseStoredBills(row.bills),
   })
   return canonicalJson({ ...view, readAt: null })
+}
+
+/**
+ * Lifts the table's Unconfirmed pause after a complete reading (D120, #79) when every POS bill
+ * of the table is closed (it held lines once: an empty table is not a closed bill), or when a
+ * waiter acted at the till: a line staff entered (the connector says who entered a line only
+ * where its POS does) that the last stored reading did not show, entered after the pause started
+ * where the POS gives the time.
+ */
+async function liftUnconfirmed(
+  stx: ServiceTx,
+  tableId: string,
+  hadBillLines: boolean,
+  before: readonly StoredBill[],
+  after: readonly StoredBill[],
+): Promise<void> {
+  const [pause] = await stx.tx
+    .select({ startedAt: pauses.startedAt })
+    .from(pauses)
+    .where(
+      and(
+        eq(pauses.scope, 'table'),
+        eq(pauses.targetId, tableId),
+        eq(pauses.cause, ORDER_UNCONFIRMED_CAUSE),
+        isNull(pauses.liftedAt),
+      ),
+    )
+  if (pause === undefined) return
+  if (hadBillLines && after.every((bill) => bill.lines.length === 0)) {
+    await liftTablePauses(stx, tableId, LIFT_REASONS.billsClosed, [ORDER_UNCONFIRMED_CAUSE])
+    return
+  }
+  const keyOf = (bill: StoredBill, line: StoredBill['lines'][number]) => `${bill.pos} ${line.pos}`
+  const seen = new Set(before.flatMap((bill) => bill.lines.map((line) => keyOf(bill, line))))
+  const acted = after.some((bill) =>
+    bill.lines.some(
+      (line) =>
+        line.enteredBy === 'staff' &&
+        !seen.has(keyOf(bill, line)) &&
+        (line.enteredAt === null || new Date(line.enteredAt) >= pause.startedAt),
+    ),
+  )
+  if (acted) {
+    await liftTablePauses(stx, tableId, LIFT_REASONS.waiterActed, [ORDER_UNCONFIRMED_CAUSE])
+  }
 }
 
 /** `reading.record`: stores a reading of the table's POS bills and ends the sitting it closes. */
@@ -237,6 +293,15 @@ export function recordReading() {
         onPaymentTable: sitting.hadBillLines && (await onPaymentTable(stx, sitting.id)),
       })
       if (ends) await endSitting(stx, sitting, 'bill_closed')
+      else {
+        await liftUnconfirmed(
+          stx,
+          command.tableId,
+          sitting.hadBillLines || lines > 0,
+          parseStoredBills(before?.bills ?? []),
+          bills,
+        )
+      }
       return accepted(null, {
         details: { recorded: true, complete: true, ended: ends, bills: bills.length, lines },
       })

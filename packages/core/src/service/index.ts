@@ -33,6 +33,20 @@ export {
   wantsFreshReading,
 } from './bill'
 export {
+  BREAKER,
+  BREAKER_CAUSES,
+  type BreakerAction,
+  type BreakerEvent,
+  type BreakerGate,
+  type BreakerState,
+  BreakerStateSchema,
+  breakerGate,
+  closedBreaker,
+  nextProbeAt,
+  probeDue,
+  stepBreaker,
+} from './breaker'
+export {
   SERVICE_COMMANDS,
   type ServiceCommand,
   ServiceCommandSchema,
@@ -121,6 +135,12 @@ export {
   retentionOf,
 } from './log'
 export { ORDER_RATE_ALERT } from './order-rate'
+export {
+  CONNECTION_UNSTABLE_ALERT,
+  LIFT_REASONS,
+  STAFF_PAUSE_CAUSE,
+  UNCONFIRMED_PAUSE_MS,
+} from './pauses'
 export {
   holdAmountMinor,
   isFinalPaymentState,

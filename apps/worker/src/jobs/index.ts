@@ -11,9 +11,10 @@
 // the public key; WORKER_POS_SYNC=off keeps the sync jobs out while the keys are set. The table
 // readings (#74) run beside the floor reading when BILL_ID_KEY is set (one warning in the log
 // when it is not). The Send jobs (#77) add guests' rounds to a POS as a waiter would; WORKER_SEND
-// switches them (unset, they follow WORKER_POS_SYNC), and they need no sealing key. The payment
-// jobs (#110) read the POS too, so they run beside the floor reading when the worker has a payment
-// provider.
+// switches them (unset, they follow WORKER_POS_SYNC), and they need no sealing key. The connection
+// probe (#79) runs wherever a POS is read or written to: a breaker that pauses must probe to lift.
+// The payment jobs (#110) read the POS too, so they run beside the floor reading when the worker
+// has a payment provider.
 import { randomBytes } from 'node:crypto'
 
 import { createAssetStore, createPublishStore } from '@restro/assets'
@@ -22,6 +23,7 @@ import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '
 import { paymentProviders } from '../connectors'
 import type { Logger } from '../logger'
 import { createBarsyJobs } from './barsy'
+import { createConnectionJobs } from './connection'
 import { createFloorJobs } from './floor'
 import { createSendJobs } from './order-send'
 import { orderTidyTick } from './order-tidy'
@@ -64,6 +66,8 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a
   // `sim` instance is refused in production inside it.
   const sendJobs = config.send ? createSendJobs({ sim: config.sim }) : []
+  const connectionJobs =
+    config.send || config.posSync ? createConnectionJobs({ sim: config.sim }) : []
   // The purge (D83) runs only where the purge role's connection is set; without it nothing is
   // ever erased, and the log says so once.
   const purgeDatabaseUrl = config.purgeDatabaseUrl ?? null
@@ -85,6 +89,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...jobs,
       ...(config.posSync ? floorJobs : []),
       ...sendJobs,
+      ...connectionJobs,
       ...publishJobs,
       ...noticeJobs,
       ...purgeJobs,
@@ -93,13 +98,22 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const sealJobs = [createSealTableCodesJob({ publishStore, publicKey: keys.publicKey })]
   if (!config.posSync) {
     log.warn('WORKER_POS_SYNC is off: the POS sync jobs are not registered')
-    return [...jobs, ...sendJobs, ...publishJobs, ...noticeJobs, ...purgeJobs, ...sealJobs]
+    return [
+      ...jobs,
+      ...sendJobs,
+      ...connectionJobs,
+      ...publishJobs,
+      ...noticeJobs,
+      ...purgeJobs,
+      ...sealJobs,
+    ]
   }
   return [
     ...jobs,
     ...createBarsyJobs({ keys, policy: config.barsy, store: assetStore }),
     ...floorJobs,
     ...sendJobs,
+    ...connectionJobs,
     ...publishJobs,
     ...noticeJobs,
     ...purgeJobs,
