@@ -347,6 +347,14 @@ export async function openAllTables(stx: ServiceTx): Promise<ServiceResult> {
 
 /** `tables.close_all`: ends the sitting of every table of the venue that is open for phones. */
 export async function closeAllTables(stx: ServiceTx): Promise<ServiceResult> {
+  return closeOpenTables(stx, 'staff_closed')
+}
+
+/** Ends every open sitting of the venue for `reason`: "Close all", and the closing hour (#82). */
+export async function closeOpenTables(
+  stx: ServiceTx,
+  reason: SittingEndReason,
+): Promise<ServiceResult> {
   const seen = await stx.tx
     .select({ tableId: sittings.tableId })
     .from(sittings)
@@ -358,7 +366,7 @@ export async function closeAllTables(stx: ServiceTx): Promise<ServiceResult> {
     return sitting === null || sitting === undefined ? [] : [sitting]
   })
   await stx.rows.tableOrders(ending.map((sitting) => sitting.tableId))
-  for (const sitting of ending) await endSitting(stx, sitting, 'staff_closed')
+  for (const sitting of ending) await endSitting(stx, sitting, reason)
   return accepted(null, { details: { closed: ending.length } })
 }
 

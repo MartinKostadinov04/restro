@@ -11,8 +11,10 @@
 // the public key; WORKER_POS_SYNC=off keeps the sync jobs out while the keys are set. The table
 // readings (#74) run beside the floor reading when BILL_ID_KEY is set (one warning in the log
 // when it is not). The Send jobs (#77) add guests' rounds to a POS as a waiter would; WORKER_SEND
-// switches them (unset, they follow WORKER_POS_SYNC), and they need no sealing key. The connection
-// probe (#79) runs wherever a POS is read or written to: a breaker that pauses must probe to lift.
+// switches them (unset, they follow WORKER_POS_SYNC), and they need no sealing key. The closing-hour
+// tick (#82) needs nothing but the database. The connection probe (#79) runs wherever a POS is
+// read or written to: a breaker that pauses must probe to lift; the pre-opening check (#82) runs
+// with it.
 // The payment jobs (#110) read the POS too, so they run beside the floor reading when the worker
 // has a payment provider.
 import { randomBytes } from 'node:crypto'
@@ -35,11 +37,17 @@ import { createPurgeJobs } from './purge'
 import { createReadingJobs } from './readings'
 import { createSealTableCodesJob } from './seal-table-codes'
 import { serviceDayTick } from './service-day'
+import { createPreOpeningJobs, serviceHoursTick } from './service-hours'
 import { createStockJobs } from './stock'
 import type { JobDefinition } from './types'
 import { workerHeartbeat } from './worker-heartbeat'
 
-export const jobs: readonly JobDefinition[] = [workerHeartbeat, orderTidyTick, serviceDayTick]
+export const jobs: readonly JobDefinition[] = [
+  workerHeartbeat,
+  orderTidyTick,
+  serviceDayTick,
+  serviceHoursTick,
+]
 
 /** Every job this worker runs: the fixed ones, the publish jobs, and the sync jobs when the keys are set. */
 export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobDefinition[]> {
@@ -72,8 +80,11 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const sendJobs = config.send
     ? [...createSendJobs({ sim: config.sim }), ...createStockJobs({ sim: config.sim })]
     : []
+  // The pre-opening check (#82) probes a POS like the connection probe does, so it runs with it.
   const connectionJobs =
-    config.send || config.posSync ? createConnectionJobs({ sim: config.sim }) : []
+    config.send || config.posSync
+      ? [...createConnectionJobs({ sim: config.sim }), ...createPreOpeningJobs({ sim: config.sim })]
+      : []
   // The alerts (#83) need no POS and no sealing key: delivery runs where the Telegram token or the
   // Web Push keys are set, and the watchdog ping where its address is.
   const alertJobs = config.alerts === undefined ? [] : createAlertJobs({ alerts: config.alerts })

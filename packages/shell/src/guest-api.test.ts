@@ -22,7 +22,7 @@ const STATE = {
   version: 3,
   next: 2_000,
   table: { label: '12' },
-  ordering: { state: 'on', notesAndOptions: false },
+  ordering: { state: 'on', notesAndOptions: false, night: { state: 'open', at: null } },
   location: { state: 'off', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
   order: {
     lines: [
@@ -48,7 +48,13 @@ const STATE = {
 describe('the guest API wire shapes (#75)', () => {
   it('reads a full state and an unchanged answer, and nothing in between', () => {
     expect(GuestStateAnswerSchema.parse(STATE)).toEqual(STATE)
-    const unchanged = { unchanged: true, version: 3, next: 10_000, location: 'off' }
+    const unchanged = {
+      unchanged: true,
+      version: 3,
+      next: 10_000,
+      location: 'off',
+      night: 'open',
+    }
     expect(GuestStateAnswerSchema.parse(unchanged)).toEqual(unchanged)
     expect(GuestStateAnswerSchema.safeParse({ ...unchanged, order: STATE.order }).success).toBe(
       false,

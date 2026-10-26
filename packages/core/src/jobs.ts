@@ -133,6 +133,17 @@ export const JOB_NAMES = {
    */
   connectionTick: 'connection-tick',
   /**
+   * Scheduled, every minute (#82, D122 §4): at a venue's closing hour closes every table for
+   * phones (`hours.close_tables`, a Log entry per table). Not sent by anyone else.
+   */
+  serviceHoursTick: 'service-hours-tick',
+  /**
+   * Scheduled, every minute (#82, D120, D122 §4): from 2 hours before a venue opens, every 10
+   * minutes, checks that Restro can work with its POS (the connector's probe) and, from 30
+   * minutes before, alerts when it cannot. Nothing on a closed night. Not sent by anyone else.
+   */
+  preOpeningTick: 'pre-opening-tick',
+  /**
    * Scheduled, every 5 minutes (#80): takes stock marks off again. It reads the marked items where
    * the POS instance declares item availability (a complete reading that says one is back clears
    * its mark), and lapses the marks of an earlier service day. Not sent by anyone else.

@@ -258,6 +258,9 @@ export function OrderPanel({
   }, [asked])
   const order = services?.state.order ?? null
   const ordering = services?.state.ordering?.state ?? 'on'
+  const night = services?.state.ordering?.night
+  const phonesMayOrder =
+    night === undefined || night.state === 'open' || night.state === 'last_orders'
   // No note field here: where the POS's ticket takes no notes (#78), the guest tells the staff.
   const notesAtStaff = services?.state.ordering?.notesAndOptions !== true
   const nameOf = (itemId: string) => items.get(itemId)?.name.text ?? strings.otherItem
@@ -313,6 +316,21 @@ export function OrderPanel({
       />
       {ordering === 'paused' ? <p className="rq-note">{strings.orderingPaused}</p> : null}
       {ordering === 'closed' ? <p className="rq-note">{strings.orderingClosed}</p> : null}
+      {night?.state === 'last_orders' && night.at !== null ? (
+        <p className="rq-note" data-last-orders="">
+          {strings.lastOrdersAt(night.at)}
+        </p>
+      ) : null}
+      {night?.state === 'closed' ? (
+        <p className="rq-note" data-ordering-closed-tonight="">
+          {strings.orderingClosedTonight}
+        </p>
+      ) : null}
+      {night?.state === 'opens_later' && night.at !== null ? (
+        <p className="rq-note" data-ordering-opens-later="">
+          {strings.orderingOpensAt(night.at)}
+        </p>
+      ) : null}
       {notice !== null ? (
         <p className="rq-note" role="alert" data-order-notice="">
           {notice}
@@ -408,7 +426,7 @@ export function OrderPanel({
           onSend={() => void sendOrder(asked.of)}
           onCancel={() => setAsked(null)}
         />
-      ) : count > 0 && ordering === 'on' ? (
+      ) : count > 0 && ordering === 'on' && phonesMayOrder ? (
         <button
           type="button"
           className="rq-send"

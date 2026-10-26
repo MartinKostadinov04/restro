@@ -31,7 +31,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
     version,
     next: lines.length > 0 ? 2_000 : 10_000,
     table: { label: '7' },
-    ordering: { state: 'on', notesAndOptions: false },
+    ordering: { state: 'on', notesAndOptions: false, night: { state: 'open', at: null } },
     location: {
       state: location,
       passSeconds: location === 'held' ? 7_000 : null,
@@ -129,7 +129,11 @@ describe('the services client', () => {
     expect(first?.init.headers).toEqual({ Authorization: 'Table table-code-123' })
     expect(first?.init.referrerPolicy).toBe('no-referrer')
     expect(h.client.getState().order).toEqual({ lines: [], removed: [], earlier: null })
-    expect(h.client.getState().ordering).toEqual({ state: 'on', notesAndOptions: false })
+    expect(h.client.getState().ordering).toEqual({
+      state: 'on',
+      notesAndOptions: false,
+      night: { state: 'open', at: null },
+    })
     expect(h.nextWait()).toBe(10_000)
     await h.tick()
     expect(h.calls[1]?.url).toBe('/api/guest/state?view=menu&since=4')
@@ -573,12 +577,40 @@ describe('the services client and the location check', () => {
       n += 1
       return n === 1
         ? json(200, tableState(4, [], 'held'))
-        : json(200, { unchanged: true, version: 4, next: 10_000, location: 'needed' })
+        : json(200, {
+            unchanged: true,
+            version: 4,
+            next: 10_000,
+            location: 'needed',
+            night: 'open',
+          })
     })
     h.client.start()
     await h.tick()
     await h.tick()
     expect(h.calls[1]?.url).toContain('since=4')
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.calls[2]?.url).toBe('/api/guest/state?view=menu')
+  })
+
+  it('asks for the whole state when an unchanged answer’s night differs (#82)', async () => {
+    let n = 0
+    const h = harness(() => {
+      n += 1
+      return n === 1
+        ? json(200, tableState(4))
+        : json(200, {
+            unchanged: true,
+            version: 4,
+            next: 10_000,
+            location: 'off',
+            night: 'last_orders',
+          })
+    })
+    h.client.start()
+    await h.tick()
+    await h.tick()
     expect(h.nextWait()).toBe(0)
     await h.tick()
     expect(h.calls[2]?.url).toBe('/api/guest/state?view=menu')

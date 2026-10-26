@@ -348,6 +348,8 @@ describe('buildJobs', () => {
       JOB_NAMES.orderTidyTick,
       // The end of the service day (#84) neither.
       JOB_NAMES.serviceDayTick,
+      // The closing hour (#82) needs nothing but the database.
+      JOB_NAMES.serviceHoursTick,
       // The floor reading (#71) needs no sealing keys: the simulated POS has no credentials.
       JOB_NAMES.floorRead,
       JOB_NAMES.floorReadTick,
@@ -359,6 +361,8 @@ describe('buildJobs', () => {
       // The connection probe (#79) runs wherever a POS is read or written to.
       JOB_NAMES.connectionProbe,
       JOB_NAMES.connectionTick,
+      // The pre-opening check (#82) probes a POS like the connection probe.
+      JOB_NAMES.preOpeningTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -396,6 +400,8 @@ describe('buildJobs', () => {
       JOB_NAMES.orderTidyTick,
       // The end of the service day (#84) neither.
       JOB_NAMES.serviceDayTick,
+      // The closing hour (#82) needs nothing but the database.
+      JOB_NAMES.serviceHoursTick,
       JOB_NAMES.barsyConnect,
       JOB_NAMES.barsyFullPull,
       JOB_NAMES.barsyIncremental,
@@ -411,6 +417,8 @@ describe('buildJobs', () => {
       JOB_NAMES.stockTick,
       JOB_NAMES.connectionProbe,
       JOB_NAMES.connectionTick,
+      // The pre-opening check (#82) probes a POS like the connection probe.
+      JOB_NAMES.preOpeningTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,

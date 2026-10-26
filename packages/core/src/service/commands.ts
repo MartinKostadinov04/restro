@@ -10,7 +10,8 @@
 // provider's notice (#108), the waiter call with its Handled and its lapse (#81), the notice of an
 // item out of stock in the POS (#80), paying on the bill up to a held card (#110), the alerts'
 // lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
-// Push (#83), and the end of a service day (#84).
+// Push (#83), the closing hour and the pre-opening check (#82), and the end of a service day
+// (#84).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -33,6 +34,7 @@ import {
   pushSubscribe,
   syncPauseAlerts,
 } from './alerts'
+import { closeAtClosingHour } from './closing-hour'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
@@ -55,6 +57,7 @@ import {
   payStart,
 } from './pay'
 import { paymentObserve } from './payment-observe'
+import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
@@ -454,6 +457,16 @@ export const SERVICE_COMMANDS = {
   }),
   // #79: the minute tick lifts the Unconfirmed table pauses older than 15 minutes.
   sweep: sweepPauses(),
+  // #82: at the venue's closing hour the minute tick closes every table for phones.
+  'hours.close_tables': defineCommand({
+    schema: z.strictObject({ type: z.literal('hours.close_tables') }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: closeAtClosingHour,
+  }),
+  // #82: a failed pre-opening check alerts the venue's staff and Restro's admin team, once a night.
+  'hours.pre_opening_alert': preOpeningAlert(),
   // #84: an ended service day's retention, its cleared action ids and its totals.
   'service_day.close': defineCommand({
     schema: z.strictObject({ type: z.literal('service_day.close'), serviceDate: z.iso.date() }),

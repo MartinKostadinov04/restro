@@ -80,6 +80,7 @@ export {
   GuestTableStateSchema,
   GuestUnchangedSchema,
   isGuestRefusalCode,
+  NIGHT_STATES,
   PAYMENT_HANDLE_PATTERN,
   TABLE_AUTH_SCHEME,
   TURNSTILE_PAY_ACTION,
