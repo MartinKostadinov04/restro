@@ -133,6 +133,20 @@ const KINDS: readonly [string, Record<string, unknown>, Step, string, string][] 
     'Club Nova: a network was blocked after too many wrong table codes',
     'Club Nova: мрежа е блокирана след твърде много грешни кодове на маси',
   ],
+  [
+    'item_out_of_stock',
+    { name: 'Mojito' },
+    'new',
+    'Out of stock in barsy: Mojito. Greyed out on the menu.',
+    'Изчерпано в barsy: Mojito. Посивено в менюто.',
+  ],
+  [
+    'item_out_of_stock',
+    {},
+    'new',
+    'Out of stock in barsy: an item. Greyed out on the menu.',
+    'Изчерпано в barsy: артикул. Посивено в менюто.',
+  ],
   ['something_new', { secret: 'x' }, 'new', 'Club Nova: something_new', 'Club Nova: something_new'],
 ]
 

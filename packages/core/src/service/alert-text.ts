@@ -67,6 +67,7 @@ interface Strings {
   readonly rate: (venue: string, table: string) => string
   readonly unstable: (venue: string, source: string) => string
   readonly codeBlock: (venue: string) => string
+  readonly outOfStock: (source: string, item: string | null) => string
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
@@ -89,6 +90,8 @@ const EN: Strings = {
   rate: (venue, table) => `${venue}: ${table} changed its order too fast`,
   unstable: (venue, source) => `${venue}: the connection to ${source} is unstable`,
   codeBlock: (venue) => `${venue}: a network was blocked after too many wrong table codes`,
+  outOfStock: (source, item) =>
+    `Out of stock in ${source}: ${item ?? 'an item'}. Greyed out on the menu.`,
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
@@ -118,6 +121,7 @@ const BG: Strings = {
   rate: (venue, table) => `${venue}: поръчката на ${table} се променя твърде бързо`,
   unstable: (venue, source) => `${venue}: връзката с ${source} е нестабилна`,
   codeBlock: (venue) => `${venue}: мрежа е блокирана след твърде много грешни кодове на маси`,
+  outOfStock: (source, item) => `Изчерпано в ${source}: ${item ?? 'артикул'}. Посивено в менюто.`,
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
@@ -196,6 +200,8 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
       return { title: words.unstable(venueName, source), body: '' }
     case 'table_code_block':
       return { title: words.codeBlock(venueName), body: '' }
+    case 'item_out_of_stock':
+      return { title: words.outOfStock(source, asText(alert.details.name)), body: '' }
     default:
       return { title: `${venueName}: ${alert.kind}`, body: '' }
   }
