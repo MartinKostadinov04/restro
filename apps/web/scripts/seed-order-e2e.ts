@@ -7,6 +7,7 @@
 //          fixed code `ORDER_PUBLIC_ID` like the look fixture: a hand-made item is never orderable
 //          (only an item the till prices and sells is), so the database venue can't publish one.
 //          The table's file points at that menu; the guest API finds the table by its code.
+//          The venue checks location (#76) with its spot at `ORDER_SPOT`.
 //          Idempotent: each run gives the table a new code, ends its sitting and opens a new one.
 //
 // Like `db:seed:dev` this refuses to run unless NODE_ENV is development and the database is on
@@ -24,6 +25,7 @@ import {
 } from '@restro/assets'
 import {
   type ChangeSet,
+  DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   menuPath,
   type NodeId,
@@ -48,7 +50,7 @@ import { fixture } from '@restro/shell/testing'
 import { eq } from 'drizzle-orm'
 import pg from 'pg'
 
-import { ORDER_PUBLIC_ID, ORDER_SLUG } from '../e2e/support'
+import { ORDER_PUBLIC_ID, ORDER_SLUG, ORDER_SPOT } from '../e2e/support'
 import { getPool } from '../src/server/db'
 import { assertDevEnvironment } from './lib/guard'
 
@@ -152,6 +154,16 @@ async function seed(): Promise<void> {
       [tableId],
     )
     await owner.query('delete from restro.table_orders where table_id = $1', [tableId])
+    // The location check on, with the venue's spot set (with none it fails closed).
+    await owner.query(
+      `update restro.venues
+          set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{ordering}', $2::jsonb)
+        where id = $1`,
+      [
+        venue.id,
+        JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: true, spot: ORDER_SPOT }),
+      ],
+    )
     await owner.query(
       `insert into restro.sittings
          (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)

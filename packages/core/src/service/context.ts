@@ -108,6 +108,13 @@ export const ServiceContextSchema = z
       .string()
       .regex(/^[0-9a-f]{64}$/)
       .optional(),
+    /**
+     * For a located guest command (#76, D122 §4): the sitting the phone's location pass names. The
+     * command is refused `location_needed` unless it is still the table's open sitting.
+     */
+    sittingId: idSchema('st').optional(),
+    /** The location consent version the pass or the check carried (D119), for a sent order. */
+    consentVersion: z.string().min(1).max(16).optional(),
   })
   .superRefine((context, issues) => {
     if (context.tableCodeHash !== undefined && context.origin !== 'guest') {
@@ -116,6 +123,15 @@ export const ServiceContextSchema = z
         path: ['tableCodeHash'],
         message: 'only a guest command carries a table code',
       })
+    }
+    for (const key of ['sittingId', 'consentVersion'] as const) {
+      if (context[key] !== undefined && context.tableCodeHash === undefined) {
+        issues.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'only a guest command with its table code carries a location claim',
+        })
+      }
     }
     if (!ACTOR_KINDS_BY_ORIGIN[context.origin].includes(context.actor.kind)) {
       issues.addIssue({
@@ -144,6 +160,8 @@ export interface ServiceContext {
   readonly now?: Date
   readonly signedInAt?: Date
   readonly tableCodeHash?: string
+  readonly sittingId?: string
+  readonly consentVersion?: string
 }
 
 /**

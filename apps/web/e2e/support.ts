@@ -39,3 +39,5 @@ export const LOOK_PUBLIC_ID = 'lookfixture1'
 // table, its code and its sitting are real rows (scripts/seed-order-e2e.ts prints the code).
 export const ORDER_SLUG = 'order-fixture'
 export const ORDER_PUBLIC_ID = 'orderfixture'
+// The order venue's spot for the location check (#76): the phones stand on it, or across town.
+export const ORDER_SPOT = { lat: 42.6977, lng: 23.3219 }

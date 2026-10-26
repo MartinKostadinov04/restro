@@ -3,7 +3,7 @@
 // alone, so a run that races a phone changes nothing; a table that throws is skipped, not the run.
 import { randomUUID } from 'node:crypto'
 
-import { hashTableCode, newId, serviceDate } from '@restro/core'
+import { DEFAULT_ORDERING_SETTINGS, hashTableCode, newId, serviceDate } from '@restro/core'
 import { createArea, createTable, provisionTenant, provisionVenue } from '@restro/core/apply'
 import { forgetGuestCodes, guestAct, guestState } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
@@ -60,6 +60,11 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
     )
     const venue = await provisionVenue(pool, tenantId, { name: 'Tidy Bar', slug: testSlug('tidy') })
     venueId = venue.id
+    // The location check (#76) off: these phones hold no pass.
+    await query(
+      `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
+      [venue.id, JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false })],
+    )
     const area = await createArea(pool, tenantId, venue.id, 'Hall')
     if (!area.ok) throw new Error(area.reason)
     for (const number of ['1', '2', '3', '4']) {
@@ -97,6 +102,7 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
         },
         ageMs: 10,
         view: 'order',
+        phone: randomUUID(),
       })
       if (!added.ok || added.result.status !== 'accepted') throw new Error('the add was refused')
     }
@@ -121,7 +127,9 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
     forgetGuestCodes()
     const read = async (code: string) => {
       const answer = await guestState(pool, { code, view: 'order' })
-      if (!answer.ok || answer.answer.unchanged) throw new Error('expected a full state')
+      if (!answer.ok || answer.answer.unchanged || answer.answer.order === null) {
+        throw new Error('expected a full state with the order')
+      }
       return answer.answer.order
     }
     const aside = await read(codes[0] as string)

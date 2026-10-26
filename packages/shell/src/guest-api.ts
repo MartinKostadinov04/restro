@@ -7,7 +7,7 @@
 // address. Every id is ours (`ol_`, `nd_`, `tb_`…); nothing here can carry a POS id, an internal
 // name or a price of an order line (rule 3); a bill line's amount is the bill's own.
 
-import { idSchema, LocalizedTextSchema } from '@restro/core'
+import { GuestPositionSchema, idSchema, LocalizedTextSchema } from '@restro/core'
 import { z } from 'zod'
 
 import { GUEST_REFUSAL_CODES } from './service-vocabulary'
@@ -24,6 +24,24 @@ export type GuestApiView = (typeof GUEST_API_VIEWS)[number]
 
 /** The header scheme of the table's code: `Authorization: Table <code>`. */
 export const TABLE_AUTH_SCHEME = 'Table'
+
+/**
+ * The header of the random value a page makes at load (#76, D122 §4): the key of the per-phone
+ * limits, kept in the server's memory for minutes and never stored. Required on a command.
+ */
+export const GUEST_PHONE_HEADER = 'X-Restro-Phone'
+
+/** A phone value: 16 random bytes, base64url. */
+export const GUEST_PHONE_PATTERN = /^[A-Za-z0-9_-]{22}$/
+
+/** The header of the location pass the phone holds (#76): never in an address or a body. */
+export const GUEST_PASS_HEADER = 'X-Restro-Pass'
+
+/** The Turnstile action a Send's widget names, and siteverify's answer must name (#76). */
+export const TURNSTILE_SEND_ACTION = 'order_send'
+
+/** Where the phone stands with the location check: none at the venue, a pass, or none yet. */
+export const GUEST_LOCATION_STATES = ['off', 'needed', 'held'] as const
 
 /** The oldest tap the API takes, in milliseconds (a day; an order edit is refused past 30 s). */
 const MAX_AGE_MS = 24 * 60 * 60_000
@@ -51,30 +69,45 @@ export const GuestTableStateSchema = z.strictObject({
   next: z.int().positive(),
   table: z.strictObject({ label: z.string().max(64) }),
   ordering: z.strictObject({ state: z.enum(['on', 'paused', 'closed']) }),
-  order: z.strictObject({
-    lines: z
-      .array(
-        z.strictObject({
-          ...OrderLineFields,
-          rev: z.int().nonnegative(),
-          mode: ModeSchema,
-          held: idSchema('py').nullable(),
-        }),
-      )
-      .max(SERVICE_LIMITS.lines),
-    removed: z
-      .array(z.strictObject({ ...OrderLineFields, undoSeconds: seconds }))
-      .max(SERVICE_LIMITS.lines),
-    earlier: z
-      .strictObject({
-        setAsideAt: z.int().nonnegative(),
-        setAsideAgoSeconds: seconds,
-        lines: z
-          .array(z.strictObject({ ...OrderLineFields, mode: ModeSchema }))
-          .max(SERVICE_LIMITS.lines),
-      })
-      .nullable(),
+  /**
+   * The location check (#76): `needed` leaves out the order, the sent orders and the bill until
+   * the phone holds a pass of the table's current sitting.
+   */
+  location: z.strictObject({
+    state: z.enum(GUEST_LOCATION_STATES),
+    passSeconds: seconds.nullable(),
+    /** How long the phone remembers the guest's consent or refusal: to the service day's end. */
+    dayEndsInSeconds: seconds,
+    /** The venue's name, which the consent text names. */
+    venueName: z.string().max(200),
   }),
+  /** The table's order; null while the location check is `needed`. */
+  order: z
+    .strictObject({
+      lines: z
+        .array(
+          z.strictObject({
+            ...OrderLineFields,
+            rev: z.int().nonnegative(),
+            mode: ModeSchema,
+            held: idSchema('py').nullable(),
+          }),
+        )
+        .max(SERVICE_LIMITS.lines),
+      removed: z
+        .array(z.strictObject({ ...OrderLineFields, undoSeconds: seconds }))
+        .max(SERVICE_LIMITS.lines),
+      earlier: z
+        .strictObject({
+          setAsideAt: z.int().nonnegative(),
+          setAsideAgoSeconds: seconds,
+          lines: z
+            .array(z.strictObject({ ...OrderLineFields, mode: ModeSchema }))
+            .max(SERVICE_LIMITS.lines),
+        })
+        .nullable(),
+    })
+    .nullable(),
   sentOrders: z
     .array(
       z.strictObject({
@@ -126,6 +159,8 @@ export const GuestUnchangedSchema = z.strictObject({
   unchanged: z.literal(true),
   version: z.int().nonnegative(),
   next: z.int().positive(),
+  /** When it differs from the state the phone holds, the phone asks for the whole state again. */
+  location: z.enum(GUEST_LOCATION_STATES),
 })
 
 /** What `GET /api/guest/state` answers with 200. */
@@ -143,12 +178,30 @@ export const GuestStateQuerySchema = z.strictObject({
   view: z.enum(GUEST_API_VIEWS).default('menu'),
 })
 
+/** The longest Turnstile token (Cloudflare's siteverify: 2048 characters). */
+const HUMAN_TOKEN_MAX = 2_048
+
+/**
+ * What the page (never the face) adds to a command (#76, design §5): the phone's position with
+ * the consent version the guest allowed, and Turnstile's token at Send. The server checks the
+ * position in memory and drops it; nothing logs it, and a parse error names paths only.
+ */
+export const GuestCheckSchema = z.strictObject({
+  location: GuestPositionSchema.optional(),
+  consentVersion: z.string().min(1).max(16).optional(),
+  humanToken: z.string().min(1).max(HUMAN_TOKEN_MAX).optional(),
+})
+
+/** What the page adds to a command. */
+export type GuestCheck = z.output<typeof GuestCheckSchema>
+
 /** The body of `POST /api/guest/actions`. */
 export const GuestActionRequestSchema = z.strictObject({
   command: GuestCommandSchema,
   /** Milliseconds since the guest's tap (a retry sends the same tap's age, grown). */
   ageMs: z.int().nonnegative().max(MAX_AGE_MS),
   view: z.enum(GUEST_API_VIEWS).default('order'),
+  check: GuestCheckSchema.optional(),
 })
 
 /** The body of `POST /api/guest/actions`. */
@@ -167,6 +220,8 @@ export const GuestCommandResultSchema = z.strictObject({
 export const GuestActionAnswerSchema = z.strictObject({
   result: GuestCommandResultSchema,
   state: GuestTableStateSchema.nullable(),
+  /** A fresh location pass for the phone to send back in `X-Restro-Pass`, or null. */
+  pass: z.string().min(1).max(1_024).nullable(),
 })
 
 /** What `POST /api/guest/actions` answers with 200. */

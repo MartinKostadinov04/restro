@@ -1,13 +1,17 @@
 // The guest API's handlers (#75) with core's guest module stubbed: a missing or misshapen code is
 // a 401 before the database is asked, a body past 8 KB a 413, a body of the wrong shape a 400; a
 // rate trip is a 429 with Retry-After; every answer is no-store and no-referrer, and nothing the
-// phone sent reaches the log. The module itself is tested on Postgres in core (`guest.test.ts`).
+// phone sent reaches the log. #76: a command needs the phone value header; the pass travels in its
+// header both ways and comes back in the answer; a body that fails its schema is logged by its
+// paths only; a limit's trip is a 429 with Retry-After; a guard's trip is one line with the venue
+// and the table. The module itself is tested on Postgres in core (`guest.test.ts`,
+// `guest-location.test.ts`).
 import { newId } from '@restro/core'
 import type { DbPool } from '@restro/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const core = vi.hoisted(() => ({ guestState: vi.fn(), guestAct: vi.fn() }))
-const log = vi.hoisted(() => ({ logError: vi.fn() }))
+const log = vi.hoisted(() => ({ logError: vi.fn(), logInfo: vi.fn(), logWarn: vi.fn() }))
 
 vi.mock('@restro/core/service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@restro/core/service')>()),
@@ -17,12 +21,16 @@ vi.mock('@restro/core/service', async (importOriginal) => ({
 vi.mock('./log', () => log)
 
 const { ForbiddenValueError } = await import('@restro/core/service')
+type GuestActInput = import('@restro/core/service').GuestActInput
 const { handleGuestAction, handleGuestState, readCapped, tableCodeOf } = await import('./guest-api')
 
 const CODE = 'table-code-1234'
+const PHONE = 'phone-value-aaaaaaaaaa'
+const PASS = 'eyJ2IjoxfQ.c2VhbA'
 /** Only the stubbed module gets the pool, so a refusal that never calls it never asked the database. */
 const pool = { sentinel: 'pool' } as unknown as DbPool
-const deps = { pool, queueReading: vi.fn(async () => {}) }
+const humanCheck = vi.fn(async () => 'passed' as const)
+const deps = { pool, queueReading: vi.fn(async () => {}), passKey: 'k'.repeat(40), humanCheck }
 
 function state(version = 1) {
   return {
@@ -31,23 +39,33 @@ function state(version = 1) {
     next: 2_000,
     table: { label: '7' },
     ordering: { state: 'on' },
+    location: { state: 'held', passSeconds: 600, dayEndsInSeconds: 3_600, venueName: 'Club' },
     order: { lines: [], removed: [], earlier: null },
     sentOrders: [],
     bill: null,
   }
 }
 
-const get = (query = '', auth: string | null = `Table ${CODE}`) =>
+const get = (
+  query = '',
+  auth: string | null = `Table ${CODE}`,
+  extra: Record<string, string> = {},
+) =>
   new Request(`http://localhost/api/guest/state${query}`, {
-    headers: auth === null ? {} : { Authorization: auth },
+    headers: { ...(auth === null ? {} : { Authorization: auth }), ...extra },
   })
 
-const post = (body: unknown, auth: string | null = `Table ${CODE}`) =>
+const post = (
+  body: unknown,
+  auth: string | null = `Table ${CODE}`,
+  extra: Record<string, string> = { 'X-Restro-Phone': PHONE },
+) =>
   new Request('http://localhost/api/guest/actions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(auth === null ? {} : { Authorization: auth }),
+      ...extra,
     },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
@@ -67,6 +85,9 @@ beforeEach(() => {
   core.guestState.mockReset()
   core.guestAct.mockReset()
   log.logError.mockReset()
+  log.logInfo.mockReset()
+  log.logWarn.mockReset()
+  humanCheck.mockClear()
 })
 
 describe('the table code header', () => {
@@ -100,8 +121,23 @@ describe('GET /api/guest/state', () => {
     expect(await response.json()).toEqual(state(5))
     expect(core.guestState).toHaveBeenCalledWith(
       pool,
-      expect.objectContaining({ code: CODE, since: 4, view: 'order' }),
+      expect.objectContaining({ code: CODE, since: 4, view: 'order', passKey: deps.passKey }),
     )
+  })
+
+  it('hands core the pass from its header, and ignores one too long to be ours', async () => {
+    core.guestState.mockResolvedValue({ ok: true, answer: state(5) })
+    await handleGuestState(get('', `Table ${CODE}`, { 'X-Restro-Pass': PASS }), deps)
+    expect(core.guestState).toHaveBeenLastCalledWith(pool, expect.objectContaining({ pass: PASS }))
+    await handleGuestState(get('', `Table ${CODE}`, { 'X-Restro-Pass': 'x'.repeat(2_000) }), deps)
+    expect(core.guestState.mock.lastCall?.[1]).not.toHaveProperty('pass')
+  })
+
+  it('answers a table code past its request rate 429 with Retry-After', async () => {
+    core.guestState.mockResolvedValue({ ok: false, code: 'rate_limited', retryAfter: 1 })
+    const response = await handleGuestState(get(), deps)
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('1')
   })
 
   it('refuses an unknown query parameter or view with 400', async () => {
@@ -171,17 +207,86 @@ describe('POST /api/guest/actions', () => {
       subjectId: newId('ol'),
       ref: null,
     }
-    core.guestAct.mockResolvedValue({ ok: true, result, state: state(2), retryAfter: null })
+    core.guestAct.mockResolvedValue({
+      ok: true,
+      result,
+      state: state(2),
+      pass: 'fresh-pass',
+      retryAfter: null,
+    })
     const response = await handleGuestAction(post(request), deps)
     expect(response.status).toBe(200)
     expectGuestHeaders(response)
-    expect(await response.json()).toEqual({ result, state: state(2) })
+    expect(await response.json()).toEqual({ result, state: state(2), pass: 'fresh-pass' })
     const { kind, ...fields } = request.command
     expect(core.guestAct).toHaveBeenCalledWith(pool, {
       code: CODE,
       command: { type: kind, ...fields },
       ageMs: 120,
       view: 'order',
+      phone: PHONE,
+      passKey: deps.passKey,
+      humanCheck,
+      onGuard: expect.any(Function),
+    })
+  })
+
+  it('refuses a command without a phone value of the right shape with 400', async () => {
+    const bad: Record<string, string>[] = [
+      {},
+      { 'X-Restro-Phone': 'short' },
+      { 'X-Restro-Phone': `${PHONE}!` },
+    ]
+    for (const extra of bad) {
+      expect((await handleGuestAction(post(add(), `Table ${CODE}`, extra), deps)).status).toBe(400)
+    }
+    expect(core.guestAct).not.toHaveBeenCalled()
+  })
+
+  it('hands core the pass, the position and the token, and logs a bad position by path only', async () => {
+    core.guestAct.mockResolvedValue({
+      ok: true,
+      result: {
+        actionId: null,
+        status: 'rejected',
+        code: 'location_failed',
+        subjectId: null,
+        ref: null,
+      },
+      state: null,
+      pass: null,
+      retryAfter: null,
+    })
+    const check = {
+      location: { lat: 42.6977, lng: 23.3219, accuracyM: 12 },
+      consentVersion: 'v1',
+      humanToken: 'token',
+    }
+    const headers = { 'X-Restro-Phone': PHONE, 'X-Restro-Pass': PASS }
+    await handleGuestAction(post({ ...add(), check }, `Table ${CODE}`, headers), deps)
+    expect(core.guestAct).toHaveBeenCalledWith(pool, expect.objectContaining({ pass: PASS, check }))
+
+    const bad = { ...check, location: { lat: 142.6977, lng: 23.3219, accuracyM: 12 } }
+    const response = await handleGuestAction(post({ ...add(), check: bad }), deps)
+    expect(response.status).toBe(400)
+    expect(log.logWarn).toHaveBeenCalledWith('guest_action_invalid', {
+      paths: 'check.location.lat',
+    })
+    expect(JSON.stringify(log.logWarn.mock.calls)).not.toContain('142')
+  })
+
+  it('logs a guard’s trip with the venue and the table only', async () => {
+    core.guestAct.mockImplementation(async (_pool, input: GuestActInput) => {
+      input.onGuard?.({ kind: 'location_failed', venueId: 'vn_1', tableId: 'tb_1' })
+      return { ok: false, code: 'rate_limited', retryAfter: 7 }
+    })
+    const response = await handleGuestAction(post(add()), deps)
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('7')
+    expect(log.logInfo).toHaveBeenCalledWith('guest_guard', {
+      guard: 'location_failed',
+      venueId: 'vn_1',
+      tableId: 'tb_1',
     })
   })
 
@@ -196,6 +301,7 @@ describe('POST /api/guest/actions', () => {
         ref: null,
       },
       state: null,
+      pass: null,
       retryAfter: 10,
     })
     const response = await handleGuestAction(post(add()), deps)
