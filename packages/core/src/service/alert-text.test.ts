@@ -5,6 +5,7 @@ import {
   alertLocale,
   alertMessage,
   digestMessage,
+  doneButtonText,
   doneLine,
   linkedMessage,
   reminderMessage,
@@ -244,5 +245,12 @@ describe('telegramAnswer', () => {
     expect(telegramAnswer('en', 'done')).toBe('Done.')
     expect(telegramAnswer('bg', 'already')).toBe('Вече е готово.')
     expect(telegramAnswer('bg', 'done')).toBe('Готово.')
+  })
+})
+
+describe('doneButtonText', () => {
+  it('words the Telegram button in the venue’s language', () => {
+    expect(doneButtonText('en')).toBe('Done')
+    expect(doneButtonText('bg')).toBe('Готово')
   })
 })

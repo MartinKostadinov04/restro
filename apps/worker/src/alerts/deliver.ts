@@ -19,6 +19,7 @@ import {
   applyService,
   type DeliveryStep,
   digestMessage,
+  doneButtonText,
   doneLine,
   linkedMessage,
   type MessageContext,
@@ -475,7 +476,7 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
         const answerable =
           step.step === 'new' && !ruleOf(alert.planned.kind, alert.planned.audience).closesItself
         const sentMessage = await telegram.sendMessage(chatId, linkedMessage(message), {
-          ...(answerable ? { doneFor: alert.planned.id } : {}),
+          ...(answerable ? { doneFor: alert.planned.id, doneLabel: doneButtonText(locale) } : {}),
         })
         await record(
           step.step === 'new'

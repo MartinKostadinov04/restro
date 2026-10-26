@@ -50,6 +50,19 @@ describe('the Telegram client', () => {
     })
   })
 
+  it('puts the venue’s own word on the button', async () => {
+    const { calls, fetchImpl } = fakeFetch([
+      { json: { ok: true, result: { message_id: 7, chat: { id: -5 } } } },
+    ])
+    await createTelegramClient({ token: TOKEN, fetch: fetchImpl }).sendMessage('-5', 'x', {
+      doneFor: 'al_abc',
+      doneLabel: 'Готово',
+    })
+    expect(calls[0]?.body.reply_markup).toEqual({
+      inline_keyboard: [[{ text: 'Готово', callback_data: 'al_abc' }]],
+    })
+  })
+
   it('sends a plain message without a button', async () => {
     const { calls, fetchImpl } = fakeFetch([
       { json: { ok: true, result: { message_id: 7, chat: { id: -5 } } } },

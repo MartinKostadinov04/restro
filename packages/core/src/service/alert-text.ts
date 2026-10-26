@@ -70,6 +70,7 @@ interface Strings {
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
+  readonly doneButton: string
   readonly answers: Readonly<Record<TelegramAnswer, string>>
 }
 
@@ -91,6 +92,7 @@ const EN: Strings = {
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
+  doneButton: 'Done',
   answers: {
     not_an_alert: 'That button is not for an alert.',
     no_venue: 'This group is not linked to a venue in Restro.',
@@ -119,6 +121,7 @@ const BG: Strings = {
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
+  doneButton: 'Готово',
   answers: {
     not_an_alert: 'Този бутон не е за сигнал.',
     no_venue: 'Тази група не е свързана с обект в Restro.',
@@ -237,4 +240,9 @@ export function doneLine(
 /** What the bot says back to a person who pressed Done. */
 export function telegramAnswer(locale: AlertLocale, answer: TelegramAnswer): string {
   return TABLES[locale].answers[answer]
+}
+
+/** The text on the Done button under an alert in the venue's Telegram group. */
+export function doneButtonText(locale: AlertLocale): string {
+  return TABLES[locale].doneButton
 }

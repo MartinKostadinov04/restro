@@ -36,7 +36,7 @@ export interface TelegramClient {
   sendMessage(
     chatId: string,
     text: string,
-    options?: { readonly doneFor?: string },
+    options?: { readonly doneFor?: string; readonly doneLabel?: string },
   ): Promise<MessageRef>
   /** Replaces the message's text and takes its button away. */
   editMessage(ref: MessageRef, text: string): Promise<void>
@@ -118,7 +118,9 @@ export function createTelegramClient(options: Options): TelegramClient {
           ? {}
           : {
               reply_markup: {
-                inline_keyboard: [[{ text: 'Done', callback_data: extra.doneFor }]],
+                inline_keyboard: [
+                  [{ text: extra.doneLabel ?? 'Done', callback_data: extra.doneFor }],
+                ],
               },
             }),
       })) as { message_id: number; chat: { id: number } }

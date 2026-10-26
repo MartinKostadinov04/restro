@@ -65,13 +65,23 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       return outcomes.get(device.endpoint) ?? 'sent'
     },
   }
-  const sent: { chatId: string; text: string; doneFor: string | undefined }[] = []
+  const sent: {
+    chatId: string
+    text: string
+    doneFor: string | undefined
+    doneLabel: string | undefined
+  }[] = []
   const edits: { ref: MessageRef; text: string }[] = []
   const answers: string[] = []
   let nextMessage = 100
   const telegram: TelegramClient = {
     async sendMessage(chatId, text, options) {
-      sent.push({ chatId, text, doneFor: options?.doneFor })
+      sent.push({
+        chatId,
+        text,
+        doneFor: options?.doneFor,
+        doneLabel: options?.doneLabel,
+      })
       return { chatId, messageId: nextMessage++ }
     },
     async editMessage(ref, text) {
@@ -481,6 +491,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         title: 'Маса 7: изпратена поръчка без потвърждение',
         body: '2 × Gin tonic, номер K7Q. Проверете сметката в POS системата.',
       })
+      expect(sent[0]?.doneLabel).toBe('Готово')
       expect(sent.map((m) => m.text.split('\n')[0])).toEqual([
         'Маса 7: изпратена поръчка без потвърждение',
         'Club Nova: Маса 7: изпратена поръчка без потвърждение',

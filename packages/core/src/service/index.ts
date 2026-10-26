@@ -52,6 +52,7 @@ export {
   alertLocale,
   alertMessage,
   digestMessage,
+  doneButtonText,
   doneLine,
   linkedMessage,
   type MessageContext,
