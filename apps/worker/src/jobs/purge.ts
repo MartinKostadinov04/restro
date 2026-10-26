@@ -51,7 +51,7 @@ import {
   versionsToPurge,
 } from '@restro/core'
 import { codeFileNames, venueServesTill } from '@restro/core/apply'
-import { serviceRetentionCutoffs } from '@restro/core/service'
+import { NIGHT_RETENTION_DAYS, serviceRetentionCutoffs } from '@restro/core/service'
 import {
   areas,
   authOrganization,
@@ -919,7 +919,9 @@ function idIn(column: string, ids: readonly string[]): SQL {
  *     any more. A row without `retain_until` is never due.
  *
  * Then the archived staff members past their `retain_until` that no `record` entry names any
- * more, with their assignments. `service_days` keeps the totals. A run that erases anything
+ * more, with their assignments, and the push subscriptions revoked 31 days ago (by the account or
+ * by the push service's 404/410; #83). An alert's delivery state is in its `details` and goes with
+ * it. `service_days` keeps the totals. A run that erases anything
  * writes one content-free `purge_log` row of kind `service` with the counts.
  */
 export async function purgeService(
@@ -1030,6 +1032,17 @@ export async function purgeService(
       ),
     )
     count(counts, 'staff_members', await deleteRows(tx, 'staff_members', archivedAndFree))
+    count(
+      counts,
+      'push_subscriptions',
+      await deleteRows(
+        tx,
+        'push_subscriptions',
+        // 31 days of 24 hours, as the night cutoff counts them (never the session's calendar days).
+        sql`revoked_at is not null
+            and revoked_at <= ${new Date(now.getTime() - NIGHT_RETENTION_DAYS * 86_400_000)}`,
+      ),
+    )
     if (Object.values(counts).some((rows) => rows > 0)) {
       await logPurge(tx, tenantId, 'service', tenantId, counts)
     }

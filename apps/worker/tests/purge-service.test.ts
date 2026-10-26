@@ -2,7 +2,8 @@
 // with the clock at 26 October 2026, 15:00 in Sofia: every row goes on its date and none a moment
 // before (31 days for the night's rows, 18 months for record Log entries, `retain_until` for sent
 // orders and sittings); an active pause, a sent order a payment names, the original of a kept
-// duplicate and a staff member a kept record entry names stay; one content-free `purge_log` row
+// duplicate and a staff member a kept record entry names stay; a push subscription goes 31 days
+// after it was revoked, a live one never; one content-free `purge_log` row
 // counts what went. The app role cannot delete any of it, the venue purge erases every service
 // row of the venue, and the hourly tick closes the ended service days. Skipped without a database
 // or the purge role.
@@ -203,6 +204,26 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     )
     return id
   }
+  async function pushSubscription(userId: string, revokedAt: string | null) {
+    const endpointHash = createHash('sha256').update(randomUUID()).digest('hex')
+    await query(
+      `insert into restro.push_subscriptions
+         (tenant_id, user_id, endpoint_hash, endpoint, p256dh, auth, revoked_at, source, actor,
+          job_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        tenantId,
+        userId,
+        endpointHash,
+        `https://push.example.test/${endpointHash}`,
+        'p'.repeat(64),
+        'a'.repeat(22),
+        revokedAt,
+        ...SEED,
+      ],
+    )
+    return endpointHash
+  }
   async function payment(venue: string, table: string, sittingId: string, sentOrderId: string) {
     const id = newId('py')
     await query(
@@ -233,7 +254,7 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     await provisionTenant(pool, { tenantId, name: 'Retention club' })
     await query(
       `insert into restro.auth_organization (id, name, slug) values ($1, 'Retention club', $2)`,
-      [tenantId, `retention-${newId('tn').slice(3, 11)}`],
+      [tenantId, `retention-${newId('tn').slice(3, 11).toLowerCase()}`],
     )
     ;({ venueId, tableId } = await venueWithTable('Retention Bar'))
     const v = venueId
@@ -285,6 +306,17 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     ids.staffNamedOld = await archivedStaff(v, UNTIL_DUE)
     await logEntry(v, RECORD_DUE, 'record', `staff:${ids.staffNamedOld}`)
     ids.staffLater = await archivedStaff(v, UNTIL_KEPT)
+
+    // Push subscriptions: revoked 31 days and a second ago, 31 days less a second ago, live.
+    const userId = `svc-${newId('us').slice(3)}`
+    await query('insert into restro.auth_user (id, name, email) values ($1, $2, $3)', [
+      userId,
+      'Owner',
+      `${userId}@example.test`,
+    ])
+    ids.pushDue = await pushSubscription(userId, '2026-09-25T11:59:59Z')
+    ids.pushKept = await pushSubscription(userId, '2026-09-25T12:00:01Z')
+    ids.pushLive = await pushSubscription(userId, null)
   })
 
   afterAll(async () => {
@@ -306,6 +338,7 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
       sittings: 1,
       staff_assignments: 2,
       staff_members: 2,
+      push_subscriptions: 1,
     })
 
     expect(await exists('sittings', ids.oldSitting ?? '')).toBe(false)
@@ -342,6 +375,9 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     expect(await exists('staff_members', ids.staffLater ?? '')).toBe(true)
     expect(await exists('staff_assignments', ids.staffFree ?? '', 'staff_member_id')).toBe(false)
     expect(await exists('staff_assignments', ids.staffActor ?? '', 'staff_member_id')).toBe(true)
+    expect(await exists('push_subscriptions', ids.pushDue ?? '', 'endpoint_hash')).toBe(false)
+    expect(await exists('push_subscriptions', ids.pushKept ?? '', 'endpoint_hash')).toBe(true)
+    expect(await exists('push_subscriptions', ids.pushLive ?? '', 'endpoint_hash')).toBe(true)
   })
 
   it('logs the run as counts only, once, and a run with nothing due logs nothing', async () => {
@@ -360,7 +396,9 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
   it('lets the rows a second later go a second later', async () => {
     const later = new Date(NOW.getTime() + 2000)
     const { counts } = await purgeService({ purgePool }, { tenantId, now: later })
-    expect(counts).toMatchObject({ staff_members: 1 })
+    expect(counts).toMatchObject({ staff_members: 1, push_subscriptions: 1 })
+    expect(await exists('push_subscriptions', ids.pushKept ?? '', 'endpoint_hash')).toBe(false)
+    expect(await exists('push_subscriptions', ids.pushLive ?? '', 'endpoint_hash')).toBe(true)
     expect(await exists('staff_members', ids.staffLater ?? '')).toBe(false)
   })
 
