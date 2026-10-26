@@ -324,7 +324,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         ? { state: 'closed' }
         : server === null
           ? null
-          : { state: server.ordering.state },
+          : { state: server.ordering.state, notesAndOptions: server.ordering.notesAndOptions },
       offline: offline(),
       sentOrders: (server?.sentOrders ?? []).map(
         (sent): SentOrderView => ({

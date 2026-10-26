@@ -257,9 +257,10 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
   // The table's shared order (#75): only where the shell turned ordering on (R15).
   const orderingOn = view.features.ordering
   const { send, notice } = useOrderCommands(services, serviceStrings, view)
+  const notesAndOptions = services?.state.ordering?.notesAndOptions === true
   const ordering = useMemo(
-    () => (orderingOn ? { strings: serviceStrings, send } : null),
-    [orderingOn, serviceStrings, send],
+    () => (orderingOn ? { strings: serviceStrings, send, notesAndOptions } : null),
+    [orderingOn, serviceStrings, send, notesAndOptions],
   )
 
   // The chips are drawn only when the shell turned the filter control on (R15: the venue offers

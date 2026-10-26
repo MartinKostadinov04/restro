@@ -236,6 +236,7 @@ export async function readFloorOf(
       bid: link.bid,
       jobId: run.id,
       reading,
+      capabilities: connector.capabilities,
       now: now(),
     })
   } catch (error) {

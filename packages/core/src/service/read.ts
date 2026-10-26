@@ -36,6 +36,7 @@ import type { LeaseScope } from './leases'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
 import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
+import { readTableCapabilities } from './table-capabilities'
 
 /** The sent order states that still hold the table's attention (D116). */
 const OPEN_SENT_ORDER_STATES = [
@@ -127,6 +128,11 @@ export interface TableStateRead {
   readonly leases: readonly LeaseView[]
   /** Active pauses of the table, its bar or the venue. */
   readonly pauses: readonly PauseView[]
+  /**
+   * Notes and options reach the POS's ticket, as the table's POS declared (#78): else the phone
+   * draws no note field and items that must have options are ordered from the waiter.
+   */
+  readonly notesAndOptions: boolean
   /** When the table's bill was last read, or null. */
   readonly reading: {
     readonly readSeq: number
@@ -340,6 +346,7 @@ export async function readTableState(
       .where(eq(billReadings.tableId, table.id))
 
     const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
+    const capabilities = await readTableCapabilities(tx, table.id)
     return {
       unchanged: false,
       version,
@@ -392,6 +399,7 @@ export async function readTableState(
             ],
       ),
       pauses: active,
+      notesAndOptions: capabilities.notesReachTicket,
       reading:
         reading === undefined
           ? null

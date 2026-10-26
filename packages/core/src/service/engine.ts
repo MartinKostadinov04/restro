@@ -13,7 +13,8 @@
 //    action id; a repeat gets the first answer. Then the tap's age (`stale_action`) and, for an
 //    order edit, the table's rate (`rate_limited`, 60 a minute): neither goes into the ring, and a
 //    rate trip writes its Log entry and its alert to Restro's admin team (#75);
-// 7. the handler, inside a savepoint, so a refusal rolls its writes back;
+// 7. the handler, inside a savepoint, so a refusal rolls its writes back, except the ones it set
+//    aside for its refusal (`keepOnRefusal`: a guard trip's pause and Log entry, #78);
 // 8. the version of every table the handler touched rises once, and an order edit's answer goes
 //    into the ring.
 // The answer is always accepted or refused with a code (D72). Nothing here, and nothing a handler
@@ -219,6 +220,7 @@ export async function executeCommand(
           .then((result) => new Date(Number(result.rows[0]?.ms)))
         return clock
       }
+      const kept: (() => Promise<void>)[] = []
       const stx: ServiceTx = {
         tx,
         tenantId: context.tenantId,
@@ -244,6 +246,9 @@ export async function executeCommand(
             { tenantId: context.tenantId, venueId: venue.id, serviceDate: day, provenance, via },
             entry,
           ),
+        keepOnRefusal: (write) => {
+          kept.push(write)
+        },
       }
 
       // The repeat check. An order edit and a Send lock the table's order first: both change it.
@@ -290,6 +295,7 @@ export async function executeCommand(
         await tx.execute(sql`rollback to savepoint service_command`)
         rows.discardTouches()
         result = error.result
+        for (const write of kept) await write()
       }
 
       const versions = await rows.bumpTouched()

@@ -77,6 +77,17 @@ export const GUEST_REFUSAL_CODES = [
   'order_empty',
   /** Send: an item is gone, not orderable or sold out (`subjectId` names it); the order stays. */
   'item_unavailable',
+  /**
+   * Send (#78): a note or options the POS doesn't take to the ticket, or an item that must have
+   * options there (`subjectId` names it): order it from the waiter.
+   */
+  'order_from_waiter',
+  /** Send (#78): the table has no POS bill and only a waiter opens one. */
+  'needs_first_item',
+  /** Send (#78): the same round went in the last 15 minutes (`subjectId` names it); ask first. */
+  'duplicate_order',
+  /** Send (#78): over the venue's cap or past its pace; the table pauses for "ask your waiter". */
+  'guard_tripped',
   /** Not available yet. */
   'not_built',
 ] as const

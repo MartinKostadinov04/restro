@@ -20,7 +20,7 @@ const STATE = {
   version: 3,
   next: 2_000,
   table: { label: '12' },
-  ordering: { state: 'on' },
+  ordering: { state: 'on', notesAndOptions: false },
   location: { state: 'off', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
   order: {
     lines: [
