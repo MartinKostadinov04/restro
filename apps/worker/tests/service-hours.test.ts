@@ -2,7 +2,7 @@
 // closes every table of the venue (reason `closing_hour`) and touches no venue without hours; the
 // pre-opening check starts 2 hours before opening, runs once per 10-minute slot, probes the POS
 // like a pause does, pauses the connection when the POS refuses or does not answer, alerts the
-// venue's staff and Restro's team only from 30 minutes before opening, and does nothing on a
+// venue's staff and Restro's team (one alert) only from 30 minutes before opening, and does nothing on a
 // closed night. The probes go to a fake connector: what a POS answers is the connector tests'
 // business.
 import {
@@ -281,11 +281,10 @@ describe.skipIf(!hasDatabase)('the venue night jobs', () => {
       expect(await check('2026-10-23T18:29:00Z')).toMatchObject({ failed: 1, alerted: 0 })
       expect(await check('2026-10-23T18:30:00Z')).toMatchObject({ failed: 1, alerted: 1 })
       expect(await alerts()).toMatchObject([
-        { audience: 'restro', details: { cause: 'credentials' } },
         { audience: 'venue', details: { cause: 'credentials' } },
       ])
       expect(await check('2026-10-23T18:40:00Z')).toMatchObject({ failed: 1, alerted: 0 })
-      expect(await alerts()).toHaveLength(2)
+      expect(await alerts()).toHaveLength(1)
     })
 
     it('treats a POS that does not answer as a failed check: paused, and alerted when due', async () => {
@@ -293,7 +292,6 @@ describe.skipIf(!hasDatabase)('the venue night jobs', () => {
       expect(await check('2026-10-23T18:30:00Z')).toMatchObject({ failed: 1, alerted: 1 })
       expect(await pauses()).toMatchObject([{ cause: 'pos_unreachable', lifted_at: null }])
       expect(await alerts()).toMatchObject([
-        { audience: 'restro', details: { cause: 'pos_unreachable' } },
         { audience: 'venue', details: { cause: 'pos_unreachable' } },
       ])
     })

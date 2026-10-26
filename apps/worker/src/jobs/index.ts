@@ -24,6 +24,7 @@ import { createAssetStore, createPublishStore } from '@restro/assets'
 import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '../config'
 import { paymentProviders } from '../connectors'
 import type { Logger } from '../logger'
+import { createAlertJobs } from './alerts'
 import { createBarsyJobs } from './barsy'
 import { createConnectionJobs } from './connection'
 import { createFloorJobs } from './floor'
@@ -78,6 +79,9 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     config.send || config.posSync
       ? [...createConnectionJobs({ sim: config.sim }), ...createPreOpeningJobs({ sim: config.sim })]
       : []
+  // The alerts (#83) need no POS and no sealing key: delivery runs where the Telegram token or the
+  // Web Push keys are set, and the watchdog ping where its address is.
+  const alertJobs = config.alerts === undefined ? [] : createAlertJobs({ alerts: config.alerts })
   // The purge (D83) runs only where the purge role's connection is set; without it nothing is
   // ever erased, and the log says so once.
   const purgeDatabaseUrl = config.purgeDatabaseUrl ?? null
@@ -102,6 +106,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...connectionJobs,
       ...publishJobs,
       ...noticeJobs,
+      ...alertJobs,
       ...purgeJobs,
     ]
   }
@@ -114,6 +119,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...connectionJobs,
       ...publishJobs,
       ...noticeJobs,
+      ...alertJobs,
       ...purgeJobs,
       ...sealJobs,
     ]
@@ -126,6 +132,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     ...connectionJobs,
     ...publishJobs,
     ...noticeJobs,
+    ...alertJobs,
     ...purgeJobs,
     ...sealJobs,
   ]

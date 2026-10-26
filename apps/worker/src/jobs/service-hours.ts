@@ -7,8 +7,8 @@
 //                       connector's read-only probe, the one a pause uses. A refusal pauses the
 //                       connection at once and an unreachable POS does too, so the venue opens in
 //                       a venue pause until probes pass (D120). From 30 minutes before opening a
-//                       failed check also alerts the venue's staff and Restro's admin team, once
-//                       a night (`hours.pre_opening_alert`).
+//                       failed check also raises the pre-opening alert (#83 tells the venue's
+//                       staff and Restro's team), once a night (`hours.pre_opening_alert`).
 //
 // Hours are the venue's wall-clock times in its zone on its service day (`serviceNightAt`). A
 // venue that has opened no weekday has no hours and nothing here touches it; a closed night has

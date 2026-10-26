@@ -1,5 +1,5 @@
 // The pre-opening check's alert (#82, D120) on a real Postgres, as the restro_app role: a failed
-// check raises one alert for the venue's staff and one for Restro's admin team, once per night; a
+// check raises one alert (its delivery rules tell staff and Restro's team), once per night; a
 // second night is a second alert; only the worker may send it. Skipped without a database.
 import { randomUUID } from 'node:crypto'
 
@@ -59,16 +59,9 @@ describe.skipIf(!hasDatabase)('the pre-opening alert (as the restro_app role)', 
     await world.owner.query('delete from restro.alerts where venue_id = $1', [world.venueId])
   })
 
-  it('raises one alert for the venue and one for Restro, with the reason', async () => {
-    expect(await raise('2026-10-23')).toMatchObject({ status: 'accepted', details: { raised: 2 } })
+  it('raises one alert for the venue, answered by staff, with the reason', async () => {
+    expect(await raise('2026-10-23')).toMatchObject({ status: 'accepted', details: { raised: 1 } })
     expect(await openAlerts()).toEqual([
-      {
-        audience: 'restro',
-        permission: null,
-        service_date: '2026-10-23',
-        subject_id: world.venueId,
-        details: { cause: 'credentials', opensAt: '2026-10-23T19:00:00.000Z' },
-      },
       {
         audience: 'venue',
         permission: 'alerts.answer',
@@ -81,28 +74,25 @@ describe.skipIf(!hasDatabase)('the pre-opening alert (as the restro_app role)', 
 
   it('raises nothing more when the check fails again the same night', async () => {
     await raise('2026-10-23')
-    expect(await raise('2026-10-23', 'unreachable')).toMatchObject({ details: { raised: 0 } })
-    expect(await openAlerts()).toHaveLength(2)
+    expect(await raise('2026-10-23', 'pos_unreachable')).toMatchObject({ details: { raised: 0 } })
+    expect(await openAlerts()).toHaveLength(1)
   })
 
   it('alerts again for the next night', async () => {
     await raise('2026-10-23')
-    expect(await raise('2026-10-24')).toMatchObject({ details: { raised: 2 } })
-    expect(await openAlerts()).toHaveLength(4)
+    expect(await raise('2026-10-24')).toMatchObject({ details: { raised: 1 } })
+    expect(await openAlerts()).toHaveLength(2)
   })
 
-  it('writes a Log entry for each alert', async () => {
+  it('writes a Log entry for the alert', async () => {
     await raise('2026-10-23')
     const { rows } = await world.owner.query(
-      `select l.reason, l.details->>'audience' as audience
+      `select l.reason, l.details->>'cause' as cause
          from restro.log_entries l join restro.alerts a on a.id = l.details->>'alertId'
-        where a.venue_id = $1 and l.kind = 'alert.raised' order by 2`,
+        where a.venue_id = $1 and l.kind = 'alert.raised'`,
       [world.venueId],
     )
-    expect(rows).toEqual([
-      { reason: 'pre_opening_check', audience: 'restro' },
-      { reason: 'pre_opening_check', audience: 'venue' },
-    ])
+    expect(rows).toEqual([{ reason: 'pre_opening_check', cause: 'credentials' }])
   })
 
   it("is the worker's alone", async () => {

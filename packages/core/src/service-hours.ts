@@ -3,14 +3,9 @@
 // Pure: the instant is an input, so tests choose any night, midnight and clock changes included.
 //
 // Hours are wall-clock times of the venue's zone on a service day (D45), the day that opens on the
-// weekday they are set for; times past midnight belong to the same service day. A time is placed
-// by its wall-clock distance from the day's start (when the previous service day ends), so a night
-// that crosses a clock change keeps its wall-clock hours and only its real length changes. A time
-// that does not exist on the night the clocks jump forward takes the moment after the jump; one
-// that happens twice takes its first.
-
-import { TZDate } from '@date-fns/tz'
-import { subMinutes } from 'date-fns'
+// weekday they are set for; times past midnight belong to the same service day. `localInstant`
+// places a time by the wall clocks, so a night that crosses a clock change keeps its wall-clock
+// hours and only its real length changes; a time lost to the jump forward lands an hour later.
 
 import {
   type OrderingSettings,
@@ -20,7 +15,7 @@ import {
   WEEKDAYS,
   type Weekday,
 } from './ordering-settings'
-import { serviceDate } from './service-day'
+import { localInstant, serviceDate } from './service-day'
 
 /** Phones are told "Last orders at …" this long before last orders (D122 §4). */
 export const LAST_ORDERS_NOTICE_MINUTES = 10
@@ -63,11 +58,10 @@ export interface ServiceNight {
   readonly nextChangeAt: Date | null
 }
 
-const MINUTES_PER_DAY = 24 * 60
+const MINUTE_MS = 60_000
 
-function minutesOf(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number) as [number, number]
-  return hours * 60 + minutes
+function minutesBefore(at: Date, minutes: number): Date {
+  return new Date(at.getTime() - minutes * MINUTE_MS)
 }
 
 /** The weekday of a service date (`YYYY-MM-DD`), Monday first. */
@@ -83,26 +77,8 @@ function addDaysTo(date: string, days: number): string {
   return moved.toISOString().slice(0, 10)
 }
 
-/** The instant of a wall-clock time `HH:MM` on a service day, counted from the day's start. */
-function instantOf(date: string, time: string, dayEndsAt: string, timeZone: string): Date {
-  const dayStart = minutesOf(dayEndsAt.slice(0, 5))
-  const since = (minutesOf(time) - dayStart + MINUTES_PER_DAY) % MINUTES_PER_DAY
-  const wall = dayStart + since
-  const [year, month, day] = date.split('-').map(Number) as [number, number, number]
-  const moment = new TZDate(
-    year,
-    month - 1,
-    day + Math.floor(wall / MINUTES_PER_DAY),
-    Math.floor((wall % MINUTES_PER_DAY) / 60),
-    wall % 60,
-    0,
-    timeZone,
-  )
-  return new Date(moment.getTime())
-}
-
 function timesOf(date: string, hours: ServiceHoursOfDay, clock: ServiceClock) {
-  const at = (time: string) => instantOf(date, time, clock.dayEndsAt, clock.timeZone)
+  const at = (time: string) => localInstant(date, time, clock.timeZone, clock.dayEndsAt)
   return {
     opensAt: at(hours.opens),
     lastOrdersAt: at(hours.lastOrders),
@@ -150,7 +126,7 @@ export function serviceNightAt(now: Date, clock: ServiceClock): ServiceNight {
     }
   }
   const { opensAt, lastOrdersAt, closesAt } = timesOf(date, hours, clock)
-  const notice = subMinutes(lastOrdersAt, LAST_ORDERS_NOTICE_MINUTES)
+  const notice = minutesBefore(lastOrdersAt, LAST_ORDERS_NOTICE_MINUTES)
   const t = now.getTime()
   const phase: NightPhase =
     t < opensAt.getTime()
@@ -197,14 +173,14 @@ export function preOpeningCheckAt(
 ): PreOpeningCheck | null {
   const next = nextOpening(now, clock)
   if (next === null) return null
-  const start = subMinutes(next.opensAt, rule.startMinutes)
+  const start = minutesBefore(next.opensAt, rule.startMinutes)
   if (now.getTime() < start.getTime()) return null
   const slot = Math.floor((now.getTime() - start.getTime()) / (rule.everyMinutes * 60_000))
   return {
     serviceDate: next.serviceDate,
     opensAt: next.opensAt,
     slot,
-    alert: now.getTime() >= subMinutes(next.opensAt, rule.alertMinutes).getTime(),
+    alert: now.getTime() >= minutesBefore(next.opensAt, rule.alertMinutes).getTime(),
   }
 }
 
