@@ -2546,6 +2546,20 @@ export const PAYMENT_ACCOUNT_STATES = [
   'disconnected',
 ] as const
 
+/**
+ * Where a dispute on a payment stands, in the platform's words (#108): `open` while the guest's
+ * bank asks or reviews, `won` once it closed with the venue keeping the money, `lost` once the
+ * money went back to the guest's bank. Null on `payments.dispute` when there is none.
+ */
+export const PAYMENT_DISPUTE_STATES = ['open', 'won', 'lost'] as const
+
+/**
+ * What a provider's notice is about, in the platform's words (#108): the provider's web part maps
+ * its own event types to these, so no provider event name reaches the platform. `other` has no
+ * handler: the worker marks it handled and does nothing.
+ */
+export const PROVIDER_NOTICE_KINDS = ['refund', 'dispute', 'other'] as const
+
 /** `'a', 'b'` for a SQL `in (...)` list of fixed words. */
 const sqlWords = (words: readonly string[]) =>
   sql.raw(`(${words.map((word) => `'${word}'`).join(', ')})`)
@@ -2590,6 +2604,13 @@ export const payments = restro.table(
     tipMinor: bigint('tip_minor', { mode: 'number' }).notNull().default(0),
     /** What was captured, once captured: never above the amount held. */
     capturedMinor: bigint('captured_minor', { mode: 'number' }),
+    /**
+     * What the venue refunded in its own provider dashboard, as last read back from the provider
+     * (#108): an absolute amount, never added up from notices; never above `captured_minor`.
+     */
+    refundedMinor: bigint('refunded_minor', { mode: 'number' }).notNull().default(0),
+    /** A dispute on the payment, as last read back (`PAYMENT_DISPUTE_STATES`); null for none. */
+    dispute: text('dispute'),
     /** ISO 4217, upper case. */
     currency: text('currency').notNull(),
     /** The phone must confirm by then (design §6: 2 minutes, extended while the bank asks). */
@@ -2670,6 +2691,14 @@ export const payments = restro.table(
     check(
       'payments_captured_minor',
       sql`${t.capturedMinor} is null or (${t.amountMinor} is not null and ${t.capturedMinor} between 0 and ${t.amountMinor})`,
+    ),
+    check(
+      'payments_refunded_minor',
+      sql`${t.refundedMinor} >= 0 and ${t.refundedMinor} <= coalesce(${t.capturedMinor}, 0)`,
+    ),
+    check(
+      'payments_dispute',
+      sql`${t.dispute} is null or ${t.dispute} in ${sqlWords(PAYMENT_DISPUTE_STATES)}`,
     ),
     check('payments_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check('payments_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
@@ -2858,6 +2887,10 @@ export const providerNotices = restro.table(
     accountRef: text('account_ref'),
     /** The event's type as the provider names it. */
     type: text('type').notNull(),
+    /** What it is about in the platform's words (`PROVIDER_NOTICE_KINDS`), which picks the handler. */
+    kind: text('kind').notNull(),
+    /** *Backend*: the object the event is about (a payment, a refund, a dispute), read back. */
+    objectRef: text('object_ref'),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     handledAt: timestamp('handled_at', { withTimezone: true }),
     ...serviceProvenance(),
@@ -2872,6 +2905,11 @@ export const providerNotices = restro.table(
       sql`${t.accountRef} is null or ${t.accountRef} ~ ${PROVIDER_REF_PATTERN}`,
     ),
     check('provider_notices_type', sql`${t.type} ~ ${NAME_PATTERN}`),
+    check('provider_notices_kind', sql`${t.kind} in ${sqlWords(PROVIDER_NOTICE_KINDS)}`),
+    check(
+      'provider_notices_object_ref',
+      sql`${t.objectRef} is null or ${t.objectRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
     check(
       'provider_notices_handled_after_received',
       sql`${t.handledAt} is null or ${t.handledAt} >= ${t.receivedAt}`,
