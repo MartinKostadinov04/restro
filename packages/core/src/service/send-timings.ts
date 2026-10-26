@@ -4,7 +4,7 @@
 // lease passes: the sweep settles only a sent order whose worker died, never one still being read
 // back. Each lease is derived from the seam's timings, so tuning a timing moves its lease with it.
 
-import { SERVICE_TIMINGS, type ServiceTimings } from '../connectors/service/timings'
+import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 
 /** Tries of the read before the round, and the pause between two. */
 export const BEFORE_READ_TRIES = 3

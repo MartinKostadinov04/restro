@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { SERVICE_TIMINGS } from '../connectors/service/timings'
+import { SERVICE_TIMINGS } from '../timings'
 import {
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
