@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type DeliveryState,
+  HOLD_LAST_DAY_MS,
+  holdReminderPoints,
   type PlanInput,
   type PlannedAlert,
   planDelivery,
@@ -9,7 +11,7 @@ import {
   recordStep,
   withDelivery,
 } from './alert-delivery'
-import { PAUSED_KIND } from './alert-rules'
+import { PAUSED_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
 
 const NOW = new Date('2026-10-23T20:00:00Z')
 const at = (secondsAgo: number) => new Date(NOW.getTime() - secondsAgo * 1000)
@@ -214,6 +216,72 @@ describe('reminders', () => {
       plan([
         alert({ id: 'al_p', kind: PAUSED_KIND, raisedAt: at(4 * hour), delivery: fourth }),
       ]).steps.filter((step) => step.receiver === 'team'),
+    ).toEqual([])
+  })
+})
+
+describe("a held card's question as the hold runs out (#112)", () => {
+  const HOUR = 3_600_000
+  const DAY = 24 * HOUR
+  const raised = new Date('2026-10-20T22:00:00Z')
+  const captureBefore = new Date(raised.getTime() + 7 * DAY)
+
+  it('is due again at half the time left and with 24 hours left, only after it was raised', () => {
+    expect(holdReminderPoints(raised, captureBefore)).toEqual([
+      raised.getTime() + 3.5 * DAY,
+      captureBefore.getTime() - HOLD_LAST_DAY_MS,
+    ])
+    // Raised with less than a day left: half the time left only.
+    const late = new Date(captureBefore.getTime() - 10 * HOUR)
+    expect(holdReminderPoints(late, captureBefore)).toEqual([captureBefore.getTime() - 5 * HOUR])
+    expect(holdReminderPoints(captureBefore, captureBefore)).toEqual([])
+  })
+
+  /** The question, its first messages and reminder sent `toldAgo` before `now`. */
+  const question = (now: Date, toldAgo: number): PlannedAlert => {
+    const lastAt = new Date(now.getTime() - toldAgo).toISOString()
+    const once = { firstAt: raised.toISOString(), lastAt, count: 2 }
+    return {
+      id: 'al_q',
+      kind: PAYMENT_UNCONFIRMED_KIND,
+      audience: 'venue',
+      raisedAt: raised,
+      doneAt: null,
+      delivery: { push: once, venueTelegram: once, team: once },
+      telegramRef: null,
+      captureBefore,
+    }
+  }
+  const at = (now: Date, toldAgo: number) =>
+    planDelivery({
+      now,
+      window: { ...OPEN_WINDOW, inService: true },
+      reachable: EVERYWHERE,
+      alerts: [question(now, toldAgo)],
+    }).steps.map((step) => `${step.receiver}:${step.step}`)
+
+  it('reminds the staff once at each point, never the team, and nothing between', () => {
+    const half = new Date(raised.getTime() + 3.5 * DAY)
+    // A minute before half the time left, nothing; a minute after, the staff are reminded.
+    expect(at(new Date(half.getTime() - 60_000), DAY)).toEqual([])
+    expect(at(new Date(half.getTime() + 60_000), DAY)).toEqual([
+      'push:reminder',
+      'venueTelegram:reminder',
+    ])
+    // Told since the point: not again.
+    expect(at(new Date(half.getTime() + 120_000), 60_000)).toEqual([])
+    const lastDay = new Date(captureBefore.getTime() - HOLD_LAST_DAY_MS)
+    expect(at(new Date(lastDay.getTime() + 60_000), DAY)).toEqual([
+      'push:reminder',
+      'venueTelegram:reminder',
+    ])
+  })
+
+  it('says nothing for a question without a deadline, past its own reminder', () => {
+    const now = new Date(raised.getTime() + 4 * DAY)
+    const alert = { ...question(now, DAY), captureBefore: null }
+    expect(
+      planDelivery({ now, window: OPEN_WINDOW, reachable: EVERYWHERE, alerts: [alert] }).steps,
     ).toEqual([])
   })
 })

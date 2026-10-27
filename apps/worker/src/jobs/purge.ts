@@ -14,7 +14,12 @@
 //                 that sit in no menu any more),
 //                 deleted areas and tables, versions past the rule in ../../core's
 //                 `versionsToPurge`, the change log past two months, and the service rows past
-//                 their retention (#84, D111, D122 §7: `purgeService`).
+//                 their retention (#84, D111, D122 §7: `purgeService`), the payments 18 months
+//                 after they settled among them (#112).
+//
+// A venue's payments are money records kept 18 months (D122 §9): a deleted venue is purged only
+// once every payment of it is due (#112, with D83), so its purge waits (`payments_kept`) while one
+// is not settled, waits for a manager's answer, has an open dispute, or is inside its 18 months.
 //
 // Every purge is one transaction on the purge role, scoped to the tenant (row-level security
 // applies to that role as to the app's), and ends with a content-free `purge_log` row. The files
@@ -307,6 +312,42 @@ const VENUE_SERVICE_TABLES = [
   'shared_devices',
 ] as const
 
+/**
+ * A payment past its retention (#112): settled 18 months ago (`retain_until`), and neither waiting
+ * for a manager's answer nor disputed and still open. Its lines and steps go with it.
+ */
+function paymentDue(now: SQL | Date): SQL {
+  return sql`settled_at is not null and retain_until is not null and retain_until <= ${now}
+    and state <> 'unconfirmed' and (dispute is null or dispute <> 'open')`
+}
+
+/** True while a payment of the venue is not due: the venue's purge waits for it. */
+async function venueKeepsPayments(tx: PurgeTx, venueId: string): Promise<boolean> {
+  const kept = await tx.execute(
+    sql`select 1 from restro.payments
+         where venue_id = ${venueId} and not (${paymentDue(sql`now()`)}) limit 1`,
+  )
+  return kept.rows.length > 0
+}
+
+/** Erases the venue's payments past their retention, children first; nothing younger. */
+async function deleteDuePayments(
+  tx: PurgeTx,
+  venueId: string,
+  now: SQL | Date,
+  counts: Counts,
+): Promise<void> {
+  const due = sql`payment_id in (select id from restro.payments
+                                  where venue_id = ${venueId} and ${paymentDue(now)})`
+  count(counts, 'payment_steps', await deleteRows(tx, 'payment_steps', due))
+  count(counts, 'payment_lines', await deleteRows(tx, 'payment_lines', due))
+  count(
+    counts,
+    'payments',
+    await deleteRows(tx, 'payments', sql`venue_id = ${venueId} and ${paymentDue(now)}`),
+  )
+}
+
 async function deleteVenueService(tx: PurgeTx, venueId: string, counts: Counts): Promise<void> {
   for (const table of VENUE_SERVICE_TABLES) {
     count(counts, table, await deleteRows(tx, table, sql`venue_id = ${venueId}`))
@@ -329,6 +370,8 @@ export type PurgeVenueResult =
   | { readonly status: 'not_deleted' }
   /** The venue still serves a till venue: the link is released by a deletion; nothing is erased. */
   | { readonly status: 'still_linked' }
+  /** A payment of the venue is still kept (#112): the purge waits for it; nothing is erased. */
+  | { readonly status: 'payments_kept' }
   | {
       readonly status: 'purged'
       readonly counts: Counts
@@ -350,6 +393,7 @@ export async function purgeVenue(
     if (venue === undefined) return { status: 'missing' } as const
     if (venue.archivedAt === null) return { status: 'not_deleted' } as const
     if (await venueServesTill(tx, venueId)) return { status: 'still_linked' } as const
+    if (await venueKeepsPayments(tx, venueId)) return { status: 'payments_kept' } as const
 
     const counts: Counts = {}
     const codes = await tx
@@ -923,6 +967,9 @@ function idIn(column: string, ids: readonly string[]): SQL {
  *   - at their `retain_until` (18 months after their day ended, set by `service_day.close`): the
  *     sent orders no payment and no kept duplicate names, then the ended sittings nothing names
  *     any more. A row without `retain_until` is never due.
+ *   - at their `retain_until` (18 months after they settled, #112): the payments with their lines
+ *     and steps, first, so the sent orders and sittings they name may go in the same run. One
+ *     waiting for a manager's answer or with an open dispute is kept.
  *
  * Then the archived staff members past their `retain_until` that no `record` entry names any
  * more, with their assignments, and the push subscriptions revoked 31 days ago (by the account or
@@ -943,6 +990,7 @@ export async function purgeService(
     for (const venue of venueRows) {
       const { night, record } = serviceRetentionCutoffs(now, venue.timezone, venue.dayEndsAt)
       const ofVenue = sql`venue_id = ${venue.id}`
+      await deleteDuePayments(tx, venue.id, now, counts)
       // The sent orders due: past their date, named by no payment, and not the original of a
       // kept duplicate (the kept rows are closed over `duplicate_of`).
       const dueSent = await tx.execute<{ id: string }>(sql`

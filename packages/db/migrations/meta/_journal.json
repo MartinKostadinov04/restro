@@ -246,6 +246,13 @@
       "when": 1793093028124,
       "tag": "0034_payment_step_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793118597868,
+      "tag": "0035_paying_breaker",
+      "breakpoints": true
     }
   ]
 }

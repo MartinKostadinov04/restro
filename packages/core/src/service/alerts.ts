@@ -63,8 +63,9 @@ export function endpointHashOf(endpoint: string): string {
 /**
  * `alert.done`: staff mark an alert Done, in Tonight or from the venue's Telegram group (`via`
  * says which). Needs `alerts.answer` and the alert's own permission; an alert for Restro's admin
- * team only an operator answers; one that closes by itself (a pause) has no Done. A repeat finds
- * it done and changes nothing.
+ * team only an operator answers; one that closes by itself (a pause) has no Done, nor has a card
+ * payment's question, which only its answer closes (#112). A repeat finds it done and changes
+ * nothing.
  */
 export async function alertDone(
   stx: ServiceTx,
@@ -83,9 +84,10 @@ export async function alertDone(
   if (alert.permission !== null && !stx.permissions.has(alert.permission as Permission)) {
     return refused(null, 'permission_denied')
   }
-  if (ruleOf(alert.kind, alert.audience as 'venue' | 'restro').closesItself) {
-    return refused(null, 'alert_closes_itself')
-  }
+  const rule = ruleOf(alert.kind, alert.audience as 'venue' | 'restro')
+  if (rule.closesItself) return refused(null, 'alert_closes_itself')
+  // A card payment's question closes only by its answer (#112), never by Done.
+  if (rule.needsAnswer === true) return refused(null, 'alert_needs_answer')
   if (alert.doneAt !== null) {
     return accepted(null, { details: { state: 'done', changed: false, kind: alert.kind } })
   }

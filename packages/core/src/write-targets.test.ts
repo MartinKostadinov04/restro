@@ -94,6 +94,8 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   // recorded `attempting` before each provider call.
   'paymentLines',
   'paymentSteps',
+  // #112: the provider breaker pauses and lifts paying at a venue account.
+  'paymentAccounts',
   // #84: the end of a service day keeps its totals.
   'serviceDays',
 ]

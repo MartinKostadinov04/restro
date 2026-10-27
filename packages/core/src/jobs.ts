@@ -185,6 +185,13 @@ export const JOB_NAMES = {
    * payment forward the same way as `payment-prepare`. One per payment at a time.
    */
   paymentCheck: 'payment-check',
+  /**
+   * Scheduled, every minute, and sent once when the worker starts (#112): the payment recovery,
+   * twice a minute. Takes every open payment on from its last recorded step (a stale one is
+   * queued again), reads back the holds that may have run out, tells Restro's team of a payment
+   * that stays stuck, and probes a paused payment provider. Not sent by anyone else.
+   */
+  paymentRecoveryTick: 'payment-recovery-tick',
 } as const
 
 /** One of the queue names. */

@@ -7,7 +7,13 @@
 // tests (apps/worker/tests/payment-route*.test.ts). Database part skipped without one.
 // A property test edits the isolated bill as a waiter might (a line voided, moved back, repriced,
 // its quantity changed, a round added) and checks the last check against the bill alone: it passes
-// only the lines the guest confirmed, less the voided ones, and never asks for more than them.
+// only the lines the guest confirmed, less the voided ones, and never asks for more than them. A
+// second one (#112, F10) states each night's outcome from what the waiter did, not from the check's
+// own counting: a line back on the real table at another price, another bill on the payment table,
+// a part payment and a total off its lines among them.
+// The recovery's commands (#112): an expired hold settles `released`, reason `expired`, closing
+// both questions; a stuck payment tells Restro's team once; the provider's breaker pauses paying in
+// the app and lifts it, with its alert, and never touches ordering.
 import { createHash, randomUUID } from 'node:crypto'
 
 import fc from 'fast-check'
@@ -17,6 +23,8 @@ import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { SERVICE_TIMINGS } from '../timings'
+import { PAYING_PAUSED_KIND, PAYMENT_STUCK_KIND } from './alert-rules'
+import { closedBreaker } from './breaker'
 import { applyService, PaymentStepLinesSchema, type ServiceContext } from './index'
 import {
   lastCheck,
@@ -169,6 +177,106 @@ describe('the last check', () => {
           } else expect(result).toEqual({ ok: true, foundMinor: sum(lines), voided })
           // Never more than the guest confirmed.
           if (result.ok) expect(result.foundMinor).toBeLessThanOrEqual(sum(confirmed))
+        },
+      ),
+      { numRuns: 500 },
+    )
+  })
+
+  it('gives each night the outcome of what the waiter did, bill by bill (F10)', () => {
+    /**
+     * What a waiter did to a confirmed line: kept it, voided it, moved it back to the real table
+     * (as it was, or at another price), put a twin of it on the real table and voided it, repriced
+     * it or changed its quantity on the payment table.
+     */
+    const fate = fc.constantFrom(
+      'kept',
+      'voided',
+      'moved_back',
+      'moved_back_repriced',
+      'twin_on_real',
+      'repriced',
+      'requantified',
+    )
+    /** What happened to the payment table's bill as a whole. */
+    const whole = fc.constantFrom('none', 'second_bill', 'part_paid', 'total_off')
+    type Line = { readonly quantity: string; readonly amountMinor: number }
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.constantFrom('1', '2', '0.5'), fc.nat({ max: 99 }), fate), {
+          minLength: 1,
+          maxLength: 4,
+        }),
+        fc.nat({ max: 2 }),
+        whole,
+        fc.boolean(),
+        (picked, added, bill, partialCapture) => {
+          // Each confirmed line's amount is its own (a multiple of 10, unique by position): a
+          // repriced one ends in 1, an added round in 5, nothing on the real table's noise in 7.
+          const confirmed = picked.map(([quantity, cents], index) => ({
+            pos: `L${index}`,
+            quantity,
+            amountMinor: (index + 1) * 1_000 + cents * 10,
+          }))
+          const fates = picked.map(([, , f]) => f)
+          const lines: Line[] = [
+            ...confirmed.flatMap((l, index): Line[] => {
+              const f = fates[index]
+              if (f === 'kept')
+                return [{ quantity: Number(l.quantity).toFixed(6), amountMinor: l.amountMinor }]
+              if (f === 'repriced')
+                return [{ quantity: l.quantity, amountMinor: l.amountMinor + 1 }]
+              if (f === 'requantified') {
+                return [{ quantity: l.quantity === '1' ? '2' : '1', amountMinor: l.amountMinor }]
+              }
+              return []
+            }),
+            ...Array.from({ length: added }, (_, n) => ({
+              quantity: '1',
+              amountMinor: 105 + n * 10,
+            })),
+          ]
+          const real = [
+            { pos: 'R9', quantity: '1', amountMinor: 77 },
+            ...confirmed.flatMap((l, index) => {
+              const f = fates[index]
+              if (f === 'moved_back') return [l]
+              if (f === 'moved_back_repriced') return [{ ...l, amountMinor: l.amountMinor + 3 }]
+              if (f === 'twin_on_real') return [{ ...l, pos: `T${index}` }]
+              return []
+            }),
+          ]
+          const linesMinor = lines.reduce((total, l) => total + l.amountMinor, 0)
+          const result = lastCheck({
+            confirmed,
+            isolated: {
+              bills: bill === 'second_bill' ? 2 : 1,
+              totalMinor: linesMinor + (bill === 'total_off' ? 50 : 0),
+              paidMinor: bill === 'part_paid' ? 100 : 0,
+              lines,
+            },
+            real,
+            partialCapture,
+          })
+          const keptMinor = confirmed
+            .filter((_, index) => fates[index] === 'kept')
+            .reduce((total, l) => total + l.amountMinor, 0)
+          const missing = fates.filter((f) => f !== 'kept').length
+          const onReal = fates.some(
+            (f) => f === 'moved_back' || f === 'moved_back_repriced' || f === 'twin_on_real',
+          )
+          const changed = fates.some((f) => f === 'repriced' || f === 'requantified')
+          let want: ReturnType<typeof lastCheck>
+          if (lines.length === 0) want = { ok: false, why: 'no_bill' }
+          else if (bill === 'second_bill') want = { ok: false, why: 'several_bills' }
+          else if (bill === 'part_paid') want = { ok: false, why: 'part_paid' }
+          else if (bill === 'total_off') want = { ok: false, why: 'total_changed' }
+          else if (changed || added > 0) want = { ok: false, why: 'extra_line' }
+          else if (missing === 0) want = { ok: true, foundMinor: keptMinor, voided: 0 }
+          else if (onReal) want = { ok: false, why: 'line_missing' }
+          else if (!partialCapture) want = { ok: false, why: 'partial_not_supported' }
+          else want = { ok: true, foundMinor: keptMinor, voided: missing }
+          expect(result).toEqual(want)
         },
       ),
       { numRuns: 500 },
@@ -465,6 +573,169 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
       ['done', true],
     ])
     expect(PaymentStepLinesSchema.parse(rows[0]?.lines)).toEqual(lines)
+  })
+
+  /** A payment in `state` with no lines, unsettled unless `settled`. */
+  async function payment(state: string, reason: string | null = null): Promise<string> {
+    const id = newId('py')
+    await world.owner.query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, reason,
+          handle_hash, amount_minor, currency, provider_kind, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, current_date, 'on_bill', $6, $7,
+          $8, 1450, 'EUR', 'sim-pay', 'restro', 'system', 'test-seed')`,
+      [
+        id,
+        world.tenantId,
+        world.venueId,
+        world.tables[0],
+        sittingId,
+        state,
+        reason,
+        createHash('sha256').update(id).digest('hex'),
+      ],
+    )
+    return id
+  }
+  const expired = (id: string) =>
+    applyService(
+      world.app,
+      { type: 'payment.expired', paymentId: id, status: 'released' },
+      worker(),
+    )
+  const openAlerts = async (id: string) =>
+    (
+      await world.owner.query<{ kind: string }>(
+        `select kind from restro.alerts where subject_id = $1 and done_at is null order by kind`,
+        [id],
+      )
+    ).rows.map((row) => row.kind)
+
+  it('settles an expired hold released, reason expired, closing both questions, and logs it', async () => {
+    const { id } = await unconfirmed('lines_not_back')
+    // The close's question was left open beside the second one.
+    await world.owner.query(
+      `insert into restro.alerts
+         (id, tenant_id, venue_id, service_date, kind, audience, subject_id, permission, details,
+          source, actor, job_id)
+       values ($1, $2, $3, current_date, 'payment_unconfirmed', 'venue', $4, 'money.follow_up',
+          '{}'::jsonb, 'restro', 'system', 'test-seed')`,
+      [newId('al'), world.tenantId, world.venueId, id],
+    )
+    expect(await openAlerts(id)).toEqual(['payment_lines_not_back', 'payment_unconfirmed'])
+    expect((await expired(id)).result).toMatchObject({
+      status: 'accepted',
+      details: { changed: true, state: 'released' },
+    })
+    const row = (
+      await world.owner.query<{ state: string; reason: string; kept: boolean }>(
+        `select state, reason, retain_until > now() + interval '17 months' as kept
+           from restro.payments where id = $1`,
+        [id],
+      )
+    ).rows[0]
+    expect(row).toEqual({ state: 'released', reason: 'expired', kept: true })
+    expect(await openAlerts(id)).toEqual([])
+    const log = await world.owner.query<{ to_state: string; reason: string; closed: string }>(
+      `select to_state, reason, details->>'questionClosed' as closed from restro.log_entries
+        where kind = 'payment.state' and payment_id = $1`,
+      [id],
+    )
+    expect(log.rows).toEqual([
+      {
+        to_state: 'released',
+        reason: 'expired',
+        closed: 'payment_unconfirmed,payment_lines_not_back',
+      },
+    ])
+    // Again: nothing changes.
+    expect((await expired(id)).result).toMatchObject({ details: { changed: false } })
+  })
+
+  it('leaves an answered payment and one whose lines moved to the route', async () => {
+    const { id } = await unconfirmed()
+    await answer(user(managerId), id, 'receipt_printed')
+    expect((await expired(id)).result).toMatchObject({
+      status: 'accepted',
+      details: { changed: false, state: 'unconfirmed' },
+    })
+    const moved = await payment('isolated')
+    expect((await expired(moved)).result).toMatchObject({ details: { changed: false } })
+    // Waiting for a payment table, nothing moved yet: released.
+    const waiting = await payment('queued')
+    expect((await expired(waiting)).result).toMatchObject({
+      details: { changed: true, state: 'released' },
+    })
+  })
+
+  it("tells Restro's team once about a payment stuck in the worker's own states", async () => {
+    const stuck = (id: string) =>
+      applyService(world.app, { type: 'payment.stuck', paymentId: id }, worker())
+    const id = await payment('priced')
+    expect((await stuck(id)).result).toMatchObject({
+      status: 'accepted',
+      details: { changed: true, state: 'priced' },
+    })
+    expect((await stuck(id)).result).toMatchObject({ details: { changed: false } })
+    const raised = await world.owner.query<{ audience: string; permission: string | null }>(
+      `select audience, permission from restro.alerts where subject_id = $1 and kind = $2`,
+      [id, PAYMENT_STUCK_KIND],
+    )
+    expect(raised.rows).toEqual([{ audience: 'restro', permission: null }])
+    // A payment waiting for the guest or a table is not the worker's to move on.
+    for (const state of ['awaiting_guest', 'held']) {
+      expect((await stuck(await payment(state))).result).toMatchObject({
+        details: { changed: false },
+      })
+    }
+  })
+
+  it('pauses paying in the app at the venue and lifts it, with its alert; ordering is not paused', async () => {
+    const breaker = (action: 'pause' | 'progress' | 'lift') =>
+      applyService(
+        world.app,
+        { type: 'paying.breaker', action, cause: null, breaker: { ...closedBreaker() } },
+        worker(),
+      )
+    expect((await breaker('pause')).result).toMatchObject({
+      status: 'refused',
+      code: 'paying_not_offered',
+    })
+    await world.owner.query(
+      `insert into restro.payment_accounts
+         (tenant_id, venue_id, provider_kind, account_ref, state, connected_at, source, actor, job_id)
+       values ($1, $2, 'sim-pay', 'acct_route', 'connected', now(), 'restro', 'system', 'test-seed')
+       on conflict do nothing`,
+      [world.tenantId, world.venueId],
+    )
+    const state = async () =>
+      (
+        await world.owner.query<{ paused: boolean; alerts: string; pauses: string }>(
+          `select (select paying_paused_at is not null from restro.payment_accounts
+                    where venue_id = $1) as paused,
+                  (select count(*) from restro.alerts where kind = $2 and subject_id = $1
+                    and done_at is null)::text as alerts,
+                  (select count(*) from restro.pauses where venue_id = $1)::text as pauses`,
+          [world.venueId, PAYING_PAUSED_KIND],
+        )
+      ).rows[0]
+    const pausesBefore = (await state())?.pauses
+    expect((await breaker('pause')).result).toMatchObject({
+      status: 'accepted',
+      details: { paused: true, changed: true },
+    })
+    expect((await breaker('pause')).result).toMatchObject({ details: { changed: false } })
+    expect((await breaker('progress')).result).toMatchObject({ details: { paused: true } })
+    expect(await state()).toEqual({ paused: true, alerts: '1', pauses: pausesBefore })
+    expect((await breaker('lift')).result).toMatchObject({
+      details: { paused: false, changed: true },
+    })
+    expect(await state()).toEqual({ paused: false, alerts: '0', pauses: pausesBefore })
+    const log = await world.owner.query<{ kind: string }>(
+      `select kind from restro.log_entries where reason = $1 order by seq`,
+      [PAYING_PAUSED_KIND],
+    )
+    expect(log.rows.map((row) => row.kind)).toEqual(['alert.raised', 'alert.done'])
   })
 
   it('refuses an answer to a payment that is not unconfirmed', async () => {

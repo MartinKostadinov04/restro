@@ -3,14 +3,20 @@
 // priced from a fresh reading of the table and held at the provider, each provider write recorded
 // `attempting` before the call; the guest at the card form gets it `held`; a cancel releases the
 // provider's payment; a hold the provider refuses ungreys the lines; a hold whose outcome is unknown
-// is made once however often it is retried; a tip is refused where the connector records none; and a
-// `sim` instance is refused in production.
+// is never asked for again: it is found and released (D127 3.15); a tip is refused where the
+// connector records none; and a `sim` instance is refused in production.
+// The recovery (#112): a worker killed right after it recorded any step of the hold or the cancel
+// leaves a payment the recovery's pass alone brings to `released`; a release the provider refuses
+// is read back, never sent again, until the provider drops the hold (`released`, reason `expired`).
+// The provider's breaker trips on failed calls at one venue account and lifts on good probes; it
+// pauses paying in the app only, never ordering, and never another venue's account.
 import { randomUUID } from 'node:crypto'
 
 import {
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   type IntegrationId,
+  JOB_NAMES,
   newId,
   type PaymentJob,
   providerRef,
@@ -44,12 +50,9 @@ import { createSimServer, ManualClock as SimPosClock, type SimServer } from '@re
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
-import {
-  checkPayment,
-  type PaymentJobDeps,
-  PaymentStepRetry,
-  preparePayment,
-} from '../src/jobs/payments'
+import { PaymentBreakers } from '../src/jobs/payment-breaker'
+import { recoverPayments } from '../src/jobs/payment-recovery'
+import { checkPayment, type PaymentJobDeps, preparePayment } from '../src/jobs/payments'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
 import type { JobQueue } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
@@ -80,7 +83,8 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
   let pool: DbPool
   let sim: SimServer
   const simClock = new SimPosClock()
-  const engine = new SimPayEngine({ clock: new SimPayClock() })
+  const payClock = new SimPayClock()
+  const engine = new SimPayEngine({ clock: payClock })
   const provider = createSimPayProvider({ env: 'test', engine })
   let host: string
   const tenantId = newId('tn')
@@ -372,6 +376,100 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     return { id, ref: providerRef((await stored(id))?.provider_payment_ref ?? '') }
   }
 
+  /** Nobody touched the payment for two minutes (as the owner, past the `updated_at` trigger). */
+  const untouched = (id: string) =>
+    withOwnerClient(db.ownerUrl, async (client) => {
+      await client.query('begin')
+      await client.query('set local session_replication_role = replica')
+      await client.query(
+        `update restro.payments set updated_at = updated_at - interval '2 minutes' where id = $1`,
+        [id],
+      )
+      await client.query(
+        `update restro.payment_steps set at = at - interval '2 minutes' where payment_id = $1`,
+        [id],
+      )
+      await client.query('commit')
+    })
+
+  /** A worker that dies right after it recorded `step` with `outcome`. */
+  class Killed extends Error {}
+  const killedAfter = (step: string, outcome: string) => ({
+    ...env(),
+    onStep: async (recorded: { readonly step: string; readonly outcome: string }) => {
+      if (recorded.step === step && recorded.outcome === outcome) throw new Killed(step)
+    },
+  })
+  /**
+   * The recovery's pass after the worker was down for two minutes: it queues the payment's
+   * prepare, and the job runs it (as pg-boss would) until it stops moving.
+   */
+  async function recover(id: string) {
+    await untouched(id)
+    sent.length = 0
+    await recoverPayments({ pool, log, now: () => clock, queue }, deps())
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        name: JOB_NAMES.paymentPrepare,
+        options: expect.objectContaining({ singletonKey: id }),
+      }),
+    )
+    return preparePayment(env(), target(id), deps())
+  }
+
+  describe('a worker killed after a recorded step (the recovery alone finishes it)', () => {
+    it.each([
+      ['createHold', 'attempting'],
+      ['createHold', 'done'],
+    ])(
+      'the hold, after %s %s: found and released, never asked for again',
+      async (step, outcome) => {
+        const { id } = await pay(0)
+        await expect(
+          preparePayment(killedAfter(step, outcome), target(id), deps()),
+        ).rejects.toThrow(Killed)
+        expect(await stored(id)).toMatchObject({ state: 'priced' })
+        expect(await recover(id)).toEqual({ kind: 'at', state: 'released' })
+        // Never a second hold: what the first call made is released.
+        const made = engine.paymentsOf(providerRef(accountRef), id as never)
+        expect(made.every((payment) => payment.status === 'released')).toBe(true)
+        expect(made.length).toBeLessThanOrEqual(1)
+        expect(
+          (await steps(id)).filter(([s, o]) => s === 'createHold' && o === 'attempting'),
+        ).toHaveLength(1)
+        expect((await lines()).every((line) => !line.beingPaid)).toBe(true)
+      },
+    )
+
+    it.each([
+      ['release', 'attempting'],
+      ['release', 'done'],
+    ])('the cancel, after %s %s: released', async (step, outcome) => {
+      const { id, ref } = await cancelled()
+      await expect(preparePayment(killedAfter(step, outcome), target(id), deps())).rejects.toThrow(
+        Killed,
+      )
+      expect(await stored(id)).toMatchObject({ state: 'cancelling' })
+      expect(await recover(id)).toEqual({ kind: 'at', state: 'released' })
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ ref, status: 'released' }),
+      ])
+    })
+
+    it('the cancel of a hold with an unknown outcome, after findByPaymentId attempting: released', async () => {
+      const { id } = await pay(0)
+      engine.fault('createHold', { kind: 'land_then_timeout' })
+      await expect(
+        preparePayment(killedAfter('findByPaymentId', 'attempting'), target(id), deps()),
+      ).rejects.toThrow(Killed)
+      expect(await stored(id)).toMatchObject({ state: 'cancelling' })
+      expect(await recover(id)).toEqual({ kind: 'at', state: 'released' })
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'released' }),
+      ])
+    })
+  })
+
   it('settles a cancelled Pay whose release is refused once the provider holds nothing', async () => {
     // The release is refused, but the payment failed at the provider already: nothing is held.
     const over = await cancelled()
@@ -387,16 +485,51 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     ])
   })
 
-  it('leaves a cancelled Pay whose release is refused while the provider still has it', async () => {
-    // It stays `cancelling` for the recovery to read back (#112).
+  it('reads a refused release back, never sends it again, and settles it once the hold is gone', async () => {
+    // It stays `cancelling` for the recovery to read back, and the owners and the team are told.
     const open = await cancelled()
+    // The guest's card was held as the guest cancelled.
+    engine.guest.pay(open.ref)
     engine.fault('release', { kind: 'refuse', code: 'not_supported' })
     expect(await preparePayment(env(), target(open.id), deps())).toEqual({
       kind: 'at',
       state: 'cancelling',
     })
     expect(engine.paymentsOf(providerRef(accountRef), open.id as never)).toEqual([
-      expect.objectContaining({ status: 'awaiting_guest' }),
+      expect.objectContaining({ status: 'held' }),
+    ])
+    const alerts = async () =>
+      query<{ kind: string; open: boolean }>(
+        `select kind, done_at is null as open from restro.alerts where subject_id = $1`,
+        [open.id],
+      )
+    expect(await alerts()).toEqual([{ kind: 'payment_release_refused', open: true }])
+    // The recovery reads it back later, never at once.
+    await untouched(open.id)
+    sent.length = 0
+    await recoverPayments({ pool, log, now: () => clock, queue }, deps())
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        name: JOB_NAMES.paymentPrepare,
+        options: expect.objectContaining({ singletonKey: open.id, startAfter: 600 }),
+      }),
+    )
+    // Still held: read, not released again.
+    expect(await preparePayment(env(), target(open.id), deps())).toEqual({
+      kind: 'at',
+      state: 'cancelling',
+    })
+    // The hold runs out at the provider: released, reason expired, and the alert closes.
+    payClock.advance(engine.switches.holdDays * 24 * 3_600_000)
+    expect(await preparePayment(env(), target(open.id), deps())).toEqual({
+      kind: 'at',
+      state: 'released',
+    })
+    expect(await stored(open.id)).toMatchObject({ state: 'released', reason: 'expired' })
+    expect(await alerts()).toEqual([{ kind: 'payment_release_refused', open: false }])
+    expect((await steps(open.id)).filter(([step]) => step === 'release')).toEqual([
+      ['release', 'attempting', null, `${open.id}:release`],
+      ['release', 'refused', 'not_supported', `${open.id}:release`],
     ])
   })
 
@@ -415,22 +548,105 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     expect((await lines()).every((line) => !line.beingPaid)).toBe(true)
   })
 
-  it('makes a hold whose outcome was unknown once, however often it is retried', async () => {
+  it('never asks again for a hold whose outcome was unknown: it finds it and releases it', async () => {
+    // D127 3.15: the key is never sent again; the guest is offered "Try again" (#112).
     const { id } = await pay(0)
     engine.fault('createHold', { kind: 'land_then_timeout' })
-    await expect(preparePayment(env(), target(id), deps())).rejects.toBeInstanceOf(PaymentStepRetry)
-    expect(await stored(id)).toMatchObject({ state: 'priced' })
     expect(await preparePayment(env(), target(id), deps())).toEqual({
       kind: 'at',
-      state: 'awaiting_guest',
+      state: 'released',
     })
-    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toHaveLength(1)
-    expect((await steps(id)).map(([, outcome]) => outcome)).toEqual([
-      'attempting',
-      'unknown',
-      'attempting',
-      'done',
+    expect(await stored(id)).toMatchObject({ state: 'released', reason: 'hold_refused' })
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
     ])
+    expect(await steps(id)).toEqual([
+      ['createHold', 'attempting', null, `${id}:hold`],
+      ['createHold', 'unknown', 'unknown', `${id}:hold`],
+      ['findByPaymentId', 'attempting', null, `${id}:find`],
+      ['findByPaymentId', 'done', 'found', `${id}:find`],
+      ['release', 'attempting', null, `${id}:release`],
+      ['release', 'done', null, `${id}:release`],
+    ])
+    expect((await lines()).every((line) => !line.beingPaid)).toBe(true)
+  })
+
+  describe("the provider's breaker (D120's rule, per venue account)", () => {
+    const seconds = (n: number) => {
+      clock = new Date(clock.getTime() + n * 1_000)
+    }
+    const pausedAt = async (venueId: string) =>
+      (
+        await query<{ paused: boolean }>(
+          'select paying_paused_at is not null as paused from restro.payment_accounts where venue_id = $1',
+          [venueId],
+        )
+      )[0]?.paused
+
+    it('pauses paying in the app after a minute of failed calls, never ordering, then lifts', async () => {
+      const breakers = new PaymentBreakers(() => 0.5)
+      // Another venue with its own account at the same provider.
+      const other = await provisionVenue(pool, tenantId, { name: 'Other', slug: testSlug('other') })
+      const otherAccount = engine.addAccount()
+      engine.finishConnecting(otherAccount)
+      await query(
+        `insert into restro.payment_accounts
+           (tenant_id, venue_id, provider_kind, account_ref, state, connected_at, source, actor, job_id)
+         values ($1, $2, $3, $4, 'connected', now(), 'restro', 'system', 'test-seed')`,
+        [tenantId, other.id, SIM_PAY_KIND, otherAccount.provider],
+      )
+      const pausesBefore = await query('select id from restro.pauses where venue_id = $1', [
+        demo.venueId,
+      ])
+      try {
+        const { id } = await pay(0)
+        await preparePayment(env(), target(id), deps({ breakers }))
+        // Every read fails part-way: the guest's checks fail for a minute, three times or more.
+        engine.failReads()
+        for (const gap of [0, 20, 20, 21]) {
+          seconds(gap)
+          await expect(checkPayment(env(), target(id), deps({ breakers }))).rejects.toThrow()
+        }
+        expect(await pausedAt(demo.venueId)).toBe(true)
+        expect(await pausedAt(other.id)).toBe(false)
+        const raised = await query<{ kind: string; permission: string }>(
+          `select kind, permission from restro.alerts
+            where kind = 'paying_paused' and subject_id = $1 and done_at is null`,
+          [demo.venueId],
+        )
+        expect(raised).toEqual([{ kind: 'paying_paused', permission: 'money.follow_up' }])
+        // A new Pay is refused; ordering is not paused.
+        await expect(pay(1)).rejects.toThrow(/paying_paused/)
+        expect(
+          await query('select id from restro.pauses where venue_id = $1', [demo.venueId]),
+        ).toEqual(pausesBefore)
+
+        // Probes fail while the provider is down, then three good ones lift it.
+        const ref = { tenantId, venueId: demo.venueId }
+        const probeEnv = { pool, log, now: () => clock }
+        for (let n = 0; n < 3; n += 1) {
+          seconds(61)
+          await breakers.probeIfDue(probeEnv, ref, provider, providerRef(accountRef))
+        }
+        expect(await pausedAt(demo.venueId)).toBe(true)
+        engine.clearFaults()
+        for (let n = 0; n < 12 && (await pausedAt(demo.venueId)) === true; n += 1) {
+          seconds(16)
+          await breakers.probeIfDue(probeEnv, ref, provider, providerRef(accountRef))
+        }
+        expect(await pausedAt(demo.venueId)).toBe(false)
+        expect(
+          await query(
+            `select id from restro.alerts
+              where kind = 'paying_paused' and subject_id = $1 and done_at is null`,
+            [demo.venueId],
+          ),
+        ).toEqual([])
+      } finally {
+        engine.clearFaults()
+        await query('update restro.payment_accounts set paying_paused_at = null, breaker = null')
+      }
+    })
   })
 
   it('releases a tipped Pay where the connector records no tip', async () => {

@@ -259,9 +259,11 @@ export {
   PAYMENT_LONG_WAIT_MS,
   PAYMENT_QUESTIONS,
   PAYMENT_TURN_SECONDS,
+  PAYMENT_UNCONFIRMED_REASONS,
   PAYMENT_WRITE_PAUSE_MS,
   paymentTurnSeconds,
 } from './pay-route'
+export { payingPaused } from './paying-pause'
 export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,

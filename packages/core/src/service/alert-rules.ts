@@ -36,6 +36,21 @@ export const PAYMENT_CHECK_FAILED_KIND = 'payment_check_failed'
 export const PAYMENT_STRANDED_KIND = 'payment_stranded'
 /** A closed bill's card payment could not be captured (#111): the owners are told. */
 export const PAYMENT_CAPTURE_FAILED_KIND = 'payment_capture_failed'
+/**
+ * The provider refused to release the hold of a payment Restro cancelled (#112): the owners and
+ * Restro's team are told; it closes when the provider drops the hold.
+ */
+export const PAYMENT_RELEASE_REFUSED_KIND = 'payment_release_refused'
+/**
+ * Paying in the app is paused at a venue: no call to its payment provider succeeded for a minute
+ * (#112, D127 3.8). It closes by itself when the breaker lifts; ordering goes on meanwhile.
+ */
+export const PAYING_PAUSED_KIND = 'paying_paused'
+/**
+ * A payment stayed `requested`, `priced` or `cancelling` past the recovery's bound although it was
+ * tried again (#112): Restro's team looks. Audience `restro`, so its rule is the team's digest.
+ */
+export const PAYMENT_STUCK_KIND = 'payment_stuck'
 
 const MINUTE = 60_000
 
@@ -72,6 +87,16 @@ export interface KindRule {
   readonly closesItself: boolean
   /** Told even outside service hours (D120: the pre-opening check only). */
   readonly outsideServiceHours: boolean
+  /**
+   * A question only a manager's or owner's answer closes (an unconfirmed card payment, #112):
+   * nobody presses Done on it, and the end of the night leaves it open.
+   */
+  readonly needsAnswer?: boolean
+  /**
+   * Reminded again as the card's hold runs out (design §5.3): at half the time left and with 24
+   * hours left, from the `captureBefore` in the alert's details (#112).
+   */
+  readonly holdExpiryReminders?: boolean
 }
 
 const staffPush = (reminder: ReceiverRule['reminder'] = null): ReceiverRule => ({
@@ -138,17 +163,22 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // Money the staff must act on (#111): an unconfirmed close (asked again when the items are not
   // back, #153) and stuck lines are reminded once after 10 minutes, as an Unconfirmed order is
   // (D120); a stopped payment is told once.
+  // Both questions are answered, never marked Done, and remind again as the hold runs out (#112).
   [PAYMENT_UNCONFIRMED_KIND]: {
     ...NOBODY,
     push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
     venueTelegram: venueGroup,
     team: teamDigest(),
+    needsAnswer: true,
+    holdExpiryReminders: true,
   },
   [PAYMENT_LINES_NOT_BACK_KIND]: {
     ...NOBODY,
     push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
     venueTelegram: venueGroup,
     team: teamDigest(),
+    needsAnswer: true,
+    holdExpiryReminders: true,
   },
   [PAYMENT_STRANDED_KIND]: {
     ...NOBODY,
@@ -173,6 +203,31 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
       ownersOnly: true,
     },
     team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
+  // A hold the provider would not release is the owners' too (#112), told as a failed capture is.
+  [PAYMENT_RELEASE_REFUSED_KIND]: {
+    ...NOBODY,
+    push: {
+      firstDelayMs: 0,
+      minGapMs: 0,
+      reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
+      ownersOnly: true,
+    },
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
+  // Paying paused (#112) is told as an ordering pause is, to the ticked accounts (owners and
+  // managers, D127 3.8) and the team; not the venue's group, since ordering goes on.
+  [PAYING_PAUSED_KIND]: {
+    ...NOBODY,
+    push: staffPush({ afterMs: 60 * MINUTE, max: 1, ownersOnly: true }),
+    team: {
+      firstDelayMs: 0,
+      minGapMs: 0,
+      reminder: { afterMs: 60 * MINUTE, max: 3, ownersOnly: false },
+    },
+    back: true,
+    backAfterMs: 10 * MINUTE,
+    closesItself: true,
   },
 }
 
