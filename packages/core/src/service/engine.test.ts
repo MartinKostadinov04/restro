@@ -102,6 +102,22 @@ const REGISTRY: CommandRegistry = {
       return accepted(null)
     },
   }),
+  'test.quick': defineCommand({
+    schema: z.strictObject({ type: z.literal('test.quick'), tableId: idSchema('tb') }),
+    origins: ['staff'],
+    permission: 'tables.open_close',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    handle: async () => accepted(null),
+  }),
+  'test.quick_lift': defineCommand({
+    schema: z.strictObject({ type: z.literal('test.quick_lift') }),
+    origins: ['staff'],
+    permission: 'ordering.lift',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    handle: async () => accepted(null),
+  }),
   'test.codes': defineCommand({
     schema: z.strictObject({ type: z.literal('test.codes') }),
     origins: ['staff'],
@@ -237,6 +253,27 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
       // A PIN is good only on a shared device of this venue.
       expect(await run(open(), staff({ ...pin, sessionId: 'not-a-device' }))).toMatchObject({
         code: 'actor_unknown',
+      })
+    })
+
+    it('lets the shared device’s own account run a quick answer with what Staff hold', async () => {
+      const quick = { type: 'test.quick', tableId: world.tables[0] }
+      // Even an owner's tablet holds only Staff's rights, and only for a command marked quick.
+      expect(await run(quick, staff(user(ownerId, deviceSession)))).toMatchObject({
+        status: 'accepted',
+      })
+      expect(
+        await run({ type: 'test.quick_lift' }, staff(user(ownerId, deviceSession))),
+      ).toMatchObject({
+        code: 'permission_denied',
+      })
+      // An account that is not a member of the organisation gets nothing from a device.
+      expect(await run(quick, staff(user(outsiderId, deviceSession)))).toMatchObject({
+        code: 'actor_unknown',
+      })
+      // Off a shared device the account's own role decides, as before.
+      expect(await run(quick, staff(user(barmanUserId)))).toMatchObject({
+        code: 'permission_denied',
       })
     })
 

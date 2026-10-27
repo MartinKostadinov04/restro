@@ -34,6 +34,11 @@ export type TableCommand =
   | { readonly type: 'table.new_guests'; readonly tableId: string; readonly sittingId?: string }
   | { readonly type: 'tables.open_all' }
   | { readonly type: 'tables.close_all' }
+  | { readonly type: 'table.resume'; readonly tableId: string }
+  | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
+  | { readonly type: 'alert.done'; readonly alertId: string }
+  | { readonly type: 'ordering.pause'; readonly barId: string | null }
+  | { readonly type: 'ordering.lift'; readonly pauseId: string }
 
 /** Who acts at which venue. The tenant is the person's organisation, never the request's. */
 export interface TonightScope {

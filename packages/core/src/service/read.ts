@@ -11,6 +11,7 @@
 import {
   alerts,
   areas,
+  bars,
   billReadings,
   type DbPool,
   locks,
@@ -21,6 +22,7 @@ import {
   type ReadTx,
   sentOrders,
   sittings,
+  staffMembers,
   tableOrders,
   venues,
   venueTables,
@@ -456,6 +458,8 @@ export async function readTableState(
 export interface TonightTable {
   readonly id: string
   readonly label: string
+  /** True when the label is only the table's number (no name of ours over it): a screen words it "Table 7". */
+  readonly numbered: boolean
   readonly barId: string | null
   readonly isPaymentTable: boolean
   /** The open sitting, or null: the table is open for phones exactly while it has one. */
@@ -466,11 +470,26 @@ export interface TonightTable {
   } | null
 }
 
+/** An active pause as Tonight lists it: where it applies and who started it. */
+export interface TonightPause extends PauseView {
+  /** Our id of what is paused: a venue, bar, table or the POS connection. */
+  readonly targetId: string
+  /** Who started a staff pause: a staff member's name, or null when no person is named. */
+  readonly startedBy: string | null
+}
+
 /** What Tonight shows the actor. Parts the actor may not see are left out, not emptied. */
 export interface Tonight {
   readonly serviceDate: string
   /** What the actor holds here; the screen hides what the server would refuse anyway. */
   readonly permissions: readonly Permission[]
+  /**
+   * True when the actor is a shared device's own account: it reads Tonight with what Staff hold,
+   * and a person's PIN names who answers (D122 §7).
+   */
+  readonly device: boolean
+  /** The venue's bars, by name; a table's `barId` is one of them. */
+  readonly bars: readonly { readonly id: string; readonly name: string }[]
   readonly tables: readonly TonightTable[]
   /** Tonight's sent orders, newest first. */
   readonly sentOrders: readonly {
@@ -501,7 +520,7 @@ export interface Tonight {
         readonly calledAt: Date
       }[]
     | null
-  readonly pauses: readonly PauseView[]
+  readonly pauses: readonly TonightPause[]
   /** Tonight's Log, newest first, for `log.view`; null otherwise. */
   readonly log:
     | readonly {
@@ -556,7 +575,8 @@ export async function readTonight(
     if (venue === undefined) return { ok: false, code: 'venue_missing' } as const
     if (venue.archivedAt !== null) return { ok: false, code: 'venue_archived' } as const
 
-    const grants = await resolveGrants(tx, input.tenantId, venue.id, actor)
+    // Reading is a quick answer: a shared device's own account sees Tonight without a PIN.
+    const grants = await resolveGrants(tx, input.tenantId, venue.id, actor, { quick: true })
     if (!grants.ok) return { ok: false, code: grants.code } as const
     if (grants.permissions.size === 0) return { ok: false, code: 'permission_denied' } as const
     const held = grants.permissions
@@ -639,10 +659,44 @@ export async function readTonight(
         cause: pauses.cause,
         restroStarted: pauses.restroStarted,
         startedAt: pauses.startedAt,
+        targetId: pauses.targetId,
+        actor: pauses.actor,
       })
       .from(pauses)
       .where(and(pausesOfVenue(venue.id), isNull(pauses.liftedAt)))
       .orderBy(pauses.startedAt)
+
+    const venueBars = await tx
+      .select({ id: bars.id, name: bars.name })
+      .from(bars)
+      .where(and(eq(bars.venueId, venue.id), isNull(bars.archivedAt)))
+      .orderBy(bars.name, bars.id)
+
+    // A staff pause names the person who started it: a PIN's staff member, or the staff member
+    // the signed-in account is linked to. Anyone else (a shared device's account) is not named.
+    const starters = [...new Set(active.filter((p) => !p.restroStarted).map((p) => p.actor))]
+    const memberIds = starters.flatMap((a) => (a.startsWith('staff:') ? [a.slice(6)] : []))
+    const accountIds = starters.flatMap((a) => (a.startsWith('user:') ? [a.slice(5)] : []))
+    const named = new Map<string, string>()
+    if (memberIds.length > 0 || accountIds.length > 0) {
+      const people = await tx
+        .select({
+          id: staffMembers.id,
+          userId: staffMembers.userId,
+          name: staffMembers.displayName,
+        })
+        .from(staffMembers)
+        .where(
+          or(
+            memberIds.length > 0 ? inArray(staffMembers.id, memberIds) : undefined,
+            accountIds.length > 0 ? inArray(staffMembers.userId, accountIds) : undefined,
+          ),
+        )
+      for (const person of people) {
+        named.set(`staff:${person.id}`, person.name)
+        if (person.userId !== null) named.set(`user:${person.userId}`, person.name)
+      }
+    }
 
     const log = held.has('log.view')
       ? await tx
@@ -667,9 +721,12 @@ export async function readTonight(
     const tonight: Tonight = {
       serviceDate: day,
       permissions: [...held],
+      device: grants.device === true,
+      bars: venueBars,
       tables: tables.map((row) => ({
         id: row.id,
         label: row.name ?? row.number ?? '',
+        numbered: row.name === null && row.number !== null,
         barId: row.barId,
         isPaymentTable: row.isPaymentTable,
         sitting:
@@ -682,7 +739,10 @@ export async function readTonight(
         (alert) => alert.permission === null || held.has(alert.permission as Permission),
       ),
       waiterCalls: calls,
-      pauses: active,
+      pauses: active.map(({ actor: starter, ...pause }) => ({
+        ...pause,
+        startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),
+      })),
       log,
     }
     return { ok: true, tonight } as const

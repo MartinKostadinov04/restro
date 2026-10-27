@@ -94,6 +94,12 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
    * `FRESH_SIGN_IN_MINUTES` (D122 §7), or it is refused `sign_in_again`. Left out: not needed.
    */
   readonly freshSignIn?: boolean
+  /**
+   * A quick answer: the shared device's own account may run it without a PIN, holding what the
+   * Staff default role holds (D122 §7, Martin 10-26: the Log names the device's account). Left
+   * out: the device asks for a person's PIN (`pin_required`).
+   */
+  readonly quickOnSharedDevice?: boolean
   readonly idempotency: Idempotency
   /**
    * The oldest a command may be, in milliseconds since the guest's tap (its `ageMs`): an older one

@@ -89,8 +89,8 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     await world?.close()
   })
 
-  function user(userId: string): ServiceActor {
-    return { kind: 'user', userId, sessionId: `sess-${randomUUID()}` }
+  function user(userId: string, sessionId = `sess-${randomUUID()}`): ServiceActor {
+    return { kind: 'user', userId, sessionId }
   }
 
   const tonightOf = async (actor: ServiceActor) => {
@@ -136,6 +136,71 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
   it("shows Restro's admin team its own alerts as well", async () => {
     const tonight = await tonightOf({ kind: 'operator', userId: operatorId })
     expect(alertNames(tonight.alerts)).toEqual(['open', 'restro'])
+  })
+
+  it("shows a shared device's own account what Staff see, without the Log (#85)", async () => {
+    const session = `sess-${randomUUID()}`
+    await world.addSharedDevice(session)
+    const tonight = await tonightOf(user(ownerId, session))
+    expect(tonight.device).toBe(true)
+    expect(tonight.permissions).toEqual(
+      expect.arrayContaining(['alerts.answer', 'tables.open_close', 'ordering.pause']),
+    )
+    expect(tonight.permissions).not.toContain('ordering.lift')
+    expect(tonight.permissions).not.toContain('log.view')
+    expect(tonight.log).toBeNull()
+    expect(tonight.waiterCalls).toHaveLength(1)
+    expect((await tonightOf(user(ownerId))).device).toBe(false)
+  })
+
+  it('names the bars and who started a staff pause, and nobody for one Restro started', async () => {
+    const barId = newId('br')
+    const memberId = await world.addStaff(['ordering.pause'])
+    await world.owner.query(
+      `insert into restro.bars (id, tenant_id, venue_id, name, source_key) values ($1, $2, $3, 'Main bar', 'main')`,
+      [barId, world.tenantId, world.venueId],
+    )
+    const insert = `insert into restro.pauses
+        (id, tenant_id, venue_id, service_date, scope, target_id, cause, restro_started, source, actor, job_id)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'test-seed')`
+    const staffPause = newId('pa')
+    const restroPause = newId('pa')
+    await world.owner.query(insert, [
+      staffPause,
+      world.tenantId,
+      world.venueId,
+      day,
+      'bar',
+      barId,
+      'staff',
+      false,
+      'staff',
+      `staff:${memberId}`,
+    ])
+    await world.owner.query(insert, [
+      restroPause,
+      world.tenantId,
+      world.venueId,
+      day,
+      'venue',
+      world.venueId,
+      'staff_restro',
+      true,
+      'worker',
+      'system',
+    ])
+    const tonight = await tonightOf(user(ownerId))
+    expect(tonight.bars).toEqual([{ id: barId, name: 'Main bar' }])
+    const byId = new Map(tonight.pauses.map((pause) => [pause.id, pause]))
+    expect(byId.get(staffPause)).toMatchObject({
+      scope: 'bar',
+      targetId: barId,
+      startedBy: 'Waiter',
+    })
+    expect(byId.get(restroPause)).toMatchObject({ restroStarted: true, startedBy: null })
+    await world.owner.query('delete from restro.pauses where id = any($1)', [
+      [staffPause, restroPause],
+    ])
   })
 
   it('refuses a guest, a member with no permission here, and an outsider', async () => {

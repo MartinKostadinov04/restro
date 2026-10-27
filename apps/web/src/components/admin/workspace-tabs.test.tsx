@@ -44,8 +44,13 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     renderTabs()
     const tabs = screen.getAllByRole('tab')
     // D97: no Publishing tab (the Publish button is in the header on every tab). D92: Design is
-    // the composer's subtab, not a tab of its own.
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Composer', 'Tables & QR', 'Settings'])
+    // the composer's subtab, not a tab of its own. #85: Tonight sits after Tables & QR.
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'Composer',
+      'Tables & QR',
+      'Tonight',
+      'Settings',
+    ])
     // The select has one entry per declared tab, labelled from the same keys.
     expect(screen.getByRole('combobox', { name: 'Switch tab' })).toBeTruthy()
     expect(tabs).toHaveLength(WORKSPACE_TAB_DEFS.length)

@@ -243,6 +243,7 @@ export {
   type TableStateUnchanged,
   TONIGHT_LOG_LIMIT,
   type Tonight,
+  type TonightPause,
   type TonightRefusal,
   type TonightTable,
 } from './read'

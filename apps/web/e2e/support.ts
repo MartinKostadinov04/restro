@@ -41,3 +41,12 @@ export const ORDER_SLUG = 'order-fixture'
 export const ORDER_PUBLIC_ID = 'orderfixture'
 // The order venue's spot for the location check (#76): the phones stand on it, or across town.
 export const ORDER_SPOT = { lat: 42.6977, lng: 23.3219 }
+
+// The Tonight screen's test (scripts/seed-tonight-e2e.ts): its own organisation and venue, an owner,
+// a waiter with a phone and a bar tablet's account (all with the demo password), and two people with
+// PINs: Maria (Staff, 1234) and Georgi (Manager, 4321). The pepper is the test servers' (the PIN
+// check uses it; playwright.config.ts gives it to them).
+export const TONIGHT_OWNER_EMAIL = 'tonight-owner@demo-club.test'
+export const TONIGHT_WAITER_EMAIL = 'tonight-waiter@demo-club.test'
+export const TONIGHT_TABLET_EMAIL = 'tonight-tablet@demo-club.test'
+export const TONIGHT_PIN_PEPPER = 'e2e-only-pin-pepper-not-used-anywhere-else-0123456789'

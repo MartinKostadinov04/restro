@@ -125,12 +125,14 @@ function staffOnTable<T extends string>(
   type: T,
   permission: 'tables.open_close' | 'tables.resume' | 'settings.codes',
   handle: CommandHandler<{ readonly type: T; readonly tableId: string }> | null = null,
+  quickOnSharedDevice = false,
 ) {
   return defineCommand({
     schema: z.strictObject({ type: z.literal(type), tableId }),
     origins: ['staff'],
     permission,
     idempotency: 'by_nature',
+    ...(quickOnSharedDevice ? { quickOnSharedDevice } : {}),
     handle,
   })
 }
@@ -251,8 +253,8 @@ export const SERVICE_COMMANDS = {
   // #73: open for phones, the sitting and its end by staff. "Open" on an open table says who
   // opened it; "New guests" names the sitting it ends, so a repeat after the new group sat down
   // changes nothing.
-  'table.open': staffOnTable('table.open', 'tables.open_close', openTable),
-  'table.close': staffOnTable('table.close', 'tables.open_close', closeTable),
+  'table.open': staffOnTable('table.open', 'tables.open_close', openTable, true),
+  'table.close': staffOnTable('table.close', 'tables.open_close', closeTable, true),
   'table.new_guests': defineCommand({
     schema: z.strictObject({
       type: z.literal('table.new_guests'),
@@ -261,6 +263,7 @@ export const SERVICE_COMMANDS = {
     }),
     origins: ['staff'],
     permission: 'tables.open_close',
+    quickOnSharedDevice: true,
     idempotency: 'by_nature',
     handle: newGuests,
   }),
@@ -342,6 +345,7 @@ export const SERVICE_COMMANDS = {
     schema: z.strictObject({ type: z.literal('waiter_call.done'), waiterCallId: idSchema('wc') }),
     origins: ['staff'],
     permission: 'alerts.answer',
+    quickOnSharedDevice: true,
     idempotency: 'by_nature',
     handle: waiterCallDone,
   }),
