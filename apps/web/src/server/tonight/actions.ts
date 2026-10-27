@@ -16,6 +16,7 @@ import { logError } from '../log'
 import { requireTenant } from '../session'
 import { identifyAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
+import { loadTableBill, type TableSheetBill } from './load'
 import {
   markPaymentTable,
   runTableCommand,
@@ -144,4 +145,107 @@ export async function markPaymentTableAction(input: unknown): Promise<TonightRes
   return perform({ venueId: venue }, (scope) =>
     markPaymentTable(scope, { enqueue: (name, data) => enqueueJob(name, data) }, mark),
   )
+}
+
+const OnCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), pin })
+const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin })
+const OnBar = z.strictObject({ venueId, barId: idSchema('br').nullable(), pin })
+const OnSentOrder = z.strictObject({
+  venueId,
+  sentOrderId: idSchema('so'),
+  answer: z.enum(['found', 'not_found']),
+  pin,
+})
+const OnTables = z.strictObject({ venueId, tableIds: z.array(tableId).min(1).max(200), pin })
+const OnTableRead = z.strictObject({ venueId, tableId })
+
+/** Marks a waiter call handled: no PIN, the device's account is named in the Log (D122 §7). */
+export async function handleWaiterCallAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnCall.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'waiter_call.done', waiterCallId: parsed.data.waiterCallId }),
+  )
+}
+
+/** Pauses ordering at every bar (`barId` null) or one. Only makes the menu more cautious. */
+export async function pauseOrderingAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnBar.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'ordering.pause', barId: parsed.data.barId }),
+  )
+}
+
+/** Lifts a pause staff started: a manager's PIN on a shared device. */
+export async function liftOrderingAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnPause.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'ordering.lift', pauseId: parsed.data.pauseId }),
+  )
+}
+
+/** Resumes a table whose guard paused it. */
+export async function resumeTableAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnTable.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'table.resume', tableId: parsed.data.tableId }),
+  )
+}
+
+/**
+ * Staff's answer to a sent order the POS never confirmed, after looking at the bill: "Found on the
+ * bill" or "Not on the bill". One command settles the order, lifts the table's pause and closes the
+ * alert; on a shared device it names the person by their own PIN.
+ */
+export async function answerSentOrderAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnSentOrder.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, {
+      type: 'sent_order.answer',
+      sentOrderId: parsed.data.sentOrderId,
+      answer: parsed.data.answer,
+    }),
+  )
+}
+
+/**
+ * Undoes "Open all": closes the tables that were closed when it was pressed. Each is a
+ * `table.close` of the same person, stopping at the first refusal.
+ */
+export async function undoOpenAllAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnTables.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, async (scope) => {
+    let last: TonightResult = { ok: true, details: {} }
+    for (const id of parsed.data.tableIds) {
+      last = await command(scope, { type: 'table.close', tableId: id })
+      if (!last.ok) return last
+    }
+    return last
+  })
+}
+
+/** The bill of a table as last read, for its sheet (read-only). */
+export async function tableBillAction(
+  input: unknown,
+): Promise<{ readonly ok: true; readonly bill: TableSheetBill | null } | { readonly ok: false }> {
+  const parsed = OnTableRead.safeParse(input)
+  if (!parsed.success) return { ok: false }
+  try {
+    const { organization } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false }
+    return {
+      ok: true,
+      bill: await loadTableBill({ tenantId: organization.id, tableId: parsed.data.tableId }),
+    }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_table_bill_failed', error)
+    return { ok: false }
+  }
 }

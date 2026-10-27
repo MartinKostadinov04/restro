@@ -100,7 +100,7 @@ export interface TablesServices {
 // --- reading ------------------------------------------------------------------------------------
 
 /** The till's name when a till serves the venue (its areas and tables are the till's, D95), else null. */
-async function tillLabelOfVenue(
+export async function tillLabelOfVenue(
   pool: DbPool,
   tenantId: string,
   venueId: string,

@@ -5,6 +5,7 @@
 // URL as `?tab=settings&section=…`.
 import {
   CloudUploadIcon,
+  ConciergeBellIcon,
   HistoryIcon,
   LayoutListIcon,
   type LucideIcon,
@@ -23,13 +24,14 @@ export interface WorkspaceTabDef {
 }
 
 /**
- * The venue page's tabs (D97): Composer, Tables & QR, Settings. Design is the composer's second
+ * The venue page's tabs (D97, #85): Composer, Tables & QR, Tonight, Settings. Design is the composer's second
  * subtab (D92, brief S6). The Publishing tab is gone: the Publish button is in the header on
  * every tab, and its settings are Settings › Publish and › Versioning.
  */
 export const WORKSPACE_TAB_DEFS = [
   { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
+  { value: 'tonight', labelKey: 'workspace.tabs.tonight', icon: ConciergeBellIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
 ] as const satisfies readonly WorkspaceTabDef[]
 

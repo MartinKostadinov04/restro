@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { SERVICE_COMMANDS, ServiceCommandSchema } from './commands'
 import { actorText, ServiceContextSchema } from './context'
+import { isSettingsPermission, type Permission } from './permissions'
 
 const TENANT = 'tn_0123456789ABCDEFGHIJKL'
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
@@ -18,6 +19,30 @@ describe('the service commands', () => {
       } else {
         expect(definition.permission, type).toBeNull()
       }
+    }
+  })
+
+  it('lets a shared device run only the quick answers, never a settings change (#85)', () => {
+    // A shared device's own account holds what Staff hold for exactly these commands; every other
+    // staff command asks the person's PIN (`pin_required`), and a PIN never unlocks settings.
+    const quick = Object.entries(SERVICE_COMMANDS)
+      .filter(
+        ([, definition]) => 'quickOnSharedDevice' in definition && definition.quickOnSharedDevice,
+      )
+      .map(([type]) => type)
+      .sort()
+    expect(quick).toEqual([
+      'ordering.pause',
+      'table.close',
+      'table.new_guests',
+      'table.open',
+      'waiter_call.done',
+    ])
+    for (const type of quick) {
+      const definition = SERVICE_COMMANDS[type as keyof typeof SERVICE_COMMANDS]
+      expect(definition.origins, type).toEqual(['staff'])
+      expect(isSettingsPermission(definition.permission as Permission), type).toBe(false)
+      expect('freshSignIn' in definition && definition.freshSignIn, type).toBeFalsy()
     }
   })
 

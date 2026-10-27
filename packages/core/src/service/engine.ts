@@ -203,7 +203,9 @@ export async function executeCommand(
         }
       }
 
-      const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor)
+      const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor, {
+        quick: definition.quickOnSharedDevice === true,
+      })
       if (!grants.ok) throw new Refusal(refused(actionId, grants.code))
       if (definition.permission !== null && !grants.permissions.has(definition.permission)) {
         throw new Refusal(refused(actionId, 'permission_denied'))

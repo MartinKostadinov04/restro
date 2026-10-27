@@ -20,6 +20,8 @@ import { requireTenant } from '@/server/session'
 import { getVenue, venueHasTill } from '@/server/venues'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
 import { TablesTab } from '@/tables/tables-tab'
+import { TonightSkeleton } from '@/tonight/tonight-skeleton'
+import { TonightTab } from '@/tonight/tonight-tab'
 
 export async function generateMetadata({ params }: PageProps<'/venues/[venueId]'>) {
   const { organization } = await requireTenant()
@@ -31,7 +33,7 @@ export default async function VenueWorkspacePage({
   params,
   searchParams,
 }: PageProps<'/venues/[venueId]'>) {
-  const { organization } = await requireTenant()
+  const { organization, user, sessionId } = await requireTenant()
   // Another tenant's venue and a made-up id both come back as null: row-level security hides
   // the row, so the answer is the same 404 either way.
   const venue = await getVenue(organization.id, (await params).venueId)
@@ -55,6 +57,7 @@ export default async function VenueWorkspacePage({
   const composerOpen = openTab === 'composer'
   const settingsOpen = openTab === 'settings'
   const tablesOpen = openTab === 'tables'
+  const tonightOpen = openTab === 'tonight'
   const [hasTill, guestPath] = await Promise.all([
     venueHasTill(organization.id, venue.id),
     guestPathOf(getPool(), organization.id, venue.slug),
@@ -112,6 +115,18 @@ export default async function VenueWorkspacePage({
               </Suspense>
             ) : (
               <TablesSkeleton />
+            ),
+            tonight: tonightOpen ? (
+              <Suspense fallback={<TonightSkeleton />}>
+                <TonightTab
+                  tenantId={organization.id}
+                  venue={venue}
+                  userId={user.id}
+                  sessionId={sessionId}
+                />
+              </Suspense>
+            ) : (
+              <TonightSkeleton />
             ),
             settings: (
               <SettingsSections

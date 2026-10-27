@@ -18,6 +18,7 @@ Taps are counted from the venues list to the screen with its content visible: a 
 | Изчерпано тази вечер / Sold out tonight (dialog) | same page | The items marked sold out tonight, each with "Back on sale". | "Sold out (N)" chip in Structure; it only exists once something is marked. | 2 | 2 |
 | Композитор › Дизайн / Composer › Design | `/venues/{venue}?tab=composer&sub=design` | Pick the template and its look, logo and header name, guest features, font, corners, shadow, colours, beside a phone preview. | Open, then the Design subtab. | 2 | 3 |
 | Маси и QR / Tables & QR | `/venues/{venue}?tab=tables` | Areas and tables, a QR code for each, the menu each area or table shows, create all codes, print. | Open, then the tab. | 2 | 3 |
+| Тази вечер › Действия и маси / Tonight › Actions and tables | `/venues/{venue}?tab=tonight` | What needs a person during service (a sent order to check, an approval, a paused table, a waiter call; the out-of-stock notice apart) and the tables, open or closed for phones, by bar, with Pause ordering. The bar tablet stays here all night. Money rows join in part 2 (#115). | Open on the venue's card, then the "Tonight" tab (after "Tables & QR"). **A staff-only sign-in lands here: 0.** | 2 (0 for staff) | 3 (0 for staff) |
 | QR код на маса / QR code of a table (dialog) | same page | One table's code, enlarged. | Tap the code on a table card in Tables & QR. | 3 | 4 |
 | Лист за печат / Print sheet | `/venues/{venue}/tables/print` | The codes on A4 pages, six to a page, to print or save as PDF. Opens in a new browser tab, without the sidebar. | "Print sheet" in Tables & QR (needs at least one code). | 3 | 4 |
 | Настройки › Общи / Settings › General (of a venue) | `/venues/{venue}?tab=settings&section=general` | The venue's name and address, languages (read-only), its menus (add, rename, order, set live, delete, restore), the menu source and Sync this venue (POS venues), and for owners "Delete venue…". | Open, then Settings. Shorter: the "Manage menus" link in Structure (2 taps, also on a phone). | 2 | 3 |
@@ -69,6 +70,13 @@ The baseline rows are D107's, copied from the acceptance walk (`docs/deliverable
 | Move a table to another area | 2 | 2 | Tables & QR | `tables/table-card.tsx` |
 | Turn a table's code off | 3 | 3 | Tables & QR | `tables/table-card.tsx` |
 | Change the admin's language | 2 | 3 | any page | `components/admin/user-menu.tsx` |
+| Take a waiter call (Handled) | 1, no PIN | 1 | Tonight | `tonight/action-rows.tsx` |
+| Open a table for phones | 1 (Undo toast) | 1 (2 from Needs you) | Tonight | `tonight/tables-grid.tsx` |
+| Open all | 1 (+ PIN on the shared tablet) | 1 | Tonight | `tonight/tonight-panel.tsx` |
+| Close one table | 2 (the tile, then Close for phones) | 2 | Tonight | `tonight/table-sheet.tsx` |
+| Pause ordering | 2 (the button, then the bar) | 2 | Tonight | `tonight/tonight-panel.tsx` |
+| Resume a paused table, or a table with a sent order to check | 1 (+ own PIN on the shared tablet) | 1 | Tonight | `tonight/action-rows.tsx` |
+| Lift a staff pause | 1 (+ a manager's PIN on the shared tablet; no button without the right on a personal session) | 1 | Tonight | `tonight/pause-banners.tsx` |
 
 ## Unknowns
 

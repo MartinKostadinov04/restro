@@ -11,7 +11,7 @@
 // item out of stock in the POS (#80), paying on the bill up to a held card (#110), the alerts'
 // lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
 // Push (#83), the closing hour and the pre-opening check (#82), and the end of a service day
-// (#84).
+// (#84), and staff's answer to an Unconfirmed sent order (#85).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -62,6 +62,7 @@ import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
+import { sentOrderAnswer } from './sent-order-answer'
 import { closeServiceDay } from './service-day-close'
 import {
   closeAllTables,
@@ -125,12 +126,14 @@ function staffOnTable<T extends string>(
   type: T,
   permission: 'tables.open_close' | 'tables.resume' | 'settings.codes',
   handle: CommandHandler<{ readonly type: T; readonly tableId: string }> | null = null,
+  quickOnSharedDevice = false,
 ) {
   return defineCommand({
     schema: z.strictObject({ type: z.literal(type), tableId }),
     origins: ['staff'],
     permission,
     idempotency: 'by_nature',
+    ...(quickOnSharedDevice ? { quickOnSharedDevice } : {}),
     handle,
   })
 }
@@ -251,8 +254,8 @@ export const SERVICE_COMMANDS = {
   // #73: open for phones, the sitting and its end by staff. "Open" on an open table says who
   // opened it; "New guests" names the sitting it ends, so a repeat after the new group sat down
   // changes nothing.
-  'table.open': staffOnTable('table.open', 'tables.open_close', openTable),
-  'table.close': staffOnTable('table.close', 'tables.open_close', closeTable),
+  'table.open': staffOnTable('table.open', 'tables.open_close', openTable, true),
+  'table.close': staffOnTable('table.close', 'tables.open_close', closeTable, true),
   'table.new_guests': defineCommand({
     schema: z.strictObject({
       type: z.literal('table.new_guests'),
@@ -261,6 +264,7 @@ export const SERVICE_COMMANDS = {
     }),
     origins: ['staff'],
     permission: 'tables.open_close',
+    quickOnSharedDevice: true,
     idempotency: 'by_nature',
     handle: newGuests,
   }),
@@ -285,6 +289,8 @@ export const SERVICE_COMMANDS = {
   'table.resume': staffOnTable('table.resume', 'tables.resume', resumeTable),
   'ordering.pause': pauseOrdering(),
   'ordering.lift': liftOrdering(),
+  // #85: staff settle an Unconfirmed sent order: "Found on the bill" or "Not on the bill".
+  'sent_order.answer': sentOrderAnswer(),
   // #83: Done in Tonight or from the venue's Telegram group (`via`), and what the worker sends.
   'alert.done': defineCommand({
     schema: z.strictObject({ type: z.literal('alert.done'), alertId: idSchema('al') }),
@@ -342,6 +348,7 @@ export const SERVICE_COMMANDS = {
     schema: z.strictObject({ type: z.literal('waiter_call.done'), waiterCallId: idSchema('wc') }),
     origins: ['staff'],
     permission: 'alerts.answer',
+    quickOnSharedDevice: true,
     idempotency: 'by_nature',
     handle: waiterCallDone,
   }),

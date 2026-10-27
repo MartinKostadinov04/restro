@@ -97,7 +97,7 @@ async function waitingOf(stx: ServiceTx, table: string): Promise<string[]> {
  * holds the table's order, the sent order (and, for Unconfirmed, the ones waiting behind it) and
  * the lease row, in that order.
  */
-async function moveSentOrder(
+export async function moveSentOrder(
   stx: ServiceTx,
   sent: SentOrder,
   change: {
