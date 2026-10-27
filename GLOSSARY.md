@@ -88,7 +88,7 @@ _Avoid_: product, article, dish, drink
 
 **Item schema**:
 The set of fields an item can have, such as name, description, price, photo and allergens.
-_Avoid_: template (that is the phone design)
+_Avoid_: template, style (those are the phone design)
 
 **Placement**:
 An item's membership of a section and its position there. Placements are layout, kept apart from what an item is.
@@ -108,7 +108,7 @@ A venue-defined label on an item, such as a dietary label, shown to guests.
 _Avoid_: badge, label (on its own)
 
 **Sold out**:
-An item that stays visible but greyed out with no order button, because the POS stopped selling it or a manager marked it sold out for tonight.
+An item the POS stopped selling, or a manager marked sold out for tonight; guests do not see it until it is back on sale (D130).
 _Avoid_: unavailable, out of stock
 
 **Hidden**:
@@ -116,9 +116,16 @@ An item or section guests do not see at all.
 
 ## Publishing and design
 
-**Composer**:
-The admin screen where a venue's menus are arranged (Structure) and styled (Design).
-_Avoid_: editor, builder
+**Studio**:
+The admin tab where a venue's menus are arranged (Structure) and styled (Design).
+_Avoid_: composer (its old name, still in code), editor, builder
+
+**Structure**:
+The part of the Studio where a venue arranges its menus: sections, items, order, hiding, sold out.
+
+**Design**:
+The part of the Studio where a venue styles its menus: the Style, the colours and fonts, and in Advanced every component of the guest page.
+_Avoid_: designer (the tool, not the screen), theme editor
 
 **Publish**:
 Making a menu's current draft the version guests see.
@@ -126,13 +133,17 @@ Making a menu's current draft the version guests see.
 **Version**:
 One published state of a menu. A venue keeps the live version and up to two restorable ones.
 
-**Template**:
-A guest phone design a venue picks in the Design tab, such as Editorial Market.
-_Avoid_: face (the template's code), theme, skin; never for the item schema
+**Style**:
+A complete set of design choices for the guest page. Restro's premade Styles (Basic, Editorial, Soft, Classic, Club) and an organisation's own saved Styles; a venue picks one and changes what it likes (D127).
+_Avoid_: template (the old word, still in code and file names), face (the renderer's code), theme, skin, preset (on its own); never for the item schema
+
+**Basic**:
+The Style every venue starts on: a plain, well-working menu.
+_Avoid_: default, plain
 
 **Guest page**:
-The page a guest opens on their phone: one venue's menu in that venue's template.
-_Avoid_: guest menu, public page, shell (the host code around a template)
+The page a guest opens on their phone: one venue's menu in that venue's Style.
+_Avoid_: guest menu, public page, shell (the host code around the renderer)
 
 **Guest feature**:
 A service a venue can switch on for guests, such as the order, the bill or calling a waiter. Guests see it only once Restro supports it.
