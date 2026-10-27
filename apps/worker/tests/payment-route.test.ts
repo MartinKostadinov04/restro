@@ -1088,15 +1088,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         await client.query('commit')
       })
 
-    it.each([
-      ['isolateLines', 'attempting'],
-      ['isolateLines', 'done'],
-      ['payAndClose', 'attempting'],
-      ['payAndClose', 'done'],
-      ['capture', 'attempting'],
-      ['capture', 'done'],
-    ])('after %s %s: captured, released or unconfirmed', async (step, outcome) => {
-      const id = await held(1)
+    /** Runs the payment's route until the worker dies right after it records `step` `outcome`. */
+    async function killAfter(id: string, step: string, outcome: string) {
       const killed = {
         ...env(),
         onStep: async (recorded: { readonly step: string; readonly outcome: string }) => {
@@ -1113,7 +1106,9 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         }
       }
       expect(died).toBe(true)
-      // The recovery's pass, after the worker was down: it queues the payment's prepare.
+    }
+    /** The recovery's pass, after the worker was down: it queues the payment's prepare. */
+    async function recoverAfterDowntime(id: string) {
       await pass(id, 120_000)
       await untouched(id)
       sent.length = 0
@@ -1124,6 +1119,21 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           options: expect.objectContaining({ singletonKey: id }),
         }),
       )
+    }
+
+    // `payAndClose done` is recorded with the state in one transaction, so a worker killed after
+    // it finds the payment `closed` already; the recorded close without its state is below (F4).
+    it.each([
+      ['isolateLines', 'attempting'],
+      ['isolateLines', 'done'],
+      ['payAndClose', 'attempting'],
+      ['payAndClose', 'done'],
+      ['capture', 'attempting'],
+      ['capture', 'done'],
+    ])('after %s %s: captured, released or unconfirmed', async (step, outcome) => {
+      const id = await held(1)
+      await killAfter(id, step, outcome)
+      await recoverAfterDowntime(id)
       const { row } = await drive(id)
       expect(['captured', 'released', 'unconfirmed']).toContain(row?.state)
       // Each write was sent at most once more than it was attempted, and the bill closed once.
@@ -1144,6 +1154,64 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         expect(row?.state).toBe('captured')
       }
     })
+
+    it.each(['attempting', 'done'])(
+      'after undoIsolate %s: released, the lines back, the hold released',
+      async (outcome) => {
+        const id = await held(1)
+        // The bill changes at the last check: the route puts the lines back.
+        slipRoundOntoPaymentTable()
+        await killAfter(id, 'undoIsolate', outcome)
+        await recoverAfterDowntime(id)
+        const { row } = await drive(id)
+        expect(row).toMatchObject({
+          state: 'released',
+          reason: 'check_failed',
+          payment_table_id: null,
+        })
+        expect(calls('closeBill')).toBe(0)
+        expect(rowsOn(POS_TABLE)).toEqual(['2001', '2001', '2002'])
+        expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+          expect.objectContaining({ status: 'released' }),
+        ])
+      },
+    )
+
+    /** A close answer recorded without its state (F4): the run died between them. */
+    const recordClose = (id: string, outcome: 'done' | 'refused', answer: string) =>
+      withOwnerClient(db.ownerUrl, async (client) => {
+        await client.query(
+          `insert into restro.payment_steps
+             (tenant_id, venue_id, payment_id, step, outcome, answer, idempotency_key,
+              source, actor, job_id)
+           values ($1, $2, $3, 'payAndClose', $4, $5, $6, 'worker', 'system', 'test-seed')`,
+          [tenantId, demo.venueId, id, outcome, answer, `${id}-close`],
+        )
+      })
+
+    it.each([
+      ['done', 'R-7781', 'R-7781'],
+      ['refused', 'already_done', null],
+    ] as const)(
+      'routes a recorded close %s %s as proof: captured, no question (F4)',
+      async (outcome, answer, receipt) => {
+        const id = await held(1)
+        await killAfter(id, 'payAndClose', 'attempting')
+        expect(await stored(id)).toMatchObject({ state: 'checked' })
+        await recordClose(id, outcome, answer)
+        await recoverAfterDowntime(id)
+        await drive(id, 6)
+        expect(await stored(id)).toMatchObject({ state: 'captured' })
+        const [kept] = await query<{ receipt_number: string | null }>(
+          'select receipt_number from restro.payments where id = $1',
+          [id],
+        )
+        expect(kept?.receipt_number ?? null).toBe(receipt)
+        // The recorded answer is the outcome: the close is not sent again, and nobody is asked.
+        expect(calls('closeBill')).toBe(0)
+        expect(await alertsOf(id)).toEqual([])
+      },
+    )
   })
 
   describe('a hold that runs out while its payment waits (#112)', () => {
@@ -1184,7 +1252,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         'select kind from restro.alerts where subject_id = $1 and done_at is null',
         [id],
       )
-      expect(open).toEqual([])
+      // The questions closed; the owners and the team are told the hold ran out unanswered.
+      expect(open).toEqual([{ kind: 'payment_hold_expired' }])
       const logged = await query<{ closed: string }>(
         `select details->>'questionClosed' as closed from restro.log_entries
           where kind = 'payment.state' and payment_id = $1 and to_state = 'released'`,

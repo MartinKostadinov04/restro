@@ -31,6 +31,7 @@ import {
   upsertBarsyVenues,
 } from '@restro/core/apply'
 import {
+  applyService,
   forgetGuestCodes,
   GUEST_LIMITS,
   type GuestLimit,
@@ -50,7 +51,7 @@ import { createSimServer, ManualClock as SimPosClock, type SimServer } from '@re
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
-import { PaymentBreakers } from '../src/jobs/payment-breaker'
+import { PaymentBreakers, watchedProvider } from '../src/jobs/payment-breaker'
 import { recoverPayments } from '../src/jobs/payment-recovery'
 import { checkPayment, type PaymentJobDeps, preparePayment } from '../src/jobs/payments'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
@@ -598,14 +599,33 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
       const pausesBefore = await query('select id from restro.pauses where venue_id = $1', [
         demo.venueId,
       ])
+      const ref = { tenantId, venueId: demo.venueId }
+      const probeEnv = { pool, log, now: () => clock }
+      const watched = watchedProvider(provider, (ok) =>
+        breakers.record(probeEnv, ref, { kind: 'call', ok }),
+      )
       try {
         const { id } = await pay(0)
         await preparePayment(env(), target(id), deps({ breakers }))
-        // Every read fails part-way: the guest's checks fail for a minute, three times or more.
+        // One payment's reads coming back incomplete for a minute is that payment's data, not
+        // the provider down: it counts for nothing (R3).
         engine.failReads()
         for (const gap of [0, 20, 20, 21]) {
           seconds(gap)
           await expect(checkPayment(env(), target(id), deps({ breakers }))).rejects.toThrow()
+        }
+        expect(await pausedAt(demo.venueId)).toBe(false)
+        engine.clearFaults()
+        // The provider's writes answer a server error for a minute, three times or more.
+        for (const gap of [0, 20, 20, 21]) {
+          seconds(gap)
+          engine.fault('release', { kind: 'server_error' })
+          const outcome = await watched.release({
+            accountRef: providerRef(accountRef),
+            paymentRef: providerRef('sim_nothing_held'),
+            idempotencyKey: randomUUID(),
+          })
+          expect(outcome.kind).toBe('unknown')
         }
         expect(await pausedAt(demo.venueId)).toBe(true)
         expect(await pausedAt(other.id)).toBe(false)
@@ -622,8 +642,7 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
         ).toEqual(pausesBefore)
 
         // Probes fail while the provider is down, then three good ones lift it.
-        const ref = { tenantId, venueId: demo.venueId }
-        const probeEnv = { pool, log, now: () => clock }
+        engine.failReads()
         for (let n = 0; n < 3; n += 1) {
           seconds(61)
           await breakers.probeIfDue(probeEnv, ref, provider, providerRef(accountRef))
@@ -644,6 +663,73 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
         ).toEqual([])
       } finally {
         engine.clearFaults()
+        await query('update restro.payment_accounts set paying_paused_at = null, breaker = null')
+      }
+    })
+
+    it('repeats a pause whose write failed at the next failed call (R2)', async () => {
+      const breakers = new PaymentBreakers(() => 0.5)
+      const ref = { tenantId, venueId: demo.venueId }
+      const good = { pool, log, now: () => clock }
+      // A pool that is closed: every write through it throws.
+      const closed = createPool(db.appUrl, { applicationName: 'restro-closed-pool', max: 1 })
+      await closed.end()
+      const down = { pool: closed, log, now: () => clock }
+      try {
+        await breakers.state(good, ref)
+        for (const gap of [0, 20, 20]) {
+          seconds(gap)
+          await breakers.record(good, ref, { kind: 'call', ok: false })
+        }
+        // The fourth failure trips it, but its write throws: nothing is kept.
+        seconds(21)
+        const kept = await breakers.record(down, ref, { kind: 'call', ok: false })
+        expect(kept?.open).toBeNull()
+        expect(await pausedAt(demo.venueId)).toBe(false)
+        // The next failed call trips it again, and this write goes through.
+        seconds(1)
+        const tripped = await breakers.record(good, ref, { kind: 'call', ok: false })
+        expect(tripped?.open).not.toBeNull()
+        expect(await pausedAt(demo.venueId)).toBe(true)
+      } finally {
+        await query('update restro.payment_accounts set paying_paused_at = null, breaker = null')
+      }
+    })
+
+    it("tells Restro's team at the third pause in 30 minutes (D120)", async () => {
+      const unstable = () =>
+        query<{ audience: string }>(
+          `select audience from restro.alerts
+            where kind = 'paying_unstable' and subject_id = $1 and done_at is null`,
+          [demo.venueId],
+        )
+      try {
+        for (const third of [false, true]) {
+          await applyService(
+            pool,
+            { type: 'paying.breaker', action: 'pause', cause: null, breaker: {}, unstable: third },
+            {
+              tenantId,
+              venueId: demo.venueId,
+              origin: 'worker',
+              actor: { kind: 'system' },
+              jobId: `breaker-${randomUUID()}`,
+            },
+          )
+          expect(await unstable()).toEqual(third ? [{ audience: 'restro' }] : [])
+          await applyService(
+            pool,
+            { type: 'paying.breaker', action: 'lift', cause: null, breaker: {} },
+            {
+              tenantId,
+              venueId: demo.venueId,
+              origin: 'worker',
+              actor: { kind: 'system' },
+              jobId: `breaker-${randomUUID()}`,
+            },
+          )
+        }
+      } finally {
         await query('update restro.payment_accounts set paying_paused_at = null, breaker = null')
       }
     })

@@ -52,6 +52,7 @@ import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 import {
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
+  PAYMENT_HOLD_EXPIRED_KIND,
   PAYMENT_LINES_NOT_BACK_KIND,
   PAYMENT_RELEASE_REFUSED_KIND,
   PAYMENT_STRANDED_KIND,
@@ -230,6 +231,7 @@ async function raise(
   locked: Locked,
   kind: string,
   permission: Permission,
+  more: Readonly<Record<string, string>> = {},
 ): Promise<void> {
   if (locked.alerts.has(kind)) return
   const { payment } = locked
@@ -251,6 +253,7 @@ async function raise(
       tipMinor: payment.tipMinor,
       currency: payment.currency,
       captureBefore: payment.captureBefore?.toISOString() ?? null,
+      ...more,
     },
     ...stx.provenance,
     updatedAt: sql`now()`,
@@ -980,7 +983,10 @@ export function paymentReleaseRefused() {
       const { payment } = locked
       if (payment.state !== 'cancelling') return at(payment, payment.state, false)
       if (locked.alerts.has(PAYMENT_RELEASE_REFUSED_KIND)) return at(payment, payment.state, false)
-      await raise(stx, locked, PAYMENT_RELEASE_REFUSED_KIND, 'money.follow_up')
+      // The refusal's code picks the words: `already_captured` means the card was charged.
+      await raise(stx, locked, PAYMENT_RELEASE_REFUSED_KIND, 'money.follow_up', {
+        code: command.code,
+      })
       await logPayment(stx, payment, payment.state, 'release_refused', { code: command.code })
       return at(payment, payment.state, true)
     },
@@ -997,7 +1003,9 @@ const QUESTION_KINDS = [PAYMENT_UNCONFIRMED_KIND, PAYMENT_LINES_NOT_BACK_KIND] a
  * - `held`, or `queued` with no payment table yet: nothing moved on the POS;
  * - `cancelling`: a release the provider refused, now over (its alert closes);
  * - `unconfirmed`, waiting for an answer: its open question closes too, both kinds, and the Log
- *   says so. Answered, the route goes on (a capture of an expired hold fails and tells the owners).
+ *   says so; the owners and Restro's team are told (`payment_hold_expired`), since the bill may be
+ *   closed in the till with nothing charged. Answered, the route goes on (a capture of an expired
+ *   hold fails and tells the owners).
  * Anything else changes nothing: once the lines moved, the route runs to its end.
  */
 export function paymentExpired() {
@@ -1013,7 +1021,7 @@ export function paymentExpired() {
     idempotency: 'by_state',
     async handle(stx, command) {
       const locked = await lockRoute(stx, command.paymentId, {
-        alertKinds: [...QUESTION_KINDS, PAYMENT_RELEASE_REFUSED_KIND],
+        alertKinds: [...QUESTION_KINDS, PAYMENT_RELEASE_REFUSED_KIND, PAYMENT_HOLD_EXPIRED_KIND],
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
@@ -1057,6 +1065,8 @@ export function paymentExpired() {
           .where(eq(alerts.id, alert.id))
         closed.push(kind)
       }
+      // Nobody answered before the hold ran out: the owners sort the bill out in the till.
+      if (asking) await raise(stx, locked, PAYMENT_HOLD_EXPIRED_KIND, 'money.follow_up')
       // An unconfirmed payment was settled already: its 18 months start again from the release.
       const settled = payment.settledAt !== null
       await move(

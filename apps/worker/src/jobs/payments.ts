@@ -557,7 +557,16 @@ async function cancel(
   if (lastRelease?.outcome === 'refused' && lastRelease.answer !== 'not_found') {
     const read = await provider.readPayment(accountRef, providerRef(paymentRef))
     if (!read.complete) throw new PaymentStepRetry('the refused hold could not be read back')
-    if (isOver(read.value)) await expire(env, target, read.value.status)
+    if (isOver(read.value)) {
+      await expire(env, target, read.value.status)
+      return
+    }
+    // Still held: the owners and the team are told, once (a run that died before telling them).
+    await apply(env, target, {
+      type: 'payment.release_refused',
+      paymentId: target.paymentId,
+      code: lastRelease.answer ?? 'unknown',
+    })
     return
   }
   const idempotencyKey = await providerKey(env, target, 'release')
@@ -1028,7 +1037,8 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       type: 'payment.closed',
       outcome: proof ? 'done' : 'refused',
       code: close.outcome === 'refused' ? close.answer : null,
-      receiptNumber: null,
+      // A `done` close's answer is its receipt number, when the POS gave one (R8).
+      receiptNumber: close.outcome === 'done' ? close.answer : null,
       fiscalMemoryNumber: null,
     })
     return 'next'
@@ -1170,8 +1180,14 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       step: { outcome: outcome.kind, answer, idempotencyKey: ref },
     })
   } catch (error) {
-    // The answer is kept whatever became of its state: the next run goes on from it.
-    await recordStep(env, target, 'payAndClose', ref)(outcome.kind, answer)
+    // The answer is kept whatever became of its state: the next run goes on from it, with the
+    // receipt number as a `done` close's answer (R8).
+    await recordStep(
+      env,
+      target,
+      'payAndClose',
+      ref,
+    )(outcome.kind, outcome.kind === 'done' ? receiptNumber : answer)
     throw error
   }
   await env.onStep?.({ step: 'payAndClose', outcome: outcome.kind })

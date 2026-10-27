@@ -6,7 +6,8 @@
 //
 // The pure breaker (`stepBreaker`) decides in the worker; `paying.breaker` writes what it answers:
 // - `pause`: paying pauses (new payments are refused `paying_paused`, a waiting one is cancelled at
-//   its turn) and the owners, managers and Restro's team are told once;
+//   its turn) and the owners, managers and Restro's team are told once; the third pause in 30
+//   minutes (`unstable`) also tells Restro's team the venue's paying is unstable (D120);
 // - `progress`: the breaker's state only, so a restarted worker restores it;
 // - `lift`: paying is back, and the alert closes (its rule says "back").
 
@@ -15,7 +16,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { newId } from '../ids'
-import { PAYING_PAUSED_KIND } from './alert-rules'
+import { PAYING_PAUSED_KIND, PAYING_UNSTABLE_KIND } from './alert-rules'
 import { defineCommand, type ServiceTx } from './definition'
 import { accepted, refused } from './results'
 
@@ -39,6 +40,8 @@ export function payingBreaker() {
       action: z.enum(['pause', 'progress', 'lift']),
       cause: Cause.nullable().default(null),
       breaker: BreakerJson,
+      /** The third automatic pause in 30 minutes (D120): Restro's team is told. */
+      unstable: z.boolean().default(false),
     }),
     origins: ['worker'],
     permission: null,
@@ -56,6 +59,8 @@ export function payingBreaker() {
           ),
         )
         .for('update')
+      // The team's unstable alert, locked with the alerts (before the account, the lock order).
+      const unstableOpen = command.unstable ? await lockUnstable(stx) : null
       stx.rows.claim('payment', [`account:${stx.venueId}`])
       const [account] = await stx.tx
         .select({ pausedAt: paymentAccounts.payingPausedAt })
@@ -103,6 +108,7 @@ export function payingBreaker() {
             details: { alertId: id, cause },
           })
         }
+        if (unstableOpen === false) await alertUnstable(stx)
         return accepted(null, { details: { paused: true, changed: true } })
       }
       if (!paused) {
@@ -131,4 +137,40 @@ export function payingBreaker() {
       return accepted(null, { details: { paused: false, changed: true } })
     },
   })
+}
+
+/** Locks the venue's open unstable alert: true when one is open already. */
+async function lockUnstable(stx: ServiceTx): Promise<boolean> {
+  stx.rows.claim('alert', [`${PAYING_UNSTABLE_KIND}:${stx.venueId}`])
+  const [open] = await stx.tx
+    .select({ id: alerts.id })
+    .from(alerts)
+    .where(
+      and(
+        eq(alerts.kind, PAYING_UNSTABLE_KIND),
+        eq(alerts.subjectId, stx.venueId),
+        isNull(alerts.doneAt),
+      ),
+    )
+    .for('update')
+  return open !== undefined
+}
+
+/** One open alert to Restro's team per venue whose paying is unstable (none was open). */
+async function alertUnstable(stx: ServiceTx): Promise<void> {
+  const id = newId('al')
+  await stx.tx.insert(alerts).values({
+    id,
+    tenantId: stx.tenantId,
+    venueId: stx.venueId,
+    serviceDate: stx.serviceDate,
+    kind: PAYING_UNSTABLE_KIND,
+    audience: 'restro',
+    subjectId: stx.venueId,
+    permission: null,
+    details: {},
+    ...stx.provenance,
+    updatedAt: sql`now()`,
+  })
+  await stx.log({ kind: 'alert.raised', reason: PAYING_UNSTABLE_KIND, details: { alertId: id } })
 }

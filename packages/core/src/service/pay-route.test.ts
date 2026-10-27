@@ -635,7 +635,16 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
       )
     ).rows[0]
     expect(row).toEqual({ state: 'released', reason: 'expired', kept: true })
-    expect(await openAlerts(id)).toEqual([])
+    // Both questions closed; the owners and the team are told the hold ran out unanswered.
+    expect(await openAlerts(id)).toEqual(['payment_hold_expired'])
+    const told = (
+      await world.owner.query<{ permission: string; audience: string }>(
+        `select permission, audience from restro.alerts
+          where subject_id = $1 and kind = 'payment_hold_expired'`,
+        [id],
+      )
+    ).rows
+    expect(told).toEqual([{ permission: 'money.follow_up', audience: 'venue' }])
     const log = await world.owner.query<{ to_state: string; reason: string; closed: string }>(
       `select to_state, reason, details->>'questionClosed' as closed from restro.log_entries
         where kind = 'payment.state' and payment_id = $1`,

@@ -339,6 +339,18 @@ async function deleteDuePayments(
 ): Promise<void> {
   const due = sql`payment_id in (select id from restro.payments
                                   where venue_id = ${venueId} and ${paymentDue(now)})`
+  // A payment that never freed its payment table gives its lease up with it (#112, R9): nothing
+  // else would free a lease whose holder is gone.
+  count(
+    counts,
+    'locks',
+    await deleteRows(
+      tx,
+      'locks',
+      sql`venue_id = ${venueId} and scope = 'payment_table' and holder in
+            (select id from restro.payments where venue_id = ${venueId} and ${paymentDue(now)})`,
+    ),
+  )
   count(counts, 'payment_steps', await deleteRows(tx, 'payment_steps', due))
   count(counts, 'payment_lines', await deleteRows(tx, 'payment_lines', due))
   count(

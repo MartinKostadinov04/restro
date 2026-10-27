@@ -576,8 +576,25 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     // Waiting for a manager's answer, or disputed and still open: kept, however old.
     const asking = await settledPayment(v, t, s, UNTIL_DUE, 'unconfirmed', 'close_unknown')
     const disputed = await settledPayment(v, t, s, UNTIL_DUE, 'released', 'cancelled', 'open')
+    // The due one never freed its payment table (R9): its lease goes with it; the kept one's stays.
+    const lease = async (holder: string) => {
+      const key = newId('tb')
+      await query(
+        `insert into restro.locks (tenant_id, venue_id, scope, key, holder, fence, taken_at,
+           source, actor, job_id)
+         values ($1, $2, 'payment_table', $3, $4, 1, now(), $5, $6, $7)`,
+        [tenantId, v, key, holder, ...SEED],
+      )
+      return key
+    }
+    const dueLease = await lease(due)
+    const laterLease = await lease(later)
+    const leaseOf = (key: string) =>
+      query('select holder from restro.locks where scope = $1 and key = $2', ['payment_table', key])
     const { counts } = await purgeService({ purgePool }, { tenantId, now: NOW })
-    expect(counts).toMatchObject({ payments: 1, payment_lines: 1, payment_steps: 1 })
+    expect(counts).toMatchObject({ payments: 1, payment_lines: 1, payment_steps: 1, locks: 1 })
+    expect(await leaseOf(dueLease)).toEqual([])
+    expect(await leaseOf(laterLease)).toEqual([{ holder: later }])
     expect(await exists('payments', due)).toBe(false)
     expect(await query('select 1 from restro.payment_lines where payment_id = $1', [due])).toEqual(
       [],

@@ -42,10 +42,21 @@ export const PAYMENT_CAPTURE_FAILED_KIND = 'payment_capture_failed'
  */
 export const PAYMENT_RELEASE_REFUSED_KIND = 'payment_release_refused'
 /**
+ * A card payment's hold ran out while its question waited for an answer (#112): the bill may be
+ * closed in the till with nothing charged, or its items may still sit on the payment table. The
+ * owners and Restro's team are told, as a failed capture is; staff press Done once it is sorted.
+ */
+export const PAYMENT_HOLD_EXPIRED_KIND = 'payment_hold_expired'
+/**
  * Paying in the app is paused at a venue: no call to its payment provider succeeded for a minute
  * (#112, D127 3.8). It closes by itself when the breaker lifts; ordering goes on meanwhile.
  */
 export const PAYING_PAUSED_KIND = 'paying_paused'
+/**
+ * Paying in the app paused at a venue for the third time in 30 minutes (#112, D120): Restro's team
+ * is told the venue's paying is unstable. Audience `restro`, one open per venue.
+ */
+export const PAYING_UNSTABLE_KIND = 'paying_unstable'
 /**
  * A payment stayed `requested`, `priced` or `cancelling` past the recovery's bound although it was
  * tried again (#112): Restro's team looks. Audience `restro`, so its rule is the team's digest.
@@ -159,6 +170,7 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   [ORDER_RATE_KIND]: { ...NOBODY, team: teamDigest() },
   [ORDER_PACE_KIND]: { ...NOBODY, team: teamDigest() },
   [CONNECTION_UNSTABLE_KIND]: { ...NOBODY, team: teamDigest() },
+  [PAYING_UNSTABLE_KIND]: { ...NOBODY, team: teamDigest() },
   [TABLE_CODE_BLOCK_KIND]: { ...NOBODY, team: teamDigest() },
   // Tonight is told about stock (#80); a phone is not.
   [OUT_OF_STOCK_KIND]: NOBODY,
@@ -197,6 +209,17 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // A capture that failed is the owners' (the money of a closed bill): pushed to them at once,
   // reminded once after an hour, and the Restro team is told at once; not the venue's group.
   [PAYMENT_CAPTURE_FAILED_KIND]: {
+    ...NOBODY,
+    push: {
+      firstDelayMs: 0,
+      minGapMs: 0,
+      reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
+      ownersOnly: true,
+    },
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
+  // A hold that ran out unanswered is the owners' too (#112), told as a failed capture is.
+  [PAYMENT_HOLD_EXPIRED_KIND]: {
     ...NOBODY,
     push: {
       firstDelayMs: 0,

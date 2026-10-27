@@ -3,12 +3,16 @@
 // in core) decides; this registry feeds it every provider call of the payment jobs and writes what
 // it answers through `applyService` (`paying.breaker`):
 // - a pause: paying in the app pauses at the venue (`payment_accounts.paying_paused_at`), and the
-//   owners, managers and Restro's team are told; ordering goes on;
+//   owners, managers and Restro's team are told; ordering goes on; the third in 30 minutes also
+//   tells Restro's team the venue's paying is unstable (D120);
 // - a probe's progress: the breaker's state, so a restarted worker restores it;
 // - a lift: paying is back.
-// A call that answered counts as good, a refusal too (the provider answered); one that threw,
-// answered `unknown`, or read incomplete counts as failed. The database stays the gate: the hold
-// step, `pay.start` and the queue read `paying_paused_at`.
+// A call that answered counts as good, a refusal too (the provider answered); one that threw or
+// whose write answered `unknown` counts as failed. A reading that came back incomplete counts for
+// nothing: it can be one payment's own data (a duplicate, a missing intent), not an outage.
+// The database stays the gate: the hold step, `pay.start` and the queue read `paying_paused_at`.
+// A step's state is kept only once what it answered is written, so a failed write is repeated by
+// the next event.
 // Probes (`readConnection`, read-only) run from the payment recovery tick when one is due, so they
 // come at most every 30 s (the breaker asks for 15 s gaps; lifting takes a little longer).
 // Steps of one account run one at a time; a process runs one registry (`SHARED_PAYMENT_BREAKERS`).
@@ -153,8 +157,9 @@ export class PaymentBreakers {
           await write(env, ref, { action: 'progress', cause: null, breaker: after })
         }
       } catch (error) {
-        // The step is kept in memory; the next one writes again.
+        // Nothing kept: the breaker stays where the database is, and the next event steps again.
         env.log.error({ venueId: ref.venueId, err: error }, 'a paying breaker step failed')
+        return before
       }
       this.#states.set(keyOf(ref), after)
       return after
@@ -193,6 +198,7 @@ async function write(
     readonly action: 'pause' | 'progress' | 'lift'
     readonly cause: string | null
     readonly breaker: BreakerState
+    readonly unstable?: boolean
   },
 ): Promise<void> {
   const { result } = await applyService(
@@ -221,8 +227,11 @@ async function act(
   if (action.kind === 'pause') {
     const cause =
       action.cause === BREAKER_CAUSES.unreachable ? PROVIDER_UNREACHABLE_CAUSE : action.cause
-    await write(env, ref, { action: 'pause', cause, breaker: state })
-    env.log.warn({ venueId: ref.venueId, cause }, 'paying in the app is paused')
+    await write(env, ref, { action: 'pause', cause, breaker: state, unstable: action.unstable })
+    env.log.warn(
+      { venueId: ref.venueId, cause, unstable: action.unstable },
+      'paying in the app is paused',
+    )
     return
   }
   await write(env, ref, { action: 'lift', cause: null, breaker: state })
@@ -231,14 +240,15 @@ async function act(
 
 /**
  * The provider with every call fed to the account's breaker: answered (a refusal too) is good;
- * thrown, `unknown` or an incomplete reading is a failed call.
+ * thrown or a write's `unknown` is a failed call. A reading that came back is good when whole and
+ * counts for nothing when incomplete (one payment's data, not the provider down).
  */
 export function watchedProvider(
   provider: PaymentProvider,
   feed: (ok: boolean) => Promise<unknown>,
 ): PaymentProvider {
   const watch =
-    <A extends unknown[], R>(call: (...args: A) => Promise<R>, ok: (answer: R) => boolean) =>
+    <A extends unknown[], R>(call: (...args: A) => Promise<R>, ok: (answer: R) => boolean | null) =>
     async (...args: A): Promise<R> => {
       let answer: R
       try {
@@ -247,11 +257,12 @@ export function watchedProvider(
         await feed(false)
         throw error
       }
-      await feed(ok(answer))
+      const fed = ok(answer)
+      if (fed !== null) await feed(fed)
       return answer
     }
   const wrote = (answer: { readonly kind: string }) => answer.kind !== 'unknown'
-  const read = (answer: { readonly complete: boolean }) => answer.complete
+  const read = (answer: { readonly complete: boolean }) => (answer.complete ? true : null)
   return {
     kind: provider.kind,
     capabilities: provider.capabilities,
