@@ -127,11 +127,13 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     versioning: <p>versioning section</p>,
   }
 
-  it('has General, Publish and Versioning for a venue with a till; General by default', () => {
+  it('has General, Hours, Ordering, Publish and Versioning for a venue with a till; General by default', () => {
     navigation.search = 'tab=settings'
     renderWithIntl(<SettingsSections hasTill contents={sections} />)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'General',
+      'Hours',
+      'Ordering',
       'Publish',
       'Versioning',
     ])
@@ -144,12 +146,33 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     renderWithIntl(<SettingsSections hasTill={false} contents={sections} />)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'General',
+      'Hours',
+      'Ordering',
       'Versioning',
     ])
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true')
     expect(settingsSectionOf('publish', false)).toBe('general')
     expect(settingsSectionOf('publish', true)).toBe('publish')
     expect(settingsSectionOf('nonsense', true)).toBe('general')
+  })
+
+  it('lists Staff and roles and Alerts only for a role holding their right, in the grouping’s order', () => {
+    navigation.search = 'tab=settings'
+    renderWithIntl(
+      <SettingsSections hasTill rights={{ roles: true, alerts: true }} contents={sections} />,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'General',
+      'Hours',
+      'Ordering',
+      'Staff and roles',
+      'Alerts',
+      'Publish',
+      'Versioning',
+    ])
+    expect(settingsSectionOf('staff', true)).toBe('general')
+    expect(settingsSectionOf('alerts', true, { roles: false, alerts: true })).toBe('alerts')
+    expect(settingsSectionOf('staff', true, { roles: false, alerts: true })).toBe('general')
   })
 
   it('opens the section in ?section= and writes a choice to the URL, keeping ?tab=', async () => {

@@ -24,10 +24,40 @@ export interface ButtonPress {
   readonly data: string
 }
 
+/** The kinds of chat Telegram reports. */
+export type ChatType = 'private' | 'group' | 'supergroup' | 'channel'
+
+/**
+ * Someone started the bot with a link's code (#87): `/start CODE` in a private chat (a person
+ * linking their Telegram), or in a group the bot was just added to by `?startgroup=CODE`. The
+ * code is Restro's signed link; nothing here has opened it.
+ */
+export interface StartMessage {
+  readonly userId: string
+  readonly chatId: string
+  readonly chatType: ChatType
+  /** The group's title, or '' in a private chat. */
+  readonly title: string
+  readonly code: string
+}
+
+/** The bot's own standing in a chat changed (`my_chat_member`): added, or removed (#87). */
+export interface MembershipChange {
+  readonly chatId: string
+  readonly chatType: ChatType
+  readonly title: string
+  /** Telegram's word for the bot's new status: `member`, `administrator`, `left`, `kicked`… */
+  readonly status: string
+}
+
 /** One update; `press` is null for anything but a button press. */
 export interface TelegramUpdate {
   readonly updateId: number
   readonly press: ButtonPress | null
+  /** A `/start CODE` message, when the update is one. */
+  readonly start?: StartMessage | null
+  /** A change of the bot's membership of a group, when the update is one. */
+  readonly membership?: MembershipChange | null
 }
 
 /** What the alerts need of Telegram. The worker's tests replace it. */
@@ -42,7 +72,9 @@ export interface TelegramClient {
   editMessage(ref: MessageRef, text: string): Promise<void>
   /** Closes the spinner on a pressed button, with a short line shown to the person. */
   answerCallback(callbackId: string, text: string): Promise<void>
-  /** Waits up to `timeoutSeconds` for button presses at or after `offset`. */
+  /** The bot's own username, for the links the owner opens (`t.me/<bot>?start=…`). */
+  getMe(): Promise<{ readonly username: string }>
+  /** Waits up to `timeoutSeconds` for updates (presses, `/start`, membership) at or after `offset`. */
   getUpdates(options: {
     readonly offset: number
     readonly timeoutSeconds: number
@@ -161,10 +193,22 @@ export function createTelegramClient(options: Options): TelegramClient {
       await call('answerCallbackQuery', { callback_query_id: callbackId, text })
     },
 
+    async getMe() {
+      const result = (await call('getMe', {})) as { username?: unknown }
+      if (typeof result.username !== 'string' || result.username === '') {
+        throw new TelegramError('getMe', null, 'the bot has no username')
+      }
+      return { username: result.username }
+    },
+
     async getUpdates({ offset, timeoutSeconds, signal }) {
       const result = (await call(
         'getUpdates',
-        { offset, timeout: timeoutSeconds, allowed_updates: ['callback_query'] },
+        {
+          offset,
+          timeout: timeoutSeconds,
+          allowed_updates: ['callback_query', 'message', 'my_chat_member'],
+        },
         { ...(signal === undefined ? {} : { signal }), waitMs: timeoutSeconds * 1000 },
       )) as {
         update_id: number
@@ -173,6 +217,15 @@ export function createTelegramClient(options: Options): TelegramClient {
           from: { id: number }
           message?: { message_id: number; text?: string; chat: { id: number } }
           data?: string
+        }
+        message?: {
+          text?: string
+          from?: { id: number }
+          chat: { id: number; type: string; title?: string }
+        }
+        my_chat_member?: {
+          chat: { id: number; type: string; title?: string }
+          new_chat_member?: { status?: string }
         }
       }[]
       return result.map((update) => {
@@ -188,8 +241,51 @@ export function createTelegramClient(options: Options): TelegramClient {
                 data: query.data,
               }
             : null
-        return { updateId: update.update_id, press }
+        return {
+          updateId: update.update_id,
+          press,
+          start: startOf(update.message),
+          membership: membershipOf(update.my_chat_member),
+        }
       })
     },
+  }
+}
+
+const CHAT_TYPES: readonly string[] = ['private', 'group', 'supergroup', 'channel']
+/** `/start CODE` or `/start@bot CODE`; a code is at most 64 of A–Z a–z 0–9 _ - (Telegram's rule). */
+const START = /^\/start(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]{1,64})\s*$/
+
+function startOf(
+  message:
+    | { text?: string; from?: { id: number }; chat: { id: number; type: string; title?: string } }
+    | undefined,
+): StartMessage | null {
+  if (message?.text === undefined || message.from === undefined) return null
+  const code = START.exec(message.text)?.[1]
+  if (code === undefined || !CHAT_TYPES.includes(message.chat.type)) return null
+  return {
+    userId: String(message.from.id),
+    chatId: String(message.chat.id),
+    chatType: message.chat.type as ChatType,
+    title: message.chat.title ?? '',
+    code,
+  }
+}
+
+function membershipOf(
+  change:
+    | { chat: { id: number; type: string; title?: string }; new_chat_member?: { status?: string } }
+    | undefined,
+): MembershipChange | null {
+  const status = change?.new_chat_member?.status
+  if (change === undefined || status === undefined || !CHAT_TYPES.includes(change.chat.type)) {
+    return null
+  }
+  return {
+    chatId: String(change.chat.id),
+    chatType: change.chat.type as ChatType,
+    title: change.chat.title ?? '',
+    status,
   }
 }

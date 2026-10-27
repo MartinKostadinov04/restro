@@ -3,7 +3,12 @@ import { request } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { HealthReport } from './health'
-import { type HealthServer, type RevealHandler, startHealthServer } from './health-server'
+import {
+  type HealthServer,
+  type RevealHandler,
+  startHealthServer,
+  type TelegramLinkHandler,
+} from './health-server'
 import type { RevealRequest } from './reveal'
 
 const OK: HealthReport = {
@@ -233,6 +238,76 @@ describe('startHealthServer', () => {
         codes: { sm_0000000000000000000001: '4821' },
       })
       expect(asked.at(-1)).toEqual(body)
+    })
+  })
+
+  describe('the Telegram link endpoint (#87)', () => {
+    const TOKEN = 'a-service-token-of-at-least-32-characters'
+    const REQUEST = {
+      tenantId: 'tn_0000000000000000000001',
+      venueId: 'vn_0000000000000000000001',
+      actor: { kind: 'user', userId: 'user-1', sessionId: 'session-1' },
+      action: 'link_group',
+    }
+    const asked: unknown[] = []
+    const handler: TelegramLinkHandler = {
+      token: TOKEN,
+      handle: async (parsed) => {
+        asked.push(parsed)
+        return parsed.actor.userId === 'refused'
+          ? { status: 'refused', code: 'permission_denied' }
+          : { status: 'accepted', url: 'https://t.me/restro_bot?startgroup=abc' }
+      },
+      failed: () => undefined,
+    }
+    const link = (
+      port: number,
+      options: { host?: string; token?: string | null; body?: unknown } = {},
+    ) => {
+      const headers: Record<string, string> = {
+        host: options.host ?? `localhost:${port}`,
+        'content-type': 'application/json',
+      }
+      if (options.token !== null) headers.authorization = `Bearer ${options.token ?? TOKEN}`
+      return call(port, '/internal/telegram', 'POST', {
+        headers,
+        body: JSON.stringify(options.body ?? REQUEST),
+      })
+    }
+
+    afterEach(() => {
+      asked.length = 0
+    })
+
+    it('does not exist until a handler is set, and not through a public name', async () => {
+      const port = await start()
+      expect((await link(port)).status).toBe(404)
+      server?.setTelegramHandler(handler)
+      expect((await link(port)).status).toBe(200)
+      expect((await link(port, { host: 'restro-worker.up.railway.app' })).status).toBe(404)
+    })
+
+    it('needs the service token, a known action and nothing else in the body', async () => {
+      const port = await start()
+      server?.setTelegramHandler(handler)
+      expect((await link(port, { token: null })).status).toBe(401)
+      expect((await link(port, { body: { ...REQUEST, action: 'send_anything' } })).status).toBe(400)
+      expect((await link(port, { body: { ...REQUEST, extra: 1 } })).status).toBe(400)
+      expect(asked).toEqual([])
+    })
+
+    it('answers the link; a refusal is 403', async () => {
+      const port = await start()
+      server?.setTelegramHandler(handler)
+      const accepted = await link(port)
+      expect(JSON.parse(accepted.text)).toEqual({
+        status: 'accepted',
+        url: 'https://t.me/restro_bot?startgroup=abc',
+      })
+      const refused = await link(port, {
+        body: { ...REQUEST, actor: { ...REQUEST.actor, userId: 'refused' } },
+      })
+      expect(refused.status).toBe(403)
     })
   })
 

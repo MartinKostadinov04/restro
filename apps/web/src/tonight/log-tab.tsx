@@ -22,6 +22,7 @@ import type { Frame, LogLineView, LogView } from '@/server/tonight/night-view'
 
 import { DayPicker } from './day-picker'
 import { useLiveFeed } from './live-feed'
+import { LogExport } from './log-export'
 import { logSentence, type Say } from './log-sentence'
 import { useMoney } from './money'
 import { PAGE } from './pages'
@@ -206,6 +207,7 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
           </DropdownMenuContent>
         </DropdownMenu>
         <DayPicker day={day} today={frame.today} days={shown.days} />
+        {frame.canExport ? <LogExport venueId={frame.venueId} today={frame.today} /> : null}
       </div>
       {initial.today ? null : (
         <p className="text-sm text-muted-foreground" data-testid="log-kept">

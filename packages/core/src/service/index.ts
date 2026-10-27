@@ -207,8 +207,10 @@ export {
 export {
   ANSWER_REASONS,
   canReadNight,
+  type ExportDays,
   type LogLine,
   type LogPage,
+  MAX_EXPORT_DAYS,
   MAX_ROWS,
   type NightAccess,
   type NightFixRow,
@@ -218,6 +220,7 @@ export {
   type NightReport,
   NOT_ADDED_STATES,
   PAGE_SIZE,
+  readExportDays,
   readLog,
   readNight,
   readNightAccess,
@@ -345,10 +348,13 @@ export {
   type DeviceView,
   type RoleView,
   readStaffSettings,
+  readVenueAccess,
   type StaffSettings,
   type StaffSettingsRefusal,
   type StaffView,
+  type VenueAccess,
 } from './staff-read'
 export { OUT_OF_STOCK_ALERT, type StockNotice } from './stock'
 export { MAX_REVEALED_CODES } from './table-codes'
+export { type TelegramLinkSaying, telegramLinkText } from './telegram-link-text'
 export { waiterCallLapsesAt } from './waiter-call'

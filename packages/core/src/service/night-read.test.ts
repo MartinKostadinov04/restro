@@ -12,6 +12,8 @@ import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor } from './context'
 import {
+  MAX_EXPORT_DAYS,
+  readExportDays,
   readLog,
   readNight,
   readNightReport,
@@ -483,6 +485,45 @@ describe.skipIf(!hasDatabase)(
             day: '2001-01-01',
           }),
         ).toBeNull()
+      })
+    })
+
+    describe('the export of a date range (#87)', () => {
+      it('lists the days of the range that hold sent orders and Log lines, oldest first', async () => {
+        const read = await readExportDays(world.app, {
+          ...input(user(managerUser)),
+          from: yesterday,
+          to: day,
+        })
+        if (!read.ok) throw new Error(read.code)
+        expect(read.sentDays).toEqual([yesterday, day])
+        expect(read.logDays.every((d) => d >= yesterday && d <= day)).toBe(true)
+        const narrow = await readExportDays(world.app, {
+          ...input(user(managerUser)),
+          from: day,
+          to: day,
+        })
+        expect(narrow.ok && narrow.sentDays).toEqual([day])
+      })
+
+      it('needs both the Log and the whole end of the night', async () => {
+        for (const who of [nightUser, waiterUser]) {
+          expect(
+            await readExportDays(world.app, { ...input(user(who)), from: yesterday, to: day }),
+          ).toEqual({ ok: false, code: 'permission_denied' })
+        }
+      })
+
+      it('refuses a range that is backwards, not a date or too long', async () => {
+        const refused = (from: string, to: string) =>
+          readExportDays(world.app, { ...input(user(managerUser)), from, to })
+        expect(await refused(day, yesterday)).toEqual({ ok: false, code: 'invalid_range' })
+        expect(await refused('soon', day)).toEqual({ ok: false, code: 'invalid_range' })
+        const long = new Date(Date.parse(`${day}T00:00:00Z`) - MAX_EXPORT_DAYS * 86_400_000)
+        expect(await refused(long.toISOString().slice(0, 10), day)).toEqual({
+          ok: false,
+          code: 'invalid_range',
+        })
       })
     })
   },

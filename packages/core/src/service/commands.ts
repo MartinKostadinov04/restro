@@ -39,6 +39,14 @@ import { type CommandDefinition, type CommandHandler, defineCommand } from './de
 import { tableReturned, tableVanished } from './floor-pause'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
 import {
+  AlertChangesSchema,
+  OrderingChangesSchema,
+  setAlertSettings,
+  setOrderingRules,
+  TelegramLinkSchema,
+  telegramLink,
+} from './owner-settings'
+import {
   liftOrdering,
   pauseConnection,
   pauseOrdering,
@@ -81,6 +89,7 @@ import {
   DeviceNameSchema,
   DisplayNameSchema,
   linkStaffAccount,
+  linkStaffTelegram,
   MAX_REVEALED_PINS,
   markSharedDevice,
   PermissionListSchema,
@@ -373,6 +382,31 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: revealTableCodes,
   }),
+  // #87: the owner's hours and ordering rules, and who gets alerts: each a settings change (own
+  // sign-in of the last 15 minutes) that merges into the venue's ordering settings and is one
+  // `record` Log entry. An empty `changes` changes nothing: it only checks the right.
+  'settings.ordering_set': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('settings.ordering_set'),
+      changes: OrderingChangesSchema,
+    }),
+    origins: ['staff'],
+    permission: 'settings.guards',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: setOrderingRules,
+  }),
+  'settings.alerts_set': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('settings.alerts_set'),
+      changes: AlertChangesSchema,
+    }),
+    origins: ['staff'],
+    permission: 'settings.alerts',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: setAlertSettings,
+  }),
   // #72: roles. A default role is named by its kind (`staff`, `manager`, `owner`).
   'role.copy': rolesChange(
     'role.copy',
@@ -418,6 +452,14 @@ export const SERVICE_COMMANDS = {
     },
     linkStaffAccount,
   ),
+  // #87: a person's Telegram id (who may press Done in the venue's group); the owner can only
+  // unlink here (`null`). Only the worker's `telegram.link` sets an id, once the person pressed Start
+  // on the signed link the owner made for them.
+  'staff.link_telegram': rolesChange(
+    'staff.link_telegram',
+    { staffMemberId, telegramUserId: z.null() },
+    linkStaffTelegram,
+  ),
   // #72: PINs. "New PIN" draws another; seeing PINs again is the worker's reveal endpoint, which
   // opens the sealed copies once this is accepted. Both need a fresh sign-in.
   'pin.reset': rolesChange('pin.reset', { staffMemberId }, resetPin),
@@ -458,6 +500,15 @@ export const SERVICE_COMMANDS = {
   // #111: the route after the hold: the queue, the turn, the move, the last check, the close, the
   // capture, the undo, and a manager's answer to an unconfirmed close.
   ...PAY_ROUTE_COMMANDS,
+  // #87: the Telegram poller heard the bot added to a group by the owner's link, removed from it,
+  // or a person pressing Start on theirs. The signed link is the authority, checked by the worker.
+  'telegram.link': defineCommand({
+    schema: TelegramLinkSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: telegramLink,
+  }),
   // #81: a call nobody answered in the venue's time, or whose sitting ended, lapses.
   'waiter_call.lapse': defineCommand({
     schema: z.strictObject({ type: z.literal('waiter_call.lapse'), waiterCallId: idSchema('wc') }),

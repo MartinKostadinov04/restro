@@ -1086,3 +1086,72 @@ export async function readNightReport(
     }
   })
 }
+
+// ───────────────────────────── the export of a date range ─────────────────────────────
+
+/** The longest range an export may span in service days: 18 months of records, and a margin. */
+export const MAX_EXPORT_DAYS = 600
+
+/** What an export of a date range reads. */
+export interface ExportDays {
+  readonly access: NightAccess
+  /** Service days of the range with at least one sent order, oldest first. */
+  readonly sentDays: readonly string[]
+  /** Service days of the range with at least one Log line the venue sees, oldest first. */
+  readonly logDays: readonly string[]
+}
+
+/**
+ * Which service days of `from`…`to` (both included) hold something to export (#87; plan
+ * `2026-10-27-settings-alerts-export-plan.md` §B). Only a role that sees the Log and the whole end of
+ * the night (`log.view` and `night.view_full`) may export; the screens' own readers then fill each
+ * day. A day the venue no longer keeps simply has nothing: a wider range downloads what is held.
+ */
+export async function readExportDays(
+  pool: DbPool,
+  input: ReadInput & { readonly from: string; readonly to: string },
+): Promise<
+  | ({ readonly ok: true } & ExportDays)
+  | { readonly ok: false; readonly code: NightRefusal | 'invalid_range' }
+> {
+  return withTenant(pool, input.tenantId, async (tx) => {
+    const opened = await open(tx, input)
+    if (!opened.ok) return opened
+    const { reader } = opened
+    if (!reader.held.has('log.view') || !reader.held.has('night.view_full')) {
+      return { ok: false, code: 'permission_denied' } as const
+    }
+    const { from, to } = input
+    const span = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+    if (!DAY.test(from) || !DAY.test(to) || !(span >= 0 && span < MAX_EXPORT_DAYS)) {
+      return { ok: false, code: 'invalid_range' } as const
+    }
+    const sent = await tx
+      .selectDistinct({ day: sentOrders.serviceDate })
+      .from(sentOrders)
+      .where(
+        and(
+          eq(sentOrders.venueId, reader.venue.id),
+          sql`${sentOrders.serviceDate} >= ${from} and ${sentOrders.serviceDate} <= ${to}`,
+        ),
+      )
+      .orderBy(asc(sentOrders.serviceDate))
+    const log = await tx
+      .selectDistinct({ day: logEntries.serviceDate })
+      .from(logEntries)
+      .where(
+        and(
+          eq(logEntries.venueId, reader.venue.id),
+          inArray(logEntries.kind, [...logKindsOf(null)]),
+          sql`${logEntries.serviceDate} >= ${from} and ${logEntries.serviceDate} <= ${to}`,
+        ),
+      )
+      .orderBy(asc(logEntries.serviceDate))
+    return {
+      ok: true,
+      access: accessOf(reader),
+      sentDays: sent.map((row) => row.day),
+      logDays: log.map((row) => row.day),
+    } as const
+  })
+}

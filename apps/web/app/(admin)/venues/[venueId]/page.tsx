@@ -3,7 +3,12 @@ import { getTranslations } from 'next-intl/server'
 import { Suspense } from 'react'
 import { AdminHeader } from '@/components/admin/admin-header'
 import { VenueSettingsGeneral } from '@/components/admin/venue-settings-general'
-import { settingsSectionOf, workspaceTabOf } from '@/components/admin/workspace-tab-defs'
+import {
+  NO_SETTINGS_RIGHTS,
+  type SettingsRights,
+  settingsSectionOf,
+  workspaceTabOf,
+} from '@/components/admin/workspace-tab-defs'
 import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
@@ -17,7 +22,12 @@ import { getPool } from '@/server/db'
 import { guestPathOf } from '@/server/publish/summary'
 import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { loadSettingsAccess } from '@/server/settings/access'
 import { getVenue, venueHasTill } from '@/server/venues'
+import { AlertsSection } from '@/settings/alerts-section'
+import { OrderingSection } from '@/settings/ordering-section'
+import { OwnSignInNotice } from '@/settings/section-notices'
+import { StaffSection } from '@/settings/staff-section'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
 import { TablesTab } from '@/tables/tables-tab'
 import { TonightSkeleton } from '@/tonight/tonight-skeleton'
@@ -62,7 +72,23 @@ export default async function VenueWorkspacePage({
     venueHasTill(organization.id, venue.id),
     guestPathOf(getPool(), organization.id, venue.slug),
   ])
-  const openSection = settingsSectionOf(query.section, hasTill)
+  // What the person holds here decides which Settings sections they see (#87); every command
+  // checks it again. Read only while Settings is open. A shared device never opens settings.
+  const access = settingsOpen
+    ? await loadSettingsAccess({
+        tenantId: organization.id,
+        venueId: venue.id,
+        userId: user.id,
+        sessionId,
+      })
+    : null
+  const held = access?.held ?? []
+  const onSharedDevice = access?.sharedDevice === true
+  const rights: SettingsRights =
+    access === null
+      ? NO_SETTINGS_RIGHTS
+      : { roles: held.includes('settings.roles'), alerts: held.includes('settings.alerts') }
+  const openSection = settingsSectionOf(query.section, hasTill, rights)
   const sectionOpen = (section: typeof openSection) => settingsOpen && openSection === section
 
   const tNav = await getTranslations('nav')
@@ -130,9 +156,12 @@ export default async function VenueWorkspacePage({
             ) : (
               <TonightSkeleton />
             ),
-            settings: (
+            settings: onSharedDevice ? (
+              <OwnSignInNotice />
+            ) : (
               <SettingsSections
                 hasTill={hasTill}
+                rights={rights}
                 contents={{
                   general: sectionOpen('general') ? (
                     <Suspense fallback={<SettingsSectionSkeleton />}>
@@ -146,6 +175,68 @@ export default async function VenueWorkspacePage({
                   ) : (
                     <SettingsSectionSkeleton />
                   ),
+                  hours: sectionOpen('hours') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <OrderingSection
+                        tenantId={organization.id}
+                        venue={venue}
+                        part="hours"
+                        hasPos={hasTill}
+                        canChange={held.includes('settings.guards')}
+                        email={user.email}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                  ordering: sectionOpen('ordering') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <OrderingSection
+                        tenantId={organization.id}
+                        venue={venue}
+                        part="ordering"
+                        hasPos={hasTill}
+                        canChange={held.includes('settings.guards')}
+                        email={user.email}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                  ...(rights.alerts
+                    ? {
+                        alerts: sectionOpen('alerts') ? (
+                          <Suspense fallback={<SettingsSectionSkeleton />}>
+                            <AlertsSection
+                              tenantId={organization.id}
+                              venue={venue}
+                              email={user.email}
+                              canUnlinkPerson={rights.roles}
+                            />
+                          </Suspense>
+                        ) : (
+                          <SettingsSectionSkeleton />
+                        ),
+                      }
+                    : {}),
+                  ...(rights.roles
+                    ? {
+                        staff: sectionOpen('staff') ? (
+                          <Suspense fallback={<SettingsSectionSkeleton />}>
+                            <StaffSection
+                              tenantId={organization.id}
+                              venue={venue}
+                              userId={user.id}
+                              sessionId={sessionId}
+                              email={user.email}
+                              held={held}
+                            />
+                          </Suspense>
+                        ) : (
+                          <SettingsSectionSkeleton />
+                        ),
+                      }
+                    : {}),
                   ...(hasTill
                     ? {
                         publish: sectionOpen('publish') ? (
