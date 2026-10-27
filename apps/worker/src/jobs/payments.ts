@@ -30,7 +30,9 @@
 //   unknown move or undo is read back from the payment table for the read-back window and never
 //   sent again inside it (D127 3.4); an unknown close is never read back as a close (an empty
 //   payment table is no proof): it is `unconfirmed` for a manager or owner after D115's read-back
-//   window (a later landing is not ruled out, C52). A close is sent once.
+//   window (a later landing is not ruled out, C52). A close is sent once. After a manager's "No
+//   receipt" the hold is released only once a fresh read shows the lines back on the real table;
+//   otherwise a manager is asked again (#153).
 //   An unknown capture is read back from the provider and tried again with the same key.
 // - One run of a payment at a time: a run takes no new step past `PAYMENT_RUN_MS` and queues the
 //   next, and pg-boss gives it longer than that and one step (`PAYMENT_PREPARE_EXPIRE_SECONDS`)
@@ -71,6 +73,7 @@ import {
   PAYMENT_LONG_WAIT_MS,
   type PAYMENT_STEP_NAMES,
   PAYMENT_WRITE_PAUSE_MS,
+  quantityKey,
   READ_BACK_EVERY_MS,
 } from '@restro/core/service'
 import {
@@ -1114,7 +1117,7 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
 /**
  * `isolated` after a failed check, or `unconfirmed` with "No receipt": under the real table's
  * turn, put the lines back (`undoIsolate`), then `payment.undone`: returned, or stranded where the
- * POS would not.
+ * POS would not, or (after "No receipt") not back where they are not proven on the real table.
  */
 const undoStep: RouteStep = async (env, target, payment, deps) => {
   const pos = await posOf(env, target, payment, deps)
@@ -1148,7 +1151,7 @@ async function undo(
   payment: PaymentRow,
   pos: PaymentPos,
   paymentTable: PosRef,
-): Promise<'returned' | 'stranded' | 'later'> {
+): Promise<'returned' | 'stranded' | 'not_back' | 'later'> {
   const onTable = await readPos(pos, paymentTable)
   const earlier = await callsOf(env, target, 'undoIsolate')
   // A move back whose outcome is unknown may land late: inside the read-back window it is read
@@ -1156,6 +1159,13 @@ async function undo(
   if (onTable.bills.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
     return 'later'
   }
+  // After "No receipt" a close was attempted, and it may land after the read-back window (C52):
+  // the lines are back only when this run moves them from the payment table and a fresh read
+  // shows them on the real table, by their POS references (#153). An empty payment table, or a
+  // bill closed under the move, is no proof (D127 3.10): a manager is asked again.
+  const proving = payment.reason === 'no_receipt'
+  const moved = linesOf(onTable)
+  if (proving && moved.length === 0) return 'not_back'
   for (const [index, bill] of onTable.bills.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
     const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
@@ -1163,7 +1173,10 @@ async function undo(
       pos.connector.undoIsolate(pos.context, { isolated, table: pos.table, ref }),
     )
     if (outcome.kind === 'refused') {
-      if (outcome.refusal.code === 'bill_closed') continue
+      if (outcome.refusal.code === 'bill_closed') {
+        if (proving) return 'not_back'
+        continue
+      }
       // A waiter holding the bill, or the POS busy, passes: tried again for the read-back window
       // from the first move back, then the lines are stranded for staff.
       const passing = outcome.refusal.code === 'bill_locked' || outcome.refusal.code === 'busy'
@@ -1175,7 +1188,30 @@ async function undo(
       if (back.bills.some((b) => b.ref.pos === bill.ref.pos)) return 'later'
     }
   }
-  return 'returned'
+  if (!proving) return 'returned'
+  return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
+}
+
+/**
+ * True when a fresh read of the real table shows every line moved back by its POS reference,
+ * with at least the quantity and the amount moved (#153). Never by item, quantity or amount alone:
+ * a waiter's identical round, or the rest of a line split for the payment, would read as back.
+ */
+async function backOnTable(
+  pos: PaymentPos,
+  moved: readonly ReturnType<typeof linesOf>[number][],
+): Promise<boolean> {
+  if (moved.length === 0) return false
+  const real = new Map(linesOf(await readPos(pos, pos.table)).map((line) => [line.pos, line]))
+  return moved.every((line) => {
+    const found = real.get(line.pos)
+    if (found === undefined) return false
+    const amount =
+      line.amountMinor < 0
+        ? found.amountMinor <= line.amountMinor
+        : found.amountMinor >= line.amountMinor
+    return amount && quantityKey(found.quantity) >= quantityKey(line.quantity)
+  })
 }
 
 /**

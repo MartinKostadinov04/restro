@@ -25,6 +25,11 @@ export const TABLE_CODE_BLOCK_KIND = 'table_code_block'
 export const OUT_OF_STOCK_KIND = 'item_out_of_stock'
 /** A card payment's close could not be confirmed (#111): a manager or owner answers it. */
 export const PAYMENT_UNCONFIRMED_KIND = 'payment_unconfirmed'
+/**
+ * After "No receipt", a card payment's items are not back on its table (#153): the bill may have
+ * closed after all, and a manager or owner checks the till again.
+ */
+export const PAYMENT_LINES_NOT_BACK_KIND = 'payment_lines_not_back'
 /** A card payment was stopped at its last check, before the close (#111). */
 export const PAYMENT_CHECK_FAILED_KIND = 'payment_check_failed'
 /** A payment's lines could not be moved back from its payment table (#111). */
@@ -130,9 +135,16 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   [TABLE_CODE_BLOCK_KIND]: { ...NOBODY, team: teamDigest() },
   // Tonight is told about stock (#80); a phone is not.
   [OUT_OF_STOCK_KIND]: NOBODY,
-  // Money the staff must act on (#111): an unconfirmed close and stuck lines are reminded once
-  // after 10 minutes, as an Unconfirmed order is (D120); a stopped payment is told once.
+  // Money the staff must act on (#111): an unconfirmed close (asked again when the items are not
+  // back, #153) and stuck lines are reminded once after 10 minutes, as an Unconfirmed order is
+  // (D120); a stopped payment is told once.
   [PAYMENT_UNCONFIRMED_KIND]: {
+    ...NOBODY,
+    push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
+    venueTelegram: venueGroup,
+    team: teamDigest(),
+  },
+  [PAYMENT_LINES_NOT_BACK_KIND]: {
     ...NOBODY,
     push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
     venueTelegram: venueGroup,

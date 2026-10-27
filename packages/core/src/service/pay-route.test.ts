@@ -1,7 +1,8 @@
 // The payment route's own rules (#111): the last check, pure; and on a real Postgres, as the
 // restro_app role, who may answer an unconfirmed close. "Receipt printed" and "No receipt" are a
 // manager's or an owner's (`money.follow_up`): staff without it, the worker and a second, different
-// answer are refused, and the answer closes the payment's alert. The route itself runs in the
+// answer are refused, and the answer closes the payment's alert. Asked again when the items were
+// not back after "No receipt" (#153), a second "No receipt" settles it stranded for staff. The route itself runs in the
 // worker's tests (apps/worker/tests/payment-route*.test.ts). Database part skipped without one.
 // A property test edits the isolated bill as a waiter might (a line voided, moved back, repriced,
 // its quantity changed, a round added) and checks the last check against the bill alone: it passes
@@ -211,14 +212,19 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
     jobId: `pay-route-worker-${randomUUID()}`,
   })
 
-  /** A card payment whose close the POS didn't confirm, with its open staff alert. */
-  async function unconfirmed(): Promise<{ id: string; alertId: string }> {
+  /**
+   * A card payment whose close the POS didn't confirm, with its open staff alert; or one whose
+   * items were not back after "No receipt" (`lines_not_back`, #153), its close attempted.
+   */
+  async function unconfirmed(
+    reason: 'close_unknown' | 'lines_not_back' = 'close_unknown',
+  ): Promise<{ id: string; alertId: string }> {
     const id = newId('py')
     await world.owner.query(
       `insert into restro.payments
          (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, reason,
           handle_hash, amount_minor, currency, provider_kind, settled_at, source, actor, job_id)
-       values ($1, $2, $3, $4, $5, current_date, 'on_bill', 'unconfirmed', 'close_unknown',
+       values ($1, $2, $3, $4, $5, current_date, 'on_bill', 'unconfirmed', $7,
           $6, 1450, 'EUR', 'sim-pay', now(), 'restro', 'system', 'test-seed')`,
       [
         id,
@@ -227,16 +233,29 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
         world.tables[0],
         sittingId,
         createHash('sha256').update(id).digest('hex'),
+        reason,
       ],
+    )
+    await world.owner.query(
+      `insert into restro.payment_steps
+         (tenant_id, venue_id, payment_id, step, outcome, answer, source, actor, job_id)
+       values ($1, $2, $3, 'payAndClose', 'attempting', null, 'worker', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId, id],
     )
     const alertId = newId('al')
     await world.owner.query(
       `insert into restro.alerts
          (id, tenant_id, venue_id, service_date, kind, audience, subject_id, permission, details,
           source, actor, job_id)
-       values ($1, $2, $3, current_date, 'payment_unconfirmed', 'venue', $4, 'money.follow_up',
+       values ($1, $2, $3, current_date, $5, 'venue', $4, 'money.follow_up',
           '{}'::jsonb, 'restro', 'system', 'test-seed')`,
-      [alertId, world.tenantId, world.venueId, id],
+      [
+        alertId,
+        world.tenantId,
+        world.venueId,
+        id,
+        reason === 'close_unknown' ? 'payment_unconfirmed' : 'payment_lines_not_back',
+      ],
     )
     return { id, alertId }
   }
@@ -308,6 +327,52 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
     expect(await stored(id, alertId)).toEqual({
       payment: { state: 'unconfirmed', reason: 'no_receipt' },
       alertDone: true,
+    })
+  })
+
+  it('takes "Receipt printed" when the items were not back after "No receipt"', async () => {
+    const { id, alertId } = await unconfirmed('lines_not_back')
+    const { result } = await answer(user(managerId), id, 'receipt_printed')
+    expect(result).toMatchObject({ status: 'accepted', details: { changed: true } })
+    expect(await stored(id, alertId)).toEqual({
+      payment: { state: 'unconfirmed', reason: 'receipt_printed' },
+      alertDone: true,
+    })
+    expect((await answer(user(ownerId), id, 'no_receipt')).result).toMatchObject({
+      status: 'refused',
+      code: 'payment_answered',
+    })
+  })
+
+  it('takes a second "No receipt": released and stranded, no move back; another tap refused', async () => {
+    const { id, alertId } = await unconfirmed('lines_not_back')
+    const { result } = await answer(user(managerId), id, 'no_receipt')
+    expect(result).toMatchObject({
+      status: 'accepted',
+      details: { changed: true, state: 'cancelling' },
+    })
+    expect(await stored(id, alertId)).toEqual({
+      payment: { state: 'cancelling', reason: 'stranded' },
+      alertDone: true,
+    })
+    const raised = await world.owner.query<{ kind: string; permission: string }>(
+      `select kind, permission from restro.alerts where subject_id = $1 and done_at is null`,
+      [id],
+    )
+    expect(raised.rows).toEqual([{ kind: 'payment_stranded', permission: 'alerts.answer' }])
+    const log = await world.owner.query<{ from_state: string; to_state: string }>(
+      `select from_state, to_state from restro.log_entries
+        where kind = 'payment.answered' and payment_id = $1`,
+      [id],
+    )
+    expect(log.rows).toEqual([{ from_state: 'lines_not_back', to_state: 'no_receipt' }])
+    expect((await answer(user(ownerId), id, 'no_receipt')).result).toMatchObject({
+      status: 'accepted',
+      details: { changed: false },
+    })
+    expect((await answer(user(ownerId), id, 'receipt_printed')).result).toMatchObject({
+      status: 'refused',
+      code: 'payment_answered',
     })
   })
 

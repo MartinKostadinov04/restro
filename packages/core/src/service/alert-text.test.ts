@@ -155,6 +155,13 @@ const KINDS: readonly [string, Record<string, unknown>, Step, string, string][] 
     'Маса 7: плащане с карта без потвърждение',
   ],
   [
+    'payment_lines_not_back',
+    {},
+    'new',
+    'Table 7: a card payment’s items are not back on the table',
+    'Маса 7: артикулите на плащане с карта не са върнати на масата',
+  ],
+  [
     'payment_check_failed',
     {},
     'new',
