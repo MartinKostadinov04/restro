@@ -14,8 +14,8 @@ function say(messages: Record<string, string>) {
   return (key: string, values: Record<string, string | number> = {}) =>
     (messages[key] ?? key).replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? ''))
 }
-const english = say(en.tonight as Record<string, string>)
-const bulgarian = say(bg.tonight as Record<string, string>)
+const english = say(en.tonight as unknown as Record<string, string>)
+const bulgarian = say(bg.tonight as unknown as Record<string, string>)
 
 const sent = (fields: Partial<SentRowView> = {}): SentRowView => ({
   id: 'so_A1',
@@ -87,7 +87,7 @@ describe('the sent orders export', () => {
           day: '2026-10-26',
           rows: [
             sent({
-              state: 'unconfirmed',
+              state: 'check',
               answer: {
                 answer: 'found',
                 by: { who: { kind: 'person', name: 'Maria' }, telegram: true },

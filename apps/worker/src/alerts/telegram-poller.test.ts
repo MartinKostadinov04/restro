@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { TelegramClient, TelegramUpdate } from './telegram'
 import { TelegramError } from './telegram'
+import { makeLinkCode } from './telegram-link'
 import { startTelegramPoller } from './telegram-poller'
 
 const quiet = { warn: () => undefined, info: () => undefined }
@@ -72,6 +73,92 @@ describe('the Telegram poller', () => {
     })
     await waitUntil(() => offsets.length >= 3)
     expect(waits).toEqual([4_000, 30_000])
+    await poller.stop()
+  })
+
+  it('hears /start CODE and the bot leaving a group (#87): a link that is not ours is answered in a private chat, silently in a group', async () => {
+    const said: { chatId: string; text: string }[] = []
+    const { client, offsets } = scripted([
+      [
+        {
+          updateId: 1,
+          press: null,
+          start: {
+            userId: '4242',
+            chatId: '4242',
+            chatType: 'private',
+            title: '',
+            code: 'A'.repeat(62),
+          },
+        },
+        {
+          updateId: 2,
+          press: null,
+          start: {
+            userId: '4242',
+            chatId: '-100',
+            chatType: 'supergroup',
+            title: 'Staff',
+            code: 'A'.repeat(62),
+          },
+        },
+      ],
+    ])
+    const poller = startTelegramPoller({
+      pool: {} as never,
+      telegram: {
+        ...client,
+        async sendMessage(chatId, text) {
+          said.push({ chatId, text })
+          return { chatId, messageId: 1 }
+        },
+      },
+      log: quiet,
+      now: () => new Date(),
+      linkSecret: 'a-reveal-token-of-at-least-32-characters',
+    })
+    await waitUntil(() => offsets.length >= 2)
+    expect(said).toEqual([
+      { chatId: '4242', text: 'This link ran out. Ask for a new one in Restro.' },
+    ])
+    await poller.stop()
+  })
+
+  it('ignores /start CODE when linking is off (no secret)', async () => {
+    const said: string[] = []
+    const { client, offsets } = scripted([
+      [
+        {
+          updateId: 1,
+          press: null,
+          start: {
+            userId: '4242',
+            chatId: '4242',
+            chatType: 'private',
+            title: '',
+            code: makeLinkCode('a-reveal-token-of-at-least-32-characters', {
+              purpose: 'group',
+              venueId: 'vn_0000000000000000000001',
+              now: new Date(),
+            }),
+          },
+        },
+      ],
+    ])
+    const poller = startTelegramPoller({
+      pool: {} as never,
+      telegram: {
+        ...client,
+        async sendMessage(_chatId, text) {
+          said.push(text)
+          return { chatId: '1', messageId: 1 }
+        },
+      },
+      log: quiet,
+      now: () => new Date(),
+    })
+    await waitUntil(() => offsets.length >= 2)
+    expect(said).toEqual([])
     await poller.stop()
   })
 

@@ -34,6 +34,7 @@ function view(
     currency: 'EUR',
     canChange: true,
     hasPos: true,
+    openNow: false,
     spotSetAt: null,
     email: 'owner@example.com',
     ...more,
@@ -147,6 +148,15 @@ describe('Settings › Hours', () => {
         changes: { serviceHours: settings.serviceHours },
       }),
     )
+  })
+
+  it('says "Applies from now." when a night is open and its hours change', async () => {
+    const user = userEvent.setup()
+    const settings = { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: THU } }
+    renderWithIntl(<HoursPanel view={view(settings, { openNow: true })} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Saved Applies from now.')
   })
 
   it('shows the pre-opening check only for a venue with a POS', () => {

@@ -3,6 +3,7 @@
 // when it was last set: the Log's `settings.changed` entry that names it (nothing else keeps the
 // time, and no table is added). Reads only; plain data safe for the browser.
 import { type OrderingSettings, readOrderingSettings } from '@restro/core'
+import { serviceHoursWindow } from '@restro/core/service'
 import { logEntries, type Venue, withTenant } from '@restro/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
 
@@ -22,6 +23,8 @@ export interface OrderingView {
   readonly canChange: boolean
   /** True for a venue with a POS: only then is there a connection to check before opening. */
   readonly hasPos: boolean
+  /** True while a night is open now: a change of hours then applies from now (plan §6). */
+  readonly openNow: boolean
   /** When the spot was last set (ISO), or null. */
   readonly spotSetAt: string | null
   /** The signed-in person's email, for the password again. */
@@ -65,6 +68,12 @@ export async function loadOrderingView(input: {
     currency: input.venue.currency,
     canChange: input.canChange,
     hasPos: input.hasPos,
+    openNow: serviceHoursWindow(
+      settings,
+      input.venue.timezone,
+      input.venue.serviceDayEndsAt,
+      new Date(),
+    ).inService,
     spotSetAt: at === null ? null : at.toISOString(),
     email: input.email,
   }

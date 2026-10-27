@@ -59,7 +59,7 @@ export function HoursPanel({ view }: { view: OrderingView }) {
   function saveHours(next: ServiceHours, options: { onOk?: () => void } = {}) {
     const previous = hours
     run(() => saveOrderingAction({ venueId: view.venueId, changes: { serviceHours: next } }), {
-      done: t('st_saved'),
+      done: view.openNow ? `${t('st_saved')} ${t('st_now')}` : t('st_saved'),
       undo: () =>
         saveOrderingAction({ venueId: view.venueId, changes: { serviceHours: previous } }),
       ...(options.onOk === undefined ? {} : { onOk: options.onOk }),
