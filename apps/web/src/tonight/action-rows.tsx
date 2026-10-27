@@ -17,12 +17,20 @@ import { type ReactNode, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { useIsMobile } from '@/hooks/use-mobile'
 import {
   handleWaiterCallAction,
   resumeTableAction,
@@ -30,6 +38,7 @@ import {
 } from '@/server/tonight/actions'
 import type { ActionRow, RowKind, TonightView } from '@/server/tonight/view'
 
+import { useMoney } from './money'
 import { useTonightRun } from './run'
 import { useTableName } from './table-name'
 
@@ -52,28 +61,20 @@ export function useAgo(now: string) {
   }
 }
 
-function money(minor: number, locale: string): string {
-  return new Intl.NumberFormat(locale === 'bg' ? 'bg-BG' : 'en-IE', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(minor / 100)
-}
-
 /** One row of "Needs you". `primary` is true only for the first. */
 export function ActionRowItem({
   row,
   view,
   primary,
   ago,
-  locale,
 }: {
   row: ActionRow
   view: TonightView
   primary: boolean
   ago: string
-  locale: string
 }) {
   const t = useTranslations('tonight')
+  const money = useMoney()
   const { run, busy } = useTonightRun()
   const tableName = useTableName()
   const name = tableName(row.table, row.numbered)
@@ -167,12 +168,12 @@ export function ActionRowItem({
             </ul>
             {check.billBeforeMinor === null ? null : (
               <p className="text-muted-foreground">
-                {t('s_before', { amt: money(check.billBeforeMinor, locale) })}
+                {t('s_before', { amt: money(check.billBeforeMinor, view.currency) })}
               </p>
             )}
           </>
         )}
-        <p className="font-medium">{t('s_q')}</p>
+        <p className="font-medium">{t('s_q', { source: view.source })}</p>
       </div>
     )
     // The two answers "Found on the bill" / "Not on the bill" wait for a core command that stores
@@ -241,44 +242,56 @@ export function ActionRowItem({
 export function OutOfStockNotice({ names, source }: { names: readonly string[]; source: string }) {
   const t = useTranslations('tonight')
   const [all, setAll] = useState(false)
+  const isMobile = useIsMobile()
   const shown = names.slice(0, MAX_LISTED)
   const more = names.length - shown.length
   const list = shown.join(', ')
-  const body = (
-    <>
-      <h3 className="text-base font-semibold [overflow-wrap:anywhere]">{t('oos_t', { source })}</h3>
-      <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
-        {t('oos_d', { items: list })}
-        {more > 0 ? ` ${t('oos_more', { k: more })}` : ''}
-      </p>
-    </>
-  )
   return (
     <li className="rounded-lg border bg-card p-4 text-card-foreground" data-testid="stock-notice">
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <PackageXIcon aria-hidden className="size-5" />
         </span>
-        {more > 0 ? (
-          <button
-            type="button"
-            className="min-h-11 min-w-0 flex-1 space-y-1 rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            onClick={() => setAll(true)}
-          >
-            {body}
-          </button>
-        ) : (
-          <div className="min-w-0 flex-1 space-y-1">{body}</div>
-        )}
+        <div className="min-w-0 flex-1 space-y-1">
+          <h3 className="text-base font-semibold [overflow-wrap:anywhere]">
+            {t('oos_t', { source })}
+          </h3>
+          <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
+            {t('oos_d', { items: list })}
+          </p>
+          {more > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="h-11 px-0"
+              data-testid="stock-more"
+              onClick={() => setAll(true)}
+            >
+              {t('oos_more', { k: more })}
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <Dialog open={all} onOpenChange={setAll}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('oos_t', { source })}</DialogTitle>
-            <DialogDescription>{t('oos_d', { items: names.join(', ') })}</DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
+      {/* Everything about the notice: a side sheet, a bottom drawer on a phone (Patterns). */}
+      {isMobile ? (
+        <Drawer open={all} onOpenChange={setAll}>
+          <DrawerContent data-testid="stock-sheet">
+            <DrawerHeader>
+              <DrawerTitle>{t('oos_t', { source })}</DrawerTitle>
+              <DrawerDescription>{t('oos_d', { items: names.join(', ') })}</DrawerDescription>
+            </DrawerHeader>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Sheet open={all} onOpenChange={setAll}>
+          <SheetContent data-testid="stock-sheet">
+            <SheetHeader>
+              <SheetTitle>{t('oos_t', { source })}</SheetTitle>
+              <SheetDescription>{t('oos_d', { items: names.join(', ') })}</SheetDescription>
+            </SheetHeader>
+          </SheetContent>
+        </Sheet>
+      )}
     </li>
   )
 }

@@ -75,10 +75,10 @@ async function person(
 
 const tonight = (page: Page) => page.getByTestId('tonight')
 const rows = (page: Page) => page.getByTestId('action-row')
-const tile = (page: Page, name: string) =>
-  page.getByTestId('table-tile').filter({ hasText: new RegExp(`^${name}\\b`) })
 const toast = (page: Page, text: string | RegExp) =>
   page.locator('[data-sonner-toast]').filter({ hasText: text })
+const tile = (page: Page, name: string) =>
+  page.locator(`[data-testid="table-tile"][aria-label^="${name}"]`)
 
 async function openTonight(page: Page, night: string) {
   seed('night', night)
@@ -121,7 +121,6 @@ test('Needs you is ordered by what costs most to leave, with the notice apart', 
   const { page } = waiter
   await openTonight(page, 'busy')
   await expect(rows(page)).toHaveCount(4)
-  await expect(rows(page)).toHaveAttribute('data-kind', /./)
   const kinds = await rows(page).evaluateAll((els) => els.map((el) => el.getAttribute('data-kind')))
   expect(kinds).toEqual(['check', 'approval', 'paused', 'call'])
   // The count beside "Needs you" is the rows; the out-of-stock notice (no button) is not one.
@@ -240,12 +239,12 @@ test('pausing ordering is two taps; lifting it needs a manager’s PIN on the ta
   await expect(banner).toContainText('Ordering at Main bar was paused by the bar tablet')
   expect(pause.count).toBe(2)
   // The paused bar's heading and tiles read Paused; the other bar is as it was. The menu now
-  // offers only the bars not paused (and not all bars).
+  // leaves out the bar already paused (all bars stays: it covers the rest).
   await expect(page.getByRole('heading', { name: /Main bar/ })).toContainText('Paused')
   await expect(tile(page, 'Table 1')).toHaveAttribute('data-state', 'paused')
   await expect(tile(page, 'Table 4')).toHaveAttribute('data-state', 'open')
   await page.getByRole('button', { name: 'Pause ordering' }).click()
-  await expect(page.getByRole('menuitem')).toHaveText(['Second bar'])
+  await expect(page.getByRole('menuitem')).toHaveText(['All bars', 'Second bar'])
   await page.keyboard.press('Escape')
 
   const lift = new Taps()
@@ -293,7 +292,7 @@ test('the empty states: tables not open, and nothing waiting', async () => {
   await page.reload()
   await expect(rows(page)).toHaveCount(12)
   const column = page.locator('section[aria-labelledby="needs-title"]').locator('xpath=..')
-  expect(await column.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+  await expect.poll(() => column.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
 })
 
 test('a new waiter call is announced to a screen reader', async () => {
@@ -334,12 +333,12 @@ test('on a phone: one column, a switch between Needs you and Tables, no sideways
   const { page } = waiter
   await page.setViewportSize(PHONE)
   await openTonight(page, 'busy')
-  const part = page.getByRole('tab', { name: /^Needs you/ })
-  await expect(part).toHaveAttribute('aria-selected', 'true')
+  const part = page.getByRole('button', { name: /^Needs you/ })
+  await expect(part).toHaveAttribute('aria-pressed', 'true')
   await expect(rows(page).first()).toBeVisible()
   // Tables is one more tap.
   const taps = new Taps()
-  await taps.tap(page.getByRole('tab', { name: 'Tables', exact: true }).last())
+  await taps.tap(page.getByRole('button', { name: 'Tables', exact: true }))
   await expect(page.getByTestId('table-tile').first()).toBeVisible()
   expect(taps.count).toBe(1)
   const sideways = await page.evaluate(

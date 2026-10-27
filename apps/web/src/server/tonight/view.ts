@@ -89,6 +89,8 @@ export interface TonightView {
   readonly venueId: string
   /** The POS' name for `{source}`. */
   readonly source: string
+  /** The venue's currency, for the amounts a row shows. */
+  readonly currency: string
   readonly device: boolean
   readonly can: Can
   readonly banners: readonly PauseBanner[]
@@ -137,6 +139,7 @@ export function buildTonightView(input: {
   readonly venueId: string
   readonly timezone: string
   readonly source: string
+  readonly currency: string
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -320,6 +323,7 @@ export function buildTonightView(input: {
   return {
     venueId: input.venueId,
     source: input.source,
+    currency: input.currency,
     device: tonight.device,
     can,
     banners,

@@ -1974,7 +1974,7 @@
     "now0": "just now",
     "s_t": "Sent order not confirmed",
     "s_before": "Bill before this order: {amt}",
-    "s_q": "Check the bill in the POS, then resume the table.",
+    "s_q": "Check the bill in {source}, then resume the table.",
     "s_meta": "Ref {ref} · sent {time}",
     "s_ref": "Ref {ref}",
     "a_t": "Sent order awaiting approval",
@@ -2057,6 +2057,7 @@
       "venue_missing": "This venue isn't available any more.",
       "invalid": "Not saved. Reload the page and try again."
     },
-    "tb": "Table {n}"
+    "tb": "Table {n}",
+    "source_none": "the POS"
   }
 }

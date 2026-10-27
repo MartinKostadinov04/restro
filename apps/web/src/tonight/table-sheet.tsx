@@ -5,7 +5,7 @@
 // and its bill as last read, and holds "Close for phones" (no dialog, the Undo toast) and "New
 // guests" (a dialog that names the consequence, rule 11). Reached by tapping an open tile, so
 // closing is two taps (plan §10 Q5).
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -43,15 +43,9 @@ import {
 import type { TableSheetBill } from '@/server/tonight/load'
 import type { TableTile, TonightView } from '@/server/tonight/view'
 
+import { useMoney } from './money'
 import { useTonightRun } from './run'
 import { useTableName } from './table-name'
-
-function money(bill: TableSheetBill, locale: string): string {
-  return new Intl.NumberFormat(locale === 'bg' ? 'bg-BG' : 'en-IE', {
-    style: 'currency',
-    currency: bill.currency,
-  }).format(bill.totalMinor / 100)
-}
 
 export function TableSheet({
   tile,
@@ -69,7 +63,7 @@ export function TableSheet({
   const { run, busy } = useTonightRun()
   const [newGuests, setNewGuests] = useState(false)
   const [bill, setBill] = useState<TableSheetBill | null | undefined>(undefined)
-  const locale = useLocale()
+  const money = useMoney()
   const tableName = useTableName()
   const name = tableName(tile.label, tile.numbered)
 
@@ -92,7 +86,9 @@ export function TableSheet({
       </div>
       {bill === undefined || bill === null ? null : (
         <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">{t('sh_f2', { amt: money(bill, locale) })}</dt>
+          <dt className="text-muted-foreground">
+            {t('sh_f2', { amt: money(bill.totalMinor, bill.currency) })}
+          </dt>
         </div>
       )}
     </dl>

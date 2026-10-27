@@ -45,7 +45,14 @@ function tonight(overrides: Partial<Tonight> = {}): Tonight {
 }
 
 const view = (t: Tonight, timezone = 'Europe/Sofia') =>
-  buildTonightView({ tonight: t, venueId: VENUE, timezone, source: 'Mistral', now: NOW })
+  buildTonightView({
+    tonight: t,
+    venueId: VENUE,
+    timezone,
+    source: 'Mistral',
+    currency: 'EUR',
+    now: NOW,
+  })
 
 const pause = (over: Record<string, unknown>) => ({
   id: 'pa_00000000000000000001',

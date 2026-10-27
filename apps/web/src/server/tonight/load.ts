@@ -36,6 +36,7 @@ export async function loadTonightView(input: {
       venueId: input.venue.id,
       timezone: input.venue.timezone,
       source: source ?? '',
+      currency: input.venue.currency,
       now,
     }),
   }

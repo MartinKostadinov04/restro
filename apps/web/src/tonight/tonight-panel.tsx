@@ -8,7 +8,7 @@
 // moves: no animation, no reordering for style.
 import { EllipsisIcon, Volume2Icon, VolumeXIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -27,7 +27,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import {
   closeAllTablesAction,
@@ -140,7 +139,6 @@ function PauseMenu({ view }: { view: TonightView }) {
 
 function Content({ view }: { view: TonightView }) {
   const t = useTranslations('tonight')
-  const locale = useLocale()
   const router = useRouter()
   const { run, busy } = useTonightRun()
   const ago = useAgo(view.now)
@@ -198,7 +196,10 @@ function Content({ view }: { view: TonightView }) {
     .filter((x) => x.state === 'closed')
     .map((x) => x.id)
   const nothingOpen = view.openCount === 0
-  const emptyNight = nothingOpen && view.rows.length === 0 && view.tableCount > 0
+  // The empty block (with its one filled "Open all") shows while nothing waits at all; a stock notice
+  // alone keeps the header's button, so a night with a notice can still be opened.
+  const emptyShown = view.rows.length === 0 && view.outOfStock.length === 0
+  const emptyNight = emptyShown && nothingOpen && view.tableCount > 0
 
   function openAll() {
     run({
@@ -281,7 +282,6 @@ function Content({ view }: { view: TonightView }) {
                     view={view}
                     primary={index === 0}
                     ago={ago(row.at)}
-                    locale={locale}
                   />
                 ))}
               </ul>
@@ -348,7 +348,10 @@ function Content({ view }: { view: TonightView }) {
   return (
     <div className="space-y-4" data-testid="tonight">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold tracking-tight">{t('title')}</h2>
+        <h2 className="text-xl font-semibold tracking-tight">
+          {t('title')}
+          <span className="ml-2 text-base font-normal text-muted-foreground">{t('tab_act')}</span>
+        </h2>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -368,21 +371,27 @@ function Content({ view }: { view: TonightView }) {
       <p role="status" aria-live="polite" className="sr-only" data-testid="announcement">
         {announcement}
       </p>
-      <Tabs
-        value={part}
-        onValueChange={(value) => setPart(value === 'tables' ? 'tables' : 'needs')}
-        className="lg:hidden"
-      >
-        <TabsList className="w-full" aria-label={t('title')}>
-          <TabsTrigger value="needs" className="h-11 flex-1">
-            {t('ph_needs')}
-            {view.rows.length > 0 ? ` ${view.rows.length}` : ''}
-          </TabsTrigger>
-          <TabsTrigger value="tables" className="h-11 flex-1">
-            {t('ph_tables')}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* The phone's one switch (Patterns: pick one of a few); from lg both parts stand side by side. */}
+      <fieldset className="m-0 flex min-w-0 gap-1 rounded-lg border-0 bg-muted p-1 lg:hidden">
+        <legend className="sr-only">{t('title')}</legend>
+        {(
+          [
+            ['needs', `${t('ph_needs')}${view.rows.length > 0 ? ` ${view.rows.length}` : ''}`],
+            ['tables', t('ph_tables')],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            type="button"
+            variant={part === value ? 'default' : 'ghost'}
+            aria-pressed={part === value}
+            className="h-11 flex-1"
+            onClick={() => setPart(value)}
+          >
+            {label}
+          </Button>
+        ))}
+      </fieldset>
       {/* Each part is drawn once: below lg the switch shows one, from lg both stand side by side. */}
       <div className="lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6">
         <div
@@ -429,9 +438,12 @@ function Content({ view }: { view: TonightView }) {
 
 /** The Tonight screen for one venue. */
 export function TonightPanel({ view }: { view: TonightView }) {
+  const t = useTranslations('tonight')
+  // A venue with no POS still reads right where a sentence names its system.
+  const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
     <RunProvider>
-      <Content view={view} />
+      <Content view={named} />
     </RunProvider>
   )
 }

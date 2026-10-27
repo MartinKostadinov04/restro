@@ -42,6 +42,29 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
   const closed = tile.state === 'closed'
   // A closed table opens in one tap; a person without the right opens nothing and sees no sheet.
   const tapOpens = closed && view.can.openClose
+  const className = cn(
+    'flex min-h-20 min-w-0 flex-col items-start justify-between gap-1 rounded-lg border p-2.5 text-left',
+    needs && 'border-info/40 bg-info/10 text-info',
+    tile.state === 'open' && 'bg-card',
+    closed && 'border-dashed bg-transparent text-muted-foreground',
+  )
+  const content = (
+    <>
+      <span className="w-full text-base font-semibold [overflow-wrap:anywhere]">{name}</span>
+      <span className="flex items-center gap-1 text-[13px] leading-tight">
+        <Icon aria-hidden className="size-4 shrink-0" />
+        <span>{t(word)}</span>
+      </span>
+    </>
+  )
+  // A person who may not open tables sees a closed table as a plain status, never a greyed button.
+  if (closed && !tapOpens) {
+    return (
+      <div data-testid="table-tile" data-state={tile.state} className={className}>
+        {content}
+      </div>
+    )
+  }
   return (
     <button
       type="button"
@@ -54,12 +77,10 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
             ? t('t_open', { table: name })
             : `${name}, ${t(word)}`
       }
-      disabled={busy || (closed && !tapOpens)}
+      disabled={busy}
       className={cn(
-        'flex min-h-20 min-w-0 flex-col items-start justify-between gap-1 rounded-lg border p-2.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60',
-        needs && 'border-info/40 bg-info/10 text-info',
-        tile.state === 'open' && 'bg-card',
-        closed && 'border-dashed bg-transparent text-muted-foreground',
+        className,
+        'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60',
       )}
       onClick={() => {
         if (!closed) {
@@ -74,11 +95,7 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
         })
       }}
     >
-      <span className="w-full text-base font-semibold [overflow-wrap:anywhere]">{name}</span>
-      <span className="flex items-center gap-1 text-[13px] leading-tight">
-        <Icon aria-hidden className="size-4 shrink-0" />
-        <span>{t(word)}</span>
-      </span>
+      {content}
     </button>
   )
 }

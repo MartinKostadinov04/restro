@@ -466,7 +466,8 @@ async function night(name: string): Promise<void> {
           [tables['4']],
         )
       ).rows[0]?.id as string
-      await sentOrder('4', four, 'awaiting_approval', 'AP42')
+      // (In the bar-paused night table 4 waits on nothing, so its tile shows the pause.)
+      if (name !== 'bar-paused') await sentOrder('4', four, 'awaiting_approval', 'AP42')
       // Two items ran out in the POS.
       for (const [index, item] of ['Mojito', 'Negroni'].entries()) {
         const itemId = newId('nd')
@@ -494,17 +495,17 @@ async function night(name: string): Promise<void> {
       )
     }
     if (name === 'many') {
-      // Forty tables are too many for the seed's six; twelve calls and every table open fill the columns.
+      // Every table open with a call and an order awaiting approval: twelve rows fill the column
+      // (a table has one open call at a time).
       for (const number of ['1', '2', '3', '4', '5', '6']) {
         const id = await sitting(number)
-        for (let call = 0; call < 2; call += 1) {
-          await owner.query(
-            `insert into restro.waiter_calls
-               (id, tenant_id, venue_id, table_id, sitting_id, service_date, called_at, source, actor, job_id)
-             values ($1, $2, $3, $4, $5, $6, now() - ($7 || ' minutes')::interval, 'guest', 'guest', 'e2e-seed')`,
-            [newId('wc'), tenantId, venueId, tables[number], id, day, String(call + 1)],
-          )
-        }
+        await owner.query(
+          `insert into restro.waiter_calls
+             (id, tenant_id, venue_id, table_id, sitting_id, service_date, called_at, source, actor, job_id)
+           values ($1, $2, $3, $4, $5, $6, now() - interval '1 minute', 'guest', 'guest', 'e2e-seed')`,
+          [newId('wc'), tenantId, venueId, tables[number], id, day],
+        )
+        await sentOrder(number, id, 'awaiting_approval', `MN${number}0`)
       }
     }
     console.log(JSON.stringify({ level: 'info', event: 'seed_tonight_e2e_night', name }))
