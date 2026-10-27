@@ -116,3 +116,5 @@ Under `copy-rules.md`; GLOSSARY terms ("sent order", "table", "Tonight"); `{sour
 | `sh_steps` | Стъпки | Steps |
 
 The reason words map the codes core writes on a sent order (`sent_orders.reason`; for example `ordering_paused`, `pos_refused`, `pos_unreachable`, `table_closed`, `staff_closed`, `closing_hour`, the out-of-stock flag): the build lists every code it finds and maps each to one of these. A code with no word shows "Not sent" alone and is reported, never a raw code on screen.
+
+**Martin 10-27:** confirmed the screen, its stories and taps, and Q1–Q3 as recommended (Q2 goes to the #85 build).
