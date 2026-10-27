@@ -123,6 +123,8 @@ export default async function VenueWorkspacePage({
                   venue={venue}
                   userId={user.id}
                   sessionId={sessionId}
+                  view={typeof query.view === 'string' ? query.view : undefined}
+                  day={typeof query.day === 'string' ? query.day : undefined}
                 />
               </Suspense>
             ) : (
