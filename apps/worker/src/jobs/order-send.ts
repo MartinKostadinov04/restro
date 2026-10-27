@@ -22,6 +22,8 @@
 // read-back ends on a clock deadline, so a run settles within its slot lease (`send-timings.ts`
 // in core derives each lease from the same timings): the sweep never settles a sent order this
 // worker is still reading back.
+// The reading before the write is kept on the sent order (`landing_basis`) so a later reading of
+// the table can still find an Unconfirmed round that lands late (#135, core `late-landing.ts`).
 // A note goes to the POS only where it reaches the ticket (`notesReachTicket`).
 // The connection's breaker (#79, ./breaker.ts) hears every call: a read or an add that answered
 // is a good call, one that failed or came late a failed call, an add that timed out a write
@@ -40,6 +42,8 @@ import { randomUUID } from 'node:crypto'
 import {
   checkLanded,
   JOB_NAMES,
+  type LandingBasis,
+  landingBasisOf,
   type OrderLine,
   type OrderSendJob,
   OrderSendJobSchema,
@@ -208,6 +212,7 @@ async function sendOne(
       readonly posBillRef?: string
       readonly matchedLines?: readonly string[]
       readonly outOfStock?: readonly string[]
+      readonly landingBasis?: LandingBasis
     } = {},
   ): Promise<Readonly<Record<string, unknown>> | null> =>
     step(
@@ -321,7 +326,13 @@ async function sendOne(
   }
   if (!before.complete) return settle('not_sent', 'pos_unreachable')
   const billBeforeMinor = sumSignedMinor(before.value.bills.map((bill) => bill.totalMinor))
-  const sending = await move('sending', { billBeforeMinor })
+  // The reading before is kept with the sent order, for a late landing after Unconfirmed (#135).
+  const landingBasis = landingBasisOf({
+    before: before.value,
+    sent: prepared.lines.map((line) => ({ item: line.item, quantity: line.quantity })),
+    capabilities: prepared.connector.capabilities,
+  })
+  const sending = await move('sending', { billBeforeMinor, landingBasis })
   if (sending === null) return { kind: 'lost', sentOrderId }
   // A pause landed since the start: the step settled it Not sent and freed the slot.
   if (sending.state === 'not_sent') {

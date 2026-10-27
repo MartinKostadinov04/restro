@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkLanded, type SentLineShape } from './landed'
+import { LandingBasisSchema, matchLanded } from '../../landing-match'
+import { checkLanded, landingBasisOf, type SentLineShape } from './landed'
 import { posRef } from './pos-ref'
 import type { BillLine, PosBill, TableBills } from './schemas'
 
@@ -152,5 +153,85 @@ describe('checkLanded (D115, #77)', () => {
         'ambiguous',
       )
     })
+  })
+})
+
+describe('the reading kept for a late landing (#135)', () => {
+  const modes = {
+    'nothing tells our lines': NONE,
+    'who entered the line': { ownLineReference: false, whoEnteredLine: true },
+    'our reference read back': { ownLineReference: true, whoEnteredLine: false },
+  } as const
+
+  const readings: Record<string, TableBills> = {
+    'the bill as it was': before,
+    'our round on it': table(
+      bill('b1', [
+        line('l1', 'beer', '1'),
+        line('l2', 'gin', '2', { enteredBy: 'restro', restroRef: REF }),
+        line('l3', 'cola', '1.0', { enteredBy: 'restro', restroRef: REF }),
+      ]),
+    ),
+    "a waiter's identical round as well": table(
+      bill('b1', [
+        line('l1', 'beer', '1'),
+        line('l2', 'gin', '2', { enteredBy: 'restro', restroRef: REF }),
+        line('l3', 'cola', '1', { enteredBy: 'restro', restroRef: REF }),
+        line('l4', 'gin', '2', { enteredBy: 'staff' }),
+        line('l5', 'cola', '1', { enteredBy: 'staff' }),
+      ]),
+    ),
+    'a line gone': table(bill('b1', [line('l2', 'gin', '2'), line('l3', 'cola', '1')])),
+    'only other lines': table(bill('b1', [line('l1', 'beer', '1'), line('l9', 'wine', '1')])),
+  }
+
+  for (const [mode, capabilities] of Object.entries(modes)) {
+    for (const [name, after] of Object.entries(readings)) {
+      it(`matches as the read-back does when ${mode}, with ${name}`, () => {
+        const basis = LandingBasisSchema.parse(landingBasisOf({ before, sent, capabilities }))
+        const direct = checkLanded({ before, after, sent, ref: REF, capabilities })
+        const later = matchLanded({
+          before: basis.before,
+          after: after.bills.flatMap((one) =>
+            one.lines.map((each) => ({
+              bill: one.ref.pos,
+              line: each.ref.pos,
+              item: each.item?.pos ?? null,
+              quantity: each.quantity,
+              amountMinor: each.amountMinor,
+              enteredBy: each.enteredBy,
+              restroRef: each.restroRef,
+            })),
+          ),
+          sent: basis.sent,
+          ref: REF,
+          capabilities: basis.capabilities,
+        })
+        if (direct.kind === 'landed') {
+          expect(later).toEqual({
+            kind: 'landed',
+            bill: direct.bill?.pos ?? null,
+            lines: direct.lines.map((one) => one.pos),
+          })
+        } else {
+          expect(later).toEqual(direct)
+        }
+      })
+    }
+  }
+
+  it('keeps only what the match compares: no name, no time, no reference', () => {
+    const rich = table(
+      bill('b1', [
+        line('l1', 'beer', '1', {
+          name: 'Бира',
+          enteredAt: '2026-10-26T20:00:00Z',
+          restroRef: 'x',
+        }),
+      ]),
+    )
+    const basis = landingBasisOf({ before: rich, sent, capabilities: NONE })
+    expect(basis.before).toEqual([{ bill: 'b1', line: 'l1', quantity: '1', amountMinor: 500 }])
+    expect(JSON.stringify(basis)).not.toMatch(/Бира|2026|"x"/)
   })
 })

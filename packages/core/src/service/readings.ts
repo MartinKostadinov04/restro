@@ -7,6 +7,8 @@
 //   row only says the latest reading failed. No sitting ends, no order clears, no pause lifts.
 // - A complete reading overwrites the row in place with our ids and names (`bill.ts`) and marks
 //   the sitting as having had lines once any POS bill holds one.
+// - A complete reading is also matched with the table's Unconfirmed sent orders (`late-landing.ts`,
+//   #135): one that shows up after all is written to the Log, never resent or set back to Added.
 // - The sitting ends (`bill_closed`) when a complete reading shows every POS bill gone or empty
 //   after they held lines, unless the table's lines sit on a payment table (part 2's payment
 //   owns them until it is done).
@@ -48,6 +50,7 @@ import {
   TableReadingSchema,
 } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
+import { lockLateCandidates, recordLateLandings } from './late-landing'
 import { LIFT_REASONS, liftTablePauses } from './pauses'
 import { accepted } from './results'
 import { ORDER_UNCONFIRMED_CAUSE } from './sent-order'
@@ -211,6 +214,11 @@ export function recordReading() {
       const sitting = await stx.rows.openSitting(command.tableId, 'update')
       if (sitting === null) return accepted(null, { details: { recorded: false } })
       await stx.rows.tableOrder(command.tableId)
+      // A complete reading may show an Unconfirmed sent order after all (#135); its row is locked
+      // before the reading's (`lock-order.ts`).
+      const lateCandidates = command.reading.complete
+        ? await lockLateCandidates(stx, command.tableId, sitting.id)
+        : []
       stx.rows.claim('bill_reading', [command.tableId])
       const [before] = await stx.tx
         .select()
@@ -278,6 +286,7 @@ export function recordReading() {
           },
         })
       if (shown(before ?? null) !== shown(after)) stx.rows.touch(command.tableId)
+      await recordLateLandings(stx, lateCandidates, bills)
 
       const lines = bills.reduce((sum, bill) => sum + bill.lines.length, 0)
       if (lines > 0 && !sitting.hadBillLines) {

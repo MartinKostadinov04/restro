@@ -1865,6 +1865,13 @@ export const sentOrders = restro.table(
     posBillRef: text('pos_bill_ref'),
     /** *Backend*: the POS lines the read-back matched. */
     matchedLines: jsonb('matched_lines').$type<unknown[]>(),
+    /**
+     * *Backend*: what the match needs of the reading before the write, kept while the sent order
+     * may still be Sending, Checking or Unconfirmed, so a later reading can find a late landing
+     * (#135). Cleared once the sent order settles otherwise, once it lands late and at the end
+     * of the service day.
+     */
+    landingBasis: jsonb('landing_basis'),
     /** The phone's action id (idempotency); cleared at the end of the service day. */
     actionId: text('action_id'),
     /** The sent order a deliberate repeat confirmed after the duplicate warning. */

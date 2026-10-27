@@ -5,19 +5,25 @@
 // - `ambiguous`: something else changed the bill too, so Restro can't tell its round from staff's.
 //   The sent order becomes Unconfirmed at once: never Added on a guess (D116).
 //
-// How a line is known to be Restro's depends on what the POS declares:
-// - `ownLineReference`: the line carries Restro's reference (the sent order's id) back;
-// - `whoEnteredLine`: the line says Restro's POS user entered it; only lines that appeared after
-//   the before-read count;
-// - neither: only lines that appeared after the before-read count, and only when nothing else
-//   changed the bill in between (no line gone or changed, no bill closed, no other new line). A
-//   waiter's identical round in that window makes it `ambiguous`, never `landed`.
+// The rules (what makes a line Restro's, per what the POS declares) are `matchLanded`'s, on plain
+// text, so the later reading that finds an Unconfirmed round (#135, `service/late-landing.ts`)
+// applies the very same ones. This file hands it the connector's `TableBills`, and keeps what the
+// match needs of the reading before for that later reading (`landingBasisOf`).
 //
 // Pure: no I/O. Quantities are compared as decimal text, never as floats (rule 8).
 
+import {
+  type BeforeLine,
+  type LandingBasis,
+  type MatchLine,
+  matchLanded,
+  type SentLine,
+} from '../../landing-match'
 import type { ServiceCapabilities } from './capabilities'
-import type { PosRef } from './pos-ref'
-import type { BillLine, TableBills } from './schemas'
+import { type PosRef, posRef } from './pos-ref'
+import type { TableBills } from './schemas'
+
+export type { LandingBasis } from '../../landing-match'
 
 /** One line Restro sent: the POS item and its quantity as decimal text. */
 export interface SentLineShape {
@@ -37,44 +43,35 @@ export type LandedVerdict =
   | { readonly kind: 'absent' }
   | { readonly kind: 'ambiguous'; readonly reason: string }
 
-/** A quantity without trailing zeros, so "2", "2.0" and "2.000" compare equal. */
-function quantityKey(quantity: string): string {
-  if (!quantity.includes('.')) return quantity
-  const trimmed = quantity.replace(/0+$/, '').replace(/\.$/, '')
-  return trimmed === '-0' ? '0' : trimmed
+type MatchedCapabilities = Pick<ServiceCapabilities, 'ownLineReference' | 'whoEnteredLine'>
+
+function linesNow(bills: TableBills): MatchLine[] {
+  return bills.bills.flatMap((bill) =>
+    bill.lines.map((line) => ({
+      bill: bill.ref.pos,
+      line: line.ref.pos,
+      item: line.item?.pos ?? null,
+      quantity: line.quantity,
+      amountMinor: line.amountMinor,
+      enteredBy: line.enteredBy,
+      restroRef: line.restroRef,
+    })),
+  )
 }
 
-function lineKey(item: PosRef | null, quantity: string): string {
-  return `${item?.pos ?? ''}|${quantityKey(quantity)}`
+function linesBefore(bills: TableBills): BeforeLine[] {
+  return bills.bills.flatMap((bill) =>
+    bill.lines.map((line) => ({
+      bill: bill.ref.pos,
+      line: line.ref.pos,
+      quantity: line.quantity,
+      amountMinor: line.amountMinor,
+    })),
+  )
 }
 
-/** True when the two lists hold the same keys the same number of times. */
-function sameMultiset(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false
-  const counts = new Map<string, number>()
-  for (const key of a) counts.set(key, (counts.get(key) ?? 0) + 1)
-  for (const key of b) {
-    const left = counts.get(key) ?? 0
-    if (left === 0) return false
-    counts.set(key, left - 1)
-  }
-  return true
-}
-
-interface PlacedLine {
-  readonly bill: PosRef
-  readonly line: BillLine
-}
-
-function linesOf(bills: TableBills): PlacedLine[] {
-  return bills.bills.flatMap((bill) => bill.lines.map((line) => ({ bill: bill.ref, line })))
-}
-
-/** The bill the lines are on, when they are all on one. */
-function billOf(lines: readonly PlacedLine[]): PosRef | null {
-  const first = lines[0]
-  if (first === undefined) return null
-  return lines.every((placed) => placed.bill.pos === first.bill.pos) ? first.bill : null
+function sentLines(sent: readonly SentLineShape[]): SentLine[] {
+  return sent.map((line) => ({ item: line.item.pos, quantity: line.quantity }))
 }
 
 /**
@@ -87,49 +84,38 @@ export function checkLanded(input: {
   readonly sent: readonly SentLineShape[]
   /** Restro's reference for the write (the sent order's id). */
   readonly ref: string
-  readonly capabilities: Pick<ServiceCapabilities, 'ownLineReference' | 'whoEnteredLine'>
+  readonly capabilities: MatchedCapabilities
 }): LandedVerdict {
-  const { before, after, sent, ref, capabilities } = input
-  const sentKeys = sent.map((line) => lineKey(line.item, line.quantity))
-  const now = linesOf(after)
-
-  if (capabilities.ownLineReference) {
-    const ours = now.filter((placed) => placed.line.restroRef === ref)
-    if (ours.length === 0) return { kind: 'absent' }
-    const keys = ours.map((placed) => lineKey(placed.line.item, placed.line.quantity))
-    return sameMultiset(keys, sentKeys)
-      ? { kind: 'landed', bill: billOf(ours), lines: ours.map((placed) => placed.line.ref) }
-      : { kind: 'ambiguous', reason: 'the lines with our reference are not the round we sent' }
+  const verdict = matchLanded({
+    before: linesBefore(input.before),
+    after: linesNow(input.after),
+    sent: sentLines(input.sent),
+    ref: input.ref,
+    capabilities: input.capabilities,
+  })
+  if (verdict.kind !== 'landed') return verdict
+  return {
+    kind: 'landed',
+    bill: verdict.bill === null ? null : posRef(verdict.bill),
+    lines: verdict.lines.map((line) => posRef(line)),
   }
+}
 
-  const earlier = new Map(linesOf(before).map((placed) => [placed.line.ref.pos, placed]))
-  const fresh = now.filter((placed) => !earlier.has(placed.line.ref.pos))
-
-  if (capabilities.whoEnteredLine) {
-    const ours = fresh.filter((placed) => placed.line.enteredBy === 'restro')
-    if (ours.length === 0) return { kind: 'absent' }
-    const keys = ours.map((placed) => lineKey(placed.line.item, placed.line.quantity))
-    return sameMultiset(keys, sentKeys)
-      ? { kind: 'landed', bill: billOf(ours), lines: ours.map((placed) => placed.line.ref) }
-      : { kind: 'ambiguous', reason: "Restro's new lines are not the round we sent" }
+/**
+ * What a sent order keeps of the reading before its write, so a later reading can still be matched
+ * after the worker is gone (#135): only what `checkLanded` compares.
+ */
+export function landingBasisOf(input: {
+  readonly before: TableBills
+  readonly sent: readonly SentLineShape[]
+  readonly capabilities: MatchedCapabilities
+}): LandingBasis {
+  return {
+    capabilities: {
+      ownLineReference: input.capabilities.ownLineReference,
+      whoEnteredLine: input.capabilities.whoEnteredLine,
+    },
+    sent: sentLines(input.sent),
+    before: linesBefore(input.before),
   }
-
-  // Nothing tells Restro's lines from staff's: the bill must be as it was, plus our round.
-  const current = new Map(now.map((placed) => [placed.line.ref.pos, placed]))
-  for (const [pos, was] of earlier) {
-    const is = current.get(pos)
-    if (
-      is === undefined ||
-      is.bill.pos !== was.bill.pos ||
-      quantityKey(is.line.quantity) !== quantityKey(was.line.quantity) ||
-      is.line.amountMinor !== was.line.amountMinor
-    ) {
-      return { kind: 'ambiguous', reason: 'a line on the bill changed or went' }
-    }
-  }
-  if (fresh.length === 0) return { kind: 'absent' }
-  const keys = fresh.map((placed) => lineKey(placed.line.item, placed.line.quantity))
-  return sameMultiset(keys, sentKeys)
-    ? { kind: 'landed', bill: billOf(fresh), lines: fresh.map((placed) => placed.line.ref) }
-    : { kind: 'ambiguous', reason: 'other new lines are on the bill' }
 }
