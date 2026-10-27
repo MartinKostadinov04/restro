@@ -2264,7 +2264,7 @@
     "sf_remove_all_go": "Remove {name}",
     "sf_keep": "Keep",
     "sf_cant_manage": "Only {role} can change this person.",
-    "sf_role_people": "{n} people",
+    "sf_role_people": "{n, plural, one {# person} other {# people}}",
     "sf_default": "Default",
     "sf_copy": "Copy",
     "sf_copy_name": "Copy of {role}",
@@ -2411,6 +2411,11 @@
     "al_link_qr": "A QR code for {name}'s Telegram link",
     "al_no_staff": "Add people first, in Staff and roles.",
     "al_cancel": "Cancel",
-    "al_fail": "Couldn't load the alerts. Check the connection; it tries again by itself."
+    "al_fail": "Couldn't load the alerts. Check the connection; it tries again by itself.",
+    "sf_role_default": {
+      "staff": "Staff",
+      "manager": "Manager",
+      "owner": "Owner"
+    }
   }
 }

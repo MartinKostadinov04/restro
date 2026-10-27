@@ -3,6 +3,7 @@
 // writes are the server actions in server/settings/staff-actions.ts, which the service write path
 // checks again.
 import type { Venue } from '@restro/db'
+import { getTranslations } from 'next-intl/server'
 
 import { loadStaffView } from '@/server/settings/staff-view'
 
@@ -34,5 +35,27 @@ export async function StaffSection({
     held,
   })
   if (view === null) return <SectionFailed what="staff" />
-  return <StaffPanel view={view} />
+  // The three default roles are stored under English names; the screen words them itself.
+  const t = await getTranslations('ownerSettings')
+  const named = (name: string, kind: string | null) =>
+    kind === 'staff' || kind === 'manager' || kind === 'owner' ? t(`sf_role_default.${kind}`) : name
+  const roles = view.roles.map((role) => ({ ...role, name: named(role.name, role.defaultKind) }))
+  const neededRole = (name: string | null) =>
+    roles.find(
+      (role) =>
+        role.defaultKind !== null &&
+        view.roles.some((r) => r.name === name && r.defaultKind === role.defaultKind),
+    )?.name ?? name
+  return (
+    <StaffPanel
+      view={{
+        ...view,
+        roles,
+        people: view.people.map((person) => ({
+          ...person,
+          neededRole: neededRole(person.neededRole),
+        })),
+      }}
+    />
+  )
 }
