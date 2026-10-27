@@ -18,7 +18,7 @@ import { sql } from 'drizzle-orm'
 
 import { deliverAlerts } from '../alerts/deliver'
 import { createPushSender } from '../alerts/push'
-import { createTelegramClient } from '../alerts/telegram'
+import { createTelegramClient, type TelegramClient } from '../alerts/telegram'
 import type { AlertsConfig } from '../config'
 import type { Logger } from '../logger'
 import { defineJob, type JobDefinition } from './types'
@@ -71,6 +71,16 @@ const sleepFor = (ms: number, signal?: AbortSignal) =>
       resolve()
     })
   })
+
+/** The Telegram client this configuration asks for, or null without a bot token. */
+export function telegramClientOf(alerts: AlertsConfig, fetchImpl?: Fetch): TelegramClient | null {
+  return alerts.telegramToken === null
+    ? null
+    : createTelegramClient({
+        token: alerts.telegramToken,
+        ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
+      })
+}
 
 /** The alerts' jobs this configuration asks for. */
 export function createAlertJobs(options: Options): JobDefinition[] {

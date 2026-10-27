@@ -31,15 +31,12 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
-import {
-  answerSentOrderAction,
-  handleWaiterCallAction,
-  resumeTableAction,
-} from '@/server/tonight/actions'
+import { handleWaiterCallAction, resumeTableAction } from '@/server/tonight/actions'
 import type { ActionRow, RowKind, TonightView } from '@/server/tonight/view'
 
 import { useMoney } from './money'
 import { useTonightRun } from './run'
+import { SentOrderAnswers } from './sent-order-answers'
 import { useTableName } from './table-name'
 
 const ICONS = {
@@ -61,6 +58,9 @@ export function useAgo(now: string) {
   }
 }
 
+/** What a row of "Needs you" needs of the screen: the same on the end-of-night page (#86). */
+export type ActionRowView = Pick<TonightView, 'venueId' | 'source' | 'currency' | 'device' | 'can'>
+
 /** One row of "Needs you". `primary` is true only for the first. */
 export function ActionRowItem({
   row,
@@ -69,7 +69,7 @@ export function ActionRowItem({
   ago,
 }: {
   row: ActionRow
-  view: TonightView
+  view: ActionRowView
   primary: boolean
   ago: string
 }) {
@@ -183,52 +183,8 @@ export function ActionRowItem({
     )
     // Two answers at equal weight, both outline: neither is a default (plan §4, Q9). A shared
     // device asks the person's own PIN, which is also the confirmation of what it will record.
-    if (view.can.answer || view.device) {
-      const choose = (value: 'found' | 'not_found') => {
-        if (check === undefined) return
-        run({
-          id: `answer:${check.sentOrderId}`,
-          ...(view.device
-            ? {
-                pin: {
-                  level: 'own' as const,
-                  title: t(value === 'found' ? 's_ok' : 's_no'),
-                  body: t(value === 'found' ? 's_ok_b' : 's_no_b', { table: name }),
-                },
-              }
-            : {}),
-          act: (pin) =>
-            answerSentOrderAction({
-              venueId: view.venueId,
-              sentOrderId: check.sentOrderId,
-              answer: value,
-              pin,
-            }),
-          done: t(value === 'found' ? 's_ok_toast' : 's_no_toast'),
-        })
-      }
-      answer = (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            className={button}
-            disabled={busy || check === undefined}
-            onClick={() => choose('found')}
-          >
-            {t('s_ok')}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className={button}
-            disabled={busy || check === undefined}
-            onClick={() => choose('not_found')}
-          >
-            {t('s_no')}
-          </Button>
-        </>
-      )
+    if (check !== undefined && (view.can.answer || view.device)) {
+      answer = <SentOrderAnswers frame={view} sentOrderId={check.sentOrderId} table={name} />
     }
   }
 

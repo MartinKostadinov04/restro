@@ -112,7 +112,8 @@ test('a staff-only sign-in lands on Tonight, whose tab sits after Tables & QR', 
   const { page } = waiter
   await page.goto('/venues')
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
-  const tabs = page.getByRole('tab')
+  // The venue's own tabs; Tonight has tabs of its own below them (#86).
+  const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
   await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Settings'])
   await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
 })
