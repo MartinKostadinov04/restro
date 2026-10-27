@@ -3,9 +3,11 @@
 //
 // It runs the provider against Stripe's sandbox ("Restro Sandbox"), never a venue's live account
 // (rule 7), while recording, and against the recording otherwise (`test-cassette.ts`). Beside the
-// provider it keeps its own Stripe client for what is not the provider's: the guest at the card
-// form, the account's ledger, and the venue and the bank (`outside`, given by the test file, so
-// that what Restro never does stays in a test file).
+// provider it keeps its own Stripe clients for what is not the provider's: the guest at the card
+// form, on the platform's key; and the account's ledger and the venue and the bank (`outside`,
+// given by the test file, so that what Restro never does stays in a test file), on the harness's
+// own key. The platform's restricted key cannot read balances, refund or answer a dispute
+// (D125 3.5), and is not widened for a test.
 //
 // The guest pays with Stripe's test payment methods, server-side
 // (https://docs.stripe.com/testing.md, https://docs.stripe.com/api/payment_intents/confirm.md):
@@ -30,7 +32,10 @@ import { createStripeProvider, STRIPE_API_VERSION } from '../provider'
 import type { Tape } from './test-cassette'
 import { StripeFaults } from './test-faults'
 
-/** What `outside` gets: the harness's own client, and a poll that waits while recording only. */
+/**
+ * What `outside` gets: the client on the harness's own key, and a poll that waits while
+ * recording only.
+ */
 export interface OutsideTools {
   readonly stripe: Stripe
   until<T>(label: string, read: () => Promise<T | null>): Promise<T>
@@ -38,8 +43,13 @@ export interface OutsideTools {
 
 export interface StripeHarnessOptions {
   readonly name: string
-  /** A sandbox key (`sk_test_`/`rk_test_`) while recording; any test-shaped key in playback. */
+  /**
+   * The platform's key, for the provider and the guest: a sandbox key (`sk_test_`/`rk_test_`)
+   * while recording; any test-shaped key in playback.
+   */
   readonly key: string
+  /** The harness's own key, for the ledger (`movedMinor`) and `outside`: the same rules. */
+  readonly harnessKey: string
   /** Stripe's API as this run reaches it: the recording fetch, or the fetch MSW answers. */
   readonly fetch: typeof fetch
   /** The current check's tape: its accounts. */
@@ -73,12 +83,15 @@ export function stripeHarness(options: StripeHarnessOptions): PaymentHarness & {
     key: options.key,
     fetch: stripeFaults.wrap(options.fetch),
   })
-  const stripe = new Stripe(options.key, {
-    apiVersion: STRIPE_API_VERSION,
-    maxNetworkRetries: 0,
-    telemetry: false,
-    httpClient: Stripe.createFetchHttpClient(options.fetch),
-  })
+  const client = (key: string) =>
+    new Stripe(key, {
+      apiVersion: STRIPE_API_VERSION,
+      maxNetworkRetries: 0,
+      telemetry: false,
+      httpClient: Stripe.createFetchHttpClient(options.fetch),
+    })
+  const stripe = client(options.key)
+  const harnessStripe = client(options.harnessKey)
   const on = (accountRef: ProviderRef) => ({ stripeAccount: accountRef.provider })
   const since = Math.floor(Date.now() / 1000) - 60
 
@@ -123,12 +136,12 @@ export function stripeHarness(options: StripeHarnessOptions): PaymentHarness & {
     guestHost: 'pay.restro.test',
     reset: () => stripeFaults.clear(),
     // The account's balance transactions since the run started: money in from cards
-    // (https://docs.stripe.com/api/balance_transactions/list.md).
+    // (https://docs.stripe.com/api/balance_transactions/list.md; Balance Read).
     async movedMinor() {
       let moved = 0
       let startingAfter: string | undefined
       for (;;) {
-        const page = await stripe.balanceTransactions.list(
+        const page = await harnessStripe.balanceTransactions.list(
           {
             created: { gte: since },
             limit: 100,
@@ -167,7 +180,9 @@ export function stripeHarness(options: StripeHarnessOptions): PaymentHarness & {
       storeServerError: (step) => stripeFaults.arm(step, 'server_error'),
       failReads: () => stripeFaults.failReads(),
     },
-    ...(options.outside === undefined ? {} : { outside: options.outside({ stripe, until }) }),
+    ...(options.outside === undefined
+      ? {}
+      : { outside: options.outside({ stripe: harnessStripe, until }) }),
     ...(options.checkTimeoutMs === undefined ? {} : { checkTimeoutMs: options.checkTimeoutMs }),
   }
 }
