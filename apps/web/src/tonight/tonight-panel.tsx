@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { cn } from '@/lib/utils'
 import {
   closeAllTablesAction,
   liftOrderingAction,
@@ -382,10 +383,24 @@ function Content({ view }: { view: TonightView }) {
           </TabsTrigger>
         </TabsList>
       </Tabs>
-      <div className="lg:hidden">{part === 'needs' ? needs : tables}</div>
-      <div className="hidden gap-6 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto pr-1">{needs}</div>
-        <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto pr-1">{tables}</div>
+      {/* Each part is drawn once: below lg the switch shows one, from lg both stand side by side. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6">
+        <div
+          className={cn(
+            part === 'needs' ? '' : 'hidden',
+            'lg:block lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto lg:pr-1',
+          )}
+        >
+          {needs}
+        </div>
+        <div
+          className={cn(
+            part === 'tables' ? '' : 'hidden',
+            'lg:block lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto lg:pr-1',
+          )}
+        >
+          {tables}
+        </div>
       </div>
       <Dialog open={closeAll} onOpenChange={setCloseAll}>
         <DialogContent>

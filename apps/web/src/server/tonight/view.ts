@@ -328,7 +328,9 @@ export function buildTonightView(input: {
     groups,
     openCount: tiles.filter((tile) => tile.state !== 'closed').length,
     tableCount: tiles.length,
-    pausableBars: allBars ? [] : tonight.bars.filter((bar) => !pausedBars.has(bar.id)),
+    // Restro's own pause hides the button: a second pause adds nothing (plan §5).
+    pausableBars:
+      allBars || restro.length > 0 ? [] : tonight.bars.filter((bar) => !pausedBars.has(bar.id)),
     canPauseAll: !allBars && restro.length === 0,
     now: input.now.toISOString(),
   }

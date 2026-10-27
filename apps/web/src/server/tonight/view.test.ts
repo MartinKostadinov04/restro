@@ -283,3 +283,23 @@ describe('what the actor may do', () => {
     })
   })
 })
+
+describe('Pause ordering while Restro has paused', () => {
+  it('offers no pause at all', () => {
+    const v = view(
+      tonight({
+        pauses: [
+          pause({
+            id: 'pa_r',
+            scope: 'connection',
+            cause: 'breaker',
+            restroStarted: true,
+            startedBy: null,
+          }),
+        ],
+      }),
+    )
+    expect(v.canPauseAll).toBe(false)
+    expect(v.pausableBars).toEqual([])
+  })
+})
