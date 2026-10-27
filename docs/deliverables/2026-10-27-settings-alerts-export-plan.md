@@ -97,3 +97,5 @@ In Tonight › Log, an "Export" button (outline) beside the day button, for role
 
 - **Q1. Link Telegram from a button** (Restro opens Telegram, the owner picks the group, the bot joins and links itself; a bartender links by scanning a QR), rather than typing group ids or codes? It needs a small addition to the worker (the bot listens for its own start message), no new service and no new dependency. Recommendation: yes; it's how Telegram bots are usually added, and nobody has to find a chat id.
 - **Q2. The export in two files** (sent orders, the Log), each for a date range, rather than one file mixing both? Recommendation: yes; each opens cleanly in Excel with its own columns.
+
+**Martin 10-27:** confirmed Alerts, the Log's export and the Integrations fixes as drafted, Q1 and Q2 as recommended (Telegram linked from a button, with the worker addition in A4; the export as two files).

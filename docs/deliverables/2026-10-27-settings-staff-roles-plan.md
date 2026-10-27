@@ -126,3 +126,5 @@ Reaching the section: 2 taps on desktop, 4 on a phone (as Hours). Comparables: S
 ## 7. Questions for Martin
 
 None: the backend (D122 §7, #72) settles who may do what. The permission words in §6 are his to accept with the strings.
+
+**Martin 10-27:** confirmed the Staff and roles screen as drafted, with its permission words.
