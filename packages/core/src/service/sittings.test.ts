@@ -279,11 +279,24 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
     await world.addSharedDevice(sessionId)
     const tableId = table(0)
     const device: ServiceActor = { kind: 'user', userId: ownerId, sessionId }
+    const before = (
+      await world.owner.query<{ seq: string }>(
+        'select coalesce(max(seq), 0)::text as seq from restro.log_entries where tenant_id = $1',
+        [world.tenantId],
+      )
+    ).rows[0]?.seq
     expect(await accepted({ type: 'table.open', tableId }, device)).toMatchObject({
       opened: true,
       openedBy: `user:${ownerId}`,
     })
     expect(await accepted({ type: 'table.close', tableId }, device)).toMatchObject({ closed: true })
+    // The Log names the device's account, as D122 §7 says.
+    const log = await world.owner.query<{ kind: string; actor: string }>(
+      `select kind, actor from restro.log_entries where tenant_id = $1 and seq > $2 and kind in ('sitting.opened', 'sitting.ended')`,
+      [world.tenantId, before],
+    )
+    expect(log.rows.length).toBeGreaterThanOrEqual(2)
+    for (const row of log.rows) expect(row.actor).toBe(`user:${ownerId}`)
     await closeEverything()
   })
 

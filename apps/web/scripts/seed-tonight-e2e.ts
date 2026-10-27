@@ -451,6 +451,13 @@ async function night(name: string): Promise<void> {
         },
         4,
       )
+      // Restro's own reading found the order on the bill afterwards (#135); staff still answer.
+      await owner.query(
+        `insert into restro.log_entries
+           (tenant_id, venue_id, service_date, kind, sent_order_id, table_id, retention, source, actor, job_id)
+         values ($1, $2, $3, 'sent_order.landed_late', $4, $5, 'night', 'worker', 'system', 'e2e-seed')`,
+        [tenantId, venueId, day, unconfirmed, tables['1']],
+      )
       // Table 2 calls a waiter; table 3's guard paused it; table 4 awaits approval.
       await owner.query(
         `insert into restro.waiter_calls

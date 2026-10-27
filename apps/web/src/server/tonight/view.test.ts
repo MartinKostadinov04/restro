@@ -37,6 +37,7 @@ function tonight(overrides: Partial<Tonight> = {}): Tonight {
     tables: [table(1, BAR1, true), table(2, BAR1, false), table(3, BAR2, true)],
     sentOrders: [],
     alerts: [],
+    landedLate: [],
     waiterCalls: [],
     pauses: [],
     log: null,
@@ -147,6 +148,33 @@ describe('Needs you, in the order of what costs most to leave', () => {
 
   it('shows no call to someone who does not answer them', () => {
     expect(view(tonight({ waiterCalls: null })).rows).toEqual([])
+  })
+})
+
+describe('a late landing Restro found (#135)', () => {
+  it('shows its time on the Unconfirmed row and changes nothing else', () => {
+    const base = {
+      alerts: [
+        {
+          id: 'al_1',
+          kind: 'order_unconfirmed',
+          subjectId: 'so_1',
+          permission: 'alerts.answer',
+          raisedAt: new Date('2026-10-27T21:20:00Z'),
+          details: { reference: 'K7F2', sentOrderId: 'so_1', tableId: 'tb_000000000000000000001' },
+        },
+      ],
+    }
+    const without = view(tonight(base)).rows[0]?.check
+    expect(without).toMatchObject({ sentOrderId: 'so_1', landedAt: null })
+    const landed = view(
+      tonight({
+        ...base,
+        landedLate: [{ sentOrderId: 'so_1', at: new Date('2026-10-27T21:25:00Z') }],
+      }),
+    ).rows
+    expect(landed).toHaveLength(1)
+    expect(landed[0]?.check?.landedAt).toBe('23:25')
   })
 })
 

@@ -503,7 +503,10 @@ export interface Tonight {
     readonly createdAt: Date
     readonly settledAt: Date | null
   }[]
-  /** Open alerts the actor may answer (or that need no permission). */
+  /**
+   * Open alerts the actor may answer (or that need no permission). A shared device also sees the
+   * money alerts and the managers' to-dos, answered with a manager's PIN (plan §5), but never a tip.
+   */
   readonly alerts: readonly {
     readonly id: string
     readonly kind: string
@@ -512,6 +515,11 @@ export interface Tonight {
     readonly raisedAt: Date
     readonly details: Record<string, unknown>
   }[]
+  /**
+   * When Restro found an Unconfirmed sent order on the bill by itself (#135, the Log's
+   * `sent_order.landed_late`). It changes nothing: staff still answer (D116).
+   */
+  readonly landedLate: readonly { readonly sentOrderId: string; readonly at: Date }[]
   /** Open waiter calls, for those who answer them (`alerts.answer`); null otherwise. */
   readonly waiterCalls:
     | readonly {
@@ -546,6 +554,11 @@ export type TonightRefusal =
   | 'actor_unknown'
   | 'venue_missing'
   | 'venue_archived'
+
+/** An alert's details without the tips: Staff, and so a shared device, never see them. */
+function withoutTips(details: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
+}
 
 /** How many Log entries Tonight shows at once. */
 export const TONIGHT_LOG_LIMIT = 200
@@ -639,6 +652,28 @@ export async function readTonight(
         ),
       )
       .orderBy(alerts.raisedAt)
+
+    // The Log is read here for one fact only, whatever the actor's `log.view`: the time of a late
+    // landing, which the Unconfirmed row shows.
+    const unconfirmedIds = openAlerts.flatMap((alert) =>
+      alert.kind === 'order_unconfirmed' && typeof alert.details.sentOrderId === 'string'
+        ? [alert.details.sentOrderId]
+        : [],
+    )
+    const landed =
+      unconfirmedIds.length === 0
+        ? []
+        : await tx
+            .select({ sentOrderId: logEntries.sentOrderId, at: logEntries.at })
+            .from(logEntries)
+            .where(
+              and(
+                eq(logEntries.venueId, venue.id),
+                eq(logEntries.kind, 'sent_order.landed_late'),
+                inArray(logEntries.sentOrderId, unconfirmedIds),
+              ),
+            )
+            .orderBy(logEntries.at)
 
     const calls = held.has('alerts.answer')
       ? await tx
@@ -735,8 +770,18 @@ export async function readTonight(
             : { id: row.sittingId, openedAt: row.openedAt, openedHow: row.openedHow },
       })),
       sentOrders: sent,
-      alerts: openAlerts.filter(
-        (alert) => alert.permission === null || held.has(alert.permission as Permission),
+      alerts: openAlerts
+        .filter(
+          (alert) =>
+            alert.permission === null ||
+            held.has(alert.permission as Permission) ||
+            (grants.device === true && alert.permission === 'money.follow_up'),
+        )
+        .map((alert) =>
+          grants.device === true ? { ...alert, details: withoutTips(alert.details) } : alert,
+        ),
+      landedLate: landed.flatMap((row) =>
+        row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
       ),
       waiterCalls: calls,
       pauses: active.map(({ actor: starter, ...pause }) => ({

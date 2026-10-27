@@ -118,6 +118,14 @@ const REGISTRY: CommandRegistry = {
     idempotency: 'by_nature',
     handle: async () => accepted(null),
   }),
+  'test.quick_settings': defineCommand({
+    schema: z.strictObject({ type: z.literal('test.quick_settings') }),
+    origins: ['staff'],
+    permission: 'settings.codes',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    handle: async () => accepted(null),
+  }),
   'test.codes': defineCommand({
     schema: z.strictObject({ type: z.literal('test.codes') }),
     origins: ['staff'],
@@ -266,6 +274,16 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
         await run({ type: 'test.quick_lift' }, staff(user(ownerId, deviceSession))),
       ).toMatchObject({
         code: 'permission_denied',
+      })
+      // Not even a flagged command reaches a settings permission from a device.
+      expect(
+        await run({ type: 'test.quick_settings' }, staff(user(ownerId, deviceSession))),
+      ).toMatchObject({
+        code: 'permission_denied',
+      })
+      // A command without the flag is still pin_required, whatever it needs.
+      expect(await run({ type: 'test.codes' }, staff(user(ownerId, deviceSession)))).toMatchObject({
+        code: 'pin_required',
       })
       // An account that is not a member of the organisation gets nothing from a device.
       expect(await run(quick, staff(user(outsiderId, deviceSession)))).toMatchObject({

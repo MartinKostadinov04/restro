@@ -32,9 +32,9 @@ import {
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
+  answerSentOrderAction,
   handleWaiterCallAction,
   resumeTableAction,
-  resumeUnconfirmedAction,
 } from '@/server/tonight/actions'
 import type { ActionRow, RowKind, TonightView } from '@/server/tonight/view'
 
@@ -173,44 +173,61 @@ export function ActionRowItem({
             )}
           </>
         )}
-        <p className="font-medium">{t('s_q', { source: view.source })}</p>
+        {check?.landedAt == null ? null : (
+          <p className="text-muted-foreground" data-testid="landed-late">
+            {t('so_found', { time: check.landedAt })}
+          </p>
+        )}
+        <p className="font-medium">{t('s_q')}</p>
       </div>
     )
-    // The two answers "Found on the bill" / "Not on the bill" wait for a core command that stores
-    // them; until then the table is resumed and the alert closed, in one tap (report, S8).
-    if (view.can.resume || view.device) {
+    // Two answers at equal weight, both outline: neither is a default (plan §4, Q9). A shared
+    // device asks the person's own PIN, which is also the confirmation of what it will record.
+    if (view.can.answer || view.device) {
+      const choose = (value: 'found' | 'not_found') => {
+        if (check === undefined) return
+        run({
+          id: `answer:${check.sentOrderId}`,
+          ...(view.device
+            ? {
+                pin: {
+                  level: 'own' as const,
+                  title: t(value === 'found' ? 's_ok' : 's_no'),
+                  body: t(value === 'found' ? 's_ok_b' : 's_no_b', { table: name }),
+                },
+              }
+            : {}),
+          act: (pin) =>
+            answerSentOrderAction({
+              venueId: view.venueId,
+              sentOrderId: check.sentOrderId,
+              answer: value,
+              pin,
+            }),
+          done: t(value === 'found' ? 's_ok_toast' : 's_no_toast'),
+        })
+      }
       answer = (
-        <Button
-          type="button"
-          variant={variant}
-          className={button}
-          disabled={busy || check === undefined}
-          onClick={() =>
-            check !== undefined &&
-            run({
-              id: `resume:${row.tableId}`,
-              ...(view.device
-                ? {
-                    pin: {
-                      level: 'own' as const,
-                      title: t('g_ok'),
-                      body: t('g_b', { table: name }),
-                    },
-                  }
-                : {}),
-              act: (pin) =>
-                resumeUnconfirmedAction({
-                  venueId: view.venueId,
-                  tableId: row.tableId,
-                  alertId: check.alertId,
-                  pin,
-                }),
-              done: t('g_toast', { table: name }),
-            })
-          }
-        >
-          {t('g_ok')}
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            className={button}
+            disabled={busy || check === undefined}
+            onClick={() => choose('found')}
+          >
+            {t('s_ok')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className={button}
+            disabled={busy || check === undefined}
+            onClick={() => choose('not_found')}
+          >
+            {t('s_no')}
+          </Button>
+        </>
       )
     }
   }

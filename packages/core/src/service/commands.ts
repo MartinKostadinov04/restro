@@ -11,7 +11,7 @@
 // item out of stock in the POS (#80), paying on the bill up to a held card (#110), the alerts'
 // lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
 // Push (#83), the closing hour and the pre-opening check (#82), and the end of a service day
-// (#84).
+// (#84), and staff's answer to an Unconfirmed sent order (#85).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -62,6 +62,7 @@ import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
+import { sentOrderAnswer } from './sent-order-answer'
 import { closeServiceDay } from './service-day-close'
 import {
   closeAllTables,
@@ -288,6 +289,8 @@ export const SERVICE_COMMANDS = {
   'table.resume': staffOnTable('table.resume', 'tables.resume', resumeTable),
   'ordering.pause': pauseOrdering(),
   'ordering.lift': liftOrdering(),
+  // #85: staff settle an Unconfirmed sent order: "Found on the bill" or "Not on the bill".
+  'sent_order.answer': sentOrderAnswer(),
   // #83: Done in Tonight or from the venue's Telegram group (`via`), and what the worker sends.
   'alert.done': defineCommand({
     schema: z.strictObject({ type: z.literal('alert.done'), alertId: idSchema('al') }),

@@ -27,6 +27,7 @@ export interface ActionRow {
   /** A sent order the POS never confirmed (D116): what a waiter needs at the till. */
   readonly check?: {
     readonly alertId: string
+    readonly sentOrderId: string
     readonly reference: string
     readonly items: readonly {
       readonly name: string
@@ -35,6 +36,8 @@ export interface ActionRow {
     }[]
     readonly sentAt: string | null
     readonly billBeforeMinor: number | null
+    /** When Restro found it on the bill by itself (#135), `HH:mm` in the venue's zone; staff still answer. */
+    readonly landedAt: string | null
   }
   readonly waiterCallId?: string
 }
@@ -220,6 +223,7 @@ export function buildTonightView(input: {
     if (current === undefined || rank(state) > rank(current)) stateOf.set(tableId, state)
   }
 
+  const landedOf = new Map(tonight.landedLate.map((entry) => [entry.sentOrderId, entry.at]))
   const out: { readonly at: Date; readonly name: string }[] = []
   for (const alert of tonight.alerts) {
     if (alert.kind === OUT_OF_STOCK) {
@@ -239,10 +243,12 @@ export function buildTonightView(input: {
       at: alert.raisedAt.toISOString(),
       check: {
         alertId: alert.id,
+        sentOrderId: text(alert.details.sentOrderId),
         reference: text(alert.details.reference),
         items: items(alert.details.items),
         sentAt: clock(text(alert.details.sentAt) || null),
         billBeforeMinor: typeof billBefore === 'number' ? billBefore : null,
+        landedAt: clock(landedOf.get(text(alert.details.sentOrderId)) ?? null),
       },
     })
     raise(tableId, 'check')

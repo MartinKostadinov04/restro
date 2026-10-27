@@ -129,11 +129,20 @@ test('Needs you is ordered by what costs most to leave, with the notice apart', 
   await expect(notice).toContainText('Out of stock in')
   await expect(notice).toContainText('Mojito, Negroni')
   await expect(notice.getByRole('button')).toHaveCount(0)
-  // Only the top row's answer is filled; every other button is outline.
+  // The top row is a sent order to check: its two answers sit at equal weight, both outline, so
+  // neither is a default (plan §4, Q9); the only filled button is a top row's single answer.
   const filled = await tonight(page)
     .locator('[data-testid="action-row"] button[data-variant="default"]')
     .count()
-  expect(filled).toBe(1)
+  expect(filled).toBe(0)
+  // Restro found it on the bill by itself (#135): a meta line, and staff still answer.
+  await expect(rows(page).first().getByTestId('landed-late')).toContainText(
+    'Restro found it on the bill at',
+  )
+  await expect(rows(page).first().getByRole('button')).toHaveText([
+    'Found on the bill',
+    'Not on the bill',
+  ])
   // An approval is read-only: the POS decides (plan §10 Q4).
   await expect(rows(page).nth(1)).toContainText('Approve or decline it in')
   await expect(rows(page).nth(1).getByRole('button')).toHaveCount(0)
@@ -157,9 +166,9 @@ test('on a personal session: Handled and Resume are one tap with no PIN', async 
   await resume.tap(
     rows(page)
       .filter({ hasText: 'Sent order not confirmed' })
-      .getByRole('button', { name: 'Resume table' }),
+      .getByRole('button', { name: 'Found on the bill' }),
   )
-  await expect(toast(page, 'Table 1 resumed')).toBeVisible()
+  await expect(toast(page, 'Saved: found on the bill')).toBeVisible()
   await expect(rows(page).filter({ hasText: 'Sent order not confirmed' })).toHaveCount(0)
   expect(resume.count).toBe(1)
 })
@@ -213,14 +222,18 @@ test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own'
   await expect(rows(page).filter({ hasText: 'Table 3 is paused' })).toHaveCount(0)
   expect(resume.count).toBe(1)
 
-  // The unconfirmed order: one tap and the PIN.
+  // The unconfirmed order: one tap and the PIN, which names what will be recorded.
   const check = new Taps()
   await check.tap(
     rows(page)
       .filter({ hasText: 'Sent order not confirmed' })
-      .getByRole('button', { name: 'Resume table' }),
+      .getByRole('button', { name: 'Not on the bill' }),
+  )
+  await expect(page.getByTestId('pin-sheet')).toContainText(
+    'The order counts as not sent and Table 1 can order again.',
   )
   await typePin(page, '1234')
+  await expect(toast(page, 'Saved: not on the bill')).toBeVisible()
   await expect(rows(page).filter({ hasText: 'Sent order not confirmed' })).toHaveCount(0)
   expect(check.count).toBe(1)
 })

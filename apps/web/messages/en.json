@@ -1974,7 +1974,7 @@
     "now0": "just now",
     "s_t": "Sent order not confirmed",
     "s_before": "Bill before this order: {amt}",
-    "s_q": "Check the bill in {source}, then resume the table.",
+    "s_q": "Is it on the bill?",
     "s_meta": "Ref {ref} · sent {time}",
     "s_ref": "Ref {ref}",
     "a_t": "Sent order awaiting approval",
@@ -2058,6 +2058,13 @@
       "invalid": "Not saved. Reload the page and try again."
     },
     "tb": "Table {n}",
-    "source_none": "the POS"
+    "source_none": "the POS",
+    "s_ok": "Found on the bill",
+    "s_no": "Not on the bill",
+    "s_ok_b": "The order counts as added and {table} can order again.",
+    "s_no_b": "The order counts as not sent and {table} can order again.",
+    "s_ok_toast": "Saved: found on the bill",
+    "s_no_toast": "Saved: not on the bill",
+    "so_found": "Restro found it on the bill at {time}."
   }
 }

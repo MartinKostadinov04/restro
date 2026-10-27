@@ -287,6 +287,10 @@ export {
   SLOT_SENDING_SECONDS,
   SLOT_START_SECONDS,
 } from './sent-order'
+export {
+  SENT_ORDER_ANSWERS,
+  type SentOrderAnswer,
+} from './sent-order-answer'
 export { SITTING_END_REASONS, type SittingEndReason } from './sittings'
 export { MAX_REVEALED_PINS } from './staff'
 export {

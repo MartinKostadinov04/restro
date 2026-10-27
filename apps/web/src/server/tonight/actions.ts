@@ -150,7 +150,12 @@ export async function markPaymentTableAction(input: unknown): Promise<TonightRes
 const OnCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), pin })
 const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin })
 const OnBar = z.strictObject({ venueId, barId: idSchema('br').nullable(), pin })
-const OnUnconfirmed = z.strictObject({ venueId, tableId, alertId: idSchema('al'), pin })
+const OnSentOrder = z.strictObject({
+  venueId,
+  sentOrderId: idSchema('so'),
+  answer: z.enum(['found', 'not_found']),
+  pin,
+})
 const OnTables = z.strictObject({ venueId, tableIds: z.array(tableId).min(1).max(200), pin })
 const OnTableRead = z.strictObject({ venueId, tableId })
 
@@ -191,17 +196,20 @@ export async function resumeTableAction(input: unknown): Promise<TonightResult> 
 }
 
 /**
- * Resumes a table paused by a sent order the POS never confirmed, and closes that order's alert.
- * The two are separate commands; a repeat after a half-way failure finishes the second.
+ * Staff's answer to a sent order the POS never confirmed, after looking at the bill: "Found on the
+ * bill" or "Not on the bill". One command settles the order, lifts the table's pause and closes the
+ * alert; on a shared device it names the person by their own PIN.
  */
-export async function resumeUnconfirmedAction(input: unknown): Promise<TonightResult> {
-  const parsed = OnUnconfirmed.safeParse(input)
+export async function answerSentOrderAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnSentOrder.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform(parsed.data, async (scope) => {
-    const resumed = await command(scope, { type: 'table.resume', tableId: parsed.data.tableId })
-    if (!resumed.ok) return resumed
-    return command(scope, { type: 'alert.done', alertId: parsed.data.alertId })
-  })
+  return perform(parsed.data, (scope) =>
+    command(scope, {
+      type: 'sent_order.answer',
+      sentOrderId: parsed.data.sentOrderId,
+      answer: parsed.data.answer,
+    }),
+  )
 }
 
 /**

@@ -203,6 +203,79 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     ])
   })
 
+  it('shows a shared device the money alerts and the managers’ to-dos, without a tip; a staff phone not (#85)', async () => {
+    const subject = newId('py')
+    const seed = ['worker', 'system', 'test-seed']
+    await world.owner.query(
+      `insert into restro.alerts
+         (id, tenant_id, venue_id, service_date, kind, audience, subject_id, permission, details,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, 'payment_unconfirmed', 'venue', $5, 'money.follow_up', $6::jsonb, $7, $8, $9)`,
+      [
+        newId('al'),
+        world.tenantId,
+        world.venueId,
+        day,
+        subject,
+        JSON.stringify({ paymentId: subject, amountMinor: 3800, tipMinor: 200, currency: 'EUR' }),
+        ...seed,
+      ],
+    )
+    const session = `sess-${randomUUID()}`
+    await world.addSharedDevice(session)
+    const device = await tonightOf(user(ownerId, session))
+    const money = device.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
+    expect(money?.details).toMatchObject({ amountMinor: 3800 })
+    expect(money?.details).not.toHaveProperty('tipMinor')
+    // A member with Staff's rights on a phone of their own sees no manager's alert.
+    const phone = await tonightOf(user(waiterId))
+    expect(phone.alerts.some((alert) => alert.kind === 'payment_unconfirmed')).toBe(false)
+    await world.owner.query(
+      "delete from restro.alerts where kind = 'payment_unconfirmed' and tenant_id = $1",
+      [world.tenantId],
+    )
+  })
+
+  it('tells when Restro found an Unconfirmed sent order on the bill (#135), changing nothing (#85)', async () => {
+    const tableId = world.tables[1] as string
+    const sittingId = await world.openSitting(tableId, day)
+    const sentOrderId = await world.addSentOrder({
+      tableId,
+      sittingId,
+      actionId: randomUUID(),
+      reference: 'LATE',
+      serviceDate: day,
+    })
+    await world.owner.query("update restro.sent_orders set state = 'unconfirmed' where id = $1", [
+      sentOrderId,
+    ])
+    await world.owner.query(
+      `insert into restro.alerts
+         (id, tenant_id, venue_id, service_date, kind, audience, subject_id, permission, details,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, 'order_unconfirmed', 'venue', $5, 'alerts.answer', $6::jsonb,
+               'worker', 'system', 'test-seed')`,
+      [
+        newId('al'),
+        world.tenantId,
+        world.venueId,
+        day,
+        sentOrderId,
+        JSON.stringify({ sentOrderId }),
+      ],
+    )
+    expect((await tonightOf(user(ownerId))).landedLate).toEqual([])
+    await world.owner.query(
+      `insert into restro.log_entries
+         (tenant_id, venue_id, service_date, kind, sent_order_id, table_id, retention, source, actor, job_id)
+       values ($1, $2, $3, 'sent_order.landed_late', $4, $5, 'night', 'worker', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId, day, sentOrderId, tableId],
+    )
+    const landed = (await tonightOf(user(waiterId))).landedLate
+    expect(landed.map((entry) => entry.sentOrderId)).toEqual([sentOrderId])
+    expect(landed[0]?.at).toBeInstanceOf(Date)
+  })
+
   it('refuses a guest, a member with no permission here, and an outsider', async () => {
     const base = { tenantId: world.tenantId, venueId: world.venueId }
     expect(await readTonight(world.app, { ...base, actor: { kind: 'guest' } })).toEqual({

@@ -35,6 +35,11 @@ export type TableCommand =
   | { readonly type: 'tables.open_all' }
   | { readonly type: 'tables.close_all' }
   | { readonly type: 'table.resume'; readonly tableId: string }
+  | {
+      readonly type: 'sent_order.answer'
+      readonly sentOrderId: string
+      readonly answer: 'found' | 'not_found'
+    }
   | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
   | { readonly type: 'alert.done'; readonly alertId: string }
   | { readonly type: 'ordering.pause'; readonly barId: string | null }
