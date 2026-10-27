@@ -125,7 +125,7 @@ test('Staff and roles: adds a person and shows the PIN in the result', async ({ 
   await page.getByRole('button', { name: 'Добави', exact: true }).click()
   await expect(page.getByTestId('pin-result')).toContainText(/\d{4}/)
   await page.getByRole('button', { name: 'Готово' }).click()
-  await expect(page.getByTestId('staff-people').getByText('Мила')).toBeVisible()
+  await expect(page.getByTestId('staff-people').getByText('Мила').first()).toBeVisible()
   await context.close()
 })
 
