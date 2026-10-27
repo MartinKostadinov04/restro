@@ -362,6 +362,29 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       expect(edits).toHaveLength(1)
     })
 
+    it('says it was cleared at the end of the night when the day closed on it (#162)', async () => {
+      const id = await seedAlert('order_unconfirmed')
+      await pass()
+      await query(`update restro.alerts set service_date = '2026-01-05' where id = $1`, [id])
+      const closed = await applyService(
+        pool,
+        { type: 'service_day.close', serviceDate: '2026-01-05' },
+        {
+          tenantId,
+          venueId,
+          origin: 'worker',
+          actor: { kind: 'system' },
+          jobId: `day-close-${randomUUID()}`,
+        },
+      )
+      expect(closed.result.status).toBe('accepted')
+      await pass()
+      expect(edits).toHaveLength(1)
+      expect(edits[0]?.text).toMatch(/\n\nCleared at the end of the night$/)
+      await pass()
+      expect(edits).toHaveLength(1)
+    })
+
     it('is never sent when it was raised while the venue was closed', async () => {
       await setOrdering({ serviceHours: CLOSED_ALL_WEEK })
       const id = await seedAlert('order_unconfirmed')

@@ -4,6 +4,7 @@ import {
   type AlertLocale,
   alertLocale,
   alertMessage,
+  clearedLine,
   digestMessage,
   doneButtonText,
   doneLine,
@@ -260,6 +261,13 @@ describe('doneLine', () => {
     expect(doneLine('Maria', at, 'Europe/Sofia')).toBe('Done by Maria, 02:14')
     expect(doneLine('Maria', at, 'Europe/Sofia', 'en')).toBe('Done by Maria, 02:14')
     expect(doneLine('Мария', at, 'Europe/Sofia', 'bg')).toBe('Готово от Мария, 02:14')
+  })
+})
+
+describe('clearedLine', () => {
+  it('says the day’s close cleared it, in the venue’s language', () => {
+    expect(clearedLine()).toBe('Cleared at the end of the night')
+    expect(clearedLine('bg')).toBe('Изчистено в края на вечерта')
   })
 })
 

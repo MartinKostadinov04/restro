@@ -43,6 +43,11 @@ export interface AlertWords {
   readonly details: Readonly<Record<string, unknown>>
 }
 
+/** What the group's message ends with when the day's close cleared the alert (#162). */
+export function clearedLine(locale: AlertLocale = 'en'): string {
+  return TABLES[locale].clearedAtNightEnd
+}
+
 /** What the bot says back to a person who pressed Done. */
 export type TelegramAnswer =
   | 'not_an_alert'
@@ -81,6 +86,7 @@ interface Strings {
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
+  readonly clearedAtNightEnd: string
   readonly doneButton: string
   readonly answers: Readonly<Record<TelegramAnswer, string>>
 }
@@ -120,6 +126,7 @@ const EN: Strings = {
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
+  clearedAtNightEnd: 'Cleared at the end of the night',
   doneButton: 'Done',
   answers: {
     not_an_alert: 'That button is not for an alert.',
@@ -165,6 +172,7 @@ const BG: Strings = {
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
+  clearedAtNightEnd: 'Изчистено в края на вечерта',
   doneButton: 'Готово',
   answers: {
     not_an_alert: 'Този бутон не е за сигнал.',

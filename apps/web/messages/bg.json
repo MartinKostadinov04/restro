@@ -2122,6 +2122,7 @@
     "lg_lifted": "Поръчките са пуснати: {scope}",
     "lg_alert": "Известие: {alert}",
     "lg_alert_done": "Известието е прието: {alert}",
+    "lg_alert_cleared": "Изчистено в края на вечерта: {alert}",
     "lg_call": "{table} повика сервитьор",
     "lg_call_done": "Повикването от {table} е прието",
     "lg_call_lapsed": "Повикването от {table} изтече",
