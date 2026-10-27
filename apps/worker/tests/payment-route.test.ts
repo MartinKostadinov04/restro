@@ -43,6 +43,7 @@ import {
 } from '@restro/core/apply'
 import {
   applyService,
+  BUDGET_WAIT_MS,
   DEFAULT_ROLE_PERMISSIONS,
   forgetGuestCodes,
   GUEST_LIMITS,
@@ -302,7 +303,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   beforeEach(() => reset())
 
   /** A fresh night: a new till with table 1's round, nothing in flight, a new sitting. */
-  async function reset() {
+  async function reset(lateLandingMs = LATE_LANDING_MS) {
     forgetGuestCodes()
     LOOSE.clear()
     sent.length = 0
@@ -311,7 +312,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     // A fresh till, with the pilot's limit of calls per second; a late write lands in the window.
     const scenario = loadScenarioFile('demo-bar')
     sim.host.engine = buildEngine(
-      { ...scenario, switches: { ...scenario.switches, lateLandingMs: LATE_LANDING_MS } },
+      { ...scenario, switches: { ...scenario.switches, lateLandingMs } },
       { clock: simClock },
     )
     // What earlier tests left: their payments over, their payment tables free.
@@ -618,7 +619,13 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       ])
     })
 
-    it('the close, landing late: a manager is asked only once it can no longer land', async () => {
+    it('the close, landing late: a manager is asked only after the read-back window', async () => {
+      // The close lands after a write's longest time but inside D115's read-back window, so only
+      // waiting out the window (not the in-flight bound alone) lets it land before the question.
+      const lateLandingMs = 50_000
+      expect(BUDGET_WAIT_MS + TIMINGS.writeTimeoutMs + LEASE_MARGIN_MS).toBeLessThan(lateLandingMs)
+      expect(lateLandingMs).toBeLessThan(TIMINGS.readBackWindowMs)
+      await reset(lateLandingMs)
       const id = await held(1)
       fault(
         { on: 'closeBill', fault: { kind: 'landsLate' } },
@@ -626,7 +633,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       )
       const { row } = await drive(id)
       expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
-      // The till is final when the manager looks: the close landed, a receipt printed.
+      // Inside the window the close landed before the manager was asked: a receipt printed. A
+      // landing later than the window is not ruled out (C52).
       sim.host.engine.settle()
       expect(sim.host.engine.pendingLateWrites()).toBe(0)
       expect(paymentTablesEmpty()).toBe(true)
@@ -1319,6 +1327,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           expect(provider.capturedMinor).toBe(till.cardMinor)
         }
         if (till.closed) expect(['captured', 'capture_failed']).toContain(row?.state)
+        if (row?.state === 'capture_failed')
+          expect(await alertsOf(id)).toContain('payment_capture_failed:money.follow_up')
         // 6. A refund the venue made is recorded from its notice.
         expect(Number(row?.refunded_minor ?? 0)).toBe(provider?.refundedMinor ?? 0)
       }

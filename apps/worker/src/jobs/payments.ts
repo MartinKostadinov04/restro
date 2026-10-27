@@ -29,8 +29,8 @@
 //   budget right before the call, so a write that never left is never counted as attempted. An
 //   unknown move or undo is read back from the payment table for the read-back window and never
 //   sent again inside it (D127 3.4); an unknown close is never read back as a close (an empty
-//   payment table is no proof): it is `unconfirmed` for a manager or owner once the window has
-//   passed and it can no longer land, so the till is final when they look. A close is sent once.
+//   payment table is no proof): it is `unconfirmed` for a manager or owner after D115's read-back
+//   window (a later landing is not ruled out, C52). A close is sent once.
 //   An unknown capture is read back from the provider and tried again with the same key.
 // - One run of a payment at a time: a run takes no new step past `PAYMENT_RUN_MS` and queues the
 //   next, and pg-boss gives it longer than that and one step (`PAYMENT_PREPARE_EXPIRE_SECONDS`)
@@ -916,8 +916,8 @@ function quantityText(quantity: string): string {
  * `isolated` (or `checked` with no close attempted): the last check on a reading of the isolated
  * bill and a fresh one of the real table (`payment.checked`), then the close (`payAndClose`) with
  * the amount, the tip and the card payment type, then `payment.closed`. Once a close was
- * attempted, nothing but its proof closes it: an unknown is `unconfirmed` once it can no longer
- * land (the read-back window).
+ * attempted, nothing but its proof closes it: an unknown is `unconfirmed` after D115's read-back
+ * window (a later landing is not ruled out, C52).
  */
 const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const close = payment.state === 'checked' ? await callsOf(env, target, 'payAndClose') : null
@@ -927,7 +927,8 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     // window (D115). Until both have passed the till may still change, so a manager is not asked
     // yet: one who sees no receipt and answers "No receipt" before a late close lands would
     // release the hold of a bill Restro closed. Past them, the outcome is unknown whatever the
-    // tables show now, and the till is final for the manager's answer.
+    // tables show now; a manager is asked after D115's read-back window (a later landing is not
+    // ruled out, C52).
     const timings = deps.timings ?? SERVICE_TIMINGS
     const inFlight = BUDGET_WAIT_MS + timings.writeTimeoutMs + LEASE_MARGIN_MS
     if (close.lastAgeMs < Math.max(inFlight, timings.readBackWindowMs)) {
