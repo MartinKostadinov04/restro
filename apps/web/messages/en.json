@@ -2096,7 +2096,6 @@
     "so_answered": "{answer} · {who}",
     "sh_ref": "Sent order {ref}",
     "sh_table": "{table} · {time}",
-    "sh_bill": "Bill {bill} in {source}",
     "sh_total": "Total: {amt}",
     "sh_note": "Note: {note}",
     "sh_steps": "Steps",

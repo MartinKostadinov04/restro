@@ -439,8 +439,6 @@ export interface SentOrderDetail {
     readonly unitMinor: number
     readonly note: string | null
   }[]
-  /** The POS bill it joined, as staff know it: admin screens only (D120). */
-  readonly bill: string | null
   readonly sentAt: Date | null
   readonly steps: readonly SentOrderStep[]
 }
@@ -462,7 +460,6 @@ export async function readSentOrderDetail(
         id: sentOrders.id,
         serviceDate: sentOrders.serviceDate,
         lines: sentOrders.lines,
-        billRef: sentOrders.posBillRef,
         sentAt: sentOrders.sentAt,
         reference: sentOrders.reference,
       })
@@ -515,7 +512,6 @@ export async function readSentOrderDetail(
           unitMinor: line.unitMinor,
           note: notes.get(line.id) ?? null,
         })),
-        bill: row.billRef,
         sentAt: row.sentAt,
         steps: stepRows.map((step) => ({
           at: step.at,

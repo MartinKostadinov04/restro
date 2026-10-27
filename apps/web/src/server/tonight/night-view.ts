@@ -247,8 +247,6 @@ export interface SentDetailView {
     readonly options: readonly string[]
     readonly note: string | null
   }[]
-  /** The POS bill as staff know it: admin screens only (D120). */
-  readonly bill: string | null
   readonly steps: readonly StepView[]
 }
 
@@ -262,7 +260,6 @@ export function sentDetailView(detail: SentOrderDetail, timezone: string): SentD
       options: line.optionNames,
       note: line.note,
     })),
-    bill: detail.bill,
     steps: detail.steps.map((step) => ({
       time: clock(step.at) ?? '',
       landedLate: step.kind === 'sent_order.landed_late',

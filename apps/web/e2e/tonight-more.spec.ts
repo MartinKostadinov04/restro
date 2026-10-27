@@ -233,7 +233,8 @@ test.describe('sent orders', () => {
     await expect(sheet).toContainText('2 × Mojito (no mint)')
     await expect(sheet).toContainText('Note: no ice')
     await expect(sheet).toContainText('Total: €18.00')
-    await expect(sheet).toContainText('Bill 1042 in the POS')
+    // The POS bill's id is a backend value (rule 3): the sheet never shows it.
+    await expect(sheet).not.toContainText('1042')
     await expect(sheet.getByTestId('sent-steps').getByRole('listitem')).toHaveCount(5)
     await expect(sheet).toContainText('Restro found it on the bill at')
     await expect(
