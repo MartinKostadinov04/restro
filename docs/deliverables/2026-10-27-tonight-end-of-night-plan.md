@@ -79,7 +79,7 @@ Sent once to the venue's group when the service day closes (decision log 3.3, D1
 > · Sent order {ref}, {table}: still unconfirmed
 > *(part 2's problem lines: the table and what's wrong, no amounts)*
 
-With nothing to fix the last block reads "Nothing to fix." **No money amounts and no tips go to the group** (part 2 lead 10-27, the cautious default, and part 1 follows it so there is one rule): the group may hold staff, and staff don't see tips (decision log 3.4). Counts only; Martin may change this.
+With nothing to fix the last block reads "Nothing to fix." **No money amounts and no tips go to the group** (part 2 lead 10-27, the cautious default, and part 1 follows it so there is one rule): the group may hold staff, and staff don't see tips (decision log 3.4). Counts only. **Martin 10-27** (in the part 2 lead's chat): "Keep money amounts and tips out of the Telegram group; counts only."
 
 ## 8. Questions for Martin, each with a recommendation
 
