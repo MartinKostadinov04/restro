@@ -143,6 +143,7 @@ test('open a venue from the sidebar, then swap to another on the same tab', asyn
   await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
     'Composer',
     'Tables & QR',
+    'Tonight',
     'Settings',
   ])
   await expect(page.getByTestId('publish-button')).toBeVisible()
