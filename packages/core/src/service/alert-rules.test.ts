@@ -71,6 +71,15 @@ describe('ruleOf (D120: who is told, how often)', () => {
     expect(ruleOf('something_new', 'venue').push).not.toBeNull()
   })
 
+  it('closes by answer only the two payment questions a card hold waits on (#162)', () => {
+    const byAnswer = Object.entries(ALERT_RULES)
+      .filter(([, rule]) => rule.closesByAnswer)
+      .map(([kind]) => kind)
+    expect(byAnswer.sort()).toEqual(['payment_lines_not_back', 'payment_unconfirmed'])
+    expect(ruleOf('something_new', 'venue').closesByAnswer).toBe(false)
+    expect(ruleOf(PAUSED_KIND, 'venue').closesByAnswer).toBe(false)
+  })
+
   it('lets only the pre-opening check outside service hours', () => {
     const outside = Object.entries(ALERT_RULES)
       .filter(([, rule]) => rule.outsideServiceHours)

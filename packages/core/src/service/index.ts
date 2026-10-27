@@ -57,6 +57,7 @@ export {
   type AlertWords,
   alertLocale,
   alertMessage,
+  clearedLine,
   digestMessage,
   doneButtonText,
   doneLine,
@@ -350,6 +351,7 @@ export {
   SENT_ORDER_ANSWERS,
   type SentOrderAnswer,
 } from './sent-order-answer'
+export { CLEARED_AT_DAY_CLOSE } from './service-day-close'
 export { SITTING_END_REASONS, type SittingEndReason } from './sittings'
 export { MAX_REVEALED_PINS } from './staff'
 export {

@@ -348,7 +348,8 @@ export function logLineView(
     readonly source: string
   },
 ): LogLineView {
-  const alerting = line.kind === 'alert.raised' || line.kind === 'alert.done'
+  const alerting =
+    line.kind === 'alert.raised' || line.kind === 'alert.done' || line.kind === 'alert.cleared'
   const answered =
     line.kind === 'sent_order.state' && line.reason !== null
       ? line.reason === 'staff_found'

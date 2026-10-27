@@ -17,13 +17,21 @@
 // final once `settled_at` is set (0030's `payments_settled`), a sent order once it is in one of
 // `SETTLED_STATES`. The worker tries again on its next run.
 //
-// Locks, in the fixed order: the day's sittings (by table), its sent orders, its payments.
+// The night's open venue alerts are cleared with the close (#162; Martin 10-27): each gets `done_at`
+// and one `alert.cleared` Log line, so nobody presses Done on yesterday's alerts and the next night
+// starts clean. Not cleared: an alert that ends by itself (a pause, `closesItself`), one only an
+// answer closes (the payment questions a card hold waits on, `closesByAnswer`) and Restro's own
+// (`audience = 'restro'`). A close that is refused clears nothing.
+//
+// Locks, in the fixed order: the day's sittings (by table), its sent orders, the alerts to clear,
+// its payments.
 
-import { payments, type ReadTx, sentOrders, serviceDays, sittings } from '@restro/db'
+import { alerts, payments, type ReadTx, sentOrders, serviceDays, sittings } from '@restro/db'
 import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
 
+import { ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
-import { recordRetainUntil } from './log'
+import { appendLogEntry, recordRetainUntil } from './log'
 import { accepted, refused, type ServiceResult } from './results'
 import { SETTLED_STATES } from './sent-order'
 
@@ -95,6 +103,44 @@ export async function serviceDayTotals(
   ) as unknown as ServiceDayTotals
 }
 
+/** What an alert's `details.clearedAt` and its Log line's `at` say: the day's close cleared it. */
+export const CLEARED_AT_DAY_CLOSE = 'day_close'
+
+/**
+ * Locks the day's open venue alerts the close clears: not a pause (it ends by itself), not a
+ * question only an answer closes, not Restro's own. The rows are read first, then locked in id
+ * order and read again, so a Done pressed in between is not cleared a second time.
+ */
+async function lockAlertsToClear(stx: ServiceTx, day: string) {
+  const open = await stx.tx
+    .select({ id: alerts.id, kind: alerts.kind })
+    .from(alerts)
+    .where(
+      and(
+        eq(alerts.venueId, stx.venueId),
+        eq(alerts.audience, 'venue'),
+        eq(alerts.serviceDate, day),
+        isNull(alerts.doneAt),
+      ),
+    )
+  const ids = stx.rows.claim(
+    'alert',
+    open
+      .filter((row) => {
+        const rule = ruleOf(row.kind, 'venue')
+        return !rule.closesItself && !rule.closesByAnswer
+      })
+      .map((row) => row.id),
+  )
+  if (ids.length === 0) return []
+  return stx.tx
+    .select({ id: alerts.id, kind: alerts.kind, details: alerts.details })
+    .from(alerts)
+    .where(and(inArray(alerts.id, ids), isNull(alerts.doneAt)))
+    .orderBy(alerts.id)
+    .for('update')
+}
+
 /**
  * `service_day.close`: closes one ended service day of the venue (see the header). Refused
  * `day_not_ended` for today's service day or a later one, `payments_open` while a payment of the
@@ -135,6 +181,7 @@ export async function closeServiceDay(
       .where(and(eq(sentOrders.venueId, stx.venueId), eq(sentOrders.serviceDate, day)))
   ).map((row) => row.id)
   await stx.rows.sentOrders(sentIds)
+  const toClear = await lockAlertsToClear(stx, day)
   const paymentIds = stx.rows.claim(
     'payment',
     (
@@ -176,6 +223,38 @@ export async function closeServiceDay(
     )
     .limit(1)
   if (liveOrder !== undefined) return refused(null, 'orders_open')
+
+  for (const alert of toClear) {
+    await stx.tx
+      .update(alerts)
+      .set({
+        doneAt: sql`now()`,
+        doneBy: stx.provenance.actor,
+        via: 'worker',
+        nextRepeatAt: null,
+        // The venue group's message is edited with the end of the night's words, not "Done by".
+        details: { ...alert.details, clearedAt: CLEARED_AT_DAY_CLOSE },
+        ...stx.provenance,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(alerts.id, alert.id))
+    // The line belongs to the night the alert was raised in (not the day the worker runs).
+    await appendLogEntry(
+      stx.tx,
+      {
+        tenantId: stx.tenantId,
+        venueId: stx.venueId,
+        serviceDate: day,
+        provenance: stx.provenance,
+        via: stx.via,
+      },
+      {
+        kind: 'alert.cleared',
+        reason: alert.kind,
+        details: { alertId: alert.id, at: CLEARED_AT_DAY_CLOSE },
+      },
+    )
+  }
 
   // 18 months from now: the day has ended, so this is never earlier than 18 months from its end.
   const until = recordRetainUntil(await stx.dbNow())
@@ -234,6 +313,7 @@ export async function closeServiceDay(
       sittings: retained.length,
       sentOrders: sent.length,
       payments: paid.length,
+      alertsCleared: toClear.length,
     },
   })
 }

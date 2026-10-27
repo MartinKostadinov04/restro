@@ -29,6 +29,7 @@ export const LOG_KIND_GROUP = {
   'pause.lifted': 'pauses',
   'alert.raised': 'pauses',
   'alert.done': 'pauses',
+  'alert.cleared': 'pauses',
   'guard.tripped': 'pauses',
   'settings.changed': 'settings',
   'role.changed': 'settings',
