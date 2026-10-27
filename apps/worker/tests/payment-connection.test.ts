@@ -271,6 +271,12 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect(alerts[1]).toMatchObject({ details: { reason: 'access_removed' }, done_at: null })
     expect((await paying()).readiness.on).toBe(false)
     expect(JSON.stringify(alerts[1])).not.toContain(lostAccount ?? 'x')
+    // The notice alone did this: a reading of the account still answers (what a provider answers
+    // after a venue disconnects is not documented), and a later account notice changes nothing.
+    expect(engine.readConnection(lastAccount())).toMatchObject({ complete: true })
+    await notice(engine.announceAccountUpdated(lastAccount()))
+    expect(await account()).toMatchObject({ state: 'lost_access' })
+    expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
   })
 
   it('reconnects: a new account, and paying’s pause and the alert end once it is read connected', async () => {
@@ -279,8 +285,17 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     await remember()
     expect(accountRefNow).not.toBe(lostAccount)
     expect((await account())?.state).toBe('connecting')
-    engine.finishConnecting(lastAccount())
+    engine.finishConnecting(lastAccount(), 'Club Nova Ltd')
     expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    // The settings show "Connected" with the account's name (D125 2.1).
+    expect(
+      (
+        await query<{ account_name: string | null }>(
+          'select account_name from restro.payment_accounts where venue_id = $1',
+          [venueId],
+        )
+      )[0]?.account_name,
+    ).toBe('Club Nova Ltd')
     expect((await alertRows())[1]?.done_at).not.toBeNull()
     expect(engine.domainsOf(lastAccount())).toEqual([GUEST_HOST])
   })
@@ -359,5 +374,34 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     const counts = await notice(engine.announceAccountUpdated(stranger))
     expect(counts.unknown_account).toBe(1)
     expect(await account()).toEqual(before)
+  })
+
+  it('after access was taken away and the venue disconnected, Connect makes a new account', async () => {
+    // The venue is disconnected from the tests above; it connects the same account once more,
+    // then takes access away and the owner disconnects.
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    await remember()
+    const first = accountRefNow
+    engine.finishConnecting(lastAccount())
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    await notice(engine.revokeAccess(lastAccount()))
+    expect((await account())?.state).toBe('lost_access')
+    const { result: left } = await applyService(
+      pool,
+      { type: 'payment_account.disconnect' },
+      {
+        tenantId,
+        venueId,
+        origin: 'staff',
+        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+        jobId: `req-${randomUUID()}`,
+        signedInAt: new Date(),
+      },
+    )
+    expect(left).toMatchObject({ status: 'accepted', details: { state: 'disconnected' } })
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    await remember()
+    expect(accountRefNow).not.toBe(first)
+    expect((await account())?.state).toBe('connecting')
   })
 })

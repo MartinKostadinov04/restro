@@ -87,6 +87,8 @@ export const BalanceTransactionSchema = z.looseObject({
 /** A v2 account with `configuration.merchant` and `requirements` included. */
 export const AccountSchema = z.looseObject({
   id: StripeIdSchema,
+  /** The account's descriptive name (nullable; whether hosted onboarding fills it is unknown). */
+  display_name: z.string().nullish(),
   configuration: z
     .looseObject({
       merchant: z

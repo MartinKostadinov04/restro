@@ -10,7 +10,8 @@
 //   The owner's return, an `account.updated` notice and the lost-access check all come here: a
 //   notice is a nudge, the reading is the fact (D125 3.8). When card payments are allowed and the
 //   guest page's host is not registered for wallets, it is registered now (D125 3.6).
-// - `recordLostAccess`: the provider says the venue took Restro's access away (D125 2.4).
+// - `recordLostAccess`: the provider says the venue took Restro's access away (D125 2.4); paying
+//   pauses at once, with no reading in the way.
 //
 // A timeout is `unknown`, never a refusal: the owner is told to try again, and nothing is recorded
 // that the provider did not say. A partial reading concludes nothing.
@@ -194,6 +195,7 @@ export async function readAccount(
       missing: [...reading.value.missing],
       afterReturn: options.afterReturn,
       guestHost: options.guestHost,
+      displayName: reading.value.displayName,
     },
     asWorker(env, target),
   )
@@ -241,27 +243,21 @@ async function registerDomain(
   }
 }
 
-export type LostOutcome = 'lost' | 'read_ok' | 'unknown_account'
+export type LostOutcome = 'lost' | 'unknown_account'
 
 /**
- * The provider says the venue took Restro's access away (D125 2.4). The account is read back
- * first: a reading that works shows the access is there (the notice is old or out of order), so
- * that is recorded instead; a reading that fails is what a removed access looks like, so the
- * signed notice is believed and paying pauses at once.
+ * The provider says the venue took Restro's access away (D125 2.4): paying pauses at once and
+ * owners and managers are alerted, whatever a reading of the account would say. The notice is
+ * signature-checked and stored once by its event id, and `payment_account.lost` is idempotent. No
+ * read-back gates it: what a provider's read of an account answers after the venue disconnects is
+ * not documented (docs/deliverables/2026-10-22-stripe-knowledge.md, Open), so a read that works
+ * proves nothing about access.
  */
 export async function recordLostAccess(
   env: ConnectionEnv,
   target: { readonly tenantId: string; readonly venueId: string },
-  providers: ReadonlyMap<string, ConnectionProvider>,
   accountRef: string,
 ): Promise<LostOutcome> {
-  const account = await accountOf(env, target)
-  if (account === null || account.accountRef !== accountRef) return 'unknown_account'
-  const provider = providers.get(account.providerKind)
-  if (provider !== undefined) {
-    const read = await readAccount(env, target, providers, { afterReturn: false, guestHost: null })
-    if (read.kind === 'read') return 'read_ok'
-  }
   const { result } = await applyService(
     env.pool,
     { type: 'payment_account.lost', accountRef },

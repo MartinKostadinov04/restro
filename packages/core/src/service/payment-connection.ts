@@ -259,7 +259,9 @@ export async function connectAccount(
   }
 
   const sameProvider = row.providerKind === command.providerKind
-  const abandoned = row.state === 'lost_access' && checks.lostReason === 'access_removed'
+  // An account the venue took Restro's access from is never used again, whatever state the row has
+  // reached since (a disconnect keeps the mark): the next link makes a new account (D125 2.5).
+  const abandoned = checks.lostReason === 'access_removed'
   const keepRef = sameProvider && !abandoned
   await stx.tx
     .update(paymentAccounts)
@@ -431,6 +433,8 @@ export const ObservedSchema = z.strictObject({
   afterReturn: z.boolean(),
   /** The guest page's host the web app named on this return, or null (a notice names none). */
   guestHost: z.hostname().nullable(),
+  /** The account's name as the provider shows it, or null when it has none (D125 2.1). */
+  displayName: z.string().min(1).max(200).nullable(),
 })
 
 /**
@@ -470,11 +474,19 @@ export async function accountObserved(
     ...checks,
     ...read,
     guestHost: command.guestHost ?? checks.guestHost,
-    lostReason: state === 'lost_access' ? lostReason : null,
+    // "Access removed" is kept through every later reading and any state: only a new account ends it.
+    lostReason:
+      checks.lostReason === 'access_removed'
+        ? 'access_removed'
+        : state === 'lost_access'
+          ? lostReason
+          : null,
   }
+  const accountName = command.displayName ?? row.accountName
   const changed =
     state !== row.state ||
     JSON.stringify(next) !== JSON.stringify(checks) ||
+    accountName !== row.accountName ||
     (state === 'connected' && row.connectedAt === null)
   if (changed) {
     await stx.tx
@@ -482,6 +494,7 @@ export async function accountObserved(
       .set({
         state,
         checks: next,
+        accountName,
         checkedAt: sql`now()`,
         connectedAt:
           state === 'connected' && row.connectedAt === null ? sql`now()` : row.connectedAt,
@@ -523,13 +536,24 @@ export async function accountLost(
   if (row === null || row.accountRef !== command.accountRef) {
     return refused(null, 'account_unknown')
   }
-  // Already gone, or the venue chose to disconnect first: nothing to pause.
-  if (row.state === 'disconnected') {
+  const checks = readAccountChecks(row.checks)
+  // Already marked: nothing more to record, pause or tell.
+  if (checks.lostReason === 'access_removed') {
     return accepted(null, { details: { state: row.state, changed: false } })
   }
-  const checks = readAccountChecks(row.checks)
-  if (row.state === 'lost_access' && checks.lostReason === 'access_removed') {
-    return accepted(null, { details: { state: row.state, changed: false } })
+  // The venue disconnected first: nothing to pause or alert, but the account is abandoned all the
+  // same, so a later Connect makes a new one.
+  if (row.state === 'disconnected') {
+    await stx.tx
+      .update(paymentAccounts)
+      .set({
+        checks: { ...checks, cardPayments: false, lostReason: 'access_removed' },
+        checkedAt: sql`now()`,
+        ...stx.provenance,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(paymentAccounts.venueId, stx.venueId))
+    return accepted(null, { details: { state: row.state, changed: true } })
   }
   await stx.tx
     .update(paymentAccounts)

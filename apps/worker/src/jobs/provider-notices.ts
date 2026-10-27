@@ -16,7 +16,7 @@
 //   which reads the provider again and moves the payment on;
 // - an `account` notice (the venue's account changed) reads the connection back and records it; an
 //   `access_lost` notice (the venue took Restro's access away) pauses paying at once and alerts the
-//   venue's owners and managers, unless a reading shows the access is still there (#109);
+//   venue's owners and managers, with no reading in the way (#109);
 // - Restro never refunds: no provider call here moves money.
 // A notice whose reading failed or found our side not ready stays for the next run; one still
 // waiting after a day is logged as an error, once a day. A notice of a provider this worker does
@@ -186,12 +186,13 @@ export async function handleProviderNotice(
     const target = { tenantId: venue.tenantId, venueId: venue.venueId }
     const connection = { pool, log, jobId: env.jobId }
     const providers = connectionProviders(deps.providers)
-    if (!providers.has(stored.providerKind)) return 'waiting'
     try {
+      // Lost access pauses paying at once on the signed notice alone: no reading gates it.
       if (stored.kind === 'access_lost') {
-        const outcome = await recordLostAccess(connection, target, providers, stored.accountRef)
+        const outcome = await recordLostAccess(connection, target, stored.accountRef)
         return handled(outcome === 'unknown_account' ? 'unknown_account' : 'connection')
       }
+      if (!providers.has(stored.providerKind)) return 'waiting'
       const read = await readAccount(connection, target, providers, {
         afterReturn: false,
         guestHost: null,

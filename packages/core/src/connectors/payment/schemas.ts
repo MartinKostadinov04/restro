@@ -281,6 +281,11 @@ export type StartConnectionResult = z.output<typeof StartConnectionResultSchema>
 /** Whether the account can take card payments now, and what the provider still asks for. */
 export const ConnectionStatusSchema = z.strictObject({
   canTakePayments: z.boolean(),
+  /**
+   * The account's own name as the provider shows it, for "Connected" in the settings (D125 2.1);
+   * null when the provider has none, and the screen falls back.
+   */
+  displayName: z.string().min(1).max(200).nullable(),
   /** The provider's own names of what is missing, for the settings screen; empty when none. */
   missing: z.array(z.string().min(1).max(200)).max(100),
 })

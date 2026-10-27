@@ -60,7 +60,7 @@ describe('the outbox', () => {
 })
 
 describe("a venue's account (#109)", () => {
-  it('sends an account notice, and after the owner takes access away reads and writes are refused', async () => {
+  it('sends an account notice, and after the owner takes access away every write is refused', async () => {
     const { engine, account } = await capturedPayment()
     const updated = engine.announceAccountUpdated(account)
     expect(updated).toMatchObject({ type: 'account.updated', account: account.provider })
@@ -72,8 +72,22 @@ describe("a venue's account (#109)", () => {
       'account.updated',
       'account.access_revoked',
     ])
-    // The provider answers nothing about an account whose access was removed: a failed reading.
-    expect(engine.readConnection(account)).toMatchObject({ complete: false })
+    // What a provider's read answers after the venue disconnects is not documented: the simulator
+    // makes no claim, so a read still works and the platform must not lean on it.
+    expect(engine.readConnection(account)).toMatchObject({
+      complete: true,
+      value: { canTakePayments: false },
+    })
+  })
+
+  it('reads the account’s name once the owner gave one', () => {
+    const engine = new SimPayEngine({ clock: new ManualClock() })
+    const account = engine.addAccount()
+    expect(engine.readConnection(account)).toMatchObject({ value: { displayName: null } })
+    engine.finishConnecting(account, 'Club Nova Ltd')
+    expect(engine.readConnection(account)).toMatchObject({
+      value: { displayName: 'Club Nova Ltd' },
+    })
   })
 })
 

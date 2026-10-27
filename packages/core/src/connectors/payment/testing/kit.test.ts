@@ -84,7 +84,7 @@ function toyHarness(bug?: Bug): PaymentHarness {
     readConnection: async () =>
       failReads && bug !== 'partialReadComplete'
         ? { complete: false, reason: 'failed' }
-        : { complete: true, value: { canTakePayments: true, missing: [] } },
+        : { complete: true, value: { canTakePayments: true, displayName: null, missing: [] } },
     prepareDomain: async () => ({
       kind: 'refused',
       refusal: { code: 'not_supported', scope: 'account', detail: null },

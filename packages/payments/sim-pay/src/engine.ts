@@ -83,6 +83,8 @@ export type SimPayFault =
 interface SimAccount {
   readonly ref: ProviderRef
   canTakePayments: boolean
+  /** The account's name as the provider shows it; null until the owner gave one. */
+  displayName: string | null
   missing: string[]
   readonly domains: Set<string>
   /**
@@ -137,8 +139,6 @@ export class SimPayEngine {
   readonly #stored = new Map<string, Stored>()
   readonly #faults = new Map<SimPayStep, SimPayFault>()
   /** A refund or a dispute's ref to its payment's (and a dispute's state). */
-  /** Accounts whose owner took Restro's access away: reading one is refused, as the provider does. */
-  readonly #revoked = new Set<string>()
   readonly #refunds = new Map<string, { readonly payment: string }>()
   readonly #disputes = new Map<string, { readonly payment: string; state: PaymentDisputeState }>()
   /** The notices the provider sent and nobody took yet. */
@@ -178,10 +178,11 @@ export class SimPayEngine {
   }
 
   /** The owner finishes the hosted form: the account can take payments. */
-  finishConnecting(accountRef: ProviderRef): void {
+  finishConnecting(accountRef: ProviderRef, displayName: string | null = null): void {
     const account = this.#account(accountRef)
     if (account === undefined) throw new Error(`no account ${accountRef.provider}`)
     account.canTakePayments = true
+    account.displayName = displayName
     account.missing = []
   }
 
@@ -204,7 +205,6 @@ export class SimPayEngine {
    */
   revokeAccess(accountRef: ProviderRef): SimPayEvent {
     this.#accounts.delete(accountRef.provider)
-    this.#revoked.add(accountRef.provider)
     return this.#send('account.access_revoked', accountRef.provider, accountRef.provider, true)
   }
 
@@ -352,12 +352,15 @@ export class SimPayEngine {
 
   readConnection(accountRef: ProviderRef): Reading<ConnectionStatus> {
     if (this.#failReads) return { complete: false, reason: 'the account read failed part-way' }
-    if (this.#revoked.has(accountRef.provider)) {
-      return { complete: false, reason: 'access to the account was removed' }
-    }
     const account = this.#account(accountRef)
-    if (account === undefined) return complete({ canTakePayments: false, missing: ['account'] })
-    return complete({ canTakePayments: account.canTakePayments, missing: [...account.missing] })
+    if (account === undefined) {
+      return complete({ canTakePayments: false, displayName: null, missing: ['account'] })
+    }
+    return complete({
+      canTakePayments: account.canTakePayments,
+      displayName: account.displayName,
+      missing: [...account.missing],
+    })
   }
 
   prepareDomain(request: PrepareDomainRequest): PaymentWriteOutcome<EmptyResult> {
@@ -540,6 +543,7 @@ export class SimPayEngine {
     const account: SimAccount = {
       ref: providerRef(`simacct_${this.#tag()}`),
       canTakePayments: false,
+      displayName: null,
       missing: ['business details', 'bank account'],
       domains: new Set(),
       movedMinor: 0,

@@ -83,10 +83,11 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
     const { rows } = await world.owner.query<{
       state: string
       account_ref: string | null
+      account_name: string | null
       checks: Record<string, unknown>
       connected_at: Date | null
     }>(
-      'select state, account_ref, checks, connected_at from restro.payment_accounts where venue_id = $1',
+      'select state, account_ref, account_name, checks, connected_at from restro.payment_accounts where venue_id = $1',
       [world.venueId],
     )
     return rows[0] ?? null
@@ -134,6 +135,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         missing: canTakePayments ? [] : ['bank account'],
         afterReturn: true,
         guestHost: null,
+        displayName: null,
       }),
     ).toMatchObject({ status: 'accepted', details: { state: 'connected' } })
   }
@@ -257,6 +259,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         missing: ['business details'] as string[],
         afterReturn: false,
         guestHost: null,
+        displayName: null,
       } as const
       expect(await worker(midForm)).toMatchObject({ details: { state: 'connecting' } })
       expect(await worker({ ...midForm, canTakePayments: true, missing: [] })).toMatchObject({
@@ -274,6 +277,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
           missing: [],
           afterReturn: false,
           guestHost: null,
+          displayName: null,
         }),
       ).toMatchObject({ status: 'refused', code: 'account_unknown' })
     })
@@ -405,6 +409,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         missing: [],
         afterReturn: false,
         guestHost: null,
+        displayName: null,
       })
       expect((await account())?.state).toBe('lost_access')
 
@@ -420,6 +425,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         missing: [],
         afterReturn: true,
         guestHost: null,
+        displayName: null,
       })
       expect((await account())?.state).toBe('connected')
       const alerts = await openAlerts()
@@ -440,6 +446,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         missing: ['identity document'] as string[],
         afterReturn: false,
         guestHost: null,
+        displayName: null,
       } as const
       expect(await worker(gone)).toMatchObject({ details: { state: 'lost_access' } })
       expect(readAccountChecks((await account())?.checks).lostReason).toBe('account_restricted')
@@ -463,9 +470,99 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         missing: ['bank account'],
         afterReturn: false,
         guestHost: null,
+        displayName: null,
       })
       expect((await account())?.state).toBe('connected')
       expect(await openAlerts()).toHaveLength(before)
+    })
+  })
+
+  describe('an account the venue took access from is never used again (D125 2.5)', () => {
+    const lose = () => worker({ type: 'payment_account.lost', accountRef: ACCOUNT })
+    const reading = () =>
+      worker({
+        type: 'payment_account.observed',
+        accountRef: ACCOUNT,
+        canTakePayments: true,
+        missing: [],
+        afterReturn: false,
+        guestHost: null,
+        displayName: null,
+      })
+    const disconnect = () => run({ type: 'payment_account.disconnect' })
+    const connectsANewAccount = async () => {
+      expect(await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })).toMatchObject(
+        { status: 'accepted', details: { state: 'connecting' } },
+      )
+      expect(await account()).toMatchObject({ state: 'connecting', account_ref: null })
+    }
+
+    it('revoke, then disconnect, then connect: a new account', async () => {
+      await connected(true)
+      await lose()
+      expect(await disconnect()).toMatchObject({ status: 'accepted' })
+      expect(await account()).toMatchObject({ state: 'disconnected', account_ref: ACCOUNT })
+      await connectsANewAccount()
+    })
+
+    it('disconnect, then revoke, then connect: a new account, with no alert for a venue that left', async () => {
+      await connected(true)
+      expect(await disconnect()).toMatchObject({ status: 'accepted' })
+      const before = (await openAlerts()).length
+      expect(await lose()).toMatchObject({
+        status: 'accepted',
+        details: { state: 'disconnected', changed: true },
+      })
+      expect((await account())?.state).toBe('disconnected')
+      expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
+      expect(await openAlerts()).toHaveLength(before)
+      // A repeat of the notice changes nothing.
+      expect(await lose()).toMatchObject({ details: { changed: false } })
+      await connectsANewAccount()
+    })
+
+    it('a reading in between does not clear the mark: revoke, disconnect, reading, connect', async () => {
+      await connected(true)
+      await lose()
+      await disconnect()
+      expect(await reading()).toMatchObject({
+        status: 'accepted',
+        details: { state: 'disconnected' },
+      })
+      expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
+      await connectsANewAccount()
+    })
+
+    it('a reading that says cards work does not bring back an account the venue took away', async () => {
+      await connected(true)
+      await lose()
+      expect(await reading()).toMatchObject({ details: { state: 'lost_access' } })
+      expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
+      await connectsANewAccount()
+    })
+  })
+
+  describe('the account’s name (D125 2.1)', () => {
+    const named = (displayName: string | null) =>
+      worker({
+        type: 'payment_account.observed',
+        accountRef: ACCOUNT,
+        canTakePayments: true,
+        missing: [],
+        afterReturn: true,
+        guestHost: null,
+        displayName,
+      })
+
+    it('is written from the reading and kept when a later reading has none', async () => {
+      await connected(true)
+      expect((await account())?.account_name).toBeNull()
+      expect(await named('Club Nova Ltd')).toMatchObject({ status: 'accepted' })
+      expect((await account())?.account_name).toBe('Club Nova Ltd')
+      await named(null)
+      expect((await account())?.account_name).toBe('Club Nova Ltd')
+      await named('Club Nova')
+      expect((await account())?.account_name).toBe('Club Nova')
     })
   })
 
@@ -485,6 +582,9 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
     })
 
     it('connects the same account again after a disconnect', async () => {
+      // A plain disconnect, with no access taken away: the account is still the venue's.
+      await connected(true)
+      await run({ type: 'payment_account.disconnect' })
       expect(await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })).toMatchObject(
         { status: 'accepted', details: { state: 'connecting' } },
       )
