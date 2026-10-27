@@ -26,7 +26,7 @@ export type ResultDetails = Extract<ServiceResult, { status: 'accepted' }>['deta
 /** What an owner-settings action answers. */
 export type SettingsResult<Extra extends object = object> =
   | ({ readonly ok: true; readonly details: ResultDetails } & Extra)
-  | { readonly ok: false; readonly error: string }
+  | { readonly ok: false; readonly error: string; readonly details?: ResultDetails }
 
 /** Who acts at which venue. */
 export interface SettingsScope {
@@ -106,5 +106,5 @@ export async function runSettingsCommand(
   )
   return result.status === 'accepted'
     ? { ok: true, details: result.details }
-    : { ok: false, error: result.code }
+    : { ok: false, error: result.code, details: result.details }
 }

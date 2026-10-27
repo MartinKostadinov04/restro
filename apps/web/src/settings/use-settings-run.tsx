@@ -66,6 +66,7 @@ const KNOWN = new Set([
   'permission_not_held',
   'pins_exhausted',
   'telegram_taken',
+  'invalid_settings',
 ])
 
 /**

@@ -24,6 +24,7 @@ import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadSettingsAccess } from '@/server/settings/access'
 import { getVenue, venueHasTill } from '@/server/venues'
+import { OrderingSection } from '@/settings/ordering-section'
 import { OwnSignInNotice } from '@/settings/section-notices'
 import { StaffSection } from '@/settings/staff-section'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
@@ -166,6 +167,34 @@ export default async function VenueWorkspacePage({
                         role={organization.role}
                         venue={venue}
                         hasTill={hasTill}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                  hours: sectionOpen('hours') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <OrderingSection
+                        tenantId={organization.id}
+                        venue={venue}
+                        part="hours"
+                        hasPos={hasTill}
+                        canChange={held.includes('settings.guards')}
+                        email={user.email}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                  ordering: sectionOpen('ordering') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <OrderingSection
+                        tenantId={organization.id}
+                        venue={venue}
+                        part="ordering"
+                        hasPos={hasTill}
+                        canChange={held.includes('settings.guards')}
+                        email={user.email}
                       />
                     </Suspense>
                   ) : (
