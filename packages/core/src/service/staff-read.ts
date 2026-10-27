@@ -46,6 +46,8 @@ export interface StaffView {
   readonly pinSetAt: Date | null
   /** True when the person has their own sign-in. */
   readonly hasAccount: boolean
+  /** The account (Better Auth user id) the person signs in with, or null. */
+  readonly accountUserId: string | null
 }
 
 /** A live shared device of the venue. */
@@ -152,6 +154,7 @@ export async function readStaffSettings(
           hasPin: person.pinSetAt !== null,
           pinSetAt: person.pinSetAt,
           hasAccount: person.userId !== null,
+          accountUserId: person.userId,
         })
       }
     }
@@ -181,6 +184,42 @@ export async function readStaffSettings(
           isThisSession: device.sessionId === sessionId,
         })),
       },
+    } as const
+  })
+}
+
+/** What an actor holds at a venue, for the settings tab to decide which sections it draws. */
+export type VenueAccess =
+  | {
+      readonly ok: true
+      readonly permissions: readonly Permission[]
+      /** True on a shared device, where settings never open (D122 §7). */
+      readonly device: boolean
+    }
+  | { readonly ok: false; readonly code: StaffSettingsRefusal }
+
+/**
+ * What `actor` holds at the venue (read-only): the Settings tab draws only the sections its person
+ * may use, and tells a shared device that settings need its own sign-in. Every command checks the
+ * rights again inside its transaction.
+ */
+export async function readVenueAccess(
+  pool: DbPool,
+  input: { readonly tenantId: string; readonly venueId: string; readonly actor: ServiceActor },
+): Promise<VenueAccess> {
+  return withTenant(pool, input.tenantId, async (tx) => {
+    const [venue] = await tx
+      .select({ id: venues.id, archivedAt: venues.archivedAt })
+      .from(venues)
+      .where(eq(venues.id, input.venueId))
+    if (venue === undefined) return { ok: false, code: 'venue_missing' } as const
+    if (venue.archivedAt !== null) return { ok: false, code: 'venue_archived' } as const
+    const grants = await resolveGrants(tx, input.tenantId, venue.id, input.actor, { quick: true })
+    if (!grants.ok) return { ok: false, code: grants.code } as const
+    return {
+      ok: true,
+      permissions: [...grants.permissions],
+      device: grants.device === true,
     } as const
   })
 }

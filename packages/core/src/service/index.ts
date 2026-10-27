@@ -302,9 +302,11 @@ export {
   type DeviceView,
   type RoleView,
   readStaffSettings,
+  readVenueAccess,
   type StaffSettings,
   type StaffSettingsRefusal,
   type StaffView,
+  type VenueAccess,
 } from './staff-read'
 export { OUT_OF_STOCK_ALERT, type StockNotice } from './stock'
 export { MAX_REVEALED_CODES } from './table-codes'
