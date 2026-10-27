@@ -10,13 +10,22 @@
 // after proof of a close; no release once a close was attempted; a line never in two payments; a
 // payment table never used by two payments at once. A write that lands late, inside the read-back
 // window, is read back and never sent again; two runs of one payment at once (a job pg-boss ran
-// again while its first run went on) move the lines once and close the bill once.
+// again while its first run went on) move the lines once and close the bill once. In the model a
+// waiter also acts at the POS's own front end right before any call (voids, moves a line away,
+// adds a round, closes in cash, on the real table or the payment table); the provider drops the
+// hold (cancelled, run out) or sends notices (held again, a stale failed, captured, a refund),
+// stored and handled by the real notice job beside the route, now, late or twice; and a manager
+// answers each close the POS did not confirm through `payment.answer`, as the till shows it. Two
+// more invariants: the money taken is the card payment Restro's close put on the bill, and a bill
+// Restro closed is captured or the owners are told; every notice is handled and every refund
+// recorded.
 import { randomUUID } from 'node:crypto'
 
 import {
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   type IntegrationId,
+  JOB_NAMES,
   newId,
   type PaymentJob,
   providerRef,
@@ -33,6 +42,9 @@ import {
   upsertBarsyVenues,
 } from '@restro/core/apply'
 import {
+  applyService,
+  BUDGET_WAIT_MS,
+  DEFAULT_ROLE_PERMISSIONS,
   forgetGuestCodes,
   GUEST_LIMITS,
   type GuestLimit,
@@ -42,6 +54,7 @@ import {
   guestState,
   LEASE_MARGIN_MS,
 } from '@restro/core/service'
+import { recordProviderNotice } from '@restro/core/service/notices'
 import { createPool, type DbPool } from '@restro/db'
 import {
   createSimPayProvider,
@@ -54,8 +67,11 @@ import {
   createSimServer,
   type FaultRule,
   loadScenarioFile,
+  PosRefusal,
   ManualClock as SimPosClock,
   type SimServer,
+  SimSetupError,
+  UndefinedBehaviour,
 } from '@restro/sim-pos'
 import fc from 'fast-check'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -71,6 +87,7 @@ import {
   paymentStepMs,
   preparePayment,
 } from '../src/jobs/payments'
+import { handleProviderNotices } from '../src/jobs/provider-notices'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
 import type { JobQueue } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
@@ -126,7 +143,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   let pool: DbPool
   let sim: SimServer
   const simClock = new SimPosClock()
-  const engine = new SimPayEngine({ clock: new SimPayClock() })
+  const payClock = new SimPayClock()
+  const engine = new SimPayEngine({ clock: payClock })
   const provider = createSimPayProvider({ env: 'test', engine })
   const tenantId = newId('tn')
   let log: Awaited<ReturnType<typeof createLogger>>
@@ -135,6 +153,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   let tableId: `tb_${string}`
   let code: string
   let accountRef: string
+  /** A manager at the venue (`money.follow_up`), who answers a close the POS did not confirm. */
+  let managerId: string
   /** Called before every connector method, with its name and arguments (a test's waiter). */
   let beforeCall: (method: string, args: unknown[]) => void | Promise<void> = () => {}
   const sent: { name: string; data: object; options?: object }[] = []
@@ -244,6 +264,34 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
        values ($1, $2, $3, $4, 'connected', now(), 'restro', 'system', 'test-seed')`,
       [tenantId, demo.venueId, SIM_PAY_KIND, accountRef],
     )
+
+    managerId = `route-manager-${randomUUID()}`
+    await query('insert into restro.auth_user (id, name, email) values ($1, $2, $3)', [
+      managerId,
+      'Manager',
+      `${managerId}@example.test`,
+    ])
+    await query(
+      'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+      [`mb-${managerId}`, tenantId, managerId, 'member'],
+    )
+    const staffMemberId = newId('sm')
+    const roleId = newId('rl')
+    await query(
+      `insert into restro.staff_members (id, tenant_id, display_name, user_id, source, actor, job_id)
+       values ($1, $2, 'Manager', $3, 'restro', 'system', 'test-seed')`,
+      [staffMemberId, tenantId, managerId],
+    )
+    await query(
+      `insert into restro.venue_roles (id, tenant_id, venue_id, name, permissions, source, actor, job_id)
+       values ($1, $2, $3, 'Manager', $4::jsonb, 'restro', 'system', 'test-seed')`,
+      [roleId, tenantId, demo.venueId, JSON.stringify(DEFAULT_ROLE_PERMISSIONS.manager)],
+    )
+    await query(
+      `insert into restro.staff_assignments (tenant_id, staff_member_id, venue_id, role_id, source, actor, job_id)
+       values ($1, $2, $3, $4, 'restro', 'system', 'test-seed')`,
+      [tenantId, staffMemberId, demo.venueId, roleId],
+    )
   })
 
   afterAll(async () => {
@@ -255,7 +303,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   beforeEach(() => reset())
 
   /** A fresh night: a new till with table 1's round, nothing in flight, a new sitting. */
-  async function reset() {
+  async function reset(lateLandingMs = LATE_LANDING_MS) {
     forgetGuestCodes()
     LOOSE.clear()
     sent.length = 0
@@ -264,7 +312,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     // A fresh till, with the pilot's limit of calls per second; a late write lands in the window.
     const scenario = loadScenarioFile('demo-bar')
     sim.host.engine = buildEngine(
-      { ...scenario, switches: { ...scenario.switches, lateLandingMs: LATE_LANDING_MS } },
+      { ...scenario, switches: { ...scenario.switches, lateLandingMs } },
       { clock: simClock },
     )
     // What earlier tests left: their payments over, their payment tables free.
@@ -277,6 +325,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     await query(`update restro.locks set holder = null, deadline = null where venue_id = $1`, [
       demo.venueId,
     ])
+    // Notices earlier nights left are handled.
+    await query('update restro.provider_notices set handled_at = now() where handled_at is null')
     await query(
       `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
        where table_id = $1 and ended_at is null`,
@@ -415,10 +465,11 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         captured_minor: string | null
         provider_payment_ref: string | null
         payment_table_id: string | null
+        refunded_minor: string
         settled: boolean
       }>(
         `select state, reason, amount_minor, captured_minor, provider_payment_ref, payment_table_id,
-                settled_at is not null as settled
+                refunded_minor, settled_at is not null as settled
            from restro.payments where id = $1`,
         [id],
       )
@@ -459,9 +510,22 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         [demo.venueId],
       )
     ).map((row) => row.holder)
-  /** A manager's answer, as `payment.answer` leaves it (its permission is tested in core). */
-  const answer = (id: string, value: 'receipt_printed' | 'no_receipt') =>
-    query('update restro.payments set reason = $2 where id = $1', [id, value])
+  /** A manager's answer through `payment.answer`, as the Tonight screen sends it. */
+  const answer = async (id: string, value: 'receipt_printed' | 'no_receipt') =>
+    (
+      await applyService(
+        pool,
+        { type: 'payment.answer', paymentId: id, answer: value },
+        {
+          tenantId,
+          venueId: demo.venueId,
+          origin: 'staff',
+          actor: { kind: 'user', userId: managerId, sessionId: 'session-manager' },
+          jobId: `answer-${randomUUID()}`,
+          via: 'tonight',
+        },
+      )
+    ).result
   const fault = (...rules: FaultRule[]) => sim.host.engine.faults.add(...rules)
 
   it('pays a line: a payment table, the move, the check, the close, the capture', async () => {
@@ -545,7 +609,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         expect.objectContaining({ status: 'held' }),
       ])
 
-      await answer(id, 'no_receipt')
+      expect(await answer(id, 'no_receipt')).toMatchObject({ status: 'accepted' })
       const { row } = await drive(id)
       expect(row).toMatchObject({ state: 'released', reason: 'no_receipt', payment_table_id: null })
       expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
@@ -553,6 +617,30 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
         expect.objectContaining({ status: 'released' }),
       ])
+    })
+
+    it('the close, landing late: a manager is asked only after the read-back window', async () => {
+      // The close lands after a write's longest time but inside D115's read-back window, so only
+      // waiting out the window (not the in-flight bound alone) lets it land before the question.
+      const lateLandingMs = 50_000
+      expect(BUDGET_WAIT_MS + TIMINGS.writeTimeoutMs + LEASE_MARGIN_MS).toBeLessThan(lateLandingMs)
+      expect(lateLandingMs).toBeLessThan(TIMINGS.readBackWindowMs)
+      await reset(lateLandingMs)
+      const id = await held(1)
+      fault(
+        { on: 'closeBill', fault: { kind: 'landsLate' } },
+        { on: 'moveRows', from: 2, fault: { kind: 'landsLate' } },
+      )
+      const { row } = await drive(id)
+      expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      // Inside the window the close landed before the manager was asked: a receipt printed. A
+      // landing later than the window is not ruled out (C52).
+      sim.host.engine.settle()
+      expect(sim.host.engine.pendingLateWrites()).toBe(0)
+      expect(paymentTablesEmpty()).toBe(true)
+      expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
+      expect((await drive(id)).row).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(calls('closeBill')).toBe(1)
     })
 
     it('the close, after it landed: unconfirmed; "Receipt printed" captures it', async () => {
@@ -564,7 +652,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       })
       // An empty payment table is no proof of the close.
       expect(paymentTablesEmpty()).toBe(true)
-      await answer(id, 'receipt_printed')
+      expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
       const { row } = await drive(id)
       expect(row).toMatchObject({
         state: 'captured',
@@ -825,15 +913,71 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       ['release', { kind: 'server_error' }],
     ] as const
     const pick = fc.constantFrom<number | 'all'>(0, 1, 'all')
+    /** The connector calls a happening comes right before: the `nth` of that call in the night. */
+    const MOMENTS = [
+      'readTable',
+      'isolateLines',
+      'readIsolated',
+      'payAndClose',
+      'undoIsolate',
+    ] as const
+    const moment = fc.record({
+      before: fc.constantFrom(...MOMENTS),
+      nth: fc.integer({ min: 1, max: 3 }),
+    })
+    /** A waiter at the POS's own front end (`engine.waiter`), on the real table or a payment table. */
+    const waiterAct = fc.record({
+      kind: fc.constant('waiter' as const),
+      at: moment,
+      where: fc.constantFrom('real' as const, 'payment' as const),
+      act: fc.constantFrom(
+        'void' as const,
+        'void_part' as const,
+        'move_away' as const,
+        'add' as const,
+        'close_cash' as const,
+      ),
+      row: fc.nat({ max: 2 }),
+    })
+    /**
+     * Something at the provider outside the route, and its notice: the hold's notice again, a
+     * stale `failed`, the hold cancelled or run out, the capture's notice, a refund the venue makes
+     * in its dashboard. The notice comes now, late (after the first runs) or twice.
+     */
+    const providerAct = fc.record({
+      kind: fc.constant('provider' as const),
+      at: moment,
+      payment: fc.constantFrom(0, 1),
+      event: fc.constantFrom(
+        'held' as const,
+        'failed' as const,
+        'cancelled' as const,
+        'expired' as const,
+        'captured' as const,
+        'refunded' as const,
+      ),
+      notice: fc.constantFrom('now' as const, 'late' as const, 'twice' as const),
+    })
+    type WaiterAct = typeof waiterAct extends fc.Arbitrary<infer T> ? T : never
+    type ProviderAct = typeof providerAct extends fc.Arbitrary<infer T> ? T : never
+    type Happening = WaiterAct | ProviderAct
     const nights = fc.record({
       picks: fc.tuple(pick, fc.option(pick, { nil: null })),
       pos: fc.subarray(POS_FAULTS, { maxLength: 3 }),
       provider: fc.option(fc.constantFrom(...PROVIDER_FAULTS), { nil: null }),
       slip: fc.boolean(),
       order: fc.array(fc.constantFrom(0, 1), { minLength: 1, maxLength: 4 }),
+      happenings: fc.array(fc.oneof(waiterAct, providerAct), { maxLength: 3 }),
+      /** The manager taps the answer again, and another taps the other one. */
+      tapsAgain: fc.boolean(),
     })
+    /** A refund the venue makes in its dashboard. */
+    const REFUND_MINOR = 500
+    const DAY_MS = 24 * 60 * 60 * 1000
+    /** Where a waiter moves a line away to. */
+    const OTHER_TABLE = '30002'
 
-    it('captures only after a close, never releases after one, shares no line and no table', async () => {
+    it('captures only after a close, never releases after one, shares no line and no table, takes what the till shows', async () => {
       await fc.assert(
         fc.asyncProperty(nights, async (night) => {
           await reset()
@@ -845,8 +989,22 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           }
           fault(...night.pos)
           if (night.provider !== null) engine.fault(night.provider[0], night.provider[1])
-          if (night.slip) slipRoundOntoPaymentTable()
-          // The payments' jobs in the night's order, then each until nothing is left to do.
+          // A waiter's round onto the payment's bill after the move, before the last check.
+          const slip: Happening[] = night.slip
+            ? [
+                {
+                  kind: 'waiter',
+                  at: { before: 'readIsolated', nth: 1 },
+                  where: 'payment',
+                  act: 'add',
+                  row: 0,
+                },
+              ]
+            : []
+          const played = await play([...slip, ...night.happenings], ids)
+          // The payments' jobs in the night's order, then each until nothing is left to do. What
+          // never came comes after the first runs; a manager answers each close the POS did not
+          // confirm, as the till shows it.
           for (const which of night.order) {
             const id = ids[which]
             if (id === undefined) continue
@@ -856,46 +1014,329 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
               if (!(error instanceof PaymentStepRetry)) throw error
             }
           }
-          for (let round = 0; round < 2; round += 1) {
+          for (let round = 0; round < 3; round += 1) {
             for (const id of ids) await drive(id)
+            if (round === 0) await played.rest()
+            await played.settled()
+            if (round === 2) break
+            for (const id of ids) await answerAsTheTillShows(id, played, night.tapsAgain)
           }
-          await invariants(ids)
+          await played.end()
+          await invariants(ids, played)
         }),
-        { numRuns: 20 },
+        { numRuns: 25 },
       )
     })
 
-    async function invariants(ids: string[]) {
-      const allSteps = await query<{ payment_id: string; step: string; outcome: string }>(
-        `select payment_id, step, outcome from restro.payment_steps
+    /** A provider's notice as the notice route stores it. */
+    interface Notice {
+      readonly id: string
+      readonly type: string
+      readonly kind: 'payment' | 'refund'
+      readonly object: string
+    }
+
+    /** What the night did outside the route, for the invariants. */
+    interface Played {
+      /** What never came (its call never happened) comes now, then the late notices. */
+      rest(): Promise<void>
+      /** Waits for the notice job's runs still going. */
+      settled(): Promise<void>
+      /** The refunds that waited for a capture, the notices still to come, the notice job again. */
+      end(): Promise<void>
+      /** The payments whose hold the provider dropped itself (cancelled, run out). */
+      readonly dropped: ReadonlySet<string>
+      /** The payment's close at the till: closed with Restro's card payment, and how much. */
+      till(id: string): { readonly closed: boolean; readonly cardMinor: number }
+    }
+
+    /**
+     * Plays the night's happenings, each right before its connector call. A waiter acts and the
+     * provider moves at once; a notice is stored and handled by the notice job beside the route
+     * (one run at a time, as `exclusive`), and the checks it queues run as pg-boss runs them.
+     */
+    async function play(happenings: readonly Happening[], ids: readonly string[]): Promise<Played> {
+      const pending = [...happenings]
+      const seen = new Map<string, number>()
+      const late: Notice[] = []
+      const refunds: string[] = []
+      const dropped = new Set<string>()
+      /** The bill each payment's close named. */
+      const closes = new Map<string, string>()
+      const refs = new Map<string, string>()
+      for (const id of ids) refs.set(id, (await stored(id))?.provider_payment_ref ?? '')
+      const account = providerRef(accountRef)
+      const statusOf = (id: string) => engine.paymentsOf(account, id as never)[0]?.status
+      let outside = 0
+      let jobs: Promise<void> = Promise.resolve()
+      const failures: unknown[] = []
+
+      async function noticeJob() {
+        const from = sent.length
+        await handleProviderNotices(
+          { pool, log, now: () => clock, jobId: `notices-${randomUUID()}`, queue },
+          { providers: new Map([[SIM_PAY_KIND, provider]]) },
+        )
+        for (const job of sent.slice(from)) {
+          if (job.name !== JOB_NAMES.paymentCheck) continue
+          await checkPayment(env(), target((job.data as PaymentJob).paymentId), deps())
+        }
+      }
+      function deliver(notice: Notice) {
+        jobs = jobs.then(async () => {
+          try {
+            await recordProviderNotice(pool, {
+              providerKind: SIM_PAY_KIND,
+              live: false,
+              notice: {
+                id: notice.id,
+                type: notice.type,
+                kind: notice.kind,
+                accountRef: account,
+                objectRef: providerRef(notice.object),
+              },
+              jobId: 'model-notice',
+            })
+            await noticeJob()
+          } catch (error) {
+            failures.push(error)
+          }
+        })
+      }
+
+      function providerDoes(id: string, event: ProviderAct['event']): Notice | null {
+        const paymentRef = providerRef(refs.get(id) ?? '')
+        const about = (type: string): Notice => ({
+          id: `evt_${randomUUID()}`,
+          type,
+          kind: 'payment',
+          object: paymentRef.provider,
+        })
+        if (event === 'cancelled') {
+          // Cancelled outside Restro (a scripted fault at the release may take this call).
+          const before = statusOf(id)
+          outside += 1
+          engine.release({
+            accountRef: account,
+            paymentRef,
+            idempotencyKey: `${id}:outside:${outside}`,
+          })
+          if (before === 'held' && statusOf(id) === 'released') dropped.add(id)
+          return about('payment.cancelled')
+        }
+        if (event === 'expired') {
+          // The provider's clock passes every hold's capture-by: all of them run out.
+          for (const other of ids) if (statusOf(other) === 'held') dropped.add(other)
+          payClock.advance(engine.switches.holdDays * DAY_MS)
+          return about('payment.expired')
+        }
+        if (event === 'refunded') {
+          const [now] = engine.paymentsOf(account, id as never)
+          if (now?.status !== 'captured' || now.capturedMinor - now.refundedMinor < REFUND_MINOR) {
+            refunds.push(id)
+            return null
+          }
+          const made = engine.venue.refundsInDashboard(account, paymentRef, REFUND_MINOR)
+          return { id: made.id, type: made.type, kind: 'refund', object: made.object }
+        }
+        return about(`payment.${event}`)
+      }
+
+      function waiterDoes(act: WaiterAct) {
+        const till = sim.host.engine
+        till.settle()
+        const tables = act.where === 'real' ? [POS_TABLE] : PAYMENT_TABLES
+        const bill = till.state.bills.find(
+          (b) => tables.includes(b.table) && b.state === 'open' && b.rows.length > 0,
+        )
+        const row = bill?.rows[act.row % bill.rows.length]
+        if (bill === undefined || row === undefined) return
+        try {
+          if (act.act === 'void') till.waiter.voidLine(bill.id, row.id)
+          else if (act.act === 'void_part') till.waiter.voidLine(bill.id, row.id, '1')
+          else if (act.act === 'move_away') {
+            till.waiter.moveLines(bill.id, [{ row: row.id }], OTHER_TABLE)
+          } else if (act.act === 'add') {
+            till.waiter.addRound(bill.table, [{ article: '2001' }], { bill: bill.id })
+          } else till.waiter.closeBill(bill.id)
+        } catch (error) {
+          // What the POS does not let a waiter do is not done.
+          const refused =
+            error instanceof PosRefusal ||
+            error instanceof SimSetupError ||
+            error instanceof UndefinedBehaviour
+          if (!refused) throw error
+        }
+      }
+
+      function happen(happening: Happening) {
+        if (happening.kind === 'waiter') {
+          waiterDoes(happening)
+          return
+        }
+        const id = ids[happening.payment]
+        if (id === undefined) return
+        const notice = providerDoes(id, happening.event)
+        if (notice === null) return
+        if (happening.notice === 'late') {
+          late.push(notice)
+          return
+        }
+        deliver(notice)
+        // Sent again: once under the same event id (stored once), once as a new event.
+        if (happening.notice === 'twice') late.push(notice, { ...notice, id: `${notice.id}-again` })
+      }
+
+      beforeCall = (method, args) => {
+        if (method === 'payAndClose') {
+          const request = args[1] as {
+            readonly isolated: { readonly ref: { readonly pos: string } }
+            readonly ref: string
+          }
+          closes.set(request.ref.replace(/-close$/, ''), request.isolated.ref.pos)
+        }
+        const nth = (seen.get(method) ?? 0) + 1
+        seen.set(method, nth)
+        for (const due of pending.filter((h) => h.at.before === method && h.at.nth === nth)) {
+          pending.splice(pending.indexOf(due), 1)
+          happen(due)
+        }
+      }
+
+      const settled = async () => {
+        await jobs
+        if (failures.length > 0) throw failures[0]
+      }
+      return {
+        dropped,
+        settled,
+        async rest() {
+          for (const due of pending.splice(0)) happen(due)
+          for (const notice of late.splice(0)) deliver(notice)
+          await settled()
+        },
+        async end() {
+          for (const id of refunds.splice(0)) {
+            const notice = providerDoes(id, 'refunded')
+            if (notice !== null) deliver(notice)
+          }
+          for (const notice of late.splice(0)) deliver(notice)
+          await settled()
+          // The notices that waited (a refund before the capture was recorded) are handled now.
+          await noticeJob()
+        },
+        till(id) {
+          const pos = sim.host.engine
+          pos.settle()
+          const bill = pos.state.bills.find((b) => b.id === closes.get(id))
+          const api = new Set(pos.apiLogins().map((login) => login.id))
+          const card = new Set(
+            pos.state.paymentTypes.filter((type) => type.kind === 'card').map((type) => type.id),
+          )
+          const ours =
+            bill?.state === 'closed'
+              ? bill.payments.filter((p) => api.has(p.by) && card.has(p.type))
+              : []
+          return {
+            closed: ours.length > 0,
+            cardMinor: ours.reduce((sum, p) => sum + p.amountMinor, 0),
+          }
+        },
+      }
+    }
+
+    /**
+     * A manager looks at the till and answers a close the POS did not confirm, through
+     * `payment.answer`: "Receipt printed" when Restro's card payment closed the bill, "No receipt"
+     * otherwise. Tapping again changes nothing; another manager's other answer is refused.
+     */
+    async function answerAsTheTillShows(id: string, played: Played, tapsAgain: boolean) {
+      const row = await stored(id)
+      if (row?.state !== 'unconfirmed') return
+      if (row.reason !== 'close_unknown' && row.reason !== 'close_refused') return
+      const value = played.till(id).closed ? 'receipt_printed' : 'no_receipt'
+      expect(await answer(id, value)).toMatchObject({
+        status: 'accepted',
+        details: { changed: true },
+      })
+      if (!tapsAgain) return
+      expect(await answer(id, value)).toMatchObject({
+        status: 'accepted',
+        details: { changed: false },
+      })
+      const other = value === 'receipt_printed' ? 'no_receipt' : 'receipt_printed'
+      expect(await answer(id, other)).toMatchObject({
+        status: 'refused',
+        code: 'payment_answered',
+      })
+    }
+
+    async function invariants(ids: string[], played: Played) {
+      const allSteps = await query<{
+        payment_id: string
+        step: string
+        outcome: string
+        answer: string | null
+      }>(
+        `select payment_id, step, outcome, answer from restro.payment_steps
           where payment_id = any($1) order by seq`,
+        [ids],
+      )
+      const answers = await query<{ payment_id: string; to_state: string }>(
+        `select payment_id, to_state from restro.log_entries
+          where kind = 'payment.answered' and payment_id = any($1)`,
         [ids],
       )
       for (const id of ids) {
         const row = await stored(id)
-        // Every run ends settled, or waits for a manager's answer; either way it is not live.
-        expect([...SETTLED, 'unconfirmed']).toContain(row?.state)
+        // Every payment ends settled: a manager answered each close the POS did not confirm.
+        expect(SETTLED).toContain(row?.state)
         expect(row?.settled).toBe(true)
         const own = allSteps.filter((step) => step.payment_id === id)
-        const at = (step: string, outcome: string) =>
-          own.findIndex((s) => s.step === step && s.outcome === outcome)
+        const at = (step: string, outcome: string, answer?: string) =>
+          own.findIndex(
+            (s) =>
+              s.step === step &&
+              s.outcome === outcome &&
+              (answer === undefined || s.answer === answer),
+          )
+        const answered = answers.find((entry) => entry.payment_id === id)?.to_state ?? null
         const closeAttempt = at('payAndClose', 'attempting')
-        const closeProof = at('payAndClose', 'done')
+        const done = at('payAndClose', 'done')
+        const closeProof = done >= 0 ? done : at('payAndClose', 'refused', 'already_done')
+        const proven = closeProof >= 0 || answered === 'receipt_printed'
         const capture = at('capture', 'attempting')
         const [provider] = engine.paymentsOf(providerRef(accountRef), id as never)
-        // 1. A capture only after proof of a close.
+        // 1. A capture only after proof of a close: the POS's, or a manager's "Receipt printed".
         if (capture >= 0) {
-          expect(closeProof).toBeGreaterThanOrEqual(0)
-          expect(closeProof).toBeLessThan(capture)
+          expect(proven).toBe(true)
+          if (answered === null) expect(closeProof).toBeLessThan(capture)
         }
-        if (provider?.status === 'captured') expect(closeProof).toBeGreaterThanOrEqual(0)
-        // 2. No release once a close was attempted (nobody answers "No receipt" here).
-        if (closeAttempt >= 0) {
+        if (provider?.status === 'captured') expect(proven).toBe(true)
+        // 2. No release once a close was attempted, unless a manager answered "No receipt".
+        if (closeAttempt >= 0 && answered !== 'no_receipt') {
           expect(own.slice(closeAttempt).some((step) => step.step === 'release')).toBe(false)
-          expect(provider?.status).not.toBe('released')
           expect(row?.state).not.toBe('released')
+          if (!played.dropped.has(id)) expect(provider?.status).not.toBe('released')
         }
+        // 5. The money matches the till: a capture is the card payment Restro's close put on the
+        // bill, and a bill Restro closed is captured, or the owners are told it was not.
+        const till = played.till(id)
+        if (provider?.status === 'captured') {
+          expect(till.closed).toBe(true)
+          expect(provider.capturedMinor).toBe(till.cardMinor)
+        }
+        if (till.closed) expect(['captured', 'capture_failed']).toContain(row?.state)
+        if (row?.state === 'capture_failed')
+          expect(await alertsOf(id)).toContain('payment_capture_failed:money.follow_up')
+        // 6. A refund the venue made is recorded from its notice.
+        expect(Number(row?.refunded_minor ?? 0)).toBe(provider?.refundedMinor ?? 0)
       }
+      // 6. Every notice was handled, however late or often it came.
+      const [waiting] = await query<{ count: number }>(
+        'select count(*)::int as count from restro.provider_notices where handled_at is null',
+      )
+      expect(waiting?.count).toBe(0)
       // 3. A line is never in two payments that went past the last check.
       const kept = await query<{ pos_line_ref: string }>(
         `select l.pos_line_ref from restro.payment_lines l
