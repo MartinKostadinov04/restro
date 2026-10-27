@@ -87,7 +87,7 @@ export async function alertDone(
   const rule = ruleOf(alert.kind, alert.audience as 'venue' | 'restro')
   if (rule.closesItself) return refused(null, 'alert_closes_itself')
   // A card payment's question closes only by its answer (#112), never by Done.
-  if (rule.needsAnswer === true) return refused(null, 'alert_needs_answer')
+  if (rule.closesByAnswer) return refused(null, 'alert_needs_answer')
   if (alert.doneAt !== null) {
     return accepted(null, { details: { state: 'done', changed: false, kind: alert.kind } })
   }

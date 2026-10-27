@@ -573,7 +573,7 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
         // A button only where a person can answer it: not on a pause, nor on "back", nor on a card
         // payment's question, which is answered in Restro (#112).
         const rule = ruleOf(alert.planned.kind, alert.planned.audience)
-        const answerable = step.step === 'new' && !rule.closesItself && rule.needsAnswer !== true
+        const answerable = step.step === 'new' && !rule.closesItself && !rule.closesByAnswer
         const sentMessage = await telegram.sendMessage(chatId, linkedMessage(message), {
           ...(answerable ? { doneFor: alert.planned.id, doneLabel: doneButtonText(locale) } : {}),
         })
