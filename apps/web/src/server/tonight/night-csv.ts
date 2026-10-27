@@ -11,11 +11,13 @@ import type { NightView, SentRowView, WhoView } from './night-view'
 /** The translator of the `tonight` messages. */
 export type Say = (key: string, values?: Record<string, string | number>) => string
 
-function tableText(say: Say, table: string, numbered: boolean): string {
+/** A table as the file words it: "Table 7" for a number, our own name as it is. */
+export function tableText(say: Say, table: string, numbered: boolean): string {
   return numbered ? say('tb', { n: table }) : table
 }
 
-function whoText(say: Say, by: WhoView): string {
+/** Who did a step: a name, Restro or a guest, with " · via Telegram" where it applies. */
+export function whoText(say: Say, by: WhoView): string {
   const name =
     by.who.kind === 'person'
       ? by.who.name
@@ -23,6 +25,31 @@ function whoText(say: Say, by: WhoView): string {
         ? say('lg_guest')
         : say('lg_restro')
   return by.telegram ? say('lg_via_tg', { who: name }) : name
+}
+
+/** One sent order as a row of the CSV; `time` is the clock time unless the caller puts a day in front. */
+export function sentCsvRow(
+  row: SentRowView,
+  input: { readonly say: Say; readonly source: string; readonly time?: string },
+): CsvRow {
+  const { say, source } = input
+  return {
+    section: say('nt_sent'),
+    time: input.time ?? row.time,
+    table: tableText(say, row.table, row.numbered),
+    reference: row.reference,
+    what: say('cs_sent_order'),
+    state: row.state === 'approval' ? say('st_approval', { source }) : say(`st_${row.state}`),
+    reason: row.reason === null ? '' : say(`rs_${row.reason}`, { source }),
+    ...(row.answer === null
+      ? {}
+      : {
+          answer: say(row.answer.answer === 'found' ? 's_ok' : 's_no'),
+          who: whoText(say, row.answer.by),
+        }),
+    amountMinor: row.totalMinor,
+    detail: say('so_items', { n: row.itemCount }),
+  }
 }
 
 /** The rows of one night. `sent` is every sent order of the day (the page shows the not added first). */
@@ -70,25 +97,7 @@ export function nightCsvRows(
     })
   }
 
-  for (const row of sent) {
-    rows.push({
-      section: say('nt_sent'),
-      time: row.time,
-      table: tableText(say, row.table, row.numbered),
-      reference: row.reference,
-      what,
-      state: row.state === 'approval' ? say('st_approval', { source }) : say(`st_${row.state}`),
-      reason: row.reason === null ? '' : say(`rs_${row.reason}`, { source }),
-      ...(row.answer === null
-        ? {}
-        : {
-            answer: say(row.answer.answer === 'found' ? 's_ok' : 's_no'),
-            who: whoText(say, row.answer.by),
-          }),
-      amountMinor: row.totalMinor,
-      detail: say('so_items', { n: row.itemCount }),
-    })
-  }
+  for (const row of sent) rows.push(sentCsvRow(row, { say, source }))
 
   const totals = night.totals
   const section = say('nt_totals')

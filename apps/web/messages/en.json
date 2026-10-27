@@ -2182,7 +2182,14 @@
     "lg_pay_ok": "Receipt printed",
     "lg_pay_no": "No receipt",
     "lg_no_table": "the table",
-    "cs_sent_order": "Sent order"
+    "cs_sent_order": "Sent order",
+    "lg_export": "Export",
+    "lg_from": "From",
+    "lg_to": "To",
+    "lg_dl_sent": "Download sent orders",
+    "lg_dl_log": "Download the Log",
+    "lg_export_kept": "Night details are kept 31 days; sent orders, settings and staff changes 18 months.",
+    "lg_export_range": "From must not be after To."
   },
   "ownerSettings": {
     "st_hours": "Hours",

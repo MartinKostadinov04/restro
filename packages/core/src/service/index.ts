@@ -207,8 +207,10 @@ export {
 export {
   ANSWER_REASONS,
   canReadNight,
+  type ExportDays,
   type LogLine,
   type LogPage,
+  MAX_EXPORT_DAYS,
   MAX_ROWS,
   type NightAccess,
   type NightFixRow,
@@ -218,6 +220,7 @@ export {
   type NightReport,
   NOT_ADDED_STATES,
   PAGE_SIZE,
+  readExportDays,
   readLog,
   readNight,
   readNightAccess,
