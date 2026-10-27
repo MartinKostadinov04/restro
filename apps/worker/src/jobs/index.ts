@@ -24,7 +24,7 @@ import { createAssetStore, createPublishStore } from '@restro/assets'
 import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '../config'
 import { paymentProviders } from '../connectors'
 import type { Logger } from '../logger'
-import { createAlertJobs } from './alerts'
+import { createAlertJobs, telegramClientOf } from './alerts'
 import { createBarsyJobs } from './barsy'
 import { createConnectionJobs } from './connection'
 import { createFloorJobs } from './floor'
@@ -36,7 +36,7 @@ import { createPublishJobs } from './publish'
 import { createPurgeJobs } from './purge'
 import { createReadingJobs } from './readings'
 import { createSealTableCodesJob } from './seal-table-codes'
-import { serviceDayTick } from './service-day'
+import { createServiceDayJob, serviceDayTick } from './service-day'
 import { createPreOpeningJobs, serviceHoursTick } from './service-hours'
 import { createStockJobs } from './stock'
 import type { JobDefinition } from './types'
@@ -51,6 +51,12 @@ export const jobs: readonly JobDefinition[] = [
 
 /** Every job this worker runs: the fixed ones, the publish jobs, and the sync jobs when the keys are set. */
 export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobDefinition[]> {
+  // With a Telegram bot token the end of the service day also sends the venue's group its
+  // end-of-night message (#86); without one the tick only closes the day.
+  const telegram = config.alerts === undefined ? null : telegramClientOf(config.alerts)
+  const fixedJobs = jobs.map((job) =>
+    job === serviceDayTick && telegram !== null ? createServiceDayJob({ telegram }) : job,
+  )
   // The worker only stores photos; the signing secret is for links the web app hands out, which
   // this process never makes. A random one keeps the local store's constructor satisfied.
   const assetStore = await createAssetStore(config.assets, randomBytes(32).toString('hex'))
@@ -106,7 +112,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       'SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY are not set: the barsy sync jobs and seal-table-codes are not registered',
     )
     return [
-      ...jobs,
+      ...fixedJobs,
       ...(config.posSync ? floorJobs : []),
       ...sendJobs,
       ...connectionJobs,
@@ -120,7 +126,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   if (!config.posSync) {
     log.warn('WORKER_POS_SYNC is off: the POS sync jobs are not registered')
     return [
-      ...jobs,
+      ...fixedJobs,
       ...sendJobs,
       ...connectionJobs,
       ...publishJobs,
@@ -131,7 +137,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     ]
   }
   return [
-    ...jobs,
+    ...fixedJobs,
     ...createBarsyJobs({ keys, policy: config.barsy, store: assetStore }),
     ...floorJobs,
     ...sendJobs,

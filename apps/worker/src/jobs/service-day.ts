@@ -18,6 +18,8 @@ import { applyService } from '@restro/core/service'
 import { authOrganization, type DbPool, venues, withSystem, withTenant } from '@restro/db'
 import { sql } from 'drizzle-orm'
 
+import { type ClosedDay, sendNightReport } from '../alerts/night-report'
+import type { TelegramClient } from '../alerts/telegram'
 import type { Logger } from '../logger'
 import { defineJob, type JobDefinition } from './types'
 
@@ -74,6 +76,8 @@ export async function closeServiceDays(
   pool: DbPool,
   now: Date,
   log: Pick<Logger, 'info' | 'warn'>,
+  /** Called once for each day this run closed (never for a day already closed). */
+  onClosed?: (day: ClosedDay) => Promise<void>,
 ): Promise<number> {
   let closed = 0
   const stopped = new Set<string>()
@@ -98,7 +102,14 @@ export async function closeServiceDays(
           { venueId: day.venueId, serviceDate: day.serviceDate, code: result.code },
           'a service day waits',
         )
-      } else if (result.details.changed === true) closed += 1
+      } else if (result.details.changed === true) {
+        closed += 1
+        await onClosed?.({
+          tenantId: day.tenantId,
+          venueId: day.venueId,
+          serviceDate: day.serviceDate,
+        })
+      }
     } catch (error) {
       stopped.add(day.venueId)
       log.warn(
@@ -110,20 +121,55 @@ export async function closeServiceDays(
   return closed
 }
 
-/** `service-day-tick`. */
-export const serviceDayTick: JobDefinition = defineJob({
-  name: JOB_NAMES.serviceDayTick,
-  schedule: { cron: '5 * * * *', tz: 'Europe/Sofia' },
-  options: {
-    queue: {
-      retryLimit: 0,
-      expireInSeconds: 30 * 60,
-      retentionSeconds: 60 * 60,
-      deleteAfterSeconds: 24 * 60 * 60,
+/**
+ * The end-of-night message goes only for a night that just ended, not for the old days a venue's
+ * first run catches up on (a deploy would otherwise flood its group).
+ */
+export const NIGHT_REPORT_MAX_AGE_DAYS = 2
+
+function recentEnough(serviceDate: string, now: Date): boolean {
+  const days = (now.getTime() - Date.parse(`${serviceDate}T00:00:00Z`)) / 86_400_000
+  return days <= NIGHT_REPORT_MAX_AGE_DAYS + 1
+}
+
+/**
+ * `service-day-tick`. With a Telegram client, a day it closes also sends the venue's end-of-night
+ * message (#86): counts and problems, no amounts.
+ */
+export function createServiceDayJob(options: {
+  readonly telegram: TelegramClient | null
+}): JobDefinition {
+  return defineJob({
+    name: JOB_NAMES.serviceDayTick,
+    schedule: { cron: '5 * * * *', tz: 'Europe/Sofia' },
+    options: {
+      queue: {
+        retryLimit: 0,
+        expireInSeconds: 30 * 60,
+        retentionSeconds: 60 * 60,
+        deleteAfterSeconds: 24 * 60 * 60,
+      },
     },
-  },
-  async handler(_jobs, context) {
-    const closed = await closeServiceDays(context.pool, context.now(), context.log)
-    if (closed > 0) context.log.info({ closed }, 'service days closed')
-  },
-})
+    async handler(_jobs, context) {
+      const now = context.now()
+      const closed = await closeServiceDays(
+        context.pool,
+        now,
+        context.log,
+        options.telegram === null
+          ? undefined
+          : async (day) => {
+              if (!recentEnough(day.serviceDate, now)) return
+              await sendNightReport(
+                { pool: context.pool, telegram: options.telegram, log: context.log },
+                day,
+              )
+            },
+      )
+      if (closed > 0) context.log.info({ closed }, 'service days closed')
+    },
+  })
+}
+
+/** `service-day-tick` without Telegram: the day closes, no message goes. */
+export const serviceDayTick: JobDefinition = createServiceDayJob({ telegram: null })

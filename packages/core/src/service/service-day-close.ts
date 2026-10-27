@@ -19,7 +19,7 @@
 //
 // Locks, in the fixed order: the day's sittings (by table), its sent orders, its payments.
 
-import { payments, sentOrders, serviceDays, sittings } from '@restro/db'
+import { payments, type ReadTx, sentOrders, serviceDays, sittings } from '@restro/db'
 import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
 
 import type { ServiceTx } from './definition'
@@ -48,38 +48,45 @@ export interface ServiceDayTotals {
   readonly tipMinor: number
 }
 
-/** The day's totals, read inside the command's transaction. */
-async function totalsOf(stx: ServiceTx, day: string): Promise<ServiceDayTotals> {
-  const result = await stx.tx.execute<Record<keyof ServiceDayTotals, string>>(sql`
+/**
+ * The day's totals, read inside a transaction: the close writes them once, and the end-of-night
+ * page counts them live while the day is still running (#86).
+ */
+export async function serviceDayTotals(
+  tx: Pick<ReadTx, 'execute'>,
+  venueId: string,
+  day: string,
+): Promise<ServiceDayTotals> {
+  const result = await tx.execute<Record<keyof ServiceDayTotals, string>>(sql`
     select
       (select count(*) from restro.sittings
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "sittings",
+        where venue_id = ${venueId} and service_date = ${day}) as "sittings",
       (select count(*) from restro.sent_orders
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "sentOrders",
+        where venue_id = ${venueId} and service_date = ${day}) as "sentOrders",
       (select count(*) from restro.sent_orders
-        where venue_id = ${stx.venueId} and service_date = ${day} and state = 'added')
+        where venue_id = ${venueId} and service_date = ${day} and state = 'added')
         as "sentOrdersAdded",
       (select count(*) from restro.sent_orders
-        where venue_id = ${stx.venueId} and service_date = ${day} and state = 'not_sent')
+        where venue_id = ${venueId} and service_date = ${day} and state = 'not_sent')
         as "sentOrdersNotSent",
       (select count(*) from restro.sent_orders
-        where venue_id = ${stx.venueId} and service_date = ${day} and state = 'unconfirmed')
+        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed')
         as "sentOrdersUnconfirmed",
       (select coalesce(sum(total_minor), 0) from restro.sent_orders
-        where venue_id = ${stx.venueId} and service_date = ${day} and state = 'added')
+        where venue_id = ${venueId} and service_date = ${day} and state = 'added')
         as "addedMinor",
       (select count(*) from restro.waiter_calls
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "waiterCalls",
+        where venue_id = ${venueId} and service_date = ${day}) as "waiterCalls",
       (select count(*) from restro.alerts
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "alerts",
+        where venue_id = ${venueId} and service_date = ${day}) as "alerts",
       (select count(*) from restro.pauses
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "pauses",
+        where venue_id = ${venueId} and service_date = ${day}) as "pauses",
       (select count(*) from restro.payments
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "payments",
+        where venue_id = ${venueId} and service_date = ${day}) as "payments",
       (select coalesce(sum(captured_minor), 0) from restro.payments
-        where venue_id = ${stx.venueId} and service_date = ${day}) as "capturedMinor",
+        where venue_id = ${venueId} and service_date = ${day}) as "capturedMinor",
       (select coalesce(sum(tip_minor), 0) from restro.payments
-        where venue_id = ${stx.venueId} and service_date = ${day} and captured_minor is not null)
+        where venue_id = ${venueId} and service_date = ${day} and captured_minor is not null)
         as "tipMinor"`)
   const row = result.rows[0]
   if (row === undefined) throw new Error('the day totals query returned no row')
@@ -203,7 +210,7 @@ export async function closeServiceDay(
     )
     .returning({ id: payments.id })
 
-  const totals = await totalsOf(stx, day)
+  const totals = await serviceDayTotals(stx.tx, stx.venueId, day)
   const closed = await stx.tx
     .insert(serviceDays)
     .values({

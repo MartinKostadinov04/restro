@@ -19,6 +19,9 @@ Taps are counted from the venues list to the screen with its content visible: a 
 | Композитор › Дизайн / Composer › Design | `/venues/{venue}?tab=composer&sub=design` | Pick the template and its look, logo and header name, guest features, font, corners, shadow, colours, beside a phone preview. | Open, then the Design subtab. | 2 | 3 |
 | Маси и QR / Tables & QR | `/venues/{venue}?tab=tables` | Areas and tables, a QR code for each, the menu each area or table shows, create all codes, print. | Open, then the tab. | 2 | 3 |
 | Тази вечер › Действия и маси / Tonight › Actions and tables | `/venues/{venue}?tab=tonight` | What needs a person during service (a sent order to check, an approval, a paused table, a waiter call; the out-of-stock notice apart) and the tables, open or closed for phones, by bar, with Pause ordering. The bar tablet stays here all night. Money rows join in part 2 (#115). | Open on the venue's card, then the "Tonight" tab (after "Tables & QR"). **A staff-only sign-in lands here: 0.** | 2 (0 for staff) | 3 (0 for staff) |
+| Тази вечер › Поръчки / Tonight › Sent orders | `/venues/{venue}?tab=tonight&view=sent` | Every sent order of the service day, newest first; find one by reference or table; "All · Not added"; one sent order's details in a sheet, where an Unconfirmed one is answered. | Tonight, the "Sent orders" tab. | 3 (1 from Tonight) | 4 (2 from Tonight) |
+| Тази вечер › Дневник / Tonight › Log | `/venues/{venue}?tab=tonight&view=log` (`&day=YYYY-MM-DD` for an earlier night) | Everything that happened in service, newest first, by day; find by reference or table; filter by kind. | Tonight, the "Log" tab; only for roles holding `log.view` (managers and owners by default). | 3 (1 from Tonight) | 4 (2 from Tonight) |
+| Тази вечер › Край на вечерта / Tonight › End of night | `/venues/{venue}?tab=tonight&view=night` (`&day=YYYY-MM-DD`) | One service day: what still needs fixing, the sent orders and the totals (part 2 adds the payments and the money follow-ups); also as CSV. | Tonight, the "End of night" tab; roles holding `night.view` (staff: sections 1–3 without tips) or `night.view_full` (managers and owners: all, and the CSV). | 3 (1 from Tonight) | 4 (2 from Tonight) |
 | QR код на маса / QR code of a table (dialog) | same page | One table's code, enlarged. | Tap the code on a table card in Tables & QR. | 3 | 4 |
 | Лист за печат / Print sheet | `/venues/{venue}/tables/print` | The codes on A4 pages, six to a page, to print or save as PDF. Opens in a new browser tab, without the sidebar. | "Print sheet" in Tables & QR (needs at least one code). | 3 | 4 |
 | Настройки › Общи / Settings › General (of a venue) | `/venues/{venue}?tab=settings&section=general` | The venue's name and address, languages (read-only), its menus (add, rename, order, set live, delete, restore), the menu source and Sync this venue (POS venues), and for owners "Delete venue…". | Open, then Settings. Shorter: the "Manage menus" link in Structure (2 taps, also on a phone). | 2 | 3 |
@@ -77,6 +80,15 @@ The baseline rows are D107's, copied from the acceptance walk (`docs/deliverable
 | Pause ordering | 2 (the button, then the bar) | 2 | Tonight | `tonight/tonight-panel.tsx` |
 | Resume a paused table, or a table with a sent order to check | 1 (+ own PIN on the shared tablet) | 1 | Tonight | `tonight/action-rows.tsx` |
 | Lift a staff pause | 1 (+ a manager's PIN on the shared tablet; no button without the right on a personal session) | 1 | Tonight | `tonight/pause-banners.tsx` |
+| Find a guest's sent order by its reference | 2 + typing (the tab; the search is focused) | 3 + typing | Tonight › Sent orders | `tonight/sent-orders-tab.tsx` |
+| See only the sent orders that did not reach the bill | 2 (the tab, "Not added") | 3 | Tonight › Sent orders | `tonight/sent-orders-tab.tsx` |
+| Answer an Unconfirmed sent order from its sheet | 3 + own PIN on the shared tablet (the tab, the row, the answer) | 4 | Tonight › Sent orders | `tonight/sent-sheet.tsx` |
+| Find what happened at one table or to one sent order | 2 + typing | 3 + typing | Tonight › Log | `tonight/log-tab.tsx` |
+| See only one kind of Log entry | 3 (the tab, Kind, the kind) | 4 | Tonight › Log | `tonight/log-tab.tsx` |
+| See an earlier night in the Log or the end of the night | 3 (the tab, the day, the date) | 4 | Tonight › Log, End of night | `tonight/day-picker.tsx` |
+| See what still needs fixing tonight | 1 (the tab; the problems are first) | 2 | Tonight › End of night | `tonight/night-page.tsx` |
+| Fix a problem from the end-of-night page | 2 + own PIN on the shared tablet (the tab, the answer) | 3 | Tonight › End of night | `tonight/night-page.tsx` |
+| Download the night as a CSV | 2 (the tab, "Download CSV") | 3 | Tonight › End of night | `tonight/night-page.tsx` |
 
 ## Unknowns
 
