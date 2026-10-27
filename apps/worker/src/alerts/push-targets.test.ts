@@ -49,6 +49,13 @@ describe('who an alert pushes to (#87)', () => {
     ])
   })
 
+  it('falls back to the owners for an owners-only step when only a non-owner holder is switched on', () => {
+    // The owner's switch is off, a switched-on manager holds the permission: the owners-only step
+    // still rings the owner, never nobody.
+    expect(ids(pushTargets([manager, offOwner], 'money.follow_up', true))).toEqual(['offOwner'])
+    expect(ids(pushTargets([manager, offOwner], 'money.follow_up', false))).toEqual(['manager'])
+  })
+
   it('rings no one when nobody holds it at all', () => {
     expect(pushTargets([waiter], 'money.follow_up', false)).toEqual([])
   })

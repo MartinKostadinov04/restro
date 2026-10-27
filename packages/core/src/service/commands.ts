@@ -44,7 +44,6 @@ import {
   setAlertSettings,
   setOrderingRules,
   TelegramLinkSchema,
-  TelegramUserIdSchema,
   telegramLink,
 } from './owner-settings'
 import {
@@ -453,11 +452,12 @@ export const SERVICE_COMMANDS = {
     },
     linkStaffAccount,
   ),
-  // #87: a person's Telegram id (who may press Done in the venue's group); the owner unlinks here,
-  // and the worker's `telegram.link` links it once the person pressed Start on their link.
+  // #87: a person's Telegram id (who may press Done in the venue's group); the owner can only
+  // unlink here (`null`). Only the worker's `telegram.link` sets an id, once the person pressed Start
+  // on the signed link the owner made for them.
   'staff.link_telegram': rolesChange(
     'staff.link_telegram',
-    { staffMemberId, telegramUserId: TelegramUserIdSchema.nullable() },
+    { staffMemberId, telegramUserId: z.null() },
     linkStaffTelegram,
   ),
   // #72: PINs. "New PIN" draws another; seeing PINs again is the worker's reveal endpoint, which

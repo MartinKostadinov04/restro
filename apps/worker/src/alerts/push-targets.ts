@@ -20,17 +20,19 @@ export interface PushRecipient {
  * The people an alert raised with `permission` (null: none) pushes to in a step.
  * - No permission: the switched-on people.
  * - A permission: the switched-on people who hold it; if there are none, every holder.
- * `ownersOnly` keeps only owners, last.
+ * `ownersOnly` limits who qualifies to owners, before the fallback.
  */
 export function pushTargets<R extends PushRecipient>(
   recipients: readonly R[],
   permission: string | null,
   ownersOnly: boolean,
 ): R[] {
-  const holds = (recipient: R) =>
-    recipient.owner || permission === null || recipient.holds.has(permission)
-  const switchedOn = recipients.filter((recipient) => recipient.switchedOn && holds(recipient))
-  const chosen =
-    permission !== null && switchedOn.length === 0 ? recipients.filter(holds) : switchedOn
-  return ownersOnly ? chosen.filter((recipient) => recipient.owner) : [...chosen]
+  // Who may get it at all: holds the permission (an owner always does) and, for an owners-only
+  // step, is an owner. The fallback comes after this, so a step for owners never ends up empty
+  // because a switched-on non-owner held the permission.
+  const qualifies = (recipient: R) =>
+    (recipient.owner || permission === null || recipient.holds.has(permission)) &&
+    (!ownersOnly || recipient.owner)
+  const switchedOn = recipients.filter((recipient) => recipient.switchedOn && qualifies(recipient))
+  return permission !== null && switchedOn.length === 0 ? recipients.filter(qualifies) : switchedOn
 }

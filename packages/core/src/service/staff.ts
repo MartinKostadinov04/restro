@@ -824,10 +824,10 @@ async function writeTelegramId(
   return accepted(null, { details: { staffMemberId: member.id, changed: true } })
 }
 
-/** `staff.link_telegram`: unlinks (or links) a person's Telegram id from the settings. */
+/** `staff.link_telegram`: unlinks a person's Telegram id from the settings (linking is the worker's). */
 export async function linkStaffTelegram(
   stx: ServiceTx,
-  command: { readonly staffMemberId: string; readonly telegramUserId: string | null },
+  command: { readonly staffMemberId: string; readonly telegramUserId: null },
 ): Promise<ServiceResult> {
   const found = await manageableMember(stx, command.staffMemberId)
   if (!found.ok) return found.result

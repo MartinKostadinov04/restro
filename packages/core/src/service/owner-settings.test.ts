@@ -263,6 +263,15 @@ describe.skipIf(!hasDatabase)('the owner settings commands (as the restro_app ro
     expect(await link(otherStaffId, '777')).toMatchObject({ code: 'telegram_taken' })
     expect(await link(otherStaffId, '778')).toMatchObject({ status: 'accepted' })
 
+    // The owner cannot set an id from the settings, only unlink: the signed link is the way in.
+    expect(
+      await run({
+        type: 'staff.link_telegram',
+        staffMemberId: otherStaffId as `sm_${string}`,
+        telegramUserId: '999',
+      } as never),
+    ).toMatchObject({ code: 'invalid_command' })
+
     // The owner unlinks from the settings (a `record` Log entry); a repeat changes nothing.
     expect(
       await run({
