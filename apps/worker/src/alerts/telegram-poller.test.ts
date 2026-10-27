@@ -14,6 +14,9 @@ function scripted(script: (Error | TelegramUpdate[])[]) {
     },
     async editMessage() {},
     async answerCallback() {},
+    async getMe() {
+      return { username: 'restro_bot' }
+    },
     async getUpdates({ offset, signal }) {
       offsets.push(offset)
       const next = script.shift()

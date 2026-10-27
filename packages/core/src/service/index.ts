@@ -310,4 +310,5 @@ export {
 } from './staff-read'
 export { OUT_OF_STOCK_ALERT, type StockNotice } from './stock'
 export { MAX_REVEALED_CODES } from './table-codes'
+export { type TelegramLinkSaying, telegramLinkText } from './telegram-link-text'
 export { waiterCallLapsesAt } from './waiter-call'

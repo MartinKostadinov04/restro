@@ -90,6 +90,9 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     async answerCallback(_id, text) {
       answers.push(text)
     },
+    async getMe() {
+      return { username: 'restro_bot' }
+    },
     async getUpdates() {
       return []
     },

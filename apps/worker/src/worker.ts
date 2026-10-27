@@ -26,6 +26,7 @@ import { JOB_NAMES } from '@restro/core'
 import { createPool, type DbPool, withSystem } from '@restro/db'
 import { PgBoss } from 'pg-boss'
 import { createTelegramClient } from './alerts/telegram'
+import { createTelegramApi } from './alerts/telegram-link-api'
 import { type Poller, startTelegramPoller } from './alerts/telegram-poller'
 import type { WorkerConfig } from './config'
 import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
@@ -169,12 +170,24 @@ export async function startWorker(
     // "Done" from the venue's Telegram group (#83): long polling, so no public endpoint.
     const telegramToken = config.alerts?.telegramToken ?? null
     if (telegramToken !== null) {
+      const telegram = createTelegramClient({ token: telegramToken })
       poller = startTelegramPoller({
         pool,
-        telegram: createTelegramClient({ token: telegramToken }),
+        telegram,
         log,
         now,
+        linkSecret: config.revealToken,
       })
+      // The owner's "Link Telegram" (#87): the web app asks here for a link to open, over the
+      // private network, with the same token as the reveal endpoint, which also signs the link.
+      if (config.revealToken !== null) {
+        const api = createTelegramApi({ pool, telegram, secret: config.revealToken, now })
+        health.setTelegramHandler({
+          token: config.revealToken,
+          handle: api,
+          failed: (error) => log.error({ err: error }, 'a Telegram link request failed'),
+        })
+      }
     }
   } catch (error) {
     // Nothing is running yet that needs a grace period.

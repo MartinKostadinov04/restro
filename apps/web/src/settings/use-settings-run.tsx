@@ -67,6 +67,9 @@ const KNOWN = new Set([
   'pins_exhausted',
   'telegram_taken',
   'invalid_settings',
+  'telegram_off',
+  'telegram_failed',
+  'no_group',
 ])
 
 /**

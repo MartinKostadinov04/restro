@@ -24,6 +24,7 @@ import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadSettingsAccess } from '@/server/settings/access'
 import { getVenue, venueHasTill } from '@/server/venues'
+import { AlertsSection } from '@/settings/alerts-section'
 import { OrderingSection } from '@/settings/ordering-section'
 import { OwnSignInNotice } from '@/settings/section-notices'
 import { StaffSection } from '@/settings/staff-section'
@@ -200,6 +201,22 @@ export default async function VenueWorkspacePage({
                   ) : (
                     <SettingsSectionSkeleton />
                   ),
+                  ...(rights.alerts
+                    ? {
+                        alerts: sectionOpen('alerts') ? (
+                          <Suspense fallback={<SettingsSectionSkeleton />}>
+                            <AlertsSection
+                              tenantId={organization.id}
+                              venue={venue}
+                              email={user.email}
+                              canUnlinkPerson={rights.roles}
+                            />
+                          </Suspense>
+                        ) : (
+                          <SettingsSectionSkeleton />
+                        ),
+                      }
+                    : {}),
                   ...(rights.roles
                     ? {
                         staff: sectionOpen('staff') ? (

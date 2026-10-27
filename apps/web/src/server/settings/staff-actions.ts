@@ -7,7 +7,7 @@
 // through `pin.reveal` (logged) and the worker's reveal endpoint: the add and new-PIN results
 // carry it once, for the screen to show for 30 seconds; nothing here stores or logs it.
 import { idSchema } from '@restro/core'
-import { DEFAULT_ROLE_KINDS, PERMISSIONS } from '@restro/core/service'
+import { DEFAULT_ROLE_KINDS, isFreshSignIn, PERMISSIONS } from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -67,10 +67,12 @@ export type PinResult =
     }
   | { readonly ok: false; readonly error: string }
 
-/** The PIN of one person: `pin.reveal` is logged, then the worker opens the sealed copy. */
+/**
+ * The PIN of one person, from the worker's reveal endpoint: it applies `pin.reveal` (the right, the
+ * sign-in of the last 15 minutes and one `record` Log entry, "PIN shown") and only then opens the
+ * sealed copy. Null when nothing could be shown.
+ */
 async function revealPin(scope: SettingsScope, id: string): Promise<string | null> {
-  const accepted = await runSettingsCommand(scope, { type: 'pin.reveal', staffMemberIds: [id] })
-  if (!accepted.ok) return null
   const reveal = revealPinsFor(revealConfig(), {
     tenantId: scope.tenantId,
     venueId: scope.venueId,
@@ -128,6 +130,10 @@ export async function revealPinAction(input: unknown): Promise<PinResult> {
   const parsed = OnPerson.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const result = await inSettingsScope(parsed.data.venueId, async (scope) => {
+    // The worker refuses a stale sign-in without saying why: ask for the password here.
+    if (!isFreshSignIn(scope.signedInAt, new Date())) {
+      return { ok: false, error: 'sign_in_again' } as const
+    }
     const pin = await revealPin(scope, parsed.data.staffMemberId)
     return pin === null
       ? ({ ok: false, error: 'pin_unavailable' } as const)
