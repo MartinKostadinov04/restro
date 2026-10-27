@@ -130,6 +130,8 @@ export interface Frame {
   readonly currency: string
   readonly device: boolean
   readonly can: Can
+  /** `log.view` and `night.view_full`: the Log's "Export" is drawn only then (#87). */
+  readonly canExport: boolean
   readonly timezone: string
   /** The venue's current service day (`YYYY-MM-DD`). */
   readonly today: string
@@ -155,6 +157,7 @@ export function frameOf(
       lift: held.has('ordering.lift'),
       answer: held.has('alerts.answer'),
     },
+    canExport: held.has('log.view') && held.has('night.view_full'),
     timezone: access.venue.timezone,
     today: access.today,
     dayEndsAt: access.venue.dayEndsAt,
@@ -345,7 +348,8 @@ export function logLineView(
     readonly source: string
   },
 ): LogLineView {
-  const alerting = line.kind === 'alert.raised' || line.kind === 'alert.done'
+  const alerting =
+    line.kind === 'alert.raised' || line.kind === 'alert.done' || line.kind === 'alert.cleared'
   const answered =
     line.kind === 'sent_order.state' && line.reason !== null
       ? line.reason === 'staff_found'

@@ -85,6 +85,11 @@ export interface KindRule {
   readonly backAfterMs: number
   /** It ends by itself (a pause lifting), so nobody presses Done on it. */
   readonly closesItself: boolean
+  /**
+   * Only a staff answer closes it, never the end of the night: a card hold still waits on the
+   * answer (up to 7 days), so the day's close leaves it open (#162).
+   */
+  readonly closesByAnswer: boolean
   /** Told even outside service hours (D120: the pre-opening check only). */
   readonly outsideServiceHours: boolean
   /**
@@ -114,6 +119,7 @@ const NOBODY: KindRule = {
   back: false,
   backAfterMs: 0,
   closesItself: false,
+  closesByAnswer: false,
   outsideServiceHours: false,
 }
 
@@ -166,6 +172,7 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // Both questions are answered, never marked Done, and remind again as the hold runs out (#112).
   [PAYMENT_UNCONFIRMED_KIND]: {
     ...NOBODY,
+    closesByAnswer: true,
     push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
     venueTelegram: venueGroup,
     team: teamDigest(),
@@ -174,6 +181,7 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   },
   [PAYMENT_LINES_NOT_BACK_KIND]: {
     ...NOBODY,
+    closesByAnswer: true,
     push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
     venueTelegram: venueGroup,
     team: teamDigest(),

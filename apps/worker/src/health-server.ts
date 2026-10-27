@@ -1,13 +1,21 @@
 // The worker's HTTP server, on node:http (no framework). Railway (and later an external uptime
 // check) probes `GET /health`; the answer comes from memory (see health.ts), never from the
-// database. The one other route is the reveal endpoint (`POST /internal/reveal`, reveal.ts, #70),
-// for the web app's server on the private network only: it exists once the worker has set its
-// handler (after the database pool is open) and only with REVEAL_SERVICE_TOKEN set. Nothing else
-// is served, and no body carries host names, versions or ids. No request line or header is
+// database. The other routes are for the web app's server on the private network only: the reveal
+// endpoint (`POST /internal/reveal`, reveal.ts, #70) and the Telegram link endpoint
+// (`POST /internal/telegram`, alerts/telegram-link-api.ts, #87). Each exists once the worker has set
+// its handler (after the database pool is open) and only with REVEAL_SERVICE_TOKEN set. Nothing
+// else is served, and no body carries host names, versions or ids. No request line or header is
 // logged here.
 import { createServer, type IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
+import {
+  MAX_TELEGRAM_BODY_BYTES,
+  TELEGRAM_PATH,
+  type TelegramApiAnswer,
+  type TelegramRequest,
+  TelegramRequestSchema,
+} from './alerts/telegram-link-api'
 import type { HealthReport } from './health'
 import {
   hasServiceToken,
@@ -29,11 +37,21 @@ export interface RevealHandler {
   failed(error: unknown): void
 }
 
+/** What answers a Telegram link request once the worker is ready. */
+export interface TelegramLinkHandler {
+  readonly token: string
+  handle(request: TelegramRequest): Promise<TelegramApiAnswer>
+  /** Called when a request throws; must not log the request. */
+  failed(error: unknown): void
+}
+
 export interface HealthServer {
   /** The port actually listening (differs from the requested one only for port 0). */
   readonly port: number
   /** Turns the reveal endpoint on (a handler) or off (null). */
   setRevealHandler(handler: RevealHandler | null): void
+  /** Turns the Telegram link endpoint on (a handler) or off (null). */
+  setTelegramHandler(handler: TelegramLinkHandler | null): void
   /** Stops listening and drops open connections. Resolves when the port is free. */
   close(): Promise<void>
 }
@@ -53,16 +71,72 @@ async function readBody(request: IncomingMessage, limit: number): Promise<string
   return Buffer.concat(chunks).toString('utf8')
 }
 
+type Send = (status: number, body: unknown, headers?: Record<string, string>) => void
+
+/** An internal endpoint's side: its token, its checks of the body and its work. */
+interface Internal<Request, Answer extends { readonly status: string }> {
+  readonly handler: { readonly token: string; failed(error: unknown): void } | null
+  readonly parse: (value: unknown) => Request | null
+  readonly limit: number
+  readonly run: (request: Request) => Promise<Answer>
+  readonly failure: string
+}
+
+/**
+ * Answers one request of an internal endpoint: off or a public name is a 404, only POST, the
+ * service token as a bearer, a body of the allowed size that parses, then the work. `accepted`
+ * answers are 200, any other 403.
+ */
+async function answerInternal<Request, Answer extends { readonly status: string }>(
+  request: IncomingMessage,
+  send: Send,
+  endpoint: Internal<Request, Answer>,
+): Promise<void> {
+  const { handler } = endpoint
+  // Off, or asked through a public name: as if there were nothing here.
+  if (handler === null || !isPrivateHost(request.headers.host)) {
+    send(404, { error: 'not found' })
+    return
+  }
+  if (request.method !== 'POST') {
+    send(405, { error: 'method not allowed' }, { allow: 'POST' })
+    return
+  }
+  if (!hasServiceToken(request.headers.authorization, handler.token)) {
+    send(401, { error: 'unauthorized' })
+    return
+  }
+  let parsed: Request | null
+  try {
+    parsed = endpoint.parse(JSON.parse(await readBody(request, endpoint.limit)))
+  } catch (error) {
+    send(error instanceof BodyTooLarge ? 413 : 400, { error: 'invalid request' })
+    return
+  }
+  if (parsed === null) {
+    send(400, { error: 'invalid request' })
+    return
+  }
+  try {
+    const answer = await endpoint.run(parsed)
+    send(answer.status === 'accepted' ? 200 : 403, answer)
+  } catch (error) {
+    handler.failed(error)
+    send(500, { error: endpoint.failure })
+  }
+}
+
 /**
  * Starts listening on `port` (all interfaces, so another container can probe it) and answers
  * `GET /health` with `report()`. Rejects if the port cannot be bound.
  */
 export function startHealthServer(port: number, report: () => HealthReport): Promise<HealthServer> {
   let revealHandler: RevealHandler | null = null
+  let telegramHandler: TelegramLinkHandler | null = null
 
   const server = createServer((request, response) => {
     const path = (request.url ?? '').split('?')[0]
-    const send = (status: number, body: unknown, headers: Record<string, string> = {}) => {
+    const send: Send = (status, body, headers = {}) => {
       response.writeHead(status, {
         'content-type': 'application/json; charset=utf-8',
         'cache-control': 'no-store',
@@ -72,7 +146,29 @@ export function startHealthServer(port: number, report: () => HealthReport): Pro
     }
 
     if (path === REVEAL_PATH) {
-      void answerReveal(request, send)
+      const handler = revealHandler
+      void answerInternal(request, send, {
+        handler,
+        parse: (value) => {
+          const result = RevealRequestSchema.safeParse(value)
+          return result.success ? result.data : null
+        },
+        limit: MAX_REVEAL_BODY_BYTES,
+        run: (parsed: RevealRequest) => (handler as RevealHandler).reveal(parsed),
+        failure: 'reveal failed',
+      })
+    } else if (path === TELEGRAM_PATH) {
+      const handler = telegramHandler
+      void answerInternal(request, send, {
+        handler,
+        parse: (value) => {
+          const result = TelegramRequestSchema.safeParse(value)
+          return result.success ? result.data : null
+        },
+        limit: MAX_TELEGRAM_BODY_BYTES,
+        run: (parsed: TelegramRequest) => (handler as TelegramLinkHandler).handle(parsed),
+        failure: 'request failed',
+      })
     } else if (path !== HEALTH_PATH) {
       send(404, { error: 'not found' })
     } else if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -83,46 +179,6 @@ export function startHealthServer(port: number, report: () => HealthReport): Pro
     }
   })
 
-  async function answerReveal(
-    request: IncomingMessage,
-    send: (status: number, body: unknown, headers?: Record<string, string>) => void,
-  ): Promise<void> {
-    const handler = revealHandler
-    // Off, or asked through a public name: as if there were nothing here.
-    if (handler === null || !isPrivateHost(request.headers.host)) {
-      send(404, { error: 'not found' })
-      return
-    }
-    if (request.method !== 'POST') {
-      send(405, { error: 'method not allowed' }, { allow: 'POST' })
-      return
-    }
-    if (!hasServiceToken(request.headers.authorization, handler.token)) {
-      send(401, { error: 'unauthorized' })
-      return
-    }
-    let parsed: RevealRequest
-    try {
-      const body = await readBody(request, MAX_REVEAL_BODY_BYTES)
-      const result = RevealRequestSchema.safeParse(JSON.parse(body))
-      if (!result.success) {
-        send(400, { error: 'invalid request' })
-        return
-      }
-      parsed = result.data
-    } catch (error) {
-      send(error instanceof BodyTooLarge ? 413 : 400, { error: 'invalid request' })
-      return
-    }
-    try {
-      const answer = await handler.reveal(parsed)
-      send(answer.status === 'accepted' ? 200 : 403, answer)
-    } catch (error) {
-      handler.failed(error)
-      send(500, { error: 'reveal failed' })
-    }
-  }
-
   return new Promise((resolve, reject) => {
     server.once('error', reject)
     server.listen(port, () => {
@@ -131,6 +187,9 @@ export function startHealthServer(port: number, report: () => HealthReport): Pro
         port: (server.address() as AddressInfo).port,
         setRevealHandler(handler) {
           revealHandler = handler
+        },
+        setTelegramHandler(handler) {
+          telegramHandler = handler
         },
         close: () =>
           new Promise<void>((done) => {

@@ -121,7 +121,7 @@ describe('the Telegram client', () => {
     expect(calls[0]?.body).toEqual({
       offset: 10,
       timeout: 25,
-      allowed_updates: ['callback_query'],
+      allowed_updates: ['callback_query', 'message', 'my_chat_member'],
     })
     expect(updates).toEqual([
       {
@@ -134,8 +134,10 @@ describe('the Telegram client', () => {
           text: 'Table 7',
           data: 'al_abc',
         },
+        start: null,
+        membership: null,
       },
-      { updateId: 11, press: null },
+      { updateId: 11, press: null, start: null, membership: null },
     ])
   })
 
@@ -280,5 +282,107 @@ describe('the Telegram client’s time limit', () => {
     const client = createTelegramClient({ token: TOKEN, fetch: fetchImpl, timeoutMs: 20 })
     await expect(client.sendMessage('-1', 'x')).resolves.toEqual({ chatId: '-1', messageId: 1 })
     await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+})
+
+describe('the Telegram client: linking (#87)', () => {
+  it('asks for messages and the bot’s own membership besides button presses', async () => {
+    const { calls, fetchImpl } = fakeFetch([{ json: { ok: true, result: [] } }])
+    await createTelegramClient({ token: TOKEN, fetch: fetchImpl }).getUpdates({
+      offset: 0,
+      timeoutSeconds: 1,
+    })
+    expect(calls[0]?.body.allowed_updates).toEqual(['callback_query', 'message', 'my_chat_member'])
+  })
+
+  it('reads /start CODE in a group and in a private chat, and nothing else typed', async () => {
+    const code = 'A'.repeat(62)
+    const { fetchImpl } = fakeFetch([
+      {
+        json: {
+          ok: true,
+          result: [
+            {
+              update_id: 1,
+              message: {
+                text: `/start@restro_bot ${code}`,
+                from: { id: 555 },
+                chat: { id: -100123, type: 'supergroup', title: 'Club Nova staff' },
+              },
+            },
+            {
+              update_id: 2,
+              message: {
+                text: `/start ${code}`,
+                from: { id: 556 },
+                chat: { id: 556, type: 'private' },
+              },
+            },
+            {
+              update_id: 3,
+              message: {
+                text: 'hello there',
+                from: { id: 556 },
+                chat: { id: 556, type: 'private' },
+              },
+            },
+            {
+              update_id: 4,
+              message: {
+                text: `/start ${'B'.repeat(65)}`,
+                from: { id: 556 },
+                chat: { id: 556, type: 'private' },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    const updates = await createTelegramClient({ token: TOKEN, fetch: fetchImpl }).getUpdates({
+      offset: 0,
+      timeoutSeconds: 1,
+    })
+    expect(updates.map((update) => update.start)).toEqual([
+      { userId: '555', chatId: '-100123', chatType: 'supergroup', title: 'Club Nova staff', code },
+      { userId: '556', chatId: '556', chatType: 'private', title: '', code },
+      null,
+      null,
+    ])
+  })
+
+  it('reads the bot being removed from a group', async () => {
+    const { fetchImpl } = fakeFetch([
+      {
+        json: {
+          ok: true,
+          result: [
+            {
+              update_id: 9,
+              my_chat_member: {
+                chat: { id: -100123, type: 'group', title: 'Club Nova staff' },
+                new_chat_member: { status: 'kicked' },
+              },
+            },
+          ],
+        },
+      },
+    ])
+    const [update] = await createTelegramClient({ token: TOKEN, fetch: fetchImpl }).getUpdates({
+      offset: 0,
+      timeoutSeconds: 1,
+    })
+    expect(update?.membership).toEqual({
+      chatId: '-100123',
+      chatType: 'group',
+      title: 'Club Nova staff',
+      status: 'kicked',
+    })
+  })
+
+  it('asks who the bot is', async () => {
+    const { fetchImpl } = fakeFetch([{ json: { ok: true, result: { username: 'restro_bot' } } }])
+    expect(await createTelegramClient({ token: TOKEN, fetch: fetchImpl }).getMe()).toEqual({
+      username: 'restro_bot',
+    })
   })
 })

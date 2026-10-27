@@ -4,14 +4,18 @@
 // entry. The Settings tab has sections of its own (D97), declared the same way and kept in the
 // URL as `?tab=settings&section=…`.
 import {
+  BellIcon,
+  ClockIcon,
   CloudUploadIcon,
   ConciergeBellIcon,
   HistoryIcon,
   LayoutListIcon,
+  ListChecksIcon,
   type LucideIcon,
   QrCodeIcon,
   SettingsIcon,
   SlidersHorizontalIcon,
+  UsersIcon,
 } from 'lucide-react'
 
 /** What a tab is, without its content (the page supplies the content per value). */
@@ -58,11 +62,18 @@ export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
 }
 
 /**
- * The sections of the Settings tab (D97): General (name, address, languages, menus, menu source,
- * danger zone), Publish (Automation settings, only for a venue with a till) and Versioning.
+ * The sections of the Settings tab (D97, #87): General, Hours, Ordering, Staff and roles, Alerts,
+ * Publish (only for a venue with a till) and Versioning, in the order of
+ * docs/deliverables/2026-10-27-owner-settings-grouping.md. Paying (#116) goes between Ordering and
+ * Staff and roles. Hours and Ordering are read-only for a role without `settings.guards`; Staff
+ * and roles and Alerts are left out for a role without `settings.roles` or `settings.alerts`.
  */
 export const SETTINGS_SECTION_DEFS = [
   { value: 'general', labelKey: 'workspace.settingsSections.general', icon: SlidersHorizontalIcon },
+  { value: 'hours', labelKey: 'ownerSettings.st_hours', icon: ClockIcon },
+  { value: 'ordering', labelKey: 'ownerSettings.st_ordering', icon: ListChecksIcon },
+  { value: 'staff', labelKey: 'ownerSettings.sf_title', icon: UsersIcon },
+  { value: 'alerts', labelKey: 'ownerSettings.al_title', icon: BellIcon },
   { value: 'publish', labelKey: 'workspace.settingsSections.publish', icon: CloudUploadIcon },
   { value: 'versioning', labelKey: 'workspace.settingsSections.versioning', icon: HistoryIcon },
 ] as const satisfies readonly WorkspaceTabDef[]
@@ -72,15 +83,36 @@ export type SettingsSectionValue = (typeof SETTINGS_SECTION_DEFS)[number]['value
 /** The section shown when `?section=` is absent, unknown, or not the venue's. */
 export const DEFAULT_SETTINGS_SECTION: SettingsSectionValue = 'general'
 
-/** The sections a venue has: Publish only with a till (its settings are about syncing). */
-export function settingsSectionsOf(hasTill: boolean): readonly SettingsSectionValue[] {
-  return SETTINGS_SECTION_DEFS.map((section) => section.value).filter(
-    (value) => hasTill || value !== 'publish',
-  )
+/** Which permission-gated sections the signed-in person's role holds the right for. */
+export interface SettingsRights {
+  /** `settings.roles`: Staff and roles. */
+  readonly roles: boolean
+  /** `settings.alerts`: Alerts. */
+  readonly alerts: boolean
+}
+
+/** No rights: what the Settings tab assumes until the page has read them. */
+export const NO_SETTINGS_RIGHTS: SettingsRights = { roles: false, alerts: false }
+
+/** The sections a venue has: Publish only with a till, Staff and Alerts only with their right. */
+export function settingsSectionsOf(
+  hasTill: boolean,
+  rights: SettingsRights = NO_SETTINGS_RIGHTS,
+): readonly SettingsSectionValue[] {
+  return SETTINGS_SECTION_DEFS.map((section) => section.value).filter((value) => {
+    if (value === 'publish') return hasTill
+    if (value === 'staff') return rights.roles
+    if (value === 'alerts') return rights.alerts
+    return true
+  })
 }
 
 /** The section a `?section=` value opens for a venue with or without a till. */
-export function settingsSectionOf(requested: unknown, hasTill: boolean): SettingsSectionValue {
-  const sections = settingsSectionsOf(hasTill)
+export function settingsSectionOf(
+  requested: unknown,
+  hasTill: boolean,
+  rights: SettingsRights = NO_SETTINGS_RIGHTS,
+): SettingsSectionValue {
+  const sections = settingsSectionsOf(hasTill, rights)
   return sections.find((section) => section === requested) ?? DEFAULT_SETTINGS_SECTION
 }

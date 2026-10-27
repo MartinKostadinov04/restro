@@ -784,3 +784,69 @@ export async function revokeSharedDevice(
   await stx.log({ kind: 'device.changed', toState: 'revoked', details: { deviceId: device.id } })
   return accepted(null, { details: { deviceId: device.id } })
 }
+
+// --- Telegram ids -----------------------------------------------------------------------------
+
+/**
+ * Writes (or clears) a person's Telegram user id, which lets them press Done in the venue's group
+ * (#87, #83). Refused when another live person of the organisation has that id.
+ */
+async function writeTelegramId(
+  stx: ServiceTx,
+  member: Member,
+  telegramUserId: string | null,
+): Promise<ServiceResult> {
+  if (member.telegramUserId === telegramUserId) {
+    return accepted(null, { details: { staffMemberId: member.id, changed: false } })
+  }
+  if (telegramUserId !== null) {
+    const [other] = await stx.tx
+      .select({ id: staffMembers.id })
+      .from(staffMembers)
+      .where(
+        and(
+          eq(staffMembers.telegramUserId, telegramUserId),
+          isNull(staffMembers.archivedAt),
+          ne(staffMembers.id, member.id),
+        ),
+      )
+    if (other !== undefined) return refused(null, 'telegram_taken')
+  }
+  await stx.tx
+    .update(staffMembers)
+    .set({ telegramUserId, ...stx.provenance })
+    .where(eq(staffMembers.id, member.id))
+  await stx.log({
+    kind: 'staff.changed',
+    toState: telegramUserId === null ? 'telegram_unlinked' : 'telegram_linked',
+    details: { staffMemberId: member.id },
+  })
+  return accepted(null, { details: { staffMemberId: member.id, changed: true } })
+}
+
+/** `staff.link_telegram`: unlinks a person's Telegram id from the settings (linking is the worker's). */
+export async function linkStaffTelegram(
+  stx: ServiceTx,
+  command: { readonly staffMemberId: string; readonly telegramUserId: null },
+): Promise<ServiceResult> {
+  const found = await manageableMember(stx, command.staffMemberId)
+  if (!found.ok) return found.result
+  return writeTelegramId(stx, found.member, command.telegramUserId)
+}
+
+/**
+ * The worker's side of `staff.link_telegram`: the person pressed Start on the link the owner made
+ * for them (a signed code the worker checked). The person must still work at this venue.
+ */
+export async function telegramLinkPerson(
+  stx: ServiceTx,
+  command: { readonly staffMemberId: string; readonly telegramUserId: string },
+): Promise<ServiceResult> {
+  const { members } = await lockStaffRows(stx, [command.staffMemberId])
+  const member = members.get(command.staffMemberId)
+  if (member === undefined || member.archivedAt !== null) return refused(null, 'staff_missing')
+  if (!(await assignmentsOf(stx, member.id)).has(stx.venueId)) {
+    return refused(null, 'staff_missing')
+  }
+  return writeTelegramId(stx, member, command.telegramUserId)
+}

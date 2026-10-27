@@ -87,6 +87,7 @@ export const SENTENCES = {
   'pause.lifted': (l, c) => c.say('lg_lifted', { scope: scopeText(l, c) }),
   'alert.raised': (l, c) => c.say('lg_alert', { alert: l.alertTitle ?? '' }),
   'alert.done': (l, c) => c.say('lg_alert_done', { alert: l.alertTitle ?? '' }),
+  'alert.cleared': (l, c) => c.say('lg_alert_cleared', { alert: l.alertTitle ?? '' }),
   'waiter_call.called': (l, c) => c.say('lg_call', { table: c.table(l) }),
   'waiter_call.done': (l, c) => c.say('lg_call_done', { table: c.table(l) }),
   'waiter_call.lapsed': (l, c) => c.say('lg_call_lapsed', { table: c.table(l) }),

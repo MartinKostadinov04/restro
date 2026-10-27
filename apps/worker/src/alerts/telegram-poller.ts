@@ -6,6 +6,9 @@
 // account then presses Done like anyone, so their role decides (`alert.done`, via Telegram: the
 // Log says so). The bot edits the group's message to "… Done by Maria, 02:14".
 //
+// The same poll also hears the links of #87 (`/start CODE`, the bot removed from a group):
+// telegram-linking.ts.
+//
 // A press the bot cannot honour is answered with a short line (Telegram shows it to the person)
 // and changes nothing. Nothing here logs a token, a Telegram user's name or a message's text.
 
@@ -32,6 +35,7 @@ import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { Logger } from '../logger'
 import type { ButtonPress, TelegramClient } from './telegram'
 import { TelegramError } from './telegram'
+import { handleMembership, handleStart } from './telegram-linking'
 
 /** How long Telegram holds a poll open when nothing happens. */
 export const POLL_SECONDS = 25
@@ -43,6 +47,11 @@ export interface PollerDeps {
   readonly telegram: TelegramClient
   readonly log: Pick<Logger, 'warn' | 'info'>
   readonly now: () => Date
+  /**
+   * The secret the links of #87 are signed with (REVEAL_SERVICE_TOKEN); without it a `/start`
+   * is ignored and nothing is linked from Telegram.
+   */
+  readonly linkSecret?: string | null
 }
 
 interface VenueOfChat {
@@ -53,7 +62,7 @@ interface VenueOfChat {
 }
 
 /** The live venue whose Telegram group this is, or null. */
-async function venueOfChat(pool: DbPool, chatId: string): Promise<VenueOfChat | null> {
+export async function venueOfChat(pool: DbPool, chatId: string): Promise<VenueOfChat | null> {
   const organisations = await withSystem(pool, (tx) =>
     tx.select({ id: authOrganization.id }).from(authOrganization),
   )
@@ -187,6 +196,13 @@ export function startTelegramPoller(
   },
 ): Poller {
   const controller = new AbortController()
+  // The links accepted so far, with their end: a link is used once (telegram-link.ts).
+  const linking = {
+    ...deps,
+    linkSecret: deps.linkSecret ?? null,
+    used: new Map<string, number>(),
+    venueOfChat: (chatId: string) => venueOfChat(deps.pool, chatId),
+  }
   const sleep =
     deps.sleep ??
     ((ms: number, signal: AbortSignal) =>
@@ -212,6 +228,8 @@ export function startTelegramPoller(
         for (const update of updates) {
           offset = Math.max(offset, update.updateId + 1)
           if (update.press !== null) await handlePress(deps, update.press)
+          if (update.start) await handleStart(linking, update.start)
+          if (update.membership) await handleMembership(linking, update.membership)
         }
       } catch (error) {
         if (controller.signal.aborted) break

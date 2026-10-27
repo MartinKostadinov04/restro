@@ -17,6 +17,9 @@ import {
   alertLocale,
   alertMessage,
   applyService,
+  CLEARED_AT_DAY_CLOSE,
+  clearedLine,
+  DEFAULT_ROLE_PERMISSIONS,
   type DeliveryStep,
   digestMessage,
   doneButtonText,
@@ -50,10 +53,11 @@ import {
   withSystem,
   withTenant,
 } from '@restro/db'
-import { and, eq, gt, inArray, isNull, ne, or } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm'
 
 import type { Logger } from '../logger'
 import type { DeviceSubscription, PushSender } from './push'
+import { type PushRecipient, pushTargets } from './push-targets'
 import type { MessageRef, TelegramClient } from './telegram'
 
 /** What a pass needs. */
@@ -81,9 +85,7 @@ export function pushUrlOf(venueId: string): string {
   return `/venues/${venueId}`
 }
 
-interface Recipient {
-  readonly userId: string
-  readonly owner: boolean
+interface Recipient extends PushRecipient {
   readonly devices: readonly (DeviceSubscription & { readonly endpointHash: string })[]
 }
 
@@ -99,11 +101,18 @@ interface VenueForDelivery {
 /** The alert as the pass reads it: the planner's view, and what the words and the edit need. */
 interface LoadedAlert {
   readonly planned: PlannedAlert
+  /** The permission the alert was raised with: only people who hold it are pushed to. */
+  readonly permission: string | null
   readonly details: Record<string, unknown>
   readonly subjectId: string
   readonly doneAt: Date | null
   readonly doneBy: string | null
   readonly telegramRef: string | null
+}
+
+/** True for an organisation's owner or admin (Better Auth may join several roles with commas). */
+function isOwnerRole(role: string): boolean {
+  return /\b(owner|admin)\b/i.test(role.replaceAll(',', ' '))
 }
 
 /** Runs one pass; answers how many messages it sent. */
@@ -192,17 +201,18 @@ async function deliverForVenue(
       .where(and(eq(alerts.venueId, venue.id), or(isNull(alerts.doneAt), gt(alerts.doneAt, since))))
       .orderBy(alerts.raisedAt, alerts.id)
     const recipientIds = settings.alertRecipientUserIds
-    const devices =
+    const deviceColumns = {
+      userId: pushSubscriptions.userId,
+      endpointHash: pushSubscriptions.endpointHash,
+      endpoint: pushSubscriptions.endpoint,
+      p256dh: pushSubscriptions.p256dh,
+      auth: pushSubscriptions.auth,
+    }
+    const switchedOn =
       recipientIds.length === 0 || deps.push === null
         ? []
         : await tx
-            .select({
-              userId: pushSubscriptions.userId,
-              endpointHash: pushSubscriptions.endpointHash,
-              endpoint: pushSubscriptions.endpoint,
-              p256dh: pushSubscriptions.p256dh,
-              auth: pushSubscriptions.auth,
-            })
+            .select(deviceColumns)
             .from(pushSubscriptions)
             .where(
               and(
@@ -210,34 +220,77 @@ async function deliverForVenue(
                 isNull(pushSubscriptions.revokedAt),
               ),
             )
-    const deviceUserIds = [...new Set(devices.map((device) => device.userId))]
-    const ownerIds = new Set<string>()
-    if (deviceUserIds.length > 0) {
+
+    // Everyone who holds the permission of an alert raised with one: their role's permissions at
+    // this venue, and the organisation's owners and admins (who hold all). Read only when an alert
+    // needs it; their devices ring only when no switched-on person holds it (push-targets.ts).
+    const needed = new Set(rows.flatMap((row) => (row.permission === null ? [] : [row.permission])))
+    const holds = new Map<string, Set<string>>()
+    const organisationOwners = new Set<string>()
+    if (deps.push !== null) {
       const members = await tx
         .select({ userId: authMember.userId, role: authMember.role })
         .from(authMember)
-        .where(
-          and(eq(authMember.organizationId, tenantId), inArray(authMember.userId, deviceUserIds)),
-        )
+        .where(eq(authMember.organizationId, tenantId))
       for (const member of members) {
-        if (/\b(owner|admin)\b/i.test(member.role.replaceAll(',', ' '))) ownerIds.add(member.userId)
+        if (isOwnerRole(member.role)) organisationOwners.add(member.userId)
       }
-      const roleOwners = await tx
-        .select({ userId: staffMembers.userId })
+      const staff = await tx
+        .select({
+          userId: staffMembers.userId,
+          defaultKind: venueRoles.defaultKind,
+          permissions: venueRoles.permissions,
+        })
         .from(staffMembers)
         .innerJoin(staffAssignments, eq(staffAssignments.staffMemberId, staffMembers.id))
         .innerJoin(venueRoles, eq(venueRoles.id, staffAssignments.roleId))
         .where(
           and(
-            inArray(staffMembers.userId, deviceUserIds),
             eq(staffAssignments.venueId, venue.id),
             isNull(staffAssignments.endedAt),
-            eq(venueRoles.defaultKind, 'owner'),
+            isNull(staffMembers.archivedAt),
+            isNotNull(staffMembers.userId),
           ),
         )
-      for (const row of roleOwners) if (row.userId !== null) ownerIds.add(row.userId)
+      for (const row of staff) {
+        if (row.userId === null) continue
+        const list =
+          row.defaultKind === 'staff' ||
+          row.defaultKind === 'manager' ||
+          row.defaultKind === 'owner'
+            ? DEFAULT_ROLE_PERMISSIONS[row.defaultKind]
+            : Array.isArray(row.permissions)
+              ? (row.permissions as string[])
+              : []
+        holds.set(row.userId, new Set([...(holds.get(row.userId) ?? []), ...list]))
+        if (row.defaultKind === 'owner') organisationOwners.add(row.userId)
+      }
     }
-    return { rows, devices, ownerIds }
+    const holderIds =
+      needed.size === 0 ? [] : [...new Set([...holds.keys(), ...organisationOwners])]
+    const holderDevices =
+      holderIds.length === 0
+        ? []
+        : await tx
+            .select(deviceColumns)
+            .from(pushSubscriptions)
+            .where(
+              and(
+                inArray(pushSubscriptions.userId, holderIds),
+                isNull(pushSubscriptions.revokedAt),
+              ),
+            )
+    const seen = new Set<string>()
+    const devices = [...switchedOn, ...holderDevices].filter((device) => {
+      if (seen.has(device.endpointHash)) return false
+      seen.add(device.endpointHash)
+      return true
+    })
+    const ownerIds = new Set<string>(
+      [...organisationOwners].filter((id) => devices.some((device) => device.userId === id)),
+    )
+    const switchedOnIds = new Set(recipientIds)
+    return { rows, devices, ownerIds, holds, switchedOnIds }
   })
 
   const loadedAlerts: LoadedAlert[] = loaded.rows.map((row) => ({
@@ -251,6 +304,7 @@ async function deliverForVenue(
       telegramRef: row.telegramMessageRef,
       captureBefore: instantOf(row.details.captureBefore),
     },
+    permission: row.permission,
     details: row.details,
     subjectId: row.subjectId,
     doneAt: row.doneAt,
@@ -265,6 +319,8 @@ async function deliverForVenue(
     recipients.set(device.userId, {
       userId: device.userId,
       owner: loaded.ownerIds.has(device.userId),
+      switchedOn: loaded.switchedOnIds.has(device.userId),
+      holds: loaded.holds.get(device.userId) ?? new Set<string>(),
       devices: [...(before?.devices ?? []), device],
     })
   }
@@ -276,7 +332,11 @@ async function deliverForVenue(
     window,
     alerts: loadedAlerts.map((alert) => alert.planned),
     reachable: {
-      push: deps.push !== null && recipients.size > 0,
+      // A person switched on, or (for an alert with a permission) a holder who has a device.
+      push:
+        deps.push !== null &&
+        ([...recipients.values()].some((recipient) => recipient.switchedOn) ||
+          (loadedAlerts.some((alert) => alert.permission !== null) && recipients.size > 0)),
       venueTelegram: deps.telegram !== null && venueChatId !== null,
       team: deps.telegram !== null && deps.teamChatId !== null,
     },
@@ -429,18 +489,46 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
     switch (step.receiver) {
       case 'push': {
         if (deps.push === null) return true
-        const targets = input.recipients.filter((recipient) => !step.ownersOnly || recipient.owner)
-        const devices = targets.flatMap((recipient) => recipient.devices)
-        if (devices.length === 0) return false
-        const message = digestMessage(messages, venue.name, locale)
-        const payload = {
-          title: message.title,
-          body: message.body,
-          tag: `${venue.id}:${carried[0]?.planned.kind ?? 'alert'}`,
-          url: pushUrlOf(venue.id),
+        // Each person gets the alerts they may see: one without a permission goes to the switched-on
+        // people, one with a permission to the switched-on people who hold it (every holder when none
+        // is switched on); people who see the same alerts share one message.
+        const groups = new Map<string, { indexes: number[]; recipients: Recipient[] }>()
+        const seenBy = new Map<Recipient, number[]>()
+        for (const [index, alert] of carried.entries()) {
+          for (const recipient of pushTargets(
+            input.recipients,
+            alert.permission,
+            step.ownersOnly,
+          )) {
+            seenBy.set(recipient, [...(seenBy.get(recipient) ?? []), index])
+          }
         }
+        for (const [recipient, indexes] of seenBy) {
+          const key = indexes.join(',')
+          const group = groups.get(key) ?? { indexes, recipients: [] }
+          group.recipients.push(recipient)
+          groups.set(key, group)
+        }
+        const sends = [...groups.values()].flatMap((group) => {
+          const message = digestMessage(
+            group.indexes.flatMap((index) => messages[index] ?? []),
+            venue.name,
+            locale,
+          )
+          const payload = {
+            title: message.title,
+            body: message.body,
+            tag: `${venue.id}:${carried[group.indexes[0] ?? 0]?.planned.kind ?? 'alert'}`,
+            url: pushUrlOf(venue.id),
+          }
+          return group.recipients.flatMap((recipient) =>
+            recipient.devices.map((device) => ({ device, payload })),
+          )
+        })
+        const devices = sends.map((send) => send.device)
+        if (devices.length === 0) return false
         const outcomes = await Promise.all(
-          devices.map((device) => deps.push?.send(device, payload)),
+          sends.map((send) => deps.push?.send(send.device, send.payload)),
         )
         for (const [index, outcome] of outcomes.entries()) {
           const device = devices[index]
@@ -467,8 +555,17 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
         if (step.step === 'done_edit') {
           const ref = parseRef(alert.telegramRef)
           if (ref === null) return true
-          const by = await doneByName(deps.pool, tenantId, alert.doneBy)
-          const text = `${linkedMessage(message)}\n\n${doneLine(by, alert.doneAt ?? deps.now(), venue.timezone, locale)}`
+          // The day's close cleared it (#162): the words say so and no person is named.
+          const ending =
+            alert.details.clearedAt === CLEARED_AT_DAY_CLOSE
+              ? clearedLine(locale)
+              : doneLine(
+                  await doneByName(deps.pool, tenantId, alert.doneBy),
+                  alert.doneAt ?? deps.now(),
+                  venue.timezone,
+                  locale,
+                )
+          const text = `${linkedMessage(message)}\n\n${ending}`
           await telegram.editMessage(ref, text)
           await record()
           return true
