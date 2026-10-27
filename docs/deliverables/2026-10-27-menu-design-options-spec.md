@@ -61,7 +61,7 @@ The venue bar (logo, table label, language switch, the bill, pay and filter entr
 - A sticky venue bar (inventory: less): the rail is already sticky and carries the jump; a second sticky layer takes a third of a 568 px phone.
 - The language switch look (pills or codes; less): never hidden, 44 px either way, two values a few pixels apart.
 - The table label's look: fixed; it is the guest's proof of where the order goes.
-- Where the bill, pay and filter entries sit: waits for D122's screens (§3.9–3.13).
+- Where the bill, pay and filter entries sit: fixed in the venue bar; the waiter and the Order live in the order bar (§3.11).
 
 Markers: `header`, `header.logo`, `header.title`.
 
@@ -113,7 +113,7 @@ The product row or card inside a section.
 | Guest switch | on, off | on | Whether the guest can switch the layout for the visit, with the three icon buttons under the first section | (a) some venues want one fixed look; (b) exists today (D92); applies to every vertical section, never to a strip (Q6) |
 
 **Out, and why.**
-- The add control ("+" or "Add"): waits for D122 (§3.11).
+- The add control ("+" or "Add"): the Order page owns it (§3.11).
 - Taking a part off the row: the description, the choices summary (inventory ★) or the photo on the dish page only. Martin 10-27: a part with content is always drawn on the row, and R8 stays as it is.
 - A dotted price leader: breaks on 60-character names (inventory: no).
 - Price colour, ink or accent (less): the price must be the calmest, most legible thing on the row; ink always wins, and accent text is already the state label's and the marks' colour.
@@ -173,55 +173,116 @@ Markers: `dish`, `dish.photo`.
 - The footer band as its own option (inventory ★): in all five Styles the footer wants the sheets' colour; folded. The footer is never hidden while the menu lists allergens.
 - The filter place, sheet or chip row (less): the chip row fights the rail for the top of a small phone; the sheet works in every layout.
 - Footer extras (address, hours, a legal line): content the snapshot lacks (inventory Q9).
-- The order bar, floating or docked: waits for D122. The veil: fixed.
+- The order bar, floating or docked: the Order page owns it (§3.11). The veil: fixed.
 
 Markers: `sheet`, `footer`.
 
 ### The guest-feature screens
 
-Decision 1.8: the switcher lists the five screens from the start. Each inherits the colours and screen, everything in General, the sheet colour (§3.8), the labels look for its choice chips (request kinds, pay scope, tips) with D93's selected roles, and the rows of §3.10. A screen with no option of its own still shows in the switcher, drawn in the current design, with the line "Its own options come with the ordering template (D122)". What D122 fixes is never an option: the words, the states, the waiter reference at 40 px and 7:1, the consent text, the "Preview" marker.
+Decision 1.8: the five screens are pages of the designer from the start, each with its own table by the same rule as the Items page. The admin preview draws them with demo data under the "Preview" marker (D71), so their tiles and the preview show the real screens. What D72 and D122 fix is never an option and stays in the never-list: the words, the states and their order, every amount and line, the waiter reference at 40 px and 7:1, the consent text, the "Preview" marker. Every look is designable now. The five inherit General (colours, screen, fonts, weights, text size, density, corners, depth, buttons), the sheet colour (§3.8) and the labels look (§3.6) for their choice chips, with D93's selected roles. Three looks are shared and owned once: the status panel (Call a waiter), the rows and the lines (Bill). Derived, not options: input fields (the note, the custom tip, the promo code, the e-receipt email) follow the labels look (outline → boxed, soft → filled, text → underlined); secondary buttons (Edit, Remove, Cancel, "with the waiter", the receipt's actions) are quiet outlines with the strong border whatever the Style; primary buttons take General's Buttons.
 
 ### 3.9 Call a waiter
 
+Today: a grid of the allowed kinds, each an icon and a word; a note for "something else"; Send; then one status panel (a mark, a title, a hint) with Cancel or "New request".
+
 | Option | Values | Proposed base | Plain words: what changes for the guest | Why it is in (a/b) |
 |---|---|---|---|---|
-| Icons | shown, hidden | shown | The request kinds as icon tiles, or as words only | (a) Classic wants words, Club icons; (b) CSS |
+| Kinds | tiles, list, words | tiles | The allowed kinds as a grid of icon-over-word tiles; as rows with a small icon at the start; or as rows of words alone | (a) a venue with two kinds (waiter, bill) wants rows, one with six a grid; Classic wants words, Club tiles; (b) CSS; 44 px; the chosen one by D93's selected roles, never by colour alone |
+| Status | centred, inline | centred | The state of a request, a sent order or a payment as a big centred mark with its title under it (as today), or as a quiet line: the mark beside the title, left-aligned, the hint under | (a) a club wants the big tick, a bistro the quiet line; (b) CSS; the same panel serves the Order and Pay, which follow this value; `role=status` and `role=alert` stay |
 
-Waits for D122: the still card "Please order from your waiter" until the staff screen takes calls, the kinds the venue allows, the request's states.
+Fixed by D72 and D122, never an option: the kinds the venue allows, the request's words and states, the still card "Please order from your waiter" until the staff screen takes calls.
 
-Markers: `call`.
+**Out, and why.**
+- The note field's look: follows the labels look (derived, above).
+- The waiter entry (icon and word) in the order bar: the order bar's (§3.11).
+- A status banner that keeps the kinds visible while a request is open: a flow change (one request at a time, then "New request", is D72's contract), not a look.
+- Cancel and "New request": secondary and primary buttons, General's.
+
+Markers: `call`, `call.kinds`, `status`.
 
 ### 3.10 Bill
 
+Today: an intro line; lines with quantity, name, options, a status word and the amount; the host's total; "View receipt"; "Pay €46,00". D122: the bill is the POS's, drawn as it is read, discounts and free lines included, no "from your phones" marking; the reading's age is shown.
+
 | Option | Values | Proposed base | Plain words: what changes for the guest | Why it is in (a/b) |
 |---|---|---|---|---|
-| Rows | ruled, zebra, open | ruled | The bill's lines separated by thin rules, alternating bands, or space; the Order's lines, the pay summary and the receipt follow | (a) a long club bill reads better zebra, a short one open; (b) CSS; the amounts never change |
+| Rows | ruled, zebra, open | ruled | The lines separated by thin rules, alternating bands, or space alone; the Order's lines, the pay summary and the receipt follow | (a) a long club bill reads better zebra, a short one open; (b) CSS; the amounts never change |
+| Frame | flat, card | flat | The bill flat on the sheet, or on a panel-coloured card with General's corners, like a slip; the receipt follows | (a) a slip reads "restaurant", flat reads "app"; (b) CSS on `surface` |
+| Lines | detailed, compact | detailed | Options and notes on their own lines under the name (as today), or one row per line with the options inline after the name in smaller text; the Order and the receipt follow. Nothing is folded away: every option a guest chose stays readable | (a) a club with twelve lines wants one row each, a restaurant the full line; (b) CSS; the status word and the amount keep their place |
+| Total place | bottom, top | bottom | The total and the Pay button after the lines (as today), or pinned at the top of the sheet with Pay beside it and the lines under | (a) a club wants the number first, a restaurant reads the lines first; (b) CSS, sticky inside the sheet; the amount is the host's |
 
-Waits for D122: the POS's own lines with discounts and free lines, no "from your phones" marking, "Ask your waiter to split this bill", the Pay entry. Out: grouping by sent order, because the bill is the POS's (D122 §4).
+Fixed by D72 and D122, never an option: every line and amount as the POS gives them, the reading's age, the line states and their words, "Ask your waiter to split this bill".
 
-Markers: `bill`.
+**Out, and why.**
+- Names only, options folded: a guest must see what is charged (the lines on the bill are in the never-list); the compact line keeps the options.
+- Grouping by sent order or by time: the bill is drawn as the POS gives it (D122 §4), and grouping needs data a reading may not have.
+- Status marks as chips or words: follow the labels look (outline and soft → a chip in D93's status roles, text → the word), derived.
+- The bill entry in the venue bar ("Bill · €46,00"): follows the header band; it shows the total once there is a bill, fixed.
+- Unit prices beside the line totals: the face adds up nothing and shows the lines as given (D72).
+
+Markers: `bill`, `bill.lines`, `bill.total`.
 
 ### 3.11 Order
 
+Today: a round "+" by the price that turns into a stepper; a floating pill at the bottom with the waiter button and "View order · approx. €X"; the sheet with lines (name, options, note, Edit, Remove, stepper, amount), the estimate row, Send. D122: the Order is the table's, shared by every phone; Send names the table and the count; the states show on every phone.
+
 | Option | Values | Proposed base | Plain words: what changes for the guest | Why it is in (a/b) |
 |---|---|---|---|---|
-| Line photos | shown, hidden | hidden | A small photo on each line of the Order | (a) a photo-led menu wants them, a text menu does not; (b) Branch, small: a line already resolves its item live, so the image is there |
+| Add control | plus, add | plus | On an orderable item, a round "+" by the price that becomes a stepper once the item is in the Order (as today), or a small "Add" pill that does the same | (a) a bar wants "+", a restaurant the word; Classic's word, Club's plus; (b) Branch, small; 44 px; the word is the shell's |
+| Order bar | floating, docked | floating | The bar at the bottom as a pill floating above the edge (as today), or docked full-width to the bottom edge; its fill is General's Buttons | (a) app look against system look; Club docked, Editorial floating; (b) CSS; safe-area insets; 44 px; hidden while a sheet is open, as today |
+| Line photos | shown, hidden | hidden | A small photo on each line of the Order | (a) a photo-led menu wants them, a text menu does not; (b) Branch, small: a line resolves its item live, so the image is there |
 
-Waits for D122: Send naming the table and the count, the states on every phone, the "Show this to your waiter" panel, the sold-out line and "Send the other 4", the duplicate check, the note field only with the capability, pay-first lines, the location consent, last orders; and with them the add control ("+" or "Add") and the order bar (floating or docked).
+Fixed by D72 and D122, never an option: Send's words (the table and the count), the states on every phone, the "Show this to your waiter" panel at 40 px and 7:1, the sold-out line and "Send the other 4", the duplicate check, the note field only with the capability, pay-first lines, the location consent, last orders, the estimate labelled "approx." from core's money module.
+
+**Out, and why.**
+- Line layout: the Bill's Lines (§3.10), shared.
+- The stepper's look: one stepper per renderer, shaped by General's corners and buttons; a second shape is a minor detail.
+- Where the estimate sits: in the estimate row, fixed. D122 gives the Send button its words ("Send 3 items to Table 7"), so the row is the one place for the money.
+- The Send button's style: General's Buttons, wide at the foot of the sheet.
+- The count badge on the "+" and on the bar: fixed.
+- The sent panel: the Status of §3.9.
 
 Markers: `order`, `order.bar`, `item.add`.
 
 ### 3.12 Pay
 
-No option of its own now. It inherits as above; Apple Pay's button keeps Apple's own look whatever the Style. Waits for D122: where the tip sits (#45), the method list, the optional email for an electronic receipt, "Download" as the provider's confirmation, 3-D Secure, group payment later.
+Today: "What to pay" as a segmented choice (the whole table, an equal share with a people stepper, only mine); the tip as chips (none, the host's percentages, custom) with an input; the promo code in a fold; the allergy line; the quote's rows (subtotal, tip, VAT lines, total); the methods as wide buttons (Apple Pay in Apple's look, "with the waiter" quiet); then the status panel.
 
-Markers: `pay`.
+| Option | Values | Proposed base | Plain words: what changes for the guest | Why it is in (a/b) |
+|---|---|---|---|---|
+| Scope | segmented, stacked | segmented | The three choices in one segmented control (as today), or as three tall rows one under the other, each a 44 px target | (a) a venue with big tables wants the choice to read as a list, a bar the compact control; (b) CSS; the same three words; D93 selected roles |
+| Tip | chips, rows | chips | None, 10 %, 15 %, custom as chips (as today), or as rows that also show the host's amount for each ("10 % · €4,60") | (a) a restaurant wants the money shown, a bar the chips; (b) CSS; the amounts are the quote's `tipOptions`, never computed (D72); "none" is always the first choice |
+| Methods | list, tiles | list | The methods as wide buttons one under the other (as today), or as tiles side by side | (a) a club with two methods wants two tiles, a restaurant a list; (b) CSS; Apple Pay keeps Apple's own look in both; "with the waiter" stays a quiet secondary in both |
+| Promo field | folded, open | folded | The promo-code field behind a "Promo code" fold (as today), or open from the start | (a) a venue that runs codes wants it seen, one that does not wants it out of the way; (b) CSS; the field exists only when the host's quote has a promo slot |
+
+Fixed by D72 and D122, never an option: every row of the quote (subtotal, tip, each VAT line, the total, "per person"), the allergy line, the methods the host allows, the e-receipt email only under D122's five conditions, "Download" as the provider's confirmation, the words of processing, paid, failed and unknown. Whether the tip is asked on the Bill or here is #45: a flow, not a look.
+
+**Out, and why.**
+- Summary density (the total alone, the breakdown behind a tap): the amounts on the quote are never hidden; General's density already tightens the rows.
+- A tip stepper: it hides the choices behind taps and makes "no tip" harder to find; chips and rows keep every choice visible.
+- The pay button: the method buttons are the pay buttons; their fill is General's Buttons.
+- The custom tip and the promo inputs: fields follow the labels look (derived).
+- The status panels: the Status of §3.9.
+
+Markers: `pay`, `pay.scope`, `pay.tip`, `pay.methods`.
 
 ### 3.13 Receipt
 
-No option of its own now; it takes the Bill's rows and the sheet colour. Out: a "paper receipt" look. The receipt is the venue's, or the provider's confirmation (D122 §8), and dressing it as a fiscal document would mislead. Waits for D122: the wording, and the actions only where the receipt offers them.
+Today: a page with Back; the venue's name, the table and the time; the lines; VAT, tip, total, method and references; PDF, email and print only where the receipt offers them. D122: the venue issues the fiscal receipt; what the app shows is the provider's confirmation and is never called fiscal.
 
-Markers: `receipt`.
+| Option | Values | Proposed base | Plain words: what changes for the guest | Why it is in (a/b) |
+|---|---|---|---|---|
+| Layout | detailed, compact | detailed | Every row at body size with its label (VAT included 20 %, Method, Reference), as today; or the lines tight, with the VAT rows, the method and the references in small type under the total. Every row stays | (a) a bar wants the one-glance version, a restaurant the full statement; (b) CSS; nothing is folded away |
+| Venue block | name, logo | name | The venue's name at the top (as today), or its logo from General with the name small under it; without a logo, the name | (a) a branded confirmation against a plain one; (b) CSS; the `logo` token |
+
+Fixed by D122, never an option: every line and amount, the method, the references, the title and wording, the actions only where offered, "never called fiscal".
+
+**Out, and why.**
+- Frame and rows: the Bill's (§3.10), shared.
+- A paper-slip look with a dashed edge: it dresses the provider's confirmation as a fiscal document (D122 §8); the card frame is as far as it goes.
+- The actions' look: secondary buttons, General's.
+
+Markers: `receipt`, `receipt.venue`.
 
 ## 4. What the five Styles set
 
@@ -264,15 +325,28 @@ Basic is the base Style, its values a proposal (§1); Editorial reproduces Edito
 | Dish kind | sheet | page | sheet | page | sheet |
 | Dish photo | hero | hero | hero | hero | hero |
 | Sheets | panel | ink | panel | page | panel |
-| Call icons | shown | shown | shown | hidden | shown |
+| Call kinds | tiles | tiles | tiles | words | tiles |
+| Status | centred | centred | centred | inline | centred |
 | Bill rows | ruled | ruled | open | open | zebra |
+| Bill frame | flat | flat | card | card | flat |
+| Lines | detailed | detailed | detailed | detailed | compact |
+| Total place | bottom | bottom | bottom | bottom | top |
+| Add control | plus | plus | plus | add | plus |
+| Order bar | floating | floating | floating | docked | docked |
 | Order line photos | hidden | hidden | shown | hidden | hidden |
+| Pay scope | segmented | segmented | stacked | stacked | segmented |
+| Tip | chips | chips | chips | rows | chips |
+| Methods | list | list | list | list | tiles |
+| Promo field | folded | folded | folded | folded | folded |
+| Receipt layout | detailed | detailed | detailed | detailed | compact |
+| Venue block | name | name | logo | name | logo |
 
 Notes on the columns.
 - **Editorial** changes in four small places, each forced by a rule or a fold: its 9–11 px marks, chips, allergen numbers and table label rise to the 12 px floor; the strip crop and the dish photo become 4:3; the card description shows three lines beside a photo too (today two); its fixed shadows become the `low` step. Everything else is as drawn today.
 - **Club** keeps its header on `panel`, not `ink`: on the dark screen an ink band is light. Tight spacing is density compact and one description line; large names are size l, heavy; wide strips are card size l; the pills sit on the header's band.
 - **Classic** is a text list where the venue uploads no photos (a photo, when there is one, is drawn: R8): labels as words, allergens by name, a serif heading font, centred section headers over open rows. The heaviest weight Lora and Playfair Display serve is unverified (inventory); `heavy` may fall back to bold on those two faces.
 - **Soft** is the app look: round corners, cards, panel bands, soft chips, pills, square photos, open rows and photos on the Order lines.
+- **The five screens** follow each Style's temper: Club takes compact lines, the total first, a docked bar and method tiles; Classic takes words for the kinds, the quiet status line, a card slip, the "Add" word, a docked bar and tip rows with amounts; Soft takes the stacked scope rows and the logo on its receipt; Basic and Editorial keep today's looks.
 
 ## 5. The never-list, as a contract clause
 
@@ -283,7 +357,7 @@ No option, in any Style and at any value, may hide, move, re-colour, resize belo
 - the **state and its label** of every item that is drawn (a scheduled item's "from 18:00", an unavailable one), and "Ask your waiter"; an item drawn as not available is never orderable and never moved. Whether a sold-out item is drawn at all is the shell's rule (D22, under review), never a design option;
 - the **order** of sections, items, groups and options (R2); every placement drawn once (R7);
 - the **closed-menu note**, the **table label**, the **language switch** with two or more languages, and every **guest-feature control** whose feature is on (R15);
-- the **amounts and lines** on the bill, the quote and the receipt (D72, D122), and the waiter **reference** at 40 px and 7:1, the consent text and the "Preview" marker;
+- the **words, states, amounts and lines** of the five guest-feature screens (D72, D122): the bill, the quote and the receipt, the sent order's states on every phone, the waiter **reference** at 40 px and 7:1, the consent text and the "Preview" marker;
 - the §7.5 floors: 12 px text, 16 px inputs, 44 px targets, the 4.5:1 text and 3:1 control pairs, visible focus, reduced motion, `lang`, no horizontal scroll at 320 px, theme tokens only.
 
 And no option introduces a free value: no pixels, no hex outside the three colour pickers and the Advanced roles, no CSS, no per-item setting. A test compares every Style at every value against this list before a Style can be offered.
@@ -301,17 +375,17 @@ And no option introduces a free value: no pixels, no hex outside the three colou
 | Labels, allergens and state | 2 | allergens (Branch) |
 | Dish page | 2 | kind (Branch, small) |
 | Overlays and footer | 1 | — |
-| Call a waiter | 1 | — |
-| Bill | 1 | — |
-| Order | 1 | line photos (Branch, small) |
-| Pay | 0 | — |
-| Receipt | 0 | — |
-| **Total** | **41** | 6 to stage |
+| Call a waiter | 2 (kinds, status) | — |
+| Bill | 4 (rows, frame, lines, total place) | — |
+| Order | 3 (add control, order bar, line photos) | add control, line photos (Branch, small) |
+| Pay | 4 (scope, tip, methods, promo field) | — |
+| Receipt | 2 (layout, venue block) | — |
+| **Total** | **53** | 7 to stage |
 
 - The largest component page is Items with nine; General has eleven as the group. Seven exist today (colours, screen, body font, corners and depth as numbers, the menu layout and the guest switch as menu settings); the Style row replaces the template chooser.
 - Every option appears on exactly one page. Four starred rows are folded, not cut: marks into labels, the footer band into sheets, the title's weight into the heading weight, page-wide capitals into the two case options. Two "less" rows are kept: depth (it now reaches phones) and portion place. Cut on Martin's word of 10-27: every option that takes a part off the item row (the inventory's starred choices summary, the description and the photos on the dish page only) and any sold-out option. Rail alignment, marks place, sub-section title size and the sticky dish bar are renderer rules, not options.
-- Against the inventory's 35 stars: 41 here, 3 of them the guest-feature screens' own and 2 Martin's additions of 10-27 (layout, guest switch); every part of the page has at least one choice, the five screens included.
-- To stage (they cost more than CSS): the design record, the heading font and the layout's move to the venue (Data); allergens by name, the dish page kind and the Order's line photos (Branch). Nothing needs a contract change. Text size and density are CSS but touch every component, so they land with the renderer, not after it.
+- Against the inventory's 35 stars: 53 here, 15 of them the five guest-feature screens' own by the same rule (of the 21 candidates weighed for them, 13 are in, one of those shared as the Bill's Lines, and 8 are cut on their pages; the Bill's frame and the promo field are added), and 2 Martin's additions of 10-27 (layout, guest switch); every part of the page has at least one choice, the five screens included.
+- To stage (they cost more than CSS): the design record, the heading font and the layout's move to the venue (Data); allergens by name, the dish page kind, the add control and the Order's line photos (Branch). Nothing needs a contract change. Text size and density are CSS but touch every component, so they land with the renderer, not after it.
 - Unknowns carried from the inventory: whether Bulgarian law requires the portion on a menu (it is never hidden here either way); Bulgaria's rule on non-prepacked allergen information; the heaviest weight of Lora and Playfair Display.
 
 ## 7. Questions for Martin
@@ -321,6 +395,6 @@ Each is worded so that "yes" accepts the recommendation.
 1. **A Style sets the heading font and the screen** (Classic's serif, Club's Unbounded and dark screen), never the three colours, the Advanced roles, the logo or the body font; everything is editable after the switch. Yes?
 2. **Allergens are numbers or names now, icons later**, and never a single "Allergens" button. Yes?
 3. **Corners and depth become words** (square, soft, round, extra; none, low, high) that reach cards, chips, sheets and the order bar on phones, replacing the two sliders. Yes?
-4. **The guest-feature screens get three options of their own now** (icons on Call a waiter, rows on the Bill, line photos on the Order) and otherwise inherit; the rest waits for D122's template work, and the switcher shows every screen from the start. Yes?
+4. **One status look, one rows look and one lines look serve all five guest-feature screens** (owned by Call a waiter and the Bill), instead of a setting per screen. Yes?
 5. **Content is content:** no switch hides the intro, a section's description or its image; a venue that does not want one deletes it. Yes?
 6. **The menu layout and the guest switch are venue-wide, on the Items page**; a section's own layout in Structure still wins where it is set, the guest's switch applies to every vertical section, and strips never switch. Yes?
