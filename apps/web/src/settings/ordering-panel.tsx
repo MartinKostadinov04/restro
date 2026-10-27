@@ -210,6 +210,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
             <div>
               <Button
                 variant={settings.spot === null ? 'default' : 'outline'}
+                className="h-auto max-w-full whitespace-normal py-2 text-left"
                 disabled={pending || reading}
                 onClick={useThisSpot}
               >
