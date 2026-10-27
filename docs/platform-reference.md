@@ -27,6 +27,20 @@ Every agent brief names the Platform files to read first. Every agent report say
 | Settings pages | `Components/FormSection.jsx` | Title/description column + card | — |
 | Import mapping (later) | `Passport/Internal/Partials/ImportDesigner.jsx`; `Pages/.../DataPulling.jsx` 79-256 | Pick file → preview → map columns → job → status | Header auto-match and saved mapping profiles; a job is complete only when processed + rejected = total (Platform marks it complete at dispatch) |
 
+## Second copy: `D:\Platform Gitlab` (the passport Design studio)
+A newer copy of the Platform (files dated 2026-10-21), the reference for the menu designer work (Martin 10-27). Read-only like `C:\Platform`. It is not a git checkout, so it is pinned by fingerprint: `sha256sum` of every file under the paths below, sorted by path, piped into `sha256sum` again, gave `f6b05e79aebdb02cccc9e1b5458a66f0e4ef54b5585581111355a80c50ac0c08` (105 files, 10-27). A different result means the copy changed; the pin moves only with Martin's OK.
+
+| Area | Files |
+|---|---|
+| Contract | `tests/fixtures/passport-design-contract.json`, `resources/js/lib/passportDesign.js`, `app/Support/PassportDesign.php`, `app/Support/CompositionDesign.php` |
+| Studio and change engine | `resources/js/Components/Design/DesignStudio.jsx`, `resources/js/Components/Design/studio/` (registry, `categoryPaths.json`, `useDesignSettings.js`, `controls.jsx`, `partToCategory.js`, `categories/`) |
+| Specimens and preview | `resources/js/Components/Design/specimens/`, `resources/js/Components/Design/DesignPreview.jsx`, `resources/js/Components/Design/previewMessages.js`, `resources/js/Pages/Design/PreviewFrame.jsx`, `resources/js/Pages/Composer/Partials/` |
+| Renderer | `resources/js/Pages/Passport/Partials/`, `resources/js/lib/designTokens.js`, `resources/js/lib/designColors.js`, `resources/js/lib/passportFonts.js`, `resources/css/passport.css` |
+| Saving and locks | `app/Services/Design/`, `app/Support/DesignCategories.php`, `app/Services/Compositions/CompositionSave.php`, `resources/js/lib/realtime/designUnits.js`, `resources/js/Hooks/useUnitEditor.js` |
+| Specs and public contract | `docs/superpowers/specs/` (renderer rounds 1–3, realtime collaboration), `docs/api/guides/resources/design.md`, `docs/api/guides/resources/compositions.md` |
+
+This copy supersedes the Theme row above for anything design-related: the `Pages/Design/Index.jsx` theme page there is the older version.
+
 ## Pitfalls seen in the Platform (do not repeat)
 1. Type → component switch duplicated in Render.jsx, ValueField, DrawerInput, View.jsx.
 2. Layout frozen inside the schema; no update route.
