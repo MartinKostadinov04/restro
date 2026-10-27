@@ -2576,6 +2576,17 @@ const sqlWords = (words: readonly string[]) =>
 const PROVIDER_KIND_PATTERN = sql.raw(`'^[a-z][a-z0-9-]{0,31}$'`)
 /** A reference the provider gave (a payment, an account, an event): opaque and short. */
 const PROVIDER_REF_PATTERN = sql.raw(`'^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$'`)
+/**
+ * A JSON path that finds a line of a payment step's `lines` that is not a POS reference (1 to 200
+ * characters), a decimal quantity and a whole amount (`PaymentStepLinesSchema`).
+ */
+const PAYMENT_STEP_LINE_INVALID = sql.raw(
+  `'$[*] ? (@.type() != "object" || !exists(@.pos) || !exists(@.quantity) || !exists(@.amountMinor)` +
+    ` || @.pos.type() != "string" || !(@.pos like_regex "^.{1,200}$")` +
+    ` || @.quantity.type() != "string"` +
+    ` || !(@.quantity like_regex "^-?(0|[1-9][0-9]{0,14})([.][0-9]{1,6})?$")` +
+    ` || @.amountMinor.type() != "number" || @.amountMinor.floor() != @.amountMinor)'`,
+)
 
 /**
  * A payment (`py_`) from a phone: lines of a table's bill paid by card (`on_bill`), or a pay-first
@@ -2843,6 +2854,16 @@ export const paymentSteps = restro.table(
     check(
       'payment_steps_idempotency_key',
       sql`${t.idempotencyKey} is null or ${t.idempotencyKey} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    // `PaymentStepLinesSchema` as far as SQL goes: on a move back's `attempting` row only, 1 to
+    // 500 lines, each a POS reference, a decimal quantity and a whole amount.
+    check(
+      'payment_steps_lines',
+      sql`${t.lines} is null or (${t.step} = 'undoIsolate' and ${t.outcome} = 'attempting'
+        and case when jsonb_typeof(${t.lines}) = 'array'
+          then jsonb_array_length(${t.lines}) between 1 and 500
+            and not jsonb_path_exists(${t.lines}, ${PAYMENT_STEP_LINE_INVALID})
+          else false end)`,
     ),
     ...provenanceChecks('payment_steps', t),
   ],

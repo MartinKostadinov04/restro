@@ -1,5 +1,5 @@
 {
-  "id": "749d2606-9c46-474d-99ca-65cfd45d10b2",
+  "id": "2bebd01f-6588-46b7-b89e-795b1a8d2b80",
   "prevId": "df050b96-9e48-4012-895a-600e0d0e1f4f",
   "version": "7",
   "dialect": "postgresql",
@@ -4185,6 +4185,10 @@
         "payment_steps_idempotency_key": {
           "name": "payment_steps_idempotency_key",
           "value": "\"restro\".\"payment_steps\".\"idempotency_key\" is null or \"restro\".\"payment_steps\".\"idempotency_key\" ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$'"
+        },
+        "payment_steps_lines": {
+          "name": "payment_steps_lines",
+          "value": "\"restro\".\"payment_steps\".\"lines\" is null or (\"restro\".\"payment_steps\".\"step\" = 'undoIsolate' and \"restro\".\"payment_steps\".\"outcome\" = 'attempting'\n        and case when jsonb_typeof(\"restro\".\"payment_steps\".\"lines\") = 'array'\n          then jsonb_array_length(\"restro\".\"payment_steps\".\"lines\") between 1 and 500\n            and not jsonb_path_exists(\"restro\".\"payment_steps\".\"lines\", '$[*] ? (@.type() != \"object\" || !exists(@.pos) || !exists(@.quantity) || !exists(@.amountMinor) || @.pos.type() != \"string\" || !(@.pos like_regex \"^.{1,200}$\") || @.quantity.type() != \"string\" || !(@.quantity like_regex \"^-?(0|[1-9][0-9]{0,14})([.][0-9]{1,6})?$\") || @.amountMinor.type() != \"number\" || @.amountMinor.floor() != @.amountMinor)')\n          else false end)"
         },
         "payment_steps_source": {
           "name": "payment_steps_source",

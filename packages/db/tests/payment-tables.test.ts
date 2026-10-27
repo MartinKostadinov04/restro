@@ -417,6 +417,51 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
     expect(message).toMatch(/payments_handle_hash_unique/)
   })
 
+  it("keeps a step's lines on a move back's attempting row only, in their shape (migration 0034)", async () => {
+    const step = (fields: Partial<typeof paymentSteps.$inferInsert>) =>
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx.insert(paymentSteps).values({
+          tenantId: a.tenantId,
+          venueId: a.venueId,
+          paymentId: a.paymentId,
+          step: 'undoIsolate',
+          outcome: 'attempting',
+          idempotencyKey: `${a.paymentId}-undo`,
+          ...PROVENANCE,
+          ...fields,
+        }),
+      )
+    const line = { pos: '9100003', quantity: '0.5', amountMinor: -300 }
+    const many = Array.from({ length: 501 }, () => line)
+    for (const fields of [
+      { outcome: 'done', lines: [line] },
+      { step: 'payAndClose', lines: [line] },
+      { lines: [] },
+      { lines: many },
+      { lines: { pos: '9100003' } },
+      { lines: [{ pos: '9100003', quantity: '0.5' }] },
+      { lines: [{ ...line, pos: '' }] },
+      { lines: [{ ...line, pos: 'x'.repeat(201) }] },
+      { lines: [{ ...line, quantity: '1.5e3' }] },
+      { lines: [{ ...line, quantity: 2 }] },
+      { lines: [{ ...line, amountMinor: 1.5 }] },
+      { lines: [{ ...line, amountMinor: '300' }] },
+      { lines: ['9100003'] },
+    ]) {
+      expect(await databaseError(step(fields))).toMatch(/payment_steps_lines/)
+    }
+    await step({ lines: [line, { pos: '9100004', quantity: '2', amountMinor: 2200 }] })
+    const [row] = await withTenant(app, a.tenantId, (tx) =>
+      tx
+        .select({ lines: paymentSteps.lines })
+        .from(paymentSteps)
+        .where(
+          sql`${paymentSteps.paymentId} = ${a.paymentId} and ${paymentSteps.lines} is not null`,
+        ),
+    )
+    expect(row?.lines).toEqual([line, { pos: '9100004', quantity: '2', amountMinor: 2200 }])
+  })
+
   it('keeps a picked quantity above zero and exact', async () => {
     const message = await databaseError(
       withTenantWrite(app, a.tenantId, (tx) =>

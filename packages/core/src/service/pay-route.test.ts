@@ -261,8 +261,17 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
     return { id, alertId }
   }
 
-  const answer = (context: ServiceContext, paymentId: string, value: string) =>
-    applyService(world.app, { type: 'payment.answer', paymentId, answer: value }, context)
+  const answer = (
+    context: ServiceContext,
+    paymentId: string,
+    value: string,
+    answering: 'close' | 'lines_not_back' = 'close',
+  ) =>
+    applyService(
+      world.app,
+      { type: 'payment.answer', paymentId, answering, answer: value },
+      context,
+    )
 
   const stored = async (id: string, alertId: string) => ({
     payment: (
@@ -333,13 +342,13 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
 
   it('takes "Receipt printed" when the items were not back after "No receipt"', async () => {
     const { id, alertId } = await unconfirmed('lines_not_back')
-    const { result } = await answer(user(managerId), id, 'receipt_printed')
+    const { result } = await answer(user(managerId), id, 'receipt_printed', 'lines_not_back')
     expect(result).toMatchObject({ status: 'accepted', details: { changed: true } })
     expect(await stored(id, alertId)).toEqual({
       payment: { state: 'unconfirmed', reason: 'receipt_printed' },
       alertDone: true,
     })
-    expect((await answer(user(ownerId), id, 'no_receipt')).result).toMatchObject({
+    expect((await answer(user(ownerId), id, 'no_receipt', 'lines_not_back')).result).toMatchObject({
       status: 'refused',
       code: 'payment_answered',
     })
@@ -347,7 +356,7 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
 
   it('takes a second "No receipt": released and stranded, no move back; another tap refused', async () => {
     const { id, alertId } = await unconfirmed('lines_not_back')
-    const { result } = await answer(user(managerId), id, 'no_receipt')
+    const { result } = await answer(user(managerId), id, 'no_receipt', 'lines_not_back')
     expect(result).toMatchObject({
       status: 'accepted',
       details: { changed: true, state: 'cancelling' },
@@ -362,11 +371,28 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
     )
     expect(raised.rows).toEqual([{ kind: 'payment_stranded', permission: 'alerts.answer' }])
     const log = await world.owner.query<{ from_state: string; to_state: string }>(
-      `select from_state, to_state from restro.log_entries
+      `select from_state, to_state, details->>'answering' as answering from restro.log_entries
         where kind = 'payment.answered' and payment_id = $1`,
       [id],
     )
-    expect(log.rows).toEqual([{ from_state: 'lines_not_back', to_state: 'no_receipt' }])
+    expect(log.rows).toEqual([
+      { from_state: 'lines_not_back', to_state: 'no_receipt', answering: 'lines_not_back' },
+    ])
+    for (const answering of ['lines_not_back', 'close'] as const) {
+      expect((await answer(user(ownerId), id, 'no_receipt', answering)).result).toMatchObject({
+        status: 'accepted',
+        details: { changed: false },
+      })
+      expect((await answer(user(ownerId), id, 'receipt_printed', answering)).result).toMatchObject({
+        status: 'refused',
+        code: 'payment_answered',
+      })
+    }
+  })
+
+  it('never takes a late answer to the close for the second question, nor the second unasked', async () => {
+    // A second manager, a retry or an old push answering the close once the second is asked.
+    const { id, alertId } = await unconfirmed('lines_not_back')
     expect((await answer(user(ownerId), id, 'no_receipt')).result).toMatchObject({
       status: 'accepted',
       details: { changed: false },
@@ -374,6 +400,21 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
     expect((await answer(user(ownerId), id, 'receipt_printed')).result).toMatchObject({
       status: 'refused',
       code: 'payment_answered',
+    })
+    expect(await stored(id, alertId)).toEqual({
+      payment: { state: 'unconfirmed', reason: 'lines_not_back' },
+      alertDone: false,
+    })
+    // The second question before it is asked.
+    const first = await unconfirmed()
+    for (const value of ['no_receipt', 'receipt_printed']) {
+      expect((await answer(user(ownerId), first.id, value, 'lines_not_back')).result).toMatchObject(
+        { status: 'refused', code: 'payment_not_asked' },
+      )
+    }
+    expect(await stored(first.id, first.alertId)).toEqual({
+      payment: { state: 'unconfirmed', reason: 'close_unknown' },
+      alertDone: false,
     })
   })
 

@@ -99,6 +99,8 @@ export const PAYMENT_LONG_WAIT_MS = 10_000
 
 /** The staff's answers to an unconfirmed close (#111). */
 export const PAYMENT_ANSWERS = ['receipt_printed', 'no_receipt'] as const
+/** The questions a manager answers: the close, then whether the items are back (#153). */
+export const PAYMENT_QUESTIONS = ['close', 'lines_not_back'] as const
 
 /**
  * Why a close is unconfirmed, waiting for an answer: the POS didn't answer, or refused after the
@@ -818,12 +820,18 @@ export function paymentUndone() {
  * Asked again because the items were not back after "No receipt" (`lines_not_back`, #153):
  * "Receipt printed" captures; "No receipt" releases the hold and settles the payment `stranded`
  * with no move back tried, since the manager saw the items missing.
+ *
+ * The answer names the question it answers (`answering`), so a late tap on the first question (a
+ * second manager, a retry, an old push) is never taken for the second: once the second is asked,
+ * the same first answer changes nothing and another is refused; the second before it is asked is
+ * refused.
  */
 export function paymentAnswer() {
   return defineCommand({
     schema: z.strictObject({
       type: z.literal('payment.answer'),
       paymentId,
+      answering: z.enum(PAYMENT_QUESTIONS),
       answer: z.enum(PAYMENT_ANSWERS),
     }),
     origins: ['staff'],
@@ -835,6 +843,16 @@ export function paymentAnswer() {
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
+      // The question open now: the second once its alert was raised, done or not.
+      const asked = locked.alerts.has(PAYMENT_LINES_NOT_BACK_KIND) ? 'lines_not_back' : 'close'
+      if (command.answering !== asked) {
+        if (command.answering === 'lines_not_back') {
+          return refused(null, 'payment_not_asked', { asked })
+        }
+        // The close was answered "No receipt": that is the only way to the second question.
+        if (command.answer === 'no_receipt') return at(payment, payment.state, false)
+        return refused(null, 'payment_answered', { answer: 'no_receipt' })
+      }
       if (payment.state !== 'unconfirmed') {
         // Stranded after a close was attempted: a second "No receipt" settled it (it is the only
         // way there). The same answer again changes nothing; a different one is refused.
@@ -883,6 +901,7 @@ export function paymentAnswer() {
         fromState: payment.reason ?? undefined,
         toState: command.answer,
         reason: command.answer,
+        details: { answering: command.answering },
       })
       return at(payment, state, true, { answer: command.answer })
     },

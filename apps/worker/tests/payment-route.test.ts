@@ -515,11 +515,15 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       )
     ).map((row) => row.holder)
   /** A manager's answer through `payment.answer`, as the Tonight screen sends it. */
-  const answer = async (id: string, value: 'receipt_printed' | 'no_receipt') =>
+  const answer = async (
+    id: string,
+    value: 'receipt_printed' | 'no_receipt',
+    answering: 'close' | 'lines_not_back' = 'close',
+  ) =>
     (
       await applyService(
         pool,
-        { type: 'payment.answer', paymentId: id, answer: value },
+        { type: 'payment.answer', paymentId: id, answering, answer: value },
         {
           tenantId,
           venueId: demo.venueId,
@@ -620,6 +624,30 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       expect(paymentTablesEmpty()).toBe(true)
       expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
         expect.objectContaining({ status: 'released' }),
+      ])
+    })
+
+    it('"No receipt" after a move back with no lines recorded: not back, and no move sent', async () => {
+      const id = await held(1)
+      fault({ on: 'closeBill', fault: { kind: 'hang' } })
+      expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      expect(await answer(id, 'no_receipt')).toMatchObject({ status: 'accepted' })
+      // An earlier move back whose lines could not be recorded (too many, say): what it took is
+      // unknown, so nothing proves the lines back.
+      await query(
+        `insert into restro.payment_steps
+           (tenant_id, venue_id, payment_id, step, outcome, idempotency_key, source, actor, job_id)
+         values ($1, $2, $3, 'undoIsolate', 'attempting', $4, 'worker', 'system', 'test-seed')`,
+        [tenantId, demo.venueId, id, `${id}-undo`],
+      )
+      await pass(id, TIMINGS.readBackWindowMs)
+      const moves = calls('moveRows')
+      const { row } = await drive(id)
+      expect(row).toMatchObject({ state: 'unconfirmed', reason: 'lines_not_back' })
+      expect(calls('moveRows')).toBe(moves)
+      expect(paymentTablesEmpty()).toBe(false)
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'held' }),
       ])
     })
 
@@ -727,8 +755,15 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         expect.objectContaining({ status: 'held' }),
       ])
       expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+      // A late "Receipt printed" to the first question is refused: it was answered.
+      expect(await answer(id, 'receipt_printed')).toMatchObject({
+        status: 'refused',
+        code: 'payment_answered',
+      })
       // Asked again, the manager finds the receipt: captured.
-      expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
+      expect(await answer(id, 'receipt_printed', 'lines_not_back')).toMatchObject({
+        status: 'accepted',
+      })
       expect((await drive(id)).row).toMatchObject({
         state: 'captured',
         captured_minor: '2200',
@@ -773,17 +808,31 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         'payment_lines_not_back:money.follow_up',
         'payment_unconfirmed:money.follow_up',
       ])
-      // The manager checks the till again, the items missing from the table: released, stranded.
+      // A late "No receipt" to the first question (a second manager, a retry, an old push) is not
+      // the second answer: nothing changes, the hold stays.
       const moves = calls('moveRows')
-      expect(await answer(id, 'no_receipt')).toMatchObject({
-        status: 'accepted',
-        details: { changed: true },
-      })
       expect(await answer(id, 'no_receipt')).toMatchObject({
         status: 'accepted',
         details: { changed: false },
       })
-      expect(await answer(id, 'receipt_printed')).toMatchObject({
+      expect(await stored(id)).toMatchObject({ state: 'unconfirmed', reason: 'lines_not_back' })
+      expect((await drive(id)).row).toMatchObject({
+        state: 'unconfirmed',
+        reason: 'lines_not_back',
+      })
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'held' }),
+      ])
+      // The manager checks the till again, the items missing from the table: released, stranded.
+      expect(await answer(id, 'no_receipt', 'lines_not_back')).toMatchObject({
+        status: 'accepted',
+        details: { changed: true },
+      })
+      expect(await answer(id, 'no_receipt', 'lines_not_back')).toMatchObject({
+        status: 'accepted',
+        details: { changed: false },
+      })
+      expect(await answer(id, 'receipt_printed', 'lines_not_back')).toMatchObject({
         status: 'refused',
         code: 'payment_answered',
       })
@@ -1123,6 +1172,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     /** Where a waiter moves a line away to. */
     const OTHER_TABLE = '30002'
 
+    // 25 nights on the real database take about 95 s alone; with the whole suite running, the
+    // file's 120 s is a false failure.
     it('captures only after a close, never releases after one, shares no line and no table, takes what the till shows', async () => {
       await fc.assert(
         fc.asyncProperty(nights, async (night) => {
@@ -1190,6 +1241,29 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
                 lag: 30_000,
               },
             ],
+            // Lines the POS won't move back after "No receipt": asked again, the manager sees the
+            // items missing and answers "No receipt" again; the lines are stranded for staff.
+            [
+              {
+                picks: [1, null],
+                pos: [
+                  { on: 'closeBill', fault: { kind: 'hang' } },
+                  {
+                    on: 'moveRows',
+                    from: 2,
+                    times: 100,
+                    fault: { kind: 'refuse', code: 'bill_locked' },
+                  },
+                ],
+                provider: null,
+                slip: false,
+                order: [0],
+                happenings: [],
+                tapsAgain: true,
+                lateLanding: LATE_LANDING_MS,
+                lag: 0,
+              },
+            ],
             // The same, with a waiter's identical round on the real table before the close: the
             // twin line is no proof that the payment's line is back.
             [
@@ -1216,7 +1290,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           ],
         },
       )
-    })
+    }, 300_000)
 
     /** Time passes for every payment's recorded steps and on the simulator. */
     async function passAll(ids: readonly string[], ms: number) {
@@ -1447,28 +1521,51 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     /**
      * A manager looks at the till and answers a close the POS did not confirm, through
      * `payment.answer`: "Receipt printed" when Restro's card payment closed the bill, "No receipt"
-     * otherwise; again when the items were not back on the table after a "No receipt". Tapping
-     * again changes nothing; another manager's other answer is refused.
+     * otherwise; again when the items were not back on the table after a "No receipt", naming that
+     * question. Tapping again changes nothing; another manager's other answer is refused. Late taps
+     * on the first question once the second is asked (a second manager, a retry, an old push), and
+     * an early one on the second, change nothing.
      */
     async function answerAsTheTillShows(id: string, played: Played, tapsAgain: boolean) {
       const row = await stored(id)
       if (row?.state !== 'unconfirmed') return
       if (!['close_unknown', 'close_refused', 'lines_not_back'].includes(row.reason ?? '')) return
+      const answering = row.reason === 'lines_not_back' ? 'lines_not_back' : 'close'
+      const stale = async () => {
+        if (answering === 'lines_not_back') {
+          expect(await answer(id, 'no_receipt', 'close')).toMatchObject({
+            status: 'accepted',
+            details: { changed: false },
+          })
+          expect(await answer(id, 'receipt_printed', 'close')).toMatchObject({
+            status: 'refused',
+            code: 'payment_answered',
+          })
+        } else {
+          expect(await answer(id, 'no_receipt', 'lines_not_back')).toMatchObject({
+            status: 'refused',
+            code: 'payment_not_asked',
+          })
+        }
+      }
+      await stale()
+      expect(await stored(id)).toMatchObject({ state: 'unconfirmed', reason: row.reason })
       const value = played.till(id).closed ? 'receipt_printed' : 'no_receipt'
-      expect(await answer(id, value)).toMatchObject({
+      expect(await answer(id, value, answering)).toMatchObject({
         status: 'accepted',
         details: { changed: true },
       })
       if (!tapsAgain) return
-      expect(await answer(id, value)).toMatchObject({
+      expect(await answer(id, value, answering)).toMatchObject({
         status: 'accepted',
         details: { changed: false },
       })
       const other = value === 'receipt_printed' ? 'no_receipt' : 'receipt_printed'
-      expect(await answer(id, other)).toMatchObject({
+      expect(await answer(id, other, answering)).toMatchObject({
         status: 'refused',
         code: 'payment_answered',
       })
+      if (answering === 'lines_not_back') await stale()
     }
 
     async function invariants(ids: string[], played: Played) {
@@ -1482,8 +1579,14 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           where payment_id = any($1) order by seq`,
         [ids],
       )
-      const answers = await query<{ payment_id: string; from_state: string; to_state: string }>(
-        `select payment_id, from_state, to_state from restro.log_entries
+      const answers = await query<{
+        payment_id: string
+        from_state: string
+        to_state: string
+        answering: string | null
+      }>(
+        `select payment_id, from_state, to_state, details->>'answering' as answering
+           from restro.log_entries
           where kind = 'payment.answered' and payment_id = any($1) order by seq`,
         [ids],
       )
@@ -1503,8 +1606,12 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         // The manager's last answer: a second one comes when the items were not back.
         const answeredAll = answers.filter((entry) => entry.payment_id === id)
         const answered = answeredAll.at(-1)?.to_state ?? null
+        // A second "No receipt" counts only as an answer that named the second question.
         const againNoReceipt = answeredAll.some(
-          (entry) => entry.from_state === 'lines_not_back' && entry.to_state === 'no_receipt',
+          (entry) =>
+            entry.from_state === 'lines_not_back' &&
+            entry.to_state === 'no_receipt' &&
+            entry.answering === 'lines_not_back',
         )
         const closeAttempt = at('payAndClose', 'attempting')
         const done = at('payAndClose', 'done')
@@ -1538,6 +1645,12 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         }
         if (till.closed && !againNoReceipt) {
           expect(['captured', 'capture_failed']).toContain(row?.state)
+        }
+        // After a second "No receipt" the hold was released with the items missing: staff are told
+        // the lines are stranded.
+        if (againNoReceipt) {
+          expect(row?.state).toBe('stranded')
+          expect(await alertsOf(id)).toContain('payment_stranded:alerts.answer')
         }
         if (row?.state === 'capture_failed')
           expect(await alertsOf(id)).toContain('payment_capture_failed:money.follow_up')

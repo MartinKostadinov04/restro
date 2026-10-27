@@ -1173,7 +1173,8 @@ async function undo(
   // is asked again.
   const proving = payment.reason === 'no_receipt'
   const recorded = proving ? await recordedLines(env, target) : []
-  const moved = [...(recorded ?? []), ...linesOf(onTable)]
+  if (recorded === null) return 'not_back'
+  const moved = [...recorded, ...linesOf(onTable)]
   if (proving && moved.length === 0) return 'not_back'
   for (const [index, bill] of onTable.bills.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
@@ -1205,7 +1206,7 @@ async function undo(
     }
   }
   if (!proving) return 'returned'
-  return recorded !== null && (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
+  return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
 }
 
 /**
@@ -1250,11 +1251,12 @@ async function backOnTable(pos: PaymentPos, moved: PaymentStepLines): Promise<bo
   return moved.every((line) => {
     const found = real.get(line.pos)
     if (found === undefined) return false
-    const amount =
-      line.amountMinor < 0
-        ? found.amountMinor <= line.amountMinor
-        : found.amountMinor >= line.amountMinor
-    return amount && quantityKey(found.quantity) >= quantityKey(line.quantity)
+    // As much or more, by sign: a discount line's amount (or a negative count) only as negative.
+    const atLeast = (have: bigint, moved: bigint) => (moved < 0n ? have <= moved : have >= moved)
+    return (
+      atLeast(BigInt(found.amountMinor), BigInt(line.amountMinor)) &&
+      atLeast(quantityKey(found.quantity), quantityKey(line.quantity))
+    )
   })
 }
 
