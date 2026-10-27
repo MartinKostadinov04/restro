@@ -99,6 +99,18 @@ const refs = (page: Page) =>
 const innerTabs = (page: Page) =>
   page.getByRole('tablist', { name: 'Sections of Tonight' }).getByRole('tab')
 
+/**
+ * Picks a kind in the Log's Kind menu. A menu that is still closing from the last pick can eat
+ * the click that opens it (slower on CI), so it opens again until the item is there.
+ */
+async function pickKind(page: Page, kind: string) {
+  await expect(async () => {
+    const item = page.getByTestId(`kind-${kind}`)
+    if (!(await item.isVisible())) await page.getByTestId('kind-button').click()
+    await item.click({ timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
+}
+
 /** Types a PIN on the sheet's pad with the keyboard; the sheet submits on the fourth digit. */
 async function typePin(page: Page, pin: string) {
   await expect(page.getByTestId('pin-sheet')).toBeVisible()
@@ -349,16 +361,15 @@ test.describe('the Log', () => {
       )
       .toEqual(['guard.tripped', 'pause.lifted', 'pause.started'])
     // A line about a sent order opens its sheet; the others do nothing.
-    await page.getByTestId('kind-button').click()
-    await page.getByTestId('kind-orders').click()
+    await pickKind(page, 'orders')
     await page.getByTestId('tonight-search').fill('SO05')
     await expect(page.getByTestId('log-line').first()).toBeVisible()
     await page.getByTestId('log-line').first().getByRole('button').click()
     await expect(page.getByTestId('sent-sheet')).toContainText('Sent order SO05')
     await page.keyboard.press('Escape')
     await page.getByTestId('tonight-search').fill('')
-    await page.getByTestId('kind-button').click()
-    await page.getByTestId('kind-pauses').click()
+    await pickKind(page, 'pauses')
+    await expect(page.getByTestId('kind-button')).toContainText('Kind: Pauses and alerts')
     await expect(page.getByTestId('log-line').first().getByRole('button')).toHaveCount(0)
   })
 
