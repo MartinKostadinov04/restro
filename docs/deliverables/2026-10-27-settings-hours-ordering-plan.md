@@ -128,3 +128,5 @@ Under `copy-rules.md`; GLOSSARY terms ("sent order" as "order" for the owner, "s
 
 - **Q1. The venue's spot: "I'm at the venue – use this spot" only, for the pilot, and the pin on a map later?** D118 offers both. A map needs a map library and map tiles from an outside service (a new dependency, and the owner's browser calls that service). Recommendation: yes: the one-tap button for the pilot (the owner sets it once, inside the club), and "See on a map" as a plain link to check it; the pin on a map comes when a venue can't stand inside to set it.
 - **Q2. Labels say "order", not D118's "round"?** Recommendation: yes; the GLOSSARY's term is sent order, and an owner calls it an order.
+
+**Martin 10-27:** confirmed the Hours and Ordering screen as drafted, Q1 and Q2 as recommended (the spot by "I'm at the venue" only for the pilot, the map pin later; labels say "order").
