@@ -29,7 +29,7 @@ body{background:var(--muted);color:var(--fg);font:14px/1.4 ui-sans-serif,system-
 button,input{font:inherit;color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms;transition-duration:.01ms}}
 
 /* prototype chrome */
 .pc{max-width:1240px;margin:0 auto;padding:16px}
@@ -42,7 +42,6 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg)}
 .stage{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;overflow-x:auto}
-.stage>.dev{flex:none}
 .side{flex:1;min-width:220px;font-size:13px}
 .side h2{font-size:13px;margin:0 0 6px}
 .side ol{margin:0;padding:0 0 0 18px}
@@ -50,7 +49,7 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .side small{color:var(--muted-fg)}
 
 /* the device */
-.dev{position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.dev{flex:none;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .dev.tab{width:1180px;height:820px}
 .dev.ph{width:390px;height:780px}
 .top{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border)}
@@ -137,11 +136,11 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
   <h1>PROTOTYPE (throwaway): Tonight › Sent orders</h1>
   <p>Plan: <code>2026-10-27-tonight-sent-orders-plan.md</code>. Try: type a reference (try <b>K7M</b> or <b>7</b>), tap "Not added", tap a row, answer the blue one. The PIN is any 4 digits.</p>
   <div class="bar">
-    <div class="grp">Device <span class="seg" data-k="dev"><button data-v="tab" aria-pressed="true">Tablet</button><button data-v="ph">Phone 390</button></span></div>
-    <div class="grp">Night <span class="seg" data-k="night"><button data-v="busy" aria-pressed="true">Busy</button><button data-v="empty">Empty</button><button data-v="loading">Loading</button><button data-v="failed">Failed</button><button data-v="long">Long BG</button></span></div>
-    <div class="grp">Language <span class="seg" data-k="lang"><button data-v="bg" aria-pressed="true">BG</button><button data-v="en">EN</button></span></div>
-    <div class="grp">Theme <span class="seg" data-k="theme"><button data-v="light" aria-pressed="true">Light</button><button data-v="dark">Dark</button></span></div>
-    <div class="grp"><button class="btn" id="arrive" style="min-height:32px">A new order arrives</button></div>
+    <div class="grp">Device <span class="seg" data-k="dev"><button type="button" data-v="tab" aria-pressed="true">Tablet</button><button type="button" data-v="ph">Phone 390</button></span></div>
+    <div class="grp">Night <span class="seg" data-k="night"><button type="button" data-v="busy" aria-pressed="true">Busy</button><button type="button" data-v="empty">Empty</button><button type="button" data-v="loading">Loading</button><button type="button" data-v="failed">Failed</button><button type="button" data-v="long">Long BG</button></span></div>
+    <div class="grp">Language <span class="seg" data-k="lang"><button type="button" data-v="bg" aria-pressed="true">BG</button><button type="button" data-v="en">EN</button></span></div>
+    <div class="grp">Theme <span class="seg" data-k="theme"><button type="button" data-v="light" aria-pressed="true">Light</button><button type="button" data-v="dark">Dark</button></span></div>
+    <div class="grp"><button type="button" class="btn" id="arrive" style="min-height:32px">A new order arrives</button></div>
   </div>
   <div class="stage">
     <div id="dev" class="dev tab" role="application" aria-label="Device"></div>
@@ -155,7 +154,7 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
         <li><b>O5</b> One table's orders: type its number. <small>2 + typing</small></li>
         <li><b>O6</b> Answer an Unconfirmed one here. <small>3 + PIN</small></li>
       </ol>
-      <p><small>Taps so far: <b id="taps">0</b> <button class="btn" id="reset" style="min-height:28px;padding:0 8px">reset</button></small></p>
+      <p><small>Taps so far: <b id="taps">0</b> <button type="button" class="btn" id="reset" style="min-height:28px;padding:0 8px">reset</button></small></p>
     </div>
   </div>
 </div>
@@ -165,28 +164,28 @@ const S={dev:'tab',night:'busy',lang:'bg',theme:'light',filter:'all',q:'',open:n
 let taps=0;const tap=()=>{taps++;document.getElementById('taps').textContent=taps};
 document.getElementById('reset').onclick=()=>{taps=0;document.getElementById('taps').textContent=0};
 const T={
- bg:{title:'Тази вечер',venue:'Клуб Луна',tab_act:'Действия и маси',tab_sent:'Поръчки',tab_log:'Дневник',search:'Търси по номер или маса',all:'Всички',notadded:'Недобавени',items:n=>n===1?'1 артикул':n+' артикула',newk:k=>k+' нови · покажи',earlier:'Покажи по-ранните',empty_t:'Още няма изпратени поръчки',empty_d:'Поръчките от телефоните се появяват тук веднага щом бъдат изпратени.',empty_b:'Към „Действия и маси“',fail:'Поръчките не се заредиха. Проверете връзката; списъкът ще опита отново сам.',none:q=>'Няма поръчка с „'+q+'“ тази вечер.',waiting:'Чака',sending:'Изпраща се',checking:'Проверява се',added:'Добавена',approval:'Одобрете я в Mistral',notsent:'Неизпратена',check:'Проверете сметката',rs:{soldout:'изчерпано',refused:'Mistral я отказа',paused:'поръчките бяха спрени',closed:'масата беше затворена',unreach:'Mistral не отговори'},found:t=>'Restro я откри в сметката в '+t+'.',ref:r=>'Поръчка '+r,bill:b=>'Сметка '+b+' в Mistral',total:a=>'Общо: '+a,note:n=>'Бележка: '+n,steps:'Стъпки',close:'Затвори',q:'Има ли я в сметката?',ok:'Има я в сметката',no:'Няма я в сметката',okb:t=>'Поръчката се води добавена и '+t+' пак може да поръчва.',nob:t=>'Поръчката се води неизпратена и '+t+' пак може да поръчва.',oktoast:'Записано: има я в сметката · Мария',notoast:'Записано: няма я в сметката · Мария',pin:'Въведете своя ПИН',leave:'Остави',table:n=>'Маса '+n,lines:'Артикули',stepsTxt:['Изпратена','Без отговор от Mistral, проверка','Проверката не намери поръчката'],undo:'Върни'},
- en:{title:'Tonight',venue:'Club Luna',tab_act:'Actions and tables',tab_sent:'Sent orders',tab_log:'Log',search:'Search by reference or table',all:'All',notadded:'Not added',items:n=>n===1?'1 item':n+' items',newk:k=>k+' new · show',earlier:'Show earlier',empty_t:'No orders sent tonight yet',empty_d:"Orders from phones show up here as soon as they're sent.",empty_b:'Go to Actions and tables',fail:"Couldn't load the sent orders. Check the connection; the list tries again by itself.",none:q=>'No sent order matches "'+q+'" tonight.',waiting:'Waiting',sending:'Sending',checking:'Checking',added:'Added',approval:'Approve it in Mistral',notsent:'Not sent',check:'Check the bill',rs:{soldout:'sold out',refused:'Mistral refused it',paused:'ordering was paused',closed:'the table was closed',unreach:"Mistral didn't answer"},found:t=>'Restro found it on the bill at '+t+'.',ref:r=>'Sent order '+r,bill:b=>'Bill '+b+' in Mistral',total:a=>'Total: '+a,note:n=>'Note: '+n,steps:'Steps',close:'Close',q:'Is it on the bill?',ok:'Found on the bill',no:'Not on the bill',okb:t=>'The order counts as added and '+t+' can order again.',nob:t=>'The order counts as not sent and '+t+' can order again.',oktoast:'Saved: found on the bill · Maria',notoast:'Saved: not on the bill · Maria',pin:'Enter your PIN',leave:'Leave it',table:n=>'Table '+n,lines:'Items',stepsTxt:['Sent','No answer from Mistral, checking','The check could not find it'],undo:'Undo'}
+ bg:{title:'Тази вечер',venue:'Клуб Луна',tab_act:'Действия и маси',tab_sent:'Поръчки',tab_log:'Дневник',search:'Търси по номер или маса',all:'Всички',notadded:'Недобавени',items:n=>n===1?'1 артикул':`${n} артикула`,newk:k=>`${k} нови · покажи`,earlier:'Покажи по-ранните',empty_t:'Още няма изпратени поръчки',empty_d:'Поръчките от телефоните се появяват тук веднага щом бъдат изпратени.',empty_b:'Към „Действия и маси“',fail:'Поръчките не се заредиха. Проверете връзката; списъкът ще опита отново сам.',none:q=>`Няма поръчка с „${q}“ тази вечер.`,waiting:'Чака',sending:'Изпраща се',checking:'Проверява се',added:'Добавена',approval:'Одобрете я в Mistral',notsent:'Неизпратена',check:'Проверете сметката',rs:{soldout:'изчерпано',refused:'Mistral я отказа',paused:'поръчките бяха спрени',closed:'масата беше затворена',unreach:'Mistral не отговори'},found:t=>`Restro я откри в сметката в ${t}.`,ref:r=>`Поръчка ${r}`,bill:b=>`Сметка ${b} в Mistral`,total:a=>`Общо: ${a}`,note:n=>`Бележка: ${n}`,steps:'Стъпки',close:'Затвори',q:'Има ли я в сметката?',ok:'Има я в сметката',no:'Няма я в сметката',okb:t=>`Поръчката се води добавена и ${t} пак може да поръчва.`,nob:t=>`Поръчката се води неизпратена и ${t} пак може да поръчва.`,oktoast:'Записано: има я в сметката · Мария',notoast:'Записано: няма я в сметката · Мария',pin:'Въведете своя ПИН',leave:'Остави',table:n=>`Маса ${n}`,lines:'Артикули',stepsTxt:['Изпратена','Без отговор от Mistral, проверка','Проверката не намери поръчката'],undo:'Върни'},
+ en:{title:'Tonight',venue:'Club Luna',tab_act:'Actions and tables',tab_sent:'Sent orders',tab_log:'Log',search:'Search by reference or table',all:'All',notadded:'Not added',items:n=>n===1?'1 item':`${n} items`,newk:k=>`${k} new · show`,earlier:'Show earlier',empty_t:'No orders sent tonight yet',empty_d:"Orders from phones show up here as soon as they're sent.",empty_b:'Go to Actions and tables',fail:"Couldn't load the sent orders. Check the connection; the list tries again by itself.",none:q=>`No sent order matches "${q}" tonight.`,waiting:'Waiting',sending:'Sending',checking:'Checking',added:'Added',approval:'Approve it in Mistral',notsent:'Not sent',check:'Check the bill',rs:{soldout:'sold out',refused:'Mistral refused it',paused:'ordering was paused',closed:'the table was closed',unreach:"Mistral didn't answer"},found:t=>`Restro found it on the bill at ${t}.`,ref:r=>`Sent order ${r}`,bill:b=>`Bill ${b} in Mistral`,total:a=>`Total: ${a}`,note:n=>`Note: ${n}`,steps:'Steps',close:'Close',q:'Is it on the bill?',ok:'Found on the bill',no:'Not on the bill',okb:t=>`The order counts as added and ${t} can order again.`,nob:t=>`The order counts as not sent and ${t} can order again.`,oktoast:'Saved: found on the bill · Maria',notoast:'Saved: not on the bill · Maria',pin:'Enter your PIN',leave:'Leave it',table:n=>`Table ${n}`,lines:'Items',stepsTxt:['Sent','No answer from Mistral, checking','The check could not find it'],undo:'Undo'}
 };
-const money=(m)=>S.lang==='bg'?(m/100).toFixed(2).replace('.',',')+' €':'€'+(m/100).toFixed(2);
+const money=(m)=>S.lang==='bg'?`${(m/100).toFixed(2).replace('.',',')} €`:`€${(m/100).toFixed(2)}`;
 const ALPH='ACDEFHJKMNPQRTUVWXY34679';
-function mk(i,t,state,reason,extra){return Object.assign({ref:'',table:t,state,reason,time:'',items:[['Mojito',2,1200],['Coca-Cola',1,450]],bill:'10'+(40+i)},extra||{})}
+function mk(i,t,state,reason,extra){return Object.assign({ref:'',table:t,state,reason,time:'',items:[['Mojito',2,1200],['Coca-Cola',1,450]],bill:`10${40+i}`},extra||{})}
 function seed(){
  const out=[];let h=23,m=58;
  const fixed=[mk(0,12,'unconfirmed',null,{ref:'K7M',found:'00:41'}),mk(1,7,'sending'),mk(2,3,'added'),mk(3,7,'notsent','soldout'),mk(4,21,'added'),mk(5,5,'unconfirmed',null,{ref:'H4X',answered:'ok'}),mk(6,9,'approval'),mk(7,14,'notsent','paused'),mk(8,2,'added',null,{note:'без лед'})];
  for(let i=0;i<120;i++){const f=fixed[i]||mk(i,1+(i*7)%30,i%11===0?'notsent':'added',i%11===0?'refused':null);
   if(!f.ref){let r='';for(let k=0;k<3;k++)r+=ALPH[(i*7+k*13+3)%ALPH.length];f.ref=r}
-  f.time=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');m-=2;if(m<0){m+=60;h=h===0?23:h-1}
+  f.time=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;m-=2;if(m<0){m+=60;h=h===0?23:h-1}
   out.push(f)}
  out[0].time='00:44';return out}
-let DATA=seed();
-function stateWord(o,L){return {waiting:L.waiting,sending:L.sending,checking:L.checking,added:L.added,approval:L.approval,notsent:L.notsent+(o.reason?' · '+L.rs[o.reason]:''),unconfirmed:o.answered?(o.answered==='ok'?L.ok:L.no)+' · '+(S.lang==='bg'?'Мария':'Maria'):L.check}[o.state]}
-function icon(o){const p={added:'<path d="M5 12l5 5 9-11"/>',notsent:'<path d="M6 6l12 12M18 6L6 18"/>',unconfirmed:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16v.5"/>',approval:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'}[o.state]||'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+p+'</svg>'}
+const DATA=seed();
+function stateWord(o,L){return {waiting:L.waiting,sending:L.sending,checking:L.checking,added:L.added,approval:L.approval,notsent:L.notsent+(o.reason?` · ${L.rs[o.reason]}`:''),unconfirmed:o.answered?`${o.answered==='ok'?L.ok:L.no} · ${S.lang==='bg'?'Мария':'Maria'}`:L.check}[o.state]}
+function icon(o){const p={added:'<path d="M5 12l5 5 9-11"/>',notsent:'<path d="M6 6l12 12M18 6L6 18"/>',unconfirmed:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16v.5"/>',approval:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'}[o.state]||'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';return `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`}
 const need=o=>o.state==='unconfirmed'&&!o.answered;
 const total=o=>o.items.reduce((s,x)=>s+x[1]*x[2],0);
 function render(){
  const L=T[S.lang];document.documentElement.lang=S.lang;document.documentElement.dataset.theme=S.theme;
- const d=document.getElementById('dev');d.className='dev '+S.dev;
+ const d=document.getElementById('dev');d.className=`dev ${S.dev}`;
  const long=S.night==='long';
  let list=DATA;
  if(long){list=DATA.map(o=>Object.assign({},o,{items:[['Коктейл „Лятна нощ в Созопол“ с пресни горски плодове',2,1450],['Минерална вода Горна баня, газирана, 0,5 л',3,350]]}))}
@@ -195,31 +194,31 @@ function render(){
  if(qn)shown=shown.filter(o=>o.ref.startsWith(qn)||/^\d+$/.test(qn)&&String(o.table)===qn);
  const cAll=list.length,cNot=list.filter(o=>o.state==='notsent'||o.state==='unconfirmed').length;
  let h='<div class="top"><h2>'+L.title+'</h2><span class="venue">'+L.venue+'</span></div>'+
- '<nav class="tabs" aria-label="Tonight"><button>'+L.tab_act+'</button><button aria-current="page">'+L.tab_sent+'</button><button>'+L.tab_log+'</button></nav>'+
+ '<nav class="tabs" aria-label="Tonight"><button type="button">'+L.tab_act+'</button><button type="button" aria-current="page">'+L.tab_sent+'</button><button type="button">'+L.tab_log+'</button></nav>'+
  '<div class="tabsel"><label class="sr" for="ts">Tonight</label><select id="ts"><option>'+L.tab_act+'</option><option selected>'+L.tab_sent+'</option><option>'+L.tab_log+'</option></select></div>'+
  '<div class="body"><div class="listpane"><div class="tools"><label class="search"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span class="sr">'+L.search+'</span><input id="q" placeholder="'+L.search+'" value="'+S.q.replace(/"/g,'&quot;')+'" autocomplete="off"></label>'+
- '<span class="fseg" role="group" aria-label="Filter"><button data-f="all" aria-pressed="'+(S.filter==='all')+'">'+L.all+' '+cAll+'</button><button data-f="not" aria-pressed="'+(S.filter==='not')+'">'+L.notadded+' '+cNot+'</button></span></div>';
- if(S.newk>0)h+='<button class="newline" id="shownew">'+L.newk(S.newk)+'</button>';
- h+='<ul class="list" id="list" aria-busy="'+(S.night==='loading')+'">';
+ '<span class="fseg" role="group" aria-label="Filter"><button type="button" data-f="all" aria-pressed="'+(S.filter==='all')+'">'+L.all+' '+cAll+'</button><button type="button" data-f="not" aria-pressed="'+(S.filter==='not')+'">'+L.notadded+' '+cNot+'</button></span></div>';
+ if(S.newk>0)h+=`<button type="button" class="newline" id="shownew">${L.newk(S.newk)}</button>`;
+ h+=`<ul class="list" id="list" aria-busy="${S.night==='loading'}">`;
  if(S.night==='loading'){for(let i=0;i<6;i++)h+='<li class="skel"></li>';h+='<li class="sr">Loading…</li>'}
- else if(S.night==='failed'){h+='<li class="empty"><p>'+L.fail+'</p></li>'}
- else if(S.night==='empty'){h+='<li class="empty"><h3>'+L.empty_t+'</h3><p>'+L.empty_d+'</p><button class="btn fill">'+L.empty_b+'</button></li>'}
- else if(!shown.length){h+='<li class="empty"><p>'+L.none(S.q)+'</p></li>'}
+ else if(S.night==='failed'){h+=`<li class="empty"><p>${L.fail}</p></li>`}
+ else if(S.night==='empty'){h+=`<li class="empty"><h3>${L.empty_t}</h3><p>${L.empty_d}</p><button type="button" class="btn fill">${L.empty_b}</button></li>`}
+ else if(!shown.length){h+=`<li class="empty"><p>${L.none(S.q)}</p></li>`}
  else{shown.slice(0,S.shown).forEach(o=>{const n=o.items.reduce((s,x)=>s+x[1],0);
-  h+='<li><button class="row'+(need(o)?' need':'')+'" data-ref="'+o.ref+'" aria-pressed="'+(S.open===o.ref)+'"><span class="ref">'+o.ref+'</span><span class="what"><b>'+L.table(o.table)+'</b><div class="meta">'+L.items(n)+' · '+money(total(o))+' · <span class="time">'+o.time+'</span></div></span><span class="state">'+icon(o)+'<span>'+stateWord(o,L)+'</span></span>'+(o.found&&need(o)?'<span class="found">'+L.found(o.found)+'</span>':'')+'</button></li>'});
-  if(shown.length>S.shown)h+='<li><button class="more" id="earlier">'+L.earlier+'</button></li>'}
+  h+=`<li><button type="button" class="row${need(o)?' need':''}" data-ref="${o.ref}" aria-pressed="${S.open===o.ref}"><span class="ref">${o.ref}</span><span class="what"><b>${L.table(o.table)}</b><div class="meta">${L.items(n)} · ${money(total(o))} · <span class="time">${o.time}</span></div></span><span class="state">${icon(o)}<span>${stateWord(o,L)}</span></span>${o.found&&need(o)?`<span class="found">${L.found(o.found)}</span>`:''}</button></li>`});
+  if(shown.length>S.shown)h+=`<li><button type="button" class="more" id="earlier">${L.earlier}</button></li>`}
  h+='</ul></div>';
  const o=list.find(x=>x.ref===S.open);
  if(o&&!['loading','failed','empty'].includes(S.night)){
-  h+='<div class="scrim'+(S.dev==='ph'?' on':'')+'" id="scrim"></div><aside class="sheet" aria-label="'+L.ref(o.ref)+'"><div class="sh-h"><div><h3>'+L.ref(o.ref)+'</h3><div class="meta">'+L.table(o.table)+' · '+o.time+(o.state==='added'?' · '+L.bill(o.bill):'')+'</div></div><button class="x" id="close" aria-label="'+L.close+'">✕</button></div><div class="sh-b">'+
+  h+='<div class="scrim'+(S.dev==='ph'?' on':'')+'" id="scrim"></div><aside class="sheet" aria-label="'+L.ref(o.ref)+'"><div class="sh-h"><div><h3>'+L.ref(o.ref)+'</h3><div class="meta">'+L.table(o.table)+' · '+o.time+(o.state==='added'?` · ${L.bill(o.bill)}`:'')+'</div></div><button type="button" class="x" id="close" aria-label="'+L.close+'">✕</button></div><div class="sh-b">'+
   '<div class="state" style="justify-self:start;max-width:none;'+(need(o)?'color:var(--accent);font-weight:600':'')+'">'+icon(o)+'<span>'+stateWord(o,L)+'</span></div>'+
-  (o.found&&need(o)?'<p>'+L.found(o.found)+'</p>':'')+
-  (need(o)?'<div class="answer"><p><b>'+L.q+'</b></p><div class="two"><button class="btn" data-a="ok">'+L.ok+'</button><button class="btn" data-a="no">'+L.no+'</button></div></div>':'')+
-  '<h4>'+L.lines+'</h4><ul class="lines">'+o.items.map(x=>'<li><span>'+x[1]+' × '+x[0]+(o.note?'<small>'+L.note(o.note)+'</small>':'')+'</span><span>'+money(x[1]*x[2])+'</span></li>').join('')+'<li><b>'+L.total(money(total(o)))+'</b></li></ul>'+
-  '<h4>'+L.steps+'</h4><ol class="steps"><li><b>'+o.time+'</b> '+L.stepsTxt[0]+'</li>'+(o.state==='unconfirmed'?'<li><b>'+o.time+'</b> '+L.stepsTxt[1]+'</li><li><b>'+o.time+'</b> '+L.stepsTxt[2]+'</li>':'')+'</ol>'+
+  (o.found&&need(o)?`<p>${L.found(o.found)}</p>`:'')+
+  (need(o)?`<div class="answer"><p><b>${L.q}</b></p><div class="two"><button type="button" class="btn" data-a="ok">${L.ok}</button><button type="button" class="btn" data-a="no">${L.no}</button></div></div>`:'')+
+  '<h4>'+L.lines+'</h4><ul class="lines">'+o.items.map(x=>`<li><span>${x[1]} × ${x[0]}${o.note?`<small>${L.note(o.note)}</small>`:''}</span><span>${money(x[1]*x[2])}</span></li>`).join('')+'<li><b>'+L.total(money(total(o)))+'</b></li></ul>'+
+  '<h4>'+L.steps+'</h4><ol class="steps"><li><b>'+o.time+'</b> '+L.stepsTxt[0]+'</li>'+(o.state==='unconfirmed'?`<li><b>${o.time}</b> ${L.stepsTxt[1]}</li><li><b>${o.time}</b> ${L.stepsTxt[2]}</li>`:'')+'</ol>'+
   '</div></aside>'}
- h+='</div><div class="toast" id="toast"><span id="tt"></span><button id="undo">'+L.undo+'</button></div>'+
- '<div class="pin" id="pin"><div class="box" role="dialog" aria-label="'+L.pin+'"><h3 id="pint"></h3><p id="pinb"></p><p><b>'+L.pin+'</b></p><div class="dots" id="dots"><span></span><span></span><span></span><span></span></div><div class="pad">'+[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>'<button data-k="'+k+'"'+(k===''?' disabled style="visibility:hidden"':'')+'>'+k+'</button>').join('')+'</div><button class="btn" id="leave" style="margin-top:10px;width:100%">'+L.leave+'</button></div></div>';
+ h+='</div><div class="toast" id="toast"><span id="tt"></span><button type="button" id="undo">'+L.undo+'</button></div>'+
+ '<div class="pin" id="pin"><div class="box" role="dialog" aria-label="'+L.pin+'"><h3 id="pint"></h3><p id="pinb"></p><p><b>'+L.pin+'</b></p><div class="dots" id="dots"><span></span><span></span><span></span><span></span></div><div class="pad">'+[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>`<button type="button" data-k="${k}"${k===''?' disabled style="visibility:hidden"':''}>${k}</button>`).join('')+'</div><button type="button" class="btn" id="leave" style="margin-top:10px;width:100%">'+L.leave+'</button></div></div>';
  d.innerHTML=h;wire();
 }
 let pinFor=null,pinN=0;
@@ -227,23 +226,23 @@ function wire(){
  const q=document.getElementById('q');
  q.oninput=e=>{S.q=e.target.value;S.shown=100;const pos=e.target.selectionStart;render();const n=document.getElementById('q');n.focus();n.setSelectionRange(pos,pos)};
  q.onfocus=()=>{};q.onmousedown=()=>tap();
- document.querySelectorAll('.fseg button').forEach(b=>b.onclick=()=>{tap();S.filter=b.dataset.f;render()});
- document.querySelectorAll('.row').forEach(b=>b.onclick=()=>{tap();S.open=b.dataset.ref;render()});
+ document.querySelectorAll('.fseg button').forEach(b=>{b.onclick=()=>{tap();S.filter=b.dataset.f;render()}});
+ document.querySelectorAll('.row').forEach(b=>{b.onclick=()=>{tap();S.open=b.dataset.ref;render()}});
  const c=document.getElementById('close');if(c)c.onclick=()=>{S.open=null;render()};
  const sc=document.getElementById('scrim');if(sc)sc.onclick=()=>{S.open=null;render()};
  const e=document.getElementById('earlier');if(e)e.onclick=()=>{tap();S.shown+=100;render()};
  const sn=document.getElementById('shownew');if(sn)sn.onclick=()=>{tap();S.newk=0;render();document.getElementById('list').scrollTop=0};
  const list=document.getElementById('list');if(list)list.onscroll=()=>{S.scrolledTop=list.scrollTop<4};
- document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{tap();pinFor=b.dataset.a;pinN=0;const L=T[S.lang];const o=DATA.find(x=>x.ref===S.open);document.getElementById('pint').textContent=b.dataset.a==='ok'?L.ok:L.no;document.getElementById('pinb').textContent=(b.dataset.a==='ok'?L.okb:L.nob)(L.table(o.table));document.getElementById('pin').classList.add('on');dots()});
- document.querySelectorAll('.pad button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;if(k==='⌫'){pinN=Math.max(0,pinN-1)}else{pinN++}dots();if(pinN===4){const L=T[S.lang];const o=DATA.find(x=>x.ref===S.open);o.answered=pinFor;document.getElementById('pin').classList.remove('on');render();const t=document.getElementById('toast');document.getElementById('tt').textContent=pinFor==='ok'?L.oktoast:L.notoast;t.classList.add('on');document.getElementById('live').textContent=document.getElementById('tt').textContent;setTimeout(()=>t.classList.remove('on'),8000)}});
+ document.querySelectorAll('[data-a]').forEach(b=>{b.onclick=()=>{tap();pinFor=b.dataset.a;pinN=0;const L=T[S.lang];const o=DATA.find(x=>x.ref===S.open);document.getElementById('pint').textContent=b.dataset.a==='ok'?L.ok:L.no;document.getElementById('pinb').textContent=(b.dataset.a==='ok'?L.okb:L.nob)(L.table(o.table));document.getElementById('pin').classList.add('on');dots()}});
+ document.querySelectorAll('.pad button').forEach(b=>{b.onclick=()=>{const k=b.dataset.k;if(k==='⌫'){pinN=Math.max(0,pinN-1)}else{pinN++}dots();if(pinN===4){const L=T[S.lang];const o=DATA.find(x=>x.ref===S.open);o.answered=pinFor;document.getElementById('pin').classList.remove('on');render();const t=document.getElementById('toast');document.getElementById('tt').textContent=pinFor==='ok'?L.oktoast:L.notoast;t.classList.add('on');document.getElementById('live').textContent=document.getElementById('tt').textContent;setTimeout(()=>t.classList.remove('on'),8000)}}});
  const lv=document.getElementById('leave');if(lv)lv.onclick=()=>document.getElementById('pin').classList.remove('on');
  document.onkeydown=ev=>{if(ev.key==='Escape'){if(document.getElementById('pin')?.classList.contains('on'))document.getElementById('pin').classList.remove('on');else if(S.open){S.open=null;render()}}};
 }
-function dots(){document.querySelectorAll('#dots span').forEach((s,i)=>s.classList.toggle('on',i<pinN))}
+function dots(){document.querySelectorAll('#dots span').forEach((s,i)=>{s.classList.toggle('on',i<pinN)})}
 document.getElementById('arrive').onclick=()=>{const L=T[S.lang];let r='';for(let k=0;k<3;k++)r+=ALPH[Math.floor(Math.random()*ALPH.length)];const o=mk(99,Math.ceil(Math.random()*30),'sending');o.ref=r;o.time='00:46';
- const list=document.getElementById('list');const top=!list||list.scrollTop<4;DATA.unshift(o);if(!top)S.newk++;render();if(!top){const l=document.getElementById('list');if(l)l.scrollTop=9999>0?l.scrollTop:0}
+ const list=document.getElementById('list');const top=!list||list.scrollTop<4;const prev=list?list.scrollTop:0;DATA.unshift(o);if(!top)S.newk++;render();if(!top){const l=document.getElementById('list');if(l)l.scrollTop=prev}
  document.getElementById('live').textContent=(S.lang==='bg'?'Нова поръчка ':'New sent order ')+r};
-document.querySelectorAll('.bar .seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));S[g.dataset.k]=b.dataset.v;if(g.dataset.k==='night'){S.open=null;S.q='';S.newk=0}render()}));
+document.querySelectorAll('.bar .seg').forEach(g=>{g.querySelectorAll('button').forEach(b=>{b.onclick=()=>{g.querySelectorAll('button').forEach(x=>{x.setAttribute('aria-pressed',x===b)});S[g.dataset.k]=b.dataset.v;if(g.dataset.k==='night'){S.open=null;S.q='';S.newk=0}render()}})});
 render();
 </script>
 </body>
