@@ -113,4 +113,12 @@ Under `copy-rules.md`; GLOSSARY terms ("Log", "sent order", "table", "pause", "s
 | `lg_code_new` | Нов код за {table} | New code for {table} |
 | `lg_code_seen` | Показан код за {table} | Code shown for {table} |
 
-`{scope}` is "all bars", "{bar}", "{table}" or "the connection to {source}"; a pause's cause follows as its reason word ("{source} didn't answer", "3 orders couldn't be confirmed", "by {who}"). `{alert}` is the alert's own title from screen 1's strings. Payment entries (`payment.state`, `payment.answered`) take part 2's sentences; until part 2 sends them, the build shows them with `lg_k_money`'s word and the state word, and lists the gap in its report.
+`{scope}` is "all bars", "{bar}", "{table}" or "the connection to {source}"; a pause's cause follows as its reason word ("{source} didn't answer", "3 orders couldn't be confirmed", "by {who}"). `{alert}` is the alert's own title from screen 1's strings. Payment entries take part 2's sentences (part 2 lead 10-27), below; `{amount}` never includes the tip. Part 2's state words come with #115; until then the build shows the kind word and the state word. A payment entry taps through to the payment's page (#115).
+
+| Key | Bulgarian | English |
+|---|---|---|
+| `lg_pay_state` | Плащане за {table}, {amount}: {state} | Payment for {table}, {amount}: {state} |
+| `lg_pay_answer` | Плащане за {table}: {answer} | Payment for {table}: {answer} |
+| `lg_pay_refund` | Върнати {amount} по плащане за {table} | {amount} refunded on the payment for {table} |
+
+`{answer}` is «Бележката е отпечатана» / "Receipt printed" or «Няма бележка» / "No receipt"; #153's second question uses the same two words.

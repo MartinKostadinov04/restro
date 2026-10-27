@@ -35,13 +35,13 @@ One column (max 840 px on the tablet, centred), sections with a heading and a co
 | # | Section | Who fills it | What it shows |
 |---|---|---|---|
 | — | The heading line | part 1 | The day ("Night of 26 October") and its state: "So far tonight · the night ends at 07:00" before the service day ends, "Closed at 07:00" after. "Download CSV" (outline) on the right, for `night.view_full`. |
-| 1 | **To fix** (`nt_fix`) | part 1: a sent order still Unconfirmed; part 2: a payment captured with no receipt number, a capture pending or failed, a payment unconfirmed and unanswered, a refund with no storno done, a payment table left with lines | One alert row per problem, with its answer where a tap fixes it (the same answer component and PIN rule as screen 1). With none: one line, "Nothing to fix.", with a check icon. This is the only section that can be tinted: a row that waits for a person carries the accent, as on screen 1. |
+| 1 | **To fix** (`nt_fix`) | part 1: a sent order still Unconfirmed; part 2: a payment captured with no receipt number, a capture pending or failed, a payment unconfirmed and unanswered (also #153's second question, "Items not back on the table": the same row and answer component with another question line), a refund with no storno done, a payment table left with lines, a hold that expired before it was taken (after a close was attempted), paying still paused (the provider's breaker or lost access; the owner gets "Reconnect", others see the row only) | One alert row per problem, with its answer where a tap fixes it (the same answer component and PIN rule as screen 1). Staff see part 2's rows too (#115: a waiter sees "Payment unconfirmed"), without the answer buttons and without the tip. With none: one line, "Nothing to fix.", with a check icon. This is the only section that can be tinted: a row that waits for a person carries the accent, as on screen 1. |
 | 2 | **Sent orders** (`nt_sent`) | part 1 | One summary line ("84 sent · 79 added · 3 not sent · 2 unconfirmed"), then the ones not added, each as screen 2's row with its reason or its answer and who gave it; "Show all {n}" expands the full list in place. A row opens screen 2's sheet. |
 | 3 | **Payments** | part 2 | Its rows (amount, tip, bar, real table, payment table, provider's reference, receipt number, captured / released / unconfirmed). Staff see it without tips. |
 | 4 | **Money alerts and their answers** | part 2 | Who, what, when. Managers and owners only. |
 | 5 | **Refunds and pending stornos** | part 2 | Refunds seen that day, and every storno still pending from earlier days. Managers and owners only. |
 | 6 | **Disputes** | part 2 | Opened that day, and the count still open. Managers and owners only. |
-| 7 | **Totals** (`nt_totals`) | part 1: tables opened for phones, sent orders and by state, the amount added to bills, waiter calls, pauses, alerts; part 2: payments, card payments captured, tips (managers and owners only) | A two-column list of label and number, numbers right-aligned in tabular figures. Before the day ends they are counted live; after, they are `service_days.totals`, written once. |
+| 7 | **Totals** (`nt_totals`) | part 1: tables opened for phones, sent orders and by state, the amount added to bills, waiter calls, pauses, alerts; part 2: payments (count), card payments captured (amount), tips (amount), all three `money.follow_up` only | A two-column list of label and number, numbers right-aligned in tabular figures. Before the day ends they are counted live; after, they are `service_days.totals`, written once. |
 
 On the phone the sections stack the same way; a row of jump links under the heading ("To fix · Sent orders · Totals", plus part 2's) scrolls to each.
 
@@ -61,12 +61,12 @@ On the phone the sections stack the same way; a row of jump links under the head
 | **Failed to load** | "Couldn't load the end of the night. Check the connection; it tries again by itself." |
 | **Many** | Sent orders: the not-added ones always show; "Show all {n}" adds the rest in pages of 100. |
 | **The longest Bulgarian text** | Labels wrap; numbers never wrap or truncate. |
-| **Roles** | Staff (`night.view`): sections 1–3 and the totals that are not money follow-ups, never tips, no CSV (decision log 3.4). Managers and owners (`night.view_full`): everything and the CSV. A part 2 section a role may not see is not shown at all, never greyed. |
+| **Roles** | Staff (`night.view`): sections 1–3 (part 2's rows without answers and without tips) and part 1's totals; never tips, no CSV (decision log 3.4). Managers and owners (`night.view_full`): everything and the CSV. A part 2 section a role may not see is not shown at all, never greyed. |
 | **An earlier night** | Any service day with records (sent orders and payments are kept 18 months); an answered problem shows its answer and who gave it. |
 
 ## 6. The CSV
 
-One file per service day, `restro-{venue}-{YYYY-MM-DD}.csv`, UTF-8 with a byte-order mark so Excel opens Cyrillic correctly, comma-separated, one header row. One row per item of the page, section by section, in the page's order. Columns: `section`, `time`, `table`, `reference`, `what`, `state`, `reason`, `answer`, `who`, `amount`, `tip`, `detail`. Amounts are decimals with a dot and two places in the venue's currency, from the money module (rule 8). Part 1 writes the rows of sections 1, 2 and 7; part 2 adds its sections' rows with the same columns. No POS id, no guest data (rule 3); the POS bill's number as staff know it may sit in `detail` (admin only, D120).
+One file per service day, `restro-{venue}-{YYYY-MM-DD}.csv`, UTF-8 with a byte-order mark so Excel opens Cyrillic correctly, comma-separated, one header row. One row per item of the page, section by section, in the page's order. Columns: `section`, `time`, `table`, `reference`, `what`, `state`, `reason`, `answer`, `who`, `amount`, `tip`, `detail`. Amounts are decimals with a dot and two places in the venue's currency, from the money module (rule 8). Part 1 writes the rows of sections 1, 2 and 7; part 2 adds its sections' rows with the same columns. Amounts are positive; a refund says "refund" in `what`; `tip` is filled on payment rows only; a payment's `reference` is Restro's `pm_` id, never a POS or provider id. No POS id, no guest data (rule 3); the POS bill's number as staff know it may sit in `detail` (admin only, D120).
 
 ## 7. The Telegram message at the end of the service day
 
@@ -74,13 +74,12 @@ Sent once to the venue's group when the service day closes (decision log 3.3, D1
 
 > **{venue} · night of {date}**
 > Sent orders: {n} (added {a}, not sent {ns}, unconfirmed {u})
-> Added to bills: {amount}
-> *(part 2's money lines)*
+> *(part 2's money lines: "Payments: {n} taken, {k} to fix")*
 > To fix ({k}):
 > · Sent order {ref}, {table}: still unconfirmed
-> *(part 2's problem lines)*
+> *(part 2's problem lines: the table and what's wrong, no amounts)*
 
-With nothing to fix the last block reads "Nothing to fix." The tips total is part 2's to place: the group may hold staff, and staff don't see tips (decision log 3.4).
+With nothing to fix the last block reads "Nothing to fix." **No money amounts and no tips go to the group** (part 2 lead 10-27, the cautious default, and part 1 follows it so there is one rule): the group may hold staff, and staff don't see tips (decision log 3.4). Counts only; Martin may change this.
 
 ## 8. Questions for Martin, each with a recommendation
 
@@ -117,6 +116,5 @@ Part 1's strings; part 2 sends its own. Reused: screen 2's rows, states, reasons
 | `nt_fail` | Краят на вечерта не се зареди. Проверете връзката; ще опита отново сам. | Couldn't load the end of the night. Check the connection; it tries again by itself. |
 | `nt_tg_head` | {venue} · вечерта на {date} | {venue} · night of {date} |
 | `nt_tg_sent` | Поръчки: {n} (добавени {a}, неизпратени {ns}, непотвърдени {u}) | Sent orders: {n} (added {a}, not sent {ns}, unconfirmed {u}) |
-| `nt_tg_added` | Добавено в сметките: {amount} | Added to bills: {amount} |
 | `nt_tg_fix` | За оправяне ({k}): | To fix ({k}): |
 | `nt_tg_none` | Няма нищо за оправяне. | Nothing to fix. |
