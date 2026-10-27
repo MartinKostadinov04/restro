@@ -122,3 +122,5 @@ Under `copy-rules.md`; GLOSSARY terms ("Log", "sent order", "table", "pause", "s
 | `lg_pay_refund` | Върнати {amount} по плащане за {table} | {amount} refunded on the payment for {table} |
 
 `{answer}` is «Бележката е отпечатана» / "Receipt printed" or «Няма бележка» / "No receipt"; #153's second question uses the same two words.
+
+**Martin 10-27:** confirmed the Log as drafted, its sentences included.

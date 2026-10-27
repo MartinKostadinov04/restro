@@ -118,3 +118,5 @@ Part 1's strings; part 2 sends its own. Reused: screen 2's rows, states, reasons
 | `nt_tg_sent` | Поръчки: {n} (добавени {a}, неизпратени {ns}, непотвърдени {u}) | Sent orders: {n} (added {a}, not sent {ns}, unconfirmed {u}) |
 | `nt_tg_fix` | За оправяне ({k}): | To fix ({k}): |
 | `nt_tg_none` | Няма нищо за оправяне. | Nothing to fix. |
+
+**Martin 10-27:** confirmed the End of night tab as drafted (Q1: yes, a fourth Tonight tab with a day picker).
