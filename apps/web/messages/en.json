@@ -2416,6 +2416,7 @@
       "staff": "Staff",
       "manager": "Manager",
       "owner": "Owner"
-    }
+    },
+    "al_money_line": "Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them."
   }
 }

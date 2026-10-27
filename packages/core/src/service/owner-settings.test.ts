@@ -154,6 +154,37 @@ describe.skipIf(!hasDatabase)('the owner settings commands (as the restro_app ro
     ).toMatchObject({ code: 'permission_denied' })
   })
 
+  it('refuses a payload that touches keys outside the command’s own set', async () => {
+    const before = await settings()
+    expect(
+      await run({
+        type: 'settings.ordering_set',
+        changes: { alertRecipientUserIds: [ownerId] },
+      } as never),
+    ).toMatchObject({ code: 'invalid_command' })
+    expect(
+      await run(
+        { type: 'settings.alerts_set', changes: { capMinor: 1 } } as never,
+        user(managerId),
+      ),
+    ).toMatchObject({ code: 'invalid_command' })
+    expect(await settings()).toEqual(before)
+  })
+
+  it('refuses the alert settings after 15 minutes, and a person with only settings.alerts the rules', async () => {
+    const stale = new Date(Date.now() - 16 * 60_000)
+    expect(
+      await run(
+        { type: 'settings.alerts_set', changes: { telegramChatId: null } },
+        user(managerId),
+        stale,
+      ),
+    ).toMatchObject({ code: 'sign_in_again' })
+    expect(
+      await run({ type: 'settings.ordering_set', changes: { capMinor: 5 } }, user(managerId)),
+    ).toMatchObject({ code: 'permission_denied' })
+  })
+
   it('lets a person with settings.alerts choose who gets alerts, among the organisation’s accounts', async () => {
     expect(
       await run(

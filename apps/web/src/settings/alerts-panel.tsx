@@ -131,6 +131,9 @@ export function AlertsPanel({ view }: { view: AlertsView }) {
             ))}
           </ul>
         )}
+        <p className="text-sm text-muted-foreground" data-testid="alerts-money-line">
+          {t('al_money_line')}
+        </p>
       </section>
 
       <TelegramGroup view={view} runner={runner} />

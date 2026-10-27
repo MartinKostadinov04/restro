@@ -174,7 +174,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
   }
   async function seedAlert(
     kind: string,
-    options: { secondsAgo?: number; audience?: string } = {},
+    options: { secondsAgo?: number; audience?: string; permission?: string } = {},
   ): Promise<string> {
     const id = newId('al')
     await query(
@@ -191,7 +191,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         kind,
         options.audience ?? 'venue',
         tableId,
-        options.audience === 'restro' ? null : 'alerts.answer',
+        options.audience === 'restro' ? null : (options.permission ?? 'alerts.answer'),
         JSON.stringify({
           reference: 'K7Q',
           tableId,
@@ -395,6 +395,64 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       offsetMs = 60_000
       await pass()
       expect((await rowOf(id))?.details.delivery).toHaveProperty('push')
+    })
+  })
+
+  describe('a payment alert (raised with money.follow_up, #87)', () => {
+    let managerId: string
+    const endpointsPushed = () =>
+      pushed.map((p) => p.device.endpoint.split('/').at(-1)?.slice(0, 1)).sort()
+
+    async function subscribeManager(): Promise<void> {
+      const { result } = await applyService(
+        pool,
+        {
+          type: 'push.subscribe',
+          endpoint: `https://push.example.test/device/3-${'x'.repeat(30)}`,
+          p256dh: 'B'.repeat(87),
+          auth: 'a'.repeat(22),
+        },
+        user(managerId),
+      )
+      if (result.status !== 'accepted') throw new Error(`subscribe refused: ${result.code}`)
+    }
+
+    beforeEach(async () => {
+      if (managerId === undefined) {
+        managerId = await addUser('member')
+        await addStaff('Boris', ['money.follow_up', 'alerts.answer'], managerId, null)
+      }
+      await subscribeManager()
+      await setOrdering({})
+    })
+
+    afterAll(() => setOrdering({}))
+
+    it('rings only the switched-on people who hold the permission; an owner always does', async () => {
+      await seedAlert('payment_unconfirmed', { permission: 'money.follow_up' })
+      await pass()
+      // The owner (ticked) rings; Maria (ticked, may only answer alerts) does not; Boris is not ticked.
+      expect(endpointsPushed()).toEqual(['1'])
+    })
+
+    it('rings every holder who has a device when none of them is switched on', async () => {
+      await setOrdering({ alertRecipientUserIds: [answererId] })
+      await seedAlert('payment_unconfirmed', { permission: 'money.follow_up' })
+      await pass()
+      expect(endpointsPushed()).toEqual(['1', '3'])
+    })
+
+    it('rings only the holder who is switched on, not the owner who is not', async () => {
+      await setOrdering({ alertRecipientUserIds: [answererId, managerId] })
+      await seedAlert('payment_unconfirmed', { permission: 'money.follow_up' })
+      await pass()
+      expect(endpointsPushed()).toEqual(['3'])
+    })
+
+    it('leaves an alert with another permission to the switched-on people as before', async () => {
+      await seedAlert('order_unconfirmed')
+      await pass()
+      expect(endpointsPushed()).toEqual(['1', '2'])
     })
   })
 

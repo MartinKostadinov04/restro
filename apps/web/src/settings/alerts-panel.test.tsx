@@ -102,6 +102,13 @@ describe('Settings › Alerts', () => {
     )
   })
 
+  it('says under the switches who payment alerts ring for', () => {
+    renderWithIntl(<AlertsPanel view={view()} />)
+    expect(screen.getByTestId('alerts-money-line').textContent).toBe(
+      'Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them.',
+    )
+  })
+
   it('ticks a person, keeping the others ticked, with Undo', async () => {
     vi.mocked(setRecipientsAction).mockResolvedValue(OK)
     const user = userEvent.setup()
