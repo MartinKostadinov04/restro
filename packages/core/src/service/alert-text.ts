@@ -70,6 +70,8 @@ interface Strings {
   readonly outOfStock: (source: string, item: string | null) => string
   readonly paymentUnconfirmed: (table: string) => string
   readonly paymentUnconfirmedBody: (source: string) => string
+  readonly paymentLinesNotBack: (table: string) => string
+  readonly paymentLinesNotBackBody: (source: string) => string
   readonly paymentCheckFailed: (table: string) => string
   readonly paymentCheckFailedBody: string
   readonly paymentStranded: (table: string) => string
@@ -103,6 +105,9 @@ const EN: Strings = {
   paymentUnconfirmed: (table) => `${table}: a card payment is unconfirmed`,
   paymentUnconfirmedBody: (source) =>
     `Check in ${source} whether its receipt printed, then answer in Restro.`,
+  paymentLinesNotBack: (table) => `${table}: a card payment’s items are not back on the table`,
+  paymentLinesNotBackBody: (source) =>
+    `The bill may have closed after all. Check again in ${source} whether its receipt printed, then answer in Restro.`,
   paymentCheckFailed: (table) => `${table}: a card payment was stopped before closing`,
   paymentCheckFailedBody:
     "The bill or the card's hold changed before it closed. The card was not charged.",
@@ -145,6 +150,9 @@ const BG: Strings = {
   paymentUnconfirmed: (table) => `${table}: плащане с карта без потвърждение`,
   paymentUnconfirmedBody: (source) =>
     `Проверете в ${source} дали бележката е отпечатана и отговорете в Restro.`,
+  paymentLinesNotBack: (table) => `${table}: артикулите на плащане с карта не са върнати на масата`,
+  paymentLinesNotBackBody: (source) =>
+    `Сметката може все пак да е приключена. Проверете отново в ${source} дали бележката е отпечатана и отговорете в Restro.`,
   paymentCheckFailed: (table) => `${table}: плащане с карта е спряно преди приключване`,
   paymentCheckFailedBody:
     'Сметката или блокираната сума по картата се промени преди приключване. Картата не е таксувана.',
@@ -236,6 +244,11 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
       return { title: words.outOfStock(source, asText(alert.details.name)), body: '' }
     case 'payment_unconfirmed':
       return { title: words.paymentUnconfirmed(table), body: words.paymentUnconfirmedBody(source) }
+    case 'payment_lines_not_back':
+      return {
+        title: words.paymentLinesNotBack(table),
+        body: words.paymentLinesNotBackBody(source),
+      }
     case 'payment_check_failed':
       return { title: words.paymentCheckFailed(table), body: words.paymentCheckFailedBody }
     case 'payment_stranded':

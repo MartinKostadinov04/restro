@@ -30,7 +30,9 @@
 //   unknown move or undo is read back from the payment table for the read-back window and never
 //   sent again inside it (D127 3.4); an unknown close is never read back as a close (an empty
 //   payment table is no proof): it is `unconfirmed` for a manager or owner after D115's read-back
-//   window (a later landing is not ruled out, C52). A close is sent once.
+//   window (a later landing is not ruled out, C52). A close is sent once. After a manager's "No
+//   receipt" the hold is released only once a fresh read shows the lines back on the real table;
+//   otherwise a manager is asked again (#153).
 //   An unknown capture is read back from the provider and tried again with the same key.
 // - One run of a payment at a time: a run takes no new step past `PAYMENT_RUN_MS` and queues the
 //   next, and pg-boss gives it longer than that and one step (`PAYMENT_PREPARE_EXPIRE_SECONDS`)
@@ -71,6 +73,9 @@ import {
   PAYMENT_LONG_WAIT_MS,
   type PAYMENT_STEP_NAMES,
   PAYMENT_WRITE_PAUSE_MS,
+  type PaymentStepLines,
+  PaymentStepLinesSchema,
+  quantityKey,
   READ_BACK_EVERY_MS,
 } from '@restro/core/service'
 import {
@@ -237,6 +242,8 @@ function recordStep(
   target: PaymentJob,
   step: (typeof PAYMENT_STEP_NAMES)[number],
   idempotencyKey: string,
+  /** A move back's lines, recorded on its `attempting` row only (#153). */
+  lines: PaymentStepLines | null = null,
 ) {
   return async (
     outcome: 'attempting' | 'done' | 'refused' | 'unknown',
@@ -249,6 +256,7 @@ function recordStep(
       outcome,
       answer,
       idempotencyKey,
+      lines: outcome === 'attempting' ? lines : null,
     })
     if (recorded.code !== null) throw new PaymentStepRetry(`the ${step} step was not recorded`)
   }
@@ -636,9 +644,10 @@ async function writePos<R>(
   step: 'isolateLines' | 'undoIsolate' | 'payAndClose',
   ref: string,
   call: () => Promise<WriteOutcome<R>>,
+  lines: PaymentStepLines | null = null,
 ): Promise<WriteOutcome<R>> {
   await pos.pause()
-  const record = recordStep(env, target, step, ref)
+  const record = recordStep(env, target, step, ref, lines)
   let attempted = false
   let answer: Bounded<WriteOutcome<R>>
   try {
@@ -1114,7 +1123,7 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
 /**
  * `isolated` after a failed check, or `unconfirmed` with "No receipt": under the real table's
  * turn, put the lines back (`undoIsolate`), then `payment.undone`: returned, or stranded where the
- * POS would not.
+ * POS would not, or (after "No receipt") not back where they are not proven on the real table.
  */
 const undoStep: RouteStep = async (env, target, payment, deps) => {
   const pos = await posOf(env, target, payment, deps)
@@ -1148,7 +1157,7 @@ async function undo(
   payment: PaymentRow,
   pos: PaymentPos,
   paymentTable: PosRef,
-): Promise<'returned' | 'stranded' | 'later'> {
+): Promise<'returned' | 'stranded' | 'not_back' | 'later'> {
   const onTable = await readPos(pos, paymentTable)
   const earlier = await callsOf(env, target, 'undoIsolate')
   // A move back whose outcome is unknown may land late: inside the read-back window it is read
@@ -1156,14 +1165,35 @@ async function undo(
   if (onTable.bills.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
     return 'later'
   }
+  // After "No receipt" a close was attempted, and it may land after the read-back window (C52):
+  // the lines are back only when a fresh read shows every line read on the payment table before a
+  // move back, this run's and those an earlier run recorded, on the real table by its POS
+  // reference (#153). An empty payment table with nothing recorded, an earlier move back whose
+  // lines were not recorded, or a bill closed under the move, is no proof (D127 3.10): a manager
+  // is asked again.
+  const proving = payment.reason === 'no_receipt'
+  const recorded = proving ? await recordedLines(env, target) : []
+  if (recorded === null) return 'not_back'
+  const moved = [...recorded, ...linesOf(onTable)]
+  if (proving && moved.length === 0) return 'not_back'
   for (const [index, bill] of onTable.bills.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
     const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
-    const outcome = await writePos(env, target, pos, 'undoIsolate', ref, () =>
-      pos.connector.undoIsolate(pos.context, { isolated, table: pos.table, ref }),
+    const lines = PaymentStepLinesSchema.safeParse(linesOf({ ...onTable, bills: [bill] }))
+    const outcome = await writePos(
+      env,
+      target,
+      pos,
+      'undoIsolate',
+      ref,
+      () => pos.connector.undoIsolate(pos.context, { isolated, table: pos.table, ref }),
+      lines.success ? lines.data : null,
     )
     if (outcome.kind === 'refused') {
-      if (outcome.refusal.code === 'bill_closed') continue
+      if (outcome.refusal.code === 'bill_closed') {
+        if (proving) return 'not_back'
+        continue
+      }
       // A waiter holding the bill, or the POS busy, passes: tried again for the read-back window
       // from the first move back, then the lines are stranded for staff.
       const passing = outcome.refusal.code === 'bill_locked' || outcome.refusal.code === 'busy'
@@ -1175,7 +1205,59 @@ async function undo(
       if (back.bills.some((b) => b.ref.pos === bill.ref.pos)) return 'later'
     }
   }
-  return 'returned'
+  if (!proving) return 'returned'
+  return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
+}
+
+/**
+ * The lines earlier runs read on the payment table before a move back (`undoIsolate`'s
+ * `attempting` rows), or null when one of those moves has none recorded (or none that parse):
+ * what it took is unknown, so nothing proves it back.
+ */
+async function recordedLines(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+): Promise<PaymentStepLines | null> {
+  const rows = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ lines: paymentSteps.lines })
+      .from(paymentSteps)
+      .where(
+        and(
+          eq(paymentSteps.paymentId, target.paymentId),
+          eq(paymentSteps.step, 'undoIsolate'),
+          eq(paymentSteps.outcome, 'attempting'),
+        ),
+      )
+      .orderBy(paymentSteps.seq),
+  )
+  const lines: PaymentStepLines[number][] = []
+  for (const row of rows) {
+    const parsed = PaymentStepLinesSchema.safeParse(row.lines)
+    if (!parsed.success) return null
+    lines.push(...parsed.data)
+  }
+  return lines
+}
+
+/**
+ * True when a fresh read of the real table shows every line moved back by its POS reference,
+ * with at least the quantity and the amount moved (#153). Never by item, quantity or amount alone:
+ * a waiter's identical round, or the rest of a line split for the payment, would read as back.
+ */
+async function backOnTable(pos: PaymentPos, moved: PaymentStepLines): Promise<boolean> {
+  if (moved.length === 0) return false
+  const real = new Map(linesOf(await readPos(pos, pos.table)).map((line) => [line.pos, line]))
+  return moved.every((line) => {
+    const found = real.get(line.pos)
+    if (found === undefined) return false
+    // As much or more, by sign: a discount line's amount (or a negative count) only as negative.
+    const atLeast = (have: bigint, moved: bigint) => (moved < 0n ? have <= moved : have >= moved)
+    return (
+      atLeast(BigInt(found.amountMinor), BigInt(line.amountMinor)) &&
+      atLeast(quantityKey(found.quantity), quantityKey(line.quantity))
+    )
+  })
 }
 
 /**

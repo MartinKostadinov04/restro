@@ -102,6 +102,19 @@ const ProviderRefTextSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,25
 const PosRefSchema = z.string().min(1).max(200)
 
 /**
+ * *Backend*: the lines read on a payment table right before a move back (`undoIsolate`), by POS
+ * reference, quantity and the POS's amount (rule 3: never past the backend). A later run proves
+ * them back on the real table from these, never from lines it did not read (#153).
+ */
+export const PaymentStepLinesSchema = z
+  .array(
+    z.strictObject({ pos: PosRefSchema, quantity: DecimalQuantitySchema, amountMinor: z.int() }),
+  )
+  .min(1)
+  .max(500)
+export type PaymentStepLines = z.output<typeof PaymentStepLinesSchema>
+
+/**
  * The card form's values (`ProviderFormValuesSchema` in the payment seam, restated): opaque, never
  * read, held only while the payment awaits the guest.
  */
@@ -843,18 +856,26 @@ export async function closeAttempted(stx: ServiceTx, id: string): Promise<boolea
 /**
  * `payment.step`: one POS or provider write, recorded `attempting` before the call and with its outcome
  * after (append-only, D127 3.9). The answer is a short code, never the provider's response; the
- * form's values never go here.
+ * form's values never go here. A move back's `attempting` row carries the lines it moves (#153).
  */
 export function paymentStep() {
   return defineCommand({
-    schema: z.strictObject({
-      type: z.literal('payment.step'),
-      paymentId,
-      step: z.enum(PAYMENT_STEP_NAMES),
-      outcome: z.enum(['attempting', 'done', 'refused', 'unknown']),
-      answer: CodeSchema.nullable(),
-      idempotencyKey: ProviderRefTextSchema,
-    }),
+    schema: z
+      .strictObject({
+        type: z.literal('payment.step'),
+        paymentId,
+        step: z.enum(PAYMENT_STEP_NAMES),
+        outcome: z.enum(['attempting', 'done', 'refused', 'unknown']),
+        answer: CodeSchema.nullable(),
+        idempotencyKey: ProviderRefTextSchema,
+        lines: PaymentStepLinesSchema.nullable().default(null),
+      })
+      .refine(
+        (command) =>
+          command.lines === null ||
+          (command.step === 'undoIsolate' && command.outcome === 'attempting'),
+        { message: 'lines go only on a move back, before the call' },
+      ),
     origins: ['worker'],
     permission: null,
     idempotency: 'by_state',
@@ -872,6 +893,7 @@ export function paymentStep() {
         outcome: command.outcome,
         answer: command.answer,
         idempotencyKey: command.idempotencyKey,
+        lines: command.lines,
         ...stx.provenance,
       })
       return accepted(null, { details: { paymentId: payment.id } })

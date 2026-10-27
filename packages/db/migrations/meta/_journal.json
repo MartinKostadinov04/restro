@@ -239,6 +239,13 @@
       "when": 1793057637670,
       "tag": "0033_landing_basis",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793093028124,
+      "tag": "0034_payment_step_lines",
+      "breakpoints": true
     }
   ]
 }

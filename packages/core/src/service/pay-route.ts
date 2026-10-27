@@ -5,8 +5,8 @@
 //   held ─claim_table─▶ queued ─(a table)─isolated─▶ isolated ─checked─▶ checked ─closed─▶ closed ─captured─▶ captured
 //    │                    │                              │                      │                   └──▶ capture_failed
 //    └──── busy / paused ─┴─▶ cancelling ◀─ undone ◀─────┘ check_failed          └─▶ unconfirmed ─answer─▶ (receipt printed: capture)
-//                                  │                                                              (no receipt: undone → cancelling)
-//                                  └──▶ released (or stranded)
+//                                  │                                                              (no receipt: undone → cancelling,
+//                                  └──▶ released (or stranded)                                     or lines not back → unconfirmed)
 //
 // - The queue (D124 §1): a held payment joins its bar's queue, or the venue's where its table has
 //   no bar (then the payment tables with no bar serve it). First come, first served: it takes the
@@ -23,7 +23,11 @@
 //   A lower amount only when a fresh read of the real table shows the missing line was voided.
 // - Once a close was attempted (a `payAndClose` step), the payment is never undone or released:
 //   an unknown or refused close is `unconfirmed` until a manager or owner answers "Receipt
-//   printed" (capture) or "No receipt" (put the lines back, release).
+//   printed" (capture) or "No receipt" (put the lines back, release). A close may still land
+//   after the read-back window (C52): after "No receipt" the hold is released only once the lines
+//   are proven back on the real table. Otherwise the payment is `unconfirmed` again
+//   (`lines_not_back`) and a manager answers once more: "Receipt printed" captures, "No receipt"
+//   releases and settles it `stranded`, with no move back tried (#153).
 // - Money alerts go through #83's alert kinds (`alert-rules.ts`); every step is a `payment.state`
 //   Log entry, kept as a record.
 //
@@ -41,6 +45,7 @@ import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 import {
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
+  PAYMENT_LINES_NOT_BACK_KIND,
   PAYMENT_STRANDED_KIND,
   PAYMENT_UNCONFIRMED_KIND,
 } from './alert-rules'
@@ -76,7 +81,8 @@ export const PAYMENT_WRITE_PAUSE_MS = 1_000
 /**
  * How long one hold of the real table's write turn lasts, in whole seconds, for these timings: one
  * move with its reads (the payment table and the real table before it, one read back after it),
- * the pause and the write. One undo (a read, the write, a read back) fits too. Derived from the
+ * the pause and the write. One undo (a read, the write, a read back, the real table's read that
+ * proves the lines back) fits too. Derived from the
  * timings as the send's slot leases are (`slotLeaseSeconds`), so the turn never passes mid-move.
  */
 export function paymentTurnSeconds(timings: ServiceTimings = SERVICE_TIMINGS): number {
@@ -93,9 +99,14 @@ export const PAYMENT_LONG_WAIT_MS = 10_000
 
 /** The staff's answers to an unconfirmed close (#111). */
 export const PAYMENT_ANSWERS = ['receipt_printed', 'no_receipt'] as const
+/** The questions a manager answers: the close, then whether the items are back (#153). */
+export const PAYMENT_QUESTIONS = ['close', 'lines_not_back'] as const
 
-/** Why a close is unconfirmed: the POS didn't answer, or refused after the close was attempted. */
-const UNCONFIRMED_REASONS = ['close_unknown', 'close_refused'] as const
+/**
+ * Why a close is unconfirmed, waiting for an answer: the POS didn't answer, or refused after the
+ * close was attempted; or, after "No receipt", the lines were not proven back on the table (#153).
+ */
+const UNCONFIRMED_REASONS = ['close_unknown', 'close_refused', 'lines_not_back'] as const
 
 const paymentId = idSchema('py')
 const tableId = idSchema('tb')
@@ -751,21 +762,23 @@ export function paymentCaptured() {
  * `payment.undone`: the worker put the lines back on the real table (`returned`), or the POS would
  * not (`stranded`, staff are told). Either way the payment is cancelled and its hold released;
  * stranded lines settle it `stranded`. Never after a close was attempted, unless a manager or owner
- * answered "No receipt".
+ * answered "No receipt" and the lines are proven back on the real table: stranded, or not proven
+ * (`not_back`: the payment table read empty, the bill closed), the close may have landed after
+ * all (C52), so the hold stays and the payment is `unconfirmed` again for a manager (#153).
  */
 export function paymentUndone() {
   return defineCommand({
     schema: z.strictObject({
       type: z.literal('payment.undone'),
       paymentId,
-      outcome: z.enum(['returned', 'stranded']),
+      outcome: z.enum(['returned', 'stranded', 'not_back']),
     }),
     origins: ['worker'],
     permission: null,
     idempotency: 'by_state',
     async handle(stx, command) {
       const locked = await lockRoute(stx, command.paymentId, {
-        alertKinds: [PAYMENT_STRANDED_KIND],
+        alertKinds: [PAYMENT_STRANDED_KIND, PAYMENT_LINES_NOT_BACK_KIND],
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
@@ -773,6 +786,19 @@ export function paymentUndone() {
       if (payment.reason !== 'no_receipt' && (await closeAttempted(stx, payment.id))) {
         return refused(null, 'close_attempted')
       }
+      if (payment.reason === 'no_receipt' && command.outcome !== 'returned') {
+        await move(
+          stx,
+          locked,
+          'unconfirmed',
+          { reason: 'lines_not_back' },
+          { outcome: command.outcome },
+        )
+        await raise(stx, locked, PAYMENT_LINES_NOT_BACK_KIND, 'money.follow_up')
+        return at(payment, 'unconfirmed', true, { reason: 'lines_not_back' })
+      }
+      // Proof is asked for only after a close was attempted; a failed check's undo has none.
+      if (command.outcome === 'not_back') return refused(null, 'payment_mismatch')
       if (command.outcome === 'returned') {
         await move(stx, locked, 'cancelling')
         return at(payment, 'cancelling', true)
@@ -791,12 +817,21 @@ export function paymentUndone() {
  * `payment.answer`: a manager or owner answers an unconfirmed close after checking the till:
  * "Receipt printed" (the worker captures) or "No receipt" (the worker moves the lines back and
  * releases the hold). Closes the unconfirmed alert. A second, different answer is refused.
+ * Asked again because the items were not back after "No receipt" (`lines_not_back`, #153):
+ * "Receipt printed" captures; "No receipt" releases the hold and settles the payment `stranded`
+ * with no move back tried, since the manager saw the items missing.
+ *
+ * The answer names the question it answers (`answering`), so a late tap on the first question (a
+ * second manager, a retry, an old push) is never taken for the second: once the second is asked,
+ * the same first answer changes nothing and another is refused; the second before it is asked is
+ * refused.
  */
 export function paymentAnswer() {
   return defineCommand({
     schema: z.strictObject({
       type: z.literal('payment.answer'),
       paymentId,
+      answering: z.enum(PAYMENT_QUESTIONS),
       answer: z.enum(PAYMENT_ANSWERS),
     }),
     origins: ['staff'],
@@ -804,23 +839,48 @@ export function paymentAnswer() {
     idempotency: 'by_nature',
     async handle(stx, command) {
       const locked = await lockRoute(stx, command.paymentId, {
-        alertKinds: [PAYMENT_UNCONFIRMED_KIND],
+        alertKinds: [PAYMENT_UNCONFIRMED_KIND, PAYMENT_LINES_NOT_BACK_KIND, PAYMENT_STRANDED_KIND],
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
+      // The question open now: the second once its alert was raised, done or not.
+      const asked = locked.alerts.has(PAYMENT_LINES_NOT_BACK_KIND) ? 'lines_not_back' : 'close'
+      if (command.answering !== asked) {
+        if (command.answering === 'lines_not_back') {
+          return refused(null, 'payment_not_asked', { asked })
+        }
+        // The close was answered "No receipt": that is the only way to the second question.
+        if (command.answer === 'no_receipt') return at(payment, payment.state, false)
+        return refused(null, 'payment_answered', { answer: 'no_receipt' })
+      }
       if (payment.state !== 'unconfirmed') {
+        // Stranded after a close was attempted: a second "No receipt" settled it (it is the only
+        // way there). The same answer again changes nothing; a different one is refused.
+        if (payment.reason === 'stranded' && (await closeAttempted(stx, payment.id))) {
+          if (command.answer === 'no_receipt') return at(payment, payment.state, false)
+          return refused(null, 'payment_answered', { answer: 'no_receipt' })
+        }
         return refused(null, 'payment_not_unconfirmed', { state: payment.state })
       }
       if (payment.reason === command.answer) return at(payment, payment.state, false)
       if (!(UNCONFIRMED_REASONS as readonly (string | null)[]).includes(payment.reason)) {
         return refused(null, 'payment_answered', { answer: payment.reason })
       }
-      await stx.tx
-        .update(payments)
-        .set({ reason: command.answer, ...stx.provenance, updatedAt: sql`now()` })
-        .where(eq(payments.id, payment.id))
-      const alert = locked.alerts.get(PAYMENT_UNCONFIRMED_KIND)
-      if (alert !== undefined && alert.doneAt === null) {
+      let state = payment.state
+      if (payment.reason === 'lines_not_back' && command.answer === 'no_receipt') {
+        // The manager checked the till again with the items missing: released, the lines stranded.
+        state = 'cancelling'
+        await move(stx, locked, state, { reason: 'stranded' })
+        await raise(stx, locked, PAYMENT_STRANDED_KIND, 'alerts.answer')
+      } else {
+        await stx.tx
+          .update(payments)
+          .set({ reason: command.answer, ...stx.provenance, updatedAt: sql`now()` })
+          .where(eq(payments.id, payment.id))
+      }
+      for (const kind of [PAYMENT_UNCONFIRMED_KIND, PAYMENT_LINES_NOT_BACK_KIND]) {
+        const alert = locked.alerts.get(kind)
+        if (alert === undefined || alert.doneAt !== null) continue
         await stx.tx
           .update(alerts)
           .set({
@@ -841,8 +901,9 @@ export function paymentAnswer() {
         fromState: payment.reason ?? undefined,
         toState: command.answer,
         reason: command.answer,
+        details: { answering: command.answering },
       })
-      return at(payment, payment.state, true, { answer: command.answer })
+      return at(payment, state, true, { answer: command.answer })
     },
   })
 }
