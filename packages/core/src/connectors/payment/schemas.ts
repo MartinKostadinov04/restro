@@ -206,10 +206,19 @@ export type ProviderPayment = z.output<typeof ProviderPaymentSchema>
  * What a provider's notice is about, in the platform's words: the provider's web part maps its own
  * event types to these, so no provider event name picks platform behaviour. `payment` is a change
  * to a payment's hold (the guest paid, declined or the bank asked): the worker checks that
- * payment (#110). `other` has no handler: the worker marks it handled and does nothing. The same
+ * payment (#110). `account` is a change to a venue's account (the worker re-reads the connection),
+ * `access_lost` the venue taking Restro's access away (#109). `other` has no handler: the worker
+ * marks it handled and does nothing. The same
  * words as `provider_notices.kind` (`PROVIDER_NOTICE_KINDS` in `@restro/db`).
  */
-export const PROVIDER_NOTICE_KINDS = ['payment', 'refund', 'dispute', 'other'] as const
+export const PROVIDER_NOTICE_KINDS = [
+  'payment',
+  'refund',
+  'dispute',
+  'account',
+  'access_lost',
+  'other',
+] as const
 export type ProviderNoticeKind = (typeof PROVIDER_NOTICE_KINDS)[number]
 
 /**

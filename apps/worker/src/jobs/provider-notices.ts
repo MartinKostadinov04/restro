@@ -14,6 +14,9 @@
 // - what the reading says is recorded through core/service (`payment.observe`), as the worker;
 //   a `payment` notice (the guest at the card form, #110) queues the payment's check instead,
 //   which reads the provider again and moves the payment on;
+// - an `account` notice (the venue's account changed) reads the connection back and records it; an
+//   `access_lost` notice (the venue took Restro's access away) pauses paying at once and alerts the
+//   venue's owners and managers, unless a reading shows the access is still there (#109);
 // - Restro never refunds: no provider call here moves money.
 // A notice whose reading failed or found our side not ready stays for the next run; one still
 // waiting after a day is logged as an error, once a day. A notice of a provider this worker does
@@ -44,6 +47,7 @@ import {
 import type { DbPool } from '@restro/db'
 
 import type { Logger } from '../logger'
+import { type ConnectionProvider, readAccount, recordLostAccess } from '../payments/connection'
 import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** The notices read in one page. */
@@ -62,7 +66,32 @@ export const NOTICE_LATE_MS = 24 * 60 * 60 * 1000
 const TRANSIENT_REFUSALS: readonly string[] = ['busy', 'payment_not_captured']
 
 /** The providers this worker reads notices back from, by kind (#107 adds the first real one). */
-export type NoticeProviders = ReadonlyMap<string, Pick<PaymentProvider, 'readNoticeSubject'>>
+export type NoticeProviders = ReadonlyMap<
+  string,
+  Pick<PaymentProvider, 'readNoticeSubject'> & Partial<ConnectionProvider>
+>
+
+/** The providers that can also be asked about a venue's account (an account notice needs one). */
+function connectionProviders(providers: NoticeProviders): ReadonlyMap<string, ConnectionProvider> {
+  const found = new Map<string, ConnectionProvider>()
+  for (const [kind, provider] of providers) {
+    if (
+      provider.kind !== undefined &&
+      provider.startConnection !== undefined &&
+      provider.readConnection !== undefined &&
+      provider.prepareDomain !== undefined
+    ) {
+      // Bound, so a provider that is a class instance keeps its `this`.
+      found.set(kind, {
+        kind: provider.kind,
+        startConnection: provider.startConnection.bind(provider),
+        readConnection: provider.readConnection.bind(provider),
+        prepareDomain: provider.prepareDomain.bind(provider),
+      })
+    }
+  }
+  return found
+}
 
 export interface ProviderNoticesDeps {
   readonly providers: NoticeProviders
@@ -86,6 +115,8 @@ export type NoticeOutcome =
   | 'recorded'
   /** A guest payment's notice: its check was queued. */
   | 'queued'
+  /** A venue's account notice: the connection was read back (or the lost access recorded). */
+  | 'connection'
   /** The reading matched what we had. */
   | 'unchanged'
   /** A kind with no handler, marked handled with no action. */
@@ -129,9 +160,14 @@ export async function handleProviderNotice(
     return outcome
   }
 
-  if (stored.kind !== 'refund' && stored.kind !== 'dispute' && stored.kind !== 'payment') {
-    return handled('no_handler')
-  }
+  const HANDLED_KINDS: readonly string[] = [
+    'refund',
+    'dispute',
+    'payment',
+    'account',
+    'access_lost',
+  ]
+  if (!HANDLED_KINDS.includes(stored.kind)) return handled('no_handler')
 
   const provider = deps.providers.get(stored.providerKind)
   if (provider === undefined) return 'waiting'
@@ -143,6 +179,30 @@ export async function handleProviderNotice(
   if (stored.accountRef === null || venue === undefined) {
     log.warn(about, 'a provider notice names no account of ours; marked handled')
     return handled('unknown_account')
+  }
+
+  if (stored.kind === 'account' || stored.kind === 'access_lost') {
+    // The venue's account, not a payment: read the connection back, never the notice's copy.
+    const target = { tenantId: venue.tenantId, venueId: venue.venueId }
+    const connection = { pool, log, jobId: env.jobId }
+    const providers = connectionProviders(deps.providers)
+    if (!providers.has(stored.providerKind)) return 'waiting'
+    try {
+      if (stored.kind === 'access_lost') {
+        const outcome = await recordLostAccess(connection, target, providers, stored.accountRef)
+        return handled(outcome === 'unknown_account' ? 'unknown_account' : 'connection')
+      }
+      const read = await readAccount(connection, target, providers, {
+        afterReturn: false,
+        guestHost: null,
+      })
+      if (read.kind === 'read') return handled('connection')
+      if (read.kind === 'refused' || read.kind === 'no_account') return handled('refused')
+      return 'waiting'
+    } catch (error) {
+      log.warn({ ...about, err: error }, "a provider notice's account could not be recorded")
+      return 'waiting'
+    }
   }
 
   let reading: Awaited<ReturnType<PaymentProvider['readNoticeSubject']>>
@@ -230,6 +290,7 @@ export async function handleProviderNotices(
   const counts: Record<NoticeOutcome | 'late', number> = {
     recorded: 0,
     queued: 0,
+    connection: 0,
     unchanged: 0,
     no_handler: 0,
     unknown_account: 0,

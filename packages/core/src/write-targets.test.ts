@@ -94,6 +94,8 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   // recorded `attempting` before each provider call.
   'paymentLines',
   'paymentSteps',
+  // #109: a venue's payment account: connect, read back, lose, disconnect.
+  'paymentAccounts',
   // #84: the end of a service day keeps its totals.
   'serviceDays',
 ]

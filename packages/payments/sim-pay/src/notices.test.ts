@@ -59,6 +59,24 @@ describe('the outbox', () => {
   })
 })
 
+describe("a venue's account (#109)", () => {
+  it('sends an account notice, and after the owner takes access away reads and writes are refused', async () => {
+    const { engine, account } = await capturedPayment()
+    const updated = engine.announceAccountUpdated(account)
+    expect(updated).toMatchObject({ type: 'account.updated', account: account.provider })
+    expect(engine.readConnection(account)).toMatchObject({ complete: true })
+
+    const revoked = engine.revokeAccess(account)
+    expect(revoked).toMatchObject({ type: 'account.access_revoked', account: account.provider })
+    expect(engine.takeNotices().map((e) => e.type)).toEqual([
+      'account.updated',
+      'account.access_revoked',
+    ])
+    // The provider answers nothing about an account whose access was removed: a failed reading.
+    expect(engine.readConnection(account)).toMatchObject({ complete: false })
+  })
+})
+
 describe("the guest's card at the form (#110)", () => {
   it('sends a payment notice when the card is held or declined, and reads it back', async () => {
     const engine = new SimPayEngine({ clock: new ManualClock() })
@@ -142,6 +160,8 @@ describe('the signed notice', () => {
     } as const
     expect(simPayNotice(event).kind).toBe('refund')
     expect(simPayNotice({ ...event, type: 'dispute.closed' }).kind).toBe('dispute')
+    expect(simPayNotice({ ...event, type: 'account.updated' }).kind).toBe('account')
+    expect(simPayNotice({ ...event, type: 'account.access_revoked' }).kind).toBe('access_lost')
   })
 
   // The same vector is pinned in apps/web/src/connectors/sim-pay/notices.test.ts.

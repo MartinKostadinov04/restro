@@ -65,6 +65,7 @@ export const PERMISSION_GROUPS = [
       'settings.codes',
       'settings.payment_tables',
       'settings.alerts',
+      'settings.connect_payments',
       'settings.roles',
     ],
   },

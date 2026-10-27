@@ -110,7 +110,10 @@ describe("Stripe's notices", () => {
     ]) {
       expect(stripeNoticeKind(type), type).toBe('payment')
     }
-    for (const type of ['account.updated', 'charge.captured', 'payout.paid']) {
+    // The venue's own account (#109): re-read the connection; access taken away: pause paying.
+    expect(stripeNoticeKind('account.updated')).toBe('account')
+    expect(stripeNoticeKind('account.application.deauthorized')).toBe('access_lost')
+    for (const type of ['charge.captured', 'payout.paid', 'account.external_account.created']) {
       expect(stripeNoticeKind(type), type).toBe('other')
     }
   })

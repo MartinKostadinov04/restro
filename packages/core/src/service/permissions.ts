@@ -38,6 +38,8 @@ export const PERMISSIONS = [
   'settings.payment_tables',
   /** Alert recipients, the Telegram group. */
   'settings.alerts',
+  /** Connect, reconnect and disconnect the venue's payment account; tick the owner's checks (D125 2.2). */
+  'settings.connect_payments',
   /** Roles, staff, PINs, shared devices. */
   'settings.roles',
 ] as const
@@ -63,9 +65,14 @@ export function isSettingsPermission(permission: Permission): boolean {
 
 /**
  * What Restro's admin team holds at any venue (D122 §7; spec #64, 12): it adds roles, changes
- * rights and manages staff PINs (`settings.roles`), and lifts any pause (`ordering.lift`).
+ * rights and manages staff PINs (`settings.roles`), lifts any pause (`ordering.lift`), and
+ * connects a venue's payment account (`settings.connect_payments`, D125 2.2).
  */
-export const OPERATOR_PERMISSIONS: readonly Permission[] = ['settings.roles', 'ordering.lift']
+export const OPERATOR_PERMISSIONS: readonly Permission[] = [
+  'settings.roles',
+  'ordering.lift',
+  'settings.connect_payments',
+]
 
 /** The default roles every venue has (D122 §7; decision log 4.4: the names are Martin's). */
 export const DEFAULT_ROLE_KINDS = ['staff', 'manager', 'owner'] as const

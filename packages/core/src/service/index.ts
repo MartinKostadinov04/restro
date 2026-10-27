@@ -38,6 +38,7 @@ export {
   ORDER_UNCONFIRMED_KIND,
   OUT_OF_STOCK_KIND,
   PAUSED_KIND,
+  PAYMENT_ACCOUNT_LOST_KIND,
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
   PAYMENT_LINES_NOT_BACK_KIND,
@@ -265,6 +266,13 @@ export {
   PAYMENT_WRITE_PAUSE_MS,
   paymentTurnSeconds,
 } from './pay-route'
+export {
+  CONNECT_PERMISSION,
+  loadPayingConnection,
+  type PayingConnection,
+  paymentTableFacts,
+  readPayingConnection,
+} from './payment-connection'
 export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,

@@ -283,10 +283,14 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
     )
     await world.owner.query(
       `insert into restro.payment_accounts
-         (tenant_id, venue_id, provider_kind, account_ref, state, connected_at, source, actor, job_id)
-       values ($1, $2, 'sim-pay', $3, 'connected', now(), 'restro', 'system', 'test-seed')`,
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, 'sim-pay', $3, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
       [world.tenantId, world.venueId, ACCOUNT],
     )
+    // Paying is on only with a payment table marked in the queue (D125 2.3).
+    await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
+      world.tables[3],
+    ])
   })
 
   afterAll(async () => {
@@ -500,6 +504,72 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
       await setAccount('lost_access')
       expect(await refusal(await start(phone(), ['L1']))).toBe('paying_paused')
+    })
+
+    it('paying_not_offered while any check of D125 2.3 is missing, even with the account connected (#109)', async () => {
+      const tick = { at: '2026-10-27T00:00:00Z', by: 'system' }
+      const ready = {
+        cardPayments: true,
+        ticks: { cardTypeInTill: tick, receiptEmailsOff: tick },
+      }
+      const setChecks = (checks: unknown) =>
+        world.owner.query(
+          'update restro.payment_accounts set checks = $2::jsonb where venue_id = $1',
+          [world.venueId, JSON.stringify(checks)],
+        )
+      try {
+        for (const checks of [
+          {},
+          { ...ready, cardPayments: false },
+          { ...ready, ticks: { cardTypeInTill: null, receiptEmailsOff: tick } },
+          { ...ready, ticks: { cardTypeInTill: tick, receiptEmailsOff: null } },
+        ]) {
+          await setChecks(checks)
+          expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
+        }
+        // Every check but the payment tables: the till's table is no longer marked.
+        await setChecks(ready)
+        await world.owner.query('update restro.tables set is_payment_table = false where id = $1', [
+          world.tables[3],
+        ])
+        expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
+      } finally {
+        await setChecks(ready)
+        await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
+          world.tables[3],
+        ])
+      }
+      // All four pass: a payment starts.
+      paymentIdOf(await start(phone(), ['L1']))
+    })
+
+    it('payment_in_flight: the owner can not disconnect while a payment is not final (#109)', async () => {
+      const ownerId = await world.addUser('owner')
+      const disconnect = async () =>
+        (
+          await applyService(
+            world.app,
+            { type: 'payment_account.disconnect' },
+            {
+              tenantId: world.tenantId,
+              venueId: world.venueId,
+              origin: 'staff',
+              actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+              jobId: `req-${randomUUID()}`,
+              signedInAt: new Date(),
+            },
+          )
+        ).result
+      const id = paymentIdOf(await start(phone(), ['L1']))
+      expect(await disconnect()).toMatchObject({ status: 'refused', code: 'payment_in_flight' })
+      await world.owner.query(
+        `update restro.payments set state = 'released', reason = 'test', form_values = null, settled_at = now() where id = $1`,
+        [id],
+      )
+      expect(await disconnect()).toMatchObject({
+        status: 'accepted',
+        details: { state: 'disconnected' },
+      })
     })
 
     it('being_paid: a line in another payment that is not final', async () => {

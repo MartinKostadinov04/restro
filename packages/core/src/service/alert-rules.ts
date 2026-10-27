@@ -36,6 +36,12 @@ export const PAYMENT_CHECK_FAILED_KIND = 'payment_check_failed'
 export const PAYMENT_STRANDED_KIND = 'payment_stranded'
 /** A closed bill's card payment could not be captured (#111): the owners are told. */
 export const PAYMENT_CAPTURE_FAILED_KIND = 'payment_capture_failed'
+/**
+ * The venue's payment account was lost (#109; D125 2.4): the provider's access was removed or the
+ * account can't take card payments any more. Paying is paused; owners and managers are told, with
+ * "Reconnect". It closes by itself when paying comes back.
+ */
+export const PAYMENT_ACCOUNT_LOST_KIND = 'payment_account_lost'
 
 const MINUTE = 60_000
 
@@ -172,6 +178,15 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
       reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
       ownersOnly: true,
     },
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
+  // Lost access to the venue's payment account (#109; D125 2.4): paying is paused, so owners and
+  // managers (who hold `money.follow_up`) are pushed at once and the owners are reminded after an
+  // hour; the venue's group and the Restro team are told once. Its words carry no amounts.
+  [PAYMENT_ACCOUNT_LOST_KIND]: {
+    ...NOBODY,
+    push: staffPush({ afterMs: 60 * MINUTE, max: 1, ownersOnly: true }),
+    venueTelegram: venueGroup,
     team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
   },
 }

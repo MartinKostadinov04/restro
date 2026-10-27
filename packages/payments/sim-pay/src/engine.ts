@@ -137,6 +137,8 @@ export class SimPayEngine {
   readonly #stored = new Map<string, Stored>()
   readonly #faults = new Map<SimPayStep, SimPayFault>()
   /** A refund or a dispute's ref to its payment's (and a dispute's state). */
+  /** Accounts whose owner took Restro's access away: reading one is refused, as the provider does. */
+  readonly #revoked = new Set<string>()
   readonly #refunds = new Map<string, { readonly payment: string }>()
   readonly #disputes = new Map<string, { readonly payment: string; state: PaymentDisputeState }>()
   /** The notices the provider sent and nobody took yet. */
@@ -189,6 +191,26 @@ export class SimPayEngine {
     if (account === undefined) throw new Error(`no account ${accountRef.provider}`)
     account.canTakePayments = false
     account.missing = [...missing]
+  }
+
+  /** The provider tells Restro the account changed (the owner went on with the hosted form). */
+  announceAccountUpdated(accountRef: ProviderRef): SimPayEvent {
+    return this.#send('account.updated', accountRef.provider, accountRef.provider, true)
+  }
+
+  /**
+   * The owner takes Restro's access away on the provider's side: the provider tells Restro, and
+   * every later call about the account is refused `access_lost` (account scope).
+   */
+  revokeAccess(accountRef: ProviderRef): SimPayEvent {
+    this.#accounts.delete(accountRef.provider)
+    this.#revoked.add(accountRef.provider)
+    return this.#send('account.access_revoked', accountRef.provider, accountRef.provider, true)
+  }
+
+  /** The hosts registered for wallets on the account (`prepareDomain`), oldest first. */
+  domainsOf(accountRef: ProviderRef): string[] {
+    return [...(this.#account(accountRef)?.domains ?? [])]
   }
 
   /** Money moved on the account so far, in minor units. */
@@ -330,6 +352,9 @@ export class SimPayEngine {
 
   readConnection(accountRef: ProviderRef): Reading<ConnectionStatus> {
     if (this.#failReads) return { complete: false, reason: 'the account read failed part-way' }
+    if (this.#revoked.has(accountRef.provider)) {
+      return { complete: false, reason: 'access to the account was removed' }
+    }
     const account = this.#account(accountRef)
     if (account === undefined) return complete({ canTakePayments: false, missing: ['account'] })
     return complete({ canTakePayments: account.canTakePayments, missing: [...account.missing] })
