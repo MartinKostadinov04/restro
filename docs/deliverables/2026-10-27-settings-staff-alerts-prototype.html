@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="bg" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE (throwaway): Settings, Staff and roles, Alerts</title>
+<style>
+/* PROTOTYPE, throwaway. Question it answers: can an owner add a bartender, give them a PIN, set who
+   may do what, and choose whose phones ring, in a few taps and without an email? Tokens as the
+   Hours and Ordering prototype. System fonts, no external files. */
+:root{
+  --bg:oklch(1 0 0);--fg:oklch(.141 .005 285.823);--card:oklch(1 0 0);
+  --primary:oklch(.21 .006 285.885);--primary-fg:oklch(.985 0 0);
+  --muted:oklch(.967 .001 286.375);--muted-fg:oklch(.5 .016 285.938);
+  --border:oklch(.92 .004 286.32);--ctl:oklch(.6 .01 286);
+  --danger:oklch(.55 .2 27);--scrim:oklch(0 0 0 / .45);
+}
+:root[data-theme=dark]{
+  --bg:oklch(.141 .005 285.823);--fg:oklch(.985 0 0);--card:oklch(.21 .006 285.885);
+  --primary:oklch(.92 .004 286.32);--primary-fg:oklch(.21 .006 285.885);
+  --muted:oklch(.274 .006 286.033);--muted-fg:oklch(.705 .015 286.067);
+  --border:oklch(1 0 0 / 10%);--ctl:oklch(.58 .01 286);
+  --danger:oklch(.7 .19 22);--scrim:oklch(0 0 0 / .6);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--muted);color:var(--fg);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms;transition-duration:.01ms}}
+.pc{max-width:1240px;margin:0 auto;padding:16px}
+.pc h1{font-size:15px;margin:0 0 2px}
+.pc>p{margin:0 0 10px;color:var(--muted-fg);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.grp{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-fg)}
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:5px 10px;cursor:pointer;font-size:12px}
+.seg button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg)}
+.stage{display:flex;justify-content:center;overflow-x:auto;padding-bottom:8px}
+.dev{flex:none;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.dev.dt{width:1180px;height:820px}
+.dev.ph{width:390px;height:780px}
+.top{padding:12px 20px;border-bottom:1px solid var(--border);font-weight:600;font-size:15px}
+.tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--border)}
+.tabs span{padding:10px 12px;color:var(--muted-fg);border-bottom:2px solid transparent}
+.tabs span.on{color:var(--fg);border-color:var(--fg);font-weight:600}
+.body{flex:1;display:flex;min-height:0}
+.side{width:220px;flex:none;padding:16px 12px;border-right:1px solid var(--border)}
+.side button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:6px;cursor:pointer;min-height:36px}
+.side button.on{background:var(--muted);font-weight:600}
+.main{flex:1;overflow:auto;padding:24px 32px}
+.ph .main{padding:16px}
+.col{max-width:680px}
+.phsel{padding:12px 16px;border-bottom:1px solid var(--border)}
+.fakesel{display:flex;width:100%;justify-content:space-between;align-items:center;border:1px solid var(--ctl);border-radius:6px;padding:0 12px;min-height:44px;background:var(--card);cursor:pointer}
+h2{font-size:20px;margin:0 0 16px}
+h3{font-size:16px;margin:24px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lede{color:var(--muted-fg);margin:0 0 10px}
+.list{border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.r{display:flex;align-items:center;gap:10px;padding:10px 14px;min-height:60px;border-top:1px solid var(--border);flex-wrap:wrap}
+.r:first-child{border-top:0}
+.r .n{flex:1;min-width:140px}
+.tick small{display:block;color:var(--muted-fg)}
+.r .n small{display:block;color:var(--muted-fg)}
+.pin{font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:.15em;min-width:52px}
+.tag{font-size:12px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--muted-fg)}
+.icon{border:1px solid var(--border);background:var(--card);border-radius:6px;min-width:44px;min-height:44px;cursor:pointer}
+.btn{border:1px solid var(--ctl);background:var(--card);border-radius:6px;padding:0 14px;min-height:44px;cursor:pointer}
+.btn.pri{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
+.btn.dng{border-color:var(--danger);color:var(--danger)}
+select.sel,input.inp{border:1px solid var(--ctl);border-radius:6px;min-height:44px;padding:0 10px;background:var(--card)}
+.sw{width:44px;height:26px;border-radius:13px;border:0;background:var(--ctl);position:relative;cursor:pointer;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--card)}
+.sw[aria-checked=true]{background:var(--primary)}
+.sw[aria-checked=true]::after{left:21px;background:var(--primary-fg)}
+.empty{border:1px dashed var(--ctl);border-radius:8px;padding:24px;text-align:center}
+.menu{position:absolute;z-index:5;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px;min-width:220px;box-shadow:0 8px 24px oklch(0 0 0 / .15)}
+.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:10px 12px;border-radius:6px;cursor:pointer;min-height:44px}
+.menu button.dng{color:var(--danger)}
+.scrim{position:absolute;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:16px;z-index:6}
+.ph .scrim{align-items:flex-end;padding:0}
+.dlg{background:var(--card);border-radius:12px;padding:20px;width:460px;max-width:100%;max-height:100%;overflow:auto}
+.ph .dlg{border-radius:12px 12px 0 0;width:100%}
+.sheet{position:absolute;top:0;right:0;bottom:0;width:440px;max-width:100%;background:var(--card);border-left:1px solid var(--border);padding:20px;overflow:auto;z-index:6}
+.dlg h4,.sheet h4{margin:0 0 6px;font-size:17px}
+.fld{display:flex;flex-direction:column;gap:4px;margin-top:12px}
+.acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap}
+.tick{display:flex;gap:10px;align-items:flex-start;padding:8px 0;min-height:44px}
+.tick input{width:20px;height:20px;margin-top:2px;flex:none}
+.qr{width:160px;height:160px;margin:12px auto;display:grid;grid-template-columns:repeat(21,1fr);border:8px solid var(--card);background:var(--card)}
+.qr i{background:var(--fg)}
+.qr b{background:var(--card)}
+.big{font-size:28px;font-weight:700;letter-spacing:.2em;font-variant-numeric:tabular-nums}
+.sk{height:60px;border-top:1px solid var(--border);background:linear-gradient(90deg,var(--muted),var(--card),var(--muted))}
+.toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);background:var(--fg);color:var(--bg);border-radius:8px;padding:10px 14px;display:none;gap:12px;align-items:center;max-width:calc(100% - 32px);z-index:7}
+.toast.on{display:flex}
+.toast button{border:0;background:none;color:inherit;text-decoration:underline;cursor:pointer;min-height:36px}
+</style>
+</head>
+<body>
+<div class="pc">
+  <h1>PROTOTYPE (throwaway) · Settings › Staff and roles, Alerts</h1>
+  <p>Plans: <code>2026-10-27-settings-staff-roles-plan.md</code>, <code>2026-10-27-settings-alerts-export-plan.md</code>. Nothing is stored; PINs and Telegram are faked.</p>
+  <div class="bar">
+    <div class="grp">Device <span class="seg" data-k="dev"><button type="button" data-v="dt" aria-pressed="true">Desktop</button><button type="button" data-v="ph" aria-pressed="false">Phone</button></span></div>
+    <div class="grp">Section <span class="seg" data-k="sec"><button type="button" data-v="staff" aria-pressed="true">Staff and roles</button><button type="button" data-v="alerts" aria-pressed="false">Alerts</button></span></div>
+    <div class="grp">Venue <span class="seg" data-k="st"><button type="button" data-v="set" aria-pressed="true">Set up</button><button type="button" data-v="empty" aria-pressed="false">Empty</button><button type="button" data-v="loading" aria-pressed="false">Loading</button><button type="button" data-v="failed" aria-pressed="false">Failed</button></span></div>
+    <div class="grp">Signed in <span class="seg" data-k="role"><button type="button" data-v="owner" aria-pressed="true">Owner</button><button type="button" data-v="head" aria-pressed="false">Head bartender (own role)</button></span></div>
+    <div class="grp">Language <span class="seg" data-k="lang"><button type="button" data-v="bg" aria-pressed="true">BG</button><button type="button" data-v="en" aria-pressed="false">EN</button></span></div>
+    <div class="grp">Theme <span class="seg" data-k="theme"><button type="button" data-v="light" aria-pressed="true">Light</button><button type="button" data-v="dark" aria-pressed="false">Dark</button></span></div>
+  </div>
+  <div class="stage"><div id="dev" class="dev dt"></div></div>
+  <div id="live" aria-live="polite" style="position:absolute;left:-9999px"></div>
+</div>
+<script>
+const PERMS=[['tonight',['tables.open_close','tables.resume','ordering.pause','ordering.lift','alerts.answer','sold_out']],['records',['log.view','night.view','night.view_full','money.follow_up']],['settings',['settings.guards','settings.codes','settings.payment_tables','settings.alerts','settings.roles']]];
+const PL={bg:{'tables.open_close':'Отваря и затваря маси за телефони','tables.resume':'Пуска отново спряна маса','ordering.pause':'Спира поръчките','ordering.lift':'Пуска поръчките отново','alerts.answer':'Отговаря на известия','sold_out':'Маркира изчерпани артикули','log.view':'Вижда дневника','night.view':'Вижда края на вечерта, без бакшиши','night.view_full':'Вижда целия край на вечерта, с бакшиши и CSV','money.follow_up':'Проследява плащанията: сторно и спорове','settings.guards':'Променя работното време и правилата за поръчки','settings.codes':'Прави нови кодове на масите','settings.payment_tables':'Маркира маси за плащане','settings.alerts':'Избира кой получава известия; свързва Telegram','settings.roles':'Управлява персонала, ролите, ПИН-овете и устройствата'},
+ en:{'tables.open_close':'Open and close tables for phones','tables.resume':'Resume a paused table','ordering.pause':'Pause ordering','ordering.lift':'Turn ordering back on','alerts.answer':'Answer alerts','sold_out':'Mark items sold out','log.view':'See the Log','night.view':'See the end of the night, without tips','night.view_full':'See the whole end of the night, tips and CSV','money.follow_up':'Follow up payments: stornos and disputes','settings.guards':'Change hours and ordering rules','settings.codes':'Make new table codes','settings.payment_tables':'Mark payment tables','settings.alerts':'Choose who gets alerts; link Telegram','settings.roles':'Manage staff, roles, PINs and devices'}};
+const T={
+ bg:{venue:'Клуб Демо',tabs:['Композитор','Маси и QR','Тази вечер','Настройки'],secs:['Общи','Работно време','Поръчки','Плащане','Персонал и роли','Известия','Публикуване','Версии'],
+  staffT:'Персонал и роли',people:'Хора',roles:'Роли',devices:'Общи устройства',add:'Добави човек',name:'Име',role:'Роля',addGo:'Добави',pinNew:(n,p)=>`ПИН-ът на ${n} е ${p}. Използва го на таблета на бара.`,done:'Готово',
+  empty:'Добавете хората, които работят в Клуб Демо. Всеки получава ПИН за таблета на бара; не е нужен имейл.',show:'Покажи ПИН',hide:'Скрий ПИН',rename:'Преименувай',newpin:'Нов ПИН',link:'Свържи с акаунт',ownPhone:'Собствен телефон',tgTag:'Telegram',
+  removeHere:'Махни от Клуб Демо',removeAll:'Премахни завинаги',removeAllB:(n)=>`${n} се премахва от всички заведения и ПИН-ът му спира да работи. Миналите му действия остават в дневника.`,removeGo:(n)=>`Премахни ${n}`,keep:'Остави',
+  cant:(r)=>`Само ${r} може да променя този човек.`,ppl:(n)=>`${n} души`,def:'По подразбиране',copy:'Копирай',copyName:(r)=>`Копие на ${r}`,archive:'Архивирай ролята',cantGive:'Не можете да дадете право, което нямате.',ownSign:'Изисква собствен вход; ПИН никога не отваря настройките.',
+  g:{tonight:'Тази вечер',records:'Записи',settings:'Настройки'},devMake:'Направи този браузър общо устройство',devLine:'След това този браузър иска ПИН за всяко действие и не отваря настройките.',devName:'Име на устройството',devGo:'Направи общо',since:(d)=>`От ${d}`,stop:'Спри споделянето',stopB:(d)=>`„${d}“ отново ще е обикновен вход. За да стане общо пак, собственикът влиза на него.`,
+  inUse:'Първо преместете хората ѝ в друга роля.',fail:'Персоналът не се зареди. Проверете връзката; ще опита отново сам.',saved:'Запазено',undo:'Отмени',close:'Затвори',cancel:'Отказ',save:'Запази',
+  alT:'Известия',phones:'На телефоните',phonesL:'Известията звънят на телефоните и таблетите, където е инсталиран Restro.',devs:(n)=>`${n} устройства`,noDev:'Още няма устройство: отворете Restro на телефона и го инсталирайте.',
+  tg:'Група в Telegram',tgL:'Групата получава паузите, поръчките за проверка, известията за плащания и края на вечерта.',tgLink:'Свържи група в Telegram',tgWait:'Чака бота… Изберете групата в Telegram и добавете бота.',tgLinked:(g)=>`Свързано с ${g}`,tgTest:'Изпрати пробно съобщение',tgSent:'Пробното съобщение е изпратено.',tgUnlink:'Махни групата',
+  doneT:'Кой може да натисне „Готово“ в групата',doneL:'Трябва им роля тук, която може да отговаря на известието.',linked:'Свързан',linkTg:'Свържи',linkB:(n)=>`Нека ${n} сканира кода с телефона си и натисне Start в Telegram. Връзката важи 15 минути.`,noStaff:'Първо добавете хора в „Персонал и роли“.'},
+ en:{venue:'Club Demo',tabs:['Composer','Tables & QR','Tonight','Settings'],secs:['General','Hours','Ordering','Paying','Staff and roles','Alerts','Publish','Versioning'],
+  staffT:'Staff and roles',people:'People',roles:'Roles',devices:'Shared devices',add:'Add person',name:'Name',role:'Role',addGo:'Add',pinNew:(n,p)=>`${n}'s PIN is ${p}. They use it on the bar tablet.`,done:'Done',
+  empty:'Add the people who work at Club Demo. Each gets a PIN for the bar tablet; no email needed.',show:'Show PIN',hide:'Hide PIN',rename:'Rename',newpin:'New PIN',link:'Link to an account',ownPhone:'Own phone',tgTag:'Telegram',
+  removeHere:'Remove from Club Demo',removeAll:'Remove for good',removeAllB:(n)=>`${n} is removed from every venue and their PIN stops working. Their past actions stay in the Log.`,removeGo:(n)=>`Remove ${n}`,keep:'Keep',
+  cant:(r)=>`Only ${r} can change this person.`,ppl:(n)=>`${n} people`,def:'Default',copy:'Copy',copyName:(r)=>`Copy of ${r}`,archive:'Archive role',cantGive:"You can't give what you don't hold.",ownSign:"Needs the person's own sign-in; a PIN never opens settings.",
+  g:{tonight:'Tonight',records:'Records',settings:'Settings'},devMake:'Make this browser a shared device',devLine:"From then on this browser asks for a PIN for every action and can't open settings.",devName:'Device name',devGo:'Make shared',since:(d)=>`Since ${d}`,stop:'Stop sharing',stopB:(d)=>`"${d}" becomes an ordinary sign-in again. To share it again, its owner signs in on it.`,
+  inUse:'Move its people to another role first.',fail:"Couldn't load the staff. Check the connection; it tries again by itself.",saved:'Saved',undo:'Undo',close:'Close',cancel:'Cancel',save:'Save',
+  alT:'Alerts',phones:'On their phones',phonesL:'Alerts ring on the phones and tablets where Restro is installed.',devs:(n)=>`${n} devices`,noDev:'No device yet: open Restro on the phone and install it.',
+  tg:'Telegram group',tgL:'A Telegram group gets pauses, sent orders to check, money alerts and the end of the night.',tgLink:'Link a Telegram group',tgWait:'Waiting for the bot to join… Pick the group in Telegram and add the bot.',tgLinked:(g)=>`Linked to ${g}`,tgTest:'Send a test message',tgSent:'Test message sent.',tgUnlink:'Unlink the group',
+  doneT:'Done from Telegram',doneL:'They need a role here that may answer the alert.',linked:'Linked',linkTg:'Link',linkB:(n)=>`Ask ${n} to scan this with their phone and press Start in Telegram. The link lasts 15 minutes.`,noStaff:'Add people first, in Staff and roles.'}
+};
+const RN={bg:{staff:'Персонал',manager:'Мениджър',owner:'Собственик'},en:{staff:'Staff',manager:'Manager',owner:'Owner'}};
+const ALL=PERMS.flatMap((g)=>g[1]);
+const BASE_STAFF=['tables.open_close','tables.resume','ordering.pause','alerts.answer','night.view'];
+const fresh=()=>({people:[],roles:[{id:'staff',def:true,p:BASE_STAFF},{id:'manager',def:true,p:[...BASE_STAFF,'ordering.lift','sold_out','log.view','night.view_full','money.follow_up']},{id:'owner',def:true,p:ALL},{id:'rl_1',name:{bg:'Главен барман',en:'Head bartender'},p:[...BASE_STAFF,'sold_out','ordering.lift','settings.roles']}],devices:[],tg:null,tgWait:false});
+const setUp=()=>{const d=fresh();d.people=[{id:'p1',n:'Георги',role:'owner',acct:true,dev:2,tg:true,on:true},{id:'p2',n:'Мария',role:'manager',acct:true,dev:1,tg:true,on:true},{id:'p3',n:'Иван',role:'staff',acct:false,dev:0,tg:false,on:false},{id:'p4',n:'Петя',role:'staff',acct:false,dev:0,tg:false,on:false},{id:'p5',n:'Стефан',role:'rl_1',acct:true,dev:0,tg:false,on:false}];d.devices=[{id:'dv1',n:'Таблет на бара',since:'21.10'}];d.tg='Клуб Демо · персонал';return d};
+const S={dev:'dt',sec:'staff',st:'set',role:'owner',lang:'bg',theme:'light',ui:null,shown:{}};
+let D=setUp();let toastTimer=0;
+const L=()=>T[S.lang];
+const roleName=(id)=>{const r=D.roles.find((x)=>x.id===id);return r.def?RN[S.lang][id]:r.name[S.lang]};
+const myPerms=()=>D.roles.find((r)=>r.id===(S.role==='owner'?'owner':'rl_1')).p;
+const canManage=(p)=>D.roles.find((r)=>r.id===p.role).p.every((x)=>myPerms().includes(x));
+const pin=()=>String(1000+Math.floor(Math.random()*9000));
+function qr(){let h='';let s=7;for(let i=0;i<441;i++){s=(s*9301+49297)%233280;const x=i%21;const y=Math.floor(i/21);const f=(x<7&&y<7)||(x>13&&y<7)||(x<7&&y>13);const edge=f&&(x%6===0||y%6===0||x===20||y===20||(x>1&&x<5&&y>1&&y<5)||(x>15&&x<19&&y>1&&y<5)||(x>1&&x<5&&y>15&&y<19));h+=(f?edge:s/233280>.5)?'<i></i>':'<b></b>'}return `<div class="qr" aria-hidden="true">${h}</div>`}
+function staffHtml(){const l=L();let h=`<h2>${l.staffT}</h2>`;
+ h+=`<h3>${l.people}${D.people.length?`<button type="button" class="btn" data-add>${l.add}</button>`:''}</h3>`;
+ if(!D.people.length)h+=`<div class="empty"><p>${l.empty}</p><button type="button" class="btn pri" data-add>${l.add}</button></div>`;
+ else{h+='<div class="list">';D.people.forEach((p)=>{const m=canManage(p);const shown=S.shown[p.id];
+  h+=`<div class="r"><span class="n">${p.n}${p.acct?` <span class="tag">${l.ownPhone}</span>`:''}${p.tg?` <span class="tag">${l.tgTag}</span>`:''}${m?'':`<small>${l.cant(RN[S.lang].owner)}</small>`}</span>`;
+  if(m){h+=`<select class="sel" data-role="${p.id}" aria-label="${l.role}">${D.roles.filter((r)=>r.p.every((x)=>myPerms().includes(x))).map((r)=>`<option value="${r.id}" ${r.id===p.role?'selected':''}>${roleName(r.id)}</option>`).join('')}</select><span class="pin">${shown||'••••'}</span><button type="button" class="icon" data-eye="${p.id}" aria-label="${shown?l.hide:l.show}">${shown?'◉':'◎'}</button><button type="button" class="icon" data-more="${p.id}" aria-label="…">…</button>`}
+  else h+=`<span class="tag">${roleName(p.role)}</span>`;
+  h+='</div>'});h+='</div>'}
+ h+=`<h3>${l.roles}</h3><div class="list">`;
+ D.roles.forEach((r)=>{const n=D.people.filter((p)=>p.role===r.id).length;h+=`<div class="r"><button type="button" class="n" style="border:0;background:none;text-align:left;cursor:pointer;min-height:44px" data-open-role="${r.id}">${roleName(r.id)} ${r.def?`<span class="tag">${l.def}</span>`:''}<small>${l.ppl(n)}</small></button><button type="button" class="btn" data-copy="${r.id}">${l.copy}</button></div>`});
+ h+=`</div><h3>${l.devices}</h3><div class="list">`;
+ D.devices.forEach((d)=>{h+=`<div class="r"><span class="n">${d.n}<small>${l.since(d.since)}</small></span><button type="button" class="btn" data-stop="${d.id}">${l.stop}</button></div>`});
+ h+=`<div class="r"><span class="n"><small>${l.devLine}</small></span><button type="button" class="btn" data-make>${l.devMake}</button></div></div>`;
+ return h}
+function alertsHtml(){const l=L();let h=`<h2>${l.alT}</h2>`;
+ if(!D.people.length)return `${h}<div class="empty"><p>${l.noStaff}</p></div>`;
+ h+=`<h3>${l.phones}</h3><p class="lede">${l.phonesL}</p><div class="list">`;
+ D.people.filter((p)=>p.acct).forEach((p)=>{h+=`<div class="r"><span class="n">${p.n}<small>${p.dev?l.devs(p.dev):l.noDev}</small></span><button type="button" class="sw" role="switch" aria-checked="${p.on}" aria-label="${p.n}" data-on="${p.id}"></button></div>`});
+ h+=`</div><h3>${l.tg}</h3><div class="list"><div class="r">`;
+ if(D.tg)h+=`<span class="n">${l.tgLinked(D.tg)}</span><button type="button" class="btn" data-test>${l.tgTest}</button><button type="button" class="icon" data-tgmore aria-label="…">…</button>`;
+ else if(D.tgWait)h+=`<span class="n">${l.tgWait}</span><button type="button" class="btn" data-tgcancel>${l.cancel}</button>`;
+ else h+=`<span class="n"><small>${l.tgL}</small></span><button type="button" class="btn pri" data-tglink>${l.tgLink}</button>`;
+ h+='</div></div>';
+ if(D.tg){h+=`<h3>${l.doneT}</h3><p class="lede">${l.doneL}</p><div class="list">`;D.people.forEach((p)=>{h+=`<div class="r"><span class="n">${p.n}<small>${roleName(p.role)}</small></span>${p.tg?`<span class="tag">${l.linked}</span>`:`<button type="button" class="btn" data-tgperson="${p.id}">${l.linkTg}</button>`}</div>`});h+='</div>'}
+ return h}
+function overlay(){const l=L();const u=S.ui;if(!u)return '';
+ const dlg=(inner)=>`<div class="scrim"><div class="dlg" role="dialog" aria-modal="true">${inner}</div></div>`;
+ if(u.k==='add')return dlg(`<h4>${l.add}</h4><div class="fld"><label for="an">${l.name}</label><input id="an" class="inp" autocomplete="off"></div><div class="fld"><label for="ar">${l.role}</label><select id="ar" class="sel">${D.roles.filter((r)=>r.p.every((x)=>myPerms().includes(x))).map((r)=>`<option value="${r.id}">${roleName(r.id)}</option>`).join('')}</select></div><div class="acts"><button type="button" class="btn" data-x>${l.cancel}</button><button type="button" class="btn pri" data-addgo>${l.addGo}</button></div>`);
+ if(u.k==='pin')return dlg(`<p>${l.pinNew(u.n,u.pin)}</p><p class="big">${u.pin}</p><div class="acts"><button type="button" class="btn pri" data-x>${l.done}</button></div>`);
+ if(u.k==='all')return dlg(`<h4>${l.removeAll}</h4><p>${l.removeAllB(u.n)}</p><div class="acts"><button type="button" class="btn" data-x>${l.keep}</button><button type="button" class="btn dng" data-allgo>${l.removeGo(u.n)}</button></div>`);
+ if(u.k==='stop')return dlg(`<h4>${l.stop}</h4><p>${l.stopB(u.n)}</p><div class="acts"><button type="button" class="btn" data-x>${l.cancel}</button><button type="button" class="btn dng" data-stopgo>${l.stop}</button></div>`);
+ if(u.k==='make')return dlg(`<h4>${l.devMake}</h4><p class="lede">${l.devLine}</p><div class="fld"><label for="dn">${l.devName}</label><input id="dn" class="inp" value="${S.lang==='bg'?'Таблет на бара 2':'Bar tablet 2'}"></div><div class="acts"><button type="button" class="btn" data-x>${l.cancel}</button><button type="button" class="btn pri" data-makego>${l.devGo}</button></div>`);
+ if(u.k==='tgp'){const p=D.people.find((x)=>x.id===u.id);return dlg(`<h4>${l.linkTg}: ${p.n}</h4><p>${l.linkB(p.n)}</p>${qr()}<div class="acts"><button type="button" class="btn pri" data-tgpdone>${l.close}</button></div>`)}
+ if(u.k==='role'){const r=D.roles.find((x)=>x.id===u.id);const ro=r.def;let h=`<aside class="sheet" role="dialog" aria-label="${roleName(r.id)}"><div style="display:flex;justify-content:space-between;align-items:center"><h4>${roleName(r.id)}${ro?` <span class="tag">${l.def}</span>`:''}</h4><button type="button" class="icon" data-x aria-label="${l.close}">✕</button></div>`;
+  PERMS.forEach((g)=>{h+=`<h3>${l.g[g[0]]}</h3>`;if(g[0]==='settings')h+=`<p class="lede">${l.ownSign}</p>`;g[1].forEach((k)=>{const mine=myPerms().includes(k);const dis=ro||!mine;h+=`<label class="tick"><input type="checkbox" data-perm="${k}" ${r.p.includes(k)?'checked':''} ${dis?'disabled':''}><span>${PL[S.lang][k]}${!ro&&!mine?`<small>${l.cantGive}</small>`:''}</span></label>`})});
+  if(!ro)h+=`<div class="acts" style="justify-content:flex-start"><button type="button" class="btn" data-archive>${l.archive}</button></div>`;
+  return `${h}</aside>`}
+ if(u.k==='menu'){const p=D.people.find((x)=>x.id===u.id);return `<div class="menu" style="right:24px;top:${u.y}px" role="menu"><button type="button" role="menuitem" data-mi="rename">${l.rename}</button><button type="button" role="menuitem" data-mi="newpin">${l.newpin}</button>${p.acct?'':`<button type="button" role="menuitem" data-mi="link">${l.link}</button>`}<button type="button" role="menuitem" data-mi="here">${l.removeHere}</button><button type="button" role="menuitem" class="dng" data-mi="all">${l.removeAll}</button></div>`}
+ if(u.k==='tgmenu')return `<div class="menu" style="right:24px;top:${u.y}px" role="menu"><button type="button" role="menuitem" class="dng" data-tgunlink>${l.tgUnlink}</button></div>`;
+ return ''}
+function render(){const l=L();document.documentElement.lang=S.lang;document.documentElement.dataset.theme=S.theme;
+ const d=document.getElementById('dev');d.className=`dev ${S.dev}`;
+ let body;
+ if(S.st==='loading')body=`<div class="list" aria-busy="true">${'<div class="sk"></div>'.repeat(6)}</div>`;
+ else if(S.st==='failed')body=`<p role="alert">${l.fail}</p>`;
+ else body=S.sec==='staff'?staffHtml():alertsHtml();
+ const ix=S.sec==='staff'?4:5;
+ const nav=S.dev==='dt'?`<div class="tabs">${l.tabs.map((t,i)=>`<span class="${i===3?'on':''}">${t}</span>`).join('')}</div><div class="body"><nav class="side">${l.secs.map((s,i)=>`<button type="button" class="${i===ix?'on':''}" data-sec="${i}">${s}</button>`).join('')}</nav><main class="main"><div class="col">${body}</div></main></div>`:`<div class="phsel"><button type="button" class="fakesel" data-phsec>${l.secs[ix]} <span>▾</span></button></div><div class="body"><main class="main">${body}</main></div>`;
+ d.innerHTML=`<div class="top">${l.venue}</div>${nav}${overlay()}<div class="toast" id="toast"><span id="tt"></span><button type="button" id="tu">${l.undo}</button></div>`;
+ wire()}
+function toast(text,undo){const t=document.getElementById('toast');document.getElementById('tt').textContent=text;document.getElementById('live').textContent=text;const u=document.getElementById('tu');u.hidden=!undo;u.onclick=()=>{undo();t.classList.remove('on')};t.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.classList.remove('on')},8000)}
+function change(fn,text){const before=JSON.parse(JSON.stringify(D));fn();S.ui=S.ui?.k==='role'?S.ui:null;render();toast(text||L().saved,()=>{D=before;render()})}
+const on=(sel,fn)=>{document.querySelectorAll(sel).forEach((el)=>{el.onclick=()=>fn(el)})};
+function wire(){const l=L();
+ on('[data-sec]',(b)=>{const i=+b.dataset.sec;if(i===4||i===5){S.sec=i===4?'staff':'alerts';S.ui=null;sync();render()}});
+ on('[data-phsec]',()=>{S.sec=S.sec==='staff'?'alerts':'staff';S.ui=null;sync();render()});
+ on('[data-add]',()=>{S.ui={k:'add'};render();document.getElementById('an').focus()});
+ on('[data-addgo]',()=>{const n=document.getElementById('an').value.trim();if(!n)return;const r=document.getElementById('ar').value;const p=pin();D.people.push({id:`p${Date.now()}`,n,role:r,acct:false,dev:0,tg:false,on:false});S.ui={k:'pin',n,pin:p};render()});
+ on('[data-x]',()=>{S.ui=null;render()});
+ on('[data-eye]',(b)=>{const id=b.dataset.eye;if(S.shown[id]){delete S.shown[id]}else{S.shown[id]=pin();setTimeout(()=>{delete S.shown[id];render()},30000)}render()});
+ on('[data-more]',(b)=>{S.ui={k:'menu',id:b.dataset.more,y:b.getBoundingClientRect().bottom-document.getElementById('dev').getBoundingClientRect().top+4};render()});
+ on('[data-mi]',(b)=>{const p=D.people.find((x)=>x.id===S.ui.id);const k=b.dataset.mi;
+  if(k==='newpin'){S.ui={k:'pin',n:p.n,pin:pin()};render()}
+  else if(k==='here'){S.ui=null;change(()=>{D.people=D.people.filter((x)=>x!==p)},`${p.n}: ${l.removeHere}`)}
+  else if(k==='all'){S.ui={k:'all',id:p.id,n:p.n};render()}
+  else{S.ui=null;render();toast(k==='rename'?l.rename:l.link)}});
+ on('[data-allgo]',()=>{const id=S.ui.id;S.ui=null;D.people=D.people.filter((x)=>x.id!==id);render()});
+ document.querySelectorAll('[data-role]').forEach((s)=>{s.onchange=()=>{const p=D.people.find((x)=>x.id===s.dataset.role);change(()=>{p.role=s.value})}});
+ on('[data-open-role]',(b)=>{S.ui={k:'role',id:b.dataset.openRole};render()});
+ on('[data-copy]',(b)=>{const r=D.roles.find((x)=>x.id===b.dataset.copy);const id=`rl_${Date.now()}`;const nm=l.copyName(roleName(r.id));change(()=>{D.roles.push({id,name:{bg:nm,en:nm},p:r.p.filter((x)=>myPerms().includes(x))})});S.ui={k:'role',id};render()});
+ document.querySelectorAll('[data-perm]').forEach((c)=>{c.onchange=()=>{const r=D.roles.find((x)=>x.id===S.ui.id);const k=c.dataset.perm;change(()=>{r.p=c.checked?[...r.p,k]:r.p.filter((x)=>x!==k)})}});
+ on('[data-archive]',()=>{const r=D.roles.find((x)=>x.id===S.ui.id);if(D.people.some((p)=>p.role===r.id)){toast(l.inUse);return}S.ui=null;change(()=>{D.roles=D.roles.filter((x)=>x!==r)})});
+ on('[data-stop]',(b)=>{const d=D.devices.find((x)=>x.id===b.dataset.stop);S.ui={k:'stop',id:d.id,n:d.n};render()});
+ on('[data-stopgo]',()=>{const id=S.ui.id;S.ui=null;D.devices=D.devices.filter((x)=>x.id!==id);render()});
+ on('[data-make]',()=>{S.ui={k:'make'};render()});
+ on('[data-makego]',()=>{const n=document.getElementById('dn').value.trim()||'Bar tablet';S.ui=null;D.devices.push({id:`dv${Date.now()}`,n,since:'27.10'});render()});
+ on('[data-on]',(b)=>{const p=D.people.find((x)=>x.id===b.dataset.on);change(()=>{p.on=!p.on})});
+ on('[data-tglink]',()=>{D.tgWait=true;render();setTimeout(()=>{if(D.tgWait){D.tgWait=false;D.tg=S.lang==='bg'?'Клуб Демо · персонал':'Club Demo · staff';render()}},2500)});
+ on('[data-tgcancel]',()=>{D.tgWait=false;render()});
+ on('[data-test]',()=>{toast(l.tgSent)});
+ on('[data-tgmore]',(b)=>{S.ui={k:'tgmenu',y:b.getBoundingClientRect().bottom-document.getElementById('dev').getBoundingClientRect().top+4};render()});
+ on('[data-tgunlink]',()=>{S.ui=null;change(()=>{D.tg=null})});
+ on('[data-tgperson]',(b)=>{S.ui={k:'tgp',id:b.dataset.tgperson};render()});
+ on('[data-tgpdone]',()=>{const p=D.people.find((x)=>x.id===S.ui.id);S.ui=null;p.tg=true;render()});
+}
+function sync(){document.querySelectorAll('.bar .seg').forEach((g)=>{g.querySelectorAll('button').forEach((x)=>{x.setAttribute('aria-pressed',x.dataset.v===S[g.dataset.k])})})}
+document.querySelectorAll('.bar .seg').forEach((g)=>{g.querySelectorAll('button').forEach((b)=>{b.onclick=()=>{S[g.dataset.k]=b.dataset.v;if(g.dataset.k==='st'){D=b.dataset.v==='empty'?fresh():setUp()}S.ui=null;sync();render()}})});
+render();
+</script>
+</body>
+</html>
