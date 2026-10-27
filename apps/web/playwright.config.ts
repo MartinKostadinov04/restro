@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, devices } from '@playwright/test'
 
 import { e2eSealEnvironment } from '../worker/src/e2e-seal-keys'
+import { TONIGHT_PIN_PEPPER } from './e2e/support'
 
 // The repo keeps one `.env.local` at its root (README): use it for the database address when
 // there is one. Values already in the environment win; CI sets DATABASE_URL itself.
@@ -57,6 +58,8 @@ const serverEnvironment = (origin: string) => ({
   // The location pass's key (#76), for the test servers only; a real one comes from the environment.
   GUEST_PASS_KEY:
     process.env.GUEST_PASS_KEY ?? 'e2e-only-guest-pass-key-not-used-anywhere-else-0123456789',
+  // The PIN pepper (#72) for the Tonight screen's PIN sheet (#85), for the test servers only.
+  STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
   // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
   // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test

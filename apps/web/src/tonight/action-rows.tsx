@@ -1,0 +1,314 @@
+'use client'
+
+// "Needs you" (plan §3, §4, §12 A): a list row per thing that needs a person, ordered by what costs
+// most to leave, each with its icon, title, meta line and its answer under it. Only the top row's
+// answer is filled; every other button is outline. A role that may not act is sent to the higher
+// PIN on a shared device, and on a personal session sees no button at all, never a disabled one.
+// Part 2's money rows slot in by `ROW_RANK` (#115) and share this row.
+import {
+  BellRingIcon,
+  CirclePauseIcon,
+  HourglassIcon,
+  PackageXIcon,
+  SearchCheckIcon,
+} from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { type ReactNode, useState } from 'react'
+
+import { Button } from '@/components/ui/button'
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { useIsMobile } from '@/hooks/use-mobile'
+import {
+  answerSentOrderAction,
+  handleWaiterCallAction,
+  resumeTableAction,
+} from '@/server/tonight/actions'
+import type { ActionRow, RowKind, TonightView } from '@/server/tonight/view'
+
+import { useMoney } from './money'
+import { useTonightRun } from './run'
+import { useTableName } from './table-name'
+
+const ICONS = {
+  check: SearchCheckIcon,
+  approval: HourglassIcon,
+  paused: CirclePauseIcon,
+  call: BellRingIcon,
+} as const satisfies Record<RowKind, unknown>
+
+/** The most items a row or notice lists before "+k more" (plan §12 A). */
+const MAX_LISTED = 8
+
+/** "N min ago", or "just now" under a minute. */
+export function useAgo(now: string) {
+  const t = useTranslations('tonight')
+  return (at: string) => {
+    const minutes = Math.floor((new Date(now).getTime() - new Date(at).getTime()) / 60_000)
+    return minutes < 1 ? t('now0') : t('ago', { m: minutes })
+  }
+}
+
+/** One row of "Needs you". `primary` is true only for the first. */
+export function ActionRowItem({
+  row,
+  view,
+  primary,
+  ago,
+}: {
+  row: ActionRow
+  view: TonightView
+  primary: boolean
+  ago: string
+}) {
+  const t = useTranslations('tonight')
+  const money = useMoney()
+  const { run, busy } = useTonightRun()
+  const tableName = useTableName()
+  const name = tableName(row.table, row.numbered)
+  const Icon = ICONS[row.kind]
+  const variant = primary ? 'default' : 'outline'
+  const button = 'h-12 min-w-32 whitespace-normal'
+
+  let title: string
+  let body: ReactNode = null
+  let answer: ReactNode = null
+
+  if (row.kind === 'call') {
+    title = t('c_t', { table: name })
+    // "Handled": no PIN even on a shared device; the Log names the device's account (Martin 10-26).
+    if (view.can.answer) {
+      answer = (
+        <Button
+          type="button"
+          variant={variant}
+          className={button}
+          disabled={busy}
+          onClick={() =>
+            run({
+              id: `call:${row.id}`,
+              act: () =>
+                handleWaiterCallAction({ venueId: view.venueId, waiterCallId: row.waiterCallId }),
+              done: t('c_toast', { table: name }),
+            })
+          }
+        >
+          {t('c_ok')}
+        </Button>
+      )
+    }
+  } else if (row.kind === 'paused') {
+    title = t('g_t', { table: name })
+    body = <p className="text-sm text-muted-foreground">{t('g_d')}</p>
+    // Resuming names a person: their own PIN on a shared device.
+    if (view.can.resume || view.device) {
+      answer = (
+        <Button
+          type="button"
+          variant={variant}
+          className={button}
+          disabled={busy}
+          onClick={() =>
+            run({
+              id: `resume:${row.tableId}`,
+              ...(view.device
+                ? {
+                    pin: {
+                      level: 'own' as const,
+                      title: t('g_ok'),
+                      body: t('g_b', { table: name }),
+                    },
+                  }
+                : {}),
+              act: (pin) => resumeTableAction({ venueId: view.venueId, tableId: row.tableId, pin }),
+              done: t('g_toast', { table: name }),
+            })
+          }
+        >
+          {t('g_ok')}
+        </Button>
+      )
+    }
+  } else if (row.kind === 'approval') {
+    // Approval lives in the POS (D116): the row is read-only, no Approve or Decline (plan §10 Q4).
+    title = t('a_t')
+    body = <p className="text-sm text-muted-foreground">{t('a_d', { source: view.source })}</p>
+  } else {
+    const check = row.check
+    title = t('s_t')
+    body = (
+      <div className="space-y-1 text-sm">
+        {check === undefined ? null : (
+          <>
+            <p className="text-muted-foreground">
+              {check.sentAt === null
+                ? t('s_ref', { ref: check.reference })
+                : t('s_meta', { ref: check.reference, time: check.sentAt })}
+            </p>
+            <ul className="list-disc space-y-0.5 pl-5 text-foreground">
+              {check.items.map((item, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: the items of a fixed list
+                <li key={index} className="[overflow-wrap:anywhere]">
+                  {item.qty} × {item.name}
+                  {item.options.length === 0 ? '' : ` (${item.options.join(', ')})`}
+                </li>
+              ))}
+            </ul>
+            {check.billBeforeMinor === null ? null : (
+              <p className="text-muted-foreground">
+                {t('s_before', { amt: money(check.billBeforeMinor, view.currency) })}
+              </p>
+            )}
+          </>
+        )}
+        {check?.landedAt == null ? null : (
+          <p className="text-muted-foreground" data-testid="landed-late">
+            {t('so_found', { time: check.landedAt })}
+          </p>
+        )}
+        <p className="font-medium">{t('s_q')}</p>
+      </div>
+    )
+    // Two answers at equal weight, both outline: neither is a default (plan §4, Q9). A shared
+    // device asks the person's own PIN, which is also the confirmation of what it will record.
+    if (view.can.answer || view.device) {
+      const choose = (value: 'found' | 'not_found') => {
+        if (check === undefined) return
+        run({
+          id: `answer:${check.sentOrderId}`,
+          ...(view.device
+            ? {
+                pin: {
+                  level: 'own' as const,
+                  title: t(value === 'found' ? 's_ok' : 's_no'),
+                  body: t(value === 'found' ? 's_ok_b' : 's_no_b', { table: name }),
+                },
+              }
+            : {}),
+          act: (pin) =>
+            answerSentOrderAction({
+              venueId: view.venueId,
+              sentOrderId: check.sentOrderId,
+              answer: value,
+              pin,
+            }),
+          done: t(value === 'found' ? 's_ok_toast' : 's_no_toast'),
+        })
+      }
+      answer = (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            className={button}
+            disabled={busy || check === undefined}
+            onClick={() => choose('found')}
+          >
+            {t('s_ok')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className={button}
+            disabled={busy || check === undefined}
+            onClick={() => choose('not_found')}
+          >
+            {t('s_no')}
+          </Button>
+        </>
+      )
+    }
+  }
+
+  return (
+    <li
+      className="rounded-lg border bg-card p-4 text-card-foreground"
+      data-testid="action-row"
+      data-kind={row.kind}
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
+          <Icon aria-hidden className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <h3 className="text-base font-semibold [overflow-wrap:anywhere]">{title}</h3>
+            <span className="text-sm text-muted-foreground">{ago}</span>
+          </div>
+          {body}
+          {answer === null ? null : <div className="flex flex-wrap gap-2 pt-1">{answer}</div>}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+/** The out-of-stock notice (plan §12 A): one row, no answer, not counted, no sound. */
+export function OutOfStockNotice({ names, source }: { names: readonly string[]; source: string }) {
+  const t = useTranslations('tonight')
+  const [all, setAll] = useState(false)
+  const isMobile = useIsMobile()
+  const shown = names.slice(0, MAX_LISTED)
+  const more = names.length - shown.length
+  const list = shown.join(', ')
+  return (
+    <li className="rounded-lg border bg-card p-4 text-card-foreground" data-testid="stock-notice">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <PackageXIcon aria-hidden className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-1">
+          <h3 className="text-base font-semibold [overflow-wrap:anywhere]">
+            {t('oos_t', { source })}
+          </h3>
+          <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
+            {t('oos_d', { items: list })}
+          </p>
+          {more > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="h-11 px-0"
+              data-testid="stock-more"
+              onClick={() => setAll(true)}
+            >
+              {t('oos_more', { k: more })}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      {/* Everything about the notice: a side sheet, a bottom drawer on a phone (Patterns). */}
+      {isMobile ? (
+        <Drawer open={all} onOpenChange={setAll}>
+          <DrawerContent data-testid="stock-sheet">
+            <DrawerHeader>
+              <DrawerTitle>{t('oos_t', { source })}</DrawerTitle>
+              <DrawerDescription>{t('oos_d', { items: names.join(', ') })}</DrawerDescription>
+            </DrawerHeader>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Sheet open={all} onOpenChange={setAll}>
+          <SheetContent data-testid="stock-sheet">
+            <SheetHeader>
+              <SheetTitle>{t('oos_t', { source })}</SheetTitle>
+              <SheetDescription>{t('oos_d', { items: names.join(', ') })}</SheetDescription>
+            </SheetHeader>
+          </SheetContent>
+        </Sheet>
+      )}
+    </li>
+  )
+}

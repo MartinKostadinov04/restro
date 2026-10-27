@@ -7,7 +7,9 @@
 //   default role holds what the code says it holds (`DEFAULT_ROLE_PERMISSIONS`), never its stored
 //   copy, so a permission shipped later reaches every venue's defaults at once.
 // - On a shared device every staff write needs the person's own PIN, and that person's role
-//   decides, never the signed-in account's. A PIN never unlocks a settings permission.
+//   decides, never the signed-in account's. A PIN never unlocks a settings permission. The one
+//   exception is a quick answer (`quickOnSharedDevice`) and the Tonight read: the device's own
+//   account holds what the Staff default role holds.
 // - Restro's admin team holds its own few permissions at any venue while its grant is active.
 // The roles, staff and PINs themselves are written by `staff.ts` (#72); this is only the check.
 
@@ -38,7 +40,12 @@ type ReadOnly = Pick<WriteTx, 'select'>
 
 /** What the actor holds at the venue, or why the actor can't act there at all. */
 export type Grants =
-  | { readonly ok: true; readonly permissions: ReadonlySet<Permission> }
+  | {
+      readonly ok: true
+      readonly permissions: ReadonlySet<Permission>
+      /** True when a shared device's own account holds them, without a person's PIN. */
+      readonly device?: true
+    }
   | { readonly ok: false; readonly code: 'pin_required' | 'actor_unknown' }
 
 const NONE: Grants = { ok: true, permissions: new Set() }
@@ -109,6 +116,7 @@ export async function resolveGrants(
   tenantId: string,
   venueId: string,
   actor: ServiceActor,
+  options: { readonly quick?: boolean } = {},
 ): Promise<Grants> {
   switch (actor.kind) {
     case 'guest':
@@ -137,14 +145,19 @@ export async function resolveGrants(
       return { ok: true, permissions: new Set(held.filter((p) => !isSettingsPermission(p))) }
     }
     case 'user': {
-      if ((await sharedDeviceOf(tx, venueId, actor.sessionId)) !== null) {
-        return { ok: false, code: 'pin_required' }
-      }
+      const onDevice = (await sharedDeviceOf(tx, venueId, actor.sessionId)) !== null
+      if (onDevice && options.quick !== true) return { ok: false, code: 'pin_required' }
       const [membership] = await tx
         .select({ role: authMember.role })
         .from(authMember)
         .where(and(eq(authMember.organizationId, tenantId), eq(authMember.userId, actor.userId)))
       if (membership === undefined) return { ok: false, code: 'actor_unknown' }
+      // A quick answer on the shared device: the device's account holds what Staff hold, whoever
+      // owns the account, so a tablet signed in as an owner can't do more than a PIN could.
+      if (onDevice) {
+        const held = DEFAULT_ROLE_PERMISSIONS.staff.filter((p) => !isSettingsPermission(p))
+        return { ok: true, permissions: new Set(held), device: true }
+      }
       if (holdsEverything(membership.role)) return { ok: true, permissions: new Set(PERMISSIONS) }
       const [member] = await tx
         .select({ id: staffMembers.id })

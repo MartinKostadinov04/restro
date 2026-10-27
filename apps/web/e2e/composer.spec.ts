@@ -170,6 +170,7 @@ test('the Design subtab holds the Design tab and the guest features; an old Desi
   await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
     'Композитор',
     'Маси и QR',
+    'Тази вечер',
     'Настройки',
   ])
   await page.getByRole('tab', { name: 'Дизайн' }).click()

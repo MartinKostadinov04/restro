@@ -257,12 +257,12 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
     expect(await openSittingOf(tableId)).toBeNull()
   })
 
-  it('needs a PIN on a shared device, and opens with the PIN holder’s role', async () => {
+  it('needs a PIN on a shared device for what names a person, and opens with the PIN holder’s role', async () => {
     const sessionId = `sess-${randomUUID()}`
     await world.addSharedDevice(sessionId)
     const tableId = table(0)
     const device: ServiceActor = { kind: 'user', userId: ownerId, sessionId }
-    expect(await run({ type: 'table.open', tableId }, device)).toMatchObject({
+    expect(await run({ type: 'tables.open_all' }, device)).toMatchObject({
       code: 'pin_required',
     })
     const waiter = await world.addStaff(['tables.open_close'])
@@ -271,6 +271,32 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
       { kind: 'staff', staffMemberId: waiter as `sm_${string}`, sessionId },
     )
     expect(opened).toMatchObject({ opened: true, openedBy: `staff:${waiter}` })
+    await closeEverything()
+  })
+
+  it('opens and closes one table for the shared device’s own account, named in the Log (#85)', async () => {
+    const sessionId = `sess-${randomUUID()}`
+    await world.addSharedDevice(sessionId)
+    const tableId = table(0)
+    const device: ServiceActor = { kind: 'user', userId: ownerId, sessionId }
+    const before = (
+      await world.owner.query<{ seq: string }>(
+        'select coalesce(max(seq), 0)::text as seq from restro.log_entries where tenant_id = $1',
+        [world.tenantId],
+      )
+    ).rows[0]?.seq
+    expect(await accepted({ type: 'table.open', tableId }, device)).toMatchObject({
+      opened: true,
+      openedBy: `user:${ownerId}`,
+    })
+    expect(await accepted({ type: 'table.close', tableId }, device)).toMatchObject({ closed: true })
+    // The Log names the device's account, as D122 §7 says.
+    const log = await world.owner.query<{ kind: string; actor: string }>(
+      `select kind, actor from restro.log_entries where tenant_id = $1 and seq > $2 and kind in ('sitting.opened', 'sitting.ended')`,
+      [world.tenantId, before],
+    )
+    expect(log.rows.length).toBeGreaterThanOrEqual(2)
+    for (const row of log.rows) expect(row.actor).toBe(`user:${ownerId}`)
     await closeEverything()
   })
 

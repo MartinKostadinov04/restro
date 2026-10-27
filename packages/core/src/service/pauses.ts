@@ -176,6 +176,7 @@ export function pauseOrdering() {
     schema: z.strictObject({ type: z.literal('ordering.pause'), barId: idSchema('br').nullable() }),
     origins: ['staff'],
     permission: 'ordering.pause',
+    quickOnSharedDevice: true,
     idempotency: 'by_nature',
     async handle(stx, command) {
       const barId = command.barId
