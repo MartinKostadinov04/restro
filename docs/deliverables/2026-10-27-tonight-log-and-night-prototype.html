@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="bg" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE (throwaway): Tonight, Log and end of night</title>
+<style>
+/* PROTOTYPE, throwaway. Questions: can a manager find what happened at a table or to an order in a
+   glance and few taps (Log)? At closing, is what still needs fixing seen in one look (end of
+   night)? Tokens as the other Tonight prototypes (shadcn zinc, one accent). Part 2's sections are
+   grey placeholders. */
+:root{
+  --bg:oklch(1 0 0);--fg:oklch(.141 .005 285.823);--card:oklch(1 0 0);
+  --primary:oklch(.21 .006 285.885);--primary-fg:oklch(.985 0 0);
+  --muted:oklch(.967 .001 286.375);--muted-fg:oklch(.5 .016 285.938);
+  --border:oklch(.92 .004 286.32);--ctl:oklch(.6 .01 286);
+  --accent:oklch(.46 .15 255);--accent-tint:color-mix(in srgb,var(--accent) 8%,var(--card));
+  --scrim:oklch(0 0 0 / .45);
+}
+:root[data-theme=dark]{
+  --bg:oklch(.141 .005 285.823);--fg:oklch(.985 0 0);--card:oklch(.21 .006 285.885);
+  --primary:oklch(.92 .004 286.32);--primary-fg:oklch(.21 .006 285.885);
+  --muted:oklch(.274 .006 286.033);--muted-fg:oklch(.705 .015 286.067);
+  --border:oklch(1 0 0 / 10%);--ctl:oklch(.58 .01 286);
+  --accent:oklch(.78 .12 255);--scrim:oklch(0 0 0 / .6);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--muted);color:var(--fg);font:14px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pc{max-width:1240px;margin:0 auto;padding:16px}
+.pc h1{font-size:15px;margin:0 0 2px}
+.pc>p{margin:0 0 10px;color:var(--muted-fg);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.grp{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-fg)}
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:6px 10px;cursor:pointer;min-height:32px;border-right:1px solid var(--ctl)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg)}
+.stage{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;overflow-x:auto}
+.stage>.dev{flex:none}
+.side{flex:1;min-width:220px;font-size:13px}
+.side h2{font-size:13px;margin:0 0 6px}
+.side ol{margin:0 0 12px;padding:0 0 0 18px}
+.side li{margin-bottom:6px}
+.side small{color:var(--muted-fg)}
+.dev{position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.dev.tab{width:1180px;height:820px}
+.dev.ph{width:390px;height:780px}
+.top{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.top h2{font-size:18px;margin:0}
+.top .venue{color:var(--muted-fg)}
+.tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--border)}
+.tabs button{border:0;background:none;padding:12px;min-height:44px;cursor:pointer;color:var(--muted-fg);border-bottom:2px solid transparent}
+.tabs button[aria-current=page]{color:var(--fg);border-bottom-color:var(--fg);font-weight:600}
+.tabsel{display:none;margin:8px 16px}
+.tabsel select{width:100%;min-height:44px;border:1px solid var(--ctl);border-radius:6px;background:var(--card);padding:0 10px}
+.ph .tabs{display:none}.ph .tabsel{display:block}
+.body{flex:1;min-height:0;overflow:auto}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 20px;position:relative}
+.ph .tools{padding:10px 16px}
+.search{flex:1;min-width:220px;display:flex;align-items:center;gap:8px;border:1px solid var(--ctl);border-radius:8px;padding:0 12px;min-height:48px;background:var(--card)}
+.search input{border:0;outline:0;background:none;flex:1;min-width:0;font-size:16px;min-height:44px}
+.search:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.btn{min-height:48px;padding:0 14px;border-radius:8px;border:1px solid var(--ctl);background:var(--card);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.menu{position:absolute;z-index:4;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px oklch(0 0 0 / .15);padding:4px;min-width:240px}
+.menu button{display:block;width:100%;text-align:left;border:0;background:none;min-height:44px;padding:0 12px;border-radius:6px;cursor:pointer}
+.menu button[aria-checked=true]{font-weight:600;background:var(--muted)}
+.kept{margin:0 20px 8px;color:var(--muted-fg);font-size:13px}
+.list{list-style:none;margin:0;padding:0 20px 20px}
+.ph .list{padding:0 16px 16px}
+.ent{display:grid;grid-template-columns:56px 1fr auto;gap:2px 14px;align-items:baseline;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border);background:none;padding:12px 4px;min-height:52px}
+button.ent{cursor:pointer}
+button.ent:hover{background:var(--muted)}
+.ent .t{color:var(--muted-fg);font-variant-numeric:tabular-nums}
+.ent .w{color:var(--muted-fg);font-size:13px;text-align:right;white-space:nowrap}
+.ent .m{grid-column:2/-1;color:var(--muted-fg);font-size:13px}
+.ph .ent{grid-template-columns:48px 1fr}
+.ph .ent .w{grid-column:2;text-align:left}
+.chev{color:var(--muted-fg)}
+.empty{margin:40px auto;max-width:420px;text-align:center;color:var(--muted-fg)}
+.skel{height:52px;border-radius:8px;background:var(--muted);margin:0 0 8px}
+/* end of night */
+.page{max-width:840px;margin:0 auto;padding:16px 20px 40px}
+.ph .page{padding:12px 16px 32px}
+.head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.head h3{margin:0;font-size:18px}
+.head p{margin:2px 0 0;color:var(--muted-fg)}
+.jumps{display:none;gap:12px;margin:0 0 8px;flex-wrap:wrap}
+.ph .jumps{display:flex}
+.jumps a{color:var(--fg);min-height:44px;display:inline-flex;align-items:center}
+section{margin-top:24px}
+section h4{margin:0 0 8px;font-size:15px;display:flex;gap:8px;align-items:baseline}
+section h4 small{color:var(--muted-fg);font-weight:400}
+.row{border:1px solid var(--border);background:var(--card);border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.row.need{background:var(--accent-tint);border-color:var(--accent)}
+.row .ttl{display:flex;gap:8px;align-items:center;font-weight:600}
+.need .ttl{color:var(--accent)}
+.row .mt{color:var(--muted-fg);font-size:13px;margin:2px 0 0 26px}
+.row .two{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0 26px}
+.row .two .btn{flex:1;min-width:150px}
+.ok{display:flex;gap:8px;align-items:center;color:var(--muted-fg)}
+.sum{color:var(--muted-fg);margin:0 0 8px}
+.so{display:grid;grid-template-columns:52px 1fr auto;gap:2px 12px;align-items:center;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px;background:var(--card)}
+.so .ref{font:700 16px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em}
+.so .st{color:var(--muted-fg);text-align:right}
+.ph .so{grid-template-columns:44px 1fr}.ph .so .st{grid-column:2;text-align:left}
+.p2{border:1px dashed var(--ctl);border-radius:8px;padding:14px;color:var(--muted-fg);background:var(--muted)}
+dl{display:grid;grid-template-columns:1fr auto;margin:0;border-top:1px solid var(--border)}
+dt,dd{margin:0;padding:10px 0;border-bottom:1px solid var(--border)}
+dd{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+dt.p2t,dd.p2t{color:var(--muted-fg);font-style:italic;font-weight:400}
+.pin{position:absolute;inset:0;background:var(--scrim);display:none;align-items:center;justify-content:center;z-index:6}
+.pin.on{display:flex}
+.pin .box{background:var(--card);border-radius:12px;padding:20px;width:320px;text-align:center}
+.pin h3{margin:0 0 6px;font-size:16px}
+.pin p{margin:0 0 10px;color:var(--muted-fg);font-size:13px}
+.dots{display:flex;gap:10px;justify-content:center;margin:8px 0 12px}
+.dots span{width:14px;height:14px;border-radius:50%;border:2px solid var(--ctl)}
+.dots span.on{background:var(--fg);border-color:var(--fg)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{min-height:56px;border:1px solid var(--ctl);border-radius:8px;background:var(--card);font-size:20px;cursor:pointer}
+.toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:var(--primary);color:var(--primary-fg);border-radius:8px;padding:10px 14px;display:none;z-index:5;max-width:90%}
+.toast.on{display:block}
+.tg{white-space:pre-wrap;font:13px/1.5 ui-sans-serif,system-ui,sans-serif;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+</style>
+</head>
+<body>
+<div class="pc">
+  <h1>PROTOTYPE (throwaway): Tonight › Log, and Tonight › End of night</h1>
+  <p>Plans: <code>2026-10-27-tonight-log-plan.md</code>, <code>2026-10-27-tonight-end-of-night-plan.md</code>. Try: in the Log, type <b>K7M</b> or <b>7</b>, change Kind or the day, tap an order's line. In End of night, answer the blue row (any 4 digits), switch the role to Staff.</p>
+  <div class="bar">
+    <div class="grp">Screen <span class="seg" data-k="view"><button data-v="log" aria-pressed="true">Log</button><button data-v="night">End of night</button></span></div>
+    <div class="grp">Device <span class="seg" data-k="dev"><button data-v="tab" aria-pressed="true">Tablet</button><button data-v="ph">Phone 390</button></span></div>
+    <div class="grp">Signed in <span class="seg" data-k="role"><button data-v="mgr" aria-pressed="true">Manager</button><button data-v="staff">Staff</button></span></div>
+    <div class="grp">Night <span class="seg" data-k="night"><button data-v="busy" aria-pressed="true">Busy</button><button data-v="clean">Nothing to fix</button><button data-v="empty">Empty</button><button data-v="loading">Loading</button><button data-v="failed">Failed</button></span></div>
+    <div class="grp">Language <span class="seg" data-k="lang"><button data-v="bg" aria-pressed="true">BG</button><button data-v="en">EN</button></span></div>
+    <div class="grp">Theme <span class="seg" data-k="theme"><button data-v="light" aria-pressed="true">Light</button><button data-v="dark">Dark</button></span></div>
+  </div>
+  <div class="stage">
+    <div id="dev" class="dev tab"></div>
+    <div class="side" id="side"></div>
+  </div>
+</div>
+<div class="sr" aria-live="polite" id="live"></div>
+<script>
+const S={view:'log',dev:'tab',role:'mgr',night:'busy',lang:'bg',theme:'light',q:'',kind:'all',day:'tonight',menu:null,answered:false,showAll:false};
+const T={
+bg:{title:'Тази вечер',venue:'Клуб Луна',tabs:['Действия и маси','Поръчки','Дневник','Край на вечерта'],search:'Търси по номер или маса',kind:k=>'Вид: '+k,kinds:{all:'Всичко',orders:'Поръчки и маси',money:'Плащания',pauses:'Паузи и известия',settings:'Настройки и персонал'},tonight:'Тази вечер',earlier:'26 октомври',kept:'Подробностите за вечерта се пазят 31 дни. Промените в настройките и персонала се пазят 18 месеца.',empty:'Няма записи за тази вечер.',fail:'Дневникът не се зареди. Проверете връзката; ще опита отново сам.',none:q=>'Няма запис с „'+q+'“.',
+ restro:'Restro',guest:'Телефон на гост',tablet:'Таблет на бара',
+ day:'Вечерта на 27 октомври',live:'Досега тази вечер · вечерта приключва в 07:00',csv:'Изтегли CSV',fix:'За оправяне',fixNone:'Няма нищо за оправяне.',fixSo:(r,t)=>'Поръчка '+r+', '+t+': още непотвърдена',fixSoM:'Изпратена в 00:44 · 3 артикула · 28,50 €',ok:'Има я в сметката',no:'Няма я в сметката',sent:'Изпратени поръчки',sum:'84 изпратени · 79 добавени · 3 неизпратени · 2 непотвърдени',showAll:n=>'Покажи всички '+n,totals:'Общо',t:[['Отворени маси за телефони','31'],['Изпратени поръчки','84'],['Добавени в сметките','79'],['Сума, добавена в сметките','2 140,50 €'],['Неизпратени','3'],['Непотвърдени','2'],['Повиквания на сервитьор','17'],['Паузи','1'],['Известия','6']],nonday:'Няма работа тази вечер.',nfail:'Краят на вечерта не се зареди. Проверете връзката; ще опита отново сам.',p2:n=>'Част 2: '+n,p2s:['Плащания (без бакшиши за персонала)','Известия за плащания и отговорите им','Възстановявания и чакащи сторна','Спорове'],p2t:'Част 2: плащания, платено с карта, бакшиши',p2fix:'Част 2: проблемите с плащания тук',pin:'Въведете своя ПИН',leave:'Остави',saved:'Записано: има я в сметката · Мария',jumpS:'Поръчки',tg:'Telegram в 07:00',
+ lines:[['00:46','Поръчка K7M: Проверете сметката','Маса 12','Restro','so'],['00:45','Restro я откри в сметката: поръчка K7M','Маса 12','Restro','so'],['00:44','Поръчка K7M: Изпраща се','Маса 12','Телефон на гост','so'],['00:41','Повикването от Маса 7 е прието','Маса 7','Таблет на бара','orders'],['00:39','Маса 7 повика сервитьор','Маса 7','Телефон на гост','orders'],['00:31','Поръчка ATD: Неизпратена · изчерпано','Маса 7','Restro','so'],['00:22','Известието е прието: Плащането не е потвърдено','','Мария · през Telegram','pauses'],['00:20','Плащане 38,00 €: Непотвърдено (думите са на част 2)','Маса 3','Restro','money'],['00:05','Поръчките са пуснати: Бар 2','','Мария','pauses'],['23:48','Поръчките са спрени: Бар 2 · от Иван','','Иван','pauses'],['23:30','Маса 12 е отворена за телефони','Маса 12','Таблет на бара','orders'],['22:10','Показан ПИН: Иван','','Мария','settings'],['21:58','Вечерта приключи: 92 поръчки','','Restro','orders']]},
+en:{title:'Tonight',venue:'Club Luna',tabs:['Actions and tables','Sent orders','Log','End of night'],search:'Search by reference or table',kind:k=>'Kind: '+k,kinds:{all:'All',orders:'Orders and tables',money:'Money',pauses:'Pauses and alerts',settings:'Settings and staff'},tonight:'Tonight',earlier:'26 October',kept:'Night details are kept 31 days. Settings and staff changes are kept 18 months.',empty:'Nothing logged on this night.',fail:"Couldn't load the Log. Check the connection; it tries again by itself.",none:q=>'Nothing matches "'+q+'".',
+ restro:'Restro',guest:"A guest's phone",tablet:'Bar tablet',
+ day:'Night of 27 October',live:'So far tonight · the night ends at 07:00',csv:'Download CSV',fix:'To fix',fixNone:'Nothing to fix.',fixSo:(r,t)=>'Sent order '+r+', '+t+': still unconfirmed',fixSoM:'Sent at 00:44 · 3 items · €28.50',ok:'Found on the bill',no:'Not on the bill',sent:'Sent orders',sum:'84 sent · 79 added · 3 not sent · 2 unconfirmed',showAll:n=>'Show all '+n,totals:'Totals',t:[['Tables opened for phones','31'],['Sent orders','84'],['Added to bills','79'],['Amount added to bills','€2,140.50'],['Not sent','3'],['Unconfirmed','2'],['Waiter calls','17'],['Pauses','1'],['Alerts','6']],nonday:'No service on this night.',nfail:"Couldn't load the end of the night. Check the connection; it tries again by itself.",p2:n=>'Part 2: '+n,p2s:['Payments (no tips for staff)','Money alerts and their answers','Refunds and pending stornos','Disputes'],p2t:'Part 2: payments, card payments captured, tips',p2fix:"Part 2: the money problems go here",pin:'Enter your PIN',leave:'Leave it',saved:'Saved: found on the bill · Maria',jumpS:'Sent orders',tg:'Telegram at 07:00',
+ lines:[['00:46','Sent order K7M: Check the bill','Table 12','Restro','so'],['00:45','Restro found it on the bill: sent order K7M','Table 12','Restro','so'],['00:44','Sent order K7M: Sending','Table 12',"A guest's phone",'so'],['00:41','Waiter call at Table 7 handled','Table 7','Bar tablet','orders'],['00:39','Table 7 called a waiter','Table 7',"A guest's phone",'orders'],['00:31','Sent order ATD: Not sent · sold out','Table 7','Restro','so'],['00:22','Alert done: Payment not confirmed','','Maria · via Telegram','pauses'],['00:20',"Payment €38.00: Unconfirmed (part 2's words)",'Table 3','Restro','money'],['00:05','Ordering back on: Bar 2','','Maria','pauses'],['23:48','Ordering paused: Bar 2 · by Ivan','','Ivan','pauses'],['23:30','Table 12 opened for phones','Table 12','Bar tablet','orders'],['22:10','PIN shown: Ivan','','Maria','settings'],['21:58','The night closed: 92 sent orders','','Restro','orders']]}
+};
+const IC={so:'<path d="M5 12l5 5 9-11"/>',chev:'<path d="M9 6l6 6-6 6"/>',alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16v.5"/>',ok:'<path d="M5 12l5 5 9-11"/>',dl:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',cal:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',filt:'<path d="M4 6h16M7 12h10M10 18h4"/>'};
+const ic=k=>'<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+IC[k]+'</svg>';
+function side(){const s=document.getElementById('side');s.innerHTML=S.view==='log'?
+ '<h2>Stories and taps (from Tonight)</h2><ol><li><b>L1</b> Tonight\'s Log. <small>1</small></li><li><b>L2</b> One sent order by reference. <small>2 + typing</small></li><li><b>L3</b> One table. <small>2 + typing</small></li><li><b>L4</b> One kind. <small>3</small></li><li><b>L5</b> An earlier night. <small>3</small></li><li><b>L6</b> Open the order or payment. <small>+1</small></li></ol><p><small>Staff don\'t see this tab (switch "Signed in").</small></p>':
+ '<h2>Stories and taps (from Tonight)</h2><ol><li><b>N1</b> What still needs fixing. <small>1</small></li><li><b>N2</b> Fix it here. <small>2 + PIN</small></li><li><b>N3</b> The night in numbers. <small>1</small></li><li><b>N4</b> Download CSV. <small>2</small></li><li><b>N5</b> An earlier night. <small>3</small></li></ol><h2>'+T[S.lang].tg+'</h2><div class="tg">'+(S.lang==='bg'?'<b>Клуб Луна · вечерта на 27 октомври</b>\nПоръчки: 84 (добавени 79, неизпратени 3, непотвърдени 2)\nДобавено в сметките: 2 140,50 €\n<i>(редовете на част 2 за плащанията)</i>\nЗа оправяне (1):\n· Поръчка K7M, Маса 12: още непотвърдена\n<i>(проблемите с плащания на част 2)</i>':'<b>Club Luna · night of 27 October</b>\nSent orders: 84 (added 79, not sent 3, unconfirmed 2)\nAdded to bills: €2,140.50\n<i>(part 2\'s money lines)</i>\nTo fix (1):\n· Sent order K7M, Table 12: still unconfirmed\n<i>(part 2\'s problem lines)</i>')+'</div>'}
+function shell(L,active){
+ const tabs=L.tabs.map((t,i)=>({t,i})).filter(x=>!(x.i===2&&S.role==='staff'));
+ return '<div class="top"><h2>'+L.title+'</h2><span class="venue">'+L.venue+'</span></div><nav class="tabs" aria-label="Tonight">'+tabs.map(x=>'<button data-tab="'+x.i+'"'+(x.i===active?' aria-current="page"':'')+'>'+x.t+'</button>').join('')+'</nav><div class="tabsel"><select aria-label="Tonight">'+tabs.map(x=>'<option'+(x.i===active?' selected':'')+'>'+x.t+'</option>').join('')+'</select></div>'}
+function render(){
+ const L=T[S.lang];document.documentElement.lang=S.lang;document.documentElement.dataset.theme=S.theme;
+ if(S.view==='log'&&S.role==='staff')S.view='night';
+ document.querySelectorAll('[data-k=view] button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S.view));
+ const d=document.getElementById('dev');d.className='dev '+S.dev;
+ let h=shell(L,S.view==='log'?2:3)+'<div class="body" id="body">';
+ h+=S.view==='log'?logView(L):nightView(L);
+ h+='</div><div class="toast" id="toast"></div><div class="pin" id="pin"><div class="box" role="dialog" aria-label="'+L.pin+'"><h3>'+L.ok+'</h3><p>'+(S.lang==='bg'?'Поръчката се води добавена и Маса 12 пак може да поръчва.':'The order counts as added and Table 12 can order again.')+'</p><p><b>'+L.pin+'</b></p><div class="dots" id="dots"><span></span><span></span><span></span><span></span></div><div class="pad">'+[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>'<button data-k="'+k+'"'+(k===''?' disabled style="visibility:hidden"':'')+'>'+k+'</button>').join('')+'</div><button class="btn" id="leave" style="margin-top:10px;width:100%;justify-content:center">'+L.leave+'</button></div></div>';
+ d.innerHTML=h;side();wire();
+}
+function logView(L){
+ let h='<div class="tools"><label class="search">'+'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span class="sr">'+L.search+'</span><input id="q" placeholder="'+L.search+'" value="'+S.q.replace(/"/g,'&quot;')+'" autocomplete="off"></label>'+
+ '<button class="btn" id="kindb" aria-haspopup="menu" aria-expanded="'+(S.menu==='kind')+'">'+ic('filt')+L.kind(L.kinds[S.kind])+'</button><button class="btn" id="dayb" aria-haspopup="menu" aria-expanded="'+(S.menu==='day')+'">'+ic('cal')+(S.day==='tonight'?L.tonight:L.earlier)+'</button>';
+ if(S.menu==='kind')h+='<div class="menu" role="menu" style="right:'+(S.dev==='ph'?'16':'150')+'px;top:64px">'+Object.keys(L.kinds).map(k=>'<button role="menuitemradio" aria-checked="'+(S.kind===k)+'" data-kind="'+k+'">'+L.kinds[k]+'</button>').join('')+'</div>';
+ if(S.menu==='day')h+='<div class="menu" role="menu" style="right:20px;top:64px"><button role="menuitemradio" aria-checked="'+(S.day==='tonight')+'" data-day="tonight">'+L.tonight+'</button><button role="menuitemradio" aria-checked="'+(S.day==='earlier')+'" data-day="earlier">'+L.earlier+'</button><button role="menuitemradio" aria-checked="false" data-day="earlier">'+(S.lang==='bg'?'Друга дата…':'Another date…')+'</button></div>';
+ h+='</div>';
+ if(S.day==='earlier')h+='<p class="kept">'+L.kept+'</p>';
+ h+='<ul class="list" aria-busy="'+(S.night==='loading')+'">';
+ if(S.night==='loading'){for(let i=0;i<8;i++)h+='<li class="skel"></li>';return h+'</ul>'}
+ if(S.night==='failed')return h+'<li class="empty">'+L.fail+'</li></ul>';
+ if(S.night==='empty')return h+'<li class="empty">'+L.empty+'</li></ul>';
+ const qn=S.q.trim().toUpperCase();
+ let rows=L.lines.filter(x=>S.kind==='all'||x[4]===S.kind||(S.kind==='orders'&&x[4]==='so'));
+ if(qn)rows=rows.filter(x=>/^\d+$/.test(qn)?x[2].replace(/\D/g,'')===qn:x[1].toUpperCase().includes(' '+qn));
+ if(!rows.length)return h+'<li class="empty">'+L.none(S.q)+'</li></ul>';
+ rows.forEach(x=>{const tap=x[4]==='so'||x[4]==='money';const tag=tap?'button':'div';
+  h+='<li><'+tag+' class="ent"'+(tap?' data-open="1"':'')+'><span class="t">'+x[0]+'</span><span>'+x[1]+(tap?' <span class="chev">›</span>':'')+'</span><span class="w">'+x[3]+'</span>'+(x[2]?'<span class="m">'+x[2]+'</span>':'')+'</'+tag+'></li>'});
+ return h+'</ul>'}
+function nightView(L){
+ const full=S.role==='mgr';
+ if(S.night==='loading'){let h='<div class="page" aria-busy="true">';for(let i=0;i<5;i++)h+='<div class="skel" style="height:90px"></div>';return h+'</div>'}
+ if(S.night==='failed')return '<div class="page"><p class="empty">'+L.nfail+'</p></div>';
+ if(S.night==='empty')return '<div class="page"><div class="head"><div><h3>'+L.day+'</h3></div></div><p class="empty">'+L.nonday+'</p></div>';
+ const clean=S.night==='clean'||S.answered;
+ let h='<div class="page"><div class="head"><div><h3>'+L.day+'</h3><p>'+L.live+'</p></div>'+(full?'<button class="btn">'+ic('dl')+L.csv+'</button>':'')+'</div>';
+ h+='<nav class="jumps"><a href="#n1">'+L.fix+'</a><a href="#n2">'+L.jumpS+'</a><a href="#n7">'+L.totals+'</a></nav>';
+ h+='<section id="n1"><h4>'+L.fix+(clean?'':' <small>1</small>')+'</h4>';
+ if(clean)h+='<p class="ok">'+ic('ok')+L.fixNone+'</p>';
+ else h+='<div class="row need"><div class="ttl">'+ic('alert')+L.fixSo('K7M',S.lang==='bg'?'Маса 12':'Table 12')+'</div><div class="mt">'+L.fixSoM+'</div><div class="mt">'+(S.lang==='bg'?'Restro я откри в сметката в 00:45.':'Restro found it on the bill at 00:45.')+'</div><div class="two"><button class="btn" data-a="ok" style="justify-content:center">'+L.ok+'</button><button class="btn" data-a="no" style="justify-content:center">'+L.no+'</button></div></div>';
+ h+='<div class="p2">'+L.p2fix+'</div></section>';
+ h+='<section id="n2"><h4>'+L.sent+' <small>84</small></h4><p class="sum">'+L.sum+'</p>';
+ const so=[['K7M',S.lang==='bg'?'Маса 12':'Table 12',S.answered?L.ok+' · '+(S.lang==='bg'?'Мария':'Maria'):(S.lang==='bg'?'Проверете сметката':'Check the bill')],['H4X',S.lang==='bg'?'Маса 5':'Table 5',L.ok+' · '+(S.lang==='bg'?'Мария':'Maria')],['ATD',S.lang==='bg'?'Маса 7':'Table 7',S.lang==='bg'?'Неизпратена · изчерпано':'Not sent · sold out'],['FQ9',S.lang==='bg'?'Маса 14':'Table 14',S.lang==='bg'?'Неизпратена · поръчките бяха спрени':'Not sent · ordering was paused'],['M3R',S.lang==='bg'?'Маса 2':'Table 2',S.lang==='bg'?'Неизпратена · Mistral я отказа':'Not sent · Mistral refused it']];
+ so.forEach(x=>h+='<div class="so"><span class="ref">'+x[0]+'</span><span>'+x[1]+'</span><span class="st">'+x[2]+'</span></div>');
+ if(S.showAll)for(let i=0;i<4;i++)h+='<div class="so"><span class="ref">'+['XJ3','K4N','P9R','6P9'][i]+'</span><span>'+(S.lang==='bg'?'Маса ':'Table ')+[3,21,7,9][i]+'</span><span class="st">'+(S.lang==='bg'?'Добавена':'Added')+'</span></div>';
+ h+='<button class="btn" id="all" style="margin-top:4px">'+(S.showAll?(S.lang==='bg'?'… и още 75':'… and 75 more'):L.showAll(84))+'</button></section>';
+ L.p2s.forEach((t,i)=>{if(i===0||full)h+='<section><h4>'+t+'</h4><div class="p2">'+L.p2(t)+'</div></section>'});
+ h+='<section id="n7"><h4>'+L.totals+'</h4><dl>'+L.t.map(x=>'<dt>'+x[0]+'</dt><dd>'+x[1]+'</dd>').join('')+'<dt class="p2t">'+L.p2t+'</dt><dd class="p2t">—</dd></dl></section></div>';
+ return h}
+let pinN=0;
+function wire(){
+ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{const i=+b.dataset.tab;if(i===2||i===3){S.view=i===2?'log':'night';S.menu=null;render()}});
+ const q=document.getElementById('q');if(q)q.oninput=e=>{S.q=e.target.value;const p=e.target.selectionStart;render();const n=document.getElementById('q');n.focus();n.setSelectionRange(p,p)};
+ const kb=document.getElementById('kindb');if(kb)kb.onclick=()=>{S.menu=S.menu==='kind'?null:'kind';render()};
+ const db=document.getElementById('dayb');if(db)db.onclick=()=>{S.menu=S.menu==='day'?null:'day';render()};
+ document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>{S.kind=b.dataset.kind;S.menu=null;render()});
+ document.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{S.day=b.dataset.day;S.menu=null;render()});
+ document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{const t=document.getElementById('toast');t.textContent=S.lang==='bg'?'(Тук се отваря листът на поръчката от екран 2, или страницата на плащането.)':"(Screen 2's sent-order sheet, or the payment's page, opens here.)";t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2500)});
+ const all=document.getElementById('all');if(all)all.onclick=()=>{S.showAll=!S.showAll;render()};
+ document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{pinN=0;dots();document.getElementById('pin').classList.add('on')});
+ document.querySelectorAll('.pad button').forEach(b=>b.onclick=()=>{pinN=b.dataset.k==='⌫'?Math.max(0,pinN-1):pinN+1;dots();if(pinN===4){S.answered=true;render();const t=document.getElementById('toast');t.textContent=T[S.lang].saved;t.classList.add('on');document.getElementById('live').textContent=t.textContent;setTimeout(()=>t.classList.remove('on'),8000)}});
+ const lv=document.getElementById('leave');if(lv)lv.onclick=()=>document.getElementById('pin').classList.remove('on');
+ document.onkeydown=e=>{if(e.key==='Escape'){document.getElementById('pin')?.classList.remove('on');if(S.menu){S.menu=null;render()}}};
+}
+function dots(){document.querySelectorAll('#dots span').forEach((s,i)=>s.classList.toggle('on',i<pinN))}
+document.querySelectorAll('.bar .seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));S[g.dataset.k]=b.dataset.v;S.menu=null;if(g.dataset.k==='night'){S.answered=false;S.q=''}render()}));
+render();
+</script>
+</body>
+</html>
