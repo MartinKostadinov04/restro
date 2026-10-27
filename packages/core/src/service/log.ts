@@ -34,6 +34,8 @@ export const LOG_KINDS = {
   'sitting.opened': 'night',
   'sitting.ended': 'night',
   'sent_order.state': 'night',
+  // An Unconfirmed sent order found on the POS bill by a later reading (#135).
+  'sent_order.landed_late': 'night',
   'pause.started': 'night',
   'pause.lifted': 'night',
   'alert.raised': 'night',

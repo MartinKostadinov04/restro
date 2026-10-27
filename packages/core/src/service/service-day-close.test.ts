@@ -93,7 +93,8 @@ describe.skipIf(!hasDatabase)('closing a service day (as the restro_app role)', 
     ])
     // A row an earlier write gave a longer life keeps it.
     await world.owner.query(
-      `update restro.sent_orders set retain_until = '2040-01-01T00:00:00Z' where id = $1`,
+      `update restro.sent_orders set retain_until = '2040-01-01T00:00:00Z', landing_basis = '{}'::jsonb
+        where id = $1`,
       [sentLongKept],
     )
     // A card held at the day's end: the payment goes on after it.
@@ -182,12 +183,19 @@ describe.skipIf(!hasDatabase)('closing a service day (as the restro_app role)', 
     expect(kept).toHaveLength(2)
     for (const row of kept) expect(row.retain_until.getTime()).toBeGreaterThanOrEqual(floor)
 
-    const sent = await rows<{ id: string; action_id: string | null; retain_until: Date }>(
-      'select id, action_id, retain_until from restro.sent_orders where id = any($1)',
+    const sent = await rows<{
+      id: string
+      action_id: string | null
+      retain_until: Date
+      landing_basis: unknown
+    }>(
+      'select id, action_id, retain_until, landing_basis from restro.sent_orders where id = any($1)',
       [[sentA, sentB, sentLongKept]],
     )
     for (const row of sent) {
       expect(row.action_id).toBeNull()
+      // A late landing is matched within the day only (#135): its reading goes with the day.
+      expect(row.landing_basis).toBeNull()
       expect(row.retain_until.getTime()).toBeGreaterThanOrEqual(floor)
     }
     expect(sent.find((row) => row.id === sentLongKept)?.retain_until.toISOString()).toBe(

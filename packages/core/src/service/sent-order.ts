@@ -28,6 +28,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
+import { type LandingBasis, LandingBasisSchema } from '../landing-match'
 import { orderFromRow, returnSentLines, tidyOrder } from '../table-order'
 import { defineCommand, type ServiceTx } from './definition'
 import {
@@ -106,6 +107,7 @@ async function moveSentOrder(
     readonly posBillRef?: string
     readonly matchedLines?: readonly string[]
     readonly outOfStock?: readonly string[]
+    readonly landingBasis?: LandingBasis
   },
   claim: LeaseClaim | null,
   behind: readonly SentOrder[],
@@ -118,8 +120,14 @@ async function moveSentOrder(
       state: to,
       reason,
       ...(to === 'sending'
-        ? { sentAt: sql`now()`, billBeforeMinor: change.billBeforeMinor ?? null }
+        ? {
+            sentAt: sql`now()`,
+            billBeforeMinor: change.billBeforeMinor ?? null,
+            ...(change.landingBasis === undefined ? {} : { landingBasis: change.landingBasis }),
+          }
         : {}),
+      // Only an Unconfirmed sent order may still land late: the others forget the reading before.
+      ...(settles && to !== 'unconfirmed' ? { landingBasis: null } : {}),
       ...(change.posBillRef === undefined ? {} : { posBillRef: change.posBillRef }),
       ...(change.matchedLines === undefined ? {} : { matchedLines: [...change.matchedLines] }),
       ...(to === 'not_sent' && change.outOfStock !== undefined && change.outOfStock.length > 0
@@ -393,6 +401,8 @@ export interface TransitionCommand {
   readonly matchedLines?: readonly string[] | undefined
   /** Not sent because the POS says these items ran out: their lines are flagged (#80). */
   readonly outOfStock?: readonly string[] | undefined
+  /** The reading before the write, for a late landing (#135); kept with the move to Sending. */
+  readonly landingBasis?: LandingBasis | undefined
 }
 
 /** `sent_order.transition`. */
@@ -440,6 +450,7 @@ export async function transitionSentOrder(
       ...(command.posBillRef === undefined ? {} : { posBillRef: command.posBillRef }),
       ...(command.matchedLines === undefined ? {} : { matchedLines: command.matchedLines }),
       ...(command.outOfStock === undefined ? {} : { outOfStock: command.outOfStock }),
+      ...(command.landingBasis === undefined ? {} : { landingBasis: command.landingBasis }),
     },
     claim,
     behind,
@@ -494,6 +505,7 @@ export const SENT_ORDER_COMMANDS = {
       posBillRef: z.string().min(1).max(200).optional(),
       matchedLines: z.array(z.string().min(1).max(200)).max(200).optional(),
       outOfStock: z.array(idSchema('nd')).max(200).optional(),
+      landingBasis: LandingBasisSchema.optional(),
     }),
     origins: ['worker'],
     permission: null,
