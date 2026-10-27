@@ -2817,6 +2817,12 @@ export const paymentSteps = restro.table(
     answer: text('answer'),
     /** The idempotency key the call carried. */
     idempotencyKey: text('idempotency_key'),
+    /**
+     * *Backend*: on an `undoIsolate` `attempting` row only, the lines read on the payment table
+     * before the move back (POS references, quantities, amounts; rule 3), so a later run can prove
+     * them back on the real table (#153). Null on every other row.
+     */
+    lines: jsonb('lines'),
     at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
     ...serviceProvenance(),
   },

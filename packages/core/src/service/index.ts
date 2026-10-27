@@ -202,6 +202,8 @@ export {
   PAYMENT_QUEUE_MS,
   PAYMENT_SESSION_MS,
   PAYMENT_STEP_NAMES,
+  type PaymentStepLines,
+  PaymentStepLinesSchema,
   quantityKey,
   signedSumMinor,
   TABLE_OPEN_PAYMENTS,

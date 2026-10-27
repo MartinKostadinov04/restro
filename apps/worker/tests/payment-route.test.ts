@@ -623,6 +623,43 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       ])
     })
 
+    it('"No receipt", the move back landing after its run: the recorded lines prove it back', async () => {
+      const id = await held(1)
+      fault(
+        { on: 'closeBill', fault: { kind: 'hang' } },
+        { on: 'moveRows', from: 2, fault: { kind: 'landsLate' } },
+      )
+      expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      expect(await answer(id, 'no_receipt')).toMatchObject({ status: 'accepted' })
+      // The move back's answer is late: still on the payment table, read back on a later run.
+      expect((await drive(id, 1)).row).toMatchObject({ state: 'unconfirmed', reason: 'no_receipt' })
+      expect(paymentTablesEmpty()).toBe(false)
+      const [recorded] = await query<{ lines: unknown }>(
+        `select lines from restro.payment_steps
+          where payment_id = $1 and step = 'undoIsolate' and outcome = 'attempting'`,
+        [id],
+      )
+      expect(recorded?.lines).toEqual([
+        { pos: expect.any(String), quantity: '2', amountMinor: 2200 },
+      ])
+      expect(
+        await query(
+          `select step from restro.payment_steps where payment_id = $1 and lines is not null
+            and not (step = 'undoIsolate' and outcome = 'attempting')`,
+          [id],
+        ),
+      ).toEqual([])
+      // It lands; the next run finds the payment table empty and the recorded line on the table.
+      await pass(id, LATE_LANDING_MS + 1_000)
+      sim.host.engine.settle()
+      expect(paymentTablesEmpty()).toBe(true)
+      const { row } = await drive(id)
+      expect(row).toMatchObject({ state: 'released', reason: 'no_receipt', payment_table_id: null })
+      expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+      expect(calls('moveRows')).toBe(2)
+      expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+    })
+
     it('the close, landing late: a manager is asked only after the read-back window', async () => {
       // The close lands after a write's longest time but inside D115's read-back window, so only
       // waiting out the window (not the in-flight bound alone) lets it land before the question.

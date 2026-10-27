@@ -2,8 +2,9 @@
 // restro_app role, who may answer an unconfirmed close. "Receipt printed" and "No receipt" are a
 // manager's or an owner's (`money.follow_up`): staff without it, the worker and a second, different
 // answer are refused, and the answer closes the payment's alert. Asked again when the items were
-// not back after "No receipt" (#153), a second "No receipt" settles it stranded for staff. The route itself runs in the
-// worker's tests (apps/worker/tests/payment-route*.test.ts). Database part skipped without one.
+// not back after "No receipt" (#153), a second "No receipt" settles it stranded for staff; a move
+// back's step carries the lines it moves, and only that step. The route itself runs in the worker's
+// tests (apps/worker/tests/payment-route*.test.ts). Database part skipped without one.
 // A property test edits the isolated bill as a waiter might (a line voided, moved back, repriced,
 // its quantity changed, a round added) and checks the last check against the bill alone: it passes
 // only the lines the guest confirmed, less the voided ones, and never asks for more than them.
@@ -16,7 +17,7 @@ import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { SERVICE_TIMINGS } from '../timings'
-import { applyService, type ServiceContext } from './index'
+import { applyService, PaymentStepLinesSchema, type ServiceContext } from './index'
 import {
   lastCheck,
   PAYMENT_TURN_SECONDS,
@@ -374,6 +375,55 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
       status: 'refused',
       code: 'payment_answered',
     })
+  })
+
+  it('records a move back’s lines on its attempting step only, and reads them back typed', async () => {
+    const { id } = await unconfirmed()
+    const lines = [
+      { pos: '9100003', quantity: '2', amountMinor: 2200 },
+      { pos: '9100004', quantity: '0.5', amountMinor: -300 },
+    ]
+    const step = (fields: Record<string, unknown>) =>
+      applyService(
+        world.app,
+        {
+          type: 'payment.step',
+          paymentId: id,
+          step: 'undoIsolate',
+          outcome: 'attempting',
+          answer: null,
+          idempotencyKey: `${id}-undo`,
+          ...fields,
+        },
+        worker(),
+      )
+    expect((await step({ lines })).result).toMatchObject({ status: 'accepted' })
+    // Only a move back, before its call: anywhere else they are refused and nothing is written.
+    for (const fields of [
+      { outcome: 'done', lines },
+      { step: 'payAndClose', idempotencyKey: `${id}-close`, lines },
+      { lines: [] },
+    ]) {
+      expect((await step(fields)).result).toMatchObject({
+        status: 'refused',
+        code: 'invalid_command',
+      })
+    }
+    expect((await step({ outcome: 'done', answer: null })).result).toMatchObject({
+      status: 'accepted',
+    })
+    const rows = (
+      await world.owner.query<{ step: string; outcome: string; lines: unknown }>(
+        `select step, outcome, lines from restro.payment_steps
+          where payment_id = $1 and step = 'undoIsolate' order by seq`,
+        [id],
+      )
+    ).rows
+    expect(rows.map((row) => [row.outcome, row.lines === null])).toEqual([
+      ['attempting', false],
+      ['done', true],
+    ])
+    expect(PaymentStepLinesSchema.parse(rows[0]?.lines)).toEqual(lines)
   })
 
   it('refuses an answer to a payment that is not unconfirmed', async () => {
