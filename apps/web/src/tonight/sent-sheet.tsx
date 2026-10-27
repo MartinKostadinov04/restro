@@ -96,11 +96,6 @@ function Body({
       <p className="font-medium tabular-nums">
         {t('sh_total', { amt: money(row.totalMinor, frame.currency) })}
       </p>
-      {detail.bill === null ? null : (
-        <p className="text-muted-foreground [overflow-wrap:anywhere]">
-          {t('sh_bill', { bill: detail.bill, source: frame.source })}
-        </p>
-      )}
       {detail.steps.length === 0 ? null : (
         <section className="space-y-1">
           <h3 className="font-medium">{t('sh_steps')}</h3>
