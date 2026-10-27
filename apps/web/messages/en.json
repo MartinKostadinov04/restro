@@ -2122,6 +2122,7 @@
     "lg_lifted": "Ordering back on: {scope}",
     "lg_alert": "Alert: {alert}",
     "lg_alert_done": "Alert done: {alert}",
+    "lg_alert_cleared": "Cleared at the end of the night: {alert}",
     "lg_call": "{table} called a waiter",
     "lg_call_done": "Waiter call at {table} handled",
     "lg_call_lapsed": "Waiter call at {table} ran out",

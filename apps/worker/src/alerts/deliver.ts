@@ -17,6 +17,8 @@ import {
   alertLocale,
   alertMessage,
   applyService,
+  CLEARED_AT_DAY_CLOSE,
+  clearedLine,
   DEFAULT_ROLE_PERMISSIONS,
   type DeliveryStep,
   digestMessage,
@@ -552,8 +554,17 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
         if (step.step === 'done_edit') {
           const ref = parseRef(alert.telegramRef)
           if (ref === null) return true
-          const by = await doneByName(deps.pool, tenantId, alert.doneBy)
-          const text = `${linkedMessage(message)}\n\n${doneLine(by, alert.doneAt ?? deps.now(), venue.timezone, locale)}`
+          // The day's close cleared it (#162): the words say so and no person is named.
+          const ending =
+            alert.details.clearedAt === CLEARED_AT_DAY_CLOSE
+              ? clearedLine(locale)
+              : doneLine(
+                  await doneByName(deps.pool, tenantId, alert.doneBy),
+                  alert.doneAt ?? deps.now(),
+                  venue.timezone,
+                  locale,
+                )
+          const text = `${linkedMessage(message)}\n\n${ending}`
           await telegram.editMessage(ref, text)
           await record()
           return true

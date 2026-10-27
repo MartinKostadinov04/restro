@@ -163,6 +163,9 @@ describe("the Log's sentences", () => {
     expect(logSentence(line('alert.done', { alertTitle: 'Sent order not confirmed' }), en)).toBe(
       'Alert done: Sent order not confirmed',
     )
+    expect(logSentence(line('alert.cleared', { alertTitle: 'Sent order not confirmed' }), en)).toBe(
+      'Cleared at the end of the night: Sent order not confirmed',
+    )
   })
 
   it('names the scope of a pause and its cause', () => {

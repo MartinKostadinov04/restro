@@ -40,6 +40,8 @@ export const LOG_KINDS = {
   'pause.lifted': 'night',
   'alert.raised': 'night',
   'alert.done': 'night',
+  // The day's close cleared an alert nobody answered (#162).
+  'alert.cleared': 'night',
   'waiter_call.called': 'night',
   'waiter_call.done': 'night',
   'waiter_call.lapsed': 'night',
