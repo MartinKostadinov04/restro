@@ -193,6 +193,9 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // hour; the venue's group and the Restro team are told once. Its words carry no amounts.
   [PAYMENT_ACCOUNT_LOST_KIND]: {
     ...NOBODY,
+    // It is a pause of paying: it ends when the reconnection lifts it, so nobody presses Done and the
+    // day's close leaves it open (#162).
+    closesItself: true,
     push: staffPush({ afterMs: 60 * MINUTE, max: 1, ownersOnly: true }),
     venueTelegram: venueGroup,
     team: { firstDelayMs: 0, minGapMs: 0, reminder: null },

@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase } from '../apply/test-database'
 import { readAccountChecks } from '../payment-connection'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
+import { PAYMENT_ACCOUNT_LOST_KIND, ruleOf } from './alert-rules'
 import type { ServiceActor, ServiceContext } from './context'
 import { applyService, loadPayingConnection, type ServiceCommand } from './index'
 import { DEFAULT_ROLE_PERMISSIONS, OPERATOR_PERMISSIONS, PERMISSIONS } from './permissions'
@@ -370,6 +371,23 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         details: { changed: false },
       })
       expect(await openAlerts()).toHaveLength(1)
+    })
+
+    it('is a pause that ends by itself: no Done, and the end of the night leaves it open', async () => {
+      const { rows } = await world.owner.query<{ id: string; service_date: string }>(
+        `select id, service_date::text as service_date from restro.alerts
+          where venue_id = $1 and kind = 'payment_account_lost' and done_at is null`,
+        [world.venueId],
+      )
+      const alert = rows[0]
+      if (alert === undefined) throw new Error('no open alert')
+      expect(ruleOf(PAYMENT_ACCOUNT_LOST_KIND, 'venue').closesItself).toBe(true)
+      expect(await run({ type: 'alert.done', alertId: alert.id })).toMatchObject({
+        status: 'refused',
+        code: 'alert_closes_itself',
+      })
+      await worker({ type: 'service_day.close', serviceDate: alert.service_date })
+      expect((await openAlerts()).at(-1)).toMatchObject({ id: alert.id, done_at: null })
     })
 
     it('carries no amount and no provider id in the alert', async () => {
