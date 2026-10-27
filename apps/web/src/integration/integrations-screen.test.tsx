@@ -113,6 +113,12 @@ describe('Settings -> Integrations, source-agnostic', () => {
     expect(screen.getByTestId('instance')).toBeTruthy()
   })
 
+  it('draws the tab strip with no vertical scrollbar of its own (trial finding 2.2: a 36 px strip of 37 px)', () => {
+    screenOf(integrationsView({ chosen: [] }))
+    const strip = screen.getByRole('tablist')
+    expect(strip.className).toContain('overflow-y-hidden')
+  })
+
   it('opens the tab the address asks for and writes the open tab to the address', async () => {
     const user = userEvent.setup()
     const replace = vi.spyOn(window.history, 'replaceState')
