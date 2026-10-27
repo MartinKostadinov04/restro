@@ -382,7 +382,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
       const alert = rows[0]
       if (alert === undefined) throw new Error('no open alert')
       expect(ruleOf(PAYMENT_ACCOUNT_LOST_KIND, 'venue').closesItself).toBe(true)
-      expect(await run({ type: 'alert.done', alertId: alert.id })).toMatchObject({
+      expect(await run({ type: 'alert.done', alertId: alert.id as `al_${string}` })).toMatchObject({
         status: 'refused',
         code: 'alert_closes_itself',
       })
