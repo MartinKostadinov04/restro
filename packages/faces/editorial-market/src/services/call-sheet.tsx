@@ -1,19 +1,13 @@
 // The "call a waiter" sheet (`#call`). The guest picks one of the kinds the venue allows
-// (`view.features.callWaiter.kinds`), adds a note for "something else" and sends it. After that the
+// (`view.features.callWaiter.kinds`) and sends it; there is no note (#180). After that the
 // sheet shows only what the host says: the request's own status from `state.requests`. A waiter is
 // "on the way" only when a request of the host's says `on_the_way`; until the host's state has the
 // request, the sheet says it was sent and is waiting. Cancelling sends `service.cancel`.
 
-import {
-  type RequestStatus,
-  type RequestView,
-  SERVICE_LIMITS,
-  type ServiceKind,
-  type ViewText,
-} from '@restro/shell'
+import type { RequestStatus, RequestView, ServiceKind, ViewText } from '@restro/shell'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
-import { BellIcon, CardIcon, DropletsIcon, MessageIcon, ReceiptIcon, UtensilsIcon } from '../icons'
+import { BellIcon, CardIcon, DropletsIcon, HandIcon, ReceiptIcon, UtensilsIcon } from '../icons'
 import { Text } from '../parts'
 import { ChoiceGroup } from './choice'
 import { newActionId, type Outcome } from './command'
@@ -25,9 +19,10 @@ const KIND_ICONS: { readonly [K in ServiceKind]: () => ReactNode } = {
   waiter: () => <BellIcon />,
   bill: () => <ReceiptIcon />,
   terminal: () => <CardIcon />,
+  ice: () => <DropletsIcon />,
   water: () => <DropletsIcon />,
-  cutlery: () => <UtensilsIcon />,
-  other: () => <MessageIcon />,
+  glasses: () => <UtensilsIcon />,
+  clean_table: () => <HandIcon />,
 }
 
 /** The statuses in which a request can still be cancelled. */
@@ -56,7 +51,6 @@ export function CallSheet() {
   const kinds = o.features.callWaiter?.kinds ?? []
 
   const [kind, setKind] = useState<ServiceKind | null>(null)
-  const [note, setNote] = useState('')
   const [asked, setAsked] = useState<Asked | null>(null)
   // Requests the guest has moved on from ("send another request"), by the host's id.
   const [movedOn, setMovedOn] = useState<ReadonlySet<string>>(new Set())
@@ -84,19 +78,18 @@ export function CallSheet() {
   const current = sent !== undefined && !movedOn.has(sent.id) ? sent : open
 
   const chosen = kind !== null && kinds.includes(kind) ? kind : null
-  const ready = chosen !== null && (chosen !== 'other' || note.trim() !== '')
+  const ready = chosen !== null
 
   async function send() {
     if (chosen === null || !ready) return
-    const text = chosen === 'other' ? note.trim() : ''
-    const key = `${chosen}|${text}`
+    const key = chosen
     // The same request again (a retry) is the same action; a different one is new.
     const actionId = attempt.current?.key === key ? attempt.current.actionId : newActionId()
     attempt.current = { key, actionId }
     setAsked({ actionId, phase: 'sending', message: null })
     let outcome: Outcome = { ok: false }
     try {
-      outcome = await o.run({ kind: 'service.request', actionId, request: chosen, note: text })
+      outcome = await o.run({ kind: 'service.request', actionId, request: chosen, note: '' })
     } catch {
       outcome = { ok: false }
     }
@@ -142,7 +135,6 @@ export function CallSheet() {
     if (request !== null) setMovedOn((now) => new Set([...now, request.id]))
     setAsked(null)
     setKind(null)
-    setNote('')
     setCancelFailed(null)
     attempt.current = null
   }
@@ -233,18 +225,6 @@ export function CallSheet() {
           ),
         }))}
       />
-      {chosen === 'other' ? (
-        <label className="ro-note">
-          <span className="rm-sr">{words.kinds.other}</span>
-          <textarea
-            rows={2}
-            maxLength={SERVICE_LIMITS.note}
-            value={note}
-            placeholder={words.otherPlaceholder}
-            onChange={(event) => setNote(event.target.value)}
-          />
-        </label>
-      ) : null}
       <button type="button" className="ro-primary is-wide" disabled={!ready} onClick={send}>
         <span>{words.send}</span>
       </button>

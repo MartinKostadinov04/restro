@@ -59,6 +59,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   paymentState: null,
   paymentAnswer: null,
   sentOrdersOfDay: null,
+  callKinds: [],
   ...fields,
 })
 
@@ -149,9 +150,14 @@ describe("the Log's sentences", () => {
     expect(logSentence(line('sent_order.landed_late', so), en)).toBe(
       'Sent order K7Q found on the bill',
     )
-    expect(logSentence(line('waiter_call.called'), en)).toBe('Table 7 called a waiter')
-    expect(logSentence(line('waiter_call.done'), en)).toBe('Waiter call at Table 7 handled')
-    expect(logSentence(line('waiter_call.lapsed'), en)).toBe('Waiter call at Table 7 ran out')
+    const asked = { callKinds: ['ice', 'water'] }
+    expect(logSentence(line('waiter_call.called', asked), en)).toBe('Table 7 asked for: Ice, Water')
+    expect(logSentence(line('waiter_call.done', asked), en)).toBe(
+      'Call at Table 7 handled (Ice, Water)',
+    )
+    expect(logSentence(line('waiter_call.lapsed', asked), en)).toBe(
+      'Call at Table 7 ran out (Ice, Water)',
+    )
     expect(logSentence(line('service_day.closed', { sentOrdersOfDay: 84 }), en)).toBe(
       'The night closed: 84 sent orders',
     )

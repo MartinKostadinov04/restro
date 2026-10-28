@@ -1,9 +1,11 @@
 // A guest's "Call a waiter" and what becomes of it (D122 §4; design `2026-10-21-service-data-design.md`
-// §1; ticket #81). A call has no text and no identity: the table, its sitting and the time. A
-// second tap while a call is open returns that call. Staff mark it Handled (`alerts.answer`); one
-// nobody answers lapses after the venue's time (15 minutes by default), and one whose sitting
-// ended lapses at once. Every step is a Log entry. A call is not located (D118, D122 §4): it
-// needs the table open for phones, nothing more.
+// §1; tickets #81, #180). A call has no text and no identity: the table, its sitting, what was
+// asked for (`kinds`, from the venue's fixed list) and the time. One call is open per table: a
+// later request is added to it (a repeat of a kind changes nothing). Staff mark it Handled
+// (`alerts.answer`) once for all its kinds; one nobody answers lapses after the venue's time (15
+// minutes by default) counted from its newest request, and one whose sitting ended lapses at
+// once. Every step is a Log entry. A call is not located (D118, D122 §4): it needs the table open
+// for phones, nothing more.
 //
 // Locks: the table's sitting and its order row first (the order's version rises, so every phone at
 // the table sees the call's new state at its next poll), then the call row (lock-order.ts).
@@ -13,7 +15,12 @@ import { and, eq, sql } from 'drizzle-orm'
 
 import { newId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
-import { readGuestFeatures } from '../theme'
+import {
+  CALL_WAITER_KINDS,
+  type CallWaiterKind,
+  isCallWaiterKind,
+  readGuestFeatures,
+} from '../theme'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
 
@@ -23,9 +30,15 @@ export type WaiterCall = typeof waiterCalls.$inferSelect
 /** Why a call lapsed (the Log's reason). */
 type LapseReason = 'timeout' | 'sitting_ended'
 
-/** When an open call lapses if nobody answers it. */
-export function waiterCallLapsesAt(calledAt: Date, lapseMinutes: number): Date {
-  return new Date(calledAt.getTime() + lapseMinutes * 60_000)
+/** When an open call lapses if nobody answers it: the venue's time after its newest request. */
+export function waiterCallLapsesAt(lastCalledAt: Date, lapseMinutes: number): Date {
+  return new Date(lastCalledAt.getTime() + lapseMinutes * 60_000)
+}
+
+/** The kinds of a call in the venue's list order, a value the list no longer holds left out. */
+export function orderedKinds(kinds: readonly string[]): CallWaiterKind[] {
+  const held = new Set(kinds.filter(isCallWaiterKind))
+  return CALL_WAITER_KINDS.filter((kind) => held.has(kind))
 }
 
 /** Why an open call has lapsed at `nowMs`, or null while it is still live. */
@@ -36,7 +49,7 @@ function lapseReason(
   lapseMinutes: number,
 ): LapseReason | null {
   if (openSittingId !== call.sittingId) return 'sitting_ended'
-  return waiterCallLapsesAt(call.calledAt, lapseMinutes).getTime() <= nowMs ? 'timeout' : null
+  return waiterCallLapsesAt(call.lastCalledAt, lapseMinutes).getTime() <= nowMs ? 'timeout' : null
 }
 
 /** Makes the table's change visible to the phones at it, when it has an order row to bump. */
@@ -68,7 +81,7 @@ async function lapse(stx: ServiceTx, call: WaiterCall, reason: LapseReason): Pro
     fromState: 'open',
     toState: 'lapsed',
     reason,
-    details: { waiterCallId: call.id },
+    details: { waiterCallId: call.id, kinds: call.kinds.join(',') },
   })
   touchTable(stx, call.tableId)
 }
@@ -95,20 +108,26 @@ async function lockCall(
 }
 
 /**
- * The guest's call. Refused `table_not_open` when the table has no open sitting and `calls_off`
- * when the venue has not switched "Call a waiter" on (the guest sees the still card then, never a
- * button). A second tap returns the open call; an open call whose time or sitting is past lapses
- * first, so the new group's tap makes a new call.
+ * The guest's call for one `kind`. Refused `table_not_open` when the table has no open sitting,
+ * `calls_off` when the venue has not switched "Call a waiter" on (the guest sees the still card
+ * then, never a button) and `kind_not_offered` when the venue's list does not hold the kind. With
+ * no open call it opens one; with one open it adds the kind when new (a repeat returns the call
+ * unchanged) and restarts the venue's unanswered time. An open call whose time or sitting is past
+ * lapses first, so the new group's request makes a new call.
  */
 export async function callWaiter(
   stx: ServiceTx,
-  command: { readonly tableId: string; readonly actionId: string },
+  command: {
+    readonly tableId: string
+    readonly actionId: string
+    readonly kind: CallWaiterKind
+  },
 ): Promise<ServiceResult> {
   const sitting = await stx.rows.openSitting(command.tableId)
   if (sitting === null) return refused(command.actionId, 'table_not_open')
-  if (!readGuestFeatures(stx.venue.settings).call_waiter.enabled) {
-    return refused(command.actionId, 'calls_off')
-  }
+  const { call_waiter: offered } = readGuestFeatures(stx.venue.settings)
+  if (!offered.enabled) return refused(command.actionId, 'calls_off')
+  if (!offered.kinds.includes(command.kind)) return refused(command.actionId, 'kind_not_offered')
   await stx.rows.tableOrder(command.tableId)
   const open = await lockOpenCall(stx, command.tableId)
   if (open !== null) {
@@ -119,11 +138,38 @@ export async function callWaiter(
       readOrderingSettings(stx.venue.settings).callLapseMinutes,
     )
     if (reason === null) {
-      return accepted(command.actionId, { details: { waiterCallId: open.id, repeat: true } })
+      if (open.kinds.includes(command.kind)) {
+        return accepted(command.actionId, {
+          details: { waiterCallId: open.id, repeat: true, kinds: open.kinds.join(',') },
+        })
+      }
+      const kinds = orderedKinds([...open.kinds, command.kind])
+      await stx.tx
+        .update(waiterCalls)
+        .set({
+          kinds,
+          lastCalledAt: sql`now()`,
+          ...stx.provenance,
+          via: stx.via,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(waiterCalls.id, open.id))
+      await stx.log({
+        kind: 'waiter_call.called',
+        tableId: command.tableId,
+        sittingId: sitting.id,
+        toState: 'open',
+        details: { waiterCallId: open.id, kind: command.kind, kinds: kinds.join(',') },
+      })
+      touchTable(stx, command.tableId)
+      return accepted(command.actionId, {
+        details: { waiterCallId: open.id, repeat: false, kinds: kinds.join(',') },
+      })
     }
     await lapse(stx, open, reason)
   }
   const id = newId('wc')
+  const kinds = [command.kind]
   await stx.tx.insert(waiterCalls).values({
     id,
     tenantId: stx.tenantId,
@@ -131,6 +177,7 @@ export async function callWaiter(
     tableId: command.tableId,
     sittingId: sitting.id,
     serviceDate: stx.serviceDate,
+    kinds,
     via: stx.via,
     ...stx.provenance,
   })
@@ -139,10 +186,12 @@ export async function callWaiter(
     tableId: command.tableId,
     sittingId: sitting.id,
     toState: 'open',
-    details: { waiterCallId: id },
+    details: { waiterCallId: id, kind: command.kind, kinds: kinds.join(',') },
   })
   touchTable(stx, command.tableId)
-  return accepted(command.actionId, { details: { waiterCallId: id, repeat: false } })
+  return accepted(command.actionId, {
+    details: { waiterCallId: id, repeat: false, kinds: kinds.join(',') },
+  })
 }
 
 /**
@@ -176,7 +225,7 @@ export async function waiterCallDone(
     sittingId: call.sittingId,
     fromState: 'open',
     toState: 'done',
-    details: { waiterCallId: call.id },
+    details: { waiterCallId: call.id, kinds: call.kinds.join(',') },
   })
   touchTable(stx, call.tableId)
   return accepted(null, { details: { state: 'done', changed: true } })

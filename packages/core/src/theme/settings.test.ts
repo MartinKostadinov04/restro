@@ -6,6 +6,7 @@ import { DEFAULT_THEME } from '../snapshot/build'
 import { deriveRoles, generatePalette, paletteRoles } from './derive'
 import {
   canonicalFeatures,
+  DEFAULT_CALL_WAITER_KINDS,
   DEFAULT_GUEST_FEATURES,
   GuestFeaturesSchema,
   PresentationSchema,
@@ -212,14 +213,14 @@ describe('the guest features', () => {
   it('reads what a venue switched on, request kinds in vocabulary order', () => {
     const features = {
       filters: false,
-      call_waiter: { enabled: true, kinds: ['other', 'bill', 'waiter'] },
+      call_waiter: { enabled: true, kinds: ['terminal', 'bill', 'waiter'] },
       bill: true,
       ordering: true,
       pay: false,
     }
     expect(readGuestFeatures({ guest_features: features })).toEqual({
       ...features,
-      call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'other'] },
+      call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'terminal'] },
     })
   })
 
@@ -243,8 +244,41 @@ describe('the guest features', () => {
     expect(readGuestFeatures({ guest_features: features })).toEqual(DEFAULT_GUEST_FEATURES)
   })
 
-  it('accepts all six request kinds, once each', () => {
-    const kinds = ['waiter', 'bill', 'water', 'cutlery', 'terminal', 'other'] as const
+  it('reads a list that still holds a dropped kind without it, never as a failed parse (#180)', () => {
+    const stored = {
+      ...DEFAULT_GUEST_FEATURES,
+      call_waiter: { enabled: true, kinds: ['waiter', 'cutlery', 'water', 'other'] },
+    }
+    expect(GuestFeaturesSchema.safeParse(stored).success).toBe(true)
+    expect(readGuestFeatures({ guest_features: stored }).call_waiter).toEqual({
+      enabled: true,
+      kinds: ['waiter', 'water'],
+    })
+  })
+
+  it('keeps `waiter` in the list while Call a waiter is on, and only then (#180)', () => {
+    const only = (enabled: boolean, kinds: string[]) =>
+      readGuestFeatures({
+        guest_features: { ...DEFAULT_GUEST_FEATURES, call_waiter: { enabled, kinds } },
+      }).call_waiter
+    expect(only(true, ['water'])).toEqual({ enabled: true, kinds: ['waiter', 'water'] })
+    expect(only(true, ['other'])).toEqual({ enabled: true, kinds: ['waiter'] })
+    expect(only(false, ['water'])).toEqual({ enabled: false, kinds: ['water'] })
+  })
+
+  it('offers the card terminal off when the feature is switched on (#180)', () => {
+    expect(DEFAULT_CALL_WAITER_KINDS).toEqual([
+      'waiter',
+      'bill',
+      'ice',
+      'water',
+      'glasses',
+      'clean_table',
+    ])
+  })
+
+  it('accepts all seven request kinds, once each', () => {
+    const kinds = ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal'] as const
     const features = {
       ...DEFAULT_GUEST_FEATURES,
       call_waiter: { enabled: true, kinds: [...kinds] },

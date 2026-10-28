@@ -217,7 +217,7 @@ describe('the services client', () => {
     const callId = newId('wc')
     const call = (state: 'open' | 'done' | 'lapsed') => ({
       ...tableState(2),
-      waiterCall: { id: callId, state, calledAgoSeconds: 4 },
+      waiterCall: { id: callId, state, kinds: ['waiter'] as const, calledAgoSeconds: 4 },
     })
     let answered: unknown = tableState(1)
     const h = harness((url) =>
@@ -248,7 +248,7 @@ describe('the services client', () => {
       note: '',
     })
     expect(h.client.getState().requests).toEqual([
-      { id: callId, actionId: callId, kind: 'waiter', status: 'sent', note: '' },
+      { id: `${callId}:waiter`, actionId: callId, kind: 'waiter', status: 'sent', note: '' },
     ])
     for (const [server, status] of [
       ['done', 'done'],
@@ -256,11 +256,27 @@ describe('the services client', () => {
     ] as const) {
       answered = { ...call(server), version: 3 }
       await h.tick()
-      expect(h.client.getState().requests).toMatchObject([{ id: callId, status }])
+      expect(h.client.getState().requests).toMatchObject([{ id: `${callId}:waiter`, status }])
     }
     answered = { ...tableState(4) }
     await h.tick()
     expect(h.client.getState().requests).toEqual([])
+  })
+
+  it('shows one request per kind of the table’s one waiter call (#180)', async () => {
+    const callId = newId('wc')
+    const h = harness(() =>
+      json(200, {
+        ...tableState(2),
+        waiterCall: { id: callId, state: 'open', kinds: ['ice', 'water'], calledAgoSeconds: 4 },
+      }),
+    )
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().requests).toEqual([
+      { id: `${callId}:ice`, actionId: callId, kind: 'ice', status: 'sent', note: '' },
+      { id: `${callId}:water`, actionId: callId, kind: 'water', status: 'sent', note: '' },
+    ])
   })
 
   it('takes an edit back when its answer is lost, and polls at once to see what happened', async () => {

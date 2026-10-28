@@ -63,6 +63,7 @@ import { type OrderingSettings, readOrderingSettings } from '../ordering-setting
 import { hashTableCode } from '../qr'
 import { type GuestNight, guestNight } from '../service-hours'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
+import type { CallWaiterKind } from '../theme'
 import { applyService } from './apply-service'
 import { billBackendValues, forbiddenPaths, parseStoredBills, wantsFreshReading } from './bill'
 import type { ServiceContext } from './context'
@@ -187,6 +188,8 @@ export interface GuestTableState {
   readonly waiterCall: {
     readonly id: string
     readonly state: 'open' | 'done' | 'lapsed'
+    /** What the table asked for (#180), in the venue's list order. */
+    readonly kinds: readonly CallWaiterKind[]
     readonly calledAgoSeconds: number
   } | null
   /** The table's bill as the last complete reading showed it, or null. */
@@ -516,6 +519,7 @@ export function projectGuestState(
         : {
             id: read.waiterCall.id,
             state: read.waiterCall.state,
+            kinds: read.waiterCall.kinds,
             calledAgoSeconds: seconds(now - read.waiterCall.calledAt.getTime()),
           },
     bill:
@@ -865,8 +869,8 @@ export async function guestAct(
   const target = await targetOf(pool, input.code)
   if (target === null) return { ok: false, code: 'code_retired' }
   const { actionId } = input.command
-  // The shell's request is a call for a waiter: its kind and note go no further (D122 §4: no text
-  // from the guest), and it is never located.
+  // The shell's request is a call for a waiter: its kind goes on and its note goes no further
+  // (D122 §4: no text from the guest), and it is never located.
   const type = input.command.type === 'service.request' ? 'waiter.call' : input.command.type
   const reject = (code: string): GuestActed => ({
     ok: true,
@@ -998,7 +1002,13 @@ export async function guestAct(
 
   const command =
     type === 'waiter.call'
-      ? { type, actionId, tableId: target.tableId, ageMs: input.ageMs }
+      ? {
+          type,
+          actionId,
+          tableId: target.tableId,
+          kind: input.command.request,
+          ageMs: input.ageMs,
+        }
       : { ...input.command, tableId: target.tableId, ageMs: input.ageMs }
   // A Send prices its lines from the table's menu, read before the transaction; the pass's consent
   // version goes on the sent order with the pass's sitting (D119).

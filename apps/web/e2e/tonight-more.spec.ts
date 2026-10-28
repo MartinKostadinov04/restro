@@ -326,7 +326,7 @@ test.describe('the Log', () => {
       'A guard stopped an order over the limit',
     )
     await expect(page.getByTestId('log-list')).toContainText('Settings changed: a payment table')
-    await expect(page.getByTestId('log-list')).toContainText('Table 2 called a waiter')
+    await expect(page.getByTestId('log-list')).toContainText('Table 2 asked for: Waiter')
     await expect(page.getByTestId('log-list')).toContainText("A guest's phone")
     await expect(page.getByTestId('log-list')).toContainText('Table 1 opened for phones')
     await expect(page.getByText('lease.taken_over')).toHaveCount(0)
