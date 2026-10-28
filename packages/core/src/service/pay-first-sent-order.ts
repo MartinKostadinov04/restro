@@ -53,20 +53,20 @@ export async function movePayFirstSentOrder(
 }
 
 /**
- * A manager answered a pay-first payment whose round was unconfirmed: "Receipt printed" means the
- * round is on the POS and paid (`added`); "No receipt" means the guest is not charged for it.
+ * A manager answered a pay-first payment whose round was unconfirmed: "Receipt printed" and "on
+ * the till" mean the round is on the POS (`added`); "No receipt" means the guest is not charged
+ * for it, and "not on the till" that the round is not on the POS (any more), so it is Not sent.
  */
 export async function settlePayFirstSentOrder(
   stx: ServiceTx,
   payment: PayFirstPayment & { readonly kind: string },
-  answer: 'receipt_printed' | 'no_receipt',
+  answer: 'receipt_printed' | 'no_receipt' | 'on_till' | 'not_on_till',
 ): Promise<void> {
   if (payment.kind !== 'pay_first') return
-  await movePayFirstSentOrder(
-    stx,
-    payment,
-    ['unconfirmed'],
-    answer === 'receipt_printed' ? 'added' : 'not_sent',
-    { reason: answer === 'receipt_printed' ? null : 'no_receipt' },
-  )
+  if (answer === 'receipt_printed' || answer === 'on_till') {
+    await movePayFirstSentOrder(stx, payment, ['unconfirmed'], 'added')
+    return
+  }
+  const from = answer === 'not_on_till' ? ['unconfirmed', 'added'] : ['unconfirmed']
+  await movePayFirstSentOrder(stx, payment, from, 'not_sent', { reason: answer })
 }

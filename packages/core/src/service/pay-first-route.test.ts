@@ -7,6 +7,7 @@
 // database.
 import { createHash, randomUUID } from 'node:crypto'
 
+import { withTenant } from '@restro/db'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
@@ -16,7 +17,9 @@ import { hashTableCode } from '../qr'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { applyService } from './apply-service'
 import type { ServiceContext } from './context'
+import { payFirstPossibleAt } from './pay-first'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
+import { readTableState } from './read'
 import type { SendMenu } from './send-menu'
 
 describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => {
@@ -28,6 +31,7 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
   let managerId: string
   const beer = newId('nd')
   const gin = newId('nd')
+  const vodka = newId('nd')
 
   const menu: SendMenu = {
     currency: 'EUR',
@@ -43,6 +47,17 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
           orderable: true,
           soldOut: false,
           name: 'Gin tonic',
+          options: new Map(),
+          paymentMode: 'pay_first',
+        },
+      ],
+      [
+        vodka,
+        {
+          priceMinor: 600,
+          orderable: true,
+          soldOut: false,
+          name: 'Vodka',
           options: new Map(),
           paymentMode: 'pay_first',
         },
@@ -101,7 +116,11 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
   const handleHash = () => createHash('sha256').update(randomUUID()).digest('hex')
 
   /** A Send of `lines` on the bill and `payFirst` paid first. */
-  const send = (lines: ReturnType<typeof line>[], payFirst: ReturnType<typeof line>[] | null) =>
+  const send = (
+    lines: ReturnType<typeof line>[],
+    payFirst: ReturnType<typeof line>[] | null,
+    tip: Record<string, unknown> = { kind: 'none' },
+  ) =>
     applyService(
       world.app,
       {
@@ -112,7 +131,7 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
         lines,
         ...(payFirst === null
           ? {}
-          : { payFirst: { lines: payFirst, tip: { kind: 'none' }, handleHash: handleHash() } }),
+          : { payFirst: { lines: payFirst, tip, handleHash: handleHash() } }),
       },
       guest(),
       { sendMenu: menu },
@@ -132,7 +151,11 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     }[]
     return lines
       .filter((one) => one.removedAt === null)
-      .map((one) => [one.itemId === gin ? 'gin' : 'beer', one.qty, one.heldBy])
+      .map((one) => [
+        one.itemId === gin ? 'gin' : one.itemId === vodka ? 'vodka' : 'beer',
+        one.qty,
+        one.heldBy,
+      ])
   }
 
   const payment = async (id: string) =>
@@ -142,9 +165,11 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
         state: string
         reason: string | null
         amount_minor: string | null
+        tip_minor: string
         sent_order_id: string | null
       }>(
-        'select kind, state, reason, amount_minor, sent_order_id from restro.payments where id = $1',
+        `select kind, state, reason, amount_minor, tip_minor, sent_order_id
+           from restro.payments where id = $1`,
         [id],
       )
     ).rows[0]
@@ -204,6 +229,7 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     ).toMatchObject({ status: 'accepted', details: { state: 'entered' } })
   }
 
+  /** The check on a reading of one bill of the two gins (POS item `A-gin`) for `totalMinor`. */
   const checked = (id: string, totalMinor: number, more: Record<string, unknown> = {}) =>
     step({
       type: 'payment.pay_first_checked',
@@ -212,12 +238,26 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
         bills: 1,
         totalMinor,
         paidMinor: 0,
-        lines: [{ quantity: '2', amountMinor: totalMinor }],
+        lines: [{ item: 'A-gin', quantity: '2', amountMinor: totalMinor }],
       },
+      items: ['A-gin'],
       partialCapture: true,
       heldMinor: 1400,
       ...more,
     })
+  const answer = (id: string, given: string) =>
+    applyService(
+      world.app,
+      { type: 'payment.answer', paymentId: id, answering: 'close', answer: given },
+      manager(),
+    )
+  const recordStep = (id: string, name: string, outcome: string) =>
+    world.owner.query(
+      `insert into restro.payment_steps
+         (tenant_id, venue_id, payment_id, step, outcome, answer, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, null, 'worker', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId, id, name, outcome],
+    )
 
   beforeAll(async () => {
     world = await openServiceWorld('pay-first')
@@ -333,6 +373,100 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     expect(typeof result.details.paymentId).toBe('string')
   })
 
+  it("pays for some of the pay-first lines, while a friend's lines for the bill wait (#113)", async () => {
+    await add(beer, 1)
+    await add(gin, 1)
+    await add(vodka, 1)
+    const first = (await send([], [line(gin, 1)])).result
+    expect(first).toMatchObject({ status: 'accepted' })
+    const second = (await send([], [line(vodka, 1)])).result
+    expect(second).toMatchObject({ status: 'accepted' })
+    expect(await orderLines()).toEqual([
+      ['beer', 1, null],
+      ['gin', 1, first.details.paymentId],
+      ['vodka', 1, second.details.paymentId],
+    ])
+    // A line another payment holds is not the phone's to pay again: none is left to pay first.
+    expect((await send([], [line(gin, 1)])).result).toMatchObject({ code: 'order_empty' })
+  })
+
+  it("a Send's repeat from another table gets nothing of it: no payment, no new handle", async () => {
+    await add(gin, 1)
+    const actionId = randomUUID()
+    const sendAs = (table: string, context: ServiceContext) =>
+      applyService(
+        world.app,
+        {
+          type: 'order.send',
+          tableId: table,
+          actionId,
+          ageMs: 50,
+          lines: [],
+          payFirst: { lines: [line(gin, 1)], tip: { kind: 'none' }, handleHash: handleHash() },
+        },
+        context,
+        { sendMenu: menu },
+      )
+    const first = (await sendAs(tableId, guest())).result
+    expect(first).toMatchObject({ status: 'accepted' })
+    const id = first.details.paymentId as string
+    const hashOf = async () =>
+      (
+        await world.owner.query<{ handle_hash: string }>(
+          'select handle_hash from restro.payments where id = $1',
+          [id],
+        )
+      ).rows[0]?.handle_hash
+    const before = await hashOf()
+
+    // Another table's phone, with its own code and sitting, sends under the same action id.
+    const other = world.tables[1] as string
+    const otherCode = `code${randomUUID().replaceAll('-', '')}`
+    const otherHash = await hashTableCode(otherCode)
+    await world.owner.query(
+      'update restro.tables set qr_token = $2, qr_code_hash = $3 where id = $1',
+      [other, otherCode, otherHash],
+    )
+    const elsewhere: ServiceContext = {
+      ...guest(),
+      tableCodeHash: otherHash,
+      sittingId: await world.openSitting(other),
+    }
+    const { result: added } = await applyService(
+      world.app,
+      {
+        type: 'order.add',
+        tableId: other,
+        actionId: randomUUID(),
+        ageMs: 50,
+        itemId: gin,
+        optionIds: [],
+        qty: 1,
+        note: '',
+      },
+      elsewhere,
+    )
+    expect(added.status).toBe('accepted')
+    const replay = (await sendAs(other, elsewhere)).result
+    expect(replay).toMatchObject({ status: 'refused', code: 'invalid_command' })
+    expect(JSON.stringify(replay)).not.toContain(id)
+    expect(await hashOf()).toBe(before)
+  })
+
+  it('takes a tip at Send only where the POS records it on the close (D127)', async () => {
+    await add(gin, 1)
+    const tip = { kind: 'percent', percent: 10 }
+    expect((await send([], [line(gin, 1)], tip)).result).toMatchObject({ code: 'invalid_command' })
+    await world.declareCapabilities({
+      notesReachTicket: true,
+      firstItemsOpenBill: true,
+      recordTipOnClose: true,
+    })
+    const { result } = await send([], [line(gin, 1)], tip)
+    expect(result).toMatchObject({ status: 'accepted' })
+    expect(await payment(result.details.paymentId as string)).toMatchObject({ tip_minor: '70' })
+  })
+
   it('offers pay-first only where the POS opens a bill that names itself and paying is on', async () => {
     await add(gin, 1)
     await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: false })
@@ -345,6 +479,57 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     expect((await send([], [line(gin, 1)])).result).toMatchObject({ code: 'paying_paused' })
     // Nothing was taken: the gin is still on the order, free.
     expect(await orderLines()).toEqual([['gin', 1, null]])
+  })
+
+  it('tells the composer pay-first can apply at the venue only with paying and a POS that opens a bill', async () => {
+    const possible = () =>
+      withTenant(world.app, world.tenantId, (tx) => payFirstPossibleAt(tx, world.venueId))
+    expect(await possible()).toBe(true)
+    await world.owner.query(
+      `update restro.payment_accounts set state = 'lost_access' where venue_id = $1`,
+      [world.venueId],
+    )
+    // Paused, not off: the field stays.
+    expect(await possible()).toBe(true)
+    await world.owner.query(
+      `update restro.payment_accounts set state = 'disconnected' where venue_id = $1`,
+      [world.venueId],
+    )
+    expect(await possible()).toBe(false)
+    await world.owner.query(
+      `update restro.payment_accounts set state = 'connected' where venue_id = $1`,
+      [world.venueId],
+    )
+    await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: false })
+    expect(await possible()).toBe(false)
+  })
+
+  it("pauses pay-first while the provider's breaker pauses paying, ordering going on (#112)", async () => {
+    await add(gin, 1)
+    const payFirstNow = async () => {
+      const read = await readTableState(world.app, {
+        tenantId: world.tenantId,
+        tableId,
+        tableCodeHash: codeHash,
+      })
+      return read !== null && !read.unchanged ? read.payFirst.state : null
+    }
+    expect(await payFirstNow()).toBe('on')
+    await world.owner.query(
+      'update restro.payment_accounts set paying_paused_at = now() where venue_id = $1',
+      [world.venueId],
+    )
+    try {
+      expect(await payFirstNow()).toBe('paused')
+      expect((await send([], [line(gin, 1)])).result).toMatchObject({ code: 'paying_paused' })
+      expect(await orderLines()).toEqual([['gin', 1, null]])
+    } finally {
+      await world.owner.query(
+        'update restro.payment_accounts set paying_paused_at = null where venue_id = $1',
+        [world.venueId],
+      )
+    }
+    expect(await payFirstNow()).toBe('on')
   })
 
   it('frees the lines of a payment that ends before the POS, its sent order Not sent', async () => {
@@ -408,17 +593,56 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     const id = await split()
     await entered(id)
     expect(await checked(id, 1600)).toMatchObject({
-      details: { state: 'unconfirmed', reason: 'entered_check_failed', why: 'pos_higher' },
+      details: { state: 'unconfirmed', reason: 'entered_check_failed', why: 'not_the_round' },
     })
     expect(await alerts(id)).toEqual([{ kind: 'payment_unconfirmed', done: false }])
-    const { result } = await applyService(
-      world.app,
-      { type: 'payment.answer', paymentId: id, answering: 'close', answer: 'receipt_printed' },
-      manager(),
-    )
-    expect(result).toMatchObject({ status: 'accepted' })
-    expect(await payment(id)).toMatchObject({ state: 'unconfirmed', reason: 'receipt_printed' })
+    // No close was attempted: no receipt was printed, and "No receipt" is not the question.
+    for (const given of ['receipt_printed', 'no_receipt']) {
+      expect((await answer(id, given)).result).toMatchObject({
+        status: 'refused',
+        code: 'payment_answer_not_asked',
+      })
+    }
+    // "On the till": checked again; failing again, a manager is asked again.
+    expect((await answer(id, 'on_till')).result).toMatchObject({
+      status: 'accepted',
+      details: { state: 'entered' },
+    })
     expect(await alerts(id)).toEqual([{ kind: 'payment_unconfirmed', done: true }])
+    expect(await checked(id, 1600)).toMatchObject({ details: { state: 'unconfirmed' } })
+    expect((await alerts(id)).map((alert) => alert.done).sort()).toEqual([false, true])
+    // "Not on the till": the hold is released, the round Not sent.
+    expect((await answer(id, 'not_on_till')).result).toMatchObject({
+      status: 'accepted',
+      details: { state: 'cancelling' },
+    })
+    expect(await sentOrder((await payment(id))?.sent_order_id)).toMatchObject({
+      state: 'not_sent',
+      reason: 'not_on_till',
+    })
+    expect(
+      await step({
+        type: 'payment.settle',
+        paymentId: id,
+        from: 'cancelling',
+        reason: 'cancelled',
+      }),
+    ).toMatchObject({ status: 'accepted', details: { state: 'released' } })
+  })
+
+  it('never takes a bill that is not the round for it, whatever its total', async () => {
+    const id = await split()
+    await entered(id)
+    expect(
+      await checked(id, 1400, {
+        bill: {
+          bills: 1,
+          totalMinor: 1400,
+          paidMinor: 0,
+          lines: [{ item: 'A-vodka', quantity: '2', amountMinor: 1400 }],
+        },
+      }),
+    ).toMatchObject({ details: { state: 'unconfirmed', why: 'not_the_round' } })
   })
 
   it('an entry with an unknown outcome is unconfirmed; "No receipt" cancels the round', async () => {
@@ -444,14 +668,11 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     // The round may be on the POS: its lines left the order, and nothing releases it unasked.
     expect(await orderLines()).toEqual([])
     expect(await alerts(id)).toEqual([{ kind: 'payment_unconfirmed', done: false }])
-    const { result } = await applyService(
-      world.app,
-      { type: 'payment.answer', paymentId: id, answering: 'close', answer: 'no_receipt' },
-      manager(),
-    )
+    expect((await answer(id, 'receipt_printed')).result).toMatchObject({ status: 'refused' })
+    const { result } = await answer(id, 'not_on_till')
     expect(result).toMatchObject({ status: 'accepted' })
-    expect(await payment(id)).toMatchObject({ state: 'cancelling', reason: 'no_receipt' })
-    expect(await sentOrder(sentOrderId)).toMatchObject({ state: 'not_sent', reason: 'no_receipt' })
+    expect(await payment(id)).toMatchObject({ state: 'cancelling', reason: 'not_on_till' })
+    expect(await sentOrder(sentOrderId)).toMatchObject({ state: 'not_sent', reason: 'not_on_till' })
     expect(
       await step({
         type: 'payment.settle',
@@ -460,6 +681,100 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
         reason: 'cancelled',
       }),
     ).toMatchObject({ status: 'accepted', details: { state: 'released' } })
+  })
+
+  it('"on the till" after an unknown entry takes the round on to its check, its sent order Added', async () => {
+    const id = await split()
+    await queued(id)
+    await recordStep(id, 'addLines', 'unknown')
+    await step({
+      type: 'payment.entered',
+      paymentId: id,
+      outcome: 'unknown',
+      billRef: null,
+      code: 'not_found',
+    })
+    expect((await answer(id, 'on_till')).result).toMatchObject({
+      status: 'accepted',
+      details: { state: 'entered' },
+    })
+    expect(await payment(id)).toMatchObject({ state: 'entered', reason: null })
+    expect(await sentOrder((await payment(id))?.sent_order_id)).toMatchObject({ state: 'added' })
+    expect(await checked(id, 1400)).toMatchObject({ details: { state: 'checked' } })
+  })
+
+  it('a refusal after an attempted entry is unknown, never a release (D127 3.13)', async () => {
+    const id = await split()
+    await queued(id)
+    await recordStep(id, 'addLines', 'unknown')
+    expect(
+      await step({
+        type: 'payment.entered',
+        paymentId: id,
+        outcome: 'refused',
+        billRef: null,
+        code: 'pos_table_missing',
+      }),
+    ).toMatchObject({ details: { state: 'unconfirmed' } })
+    expect(await payment(id)).toMatchObject({ state: 'unconfirmed', reason: 'enter_unknown' })
+    expect(await alerts(id)).toEqual([{ kind: 'payment_unconfirmed', done: false }])
+  })
+
+  it('a cancel that finds an entry attempted becomes a question; an answered one is released', async () => {
+    const id = await split()
+    await world.owner.query(
+      `update restro.payments set state = 'cancelling', reason = 'busy', payment_table_id = $2
+        where id = $1`,
+      [id, paymentTableId],
+    )
+    await recordStep(id, 'addLines', 'attempting')
+    const unknown = {
+      type: 'payment.entered',
+      paymentId: id,
+      outcome: 'unknown',
+      billRef: null,
+      code: 'cancel_after_entry',
+    }
+    expect(await step(unknown)).toMatchObject({ details: { state: 'unconfirmed' } })
+    expect(await payment(id)).toMatchObject({ state: 'unconfirmed', reason: 'enter_unknown' })
+    // After "not on the till" the cancel goes ahead.
+    await answer(id, 'not_on_till')
+    expect(await step(unknown)).toMatchObject({ details: { state: 'cancelling', changed: false } })
+    expect(
+      await step({
+        type: 'payment.settle',
+        paymentId: id,
+        from: 'cancelling',
+        reason: 'cancelled',
+      }),
+    ).toMatchObject({ status: 'accepted', details: { state: 'released' } })
+  })
+
+  it('records an entry or a close as started once: a second run backs off (#113)', async () => {
+    const id = await split()
+    const attempt = (name: string) =>
+      step({
+        type: 'payment.step',
+        paymentId: id,
+        step: name,
+        outcome: 'attempting',
+        answer: null,
+        idempotencyKey: `${id}-${name}`,
+      })
+    const results = await Promise.all([attempt('addLines'), attempt('addLines')])
+    expect(results.map((result) => result.status).sort()).toEqual(['accepted', 'refused'])
+    expect(results.find((result) => result.status === 'refused')).toMatchObject({
+      code: 'step_attempted',
+    })
+    // A refused entry wrote nothing: it may be tried again.
+    await recordStep(id, 'addLines', 'refused')
+    expect(await attempt('addLines')).toMatchObject({ status: 'accepted' })
+    expect(await attempt('payAndClose')).toMatchObject({ status: 'accepted' })
+    await recordStep(id, 'payAndClose', 'refused')
+    expect(await attempt('payAndClose')).toMatchObject({
+      status: 'refused',
+      code: 'step_attempted',
+    })
   })
 
   it('refuses to release a cancelled payment whose entry was attempted, unless a manager said so', async () => {

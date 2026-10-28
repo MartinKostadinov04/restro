@@ -118,6 +118,9 @@ export interface WhoView {
   readonly telegram: boolean
 }
 
+/** A manager's answers that confirm a payment's money: the receipt, or the round on the till. */
+const CONFIRMING_ANSWERS: readonly string[] = ['receipt_printed', 'on_till']
+
 const whoView = (who: Who, via: string | null): WhoView => ({ who, telegram: via === 'telegram' })
 
 // ───────────────────────────────── sent orders ─────────────────────────────────
@@ -384,8 +387,13 @@ export function logLineView(
     subject: line.subject,
     amountMinor: line.amountMinor,
     paymentState: line.kind === 'payment.state' ? line.toState : null,
+    // "Receipt printed" and "on the till" (#113) confirm the money; the others release it.
     paymentAnswer:
-      line.kind === 'payment.answered' ? (line.toState === 'receipt_printed' ? 'ok' : 'no') : null,
+      line.kind === 'payment.answered'
+        ? CONFIRMING_ANSWERS.includes(line.toState ?? '')
+          ? 'ok'
+          : 'no'
+        : null,
     sentOrdersOfDay: line.sentOrdersOfDay,
   }
 }

@@ -328,6 +328,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
               state: server.ordering.state,
               notesAndOptions: server.ordering.notesAndOptions,
               payFirst: server.ordering.payFirst,
+              tips: server.ordering.tips,
               night: server.ordering.night,
             },
       offline: offline(),

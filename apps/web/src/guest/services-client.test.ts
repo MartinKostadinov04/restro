@@ -35,6 +35,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       state: 'on',
       notesAndOptions: false,
       payFirst: 'off',
+      tips: false,
       night: { state: 'open', at: null },
     },
     location: {
@@ -138,6 +139,7 @@ describe('the services client', () => {
       state: 'on',
       notesAndOptions: false,
       payFirst: 'off',
+      tips: false,
       night: { state: 'open', at: null },
     })
     expect(h.nextWait()).toBe(10_000)

@@ -26,6 +26,7 @@ const STATE = {
     state: 'on',
     notesAndOptions: false,
     payFirst: 'off',
+    tips: false,
     night: { state: 'open', at: null },
   },
   location: { state: 'off', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },

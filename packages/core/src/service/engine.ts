@@ -32,7 +32,7 @@ import {
   venueTables,
 } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
 import { serviceDate } from '../service-day'
@@ -271,7 +271,7 @@ export async function executeCommand(
         if (order === null) throw new Refusal(refused(actionId, 'table_not_open'))
         const first = ring
           ? findInRing(order.recentActions, actionId)
-          : await sentOrderAnswer(stx, actionId, payFirstHandleOf(command))
+          : await sentOrderAnswer(stx, command.tableId, actionId, payFirstHandleOf(command))
         if (first !== null) return first
       }
       if (
@@ -341,20 +341,39 @@ export async function executeCommand(
 /** The answer a Send with this action id got: the sent order it made, or null. */
 async function sentOrderAnswer(
   stx: ServiceTx,
+  tableId: string,
   actionId: string,
   handleHash: string | null,
 ): Promise<ServiceResult | null> {
+  // An action id another table's Send used gets nothing of it: no ids, no handle (as `pay.start`).
+  const elsewhere = [
+    ...(await stx.tx
+      .select({ id: payments.id })
+      .from(payments)
+      .where(and(eq(payments.actionId, actionId), ne(payments.tableId, tableId)))),
+    ...(await stx.tx
+      .select({ id: sentOrders.id })
+      .from(sentOrders)
+      .where(and(eq(sentOrders.actionId, actionId), ne(sentOrders.tableId, tableId)))),
+  ]
+  if (elsewhere.length > 0) return refused(actionId, 'invalid_command')
   const [sent] = await stx.tx
     .select({ id: sentOrders.id, reference: sentOrders.reference })
     .from(sentOrders)
-    .where(eq(sentOrders.actionId, actionId))
+    .where(and(eq(sentOrders.actionId, actionId), eq(sentOrders.tableId, tableId)))
   // A Send with pay-first lines made a payment under the same action id (#113), with or without
   // an on-the-bill sent order. The phone that repeats never got the first answer (or lost it), so
   // the handle it holds now is the new one: the hash is replaced, as `pay.start` does.
   const [payment] = await stx.tx
     .select({ id: payments.id, state: payments.state, sentOrderId: payments.sentOrderId })
     .from(payments)
-    .where(and(eq(payments.actionId, actionId), eq(payments.kind, 'pay_first')))
+    .where(
+      and(
+        eq(payments.actionId, actionId),
+        eq(payments.kind, 'pay_first'),
+        eq(payments.tableId, tableId),
+      ),
+    )
   if (sent === undefined && payment === undefined) return null
   if (payment !== undefined && handleHash !== null) {
     stx.rows.claim('payment', [payment.id])

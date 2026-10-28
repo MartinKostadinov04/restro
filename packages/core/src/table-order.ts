@@ -420,10 +420,11 @@ export function takeSentLines(
 }
 
 /**
- * The pay-first part of a Send (#113): the live, unheld lines `payFirst` picks must be exactly the
- * lines the Send names for paying first, each once with its quantity (else `order_changed`). They
- * stay on the order, held by the payment (`heldBy`), until it enters them on the POS
- * (`dropHeldLines`) or ends without (`releaseHeldLines`).
+ * The pay-first part of a Send (#113): each line the Send names for paying first must be one of
+ * the live, unheld lines `payFirst` picks, with its quantity, each line once (else
+ * `order_changed`); the others stay as they are, for a later "Pay". The named lines stay on the
+ * order, held by the payment (`heldBy`), until it enters them on the POS (`dropHeldLines`) or ends
+ * without (`releaseHeldLines`).
  */
 export function holdPayFirstLines(
   order: TableOrderDraft,
@@ -441,27 +442,28 @@ export function holdPayFirstLines(
     (line) => live(line) && line.heldBy === null && payFirst(line),
   )
   if (candidates.length === 0) return { ok: false, code: 'order_empty' }
-  if (requested.length !== candidates.length) return { ok: false, code: 'order_changed' }
-  const wanted = new Map<string, number>()
+  if (requested.length === 0) return { ok: false, code: 'order_changed' }
+  const left = [...candidates]
+  const picked: TableOrderLine[] = []
   for (const line of requested) {
     const key = `${orderLineKey(line)}|${line.qty}`
-    wanted.set(key, (wanted.get(key) ?? 0) + 1)
+    const at = left.findIndex((candidate) => `${orderLineKey(candidate)}|${candidate.qty}` === key)
+    const found = left[at]
+    if (found === undefined) return { ok: false, code: 'order_changed' }
+    picked.push(found)
+    left.splice(at, 1)
   }
-  for (const line of candidates) {
-    const key = `${orderLineKey(line)}|${line.qty}`
-    const left = wanted.get(key) ?? 0
-    if (left === 0) return { ok: false, code: 'order_changed' }
-    wanted.set(key, left - 1)
-  }
+  // In the order's own order, as the round is entered.
+  const lines = candidates.filter((line) => picked.includes(line))
   return {
     ok: true,
     order: {
       ...order,
       lines: order.lines.map((line) =>
-        candidates.includes(line) ? { ...line, heldBy: paymentId, rev: line.rev + 1 } : line,
+        lines.includes(line) ? { ...line, heldBy: paymentId, rev: line.rev + 1 } : line,
       ),
     },
-    lines: candidates,
+    lines,
   }
 }
 

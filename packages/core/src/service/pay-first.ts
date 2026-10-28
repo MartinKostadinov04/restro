@@ -39,7 +39,15 @@ import { PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
 import type { AlertLocale } from './alert-text'
 import { defineCommand, type ServiceTx } from './definition'
 import { writeOrder } from './order'
-import { closeAttempted, signedSumMinor, TABLE_OPEN_PAYMENTS, type TipSchema, tipOf } from './pay'
+import {
+  closeAttempted,
+  enterAttempted,
+  quantityKey,
+  signedSumMinor,
+  TABLE_OPEN_PAYMENTS,
+  type TipSchema,
+  tipOf,
+} from './pay'
 import { movePayFirstSentOrder } from './pay-first-sent-order'
 import {
   at,
@@ -52,9 +60,10 @@ import {
   raise,
   refusedLock,
 } from './pay-route'
+import { payingPaused, payingPausedAt } from './paying-pause'
 import { loadPayingConnection, type PayingConnection } from './payment-connection'
 import { lineAvailable, type PricedLine, priceSentLines, type SendMenu } from './send-menu'
-import { readTableCapabilities } from './table-capabilities'
+import { readTableCapabilities, readVenueCapabilities } from './table-capabilities'
 
 /** Whether a table offers pay-first items now, as a phone is told it (no ids, #114). */
 export type PayFirstState = 'on' | 'paused' | 'off'
@@ -62,7 +71,8 @@ export type PayFirstState = 'on' | 'paused' | 'off'
 /**
  * Whether the table offers pay-first items, from what its POS declared and the venue's paying:
  * `off` where the POS can't open a bill that names itself, or paying is off; `paused` while the
- * venue's account lost access, or ordering is paused at the table.
+ * venue's account lost access, or `paused` says so (ordering paused at the table, or the
+ * provider's breaker pausing paying, #112).
  */
 export function payFirstStateOf(
   capabilities: Pick<RecordedServiceCapabilities, 'firstItemsOpenBill'>,
@@ -75,6 +85,20 @@ export function payFirstStateOf(
   return paused ? 'paused' : 'on'
 }
 
+/**
+ * Whether pay-first can apply anywhere at the venue (D122 §8): paying is offered (connected, or
+ * paused while the account lost access) and a POS of its tables opens a bill that names itself.
+ * Elsewhere the composer leaves the item's `payment_mode` out: it could not take effect.
+ */
+export async function payFirstPossibleAt(tx: ReadTx, venueId: string): Promise<boolean> {
+  const connection = await loadPayingConnection(tx, venueId)
+  const offered =
+    connection.providerKind !== null &&
+    (connection.readiness.on || connection.state === 'lost_access')
+  if (!offered) return false
+  return (await readVenueCapabilities(tx, venueId)).some((pos) => pos.firstItemsOpenBill)
+}
+
 /** `payFirstStateOf` for a table, read in the caller's transaction. */
 export async function payFirstState(
   tx: ReadTx,
@@ -83,7 +107,8 @@ export async function payFirstState(
   const capabilities = await readTableCapabilities(tx, input.tableId)
   if (!capabilities.firstItemsOpenBill) return 'off'
   const connection = await loadPayingConnection(tx, input.venueId)
-  return payFirstStateOf(capabilities, connection, input.paused)
+  const paused = input.paused || (await payingPausedAt(tx, input.venueId))
+  return payFirstStateOf(capabilities, connection, paused)
 }
 
 /**
@@ -146,7 +171,7 @@ export interface PayFirstPrepared {
 
 /**
  * Checks and prices a Send's pay-first part (#113) inside the Send's transaction, after its
- * on-the-bill part took its lines. The lines must be exactly the order's live, unheld pay-first
+ * on-the-bill part took its lines. The lines must be some of the order's live, unheld pay-first
  * lines (`order_changed`); they are priced from the published menu (rule 5); the POS must take a
  * pay-first round and paying be on (`paying_not_offered`, `paying_paused`). No cap, pace or repeat
  * guard: the guest pays before the round goes anywhere.
@@ -167,9 +192,10 @@ export async function preparePayFirst(
   const { menu, tableId } = input
   const capabilities = await readTableCapabilities(stx.tx, tableId)
   // The account row is locked `FOR SHARE`, as `pay.start` does: no disconnect between the check
-  // and the payment. Pauses were checked by the Send.
+  // and the payment. Ordering's pauses were checked by the Send; the provider's breaker pauses
+  // paying alone (#112).
   const connection = await loadPayingConnection(stx.tx, stx.venueId, 'share')
-  const state = payFirstStateOf(capabilities, connection, false)
+  const state = payFirstStateOf(capabilities, connection, await payingPaused(stx))
   if (state === 'paused') return { ok: false, code: 'paying_paused' }
   if (state === 'off' || connection.providerKind === null) {
     return { ok: false, code: 'paying_not_offered' }
@@ -198,10 +224,12 @@ export async function preparePayFirst(
   }
 
   const tipMinor = tipOf(input.part.tip, priced.totalMinor)
-  // A tip given as an amount stops at the lines' own amount (100 %, as a percent tip does).
+  // A tip given as an amount stops at the lines' own amount (100 %, as a percent tip does); and
+  // none where the POS can't put it on the receipt (D127): the phone was told no tip is possible.
   if (input.part.tip.kind === 'amount' && tipMinor > priced.totalMinor) {
     return { ok: false, code: 'invalid_command' }
   }
+  if (tipMinor > 0 && !capabilities.recordTipOnClose) return { ok: false, code: 'invalid_command' }
   // The venue's own floor here; the provider's minimum is checked when the worker prices it.
   const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
   if (addMinor(priced.totalMinor, tipMinor) < Math.max(floor, 1)) {
@@ -307,6 +335,10 @@ async function dropLines(stx: ServiceTx, locked: Locked): Promise<void> {
  * (the POS took it, or a read back found it there) → `entered`, its sent order `added`; `refused`
  * (nothing written) → cancelled and the hold released; `unknown` (not found after the read-back
  * window) → `unconfirmed`, for a manager: the round may still be on the POS.
+ *
+ * Once an entry was attempted (D127 3.13) nothing releases the hold on its own: a refusal after it
+ * (the POS place gone, the payment table read busy with what may be the round) is `unknown` too.
+ * A cancel that finds an entry attempted is turned `unknown` the same way (from `cancelling`).
  */
 export function paymentEntered() {
   return defineCommand({
@@ -327,13 +359,17 @@ export function paymentEntered() {
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
-      if (
-        payment.kind !== 'pay_first' ||
-        payment.state !== 'queued' ||
-        payment.paymentTableId === null
-      ) {
-        return at(payment, payment.state, false)
-      }
+      if (payment.kind !== 'pay_first') return at(payment, payment.state, false)
+      const attempted = await enterAttempted(stx, payment.id)
+      // A cancel the worker was about to carry out, with an entry attempted and no manager's answer.
+      const cancelled =
+        payment.state === 'cancelling' &&
+        command.outcome === 'unknown' &&
+        attempted &&
+        payment.reason !== 'no_receipt' &&
+        payment.reason !== 'not_on_till'
+      const queued = payment.state === 'queued' && payment.paymentTableId !== null
+      if (!queued && !cancelled) return at(payment, payment.state, false)
       if (command.outcome === 'entered') {
         await move(stx, locked, 'entered')
         await movePayFirstSentOrder(stx, payment, ['waiting'], 'added', {
@@ -342,12 +378,12 @@ export function paymentEntered() {
         await dropLines(stx, locked)
         return at(payment, 'entered', true)
       }
-      if (command.outcome === 'refused') {
+      if (command.outcome === 'refused' && !attempted) {
         await move(stx, locked, 'cancelling', { reason: enterRefusalReason(command.code) })
         return at(payment, 'cancelling', true)
       }
       await move(stx, locked, 'unconfirmed', { reason: 'enter_unknown' }, { code: command.code })
-      await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up')
+      await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up', {}, true)
       await movePayFirstSentOrder(stx, payment, ['waiting'], 'unconfirmed', {
         reason: 'enter_unknown',
       })
@@ -365,8 +401,53 @@ export function payFirstTableNote(locale: AlertLocale, label: string): string {
   return locale === 'bg' ? `за ${label}` : `for ${label}`
 }
 
-/** One line of the payment table's bill, as a reading gives it. */
-const ReadLineSchema = z.strictObject({ quantity: DecimalQuantitySchema, amountMinor: z.int() })
+/** One line of the payment table's bill, as a reading gives it: its POS item kept in the backend. */
+const ReadLineSchema = z.strictObject({
+  item: z.string().min(1).max(200).nullable(),
+  quantity: DecimalQuantitySchema,
+  amountMinor: z.int(),
+})
+
+/** One line of the round, as it was entered: its POS item, quantity and the price the guest saw. */
+export interface RoundLine {
+  readonly item: string
+  readonly quantity: string
+  readonly amountMinor: number
+}
+
+/**
+ * True when a bill is the round (#113): every line of it is one of the round's lines, the same POS
+ * item, no more of it and for no more. Lines the POS dropped or lowered are allowed (the check
+ * captures the lower total); anything else (a waiter's line, a line of another item, a higher
+ * amount) is someone else's bill.
+ */
+export function billIsRound(
+  round: readonly RoundLine[],
+  bill: readonly {
+    readonly item: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): boolean {
+  if (bill.length === 0) return false
+  const left = [...round]
+  for (const line of bill) {
+    const item = line.item
+    if (item === null) return false
+    const quantity = quantityKey(line.quantity)
+    const index = left.findIndex(
+      (own) =>
+        own.item === item &&
+        quantity > 0n &&
+        quantity <= quantityKey(own.quantity) &&
+        line.amountMinor >= 0 &&
+        line.amountMinor <= own.amountMinor,
+    )
+    if (index < 0) return false
+    left.splice(index, 1)
+  }
+  return true
+}
 
 /** The outcome of the pay-first check: what to capture, or why not. */
 export type PayFirstCheck =
@@ -380,14 +461,18 @@ export type PayFirstCheck =
  * higher, never: the guest agreed to the held amount. The amount must still be held.
  */
 export function payFirstCheck(input: {
-  /** The round's lines as priced at Send. */
-  readonly linesMinor: number
+  /** The round's lines as priced at Send, or null where they can't be named on the POS now. */
+  readonly round: readonly RoundLine[] | null
   readonly tipMinor: number
   readonly bill: {
     readonly bills: number
     readonly totalMinor: number
     readonly paidMinor: number
-    readonly lines: readonly { readonly amountMinor: number }[]
+    readonly lines: readonly {
+      readonly item: string | null
+      readonly quantity: string
+      readonly amountMinor: number
+    }[]
   } | null
   readonly partialCapture: boolean
   readonly heldMinor: number
@@ -395,13 +480,16 @@ export function payFirstCheck(input: {
   const bill = input.bill
   if (bill === null || bill.lines.length === 0) return { ok: false, why: 'no_bill' }
   if (bill.bills > 1) return { ok: false, why: 'several_bills' }
+  if (input.round === null) return { ok: false, why: 'round_unknown' }
+  if (!billIsRound(input.round, bill.lines)) return { ok: false, why: 'not_the_round' }
+  const linesMinor = signedSumMinor(input.round.map((line) => line.amountMinor)) ?? 0
   if (bill.paidMinor > 0) return { ok: false, why: 'part_paid' }
   if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
     return { ok: false, why: 'total_changed' }
   }
   if (bill.totalMinor <= 0) return { ok: false, why: 'no_lines' }
-  if (bill.totalMinor > input.linesMinor) return { ok: false, why: 'pos_higher' }
-  const lowered = bill.totalMinor < input.linesMinor
+  if (bill.totalMinor > linesMinor) return { ok: false, why: 'pos_higher' }
+  const lowered = bill.totalMinor < linesMinor
   if (lowered && !input.partialCapture) return { ok: false, why: 'partial_not_supported' }
   const amountMinor = addMinor(bill.totalMinor, input.tipMinor)
   if (input.heldMinor < amountMinor) return { ok: false, why: 'hold_lost' }
@@ -427,6 +515,11 @@ export function paymentPayFirstChecked() {
           lines: z.array(ReadLineSchema).max(500),
         })
         .nullable(),
+      /**
+       * The POS item of each of the round's lines, in their order, as the worker enters them; null
+       * where one has no POS link now. The amounts are the payment's own.
+       */
+      items: z.array(z.string().min(1).max(200)).max(100).nullable(),
       /** The provider captures less than the hold (`capabilities.partialCapture`). */
       partialCapture: z.boolean(),
       /** What the provider holds now; zero for a hold no longer `held`. */
@@ -447,12 +540,21 @@ export function paymentPayFirstChecked() {
       const again = payment.state === 'checked' && !(await closeAttempted(stx, payment.id))
       if (!again && payment.state !== 'entered') return at(payment, payment.state, false)
       const lines = await stx.tx
-        .select({ amountMinor: paymentLines.posAmountMinor })
+        .select({ quantity: paymentLines.quantity, amountMinor: paymentLines.posAmountMinor })
         .from(paymentLines)
         .where(eq(paymentLines.paymentId, payment.id))
-      const linesMinor = signedSumMinor(lines.map((line) => line.amountMinor)) ?? 0
+        .orderBy(paymentLines.position)
+      const items = command.items
+      const round =
+        items === null || items.length !== lines.length
+          ? null
+          : lines.map((line, index) => ({
+              item: items[index] ?? '',
+              quantity: line.quantity,
+              amountMinor: line.amountMinor,
+            }))
       const check = payFirstCheck({
-        linesMinor,
+        round,
         tipMinor: payment.tipMinor,
         bill: command.bill,
         partialCapture: command.partialCapture,
@@ -466,7 +568,7 @@ export function paymentPayFirstChecked() {
           { reason: 'entered_check_failed' },
           { why: check.why },
         )
-        await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up')
+        await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up', {}, true)
         return at(payment, 'unconfirmed', true, { reason: 'entered_check_failed', why: check.why })
       }
       const lowered = check.amountMinor !== payment.amountMinor

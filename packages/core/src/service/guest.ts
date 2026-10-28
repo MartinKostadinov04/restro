@@ -139,6 +139,8 @@ export interface GuestTableState {
   readonly ordering: {
     readonly state: 'on' | 'paused' | 'closed'
     readonly notesAndOptions: boolean
+    /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
+    readonly tips: boolean
     /** The venue's night (#82): "Last orders at 04:30", "closed for tonight", opening later. */
     readonly night: GuestNight
     /** Whether pay-first items can be paid at Send here now (#113, #114); no ids. */
@@ -392,6 +394,9 @@ const SENT_ORDER_STATES: Readonly<Record<string, GuestTableState['sentOrders'][n
     unconfirmed: 'unconfirmed',
   }
 
+/** A pay-first sent order's states the phone hears of only through its payment (#113). */
+const PAY_FIRST_UNSHOWN: readonly string[] = ['waiting', 'not_sent', 'unconfirmed']
+
 const seconds = (ms: number) => Math.max(0, Math.ceil(ms / 1000))
 
 /** The poll cadence for a screen: fast on the order and the bill, and while a Send is in flight. */
@@ -434,8 +439,9 @@ export function projectGuestState(
   const sentOrders = (sees ? read.sentOrders : []).flatMap((sent) => {
     const state = SENT_ORDER_STATES[sent.state]
     if (state === undefined) return []
-    // A pay-first round waiting for its payment (#113): the payment's own screen speaks for it.
-    if (sent.kind === 'pay_first' && sent.state === 'waiting') return []
+    // A pay-first round not on the bill (#113): waiting for its payment, Not sent or unconfirmed,
+    // the payment's own screen speaks for it, never a word of a sent order's.
+    if (sent.kind === 'pay_first' && PAY_FIRST_UNSHOWN.includes(sent.state)) return []
     const ended = sent.settledAt !== null && now - sent.settledAt.getTime() > ENDED_SENT_ORDER_MS
     return ended
       ? []
@@ -466,6 +472,7 @@ export function projectGuestState(
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       notesAndOptions: read.notesAndOptions,
+      tips: read.tips,
       payFirst: read.sitting === null ? 'off' : read.payFirst.state,
       night,
     },

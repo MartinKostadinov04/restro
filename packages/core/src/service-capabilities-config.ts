@@ -32,12 +32,15 @@ export interface RecordedServiceCapabilities {
   readonly notesReachTicket: boolean
   /** A sent order may open a POS bill on a table with none: else the waiter puts the first item on. */
   readonly firstItemsOpenBill: boolean
+  /** A tip reaches the fiscal receipt on the close (D127): else a tip above 0 is refused. */
+  readonly recordTipOnClose: boolean
 }
 
 /** Nothing declared: the cautious answer. */
 export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Object.freeze({
   notesReachTicket: false,
   firstItemsOpenBill: false,
+  recordTipOnClose: false,
 })
 
 function snakeCase(name: string): string {
@@ -61,5 +64,6 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
   return {
     notesReachTicket: stored.notes_reach_ticket === true,
     firstItemsOpenBill: stored.first_items_open_bill === true,
+    recordTipOnClose: stored.record_tip_on_close === true,
   }
 }

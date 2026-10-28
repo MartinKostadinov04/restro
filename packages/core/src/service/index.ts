@@ -262,10 +262,13 @@ export {
   tipOf,
 } from './pay'
 export {
+  billIsRound,
   type PayFirstCheck,
   type PayFirstState,
   payFirstCheck,
+  payFirstPossibleAt,
   payFirstTableNote,
+  type RoundLine,
 } from './pay-first'
 export {
   type LastCheck,

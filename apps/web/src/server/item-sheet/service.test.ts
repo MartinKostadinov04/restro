@@ -215,6 +215,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
   describe('reading', () => {
     it("shows every item field in template order with the resolver's provenance", async () => {
       const data = await sheet(linked)
+      // No paying here: the payment mode could not take effect, so it is left out (D122 §8).
       expect(data.fields.map((f) => f.key)).toEqual([
         'name',
         'description',
@@ -228,7 +229,6 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         'availability',
         'internal_note',
         'order_mode',
-        'payment_mode',
         'for_sale',
         'visible',
       ])

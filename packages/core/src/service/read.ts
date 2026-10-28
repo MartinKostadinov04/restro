@@ -142,6 +142,8 @@ export interface TableStateRead {
    * draws no note field and items that must have options are ordered from the waiter.
    */
   readonly notesAndOptions: boolean
+  /** A tip can be given when paying here: the table's POS records it on the receipt (D127). */
+  readonly tips: boolean
   /**
    * Pay-first items at the table (#113, #114): whether they are offered now, and the items of the
    * table's menu that are paid first (none where pay-first doesn't apply at the table).
@@ -467,6 +469,7 @@ export async function readTableState(
       ),
       pauses: active,
       notesAndOptions: capabilities.notesReachTicket,
+      tips: capabilities.recordTipOnClose,
       payFirst,
       reading:
         reading === undefined

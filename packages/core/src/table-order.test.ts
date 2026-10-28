@@ -292,6 +292,32 @@ describe('the pay-first lines a Send holds for its payment (#113)', () => {
     expect(held.order.lines.find((line) => line.itemId === lime)?.heldBy).toBeNull()
   })
 
+  it('holds the pay-first lines the Send names, leaving the others for a later Pay', () => {
+    // The gin and the lime both paid first.
+    const both = () => true
+    const held = holdPayFirstLines(
+      order,
+      [{ itemId: lime, optionIds: [], qty: 1, note: '' }],
+      both,
+      'py_1',
+    )
+    if (!held.ok) throw new Error(held.code)
+    expect(held.lines.map((line) => line.itemId)).toEqual([lime])
+    expect(held.order.lines.find((line) => line.itemId === gin)?.heldBy).toBeNull()
+    // The same line twice is one line too many.
+    expect(
+      holdPayFirstLines(
+        held.order,
+        [{ itemId: lime, optionIds: [], qty: 1, note: '' }],
+        both,
+        'py_2',
+      ),
+    ).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+  })
+
   it('refuses a part that differs from the order, and one with nothing to pay first', () => {
     expect(holdPayFirstLines(order, [{ ...ginLine, qty: 3 }], isGin, 'py_1')).toEqual({
       ok: false,

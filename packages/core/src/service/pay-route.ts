@@ -110,8 +110,18 @@ export const PAYMENT_TURN_SECONDS = paymentTurnSeconds()
 /** A wait for a payment table longer than this is counted (#111). */
 export const PAYMENT_LONG_WAIT_MS = 10_000
 
-/** The staff's answers to an unconfirmed close (#111). */
-export const PAYMENT_ANSWERS = ['receipt_printed', 'no_receipt'] as const
+/**
+ * The staff's answers to an unconfirmed payment. To a close (#111): "Receipt printed" or "No
+ * receipt". To a pay-first round whose entry is not known or whose check failed (#113), where no
+ * close was attempted: the round is on the till (`on_till`: checked again, then closed and
+ * captured as usual) or it is not (`not_on_till`: the hold is released). Staff words come with the
+ * Tonight screen (#115).
+ */
+export const PAYMENT_ANSWERS = ['receipt_printed', 'no_receipt', 'on_till', 'not_on_till'] as const
+/** The answers a manager gives about a pay-first round, before any close (#113). */
+const ENTRY_ANSWERS: readonly string[] = ['on_till', 'not_on_till']
+/** The unconfirmed reasons of a pay-first round before any close (#113). */
+const ENTRY_REASONS: readonly (string | null)[] = ['enter_unknown', 'entered_check_failed']
 /** The questions a manager answers: the close, then whether the items are back (#153). */
 export const PAYMENT_QUESTIONS = ['close', 'lines_not_back'] as const
 
@@ -238,15 +248,20 @@ export async function move(
   await logPayment(stx, payment, state, set.reason ?? payment.reason ?? null, details)
 }
 
-/** Raises one alert of `kind` about the payment, once (its key is claimed by `lockRoute`). */
+/**
+ * Raises one alert of `kind` about the payment, once (its key is claimed by `lockRoute`). `again`
+ * raises a new one where the earlier is done: the same question asked a second time (#113).
+ */
 export async function raise(
   stx: ServiceTx,
   locked: Locked,
   kind: string,
   permission: Permission,
   more: Readonly<Record<string, string>> = {},
+  again = false,
 ): Promise<void> {
-  if (locked.alerts.has(kind)) return
+  const earlier = locked.alerts.get(kind)
+  if (earlier !== undefined && (!again || earlier.doneAt === null)) return
   const { payment } = locked
   await stx.tx.insert(alerts).values({
     id: newId('al'),
@@ -928,8 +943,27 @@ export function paymentAnswer() {
       if (!(UNCONFIRMED_REASONS as readonly (string | null)[]).includes(payment.reason)) {
         return refused(null, 'payment_answered', { answer: payment.reason })
       }
+      // A pay-first round before any close is answered on the till (#113); a close, by its
+      // receipt. "Receipt printed" needs a close that was attempted: none, no bill was closed.
+      const entry = payment.kind === 'pay_first' && ENTRY_REASONS.includes(payment.reason)
+      if (entry !== ENTRY_ANSWERS.includes(command.answer)) {
+        return refused(null, 'payment_answer_not_asked', { reason: payment.reason })
+      }
+      if (command.answer === 'receipt_printed' && !(await closeAttempted(stx, payment.id))) {
+        return refused(null, 'payment_answer_not_asked', { reason: payment.reason })
+      }
       let state = payment.state
-      if (payment.kind === 'pay_first') {
+      if (command.answer === 'on_till') {
+        // The round is on the payment table: checked again, then closed and captured as usual.
+        state = 'entered'
+        await move(stx, locked, state, { reason: null })
+        await settlePayFirstSentOrder(stx, payment, command.answer)
+      } else if (command.answer === 'not_on_till') {
+        // Not on the till (never landed, or staff took it off): the hold is released.
+        state = 'cancelling'
+        await move(stx, locked, state, { reason: 'not_on_till' })
+        await settlePayFirstSentOrder(stx, payment, command.answer)
+      } else if (payment.kind === 'pay_first') {
         // A pay-first round has no real table to go back to (#113): "No receipt" releases the
         // hold, and staff deal with the round on the payment table; "Receipt printed" captures.
         if (command.answer === 'no_receipt') {

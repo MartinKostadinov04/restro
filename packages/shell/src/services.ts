@@ -519,6 +519,11 @@ export interface ServiceState {
      */
     readonly payFirst?: 'on' | 'paused' | 'off'
     /**
+     * A tip can be given when paying here (D127: the POS records it on the fiscal receipt); false,
+     * paying offers no tip. Absent where the host does not say: treated as false.
+     */
+    readonly tips?: boolean
+    /**
      * The venue's night (#82): `last_orders` shows "Last orders at {at}", `closed` "Ordering from
      * phones has closed for tonight" and `opens_later` the opening time; the last two take the
      * send control away. Absent where the host does not say.

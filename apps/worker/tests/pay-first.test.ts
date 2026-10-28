@@ -17,6 +17,7 @@ import {
   type IntegrationId,
   newId,
   type PaymentJob,
+  posRef,
   providerRef,
   SERVICE_TIMINGS,
   type ServiceConnector,
@@ -59,6 +60,7 @@ import {
   type PaymentJobDeps,
   PaymentStepRetry,
   preparePayment,
+  withTableNote,
 } from '../src/jobs/payments'
 import type { JobQueue } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
@@ -476,11 +478,25 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
         state: bill.state,
         rows: bill.rows.map((row) => [row.article, row.quantity, row.note]),
       }))
+  /** The POS place of the payment's payment table. */
+  const paymentPlace = async (id: string) => {
+    const [row] = await query<{ place_id: string }>(
+      `select pl.place_id from restro.places pl
+         join restro.payments p on p.payment_table_id = pl.table_id
+        where p.id = $1 and pl.state <> 'deleted'`,
+      [id],
+    )
+    if (row === undefined) throw new Error('the payment holds no payment table')
+    return row.place_id
+  }
   const holdOf = (id: string) => engine.paymentsOf(providerRef(accountRef), id as never)
   const calls = (method: string) =>
     sim.host.engine.calls().filter((call) => call.method === method).length
   const fault = (...rules: FaultRule[]) => sim.host.engine.faults.add(...rules)
-  const answer = async (id: string, value: 'receipt_printed' | 'no_receipt') =>
+  const answer = async (
+    id: string,
+    value: 'receipt_printed' | 'no_receipt' | 'on_till' | 'not_on_till',
+  ) =>
     (
       await applyService(
         pool,
@@ -596,11 +612,74 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
       expect(calls('addRows')).toBe(1)
       expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
 
+      // No close was attempted: "No receipt" is not the question.
+      expect(await answer(id, 'no_receipt')).toMatchObject({ status: 'refused' })
       // A manager finds no round at the till: the hold is released and the sent order Not sent.
-      expect(await answer(id, 'no_receipt')).toMatchObject({ status: 'accepted' })
+      expect(await answer(id, 'not_on_till')).toMatchObject({ status: 'accepted' })
       expect(await drive(id)).toMatchObject({ state: 'released', payment_table_id: null })
       expect(await sentOrderOf(id)).toMatchObject({ state: 'not_sent' })
       expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'released' })])
+    })
+
+    it('the entry unknown, then "on the till": checked, closed and captured on the round there', async () => {
+      const id = await held()
+      fault({ on: 'addRows', fault: { kind: 'hang' } })
+      expect(await drive(id)).toMatchObject({ state: 'unconfirmed', reason: 'enter_unknown' })
+      // The round reached the till after all (a waiter put it on the payment table).
+      sim.host.engine.waiter.addRound(await paymentPlace(id), [{ article: ARTICLE, quantity: '2' }])
+      expect(await answer(id, 'on_till')).toMatchObject({ status: 'accepted' })
+      expect(await sentOrderOf(id)).toMatchObject({ state: 'added' })
+      expect(await drive(id)).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(calls('addRows')).toBe(1)
+    })
+
+    it('a refusal after the entry was attempted (the POS place gone): unconfirmed, never released', async () => {
+      const id = await held()
+      fault({ on: 'addRows', fault: { kind: 'hang' } })
+      // One run: the entry is sent and times out, its outcome unknown for the read-back window.
+      await drive(id, 1)
+      expect(await steps(id)).toContain('addLines:unknown')
+      const [place] = await query<{ state: string }>(
+        'select state from restro.places where table_id = $1',
+        [tableId],
+      )
+      await query(`update restro.places set state = 'deleted' where table_id = $1`, [tableId])
+      try {
+        expect(await drive(id, 3)).toMatchObject({ state: 'unconfirmed', reason: 'enter_unknown' })
+        expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+        expect(await steps(id)).not.toContainEqual(expect.stringMatching(/^release:/))
+        expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
+      } finally {
+        await query('update restro.places set state = $2 where table_id = $1', [
+          tableId,
+          place?.state,
+        ])
+      }
+    })
+
+    it("a waiter's bill on the payment table after an unknown entry is not the round: never closed or charged", async () => {
+      const id = await held()
+      fault({ on: 'addRows', fault: { kind: 'hang' } })
+      await drive(id, 1)
+      sim.host.engine.waiter.addRound(await paymentPlace(id), [{ article: '2001' }])
+      expect(await drive(id)).toMatchObject({ state: 'unconfirmed', reason: 'enter_unknown' })
+      await drive(id, 3)
+      expect(calls('closeBill')).toBe(0)
+      expect(await steps(id)).not.toContainEqual(expect.stringMatching(/^(capture|release):/))
+      expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
+    })
+
+    it('two runs at once enter the round once (#113)', async () => {
+      const id = await held()
+      fault({ on: 'addRows', fault: { kind: 'landsThenHangs' } })
+      const run = () =>
+        preparePayment(env(), target(id), deps()).catch((error: unknown) => {
+          if (!(error instanceof PaymentStepRetry)) throw error
+        })
+      await Promise.all([run(), run()])
+      expect(calls('addRows')).toBe(1)
+      expect(await drive(id)).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(calls('addRows')).toBe(1)
     })
 
     it.each([
@@ -628,5 +707,27 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     } finally {
       await readFloor('pay-first')
     }
+  })
+})
+
+describe("the note naming the guest's table (#113)", () => {
+  const line = (note: string | null) => ({
+    item: posRef(ARTICLE),
+    quantity: '1',
+    options: [],
+    note,
+  })
+
+  it("goes before the guest's note on the first line, never cutting the guest's text", () => {
+    expect(
+      withTableNote([line('no ice'), line(null)], 'for Table 7').map((one) => one.note),
+    ).toEqual(['for Table 7 · no ice', null])
+    // A 200-character note leaves no room: the table goes on the next line, or on none.
+    const long = 'x'.repeat(200)
+    expect(withTableNote([line(long), line(null)], 'for Table 7').map((one) => one.note)).toEqual([
+      long,
+      'for Table 7',
+    ])
+    expect(withTableNote([line(long)], 'for Table 7').map((one) => one.note)).toEqual([long])
   })
 })

@@ -51,6 +51,7 @@ import { movePayFirstSentOrder } from './pay-first-sent-order'
 import { payingPaused } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import { accepted, refused, type ServiceResult } from './results'
+import { readTableCapabilities } from './table-capabilities'
 
 /** Why a guest's pay command was refused (design §3; the template words each, #45). */
 export const PAY_REFUSALS = [
@@ -478,6 +479,13 @@ export function payStart() {
       if (command.tip.kind === 'amount' && tipMinor > linesMinor) {
         return refused(command.actionId, 'invalid_command')
       }
+      // No tip where the POS can't put it on the receipt (D127): the phone was told none is possible.
+      if (
+        tipMinor > 0 &&
+        !(await readTableCapabilities(stx.tx, command.tableId)).recordTipOnClose
+      ) {
+        return refused(command.actionId, 'invalid_command')
+      }
       const amountMinor = addMinor(linesMinor, tipMinor)
       // The venue's own floor here; the provider's minimum is checked when the worker prices it.
       const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
@@ -865,8 +873,9 @@ export function paymentSettle() {
       const { payment, tableOpen } = locked
       if (payment.state !== command.from) return at(command, payment, payment.state, false)
       const reason = payment.reason ?? command.reason
-      // `stranded` comes only from `payment.undone`, which keeps the same rule itself.
-      const answered = reason === 'no_receipt' || reason === 'stranded'
+      // `stranded` comes only from `payment.undone`, which keeps the same rule itself;
+      // `not_on_till` is a manager's answer that a pay-first round is not on the till (#113).
+      const answered = reason === 'no_receipt' || reason === 'stranded' || reason === 'not_on_till'
       if (!answered && (await closeAttempted(stx, payment.id))) {
         return refused(null, 'close_attempted')
       }
@@ -927,6 +936,9 @@ export const PAYMENT_STEP_NAMES = [
   'addLines',
 ] as const
 
+/** The POS writes a payment makes once: a second `attempting` is refused (#113). */
+const ONCE_STEPS: readonly string[] = ['payAndClose', 'addLines']
+
 /**
  * True once a pay-first payment's round may be on the POS (#113): its `addLines` landed, or its
  * outcome is not known. A refused `addLines` wrote nothing.
@@ -981,11 +993,29 @@ export function paymentStep() {
     permission: null,
     idempotency: 'by_state',
     async handle(stx, command) {
+      // Locked: two runs that both try to start a close or an entry are taken one at a time.
       const [payment] = await stx.tx
         .select({ id: payments.id })
         .from(payments)
         .where(and(eq(payments.id, command.paymentId), eq(payments.venueId, stx.venueId)))
+        .for('update')
       if (payment === undefined) return refused(null, 'payment_missing')
+      if (command.outcome === 'attempting' && ONCE_STEPS.includes(command.step)) {
+        // A close is sent once; an entry once unless the POS refused it (nothing written). A run
+        // that finds another's attempt backs off before it calls the POS (#113).
+        const [latest] = await stx.tx
+          .select({ outcome: paymentSteps.outcome })
+          .from(paymentSteps)
+          .where(and(eq(paymentSteps.paymentId, payment.id), eq(paymentSteps.step, command.step)))
+          .orderBy(desc(paymentSteps.seq))
+          .limit(1)
+        if (
+          latest !== undefined &&
+          (command.step === 'payAndClose' || latest.outcome !== 'refused')
+        ) {
+          return refused(null, 'step_attempted', { step: command.step })
+        }
+      }
       await stx.tx.insert(paymentSteps).values({
         tenantId: stx.tenantId,
         venueId: stx.venueId,

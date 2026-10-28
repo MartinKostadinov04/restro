@@ -47,6 +47,7 @@ function state(version = 1) {
       state: 'on',
       notesAndOptions: false,
       payFirst: 'off',
+      tips: false,
       night: { state: 'open', at: null },
     },
     location: { state: 'held', passSeconds: 600, dayEndsInSeconds: 3_600, venueName: 'Club' },
