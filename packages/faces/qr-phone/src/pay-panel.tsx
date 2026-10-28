@@ -306,11 +306,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
       <section className="rq-order" data-slot="menu.bill" data-bill-hidden="">
         <h2>{words.locationTitle}</h2>
         <p>{words.locationBody}</p>
-        {services.location === undefined ? null : (
-          <button type="button" data-slot="bill.allow" onClick={() => services.location?.reopen()}>
-            {words.allowLocation}
-          </button>
-        )}{' '}
+        {/* "Allow location" is the location panel's own button, above: one control, not two. */}
         {props.callWaiter ? (
           <button
             type="button"
