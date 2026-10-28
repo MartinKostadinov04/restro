@@ -126,6 +126,31 @@ export {
   semanticColours,
   semanticColoursDark,
 } from './palette'
+export {
+  choosePay,
+  freeLines,
+  NO_TIP,
+  offersPay,
+  PAY_ENDS,
+  type PayBlock,
+  type PayEnd,
+  type PayScreen,
+  type PayTotals,
+  type Picks,
+  payBlock,
+  payMoney,
+  paymentIsFinal,
+  payScreen,
+  payStartCommand,
+  pickWhole,
+  reconcilePicks,
+  SAME_AMOUNT_MINUTES,
+  sameAmountAgo,
+  TIP_PERCENTS,
+  type TipChoice,
+  type TipPercent,
+  togglePick,
+} from './paying'
 export { type ScheduleStatus, scheduleStatus } from './schedule'
 export {
   BILL_LINE_STATUSES,
@@ -144,10 +169,17 @@ export {
   type OrderLine,
   type OrderLineView,
   PAY_METHODS,
-  PAY_SCOPES,
+  PAYMENT_STATES,
+  type PayFormHandle,
+  type PayFormProps,
+  type PayFormSlot,
+  type PayingView,
   type PayMethod,
-  type PayQuote,
-  type PayScope,
+  type PaymentLineView,
+  type PaymentState,
+  type PaymentView,
+  type PayPick,
+  type PaySeenLine,
   RECEIPT_ACTIONS,
   REQUEST_STATUSES,
   type ReceiptAction,
@@ -158,11 +190,20 @@ export {
   type SentOrderView,
   type ServiceBinding,
   type ServiceState,
+  type TableBillLineView,
+  type TableBillPartView,
+  type TableBillView,
   type TableOrderView,
   type VatLine,
 } from './services'
 export { isOutOfStock, refusedOutOfStock } from './stock'
-export { type GuestStrings, type ServiceStrings, type Strings, stringsFor } from './strings'
+export {
+  type GuestStrings,
+  type PayingStrings,
+  type ServiceStrings,
+  type Strings,
+  stringsFor,
+} from './strings'
 export { fallbackChain, pickText } from './text'
 export {
   ITEM_STATES,

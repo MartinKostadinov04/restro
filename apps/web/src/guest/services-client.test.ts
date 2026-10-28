@@ -14,6 +14,8 @@ import {
   newPhoneValue,
   OFFLINE_AFTER_MS,
   PASS_KEY,
+  PAY_HANDLE_KEY,
+  PAY_RETURNED_KEY,
   POLL_BACKOFF_MS,
   type TableServicesDeps,
 } from './services-client'
@@ -35,6 +37,9 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       state: 'on',
       notesAndOptions: false,
       payFirst: 'off',
+      paying: 'off',
+      payingProvider: null,
+      minCardMinor: 50,
       tips: false,
       night: { state: 'open', at: null },
     },
@@ -665,5 +670,278 @@ describe('the services client and the location check', () => {
     expect(JSON.parse(String(h.calls.at(-1)?.init.body))).toMatchObject({
       check: { humanToken: 'token-1' },
     })
+  })
+})
+
+describe('paying (#110, #114, D127)', () => {
+  const BN = `bn_${'0'.repeat(21)}1` as const
+  const PY = newId('py')
+  const HANDLE = 'AbCdEfGhIjKlMnOpQrStUv'
+
+  /** A table state with a bill, paying on and the provider named. */
+  const payingTable = (version = 1) => ({
+    ...tableState(version),
+    ordering: {
+      ...tableState(version).ordering,
+      paying: 'on' as const,
+      payingProvider: 'stripe',
+      tips: true,
+    },
+    bill: {
+      readAgoSeconds: 3,
+      complete: true,
+      currency: 'EUR',
+      totalMinor: 2250,
+      paidMinor: 0,
+      owedMinor: 2250,
+      parts: [
+        {
+          id: 'bill-1',
+          beingPaid: false,
+          totalMinor: 2250,
+          paidMinor: 0,
+          lines: [
+            {
+              id: BN,
+              name: { en_US: 'House wine' },
+              quantity: '1',
+              amountMinor: 2250,
+              beingPaid: true,
+            },
+          ],
+        },
+      ],
+    },
+  })
+
+  const payment = (changes: Record<string, unknown> = {}) => ({
+    id: PY,
+    number: 'K7Q4M',
+    state: 'awaiting_guest',
+    reason: null,
+    currency: 'EUR',
+    amountMinor: 2250,
+    tipMinor: 0,
+    lines: [{ name: 'House wine', quantity: '1', amountMinor: 2250 }],
+    form: {
+      provider: 'stripe',
+      values: { clientSecret: 'pi_x_secret_y', account: 'acct_1A' },
+      confirmSeconds: 120,
+    },
+    next: 2_000,
+    ...changes,
+  })
+
+  const start = (actionId = crypto.randomUUID()): GuestCommand => ({
+    kind: 'pay.start',
+    actionId,
+    pick: { kind: 'lines', lines: [{ lineId: BN, quantity: '1' }] },
+    seen: [{ lineId: BN, quantity: '1', amountMinor: 2250 }],
+    tipMinor: null,
+    tipPercent: 10,
+  })
+
+  /** A tab's session storage. */
+  function memory(initial: Record<string, string> = {}) {
+    const store = new Map(Object.entries(initial))
+    return {
+      store,
+      get: (key: string) => store.get(key) ?? null,
+      set: (key: string, value: string) => void store.set(key, value),
+      remove: (key: string) => void store.delete(key),
+    }
+  }
+
+  /** A server that has a table with a bill and, once told, a payment. */
+  function server(over: { payment?: () => Response } = {}) {
+    return (url: string, init: RequestInit) => {
+      if (url.endsWith('/actions')) {
+        const { command } = JSON.parse(String(init.body))
+        return json(200, {
+          result: {
+            actionId: command.actionId,
+            status: 'accepted',
+            code: null,
+            subjectId: null,
+            ref: null,
+          },
+          state: payingTable(2),
+          pass: null,
+          handle: command.kind === 'pay.start' ? HANDLE : null,
+        })
+      }
+      if (url.endsWith('/payment')) return over.payment?.() ?? json(200, payment())
+      return json(200, payingTable(1))
+    }
+  }
+
+  const headerOf = (init: RequestInit | undefined, name: string) =>
+    (init?.headers as Record<string, string> | undefined)?.[name]
+
+  it('draws the table’s bill, the greyed line and paying with who processes it', async () => {
+    const h = harness(server())
+    h.client.start()
+    await h.tick()
+    const state = h.client.getState()
+    expect(state.paying).toEqual({
+      state: 'on',
+      minCardMinor: 50,
+      processor: 'Stripe',
+      electronicReceipt: false,
+      recent: null,
+    })
+    expect(state.tableBill).toMatchObject({
+      owedMinor: 2250,
+      currency: 'EUR',
+      parts: [{ lines: [{ id: BN, amountMinor: 2250, beingPaid: true }] }],
+    })
+    expect(state.payment).toBeNull()
+  })
+
+  it('asks Turnstile for the pay action, keeps the handle in the tab and reads the payment with it', async () => {
+    const actions: string[] = []
+    const mem = memory()
+    const h = harness(server(), {
+      memory: mem,
+      humanToken: async (action) => {
+        actions.push(action)
+        return 'token'
+      },
+    })
+    h.client.start()
+    await h.tick()
+    const result = await h.client.dispatch(start())
+    expect(result).toMatchObject({ status: 'accepted' })
+    expect(actions).toEqual(['pay_start'])
+    const post = h.calls.find((call) => call.url.endsWith('/actions'))
+    expect(JSON.parse(String(post?.init.body)).check.humanToken).toBe('token')
+    // The handle is the tab's, never in an address or a body.
+    expect(mem.store.get(PAY_HANDLE_KEY)).toBe(HANDLE)
+    expect(h.calls.every((call) => !call.url.includes(HANDLE))).toBe(true)
+    expect(String(post?.init.body)).not.toContain(HANDLE)
+    await h.tick()
+    const read = h.calls.findLast((call) => call.url.endsWith('/payment'))
+    expect(headerOf(read?.init, 'X-Restro-Payment')).toBe(HANDLE)
+    expect(h.client.getState().payment).toMatchObject({
+      number: 'K7Q4M',
+      state: 'awaiting_guest',
+      form: { confirmSeconds: 120 },
+    })
+    // The face never sees the provider's values; the page asks for them.
+    expect(JSON.stringify(h.client.getState())).not.toContain('pi_x_secret_y')
+    expect(h.client.formValues()).toEqual({
+      provider: 'stripe',
+      values: { clientSecret: 'pi_x_secret_y', account: 'acct_1A' },
+    })
+  })
+
+  it('sends pay.returned and pay.cancel with the handle, and rejects them locally without one', async () => {
+    const h = harness(server(), { memory: memory() })
+    h.client.start()
+    await h.tick()
+    const before = h.calls.length
+    const none = await h.client.dispatch({ kind: 'pay.cancel', actionId: crypto.randomUUID() })
+    expect(none).toMatchObject({ status: 'rejected', code: 'unknown_payment' })
+    expect(h.calls).toHaveLength(before)
+    await h.client.dispatch(start())
+    await h.client.dispatch({ kind: 'pay.returned', actionId: crypto.randomUUID() })
+    const returned = h.calls.findLast((call) => call.url.endsWith('/actions'))
+    expect(headerOf(returned?.init, 'X-Restro-Payment')).toBe(HANDLE)
+    expect(JSON.parse(String(returned?.init.body)).command.kind).toBe('pay.returned')
+    const first = h.calls.find((call) => call.url.endsWith('/actions'))
+    expect(headerOf(first?.init, 'X-Restro-Payment')).toBeUndefined()
+  })
+
+  it('polls the payment until it is final, then stops', async () => {
+    const answers = [
+      payment(),
+      payment({ state: 'held', form: null }),
+      payment({ state: 'captured', form: null }),
+    ]
+    const h = harness(
+      server({
+        payment: () => json(200, answers.shift() ?? payment({ state: 'captured', form: null })),
+      }),
+      { memory: memory() },
+    )
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(start())
+    await h.tick()
+    expect(h.client.getState().payment?.state).toBe('awaiting_guest')
+    await h.tick()
+    expect(h.client.getState().payment).toMatchObject({ state: 'held', form: null })
+    expect(h.client.formValues()).toBeNull()
+    await h.tick()
+    expect(h.client.getState().payment?.state).toBe('captured')
+    const reads = h.calls.filter((call) => call.url.endsWith('/payment')).length
+    // Final: the next live timer is the table's poll, not the payment's.
+    await h.tick()
+    expect(h.calls.filter((call) => call.url.endsWith('/payment')).length).toBe(reads)
+  })
+
+  it('comes back to where the payment stands after a reload, and forgets one the server does not know', async () => {
+    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE })
+    const h = harness(
+      server({ payment: () => json(200, payment({ state: 'captured', form: null })) }),
+      { memory: mem },
+    )
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    expect(h.client.getState().payment).toMatchObject({ state: 'captured' })
+
+    const gone = harness(server({ payment: () => json(404, { code: 'unknown_payment' }) }), {
+      memory: mem,
+    })
+    gone.client.start()
+    await gone.tick()
+    await gone.tick()
+    expect(gone.client.getState().payment).toBeNull()
+    expect(mem.store.has(PAY_HANDLE_KEY)).toBe(false)
+  })
+
+  it('sends pay.returned once after a redirect brought the guest back, then forgets the marker', async () => {
+    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE, [PAY_RETURNED_KEY]: '1' })
+    const h = harness(server(), { memory: mem })
+    h.client.start()
+    await h.tick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const returned = h.calls.filter(
+      (call) =>
+        call.url.endsWith('/actions') &&
+        JSON.parse(String(call.init.body)).command.kind === 'pay.returned',
+    )
+    expect(returned).toHaveLength(1)
+    expect(mem.store.has(PAY_RETURNED_KEY)).toBe(false)
+  })
+
+  it('"Back to the bill" forgets the payment and its handle', async () => {
+    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE })
+    const h = harness(
+      server({ payment: () => json(200, payment({ state: 'captured', form: null })) }),
+      { memory: mem },
+    )
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    h.client.dismissPayment()
+    expect(h.client.getState().payment).toBeNull()
+    expect(mem.store.has(PAY_HANDLE_KEY)).toBe(false)
+  })
+
+  it('remembers a held payment for the "same amount" check', async () => {
+    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE })
+    const h = harness(
+      server({ payment: () => json(200, payment({ state: 'held', form: null })) }),
+      { memory: mem },
+    )
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    h.advance(240_000)
+    h.client.dismissPayment()
+    await h.tick()
+    expect(h.client.getState().paying?.recent).toEqual({ amountMinor: 2250, agoSeconds: 240 })
   })
 })

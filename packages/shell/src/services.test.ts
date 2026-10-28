@@ -9,7 +9,6 @@ import {
   type GuestCommand,
   GuestCommandSchema,
   PAY_METHODS,
-  PAY_SCOPES,
   RECEIPT_ACTIONS,
   SERVICE_LIMITS,
 } from './services'
@@ -24,6 +23,8 @@ const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0
 const nd = (n: number): `nd_${string}` => `nd_${String(n).padStart(22, '0')}`
 const ol = (n: number): `ol_${string}` => `ol_${String(n).padStart(22, '0')}`
 
+const bn = (n: number): `bn_${string}` => `bn_${String(n).padStart(22, '0')}`
+
 const line = { itemId: nd(1), optionIds: [nd(2), nd(3)], qty: 2, note: 'no onion' }
 
 /** One valid command of every kind. */
@@ -32,24 +33,23 @@ const VALID: readonly GuestCommand[] = [
   { kind: 'service.request', actionId: uuid(2), request: 'waiter', note: '' },
   { kind: 'service.cancel', actionId: uuid(3), requestId: 'rq-1' },
   {
-    kind: 'pay.quote',
+    kind: 'pay.start',
     actionId: uuid(4),
-    scope: 'full',
-    people: null,
-    tipPercent: 10,
+    pick: { kind: 'lines', lines: [{ lineId: bn(1), quantity: '2' }] },
+    seen: [{ lineId: bn(1), quantity: '2', amountMinor: 1200 }],
     tipMinor: null,
-    promo: null,
+    tipPercent: 10,
   },
   {
-    kind: 'pay.quote',
+    kind: 'pay.start',
     actionId: uuid(5),
-    scope: 'split',
-    people: 3,
-    tipPercent: null,
+    pick: { kind: 'whole' },
+    seen: [{ lineId: bn(1), quantity: '1', amountMinor: -50 }],
     tipMinor: 250,
-    promo: 'SUMMER',
+    tipPercent: null,
   },
-  { kind: 'pay.start', actionId: uuid(6), quoteId: 'q-1', method: 'card' },
+  { kind: 'pay.returned', actionId: uuid(6) },
+  { kind: 'pay.cancel', actionId: uuid(13) },
   { kind: 'receipt.action', actionId: uuid(7), receiptId: 'rc-1', action: 'pdf' },
   // The shared order's edits (#75).
   { kind: 'order.add', actionId: uuid(8), ...line },
@@ -62,7 +62,7 @@ const VALID: readonly GuestCommand[] = [
 const ok = (value: unknown) => GuestCommandSchema.safeParse(value).success
 
 const order = (changes: Record<string, unknown>) => ({ ...VALID[0], ...changes })
-const quote = (changes: Record<string, unknown>) => ({ ...VALID[3], ...changes })
+const start = (changes: Record<string, unknown>) => ({ ...VALID[3], ...changes })
 
 describe('GuestCommandSchema', () => {
   it('refuses an order edit out of its bounds (#75)', () => {
@@ -90,24 +90,17 @@ describe('GuestCommandSchema', () => {
     }
   })
 
-  it('accepts every service kind, pay scope, pay method and receipt action', () => {
+  it('accepts every service kind, receipt action and a pay command of each kind', () => {
     for (const request of SERVICE_KINDS) {
       expect(ok({ kind: 'service.request', actionId: uuid(1), request, note: '' }), request).toBe(
         true,
       )
-    }
-    for (const method of PAY_METHODS) {
-      expect(ok({ kind: 'pay.start', actionId: uuid(1), quoteId: 'q', method }), method).toBe(true)
     }
     for (const action of RECEIPT_ACTIONS) {
       expect(
         ok({ kind: 'receipt.action', actionId: uuid(1), receiptId: 'r', action }),
         action,
       ).toBe(true)
-    }
-    for (const scope of PAY_SCOPES) {
-      const people = scope === 'split' ? 2 : null
-      expect(ok(quote({ scope, people })), scope).toBe(true)
     }
   })
 
@@ -171,42 +164,37 @@ describe('GuestCommandSchema', () => {
   it('limits a cancel and the later steps of a payment: a host id of 1 to 64 characters', () => {
     expect(ok({ ...VALID[2], requestId: '' })).toBe(false)
     expect(ok({ ...VALID[2], requestId: 'r'.repeat(65) })).toBe(false)
-    expect(ok({ ...VALID[5], quoteId: '' })).toBe(false)
-    expect(ok({ ...VALID[5], method: 'cash' })).toBe(false)
     expect(ok({ ...VALID[6], receiptId: '' })).toBe(false)
     expect(ok({ ...VALID[6], action: 'fax' })).toBe(false)
   })
 
-  it('limits a quote: people 2 to 20, tip 0 to 30 percent, promo up to 32 characters', () => {
-    const split = { scope: 'split' }
-    for (const people of [1, 0, 21, 2.5, '3', Number.NaN]) {
-      expect(ok(quote({ ...split, people })), `people ${people}`).toBe(false)
+  it('limits a pay.start: a tip of 1 to 30 percent or an amount, never both (D127: it starts at zero)', () => {
+    for (const tipPercent of [0, -1, 31, 10.5, '10']) {
+      expect(ok(start({ tipPercent })), `tip ${tipPercent}`).toBe(false)
     }
-    for (const people of [2, 20])
-      expect(ok(quote({ ...split, people })), `people ${people}`).toBe(true)
-
-    for (const tipPercent of [-1, 31, 10.5, '10']) {
-      expect(ok(quote({ tipPercent })), `tip ${tipPercent}`).toBe(false)
-    }
-    for (const tipPercent of [0, 30])
-      expect(ok(quote({ tipPercent })), `tip ${tipPercent}`).toBe(true)
-
+    for (const tipPercent of [1, 30])
+      expect(ok(start({ tipPercent })), `tip ${tipPercent}`).toBe(true)
     for (const tipMinor of [-1, 2.5, Number.MAX_SAFE_INTEGER + 1]) {
-      expect(ok(quote({ tipPercent: null, tipMinor })), `tipMinor ${tipMinor}`).toBe(false)
+      expect(ok(start({ tipPercent: null, tipMinor })), `tipMinor ${tipMinor}`).toBe(false)
     }
-    expect(ok(quote({ tipPercent: null, tipMinor: 0 }))).toBe(true)
-
-    expect(ok(quote({ promo: 'P'.repeat(32) }))).toBe(true)
-    expect(ok(quote({ promo: 'P'.repeat(33) }))).toBe(false)
-    expect(ok(quote({ promo: '' }))).toBe(false)
+    expect(ok(start({ tipPercent: null, tipMinor: 0 }))).toBe(true)
+    expect(ok(start({ tipPercent: 10, tipMinor: 100 }))).toBe(false)
+    expect(ok(start({ tipPercent: null, tipMinor: null }))).toBe(true)
   })
 
-  it('keeps a quote unambiguous: people exactly for a split, one kind of tip at most', () => {
-    expect(ok(quote({ scope: 'split', people: null }))).toBe(false)
-    expect(ok(quote({ scope: 'full', people: 3 }))).toBe(false)
-    expect(ok(quote({ scope: 'mine', people: 3 }))).toBe(false)
-    expect(ok(quote({ tipPercent: 10, tipMinor: 100 }))).toBe(false)
-    expect(ok(quote({ tipPercent: null, tipMinor: null }))).toBe(true)
+  it('names the lines of a pay.start by our bill ids and as the phone saw them', () => {
+    const seen = [{ lineId: bn(1), quantity: '1', amountMinor: 500 }]
+    expect(ok(start({ seen: [] }))).toBe(false)
+    expect(ok(start({ pick: { kind: 'lines', lines: [] } }))).toBe(false)
+    expect(
+      ok(start({ pick: { kind: 'lines', lines: [{ lineId: 'x', quantity: '1' }] }, seen })),
+    ).toBe(false)
+    expect(ok(start({ seen: [{ ...seen[0], amountMinor: 1.5 }] }))).toBe(false)
+    expect(ok(start({ seen: [{ ...seen[0], quantity: '1.5.2' }] }))).toBe(false)
+    expect(
+      ok(start({ pick: { kind: 'lines', lines: [{ lineId: bn(1), quantity: '0.5' }] } })),
+    ).toBe(true)
+    expect(ok(start({ pick: { kind: 'everything' } }))).toBe(false)
   })
 
   it('accepts every order built from valid parts and refuses one part out of range (property)', () => {
@@ -241,13 +229,12 @@ describe('GuestCommandSchema', () => {
 })
 
 describe('the empty state and the stub', () => {
-  it('has no bill, no request, no quote, no receipt, and is not a preview', () => {
+  it('has no bill, no request, no payment, no receipt, and is not a preview', () => {
     expect(EMPTY_SERVICE_STATE).toEqual({
       revision: 0,
       preview: false,
       bill: null,
       requests: [],
-      quote: null,
       receipt: null,
     })
   })
@@ -286,11 +273,10 @@ describe('the service strings', () => {
     }
   })
 
-  it('names every service kind, pay scope, pay method, line status and request status', () => {
+  it('names every service kind, pay method, line status and request status', () => {
     for (const locale of ['bg_BG', 'en_US'] as const) {
       const words = stringsFor(locale).services
       expect(Object.keys(words.kinds).sort()).toEqual([...SERVICE_KINDS].sort())
-      expect(Object.keys(words.scopes).sort()).toEqual([...PAY_SCOPES].sort())
       expect(Object.keys(words.methods).sort()).toEqual([...PAY_METHODS].sort())
       expect(Object.keys(words.lineStatus).sort()).toEqual([
         'cancelled',

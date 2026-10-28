@@ -14,9 +14,10 @@ import {
   drawFace,
   fakeHost,
   orderingView,
-  quoteOf,
+  payingOf,
   receiptOf,
   resetPage,
+  tableBillOf,
 } from './test-kit'
 
 vi.setConfig({ testTimeout: 15_000 })
@@ -30,7 +31,12 @@ afterEach(() => {
 
 const view = orderingView()
 const bill = billOf([billRound('s1', 'staff', [billLine('w1', 'Wine', 1, 900, 'served')])], 900)
-const withBill: Partial<ServiceState> = { bill, quote: quoteOf(), receipt: receiptOf() }
+const withBill: Partial<ServiceState> = {
+  bill,
+  tableBill: tableBillOf(),
+  paying: payingOf(),
+  receipt: receiptOf(),
+}
 
 /** Every sheet: the name of the button that opens it, the title of the dialog, and a way to open it. */
 const SHEETS: { name: string; title: string; open: () => HTMLElement }[] = [

@@ -118,7 +118,7 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
       unchanged: false,
       next: 10_000,
       // No POS instance serves the table, so nothing says notes reach a ticket (#78).
-      ordering: { state: 'on', notesAndOptions: false, payFirst: 'off' },
+      ordering: { state: 'on', notesAndOptions: false, payFirst: 'off', paying: 'off' },
       order: { lines: [], removed: [], earlier: null },
       sentOrders: [],
       bill: null,

@@ -7,12 +7,14 @@
 // load, the tab's session storage, the phone's position and Turnstile's token.
 
 import { type GuestPosition, LOCATE_TIMEOUT_MS } from '@restro/core'
-import type { ServiceBinding } from '@restro/shell'
+import type { PayFormSlot, ServiceBinding } from '@restro/shell'
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 
+import { cardFormFor, cardReturnUrl } from '../connectors/card-forms'
 import {
   createTableServices,
   newPhoneValue,
+  PAY_RETURNED_KEY,
   type SessionMemory,
   type TableServices,
 } from './services-client'
@@ -76,6 +78,32 @@ function locate(): Promise<GuestPosition | null> {
   })
 }
 
+/**
+ * The form slot the face places (#114, D127): the page fills it with the card form of the payment's
+ * provider, from the values the client holds. A payment of a provider the page has no form for gets
+ * none, and the face draws the paying screen without it.
+ */
+function payFormSlot(services: TableServices): PayFormSlot {
+  return {
+    mount(target, props) {
+      const values = services.formValues()
+      const form = values === null ? null : cardFormFor(values.provider)
+      if (values === null || form === null) return { update: () => {}, unmount: () => {} }
+      return form.mount(target as HTMLElement, props, {
+        values: values.values,
+        returnUrl: cardReturnUrl(window.location.href),
+        onReturned: () => {
+          void services.dispatch({ kind: 'pay.returned', actionId: crypto.randomUUID() })
+        },
+        markRedirect: (on) => {
+          if (on) sessionMemory.set(PAY_RETURNED_KEY, '1')
+          else sessionMemory.remove(PAY_RETURNED_KEY)
+        },
+      })
+    },
+  }
+}
+
 export function useTableServices(code: string | null): ServiceBinding | undefined {
   const services = useMemo<TableServices | null>(() => {
     if (code === null) return null
@@ -114,11 +142,19 @@ export function useTableServices(code: string | null): ServiceBinding | undefine
     services?.getState ?? NO_STATE,
     NO_STATE,
   )
+  // One slot per client: a face mounts the form once and keeps it across the polls' new states.
+  const payForm = useMemo(() => (services === null ? null : payFormSlot(services)), [services])
   return useMemo(
     () =>
-      services === null || state === null
+      services === null || state === null || payForm === null
         ? undefined
-        : { state, dispatch: services.dispatch, location: services.location },
-    [services, state],
+        : {
+            state,
+            dispatch: services.dispatch,
+            location: services.location,
+            payForm,
+            payControls: { dismiss: services.dismissPayment },
+          },
+    [services, state, payForm],
   )
 }

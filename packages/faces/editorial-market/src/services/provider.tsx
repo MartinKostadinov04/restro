@@ -113,6 +113,8 @@ const IDLE: SendState = { status: 'idle' }
 export interface Services {
   readonly view: ViewModel
   readonly state: ServiceState
+  /** The host's binding: the form slot and the payment's controls (#114). */
+  readonly binding: ServiceBinding
   readonly words: ServiceStrings
   readonly guest: GuestStrings
   readonly locale: Locale
@@ -356,6 +358,7 @@ function ActiveServices({
     () => ({
       view,
       state,
+      binding: services,
       words: strings.services,
       guest: strings.guest,
       locale: view.locale,
@@ -379,6 +382,7 @@ function ActiveServices({
     [
       view,
       state,
+      services,
       strings,
       features,
       run,

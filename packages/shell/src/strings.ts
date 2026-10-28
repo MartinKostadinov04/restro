@@ -9,8 +9,8 @@ import type { ServiceKind } from './features'
 import type {
   BillLineStatus,
   GuestRefusalCode,
+  PayEnd,
   PayMethod,
-  PayScope,
   RequestStatus,
 } from './service-vocabulary'
 
@@ -135,7 +135,6 @@ export interface ServiceStrings {
   // Paying.
   readonly payTitle: string
   readonly whatToPay: string
-  readonly scopes: { readonly [S in PayScope]: string }
   readonly people: string
   readonly perPerson: string
   readonly tip: string
@@ -268,6 +267,57 @@ export interface ServiceStrings {
   /** Why a command was refused, by code; `refusedOther` for any other code. */
   readonly refusals: { readonly [C in GuestRefusalCode]: string }
   readonly refusedOther: string
+  /** The bill screen and paying from it (#114; the guide's "Guest words: the bill and paying"). */
+  readonly paying: PayingStrings
+}
+
+/**
+ * The words of the bill screen and of paying (#45, D127; the table in
+ * `docs/guides/menu-template-functionality.md` → "Guest words: the bill and paying", Martin read
+ * them 10-28). An amount is the text of a `ViewMoney`: "27,50 EUR" or "27.50 EUR".
+ */
+export interface PayingStrings {
+  readonly billTitle: string
+  readonly updated: (seconds: number) => string
+  readonly stale: (seconds: number) => string
+  readonly beingPaid: string
+  readonly leftToPay: string
+  readonly emptyBill: string
+  readonly payOpen: string
+  readonly askWaiterToPay: string
+  readonly pickTitle: string
+  readonly wholeBill: string
+  readonly tipLabel: string
+  readonly tipOther: string
+  readonly yourItems: string
+  readonly tip: string
+  readonly total: string
+  readonly payX: (amount: string) => string
+  readonly legalPrices: string
+  readonly legalProcessor: (processor: string, venue: string) => string
+  readonly belowMinimum: (min: string) => string
+  readonly notUpToDate: string
+  readonly cardsPaused: string
+  readonly nothingPicked: string
+  readonly sameQuestion: (minutes: number) => string
+  readonly sameYes: string
+  readonly sameNo: string
+  readonly preparing: string
+  readonly payLater: string
+  readonly waiting: string
+  readonly paid: string
+  readonly paidNumber: string
+  readonly paidReceipt: string
+  readonly backToBill: string
+  readonly checkingTitle: string
+  readonly checkingBody: string
+  /** Ended with nothing charged, by how it ended. */
+  readonly ended: { readonly [E in PayEnd]: string }
+  readonly payAgain: string
+  readonly locationTitle: string
+  readonly locationBody: string
+  readonly allowLocation: string
+  readonly callWaiter: string
 }
 
 /** The words of one language. `lang` is the language the strings are really in. */
@@ -447,7 +497,6 @@ const EN: Strings = {
     newRequest: 'Send another request',
     payTitle: 'Pay',
     whatToPay: 'What would you like to pay?',
-    scopes: { full: 'Full table', split: 'Split equally', mine: 'My items' },
     people: 'People',
     perPerson: 'per person',
     tip: 'Tip for the team',
@@ -567,9 +616,77 @@ const EN: Strings = {
       needs_first_item: 'Ask your waiter to put your first item on, then send again.',
       duplicate_order: 'Your table sent the same order a few minutes ago.',
       guard_tripped: 'Ask your waiter to take this order.',
+      paying_not_offered: 'Ask your waiter to pay.',
+      paying_paused: 'Card payments are paused right now. Ask your waiter.',
+      being_paid: 'Someone is already paying for this line.',
+      bill_changed: 'Your bill changed since you opened it.',
+      below_minimum: 'Card payments start at 0.50 EUR. Add an item or ask your waiter.',
+      ask_waiter_to_split: 'Ask your waiter to split this bill.',
+      turnstile: 'We couldn’t check this request. Try again.',
+      sitting_ended:
+        'Your visit at this table has ended. If you’re still here, scan the code again.',
+      too_late: 'Too late to cancel: the payment is being processed.',
+      unknown_payment: 'We can’t find this payment. Ask your waiter.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
+    paying: {
+      billTitle: 'Your table’s bill',
+      updated: (seconds) => `Updated ${seconds} s ago`,
+      stale: (seconds) => `Not up to date · updated ${seconds} s ago`,
+      beingPaid: 'Being paid',
+      leftToPay: 'Left to pay',
+      emptyBill: 'Nothing on your bill yet',
+      payOpen: 'Pay',
+      askWaiterToPay: 'Ask your waiter to pay.',
+      pickTitle: 'What are you paying for?',
+      wholeBill: 'The whole bill',
+      tipLabel: 'Tip: goes to the venue',
+      tipOther: 'Other amount',
+      yourItems: 'Your items',
+      tip: 'Tip',
+      total: 'Total',
+      payX: (amount) => `Pay ${amount}`,
+      legalPrices: 'Prices in EUR incl. VAT. Complaints and refunds: the venue.',
+      legalProcessor: (processor, venue) => `Payment processed by ${processor} for ${venue}.`,
+      belowMinimum: (min) => `Card payments start at ${min}. Add an item or ask your waiter.`,
+      notUpToDate: 'We can’t read the bill right now. We keep trying.',
+      cardsPaused: 'Card payments are paused right now. Ask your waiter.',
+      nothingPicked: 'Choose at least one line.',
+      sameQuestion: (minutes) => `Same amount as ${minutes} minutes ago. Pay again?`,
+      sameYes: 'Yes, pay',
+      sameNo: 'Back',
+      preparing: 'Preparing your bill…',
+      payLater: 'Pay later',
+      waiting: 'Processing your payment…',
+      paid: 'Paid',
+      paidNumber: 'Payment number',
+      paidReceipt: 'Show this number to your waiter. Your waiter brings your receipt.',
+      backToBill: 'Back to the bill',
+      checkingTitle: 'The venue is checking the payment',
+      checkingBody: 'You don’t need to do anything. If you have a question, call a waiter.',
+      ended: {
+        busy: 'Paying in the app is busy, try again in a minute or call a waiter.',
+        paying_paused: 'Card payments are paused right now. Nothing was charged. Ask your waiter.',
+        check_failed:
+          'Your bill changed just before paying. Nothing was charged. Check the bill and try again.',
+        isolate_refused: 'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
+        no_receipt:
+          'The payment wasn’t completed. Nothing was charged. Any amount your bank reserved will be released.',
+        expired: 'Your time ran out. Nothing was charged.',
+        // The guide has no words of its own for a payment the guest cancelled or for a pay-first
+        // release it has not worded yet (the lead drafts them): the calm general ones, true
+        // wherever a payment was released.
+        cancelled: 'Nothing was charged.',
+        other: 'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
+      },
+      payAgain: 'Pay again',
+      locationTitle: 'The bill shows only at the table',
+      locationBody:
+        'Allow location so we know you’re at the table. Otherwise your waiter tells you the total.',
+      allowLocation: 'Allow location',
+      callWaiter: 'Call a waiter',
+    },
   },
 }
 
@@ -727,7 +844,6 @@ const BG: Strings = {
     newRequest: 'Изпрати друга заявка',
     payTitle: 'Плащане',
     whatToPay: 'Какво искате да платите?',
-    scopes: { full: 'Цялата маса', split: 'Раздели поравно', mine: 'Моите артикули' },
     people: 'Души',
     perPerson: 'на човек',
     tip: 'Бакшиш за екипа',
@@ -852,9 +968,78 @@ const BG: Strings = {
       needs_first_item: 'Помолете сервитьора да маркира първия ви артикул, после изпратете отново.',
       duplicate_order: 'Масата ви изпрати същата поръчка преди малко.',
       guard_tripped: 'Помолете сервитьора да приеме тази поръчка.',
+      paying_not_offered: 'За да платите, попитайте сервитьора.',
+      paying_paused: 'Плащането с карта е спряно в момента. Попитайте сервитьора.',
+      being_paid: 'Някой вече плаща този ред.',
+      bill_changed: 'Сметката ви се промени, откакто я отворихте.',
+      below_minimum: 'Плащането с карта е от 0,50 EUR. Добавете артикул или попитайте сервитьора.',
+      ask_waiter_to_split: 'Помолете сервитьора да раздели сметката.',
+      turnstile: 'Не успяхме да проверим заявката. Опитайте отново.',
+      sitting_ended:
+        'Посещението ви на тази маса приключи. Ако сте още тук, сканирайте кода отново.',
+      too_late: 'Вече е късно за отказ: плащането се обработва.',
+      unknown_payment: 'Не намираме това плащане. Попитайте сервитьора.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',
+    paying: {
+      billTitle: 'Сметката на масата',
+      updated: (seconds) => `Обновено преди ${seconds} сек.`,
+      stale: (seconds) => `Не е актуална · обновена преди ${seconds} сек.`,
+      beingPaid: 'Плаща се',
+      leftToPay: 'За плащане',
+      emptyBill: 'Все още няма нищо в сметката',
+      payOpen: 'Плати',
+      askWaiterToPay: 'За да платите, попитайте сервитьора.',
+      pickTitle: 'Какво плащате?',
+      wholeBill: 'Цялата сметка',
+      tipLabel: 'Бакшиш: отива за заведението',
+      tipOther: 'Друга сума',
+      yourItems: 'Избрано',
+      tip: 'Бакшиш',
+      total: 'Общо',
+      payX: (amount) => `Плати ${amount}`,
+      legalPrices: 'Цените са в EUR с ДДС. Рекламации и връщане на пари: заведението.',
+      legalProcessor: (processor, venue) => `Плащането се обработва от ${processor} за ${venue}.`,
+      belowMinimum: (min) =>
+        `Плащането с карта е от ${min}. Добавете артикул или попитайте сервитьора.`,
+      notUpToDate: 'В момента не можем да прочетем сметката. Опитваме отново.',
+      cardsPaused: 'Плащането с карта е спряно в момента. Попитайте сервитьора.',
+      nothingPicked: 'Изберете поне един ред.',
+      sameQuestion: (minutes) => `Същата сума като преди ${minutes} мин. Да платите ли отново?`,
+      sameYes: 'Да, плати',
+      sameNo: 'Назад',
+      preparing: 'Подготвяме сметката ви…',
+      payLater: 'Плати по-късно',
+      waiting: 'Обработваме плащането…',
+      paid: 'Платено',
+      paidNumber: 'Номер на плащането',
+      paidReceipt: 'Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка.',
+      backToBill: 'Към сметката',
+      checkingTitle: 'Заведението проверява плащането',
+      checkingBody: 'Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор.',
+      ended: {
+        busy: 'Плащането в приложението е заето. Опитайте след минута или повикайте сервитьор.',
+        paying_paused:
+          'Плащането с карта е спряно в момента. Картата ви не е таксувана. Попитайте сервитьора.',
+        check_failed:
+          'Сметката се промени точно преди плащането. Картата ви не е таксувана. Проверете сметката и опитайте отново.',
+        isolate_refused:
+          'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.',
+        no_receipt:
+          'Плащането не беше завършено. Картата ви не е таксувана. Ако банката е запазила сума, тя ще бъде освободена.',
+        expired: 'Времето изтече. Картата ви не е таксувана.',
+        cancelled: 'Картата ви не е таксувана.',
+        other:
+          'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.',
+      },
+      payAgain: 'Плати отново',
+      locationTitle: 'Сметката се вижда само на масата',
+      locationBody:
+        'Разрешете местоположение, за да знаем, че сте на масата. Иначе сервитьорът ще ви каже сумата.',
+      allowLocation: 'Разреши местоположение',
+      callWaiter: 'Повикай сервитьор',
+    },
   },
 }
 
