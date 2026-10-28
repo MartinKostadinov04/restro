@@ -125,7 +125,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
   - **Pay-first:** Send with pay-first lines reads "Send and pay 24 EUR": one tap sends the rest and opens the pay-first payment. A guest who taps "Pay later" finds the pay-first lines in the order, "Not ordered until paid", with "Pay 24 EUR".
   - **While paying:** "Preparing your bill…" with "Pay later"; then the lines, tip, total, Stripe's card form (with Apple Pay and Google Pay) and "Pay 27,50 EUR" with "Pay later"; the bank's check inside the page; one waiting state "Processing your payment…". Card errors are Stripe's own text in its form. After the card is held there is no cancel.
   - **Same amount again:** within 15 minutes of this phone's payment of the same amount, "Same amount as 4 minutes ago. Pay again?" with "Yes, pay" and "Back".
-  - **Paid:** "Paid", "Payment number" with the number in large type (at least 40 px, 7:1), the table, the lines, tip and total, "Show this number to your waiter. Your waiter brings your receipt.", "Back to the bill". A closed or reloaded page comes back here.
+  - **Paid:** "Paid", "Payment number" with the number in large type (at least 40 px, 7:1), the table, the lines, tip and total, "Show this number to your waiter. Your waiter brings your receipt.", "Payment confirmation" (see Get the receipt) and "Back to the bill". A closed or reloaded page comes back here.
   - **Ends:** "can't tell", `stranded` and `capture_failed` show "The venue is checking the payment" and "You don't need to do anything…"; each `released` reason has its own line (words below), with "Pay again" after `busy`, `check_failed` and a timed-out card form, always "Back to the bill" and Call a waiter. "Nothing was charged" wherever true; never a step of the till.
 - **Platform (#110, D127; not wired to a template yet):** the guest API runs paying by card on the hidden reference path:
   - `pay.start` picks whole lines of the bill, or the whole bill, sends each picked line as the phone saw it (the knock, D111), an optional tip (an amount or a percent, starting at none), and Turnstile's token; it greys the lines for every phone (`beingPaid`) and answers a payment handle;
@@ -143,7 +143,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### Get the receipt
 - **Shell key:** none; a screen of the pay feature (`#receipt`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports. Decided in #45 (D127): the venue issues the fiscal receipt and, at the pilot, the waiter brings it on paper; the Paid screen offers nothing to download until Martin decides what it may offer (#45 log 1.4). No screen resembles a fiscal receipt, and no word of it says "фискален" (Н-18 чл. 7а).
+- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports. Decided in #45 (D127): the venue issues the fiscal receipt and, at the pilot, the waiter brings it on paper; the Paid screen's "Payment confirmation" opens Restro's own page (#45 log 1.4): the venue's name, date and time, the lines, tip, total, "Paid by card" and the payment number, with "Save" (an image or PDF kept on the phone, never a lasting link) and "This is not your receipt. Your waiter brings the venue's receipt." It never looks like a receipt (no ЕИК/ДДС header, VAT lines, receipt number, УНП or QR code), never uses Stripe's receipt link, and no word of it is "бон" or any form of "фискален", in either language (Н-18 чл. 7а). No electronic receipt at the pilot.
 - **Where:** §10.1, §10.2; D71, D72, D127
 
 ## Guest words: the bill and paying
@@ -203,6 +203,10 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `paid` | Paid | Платено | Paid |
 | `paid_ref_label` | Paid | Номер на плащането | Payment number |
 | `paid_receipt` | Paid | Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка. | Show this number to your waiter. Your waiter brings your receipt. |
+| `confirm_title` | Paid (button) and the confirmation page | Потвърждение за плащане | Payment confirmation |
+| `paid_by_card` | Confirmation page | Платено с карта | Paid by card |
+| `confirm_not_receipt` | Confirmation page | Това не е касова бележка. Касовата бележка за плащането ви носи сервитьорът. | This is not your receipt. Your waiter brings the venue's receipt. |
+| `confirm_save` | Confirmation page | Запази | Save |
 | `back_to_bill` | Buttons | Към сметката | Back to the bill |
 | `checking_title` | Can't tell / stranded / capture failed | Заведението проверява плащането | The venue is checking the payment |
 | `checking_body` | Can't tell / stranded / capture failed | Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор. | You don't need to do anything. If you have a question, call a waiter. |

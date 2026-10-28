@@ -63,7 +63,6 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q22: barsy post retry window before voiding (only if Stripe holds).
 - Q11: disputes ("drink never arrived", unauthorised use).
 - Q15: effect of a fixed per-transaction fee on small tickets.
-- Martin: what the guest's Paid screen offers to keep (#45 log 1.4, D127): a "Payment confirmation" (Restro's own, never resembling a receipt, no "фискален"), or nothing. Research in `docs/deliverables/2026-10-21-receipt-and-payment-law.md` (section 2026-10-28, PR #181): neither pilot POS is NRA-listed, so no electronic receipt; a payment confirmation is lawful. Until he decides, the Paid screen offers nothing to download.
 
 **Field (Martin)**
 - Q1–Q4: why barsy clubs skip barsy's QR add-on; lost orders; owner and waiter appetite; table vs bar revenue share.
