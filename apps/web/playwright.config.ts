@@ -78,7 +78,7 @@ const workerEnvironment = {
   ...serverEnvironment(ORIGIN),
   WORKER_ID: 'e2e-worker',
   WORKER_HEALTH_PORT: String(WORKER_PORT),
-  LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'info',
+  LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
   ...SEAL_KEYS.worker,
   WORKER_POS_SYNC: 'off',
   WORKER_SEND: 'on',
@@ -97,7 +97,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['github'], ['line'], ['html', { open: 'never' }]] : 'list',
+  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: ORIGIN,
     trace: 'on-first-retry',
