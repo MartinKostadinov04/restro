@@ -253,6 +253,13 @@
       "when": 1793119721854,
       "tag": "0035_pay_connection",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793174968458,
+      "tag": "0036_paying_breaker",
+      "breakpoints": true
     }
   ]
 }

@@ -95,6 +95,7 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   'paymentLines',
   'paymentSteps',
   // #109: a venue's payment account: connect, read back, lose, disconnect.
+  // #112: the provider breaker pauses and lifts paying at a venue account.
   'paymentAccounts',
   // #84: the end of a service day keeps its totals.
   'serviceDays',

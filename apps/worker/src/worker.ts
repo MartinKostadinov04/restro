@@ -10,7 +10,8 @@
 //      its own tables);
 //   4. the jobs from jobs/index.ts (registry.ts), plus one immediate heartbeat so /health turns
 //      green within seconds instead of after the first cron tick, and one `seal-table-codes` run
-//      (#70) so a deploy moves the table codes still in plain at once;
+//      (#70) so a deploy moves the table codes still in plain at once, and one payment recovery
+//      pass (#112) so a payment a dead worker left goes on at once;
 //   5. the reveal endpoint, when REVEAL_SERVICE_TOKEN and the seal keys are set (reveal.ts);
 //   6. the Telegram long poll for Done presses, when TELEGRAM_BOT_TOKEN is set (#83);
 //   7. "worker started".
@@ -158,6 +159,10 @@ export async function startWorker(
     }
     if (jobs.some((job) => job.name === JOB_NAMES.sealTableCodes)) {
       await boss.send(JOB_NAMES.sealTableCodes, {})
+    }
+    // The payment recovery (#112) runs at once: a payment a dead worker left goes on now.
+    if (jobs.some((job) => job.name === JOB_NAMES.paymentRecoveryTick)) {
+      await boss.send(JOB_NAMES.paymentRecoveryTick, {})
     }
     if (config.revealToken !== null && config.seal !== null) {
       const deps = { pool, privateKey: config.seal.privateKey }
