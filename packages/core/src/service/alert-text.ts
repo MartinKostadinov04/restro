@@ -94,6 +94,8 @@ interface Strings {
   readonly payingPausedBody: (source: string) => string
   readonly payingUnstable: (venue: string) => string
   readonly paymentStuck: (venue: string, table: string) => string
+  readonly paymentAccountLost: (venue: string) => string
+  readonly paymentAccountLostBody: (reason: 'access_removed' | 'account_restricted') => string
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
@@ -151,6 +153,11 @@ const EN: Strings = {
     `The payment provider is not answering. Ordering goes on; take payments in ${source}.`,
   payingUnstable: (venue) => `${venue}: card payments in the app are unstable`,
   paymentStuck: (venue, table) => `${venue}: a card payment is not moving on (${table})`,
+  paymentAccountLost: (venue) => `${venue}: card payments are paused`,
+  paymentAccountLostBody: (reason) =>
+    reason === 'access_removed'
+      ? 'Restro lost access to the venue’s payment account. Open Settings, Paying, and choose Reconnect.'
+      : 'The payment account can’t take card payments now. Open Settings, Paying, to see what is missing and choose Reconnect.',
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
@@ -214,6 +221,11 @@ const BG: Strings = {
     `Доставчикът на плащания не отговаря. Поръчките продължават; приемайте плащания в ${source}.`,
   payingUnstable: (venue) => `${venue}: плащането с карта в приложението е нестабилно`,
   paymentStuck: (venue, table) => `${venue}: плащане с карта не продължава (${table})`,
+  paymentAccountLost: (venue) => `${venue}: плащанията с карта са спрени`,
+  paymentAccountLostBody: (reason) =>
+    reason === 'access_removed'
+      ? 'Restro загуби достъп до платежната сметка на обекта. Отворете Настройки, Плащане, и изберете Свържи отново.'
+      : 'Платежната сметка не може да приема плащания с карта. Отворете Настройки, Плащане, за да видите какво липсва, и изберете Свържи отново.',
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
@@ -337,6 +349,13 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
       return { title: words.paymentStuck(venueName, table), body: '' }
     case 'paying_unstable':
       return { title: words.payingUnstable(venueName), body: '' }
+    case 'payment_account_lost':
+      return {
+        title: words.paymentAccountLost(venueName),
+        body: words.paymentAccountLostBody(
+          alert.details.reason === 'account_restricted' ? 'account_restricted' : 'access_removed',
+        ),
+      }
     default:
       return { title: `${venueName}: ${alert.kind}`, body: '' }
   }

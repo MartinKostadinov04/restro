@@ -1,0 +1,407 @@
+// Connecting a venue's payment account through the worker (#109; D125 §The venue's side) on Postgres,
+// as the restro_app role, against the simulated provider (`@restro/sim-pay`): the owner connects and
+// gets the provider's hosted address, refreshes it, returns and the account is read back; a check
+// the provider reports missing keeps paying off until the provider's notice shows it done; the
+// provider restricting the account or taking Restro's access away pauses paying and alerts the
+// venue's owners and managers; reconnecting brings paying back; and a disconnect is refused while a
+// payment is not final. The permission and the sign-in of the last 15 minutes are checked before
+// the provider is asked anything, and no provider id or key is in what the web app gets back.
+import { randomUUID } from 'node:crypto'
+
+import {
+  newId,
+  type PaymentProvider,
+  type ProviderNotice,
+  payingReadiness,
+  providerRef,
+  readAccountChecks,
+} from '@restro/core'
+import { createArea, createTable, provisionTenant, provisionVenue } from '@restro/core/apply'
+import { applyService, loadPayingConnection } from '@restro/core/service'
+import { recordProviderNotice } from '@restro/core/service/notices'
+import { createPool, type DbPool, withTenant } from '@restro/db'
+import {
+  createSimPayProvider,
+  ManualClock,
+  SIM_PAY_KIND,
+  SimPayEngine,
+  simPayNotice,
+} from '@restro/sim-pay'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { handleProviderNotices, newNoticeRunState } from '../src/jobs/provider-notices'
+import { createLogger } from '../src/logger'
+import {
+  type ConnectionApiAnswer,
+  type ConnectionRequest,
+  createConnectionApi,
+} from '../src/payments/connection-api'
+import {
+  allowSlowSetup,
+  createTestDatabase,
+  hasDatabase,
+  type TestDatabase,
+  testSlug,
+  withOwnerClient,
+} from './database'
+
+allowSlowSetup()
+
+const GUEST_HOST = 'guest.restro.test'
+
+describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated provider)', () => {
+  let db: TestDatabase
+  let pool: DbPool
+  let log: Awaited<ReturnType<typeof createLogger>>
+  const tenantId = newId('tn')
+  let venueId: string
+  let tableId: string
+  let sittingId: string
+  let ownerId: string
+  let plainId: string
+  const engine = new SimPayEngine({
+    clock: new ManualClock(),
+    switches: { wallets: ['apple_pay'] },
+  })
+  const provider: PaymentProvider = createSimPayProvider({ env: 'test', engine })
+  const providers = new Map([[SIM_PAY_KIND, provider]])
+  const noticeState = newNoticeRunState()
+  const logLines: string[] = []
+
+  const query = <Row extends object = Record<string, unknown>>(
+    sql: string,
+    values: unknown[] = [],
+  ) =>
+    withOwnerClient(db.ownerUrl, async (client) => (await client.query(sql, values)).rows as Row[])
+
+  beforeAll(async () => {
+    db = await createTestDatabase()
+    pool = createPool(db.appUrl, { applicationName: 'restro-worker-connection-tests', max: 4 })
+    await provisionTenant(pool, { tenantId, name: 'Connect club' })
+    await query(
+      `insert into restro.auth_organization (id, name, slug) values ($1, 'Connect club', $2)`,
+      [tenantId, `connect-${newId('tn').slice(3, 11)}`],
+    )
+    const venue = await provisionVenue(pool, tenantId, { name: 'Club', slug: testSlug('connect') })
+    venueId = venue.id
+    const area = await createArea(pool, tenantId, venueId, 'Hall')
+    if (!area.ok) throw new Error('no area')
+    const table = await createTable(pool, tenantId, {
+      areaId: area.area.id,
+      name: null,
+      number: '1',
+    })
+    if (!table.ok) throw new Error('no table')
+    tableId = table.table.id
+    const [day] = await query<{ id: string }>(
+      `insert into restro.sittings (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
+       values ($1, $2, $3, $4, current_date, 'one', 'restro', 'system', 'test-seed') returning id`,
+      [newId('st'), tenantId, venueId, tableId],
+    )
+    sittingId = day?.id ?? ''
+    ownerId = await addUser('owner')
+    plainId = await addUser('member')
+    log = await createLogger({
+      level: 'debug',
+      pretty: false,
+      destination: { write: (line: string) => void logLines.push(line) },
+    })
+  })
+
+  afterAll(async () => {
+    await pool?.end()
+    await db?.drop()
+  })
+
+  async function addUser(role: string): Promise<string> {
+    const id = `connect-${newId('us').slice(3)}`
+    await query('insert into restro.auth_user (id, name, email) values ($1, $2, $3)', [
+      id,
+      'A person',
+      `${id}@example.test`,
+    ])
+    await query(
+      'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
+      [`mb-${id}`, tenantId, id, role],
+    )
+    return id
+  }
+
+  const api = () => createConnectionApi({ pool, log, providers })
+  const request = (
+    action: 'start' | 'return',
+    options: { userId?: string; signedInMinutesAgo?: number } = {},
+  ): ConnectionRequest => ({
+    tenantId: tenantId as `tn_${string}`,
+    venueId: venueId as `vn_${string}`,
+    actor: { kind: 'user', userId: options.userId ?? ownerId, sessionId: `sess-${randomUUID()}` },
+    signedInAt: new Date(Date.now() - (options.signedInMinutesAgo ?? 0) * 60_000).toISOString(),
+    action,
+    returnUrl: `https://restro.test/venues/${venueId}?tab=settings&section=paying&connection=return`,
+    refreshUrl: `https://restro.test/venues/${venueId}?tab=settings&section=paying&connection=refresh`,
+    guestHost: GUEST_HOST,
+  })
+  const ask = (
+    action: 'start' | 'return',
+    options?: { userId?: string; signedInMinutesAgo?: number },
+  ): Promise<ConnectionApiAnswer> => api()(request(action, options))
+
+  const account = async () =>
+    (
+      await query<{
+        state: string
+        account_ref: string | null
+        checks: Record<string, unknown>
+      }>('select state, account_ref, checks from restro.payment_accounts where venue_id = $1', [
+        venueId,
+      ])
+    )[0] ?? null
+  const paying = () =>
+    withTenant(pool, tenantId, (tx) => loadPayingConnection(tx, venueId)).then((c) => ({
+      ...c,
+      readiness: payingReadiness({
+        state: c.state,
+        checks: c.checks,
+        tables: { paymentTables: 1, queuesWithoutOne: 0 },
+      }),
+    }))
+  const alertRows = () =>
+    query<{ permission: string; done_at: Date | null; details: Record<string, unknown> }>(
+      `select permission, done_at, details from restro.alerts
+        where venue_id = $1 and kind = 'payment_account_lost' order by raised_at`,
+      [venueId],
+    )
+
+  /** The provider's notice, stored as the notice route would, then the job reads it back. */
+  async function notice(event: ReturnType<SimPayEngine['announceAccountUpdated']>) {
+    const verified: ProviderNotice = simPayNotice(event)
+    await recordProviderNotice(pool, {
+      providerKind: SIM_PAY_KIND,
+      live: false,
+      notice: verified,
+      jobId: `rq-${randomUUID()}`,
+    })
+    return handleProviderNotices(
+      { pool, log, now: () => new Date(), jobId: `notices-${randomUUID()}` },
+      { providers },
+      noticeState,
+    )
+  }
+  /** The provider's account of the venue now, as the test last saw it (backend only). */
+  let accountRefNow: string | null = null
+  const remember = async () => {
+    accountRefNow = (await account())?.account_ref ?? null
+  }
+  const lastAccount = () => {
+    if (accountRefNow === null) throw new Error('no account yet')
+    return providerRef(accountRefNow)
+  }
+
+  it('connects: the owner gets the provider’s hosted address and nothing else of the account', async () => {
+    const answer = await ask('start')
+    expect(answer).toMatchObject({ status: 'accepted' })
+    expect(Object.keys(answer).sort()).toEqual(['status', 'url'])
+    expect((answer as { url: string }).url).toMatch(/^https:\/\//)
+    await remember()
+    expect(await account()).toMatchObject({ state: 'connecting' })
+    expect(accountRefNow).toMatch(/^simacct_/)
+    // The guest host the web app named is remembered for the wallets.
+    expect(readAccountChecks((await account())?.checks).guestHost).toBe(GUEST_HOST)
+  })
+
+  it('refreshes: a fresh link for the same account', async () => {
+    const before = accountRefNow
+    const answer = await ask('start')
+    expect(answer).toMatchObject({ status: 'accepted' })
+    expect((await account())?.account_ref).toBe(before)
+    expect((await account())?.state).toBe('connecting')
+  })
+
+  it('returns before the owner finished: connected, with card payments still missing', async () => {
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    const checks = readAccountChecks((await account())?.checks)
+    expect(checks.cardPayments).toBe(false)
+    expect(checks.missing).toEqual(['business details', 'bank account'])
+    const reading = await paying()
+    expect(reading.readiness.on).toBe(false)
+    expect(reading.readiness.missing).toContain('cardPayments')
+    expect(reading.readiness.providerMissing).toEqual(['business details', 'bank account'])
+    // Wallets wait for the account to take cards.
+    expect(engine.domainsOf(lastAccount())).toEqual([])
+  })
+
+  it('turns card payments on from the provider’s notice, and registers the guest domain for wallets', async () => {
+    engine.finishConnecting(lastAccount())
+    const counts = await notice(engine.announceAccountUpdated(lastAccount()))
+    expect(counts.connection).toBe(1)
+    expect(readAccountChecks((await account())?.checks)).toMatchObject({
+      cardPayments: true,
+      missing: [],
+      domainHost: GUEST_HOST,
+    })
+    expect(engine.domainsOf(lastAccount())).toEqual([GUEST_HOST])
+    // The till's card type and the receipt emails are the owner's ticks: paying is still off.
+    expect((await paying()).readiness.missing).toEqual(['cardTypeInTill', 'receiptEmailsOff'])
+  })
+
+  it('pauses paying when the provider restricts the account, and lifts when it can again', async () => {
+    engine.restrictAccount(lastAccount(), ['identity document'])
+    await notice(engine.announceAccountUpdated(lastAccount()))
+    expect((await account())?.state).toBe('lost_access')
+    const [alert] = await alertRows()
+    expect(alert).toMatchObject({
+      permission: 'money.follow_up',
+      details: { reason: 'account_restricted' },
+      done_at: null,
+    })
+
+    engine.finishConnecting(lastAccount())
+    await notice(engine.announceAccountUpdated(lastAccount()))
+    expect((await account())?.state).toBe('connected')
+    expect((await alertRows())[0]?.done_at).not.toBeNull()
+  })
+
+  it('pauses paying at once when the venue takes access away, and one alert says so', async () => {
+    const lostAccount = accountRefNow
+    await notice(engine.revokeAccess(lastAccount()))
+    expect(await account()).toMatchObject({ state: 'lost_access' })
+    expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
+    const alerts = await alertRows()
+    expect(alerts).toHaveLength(2)
+    expect(alerts[1]).toMatchObject({ details: { reason: 'access_removed' }, done_at: null })
+    expect((await paying()).readiness.on).toBe(false)
+    expect(JSON.stringify(alerts[1])).not.toContain(lostAccount ?? 'x')
+    // The notice alone did this: a reading of the account still answers (what a provider answers
+    // after a venue disconnects is not documented), and a later account notice changes nothing.
+    expect(engine.readConnection(lastAccount())).toMatchObject({ complete: true })
+    await notice(engine.announceAccountUpdated(lastAccount()))
+    expect(await account()).toMatchObject({ state: 'lost_access' })
+    expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
+  })
+
+  it('reconnects: a new account, and paying’s pause and the alert end once it is read connected', async () => {
+    const lostAccount = accountRefNow
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    await remember()
+    expect(accountRefNow).not.toBe(lostAccount)
+    expect((await account())?.state).toBe('connecting')
+    engine.finishConnecting(lastAccount(), 'Club Nova Ltd')
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    // The settings show "Connected" with the account's name (D125 2.1).
+    expect(
+      (
+        await query<{ account_name: string | null }>(
+          'select account_name from restro.payment_accounts where venue_id = $1',
+          [venueId],
+        )
+      )[0]?.account_name,
+    ).toBe('Club Nova Ltd')
+    expect((await alertRows())[1]?.done_at).not.toBeNull()
+    expect(engine.domainsOf(lastAccount())).toEqual([GUEST_HOST])
+  })
+
+  it('records nothing when the provider can not be read, and says to try again', async () => {
+    const before = await account()
+    engine.failReads()
+    expect(await ask('return')).toEqual({ status: 'refused', code: 'provider_unavailable' })
+    engine.clearFaults()
+    expect(await account()).toEqual(before)
+  })
+
+  it('asks the provider nothing before the permission and the sign-in are checked', async () => {
+    const before = await account()
+    expect(await ask('start', { userId: plainId })).toEqual({
+      status: 'refused',
+      code: 'permission_denied',
+    })
+    expect(await ask('return', { userId: plainId })).toEqual({
+      status: 'refused',
+      code: 'permission_denied',
+    })
+    expect(await ask('start', { signedInMinutesAgo: 16 })).toEqual({
+      status: 'refused',
+      code: 'sign_in_again',
+    })
+    // The owner’s return reads the account back even after a long time on the provider’s form.
+    expect(await ask('return', { signedInMinutesAgo: 90 })).toMatchObject({ status: 'accepted' })
+    expect(await account()).toEqual(before)
+  })
+
+  it('refuses to connect a venue whose account already takes card payments', async () => {
+    expect(await ask('start')).toEqual({ status: 'refused', code: 'already_connected' })
+  })
+
+  it('refuses a disconnect while a payment is not final, and allows it after', async () => {
+    const paymentId = newId('py')
+    await query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+          currency, provider_kind, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, current_date, 'on_bill', 'held',
+               encode(sha256(convert_to($1, 'UTF8')), 'hex'), 'EUR', $6, 'restro', 'system', 'test-seed')`,
+      [paymentId, tenantId, venueId, tableId, sittingId, SIM_PAY_KIND],
+    )
+    const disconnect = async () =>
+      (
+        await applyService(
+          pool,
+          { type: 'payment_account.disconnect' },
+          {
+            tenantId,
+            venueId,
+            origin: 'staff',
+            actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+            jobId: `req-${randomUUID()}`,
+            signedInAt: new Date(),
+          },
+        )
+      ).result
+    expect(await disconnect()).toMatchObject({ status: 'refused', code: 'payment_in_flight' })
+    expect((await account())?.state).toBe('connected')
+    await query(`update restro.payments set state = 'released', settled_at = now() where id = $1`, [
+      paymentId,
+    ])
+    expect(await disconnect()).toMatchObject({
+      status: 'accepted',
+      details: { state: 'disconnected' },
+    })
+    expect((await account())?.state).toBe('disconnected')
+  })
+
+  it('leaves a notice for an account of another venue handled, doing nothing', async () => {
+    const stranger = engine.addAccount()
+    const before = await account()
+    const counts = await notice(engine.announceAccountUpdated(stranger))
+    expect(counts.unknown_account).toBe(1)
+    expect(await account()).toEqual(before)
+  })
+
+  it('after access was taken away and the venue disconnected, Connect makes a new account', async () => {
+    // The venue is disconnected from the tests above; it connects the same account once more,
+    // then takes access away and the owner disconnects.
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    await remember()
+    const first = accountRefNow
+    engine.finishConnecting(lastAccount())
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    await notice(engine.revokeAccess(lastAccount()))
+    expect((await account())?.state).toBe('lost_access')
+    const { result: left } = await applyService(
+      pool,
+      { type: 'payment_account.disconnect' },
+      {
+        tenantId,
+        venueId,
+        origin: 'staff',
+        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+        jobId: `req-${randomUUID()}`,
+        signedInAt: new Date(),
+      },
+    )
+    expect(left).toMatchObject({ status: 'accepted', details: { state: 'disconnected' } })
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    await remember()
+    expect(accountRefNow).not.toBe(first)
+    expect((await account())?.state).toBe('connecting')
+  })
+})

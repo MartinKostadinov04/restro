@@ -129,6 +129,12 @@ async function main(): Promise<void> {
     { sim: config.sim, budgets: new InstanceBudgets() },
   )
   if (floor.kind !== 'read') throw new Error(`the floor was not read: ${floor.kind}`)
+  // Paying is on only with a payment table in every bar (D125 2.3): PM1 and PM2 are the first
+  // bar's, PU1 is the second's.
+  await query(
+    `update restro.tables set is_payment_table = true where venue_id = $1 and number = 'PU1'`,
+    [venueId],
+  )
   const [table] = await query<{ id: `tb_${string}` }>(
     `select id from restro.tables where venue_id = $1 and number = '1'`,
     [venueId],
@@ -143,8 +149,8 @@ async function main(): Promise<void> {
   engine.finishConnecting(account)
   await query(
     `insert into restro.payment_accounts
-       (tenant_id, venue_id, provider_kind, account_ref, state, connected_at, source, actor, job_id)
-     values ($1, $2, $3, $4, 'connected', now(), $5, $6, $7)`,
+       (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+     values ($1, $2, $3, $4, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), $5, $6, $7)`,
     [tenantId, venueId, SIM_PAY_KIND, account.provider, ...SEED],
   )
 

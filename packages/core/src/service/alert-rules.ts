@@ -62,6 +62,12 @@ export const PAYING_UNSTABLE_KIND = 'paying_unstable'
  * tried again (#112): Restro's team looks. Audience `restro`, so its rule is the team's digest.
  */
 export const PAYMENT_STUCK_KIND = 'payment_stuck'
+/**
+ * The venue's payment account was lost (#109; D125 2.4): the provider's access was removed or the
+ * account can't take card payments any more. Paying is paused; owners and managers are told, with
+ * "Reconnect". It closes by itself when paying comes back.
+ */
+export const PAYMENT_ACCOUNT_LOST_KIND = 'payment_account_lost'
 
 const MINUTE = 60_000
 
@@ -253,6 +259,18 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
     back: true,
     backAfterMs: 10 * MINUTE,
     closesItself: true,
+  },
+  // Lost access to the venue's payment account (#109; D125 2.4): paying is paused, so owners and
+  // managers (who hold `money.follow_up`) are pushed at once and the owners are reminded after an
+  // hour; the venue's group and the Restro team are told once. Its words carry no amounts.
+  [PAYMENT_ACCOUNT_LOST_KIND]: {
+    ...NOBODY,
+    // It is a pause of paying: it ends when the reconnection lifts it, so nobody presses Done and the
+    // day's close leaves it open (#162).
+    closesItself: true,
+    push: staffPush({ afterMs: 60 * MINUTE, max: 1, ownersOnly: true }),
+    venueTelegram: venueGroup,
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
   },
 }
 

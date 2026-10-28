@@ -59,6 +59,38 @@ describe('the outbox', () => {
   })
 })
 
+describe("a venue's account (#109)", () => {
+  it('sends an account notice, and after the owner takes access away every write is refused', async () => {
+    const { engine, account } = await capturedPayment()
+    const updated = engine.announceAccountUpdated(account)
+    expect(updated).toMatchObject({ type: 'account.updated', account: account.provider })
+    expect(engine.readConnection(account)).toMatchObject({ complete: true })
+
+    const revoked = engine.revokeAccess(account)
+    expect(revoked).toMatchObject({ type: 'account.access_revoked', account: account.provider })
+    expect(engine.takeNotices().map((e) => e.type)).toEqual([
+      'account.updated',
+      'account.access_revoked',
+    ])
+    // What a provider's read answers after the venue disconnects is not documented: the simulator
+    // makes no claim, so a read still works and the platform must not lean on it.
+    expect(engine.readConnection(account)).toMatchObject({
+      complete: true,
+      value: { canTakePayments: false },
+    })
+  })
+
+  it('reads the account’s name once the owner gave one', () => {
+    const engine = new SimPayEngine({ clock: new ManualClock() })
+    const account = engine.addAccount()
+    expect(engine.readConnection(account)).toMatchObject({ value: { displayName: null } })
+    engine.finishConnecting(account, 'Club Nova Ltd')
+    expect(engine.readConnection(account)).toMatchObject({
+      value: { displayName: 'Club Nova Ltd' },
+    })
+  })
+})
+
 describe("the guest's card at the form (#110)", () => {
   it('sends a payment notice when the card is held or declined, and reads it back', async () => {
     const engine = new SimPayEngine({ clock: new ManualClock() })
@@ -142,6 +174,8 @@ describe('the signed notice', () => {
     } as const
     expect(simPayNotice(event).kind).toBe('refund')
     expect(simPayNotice({ ...event, type: 'dispute.closed' }).kind).toBe('dispute')
+    expect(simPayNotice({ ...event, type: 'account.updated' }).kind).toBe('account')
+    expect(simPayNotice({ ...event, type: 'account.access_revoked' }).kind).toBe('access_lost')
   })
 
   // The same vector is pinned in apps/web/src/connectors/sim-pay/notices.test.ts.

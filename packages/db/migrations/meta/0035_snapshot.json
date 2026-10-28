@@ -1,5 +1,5 @@
 {
-  "id": "234f590d-2446-4b33-a24d-4ba84c1fa13a",
+  "id": "fac3d428-d125-4f69-84a4-38573e02c263",
   "prevId": "2bebd01f-6588-46b7-b89e-795b1a8d2b80",
   "version": "7",
   "dialect": "postgresql",
@@ -3673,18 +3673,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "paying_paused_at": {
-          "name": "paying_paused_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "breaker": {
-          "name": "breaker",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "source": {
           "name": "source",
           "type": "text",
@@ -3773,10 +3761,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "payment_accounts_breaker": {
-          "name": "payment_accounts_breaker",
-          "value": "\"restro\".\"payment_accounts\".\"breaker\" is null or jsonb_typeof(\"restro\".\"payment_accounts\".\"breaker\") = 'object'"
-        },
         "payment_accounts_provider_kind": {
           "name": "payment_accounts_provider_kind",
           "value": "\"restro\".\"payment_accounts\".\"provider_kind\" ~ '^[a-z][a-z0-9-]{0,31}$'"
@@ -5113,7 +5097,7 @@
         },
         "provider_notices_kind": {
           "name": "provider_notices_kind",
-          "value": "\"restro\".\"provider_notices\".\"kind\" in ('payment', 'refund', 'dispute', 'other')"
+          "value": "\"restro\".\"provider_notices\".\"kind\" in ('payment', 'refund', 'dispute', 'account', 'access_lost', 'other')"
         },
         "provider_notices_object_ref": {
           "name": "provider_notices_object_ref",

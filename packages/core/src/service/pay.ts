@@ -26,14 +26,7 @@
 // and the form's values are restated here in the database's words. No payer, phone or handle is
 // stored: only the handle's sha-256 (`handle_hash`).
 
-import {
-  billReadings,
-  paymentAccounts,
-  paymentLines,
-  paymentSteps,
-  payments,
-  venueTables,
-} from '@restro/db'
+import { billReadings, paymentLines, paymentSteps, payments, venueTables } from '@restro/db'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -45,6 +38,7 @@ import { parseStoredBills, type StoredBill, type StoredBillLine } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { payingPaused } from './paying-pause'
+import { loadPayingConnection } from './payment-connection'
 import { accepted, refused, type ServiceResult } from './results'
 import { orderingPaused } from './send'
 
@@ -344,16 +338,17 @@ export function payStart() {
         return at(command, repeat, repeat.state, false)
       }
 
-      const [account] = await stx.tx
-        .select({ providerKind: paymentAccounts.providerKind, state: paymentAccounts.state })
-        .from(paymentAccounts)
-        .where(eq(paymentAccounts.venueId, stx.venueId))
-      if (account === undefined || account.state === 'connecting')
+      // Paying is on only when the account is connected and every check of D125 2.3 passes; a
+      // lost account pauses it (D125 2.4). The account row is locked `FOR SHARE`, so a disconnect
+      // cannot land between this check and the payment.
+      const connection = await loadPayingConnection(stx.tx, stx.venueId, 'share')
+      if (connection.state === 'lost_access') return refuse('paying_paused')
+      if (!connection.readiness.on || connection.providerKind === null) {
         return refuse('paying_not_offered')
-      if (account.state === 'disconnected') return refuse('paying_not_offered')
-      if (account.state === 'lost_access') return refuse('paying_paused')
+      }
       // The provider's breaker (#112): paying pauses alone, ordering goes on.
       if (await payingPaused(stx)) return refuse('paying_paused')
+      const account = { providerKind: connection.providerKind }
 
       if (order === null) return refuse('sitting_ended')
       const sitting = await stx.rows.openSitting(command.tableId)

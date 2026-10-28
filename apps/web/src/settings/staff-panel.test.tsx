@@ -60,6 +60,7 @@ const ALL_PERMISSIONS = [
   'settings.codes',
   'settings.payment_tables',
   'settings.alerts',
+  'settings.connect_payments',
   'settings.roles',
 ] as const
 

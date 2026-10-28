@@ -2563,10 +2563,19 @@ export const PAYMENT_DISPUTE_STATES = ['open', 'won', 'lost'] as const
 
 /**
  * What a provider's notice is about, in the platform's words (#108): the provider's web part maps
- * its own event types to these, so no provider event name reaches the platform. `other` has no
+ * its own event types to these, so no provider event name reaches the platform. `account` is a
+ * change to a venue's account (re-read the connection), `access_lost` is the venue taking Restro's
+ * access away (#109). `other` has no
  * handler: the worker marks it handled and does nothing.
  */
-export const PROVIDER_NOTICE_KINDS = ['payment', 'refund', 'dispute', 'other'] as const
+export const PROVIDER_NOTICE_KINDS = [
+  'payment',
+  'refund',
+  'dispute',
+  'account',
+  'access_lost',
+  'other',
+] as const
 
 /** `'a', 'b'` for a SQL `in (...)` list of fixed words. */
 const sqlWords = (words: readonly string[]) =>

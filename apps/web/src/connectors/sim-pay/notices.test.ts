@@ -3,7 +3,7 @@
 // sharing code; the simulator is never offered in production.
 import { describe, expect, it } from 'vitest'
 
-import { noticeConnector, SIM_PAY_SIGNATURE_HEADER } from './notices'
+import { noticeConnector, SIM_PAY_SIGNATURE_HEADER, simPayNoticeKind } from './notices'
 
 const body =
   '{"id":"simevt_7","type":"refund.made","account":"simacct_1","object":"simrefund_6","livemode":false}'
@@ -29,6 +29,13 @@ describe("the simulator's notices", () => {
         objectRef: { provider: 'simrefund_6' },
       },
     })
+  })
+
+  it('maps its account events to the platform kinds (#109)', () => {
+    expect(simPayNoticeKind('account.updated')).toBe('account')
+    expect(simPayNoticeKind('account.access_revoked')).toBe('access_lost')
+    expect(simPayNoticeKind('refund.made')).toBe('refund')
+    expect(simPayNoticeKind('account.something_else')).toBe('other')
   })
 
   it('refuses the vector under another secret, too late, or as live', () => {

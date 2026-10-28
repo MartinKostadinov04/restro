@@ -45,6 +45,10 @@ export function stripeNoticeKind(type: string): ProviderNoticeKind {
   // A guest's payment moved: held, needing the bank's step, failed or cancelled (#110). Restro
   // reads the PaymentIntent back; the notice is only a nudge.
   if (type.startsWith('payment_intent.')) return 'payment'
+  // The venue's own account changed (an owner finished or a requirement came), or the venue took
+  // Restro's access away (#109): Restro reads the connection back (D125 2.4, 3.8).
+  if (type === 'account.updated') return 'account'
+  if (type === 'account.application.deauthorized') return 'access_lost'
   return 'other'
 }
 

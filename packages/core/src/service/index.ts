@@ -40,6 +40,7 @@ export {
   PAUSED_KIND,
   PAYING_PAUSED_KIND,
   PAYING_UNSTABLE_KIND,
+  PAYMENT_ACCOUNT_LOST_KIND,
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
   PAYMENT_HOLD_EXPIRED_KIND,
@@ -272,6 +273,13 @@ export {
   paymentTurnSeconds,
 } from './pay-route'
 export { payingPaused } from './paying-pause'
+export {
+  CONNECT_PERMISSION,
+  loadPayingConnection,
+  type PayingConnection,
+  paymentTableFacts,
+  readPayingConnection,
+} from './payment-connection'
 export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,

@@ -2,7 +2,8 @@
 // check) probes `GET /health`; the answer comes from memory (see health.ts), never from the
 // database. The other routes are for the web app's server on the private network only: the reveal
 // endpoint (`POST /internal/reveal`, reveal.ts, #70) and the Telegram link endpoint
-// (`POST /internal/telegram`, alerts/telegram-link-api.ts, #87). Each exists once the worker has set
+// (`POST /internal/telegram`, alerts/telegram-link-api.ts, #87) and the payment connection
+// endpoint (`POST /internal/payments/connection`, payments/connection-api.ts, #109). Each exists once the worker has set
 // its handler (after the database pool is open) and only with REVEAL_SERVICE_TOKEN set. Nothing
 // else is served, and no body carries host names, versions or ids. No request line or header is
 // logged here.
@@ -17,6 +18,13 @@ import {
   TelegramRequestSchema,
 } from './alerts/telegram-link-api'
 import type { HealthReport } from './health'
+import {
+  CONNECTION_PATH,
+  type ConnectionApiAnswer,
+  type ConnectionRequest,
+  ConnectionRequestSchema,
+  MAX_CONNECTION_BODY_BYTES,
+} from './payments/connection-api'
 import {
   hasServiceToken,
   isPrivateHost,
@@ -45,6 +53,14 @@ export interface TelegramLinkHandler {
   failed(error: unknown): void
 }
 
+/** What answers a payment connection request once the worker is ready. */
+export interface ConnectionHandler {
+  readonly token: string
+  handle(request: ConnectionRequest): Promise<ConnectionApiAnswer>
+  /** Called when a request throws; must not log the request. */
+  failed(error: unknown): void
+}
+
 export interface HealthServer {
   /** The port actually listening (differs from the requested one only for port 0). */
   readonly port: number
@@ -52,6 +68,8 @@ export interface HealthServer {
   setRevealHandler(handler: RevealHandler | null): void
   /** Turns the Telegram link endpoint on (a handler) or off (null). */
   setTelegramHandler(handler: TelegramLinkHandler | null): void
+  /** Turns the payment connection endpoint on (a handler) or off (null). */
+  setConnectionHandler(handler: ConnectionHandler | null): void
   /** Stops listening and drops open connections. Resolves when the port is free. */
   close(): Promise<void>
 }
@@ -133,6 +151,7 @@ async function answerInternal<Request, Answer extends { readonly status: string 
 export function startHealthServer(port: number, report: () => HealthReport): Promise<HealthServer> {
   let revealHandler: RevealHandler | null = null
   let telegramHandler: TelegramLinkHandler | null = null
+  let connectionHandler: ConnectionHandler | null = null
 
   const server = createServer((request, response) => {
     const path = (request.url ?? '').split('?')[0]
@@ -169,6 +188,18 @@ export function startHealthServer(port: number, report: () => HealthReport): Pro
         run: (parsed: TelegramRequest) => (handler as TelegramLinkHandler).handle(parsed),
         failure: 'request failed',
       })
+    } else if (path === CONNECTION_PATH) {
+      const handler = connectionHandler
+      void answerInternal(request, send, {
+        handler,
+        parse: (value) => {
+          const result = ConnectionRequestSchema.safeParse(value)
+          return result.success ? result.data : null
+        },
+        limit: MAX_CONNECTION_BODY_BYTES,
+        run: (parsed: ConnectionRequest) => (handler as ConnectionHandler).handle(parsed),
+        failure: 'request failed',
+      })
     } else if (path !== HEALTH_PATH) {
       send(404, { error: 'not found' })
     } else if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -190,6 +221,9 @@ export function startHealthServer(port: number, report: () => HealthReport): Pro
         },
         setTelegramHandler(handler) {
           telegramHandler = handler
+        },
+        setConnectionHandler(handler) {
+          connectionHandler = handler
         },
         close: () =>
           new Promise<void>((done) => {

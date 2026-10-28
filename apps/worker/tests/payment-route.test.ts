@@ -267,6 +267,12 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       [demo.venueId],
     )
     expect(marked.map((row) => row.number)).toEqual(['PM1', 'PM2'])
+    // Paying is on only with a payment table in every bar (D125 2.3): PM1 and PM2 are the first
+    // bar's, PU1 is the second's.
+    await query(
+      `update restro.tables set is_payment_table = true where venue_id = $1 and number = 'PU1'`,
+      [demo.venueId],
+    )
     await query(
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
       [demo.venueId, JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false })],
@@ -277,8 +283,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     accountRef = account.provider
     await query(
       `insert into restro.payment_accounts
-         (tenant_id, venue_id, provider_kind, account_ref, state, connected_at, source, actor, job_id)
-       values ($1, $2, $3, $4, 'connected', now(), 'restro', 'system', 'test-seed')`,
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, $3, $4, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
       [tenantId, demo.venueId, SIM_PAY_KIND, accountRef],
     )
 

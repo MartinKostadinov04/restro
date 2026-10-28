@@ -2302,6 +2302,7 @@
         "codes": "Make new table codes",
         "payment_tables": "Mark payment tables",
         "alerts": "Choose who gets alerts; link Telegram",
+        "connect_payments": "Connect, change and disconnect card payments",
         "roles": "Manage staff, roles, PINs and devices"
       }
     },

@@ -159,14 +159,17 @@ const MISSING_CAP = 100
 /**
  * Whether a v2 account can take card payments, and what it still needs
  * (https://docs.stripe.com/api/v2/core/accounts/object.md): the merchant configuration's
- * `card_payments` capability is `active`, and the requirements' entries name what is missing.
+ * `card_payments` capability is `active`, the requirements' entries name what is missing, and
+ * `display_name` (nullable) is the account's name for "Connected" in the settings.
  */
 export function connectionStatus(account: StripeAccount): Mapped<ConnectionStatus> {
   const capability = account.configuration?.merchant?.capabilities?.card_payments ?? null
   const entries = account.requirements?.entries ?? []
   const missing = [...new Set(entries.map((entry) => entry.description.slice(0, 200)))]
+  const name = account.display_name?.trim() ?? ''
   const parsed = ConnectionStatusSchema.safeParse({
     canTakePayments: capability?.status === 'active',
+    displayName: name === '' ? null : name.slice(0, 200),
     missing: missing.filter((name) => name.length > 0).slice(0, MISSING_CAP),
   })
   if (!parsed.success) return { ok: false, reason: 'the account does not fit the seam' }

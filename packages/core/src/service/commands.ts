@@ -11,7 +11,8 @@
 // item out of stock in the POS (#80), paying on the bill up to a held card (#110), the alerts'
 // lifecycle: Done, what was sent to whom, the pauses kept as alerts and the staff devices for Web
 // Push (#83), the closing hour and the pre-opening check (#82), and the end of a service day
-// (#84), and staff's answer to an Unconfirmed sent order (#85).
+// (#84), staff's answer to an Unconfirmed sent order (#85), and connecting a venue's payment
+// account (#109).
 //
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
@@ -67,6 +68,25 @@ import {
 } from './pay'
 import { PAY_ROUTE_COMMANDS } from './pay-route'
 import { payingBreaker } from './paying-pause'
+import {
+  accountLost,
+  accountObserved,
+  accountStarted,
+  CONNECT_PERMISSION,
+  ConnectSchema,
+  connectAccount,
+  DisconnectSchema,
+  DomainSchema,
+  disconnectAccount,
+  domainRegistered,
+  LostSchema,
+  ObservedSchema,
+  ReturnSchema,
+  returnFromProvider,
+  StartedSchema,
+  TickCheckSchema,
+  tickCheck,
+} from './payment-connection'
 import { paymentObserve } from './payment-observe'
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
@@ -409,6 +429,40 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: setAlertSettings,
   }),
+  // #109: connecting the venue's payment account (D125 2.2): a permission of its own and a sign-in of
+  // the last 15 minutes. The return reads the account back, which needs the right but no new
+  // sign-in (the provider's hosted form can take longer than 15 minutes).
+  'payment_account.connect': defineCommand({
+    schema: ConnectSchema,
+    origins: ['staff'],
+    permission: CONNECT_PERMISSION,
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: connectAccount,
+  }),
+  'payment_account.return': defineCommand({
+    schema: ReturnSchema,
+    origins: ['staff'],
+    permission: CONNECT_PERMISSION,
+    idempotency: 'by_nature',
+    handle: returnFromProvider,
+  }),
+  'payment_account.disconnect': defineCommand({
+    schema: DisconnectSchema,
+    origins: ['staff'],
+    permission: CONNECT_PERMISSION,
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: disconnectAccount,
+  }),
+  'payment_account.tick': defineCommand({
+    schema: TickCheckSchema,
+    origins: ['staff'],
+    permission: CONNECT_PERMISSION,
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: tickCheck,
+  }),
   // #72: roles. A default role is named by its kind (`staff`, `manager`, `owner`).
   'role.copy': rolesChange(
     'role.copy',
@@ -506,6 +560,36 @@ export const SERVICE_COMMANDS = {
   // #111: the route after the hold: the queue, the turn, the move, the last check, the close, the
   // capture, the undo, and a manager's answer to an unconfirmed close.
   ...PAY_ROUTE_COMMANDS,
+  // #109: what the provider answered about a venue's account: its account, a reading, the access
+  // lost, the guest domain registered. A provider notice only nudges the worker to read.
+  'payment_account.started': defineCommand({
+    schema: StartedSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: accountStarted,
+  }),
+  'payment_account.observed': defineCommand({
+    schema: ObservedSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: accountObserved,
+  }),
+  'payment_account.lost': defineCommand({
+    schema: LostSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: accountLost,
+  }),
+  'payment_account.domain': defineCommand({
+    schema: DomainSchema,
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: domainRegistered,
+  }),
   // #87: the Telegram poller heard the bot added to a group by the owner's link, removed from it,
   // or a person pressing Start on theirs. The signed link is the authority, checked by the worker.
   'telegram.link': defineCommand({
