@@ -44,7 +44,6 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q63: does Restro count as sales software under Н-18?
 - Q64: paper receipt required, or is an electronic one enough?
 - Q65: does dual BGN/EUR display still apply (we read: ended 8 Aug 2026)?
-- Q66: duty to check age for alcohol ordered in the app (D11)?
 - Q67: GDPR roles (venue vs Restro), data processing agreement, retention, privacy notice and terms.
 - Q42: allergen rules for food and drinks in catering and online menus; do pilots hold allergens in barsy?
 - Q10: accounting treatment of online tips.
