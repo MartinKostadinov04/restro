@@ -86,7 +86,6 @@ describe('readAccountChecks', () => {
     expect(readAccountChecks({})).toEqual(NO_CHECKS)
     expect(readAccountChecks(null)).toEqual(NO_CHECKS)
     expect(readAccountChecks({ cardPayments: 'yes' })).toEqual(NO_CHECKS)
-    expect(readAccountChecks({ unknownKey: true })).toEqual(NO_CHECKS)
     // A tick without who or when is not a tick.
     expect(readAccountChecks({ ticks: { cardTypeInTill: { at: 'now' } } })).toEqual(NO_CHECKS)
   })
@@ -104,6 +103,23 @@ describe('readAccountChecks', () => {
       missing: ['x'],
       lostReason: 'access_removed',
       ticks: { cardTypeInTill: TICK, receiptEmailsOff: null },
+    })
+  })
+
+  it('strips a key it does not know and keeps the owner’s ticks', () => {
+    const read = readAccountChecks({
+      cardPayments: true,
+      someFutureKey: { nested: true },
+      ticks: {
+        cardTypeInTill: { ...TICK, someFutureKey: 1 },
+        receiptEmailsOff: TICK,
+        someFutureTick: TICK,
+      },
+    })
+    expect(read).toEqual({
+      ...NO_CHECKS,
+      cardPayments: true,
+      ticks: { cardTypeInTill: TICK, receiptEmailsOff: TICK },
     })
   })
 })

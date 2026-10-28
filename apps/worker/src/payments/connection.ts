@@ -17,6 +17,7 @@
 // that the provider did not say. A partial reading concludes nothing.
 
 import { randomUUID } from 'node:crypto'
+
 import { type PaymentProvider, providerRef, readAccountChecks } from '@restro/core'
 import { applyService, type ServiceContext } from '@restro/core/service'
 import { type DbPool, paymentAccounts, withTenant } from '@restro/db'
@@ -42,6 +43,7 @@ interface AccountRow {
   readonly accountRef: string | null
   readonly state: string
   readonly checks: unknown
+  readonly updatedAt: Date
 }
 
 async function accountOf(
@@ -55,6 +57,7 @@ async function accountOf(
         accountRef: paymentAccounts.accountRef,
         state: paymentAccounts.state,
         checks: paymentAccounts.checks,
+        updatedAt: paymentAccounts.updatedAt,
       })
       .from(paymentAccounts)
       .where(eq(paymentAccounts.venueId, target.venueId)),
@@ -110,14 +113,17 @@ export async function startAccountConnection(
   const account = await accountOf(env, target)
   if (account === null) return { kind: 'failed', failure: { refused: 'account_missing' } }
 
-  // A fresh key for every press: the link is single-use, so a repeat must make a new one. An
-  // account that was never recorded (a timeout) is made again, and the unused one stays unused.
+  // The link is single-use, so once there is an account every press makes a new link with a fresh
+  // key. While no account is recorded the key stays the same for the whole connecting attempt: a
+  // double press or a timeout then gets the same provider account again, not a second one left
+  // behind. The attempt is the row as `connect` last changed it (a repeat press changes nothing).
+  const attempt = account.accountRef === null ? account.updatedAt.getTime() : randomUUID()
   const outcome = await provider.startConnection({
     venueId: context.venueId as `vn_${string}`,
     accountRef: account.accountRef === null ? null : providerRef(account.accountRef),
     returnUrl: request.returnUrl,
     refreshUrl: request.refreshUrl,
-    idempotencyKey: `connect:${context.venueId}:${randomUUID()}`,
+    idempotencyKey: `connect:${context.venueId}:${attempt}`,
   })
   if (outcome.kind === 'unknown') {
     env.log.warn({ venueId: context.venueId }, 'the provider did not answer a connection start')
@@ -208,6 +214,25 @@ export async function readAccount(
   return { kind: 'read', state }
 }
 
+/**
+ * The scheduled retry of a registration that did not go through (`wallet-domain` job): a venue
+ * whose account takes cards and whose guest host is not registered yet is tried again on its own
+ * schedule, not only when some other reading happens. Nothing is asked of a provider for an account
+ * that is not connected, cannot take cards, or has its host registered already.
+ */
+export async function retryDomainRegistration(
+  env: ConnectionEnv,
+  target: { readonly tenantId: string; readonly venueId: string },
+  providers: ReadonlyMap<string, ConnectionProvider>,
+): Promise<void> {
+  const account = await accountOf(env, target)
+  if (account === null || account.accountRef === null || account.state !== 'connected') return
+  if (!readAccountChecks(account.checks).cardPayments) return
+  const provider = providers.get(account.providerKind)
+  if (provider === undefined) return
+  await registerDomain(env, target, provider, account.accountRef)
+}
+
 /** Registers the guest page's host for wallets, once per host (D125 3.6); wallets are optional. */
 async function registerDomain(
   env: ConnectionEnv,
@@ -226,7 +251,8 @@ async function registerDomain(
       idempotencyKey: `domain:${target.venueId}:${host}`,
     })
     if (outcome.kind !== 'done') {
-      // Wallets stay off for this venue until a later reading tries again; paying itself works.
+      // Wallets stay off for this venue until the `wallet-domain` job (or a later reading) tries
+      // again; paying itself works.
       env.log.warn(
         { venueId: target.venueId, outcome: outcome.kind },
         'the guest domain was not registered for wallets',

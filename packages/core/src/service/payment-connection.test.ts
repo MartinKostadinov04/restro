@@ -215,6 +215,15 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
     })
   })
 
+  /** A connected account the venue then took Restro's access from: paused, one alert open. */
+  async function lostAccess() {
+    await connected(true)
+    expect(await worker({ type: 'payment_account.lost', accountRef: ACCOUNT })).toMatchObject({
+      status: 'accepted',
+      details: { state: 'lost_access', changed: true },
+    })
+  }
+
   describe('connect, return and refresh', () => {
     it('makes the account connecting, then connected on the return, with the provider’s account backend only', async () => {
       await connected(false)
@@ -378,6 +387,7 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
     })
 
     it('is a pause that ends by itself: no Done, and the end of the night leaves it open', async () => {
+      await lostAccess()
       const { rows } = await world.owner.query<{ id: string; service_date: string }>(
         `select id, service_date::text as service_date from restro.alerts
           where venue_id = $1 and kind = 'payment_account_lost' and done_at is null`,
@@ -395,13 +405,15 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
     })
 
     it('carries no amount and no provider id in the alert', async () => {
-      const [alert] = await openAlerts()
+      await lostAccess()
+      const alert = (await openAlerts()).at(-1)
       const text = JSON.stringify(alert?.details)
       expect(text).not.toContain(ACCOUNT)
       expect(text).not.toMatch(/amount|minor|\d{3,}/i)
     })
 
     it('does not come back by itself after the venue took access away; Reconnect makes a new account', async () => {
+      await lostAccess()
       await worker({
         type: 'payment_account.observed',
         accountRef: ACCOUNT,
@@ -473,6 +485,21 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         displayName: null,
       })
       expect((await account())?.state).toBe('connected')
+      expect(await openAlerts()).toHaveLength(before)
+    })
+
+    it('does not say card payments are paused while the account was still being connected', async () => {
+      await reset()
+      await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })
+      await worker({ type: 'payment_account.started', accountRef: ACCOUNT, guestHost: null })
+      const before = (await openAlerts()).length
+      // The venue took access away from an account that never took a payment: it is left behind
+      // (so the next link makes a new one), but there was no paying to pause.
+      expect(await worker({ type: 'payment_account.lost', accountRef: ACCOUNT })).toMatchObject({
+        status: 'accepted',
+        details: { state: 'lost_access', changed: true },
+      })
+      expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
       expect(await openAlerts()).toHaveLength(before)
     })
   })
@@ -563,6 +590,53 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
       expect((await account())?.account_name).toBe('Club Nova Ltd')
       await named('Club Nova')
       expect((await account())?.account_name).toBe('Club Nova')
+    })
+  })
+
+  describe('the guest host and the wallet domain through a reconnect (D125 3.6)', () => {
+    const HOST = 'guest.example.test'
+    const connectedWithDomain = async () => {
+      await reset()
+      await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })
+      await worker({ type: 'payment_account.started', accountRef: ACCOUNT, guestHost: HOST })
+      await worker({
+        type: 'payment_account.observed',
+        accountRef: ACCOUNT,
+        canTakePayments: true,
+        missing: [],
+        afterReturn: true,
+        guestHost: null,
+        displayName: null,
+      })
+      await worker({ type: 'payment_account.domain', accountRef: ACCOUNT, host: HOST })
+      expect(readAccountChecks((await account())?.checks)).toMatchObject({
+        guestHost: HOST,
+        domainHost: HOST,
+      })
+    }
+
+    it('keeps both on Reconnect to the same account', async () => {
+      await connectedWithDomain()
+      await run({ type: 'payment_account.disconnect' })
+      expect(await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })).toMatchObject(
+        { status: 'accepted', details: { state: 'connecting' } },
+      )
+      expect(await account()).toMatchObject({ state: 'connecting', account_ref: ACCOUNT })
+      expect(readAccountChecks((await account())?.checks)).toMatchObject({
+        guestHost: HOST,
+        domainHost: HOST,
+      })
+    })
+
+    it('keeps the guest host for a new account but not the registration made for the old one', async () => {
+      await connectedWithDomain()
+      await worker({ type: 'payment_account.lost', accountRef: ACCOUNT })
+      await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })
+      expect(await account()).toMatchObject({ state: 'connecting', account_ref: null })
+      expect(readAccountChecks((await account())?.checks)).toMatchObject({
+        guestHost: HOST,
+        domainHost: null,
+      })
     })
   })
 

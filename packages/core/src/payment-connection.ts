@@ -32,15 +32,19 @@ export type OwnerTick = (typeof OWNER_TICKS)[number]
 export const LOST_REASONS = ['access_removed', 'account_restricted'] as const
 export type LostReason = (typeof LOST_REASONS)[number]
 
-/** Who ticked a check and when: the actor as the provenance columns write it. */
-export const TickSchema = z.strictObject({
+/**
+ * Who ticked a check and when: the actor as the provenance columns write it. The stored shapes are
+ * read with `z.object` (an unknown key is stripped, not refused): a key a later version adds must
+ * not make an older reader drop the whole row and save the reset, which would lose the owner's ticks.
+ */
+export const TickSchema = z.object({
   at: z.iso.datetime({ offset: true }),
   by: z.string().min(1).max(140),
 })
 export type Tick = z.output<typeof TickSchema>
 
 /** `payment_accounts.checks` as stored. A key left out is "not done" or "none". */
-export const AccountChecksSchema = z.strictObject({
+export const AccountChecksSchema = z.object({
   /** The provider allowed card payments when it was last read. */
   cardPayments: z.boolean().default(false),
   /** The provider's own words for what it still asks of the owner, as last read. */
@@ -52,7 +56,7 @@ export const AccountChecksSchema = z.strictObject({
   /** The host registered for wallets on the account so far, or null. */
   domainHost: z.string().min(1).max(253).nullable().default(null),
   ticks: z
-    .strictObject({
+    .object({
       cardTypeInTill: TickSchema.nullable().default(null),
       receiptEmailsOff: TickSchema.nullable().default(null),
     })

@@ -27,9 +27,14 @@ import {
   SimPayEngine,
   simPayNotice,
 } from '@restro/sim-pay'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { handleProviderNotices, newNoticeRunState } from '../src/jobs/provider-notices'
+import {
+  ACCOUNT_NOTICE_GRACE_MS,
+  handleProviderNotices,
+  newNoticeRunState,
+} from '../src/jobs/provider-notices'
+import { retryWalletDomains } from '../src/jobs/wallet-domain'
 import { createLogger } from '../src/logger'
 import {
   type ConnectionApiAnswer,
@@ -65,7 +70,6 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   })
   const provider: PaymentProvider = createSimPayProvider({ env: 'test', engine })
   const providers = new Map([[SIM_PAY_KIND, provider]])
-  const noticeState = newNoticeRunState()
   const logLines: string[] = []
 
   const query = <Row extends object = Record<string, unknown>>(
@@ -127,7 +131,8 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     return id
   }
 
-  const api = () => createConnectionApi({ pool, log, providers })
+  const api = (using: ReadonlyMap<string, PaymentProvider> = providers) =>
+    createConnectionApi({ pool, log, providers: using })
   const request = (
     action: 'start' | 'return',
     options: { userId?: string; signedInMinutesAgo?: number } = {},
@@ -144,7 +149,8 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   const ask = (
     action: 'start' | 'return',
     options?: { userId?: string; signedInMinutesAgo?: number },
-  ): Promise<ConnectionApiAnswer> => api()(request(action, options))
+    using?: ReadonlyMap<string, PaymentProvider>,
+  ): Promise<ConnectionApiAnswer> => api(using)(request(action, options))
 
   const account = async () =>
     (
@@ -172,8 +178,8 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
       [venueId],
     )
 
-  /** The provider's notice, stored as the notice route would, then the job reads it back. */
-  async function notice(event: ReturnType<SimPayEngine['announceAccountUpdated']>) {
+  /** Stores the provider's notice as the notice route would. */
+  async function store(event: ReturnType<SimPayEngine['announceAccountUpdated']>) {
     const verified: ProviderNotice = simPayNotice(event)
     await recordProviderNotice(pool, {
       providerKind: SIM_PAY_KIND,
@@ -181,11 +187,18 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
       notice: verified,
       jobId: `rq-${randomUUID()}`,
     })
-    return handleProviderNotices(
-      { pool, log, now: () => new Date(), jobId: `notices-${randomUUID()}` },
+  }
+  /** One run of the notices job, at `now`. */
+  const runNotices = (now: () => Date = () => new Date()) =>
+    handleProviderNotices(
+      { pool, log, now, jobId: `notices-${randomUUID()}` },
       { providers },
-      noticeState,
+      newNoticeRunState(),
     )
+  /** The provider's notice, stored as the notice route would, then the job reads it back. */
+  async function notice(event: ReturnType<SimPayEngine['announceAccountUpdated']>) {
+    await store(event)
+    return runNotices()
   }
   /** The provider's account of the venue now, as the test last saw it (backend only). */
   let accountRefNow: string | null = null
@@ -195,6 +208,49 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   const lastAccount = () => {
     if (accountRefNow === null) throw new Error('no account yet')
     return providerRef(accountRefNow)
+  }
+  const disconnect = async () =>
+    (
+      await applyService(
+        pool,
+        { type: 'payment_account.disconnect' },
+        {
+          tenantId,
+          venueId,
+          origin: 'staff',
+          actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+          jobId: `req-${randomUUID()}`,
+          signedInAt: new Date(),
+        },
+      )
+    ).result
+
+  // Every test starts from a venue that never connected, and sets up what it needs itself.
+  beforeEach(async () => {
+    await query('delete from restro.payments where venue_id = $1', [venueId])
+    await query(`delete from restro.alerts where venue_id = $1 and kind = 'payment_account_lost'`, [
+      venueId,
+    ])
+    await query('delete from restro.payment_accounts where venue_id = $1', [venueId])
+    accountRefNow = null
+  })
+  afterEach(() => engine.clearFaults())
+
+  /** Connect pressed and the provider's account recorded: `connecting`. */
+  async function connecting() {
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    await remember()
+  }
+  /** Back from the form with the business details and bank account still missing: `connected`. */
+  async function connectedUnfinished() {
+    await connecting()
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+  }
+  /** Back from the form with everything done: `connected`, taking cards, wallets registered. */
+  async function connectedTakingCards(displayName?: string) {
+    await connecting()
+    engine.finishConnecting(lastAccount(), displayName)
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
   }
 
   it('connects: the owner gets the provider’s hosted address and nothing else of the account', async () => {
@@ -210,6 +266,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   })
 
   it('refreshes: a fresh link for the same account', async () => {
+    await connecting()
     const before = accountRefNow
     const answer = await ask('start')
     expect(answer).toMatchObject({ status: 'accepted' })
@@ -217,8 +274,42 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect((await account())?.state).toBe('connecting')
   })
 
+  it('makes one provider account for a double press or a timeout, and a fresh key once there is one', async () => {
+    const keys: string[] = []
+    let landed: string | null = null
+    const recording: PaymentProvider = {
+      ...provider,
+      async startConnection(req) {
+        keys.push(req.idempotencyKey)
+        const outcome = await provider.startConnection(req)
+        if (keys.length === 1) {
+          // The provider made the account, but its answer never came back.
+          if (outcome.kind === 'done') landed = outcome.result.accountRef.provider
+          return { kind: 'unknown', reason: 'the call timed out' }
+        }
+        return outcome
+      },
+    }
+    const using = new Map([[SIM_PAY_KIND, recording]])
+
+    expect(await ask('start', {}, using)).toEqual({
+      status: 'refused',
+      code: 'provider_unavailable',
+    })
+    expect(await account()).toMatchObject({ state: 'connecting', account_ref: null })
+    // The owner presses again: the same attempt, so the same key and the same provider account.
+    expect(await ask('start', {}, using)).toMatchObject({ status: 'accepted' })
+    expect(keys[1]).toBe(keys[0])
+    expect(landed).toMatch(/^simacct_/)
+    expect((await account())?.account_ref).toBe(landed)
+    // With the account recorded, every press is a new link under a new key.
+    expect(await ask('start', {}, using)).toMatchObject({ status: 'accepted' })
+    expect(keys[2]).not.toBe(keys[1])
+    expect((await account())?.account_ref).toBe(landed)
+  })
+
   it('returns before the owner finished: connected, with card payments still missing', async () => {
-    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    await connectedUnfinished()
     const checks = readAccountChecks((await account())?.checks)
     expect(checks.cardPayments).toBe(false)
     expect(checks.missing).toEqual(['business details', 'bank account'])
@@ -231,6 +322,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   })
 
   it('turns card payments on from the provider’s notice, and registers the guest domain for wallets', async () => {
+    await connectedUnfinished()
     engine.finishConnecting(lastAccount())
     const counts = await notice(engine.announceAccountUpdated(lastAccount()))
     expect(counts.connection).toBe(1)
@@ -244,7 +336,58 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect((await paying()).readiness.missing).toEqual(['cardTypeInTill', 'receiptEmailsOff'])
   })
 
+  it('tries a wallet domain the provider did not take again on its own schedule', async () => {
+    let attempts = 0
+    const flaky: PaymentProvider = {
+      ...provider,
+      async prepareDomain(req) {
+        attempts += 1
+        if (attempts === 1) return { kind: 'unknown', reason: 'the call timed out' }
+        return provider.prepareDomain(req)
+      },
+    }
+    const using = new Map([[SIM_PAY_KIND, flaky]])
+    const env = { pool, log, jobId: `wallet-${randomUUID()}` }
+
+    // Nothing to register while the account does not take cards yet.
+    await connecting()
+    await retryWalletDomains(env, { providers: using })
+    expect(attempts).toBe(0)
+
+    engine.finishConnecting(lastAccount())
+    expect(await ask('return', {}, using)).toMatchObject({ status: 'accepted', state: 'connected' })
+    // The first attempt, in that reading, did not go through.
+    expect(attempts).toBe(1)
+    expect(readAccountChecks((await account())?.checks).domainHost).toBeNull()
+    expect(engine.domainsOf(lastAccount())).toEqual([])
+
+    await retryWalletDomains(env, { providers: using })
+    expect(attempts).toBe(2)
+    expect(readAccountChecks((await account())?.checks).domainHost).toBe(GUEST_HOST)
+    expect(engine.domainsOf(lastAccount())).toEqual([GUEST_HOST])
+    // Registered: the next pass asks the provider nothing.
+    await retryWalletDomains(env, { providers: using })
+    expect(attempts).toBe(2)
+  })
+
+  it('keeps the guest host and the registered domain when the same account is connected again', async () => {
+    await connectedTakingCards()
+    expect(readAccountChecks((await account())?.checks)).toMatchObject({
+      guestHost: GUEST_HOST,
+      domainHost: GUEST_HOST,
+    })
+    expect(await disconnect()).toMatchObject({ status: 'accepted' })
+    const accountBefore = accountRefNow
+    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    expect((await account())?.account_ref).toBe(accountBefore)
+    expect(readAccountChecks((await account())?.checks)).toMatchObject({
+      guestHost: GUEST_HOST,
+      domainHost: GUEST_HOST,
+    })
+  })
+
   it('pauses paying when the provider restricts the account, and lifts when it can again', async () => {
+    await connectedTakingCards()
     engine.restrictAccount(lastAccount(), ['identity document'])
     await notice(engine.announceAccountUpdated(lastAccount()))
     expect((await account())?.state).toBe('lost_access')
@@ -262,15 +405,16 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   })
 
   it('pauses paying at once when the venue takes access away, and one alert says so', async () => {
+    await connectedTakingCards()
     const lostAccount = accountRefNow
     await notice(engine.revokeAccess(lastAccount()))
     expect(await account()).toMatchObject({ state: 'lost_access' })
     expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
     const alerts = await alertRows()
-    expect(alerts).toHaveLength(2)
-    expect(alerts[1]).toMatchObject({ details: { reason: 'access_removed' }, done_at: null })
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toMatchObject({ details: { reason: 'access_removed' }, done_at: null })
     expect((await paying()).readiness.on).toBe(false)
-    expect(JSON.stringify(alerts[1])).not.toContain(lostAccount ?? 'x')
+    expect(JSON.stringify(alerts[0])).not.toContain(lostAccount ?? 'x')
     // The notice alone did this: a reading of the account still answers (what a provider answers
     // after a venue disconnects is not documented), and a later account notice changes nothing.
     expect(engine.readConnection(lastAccount())).toMatchObject({ complete: true })
@@ -279,8 +423,17 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
   })
 
+  it('does not say card payments are paused when access is lost before the account ever connected', async () => {
+    await connecting()
+    await notice(engine.revokeAccess(lastAccount()))
+    expect(await account()).toMatchObject({ state: 'lost_access' })
+    expect(await alertRows()).toHaveLength(0)
+  })
+
   it('reconnects: a new account, and paying’s pause and the alert end once it is read connected', async () => {
+    await connectedTakingCards()
     const lostAccount = accountRefNow
+    await notice(engine.revokeAccess(lastAccount()))
     expect(await ask('start')).toMatchObject({ status: 'accepted' })
     await remember()
     expect(accountRefNow).not.toBe(lostAccount)
@@ -296,11 +449,13 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
         )
       )[0]?.account_name,
     ).toBe('Club Nova Ltd')
-    expect((await alertRows())[1]?.done_at).not.toBeNull()
+    expect((await alertRows())[0]?.done_at).not.toBeNull()
+    // The new account has its own registration, made from the guest host kept through the reconnect.
     expect(engine.domainsOf(lastAccount())).toEqual([GUEST_HOST])
   })
 
   it('records nothing when the provider can not be read, and says to try again', async () => {
+    await connecting()
     const before = await account()
     engine.failReads()
     expect(await ask('return')).toEqual({ status: 'refused', code: 'provider_unavailable' })
@@ -309,6 +464,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   })
 
   it('asks the provider nothing before the permission and the sign-in are checked', async () => {
+    await connecting()
     const before = await account()
     expect(await ask('start', { userId: plainId })).toEqual({
       status: 'refused',
@@ -324,14 +480,17 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     })
     // The owner’s return reads the account back even after a long time on the provider’s form.
     expect(await ask('return', { signedInMinutesAgo: 90 })).toMatchObject({ status: 'accepted' })
-    expect(await account()).toEqual(before)
+    // Only the reading of the account changed; nothing else was started.
+    expect(await account()).toMatchObject({ state: 'connected', account_ref: before?.account_ref })
   })
 
   it('refuses to connect a venue whose account already takes card payments', async () => {
+    await connectedTakingCards()
     expect(await ask('start')).toEqual({ status: 'refused', code: 'already_connected' })
   })
 
   it('refuses a disconnect while a payment is not final, and allows it after', async () => {
+    await connectedTakingCards()
     const paymentId = newId('py')
     await query(
       `insert into restro.payments
@@ -341,21 +500,6 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
                encode(sha256(convert_to($1, 'UTF8')), 'hex'), 'EUR', $6, 'restro', 'system', 'test-seed')`,
       [paymentId, tenantId, venueId, tableId, sittingId, SIM_PAY_KIND],
     )
-    const disconnect = async () =>
-      (
-        await applyService(
-          pool,
-          { type: 'payment_account.disconnect' },
-          {
-            tenantId,
-            venueId,
-            origin: 'staff',
-            actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
-            jobId: `req-${randomUUID()}`,
-            signedInAt: new Date(),
-          },
-        )
-      ).result
     expect(await disconnect()).toMatchObject({ status: 'refused', code: 'payment_in_flight' })
     expect((await account())?.state).toBe('connected')
     await query(`update restro.payments set state = 'released', settled_at = now() where id = $1`, [
@@ -368,37 +512,54 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect((await account())?.state).toBe('disconnected')
   })
 
-  it('leaves a notice for an account of another venue handled, doing nothing', async () => {
+  it('drops a notice for an account of another venue, after waiting for it to be recorded', async () => {
+    await connecting()
     const stranger = engine.addAccount()
     const before = await account()
-    const counts = await notice(engine.announceAccountUpdated(stranger))
-    expect(counts.unknown_account).toBe(1)
+    await store(engine.announceAccountUpdated(stranger))
+    // It may be an account that is still about to be recorded as ours: it waits.
+    const early = await runNotices()
+    expect(early).toMatchObject({ unknown_account: 0, waiting: 1 })
+    // Past the wait it is marked handled, doing nothing.
+    const later = await runNotices(() => new Date(Date.now() + ACCOUNT_NOTICE_GRACE_MS + 60_000))
+    expect(later).toMatchObject({ unknown_account: 1, waiting: 0 })
     expect(await account()).toEqual(before)
   })
 
-  it('after access was taken away and the venue disconnected, Connect makes a new account', async () => {
-    // The venue is disconnected from the tests above; it connects the same account once more,
-    // then takes access away and the owner disconnects.
-    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+  it('reads an account notice that arrives before the account is recorded as the venue’s', async () => {
+    const early: string[] = []
+    const racing: PaymentProvider = {
+      ...provider,
+      async startConnection(req) {
+        const outcome = await provider.startConnection(req)
+        if (outcome.kind === 'done') {
+          // The provider's notice reaches the job before the worker has recorded the account.
+          const counts = await notice(engine.announceAccountUpdated(outcome.result.accountRef))
+          early.push(`waiting:${counts.waiting},handled:${counts.unknown_account}`)
+        }
+        return outcome
+      },
+    }
+    expect(await ask('start', {}, new Map([[SIM_PAY_KIND, racing]]))).toMatchObject({
+      status: 'accepted',
+    })
+    expect(early).toEqual(['waiting:1,handled:0'])
     await remember()
-    const first = accountRefNow
     engine.finishConnecting(lastAccount())
-    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    const counts = await runNotices()
+    expect(counts).toMatchObject({ connection: 1, unknown_account: 0 })
+    expect(await account()).toMatchObject({ state: 'connected' })
+  })
+
+  it('after access was taken away and the venue disconnected, Connect makes a new account', async () => {
+    await connectedTakingCards()
+    const first = accountRefNow
     await notice(engine.revokeAccess(lastAccount()))
     expect((await account())?.state).toBe('lost_access')
-    const { result: left } = await applyService(
-      pool,
-      { type: 'payment_account.disconnect' },
-      {
-        tenantId,
-        venueId,
-        origin: 'staff',
-        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
-        jobId: `req-${randomUUID()}`,
-        signedInAt: new Date(),
-      },
-    )
-    expect(left).toMatchObject({ status: 'accepted', details: { state: 'disconnected' } })
+    expect(await disconnect()).toMatchObject({
+      status: 'accepted',
+      details: { state: 'disconnected' },
+    })
     expect(await ask('start')).toMatchObject({ status: 'accepted' })
     await remember()
     expect(accountRefNow).not.toBe(first)

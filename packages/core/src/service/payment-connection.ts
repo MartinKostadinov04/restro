@@ -270,9 +270,13 @@ export async function connectAccount(
       accountRef: keepRef ? row.accountRef : null,
       accountName: keepRef ? row.accountName : null,
       state: 'connecting',
-      // The till's tick belongs to the venue; the account's own checks start again.
+      // The till's tick belongs to the venue; the account's own checks start again. The guest host
+      // is the web app's, not the account's, and a registration stays with the account it was made
+      // for: both are kept on the same account, and only the registration goes with a new one.
       checks: {
         ...NO_CHECKS,
+        guestHost: checks.guestHost,
+        domainHost: keepRef ? checks.domainHost : null,
         ticks: { cardTypeInTill: checks.ticks.cardTypeInTill, receiptEmailsOff: null },
       },
       checkedAt: null,
@@ -571,7 +575,11 @@ export async function accountLost(
     fromState: row.state,
     toState: 'lost_access',
   })
-  await raiseLostAlert(stx, 'access_removed')
+  // Paying was never on for an account still being connected: nothing was paused, so nobody is
+  // told "card payments are paused". The account is still abandoned (the mark above).
+  if (row.state === 'connected' || row.state === 'lost_access') {
+    await raiseLostAlert(stx, 'access_removed')
+  }
   return accepted(null, { details: { state: 'lost_access', changed: true } })
 }
 

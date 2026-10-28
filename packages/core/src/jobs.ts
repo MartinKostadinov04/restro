@@ -163,6 +163,12 @@ export const JOB_NAMES = {
    */
   providerNotices: 'provider-notices',
   /**
+   * Scheduled, every 15 minutes (#167): registers the guest page's host for wallets on each
+   * connected account that takes cards and has no registration for it yet, so a registration the
+   * provider did not take is retried on its own schedule. Not sent by anyone else.
+   */
+  walletDomain: 'wallet-domain',
+  /**
    * Scheduled, every minute (#83, D120): runs the alert delivery pass every few seconds for the
    * minute: keeps pauses as alerts, then sends what is due by Web Push and Telegram. Not sent by
    * anyone else.

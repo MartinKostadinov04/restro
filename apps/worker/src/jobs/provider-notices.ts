@@ -7,7 +7,9 @@
 // - its handler is picked by the platform's kind (`refund`, `dispute`, `payment`); a kind with no
 //   handler (`other`) is marked handled with no action;
 // - the account it names is mapped to its venue through `payment_accounts`; a notice for no
-//   account of ours is marked handled, and logged;
+//   account of ours is marked handled, and logged. An `account` notice may come before its account
+//   is recorded as the venue's, so one about an unknown account waits `ACCOUNT_NOTICE_GRACE_MS`
+//   first;
 // - the payment is read back from the provider (`readNoticeSubject`), which gives the refund
 //   total and the dispute as they stand now, so a notice that comes twice, late or out of order
 //   records the same values; an incomplete reading concludes nothing and the notice waits;
@@ -62,6 +64,13 @@ export const NOTICE_RUN_BUDGET_MS = 45_000
 /** A notice still waiting after this long is logged as an error. */
 export const NOTICE_LATE_MS = 24 * 60 * 60 * 1000
 
+/**
+ * An `account` notice can arrive before the account it names is recorded (the provider's account is
+ * made, the notice is sent, and only then does the worker record it as the venue's). One about an
+ * account not ours is given this long to be recorded before it is marked handled and dropped.
+ */
+export const ACCOUNT_NOTICE_GRACE_MS = 10 * 60 * 1000
+
 /** Refusals that a later run may get past: a lock held elsewhere, our capture not recorded yet. */
 const TRANSIENT_REFUSALS: readonly string[] = ['busy', 'payment_not_captured']
 
@@ -72,7 +81,9 @@ export type NoticeProviders = ReadonlyMap<
 >
 
 /** The providers that can also be asked about a venue's account (an account notice needs one). */
-function connectionProviders(providers: NoticeProviders): ReadonlyMap<string, ConnectionProvider> {
+export function connectionProviders(
+  providers: NoticeProviders,
+): ReadonlyMap<string, ConnectionProvider> {
   const found = new Map<string, ConnectionProvider>()
   for (const [kind, provider] of providers) {
     if (
@@ -149,6 +160,8 @@ export async function handleProviderNotice(
     readonly accounts: (providerKind: string) => Promise<ReadonlyMap<string, AccountVenue>>
     /** Where a guest payment's check is queued; without it a `payment` notice waits. */
     readonly queue?: JobQueue
+    /** The clock; the real one unless a test sets it. */
+    readonly now?: () => Date
   },
   stored: StoredProviderNotice,
   deps: ProviderNoticesDeps,
@@ -176,6 +189,15 @@ export async function handleProviderNotice(
     stored.accountRef === null
       ? undefined
       : (await env.accounts(stored.providerKind)).get(stored.accountRef)
+  if (
+    stored.kind === 'account' &&
+    stored.accountRef !== null &&
+    venue === undefined &&
+    (env.now?.() ?? new Date()).getTime() - stored.receivedAt.getTime() < ACCOUNT_NOTICE_GRACE_MS
+  ) {
+    // Not ours yet: the account may still be about to be recorded. Wait, then drop it.
+    return 'waiting'
+  }
   if (stored.accountRef === null || venue === undefined) {
     log.warn(about, 'a provider notice names no account of ours; marked handled')
     return handled('unknown_account')
@@ -335,6 +357,7 @@ export async function handleProviderNotices(
           log: env.log,
           jobId: env.jobId,
           accounts: accountsOf,
+          now: env.now,
           ...(env.queue === undefined ? {} : { queue: env.queue }),
         },
         notice,
