@@ -1,0 +1,73 @@
+# DB migrate (staging): applies the pending migrations and the database roles to Supabase
+# `restro-staging` (docs/runbooks/supabase-setup.md §6). Started by hand from the Actions tab; the
+# `staging` environment holds the secrets, limits it to `main` and waits for Martin's approval.
+# CLAUDE.md forbids running migrations against staging from a local machine: this runner is the
+# only way, and the only place RESTRO_DB_ALLOW_REMOTE is set.
+name: DB migrate (staging)
+
+on:
+  workflow_dispatch:
+    inputs:
+      rotate_app_password:
+        description: 'Set restro_app to STAGING_DATABASE_APP_PASSWORD (only after changing that secret)'
+        type: boolean
+        default: false
+      rotate_purge_password:
+        description: 'Set restro_purge to STAGING_DATABASE_PURGE_PASSWORD (only after changing that secret)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One run at a time; a second waits rather than cancelling a migration halfway.
+concurrency:
+  group: db-migrate-staging
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Migrations and roles
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # A public CA certificate, kept as a secret only so the runner can write it to a file; the
+      # connection strings point `sslrootcert` at this path.
+      - name: Supabase CA certificate
+        run: printf '%s\n' "$SUPABASE_CA_CERT" > "$RUNNER_TEMP/supabase-ca.crt"
+        env:
+          SUPABASE_CA_CERT: ${{ secrets.SUPABASE_CA_CERT }}
+
+      - name: Migrations and roles
+        run: pnpm db:migrate && pnpm db:roles
+        env:
+          RESTRO_DB_ALLOW_REMOTE: '1'
+          DATABASE_URL_OWNER: ${{ secrets.STAGING_DATABASE_URL_OWNER }}
+          DATABASE_APP_PASSWORD: ${{ secrets.STAGING_DATABASE_APP_PASSWORD }}
+          DATABASE_PURGE_PASSWORD: ${{ secrets.STAGING_DATABASE_PURGE_PASSWORD }}
+          DATABASE_APP_PASSWORD_ROTATE: ${{ inputs.rotate_app_password && '1' || '' }}
+          DATABASE_PURGE_PASSWORD_ROTATE: ${{ inputs.rotate_purge_password && '1' || '' }}
+
+      # The app role logs in through the pooler and sees no tenant's rows without a tenant set.
+      - name: Log in as restro_app through the pooler
+        run: psql "$DATABASE_URL" -c "select current_user, (select count(*) from restro.venues) as rows_without_tenant"
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}

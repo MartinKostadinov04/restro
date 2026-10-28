@@ -66,37 +66,17 @@ Everything below runs **as `postgres`** (the owner connection):
 - `pnpm db:migrate`: creates schemas `restro`, `pgboss` and `drizzle` (the migration journal), the four tables, `restro.enable_tenant_rls()`, the forced RLS policies, the templates policies and the `updated_at` trigger. Pending migrations run in one transaction under an advisory lock.
 - `pnpm db:roles`: creates or updates `restro_app` and `restro_purge` (LOGIN, NOINHERIT, no SUPERUSER / BYPASSRLS / CREATEROLE / CREATEDB / REPLICATION), grants CONNECT, `USAGE` on `restro` (and `USAGE, CREATE` on `pgboss` to `restro_app` only), exactly the table privileges in `src/table-access.ts` (`app` and `purge` lists), revokes everything else, and checks the result before committing. On Supabase `postgres` is not a superuser, so the script only names role attributes that actually need changing.
 
-Runner: a manually started workflow with a protected `staging` environment. It does not exist yet (adding it is a follow-up); its shape, with actions pinned to the same SHAs as `ci.yml`:
+Runner: `.github/workflows/db-migrate-staging.yml` ("DB migrate (staging)"), started by hand from the Actions tab (**Run workflow**, from `main`). It runs `pnpm db:migrate && pnpm db:roles` with `RESTRO_DB_ALLOW_REMOTE=1`, then logs in as `restro_app` through the pooler. Its `staging` environment (repository Settings → Environments) holds the secrets, lets only `main` run it, and waits for Martin's approval as required reviewer.
 
-```yaml
-name: DB migrate (staging)
-on: workflow_dispatch
-permissions:
-  contents: read
-jobs:
-  migrate:
-    runs-on: ubuntu-latest
-    environment: staging          # holds the secrets below; add a required reviewer
-    steps:
-      - uses: actions/checkout@<sha as in ci.yml>
-      - uses: pnpm/action-setup@<sha as in ci.yml>
-      - uses: actions/setup-node@<sha as in ci.yml>
-        with: { node-version: 24.21.0, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - name: Supabase CA certificate
-        run: printf '%s\n' "$SUPABASE_CA_CERT" > "$RUNNER_TEMP/supabase-ca.crt"
-        env: { SUPABASE_CA_CERT: '${{ secrets.SUPABASE_CA_CERT }}' }
-      - name: Migrations and roles
-        run: pnpm db:migrate && pnpm db:roles
-        env:
-          RESTRO_DB_ALLOW_REMOTE: '1'
-          DATABASE_URL_OWNER: ${{ secrets.STAGING_DATABASE_URL_OWNER }}
-          DATABASE_APP_PASSWORD: ${{ secrets.STAGING_DATABASE_APP_PASSWORD }}
-          DATABASE_PURGE_PASSWORD: ${{ secrets.STAGING_DATABASE_PURGE_PASSWORD }}
-      - name: Log in as restro_app through the pooler
-        run: psql "$DATABASE_URL" -c "select current_user, (select count(*) from restro.venues) as rows_without_tenant"
-        env: { DATABASE_URL: '${{ secrets.STAGING_DATABASE_URL }}' }
-```
+| Environment secret | Value |
+|---|---|
+| `SUPABASE_CA_CERT` | the whole text of `prod-ca-2021.crt` (step 3) |
+| `STAGING_DATABASE_URL_OWNER` | `DATABASE_URL_OWNER` from step 4 |
+| `STAGING_DATABASE_URL` | `DATABASE_URL` from step 4 |
+| `STAGING_DATABASE_APP_PASSWORD` | `restro_app`'s password (step 5), the one already in `STAGING_DATABASE_URL` |
+| `STAGING_DATABASE_PURGE_PASSWORD` | `restro_purge`'s password (step 5) |
+
+A password with `@ : / # ? %` must be percent-encoded inside a connection string; the generated ones (step 5) never need it. An existing role keeps its password unless the run's **rotate** box for it is ticked (step 8); tick it only after changing that secret.
 
 In the secrets, `sslrootcert` is `/home/runner/work/_temp/supabase-ca.crt` (the runner's `$RUNNER_TEMP`). Expected output:
 
@@ -107,7 +87,7 @@ db:roles: restro_app created on postgres.<ref>@<pooler host>:5432/postgres; priv
  restro_app   |                   0
 ```
 
-Both scripts are idempotent: run the workflow again after every merge that adds a migration (later Railway's pre-deploy step does the same with the same variables).
+Both scripts are idempotent: run the workflow again after every merge into `main` that adds a migration (later Railway's pre-deploy step does the same with the same variables).
 
 ## 7. Verify
 
@@ -146,7 +126,7 @@ If (7) shows `rolbypassrls = false`, then `postgres` too sees no tenant rows (FO
 
 ## 8. Rotating the app password
 
-Generate a new one (step 5), update `STAGING_DATABASE_APP_PASSWORD` and `STAGING_DATABASE_URL`, rerun the workflow with `DATABASE_APP_PASSWORD_ROTATE=1` (only then does `db:roles` re-set the password of an existing role; routine runs keep it, because Supavisor caches the old SCRAM verifier and every re-set — even to the same password — breaks pooled logins until its cache refreshes), then update `DATABASE_URL` wherever the apps run and restart them.
+Generate a new one (step 5), update `STAGING_DATABASE_APP_PASSWORD` and `STAGING_DATABASE_URL`, rerun the workflow with its **rotate_app_password** box ticked, which sets `DATABASE_APP_PASSWORD_ROTATE=1` (only then does `db:roles` re-set the password of an existing role; routine runs keep it, because Supavisor caches the old SCRAM verifier and every re-set — even to the same password — breaks pooled logins until its cache refreshes), then update `DATABASE_URL` wherever the apps run and restart them.
 
 ## 9. Troubleshooting
 
