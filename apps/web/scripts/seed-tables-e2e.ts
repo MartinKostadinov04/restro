@@ -2,7 +2,8 @@
 //
 //   seed     the demo venue gets a barsy venue (if it has none) with eight tables in four halls
 //            (`Главна зала`, `Тераса`, `VIP зона` and one with no hall), no codes, no names and the
-//            default QR address; the token files of any codes an earlier run made are removed; and
+//            default QR address, the areas called what the till calls them, the tables shown or
+//            hidden as the till says and in the till's order; the token files of any codes an earlier run made are removed; and
 //            the job queue the tab sends to exists (pg-boss tables and the queue, as the worker would
 //            create them). Idempotent.
 //   worker   waits for the REAL worker, which runs beside the e2e servers (since S3-05), to take
@@ -168,6 +169,29 @@ async function seed(): Promise<void> {
               hidden = false
         where venue_id = $1 and archived_at is null
           and (source_key = 'none' or source_key like 'name:%')`,
+      [venueId],
+    )
+    // Hidden follows the till (`is_public`): the manager's hidden flag outlives a sync, so a test
+    // that hid a table and then failed would leave it hidden for the next attempt.
+    await owner.query(
+      `update restro.tables t set hidden = not p.is_public
+         from restro.places p
+        where p.table_id = t.id and t.venue_id = $1 and t.hidden <> not p.is_public`,
+      [venueId],
+    )
+    // Tables go back to the till's order within their area (by number): a failure between a move
+    // up and its move down leaves two swapped. Each table takes the existing key whose rank by key
+    // equals its own rank by number; one statement, as `sort_key` has no unique index.
+    await owner.query(
+      `with ranked as (
+         select id, area_id, sort_key,
+                row_number() over (partition by area_id order by sort_key, id) as by_key,
+                row_number() over (partition by area_id order by number collate "C", id) as by_number
+           from restro.tables where venue_id = $1
+       )
+       update restro.tables t set sort_key = k.sort_key
+         from ranked n join ranked k on k.area_id = n.area_id and k.by_key = n.by_number
+        where t.id = n.id and t.sort_key <> k.sort_key`,
       [venueId],
     )
     // No menu routes of an earlier run, and no second menu left behind by one that failed.
