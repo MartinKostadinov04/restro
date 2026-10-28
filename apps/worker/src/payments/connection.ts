@@ -248,10 +248,12 @@ export async function retryDomainRegistration(
 /**
  * Registers the guest page's host for wallets, once per host (D125 3.6); wallets are optional.
  * Every attempt has its own idempotency key: the provider keeps the answer of a key for a day,
- * failures included (Stripe replays a stored 4xx or 500 for the same key), so a key shared by
- * every attempt would repeat the first failure. Registering a host again under a new key answers
- * the registration that is there (docs/deliverables/2026-10-22-stripe-knowledge.md, S27), so an
- * attempt after one that landed but timed out is harmless.
+ * failures included (https://docs.stripe.com/api/idempotent_requests.md: the first result is
+ * saved "regardless of whether it succeeded or failed", errors included), so a key shared by every
+ * attempt would repeat the first failure. Registering a host again under a new key answers the
+ * registration that is there: the sandbox line "2026-10-26 · S27 [SANDBOX]" under "The provider
+ * package against the sandbox" in docs/deliverables/2026-10-22-stripe-knowledge.md, so an attempt
+ * after one that landed but timed out is harmless.
  */
 async function registerDomain(
   env: ConnectionEnv,
