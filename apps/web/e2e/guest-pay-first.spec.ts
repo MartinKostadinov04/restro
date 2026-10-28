@@ -86,9 +86,14 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (harness === undefined || harness.exitCode !== null) return
   const exited = new Promise((resolve) => harness.once('exit', resolve))
+  const t0 = Date.now()
   harness.stdin.end()
   await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 30_000))])
+  const took = Date.now() - t0
+  const still = harness.exitCode === null
   if (harness.exitCode === null) harness.kill()
+  // TEMP diagnostic (#113): does the harness exit when its stdin closes?
+  if (still || took > 5_000) throw new Error(`TEMP: harness exit took ${took} ms, still running: ${still}`)
 })
 
 test('a pay-first item is paid at Send: entered on a payment table, then closed', async ({
