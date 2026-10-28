@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE #45: the bill and paying</title>
+<style>
+  :root { --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e3e6; --bg:#f6f6f7; --card:#fff; --accent:#2457d6; --accent-soft:#e8eefc; --warn:#8a5a00; --warn-soft:#fff6e0; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  header.top { padding:20px 24px 8px; max-width:1280px; margin:0 auto; }
+  header.top h1 { font-size:20px; margin:0 0 4px; }
+  header.top p { margin:4px 0; color:var(--muted); max-width:900px; }
+  .tag { display:inline-block; font-size:12px; font-weight:600; letter-spacing:.04em; background:#ffe9e9; color:#a11; padding:2px 8px; border-radius:4px; margin-bottom:6px; }
+  main { display:grid; grid-template-columns:400px 1fr; gap:24px; padding:12px 24px 40px; max-width:1280px; margin:0 auto; align-items:start; }
+  @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+  .phonecol { position:sticky; top:12px; }
+  .langs { display:flex; gap:6px; margin-bottom:8px; align-items:center; color:var(--muted); font-size:13px; }
+  .langs button { border:1px solid var(--line); background:var(--card); padding:4px 10px; border-radius:6px; cursor:pointer; }
+  .langs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .phone { width:380px; min-height:720px; background:var(--card); border:1px solid #cfcfd4; border-radius:28px; padding:18px 16px 16px; box-shadow:0 2px 14px rgba(0,0,0,.06); display:flex; flex-direction:column; gap:10px; }
+  .ph-head { display:flex; justify-content:space-between; color:var(--muted); font-size:13px; }
+  .ph-tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); }
+  .ph-tabs button { flex:1; border:0; background:none; padding:8px 0; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; font-size:14px; }
+  .ph-tabs button.on { color:var(--ink); border-bottom-color:var(--ink); font-weight:600; }
+  .ph h2 { font-size:18px; margin:4px 0 0; }
+  .sub { color:var(--muted); font-size:13px; }
+  .stale { color:var(--warn); font-size:13px; font-weight:600; }
+  .banner { background:var(--warn-soft); color:var(--warn); border-radius:8px; padding:8px 10px; font-size:14px; }
+  .note { background:var(--accent-soft); border-radius:8px; padding:8px 10px; font-size:14px; }
+  .rows { display:flex; flex-direction:column; }
+  .row { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid var(--line); }
+  .row .nm { flex:1; }
+  .row .am { font-variant-numeric:tabular-nums; }
+  .row.grey { color:#a3a3a8; }
+  .row .lbl { font-size:12px; color:var(--muted); }
+  .row select { font-size:13px; padding:2px; }
+  .totals { display:flex; justify-content:space-between; font-weight:600; padding:6px 0; }
+  .totals.small { font-weight:400; color:var(--muted); font-size:14px; padding:2px 0; }
+  .sect { font-size:13px; color:var(--muted); margin-top:8px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chips button { border:1px solid var(--line); background:var(--card); border-radius:16px; padding:5px 12px; cursor:pointer; font-size:14px; }
+  .chips button.on { border-color:var(--ink); background:var(--ink); color:#fff; }
+  .other { display:flex; gap:6px; }
+  .other input { width:90px; padding:4px 6px; }
+  .btn { display:block; width:100%; border:0; border-radius:10px; padding:12px; font-size:16px; font-weight:600; cursor:pointer; background:var(--ink); color:#fff; }
+  .btn[disabled] { background:#cfcfd4; color:#fff; cursor:not-allowed; }
+  .btn.ghost { background:none; color:var(--ink); border:1px solid var(--line); font-weight:500; }
+  .btn.link { background:none; color:var(--accent); font-weight:500; padding:6px; }
+  .spacer { flex:1; }
+  .legal { font-size:11.5px; color:var(--muted); }
+  .legal u { cursor:default; }
+  .slot { border:1px dashed #b9b9c0; border-radius:10px; padding:22px 10px; text-align:center; color:var(--muted); font-size:13px; }
+  .provider { color:#b42318; font-size:13px; margin-top:6px; }
+  .big { text-align:center; padding:10px 0; }
+  .big .ref { font-size:40px; font-weight:700; letter-spacing:.06em; }
+  .center { text-align:center; }
+  .sheet { border:1px solid var(--line); border-radius:12px; padding:10px; }
+  .sheet .opt { display:block; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid var(--line); padding:10px 4px; font-size:15px; cursor:pointer; }
+  .still { border:1px solid var(--line); border-radius:10px; padding:10px; color:var(--muted); text-align:center; font-size:14px; }
+  .closed { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); text-align:center; }
+  /* side */
+  .side { display:flex; flex-direction:column; gap:16px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .panel h3 { margin:0 0 8px; font-size:15px; }
+  .tabsbar { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  .tabsbar button { border:1px solid var(--line); background:var(--card); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .tabsbar button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .steps { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+  .steps button { text-align:left; border:1px solid var(--line); background:var(--card); padding:7px 10px; border-radius:8px; cursor:pointer; font-size:14px; }
+  .steps button.next { border-color:var(--accent); background:var(--accent-soft); font-weight:600; }
+  .steps button.done { color:var(--muted); }
+  .steps button[disabled] { cursor:default; opacity:.55; }
+  .fp { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+  .fp h4 { margin:0 0 6px; font-size:13px; color:var(--muted); font-weight:600; }
+  .fp button { display:block; width:100%; text-align:left; margin-bottom:5px; border:1px solid var(--line); background:var(--card); padding:6px 9px; border-radius:7px; cursor:pointer; font-size:13.5px; }
+  .fp label { display:flex; gap:6px; align-items:center; font-size:13.5px; margin-bottom:4px; }
+  .fp select { font-size:13px; }
+  .kv { display:grid; grid-template-columns:170px 1fr; gap:4px 12px; font-size:14px; }
+  .kv dt { color:var(--muted); }
+  .kv dd { margin:0; }
+  table.st { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px; }
+  table.st td, table.st th { border-bottom:1px solid var(--line); padding:4px 6px; text-align:left; }
+  .changed { background:#fffbe6; border:1px solid #f1dfa0; border-radius:8px; padding:8px 10px; font-size:14px; }
+  table.words { width:100%; border-collapse:collapse; font-size:13px; }
+  table.words td, table.words th { border-bottom:1px solid var(--line); padding:5px 6px; vertical-align:top; text-align:left; }
+  table.words th { position:sticky; top:0; background:var(--card); }
+  .wordswrap { max-height:560px; overflow:auto; }
+  .q { font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="tag">PROTOTYPE · THROWAWAY · NOT THE REAL LOOK</div>
+  <h1>#45: the guest's bill screen and paying from it</h1>
+  <p><b>The question:</b> do the steps, states and words a guest lives through feel right, from seeing the table's bill to "Paid", including what happens when a friend pays the same drinks, the bill changes, the bank declines, the venue can't tell, or the guest closes the page? The look is the menu template's job (D129); this page is deliberately plain.</p>
+  <p>Tap the phone like a guest. Use the walkthroughs or the free-play buttons for everything that happens elsewhere (a friend, the waiter, the POS, Stripe, the manager). Switch the phone between Bulgarian and English. "All guest words" lists every string for one read.</p>
+</header>
+
+<main>
+  <section class="phonecol">
+    <div class="langs">Phone language:
+      <button data-lang="bg">Български</button><button data-lang="en">English</button>
+    </div>
+    <div class="phone ph" id="phone"></div>
+  </section>
+
+  <section class="side">
+    <div class="panel" id="changedPanel"></div>
+    <div class="panel">
+      <div class="tabsbar" id="sideTabs"></div>
+      <div id="sideBody"></div>
+    </div>
+    <div class="panel">
+      <h3>What the platform knows right now</h3>
+      <div id="state"></div>
+    </div>
+  </section>
+</main>
+
+<!-- ===================== The logic: a pure module (no DOM) ===================== -->
+<script>
+const BillPay = (() => {
+  const CALL_OPTIONS = ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean', 'terminal'];
+
+  function initial(lang) {
+    return {
+      lang: lang || 'bg',
+      venue: {
+        payingMode: 'on',          // on | off | cards_paused
+        orderingPaused: false,
+        tipOn: true,               // the connector declares recordTipOnClose
+        partQty: true,             // the connector declares "move part of a line's quantity"
+        payFirstOffered: true,     // the connector can open a bill on an empty payment table
+        minimumMinor: 50,
+        staffTakesCalls: true,
+        callOptions: { waiter: true, bill: true, ice: true, water: true, glasses: false, clean: false, terminal: false },
+      },
+      pass: true,
+      reading: { ok: true, age: 4 },
+      weak: false,
+      sittingEnded: false,
+      lines: [
+        { id: 'l1', item: 'mojito', qty: 2, amount: 1600, status: 'owed', by: null, changed: false },
+        { id: 'l2', item: 'gin', qty: 3, amount: 2700, status: 'owed', by: null, changed: false },
+        { id: 'l3', item: 'water', qty: 1, amount: 300, status: 'owed', by: null, changed: false },
+        { id: 'l4', item: null, qty: 1, amount: 500, status: 'owed', by: null, changed: false },
+      ],
+      screen: 'bill',
+      picks: {},
+      tip: { mode: null, pct: 0, otherMinor: 0 },
+      notice: null,
+      payment: null,
+      formNote: null,
+      order: {
+        lines: [
+          { id: 'o1', item: 'mojito', qty: 1, amount: 800, payFirst: false },
+          { id: 'o2', item: 'prosecco', qty: 1, amount: 2400, payFirst: true, priceChanged: false },
+        ],
+        payFirstWaiting: false,
+      },
+      call: { state: 'none', kinds: [] },
+      callSheet: false,
+      lastPaid: null,
+      closedFrom: null,
+      nextRef: 4827,
+      seq: 10,
+      changed: 'Start: table 7 has an open bill with four lines. Nothing is ticked.',
+    };
+  }
+
+  const sum = (ls) => ls.reduce((a, l) => a + l.amount, 0);
+  // A percentage tip, rounded half-up in minor units (the money module's rule).
+  const pctOf = (base, pct) => Math.floor((base * pct + 50) / 100);
+  const tipOf = (s, base) => {
+    if (!s.venue.tipOn) return 0;
+    if (s.tip.mode === 'pct') return pctOf(base, s.tip.pct);
+    if (s.tip.mode === 'other') return s.tip.otherMinor;
+    return 0;
+  };
+  // The POS's own line amount; part of a line is priced from that amount, never price x quantity of the menu.
+  const partAmount = (l, q) => (q === l.qty ? l.amount : Math.round((l.amount * q) / l.qty));
+
+  function billQuote(s) {
+    const lines = s.lines.filter((l) => s.picks[l.id] && l.status === 'owed')
+      .map((l) => ({ id: l.id, item: l.item, qty: s.picks[l.id], amount: partAmount(l, s.picks[l.id]) }));
+    const base = sum(lines);
+    const tip = tipOf(s, base);
+    return { lines, base, tip, total: base + tip };
+  }
+  function payFirstQuote(s) {
+    const lines = s.order.lines.filter((l) => l.payFirst).map((l) => ({ id: l.id, item: l.item, qty: l.qty, amount: l.amount }));
+    const base = sum(lines);
+    const tip = tipOf(s, base);
+    return { lines, base, tip, total: base + tip };
+  }
+
+  // Why Pay is greyed, or null.
+  function payBlock(s, kind) {
+    if (s.venue.payingMode === 'off') return 'paying_not_offered';
+    if (s.venue.orderingPaused) return 'ordering_paused';
+    if (s.venue.payingMode === 'cards_paused') return 'cards_paused';
+    if (!s.reading.ok) return 'not_up_to_date';
+    const q = kind === 'payfirst' ? payFirstQuote(s) : billQuote(s);
+    if (q.lines.length === 0) return 'nothing_picked';
+    if (q.total < s.venue.minimumMinor) return 'below_minimum';
+    return null;
+  }
+
+  // Screen changes respect a closed page: the change waits until the guest comes back.
+  function show(s, screen) {
+    if (s.screen === 'closed') s.closedFrom = screen; else s.screen = screen;
+  }
+
+  function startPayment(s, kind) {
+    const q = kind === 'payfirst' ? payFirstQuote(s) : billQuote(s);
+    if (kind === 'bill') {
+      // Part of a line: the paying part becomes its own line on the POS; the rest stays owed.
+      const next = [];
+      for (const l of s.lines) {
+        const pick = s.picks[l.id];
+        if (!pick || l.status !== 'owed') { next.push(l); continue; }
+        if (pick < l.qty) {
+          const paying = partAmount(l, pick);
+          next.push({ ...l, qty: l.qty - pick, amount: l.amount - paying });
+          next.push({ id: 'l' + s.seq++, item: l.item, qty: pick, amount: paying, status: 'being_paid', by: 'me', changed: false, splitFrom: l.id });
+        } else {
+          next.push({ ...l, status: 'being_paid', by: 'me' });
+        }
+      }
+      s.lines = next;
+    }
+    s.payment = { kind, lines: q.lines, base: q.base, tip: q.tip, total: q.total, state: 'preparing', reason: null, ref: null };
+    s.formNote = null;
+    s.notice = null;
+    show(s, 'preparing');
+  }
+
+  function ungreyMine(s) {
+    const merged = [];
+    for (const l of s.lines) {
+      if (l.by !== 'me' || l.status !== 'being_paid') { merged.push(l); continue; }
+      const parent = l.splitFrom && s.lines.find((p) => p.id === l.splitFrom && p.status === 'owed');
+      if (parent) { parent.qty += l.qty; parent.amount += l.amount; }
+      else merged.push({ ...l, status: 'owed', by: null });
+    }
+    s.lines = merged;
+  }
+
+  function release(s, reason) {
+    if (s.payment.kind === 'bill') ungreyMine(s);
+    else s.order.payFirstWaiting = true;
+    s.payment.state = 'released';
+    s.payment.reason = reason;
+    show(s, 'released');
+  }
+
+  function finishPaid(s) {
+    const p = s.payment;
+    p.state = 'captured';
+    p.ref = String(s.nextRef++);
+    if (p.kind === 'bill') {
+      s.lines = s.lines.map((l) => (l.by === 'me' && l.status === 'being_paid' ? { ...l, status: 'paid_app', by: null } : l));
+      s.picks = {};
+    } else {
+      for (const l of s.order.lines.filter((x) => x.payFirst)) {
+        s.lines.push({ id: 'l' + s.seq++, item: l.item, qty: l.qty, amount: l.amount, status: 'paid_app', by: null, changed: false });
+      }
+      s.order.lines = s.order.lines.filter((x) => !x.payFirst);
+      s.order.payFirstWaiting = false;
+    }
+    s.lastPaid = { total: p.total, minutesAgo: 0 };
+    s.tip = { mode: null, pct: 0, otherMinor: 0 };
+    show(s, 'paid');
+  }
+
+  const inPayment = (s, ...states) => s.payment && states.includes(s.payment.state);
+
+  function reduce(prev, a) {
+    const s = structuredClone(prev);
+    s.changed = '';
+    switch (a.type) {
+      case 'LANG': s.lang = a.lang; s.changed = 'Phone language changed.'; break;
+
+      // ---------- the guest ----------
+      case 'GO':
+        if (s.sittingEnded) break;
+        s.screen = a.screen; s.notice = null; s.callSheet = false;
+        if (a.screen === 'pick') { s.lines.forEach((l) => (l.changed = false)); s.reading.age = 2; }
+        s.changed = a.screen === 'pick' ? 'The guest opened "What are you paying for?". Opening it takes a fresh reading of the bill.' : `The guest opened "${a.screen}".`;
+        break;
+      case 'TICK': {
+        const l = s.lines.find((x) => x.id === a.id);
+        if (!l) break;
+        if (l.status === 'being_paid') { s.notice = 'being_paid'; s.changed = 'Refused: that line is in someone else\'s payment (being_paid).'; break; }
+        if (s.picks[l.id]) { delete s.picks[l.id]; s.changed = 'Line unticked.'; }
+        else { s.picks[l.id] = l.qty; s.changed = 'Line ticked, quantity "all" by default.'; }
+        s.notice = null;
+        break;
+      }
+      case 'QTY': s.picks[a.id] = a.qty; s.changed = `Quantity set to ${a.qty}.`; break;
+      case 'WHOLE':
+        s.picks = {};
+        s.lines.filter((l) => l.status === 'owed').forEach((l) => (s.picks[l.id] = l.qty));
+        s.changed = 'Every line that is free to pay is ticked (lines being paid by someone else are left out).';
+        break;
+      case 'TIP_PCT':
+        s.tip = s.tip.mode === 'pct' && s.tip.pct === a.pct ? { mode: null, pct: 0, otherMinor: 0 } : { mode: 'pct', pct: a.pct, otherMinor: 0 };
+        s.changed = s.tip.mode ? `Tip set to ${a.pct} % of the chosen lines (rounded half-up).` : 'Tip cleared (back to zero).';
+        break;
+      case 'TIP_OTHER':
+        s.tip = a.minor > 0 ? { mode: 'other', pct: 0, otherMinor: a.minor } : { mode: null, pct: 0, otherMinor: 0 };
+        s.changed = 'Tip set to the guest\'s own amount.';
+        break;
+      case 'PAY': {
+        const block = payBlock(s, 'bill');
+        if (block) { s.notice = block; s.changed = `Pay refused: ${block}.`; break; }
+        const changed = s.lines.filter((l) => s.picks[l.id] && l.changed);
+        const gone = Object.keys(s.picks).filter((id) => !s.lines.find((l) => l.id === id && l.status === 'owed'));
+        if (changed.length || gone.length) {
+          changed.forEach((l) => delete s.picks[l.id]);
+          gone.forEach((id) => delete s.picks[id]);
+          s.lines.forEach((l) => (l.changed = false));
+          s.notice = 'bill_changed';
+          s.changed = 'Pay refused once with "your bill changed": a ticked line changed. The fresh bill is shown and that line\'s tick is cleared; the other ticks stay.';
+          break;
+        }
+        const q = billQuote(s);
+        if (s.lastPaid && s.lastPaid.total === q.total && s.lastPaid.minutesAgo <= 15) { s.screen = 'same'; s.changed = 'Friendly check: same amount as a payment from this phone a few minutes ago.'; break; }
+        startPayment(s, 'bill');
+        s.changed = 'Payment started. On every phone at the table the chosen lines now show "Being paid".';
+        break;
+      }
+      case 'SAME_YES': startPayment(s, s.payment && s.payment.kind === 'payfirst' ? 'payfirst' : 'bill'); s.changed = 'The guest confirmed; payment started.'; break;
+      case 'SAME_NO': s.screen = 'pick'; s.changed = 'The guest went back.'; break;
+      case 'CANCEL':
+        if (!inPayment(s, 'preparing', 'form')) { s.notice = 'too_late'; s.changed = 'Refused: too_late (the card is already held).'; break; }
+        if (s.payment.kind === 'bill') { ungreyMine(s); s.screen = 'pick'; }
+        else { s.order.payFirstWaiting = true; s.screen = 'order'; }
+        s.payment = null;
+        s.changed = 'Pay later: nothing was held or charged; the lines are free again on every phone and the ticks are kept.';
+        break;
+      case 'SUBMIT':
+        if (!inPayment(s, 'form')) break;
+        s.payment.state = 'bank'; s.formNote = null; show(s, 'bank');
+        s.changed = 'Card entered. The bank\'s check (3-D Secure) opens inside the page. From here the guest can no longer cancel.';
+        break;
+      case 'BANK_OK':
+        if (!inPayment(s, 'bank')) break;
+        s.payment.state = 'held'; show(s, 'waiting');
+        s.changed = 'The bank approved: the money is HELD, not taken. Restro now moves the lines to a payment table, reads them back, closes that bill on the POS, then captures. The guest sees one waiting state for all of it.';
+        break;
+      case 'SEND': {
+        if (s.venue.orderingPaused) { s.notice = 'ordering_paused'; s.changed = 'Send refused: ordering is paused.'; break; }
+        const pf = s.order.lines.find((l) => l.payFirst && l.priceChanged);
+        if (pf) { pf.priceChanged = false; s.notice = 'menu_changed'; s.changed = 'Refused once: a pay-first price changed. The order shows the new price.'; break; }
+        const onBill = s.order.lines.filter((l) => !l.payFirst);
+        onBill.forEach((l) => s.lines.push({ id: 'l' + s.seq++, item: l.item, qty: l.qty, amount: l.amount, status: 'owed', by: null, changed: false }));
+        s.order.lines = s.order.lines.filter((l) => l.payFirst);
+        const canPayFirst = s.venue.payFirstOffered && s.order.lines.length > 0;
+        if (canPayFirst && !payBlock(s, 'payfirst')) {
+          startPayment(s, 'payfirst');
+          s.changed = 'ONE tap: the on-the-bill lines went to the POS (they are on the bill now) and the pay-first payment opened.';
+        } else {
+          if (canPayFirst) s.order.payFirstWaiting = true;
+          s.screen = 'order';
+          s.changed = 'The on-the-bill lines went to the POS. The pay-first lines stay in the order, not ordered until paid.';
+        }
+        break;
+      }
+      case 'PAYFIRST_PAY': {
+        const block = payBlock(s, 'payfirst');
+        if (block) { s.notice = block; s.changed = `Pay refused: ${block}.`; break; }
+        const pf = s.order.lines.find((l) => l.payFirst && l.priceChanged);
+        if (pf) { pf.priceChanged = false; s.notice = 'menu_changed'; s.changed = 'Refused once: a pay-first price changed.'; break; }
+        startPayment(s, 'payfirst');
+        s.changed = 'Pay-first payment started.';
+        break;
+      }
+      case 'OPEN_CALL': {
+        const extra = CALL_OPTIONS.filter((k) => k !== 'waiter' && s.venue.callOptions[k]);
+        if (extra.length === 0) { return reduce(s, { type: 'CALL', kind: 'waiter', single: true }); }
+        s.callSheet = true; s.changed = 'The options this venue ticked are shown.';
+        break;
+      }
+      case 'CALL':
+        if (s.call.state !== 'sent') s.call = { state: 'sent', kinds: [] };
+        if (!s.call.kinds.includes(a.kind)) s.call.kinds.push(a.kind);
+        s.callSheet = false;
+        s.changed = a.single ? 'Single-step button (the venue ticked no options): one call sent for the table.' : (s.call.kinds.length > 1 ? 'Added to the table\'s open call, not a second call.' : 'One call sent for the table.');
+        break;
+      case 'CLOSE_SHEET': s.callSheet = false; break;
+      case 'ALLOW_LOCATION': s.pass = true; s.changed = 'Location allowed: the phone gets a pass for this sitting and sees the bill.'; break;
+      case 'CLOSE_PAGE': s.closedFrom = s.screen; s.screen = 'closed'; s.changed = 'The guest closed the page (or the phone locked). The payment, if any, goes on in the platform.'; break;
+      case 'REOPEN': s.screen = s.closedFrom || 'bill'; s.closedFrom = null; s.changed = 'The guest opened the page again: the phone remembered its payment for this sitting and shows where it stands.'; break;
+      case 'AGAIN':
+        if (s.payment && s.payment.kind === 'payfirst') { s.payment = null; s.screen = 'order'; }
+        else { s.payment = null; s.screen = 'pick'; s.lines.forEach((l) => (l.changed = false)); }
+        s.changed = 'Back to choosing; the earlier ticks are kept where the lines are still there.';
+        break;
+      case 'BACK': s.payment = null; s.screen = 'bill'; s.notice = null; s.changed = 'Back to the bill.'; break;
+
+      // ---------- the platform and Stripe ----------
+      case 'TABLE_READY':
+        if (!inPayment(s, 'preparing')) { s.changed = 'Nothing to do: no payment is preparing.'; break; }
+        s.payment.state = 'form'; show(s, 'form');
+        s.changed = 'A payment table was free: the guest sees the priced lines, the tip, the total and the card form.';
+        break;
+      case 'TABLES_BUSY':
+        if (!inPayment(s, 'preparing')) { s.changed = 'Nothing to do: no payment is preparing.'; break; }
+        release(s, 'busy'); s.changed = 'No payment table came free in 60 s: released (busy). Nothing was held.';
+        break;
+      case 'DECLINE':
+        if (!inPayment(s, 'bank', 'form')) break;
+        s.payment.state = 'form'; s.formNote = 'declined'; show(s, 'form');
+        s.changed = 'The bank declined. Stripe\'s own message shows inside its form; the guest may try another card.';
+        break;
+      case 'TIME_OUT':
+        if (!inPayment(s, 'preparing', 'form')) { s.changed = 'Nothing to do: the card is not in the form step.'; break; }
+        release(s, 'expired_session'); s.changed = 'The provider\'s 10 minutes ran out with no card entered: released, nothing charged.';
+        break;
+      case 'PAID':
+        if (!inPayment(s, 'held', 'unconfirmed')) { s.changed = 'Nothing to do: no payment is waiting.'; break; }
+        finishPaid(s); s.changed = 'Bill closed on the POS and the money captured. The paid lines now sit under "Paid in the app" on every phone.';
+        break;
+      case 'LAST_CHECK_FAILED':
+        if (!inPayment(s, 'held')) break;
+        release(s, 'check_failed'); s.changed = 'The last check found the lines changed on the payment table: they went back, the hold was released, nothing charged.';
+        break;
+      case 'CANT_TELL':
+        if (!inPayment(s, 'held')) break;
+        s.payment.state = 'unconfirmed'; show(s, 'checking');
+        s.changed = 'Restro could not tell whether the POS closed the bill. The hold is kept; managers are alerted to answer.';
+        break;
+      case 'STRANDED':
+        if (!inPayment(s, 'held')) break;
+        s.payment.state = 'stranded'; show(s, 'checking');
+        s.changed = 'Lines could not go back to the table. Staff are alerted; the guest is never asked to pay again.';
+        break;
+      case 'CAPTURE_FAILED':
+        if (!inPayment(s, 'held')) break;
+        s.payment.state = 'capture_failed'; show(s, 'checking');
+        s.changed = 'Bill closed on the POS but the card could not be charged. Owners are alerted; the guest is never asked to pay again.';
+        break;
+      case 'MGR_RECEIPT':
+        if (!inPayment(s, 'unconfirmed')) break;
+        finishPaid(s); s.changed = 'A manager answered "Receipt printed": the money is captured and the guest sees Paid.';
+        break;
+      case 'MGR_NO_RECEIPT':
+        if (!inPayment(s, 'unconfirmed')) break;
+        release(s, 'no_receipt'); s.changed = 'A manager answered "No receipt": the hold is released, nothing charged.';
+        break;
+      case 'READ_FAIL': s.reading = { ok: false, age: 47 }; s.changed = 'The POS cannot be read: the last good bill shows "not up to date"; ordering and paying pause.'; break;
+      case 'READ_OK': s.reading = { ok: true, age: 2 }; s.changed = 'Readings work again.'; break;
+      case 'WEAK': s.weak = !s.weak; s.changed = s.weak ? 'The guest\'s phone has a weak connection.' : 'Connection back.'; break;
+
+      // ---------- the table and the staff ----------
+      case 'FRIEND_PAYS': {
+        const l = s.lines.find((x) => x.id === 'l2' && x.status === 'owed');
+        if (!l) { s.changed = 'Gin & tonic is not free to pay right now.'; break; }
+        l.status = 'being_paid'; l.by = 'friend'; delete s.picks.l2;
+        s.changed = 'A friend started paying Gin & tonic: it shows "Being paid" on every phone (no name, no amount, no timer). Your tick on it was cleared.';
+        break;
+      }
+      case 'FRIEND_DONE':
+        s.lines = s.lines.map((l) => (l.by === 'friend' ? { ...l, status: 'paid_app', by: null } : l));
+        s.changed = 'The friend\'s payment went through: those lines moved to "Paid in the app".';
+        break;
+      case 'FRIEND_CANCELS':
+        s.lines = s.lines.map((l) => (l.by === 'friend' ? { ...l, status: 'owed', by: null } : l));
+        s.changed = 'The friend tapped "Pay later": the lines are free again.';
+        break;
+      case 'NEW_ROUND':
+        s.lines.push({ id: 'l' + s.seq++, item: 'mojito', qty: 1, amount: 800, status: 'owed', by: null, changed: false });
+        s.changed = 'Someone else\'s round landed on the bill. It refuses nothing: you still pay exactly what you ticked.';
+        break;
+      case 'WAITER_CHANGES': {
+        const l = s.lines.find((x) => x.id === 'l1' && x.status === 'owed');
+        if (!l) { s.changed = 'Mojito is not on the bill as owed.'; break; }
+        l.qty = 1; l.amount = 800; l.changed = true;
+        if (s.picks.l1 > 1) s.picks.l1 = 2; // the stale tick stays until Pay is refused
+        s.changed = 'The waiter changed Mojito ×2 to ×1 on the POS. Nothing happens on screen until the guest acts on that line.';
+        break;
+      }
+      case 'MENU_CHANGED': {
+        const l = s.order.lines.find((x) => x.payFirst);
+        if (!l) break;
+        l.amount = 2600; l.priceChanged = true;
+        s.changed = 'The menu price of the pay-first Prosecco changed to 26 EUR.';
+        break;
+      }
+      case 'CALL_HANDLED': if (s.call.state === 'sent') { s.call.state = 'done'; s.changed = 'Staff marked the call Handled in Tonight (once, for all options).'; } break;
+      case 'CALL_UNANSWERED': if (s.call.state === 'sent') { s.call.state = 'rejected'; s.changed = 'Nobody answered in 15 minutes.'; } break;
+      case 'SITTING_ENDS': s.sittingEnded = true; s.screen = 'ended'; s.changed = 'The sitting ended (the table was closed and freed).'; break;
+
+      // ---------- the venue's settings ----------
+      case 'SET_VENUE': s.venue[a.key] = a.value; s.changed = `Venue setting "${a.key}" is now ${a.value}.`;
+        if ((a.key === 'payingMode' && a.value !== 'on') || (a.key === 'orderingPaused' && a.value)) {
+          if (inPayment(s, 'preparing')) { release(s, 'paying_paused'); s.changed += ' The payment waiting for a payment table ended (paying_paused).'; }
+        }
+        break;
+      case 'SET_CALL': s.venue.callOptions[a.kind] = a.value; s.changed = `Venue ${a.value ? 'ticked' : 'unticked'} "${a.kind}".`; break;
+      case 'NO_PASS': s.pass = false; s.changed = 'This phone has no location pass (the guest said "Not now").'; break;
+      case 'TIME_PASSES': if (s.lastPaid) s.lastPaid.minutesAgo += 4; s.changed = '4 minutes pass.'; break;
+      default: break;
+    }
+    return s;
+  }
+
+  return { initial, reduce, billQuote, payFirstQuote, payBlock, CALL_OPTIONS };
+})();
+</script>
+
+<!-- ===================== Guest words (BG and EN) ===================== -->
+<script>
+const WORDS = {
+  tab_menu: { where: 'Phone tabs', bg: 'Меню', en: 'Menu' },
+  tab_order: { where: 'Phone tabs', bg: 'Поръчка', en: 'Your order' },
+  tab_bill: { where: 'Phone tabs', bg: 'Сметка', en: 'Bill' },
+  table: { where: 'Header', bg: 'Маса {n}', en: 'Table {n}' },
+  bill_title: { where: 'Bill', bg: 'Сметката на масата', en: 'Your table\'s bill' },
+  updated: { where: 'Bill: reading age', bg: 'Обновено преди {n} сек.', en: 'Updated {n} s ago' },
+  stale: { where: 'Bill: failed reading', bg: 'Не е актуална · обновена преди {n} сек.', en: 'Not up to date · updated {n} s ago' },
+  other_item: { where: 'Bill: a POS line that is none of ours', bg: 'Друг артикул', en: 'Other item' },
+  being_paid: { where: 'Bill: line in a payment', bg: 'Плаща се', en: 'Being paid' },
+  left_to_pay: { where: 'Bill: total', bg: 'За плащане', en: 'Left to pay' },
+  paid_in_app: { where: 'Bill: paid lines section', bg: 'Платено в приложението', en: 'Paid in the app' },
+  empty: { where: 'Bill: nothing owed', bg: 'Все още няма нищо в сметката', en: 'Nothing on your bill yet' },
+  pay_open: { where: 'Bill: opens choosing', bg: 'Плати', en: 'Pay' },
+  ask_waiter_to_pay: { where: 'Bill: paying is off at this venue', bg: 'За да платите, попитайте сервитьора.', en: 'Ask your waiter to pay.' },
+  pick_title: { where: 'Choosing', bg: 'Какво плащате?', en: 'What are you paying for?' },
+  whole_bill: { where: 'Choosing', bg: 'Цялата сметка', en: 'The whole bill' },
+  qty_all: { where: 'Choosing: quantity', bg: 'всички ({n})', en: 'all ({n})' },
+  tip_label: { where: 'Tip', bg: 'Бакшиш: отива за заведението', en: 'Tip: goes to the venue' },
+  tip_other: { where: 'Tip', bg: 'Друга сума', en: 'Other amount' },
+  tip_ok: { where: 'Tip: other amount', bg: 'Добави', en: 'Add' },
+  your_items: { where: 'Totals', bg: 'Избрано', en: 'Your items' },
+  tip: { where: 'Totals', bg: 'Бакшиш', en: 'Tip' },
+  total: { where: 'Totals', bg: 'Общо', en: 'Total' },
+  pay_x: { where: 'Pay button', bg: 'Плати {x}', en: 'Pay {x}' },
+  legal_1: { where: 'Pay screen, law checklist', bg: 'Цените са в EUR с ДДС. Рекламации и връщане на пари: заведението.', en: 'Prices in EUR incl. VAT. Complaints and refunds: the venue.' },
+  legal_2: { where: 'Pay screen, law checklist', bg: 'Плащането се обработва от Stripe за {venue}.', en: 'Payment processed by Stripe for {venue}.' },
+  legal_links: { where: 'Pay screen, law checklist (links)', bg: 'Данни за заведението · Поверителност', en: 'About the venue · Privacy' },
+  venue_name: { where: 'Example venue', bg: 'Клуб Пример ЕООД', en: 'Club Example Ltd' },
+  // why Pay is greyed / refusals
+  below_minimum: { where: 'Pay greyed', bg: 'Плащането с карта е от {min}. Добавете артикул или попитайте сервитьора.', en: 'Card payments start at {min}. Add an item or ask your waiter.' },
+  not_up_to_date: { where: 'Pay greyed', bg: 'В момента не можем да прочетем сметката. Опитваме отново.', en: 'We can\'t read the bill right now. We keep trying.' },
+  cards_paused: { where: 'Pay greyed; ended: paying_paused', bg: 'Плащането с карта е спряно в момента. Попитайте сервитьора.', en: 'Card payments are paused right now. Ask your waiter.' },
+  ordering_paused: { where: 'Banner; Send and Pay greyed', bg: 'Поръчването е спряно в момента. Моля, поръчайте от сервитьор.', en: 'Ordering is paused right now. Please order from a waiter.' },
+  nothing_picked: { where: 'Pay greyed', bg: 'Изберете поне един ред.', en: 'Choose at least one line.' },
+  paying_not_offered: { where: 'Refusal', bg: 'За да платите, попитайте сервитьора.', en: 'Ask your waiter to pay.' },
+  being_paid_refused: { where: 'Refusal: ticking a greyed line', bg: 'Някой вече плаща този ред.', en: 'Someone is already paying for this line.' },
+  bill_changed: { where: 'Refusal', bg: 'Сметката ви се промени, откакто я отворихте.', en: 'Your bill changed since you opened it.' },
+  menu_changed: { where: 'Refusal at Send / pay-first', bg: 'Менюто се промени, проверете поръчката си.', en: 'The menu changed, check your order.' },
+  ask_waiter_to_split: { where: 'Refusal / ended', bg: 'Помолете сервитьора да раздели сметката.', en: 'Ask your waiter to split this bill.' },
+  too_late: { where: 'Refusal: cancel after the hold', bg: 'Вече е късно за отказ: плащането се обработва.', en: 'Too late to cancel: the payment is being processed.' },
+  rate_limited: { where: 'Refusal', bg: 'Твърде много опити. Изчакайте малко и опитайте отново.', en: 'Too many tries. Wait a moment and try again.' },
+  turnstile: { where: 'Refusal', bg: 'Не успяхме да проверим заявката. Опитайте отново.', en: 'We couldn\'t check this request. Try again.' },
+  unknown_payment: { where: 'Refusal', bg: 'Не намираме това плащане. Попитайте сервитьора.', en: 'We can\'t find this payment. Ask your waiter.' },
+  weak: { where: 'Banner', bg: 'Слаба връзка. Още нищо ново не е изпратено, опитваме отново.', en: 'Weak connection. Nothing new was sent yet, we keep trying.' },
+  same_q: { where: 'Friendly check', bg: 'Същата сума като преди {n} мин. Да платите ли отново?', en: 'Same amount as {n} minutes ago. Pay again?' },
+  same_yes: { where: 'Friendly check', bg: 'Да, плати', en: 'Yes, pay' },
+  same_no: { where: 'Friendly check', bg: 'Назад', en: 'Back' },
+  // paying steps
+  preparing: { where: 'Paying', bg: 'Подготвяме сметката ви…', en: 'Preparing your bill…' },
+  pay_later: { where: 'Paying (before the card)', bg: 'Плати по-късно', en: 'Pay later' },
+  card_slot: { where: '(placeholder, not shown)', bg: '[Формата за карта на Stripe · Apple Pay · Google Pay]', en: '[Stripe\'s card form · Apple Pay · Google Pay]' },
+  declined: { where: 'Inside Stripe\'s form (Stripe\'s own text)', bg: 'Картата е отказана. Опитайте с друга карта.', en: 'Your card was declined. Try another card.' },
+  bank_slot: { where: '(placeholder, not shown)', bg: '[Проверката на вашата банка се отваря тук]', en: '[Your bank\'s check opens here]' },
+  waiting: { where: 'Paying: one waiting state', bg: 'Обработваме плащането…', en: 'Processing your payment…' },
+  paid: { where: 'Paid', bg: 'Платено', en: 'Paid' },
+  paid_ref_label: { where: 'Paid', bg: 'Номер на плащането', en: 'Payment number' },
+  paid_receipt: { where: 'Paid', bg: 'Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка.', en: 'Show this number to your waiter. Your waiter brings your receipt.' },
+  back_to_bill: { where: 'Buttons', bg: 'Към сметката', en: 'Back to the bill' },
+  checking_title: { where: 'Can\'t tell / stranded / capture failed', bg: 'Заведението проверява плащането', en: 'The venue is checking the payment' },
+  checking_body: { where: 'Can\'t tell / stranded / capture failed', bg: 'Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор.', en: 'You don\'t need to do anything. If you have a question, call a waiter.' },
+  r_busy: { where: 'Ended: busy', bg: 'Плащането в приложението е заето. Опитайте след минута или повикайте сервитьор.', en: 'Paying in the app is busy, try again in a minute or call a waiter.' },
+  r_paying_paused: { where: 'Ended: paying_paused', bg: 'Плащането с карта е спряно в момента. Картата ви не е таксувана. Попитайте сервитьора.', en: 'Card payments are paused right now. Nothing was charged. Ask your waiter.' },
+  r_check_failed: { where: 'Ended: check_failed / bill_changed', bg: 'Сметката се промени точно преди плащането. Картата ви не е таксувана. Проверете сметката и опитайте отново.', en: 'Your bill changed just before paying. Nothing was charged. Check the bill and try again.' },
+  r_isolate_refused: { where: 'Ended: isolate_refused', bg: 'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.', en: 'We couldn\'t prepare this payment. Nothing was charged. Ask your waiter.' },
+  r_no_receipt: { where: 'Ended: manager said "No receipt"', bg: 'Плащането не беше завършено. Картата ви не е таксувана. Ако банката е запазила сума, тя ще бъде освободена.', en: 'The payment wasn\'t completed. Nothing was charged. Any amount your bank reserved will be released.' },
+  r_expired_session: { where: 'Ended: time ran out', bg: 'Времето изтече. Картата ви не е таксувана.', en: 'Your time ran out. Nothing was charged.' },
+  pay_again: { where: 'Buttons', bg: 'Плати отново', en: 'Pay again' },
+  sitting_ended: { where: 'Sitting ended', bg: 'Посещението ви на тази маса приключи. Ако сте още тук, сканирайте кода отново.', en: 'Your visit at this table has ended. If you\'re still here, scan the code again.' },
+  location_title: { where: 'No location pass', bg: 'Сметката се вижда само на масата', en: 'The bill shows only at the table' },
+  location_body: { where: 'No location pass', bg: 'Разрешете местоположение, за да знаем, че сте на масата. Иначе сервитьорът ще ви каже сумата.', en: 'Allow location so we know you\'re at the table. Otherwise your waiter tells you the total.' },
+  allow_location: { where: 'No location pass', bg: 'Разреши местоположение', en: 'Allow location' },
+  // the order (pay-first)
+  order_title: { where: 'Order', bg: 'Вашата поръчка', en: 'Your order' },
+  on_bill: { where: 'Order: line kind', bg: 'към сметката', en: 'onto the bill' },
+  not_until_paid: { where: 'Order: pay-first line', bg: 'Не е поръчано, докато не се плати', en: 'Not ordered until paid' },
+  send: { where: 'Order', bg: 'Изпрати', en: 'Send' },
+  send_and_pay: { where: 'Order: with pay-first lines', bg: 'Изпрати и плати {x}', en: 'Send and pay {x}' },
+  order_from_waiter: { where: 'Order: pay-first not offered', bg: 'Поръчайте това от сервитьора', en: 'Order this from your waiter' },
+  order_empty: { where: 'Order', bg: 'Поръчката е празна', en: 'Your order is empty' },
+  menu_placeholder: { where: '(placeholder)', bg: '[Менюто: не е част от този прототип]', en: '[The menu: not part of this prototype]' },
+  // call a waiter
+  call_btn: { where: 'Call a waiter', bg: 'Повикай сервитьор', en: 'Call a waiter' },
+  call_sheet: { where: 'Call a waiter: options', bg: 'Какво ви трябва?', en: 'What do you need?' },
+  k_waiter: { where: 'Call option', bg: 'Повикай сервитьора', en: 'Call the waiter' },
+  k_bill: { where: 'Call option', bg: 'Донесете сметката', en: 'Bring the bill' },
+  k_ice: { where: 'Call option', bg: 'Лед', en: 'Ice' },
+  k_water: { where: 'Call option', bg: 'Вода', en: 'Water' },
+  k_glasses: { where: 'Call option', bg: 'Чаши', en: 'Glasses' },
+  k_clean: { where: 'Call option', bg: 'Почистете масата', en: 'Clean the table' },
+  k_terminal: { where: 'Call option', bg: 'ПОС терминал', en: 'Card terminal' },
+  call_sent: { where: 'Call a waiter: sent', bg: 'Сервитьорът е повикан', en: 'Waiter called' },
+  call_more: { where: 'Call a waiter: sent', bg: 'Още нещо', en: 'Something else' },
+  call_done: { where: 'Call a waiter: handled', bg: 'Повикването е прието.', en: 'Your call was handled.' },
+  call_rejected: { where: 'Call a waiter: nobody answered', bg: 'Никой не отговори. Моля, попитайте сервитьор.', en: 'Nobody answered. Please ask a waiter.' },
+  no_calls: { where: 'Staff screen takes no calls', bg: 'Моля, поръчайте от сервитьора', en: 'Please order from your waiter' },
+  cancel: { where: 'Call sheet', bg: 'Затвори', en: 'Close' },
+};
+const ITEMS = { mojito: { bg: 'Мохито', en: 'Mojito' }, gin: { bg: 'Джин с тоник', en: 'Gin & tonic' }, water: { bg: 'Минерална вода 0,5 л', en: 'Mineral water 0.5 l' }, prosecco: { bg: 'Просеко 0,75 л', en: 'Prosecco 0.75 l' } };
+</script>
+
+<!-- ===================== The page (throwaway shell) ===================== -->
+<script>
+let S = BillPay.initial('bg');
+const $ = (id) => document.getElementById(id);
+const t = (k, v = {}) => { const w = WORDS[k]; if (!w) return k; return w[S.lang].replace(/\{(\w+)\}/g, (_, n) => v[n] ?? ''); };
+const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = (minor) => { const neg = minor < 0; const m = Math.abs(minor); const str = Math.floor(m / 100) + (S.lang === 'bg' ? ',' : '.') + String(m % 100).padStart(2, '0'); return (neg ? '−' : '') + str + ' EUR'; };
+const itemName = (l) => (l.item ? ITEMS[l.item][S.lang] : t('other_item'));
+
+function dispatch(a) { S = BillPay.reduce(S, a); render(); }
+
+// ---------- phone ----------
+function tabs(active) {
+  return `<div class="ph-tabs">${['menu', 'order', 'bill'].map((k) => `<button data-a="GO" data-screen="${k === 'bill' && active === 'pick' ? 'bill' : k}" class="${(active === k || (k === 'bill' && active === 'pick')) ? 'on' : ''}">${t('tab_' + k)}</button>`).join('')}</div>`;
+}
+function banners(scope) {
+  let h = '';
+  if (S.weak) h += `<div class="banner">${t('weak')}</div>`;
+  if (S.venue.orderingPaused) h += `<div class="banner">${t('ordering_paused')}</div>`;
+  else if (scope === 'bill' && S.venue.payingMode === 'cards_paused') h += `<div class="banner">${t('cards_paused')}</div>`;
+  if (S.notice && ['bill_changed', 'being_paid', 'menu_changed', 'too_late'].includes(S.notice)) {
+    const k = S.notice === 'being_paid' ? 'being_paid_refused' : S.notice;
+    h += `<div class="note">${t(k)}</div>`;
+  }
+  return h;
+}
+function readingLine() {
+  return S.reading.ok ? `<div class="sub">${t('updated', { n: S.reading.age })}</div>` : `<div class="stale">${t('stale', { n: S.reading.age })}</div>`;
+}
+function callBlock() {
+  if (!S.venue.staffTakesCalls) return `<div class="still">${t('no_calls')}</div>`;
+  if (S.callSheet) {
+    const opts = BillPay.CALL_OPTIONS.filter((k) => S.venue.callOptions[k] || k === 'waiter');
+    return `<div class="sheet"><b>${t('call_sheet')}</b>${opts.map((k) => `<button class="opt" data-a="CALL" data-kind="${k}">${t('k_' + k)}${S.call.state === 'sent' && S.call.kinds.includes(k) ? ' ✓' : ''}</button>`).join('')}<button class="btn link" data-a="CLOSE_SHEET">${t('cancel')}</button></div>`;
+  }
+  if (S.call.state === 'sent') {
+    const kinds = S.call.kinds.filter((k) => k !== 'waiter').map((k) => t('k_' + k));
+    const extra = BillPay.CALL_OPTIONS.some((k) => k !== 'waiter' && S.venue.callOptions[k]);
+    return `<div class="note">${t('call_sent')}${kinds.length ? ': ' + kinds.join(', ') : ''}</div>${extra ? `<button class="btn link" data-a="OPEN_CALL">${t('call_more')}</button>` : ''}`;
+  }
+  let pre = '';
+  if (S.call.state === 'done') pre = `<div class="sub center">${t('call_done')}</div>`;
+  if (S.call.state === 'rejected') pre = `<div class="sub center">${t('call_rejected')}</div>`;
+  return pre + `<button class="btn ghost" data-a="OPEN_CALL">${t('call_btn')}</button>`;
+}
+function legal() {
+  return `<div class="legal">${t('legal_1')}<br>${t('legal_2', { venue: t('venue_name') })}<br><u>${t('legal_links')}</u></div>`;
+}
+function totalsRows(q) {
+  let h = `<div class="totals small"><span>${t('your_items')}</span><span>${money(q.base)}</span></div>`;
+  if (S.venue.tipOn) h += `<div class="totals small"><span>${t('tip')}</span><span>${money(q.tip)}</span></div>`;
+  return h + `<div class="totals"><span>${t('total')}</span><span>${money(q.total)}</span></div>`;
+}
+function tipBlock() {
+  if (!S.venue.tipOn) return '';
+  const on = (p) => (S.tip.mode === 'pct' && S.tip.pct === p ? 'on' : '');
+  return `<div class="sect">${t('tip_label')}</div>
+    <div class="chips">${[5, 10, 15].map((p) => `<button class="${on(p)}" data-a="TIP_PCT" data-pct="${p}">${p} %</button>`).join('')}
+    <button class="${S.tip.mode === 'other' ? 'on' : ''}" data-a="TIP_OTHER_OPEN">${t('tip_other')}${S.tip.mode === 'other' ? ' · ' + money(S.tip.otherMinor) : ''}</button></div>
+    ${window.__otherOpen ? `<div class="other"><input id="otherTip" inputmode="decimal" placeholder="2.00"><button class="chips" data-a="TIP_OTHER_OK">${t('tip_ok')}</button></div>` : ''}`;
+}
+function blockText(b) {
+  if (b === 'below_minimum') return t('below_minimum', { min: money(S.venue.minimumMinor) });
+  return t(b);
+}
+
+function phone() {
+  if (S.screen === 'closed') return `<div class="ph-head"><span>${t('table', { n: 7 })}</span></div><div class="closed">(page closed)<br><br><button class="btn ghost" data-a="REOPEN">Open the page again</button></div>`;
+  if (S.screen === 'ended' || S.sittingEnded) return `<div class="ph-head"><span>${t('table', { n: 7 })}</span></div><div class="closed">${t('sitting_ended')}</div>`;
+  const head = `<div class="ph-head"><span>${t('table', { n: 7 })}</span><span>${esc(t('venue_name'))}</span></div>`;
+  const p = S.payment;
+  switch (S.screen) {
+    case 'menu':
+      return head + tabs('menu') + `<div class="slot">${t('menu_placeholder')}</div><div class="spacer"></div>` + callBlock();
+    case 'bill': {
+      if (!S.pass) return head + tabs('bill') + `<h2>${t('location_title')}</h2><div>${t('location_body')}</div><button class="btn" data-a="ALLOW_LOCATION">${t('allow_location')}</button><div class="spacer"></div>` + callBlock();
+      const owed = S.lines.filter((l) => l.status !== 'paid_app');
+      const paid = S.lines.filter((l) => l.status === 'paid_app');
+      const left = owed.filter((l) => l.status === 'owed').reduce((a, l) => a + l.amount, 0) + owed.filter((l) => l.status === 'being_paid').reduce((a, l) => a + l.amount, 0);
+      let h = head + tabs('bill') + banners('bill') + `<h2>${t('bill_title')}</h2>` + readingLine();
+      if (owed.length === 0 && paid.length === 0) return h + `<div class="sub" style="padding:24px 0">${t('empty')}</div><div class="spacer"></div>` + callBlock();
+      h += `<div class="rows">${owed.map((l) => `<div class="row ${l.status === 'being_paid' ? 'grey' : ''}"><span class="nm">${esc(itemName(l))} ×${l.qty}${l.status === 'being_paid' ? ` <span class="lbl">· ${t('being_paid')}</span>` : ''}</span><span class="am">${money(l.amount)}</span></div>`).join('')}</div>`;
+      h += `<div class="totals"><span>${t('left_to_pay')}</span><span>${money(left)}</span></div>`;
+      if (paid.length) h += `<div class="sect">${t('paid_in_app')}</div><div class="rows">${paid.map((l) => `<div class="row grey"><span class="nm">${esc(itemName(l))} ×${l.qty}</span><span class="am">${money(l.amount)}</span></div>`).join('')}</div>`;
+      h += `<div class="spacer"></div>`;
+      if (S.venue.payingMode === 'off') h += `<div class="sub center">${t('ask_waiter_to_pay')}</div>`;
+      else if (owed.some((l) => l.status === 'owed')) h += `<button class="btn" data-a="GO" data-screen="pick">${t('pay_open')}</button>`;
+      return h + callBlock();
+    }
+    case 'pick': {
+      const free = S.lines.filter((l) => l.status !== 'paid_app');
+      let h = head + tabs('pick') + banners('pick') + `<h2>${t('pick_title')}</h2>` + readingLine();
+      h += `<button class="btn link" style="text-align:left;padding-left:0" data-a="WHOLE">${t('whole_bill')}</button>`;
+      h += `<div class="rows">${free.map((l) => {
+        if (l.status === 'being_paid') return `<div class="row grey" data-a="TICK" data-id="${l.id}"><input type="checkbox" disabled><span class="nm">${esc(itemName(l))} ×${l.qty} <span class="lbl">· ${t('being_paid')}</span></span><span class="am">${money(l.amount)}</span></div>`;
+        const picked = S.picks[l.id];
+        let qty = `×${l.qty}`;
+        if (picked && S.venue.partQty && l.qty > 1) {
+          qty = `<select data-qty="${l.id}">${Array.from({ length: l.qty }, (_, i) => l.qty - i).map((n) => `<option value="${n}" ${n === picked ? 'selected' : ''}>${n === l.qty ? t('qty_all', { n }) : n}</option>`).join('')}</select>`;
+        }
+        const amt = picked ? Math.round(l.amount * picked / l.qty) : l.amount;
+        return `<div class="row"><input type="checkbox" data-a="TICK" data-id="${l.id}" ${picked ? 'checked' : ''}><span class="nm">${esc(itemName(l))} ${qty}</span><span class="am">${money(amt)}</span></div>`;
+      }).join('')}</div>`;
+      const q = BillPay.billQuote(S);
+      h += tipBlock() + totalsRows(q);
+      const b = BillPay.payBlock(S, 'bill');
+      if (b && b !== 'nothing_picked') h += `<div class="sub">${blockText(b)}</div>`;
+      h += `<button class="btn" data-a="PAY" ${b ? 'disabled' : ''}>${t('pay_x', { x: money(q.total) })}</button>` + legal();
+      return h + callBlock();
+    }
+    case 'order': {
+      let h = head + tabs('order') + banners('order') + `<h2>${t('order_title')}</h2>`;
+      const ls = S.order.lines;
+      if (!ls.length) return h + `<div class="sub" style="padding:24px 0">${t('order_empty')}</div><div class="spacer"></div>` + callBlock();
+      h += `<div class="rows">${ls.map((l) => `<div class="row"><span class="nm">${esc(itemName(l))} ×${l.qty}<br><span class="lbl">${l.payFirst ? (S.venue.payFirstOffered ? t('not_until_paid') : t('order_from_waiter')) : t('on_bill')}</span></span><span class="am">${money(l.amount)}</span></div>`).join('')}</div>`;
+      const hasNormal = ls.some((l) => !l.payFirst);
+      const hasPf = ls.some((l) => l.payFirst) && S.venue.payFirstOffered;
+      const pfq = BillPay.payFirstQuote(S);
+      if (hasPf) h += tipBlock() + totalsRows(pfq);
+      h += `<div class="spacer"></div>`;
+      if (hasNormal) {
+        const label = hasPf ? t('send_and_pay', { x: money(pfq.total) }) : t('send');
+        h += `<button class="btn" data-a="SEND" ${S.venue.orderingPaused ? 'disabled' : ''}>${label}</button>`;
+      } else if (hasPf) {
+        const b = BillPay.payBlock(S, 'payfirst');
+        if (b) h += `<div class="sub">${blockText(b)}</div>`;
+        h += `<button class="btn" data-a="PAYFIRST_PAY" ${b ? 'disabled' : ''}>${t('pay_x', { x: money(pfq.total) })}</button>`;
+      }
+      if (hasPf) h += legal();
+      return h + callBlock();
+    }
+    case 'same':
+      return head + `<h2>${t('same_q', { n: S.lastPaid ? Math.max(1, S.lastPaid.minutesAgo) : 1 })}</h2><div class="spacer"></div><button class="btn" data-a="SAME_YES">${t('same_yes')}</button><button class="btn ghost" data-a="SAME_NO">${t('same_no')}</button>`;
+    case 'preparing':
+      return head + `<div class="closed">${t('preparing')}</div><button class="btn ghost" data-a="CANCEL">${t('pay_later')}</button>` + callBlock();
+    case 'form': {
+      let h = head + `<div class="rows">${p.lines.map((l) => `<div class="row"><span class="nm">${esc(itemName(l))} ×${l.qty}</span><span class="am">${money(l.amount)}</span></div>`).join('')}</div>`;
+      h += `<div class="totals small"><span>${t('your_items')}</span><span>${money(p.base)}</span></div>`;
+      if (S.venue.tipOn) h += `<div class="totals small"><span>${t('tip')}</span><span>${money(p.tip)}</span></div>`;
+      h += `<div class="totals"><span>${t('total')}</span><span>${money(p.total)}</span></div>`;
+      h += `<div class="slot">${t('card_slot')}${S.formNote ? `<div class="provider">${t('declined')}</div>` : ''}</div>`;
+      h += `<button class="btn" data-a="SUBMIT">${t('pay_x', { x: money(p.total) })}</button><button class="btn ghost" data-a="CANCEL">${t('pay_later')}</button>` + legal();
+      return h + `<div class="spacer"></div>` + callBlock();
+    }
+    case 'bank':
+      return head + `<div class="slot" style="padding:80px 10px">${t('bank_slot')}<br><br><button class="btn ghost" data-a="BANK_OK" style="width:auto;display:inline-block">(approve in the bank)</button></div><div class="spacer"></div>`;
+    case 'waiting':
+      return head + `<div class="closed">${t('waiting')}</div>`;
+    case 'paid':
+      return head + `<h2 class="center">${t('paid')}</h2><div class="big"><div class="sub">${t('paid_ref_label')}</div><div class="ref">${p.ref}</div><div class="sub">${t('table', { n: 7 })}</div></div><div class="center">${t('paid_receipt')}</div>
+        <div class="rows">${p.lines.map((l) => `<div class="row"><span class="nm">${esc(itemName(l))} ×${l.qty}</span><span class="am">${money(l.amount)}</span></div>`).join('')}</div>${totalsRows(p)}
+        <div class="spacer"></div><button class="btn ghost" data-a="BACK">${t('back_to_bill')}</button>`;
+    case 'checking':
+      return head + `<h2>${t('checking_title')}</h2><div>${t('checking_body')}</div><div class="spacer"></div>` + callBlock();
+    case 'released': {
+      const r = p.reason;
+      const again = ['expired_session', 'check_failed', 'busy'].includes(r);
+      return head + `<div style="padding-top:20px">${t('r_' + r)}</div><div class="spacer"></div>${again ? `<button class="btn" data-a="AGAIN">${t('pay_again')}</button>` : ''}<button class="btn ghost" data-a="BACK">${t('back_to_bill')}</button>` + callBlock();
+    }
+    default: return head + 'unknown screen';
+  }
+}
+
+// ---------- side: walkthroughs, free play, words ----------
+const SCENARIOS = [
+  { name: 'Happy path', about: 'Pay your two mojitos and one of three gin & tonics, with a 10 % tip. Watch the lines grey for everyone while you pay, then move to "Paid in the app".', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Mojito', { type: 'TICK', id: 'l1' }], ['Guest ticks Gin & tonic', { type: 'TICK', id: 'l2' }], ['Guest picks 1 of the 3 gin & tonics', { type: 'QTY', id: 'l2', qty: 1 }],
+    ['Guest picks a 10 % tip', { type: 'TIP_PCT', pct: 10 }], ['Guest taps Pay 27,50 EUR', { type: 'PAY' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest enters the card and taps Pay', { type: 'SUBMIT' }], ['Bank: approves the check', { type: 'BANK_OK' }], ['Platform: bill closed, money captured', { type: 'PAID' }], ['Guest taps Back to the bill', { type: 'BACK' }]] },
+  { name: 'A friend pays first', about: 'Two phones want the same gin & tonics. Only one payment per line; the other phone sees "Being paid" with no name, amount or timer.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Gin & tonic', { type: 'TICK', id: 'l2' }], ['A friend starts paying Gin & tonic', { type: 'FRIEND_PAYS' }],
+    ['Guest tries to tick Gin & tonic again', { type: 'TICK', id: 'l2' }], ['The friend\'s payment goes through', { type: 'FRIEND_DONE' }], ['Guest taps Back to the bill', { type: 'BACK' }]] },
+  { name: 'The bill changes', about: 'A friend\'s new round never stops you. A change to a line you ticked does, once, with one short message and the fresh bill.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Mojito ×2', { type: 'TICK', id: 'l1' }], ['Someone else\'s round lands', { type: 'NEW_ROUND' }],
+    ['Waiter changes Mojito ×2 to ×1 on the POS', { type: 'WAITER_CHANGES' }], ['Guest taps Pay', { type: 'PAY' }], ['Guest ticks Mojito again', { type: 'TICK', id: 'l1' }], ['Guest taps Pay', { type: 'PAY' }]] },
+  { name: 'Pay-first at Send', about: 'A mojito goes onto the bill and a prosecco is pay-first. One tap sends the mojito and opens the prosecco\'s payment. The guest backs out, then pays later from the order.', steps: [
+    ['Guest opens Your order', { type: 'GO', screen: 'order' }], ['Guest taps Send and pay 24 EUR', { type: 'SEND' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest taps Pay later', { type: 'CANCEL' }], ['Guest taps Pay 24 EUR in the order', { type: 'PAYFIRST_PAY' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest enters the card and taps Pay', { type: 'SUBMIT' }], ['Bank: approves', { type: 'BANK_OK' }], ['Platform: paid', { type: 'PAID' }], ['Guest taps Back to the bill', { type: 'BACK' }]] },
+  { name: 'Venue can\'t tell', about: 'Restro can\'t tell whether the POS closed the bill. The guest is never asked to pay again; a manager answers.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest taps The whole bill', { type: 'WHOLE' }], ['Guest taps Pay', { type: 'PAY' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest enters the card', { type: 'SUBMIT' }], ['Bank: approves', { type: 'BANK_OK' }], ['Platform: can\'t tell if the bill closed', { type: 'CANT_TELL' }], ['Manager answers "Receipt printed"', { type: 'MGR_RECEIPT' }]] },
+  { name: 'Last check fails', about: 'After the card is held, the lines on the payment table no longer match. Everything goes back; nothing is charged.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Water', { type: 'TICK', id: 'l3' }], ['Guest taps Pay', { type: 'PAY' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest enters the card', { type: 'SUBMIT' }], ['Bank: approves', { type: 'BANK_OK' }], ['Platform: the last check failed', { type: 'LAST_CHECK_FAILED' }], ['Guest taps Pay again', { type: 'AGAIN' }]] },
+  { name: 'Declined, then time out', about: 'The bank declines inside Stripe\'s form; the guest leaves the phone; the provider\'s time runs out.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Mojito', { type: 'TICK', id: 'l1' }], ['Guest taps Pay', { type: 'PAY' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest enters a card', { type: 'SUBMIT' }], ['Bank: declines', { type: 'DECLINE' }], ['Provider: 10 minutes pass', { type: 'TIME_OUT' }], ['Guest taps Pay again', { type: 'AGAIN' }]] },
+  { name: 'Close the page', about: 'The guest locks the phone mid-payment. The payment goes on; coming back shows where it stands, with the number for the waiter.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Mojito', { type: 'TICK', id: 'l1' }], ['Guest taps Pay', { type: 'PAY' }], ['Platform: a payment table is free', { type: 'TABLE_READY' }],
+    ['Guest enters the card', { type: 'SUBMIT' }], ['Bank: approves', { type: 'BANK_OK' }], ['Guest closes the page', { type: 'CLOSE_PAGE' }], ['Platform: paid (page still closed)', { type: 'PAID' }], ['Guest opens the page again', { type: 'REOPEN' }]] },
+  { name: 'Call a waiter', about: 'The venue ticked Bring the bill, Ice and Water. Asking twice adds to the one open call. With nothing ticked it is the single-step button.', steps: [
+    ['Guest taps Call a waiter', { type: 'OPEN_CALL' }], ['Guest picks Ice', { type: 'CALL', kind: 'ice' }], ['Guest taps Something else', { type: 'OPEN_CALL' }], ['Guest picks Water', { type: 'CALL', kind: 'water' }],
+    ['Staff mark it Handled in Tonight', { type: 'CALL_HANDLED' }], ['Venue unticks Bring the bill', { type: 'SET_CALL', kind: 'bill', value: false }], ['Venue unticks Ice', { type: 'SET_CALL', kind: 'ice', value: false }],
+    ['Venue unticks Water', { type: 'SET_CALL', kind: 'water', value: false }], ['Guest taps Call a waiter (one step now)', { type: 'OPEN_CALL' }], ['Nobody answers in 15 min', { type: 'CALL_UNANSWERED' }]] },
+  { name: 'Paused, stale, too small', about: 'When Pay is greyed and what it says: a failed reading, a raised minimum, card payments paused, paying off.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Water', { type: 'TICK', id: 'l3' }], ['The POS can\'t be read', { type: 'READ_FAIL' }], ['Readings work again', { type: 'READ_OK' }],
+    ['Venue raises the minimum to 10 EUR', { type: 'SET_VENUE', key: 'minimumMinor', value: 1000 }], ['Venue sets it back to 0,50', { type: 'SET_VENUE', key: 'minimumMinor', value: 50 }],
+    ['Stripe trouble: card payments pause', { type: 'SET_VENUE', key: 'payingMode', value: 'cards_paused' }], ['Guest taps the Bill tab', { type: 'GO', screen: 'bill' }], ['Venue turns paying off', { type: 'SET_VENUE', key: 'payingMode', value: 'off' }]] },
+  { name: 'No location', about: 'A guest who said "Not now" to location sees no bill, so nothing to pay.', steps: [
+    ['This phone has no location pass', { type: 'NO_PASS' }], ['Guest taps Allow location', { type: 'ALLOW_LOCATION' }]] },
+  { name: 'Same amount twice', about: 'Paying the same amount again within 15 minutes asks first.', steps: [
+    ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks Water', { type: 'TICK', id: 'l3' }], ['Guest taps Pay', { type: 'PAY' }], ['Platform: payment table free', { type: 'TABLE_READY' }], ['Card', { type: 'SUBMIT' }], ['Bank approves', { type: 'BANK_OK' }], ['Paid', { type: 'PAID' }],
+    ['A new water lands', { type: 'NEW_ROUND' }], ['4 minutes pass', { type: 'TIME_PASSES' }], ['Guest taps Back to the bill', { type: 'BACK' }], ['Guest taps Pay', { type: 'GO', screen: 'pick' }], ['Guest ticks the new Mojito', { type: 'TICK', id: 'l10' }], ['Guest taps Pay', { type: 'PAY' }]] },
+];
+// "Same amount twice" uses a water then a mojito; make its second line a water so the amounts match.
+SCENARIOS[11].steps[7] = ['A second water lands', { type: '__WATER' }];
+SCENARIOS[11].steps[11] = ['Guest ticks the new water', { type: 'TICK', id: 'l10' }];
+
+let side = 'walk', scen = 0, stepAt = 0;
+function startScenario(i) { scen = i; stepAt = 0; S = BillPay.initial(S.lang); S.changed = 'Walkthrough reset: ' + SCENARIOS[i].name; render(); }
+function runStep(i) {
+  const a = SCENARIOS[scen].steps[i][1];
+  if (a.type === '__WATER') { S = structuredClone(S); S.lines.push({ id: 'l' + S.seq++, item: 'water', qty: 1, amount: 300, status: 'owed', by: null, changed: false }); S.changed = 'A second water landed on the bill.'; }
+  else S = BillPay.reduce(S, a);
+  stepAt = i + 1; render();
+}
+
+const FREE = [
+  ['Venue settings', [
+    ['select', 'Paying', 'payingMode', [['on', 'on'], ['off', 'off'], ['cards_paused', 'card payments paused']]],
+    ['check', 'Ordering paused', 'orderingPaused'], ['check', 'Tips (till records them)', 'tipOn'], ['check', 'Part of a line (quantity)', 'partQty'],
+    ['check', 'Pay-first offered', 'payFirstOffered'], ['check', 'Staff screen takes calls', 'staffTakesCalls'],
+    ['select', 'Minimum card payment', 'minimumMinor', [[50, '0,50 EUR'], [500, '5 EUR'], [1000, '10 EUR']]],
+  ]],
+  ['Call a waiter options (venue ticks)', BillPay.CALL_OPTIONS.filter((k) => k !== 'waiter').map((k) => ['call', k])],
+  ['At the table', [['A friend starts paying Gin & tonic', 'FRIEND_PAYS'], ['The friend\'s payment goes through', 'FRIEND_DONE'], ['The friend taps Pay later', 'FRIEND_CANCELS'], ['Someone else\'s round lands', 'NEW_ROUND'], ['Waiter changes Mojito to ×1', 'WAITER_CHANGES'], ['Menu price of the prosecco changes', 'MENU_CHANGED'], ['Phone without a location pass', 'NO_PASS'], ['Weak connection on/off', 'WEAK'], ['Guest closes the page', 'CLOSE_PAGE'], ['4 minutes pass', 'TIME_PASSES']]],
+  ['Platform, POS and Stripe', [['A payment table is free', 'TABLE_READY'], ['No payment table for 60 s', 'TABLES_BUSY'], ['Bank declines the card', 'DECLINE'], ['Bank approves its check', 'BANK_OK'], ['Provider\'s 10 minutes run out', 'TIME_OUT'], ['Bill closed, money captured', 'PAID'], ['Last check failed', 'LAST_CHECK_FAILED'], ['Can\'t tell if the bill closed', 'CANT_TELL'], ['Lines could not go back', 'STRANDED'], ['Bill closed, card not charged', 'CAPTURE_FAILED'], ['POS reading fails', 'READ_FAIL'], ['Readings work again', 'READ_OK']]],
+  ['Staff and managers', [['Manager: Receipt printed', 'MGR_RECEIPT'], ['Manager: No receipt', 'MGR_NO_RECEIPT'], ['Staff mark the call Handled', 'CALL_HANDLED'], ['Nobody answers the call in 15 min', 'CALL_UNANSWERED'], ['The sitting ends', 'SITTING_ENDS'], ['Start over', 'RESET']]],
+];
+
+function sideBody() {
+  if (side === 'walk') {
+    const sc = SCENARIOS[scen];
+    return `<div class="tabsbar">${SCENARIOS.map((x, i) => `<button class="${i === scen ? 'on' : ''}" data-scen="${i}">${esc(x.name)}</button>`).join('')}</div>
+      <div>${esc(sc.about)}</div><div class="steps">${sc.steps.map((st, i) => `<button data-step="${i}" class="${i < stepAt ? 'done' : i === stepAt ? 'next' : ''}" ${i === stepAt ? '' : 'disabled'}>${i < stepAt ? '✓ ' : (i + 1) + '. '}${esc(st[0])}</button>`).join('')}</div>
+      <div style="margin-top:8px"><button class="btn link" data-scen="${scen}" style="width:auto;padding-left:0">Restart this walkthrough</button></div>`;
+  }
+  if (side === 'free') {
+    return `<div class="q">Guest taps happen on the phone. These are the venue's settings and everything that happens elsewhere.</div><div class="fp">${FREE.map(([title, items]) => `<div><h4>${title}</h4>${items.map((it) => {
+      if (it[0] === 'check') return `<label><input type="checkbox" data-set="${it[2]}" ${S.venue[it[2]] ? 'checked' : ''}>${it[1]}</label>`;
+      if (it[0] === 'select') return `<label>${it[1]} <select data-sel="${it[2]}">${it[3].map(([v, l]) => `<option value="${v}" ${String(S.venue[it[2]]) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
+      if (it[0] === 'call') return `<label><input type="checkbox" data-call="${it[1]}" ${S.venue.callOptions[it[1]] ? 'checked' : ''}>${WORDS['k_' + it[1]].en}</label>`;
+      return `<button data-ev="${it[1]}">${esc(it[0])}</button>`;
+    }).join('')}</div>`).join('')}</div>`;
+  }
+  return `<div class="q">Every guest string in this flow. "Stripe's own text" lines are shown by Stripe's form, not by us. Placeholders are not shown to guests.</div>
+    <div class="wordswrap"><table class="words"><tr><th>Where</th><th>Български</th><th>English</th></tr>${Object.values(WORDS).map((w) => `<tr><td>${esc(w.where)}</td><td>${esc(w.bg)}</td><td>${esc(w.en)}</td></tr>`).join('')}</table></div>`;
+}
+
+function statePanel() {
+  const p = S.payment;
+  const statusName = { owed: 'owed', being_paid: 'being paid', paid_app: 'paid in the app' };
+  const tip = !S.venue.tipOn ? 'not offered (the till can\'t record tips)' : S.tip.mode === 'pct' ? `${S.tip.pct} %` : S.tip.mode === 'other' ? money(S.tip.otherMinor) : 'none (zero)';
+  const call = S.call.state === 'none' ? 'no call' : `${S.call.state}${S.call.kinds.length ? ': ' + S.call.kinds.join(', ') : ''}`;
+  return `<dl class="kv">
+    <dt>Phone shows</dt><dd>${S.screen}${S.screen === 'closed' ? ` (comes back on: ${S.closedFrom})` : ''}</dd>
+    <dt>Location pass</dt><dd>${S.pass ? 'yes' : 'no'}</dd>
+    <dt>Bill reading</dt><dd>${S.reading.ok ? 'fresh' : 'failed: last good bill, not up to date'}</dd>
+    <dt>Paying at the venue</dt><dd>${S.venue.payingMode}${S.venue.orderingPaused ? ', ordering paused' : ''}</dd>
+    <dt>Ticked lines</dt><dd>${Object.keys(S.picks).length ? Object.entries(S.picks).map(([id, q]) => { const l = S.lines.find((x) => x.id === id); return l ? `${itemName(l)} ×${q}` : id; }).join(', ') : 'none'}</dd>
+    <dt>Tip</dt><dd>${tip}</dd>
+    <dt>Payment</dt><dd>${p ? `${p.kind === 'payfirst' ? 'pay-first' : 'bill'} · ${p.state}${p.reason ? ' (' + p.reason + ')' : ''} · ${money(p.total)}${p.tip ? ' incl. tip ' + money(p.tip) : ''}${p.ref ? ' · number ' + p.ref : ''}` : 'none'}</dd>
+    <dt>Call a waiter</dt><dd>${call}</dd>
+    <dt>Pay-first waiting</dt><dd>${S.order.payFirstWaiting ? 'yes: in the order, not ordered until paid' : 'no'}</dd>
+  </dl>
+  <table class="st"><tr><th>Bill line (POS)</th><th>Qty</th><th>Amount</th><th>Status</th></tr>${S.lines.map((l) => `<tr><td>${esc(itemName(l))}</td><td>${l.qty}</td><td>${money(l.amount)}</td><td>${statusName[l.status]}${l.by ? ' (' + (l.by === 'me' ? 'this phone' : 'a friend') + ')' : ''}${l.changed ? ', changed since opened' : ''}</td></tr>`).join('')}</table>`;
+}
+
+function render() {
+  document.querySelectorAll('[data-lang]').forEach((b) => b.classList.toggle('on', b.dataset.lang === S.lang));
+  $('phone').innerHTML = phone();
+  $('changedPanel').innerHTML = `<h3>What just happened</h3><div class="changed">${esc(S.changed || '—')}</div>`;
+  $('sideTabs').innerHTML = [['walk', 'Walkthroughs'], ['free', 'Free play'], ['words', 'All guest words']].map(([k, l]) => `<button class="${side === k ? 'on' : ''}" data-side="${k}">${l}</button>`).join('');
+  $('sideBody').innerHTML = sideBody();
+  $('state').innerHTML = statePanel();
+}
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-lang],[data-a],[data-side],[data-scen],[data-step],[data-ev]');
+  if (!el) return;
+  if (el.dataset.lang) return dispatch({ type: 'LANG', lang: el.dataset.lang });
+  if (el.dataset.side) { side = el.dataset.side; return render(); }
+  if (el.dataset.step !== undefined) return runStep(Number(el.dataset.step));
+  if (el.dataset.scen !== undefined) return startScenario(Number(el.dataset.scen));
+  if (el.dataset.ev) { if (el.dataset.ev === 'RESET') { S = BillPay.initial(S.lang); return render(); } return dispatch({ type: el.dataset.ev }); }
+  const a = el.dataset.a;
+  if (a === 'TIP_OTHER_OPEN') { window.__otherOpen = !window.__otherOpen; return render(); }
+  if (a === 'TIP_OTHER_OK') {
+    const raw = ($('otherTip').value || '').trim().replace(',', '.');
+    const m = raw.match(/^(\d+)(?:\.(\d{1,2}))?$/);
+    window.__otherOpen = false;
+    if (!m) return render();
+    return dispatch({ type: 'TIP_OTHER', minor: Number(m[1]) * 100 + Number((m[2] || '0').padEnd(2, '0')) });
+  }
+  if (a === 'TICK' && e.target.tagName === 'SELECT') return;
+  const act = { type: a };
+  if (el.dataset.screen) act.screen = el.dataset.screen;
+  if (el.dataset.id) act.id = el.dataset.id;
+  if (el.dataset.pct) act.pct = Number(el.dataset.pct);
+  if (el.dataset.kind) act.kind = el.dataset.kind;
+  dispatch(act);
+});
+document.addEventListener('change', (e) => {
+  const el = e.target;
+  if (el.dataset.qty) return dispatch({ type: 'QTY', id: el.dataset.qty, qty: Number(el.value) });
+  if (el.dataset.set) return dispatch({ type: 'SET_VENUE', key: el.dataset.set, value: el.checked });
+  if (el.dataset.sel) { const v = el.dataset.sel === 'minimumMinor' ? Number(el.value) : el.value; return dispatch({ type: 'SET_VENUE', key: el.dataset.sel, value: v }); }
+  if (el.dataset.call) return dispatch({ type: 'SET_CALL', kind: el.dataset.call, value: el.checked });
+});
+render();
+</script>
+</body>
+</html>
