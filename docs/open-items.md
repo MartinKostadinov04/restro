@@ -11,7 +11,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
 - Q82 Lukanet: seven open points from the signed-in API reading (part payment on an open bill, refusing a row, our id on a bill, approval in the status, offline docs); send with Q79.
 - Q79 Lukanet: is barsy NRA-listed sales software; can it take Restro's orders as an Annex 42 import before acceptance (fiscal research 10-17, L11); with Q8 and Q24.
-- Q84 Martin → each POS provider (Mistral for the pilot, barsy): can the POS issue a sale as an electronic receipt from the venue's fiscal device (is it NRA-listed sales software under any name), can its API mark the sale electronic and take the guest's email, and does it send the receipt or return the file? Restro is built for it either way (Martin 10-28, D127).
+- Q84 Martin → each POS provider (Mistral for the pilot, barsy): can the POS issue a sale as an electronic receipt from the venue's fiscal device (is it NRA-listed sales software under any name), can its API mark the sale electronic and take the guest's email, and does it send the receipt or return the file? Restro is built for it either way (Martin 10-28, D127, #186).
 - Q80 Martin, after the lawyer: a paper fiscal receipt per song-request capture with no guest email (D99); weigh the options.
 - Q81 Martin, after the lawyer: the bill screen as a "document" under Н-18 чл. 7а; until then no template screen resembles a receipt or says "фискален".
 
