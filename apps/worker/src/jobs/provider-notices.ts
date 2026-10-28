@@ -7,9 +7,9 @@
 // - its handler is picked by the platform's kind (`refund`, `dispute`, `payment`); a kind with no
 //   handler (`other`) is marked handled with no action;
 // - the account it names is mapped to its venue through `payment_accounts`; a notice for no
-//   account of ours is marked handled, and logged. An `account` notice may come before its account
-//   is recorded as the venue's, so one about an unknown account waits `ACCOUNT_NOTICE_GRACE_MS`
-//   first;
+//   account of ours is marked handled, and logged. An `account` or `access_lost` notice may come
+//   before its account is recorded as the venue's, so one about an unknown account waits
+//   `ACCOUNT_NOTICE_GRACE_MS` first;
 // - the payment is read back from the provider (`readNoticeSubject`), which gives the refund
 //   total and the dispute as they stand now, so a notice that comes twice, late or out of order
 //   records the same values; an incomplete reading concludes nothing and the notice waits;
@@ -65,7 +65,7 @@ export const NOTICE_RUN_BUDGET_MS = 45_000
 export const NOTICE_LATE_MS = 24 * 60 * 60 * 1000
 
 /**
- * An `account` notice can arrive before the account it names is recorded (the provider's account is
+ * An `account` or `access_lost` notice can arrive before the account it names is recorded (the provider's account is
  * made, the notice is sent, and only then does the worker record it as the venue's). One about an
  * account not ours is given this long to be recorded before it is marked handled and dropped.
  */
@@ -190,7 +190,7 @@ export async function handleProviderNotice(
       ? undefined
       : (await env.accounts(stored.providerKind)).get(stored.accountRef)
   if (
-    stored.kind === 'account' &&
+    (stored.kind === 'account' || stored.kind === 'access_lost') &&
     stored.accountRef !== null &&
     venue === undefined &&
     (env.now?.() ?? new Date()).getTime() - stored.receivedAt.getTime() < ACCOUNT_NOTICE_GRACE_MS

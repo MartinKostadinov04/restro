@@ -22,20 +22,36 @@ export interface WalletDomainDeps {
   readonly providers: NoticeProviders
 }
 
-/** One pass over every venue of every provider this worker can ask about an account. */
+/** What one pass did. */
+export interface WalletDomainCounts {
+  /** Registrations tried: the provider was asked. */
+  readonly attempted: number
+  readonly registered: number
+}
+
+/**
+ * One pass over every live venue of every provider this worker can ask about an account. One
+ * venue's error never ends the pass; it is logged and the next venue goes on.
+ */
 export async function retryWalletDomains(
   env: Parameters<typeof retryDomainRegistration>[0],
   deps: WalletDomainDeps,
-): Promise<number> {
+): Promise<WalletDomainCounts> {
   const providers = connectionProviders(deps.providers)
-  let looked = 0
+  let attempted = 0
+  let registered = 0
   for (const kind of providers.keys()) {
-    for (const venue of (await paymentAccountVenues(env.pool, kind)).values()) {
-      await retryDomainRegistration(env, venue, providers)
-      looked += 1
+    for (const venue of (await paymentAccountVenues(env.pool, kind, { liveOnly: true })).values()) {
+      try {
+        const outcome = await retryDomainRegistration(env, venue, providers)
+        if (outcome !== 'not_due') attempted += 1
+        if (outcome === 'registered') registered += 1
+      } catch (error) {
+        env.log.warn({ venueId: venue.venueId, err: error }, 'a wallet domain could not be retried')
+      }
     }
   }
-  return looked
+  return { attempted, registered }
 }
 
 /** The wallet domain job. */
@@ -55,8 +71,8 @@ export function createWalletDomainJob(deps: WalletDomainDeps): JobDefinition {
     },
     async handler(jobs, context) {
       const jobId = jobs[0]?.id ?? 'wallet-domain'
-      const looked = await retryWalletDomains({ pool: context.pool, log: context.log, jobId }, deps)
-      context.log[looked > 0 ? 'info' : 'debug']({ accounts: looked }, 'wallet domains checked')
+      const counts = await retryWalletDomains({ pool: context.pool, log: context.log, jobId }, deps)
+      context.log[counts.attempted > 0 ? 'info' : 'debug'](counts, 'wallet domains retried')
     },
   }) as JobDefinition
 }

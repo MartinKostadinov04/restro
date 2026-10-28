@@ -106,7 +106,7 @@ describe('readAccountChecks', () => {
     })
   })
 
-  it('strips a key it does not know and keeps the owner’s ticks', () => {
+  it('keeps a key it does not know, so a write puts it back as it was', () => {
     const read = readAccountChecks({
       cardPayments: true,
       someFutureKey: { nested: true },
@@ -119,7 +119,31 @@ describe('readAccountChecks', () => {
     expect(read).toEqual({
       ...NO_CHECKS,
       cardPayments: true,
-      ticks: { cardTypeInTill: TICK, receiptEmailsOff: TICK },
+      someFutureKey: { nested: true },
+      ticks: {
+        cardTypeInTill: { ...TICK, someFutureKey: 1 },
+        receiptEmailsOff: TICK,
+        someFutureTick: TICK,
+      },
     })
+  })
+
+  it('resets only the value that is bad, not the ticks or the mark beside it', () => {
+    const read = readAccountChecks({
+      cardPayments: 'yes',
+      missing: 'bank account',
+      lostReason: 'access_removed',
+      guestHost: 7,
+      ticks: { cardTypeInTill: TICK, receiptEmailsOff: { at: 'now' } },
+    })
+    expect(read).toEqual({
+      ...NO_CHECKS,
+      lostReason: 'access_removed',
+      ticks: { cardTypeInTill: TICK, receiptEmailsOff: null },
+    })
+    // A reason this version does not know reads as none, and the ticks stay.
+    expect(
+      readAccountChecks({ lostReason: 'something_new', ticks: { cardTypeInTill: TICK } }),
+    ).toMatchObject({ lostReason: null, ticks: { cardTypeInTill: TICK, receiptEmailsOff: null } })
   })
 })

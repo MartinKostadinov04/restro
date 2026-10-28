@@ -209,21 +209,19 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     if (accountRefNow === null) throw new Error('no account yet')
     return providerRef(accountRefNow)
   }
-  const disconnect = async () =>
+  /** A command from the signed-in owner, straight to the service path (no provider asked). */
+  const asOwner = async (command: Parameters<typeof applyService>[1]) =>
     (
-      await applyService(
-        pool,
-        { type: 'payment_account.disconnect' },
-        {
-          tenantId,
-          venueId,
-          origin: 'staff',
-          actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
-          jobId: `req-${randomUUID()}`,
-          signedInAt: new Date(),
-        },
-      )
+      await applyService(pool, command, {
+        tenantId,
+        venueId,
+        origin: 'staff',
+        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+        jobId: `req-${randomUUID()}`,
+        signedInAt: new Date(),
+      })
     ).result
+  const disconnect = () => asOwner({ type: 'payment_account.disconnect' })
 
   // Every test starts from a venue that never connected, and sets up what it needs itself.
   beforeEach(async () => {
@@ -232,6 +230,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
       venueId,
     ])
     await query('delete from restro.payment_accounts where venue_id = $1', [venueId])
+    await query('delete from restro.provider_notices')
     accountRefNow = null
   })
   afterEach(() => engine.clearFaults())
@@ -274,7 +273,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect((await account())?.state).toBe('connecting')
   })
 
-  it('makes one provider account for a double press or a timeout, and a fresh key once there is one', async () => {
+  it('makes one provider account for a double press, a timeout or a tick in between, and a fresh key once there is one', async () => {
     const keys: string[] = []
     let landed: string | null = null
     const recording: PaymentProvider = {
@@ -297,7 +296,11 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
       code: 'provider_unavailable',
     })
     expect(await account()).toMatchObject({ state: 'connecting', account_ref: null })
-    // The owner presses again: the same attempt, so the same key and the same provider account.
+    // The owner ticks a check meanwhile (that touches the row), then presses again: the same
+    // attempt, so the same key and the same provider account.
+    expect(
+      await asOwner({ type: 'payment_account.tick', check: 'cardTypeInTill', done: true }),
+    ).toMatchObject({ status: 'accepted', details: { changed: true } })
     expect(await ask('start', {}, using)).toMatchObject({ status: 'accepted' })
     expect(keys[1]).toBe(keys[0])
     expect(landed).toMatch(/^simacct_/)
@@ -336,14 +339,24 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect((await paying()).readiness.missing).toEqual(['cardTypeInTill', 'receiptEmailsOff'])
   })
 
-  it('tries a wallet domain the provider did not take again on its own schedule', async () => {
-    let attempts = 0
+  it('tries a wallet domain the provider did not take again on its own schedule, under a new key', async () => {
+    // Like Stripe's v1 API, the provider keeps the answer of a key, failures included, and
+    // replays it for that key: a retry under the first attempt's key would only fail again.
+    const keys: string[] = []
+    type DomainAnswer = Awaited<ReturnType<PaymentProvider['prepareDomain']>>
+    const stored = new Map<string, DomainAnswer>()
     const flaky: PaymentProvider = {
       ...provider,
       async prepareDomain(req) {
-        attempts += 1
-        if (attempts === 1) return { kind: 'unknown', reason: 'the call timed out' }
-        return provider.prepareDomain(req)
+        keys.push(req.idempotencyKey)
+        const replay = stored.get(req.idempotencyKey)
+        if (replay !== undefined) return replay
+        const answer: DomainAnswer =
+          keys.length === 1
+            ? { kind: 'unknown', reason: 'the provider answered a server error' }
+            : await provider.prepareDomain(req)
+        stored.set(req.idempotencyKey, answer)
+        return answer
       },
     }
     const using = new Map([[SIM_PAY_KIND, flaky]])
@@ -351,23 +364,68 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
 
     // Nothing to register while the account does not take cards yet.
     await connecting()
-    await retryWalletDomains(env, { providers: using })
-    expect(attempts).toBe(0)
+    expect(await retryWalletDomains(env, { providers: using })).toEqual({
+      attempted: 0,
+      registered: 0,
+    })
+    expect(keys).toHaveLength(0)
 
     engine.finishConnecting(lastAccount())
     expect(await ask('return', {}, using)).toMatchObject({ status: 'accepted', state: 'connected' })
     // The first attempt, in that reading, did not go through.
-    expect(attempts).toBe(1)
+    expect(keys).toHaveLength(1)
     expect(readAccountChecks((await account())?.checks).domainHost).toBeNull()
     expect(engine.domainsOf(lastAccount())).toEqual([])
 
-    await retryWalletDomains(env, { providers: using })
-    expect(attempts).toBe(2)
+    expect(await retryWalletDomains(env, { providers: using })).toEqual({
+      attempted: 1,
+      registered: 1,
+    })
+    expect(keys).toHaveLength(2)
+    expect(keys[1]).not.toBe(keys[0])
     expect(readAccountChecks((await account())?.checks).domainHost).toBe(GUEST_HOST)
     expect(engine.domainsOf(lastAccount())).toEqual([GUEST_HOST])
     // Registered: the next pass asks the provider nothing.
-    await retryWalletDomains(env, { providers: using })
-    expect(attempts).toBe(2)
+    expect(await retryWalletDomains(env, { providers: using })).toEqual({
+      attempted: 0,
+      registered: 0,
+    })
+    expect(keys).toHaveLength(2)
+  })
+
+  it('leaves an archived venue alone when retrying wallet domains, and counts a failed attempt', async () => {
+    let asked = 0
+    const down: PaymentProvider = {
+      ...provider,
+      async prepareDomain() {
+        asked += 1
+        return { kind: 'unknown', reason: 'the call timed out' }
+      },
+    }
+    const using = new Map([[SIM_PAY_KIND, down]])
+    const env = { pool, log, jobId: `wallet-${randomUUID()}` }
+    await connecting()
+    engine.finishConnecting(lastAccount())
+    // Card payments on, but the registration did not happen (the provider is down meanwhile).
+    expect(await ask('return', {}, using)).toMatchObject({ state: 'connected' })
+    expect(asked).toBe(1)
+
+    await query('update restro.venues set archived_at = now() where id = $1', [venueId])
+    try {
+      expect(await retryWalletDomains(env, { providers: using })).toEqual({
+        attempted: 0,
+        registered: 0,
+      })
+      expect(asked).toBe(1)
+    } finally {
+      await query('update restro.venues set archived_at = null where id = $1', [venueId])
+    }
+    // A live venue is tried; the provider failing is an attempt that did not register.
+    expect(await retryWalletDomains(env, { providers: using })).toEqual({
+      attempted: 1,
+      registered: 0,
+    })
+    expect(asked).toBe(2)
   })
 
   it('keeps the guest host and the registered domain when the same account is connected again', async () => {
@@ -378,7 +436,10 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     })
     expect(await disconnect()).toMatchObject({ status: 'accepted' })
     const accountBefore = accountRefNow
-    expect(await ask('start')).toMatchObject({ status: 'accepted' })
+    // The connect command alone, before the provider is asked or anything is recorded again.
+    expect(
+      await asOwner({ type: 'payment_account.connect', providerKind: SIM_PAY_KIND }),
+    ).toMatchObject({ status: 'accepted', details: { state: 'connecting' } })
     expect((await account())?.account_ref).toBe(accountBefore)
     expect(readAccountChecks((await account())?.checks)).toMatchObject({
       guestHost: GUEST_HOST,
@@ -466,21 +527,39 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   it('asks the provider nothing before the permission and the sign-in are checked', async () => {
     await connecting()
     const before = await account()
-    expect(await ask('start', { userId: plainId })).toEqual({
+    let asked = 0
+    const counting: PaymentProvider = {
+      ...provider,
+      async startConnection(req) {
+        asked += 1
+        return provider.startConnection(req)
+      },
+      async readConnection(ref) {
+        asked += 1
+        return provider.readConnection(ref)
+      },
+    }
+    const using = new Map([[SIM_PAY_KIND, counting]])
+    expect(await ask('start', { userId: plainId }, using)).toEqual({
       status: 'refused',
       code: 'permission_denied',
     })
-    expect(await ask('return', { userId: plainId })).toEqual({
+    expect(await ask('return', { userId: plainId }, using)).toEqual({
       status: 'refused',
       code: 'permission_denied',
     })
-    expect(await ask('start', { signedInMinutesAgo: 16 })).toEqual({
+    expect(await ask('start', { signedInMinutesAgo: 16 }, using)).toEqual({
       status: 'refused',
       code: 'sign_in_again',
     })
-    // The owner’s return reads the account back even after a long time on the provider’s form.
-    expect(await ask('return', { signedInMinutesAgo: 90 })).toMatchObject({ status: 'accepted' })
-    // Only the reading of the account changed; nothing else was started.
+    // Nothing was asked of the provider and nothing was written.
+    expect(asked).toBe(0)
+    expect(await account()).toEqual(before)
+    // The owner's return reads the account back even after a long time on the provider's form.
+    expect(await ask('return', { signedInMinutesAgo: 90 }, using)).toMatchObject({
+      status: 'accepted',
+    })
+    expect(asked).toBe(1)
     expect(await account()).toMatchObject({ state: 'connected', account_ref: before?.account_ref })
   })
 
@@ -524,6 +603,16 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     const later = await runNotices(() => new Date(Date.now() + ACCOUNT_NOTICE_GRACE_MS + 60_000))
     expect(later).toMatchObject({ unknown_account: 1, waiting: 0 })
     expect(await account()).toEqual(before)
+  })
+
+  it('gives a lost-access notice for an unknown account the same wait', async () => {
+    await connecting()
+    const stranger = engine.addAccount()
+    await store(engine.revokeAccess(stranger))
+    expect(await runNotices()).toMatchObject({ unknown_account: 0, waiting: 1 })
+    const later = await runNotices(() => new Date(Date.now() + ACCOUNT_NOTICE_GRACE_MS + 60_000))
+    expect(later).toMatchObject({ unknown_account: 1, waiting: 0 })
+    expect((await account())?.state).toBe('connecting')
   })
 
   it('reads an account notice that arrives before the account is recorded as the venue’s', async () => {

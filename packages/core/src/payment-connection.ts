@@ -34,33 +34,45 @@ export type LostReason = (typeof LOST_REASONS)[number]
 
 /**
  * Who ticked a check and when: the actor as the provenance columns write it. The stored shapes are
- * read with `z.object` (an unknown key is stripped, not refused): a key a later version adds must
- * not make an older reader drop the whole row and save the reset, which would lose the owner's ticks.
+ * read with `z.looseObject` (an unknown key is kept and written back as it was) and every field
+ * has its own `.catch`: a key a later version adds, or one bad value, must not make this reader
+ * drop the whole row and save the reset, which would lose the owner's ticks and the mark that
+ * Restro's access was taken away.
  */
-export const TickSchema = z.object({
+export const TickSchema = z.looseObject({
   at: z.iso.datetime({ offset: true }),
   by: z.string().min(1).max(140),
 })
 export type Tick = z.output<typeof TickSchema>
 
+/** A tick as stored, or "not done" when what is stored is not a tick. */
+const StoredTick = TickSchema.nullable().default(null).catch(null)
+
 /** `payment_accounts.checks` as stored. A key left out is "not done" or "none". */
-export const AccountChecksSchema = z.object({
+export const AccountChecksSchema = z.looseObject({
   /** The provider allowed card payments when it was last read. */
-  cardPayments: z.boolean().default(false),
+  cardPayments: z.boolean().default(false).catch(false),
   /** The provider's own words for what it still asks of the owner, as last read. */
-  missing: z.array(z.string().min(1).max(200)).max(100).default([]),
+  missing: z.array(z.string().min(1).max(200)).max(100).default([]).catch([]),
   /** Set while the account is `lost_access`: whether it can come back by itself. */
-  lostReason: z.enum(LOST_REASONS).nullable().default(null),
+  lostReason: z.enum(LOST_REASONS).nullable().default(null).catch(null),
   /** The guest page's host the venue's wallets should work on (D125 3.6), as the web app named it. */
-  guestHost: z.string().min(1).max(253).nullable().default(null),
+  guestHost: z.string().min(1).max(253).nullable().default(null).catch(null),
   /** The host registered for wallets on the account so far, or null. */
-  domainHost: z.string().min(1).max(253).nullable().default(null),
+  domainHost: z.string().min(1).max(253).nullable().default(null).catch(null),
+  /**
+   * One connecting attempt, while no provider account is recorded: set when `connect` starts the
+   * attempt and used for the provider's idempotency key, so a repeat press (or one after a
+   * timeout, or after the owner's tick) asks for the same account again, not a second one.
+   */
+  connectAttempt: z.string().min(1).max(64).nullable().default(null).catch(null),
   ticks: z
-    .object({
-      cardTypeInTill: TickSchema.nullable().default(null),
-      receiptEmailsOff: TickSchema.nullable().default(null),
+    .looseObject({
+      cardTypeInTill: StoredTick,
+      receiptEmailsOff: StoredTick,
     })
-    .default({ cardTypeInTill: null, receiptEmailsOff: null }),
+    .default({ cardTypeInTill: null, receiptEmailsOff: null })
+    .catch({ cardTypeInTill: null, receiptEmailsOff: null }),
 })
 export type AccountChecks = z.output<typeof AccountChecksSchema>
 
@@ -71,6 +83,7 @@ export const NO_CHECKS: AccountChecks = {
   lostReason: null,
   guestHost: null,
   domainHost: null,
+  connectAttempt: null,
   ticks: { cardTypeInTill: null, receiptEmailsOff: null },
 }
 

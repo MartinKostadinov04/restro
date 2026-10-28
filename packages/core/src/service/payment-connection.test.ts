@@ -488,11 +488,17 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
       expect(await openAlerts()).toHaveLength(before)
     })
 
+    const clearAlerts = () =>
+      world.owner.query(
+        `delete from restro.alerts where venue_id = $1 and kind = 'payment_account_lost'`,
+        [world.venueId],
+      )
+
     it('does not say card payments are paused while the account was still being connected', async () => {
       await reset()
+      await clearAlerts()
       await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })
       await worker({ type: 'payment_account.started', accountRef: ACCOUNT, guestHost: null })
-      const before = (await openAlerts()).length
       // The venue took access away from an account that never took a payment: it is left behind
       // (so the next link makes a new one), but there was no paying to pause.
       expect(await worker({ type: 'payment_account.lost', accountRef: ACCOUNT })).toMatchObject({
@@ -500,7 +506,41 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         details: { state: 'lost_access', changed: true },
       })
       expect(readAccountChecks((await account())?.checks).lostReason).toBe('access_removed')
-      expect(await openAlerts()).toHaveLength(before)
+      expect(await openAlerts()).toHaveLength(0)
+    })
+
+    it('does not say it either for an account that was connected but never allowed cards', async () => {
+      await clearAlerts()
+      await connected(false)
+      expect(await worker({ type: 'payment_account.lost', accountRef: ACCOUNT })).toMatchObject({
+        status: 'accepted',
+        details: { state: 'lost_access', changed: true },
+      })
+      expect(await openAlerts()).toHaveLength(0)
+    })
+
+    it('makes an open alert say the real reason when access is lost during a reconnect', async () => {
+      await clearAlerts()
+      await connected(true)
+      await worker({
+        type: 'payment_account.observed',
+        accountRef: ACCOUNT,
+        canTakePayments: false,
+        missing: ['identity document'],
+        afterReturn: false,
+        guestHost: null,
+        displayName: null,
+      })
+      expect(await openAlerts()).toMatchObject([
+        { details: { reason: 'account_restricted' }, done_at: null },
+      ])
+      // Reconnect (the same account, restricted) and then the venue takes access away.
+      await run({ type: 'payment_account.connect', providerKind: 'sim-pay' })
+      expect((await account())?.state).toBe('connecting')
+      await worker({ type: 'payment_account.lost', accountRef: ACCOUNT })
+      expect(await openAlerts()).toMatchObject([
+        { details: { reason: 'access_removed' }, done_at: null },
+      ])
     })
   })
 
@@ -637,6 +677,60 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
         guestHost: HOST,
         domainHost: null,
       })
+    })
+  })
+
+  describe('what is stored beside the checks', () => {
+    it('keeps the ticks and the mark through a write when the row holds a key or a value it does not know', async () => {
+      await lostAccess()
+      const tickedAt = '2026-10-27T10:00:00Z'
+      await world.owner.query(
+        `update restro.payment_accounts
+            set checks = checks || $2::jsonb where venue_id = $1`,
+        [
+          world.venueId,
+          JSON.stringify({
+            someFutureKey: { nested: true },
+            missing: 'not a list',
+            ticks: {
+              cardTypeInTill: { at: tickedAt, by: 'user:u1' },
+              receiptEmailsOff: null,
+              someFutureTick: 1,
+            },
+          }),
+        ],
+      )
+      expect(await tick('receiptEmailsOff')).toMatchObject({ status: 'accepted' })
+      const stored = (await account())?.checks as Record<string, unknown>
+      expect(stored.someFutureKey).toEqual({ nested: true })
+      expect(stored.lostReason).toBe('access_removed')
+      expect(stored.ticks).toMatchObject({
+        cardTypeInTill: { at: tickedAt, by: 'user:u1' },
+        receiptEmailsOff: expect.objectContaining({ by: expect.any(String) }),
+        someFutureTick: 1,
+      })
+    })
+  })
+
+  describe('the first press of Connect', () => {
+    it('answers the same to two presses at once, and makes one row', async () => {
+      await reset()
+      const connect = { type: 'payment_account.connect', providerKind: 'sim-pay' } as const
+      const answers = await Promise.all([run(connect), run(connect)])
+      for (const answer of answers) {
+        expect(answer).toMatchObject({ status: 'accepted', details: { state: 'connecting' } })
+      }
+      // One of them made the row; the other found it.
+      expect(
+        answers.filter((a) => a.status === 'accepted' && a.details.changed === true),
+      ).toHaveLength(1)
+      const { rows } = await world.owner.query(
+        'select 1 from restro.payment_accounts where venue_id = $1',
+        [world.venueId],
+      )
+      expect(rows).toHaveLength(1)
+      const attempt = readAccountChecks((await account())?.checks).connectAttempt
+      expect(attempt).not.toBeNull()
     })
   })
 
