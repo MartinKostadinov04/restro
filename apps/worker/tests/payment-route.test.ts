@@ -21,6 +21,13 @@
 // recorded. A close may land after the read-back window too (C52), after a manager who looked
 // too early answered "No receipt": a hold is never released while the till shows Restro's card
 // payment on a closed bill, unless a manager answered "No receipt" again with the items missing.
+// The model's notices run beside the route, so a night's order hangs on the database's timing; with
+// PAYMENT_MODEL_ORDER=fixed each connector call waits for the notice jobs before it, and a failing
+// night replays from its seed (F6).
+// The recovery (#112): a worker killed right after it recorded any step of the route, before or
+// after the call, leaves a payment the recovery's pass alone brings to captured, released or
+// unconfirmed. A hold that runs out while its payment waits for a table or a manager's answer
+// settles `released`, reason `expired`, and the open questions close.
 import { randomUUID } from 'node:crypto'
 
 import {
@@ -79,6 +86,7 @@ import fc from 'fast-check'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { recoverPayments } from '../src/jobs/payment-recovery'
 import {
   checkPayment,
   createPaymentJobs,
@@ -128,6 +136,11 @@ const LOOSE = new GuestLimiter(
 
 /** The states a run ends in when nobody needs to act. */
 const SETTLED = ['captured', 'released', 'stranded', 'capture_failed']
+/**
+ * The model's order: `fixed` makes each connector call wait for the notice jobs started before it,
+ * so a night replays from its seed (F6); by default they run beside the route, as in production.
+ */
+const FIXED_ORDER = process.env.PAYMENT_MODEL_ORDER === 'fixed'
 
 describe('the prepare job', () => {
   it('gives a run its deadline and one step more before pg-boss runs it again', () => {
@@ -1067,6 +1080,197 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     })
   })
 
+  describe('a worker killed after a recorded step (the recovery alone finishes it)', () => {
+    class Killed extends Error {}
+    /** Nobody touched the payment for two minutes (as the owner, past the `updated_at` trigger). */
+    const untouched = (id: string) =>
+      withOwnerClient(db.ownerUrl, async (client) => {
+        await client.query('begin')
+        await client.query('set local session_replication_role = replica')
+        await client.query(
+          `update restro.payments set updated_at = updated_at - interval '2 minutes' where id = $1`,
+          [id],
+        )
+        await client.query('commit')
+      })
+
+    /** Runs the payment's route until the worker dies right after it records `step` `outcome`. */
+    async function killAfter(id: string, step: string, outcome: string) {
+      const killed = {
+        ...env(),
+        onStep: async (recorded: { readonly step: string; readonly outcome: string }) => {
+          if (recorded.step === step && recorded.outcome === outcome) throw new Killed(step)
+        },
+      }
+      let died = false
+      for (let run = 0; run < 10 && !died; run += 1) {
+        try {
+          await preparePayment(killed, target(id), deps())
+        } catch (error) {
+          if (error instanceof Killed) died = true
+          else if (!(error instanceof PaymentStepRetry)) throw error
+        }
+      }
+      expect(died).toBe(true)
+    }
+    /** The recovery's pass, after the worker was down: it queues the payment's prepare. */
+    async function recoverAfterDowntime(id: string) {
+      await pass(id, 120_000)
+      await untouched(id)
+      sent.length = 0
+      await recoverPayments({ pool, log, now: () => clock, queue }, deps())
+      expect(sent).toContainEqual(
+        expect.objectContaining({
+          name: JOB_NAMES.paymentPrepare,
+          options: expect.objectContaining({ singletonKey: id }),
+        }),
+      )
+    }
+
+    // `payAndClose done` is recorded with the state in one transaction, so a worker killed after
+    // it finds the payment `closed` already; the recorded close without its state is below (F4).
+    it.each([
+      ['isolateLines', 'attempting'],
+      ['isolateLines', 'done'],
+      ['payAndClose', 'attempting'],
+      ['payAndClose', 'done'],
+      ['capture', 'attempting'],
+      ['capture', 'done'],
+    ])('after %s %s: captured, released or unconfirmed', async (step, outcome) => {
+      const id = await held(1)
+      await killAfter(id, step, outcome)
+      await recoverAfterDowntime(id)
+      const { row } = await drive(id)
+      expect(['captured', 'released', 'unconfirmed']).toContain(row?.state)
+      // Each write was sent at most once more than it was attempted, and the bill closed once.
+      expect(calls('closeBill')).toBeLessThanOrEqual(1)
+      if (row?.state === 'captured') {
+        expect(row).toMatchObject({ captured_minor: '2200', payment_table_id: null })
+        expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+      }
+      if (row?.state === 'unconfirmed') {
+        // A close that was never sent: the manager is asked, never a release on its own.
+        expect(row.reason).toBe('close_unknown')
+        expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+          expect.objectContaining({ status: 'held' }),
+        ])
+      }
+      // Only the close, killed before it was sent, may leave the manager a question.
+      if (!(step === 'payAndClose' && outcome === 'attempting')) {
+        expect(row?.state).toBe('captured')
+      }
+    })
+
+    it.each(['attempting', 'done'])(
+      'after undoIsolate %s: released, the lines back, the hold released',
+      async (outcome) => {
+        const id = await held(1)
+        // The bill changes at the last check: the route puts the lines back.
+        slipRoundOntoPaymentTable()
+        await killAfter(id, 'undoIsolate', outcome)
+        await recoverAfterDowntime(id)
+        const { row } = await drive(id)
+        expect(row).toMatchObject({
+          state: 'released',
+          reason: 'check_failed',
+          payment_table_id: null,
+        })
+        expect(calls('closeBill')).toBe(0)
+        expect(rowsOn(POS_TABLE)).toEqual(['2001', '2001', '2002'])
+        expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+          expect.objectContaining({ status: 'released' }),
+        ])
+      },
+    )
+
+    /** A close answer recorded without its state (F4): the run died between them. */
+    const recordClose = (id: string, outcome: 'done' | 'refused', answer: string) =>
+      withOwnerClient(db.ownerUrl, async (client) => {
+        await client.query(
+          `insert into restro.payment_steps
+             (tenant_id, venue_id, payment_id, step, outcome, answer, idempotency_key,
+              source, actor, job_id)
+           values ($1, $2, $3, 'payAndClose', $4, $5, $6, 'worker', 'system', 'test-seed')`,
+          [tenantId, demo.venueId, id, outcome, answer, `${id}-close`],
+        )
+      })
+
+    it.each([
+      ['done', 'R-7781', 'R-7781'],
+      ['refused', 'already_done', null],
+    ] as const)(
+      'routes a recorded close %s %s as proof: captured, no question (F4)',
+      async (outcome, answer, receipt) => {
+        const id = await held(1)
+        await killAfter(id, 'payAndClose', 'attempting')
+        expect(await stored(id)).toMatchObject({ state: 'checked' })
+        await recordClose(id, outcome, answer)
+        await recoverAfterDowntime(id)
+        await drive(id, 6)
+        expect(await stored(id)).toMatchObject({ state: 'captured' })
+        const [kept] = await query<{ receipt_number: string | null }>(
+          'select receipt_number from restro.payments where id = $1',
+          [id],
+        )
+        expect(kept?.receipt_number ?? null).toBe(receipt)
+        // The recorded answer is the outcome: the close is not sent again, and nobody is asked.
+        expect(calls('closeBill')).toBe(0)
+        expect(await alertsOf(id)).toEqual([])
+      },
+    )
+  })
+
+  describe('a hold that runs out while its payment waits (#112)', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000
+
+    it('waiting for a payment table: released, reason expired, its lines free', async () => {
+      for (const table of PAYMENT_TABLES)
+        sim.host.engine.waiter.addRound(table, [{ article: '2001' }])
+      const id = await held(1)
+      expect(await preparePayment(env(), target(id), deps())).toEqual({
+        kind: 'at',
+        state: 'queued',
+      })
+      // Still held: the check changes nothing.
+      expect(await checkPayment(env(), target(id), deps())).toEqual({ kind: 'at', state: 'queued' })
+      payClock.advance(engine.switches.holdDays * DAY_MS)
+      expect(await checkPayment(env(), target(id), deps())).toEqual({
+        kind: 'at',
+        state: 'released',
+      })
+      expect(await stored(id)).toMatchObject({ reason: 'expired', settled: true })
+      expect((await lines()).every((line) => !line.beingPaid)).toBe(true)
+      expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+    })
+
+    it("waiting for a manager's answer: released, reason expired, both questions closed", async () => {
+      const id = await held(1)
+      fault({ on: 'closeBill', fault: { kind: 'hang' } })
+      expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+      payClock.advance(engine.switches.holdDays * DAY_MS)
+      expect(await checkPayment(env(), target(id), deps())).toEqual({
+        kind: 'at',
+        state: 'released',
+      })
+      expect(await stored(id)).toMatchObject({ reason: 'expired' })
+      const open = await query<{ kind: string }>(
+        'select kind from restro.alerts where subject_id = $1 and done_at is null',
+        [id],
+      )
+      // The questions closed; the owners and the team are told the hold ran out unanswered.
+      expect(open).toEqual([{ kind: 'payment_hold_expired' }])
+      const logged = await query<{ closed: string }>(
+        `select details->>'questionClosed' as closed from restro.log_entries
+          where kind = 'payment.state' and payment_id = $1 and to_state = 'released'`,
+        [id],
+      )
+      expect(logged).toEqual([{ closed: 'payment_unconfirmed' }])
+      // A manager's late answer changes nothing.
+      expect(await answer(id, 'no_receipt')).toMatchObject({ status: 'refused' })
+    })
+  })
+
   it('cancels a payment busy for a minute with no free payment table', async () => {
     for (const table of PAYMENT_TABLES)
       sim.host.engine.waiter.addRound(table, [{ article: '2001' }])
@@ -1231,9 +1435,33 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         }),
         {
           numRuns: 25,
-          // A close that lands after the read-back window, after a manager answered "No receipt"
-          // too early and before the worker puts the lines back.
           examples: [
+            // The provider cancels the hold while a late close waits for its answer: the payment
+            // is released as expired (Restro sends no release) and the owners are told (CI seed
+            // -1494489421).
+            [
+              {
+                picks: [0, null],
+                pos: [{ on: 'closeBill', fault: { kind: 'landsLate' } }],
+                provider: null,
+                slip: false,
+                order: [0],
+                happenings: [
+                  {
+                    kind: 'provider',
+                    at: { before: 'undoIsolate', nth: 1 },
+                    payment: 0,
+                    event: 'cancelled',
+                    notice: 'now',
+                  },
+                ],
+                tapsAgain: false,
+                lateLanding: 20_000,
+                lag: 0,
+              },
+            ],
+            // A close that lands after the read-back window, after a manager answered "No receipt"
+            // too early and before the worker puts the lines back.
             [
               {
                 picks: [1, null],
@@ -1480,6 +1708,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           pending.splice(pending.indexOf(due), 1)
           happen(due)
         }
+        // Fixed order (F6): the notice jobs started so far finish before the call goes.
+        return FIXED_ORDER ? jobs : undefined
       }
 
       const settled = async () => {
@@ -1625,6 +1855,13 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         const proven = closeProof >= 0 || answered === 'receipt_printed'
         const capture = at('capture', 'attempting')
         const [provider] = engine.paymentsOf(providerRef(accountRef), id as never)
+        // The one release after a close Restro did not send: the provider dropped the hold itself
+        // while the close waited for an answer, and the owners are told (#112).
+        const expired = row?.state === 'released' && row.reason === 'expired'
+        if (expired && closeAttempt >= 0) {
+          expect(played.dropped.has(id)).toBe(true)
+          expect(await alertsOf(id)).toContain('payment_hold_expired:money.follow_up')
+        }
         // 1. A capture only after proof of a close: the POS's, or a manager's "Receipt printed".
         if (capture >= 0) {
           expect(proven).toBe(true)
@@ -1634,7 +1871,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         // 2. No release once a close was attempted, unless a manager answered "No receipt".
         if (closeAttempt >= 0 && answered !== 'no_receipt') {
           expect(own.slice(closeAttempt).some((step) => step.step === 'release')).toBe(false)
-          expect(row?.state).not.toBe('released')
+          if (!expired) expect(row?.state).not.toBe('released')
           if (!played.dropped.has(id)) expect(provider?.status).not.toBe('released')
         }
         const till = played.till(id)
@@ -1649,7 +1886,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           expect(till.closed).toBe(true)
           expect(provider.capturedMinor).toBe(till.cardMinor)
         }
-        if (till.closed && !againNoReceipt) {
+        if (till.closed && !againNoReceipt && !expired) {
           expect(['captured', 'capture_failed']).toContain(row?.state)
         }
         // After a second "No receipt" the hold was released with the items missing: staff are told

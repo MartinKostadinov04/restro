@@ -7,6 +7,9 @@
 // counts what went. The app role cannot delete any of it, the venue purge erases every service
 // row of the venue, and the hourly tick closes the ended service days. Skipped without a database
 // or the purge role.
+// Payments (#112) go 18 months after they settled (`retain_until`), with their lines and steps, and
+// none a moment before; one waiting for a manager's answer, with an open dispute or not settled
+// stays. A venue's purge waits while one of its payments is kept, and erases nothing meanwhile.
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -252,6 +255,55 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     )
     return id
   }
+  /** A card payment on the bill, settled in `state` and kept until `until`, with a line and a step. */
+  async function settledPayment(
+    venue: string,
+    table: string,
+    sittingId: string,
+    until: string,
+    state = 'released',
+    reason = 'cancelled',
+    dispute: string | null = null,
+  ) {
+    const id = newId('py')
+    await query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, reason,
+          handle_hash, amount_minor, currency, provider_kind, settled_at, retain_until, dispute,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', $7, $8, $9, 1450, 'EUR', 'sim-pay',
+               $10::timestamptz - interval '18 months', $10, $11, $12, $13, $14)`,
+      [
+        id,
+        tenantId,
+        venue,
+        table,
+        sittingId,
+        OLD_DAY,
+        state,
+        reason,
+        createHash('sha256').update(randomUUID()).digest('hex'),
+        until,
+        dispute,
+        ...SEED,
+      ],
+    )
+    references += 1
+    await query(
+      `insert into restro.payment_lines
+         (tenant_id, venue_id, payment_id, position, pos_line_ref, quantity, pos_amount_minor,
+          display_name, source, actor, job_id)
+       values ($1, $2, $3, 1, $4, 1, 1450, 'Gin tonic', $5, $6, $7)`,
+      [tenantId, venue, id, String(9_200_000 + references), ...SEED],
+    )
+    await query(
+      `insert into restro.payment_steps
+         (tenant_id, venue_id, payment_id, step, outcome, answer, source, actor, job_id)
+       values ($1, $2, $3, 'createHold', 'attempting', null, 'worker', 'system', 'test-seed')`,
+      [tenantId, venue, id],
+    )
+    return id
+  }
 
   beforeAll(async () => {
     db = await createTestDatabase()
@@ -461,20 +513,6 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     expect((await dueServiceDays(pool, new Date())).filter((day) => day.venueId === v)).toEqual([])
   })
 
-  it('tells the end-of-night report of each day it closes, once (#86)', async () => {
-    const { venueId: v, tableId: t } = await venueWithTable('Report Bar')
-    await sitting(v, t, '2026-01-10', null)
-    const told: { venueId: string; serviceDate: string }[] = []
-    const onClosed = async (day: { venueId: string; serviceDate: string }) => {
-      if (day.venueId === v) told.push(day)
-    }
-    await closeServiceDays(pool, new Date(), quiet, onClosed)
-    expect(told).toEqual([expect.objectContaining({ venueId: v, serviceDate: '2026-01-10' })])
-    // A day already closed is not reported again.
-    await closeServiceDays(pool, new Date(), quiet, onClosed)
-    expect(told).toHaveLength(1)
-  })
-
   it('keeps the later days of a venue open while an earlier one is refused', async () => {
     const { venueId: v, tableId: t } = await venueWithTable('Waiting Bar')
     const first = await sitting(v, t, '2026-01-10', null)
@@ -515,6 +553,85 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     }
   })
 
+  it('erases a payment 18 months after it settled, with its lines and steps, and none before', async () => {
+    const v = venueId
+    const t = tableId
+    const s = ids.keptSitting ?? ''
+    const due = await settledPayment(v, t, s, UNTIL_DUE)
+    const later = await settledPayment(v, t, s, UNTIL_KEPT)
+    // Waiting for a manager's answer, or disputed and still open: kept, however old.
+    const asking = await settledPayment(v, t, s, UNTIL_DUE, 'unconfirmed', 'close_unknown')
+    const disputed = await settledPayment(v, t, s, UNTIL_DUE, 'released', 'cancelled', 'open')
+    // The due one never freed its payment table (R9): its lease goes with it; the kept one's stays.
+    const lease = async (holder: string) => {
+      const key = newId('tb')
+      await query(
+        `insert into restro.locks (tenant_id, venue_id, scope, key, holder, fence, taken_at,
+           source, actor, job_id)
+         values ($1, $2, 'payment_table', $3, $4, 1, now(), $5, $6, $7)`,
+        [tenantId, v, key, holder, ...SEED],
+      )
+      return key
+    }
+    const dueLease = await lease(due)
+    const laterLease = await lease(later)
+    const leaseOf = (key: string) =>
+      query('select holder from restro.locks where scope = $1 and key = $2', ['payment_table', key])
+    const { counts } = await purgeService({ purgePool }, { tenantId, now: NOW })
+    expect(counts).toMatchObject({ payments: 1, payment_lines: 1, payment_steps: 1, locks: 1 })
+    expect(await leaseOf(dueLease)).toEqual([])
+    expect(await leaseOf(laterLease)).toEqual([{ holder: later }])
+    expect(await exists('payments', due)).toBe(false)
+    expect(await query('select 1 from restro.payment_lines where payment_id = $1', [due])).toEqual(
+      [],
+    )
+    expect(await query('select 1 from restro.payment_steps where payment_id = $1', [due])).toEqual(
+      [],
+    )
+    for (const kept of [later, asking, disputed, ids.payment ?? '']) {
+      expect(await exists('payments', kept)).toBe(true)
+    }
+    expect(
+      await query('select 1 from restro.payment_lines where payment_id = $1', [later]),
+    ).toHaveLength(1)
+    // A second later, the next one goes.
+    const next = await purgeService(
+      { purgePool },
+      { tenantId, now: new Date(NOW.getTime() + 2000) },
+    )
+    expect(next.counts).toMatchObject({ payments: 1 })
+    expect(await exists('payments', later)).toBe(false)
+  })
+
+  it('makes the purge of a venue wait while one of its payments is kept, erasing nothing', async () => {
+    const { venueId: v, tableId: t } = await venueWithTable('Kept Bar')
+    const s = await sitting(v, t, OLD_DAY, UNTIL_DUE)
+    const keptUntil = new Date(Date.now() + 86_400_000).toISOString()
+    const kept = await settledPayment(v, t, s, keptUntil)
+    await query(`update restro.venues set archived_at = now() - interval '31 days' where id = $1`, [
+      v,
+    ])
+    const root = await mkdtemp(path.join(tmpdir(), 'restro-payment-purge-'))
+    try {
+      const store = new LocalPublishStore({ rootDir: root })
+      const first = await purgeVenue({ purgePool, pool, store }, { tenantId, venueId: v })
+      expect(first.status).toBe('payments_kept')
+      expect(await exists('payments', kept)).toBe(true)
+      expect(await exists('sittings', s)).toBe(true)
+      expect(await query('select 1 from restro.venues where id = $1', [v])).toHaveLength(1)
+      // Once it is due, the venue goes with it.
+      await query(
+        `update restro.payments set retain_until = now() - interval '1 second' where id = $1`,
+        [kept],
+      )
+      const second = await purgeVenue({ purgePool, pool, store }, { tenantId, venueId: v })
+      expect(second.status).toBe('purged')
+      expect(await exists('payments', kept)).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('erases every service row of a purged venue', async () => {
     const { venueId: v, tableId: t } = await venueWithTable('Gone Bar')
     const bar = newId('br')
@@ -528,7 +645,13 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     const so = await sentOrder(v, t, s, OLD_DAY, UNTIL_KEPT)
     await query('update restro.sent_orders set bar_id = $2 where id = $1', [so, bar])
     await note(v, so, OLD_DAY)
-    await payment(v, t, s, so)
+    // Its payments are past their 18 months: they go with the venue.
+    const paid = await payment(v, t, s, so)
+    await query(
+      `update restro.payments set state = 'released', reason = 'cancelled', settled_at = $2,
+         retain_until = now() - interval '1 second' where id = $1`,
+      [paid, OLD_DAY],
+    )
     await waiterCall(v, t, s, OLD_DAY)
     await alert(v, OLD_DAY)
     await pause(v, OLD_DAY, false)

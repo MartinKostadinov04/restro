@@ -1,5 +1,5 @@
 {
-  "id": "01362e30-f489-4531-9b73-9e7adcde8782",
+  "id": "eb4c2e49-b832-437f-9ae4-4f0b375a1291",
   "prevId": "fac3d428-d125-4f69-84a4-38573e02c263",
   "version": "7",
   "dialect": "postgresql",
@@ -3673,6 +3673,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "paying_paused_at": {
+          "name": "paying_paused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "breaker": {
+          "name": "breaker",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source": {
           "name": "source",
           "type": "text",
@@ -3761,6 +3773,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "payment_accounts_breaker": {
+          "name": "payment_accounts_breaker",
+          "value": "\"restro\".\"payment_accounts\".\"breaker\" is null or jsonb_typeof(\"restro\".\"payment_accounts\".\"breaker\") = 'object'"
+        },
         "payment_accounts_provider_kind": {
           "name": "payment_accounts_provider_kind",
           "value": "\"restro\".\"payment_accounts\".\"provider_kind\" ~ '^[a-z][a-z0-9-]{0,31}$'"
@@ -8672,20 +8688,6 @@
           "notNull": true,
           "default": "now()"
         },
-        "kinds": {
-          "name": "kinds",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{waiter}'::text[]"
-        },
-        "last_called_at": {
-          "name": "last_called_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
         "state": {
           "name": "state",
           "type": "text",
@@ -8841,10 +8843,6 @@
         "waiter_calls_state": {
           "name": "waiter_calls_state",
           "value": "\"restro\".\"waiter_calls\".\"state\" in ('open', 'done', 'lapsed')"
-        },
-        "waiter_calls_kinds": {
-          "name": "waiter_calls_kinds",
-          "value": "cardinality(\"restro\".\"waiter_calls\".\"kinds\") >= 1 and \"restro\".\"waiter_calls\".\"kinds\" <@ array['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal']::text[]"
         },
         "waiter_calls_done_pair": {
           "name": "waiter_calls_done_pair",

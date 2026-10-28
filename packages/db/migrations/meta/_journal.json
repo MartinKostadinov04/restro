@@ -257,8 +257,22 @@
     {
       "idx": 36,
       "version": "7",
-      "when": 1793188003947,
-      "tag": "0036_waiter_call_kinds",
+      "when": 1793174968458,
+      "tag": "0036_paying_breaker",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793191334098,
+      "tag": "0037_night_report_sent",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793193138784,
+      "tag": "0038_waiter_call_kinds",
       "breakpoints": true
     }
   ]

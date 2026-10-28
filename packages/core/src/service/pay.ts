@@ -37,6 +37,7 @@ import { DecimalQuantitySchema } from '../quantity'
 import { parseStoredBills, type StoredBill, type StoredBillLine } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
+import { payingPaused } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import { accepted, refused, type ServiceResult } from './results'
 import { orderingPaused } from './send'
@@ -345,6 +346,8 @@ export function payStart() {
       if (!connection.readiness.on || connection.providerKind === null) {
         return refuse('paying_not_offered')
       }
+      // The provider's breaker (#112): paying pauses alone, ordering goes on.
+      if (await payingPaused(stx)) return refuse('paying_paused')
       const account = { providerKind: connection.providerKind }
 
       if (order === null) return refuse('sitting_ended')
@@ -823,6 +826,39 @@ export function paymentSettle() {
       const state = reason === 'stranded' ? 'stranded' : 'released'
       await release(stx, payment, tableOpen, reason, state)
       return at(command, payment, state, true)
+    },
+  })
+}
+
+/**
+ * `payment.hold_unknown`: the hold's call was made before and its outcome is unknown (a timeout, a
+ * server error, a worker that died after recording it, design §5.3, D127 3.15). The key is never
+ * sent again: `priced` → `cancelling` with "Try again" (`hold_refused`), and the worker finds
+ * whatever the call made by the payment's id and releases it. No card form reached a phone, so a
+ * leftover payment at the provider holds nothing.
+ */
+export function paymentHoldUnknown() {
+  return defineCommand({
+    schema: z.strictObject({ type: z.literal('payment.hold_unknown'), paymentId }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    async handle(stx, command) {
+      const locked = await lockPayment(stx, { id: command.paymentId })
+      if (locked === null) return refused(null, 'payment_missing')
+      const { payment } = locked
+      if (payment.state !== 'priced') return at(command, payment, payment.state, false)
+      await stx.tx
+        .update(payments)
+        .set({
+          state: 'cancelling',
+          reason: 'hold_refused',
+          ...stx.provenance,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(payments.id, payment.id))
+      await logPayment(stx, payment, 'cancelling', 'hold_refused')
+      return at(command, payment, 'cancelling', true)
     },
   })
 }

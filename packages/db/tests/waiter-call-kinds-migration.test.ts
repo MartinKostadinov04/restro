@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase, ownerDatabaseUrl } from './database'
 
 const MIGRATIONS = fileURLToPath(new URL('../migrations', import.meta.url))
-const TAG = '0036_waiter_call_kinds'
+const TAG = '0038_waiter_call_kinds'
 
 interface Journal {
   entries: { idx: number; tag: string; when: number }[]
