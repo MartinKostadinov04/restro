@@ -70,30 +70,32 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### Call a waiter
 - **Shell key:** `callWaiter` (manifest `call_waiter`, slot `menu.call_waiter`); request kinds `waiter`, `bill`, `water`, `cutlery`, `terminal`, `other`
-- **Status:** drawn, platform parked
-- **Drawn means:** a control that calls a waiter to the table, the state of the table's call, and the still card where the venue takes no calls (below). The contract still carries the request kinds, a note and `service.cancel`, but the platform keeps none of them, so a template draws no note field and no withdraw control, and the kind it sends changes nothing for staff.
-- **What the platform does (#81, D122 §4; the guest page does not switch `callWaiter` on yet, so no live page offers it):** the host answers a `service.request` as one call for the table. The request kind and the note are not kept: it keeps no text and no identity. It needs the table open for phones, not a location pass. A second tap while a call is open returns that call. The call appears in `state.requests` as one request (`kind: waiter`): `sent` while open, `done` when staff mark it Handled, and `rejected` when nobody answered in the venue's time (15 minutes by default), which the template words as "Ask your waiter". The host refuses `calls_off` where the venue has not switched the service on: the template draws the still card "Please order from your waiter" there, never a button. Withdrawing a call (`service.cancel`) is not built.
+- **Status:** supported
+- **Drawn means:** a control that offers the request kinds the venue allowed and the state of the table's call. Decided in #45 (D127, "The guest's bill screen", not in the contract yet; #180 builds it): the venue ticks options from Restro's fixed list `waiter` (always on), `bill`, `ice`, `water`, `glasses`, `clean_table`, `terminal` (off by default), which replaces today's kinds; with only `waiter` ticked it is a single button that calls at once; otherwise "Call a waiter" opens "What do you need?" with the ticked options. One open call per table: a later option is added to it, and the guest sees "Waiter called: Ice, Water" with "Something else". No note and no withdraw. It is also the way on from every failure screen of paying. Words: "Guest words: the bill and paying" below.
+- **What the platform does (#81, D122 §4):** the host answers a `service.request` as one call for the table. The request kind and the note are not kept: it keeps no text and no identity. It needs the table open for phones, not a location pass. A second tap while a call is open returns that call. The call appears in `state.requests` as one request (`kind: waiter`): `sent` while open, `done` when staff mark it Handled, and `rejected` when nobody answered in the venue's time (15 minutes by default), which the template words as "Ask your waiter". The host refuses `calls_off` where the venue has not switched the service on: the template draws the still card "Please order from your waiter" there, never a button. Withdrawing a call (`service.cancel`) is not built.
 - **Where:** §5.5, §10.2, §10.3; D71, D72, D122 §4
 
 ### Confirm being at the table (the location check)
 - **Shell key:** none (host `services.state.location` and `services.location`)
 - **Status:** drawn, platform parked
-- **Drawn means:** (the platform runs it since #76, on the hidden reference template only) where the venue checks location, a phone needs a pass from the table's current sitting before it sees the table's order and bill or adds to or changes a line on the bill; removing a line, Undo and paying never need one. The host asks and checks; the template only draws what `location.prompt` says, with the shell's words:
+- **Drawn means:** (the platform runs it since #76, on the hidden reference template only) where the venue checks location, a phone needs a pass from the table's current sitting before it sees the table's order and bill or adds to or changes a line on the bill; removing a line and Undo never need one. The host asks and checks; the template only draws what `location.prompt` says, with the shell's words:
   - `consent`: the consent text (`locationConsent`, naming the venue from `location.venueName`) with "Allow" (`allow()`) and "Not now" (`decline()`), never a promise of anything else; nothing is asked before the guest tries something that needs it;
   - `checking`: "Checking your location…" while the phone reads its position;
   - `failed`: "We could not confirm you are at the venue" with why, and two ways on: where the venue takes waiter calls (`view.features.callWaiter` is not null), "Call a waiter" (sends a `waiter` request, then `dismiss()`); where it does not, the still card "Please order from your waiter" (`locationOrderFromWaiter`), never a button; and always "Cancel" (`dismiss()`);
+  - paying needs a pass too (#45, D127): without one the phone sees no bill and no order, so it has nothing to pay;
   - while `location.state` is `needed` and no prompt is up: why the order and the bill are hidden, and the guest's own "Allow location" (`reopen()`), which brings the consent back after a "Not now";
   - the position never reaches the template: it goes from the host to the server and nowhere else, and the template stores, logs and shows none of it.
 - **Where:** §10.2, §10.3; D72, D118, D122
 
 ### See the bill
 - **Shell key:** `bill` (slot `menu.bill`)
-- **Status:** decided, not in the contract yet
-- **Drawn means:** (the guest API already answers the bill below, #74, #75; the face contract's `BillView` is still D71's, with rounds marked `guest` or `staff`, no paid or owed and no `beingPaid`, and the guest page binds no bill into the face's state; the screen's behaviour is #45 and the contract is #114, which replace it) the table's bill as the host read it from the POS, the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
+- **Status:** drawn, platform parked
+- **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
   - its lines, from guests and staff alike, nothing marking a line as "from your phones": the name of our own item, or "Other item" (worded by the shell) where the POS line is no item of ours; the quantity as the POS gives it, which may be a decimal ("0.5"); the POS's own signed amount, so a discount shows negative and a free line at 0, as the POS gives them;
   - the POS's total, what is paid and what is still owed, and a part being paid marked as such: a bill or a line with `beingPaid` is in some phone's payment that isn't final (#110), drawn greyed with no controls and nothing else, never who pays, how much or for how long; it ungreys when that payment ends;
   - when it was read. When the latest reading failed, the last good bill is drawn marked as not up to date, never an empty bill. Opening the bill asks the host for a fresh reading when the one shown is older than 15 seconds.
-- **Where:** §5.5, §10.2, §10.3; D71, D72, D111, D122
+  - Decided in #45 (D127, "The guest's bill screen", not in the contract yet; #114): lines paid in the app stay on the bill, greyed under "Paid in the app" (name, quantity, amount, never who paid) until the sitting ends; "Left to pay" is the total of the rest; "Nothing on your bill yet" when nothing is on it; a "Pay" button opens choosing (below), or the line "Ask your waiter to pay." where the venue does not take payments in the app; Call a waiter at the foot. Without a location pass: "The bill shows only at the table", why, "Allow location" and Call a waiter.
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D111, D127
 
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
@@ -116,15 +118,16 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### Pay
 - **Shell key:** `pay` (slot `menu.pay`)
-- **Status:** decided, not in the contract yet
-- **Drawn means:** what D122 §8 and D127 decided; the face contract (`pay.quote`, `pay.start`, `PayQuote`) is still D71's and is replaced by #114, so nothing below is drawn yet. D122 dropped that contract's equal share (`split`), promo code, payment-method choice and VAT lines: paying a share comes with group payment, later. The template computes no total, tip, VAT or split, and draws what the host says:
-  - **Pick what to pay (#45, #114):** the guest's own lines, with a quantity per line from "all" downward (a line whole where the POS cannot move part of a quantity), or the whole bill; the bill is read fresh and the guest confirms exactly the lines and amounts seen. A picked line already in another phone's payment is refused `being_paid`; a changed bill, `bill_changed`;
-  - **Pay-first items at Send (#113, D113, D122 §5):** where the venue offers it, a Send with pay-first lines sends the on-the-bill lines as usual and the pay-first lines become a payment of their own with the same steps and the same tip. Until #113, a pay-first line says "Order this from your waiter" (see Order from the phone);
-  - **A tip (#45, #114, D127):** offered only where the POS records it on the same bill and receipt (`recordTipOnClose`), and then it starts at zero: presets are allowed, none preselected, an amount or a percent, and the guest is told it goes to the venue. It is never called a service charge, and the host works out the amount;
-  - **The smallest card payment (D127):** a venue setting that starts at the provider's minimum (€0.50 for Stripe). Below it Pay is greyed with "Card payments start at €0.50. Add an item or ask your waiter." (the amount is the venue's);
-  - **Waiting (#110, D127):** while the host prices the lines and makes the hold, the paying phone shows "Preparing your bill…" and polls every 2 s (D121); the card form comes in a slot the template places and the page fills, so the template loads no provider library (D72, #114);
-  - **Where paying is not offered** (the venue or the POS lacks it, D122 §4): the consent text drops "pay" and pay-first items say "Order this from your waiter" (`paying_not_offered`).
-- **Platform (#110, #111, D127; the hidden reference path only, not wired to a template yet):** the guest API runs paying by card:
+- **Status:** drawn, platform parked
+- **Drawn means:** (the shell contract still says scope "all, a share, only mine", promo code and method, each method control marked `pay.method`; #45 replaces that, and #114 brings the contract in line) the template computes no total, tip, VAT or split. Decided in #45 (D127, "The guest's bill screen", not in the contract yet; #114, #113):
+  - **Choosing** ("What are you paying for?"): the lines free to pay, nothing ticked; "The whole bill"; a tick per line; a quantity menu (default "all") only where the connector can move part of a line; lines being paid greyed and not tickable ("Someone is already paying for this line." if tapped); the tip row; "Your items", "Tip", "Total"; the Pay button with the live total ("Pay 27,50 EUR"), greyed with its reason (the smallest card payment, a failed reading, card payments paused, ordering paused); the law lines (prices in EUR with VAT, complaints and refunds to the venue, "Payment processed by Stripe for [venue]", links to the venue's details and privacy); Call a waiter.
+  - **The tip:** "Tip: goes to the venue" with 5 %, 10 %, 15 % (of the chosen lines) and "Other amount"; nothing selected; tapping a chosen one clears it; no tip row where the till can't record one. For pay-first lines the tip row sits on the order screen above "Send and pay 24 EUR".
+  - **Pay-first:** Send with pay-first lines reads "Send and pay 24 EUR": one tap sends the rest and opens the pay-first payment. A guest who taps "Pay later" finds the pay-first lines in the order, "Not ordered until paid", with "Pay 24 EUR".
+  - **While paying:** "Preparing your bill…" with "Pay later"; then the lines, tip, total, Stripe's card form (with Apple Pay and Google Pay) and "Pay 27,50 EUR" with "Pay later"; the bank's check inside the page; one waiting state "Processing your payment…". Card errors are Stripe's own text in its form. After the card is held there is no cancel.
+  - **Same amount again:** within 15 minutes of this phone's payment of the same amount, "Same amount as 4 minutes ago. Pay again?" with "Yes, pay" and "Back".
+  - **Paid:** "Paid", "Payment number" with the number in large type (at least 40 px, 7:1), the table, the lines, tip and total, "Show this number to your waiter. Your waiter brings your receipt.", "Payment confirmation" (see Get the receipt) and "Back to the bill". A closed or reloaded page comes back here.
+  - **Ends:** "can't tell", `stranded` and `capture_failed` show "The venue is checking the payment" and "You don't need to do anything…"; each `released` reason has its own line (words below), with "Pay again" after `busy`, `check_failed` and a timed-out card form, always "Back to the bill" and Call a waiter. "Nothing was charged" wherever true; never a step of the till.
+- **Platform (#110, D127; not wired to a template yet):** the guest API runs paying by card on the hidden reference path:
   - `pay.start` picks whole lines of the bill, or the whole bill, sends each picked line as the phone saw it (the knock, D111), an optional tip (an amount or a percent, starting at none), and Turnstile's token; it greys the lines for every phone (`beingPaid`) and answers a payment handle;
   - only the paying phone holds the handle and sends it in `X-Restro-Payment`, never in an address; `GET /api/guest/payment` answers that phone alone the payment's state, lines, amount, tip and, only while the guest is at the card form, the provider's form values;
   - `pay.returned` after the card form, and `pay.cancel` before the hold is made, which ungreys the lines;
@@ -135,23 +138,115 @@ A service control is drawn only when its `view.features` field is on, and carrie
     - `unconfirmed`: the till didn't confirm the close; staff check it, so the template says the venue is checking the payment and asks nothing more of the guest. A manager's "Receipt printed" moves it on to `captured`, "No receipt" to `released`;
     - `stranded` (the lines could not go back to the table; staff are told) and `capture_failed` (the bill closed but the card was not charged; the owners are told): the template never asks the guest to pay again;
   - paying pauses with ordering (the venue's, its bar's, the table's or the connection's pause): a `pay.start` is refused `paying_paused`, and a payment still waiting for a payment table ends `released` `paying_paused`. A payment whose lines already moved runs to its end.
-- **Where:** §5.5, §10.2, §10.3; D71, D72, D113, D122, D127
-
-### See that you have paid (the Paid screen)
-- **Shell key:** none; a screen of the pay feature
-- **Status:** decided, not in the contract yet
-- **Drawn means:** (the paying phone's payment answer already says `captured`, #111; the face contract has no payment state yet, #114) the screen "Paid" once the host says `captured`, never before and never from the phone's own word (D72). The other endings are drawn as the host says them (see Pay), their words being #45's: a released payment ungreys the lines with its reason, "unconfirmed" says the venue is checking the payment and asks nothing more, and `stranded` and `capture_failed` never ask the guest to pay again. Other phones see no payer, amount or timer, only greyed lines (`beingPaid`).
-- **Where:** §10.2, §10.3; D72, D122, D127
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D127
 
 ### Get the receipt
 - **Shell key:** none; a screen of the pay feature (`#receipt`)
-- **Status:** decided, not in the contract yet
-- **Drawn means:** (the face contract's `ReceiptView` and `receipt.action` are D71's "receipt as the host issued it", which D122 §8 removed, and #114 replaces them) the venue issues the receipt, not Restro. What the guest gets after paying:
-  - **Paper, the usual case:** the paper receipt is handed to the payer at payment and the waiter brings it; how the Paid screen tells the guest is #45's;
-  - **"Download" after paying:** the provider's payment confirmation, never called fiscal (D122 §8);
-  - **An optional email field:** only where all five conditions of D122 §8 hold (the POS is on the NRA list and the venue declared electronic receipts; the device and POS can issue this sale electronically; the file is the device's own receipt; it goes by email or a profile; paper is printed on request). Elsewhere the payment screen offers no email;
-  - **No Stripe email to the guest:** Restro never passes the guest's email to the provider (D125).
-- **Where:** §10.1, §10.2; D71, D72, D122, D125
+- **Status:** drawn, platform parked
+- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports. Decided in #45 (D127): the venue issues the fiscal receipt and, at the pilot, the waiter brings it on paper; the Paid screen's "Payment confirmation" opens Restro's own page (#45 log 1.4): the venue's name, date and time, the lines, tip, total, "Paid by card" and the payment number, with "Save" (an image or PDF kept on the phone, never a lasting link) and "This is not your receipt. Your waiter brings the venue's receipt." It never looks like a receipt (no ЕИК/ДДС header, VAT lines, receipt number, УНП or QR code), never uses Stripe's receipt link, and no word of it is "бон" or any form of "фискален", in either language (Н-18 чл. 7а). **The venue's electronic receipt** (D127, Martin 10-28): where the venue's connector declares `electronicReceipt`, the pay screen offers an optional email; filled, the POS's own receipt goes to that address, and the Paid screen and the confirmation say so. Restro never draws the receipt. Until a connector declares it (each POS provider is being asked), no email field shows.
+- **Where:** §10.1, §10.2; D71, D72, D127
+
+## Guest words: the bill and paying
+
+Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototype, 10-28). Not in the shell yet: #114 adds them to the shell's words, Bulgarian first. Where the shell already has a word for the same thing (ordering's pause, weak connection, "Order this from your waiter"), the shell's word stays. `{x}` is an amount ("27,50 EUR" in Bulgarian, "27.50 EUR" in English), `{n}` a number, `{min}` the venue's smallest card payment, `{venue}` the venue's legal name, `{email}` the address the guest typed for the receipt. The Call a waiter options use #180's ids.
+
+| Name | Where | Български | English |
+|---|---|---|---|
+| `tab_menu` | Phone tabs | Меню | Menu |
+| `tab_order` | Phone tabs | Поръчка | Your order |
+| `tab_bill` | Phone tabs | Сметка | Bill |
+| `table` | Header | Маса {n} | Table {n} |
+| `bill_title` | Bill | Сметката на масата | Your table's bill |
+| `updated` | Bill: reading age | Обновено преди {n} сек. | Updated {n} s ago |
+| `stale` | Bill: failed reading | Не е актуална · обновена преди {n} сек. | Not up to date · updated {n} s ago |
+| `other_item` | Bill: a POS line that is none of ours | Друг артикул | Other item |
+| `being_paid` | Bill: line in a payment | Плаща се | Being paid |
+| `left_to_pay` | Bill: total | За плащане | Left to pay |
+| `paid_in_app` | Bill: paid lines section | Платено в приложението | Paid in the app |
+| `empty` | Bill: nothing owed | Все още няма нищо в сметката | Nothing on your bill yet |
+| `pay_open` | Bill: opens choosing | Плати | Pay |
+| `ask_waiter_to_pay` | Bill: paying is off at this venue | За да платите, попитайте сервитьора. | Ask your waiter to pay. |
+| `pick_title` | Choosing | Какво плащате? | What are you paying for? |
+| `whole_bill` | Choosing | Цялата сметка | The whole bill |
+| `qty_all` | Choosing: quantity | всички ({n}) | all ({n}) |
+| `tip_label` | Tip | Бакшиш: отива за заведението | Tip: goes to the venue |
+| `tip_other` | Tip | Друга сума | Other amount |
+| `your_items` | Totals | Избрано | Your items |
+| `tip` | Totals | Бакшиш | Tip |
+| `total` | Totals | Общо | Total |
+| `pay_x` | Pay button | Плати {x} | Pay {x} |
+| `legal_1` | Pay screen, law checklist | Цените са в EUR с ДДС. Рекламации и връщане на пари: заведението. | Prices in EUR incl. VAT. Complaints and refunds: the venue. |
+| `legal_2` | Pay screen, law checklist | Плащането се обработва от Stripe за {venue}. | Payment processed by Stripe for {venue}. |
+| `legal_links` | Pay screen, law checklist (links) | Данни за заведението · Поверителност | About the venue · Privacy |
+| `below_minimum` | Pay greyed | Плащането с карта е от {min}. Добавете артикул или попитайте сервитьора. | Card payments start at {min}. Add an item or ask your waiter. |
+| `not_up_to_date` | Pay greyed | В момента не можем да прочетем сметката. Опитваме отново. | We can't read the bill right now. We keep trying. |
+| `cards_paused` | Pay greyed; ended: paying_paused | Плащането с карта е спряно в момента. Попитайте сервитьора. | Card payments are paused right now. Ask your waiter. |
+| `ordering_paused` | Banner; Send and Pay greyed | Поръчването е спряно в момента. Моля, поръчайте от сервитьор. | Ordering is paused right now. Please order from a waiter. |
+| `nothing_picked` | Pay greyed | Изберете поне един ред. | Choose at least one line. |
+| `paying_not_offered` | Refusal | За да платите, попитайте сервитьора. | Ask your waiter to pay. |
+| `being_paid_refused` | Refusal: ticking a greyed line | Някой вече плаща този ред. | Someone is already paying for this line. |
+| `bill_changed` | Refusal | Сметката ви се промени, откакто я отворихте. | Your bill changed since you opened it. |
+| `menu_changed` | Refusal at Send / pay-first | Менюто се промени, проверете поръчката си. | The menu changed, check your order. |
+| `ask_waiter_to_split` | Refusal / ended | Помолете сервитьора да раздели сметката. | Ask your waiter to split this bill. |
+| `too_late` | Refusal: cancel after the hold | Вече е късно за отказ: плащането се обработва. | Too late to cancel: the payment is being processed. |
+| `rate_limited` | Refusal | Твърде много опити. Изчакайте малко и опитайте отново. | Too many tries. Wait a moment and try again. |
+| `turnstile` | Refusal | Не успяхме да проверим заявката. Опитайте отново. | We couldn't check this request. Try again. |
+| `unknown_payment` | Refusal | Не намираме това плащане. Попитайте сервитьора. | We can't find this payment. Ask your waiter. |
+| `weak` | Banner | Слаба връзка. Още нищо ново не е изпратено, опитваме отново. | Weak connection. Nothing new was sent yet, we keep trying. |
+| `same_q` | Friendly check | Същата сума като преди {n} мин. Да платите ли отново? | Same amount as {n} minutes ago. Pay again? |
+| `same_yes` | Friendly check | Да, плати | Yes, pay |
+| `same_no` | Friendly check | Назад | Back |
+| `preparing` | Paying | Подготвяме сметката ви… | Preparing your bill… |
+| `pay_later` | Paying (before the card) | Плати по-късно | Pay later |
+| `declined` | Inside Stripe's form (Stripe's own text) | Картата е отказана. Опитайте с друга карта. | Your card was declined. Try another card. |
+| `waiting` | Paying: one waiting state | Обработваме плащането… | Processing your payment… |
+| `paid` | Paid | Платено | Paid |
+| `paid_ref_label` | Paid | Номер на плащането | Payment number |
+| `paid_receipt` | Paid | Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка. | Show this number to your waiter. Your waiter brings your receipt. |
+| `confirm_title` | Paid (button) and the confirmation page | Потвърждение за плащане | Payment confirmation |
+| `paid_by_card` | Confirmation page | Платено с карта | Paid by card |
+| `confirm_not_receipt` | Confirmation page | Това не е касова бележка. Касовата бележка за плащането ви носи сервитьорът. | This is not your receipt. Your waiter brings the venue's receipt. |
+| `confirm_save` | Confirmation page | Запази | Save |
+| `receipt_email` | Pay screen, only where the POS can issue an electronic receipt | Касова бележка по имейл (по желание) | Receipt by email (optional) |
+| `paid_receipt_emailed` | Paid, when an email was given (replaces `paid_receipt`'s second sentence) | Касовата бележка е изпратена на {email}. | Your receipt was sent to {email}. |
+| `confirm_receipt_emailed` | Confirmation page, when an email was given (replaces `confirm_not_receipt`'s second sentence) | Касовата бележка е изпратена на {email}. | Your receipt was sent to {email}. |
+| `back_to_bill` | Buttons | Към сметката | Back to the bill |
+| `checking_title` | Can't tell / stranded / capture failed | Заведението проверява плащането | The venue is checking the payment |
+| `checking_body` | Can't tell / stranded / capture failed | Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор. | You don't need to do anything. If you have a question, call a waiter. |
+| `r_busy` | Ended: busy | Плащането в приложението е заето. Опитайте след минута или повикайте сервитьор. | Paying in the app is busy, try again in a minute or call a waiter. |
+| `r_paying_paused` | Ended: paying_paused | Плащането с карта е спряно в момента. Картата ви не е таксувана. Попитайте сервитьора. | Card payments are paused right now. Nothing was charged. Ask your waiter. |
+| `r_check_failed` | Ended: check_failed / bill_changed | Сметката се промени точно преди плащането. Картата ви не е таксувана. Проверете сметката и опитайте отново. | Your bill changed just before paying. Nothing was charged. Check the bill and try again. |
+| `r_isolate_refused` | Ended: isolate_refused | Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора. | We couldn't prepare this payment. Nothing was charged. Ask your waiter. |
+| `r_no_receipt` | Ended: manager said "No receipt" | Плащането не беше завършено. Картата ви не е таксувана. Ако банката е запазила сума, тя ще бъде освободена. | The payment wasn't completed. Nothing was charged. Any amount your bank reserved will be released. |
+| `r_expired_session` | Ended: time ran out | Времето изтече. Картата ви не е таксувана. | Your time ran out. Nothing was charged. |
+| `pay_again` | Buttons | Плати отново | Pay again |
+| `sitting_ended` | Sitting ended | Посещението ви на тази маса приключи. Ако сте още тук, сканирайте кода отново. | Your visit at this table has ended. If you're still here, scan the code again. |
+| `location_title` | No location pass | Сметката се вижда само на масата | The bill shows only at the table |
+| `location_body` | No location pass | Разрешете местоположение, за да знаем, че сте на масата. Иначе сервитьорът ще ви каже сумата. | Allow location so we know you're at the table. Otherwise your waiter tells you the total. |
+| `allow_location` | No location pass | Разреши местоположение | Allow location |
+| `order_title` | Order | Вашата поръчка | Your order |
+| `on_bill` | Order: line kind | към сметката | onto the bill |
+| `not_until_paid` | Order: pay-first line | Не е поръчано, докато не се плати | Not ordered until paid |
+| `send` | Order | Изпрати | Send |
+| `send_and_pay` | Order: with pay-first lines | Изпрати и плати {x} | Send and pay {x} |
+| `order_from_waiter` | Order: pay-first not offered | Поръчайте това от сервитьора | Order this from your waiter |
+| `order_empty` | Order | Поръчката е празна | Your order is empty |
+| `call_btn` | Call a waiter | Повикай сервитьор | Call a waiter |
+| `call_sheet` | Call a waiter: options | Какво ви трябва? | What do you need? |
+| `k_waiter` | Call option | Повикай сервитьора | Call the waiter |
+| `k_bill` | Call option | Донесете сметката | Bring the bill |
+| `k_ice` | Call option | Лед | Ice |
+| `k_water` | Call option | Вода | Water |
+| `k_glasses` | Call option | Чаши | Glasses |
+| `k_clean_table` | Call option | Почистете масата | Clean the table |
+| `k_terminal` | Call option | ПОС терминал | Card terminal |
+| `call_sent` | Call a waiter: sent | Сервитьорът е повикан | Waiter called |
+| `call_more` | Call a waiter: sent | Още нещо | Something else |
+| `call_done` | Call a waiter: handled | Повикването е прието. | Your call was handled. |
+| `call_rejected` | Call a waiter: nobody answered | Никой не отговори. Моля, попитайте сервитьор. | Nobody answered. Please ask a waiter. |
+| `no_calls` | Staff screen takes no calls | Моля, поръчайте от сервитьора | Please order from your waiter |
+| `cancel` | Call sheet | Затвори | Close |
+
 
 ## Later
 
