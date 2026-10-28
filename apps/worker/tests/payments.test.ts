@@ -152,6 +152,11 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     )
     if (table === undefined) throw new Error('no table 1')
     tableId = table.id
+    // Paying is on only with a payment table in every bar (D125 2.3): one for each of the two.
+    await query(
+      `update restro.tables set is_payment_table = true where venue_id = $1 and number in ('PM1', 'PU1')`,
+      [demo.venueId],
+    )
     // Paying is never located; the bill a phone reads here is not hidden behind the check either.
     await query(
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
@@ -163,8 +168,8 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     accountRef = account.provider
     await query(
       `insert into restro.payment_accounts
-         (tenant_id, venue_id, provider_kind, account_ref, state, connected_at, source, actor, job_id)
-       values ($1, $2, $3, $4, 'connected', now(), 'restro', 'system', 'test-seed')`,
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, $3, $4, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
       [tenantId, demo.venueId, SIM_PAY_KIND, accountRef],
     )
   })

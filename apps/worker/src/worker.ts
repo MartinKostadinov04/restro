@@ -30,12 +30,14 @@ import { createTelegramApi } from './alerts/telegram-link-api'
 import { type Poller, startTelegramPoller } from './alerts/telegram-poller'
 import type { WorkerConfig } from './config'
 import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
+import { paymentProviders } from './connectors'
 import { WorkerStatus } from './health'
 import { type HealthServer, startHealthServer } from './health-server'
 import { buildJobs } from './jobs'
 import type { JobDefinition, WorkerContext } from './jobs/types'
 import { WORKER_HEARTBEAT_JOB } from './jobs/worker-heartbeat'
 import type { Logger } from './logger'
+import { createConnectionApi } from './payments/connection-api'
 import { registerJobs } from './registry'
 import { reveal } from './reveal'
 import { WORKER_VERSION } from './version'
@@ -166,6 +168,18 @@ export async function startWorker(
       })
     } else if (config.revealToken !== null) {
       log.warn('REVEAL_SERVICE_TOKEN is set without the seal keys: the reveal endpoint is off')
+    }
+    // The owner's "Connect payments" (#109): the web app asks here for the provider's hosted onboarding
+    // link and for the account to be read back, over the private network, with the reveal token as
+    // a bearer. The provider's keys never leave this process.
+    const providers = paymentProviders()
+    if (config.revealToken !== null && providers.size > 0) {
+      const api = createConnectionApi({ pool, log, providers })
+      health.setConnectionHandler({
+        token: config.revealToken,
+        handle: api,
+        failed: (error) => log.error({ err: error }, 'a payment connection request failed'),
+      })
     }
     // "Done" from the venue's Telegram group (#83): long polling, so no public endpoint.
     const telegramToken = config.alerts?.telegramToken ?? null

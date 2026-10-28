@@ -83,6 +83,8 @@ interface Strings {
   readonly paymentStrandedBody: (source: string) => string
   readonly paymentCaptureFailed: (venue: string, table: string) => string
   readonly paymentCaptureFailedBody: (source: string) => string
+  readonly paymentAccountLost: (venue: string) => string
+  readonly paymentAccountLostBody: (reason: 'access_removed' | 'account_restricted') => string
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
@@ -123,6 +125,11 @@ const EN: Strings = {
     `${venue}: a closed bill’s card payment couldn’t be taken (${table})`,
   paymentCaptureFailedBody: (source) =>
     `The bill is closed in ${source}, but the card was not charged.`,
+  paymentAccountLost: (venue) => `${venue}: card payments are paused`,
+  paymentAccountLostBody: (reason) =>
+    reason === 'access_removed'
+      ? 'Restro lost access to the venue’s payment account. Open Settings, Paying, and choose Reconnect.'
+      : 'The payment account can’t take card payments now. Open Settings, Paying, to see what is missing and choose Reconnect.',
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
@@ -169,6 +176,11 @@ const BG: Strings = {
     `${venue}: плащане с карта по приключена сметка не можа да бъде взето (${table})`,
   paymentCaptureFailedBody: (source) =>
     `Сметката е приключена в ${source}, но картата не е таксувана.`,
+  paymentAccountLost: (venue) => `${venue}: плащанията с карта са спрени`,
+  paymentAccountLostBody: (reason) =>
+    reason === 'access_removed'
+      ? 'Restro загуби достъп до платежната сметка на обекта. Отворете Настройки, Плащане, и изберете Свържи отново.'
+      : 'Платежната сметка не може да приема плащания с карта. Отворете Настройки, Плащане, за да видите какво липсва, и изберете Свържи отново.',
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
@@ -265,6 +277,13 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
       return {
         title: words.paymentCaptureFailed(venueName, table),
         body: words.paymentCaptureFailedBody(source),
+      }
+    case 'payment_account_lost':
+      return {
+        title: words.paymentAccountLost(venueName),
+        body: words.paymentAccountLostBody(
+          alert.details.reason === 'account_restricted' ? 'account_restricted' : 'access_removed',
+        ),
       }
     default:
       return { title: `${venueName}: ${alert.kind}`, body: '' }

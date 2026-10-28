@@ -151,17 +151,34 @@ describe('connectionStatus', () => {
     })
     expect(connectionStatus(account('active', []))).toEqual({
       ok: true,
-      value: { canTakePayments: true, missing: [] },
+      value: { canTakePayments: true, displayName: null, missing: [] },
     })
     expect(
       connectionStatus(account('restricted', ['business_type', 'business_type', 'tos_acceptance'])),
     ).toEqual({
       ok: true,
-      value: { canTakePayments: false, missing: ['business_type', 'tos_acceptance'] },
+      value: {
+        canTakePayments: false,
+        displayName: null,
+        missing: ['business_type', 'tos_acceptance'],
+      },
     })
     expect(connectionStatus({ id: 'acct_1' })).toEqual({
       ok: true,
-      value: { canTakePayments: false, missing: [] },
+      value: { canTakePayments: false, displayName: null, missing: [] },
+    })
+  })
+
+  it('takes the account’s display name, trimmed, and null where it has none or a blank one (#109)', () => {
+    const named = (display_name: string | null | undefined) =>
+      connectionStatus({ id: 'acct_1', display_name })
+    expect(named('  Club Nova  ')).toMatchObject({ ok: true, value: { displayName: 'Club Nova' } })
+    for (const none of [null, undefined, '', '   ']) {
+      expect(named(none), String(none)).toMatchObject({ ok: true, value: { displayName: null } })
+    }
+    expect(named('x'.repeat(300))).toMatchObject({
+      ok: true,
+      value: { displayName: 'x'.repeat(200) },
     })
   })
 })

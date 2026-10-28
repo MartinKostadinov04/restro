@@ -22,6 +22,8 @@ export interface SimPayEvent {
     | 'refund.made'
     | 'dispute.opened'
     | 'dispute.closed'
+    | 'account.updated'
+    | 'account.access_revoked'
   /** The venue's account the object belongs to. */
   readonly account: string
   /** The payment, the refund or the dispute. */
@@ -41,6 +43,8 @@ export function simPayNoticeKind(type: string): ProviderNoticeKind {
   if (type === 'payment.held' || type === 'payment.failed') return 'payment'
   if (type === 'refund.made') return 'refund'
   if (type === 'dispute.opened' || type === 'dispute.closed') return 'dispute'
+  if (type === 'account.updated') return 'account'
+  if (type === 'account.access_revoked') return 'access_lost'
   return 'other'
 }
 

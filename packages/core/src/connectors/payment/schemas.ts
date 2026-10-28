@@ -206,10 +206,19 @@ export type ProviderPayment = z.output<typeof ProviderPaymentSchema>
  * What a provider's notice is about, in the platform's words: the provider's web part maps its own
  * event types to these, so no provider event name picks platform behaviour. `payment` is a change
  * to a payment's hold (the guest paid, declined or the bank asked): the worker checks that
- * payment (#110). `other` has no handler: the worker marks it handled and does nothing. The same
+ * payment (#110). `account` is a change to a venue's account (the worker re-reads the connection),
+ * `access_lost` the venue taking Restro's access away (#109). `other` has no handler: the worker
+ * marks it handled and does nothing. The same
  * words as `provider_notices.kind` (`PROVIDER_NOTICE_KINDS` in `@restro/db`).
  */
-export const PROVIDER_NOTICE_KINDS = ['payment', 'refund', 'dispute', 'other'] as const
+export const PROVIDER_NOTICE_KINDS = [
+  'payment',
+  'refund',
+  'dispute',
+  'account',
+  'access_lost',
+  'other',
+] as const
 export type ProviderNoticeKind = (typeof PROVIDER_NOTICE_KINDS)[number]
 
 /**
@@ -272,6 +281,11 @@ export type StartConnectionResult = z.output<typeof StartConnectionResultSchema>
 /** Whether the account can take card payments now, and what the provider still asks for. */
 export const ConnectionStatusSchema = z.strictObject({
   canTakePayments: z.boolean(),
+  /**
+   * The account's own name as the provider shows it, for "Connected" in the settings (D125 2.1);
+   * null when the provider has none, and the screen falls back.
+   */
+  displayName: z.string().min(1).max(200).nullable(),
   /** The provider's own names of what is missing, for the settings screen; empty when none. */
   missing: z.array(z.string().min(1).max(200)).max(100),
 })
