@@ -145,6 +145,10 @@ export class PaymentBreakers {
         return null
       }
       const now = env.now().getTime()
+      // A probe counts only when one was due (R7, #166): a recovery tick that overruns can overlap
+      // the next, and its second probe of the same moment must not add to the good ones in a row
+      // (D120 lifts on 3).
+      if (event.kind === 'probe' && !probeDue(before, now)) return before
       const stepped = stepBreaker(before, event, now, this.#random)
       const after = stepped.state
       try {

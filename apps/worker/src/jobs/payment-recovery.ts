@@ -12,6 +12,8 @@
 // - queues `payment-check` for a payment at the card form nobody looked at for a minute, and for a
 //   hold past its capture deadline while it waits for a table or a manager's answer (it settles
 //   `released`, reason `expired`, when the provider shows the hold gone);
+// - reads the payment table of a final payment whose lines are still on it 5 minutes later, not at
+//   once (#166), so a table that stays busy spends the POS's call budget only every 5 minutes;
 // - reads a cancelled payment whose release the provider refused back every 10 minutes, never
 //   releasing it again;
 // - names a payment table held by a payment that no longer owns it (it has no deadline): logged
@@ -22,7 +24,11 @@
 // row is checked inside the instance's turn), so a second worker is not started beside it.
 
 import { JOB_NAMES, prepareJob, providerRef } from '@restro/core'
-import { applyService, PAYMENT_UNCONFIRMED_REASONS } from '@restro/core/service'
+import {
+  applyService,
+  isFinalPaymentState,
+  PAYMENT_UNCONFIRMED_REASONS,
+} from '@restro/core/service'
 import {
   authOrganization,
   type DbPool,
@@ -45,6 +51,11 @@ export const PAYMENT_STALE_MS = 60_000
 export const PAYMENT_STUCK_MS = 10 * 60_000
 /** How often a hold whose release the provider refused is read back. */
 export const RELEASE_READ_BACK_SECONDS = 10 * 60
+/**
+ * How long a final payment's table is left before its payment table is read again (#166): each
+ * read spends the POS's call budget, and nothing about the lines is urgent.
+ */
+export const FINAL_TABLE_READ_SECONDS = 5 * 60
 /** The gap between the two passes of one tick. */
 export const RECOVERY_EVERY_MS = 30_000
 
@@ -69,7 +80,7 @@ export interface RecoveryRow {
 }
 
 /** What a pass does about a payment. */
-export type RecoveryAction = 'prepare' | 'read_back_later' | 'check' | 'stuck'
+export type RecoveryAction = 'prepare' | 'read_back_later' | 'free_later' | 'check' | 'stuck'
 
 /** What a pass does about one payment (pure: the clock tests drive it). */
 export function recoveryActions(row: RecoveryRow): readonly RecoveryAction[] {
@@ -82,6 +93,15 @@ export function recoveryActions(row: RecoveryRow): readonly RecoveryAction[] {
   if (asking) return row.captureDue ? ['check'] : []
   if (waiting && row.captureDue) return ['check']
   if (!hasNextStep(row) || row.idleMs < PAYMENT_STALE_MS) return []
+  // A final payment whose lines are still on its payment table: that table is read again
+  // minutes later, not on every pass (#166).
+  if (
+    row.state !== 'unconfirmed' &&
+    isFinalPaymentState(row.state) &&
+    row.paymentTableId !== null
+  ) {
+    return ['free_later']
+  }
   return STUCK_STATES.includes(row.state) && row.changedMs >= PAYMENT_STUCK_MS
     ? ['prepare', 'stuck']
     : ['prepare']
@@ -104,6 +124,9 @@ export interface RecoverySummary {
   readonly probed: number
 }
 
+/** What a failure says about itself without its message, which can quote a row. */
+const errorKind = (error: unknown) => (error instanceof Error ? error.name : 'unknown')
+
 const ms = (value: string | null) => Number(value ?? 0)
 
 /** One pass over every organisation's open payments. A payment that fails is logged and skipped. */
@@ -120,127 +143,140 @@ export async function recoverPayments(
   let orphanTables = 0
   let probed = 0
   for (const { id: tenantId } of organisations) {
-    const rows = await withTenant(env.pool, tenantId, (tx) =>
-      tx
-        .select({
-          id: payments.id,
-          venueId: payments.venueId,
-          kind: payments.kind,
-          state: payments.state,
-          reason: payments.reason,
-          paymentTableId: payments.paymentTableId,
-          idleMs: sql<string>`(extract(epoch from now() - greatest(${payments.updatedAt},
+    try {
+      const rows = await withTenant(env.pool, tenantId, (tx) =>
+        tx
+          .select({
+            id: payments.id,
+            venueId: payments.venueId,
+            kind: payments.kind,
+            state: payments.state,
+            reason: payments.reason,
+            paymentTableId: payments.paymentTableId,
+            idleMs: sql<string>`(extract(epoch from now() - greatest(${payments.updatedAt},
             (select max(s.at) from restro.payment_steps s where s.payment_id = ${payments.id})))
             * 1000)::text`,
-          changedMs: sql<string>`(extract(epoch from now() - ${payments.updatedAt}) * 1000)::text`,
-          captureDue: sql<boolean>`coalesce(${payments.captureBefore} <= now(), false)`,
-          releaseRefused: sql<boolean>`coalesce((select s.outcome = 'refused'
+            changedMs: sql<string>`(extract(epoch from now() - ${payments.updatedAt}) * 1000)::text`,
+            captureDue: sql<boolean>`coalesce(${payments.captureBefore} <= now(), false)`,
+            releaseRefused: sql<boolean>`coalesce((select s.outcome = 'refused'
               and s.answer is distinct from 'not_found'
             from restro.payment_steps s
             where s.payment_id = ${payments.id} and s.step = 'release'
             order by s.seq desc limit 1), false)`,
-        })
-        .from(payments)
-        .where(
-          or(
-            isNull(payments.settledAt),
-            eq(payments.state, 'unconfirmed'),
-            isNotNull(payments.paymentTableId),
-          ),
-        )
-        .orderBy(payments.id),
-    )
-    for (const row of rows) {
-      const target = { tenantId, venueId: row.venueId, paymentId: row.id } as const
-      try {
-        const actions = recoveryActions({
-          kind: row.kind,
-          state: row.state,
-          reason: row.reason,
-          paymentTableId: row.paymentTableId,
-          idleMs: ms(row.idleMs),
-          changedMs: ms(row.changedMs),
-          captureDue: row.captureDue === true,
-          releaseRefused: row.releaseRefused === true,
-        })
-        for (const action of actions) {
-          if (action === 'check') {
-            await send(env, JOB_NAMES.paymentCheck, target, 0)
-            checked += 1
-          } else if (action === 'stuck') {
-            const { result } = await applyService(
-              env.pool,
-              { type: 'payment.stuck', paymentId: row.id },
-              {
-                tenantId,
-                venueId: row.venueId,
-                origin: 'worker',
-                actor: { kind: 'system' },
-                jobId: `payment-recovery-${row.id}`,
-              },
-            )
-            if (result.status === 'accepted' && result.details.changed === true) stuck += 1
-          } else {
-            await send(
-              env,
-              JOB_NAMES.paymentPrepare,
-              target,
-              action === 'read_back_later' ? RELEASE_READ_BACK_SECONDS : 0,
-            )
-            prepared += 1
-          }
-        }
-      } catch (error) {
-        env.log.warn({ paymentId: row.id, err: error }, 'a payment could not be recovered')
-      }
-    }
-
-    // A payment table's lease has no deadline: one held by a payment that no longer owns it is
-    // found through its holder and that payment's state, and reported.
-    const orphans = await withTenant(env.pool, tenantId, (tx) =>
-      tx
-        .select({ key: locks.key, holder: locks.holder, owns: payments.paymentTableId })
-        .from(locks)
-        .leftJoin(payments, eq(payments.id, locks.holder))
-        .where(and(eq(locks.scope, 'payment_table'), like(locks.holder, 'py\\_%'))),
-    )
-    for (const lease of orphans) {
-      if (lease.owns === lease.key) continue
-      orphanTables += 1
-      env.log.error(
-        { paymentTableId: lease.key, paymentId: lease.holder },
-        'a payment table is held by a payment that does not own it',
+          })
+          .from(payments)
+          .where(
+            or(
+              isNull(payments.settledAt),
+              eq(payments.state, 'unconfirmed'),
+              isNotNull(payments.paymentTableId),
+            ),
+          )
+          .orderBy(payments.id),
       )
-    }
-
-    // The paused providers' probes.
-    const accounts = await withTenant(env.pool, tenantId, (tx) =>
-      tx
-        .select({
-          venueId: paymentAccounts.venueId,
-          providerKind: paymentAccounts.providerKind,
-          accountRef: paymentAccounts.accountRef,
-        })
-        .from(paymentAccounts)
-        .where(
-          and(
-            isNotNull(paymentAccounts.accountRef),
-            or(isNotNull(paymentAccounts.payingPausedAt), isNotNull(paymentAccounts.breaker)),
-          ),
-        ),
-    )
-    for (const account of accounts) {
-      const provider = deps.providers.get(account.providerKind)
-      if (provider === undefined || account.accountRef === null) continue
-      try {
-        const breakers = deps.breakers ?? SHARED_PAYMENT_BREAKERS
-        const ref = { tenantId, venueId: account.venueId }
-        if (await breakers.probeIfDue(env, ref, provider, providerRef(account.accountRef))) {
-          probed += 1
+      for (const row of rows) {
+        const target = { tenantId, venueId: row.venueId, paymentId: row.id } as const
+        try {
+          const actions = recoveryActions({
+            kind: row.kind,
+            state: row.state,
+            reason: row.reason,
+            paymentTableId: row.paymentTableId,
+            idleMs: ms(row.idleMs),
+            changedMs: ms(row.changedMs),
+            captureDue: row.captureDue === true,
+            releaseRefused: row.releaseRefused === true,
+          })
+          for (const action of actions) {
+            if (action === 'check') {
+              await send(env, JOB_NAMES.paymentCheck, target, 0)
+              checked += 1
+            } else if (action === 'stuck') {
+              const { result } = await applyService(
+                env.pool,
+                { type: 'payment.stuck', paymentId: row.id },
+                {
+                  tenantId,
+                  venueId: row.venueId,
+                  origin: 'worker',
+                  actor: { kind: 'system' },
+                  jobId: `payment-recovery-${row.id}`,
+                },
+              )
+              if (result.status === 'accepted' && result.details.changed === true) stuck += 1
+            } else {
+              await send(
+                env,
+                JOB_NAMES.paymentPrepare,
+                target,
+                action === 'read_back_later'
+                  ? RELEASE_READ_BACK_SECONDS
+                  : action === 'free_later'
+                    ? FINAL_TABLE_READ_SECONDS
+                    : 0,
+              )
+              prepared += 1
+            }
+          }
+        } catch (error) {
+          env.log.warn({ paymentId: row.id, err: error }, 'a payment could not be recovered')
         }
-      } catch (error) {
-        env.log.warn({ venueId: account.venueId, err: error }, 'the paying probe failed')
       }
+
+      // A payment table's lease has no deadline: one held by a payment that no longer owns it is
+      // found through its holder and that payment's state, and reported.
+      const orphans = await withTenant(env.pool, tenantId, (tx) =>
+        tx
+          .select({ key: locks.key, holder: locks.holder, owns: payments.paymentTableId })
+          .from(locks)
+          .leftJoin(payments, eq(payments.id, locks.holder))
+          .where(and(eq(locks.scope, 'payment_table'), like(locks.holder, 'py\\_%'))),
+      )
+      for (const lease of orphans) {
+        if (lease.owns === lease.key) continue
+        orphanTables += 1
+        env.log.error(
+          { paymentTableId: lease.key, paymentId: lease.holder },
+          'a payment table is held by a payment that does not own it',
+        )
+      }
+
+      // The paused providers' probes.
+      const accounts = await withTenant(env.pool, tenantId, (tx) =>
+        tx
+          .select({
+            venueId: paymentAccounts.venueId,
+            providerKind: paymentAccounts.providerKind,
+            accountRef: paymentAccounts.accountRef,
+          })
+          .from(paymentAccounts)
+          .where(
+            and(
+              isNotNull(paymentAccounts.accountRef),
+              or(isNotNull(paymentAccounts.payingPausedAt), isNotNull(paymentAccounts.breaker)),
+            ),
+          ),
+      )
+      for (const account of accounts) {
+        const provider = deps.providers.get(account.providerKind)
+        if (provider === undefined || account.accountRef === null) continue
+        try {
+          const breakers = deps.breakers ?? SHARED_PAYMENT_BREAKERS
+          const ref = { tenantId, venueId: account.venueId }
+          if (await breakers.probeIfDue(env, ref, provider, providerRef(account.accountRef))) {
+            probed += 1
+          }
+        } catch (error) {
+          env.log.warn({ venueId: account.venueId, err: error }, 'the paying probe failed')
+        }
+      }
+    } catch (error) {
+      // One organisation's failed query never stops the run for the ones after it (#166). Only the
+      // organisation's id and the kind of failure are logged: no row, no personal data.
+      env.log.warn(
+        { tenantId, err: errorKind(error) },
+        'the payment recovery of an organisation failed',
+      )
     }
   }
   return { prepared, checked, stuck, orphanTables, probed }

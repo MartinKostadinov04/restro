@@ -52,7 +52,9 @@ describe('table access list', () => {
       const purge: readonly string[] = table.purge ?? []
       expect(purge.includes('UPDATE'), `${name}: the purge role never updates`).toBe(false)
       if (purge.includes('DELETE')) {
-        expect(table.tenancy, `${name}: the purge role deletes tenant data only`).toBe('tenant')
+        // The one platform-level table it erases: the provider's notices, 18 months on (#166).
+        const expected = name === 'provider_notices' ? 'system' : 'tenant'
+        expect(table.tenancy, `${name}: the purge role deletes tenant data only`).toBe(expected)
       }
       if (purge.includes('INSERT')) {
         expect(

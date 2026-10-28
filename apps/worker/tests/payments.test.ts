@@ -701,6 +701,39 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
       }
     })
 
+    it('does not count a probe that is not due: an overlapping tick cannot lift on two (D120, #166)', async () => {
+      const breakers = new PaymentBreakers(() => 0.5)
+      const ref = { tenantId, venueId: demo.venueId }
+      const probeEnv = { pool, log, now: () => clock }
+      try {
+        await breakers.state(probeEnv, ref)
+        for (const gap of [0, 20, 20, 21]) {
+          seconds(gap)
+          await breakers.record(probeEnv, ref, { kind: 'call', ok: false })
+        }
+        expect(await pausedAt(demo.venueId)).toBe(true)
+        seconds(61)
+        const good = { kind: 'probe', outcome: 'good', cause: null } as const
+        const first = await breakers.record(probeEnv, ref, good)
+        expect(first?.open?.goodInRow).toBe(1)
+        // The same moment: the next tick's probe, started before the first was recorded.
+        const overlapping = await breakers.record(probeEnv, ref, good)
+        expect(overlapping?.open?.goodInRow).toBe(1)
+        // A probe recorded before the next one is due counts for nothing, however many come.
+        const again = await breakers.record(probeEnv, ref, good)
+        expect(again?.open?.goodInRow).toBe(1)
+        expect(await pausedAt(demo.venueId)).toBe(true)
+        // Once the next probe is due, a good one counts; the third good one lifts the pause.
+        seconds(20)
+        expect((await breakers.record(probeEnv, ref, good))?.open?.goodInRow).toBe(2)
+        seconds(20)
+        await breakers.record(probeEnv, ref, good)
+        expect(await pausedAt(demo.venueId)).toBe(false)
+      } finally {
+        await query('update restro.payment_accounts set paying_paused_at = null, breaker = null')
+      }
+    })
+
     it("tells Restro's team at the third pause in 30 minutes (D120)", async () => {
       const unstable = () =>
         query<{ audience: string }>(
