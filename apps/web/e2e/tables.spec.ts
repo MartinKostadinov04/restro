@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -13,7 +14,7 @@ import {
 import QRCode from 'qrcode'
 
 import { svgFromDataUri } from '../src/tables/svg-uri'
-import { runScript } from './global-setup'
+import { runScript, startScript } from './global-setup'
 import { addressOfVenue, type VenueAddress } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
 
@@ -132,12 +133,64 @@ interface WorkerJob {
   result: { status: string; written?: number; removed?: number }
 }
 
+/**
+ * `seed-tables-e2e.ts serve`, started once for the spec: loading the platform's code takes several
+ * seconds, and a test that waits for the worker three or six times (this one runs on a busy CI
+ * machine, one test at a time) spent most of its 30 s on starts, not on the worker.
+ */
+interface WorkerHelper {
+  /** Asks for the `worker` report and waits for it. */
+  ask: () => Promise<WorkerJob[]>
+  stop: () => void
+}
+
+function startWorkerHelper(): WorkerHelper {
+  const child = startScript('./scripts/seed-tables-e2e.ts', 'serve')
+  let stderr = ''
+  child.stderr.on('data', (chunk) => {
+    stderr += String(chunk)
+  })
+  // The helper answers in the order it was asked.
+  const waiting: { resolve: (jobs: WorkerJob[]) => void; reject: (error: Error) => void }[] = []
+  let jobs: WorkerJob[] = []
+  let ended = false
+  createInterface({ input: child.stdout }).on('line', (line) => {
+    if (!line.startsWith('{')) return
+    const message = JSON.parse(line) as { done?: boolean; error?: string; job?: string }
+    if (message.job !== undefined) jobs.push(message as unknown as WorkerJob)
+    if (message.error !== undefined) {
+      waiting.shift()?.reject(new Error(`the worker helper failed: ${message.error}`))
+      jobs = []
+    } else if (message.done === true) {
+      waiting.shift()?.resolve(jobs)
+      jobs = []
+    }
+  })
+  child.on('exit', () => {
+    ended = true
+    for (const request of waiting.splice(0)) {
+      request.reject(new Error(`the worker helper ended: ${stderr}`))
+    }
+  })
+  return {
+    ask: () =>
+      new Promise<WorkerJob[]>((resolve, reject) => {
+        if (ended) return reject(new Error(`the worker helper ended: ${stderr}`))
+        waiting.push({ resolve, reject })
+        child.stdin.write('worker\n')
+      }),
+    stop: () => {
+      child.stdin.end()
+    },
+  }
+}
+
+let workerHelper: WorkerHelper | undefined
+
 /** Runs the worker's job for what the tab queued; returns what each job was asked to do. */
-function runWorker(): WorkerJob[] {
-  return runScript('./scripts/seed-tables-e2e.ts', 'worker')
-    .split('\n')
-    .filter((line) => line.startsWith('{') && line.includes('"job"'))
-    .map((line) => JSON.parse(line) as WorkerJob)
+async function runWorker(): Promise<WorkerJob[]> {
+  if (workerHelper === undefined) throw new Error('the worker helper is not started')
+  return workerHelper.ask()
 }
 
 /** What the published file of a code says. */
@@ -160,6 +213,7 @@ async function guestPhone(browserContext: BrowserContext): Promise<Page> {
 
 test.beforeAll(async ({ browser }) => {
   runScript('./scripts/seed-tables-e2e.ts', 'seed')
+  workerHelper = startWorkerHelper()
   venue = await addressOfVenue({ slug: GUEST_SLUG })
   context = await browser.newContext({ viewport: { width: 1280, height: 1100 }, locale: 'bg-BG' })
   page = await context.newPage()
@@ -186,6 +240,7 @@ test.beforeAll(async ({ browser }) => {
 })
 
 test.afterAll(async () => {
+  workerHelper?.stop()
   // The second menu belongs to this spec only: the other specs see the demo venue with one menu.
   runScript('./scripts/seed-tables-e2e.ts', 'second-menu-remove')
   await context.close()
@@ -271,7 +326,7 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
   const token = await tokenOf(rowOf('1'))
   // The web app only queues the job (it never writes the publish store); the real worker that runs
   // beside the e2e servers writes the files.
-  const jobs = runWorker()
+  const jobs = await runWorker()
   // The real worker may take quick edits as one job or several: check what the last one left.
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.at(-1)?.result.status).toBe('done')
@@ -308,7 +363,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   await expect(input).toHaveValue('Тераса Е5')
   const token = await tokenOf(row)
 
-  const jobs = runWorker()
+  const jobs = await runWorker()
   expect(jobs.length).toBeGreaterThanOrEqual(1)
   expect(jobs.every((job) => job.retired.length === 0)).toBe(true)
   const file = await page.request.get(`/cdn/t/${hashOf(token)}.json`)
@@ -328,7 +383,7 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
   // An empty name goes back to the till's number.
   await input.fill('')
   await act(() => input.press('Enter'))
-  runWorker()
+  await runWorker()
   expect(await (await page.request.get(`/cdn/t/${hashOf(token)}.json`)).json()).toMatchObject({
     table_label: '5',
   })
@@ -363,7 +418,7 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     // A table is hidden: its card says so, its picture goes, and the job takes its file away.
     const six = rowOf('6')
     const token = await tokenOf(six)
-    runWorker()
+    await runWorker()
     expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(302)
     await menuAction(six, 'table-menu', 'toggle-hidden')
     await toast('Масата е скрита. Кодът ѝ е спрян.')
@@ -371,7 +426,7 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     await expect(six.getByTestId('code-status')).toHaveText('Кодът е спрян')
     await expect(six.getByTestId('qr-thumb')).toHaveCount(0)
     await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
-    const hiding = runWorker().find((job) => job.retired.includes(hashOf(token)))
+    const hiding = (await runWorker()).find((job) => job.retired.includes(hashOf(token)))
     expect(hiding?.retired).toEqual([hashOf(token)])
     expect(hiding?.result.removed).toBe(1)
     expect((await page.request.get(`/cdn/t/${hashOf(token)}.json`)).status()).toBe(404)
@@ -388,7 +443,7 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     await toast('Масата е показана.')
     await expect(six.getByTestId('code-status')).toHaveText('Кодът е активен')
     await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
-    runWorker()
+    await runWorker()
     expect(await tokenOf(six)).toBe(token)
     expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(302)
     expect(await fileOf(token)).toMatchObject({ table_label: '6' })
@@ -426,7 +481,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   const one = rowOf('1')
   const hall = areaOfRow(three)
   const tokens = { one: await tokenOf(one), three: await tokenOf(three) }
-  runWorker()
+  await runWorker()
   const live = (await fileOf(tokens.three)).menu_id
   expect(live).toMatch(/^nd_/)
   expect(live).not.toBe(late)
@@ -445,7 +500,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   await toast('Менюто е записано.')
   await expect(three.getByTestId('menu-overrides')).toHaveText('Заменя')
   await expect(three.getByTestId('route-select')).toContainText('Late night')
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.three)).menu_id).toBe(late)
   expect((await fileOf(tokens.one)).menu_id).toBe(live)
   await page.screenshot({ path: shot('menu-route-table-bg') })
@@ -454,13 +509,13 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   await hall.getByTestId('route-select').first().click()
   await act(() => page.getByRole('option', { name: 'Late night' }).click())
   await expect(hall.getByTestId('menu-overrides').first()).toHaveText('Заменя')
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.one)).menu_id).toBe(late)
   expect((await fileOf(tokens.three)).menu_id).toBe(late)
   // The table's choice beats the area's: back to the venue's live menu for table 3 alone.
   await three.getByTestId('route-select').click()
   await act(() => page.getByRole('option', { name: /\(на живо\)$/ }).click())
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.three)).menu_id).toBe(live)
   expect((await fileOf(tokens.one)).menu_id).toBe(late)
   await page.screenshot({ path: shot('menu-route-area-bg') })
@@ -471,7 +526,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   await hall.getByTestId('route-select').first().click()
   await act(() => page.getByRole('option', { name: 'Като на заведението' }).click())
   await expect(page.getByTestId('menu-overrides')).toHaveCount(0)
-  runWorker()
+  await runWorker()
   expect((await fileOf(tokens.one)).menu_id).toBe(live)
   expect((await fileOf(tokens.three)).menu_id).toBe(live)
 })
@@ -479,7 +534,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
 test('"New code" asks first, and the old sticker then says the code is not active', async () => {
   const row = rowOf('2')
   const oldToken = await tokenOf(row)
-  runWorker()
+  await runWorker()
   expect((await page.request.get(`/t/${oldToken}`, { maxRedirects: 0 })).status()).toBe(302)
 
   await row.getByTestId('table-menu').click()
@@ -505,7 +560,7 @@ test('"New code" asks first, and the old sticker then says the code is not activ
   expect(newToken).toMatch(TOKEN)
 
   // The job the tab queued names the old token: the worker takes its file out.
-  const jobs = runWorker()
+  const jobs = await runWorker()
   const retiring = jobs.find((job) => job.retired.includes(hashOf(oldToken)))
   expect(retiring?.retired).toEqual([hashOf(oldToken)])
   expect(retiring?.result.removed).toBe(1)
@@ -540,7 +595,7 @@ test('the address card is read-only, and its test link is opened by the browser'
   await expect(link).toHaveAttribute('href', expected)
   await expect(link).toHaveAttribute('target', '_blank')
   await page.screenshot({ path: shot('address-card-bg') })
-  runWorker()
+  await runWorker()
   const [popup] = await Promise.all([context.waitForEvent('page'), link.click()])
   await popup.waitForURL(`**${GUEST_PATH}#t=${token}`)
   await popup.close()
@@ -670,7 +725,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await page.goto(tabUrl)
   const row = rowOf('6')
   const token = await tokenOf(row)
-  runWorker()
+  await runWorker()
   expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(302)
 
   await row.getByTestId('table-menu').click()
@@ -684,7 +739,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await expect(row.getByTestId('code-status')).toHaveText('Няма код')
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 6 с код')
 
-  const jobs = runWorker()
+  const jobs = await runWorker()
   expect(jobs.find((job) => job.retired.includes(hashOf(token)))?.retired).toEqual([hashOf(token)])
   expect((await page.request.get(`/t/${token}`, { maxRedirects: 0 })).status()).toBe(404)
 
@@ -692,7 +747,7 @@ test('"Turn off code" asks first, and the sticker then says the code is not acti
   await row.getByTestId('table-menu').click()
   await act(() => page.getByTestId('create-code').click())
   await expect(row.getByTestId('code-status')).toHaveText('Кодът е активен')
-  runWorker()
+  await runWorker()
   await expect.poll(() => tokenOf(row)).not.toBe(token)
   const again = await tokenOf(row)
   expect((await page.request.get(`/t/${again}`, { maxRedirects: 0 })).status()).toBe(302)
