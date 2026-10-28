@@ -66,7 +66,7 @@ Not sent yet: Martin sends them and records the date here or in the tracker. Whe
 - **6.** Does Zamboo support a "ЧАСТИЧНИ ПЛАЩАНИЯ" department under Н-18 чл. 26а for deposits and part payments? Does "Продажба кредит" close with "резерв 2"?
 - **7.** Can an outside system start a storno, full or partial, of a sale paid online? How does Zamboo document a refund to a card without cash in the drawer?
 - **9.** Does the myPOS partnership include online payments tied to Zamboo receipts?
-- **41.** How does a tip paid by card in the app go into Zamboo: as a line, as part of the card payment, or not at all? How does it show on the fiscal receipt and in the day's report? (Tips are in the pilot: Martin 10-21.)
+- **41.** How does a tip paid by card in the app go into Zamboo: as a line, as part of the card payment, or not at all? How does it show on the fiscal receipt and in the day's report? (Tips are in the pilot: Martin 10-21.) Can the tip be a programmed group-А article with a name and price, so it can be stornoed (Н-18 чл. 27, ал. 3; чл. 31, ал. 7)? *(Added 10-28.)*
 
 ## Dropped
 
