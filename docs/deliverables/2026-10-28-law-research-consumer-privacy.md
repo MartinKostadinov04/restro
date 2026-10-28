@@ -29,6 +29,8 @@ Made by: legal research agent (Opus), 10-28. For: the lead and Martin.
 | 21 | Paying first or a waiter as an equivalent alternative | Very probably yes. EDPB guidance accepts an equivalent service by the same controller, and the CJEU accepted one even for a fee. Here it costs nothing. | Medium-high | n |
 | 22 | Turnstile's signal reuse | Under the strictest regulator's test (the CNIL, 29.04.2026), yes: a CAPTCHA provider that reuses data for its own account needs consent, and Cloudflare says it does. No authority has ruled on Turnstile. | Medium | y, only if Turnstile stays as is |
 
+**Martin 10-29 on 22:** keep Turnstile, invisible only; ask Cloudflare whether the reuse can be switched off; the lawyer question waits until after the pilot (D119).
+
 **Net result:** 9 of the 10 questions need no lawyer. The texts, guidance and case law settle them, or the product already sidesteps the open point. One question stays open (22), and only if Restro keeps Turnstile in its current form.
 
 ## 1. Allergens on drinks
