@@ -420,6 +420,8 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
 })
 
 test('a menu chosen for an area or a table reaches the files of the codes after the job', async () => {
+  // Eight `runWorker()` calls, as in :337 above: it timed out at 30 s on a busy machine (#191).
+  test.setTimeout(120_000)
   const created = runScript('./scripts/seed-tables-e2e.ts', 'second-menu')
     .split('\n')
     .map((line) => (line.startsWith('{') ? (JSON.parse(line) as { menuId?: string }) : {}))
