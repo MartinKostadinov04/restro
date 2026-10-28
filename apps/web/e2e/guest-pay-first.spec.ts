@@ -93,7 +93,8 @@ test.afterAll(async () => {
   const still = harness.exitCode === null
   if (harness.exitCode === null) harness.kill()
   // TEMP diagnostic (#113): does the harness exit when its stdin closes?
-  if (still || took > 5_000) throw new Error(`TEMP: harness exit took ${took} ms, still running: ${still}`)
+  if (still || took > 5_000)
+    throw new Error(`TEMP: harness exit took ${took} ms, still running: ${still}`)
 })
 
 test('a pay-first item is paid at Send: entered on a payment table, then closed', async ({
