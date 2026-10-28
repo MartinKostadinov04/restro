@@ -4,10 +4,10 @@
 // (Martin 10-27), because the group may hold staff and staff don't see tips. A venue with no
 // Telegram group, or a worker with no bot token, sends nothing.
 //
-// Once per day: the service day's close writes its `service_days` row once and says so
-// (`changed`), and only that run sends. A send that fails is logged, not repeated: nothing records
-// that it went, so a later pass could not tell. (A `report_sent_at` column would let it retry; it
-// is a schema change and is asked for in the report of #86.)
+// Until it has gone (#179): `service-day-tick` sends each recent closed day's message and marks the
+// day (`service_days.report_sent_at`, through `service_day.report_sent`) when Telegram accepts it,
+// so a send that fails is tried again at the next tick. This file only sends one day's message and
+// answers whether one went; the marker and the retry are the tick's (`jobs/service-day.ts`).
 
 import { readOrderingSettings } from '@restro/core'
 import { alertLocale, nightMessage, readNightReport, tableLabel } from '@restro/core/service'
@@ -16,7 +16,7 @@ import type { DbPool } from '@restro/db'
 import type { Logger } from '../logger'
 import type { TelegramClient } from './telegram'
 
-/** One service day that was just closed. */
+/** One closed service day. */
 export interface ClosedDay {
   readonly tenantId: string
   readonly venueId: string

@@ -461,20 +461,6 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     expect((await dueServiceDays(pool, new Date())).filter((day) => day.venueId === v)).toEqual([])
   })
 
-  it('tells the end-of-night report of each day it closes, once (#86)', async () => {
-    const { venueId: v, tableId: t } = await venueWithTable('Report Bar')
-    await sitting(v, t, '2026-01-10', null)
-    const told: { venueId: string; serviceDate: string }[] = []
-    const onClosed = async (day: { venueId: string; serviceDate: string }) => {
-      if (day.venueId === v) told.push(day)
-    }
-    await closeServiceDays(pool, new Date(), quiet, onClosed)
-    expect(told).toEqual([expect.objectContaining({ venueId: v, serviceDate: '2026-01-10' })])
-    // A day already closed is not reported again.
-    await closeServiceDays(pool, new Date(), quiet, onClosed)
-    expect(told).toHaveLength(1)
-  })
-
   it('keeps the later days of a venue open while an earlier one is refused', async () => {
     const { venueId: v, tableId: t } = await venueWithTable('Waiting Bar')
     const first = await sitting(v, t, '2026-01-10', null)

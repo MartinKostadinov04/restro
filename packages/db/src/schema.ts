@@ -2267,6 +2267,12 @@ export const serviceDays = restro.table(
     /** Counts and minor-unit sums, checked with Zod in core. */
     totals: jsonb('totals').$type<Record<string, number>>().notNull().default({}),
     mismatches: integer('mismatches').notNull().default(0),
+    /**
+     * When Telegram accepted the day's end-of-night message (#179), set once by
+     * `service_day.report_sent`. Null: not sent yet, so the hourly tick tries again while the day
+     * is recent. Days closed before this column existed carry their `closed_at`.
+     */
+    reportSentAt: timestamp('report_sent_at', { withTimezone: true }),
     ...serviceProvenance(),
   },
   (t) => [
