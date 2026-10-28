@@ -41,6 +41,7 @@ import { createServiceDayJob, serviceDayTick } from './service-day'
 import { createPreOpeningJobs, serviceHoursTick } from './service-hours'
 import { createStockJobs } from './stock'
 import type { JobDefinition } from './types'
+import { createWalletDomainJob } from './wallet-domain'
 import { workerHeartbeat } from './worker-heartbeat'
 
 export const jobs: readonly JobDefinition[] = [
@@ -65,7 +66,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const publishJobs = createPublishJobs({ publishStore, assetStore })
   // The provider notices (#108) need no POS and no sealing key: every worker handles them.
   const providers = paymentProviders()
-  const noticeJobs = [createProviderNoticesJob({ providers })]
+  const noticeJobs = [createProviderNoticesJob({ providers }), createWalletDomainJob({ providers })]
   // The floor reading (#71) needs no credentials (the simulated POS has none) and no sealing keys,
   // so every worker runs it unless WORKER_POS_SYNC is off (it is a POS read); a `sim` instance is
   // refused in production inside it.

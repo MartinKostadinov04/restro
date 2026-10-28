@@ -100,11 +100,13 @@ export interface AccountVenue {
 /**
  * The venues of a provider's accounts, by account ref. A notice names only the account; the
  * accounts live in tenant tables under row-level security, so each tenant is read in turn, as the
- * floor tick does. A venue that was deleted still maps (its notices are refused there, and logged).
+ * floor tick does. A venue that was deleted still maps (its notices are refused there, and logged)
+ * unless `liveOnly` leaves archived venues out (a job that acts for the venue).
  */
 export async function paymentAccountVenues(
   pool: DbPool,
   providerKind: string,
+  options: { readonly liveOnly?: boolean } = {},
 ): Promise<Map<string, AccountVenue>> {
   const organisations = await withSystem(pool, (tx) =>
     tx.select({ id: authOrganization.id }).from(authOrganization),
@@ -120,6 +122,7 @@ export async function paymentAccountVenues(
           and(
             eq(paymentAccounts.providerKind, providerKind),
             isNotNull(paymentAccounts.accountRef),
+            options.liveOnly === true ? isNull(venues.archivedAt) : undefined,
           ),
         ),
     )
