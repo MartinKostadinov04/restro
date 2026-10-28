@@ -111,7 +111,7 @@ Added 10-28 for Martin's question: do the POSes already issue electronic receipt
 
 - **Martin is right about the fiscal receipt.** Only the venue's fiscal device (or an ИАСУТД) issues one, on paper or electronically. No software issues it on its own, listed or not, so Restro can't either.
 - **He is not right about a payment confirmation.** No text forbids non-fiscal software, or the venue through it, from giving the guest a confirmation that a card payment went through. Н-18 чл. 7а only limits what such a document may look like and say.
-- **Neither POS can issue an electronic receipt today.** Neither is on the NRA list (re-checked 10-28), and an electronic receipt needs listed software. Neither vendor's public pages offer it.
+- **Whether either POS can issue an electronic receipt is unknown.** The NRA register has no row under their names (checked 10-28), an electronic receipt needs listed software, and neither vendor's public pages offer it. A listing may sit under another product or company name, so this is asked of each provider (open-items Q84; Martin 10-28: "dont assume they are not").
 
 ### 1. A document about the card payment that is not the receipt
 
@@ -165,12 +165,12 @@ Added 10-28 for Martin's question: do the POSes already issue electronic receipt
 - [RULE] **The register, re-checked on 10-28:**
   - It still holds 130 entries. The newest is №1101 SATISLY MONEY (included 11.09.2026).
   - No row is barsy, Lukanet, Mistral, Мистрал, Zamboo or Замбу.
-  - So at a venue running either POS, and no other listed software, no electronic fiscal receipt is possible, whatever the product can do (ЗДДС чл. 118, ал. 21, т. 2).
+  - [READING] If neither POS is listed under any name, a venue running it with no other listed software can't issue an electronic fiscal receipt (ЗДДС чл. 118, ал. 21, т. 2). Whether they are is asked of each provider (Q84).
 - [VENDOR PAGE] **Mistral / Zamboo.**
   - No page read mentions an electronic fiscal receipt, sending a receipt by email, or a receipt link or QR code for guests. Pages read: POS, Web Menu, Zamboo web, pricing, the restaurant help, e-commerce integration.
   - The restaurant help covers the fiscal device only for Z reports and storno receipts.
   - mistral.bg's "Информация Н-18" page is the Прил. 32 filing for listed software. Its title: "Информация, подавана от лицата по чл. 118, ал. 18 от ЗДДС за използвания софтуер в търговски обект". Yet no Mistral product is listed.
-  - [UNKNOWN] Whether any Mistral product can generate electronic receipts. The public pages are silent, and the point is moot while no Mistral product is listed.
+  - [UNKNOWN] Whether any Mistral product can generate electronic receipts. The public pages are silent; asked (Q84).
 - [DOC] **barsy.**
   - The public help describes an electronic **invoice**, not a receipt: "Освен да бъде разпечатана и изпратена по e-mail, фактурата може да достигне до клиента и чрез споделени ресурси … сканирането на фактура чрез QR, или изтеглянето ѝ чрез линк" ([Фактура в електронен вид](https://docs.lukanet.com/barsy.help/110-admin/165-docs/100-invoices/6-e-invoice.html)).
   - An invoice never replaces the fiscal receipt (ЗДДС чл. 118, ал. 1: "независимо от това дали е поискан друг данъчен документ").
@@ -206,13 +206,13 @@ Added 10-28 for Martin's question: do the POSes already issue electronic receipt
 
    The venue's legal details stay behind a link, as in the 10-26 file's recommendation 4.
 4. **Use Restro's own confirmation, not Stripe's `receipt_url`.** Stripe's link expires after 30 days and then asks for an email the guest never gave. This follows D125 3.7 ("Restro's own"). D122 §8 still says "the provider's payment confirmation", so the lead should align D122 with D125's wording.
-5. **The venue's electronic receipt can't reach the guest at the pilot**, nor at any barsy or Mistral venue while neither POS is listed. The receipt is paper, and the waiter brings it (D122 §8).
-   - **Later, at a venue on listed software whose connector declares "electronic fiscal receipt":** the pay screen offers an optional email field. The POS issues the sale as electronic, and the device's own file goes to that address.
+5. **The venue's electronic receipt:** Restro is built for it (Martin 10-28, D127 "The venue's electronic receipt"); whether each POS supports it is asked of its provider (Q84). Until a connector declares it, the receipt is paper, and the waiter brings it (D122 §8).
+   - **At a venue whose connector declares "electronic receipt":** the pay screen offers an optional email field. The POS issues the sale as electronic, and the device's own file goes to that address.
    - Whether Restro may carry that file is lawyer question 1 above. The receipt is never redrawn.
 
 ### Still unknown
 
-- Whether any Mistral product can generate electronic receipts (moot while unlisted).
+- Whether barsy or any Mistral product can generate electronic receipts (Q84).
 - How Wolt and Foodpanda word their order confirmations (not read; the recommendation doesn't need it).
 - [LAWYER] Question 1 above (Restro delivering the device's file) and L3 (an anonymous session as a "профил"). Neither applies at the pilot.
 

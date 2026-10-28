@@ -143,12 +143,12 @@ A service control is drawn only when its `view.features` field is on, and carrie
 ### Get the receipt
 - **Shell key:** none; a screen of the pay feature (`#receipt`)
 - **Status:** drawn, platform parked
-- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports. Decided in #45 (D127): the venue issues the fiscal receipt and, at the pilot, the waiter brings it on paper; the Paid screen's "Payment confirmation" opens Restro's own page (#45 log 1.4): the venue's name, date and time, the lines, tip, total, "Paid by card" and the payment number, with "Save" (an image or PDF kept on the phone, never a lasting link) and "This is not your receipt. Your waiter brings the venue's receipt." It never looks like a receipt (no ЕИК/ДДС header, VAT lines, receipt number, УНП or QR code), never uses Stripe's receipt link, and no word of it is "бон" or any form of "фискален", in either language (Н-18 чл. 7а). No electronic receipt at the pilot.
+- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports. Decided in #45 (D127): the venue issues the fiscal receipt and, at the pilot, the waiter brings it on paper; the Paid screen's "Payment confirmation" opens Restro's own page (#45 log 1.4): the venue's name, date and time, the lines, tip, total, "Paid by card" and the payment number, with "Save" (an image or PDF kept on the phone, never a lasting link) and "This is not your receipt. Your waiter brings the venue's receipt." It never looks like a receipt (no ЕИК/ДДС header, VAT lines, receipt number, УНП or QR code), never uses Stripe's receipt link, and no word of it is "бон" or any form of "фискален", in either language (Н-18 чл. 7а). **The venue's electronic receipt** (D127, Martin 10-28): where the venue's connector declares `electronicReceipt`, the pay screen offers an optional email; filled, the POS's own receipt goes to that address, and the Paid screen and the confirmation say so. Restro never draws the receipt. Until a connector declares it (each POS provider is being asked), no email field shows.
 - **Where:** §10.1, §10.2; D71, D72, D127
 
 ## Guest words: the bill and paying
 
-Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototype, 10-28). Not in the shell yet: #114 adds them to the shell's words, Bulgarian first. Where the shell already has a word for the same thing (ordering's pause, weak connection, "Order this from your waiter"), the shell's word stays. `{x}` is an amount ("27,50 EUR" in Bulgarian, "27.50 EUR" in English), `{n}` a number, `{min}` the venue's smallest card payment, `{venue}` the venue's legal name. The Call a waiter options use #180's ids.
+Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototype, 10-28). Not in the shell yet: #114 adds them to the shell's words, Bulgarian first. Where the shell already has a word for the same thing (ordering's pause, weak connection, "Order this from your waiter"), the shell's word stays. `{x}` is an amount ("27,50 EUR" in Bulgarian, "27.50 EUR" in English), `{n}` a number, `{min}` the venue's smallest card payment, `{venue}` the venue's legal name, `{email}` the address the guest typed for the receipt. The Call a waiter options use #180's ids.
 
 | Name | Where | Български | English |
 |---|---|---|---|
@@ -207,6 +207,9 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `paid_by_card` | Confirmation page | Платено с карта | Paid by card |
 | `confirm_not_receipt` | Confirmation page | Това не е касова бележка. Касовата бележка за плащането ви носи сервитьорът. | This is not your receipt. Your waiter brings the venue's receipt. |
 | `confirm_save` | Confirmation page | Запази | Save |
+| `receipt_email` | Pay screen, only where the POS can issue an electronic receipt | Касова бележка по имейл (по желание) | Receipt by email (optional) |
+| `paid_receipt_emailed` | Paid, when an email was given (replaces `paid_receipt`'s second sentence) | Касовата бележка е изпратена на {email}. | Your receipt was sent to {email}. |
+| `confirm_receipt_emailed` | Confirmation page, when an email was given (replaces `confirm_not_receipt`'s second sentence) | Касовата бележка е изпратена на {email}. | Your receipt was sent to {email}. |
 | `back_to_bill` | Buttons | Към сметката | Back to the bill |
 | `checking_title` | Can't tell / stranded / capture failed | Заведението проверява плащането | The venue is checking the payment |
 | `checking_body` | Can't tell / stranded / capture failed | Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор. | You don't need to do anything. If you have a question, call a waiter. |
