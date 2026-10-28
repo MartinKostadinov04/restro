@@ -15,8 +15,11 @@ import {
   OFFLINE_AFTER_MS,
   PASS_KEY,
   PAY_HANDLE_KEY,
+  PAY_RECENT_KEY,
   PAY_RETURNED_KEY,
   POLL_BACKOFF_MS,
+  payHandleKey,
+  payRecentKey,
   type TableServicesDeps,
 } from './services-client'
 
@@ -741,6 +744,12 @@ describe('paying (#110, #114, D127)', () => {
     tipPercent: 10,
   })
 
+  const CODE = 'table-code-123'
+  /** The browser's local storage, holding this table's handle until the day ends. */
+  function local(handle: string, until = 1_000_000 + 3_600_000) {
+    return memory({ [payHandleKey(CODE)]: `${handle}|${until}` })
+  }
+
   /** A tab's session storage. */
   function memory(initial: Record<string, string> = {}) {
     const store = new Map(Object.entries(initial))
@@ -787,6 +796,7 @@ describe('paying (#110, #114, D127)', () => {
       state: 'on',
       minCardMinor: 50,
       processor: 'Stripe',
+      venueName: 'Club',
       electronicReceipt: false,
       recent: null,
     })
@@ -801,8 +811,10 @@ describe('paying (#110, #114, D127)', () => {
   it('asks Turnstile for the pay action, keeps the handle in the tab and reads the payment with it', async () => {
     const actions: string[] = []
     const mem = memory()
+    const session = memory()
     const h = harness(server(), {
-      memory: mem,
+      memory: session,
+      durable: mem,
       humanToken: async (action) => {
         actions.push(action)
         return 'token'
@@ -816,7 +828,10 @@ describe('paying (#110, #114, D127)', () => {
     const post = h.calls.find((call) => call.url.endsWith('/actions'))
     expect(JSON.parse(String(post?.init.body)).check.humanToken).toBe('token')
     // The handle is the tab's, never in an address or a body.
-    expect(mem.store.get(PAY_HANDLE_KEY)).toBe(HANDLE)
+    expect(mem.store.get(payHandleKey(CODE))?.startsWith(`${HANDLE}|`)).toBe(true)
+    // Not in the tab's session storage: it outlives the tab for the sitting (D127 log 2.2).
+    expect(session.store.has(payHandleKey(CODE))).toBe(false)
+    expect(session.store.has(PAY_HANDLE_KEY)).toBe(false)
     expect(h.calls.every((call) => !call.url.includes(HANDLE))).toBe(true)
     expect(String(post?.init.body)).not.toContain(HANDLE)
     await h.tick()
@@ -881,10 +896,10 @@ describe('paying (#110, #114, D127)', () => {
   })
 
   it('comes back to where the payment stands after a reload, and forgets one the server does not know', async () => {
-    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE })
+    const mem = local(HANDLE)
     const h = harness(
       server({ payment: () => json(200, payment({ state: 'captured', form: null })) }),
-      { memory: mem },
+      { durable: mem },
     )
     h.client.start()
     await h.tick()
@@ -892,18 +907,18 @@ describe('paying (#110, #114, D127)', () => {
     expect(h.client.getState().payment).toMatchObject({ state: 'captured' })
 
     const gone = harness(server({ payment: () => json(404, { code: 'unknown_payment' }) }), {
-      memory: mem,
+      durable: mem,
     })
     gone.client.start()
     await gone.tick()
     await gone.tick()
     expect(gone.client.getState().payment).toBeNull()
-    expect(mem.store.has(PAY_HANDLE_KEY)).toBe(false)
+    expect(mem.store.has(payHandleKey(CODE))).toBe(false)
   })
 
   it('sends pay.returned once after a redirect brought the guest back, then forgets the marker', async () => {
-    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE, [PAY_RETURNED_KEY]: '1' })
-    const h = harness(server(), { memory: mem })
+    const mem = memory({ [PAY_RETURNED_KEY]: '1' })
+    const h = harness(server(), { memory: mem, durable: local(HANDLE) })
     h.client.start()
     await h.tick()
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -917,31 +932,103 @@ describe('paying (#110, #114, D127)', () => {
   })
 
   it('"Back to the bill" forgets the payment and its handle', async () => {
-    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE })
+    const mem = local(HANDLE)
     const h = harness(
       server({ payment: () => json(200, payment({ state: 'captured', form: null })) }),
-      { memory: mem },
+      { durable: mem },
     )
     h.client.start()
     await h.tick()
     await h.tick()
     h.client.dismissPayment()
     expect(h.client.getState().payment).toBeNull()
-    expect(mem.store.has(PAY_HANDLE_KEY)).toBe(false)
+    expect(mem.store.has(payHandleKey(CODE))).toBe(false)
   })
 
-  it('remembers a held payment for the "same amount" check', async () => {
-    const mem = memory({ [PAY_HANDLE_KEY]: HANDLE })
+  it('remembers a paid payment for the "same amount" check, and not one that only held the card', async () => {
+    const mem = local(HANDLE)
     const h = harness(
       server({ payment: () => json(200, payment({ state: 'held', form: null })) }),
-      { memory: mem },
+      { durable: mem },
     )
     h.client.start()
     await h.tick()
     await h.tick()
+    expect(mem.store.has(payRecentKey(CODE))).toBe(false)
+    const paid = harness(
+      server({ payment: () => json(200, payment({ state: 'captured', form: null })) }),
+      { durable: mem },
+    )
+    paid.client.start()
+    await paid.tick()
+    await paid.tick()
+    expect(mem.store.has(payRecentKey(CODE))).toBe(true)
     h.advance(240_000)
     h.client.dismissPayment()
     await h.tick()
     expect(h.client.getState().paying?.recent).toEqual({ amountMinor: 2250, agoSeconds: 240 })
+  })
+
+  it('ignores a handle kept past the service day, and forgets it', async () => {
+    const mem = local(HANDLE, 1_000_000 - 1)
+    const h = harness(server(), { durable: mem })
+    h.client.start()
+    await h.tick()
+    expect(h.calls.some((call) => call.url.endsWith('/payment'))).toBe(false)
+    expect(mem.store.has(payHandleKey(CODE))).toBe(false)
+  })
+
+  it('keeps the handle until the service day ends, from the server’s own day end', async () => {
+    const mem = memory()
+    const h = harness(server(), { durable: mem })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(start())
+    // tableState: dayEndsInSeconds 3_600 from the clock at 1_000_000.
+    expect(mem.store.get(payHandleKey(CODE))).toBe(`${HANDLE}|${1_000_000 + 3_600_000}`)
+  })
+
+  it('reads an unconfirmed payment on, and lets "Back to the bill" go without deleting the handle', async () => {
+    const answers = [
+      payment({ state: 'unconfirmed', form: null }),
+      payment({ state: 'unconfirmed', form: null }),
+      payment({ state: 'unconfirmed', form: null }),
+      payment({ state: 'captured', form: null }),
+    ]
+    const mem = local(HANDLE)
+    const h = harness(
+      server({
+        payment: () => json(200, answers.shift() ?? payment({ state: 'captured', form: null })),
+      }),
+      { durable: mem },
+    )
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    expect(h.client.getState().payment?.state).toBe('unconfirmed')
+    // Not final: the next read is already due, at the server's pace.
+    expect(h.nextWait()).toBe(2_000)
+    h.client.dismissPayment()
+    expect(h.client.getState().payment).toBeNull()
+    expect(mem.store.has(payHandleKey(CODE))).toBe(true)
+    // Still unconfirmed on the next read: the screen stays away.
+    await h.tick()
+    expect(h.client.getState().payment).toBeNull()
+    // The manager's answer moves it on: the paid screen comes back.
+    await h.tick()
+    expect(h.client.getState().payment?.state).toBe('captured')
+    h.client.dismissPayment()
+    expect(mem.store.has(payHandleKey(CODE))).toBe(false)
+  })
+
+  it('keeps the return marker and the location pass in the tab, not in local storage', async () => {
+    const session = memory({ [PAY_RETURNED_KEY]: '1' })
+    const mem = local(HANDLE)
+    const h = harness(server(), { memory: session, durable: mem })
+    h.client.start()
+    await h.tick()
+    expect(session.store.has(PAY_RETURNED_KEY)).toBe(false)
+    expect(mem.store.has(PAY_RETURNED_KEY)).toBe(false)
+    expect(mem.store.has(PAY_RECENT_KEY)).toBe(false)
   })
 })

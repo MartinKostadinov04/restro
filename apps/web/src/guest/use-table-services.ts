@@ -58,6 +58,34 @@ const sessionMemory: SessionMemory = {
   },
 }
 
+/**
+ * The browser's local storage: what outlives the tab for the sitting (the payment handle, D127 log
+ * 2.2). A private window or blocked storage just remembers nothing.
+ */
+const localMemory: SessionMemory = {
+  get(key) {
+    try {
+      return window.localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  },
+  set(key, value) {
+    try {
+      window.localStorage.setItem(key, value)
+    } catch {
+      // Nothing kept: the payment is found again by the tab's own poll only.
+    }
+  },
+  remove(key) {
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      // Nothing was kept.
+    }
+  },
+}
+
 /** The phone's position, precise, within about 10 s; null when refused, unavailable or slow. */
 function locate(): Promise<GuestPosition | null> {
   return new Promise((resolve) => {
@@ -118,6 +146,7 @@ export function useTableServices(code: string | null): ServiceBinding | undefine
       },
       phone: phoneValue(),
       memory: sessionMemory,
+      durable: localMemory,
       locate,
       ...(humanToken === undefined ? {} : { humanToken }),
     })

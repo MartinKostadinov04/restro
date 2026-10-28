@@ -10,7 +10,7 @@ import {
   opener,
   openPreview,
   PREVIEW_FACE,
-  payAndOpenReceipt,
+  payTheBill,
   SCREENS,
   servicesBack,
   servicesOn,
@@ -19,7 +19,7 @@ import {
 import { VISUAL_THEMES } from './visual-fixtures'
 
 // The accessibility audit of the Editorial Market's service screens (brief SH-07, T74): the bag, the
-// table bill, calling a waiter, paying and the receipt. A guest sees them only once the platform
+// table bill, calling a waiter, and paying. A guest sees them only once the platform
 // supports them (D71), so they are drawn where the owner previews them: the Design tab's phone, with
 // "Preview guest services" on and demo data behind them (e2e/faces-preview.ts). The venue is the demo
 // venue, with every service switched on in its settings for the length of this file.
@@ -86,7 +86,7 @@ test.describe('the dialogs', () => {
     await exerciseDialog(page, opener(page, 'call'), 'Call a server')
     await exerciseDialog(page, opener(page, 'pay'), 'Pay')
     // The paid screen, reached from the pay sheet: the focus goes back to where the guest began.
-    await exerciseDialog(page, opener(page, 'receipt'), 'Pay', () => payAndOpenReceipt(page))
+    await exerciseDialog(page, opener(page, 'pay'), 'Pay', () => payTheBill(page))
   })
 })
 
@@ -152,7 +152,6 @@ test.describe('reduced motion', () => {
         }, state)
       const problems: string[] = [...(await moving('the page'))]
       for (const screen of SCREENS) {
-        if (screen === 'receipt') continue
         await onScreen(page, screen, async () => {
           problems.push(...(await moving(screen)))
         })

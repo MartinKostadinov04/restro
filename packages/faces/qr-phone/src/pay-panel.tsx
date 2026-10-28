@@ -4,11 +4,12 @@
 //
 // - The bill (`state.tableBill`): the POS's own lines and amounts, a line in a payment that isn't
 //   final greyed "Being paid" with no tick, "Left to pay", and Pay (or "Ask your waiter to pay."
-//   where paying is off at the venue).
+//   where paying is off at the venue). Without a location pass there is no bill: why, "Allow
+//   location" and Call a waiter.
 // - Choosing: nothing ticked, "The whole bill", a tick per line, the tip row only where the POS
 //   records a tip (`ordering.tips`; 5, 10, 15 % and "Other amount", none selected, "Tip: goes to
 //   the venue"), the totals, the law lines and the Pay button with the live total, greyed with
-//   its reason (`payBlock`).
+//   its reason (`payBlock`). The ticks are kept while a payment runs and after it ends.
 // - Paying (`state.payment`, this phone's): "Preparing your bill…", the lines, tip and total with
 //   the card form in the form slot the page fills, "Processing your payment…", "Paid" with the
 //   payment number, "The venue is checking the payment", or what ended with nothing charged.
@@ -30,12 +31,14 @@ import {
   type Picks,
   parseMinor,
   payBlock,
+  payFormLocale,
   payMoney,
   payScreen,
   payStartCommand,
   pickText,
   pickWhole,
   reconcilePicks,
+  refusalText,
   type ServiceBinding,
   type ServiceStrings,
   sameAmountAgo,
@@ -57,11 +60,11 @@ export interface PayPanelProps {
   readonly serviceWords: ServiceStrings
   /** The table as the shell words it ("Table 12"), or null. */
   readonly tableText: string | null
-  /** The venue's name for "Payment processed by … for …". */
-  readonly venueName: string
   /** The venue takes waiter calls (`view.features.callWaiter`). */
   readonly callWaiter: boolean
-  readonly send: (command: CommandDraft) => Promise<{ readonly status: string } | null>
+  readonly send: (
+    command: CommandDraft,
+  ) => Promise<{ readonly status: string; readonly code?: string | null } | null>
 }
 
 /** The line's name: our item's, else "Other item". */
@@ -76,23 +79,35 @@ function quantityMark(quantity: string): string {
 }
 
 /** Puts the page's card form into the slot the face provides; the face loads no provider library. */
-function FormSlot({ slot, label }: { readonly slot: PayFormSlot; readonly label: string }) {
+function FormSlot({
+  slot,
+  label,
+  locale,
+  failedText,
+}: {
+  readonly slot: PayFormSlot
+  readonly label: string
+  readonly locale: Locale
+  readonly failedText: string
+}) {
   const holder = useRef<HTMLDivElement>(null)
   const handle = useRef<ReturnType<PayFormSlot['mount']> | null>(null)
-  const latest = useRef(label)
-  latest.current = label
+  const props = { label, buttonClass: 'rq-pay', locale: payFormLocale(locale), failedText }
+  const latest = useRef(props)
+  latest.current = props
   useEffect(() => {
     const element = holder.current
     if (element === null) return
-    handle.current = slot.mount(element, { label: latest.current, buttonClass: 'rq-pay' })
+    handle.current = slot.mount(element, latest.current)
     return () => {
       handle.current?.unmount()
       handle.current = null
     }
   }, [slot])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the form takes the new label and words
   useEffect(() => {
-    handle.current?.update({ label, buttonClass: 'rq-pay' })
-  }, [label])
+    handle.current?.update(latest.current)
+  }, [label, failedText])
   return <div ref={holder} data-slot="pay.form" />
 }
 
@@ -136,19 +151,19 @@ function PaymentScreen({
   payment,
   props,
   money,
-  onAgain,
 }: {
   readonly payment: PaymentView
   readonly props: PayPanelProps
   readonly money: (minor: number) => string
-  readonly onAgain: () => void
 }) {
-  const { services, words, send, callWaiter } = props
+  const { services, words, serviceWords, send, callWaiter } = props
+  const [refusal, setRefusal] = useState<string | null>(null)
   const screen: PayScreen = payScreen(payment)
   const dismiss = () => services?.payControls?.dismiss()
   const callButton = callWaiter ? (
     <button
       type="button"
+      data-slot="pay.call"
       onClick={() => void send({ kind: 'service.request', request: 'waiter', note: '' })}
     >
       {words.callWaiter}
@@ -166,7 +181,12 @@ function PaymentScreen({
               <Priced payment={payment} words={words} money={money} />
               <p className="rq-order-hint">{words.legalPrices}</p>
               {services?.payForm === undefined || payment.amountMinor === null ? null : (
-                <FormSlot slot={services.payForm} label={words.payX(money(payment.amountMinor))} />
+                <FormSlot
+                  slot={services.payForm}
+                  label={words.payX(money(payment.amountMinor))}
+                  locale={props.locale}
+                  failedText={words.cardFormFailed}
+                />
               )}
             </>
           )}
@@ -174,13 +194,23 @@ function PaymentScreen({
             type="button"
             data-slot="pay.later"
             onClick={async () => {
+              setRefusal(null)
               const result = await send({ kind: 'pay.cancel' })
-              // After the hold there is no cancel (`too_late`): the screen follows the payment.
               if (result?.status === 'accepted') dismiss()
+              // After the hold there is no cancel (`too_late`): the screen follows the payment.
+              else if (result !== null) {
+                setRefusal(refusalText(serviceWords, result.code, { command: 'pay.cancel' }))
+              }
             }}
           >
             {words.payLater}
-          </button>
+          </button>{' '}
+          {callButton}
+          {refusal === null ? null : (
+            <p className="rq-note" role="alert">
+              {refusal}
+            </p>
+          )}
         </section>
       )
     case 'waiting':
@@ -220,9 +250,10 @@ function PaymentScreen({
       return (
         <section className="rq-order" data-pay-screen="ended" data-pay-end={screen.end}>
           <p role="status">{words.ended[screen.end]}</p>
+          {/* "Pay again" goes back to choosing with the ticks kept: Pay then takes the guarded path. */}
           {screen.again ? (
             <>
-              <button type="button" data-slot="pay.again" onClick={onAgain}>
+              <button type="button" data-slot="pay.again" onClick={dismiss}>
                 {words.payAgain}
               </button>{' '}
             </>
@@ -236,7 +267,7 @@ function PaymentScreen({
   }
 }
 
-/** The other-amount tip: what the guest typed, as minor units, or null. */
+/** The other-amount tip: what the guest typed, as minor units, or none. */
 function otherTip(text: string): TipChoice {
   const minor = parseMinor(text)
   return minor === null ? NO_TIP : { kind: 'other', minor }
@@ -260,11 +291,37 @@ export function PayPanel(props: PayPanelProps): ReactNode {
   const [other, setOther] = useState('')
   const [askingSame, setAskingSame] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
 
   // A fresh bill clears only the ticks of lines that changed or went; a friend's round clears none.
+  // Not while this phone has a payment: the server marks that payment's own lines `beingPaid`, which
+  // would empty the ticks "Pay again" goes back to (D127 2.1).
   useEffect(() => {
-    if (bill !== null) setPicks((current) => reconcilePicks(current, bill))
-  }, [bill])
+    if (bill !== null && payment === null) setPicks((current) => reconcilePicks(current, bill))
+  }, [bill, payment])
+
+  // Without a location pass there is no bill and no order: why, and the way to allow it.
+  if (services !== undefined && state?.location?.state === 'needed' && payment === null) {
+    return (
+      <section className="rq-order" data-slot="menu.bill" data-bill-hidden="">
+        <h2>{words.locationTitle}</h2>
+        <p>{words.locationBody}</p>
+        {services.location === undefined ? null : (
+          <button type="button" data-slot="bill.allow" onClick={() => services.location?.reopen()}>
+            {words.allowLocation}
+          </button>
+        )}{' '}
+        {props.callWaiter ? (
+          <button
+            type="button"
+            onClick={() => void send({ kind: 'service.request', request: 'waiter', note: '' })}
+          >
+            {words.callWaiter}
+          </button>
+        ) : null}
+      </section>
+    )
+  }
 
   if (services === undefined || (bill === null && payment === null)) return null
 
@@ -272,32 +329,28 @@ export function PayPanel(props: PayPanelProps): ReactNode {
     if (bill === null) return
     setBusy(true)
     setAskingSame(null)
+    setRefusal(null)
     try {
-      const totals = choosePay(picks, tip)
-      const { actionId: _unused, ...draft } = payStartCommand('', picks, tip, totals)
-      await send(draft)
+      const { actionId: _unused, ...draft } = payStartCommand('', picks, tip, tipsOffered)
+      const result = await send(draft)
+      if (result !== null && result.status === 'rejected') {
+        setRefusal(
+          refusalText(serviceWords, result.code, {
+            command: 'pay.start',
+            minCard: paying === null ? null : money(paying.minCardMinor),
+          }),
+        )
+      }
     } finally {
       setBusy(false)
     }
   }
 
-  if (payment !== null) {
-    return (
-      <PaymentScreen
-        payment={payment}
-        props={props}
-        money={money}
-        onAgain={() => {
-          services.payControls?.dismiss()
-          void start()
-        }}
-      />
-    )
-  }
+  if (payment !== null) return <PaymentScreen payment={payment} props={props} money={money} />
   if (bill === null || paying === null) return null
 
-  const totals = choosePay(picks, tip)
-  const block = payBlock(paying, bill, picks, tip)
+  const totals = choosePay(picks, tip, tipsOffered)
+  const block = payBlock(paying, bill, picks, tip, tipsOffered)
   const free = freeLines(bill)
   const blockWords =
     block === 'cards_paused'
@@ -308,7 +361,9 @@ export function PayPanel(props: PayPanelProps): ReactNode {
           ? words.nothingPicked
           : block === 'below_minimum'
             ? words.belowMinimum(money(paying.minCardMinor))
-            : null
+            : block === 'tip_too_big'
+              ? words.tipTooBig
+              : null
   const all = free.length > 0 && free.every((line) => picks.has(line.id))
   const pickTip = (next: TipChoice) => {
     setTip((current) =>
@@ -427,7 +482,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
           <p className="rq-order-hint">{words.legalPrices}</p>
           {paying.processor === null ? null : (
             <p className="rq-order-hint">
-              {words.legalProcessor(paying.processor, props.venueName)}
+              {words.legalProcessor(paying.processor, paying.venueName)}
             </p>
           )}
           {askingSame === null ? (
@@ -458,6 +513,11 @@ export function PayPanel(props: PayPanelProps): ReactNode {
           {blockWords === null ? null : (
             <p className="rq-note" data-slot="pay.blocked" role="status">
               {blockWords}
+            </p>
+          )}
+          {refusal === null ? null : (
+            <p className="rq-note" data-slot="pay.refused" role="alert">
+              {refusal}
             </p>
           )}
         </div>

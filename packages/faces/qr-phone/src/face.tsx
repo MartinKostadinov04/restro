@@ -461,7 +461,6 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
             words={stringsFor(locale).services.paying}
             serviceWords={serviceStrings}
             tableText={tableLabel == null ? null : strings.table(tableLabel)}
-            venueName={services?.state.location?.venueName ?? ''}
             callWaiter={view.features.callWaiter !== null}
             send={send}
           />

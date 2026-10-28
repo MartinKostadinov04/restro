@@ -6,6 +6,7 @@
 
 import {
   buildViewModel,
+  type GuestCommand,
   imageSlotsFor,
   type PayFormSlot,
   type ServiceBinding,
@@ -202,5 +203,175 @@ describe("this phone's payment, every state (contract)", () => {
     const back = page.querySelector<HTMLButtonElement>('[data-slot="pay.back"]')
     await act(async () => back?.click())
     expect(dismissed.n).toBe(1)
+  })
+})
+
+describe('the review of #195 (D127)', () => {
+  const sent: GuestCommand[] = []
+
+  /** Draws with a dispatch that records every command and answers `answer`. */
+  async function drawRecording(
+    state: ServiceState,
+    answer: { status: 'accepted' | 'rejected'; code?: string } = { status: 'accepted' },
+    slot?: PayFormSlot,
+    dismissed: { n: number } = { n: 0 },
+  ) {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const services = (next: ServiceState): ServiceBinding => ({
+      state: next,
+      dispatch: (command) => {
+        sent.push(command)
+        return Promise.resolve({
+          actionId: command.actionId,
+          message: null,
+          ref: null,
+          ...answer,
+        })
+      },
+      ...(slot === undefined ? {} : { payForm: slot }),
+      payControls: {
+        dismiss: () => {
+          dismissed.n += 1
+        },
+      },
+    })
+    const show = (next: ServiceState) =>
+      act(async () =>
+        root?.render(<QrPhoneFace view={view} services={services(next)} tableLabel="12" />),
+      )
+    await show(state)
+    return { page: host, show }
+  }
+  const greyed = (on: boolean) => {
+    const bill = payingBill()
+    const part = bill.parts[0]
+    if (part === undefined) throw new Error('no part')
+    return {
+      ...bill,
+      parts: [{ ...part, lines: part.lines.map((l) => ({ ...l, beingPaid: on })) }],
+    }
+  }
+  const click = (page: HTMLElement, selector: string) =>
+    act(async () => page.querySelector<HTMLElement>(selector)?.click())
+
+  it('"Pay again" goes back to choosing with the ticks kept, and Pay takes the guarded path', async () => {
+    sent.length = 0
+    const dismissed = { n: 0 }
+    const { page, show } = await drawRecording(
+      payingState(),
+      { status: 'accepted' },
+      undefined,
+      dismissed,
+    )
+    await click(page, '[data-slot="pay.whole"]')
+    await click(page, '[data-slot="pay.start"]')
+    expect(sent.map((c) => c.kind)).toEqual(['pay.start'])
+    // The payment runs and the server greys its own lines: the ticks must survive it.
+    await show(
+      payingState({
+        tableBill: greyed(true),
+        payment: payScenarioPayment({ state: 'held', form: null }),
+      }),
+    )
+    await show(
+      payingState({
+        tableBill: greyed(true),
+        payment: payScenarioPayment({ state: 'released', reason: 'busy', form: null }),
+      }),
+    )
+    await click(page, '[data-slot="pay.again"]')
+    expect(dismissed.n).toBe(1)
+    expect(sent).toHaveLength(1)
+    await show(payingState({ tableBill: greyed(false), payment: null }))
+    const boxes = [...page.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    expect(boxes.map((box) => box.checked)).toEqual([true, true])
+    await click(page, '[data-slot="pay.start"]')
+    expect(sent).toHaveLength(2)
+    expect(sent[1]).toMatchObject({
+      kind: 'pay.start',
+      pick: { kind: 'lines' },
+      seen: [{ amountMinor: 1250 }, { amountMinor: 1000 }],
+    })
+  })
+
+  it('never sends a tip where none is offered, however it was chosen before', async () => {
+    sent.length = 0
+    const { page, show } = await drawRecording(payingState())
+    await click(page, '[data-slot="pay.whole"]')
+    await click(page, '[data-slot="pay.tip.preset"]:nth-of-type(2)')
+    await show(payingState({ ordering: { state: 'on', tips: false } }))
+    expect(page.querySelector('[data-slot="pay.tip.row"]')).toBeNull()
+    await click(page, '[data-slot="pay.start"]')
+    expect(sent.at(-1)).toMatchObject({ kind: 'pay.start', tipPercent: null, tipMinor: null })
+  })
+
+  it("words a refusal at Pay by the shell's helper, with the venue's smallest payment", async () => {
+    sent.length = 0
+    const state = payingState({ paying: { ...payingState().paying!, minCardMinor: 100 } })
+    const { page } = await drawRecording(state, { status: 'rejected', code: 'below_minimum' })
+    await click(page, '[data-slot="pay.whole"]')
+    await click(page, '[data-slot="pay.start"]')
+    expect(page.querySelector('[data-slot="pay.refused"]')?.textContent).toBe(
+      'Card payments start at €1.00. Add an item or ask your waiter.',
+    )
+    const limited = await drawRecording(state, { status: 'rejected', code: 'rate_limited' })
+    await click(limited.page, '[data-slot="pay.whole"]')
+    await click(limited.page, '[data-slot="pay.start"]')
+    expect(limited.page.querySelector('[data-slot="pay.refused"]')?.textContent).toBe(
+      'Too many tries. Wait a moment and try again.',
+    )
+  })
+
+  it('names the venue on the processor line from the paying state', async () => {
+    const { page } = await drawRecording(payingState())
+    expect(page.textContent).toContain('Payment processed by Stripe for Club X.')
+  })
+
+  it('says why the bill is hidden without a location pass, with Allow location and Call a waiter', async () => {
+    const state = payingState({
+      tableBill: null,
+      location: { state: 'needed', prompt: 'none', consent: 'unknown', venueName: 'Club X' },
+    })
+    const { page } = await drawRecording(state)
+    const hidden = page.querySelector('[data-bill-hidden]')
+    expect(hidden?.textContent).toContain('The bill shows only at the table')
+    expect(hidden?.textContent).toContain('Call a waiter')
+    expect(page.querySelector('[data-slot="pay.start"]')).toBeNull()
+  })
+
+  it('draws the table on the Paid screen, and Call a waiter on the card screen', async () => {
+    const paid = await drawRecording(
+      payingState({ payment: payScenarioPayment({ state: 'captured', form: null }) }),
+    )
+    expect(paid.page.querySelector('[data-slot="pay.table"]')?.textContent).toBe('Table 12')
+    act(() => root?.unmount())
+    host?.remove()
+    const card = await drawRecording(
+      payingState({ payment: payScenarioPayment() }),
+      undefined,
+      recordingSlot().slot,
+    )
+    expect(
+      card.page.querySelector('[data-pay-screen="card"] [data-slot="pay.call"]'),
+    ).not.toBeNull()
+  })
+
+  it("gives the card form the guest's language and the failure words", async () => {
+    const recorded: { locale: string; failedText: string }[] = []
+    const slot: PayFormSlot = {
+      mount(_target, props) {
+        recorded.push({ locale: props.locale, failedText: props.failedText })
+        return { update: () => undefined, unmount: () => undefined }
+      },
+    }
+    await drawRecording(payingState({ payment: payScenarioPayment() }), undefined, slot)
+    expect(recorded).toEqual([
+      {
+        locale: 'en',
+        failedText: 'The card form could not load. Nothing was charged. Ask your waiter.',
+      },
+    ])
   })
 })

@@ -13,7 +13,6 @@ import {
   type PayFormSlot,
   type PayingView,
   type PaymentView,
-  type ReceiptView,
   type RequestView,
   SERVICE_KINDS,
   type ServiceBinding,
@@ -225,6 +224,7 @@ export function payingOf(changes: Partial<PayingView> = {}): PayingView {
     state: 'on',
     minCardMinor: 50,
     processor: 'The processor',
+    venueName: 'Club X',
     electronicReceipt: false,
     recent: null,
     ...changes,
@@ -250,24 +250,6 @@ export function paymentOf(changes: Partial<PaymentView> = {}): PaymentView {
   }
 }
 
-export function receiptOf(changes: Partial<ReceiptView> = {}): ReceiptView {
-  return {
-    id: 'rc-1',
-    reference: 'R-0001',
-    fiscalReference: 'FR-123',
-    venueName: 'Test venue',
-    tableLabel: '12',
-    issuedAt: '07.10.2026 21:00',
-    lines: [billLine('l1', 'Hummus', 2, 1400, 'served')],
-    vat: [{ rate: '20%', amount: eur(233) }],
-    tip: eur(140),
-    total: eur(1540),
-    method: 'card',
-    actions: { pdf: true, email: true, print: true },
-    ...changes,
-  }
-}
-
 /* ---------------------------------------------------------------------------------------------
  * The fake host
  * ------------------------------------------------------------------------------------------- */
@@ -287,7 +269,14 @@ export interface FakeHost {
   /** The binding to give the face, with the state as it is now. */
   readonly binding: () => ServiceBinding
   /** The card form slot's mounts: the element it was given, its props, and whether it is still up. */
-  readonly forms: { target: object; label: string; buttonClass: string; mounted: boolean }[]
+  readonly forms: {
+    target: object
+    label: string
+    buttonClass: string
+    locale: string
+    failedText: string
+    mounted: boolean
+  }[]
   /** How many times the payment's screen was dismissed ("Back to the bill"). */
   readonly dismissed: () => number
   readonly state: () => ServiceState
@@ -306,7 +295,14 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
   let dismissed = 0
   const payForm: PayFormSlot = {
     mount(target, props) {
-      const form = { target, label: props.label, buttonClass: props.buttonClass, mounted: true }
+      const form = {
+        target,
+        label: props.label,
+        buttonClass: props.buttonClass,
+        locale: props.locale,
+        failedText: props.failedText,
+        mounted: true,
+      }
       forms.push(form)
       return {
         update: (next) => {

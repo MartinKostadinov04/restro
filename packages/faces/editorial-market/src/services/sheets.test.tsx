@@ -15,7 +15,6 @@ import {
   fakeHost,
   orderingView,
   payingOf,
-  receiptOf,
   resetPage,
   tableBillOf,
 } from './test-kit'
@@ -35,7 +34,6 @@ const withBill: Partial<ServiceState> = {
   bill,
   tableBill: tableBillOf(),
   paying: payingOf(),
-  receipt: receiptOf(),
 }
 
 /** Every sheet: the name of the button that opens it, the title of the dialog, and a way to open it. */
@@ -79,7 +77,6 @@ describe('the "Preview" marker (test 7)', () => {
     ['#tab', 'Table order'],
     ['#call', 'Call a server'],
     ['#pay', 'Pay'],
-    ['#receipt', 'Receipt'],
   ])('is on the %s sheet while the state is demo data', async (address, title) => {
     const sheet = await shown(fakeHost({ ...withBill, preview: true }), `/${address}`, title)
     const marker = sheet.querySelector('.ro-preview')
@@ -92,7 +89,6 @@ describe('the "Preview" marker (test 7)', () => {
     ['#tab', 'Table order'],
     ['#call', 'Call a server'],
     ['#pay', 'Pay'],
-    ['#receipt', 'Receipt'],
   ])('is not on the %s sheet for real state', async (address, title) => {
     const sheet = await shown(fakeHost({ ...withBill, preview: false }), `/${address}`, title)
     expect(sheet.querySelector('.ro-preview')).toBeNull()
@@ -150,14 +146,10 @@ describe('Escape, the back button and focus (test 8)', () => {
     },
   )
 
-  it('closes the receipt page with Escape and its back button, which says so', async () => {
+  it('has no receipt page any more: the old address opens nothing (D127 1.4)', async () => {
     window.history.replaceState(null, '', '/#receipt')
     drawFace(fakeHost(withBill))
-    const page = await screen.findByRole('dialog', { name: 'Receipt' })
-    expect(within(page).getByRole('button', { name: 'Back to menu' })).toBeTruthy()
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(window.location.hash).toBe('')
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('keeps the Tab key inside the sheet, from the last control to the first and back', () => {
@@ -216,7 +208,6 @@ describe('a sheet the venue has not switched on has no address (R15)', () => {
     ['#tab', 'bill', { bill: false }],
     ['#call', 'the waiter', { callWaiter: null }],
     ['#pay', 'pay', { pay: false }],
-    ['#receipt', 'pay', { pay: false }],
   ]
   it.each(cases)('%s is not drawn with %s off', (address, _name, off) => {
     window.history.replaceState(null, '', `/${address}`)
@@ -224,7 +215,7 @@ describe('a sheet the venue has not switched on has no address (R15)', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it.each(['#bag', '#tab', '#call', '#pay', '#receipt', '#nonsense'])(
+  it.each(['#bag', '#tab', '#call', '#pay', '#nonsense'])(
     '%s is not drawn when the host binds no services',
     (address) => {
       window.history.replaceState(null, '', `/${address}`)

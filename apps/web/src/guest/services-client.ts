@@ -61,6 +61,7 @@ import {
   type LocationControls,
   type LocationView,
   type OrderLineView,
+  PAYMENT_HANDLE_PATTERN,
   type PayingView,
   type PaymentView,
   paymentIsFinal,
@@ -97,6 +98,11 @@ export interface TableServicesDeps {
   readonly phone: string
   /** The tab's session storage, or none; failures inside are the page's to swallow. */
   readonly memory?: SessionMemory
+  /**
+   * The browser's local storage for what must outlive the tab for the sitting: the payment handle
+   * and the last payment (see `PAY_HANDLE_KEY`). Falls back to `memory` when absent.
+   */
+  readonly durable?: SessionMemory
   /** The phone's position, or null when the guest refused it or it took too long. */
   readonly locate?: () => Promise<GuestPosition | null>
   /** Turnstile's token for a Send, or null when the widget gave none. */
@@ -113,14 +119,28 @@ export interface SessionMemory {
 /** The session storage key of the location pass. */
 export const PASS_KEY = 'restro.locationPass'
 
-/** The session storage key of this phone's payment handle (D127 2.2): never in an address. */
+/**
+ * The durable key of this phone's payment handle (D127 2.2, log 2.2): in the browser's local
+ * storage for the sitting, so a page closed and opened again finds its payment; never in an
+ * address. One per table code, ending with the service day. A device with no local storage keeps
+ * nothing.
+ */
 export const PAY_HANDLE_KEY = 'restro.payHandle'
+
+/** The key of one table's handle. */
+export const payHandleKey = (code: string): string => `${PAY_HANDLE_KEY}.${code}`
 
 /** Set by the page when it came back from a redirect of the card form: send `pay.returned` once. */
 export const PAY_RETURNED_KEY = 'restro.payReturned'
 
-/** The last payment this phone held money for: `<amountMinor>:<startedAt ms>`. */
+/** The last payment this phone was paid for: `<id>:<amountMinor>:<at ms>`, durable like the handle. */
 export const PAY_RECENT_KEY = 'restro.payRecent'
+
+/** The key of one table's last payment. */
+export const payRecentKey = (code: string): string => `${PAY_RECENT_KEY}.${code}`
+
+/** When a day has no end the server named, a handle is kept this long (hours). */
+const DEFAULT_KEEP_HOURS = 6
 
 /** The session storage key of the guest's consent answer, kept until the service day ends. */
 export const CONSENT_KEY = 'restro.locationConsent'
@@ -154,20 +174,6 @@ export interface PayFormValues {
   readonly provider: string
   readonly values: Readonly<Record<string, string>>
 }
-
-/** The states in which the card is held: the guest has paid for the "same amount" check. */
-const HELD_STATES = new Set([
-  'held',
-  'queued',
-  'isolated',
-  'entered',
-  'checked',
-  'closed',
-  'captured',
-  'unconfirmed',
-  'stranded',
-  'capture_failed',
-])
 
 /** The table's bill as the face draws it (our ids and the POS's own amounts). */
 function tableBillOf(bill: GuestTableState['bill']): TableBillView | null {
@@ -387,8 +393,11 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   /** The next poll asks for the whole state: the location changed under an unchanged version. */
   let whole = false
   let pass: string | null = deps.memory?.get(PASS_KEY) ?? null
+  const durable = deps.durable ?? deps.memory
   /** This phone's payment handle and what the last poll of its payment answered. */
-  let handle: string | null = deps.memory?.get(PAY_HANDLE_KEY) ?? null
+  let handle: string | null = readHandle()
+  /** The state of an unconfirmed payment the guest sent away with "Back to the bill". */
+  let hidden: { readonly id: string; readonly state: string } | null = null
   let payment: GuestPaymentAnswer | null = null
   let cancelPayTimer: (() => void) | null = null
   let payPolling = false
@@ -421,9 +430,21 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
 
   const offline = () => running && deps.now() - lastAnswerAt > OFFLINE_AFTER_MS
 
-  /** The last payment this phone held money for, from the tab's memory. */
+  /** The handle kept for this table, unless the service day it was kept for has ended. */
+  function readHandle(): string | null {
+    const kept = durable?.get(payHandleKey(deps.code))
+    if (kept == null) return null
+    const [value, until] = kept.split('|')
+    if (value === undefined || !(Number(until) > deps.now())) {
+      durable?.remove(payHandleKey(deps.code))
+      return null
+    }
+    return PAYMENT_HANDLE_PATTERN.test(value) ? value : null
+  }
+
+  /** The last payment this phone was paid for, from the durable memory. */
   function recent(): PayingView['recent'] {
-    const kept = deps.memory?.get(PAY_RECENT_KEY)
+    const kept = durable?.get(payRecentKey(deps.code))
     if (kept == null) return null
     const [, amount, at] = kept.split(':')
     const amountMinor = Number(amount)
@@ -437,23 +458,36 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       state: from.ordering.paying,
       minCardMinor: from.ordering.minCardMinor,
       processor: processorName(from.ordering.payingProvider),
+      venueName: from.location.venueName,
       electronicReceipt: false,
       recent: recent(),
     }
   }
 
+  /** Keeps the handle until the service day ends, or forgets it. */
   function keepHandle(next: string | null): void {
     handle = next
-    if (next === null) deps.memory?.remove(PAY_HANDLE_KEY)
-    else deps.memory?.set(PAY_HANDLE_KEY, next)
+    hidden = null
+    if (next === null) {
+      durable?.remove(payHandleKey(deps.code))
+      return
+    }
+    const hours = DEFAULT_KEEP_HOURS * 3_600
+    const seconds = Math.max(60, server?.location.dayEndsInSeconds ?? hours)
+    durable?.set(payHandleKey(deps.code), `${next}|${deps.now() + seconds * 1000}`)
   }
 
-  /** Notes the payment once money is held for it, for the "same amount" check. */
+  /** Notes the payment once it is paid, for the "same amount" check (D127). */
   function noteRecent(answer: GuestPaymentAnswer): void {
-    if (answer.amountMinor === null || !HELD_STATES.has(answer.state)) return
+    if (answer.amountMinor === null || answer.state !== 'captured') return
     if (recentNoted === answer.id) return
     recentNoted = answer.id
-    deps.memory?.set(PAY_RECENT_KEY, `${answer.id}:${answer.amountMinor}:${deps.now()}`)
+    durable?.set(payRecentKey(deps.code), `${answer.id}:${answer.amountMinor}:${deps.now()}`)
+  }
+
+  /** The payment is the unconfirmed one the guest sent away, and it has not moved since. */
+  function isHidden(answer: GuestPaymentAnswer): boolean {
+    return hidden !== null && hidden.id === answer.id && hidden.state === answer.state
   }
 
   function schedulePay(ms: number): void {
@@ -488,6 +522,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         payment = answer
         noteRecent(answer)
         if (paymentIsFinal(paymentViewOf(answer))) schedule(0)
+        // Unconfirmed is read on: a manager's answer moves it to captured or released.
         else wait = answer.next
       }
     } catch {
@@ -506,7 +541,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       revision: server?.version ?? 0,
       tableBill: server === null ? null : tableBillOf(server.bill),
       paying: server === null || retired ? null : payingView(server),
-      payment: payment === null ? null : paymentViewOf(payment),
+      payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment),
       order: server?.order == null ? null : orderView(server.order, pending, now),
       requests: server?.waiterCall == null ? [] : requestsOf(server.waiterCall),
       ordering: retired
@@ -824,6 +859,13 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         : { provider: payment.form.provider, values: payment.form.values }
     },
     dismissPayment() {
+      // "The venue is checking the payment" is not an end: the handle stays and the payment is read
+      // on, and its screen comes back when the manager's answer moves it.
+      if (payment !== null && payment.state === 'unconfirmed') {
+        hidden = { id: payment.id, state: payment.state }
+        recompute()
+        return
+      }
       payment = null
       keepHandle(null)
       cancelPayTimer?.()

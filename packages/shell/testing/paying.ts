@@ -50,6 +50,7 @@ export function payingView(changes: Partial<PayingView> = {}): PayingView {
     state: 'on',
     minCardMinor: 50,
     processor: 'Stripe',
+    venueName: 'Club X',
     electronicReceipt: false,
     recent: null,
     ...changes,

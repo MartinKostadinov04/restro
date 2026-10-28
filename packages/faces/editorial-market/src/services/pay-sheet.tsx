@@ -15,6 +15,7 @@ import {
   choosePay,
   fallbackChain,
   freeLines,
+  type Locale,
   NO_TIP,
   offersPay,
   type PayFormSlot,
@@ -23,12 +24,14 @@ import {
   type Picks,
   parseMinor,
   payBlock,
+  payFormLocale,
   payMoney,
   payScreen,
   payStartCommand,
   pickText,
   pickWhole,
   reconcilePicks,
+  refusalText,
   sameAmountAgo,
   type TableBillLineView,
   TIP_PERCENTS,
@@ -42,26 +45,40 @@ import { StatePanel } from './parts'
 import { useServicesRequired } from './provider'
 
 /** Puts the page's card form into the slot; the face loads no provider library. */
-function FormSlot({ slot, label }: { readonly slot: PayFormSlot; readonly label: string }) {
+function FormSlot({
+  slot,
+  label,
+  locale,
+  failedText,
+}: {
+  readonly slot: PayFormSlot
+  readonly label: string
+  readonly locale: Locale
+  readonly failedText: string
+}) {
   const holder = useRef<HTMLDivElement>(null)
   const handle = useRef<ReturnType<PayFormSlot['mount']> | null>(null)
-  const latest = useRef(label)
-  latest.current = label
+  const props = {
+    label,
+    buttonClass: 'ro-primary is-wide',
+    locale: payFormLocale(locale),
+    failedText,
+  }
+  const latest = useRef(props)
+  latest.current = props
   useEffect(() => {
     const element = holder.current
     if (element === null) return
-    handle.current = slot.mount(element, {
-      label: latest.current,
-      buttonClass: 'ro-primary is-wide',
-    })
+    handle.current = slot.mount(element, latest.current)
     return () => {
       handle.current?.unmount()
       handle.current = null
     }
   }, [slot])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the form takes the new label and words
   useEffect(() => {
-    handle.current?.update({ label, buttonClass: 'ro-primary is-wide' })
-  }, [label])
+    handle.current?.update(latest.current)
+  }, [label, failedText])
   return <div data-slot="pay.form" ref={holder} />
 }
 
@@ -95,9 +112,11 @@ export function PaySheet() {
     }
   }, [])
   // A fresh bill clears only the ticks of lines that changed or went; a friend's round clears none.
+  // Not while this phone has a payment: the server marks that payment's own lines `beingPaid`,
+  // which would empty the ticks "Pay again" goes back to (D127 2.1).
   useEffect(() => {
-    if (bill !== null) setPicks((current) => reconcilePicks(current, bill))
-  }, [bill])
+    if (bill !== null && payment === null) setPicks((current) => reconcilePicks(current, bill))
+  }, [bill, payment])
 
   const nameOf = (line: TableBillLineView) =>
     (line.name === null ? null : pickText(line.name, fallbackChain(locale, locale, [])))?.text ??
@@ -114,11 +133,11 @@ export function PaySheet() {
     }
     const { result } = outcome
     if (result.status === 'rejected') {
-      const code = result.code ?? null
       setRefusal(
-        code !== null && code in words.refusals
-          ? words.refusals[code as keyof typeof words.refusals]
-          : words.refusedOther,
+        refusalText(words, result.code, {
+          command: command.kind,
+          minCard: paying === null ? null : money(paying.minCardMinor),
+        }),
       )
     }
     return result
@@ -129,28 +148,36 @@ export function PaySheet() {
     setBusy(true)
     setAsking(null)
     try {
-      await send(payStartCommand(newActionId(), picks, tip, choosePay(picks, tip)))
+      await send(payStartCommand(newActionId(), picks, tip, tipsOffered))
     } finally {
       if (alive.current) setBusy(false)
     }
   }
 
-  if (payment !== null) {
+  if (payment !== null) return <PaymentScreen payment={payment} money={money} />
+  // Without a location pass there is no bill and no order: why, and the way to allow it.
+  if (state.location?.state === 'needed') {
     return (
-      <PaymentScreen
-        payment={payment}
-        money={money}
-        onAgain={() => {
-          binding.payControls?.dismiss()
-          void start()
-        }}
-      />
+      <div className="ro-sheet" data-slot="bill.hidden">
+        <h3 className="ro-h">{w.locationTitle}</h3>
+        <p>{w.locationBody}</p>
+        {binding.location === undefined ? null : (
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            onClick={() => binding.location?.reopen()}
+          >
+            <span>{w.allowLocation}</span>
+          </button>
+        )}
+        <CallWaiter />
+      </div>
     )
   }
   if (bill === null || paying === null) return <p className="ro-empty">{words.nothingToPay}</p>
 
-  const totals = choosePay(picks, tip)
-  const block = payBlock(paying, bill, picks, tip)
+  const totals = choosePay(picks, tip, tipsOffered)
+  const block = payBlock(paying, bill, picks, tip, tipsOffered)
   const blockWords =
     block === 'cards_paused'
       ? w.cardsPaused
@@ -160,7 +187,9 @@ export function PaySheet() {
           ? w.nothingPicked
           : block === 'below_minimum'
             ? w.belowMinimum(money(paying.minCardMinor))
-            : null
+            : block === 'tip_too_big'
+              ? w.tipTooBig
+              : null
   const free = freeLines(bill)
   const everything = free.length > 0 && free.every((line) => picks.has(line.id))
   const pickTip = (next: TipChoice) =>
@@ -267,9 +296,7 @@ export function PaySheet() {
           </div>
           <p className="ro-allergy">{w.legalPrices}</p>
           {paying.processor === null ? null : (
-            <p className="ro-allergy">
-              {w.legalProcessor(paying.processor, state.location?.venueName ?? '')}
-            </p>
+            <p className="ro-allergy">{w.legalProcessor(paying.processor, paying.venueName)}</p>
           )}
           {asking === null ? (
             <button
@@ -312,8 +339,6 @@ export function PaySheet() {
   )
 }
 
-/** This phone's payment, from "Preparing your bill…" to its end. */
-/** This phone's payment, from "Preparing your bill…" to its end. */
 /**
  * One screen of a payment. The screen changes under the guest's finger (the button they pressed is
  * gone), so each new screen takes the focus itself, which keeps it inside the sheet and lets a
@@ -346,14 +371,36 @@ function Screen({
   )
 }
 
+/** Call a waiter: the way on from every failure screen of paying (D127), where the venue takes calls. */
+function CallWaiter() {
+  const o = useServicesRequired()
+  if (o.features.callWaiter === null) return null
+  return (
+    <button
+      type="button"
+      className="ro-ghost"
+      data-slot="pay.call"
+      onClick={() =>
+        void o.run({
+          kind: 'service.request',
+          actionId: newActionId(),
+          request: 'waiter',
+          note: '',
+        })
+      }
+    >
+      {o.words.paying.callWaiter}
+    </button>
+  )
+}
+
+/** This phone's payment, from "Preparing your bill…" to its end. */
 function PaymentScreen({
   payment,
   money,
-  onAgain,
 }: {
   readonly payment: PaymentView
   readonly money: (minor: number) => string
-  readonly onAgain: () => void
 }) {
   const o = useServicesRequired()
   const { words, run, binding } = o
@@ -361,23 +408,7 @@ function PaymentScreen({
   const [refusal, setRefusal] = useState<string | null>(null)
   const screen: PayScreen = payScreen(payment)
   const dismiss = () => binding.payControls?.dismiss()
-  const call =
-    o.features.callWaiter === null ? null : (
-      <button
-        type="button"
-        className="ro-ghost"
-        onClick={() =>
-          void run({
-            kind: 'service.request',
-            actionId: newActionId(),
-            request: 'waiter',
-            note: '',
-          })
-        }
-      >
-        {w.callWaiter}
-      </button>
-    )
+  const call = <CallWaiter />
   const back = (
     <button type="button" className="ro-ghost" data-slot="pay.back" onClick={dismiss}>
       {w.backToBill}
@@ -418,7 +449,12 @@ function PaymentScreen({
               {priced}
               <p className="ro-allergy">{w.legalPrices}</p>
               {binding.payForm === undefined || payment.amountMinor === null ? null : (
-                <FormSlot slot={binding.payForm} label={w.payX(money(payment.amountMinor))} />
+                <FormSlot
+                  slot={binding.payForm}
+                  label={w.payX(money(payment.amountMinor))}
+                  locale={o.locale}
+                  failedText={w.cardFormFailed}
+                />
               )}
             </>
           )}
@@ -433,17 +469,13 @@ function PaymentScreen({
               else if (outcome.result.status === 'accepted') dismiss()
               else {
                 // After the hold there is no cancel (`too_late`): the screen follows the payment.
-                const code = outcome.result.code ?? ''
-                setRefusal(
-                  code in words.refusals
-                    ? words.refusals[code as keyof typeof words.refusals]
-                    : words.refusedOther,
-                )
+                setRefusal(refusalText(words, outcome.result.code, { command: 'pay.cancel' }))
               }
             }}
           >
             {w.payLater}
           </button>
+          {call}
           {refusal === null ? null : (
             <p className="ro-notice is-bad" role="alert">
               {refusal}
@@ -465,6 +497,9 @@ function PaymentScreen({
             <p className="ro-pay-number" data-slot="pay.number">
               {payment.number}
             </p>
+            {o.tableLabel === null || o.tableLabel.trim() === '' ? null : (
+              <p data-slot="pay.table">{o.guest.table(o.tableLabel)}</p>
+            )}
             {priced}
             <p>{w.paidReceipt}</p>
             {back}
@@ -489,7 +524,7 @@ function PaymentScreen({
                 type="button"
                 className="ro-primary is-wide"
                 data-slot="pay.again"
-                onClick={onAgain}
+                onClick={dismiss}
               >
                 <span>{w.payAgain}</span>
               </button>

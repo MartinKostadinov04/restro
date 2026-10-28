@@ -6,13 +6,7 @@
 import type { Allergen, DietaryLabel, Locale, MeasurementUnit } from '@restro/core'
 
 import type { ServiceKind } from './features'
-import type {
-  BillLineStatus,
-  GuestRefusalCode,
-  PayEnd,
-  PayMethod,
-  RequestStatus,
-} from './service-vocabulary'
+import type { BillLineStatus, GuestRefusalCode, PayEnd, RequestStatus } from './service-vocabulary'
 
 /**
  * The words of a guest page that are not menu text (S3-03: the phone face and its loader). Menu
@@ -117,7 +111,6 @@ export interface ServiceStrings {
   readonly lineStatus: { readonly [S in BillLineStatus]: string }
   readonly tableTotal: string
   readonly pay: string
-  readonly viewReceipt: string
   // Calling a waiter.
   readonly callServer: string
   /** The label of the waiter button before the bag has anything in it. */
@@ -134,49 +127,11 @@ export interface ServiceStrings {
   readonly newRequest: string
   // Paying.
   readonly payTitle: string
-  readonly whatToPay: string
-  readonly people: string
-  readonly perPerson: string
   readonly tip: string
-  readonly noTip: string
-  readonly custom: string
-  readonly customTip: string
-  readonly promo: string
-  readonly apply: string
-  readonly promoAccepted: string
-  readonly promoRejected: string
-  readonly allergyNote: string
-  readonly subtotal: string
   readonly total: string
-  readonly vatIncluded: (rate: string) => string
-  readonly payWith: string
-  readonly methods: { readonly [M in PayMethod]: string }
-  readonly updatingQuote: string
-  readonly quoteFailed: string
   readonly nothingToPay: string
-  readonly processing: string
-  /** The host has the payment but has not confirmed it yet. */
-  readonly payReceived: string
-  readonly success: string
-  readonly successHint: string
-  readonly failure: string
-  readonly failureHint: string
-  /** The answer did not arrive: the payment may or may not have gone through. */
-  readonly payUnknown: string
-  readonly payUnknownHint: string
   readonly done: string
-  // The receipt.
-  readonly receipt: string
-  readonly noReceipt: string
   readonly table: string
-  readonly date: string
-  readonly method: string
-  readonly fiscal: string
-  readonly downloadPdf: string
-  readonly email: string
-  readonly print: string
-  readonly receiptActionDone: string
-  readonly receiptActionFailed: string
   // The table's shared order (#75).
   readonly tableOrder: string
   readonly emptyOrder: string
@@ -265,7 +220,7 @@ export interface ServiceStrings {
   /** Not sent because the POS said items ran out (#80): nothing was sent, the rest can go. */
   readonly sentNotSentOutOfStock: string
   /** Why a command was refused, by code; `refusedOther` for any other code. */
-  readonly refusals: { readonly [C in GuestRefusalCode]: string }
+  readonly refusals: { readonly [C in Exclude<GuestRefusalCode, 'below_minimum'>]: string }
   readonly refusedOther: string
   /** The bill screen and paying from it (#114; the guide's "Guest words: the bill and paying"). */
   readonly paying: PayingStrings
@@ -318,6 +273,14 @@ export interface PayingStrings {
   readonly locationBody: string
   readonly allowLocation: string
   readonly callWaiter: string
+  /** Pay: "Too many tries. Wait a moment and try again." (the guide's `rate_limited`). */
+  readonly rateLimited: string
+  /**
+   * PLACEHOLDERS, not Martin's words yet (the lead is getting them): the tip is more than the
+   * chosen lines, and the card form could not load.
+   */
+  readonly tipTooBig: string
+  readonly cardFormFailed: string
 }
 
 /** The words of one language. `lang` is the language the strings are really in. */
@@ -466,7 +429,6 @@ const EN: Strings = {
     },
     tableTotal: 'Table total',
     pay: 'Pay',
-    viewReceipt: 'View receipt',
     callServer: 'Call a server',
     bell: 'Waiter',
     kinds: {
@@ -496,51 +458,11 @@ const EN: Strings = {
     cancelRequest: 'Cancel request',
     newRequest: 'Send another request',
     payTitle: 'Pay',
-    whatToPay: 'What would you like to pay?',
-    people: 'People',
-    perPerson: 'per person',
     tip: 'Tip for the team',
-    noTip: 'No tip',
-    custom: 'Custom',
-    customTip: 'Custom tip amount',
-    promo: 'Promo code',
-    apply: 'Apply',
-    promoAccepted: 'Code applied',
-    promoRejected: 'This code did not work',
-    allergyNote: 'Any allergies? Tell your waiter before paying if something needs to change.',
-    subtotal: 'Subtotal',
     total: 'Total',
-    vatIncluded: (rate) => `incl. VAT ${rate}`,
-    payWith: 'Pay with',
-    methods: {
-      apple: 'Apple Pay',
-      google: 'Google Pay',
-      card: 'Card',
-      waiter: 'Pay the waiter at the table',
-    },
-    updatingQuote: 'Updating the amount',
-    quoteFailed: 'We could not get the amount to pay. Try again.',
     nothingToPay: 'There is nothing to pay yet.',
-    processing: 'Processing your payment',
-    payReceived: 'We are waiting for your payment to be confirmed.',
-    success: 'Payment complete',
-    successHint: 'Thank you. Your receipt is ready.',
-    failure: 'Payment did not go through',
-    failureHint: 'Try again or choose another method.',
-    payUnknown: 'We could not confirm your payment',
-    payUnknownHint: 'Try again, or ask your waiter to check before you pay another way.',
     done: 'Back to menu',
-    receipt: 'Receipt',
-    noReceipt: 'There is no receipt yet.',
     table: 'Table',
-    date: 'Date',
-    method: 'Paid with',
-    fiscal: 'Fiscal ref.',
-    downloadPdf: 'Download PDF',
-    email: 'Email receipt',
-    print: 'Ask waiter to print',
-    receiptActionDone: 'Done: request sent',
-    receiptActionFailed: 'That did not go through. Try again.',
     tableOrder: 'Table order',
     emptyOrder: 'Nothing on the table order yet.',
     saving: 'Saving…',
@@ -620,13 +542,14 @@ const EN: Strings = {
       paying_paused: 'Card payments are paused right now. Ask your waiter.',
       being_paid: 'Someone is already paying for this line.',
       bill_changed: 'Your bill changed since you opened it.',
-      below_minimum: 'Card payments start at 0.50 EUR. Add an item or ask your waiter.',
       ask_waiter_to_split: 'Ask your waiter to split this bill.',
       turnstile: 'We couldn’t check this request. Try again.',
       sitting_ended:
         'Your visit at this table has ended. If you’re still here, scan the code again.',
       too_late: 'Too late to cancel: the payment is being processed.',
       unknown_payment: 'We can’t find this payment. Ask your waiter.',
+      // PLACEHOLDER (words pending): a tip where the POS cannot record one.
+      tip_not_offered: 'A tip is not possible here. Nothing was charged.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
@@ -678,8 +601,16 @@ const EN: Strings = {
         // release it has not worded yet (the lead drafts them): the calm general ones, true
         // wherever a payment was released.
         cancelled: 'Nothing was charged.',
+        // PLACEHOLDERS (words pending): the pay-first release reasons and paying switched off.
+        enter_refused: 'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
+        item_unavailable: 'Something ran out. Nothing was charged. Ask your waiter.',
+        paying_off:
+          'Card payments are not available right now. Nothing was charged. Ask your waiter.',
         other: 'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
       },
+      rateLimited: 'Too many tries. Wait a moment and try again.',
+      tipTooBig: 'The tip is more than the lines you chose.',
+      cardFormFailed: 'The card form could not load. Nothing was charged. Ask your waiter.',
       payAgain: 'Pay again',
       locationTitle: 'The bill shows only at the table',
       locationBody:
@@ -813,7 +744,6 @@ const BG: Strings = {
     },
     tableTotal: 'Общо за масата',
     pay: 'Плати',
-    viewReceipt: 'Виж бележката',
     callServer: 'Повикай сервитьор',
     bell: 'Сервитьор',
     kinds: {
@@ -843,53 +773,11 @@ const BG: Strings = {
     cancelRequest: 'Отмени заявката',
     newRequest: 'Изпрати друга заявка',
     payTitle: 'Плащане',
-    whatToPay: 'Какво искате да платите?',
-    people: 'Души',
-    perPerson: 'на човек',
     tip: 'Бакшиш за екипа',
-    noTip: 'Без',
-    custom: 'Друг',
-    customTip: 'Друга сума бакшиш',
-    promo: 'Промо код',
-    apply: 'Приложи',
-    promoAccepted: 'Кодът е приложен',
-    promoRejected: 'Този код не работи',
-    allergyNote:
-      'Имате алергии? Кажете на сервитьора преди плащане, ако нещо трябва да се промени.',
-    subtotal: 'Междинна сума',
     total: 'Общо',
-    vatIncluded: (rate) => `вкл. ДДС ${rate}`,
-    payWith: 'Плащане с',
-    methods: {
-      apple: 'Apple Pay',
-      google: 'Google Pay',
-      card: 'Карта',
-      waiter: 'Плащане при сервитьора',
-    },
-    updatingQuote: 'Сумата се обновява',
-    quoteFailed: 'Не успяхме да получим сумата за плащане. Опитайте отново.',
     nothingToPay: 'Все още няма какво да се плати.',
-    processing: 'Плащането се обработва',
-    payReceived: 'Чакаме плащането ви да бъде потвърдено.',
-    success: 'Плащането е успешно',
-    successHint: 'Благодарим! Бележката ви е готова.',
-    failure: 'Плащането не беше успешно',
-    failureHint: 'Опитайте отново или изберете друг начин.',
-    payUnknown: 'Не успяхме да потвърдим плащането ви',
-    payUnknownHint:
-      'Опитайте отново или помолете сервитьора да провери, преди да платите по друг начин.',
     done: 'Обратно към менюто',
-    receipt: 'Касова бележка',
-    noReceipt: 'Все още няма бележка.',
     table: 'Маса',
-    date: 'Дата',
-    method: 'Платено с',
-    fiscal: 'Фискален №',
-    downloadPdf: 'Изтегли PDF',
-    email: 'Изпрати по имейл',
-    print: 'Помоли за разпечатка',
-    receiptActionDone: 'Готово: заявката е изпратена',
-    receiptActionFailed: 'Не се получи. Опитайте отново.',
     tableOrder: 'Поръчка на масата',
     emptyOrder: 'В поръчката на масата още няма нищо.',
     saving: 'Записване…',
@@ -972,13 +860,14 @@ const BG: Strings = {
       paying_paused: 'Плащането с карта е спряно в момента. Попитайте сервитьора.',
       being_paid: 'Някой вече плаща този ред.',
       bill_changed: 'Сметката ви се промени, откакто я отворихте.',
-      below_minimum: 'Плащането с карта е от 0,50 EUR. Добавете артикул или попитайте сервитьора.',
       ask_waiter_to_split: 'Помолете сервитьора да раздели сметката.',
       turnstile: 'Не успяхме да проверим заявката. Опитайте отново.',
       sitting_ended:
         'Посещението ви на тази маса приключи. Ако сте още тук, сканирайте кода отново.',
       too_late: 'Вече е късно за отказ: плащането се обработва.',
       unknown_payment: 'Не намираме това плащане. Попитайте сервитьора.',
+      // PLACEHOLDER (words pending): a tip where the POS cannot record one.
+      tip_not_offered: 'Бакшиш тук не е възможен. Картата ви не е таксувана.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',
@@ -1030,9 +919,19 @@ const BG: Strings = {
           'Плащането не беше завършено. Картата ви не е таксувана. Ако банката е запазила сума, тя ще бъде освободена.',
         expired: 'Времето изтече. Картата ви не е таксувана.',
         cancelled: 'Картата ви не е таксувана.',
+        // PLACEHOLDERS (words pending): the pay-first release reasons and paying switched off.
+        enter_refused:
+          'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.',
+        item_unavailable: 'Нещо се изчерпа. Картата ви не е таксувана. Попитайте сервитьора.',
+        paying_off:
+          'Плащането с карта не е налично в момента. Картата ви не е таксувана. Попитайте сервитьора.',
         other:
           'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.',
       },
+      rateLimited: 'Твърде много опити. Изчакайте малко и опитайте отново.',
+      tipTooBig: 'Бакшишът е повече от избраните редове.',
+      cardFormFailed:
+        'Формата за картата не се зареди. Картата ви не е таксувана. Попитайте сервитьора.',
       payAgain: 'Плати отново',
       locationTitle: 'Сметката се вижда само на масата',
       locationBody:

@@ -36,7 +36,6 @@ describe('@restro/shell public surface', () => {
       'PAYMENT_STATES',
       'choosePay',
       'payScreen',
-      'PAY_METHODS',
       'SERVICE_LIMITS',
       'bagReducer',
       'bagEstimate',

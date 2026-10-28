@@ -1,8 +1,8 @@
 // The services contract (D71, D72): what a face and its host say to each other about the guest's
-// bag, the table bill, waiter requests, payment and the receipt. Pure types and Zod, no I/O.
+// bag, the table bill, waiter requests and payment. Pure types and Zod, no I/O.
 //
 //   host → face:  `ServiceState`, the host's own record of the bill, the requests, this phone's
-//                 payment and the receipt. The face draws it and nothing else.
+//                 payment. The face draws it and nothing else.
 //   face → host:  `GuestCommand`, one guest action with an `actionId` (a uuid made once per
 //                 action and reused on a retry, so the host can answer a repeat with the first
 //                 answer: idempotency). The host answers `CommandResult`.
@@ -47,14 +47,7 @@ import { z } from 'zod'
 
 import { SERVICE_KINDS, type ServiceKind } from './features'
 import type { ViewMoney } from './money'
-import {
-  type BillLineStatus,
-  type PayMethod,
-  type PaymentState,
-  RECEIPT_ACTIONS,
-  type ReceiptAction,
-  type RequestStatus,
-} from './service-vocabulary'
+import type { BillLineStatus, PaymentState, RequestStatus } from './service-vocabulary'
 import type { ViewText } from './text'
 
 export {
@@ -62,13 +55,9 @@ export {
   type BillLineStatus,
   GUEST_REFUSAL_CODES,
   type GuestRefusalCode,
-  PAY_METHODS,
   PAYMENT_STATES,
-  type PayMethod,
   type PaymentState,
-  RECEIPT_ACTIONS,
   REQUEST_STATUSES,
-  type ReceiptAction,
   type RequestStatus,
 } from './service-vocabulary'
 
@@ -176,12 +165,6 @@ export type GuestCommand =
   | { readonly kind: 'pay.returned'; readonly actionId: string }
   /** "Pay later": only before the hold; after it the answer is `too_late`. */
   | { readonly kind: 'pay.cancel'; readonly actionId: string }
-  | {
-      readonly kind: 'receipt.action'
-      readonly actionId: string
-      readonly receiptId: string
-      readonly action: ReceiptAction
-    }
 
 /** What a `pay.start` picks: lines of the bill, each with a quantity, or the whole bill. */
 export type PayPick =
@@ -336,12 +319,6 @@ export const GuestCommandSchema = z.discriminatedUnion('kind', [
   PayStartSchema,
   PayReturnedSchema,
   PayCancelSchema,
-  z.strictObject({
-    kind: z.literal('receipt.action'),
-    actionId: ActionIdSchema,
-    receiptId: HostIdSchema,
-    action: z.enum(RECEIPT_ACTIONS),
-  }),
 ])
 
 /** What the host answers to a command. */
@@ -367,7 +344,7 @@ export interface CommandResult {
  * State (host → face)
  * ------------------------------------------------------------------------------------------- */
 
-/** One line of a bill round or a receipt. */
+/** One line of a bill round. */
 export interface BillLineView {
   readonly id: string
   readonly name: ViewText
@@ -441,6 +418,11 @@ export interface PayingView {
   readonly minCardMinor: number
   /** Who processes the payment, as the page names it ("Payment processed by … for …"), or null. */
   readonly processor: string | null
+  /**
+   * The venue's name for that line: always sent with the table's state, even where the location
+   * check is off. The venue's legal name and links come with a later ticket (D127 1.6).
+   */
+  readonly venueName: string
   /** Reserved for #186: true when a receipt email may be offered. The host sets it false. */
   readonly electronicReceipt: boolean
   /**
@@ -485,30 +467,6 @@ export interface RequestView {
   readonly kind: ServiceKind
   readonly status: RequestStatus
   readonly note: string
-}
-
-/** One VAT line of a receipt: the rate as shown ("20%") and the VAT inside the total. */
-export interface VatLine {
-  readonly rate: string
-  readonly amount: ViewMoney
-}
-
-/** A paid receipt as the host issued it. */
-export interface ReceiptView {
-  readonly id: string
-  readonly reference: string
-  readonly fiscalReference: string | null
-  readonly venueName: string
-  readonly tableLabel: string | null
-  /** When it was issued, as the host wants it shown. */
-  readonly issuedAt: string
-  readonly lines: readonly BillLineView[]
-  readonly vat: readonly VatLine[]
-  readonly tip: ViewMoney
-  readonly total: ViewMoney
-  readonly method: PayMethod
-  /** Which receipt buttons the host can serve. */
-  readonly actions: { readonly pdf: boolean; readonly email: boolean; readonly print: boolean }
 }
 
 /** One line of the table's shared order: our ids, never a price or a name (the face looks them up). */
@@ -613,7 +571,6 @@ export interface ServiceState {
   readonly preview: boolean
   readonly bill: BillView | null
   readonly requests: readonly RequestView[]
-  readonly receipt: ReceiptView | null
   /**
    * The table's bill as the POS reads it, for paying (#74, #114): its lines with the POS's own
    * amounts and which are in a payment that isn't final; absent where the host has none or the
@@ -685,6 +642,10 @@ export interface PayFormProps {
   readonly label: string
   /** The class the face wants on that button, so it looks like the face's own. */
   readonly buttonClass: string
+  /** The guest's language for the form's own text (`payFormLocale`: "bg", "en"). */
+  readonly locale: string
+  /** What the form says when it cannot load (a placeholder word until Martin's is in). */
+  readonly failedText: string
 }
 
 /** What the host returns for a mounted form. */
@@ -723,11 +684,10 @@ export interface ServiceBinding {
   readonly location?: LocationControls
 }
 
-/** A state with nothing in it: no bill, no request, no payment, no receipt. */
+/** A state with nothing in it: no bill, no request, no payment. */
 export const EMPTY_SERVICE_STATE: ServiceState = {
   revision: 0,
   preview: false,
   bill: null,
   requests: [],
-  receipt: null,
 }

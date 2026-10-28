@@ -37,7 +37,7 @@ export type StripeLoader = (
   publishableKey: string,
   options: { stripeAccount: string },
 ) => Promise<{
-  elements: (options: { clientSecret: string }) => ElementsLike
+  elements: (options: { clientSecret: string; locale: string }) => ElementsLike
   confirmPayment: (options: {
     elements: ElementsLike
     confirmParams: { return_url: string }
@@ -54,6 +54,8 @@ export interface ElementsLike {
 export interface PaymentElementLike {
   mount: (target: HTMLElement) => void
   destroy: () => void
+  /** Stripe's `ready` (the form is drawn and can take a card) and `loaderror` events. */
+  on: (event: 'ready' | 'loaderror', handler: () => void) => void
 }
 
 const defaultLoader = loadStripe as unknown as StripeLoader
@@ -81,8 +83,24 @@ export function mountStripeCardForm(
   target.replaceChildren(holder, message, button)
 
   let alive = true
+  let failedText = props.failedText
   let element: PaymentElementLike | null = null
-  if (!values.success || context.publishableKey === undefined || context.publishableKey === '') {
+  /**
+   * The form could not be drawn: the guest is told so in the page's words (a placeholder until
+   * Martin's are in) and the reason goes to the console, which holds no personal data and no key.
+   */
+  const fail = (reason: string) => {
+    console.error(`card form: ${reason}`)
+    message.textContent = failedText
+    message.hidden = failedText === ''
+    button.disabled = true
+  }
+  if (!values.success) {
+    fail('the form values were not what the provider gives')
+    return { update: () => {}, unmount: () => target.replaceChildren() }
+  }
+  if (context.publishableKey === undefined || context.publishableKey === '') {
+    fail('no publishable key is set')
     return { update: () => {}, unmount: () => target.replaceChildren() }
   }
   const { clientSecret, account } = values.data
@@ -91,11 +109,22 @@ export function mountStripeCardForm(
   let elements: ElementsLike | null = null
   void (async () => {
     stripe = await load(context.publishableKey ?? '', { stripeAccount: account }).catch(() => null)
-    if (!alive || stripe === null) return
-    elements = stripe.elements({ clientSecret })
+    if (!alive) return
+    if (stripe === null) {
+      fail('the provider’s library did not load')
+      return
+    }
+    // The guest's language for the form's own text; a card error stays in the provider's text.
+    elements = stripe.elements({ clientSecret, locale: props.locale })
     element = elements.create('payment', { layout: 'tabs' })
+    // The button works once the form is drawn (`ready`), not once it is mounted.
+    element.on('ready', () => {
+      if (alive) button.disabled = false
+    })
+    element.on('loaderror', () => {
+      if (alive) fail('the card form did not load')
+    })
     element.mount(holder)
-    button.disabled = false
   })()
 
   button.addEventListener('click', () => {
@@ -135,6 +164,7 @@ export function mountStripeCardForm(
     update: (next) => {
       button.textContent = next.label
       button.className = next.buttonClass
+      failedText = next.failedText
     },
     unmount: () => {
       alive = false

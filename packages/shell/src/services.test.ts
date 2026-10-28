@@ -8,8 +8,6 @@ import {
   EMPTY_SERVICE_STATE,
   type GuestCommand,
   GuestCommandSchema,
-  PAY_METHODS,
-  RECEIPT_ACTIONS,
   SERVICE_LIMITS,
 } from './services'
 import { stringsFor } from './strings'
@@ -50,7 +48,6 @@ const VALID: readonly GuestCommand[] = [
   },
   { kind: 'pay.returned', actionId: uuid(6) },
   { kind: 'pay.cancel', actionId: uuid(13) },
-  { kind: 'receipt.action', actionId: uuid(7), receiptId: 'rc-1', action: 'pdf' },
   // The shared order's edits (#75).
   { kind: 'order.add', actionId: uuid(8), ...line },
   { kind: 'order.change', actionId: uuid(9), lineId: ol(1), delta: -1 },
@@ -90,17 +87,11 @@ describe('GuestCommandSchema', () => {
     }
   })
 
-  it('accepts every service kind, receipt action and a pay command of each kind', () => {
+  it('accepts every service kind and a pay command of each kind', () => {
     for (const request of SERVICE_KINDS) {
       expect(ok({ kind: 'service.request', actionId: uuid(1), request, note: '' }), request).toBe(
         true,
       )
-    }
-    for (const action of RECEIPT_ACTIONS) {
-      expect(
-        ok({ kind: 'receipt.action', actionId: uuid(1), receiptId: 'r', action }),
-        action,
-      ).toBe(true)
     }
   })
 
@@ -164,7 +155,6 @@ describe('GuestCommandSchema', () => {
   it('limits a cancel and the later steps of a payment: a host id of 1 to 64 characters', () => {
     expect(ok({ ...VALID[2], requestId: '' })).toBe(false)
     expect(ok({ ...VALID[2], requestId: 'r'.repeat(65) })).toBe(false)
-    expect(ok({ ...VALID[6], receiptId: '' })).toBe(false)
     expect(ok({ ...VALID[6], action: 'fax' })).toBe(false)
   })
 
@@ -229,13 +219,12 @@ describe('GuestCommandSchema', () => {
 })
 
 describe('the empty state and the stub', () => {
-  it('has no bill, no request, no payment, no receipt, and is not a preview', () => {
+  it('has no bill, no request, no payment, and is not a preview', () => {
     expect(EMPTY_SERVICE_STATE).toEqual({
       revision: 0,
       preview: false,
       bill: null,
       requests: [],
-      receipt: null,
     })
   })
 
@@ -277,7 +266,6 @@ describe('the service strings', () => {
     for (const locale of ['bg_BG', 'en_US'] as const) {
       const words = stringsFor(locale).services
       expect(Object.keys(words.kinds).sort()).toEqual([...SERVICE_KINDS].sort())
-      expect(Object.keys(words.methods).sort()).toEqual([...PAY_METHODS].sort())
       expect(Object.keys(words.lineStatus).sort()).toEqual([
         'cancelled',
         'preparing',

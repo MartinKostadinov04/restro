@@ -1,6 +1,6 @@
 // A demo host for the service screens, for the admin's preview only (`@restro/editorial-market/
 // preview`): it keeps a make-believe table in its own state, so the composer can show the bag, the
-// bill, the waiter, the payment and the receipt working before any platform exists behind them.
+// bill, the waiter and the payment working before any platform exists behind them.
 // The guest page never imports this file (a dependency rule forbids it); a real host binds its own
 // `ServiceBinding`.
 //
@@ -26,7 +26,6 @@ import {
   type GuestCommand,
   type PayFormSlot,
   type PaymentView,
-  type ReceiptView,
   type RequestView,
   resolveBag,
   type ServiceBinding,
@@ -50,11 +49,10 @@ export const DEMO_DELAYS = {
   /** A waiter request is answered, and the waiter is on the way. */
   request: 300,
   onTheWay: 1500,
-  /** A payment is accepted, held and captured, a receipt action. */
+  /** A payment is accepted, held and captured. */
   pay: 400,
   hold: 900,
   capture: 1400,
-  receiptAction: 400,
 } as const
 
 /** One line of a round, with the minor units behind its total. */
@@ -80,7 +78,6 @@ interface Store {
   readonly rounds: readonly Round[]
   readonly requests: readonly RequestView[]
   readonly payment: PaymentView | null
-  readonly receipt: ReceiptView | null
 }
 
 const clock = (locale: string) =>
@@ -129,7 +126,7 @@ function startingStore(view: ViewModel): Store {
       },
     ],
   }
-  return { revision: 1, rounds: [staff], requests: [], payment: null, receipt: null }
+  return { revision: 1, rounds: [staff], requests: [], payment: null }
 }
 
 const lineTotal = (line: Line) => (line.status === 'cancelled' ? 0 : line.totalMinor)
@@ -171,12 +168,12 @@ function stateOf(store: Store, view: ViewModel): ServiceState {
     preview: true,
     bill,
     requests: store.requests,
-    receipt: store.receipt,
     ordering: { state: 'on', tips: true },
     paying: {
       state: 'on',
       minCardMinor: 50,
       processor: 'Demo',
+      venueName: 'Demo venue',
       electronicReceipt: false,
       recent: null,
     },
@@ -423,15 +420,6 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
             payment: { ...current, state: 'released', reason: 'cancelled', form: null },
           }))
           return answer(command, 'accepted')
-        }
-
-        case 'receipt.action': {
-          await wait(DEMO_DELAYS.receiptAction)
-          return answer(
-            command,
-            'accepted',
-            say('Demo: sent to your phone.', 'Демо: изпратено към телефона ви.'),
-          )
         }
 
         // The table's shared order (#75): this template keeps its own bag, so the demo has none.

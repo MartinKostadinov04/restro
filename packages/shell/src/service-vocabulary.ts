@@ -3,18 +3,6 @@
 // with no imports, so the interface strings (strings.ts) can be keyed by them without a cycle
 // (services.ts reaches strings.ts through money.ts). Import them from `./services`.
 
-/** How a guest pays (a receipt keeps it). `waiter` means "I pay the waiter at the table". */
-export const PAY_METHODS = ['apple', 'google', 'card', 'waiter'] as const
-
-/** One payment method. */
-export type PayMethod = (typeof PAY_METHODS)[number]
-
-/** What a receipt can be turned into. */
-export const RECEIPT_ACTIONS = ['pdf', 'email', 'print'] as const
-
-/** One receipt action. */
-export type ReceiptAction = (typeof RECEIPT_ACTIONS)[number]
-
 /** What the kitchen has done with one bill line. */
 export const BILL_LINE_STATUSES = ['received', 'preparing', 'served', 'cancelled'] as const
 
@@ -104,6 +92,8 @@ export const GUEST_REFUSAL_CODES = [
   'too_late',
   /** Pay: the payment named by the phone's handle is not known. */
   'unknown_payment',
+  /** Pay or Send (#113): a tip where the POS cannot record one. */
+  'tip_not_offered',
   /** Not available yet. */
   'not_built',
 ] as const
@@ -145,6 +135,11 @@ export const PAY_ENDS = [
   'no_receipt',
   'expired',
   'cancelled',
+  /** Pay-first (#113): the round could not be entered, or an item ran out. */
+  'enter_refused',
+  'item_unavailable',
+  /** Paying was switched off at the venue while the payment waited. */
+  'paying_off',
   'other',
 ] as const
 

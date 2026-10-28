@@ -11,10 +11,18 @@
 //   or went (a friend's new round never clears one, D127).
 // - `payScreen` turns the paying phone's payment into the one screen to draw.
 
-import { addMinor, type Currency, type Locale, percentOfMinor, sumSignedMinor } from '@restro/core'
+import {
+  addMinor,
+  type Currency,
+  type Locale,
+  localeToBcp47,
+  percentOfMinor,
+  sumSignedMinor,
+} from '@restro/core'
 
 import { viewMinor } from './money'
 import { PAY_ENDS, type PayEnd } from './service-vocabulary'
+import type { ServiceStrings } from './strings'
 
 export { PAY_ENDS, type PayEnd }
 
@@ -75,7 +83,8 @@ export function pickWhole(picks: Picks, bill: TableBillView): Picks {
 }
 
 /**
- * Keeps the ticks across a fresh bill and clears those of lines that changed (another quantity or
+ * Keeps the ticks across a fresh bill (a face does not call it while this phone has a payment: the
+ * server marks that payment's own lines `beingPaid`, which would empty the ticks "Pay again" keeps) and clears those of lines that changed (another quantity or
  * amount than the guest ticked), went, or are now in a payment. A friend's new round changes none.
  */
 export function reconcilePicks(picks: Picks, bill: TableBillView): Picks {
@@ -107,8 +116,13 @@ export interface PayTotals {
   readonly tipValid: boolean
 }
 
-/** Adds up the ticked lines and the tip. The tip is of the ticked lines only (D127). */
-export function choosePay(picks: Picks, tip: TipChoice): PayTotals {
+/**
+ * Adds up the ticked lines and the tip. The tip is of the ticked lines only (D127). Where no tip is
+ * offered (`tipsOffered` false: the POS cannot record one), the tip is none, whatever was chosen
+ * before the flag changed.
+ */
+export function choosePay(picks: Picks, chosen: TipChoice, tipsOffered: boolean): PayTotals {
+  const tip = tipsOffered ? chosen : NO_TIP
   const itemsMinor = sumSignedMinor([...picks.values()].map((line) => line.amountMinor))
   const base = Math.max(itemsMinor, 0)
   const presets = TIP_PERCENTS.map((percent) => ({
@@ -147,11 +161,12 @@ export function payBlock(
   bill: TableBillView,
   picks: Picks,
   tip: TipChoice,
+  tipsOffered: boolean,
 ): PayBlock | null {
   if (paying.state === 'paused') return 'cards_paused'
   if (!bill.complete) return 'not_up_to_date'
   if (picks.size === 0) return 'nothing_picked'
-  const totals = choosePay(picks, tip)
+  const totals = choosePay(picks, tip, tipsOffered)
   if (!totals.tipValid) return 'tip_too_big'
   // The smallest card payment is measured on what is held: the lines plus the tip (D127).
   if (totals.totalMinor < paying.minCardMinor) return 'below_minimum'
@@ -162,9 +177,11 @@ export function payBlock(
 export function payStartCommand(
   actionId: string,
   picks: Picks,
-  tip: TipChoice,
-  totals: PayTotals,
+  chosen: TipChoice,
+  tipsOffered: boolean,
 ): Extract<GuestCommand, { kind: 'pay.start' }> {
+  const tip = tipsOffered ? chosen : NO_TIP
+  const totals = choosePay(picks, tip, tipsOffered)
   const seen = [...picks.values()]
   return {
     kind: 'pay.start',
@@ -211,7 +228,9 @@ export type PayScreen =
 const ENDS: Readonly<Record<string, { end: PayEnd; again: boolean }>> = {
   busy: { end: 'busy', again: true },
   paying_paused: { end: 'paying_paused', again: false },
-  paying_not_offered: { end: 'paying_paused', again: false },
+  paying_not_offered: { end: 'paying_off', again: false },
+  enter_refused: { end: 'enter_refused', again: false },
+  item_unavailable: { end: 'item_unavailable', again: false },
   bill_changed: { end: 'check_failed', again: true },
   check_failed: { end: 'check_failed', again: true },
   isolate_refused: { end: 'isolate_refused', again: false },
@@ -254,12 +273,14 @@ export function payScreen(payment: PaymentView): PayScreen {
   }
 }
 
-/** True once the payment cannot change: the page stops polling it. */
+/**
+ * True once the payment cannot change: the page stops polling it. `unconfirmed` is not final: a
+ * manager's answer moves it to captured or released (D127 3.5), so the page keeps reading it.
+ */
 export function paymentIsFinal(payment: PaymentView): boolean {
   return (
     payment.state === 'captured' ||
     payment.state === 'released' ||
-    payment.state === 'unconfirmed' ||
     payment.state === 'stranded' ||
     payment.state === 'capture_failed'
   )
@@ -281,4 +302,31 @@ export function sameAmountAgo(
 /** An amount of the paying screens as text for the guest's language ("27,50 EUR" / "27.50 EUR"). */
 export function payMoney(minor: number, currency: Currency, locale: Locale): string {
   return viewMinor(minor, currency, locale).text
+}
+
+/** The language code a card form is shown in ("bg", "en"): the shell's locale without its region. */
+export function payFormLocale(locale: Locale): string {
+  return localeToBcp47(locale).split('-')[0] ?? 'en'
+}
+
+/**
+ * The words for a refusal. The one place a face turns a code into words: `below_minimum` carries
+ * the venue's own smallest card payment (`minCard`, the amount as text), and `rate_limited` on a
+ * pay command is the guide's "Too many tries" rather than the order's "Too many changes". A code
+ * the guide has no words for is `refusedOther`.
+ */
+export function refusalText(
+  words: ServiceStrings,
+  code: string | null | undefined,
+  context: { readonly command?: string; readonly minCard?: string | null } = {},
+): string {
+  if (code === null || code === undefined) return words.refusedOther
+  if (code === 'below_minimum') {
+    return context.minCard == null ? words.refusedOther : words.paying.belowMinimum(context.minCard)
+  }
+  if (code === 'rate_limited' && context.command?.startsWith('pay.'))
+    return words.paying.rateLimited
+  return Object.hasOwn(words.refusals, code)
+    ? words.refusals[code as keyof typeof words.refusals]
+    : words.refusedOther
 }
