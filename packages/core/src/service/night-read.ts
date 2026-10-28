@@ -557,6 +557,11 @@ export interface LogLine {
   readonly amountMinor: number | null
   /** The sent orders a closed night held. */
   readonly sentOrdersOfDay: number | null
+  /**
+   * A waiter call entry's kinds (#180): the one a `waiter_call.called` entry added, or every kind
+   * of the call in a Handled or lapsed entry; empty for any other entry.
+   */
+  readonly callKinds: readonly string[]
 }
 
 /** A page of the Log for one day. */
@@ -567,6 +572,18 @@ export interface LogPage {
   readonly hasMore: boolean
   /** Service days with an entry, newest first, for the picker (the others are greyed). */
   readonly days: readonly string[]
+}
+
+/**
+ * The kinds a waiter call's Log entry names (#180): the kind a `waiter_call.called` entry added,
+ * every kind of the call in a Handled or lapsed one (comma-joined in the entry). An entry from before kinds were kept is the
+ * plain call.
+ */
+function callKindsOf(kind: string, details: Record<string, unknown>): readonly string[] {
+  if (!kind.startsWith('waiter_call.')) return []
+  const asked = details[kind === 'waiter_call.called' ? 'kind' : 'kinds']
+  const kinds = typeof asked === 'string' ? asked.split(',').filter((entry) => entry !== '') : []
+  return kinds.length === 0 ? ['waiter'] : kinds
 }
 
 const detailText = (details: Record<string, unknown>, key: string): string | null => {
@@ -758,6 +775,7 @@ export async function readLog(
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
             amountMinor: row.amountMinor ?? null,
             sentOrdersOfDay: typeof sentOrdersOfDay === 'number' ? sentOrdersOfDay : null,
+            callKinds: callKindsOf(row.kind, row.details),
           }
         }),
       },

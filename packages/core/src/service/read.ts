@@ -35,6 +35,7 @@ import type { AreaId, BarId, TableId } from '../ids'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { serviceDate } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
+import type { CallWaiterKind } from '../theme'
 import { type BillView, billBackendValues, billView, parseStoredBills } from './bill'
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
@@ -44,6 +45,7 @@ import { type PayFirstState, payFirstItems, payFirstState } from './pay-first'
 import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
 import { readTableCapabilities } from './table-capabilities'
+import { orderedKinds } from './waiter-call'
 
 /** The sent order states that still hold the table's attention (D116). */
 const OPEN_SENT_ORDER_STATES = [
@@ -130,6 +132,7 @@ export interface TableStateRead {
   readonly waiterCall: {
     readonly id: string
     readonly state: 'open' | 'done' | 'lapsed'
+    readonly kinds: readonly CallWaiterKind[]
     readonly calledAt: Date
     readonly endedAt: Date | null
   } | null
@@ -316,6 +319,7 @@ export async function readTableState(
             .select({
               id: waiterCalls.id,
               state: waiterCalls.state,
+              kinds: waiterCalls.kinds,
               calledAt: waiterCalls.calledAt,
               doneAt: waiterCalls.doneAt,
               updatedAt: waiterCalls.updatedAt,
@@ -453,6 +457,7 @@ export async function readTableState(
           : {
               id: call.id,
               state: call.state as 'open' | 'done' | 'lapsed',
+              kinds: orderedKinds(call.kinds),
               calledAt: call.calledAt,
               endedAt: call.state === 'open' ? null : (call.doneAt ?? call.updatedAt),
             },
@@ -560,6 +565,7 @@ export interface Tonight {
     | readonly {
         readonly id: string
         readonly tableId: string
+        readonly kinds: readonly CallWaiterKind[]
         readonly calledAt: Date
       }[]
     | null
@@ -715,6 +721,7 @@ export async function readTonight(
           .select({
             id: waiterCalls.id,
             tableId: waiterCalls.tableId,
+            kinds: waiterCalls.kinds,
             calledAt: waiterCalls.calledAt,
           })
           .from(waiterCalls)
@@ -818,7 +825,8 @@ export async function readTonight(
       landedLate: landed.flatMap((row) =>
         row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
       ),
-      waiterCalls: calls,
+      waiterCalls:
+        calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
       pauses: active.map(({ actor: starter, ...pause }) => ({
         ...pause,
         startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),

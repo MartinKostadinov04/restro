@@ -336,7 +336,7 @@ describe.skipIf(!hasDatabase)('the service write path (as the restro_app role)',
         const actionId = randomUUID()
         const missing = await applyService(
           world.app,
-          { type: 'waiter.call', tableId: elsewhere.tables[0], actionId, ageMs: 0 },
+          { type: 'waiter.call', tableId: elsewhere.tables[0], actionId, kind: 'waiter', ageMs: 0 },
           guest(),
         )
         expect(missing).toEqual({ result: refused(actionId, 'table_missing'), state: null })

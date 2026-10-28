@@ -258,14 +258,21 @@ export function orderView(
 }
 
 /**
- * The table's waiter call as the face's request (#81): one call per table, so its id is also its
- * action id (the sheet then shows it as the open request). A call nobody answered in time is one
- * the team could not take ("Ask your waiter").
+ * The table's waiter call as the face's requests (#81, #180): one call per table holds the kinds
+ * its guests asked for, so the shell sees one request per kind, each with the call's status and the
+ * call's id as its action id (the sheet then shows them as the open request). A call nobody
+ * answered in time is one the team could not take ("Ask your waiter").
  */
-function requestOf(call: NonNullable<GuestTableState['waiterCall']>): RequestView {
+function requestsOf(call: NonNullable<GuestTableState['waiterCall']>): RequestView[] {
   const status: RequestView['status'] =
     call.state === 'open' ? 'sent' : call.state === 'done' ? 'done' : 'rejected'
-  return { id: call.id, actionId: call.id, kind: 'waiter', status, note: '' }
+  return call.kinds.map((kind) => ({
+    id: `${call.id}:${kind}`,
+    actionId: call.id,
+    kind,
+    status,
+    note: '',
+  }))
 }
 
 /** A client for one table. Call `start()` to begin polling. */
@@ -319,7 +326,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
       order: server?.order == null ? null : orderView(server.order, pending, now),
-      requests: server?.waiterCall == null ? [] : [requestOf(server.waiterCall)],
+      requests: server?.waiterCall == null ? [] : requestsOf(server.waiterCall),
       ordering: retired
         ? { state: 'closed' }
         : server === null

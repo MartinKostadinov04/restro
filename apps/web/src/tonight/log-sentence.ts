@@ -5,6 +5,8 @@
 // happened (kind)" can never be drawn.
 import type { LogLineView } from '@/server/tonight/night-view'
 
+import { callKindsText } from './call-kinds'
+
 /** One kind of Log entry (core's `LogKind`, as the view carries it). */
 type LogKind = LogLineView['kind']
 
@@ -88,9 +90,13 @@ export const SENTENCES = {
   'alert.raised': (l, c) => c.say('lg_alert', { alert: l.alertTitle ?? '' }),
   'alert.done': (l, c) => c.say('lg_alert_done', { alert: l.alertTitle ?? '' }),
   'alert.cleared': (l, c) => c.say('lg_alert_cleared', { alert: l.alertTitle ?? '' }),
-  'waiter_call.called': (l, c) => c.say('lg_call', { table: c.table(l) }),
-  'waiter_call.done': (l, c) => c.say('lg_call_done', { table: c.table(l) }),
-  'waiter_call.lapsed': (l, c) => c.say('lg_call_lapsed', { table: c.table(l) }),
+  // A call's requests are named: the one this entry added, or every kind the call held (#180).
+  'waiter_call.called': (l, c) =>
+    c.say('lg_call', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
+  'waiter_call.done': (l, c) =>
+    c.say('lg_call_done', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
+  'waiter_call.lapsed': (l, c) =>
+    c.say('lg_call_lapsed', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
   'service_day.closed': (l, c) => c.say('lg_day_closed', { n: l.sentOrdersOfDay ?? 0 }),
   'guard.tripped': (l, c) => c.say('lg_guard', { what: c.say(`lg_g_${l.guard ?? 'other'}`) }),
   'settings.changed': (l, c) =>

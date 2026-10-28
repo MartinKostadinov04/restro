@@ -2100,6 +2100,11 @@ export const logEntries = restro.table(
   ],
 )
 
+/** The request kinds a call can hold (core's `CALL_WAITER_KINDS`, #180). */
+const WAITER_CALL_KINDS = sql.raw(
+  `array['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal']::text[]`,
+)
+
 /** A guest's "Call a waiter" (`wc_`): no text from the guest, no identity. */
 export const waiterCalls = restro.table(
   'waiter_calls',
@@ -2113,6 +2118,13 @@ export const waiterCalls = restro.table(
     sittingId: text('sitting_id').notNull(),
     serviceDate: date('service_date', { mode: 'string' }).notNull(),
     calledAt: timestamp('called_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * What the guests asked for (#180), in the venue's list order: one call per table collects the
+     * requests of everyone at it. `waiter` alone is the plain call.
+     */
+    kinds: text('kinds').array().notNull().default(sql`'{waiter}'::text[]`),
+    /** The newest request added to the call: the unanswered time counts from here. */
+    lastCalledAt: timestamp('last_called_at', { withTimezone: true }).notNull().defaultNow(),
     state: text('state').notNull().default('open'),
     doneAt: timestamp('done_at', { withTimezone: true }),
     /** The actor who marked it Handled. */
@@ -2137,6 +2149,10 @@ export const waiterCalls = restro.table(
     index('waiter_calls_venue_id_service_date_idx').on(t.venueId, t.serviceDate),
     check('waiter_calls_id_format', sql`${t.id} ~ '^wc_[0-9A-Za-z]+$'`),
     check('waiter_calls_state', sql`${t.state} in ('open', 'done', 'lapsed')`),
+    check(
+      'waiter_calls_kinds',
+      sql`cardinality(${t.kinds}) >= 1 and ${t.kinds} <@ ${WAITER_CALL_KINDS}`,
+    ),
     check('waiter_calls_done_pair', sql`(${t.state} = 'done') = (${t.doneAt} is not null)`),
     check(
       'waiter_calls_done_by',

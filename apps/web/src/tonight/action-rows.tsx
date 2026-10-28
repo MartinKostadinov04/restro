@@ -34,6 +34,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { handleWaiterCallAction, resumeTableAction } from '@/server/tonight/actions'
 import type { ActionRow, RowKind, TonightView } from '@/server/tonight/view'
 
+import { callKindsText } from './call-kinds'
 import { useMoney } from './money'
 import { useTonightRun } from './run'
 import { SentOrderAnswers } from './sent-order-answers'
@@ -87,7 +88,7 @@ export function ActionRowItem({
   let answer: ReactNode = null
 
   if (row.kind === 'call') {
-    title = t('c_t', { table: name })
+    title = t('c_t', { table: name, kinds: callKindsText(t, row.callKinds ?? ['waiter']) })
     // "Handled": no PIN even on a shared device; the Log names the device's account (Martin 10-26).
     if (view.can.answer) {
       answer = (

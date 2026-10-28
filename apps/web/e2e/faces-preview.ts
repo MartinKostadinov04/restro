@@ -65,7 +65,7 @@ export async function servicesOn(): Promise<void> {
             filters: true,
             call_waiter: {
               enabled: true,
-              kinds: ['waiter', 'bill', 'water', 'cutlery', 'terminal', 'other'],
+              kinds: ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal'],
             },
             bill: true,
             ordering: true,

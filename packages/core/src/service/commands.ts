@@ -21,6 +21,7 @@ import { z } from 'zod'
 
 import { idSchema } from '../ids'
 import { ORDER_EDIT_MAX_AGE_MS, ORDER_LIMITS } from '../table-order'
+import { CALL_WAITER_KINDS } from '../theme'
 import {
   AlertDeliveredSchema,
   AlertSuppressedSchema,
@@ -286,9 +287,16 @@ export const SERVICE_COMMANDS = {
   'pay.start': payStart(),
   'pay.returned': payReturned(),
   'pay.cancel': payCancel(),
-  // #81: a second tap returns the open call. Not located; no text, no identity.
+  // #81, #180: one open call per table: a later request is added to it. Not located; no text, no
+  // identity.
   'waiter.call': defineCommand({
-    schema: z.strictObject({ type: z.literal('waiter.call'), tableId, actionId, ageMs }),
+    schema: z.strictObject({
+      type: z.literal('waiter.call'),
+      tableId,
+      actionId,
+      kind: z.enum(CALL_WAITER_KINDS),
+      ageMs,
+    }),
     origins: ['guest'],
     permission: null,
     idempotency: 'by_nature',
