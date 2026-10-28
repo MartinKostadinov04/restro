@@ -250,25 +250,23 @@ export async function chooseLanguage(page: Page, lang: string): Promise<boolean>
 }
 
 /**
- * From the open pay sheet to the receipt, through the contract's pay markers (guide §10.2): pays
- * the demo bill with the first method that is a card or wallet (`pay.method`, not Apple Pay or
- * "pay the waiter"), waits for the paid screen's way on to the receipt (`pay.receipt_open`), and
- * opens it (`pay.receipt`).
+ * From the open pay sheet to the paid screen, through the contract's pay markers (D127, #114):
+ * ticks the whole bill (`pay.whole`), taps Pay (`pay.start`), waits for the card form's slot
+ * (`pay.form`, the demo's is one button), presses it, and waits for the payment number
+ * (`pay.number`) that only a captured payment shows. The receipt screen of before is gone from the
+ * guest's path (the payment confirmation page is a later piece), so the "receipt" screen of the
+ * audits is the paid screen.
  */
 export async function payAndOpenReceipt(page: Page): Promise<void> {
   const sheet = dialogs(page).last()
-  const method = sheet
-    .locator('[data-slot="pay.method"]:not([data-method="apple"]):not([data-method="waiter"])')
-    .first()
-  await expect(
-    method,
-    `${FACE_ID}'s pay sheet marks a card or wallet method pay.method`,
-  ).toBeVisible()
-  await method.click()
-  const toReceipt = sheet.locator('[data-slot="pay.receipt_open"]')
-  await expect(toReceipt).toBeVisible({ timeout: 15_000 })
-  await toReceipt.click()
-  await expect(sheet.locator('[data-slot="pay.receipt"]')).toBeVisible()
+  await sheet.locator('[data-slot="pay.whole"]').click()
+  await sheet.locator('[data-slot="pay.start"]').click()
+  const form = sheet.locator('[data-slot="pay.form"] button')
+  await expect(form, `${FACE_ID}'s pay sheet fills the form slot (pay.form)`).toBeVisible({
+    timeout: 15_000,
+  })
+  await form.click()
+  await expect(sheet.locator('[data-slot="pay.number"]')).toBeVisible({ timeout: 15_000 })
 }
 
 /** Opens a screen and runs `check` on it; the screen is closed again afterwards. */

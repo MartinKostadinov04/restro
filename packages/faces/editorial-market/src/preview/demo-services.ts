@@ -469,6 +469,7 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
         button.type = 'button'
         button.className = props.buttonClass
         button.textContent = props.label
+        button.dataset.slot = 'pay.form.submit'
         button.addEventListener('click', () => {
           button.disabled = true
           const current = storeRef.current.payment

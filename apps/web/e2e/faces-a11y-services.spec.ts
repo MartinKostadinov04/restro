@@ -85,7 +85,7 @@ test.describe('the dialogs', () => {
     await exerciseDialog(page, opener(page, 'bill'), 'Table order')
     await exerciseDialog(page, opener(page, 'call'), 'Call a server')
     await exerciseDialog(page, opener(page, 'pay'), 'Pay')
-    // The receipt, reached from the pay sheet: the focus goes back to where the guest began.
+    // The paid screen, reached from the pay sheet: the focus goes back to where the guest began.
     await exerciseDialog(page, opener(page, 'receipt'), 'Pay', () => payAndOpenReceipt(page))
   })
 })
@@ -201,10 +201,9 @@ test.describe('the contrast of what is drawn', () => {
         await scan('the page', PREVIEW_FACE)
         for (const screen of SCREENS) {
           await onScreen(page, screen, async (sheet) => {
-            // The pay sheet's custom tip and promo box, and the dish page's note, are inputs too.
+            // The pay sheet's ticks and tip box, and the dish page's note, are inputs too.
             if (screen === 'pay') {
-              await sheet.getByRole('radio', { name: 'Custom' }).click()
-              await sheet.locator('.ro-acc summary').click()
+              await sheet.locator('[data-slot="pay.whole"]').click()
             }
             await scan(screen, '.rm-overlay')
           })
