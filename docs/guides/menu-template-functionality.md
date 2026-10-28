@@ -70,9 +70,9 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### Call a waiter
 - **Shell key:** `callWaiter` (manifest `call_waiter`, slot `menu.call_waiter`); request kinds `waiter`, `bill`, `water`, `cutlery`, `terminal`, `other`
-- **Status:** supported
-- **Drawn means:** a control that offers the request kinds the venue allowed, a note, the state of each request and a way to withdraw it.
-- **What the platform does (#81, D122 §4):** the host answers a `service.request` as one call for the table. The request kind and the note are not kept: it keeps no text and no identity. It needs the table open for phones, not a location pass. A second tap while a call is open returns that call. The call appears in `state.requests` as one request (`kind: waiter`): `sent` while open, `done` when staff mark it Handled, and `rejected` when nobody answered in the venue's time (15 minutes by default), which the template words as "Ask your waiter". The host refuses `calls_off` where the venue has not switched the service on: the template draws the still card "Please order from your waiter" there, never a button. Withdrawing a call (`service.cancel`) is not built.
+- **Status:** drawn, platform parked
+- **Drawn means:** a control that calls a waiter to the table, the state of the table's call, and the still card where the venue takes no calls (below). The contract still carries the request kinds, a note and `service.cancel`, but the platform keeps none of them, so a template draws no note field and no withdraw control, and the kind it sends changes nothing for staff.
+- **What the platform does (#81, D122 §4; the guest page does not switch `callWaiter` on yet, so no live page offers it):** the host answers a `service.request` as one call for the table. The request kind and the note are not kept: it keeps no text and no identity. It needs the table open for phones, not a location pass. A second tap while a call is open returns that call. The call appears in `state.requests` as one request (`kind: waiter`): `sent` while open, `done` when staff mark it Handled, and `rejected` when nobody answered in the venue's time (15 minutes by default), which the template words as "Ask your waiter". The host refuses `calls_off` where the venue has not switched the service on: the template draws the still card "Please order from your waiter" there, never a button. Withdrawing a call (`service.cancel`) is not built.
 - **Where:** §5.5, §10.2, §10.3; D71, D72, D122 §4
 
 ### Confirm being at the table (the location check)
@@ -88,17 +88,17 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### See the bill
 - **Shell key:** `bill` (slot `menu.bill`)
-- **Status:** drawn, platform parked
-- **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
+- **Status:** decided, not in the contract yet
+- **Drawn means:** (the guest API already answers the bill below, #74, #75; the face contract's `BillView` is still D71's, with rounds marked `guest` or `staff`, no paid or owed and no `beingPaid`, and the guest page binds no bill into the face's state; the screen's behaviour is #45 and the contract is #114, which replace it) the table's bill as the host read it from the POS, the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
   - its lines, from guests and staff alike, nothing marking a line as "from your phones": the name of our own item, or "Other item" (worded by the shell) where the POS line is no item of ours; the quantity as the POS gives it, which may be a decimal ("0.5"); the POS's own signed amount, so a discount shows negative and a free line at 0, as the POS gives them;
   - the POS's total, what is paid and what is still owed, and a part being paid marked as such: a bill or a line with `beingPaid` is in some phone's payment that isn't final (#110), drawn greyed with no controls and nothing else, never who pays, how much or for how long; it ungreys when that payment ends;
   - when it was read. When the latest reading failed, the last good bill is drawn marked as not up to date, never an empty bill. Opening the bill asks the host for a fresh reading when the one shown is older than 15 seconds.
-- **Where:** §5.5, §10.2, §10.3; D71, D72, D111
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D111, D122
 
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
 - **Status:** drawn, platform parked
-- **Drawn means:** (the platform runs the shared order since #75 and Send since #77, on the hidden reference template only; where the venue checks location, adding and changing lines and seeing the order need a pass, #76) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options), quantity and note; a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
+- **Drawn means:** (the platform runs the shared order since #75 and Send since #77, on the hidden reference template only; where the venue checks location, adding and changing lines and seeing the order need a pass, #76) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options) and quantity, and a note only where notes reach the POS's ticket (`services.state.ordering.notesAndOptions`, see Send's guards); a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
   - every phone at the table sees and edits the same lines (`services.state.order`); a line someone else added is drawn like one's own, and the template marks no line as "mine";
   - a line the host is still saving (`pending`) is drawn as such; a refused edit goes back to what the server holds and shows the shell's words for its refusal code (`refusals`), never a success of its own;
   - a line being paid (`held`) has no controls; a pay-first line (`mode: pay_first`) says "Order this from your waiter" (`orderFromWaiter`);
@@ -111,14 +111,20 @@ A service control is drawn only when its `view.features` field is on, and carrie
   - Send's guards (#78, D117, D118): a line whose item the live overlay shows sold out stays on the order, marked "Sold out" (`lineSoldOut`), and is not sent; the send then says "Send the other 4" (`sendOthers`). A round with the same items and quantities as one the table sent in the last 15 minutes is refused with `duplicate_order`, its `subjectId` naming that sent order: the template asks "Same as 4 minutes ago. Send another?" (`duplicateAsk`, counting from that sent order's `sentAt`), with Send another (`sendAnother`) and Cancel (`duplicateCancel`), and closes the question after 60 seconds. Send another is a new `order.send` with `confirmDuplicateOf` set to that sent order. A round over the venue's cap or past its pace is refused with `guard_tripped`: the template shows its words, and the host's state then says ordering is paused until staff resume the table. Where the venue's POS takes no notes or options on its ticket (`services.state.ordering.notesAndOptions` is not true; absent means not), the template draws no note field, shows "Allergies or special requests? Tell the staff." (`notesAtStaff`) under the order, and an item with a required choice shows "Order this from your waiter" (`orderFromWaiter`) instead of Add; a round that still carries one is refused with `order_from_waiter`, its `subjectId` naming the item. Where only a waiter opens the POS bill and the table has none yet, Send is refused with `needs_first_item` ("Ask your waiter to put your first item on");
   - the table's sent orders (`services.state.sentOrders`, newest first) show on every phone with their state: "Sending…" (`sendingNow`) only where `mine` is true, "Being sent" (`beingSent`) on the other phones, then "Added to your bill", "Waiting for the bar to take it" (only where the POS approves at the bar), "We couldn't send your order, please call a waiter" (Not sent; its lines are back on the order; "Ask your waiter to put your first item on" where only a waiter opens the POS bill, `sentNotSentFirstItem`), or "Not confirmed: show K7Q to your waiter" (`sentUnconfirmed`, for 15 minutes; the table's ordering pauses);
   - out of stock at Send (#80): when the POS says an item ran out, nothing of that order is sent; it ends Not sent with the reason `item_unavailable` and "Nothing was sent: something ran out. Send the rest when you're ready." (`sentNotSentOutOfStock`), and the run-out lines are flagged (`outOfStock: true` on the sent order's lines). On the order, the run-out line is drawn as a sold-out line (`isOutOfStock`: flagged on the newest sent order, `refusedOutOfStock`, or sold out on the menu): greyed with "Sold out" (`lineSoldOut`), left out of the next Send, and "Send the other N" (`sendOthers`) sends the rest with one more tap. The item turns sold out on the menu at the phones' next poll;
-  - any phone can open "Show this to your waiter" for a sent order: its reference at least 40 px and at least 7:1 contrast, the time it was sent and its items (D120).
+  - any phone can open "Show this to your waiter" (`showWaiter`, closed with `showWaiterClose`) for a sent order: its reference at least 40 px and at least 7:1 contrast, the time it was sent and its items (D120).
 - **Where:** §5.5, §7.2, §10.2, §10.3, §10.5; D71, D72, D116, D117, D118, D120, D121, D122, D124
 
 ### Pay
 - **Shell key:** `pay` (slot `menu.pay`)
-- **Status:** drawn, platform parked
-- **Drawn means:** the choice of scope (all, a share, only mine), tip and promo code, and method, drawn from the host's quote, each method control marked `pay.method`; the template computes no total, tip, VAT or split.
-- **Platform (#110, D127; not wired to a template yet):** the guest API runs paying by card on the hidden reference path:
+- **Status:** decided, not in the contract yet
+- **Drawn means:** what D122 §8 and D127 decided; the face contract (`pay.quote`, `pay.start`, `PayQuote`) is still D71's and is replaced by #114, so nothing below is drawn yet. D122 dropped that contract's equal share (`split`), promo code, payment-method choice and VAT lines: paying a share comes with group payment, later. The template computes no total, tip, VAT or split, and draws what the host says:
+  - **Pick what to pay (#45, #114):** the guest's own lines, with a quantity per line from "all" downward (a line whole where the POS cannot move part of a quantity), or the whole bill; the bill is read fresh and the guest confirms exactly the lines and amounts seen. A picked line already in another phone's payment is refused `being_paid`; a changed bill, `bill_changed`;
+  - **Pay-first items at Send (#113, D113, D122 §5):** where the venue offers it, a Send with pay-first lines sends the on-the-bill lines as usual and the pay-first lines become a payment of their own with the same steps and the same tip. Until #113, a pay-first line says "Order this from your waiter" (see Order from the phone);
+  - **A tip (#45, #114, D127):** offered only where the POS records it on the same bill and receipt (`recordTipOnClose`), and then it starts at zero: presets are allowed, none preselected, an amount or a percent, and the guest is told it goes to the venue. It is never called a service charge, and the host works out the amount;
+  - **The smallest card payment (D127):** a venue setting that starts at the provider's minimum (€0.50 for Stripe). Below it Pay is greyed with "Card payments start at €0.50. Add an item or ask your waiter." (the amount is the venue's);
+  - **Waiting (#110, D127):** while the host prices the lines and makes the hold, the paying phone shows "Preparing your bill…" and polls every 2 s (D121); the card form comes in a slot the template places and the page fills, so the template loads no provider library (D72, #114);
+  - **Where paying is not offered** (the venue or the POS lacks it, D122 §4): the consent text drops "pay" and pay-first items say "Order this from your waiter" (`paying_not_offered`).
+- **Platform (#110, #111, D127; the hidden reference path only, not wired to a template yet):** the guest API runs paying by card:
   - `pay.start` picks whole lines of the bill, or the whole bill, sends each picked line as the phone saw it (the knock, D111), an optional tip (an amount or a percent, starting at none), and Turnstile's token; it greys the lines for every phone (`beingPaid`) and answers a payment handle;
   - only the paying phone holds the handle and sends it in `X-Restro-Payment`, never in an address; `GET /api/guest/payment` answers that phone alone the payment's state, lines, amount, tip and, only while the guest is at the card form, the provider's form values;
   - `pay.returned` after the card form, and `pay.cancel` before the hold is made, which ungreys the lines;
@@ -129,13 +135,23 @@ A service control is drawn only when its `view.features` field is on, and carrie
     - `unconfirmed`: the till didn't confirm the close; staff check it, so the template says the venue is checking the payment and asks nothing more of the guest. A manager's "Receipt printed" moves it on to `captured`, "No receipt" to `released`;
     - `stranded` (the lines could not go back to the table; staff are told) and `capture_failed` (the bill closed but the card was not charged; the owners are told): the template never asks the guest to pay again;
   - paying pauses with ordering (the venue's, its bar's, the table's or the connection's pause): a `pay.start` is refused `paying_paused`, and a payment still waiting for a payment table ends `released` `paying_paused`. A payment whose lines already moved runs to its end.
-- **Where:** §5.5, §10.2, §10.3; D71, D72, D127
+- **Where:** §5.5, §10.2, §10.3; D71, D72, D113, D122, D127
+
+### See that you have paid (the Paid screen)
+- **Shell key:** none; a screen of the pay feature
+- **Status:** decided, not in the contract yet
+- **Drawn means:** (the paying phone's payment answer already says `captured`, #111; the face contract has no payment state yet, #114) the screen "Paid" once the host says `captured`, never before and never from the phone's own word (D72). The other endings are drawn as the host says them (see Pay), their words being #45's: a released payment ungreys the lines with its reason, "unconfirmed" says the venue is checking the payment and asks nothing more, and `stranded` and `capture_failed` never ask the guest to pay again. Other phones see no payer, amount or timer, only greyed lines (`beingPaid`).
+- **Where:** §10.2, §10.3; D72, D122, D127
 
 ### Get the receipt
 - **Shell key:** none; a screen of the pay feature (`#receipt`)
-- **Status:** drawn, platform parked
-- **Drawn means:** the paid receipt as the host issued it (marked `pay.receipt`, reached from a `pay.receipt_open` control on the paid screen), with a button only for each action the receipt supports.
-- **Where:** §10.1, §10.2; D71, D72
+- **Status:** decided, not in the contract yet
+- **Drawn means:** (the face contract's `ReceiptView` and `receipt.action` are D71's "receipt as the host issued it", which D122 §8 removed, and #114 replaces them) the venue issues the receipt, not Restro. What the guest gets after paying:
+  - **Paper, the usual case:** the paper receipt is handed to the payer at payment and the waiter brings it; how the Paid screen tells the guest is #45's;
+  - **"Download" after paying:** the provider's payment confirmation, never called fiscal (D122 §8);
+  - **An optional email field:** only where all five conditions of D122 §8 hold (the POS is on the NRA list and the venue declared electronic receipts; the device and POS can issue this sale electronically; the file is the device's own receipt; it goes by email or a profile; paper is printed on request). Elsewhere the payment screen offers no email;
+  - **No Stripe email to the guest:** Restro never passes the guest's email to the provider (D125).
+- **Where:** §10.1, §10.2; D71, D72, D122, D125
 
 ## Later
 
