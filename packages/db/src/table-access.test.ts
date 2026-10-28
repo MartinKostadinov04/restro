@@ -36,6 +36,10 @@ describe('table access list', () => {
     expect(TABLE_ACCESS.templates.app).toEqual(['SELECT', 'INSERT'])
   })
 
+  it('lets the purge role read and delete provider notices, nothing more (#166)', () => {
+    expect([...(access.provider_notices?.purge ?? [])].sort()).toEqual(['DELETE', 'SELECT'])
+  })
+
   // D83, made precise by Martin 10-12: the app role deletes only the three row kinds apply()
   // removes as the action itself, plus Better Auth's session and verification rows. Widening
   // this list is a guardrail change (D67): stop and ask.
@@ -52,7 +56,12 @@ describe('table access list', () => {
       const purge: readonly string[] = table.purge ?? []
       expect(purge.includes('UPDATE'), `${name}: the purge role never updates`).toBe(false)
       if (purge.includes('DELETE')) {
-        expect(table.tenancy, `${name}: the purge role deletes tenant data only`).toBe('tenant')
+        // The one platform-level table it erases: the provider's notices, 18 months on (#166).
+        const expected = name === 'provider_notices' ? 'system' : 'tenant'
+        expect(
+          table.tenancy,
+          `${name}: the purge role deletes tenant data only, except provider_notices`,
+        ).toBe(expected)
       }
       if (purge.includes('INSERT')) {
         expect(
