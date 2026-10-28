@@ -3,7 +3,8 @@
 For the lead agent: the session Martin talks to, which writes tickets, starts agents, reviews and merges. Coding agents can skip this file. Only the rules that live nowhere else are here; the flow itself is the `restro-flow` skill.
 
 - **Limits:**
-  - At most two agents running tests at once (Martin 10-11): more load the one PC until tests time out. A read-only agent (`research`, a review sub-agent) does not count towards the two, but it still costs usage: cheapest model that can do the job (D58). A subagent running tests counts as one.
+  - **Tests run in GitHub's CI (Martin 10-28):** agents run only the test files they change on this PC, and the package tests and Playwright run in CI on their pull request (CLAUDE.md, Testing), so no agent waits for a test slot. Every brief says so. A read-only agent (`research`, a review sub-agent) still costs usage: cheapest model that can do the job (D58).
+  - **Fallback when GitHub's Actions minutes stop being free:** at most two agents running tests at once on this PC (Martin 10-11): more load the one PC until tests time out. A subagent running tests counts as one. Tell Martin when the fallback starts.
   - At most one finished build waits for Martin's acceptance (Martin 10-17): the lead starts no second build until the first is accepted. The acceptance is the gate for a stage branch to reach `main`.
   - Cheap work goes to a cheap model, then gets checked (Martin 10-17): a mechanical or exactly specified task goes to a Haiku or Sonnet session, and the lead reviews its diff; the lead does not type what a cheaper model can.
   - Never enter plan mode while agents run: plan mode freezes their edits too.
