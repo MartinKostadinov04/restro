@@ -85,7 +85,13 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
     personNames: async (_tenant, ids) =>
       new Map(ids.flatMap((id) => (id === 'us_maria' ? [[id, 'Maria Ivanova'] as const] : []))),
   }
-  const view = (overrides: Partial<ViewScope> = {}) => loadPublishView(viewScope(overrides), deps)
+  /** The test's clock: publishes happen minutes after this, and the tab is read an hour after. */
+  const at = (minutes: number) => new Date(Date.parse('2026-10-09T18:00:00Z') + minutes * 60_000)
+  // The tab is read on the same clock as the publishes: on the real one, the live snapshot's
+  // 14-day "new" badges expire and every item reads as changed (and after 30 days the older
+  // versions leave the history).
+  const view = (overrides: Partial<ViewScope> = {}) =>
+    loadPublishView(viewScope(overrides), { ...deps, now: at(60) })
 
   const eur = (amountMinor: number) => ({ amount_minor: amountMinor, currency: 'EUR' })
   const manual = (node: string, fieldKey: string, value: unknown) => ({
@@ -123,7 +129,7 @@ describe.skipIf(!hasDatabase)('the Publish tab (as the restro_app role)', () => 
         actor: reason === 'manual' ? 'user:us_maria' : `integration:${integrationId}`,
         ...extra,
       },
-      { now: new Date(Date.parse('2026-10-09T18:00:00Z') + minutes * 60_000) },
+      { now: at(minutes) },
     )
   const _configOf = async () =>
     (
