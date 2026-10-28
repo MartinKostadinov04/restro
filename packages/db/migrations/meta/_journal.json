@@ -267,6 +267,13 @@
       "when": 1793191334098,
       "tag": "0037_night_report_sent",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793193138784,
+      "tag": "0038_waiter_call_kinds",
+      "breakpoints": true
     }
   ]
 }

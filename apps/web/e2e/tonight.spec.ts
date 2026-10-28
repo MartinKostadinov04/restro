@@ -154,9 +154,7 @@ test('on a personal session: Handled and Resume are one tap with no PIN', async 
   await openTonight(page, 'busy')
   const call = new Taps()
   await call.tap(
-    rows(page)
-      .filter({ hasText: 'Table 2 is calling a waiter' })
-      .getByRole('button', { name: 'Handled' }),
+    rows(page).filter({ hasText: 'Table 2: Waiter' }).getByRole('button', { name: 'Handled' }),
   )
   await expect(toast(page, 'Table 2: handled')).toBeVisible()
   await expect(rows(page)).toHaveCount(3)
@@ -198,9 +196,7 @@ test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own'
   await openTonight(page, 'busy')
   const call = new Taps()
   await call.tap(
-    rows(page)
-      .filter({ hasText: 'Table 2 is calling a waiter' })
-      .getByRole('button', { name: 'Handled' }),
+    rows(page).filter({ hasText: 'Table 2: Waiter' }).getByRole('button', { name: 'Handled' }),
   )
   await expect(toast(page, 'Table 2: handled')).toBeVisible()
   await expect(page.getByTestId('pin-sheet')).toHaveCount(0)
@@ -314,7 +310,7 @@ test('a new waiter call is announced to a screen reader', async () => {
   await openTonight(page, 'busy')
   await expect(rows(page)).toHaveCount(4)
   seed('call', '3')
-  await expect(page.getByTestId('announcement')).toContainText('Table 3 is calling a waiter', {
+  await expect(page.getByTestId('announcement')).toContainText('Table 3: Waiter', {
     timeout: 15_000,
   })
   await expect(rows(page)).toHaveCount(5)

@@ -102,6 +102,7 @@ describe('Needs you, in the order of what costs most to leave', () => {
         {
           id: 'wc_1',
           tableId: 'tb_000000000000000000003',
+          kinds: ['waiter'] as const,
           calledAt: new Date('2026-10-27T21:00:00Z'),
         },
       ],
@@ -134,16 +135,38 @@ describe('Needs you, in the order of what costs most to leave', () => {
         {
           id: 'wc_b',
           tableId: 'tb_000000000000000000003',
+          kinds: ['waiter'] as const,
           calledAt: new Date('2026-10-27T21:10:00Z'),
         },
         {
           id: 'wc_a',
           tableId: 'tb_000000000000000000001',
+          kinds: ['waiter'] as const,
           calledAt: new Date('2026-10-27T21:05:00Z'),
         },
       ],
     })
-    expect(view(t).rows.map((row) => row.id)).toEqual(['wc_a', 'wc_b'])
+    expect(view(t).rows.map((row) => row.waiterCallId)).toEqual(['wc_a', 'wc_b'])
+  })
+
+  it('carries a call’s kinds on its row, and a new kind makes a new row id (#180)', () => {
+    const call = (kinds: readonly ('ice' | 'water')[]) =>
+      view(
+        tonight({
+          waiterCalls: [
+            {
+              id: 'wc_a',
+              tableId: 'tb_000000000000000000001',
+              kinds,
+              calledAt: new Date('2026-10-27T21:05:00Z'),
+            },
+          ],
+        }),
+      ).rows[0]
+    expect(call(['ice'])?.callKinds).toEqual(['ice'])
+    expect(call(['ice', 'water'])?.callKinds).toEqual(['ice', 'water'])
+    expect(call(['ice'])?.id).not.toBe(call(['ice', 'water'])?.id)
+    expect(call(['ice', 'water'])?.waiterCallId).toBe('wc_a')
   })
 
   it('shows no call to someone who does not answer them', () => {
@@ -185,6 +208,7 @@ describe('the tiles', () => {
         {
           id: 'wc_1',
           tableId: 'tb_000000000000000000001',
+          kinds: ['waiter'] as const,
           calledAt: new Date('2026-10-27T21:00:00Z'),
         },
       ],

@@ -40,7 +40,7 @@ export async function dueWaiterCalls(pool: DbPool, now: Date): Promise<DueWaiter
         .select({
           id: waiterCalls.id,
           venueId: waiterCalls.venueId,
-          calledAt: waiterCalls.calledAt,
+          lastCalledAt: waiterCalls.lastCalledAt,
           settings: venues.settings,
           sittingEndedAt: sittings.endedAt,
         })
@@ -53,7 +53,7 @@ export async function dueWaiterCalls(pool: DbPool, now: Date): Promise<DueWaiter
       const lapseMinutes = readOrderingSettings(call.settings).callLapseMinutes
       if (
         call.sittingEndedAt !== null ||
-        waiterCallLapsesAt(call.calledAt, lapseMinutes).getTime() <= now.getTime()
+        waiterCallLapsesAt(call.lastCalledAt, lapseMinutes).getTime() <= now.getTime()
       ) {
         due.push({ tenantId: organisation.id, venueId: call.venueId, waiterCallId: call.id })
       }

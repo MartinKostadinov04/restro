@@ -1,8 +1,9 @@
-// "Call a waiter" (#81; D122 §4) on a real Postgres, as the restro_app role: a venue without the
-// service on refuses the call; a call needs the table open for phones but not a location pass; a
-// second tap returns the open call; Handled needs `alerts.answer` and is a Log entry; a call
-// nobody answers lapses after the venue's time or when its sitting ends, and the next tap makes a
-// new one. Skipped without a database.
+// "Call a waiter" (#81, #180; D122 §4) on a real Postgres, as the restro_app role: a venue without
+// the service on refuses the call, and so does a kind its list does not hold; a call needs the
+// table open for phones but not a location pass; one call is open per table and a later request is
+// added to it; Handled needs `alerts.answer`, ends the whole call and is a Log entry; a call
+// nobody answers lapses after the venue's time (from its newest request) or when its sitting ends,
+// and the next tap makes a new one. Skipped without a database.
 import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -22,7 +23,7 @@ const LOOSE = Object.fromEntries(
 
 const FEATURES_ON = {
   filters: true,
-  call_waiter: { enabled: true, kinds: ['waiter'] },
+  call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'ice', 'water'] },
   bill: false,
   ordering: true,
   pay: false,
@@ -97,22 +98,30 @@ describe.skipIf(!hasDatabase)('Call a waiter (as the restro_app role)', () => {
   }
   const callsOf = async (index: number) =>
     (
-      await world.owner.query<{ id: string; state: string; actor: string }>(
-        'select id, state, actor from restro.waiter_calls where table_id = $1 order by called_at, id',
+      await world.owner.query<{ id: string; state: string; actor: string; kinds: string[] }>(
+        'select id, state, actor, kinds from restro.waiter_calls where table_id = $1 order by called_at, id',
         [tableId(index)],
       )
     ).rows
   const logOf = async (index: number) =>
     (
-      await world.owner.query<{ kind: string; reason: string | null; actor: string }>(
-        `select kind, reason, actor from restro.log_entries
+      await world.owner.query<{
+        kind: string
+        reason: string | null
+        actor: string
+        details: Record<string, string>
+      }>(
+        `select kind, reason, actor, details from restro.log_entries
           where table_id = $1 and kind like 'waiter_call.%' order by seq`,
         [tableId(index)],
       )
     ).rows
   const backdate = (id: string, minutes: number) =>
     world.owner.query(
-      `update restro.waiter_calls set called_at = now() - make_interval(mins => $2) where id = $1`,
+      `update restro.waiter_calls
+          set called_at = now() - make_interval(mins => $2),
+              last_called_at = now() - make_interval(mins => $2)
+        where id = $1`,
       [id, minutes],
     )
 
@@ -148,7 +157,7 @@ describe.skipIf(!hasDatabase)('Call a waiter (as the restro_app role)', () => {
     expect(await callsOf(1)).toEqual([])
   })
 
-  it('makes a call without a location pass, and a second tap returns the open call', async () => {
+  it('makes a call without a location pass, and a later request joins the open call', async () => {
     await setFeatures(FEATURES_ON)
     await setOrdering({ locationCheck: true })
     const first = await tap(0, { request: 'bill', note: 'the card machine, please' })
@@ -156,15 +165,19 @@ describe.skipIf(!hasDatabase)('Call a waiter (as the restro_app role)', () => {
     // The venue checks location and this phone holds no pass: the order stays hidden, the call shows.
     expect(first.state?.location.state).toBe('needed')
     expect(first.state?.order).toBeNull()
-    expect(first.state?.waiterCall).toMatchObject({ state: 'open' })
+    expect(first.state?.waiterCall).toMatchObject({ state: 'open', kinds: ['bill'] })
 
     const again = await tap(0)
     expect(again.result.status).toBe('accepted')
     expect(again.state?.waiterCall?.id).toBe(first.state?.waiterCall?.id)
+    expect(again.state?.waiterCall?.kinds).toEqual(['waiter', 'bill'])
     const rows = await callsOf(0)
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ state: 'open', actor: 'guest' })
-    expect(await logOf(0)).toEqual([{ kind: 'waiter_call.called', reason: null, actor: 'guest' }])
+    expect(rows[0]).toMatchObject({ state: 'open', actor: 'guest', kinds: ['waiter', 'bill'] })
+    expect((await logOf(0)).map((entry) => [entry.kind, entry.details.kind])).toEqual([
+      ['waiter_call.called', 'bill'],
+      ['waiter_call.called', 'waiter'],
+    ])
     // Nothing the guest typed is kept anywhere.
     const stored = await world.owner.query('select * from restro.waiter_calls where id = $1', [
       rows[0]?.id,
@@ -287,5 +300,91 @@ describe.skipIf(!hasDatabase)('Call a waiter (as the restro_app role)', () => {
     const fresh = (await tap(table)).state?.waiterCall
     expect(fresh?.id).not.toBe(open?.id)
     expect((await callsOf(table)).map((row) => row.state)).toEqual(['lapsed', 'lapsed', 'open'])
+  })
+
+  /** Ends what an earlier test left open at the table, so the next starts clean. */
+  const fresh = (index: number) =>
+    world.owner.query(
+      `update restro.waiter_calls set state = 'lapsed' where table_id = $1 and state = 'open'`,
+      [tableId(index)],
+    )
+
+  it('keeps one call per table: two requests make one call with both kinds, a repeat changes nothing', async () => {
+    await setOrdering({ locationCheck: false })
+    const table = 3
+    await fresh(table)
+    const before = (await callsOf(table)).length
+    const logBefore = (await logOf(table)).length
+    const ice = await tap(table, { request: 'ice' })
+    const water = await tap(table, { request: 'water' })
+    expect(water.state?.waiterCall?.id).toBe(ice.state?.waiterCall?.id)
+    expect(water.state?.waiterCall?.kinds).toEqual(['ice', 'water'])
+    const repeat = await tap(table, { request: 'ice' })
+    expect(repeat.result.status).toBe('accepted')
+    expect(repeat.state?.waiterCall?.kinds).toEqual(['ice', 'water'])
+    expect(await logOf(table)).toHaveLength(logBefore + 2)
+    const rows = await callsOf(table)
+    expect(rows).toHaveLength(before + 1)
+    const call = rows.at(-1)
+    expect(call?.kinds).toEqual(['ice', 'water'])
+
+    // One Handled ends the whole call and names both kinds in the Log.
+    expect(await run(done(call?.id as string), staff(ownerId))).toMatchObject({
+      status: 'accepted',
+      details: { state: 'done', changed: true },
+    })
+    expect((await logOf(table)).at(-1)).toMatchObject({
+      kind: 'waiter_call.done',
+      details: { kinds: 'ice,water' },
+    })
+    expect((await stateOf(table)).waiterCall).toMatchObject({
+      state: 'done',
+      kinds: ['ice', 'water'],
+    })
+  })
+
+  it('refuses a kind the venue does not offer, and keeps nothing', async () => {
+    const table = 2
+    await fresh(table)
+    const before = (await callsOf(table)).length
+    const refused = await tap(table, { request: 'glasses' })
+    expect(refused.result).toMatchObject({ status: 'rejected', code: 'kind_not_offered' })
+    expect(await callsOf(table)).toHaveLength(before)
+    // A list from before this change still holds `cutlery`: it reads without it, never as off.
+    await setFeatures({
+      ...FEATURES_ON,
+      call_waiter: { enabled: true, kinds: ['waiter', 'cutlery', 'other'] },
+    })
+    expect((await tap(table, { request: 'water' })).result).toMatchObject({
+      code: 'kind_not_offered',
+    })
+    expect((await tap(table, { request: 'waiter' })).result).toMatchObject({ status: 'accepted' })
+    await setFeatures(FEATURES_ON)
+  })
+
+  it('counts the lapse from the newest request', async () => {
+    await setOrdering({ callLapseMinutes: 15 })
+    const table = 3
+    await fresh(table)
+    const first = (await tap(table, { request: 'ice' })).state?.waiterCall
+    if (first == null) throw new Error('expected the call')
+    await backdate(first.id, 10)
+    // A newer request restarts the time: the call is old, its newest request is not.
+    await tap(table, { request: 'water' })
+    await world.owner.query(
+      `update restro.waiter_calls set called_at = now() - interval '20 minutes' where id = $1`,
+      [first.id],
+    )
+    expect(await run(lapse(first.id), worker())).toMatchObject({ details: { changed: false } })
+    await world.owner.query(
+      `update restro.waiter_calls set last_called_at = now() - interval '16 minutes' where id = $1`,
+      [first.id],
+    )
+    expect(await run(lapse(first.id), worker())).toMatchObject({ details: { changed: true } })
+    expect((await logOf(table)).at(-1)).toMatchObject({
+      kind: 'waiter_call.lapsed',
+      reason: 'timeout',
+      details: { kinds: 'ice,water' },
+    })
   })
 })

@@ -132,7 +132,7 @@ describe.skipIf(!hasDatabase)('the waiter-call lapse job', () => {
   it('lapses only the call that is past its time, once', async () => {
     const [old, fresh] = calls as [string, string]
     await query(
-      `update restro.waiter_calls set called_at = now() - interval '16 minutes' where id = $1`,
+      `update restro.waiter_calls set called_at = now() - interval '16 minutes', last_called_at = now() - interval '16 minutes' where id = $1`,
       [old],
     )
     expect(await dueWaiterCalls(pool, new Date())).toEqual([
@@ -158,7 +158,7 @@ describe.skipIf(!hasDatabase)('the waiter-call lapse job', () => {
   it('logs a call that throws and still lapses the others', async () => {
     const [broken, fine] = calls.slice(2) as [string, string]
     await query(
-      `update restro.waiter_calls set called_at = now() - interval '20 minutes' where id = any($1)`,
+      `update restro.waiter_calls set called_at = now() - interval '20 minutes', last_called_at = now() - interval '20 minutes' where id = any($1)`,
       [[broken, fine]],
     )
     failing.waiterCallId = broken

@@ -2,6 +2,7 @@
 // made from core's `readTonight` by one pure function so the ordering of "Needs you", the tile of
 // each table and the pause banners can be tested without a database. Plain data, safe to send to
 // the browser: our ids and public fields only (rule 3), times as text in the venue's zone.
+import type { CallWaiterKind } from '@restro/core'
 import type { Tonight } from '@restro/core/service'
 
 /**
@@ -40,6 +41,8 @@ export interface ActionRow {
     readonly landedAt: string | null
   }
   readonly waiterCallId?: string
+  /** A waiter call's requests (#180), in the venue's list order. */
+  readonly callKinds?: readonly CallWaiterKind[]
 }
 
 /** The words a table's tile can show, in the order they win (plan §5; money is part 2's). */
@@ -281,13 +284,15 @@ export function buildTonightView(input: {
   }
   for (const call of tonight.waiterCalls ?? []) {
     rows.push({
-      id: call.id,
+      // A later request changes the id, so the row is announced again with its new kind.
+      id: `${call.id}@${call.kinds.join(',')}`,
       kind: 'call',
       tableId: call.tableId,
       table: labelOf.get(call.tableId) ?? '',
       numbered: numberedOf.has(call.tableId),
       at: call.calledAt.toISOString(),
       waiterCallId: call.id,
+      callKinds: call.kinds,
     })
     raise(call.tableId, 'call')
   }
