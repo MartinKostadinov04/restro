@@ -59,6 +59,7 @@ import {
   payCancel,
   paymentCheck,
   paymentHoldCreated,
+  paymentHoldUnknown,
   paymentPrice,
   paymentSettle,
   paymentStep,
@@ -68,6 +69,7 @@ import {
 } from './pay'
 import { PAY_FIRST_COMMANDS } from './pay-first'
 import { PAY_ROUTE_COMMANDS } from './pay-route'
+import { payingBreaker } from './paying-pause'
 import {
   accountLost,
   accountObserved,
@@ -564,6 +566,10 @@ export const SERVICE_COMMANDS = {
   'payment.hold_created': paymentHoldCreated(),
   'payment.check': paymentCheck(),
   'payment.settle': paymentSettle(),
+  // #112: a hold whose outcome is unknown is released, never sent again with its key.
+  'payment.hold_unknown': paymentHoldUnknown(),
+  // #112: the payment provider's breaker pauses paying in the app at a venue, never ordering.
+  'paying.breaker': payingBreaker(),
   'payment.step': paymentStep(),
   // #111: the route after the hold: the queue, the turn, the move, the last check, the close, the
   // capture, the undo, and a manager's answer to an unconfirmed close.

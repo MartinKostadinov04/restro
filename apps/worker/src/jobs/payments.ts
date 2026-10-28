@@ -40,6 +40,14 @@
 //   outcome stays unknown after the read-back window is `unconfirmed`, never sent again. After
 //   it is entered, the check reads the payment table's bill only (`payment.pay_first_checked`),
 //   then the close and the capture are the route's own: nothing after the entry releases the hold.
+// - Recovery (#112): a hold is asked for once (D127 3.15): one whose outcome is unknown, or that
+//   an earlier run left without its state, is cancelled, and the cancel finds and releases it; never
+//   asked for again with its key. A release the provider refused is read back until the provider
+//   drops the hold (`payment.expired`), never sent again. A hold that ran out while the payment
+//   waited for a table or for a manager's answer settles it `released`, reason `expired`. The
+//   close's answer is recorded with its state (`payment.closed`), so a run that finds a recorded
+//   answer goes on from it. Every provider call feeds the venue account's breaker
+//   (./payment-breaker.ts); a paused account settles a new hold `paying_paused`.
 // - One run of a payment at a time: a run takes no new step past `PAYMENT_RUN_MS` and queues the
 //   next, and pg-boss gives it longer than that and one step (`PAYMENT_PREPARE_EXPIRE_SECONDS`)
 //   before it fails it and runs it again. Should two runs meet anyway, the real table's turn is
@@ -81,6 +89,7 @@ import {
   PAYMENT_CONFIRM_MS,
   PAYMENT_LONG_WAIT_MS,
   type PAYMENT_STEP_NAMES,
+  PAYMENT_UNCONFIRMED_REASONS,
   PAYMENT_WRITE_PAUSE_MS,
   type PaymentStepLines,
   PaymentStepLinesSchema,
@@ -106,7 +115,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
@@ -117,6 +126,7 @@ import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
 import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
 import { toOrderLine } from './order-send'
+import { type PaymentBreakers, SHARED_PAYMENT_BREAKERS, watchedProvider } from './payment-breaker'
 import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
 
 export type { PaymentProviders }
@@ -172,6 +182,8 @@ export interface PaymentJobDeps {
   readonly timings?: ServiceTimings
   /** Waits before a POS write of the route; tests pass a fake. */
   readonly sleep?: (ms: number) => Promise<void>
+  /** The provider breakers (`SHARED_PAYMENT_BREAKERS`); tests pass their own. */
+  readonly breakers?: PaymentBreakers
 }
 
 export interface PaymentEnvironment {
@@ -180,6 +192,11 @@ export interface PaymentEnvironment {
   readonly now: () => Date
   readonly queue: JobQueue
   readonly jobId: string
+  /**
+   * Called after each provider or POS step is recorded (a test seam: the crash tests stop the
+   * worker there, #112). Throwing ends the run as a crash would.
+   */
+  readonly onStep?: (step: { readonly step: string; readonly outcome: string }) => Promise<void>
 }
 
 /** Where a payment stands after a run, or why the run did nothing. */
@@ -210,6 +227,7 @@ async function accountOf(
   readonly providerKind: string
   readonly accountRef: string | null
   readonly state: string
+  readonly payingPausedAt: Date | null
 } | null> {
   const [account] = await withTenant(env.pool, target.tenantId, (tx) =>
     tx
@@ -217,6 +235,7 @@ async function accountOf(
         providerKind: paymentAccounts.providerKind,
         accountRef: paymentAccounts.accountRef,
         state: paymentAccounts.state,
+        payingPausedAt: paymentAccounts.payingPausedAt,
       })
       .from(paymentAccounts)
       .where(eq(paymentAccounts.venueId, target.venueId)),
@@ -275,7 +294,25 @@ function recordStep(
       lines: outcome === 'attempting' ? lines : null,
     })
     if (recorded.code !== null) throw new PaymentStepRetry(`the ${step} step was not recorded`)
+    await env.onStep?.({ step, outcome })
   }
+}
+
+/** The latest recorded row of a provider step, or null before the first. */
+async function latestStep(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  step: (typeof PAYMENT_STEP_NAMES)[number],
+): Promise<{ readonly outcome: string; readonly answer: string | null } | null> {
+  const [row] = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ outcome: paymentSteps.outcome, answer: paymentSteps.answer })
+      .from(paymentSteps)
+      .where(and(eq(paymentSteps.paymentId, target.paymentId), eq(paymentSteps.step, step)))
+      .orderBy(desc(paymentSteps.seq))
+      .limit(1),
+  )
+  return row ?? null
 }
 
 /**
@@ -332,6 +369,26 @@ function providerOf(deps: PaymentJobDeps, kind: string): PaymentProvider {
   return provider
 }
 
+/** The provider of `kind`, each of its calls fed to the venue account's breaker (#112). */
+function providerFor(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  deps: PaymentJobDeps,
+  kind: string,
+): PaymentProvider {
+  const breakers = deps.breakers ?? SHARED_PAYMENT_BREAKERS
+  const ref = { tenantId: target.tenantId, venueId: target.venueId }
+  return watchedProvider(providerOf(deps, kind), (ok) =>
+    breakers.record(env, ref, { kind: 'call', ok }),
+  )
+}
+
+/** Why a refused hold settles its payment: too small, the account, or the hold itself. */
+function holdRefusalReason(code: string | null): string {
+  if (code === 'amount_too_small') return 'below_minimum'
+  return code !== null && ACCOUNT_REFUSALS.includes(code) ? 'paying_paused' : 'hold_refused'
+}
+
 /** `requested`: read the table fresh and price the payment (`payment.price`). */
 async function price(
   env: PaymentEnvironment,
@@ -340,7 +397,7 @@ async function price(
   deps: PaymentJobDeps,
 ): Promise<void> {
   const pos = await posOf(env, target, payment, deps)
-  const provider = providerOf(deps, payment.providerKind)
+  const provider = providerFor(env, target, deps, payment.providerKind)
   const currency = currencyOf(payment)
 
   let lines: { pos: string; quantity: string; amountMinor: number }[] = []
@@ -398,7 +455,8 @@ async function hold(
     await settle('paying_not_offered')
     return
   }
-  if (account.state === 'lost_access') {
+  // Lost access, or the provider's breaker (#112): paying pauses at the venue, ordering goes on.
+  if (account.state === 'lost_access' || account.payingPausedAt !== null) {
     await settle('paying_paused')
     return
   }
@@ -406,7 +464,7 @@ async function hold(
     await settle('paying_not_offered')
     return
   }
-  const provider = providerOf(deps, payment.providerKind)
+  const provider = providerFor(env, target, deps, payment.providerKind)
   const amountMinor = payment.amountMinor
   if (amountMinor === null || amountMinor <= 0) {
     await settle('below_minimum')
@@ -414,6 +472,19 @@ async function hold(
   }
   const idempotencyKey = `${payment.id}:hold`
   const step = recordStep(env, target, 'createHold', idempotencyKey)
+  // A hold is asked for once (D127 3.15). A refusal recorded by an earlier run settles as it did;
+  // any other earlier call (no answer, an unknown one, or done without its state) may have made a
+  // hold: the payment is cancelled, and the cancel finds the hold and releases it. Never asked for
+  // again with its key: the description may have changed since, and the provider would refuse it.
+  const earlier = await latestStep(env, target, 'createHold')
+  if (earlier !== null) {
+    if (earlier.outcome === 'refused') {
+      await settle(holdRefusalReason(earlier.answer))
+      return
+    }
+    await apply(env, target, { type: 'payment.hold_unknown', paymentId: target.paymentId })
+    return
+  }
   await step('attempting')
   let outcome: Awaited<ReturnType<PaymentProvider['createHold']>>
   try {
@@ -426,25 +497,19 @@ async function hold(
       description: await descriptionOf(env, target, payment),
     })
   } catch (error) {
-    // A call that threw may have reached the provider: the same key settles it on the retry.
-    await step('unknown', 'threw')
+    // A call that threw may have reached the provider: the cancel finds out and releases it.
     env.log.warn({ paymentId: payment.id, err: error }, 'the hold could not be made')
-    throw new PaymentStepRetry('the hold could not be made')
+    outcome = { kind: 'unknown', reason: 'threw' }
   }
   if (outcome.kind === 'unknown') {
-    await step('unknown', 'unknown')
-    throw new PaymentStepRetry('the hold has an unknown outcome')
+    await step('unknown', outcome.reason === 'threw' ? 'threw' : 'unknown')
+    await apply(env, target, { type: 'payment.hold_unknown', paymentId: target.paymentId })
+    return
   }
   if (outcome.kind === 'refused') {
     const code = outcome.refusal.code
     await step('refused', code)
-    await settle(
-      code === 'amount_too_small'
-        ? 'below_minimum'
-        : ACCOUNT_REFUSALS.includes(code)
-          ? 'paying_paused'
-          : 'hold_refused',
-    )
+    await settle(holdRefusalReason(code))
     return
   }
   await step('done')
@@ -483,7 +548,7 @@ async function cancel(
     }
     throw new PaymentStepRetry("the venue's account is gone while a hold may stand")
   }
-  const provider = providerOf(deps, payment.providerKind)
+  const provider = providerFor(env, target, deps, payment.providerKind)
   const accountRef = providerRef(account.accountRef)
   let paymentRef = payment.providerPaymentRef
   if (paymentRef === null) {
@@ -501,6 +566,25 @@ async function cancel(
       return
     }
     paymentRef = found.value.ref.provider
+  }
+  // A release the provider refused is never sent again (#112, R3): the hold is read back until the
+  // provider drops it (it runs out at its capture deadline at the latest), which settles the
+  // payment `released`, reason `expired`.
+  const lastRelease = await latestStep(env, target, 'release')
+  if (lastRelease?.outcome === 'refused' && lastRelease.answer !== 'not_found') {
+    const read = await provider.readPayment(accountRef, providerRef(paymentRef))
+    if (!read.complete) throw new PaymentStepRetry('the refused hold could not be read back')
+    if (isOver(read.value)) {
+      await expire(env, target, read.value.status)
+      return
+    }
+    // Still held: the owners and the team are told, once (a run that died before telling them).
+    await apply(env, target, {
+      type: 'payment.release_refused',
+      paymentId: target.paymentId,
+      code: lastRelease.answer ?? 'unknown',
+    })
+    return
   }
   const idempotencyKey = await providerKey(env, target, 'release')
   const step = recordStep(env, target, 'release', idempotencyKey)
@@ -542,12 +626,17 @@ async function cancel(
       await settle()
       return
     }
-    // Nothing Restro may do about it (it never refunds): the payment stays `cancelling` for
-    // #112's recovery to read back until the provider drops the hold.
+    // Nothing Restro may do about it (it never refunds): the payment stays `cancelling` for the
+    // recovery to read back until the provider drops the hold; the owners and the team are told.
     env.log.error(
       { paymentId: payment.id, code: outcome.refusal.code },
       'the provider refused to release a payment Restro cancelled',
     )
+    await apply(env, target, {
+      type: 'payment.release_refused',
+      paymentId: target.paymentId,
+      code: outcome.refusal.code,
+    })
     return
   }
   await step('done')
@@ -665,6 +754,8 @@ async function writePos<R>(
   ref: string,
   call: () => Promise<WriteOutcome<R>>,
   lines: PaymentStepLines | null = null,
+  /** False for the close: its answer is recorded with its state (`payment.closed`, #112). */
+  recordAnswer = true,
 ): Promise<WriteOutcome<R>> {
   await pos.pause()
   const record = recordStep(env, target, step, ref, lines)
@@ -696,9 +787,10 @@ async function writePos<R>(
     return { kind: 'unknown', reason: 'late' }
   }
   const outcome = answer.value
-  if (outcome.kind === 'done') await record('done')
-  else if (outcome.kind === 'refused') await record('refused', outcome.refusal.code)
-  else await record('unknown', 'unknown')
+  if (outcome.kind === 'unknown') await record('unknown', 'unknown')
+  else if (!recordAnswer) return outcome
+  else if (outcome.kind === 'done') await record('done')
+  else await record('refused', outcome.refusal.code)
   return outcome
 }
 
@@ -725,6 +817,8 @@ async function takeTurn(env: PaymentEnvironment, target: PaymentJob): Promise<nu
 interface StepCalls {
   /** The latest row: `attempting` (no answer recorded yet), `done`, `refused` or `unknown`. */
   readonly outcome: string
+  /** The latest row's answer: a refusal's code, or how an unknown ended. */
+  readonly answer: string | null
   readonly lastAgeMs: number
   readonly firstAgeMs: number
 }
@@ -745,6 +839,9 @@ async function callsOf(
         outcome: sql<
           string | null
         >`(array_agg(${paymentSteps.outcome} order by ${paymentSteps.seq} desc))[1]`,
+        answer: sql<
+          string | null
+        >`(array_agg(${paymentSteps.answer} order by ${paymentSteps.seq} desc))[1]`,
         lastAgeMs: sql<string | null>`(extract(epoch from now() - max(${paymentSteps.at})
           filter (where ${left})) * 1000)::text`,
         firstAgeMs: sql<string | null>`(extract(epoch from now() - min(${paymentSteps.at})
@@ -756,6 +853,7 @@ async function callsOf(
   if (row?.outcome === null || row?.outcome === undefined) return null
   return {
     outcome: row.outcome,
+    answer: row.answer ?? null,
     lastAgeMs: Number(row.lastAgeMs ?? 0),
     firstAgeMs: Number(row.firstAgeMs ?? 0),
   }
@@ -1136,6 +1234,21 @@ async function enteredBill(
  */
 const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const close = payment.state === 'checked' ? await callsOf(env, target, 'payAndClose') : null
+  if (close !== null && (close.outcome === 'done' || close.outcome === 'refused')) {
+    // The close's answer is recorded but its state is not (a run that died between them, or a
+    // route that was refused): the answer is the outcome (#112, F4). `done`, or the POS's "already
+    // done", is proof; any other refusal is unconfirmed for a manager.
+    const proof = close.outcome === 'done' || close.answer === 'already_done'
+    await route(env, target, {
+      type: 'payment.closed',
+      outcome: proof ? 'done' : 'refused',
+      code: close.outcome === 'refused' ? close.answer : null,
+      // A `done` close's answer is its receipt number, when the POS gave one (R8).
+      receiptNumber: close.outcome === 'done' ? close.answer : null,
+      fiscalMemoryNumber: null,
+    })
+    return 'next'
+  }
   if (close !== null) {
     // A close was attempted. Another run may still be inside it, its answer on the way (one
     // write's longest time), and a close with no answer may land late, inside the read-back
@@ -1146,8 +1259,15 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     // ruled out, C52).
     const timings = deps.timings ?? SERVICE_TIMINGS
     const inFlight = BUDGET_WAIT_MS + timings.writeTimeoutMs + LEASE_MARGIN_MS
-    if (close.lastAgeMs < Math.max(inFlight, timings.readBackWindowMs)) {
-      await queuePrepare(env, target, close.lastAgeMs < inFlight ? WAIT_SECONDS : READ_BACK_SECONDS)
+    // Looked at often only while a run may still be inside the call (F5); otherwise once more
+    // when the window ends.
+    if (close.outcome === 'attempting' && close.lastAgeMs < inFlight) {
+      await queuePrepare(env, target, WAIT_SECONDS)
+      return 'wait'
+    }
+    const window = Math.max(inFlight, timings.readBackWindowMs)
+    if (close.lastAgeMs < window) {
+      await queuePrepare(env, target, Math.max(1, Math.ceil((window - close.lastAgeMs) / 1000)))
       return 'wait'
     }
     await route(env, target, {
@@ -1188,7 +1308,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // A pay-first round was never on the real table: only the payment table's bill is checked.
   const onBill = payment.kind === 'on_bill'
   const real = onBill && isolated !== null && short ? linesOf(await readPos(pos, pos.table)) : []
-  const provider = providerOf(deps, payment.providerKind)
+  const provider = providerFor(env, target, deps, payment.providerKind)
   // The hold, read again right before the close: one cancelled or run out at the provider stops
   // the payment here, before a receipt is printed for a card that can't be charged.
   const account = await accountOf(env, target)
@@ -1240,15 +1360,23 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   if (now === null || now.state !== 'checked' || now.amountMinor === null) return 'next'
   const { amountMinor, tipMinor } = now
   const ref = `${payment.id}-close`
-  const outcome = await writePos(env, target, pos, 'payAndClose', ref, () =>
-    pos.connector.payAndClose(pos.context, {
-      isolated,
-      amountMinor,
-      tipMinor,
-      // The card payment type: the connector picks its card type (no venue setting yet, #111).
-      paymentType: null,
-      ref,
-    }),
+  const outcome = await writePos(
+    env,
+    target,
+    pos,
+    'payAndClose',
+    ref,
+    () =>
+      pos.connector.payAndClose(pos.context, {
+        isolated,
+        amountMinor,
+        tipMinor,
+        // The card payment type: the connector picks its card type (no venue setting yet, #111).
+        paymentType: null,
+        ref,
+      }),
+    null,
+    false,
   )
   const proof =
     outcome.kind === 'done' ||
@@ -1261,14 +1389,30 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const receipt = outcome.kind === 'done' ? outcome.result.receiptNumber : null
   // A receipt number longer than Restro keeps is left out rather than cut.
   const receiptNumber = receipt !== null && receipt.length <= 64 ? receipt : null
-  await route(env, target, {
-    type: 'payment.closed',
-    outcome: proof ? 'done' : 'refused',
-    code: outcome.kind === 'refused' ? outcome.refusal.code : null,
-    receiptNumber: proof ? receiptNumber : null,
-    // The seam carries no fiscal memory number yet (#111 open question).
-    fiscalMemoryNumber: null,
-  })
+  const answer = outcome.kind === 'refused' ? outcome.refusal.code : null
+  try {
+    // The close's answer and its state in one transaction, the receipt number with them (F4).
+    await route(env, target, {
+      type: 'payment.closed',
+      outcome: proof ? 'done' : 'refused',
+      code: answer,
+      receiptNumber: proof ? receiptNumber : null,
+      // The seam carries no fiscal memory number yet (#111 open question).
+      fiscalMemoryNumber: null,
+      step: { outcome: outcome.kind, answer, idempotencyKey: ref },
+    })
+  } catch (error) {
+    // The answer is kept whatever became of its state: the next run goes on from it, with the
+    // receipt number as a `done` close's answer (R8).
+    await recordStep(
+      env,
+      target,
+      'payAndClose',
+      ref,
+    )(outcome.kind, outcome.kind === 'done' ? receiptNumber : answer)
+    throw error
+  }
+  await env.onStep?.({ step: 'payAndClose', outcome: outcome.kind })
   return 'next'
 }
 
@@ -1284,7 +1428,7 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
   if (payment.providerPaymentRef === null || payment.amountMinor === null) {
     throw new PaymentStepRetry('the payment has no hold to capture')
   }
-  const provider = providerOf(deps, payment.providerKind)
+  const provider = providerFor(env, target, deps, payment.providerKind)
   const accountRef = providerRef(account.accountRef)
   const paymentRef = providerRef(payment.providerPaymentRef)
   const idempotencyKey = await providerKey(env, target, 'capture')
@@ -1398,6 +1542,9 @@ async function undo(
   if (recorded === null) return 'not_back'
   const moved = [...recorded, ...linesOf(onTable)]
   if (proving && moved.length === 0) return 'not_back'
+  const own = proving ? await ownLines(env, target) : []
+  // The POS refs of someone else's bills closed on the payment table: not the payment's to prove.
+  const others = new Set<string>()
   for (const [index, bill] of onTable.bills.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
     const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
@@ -1413,7 +1560,10 @@ async function undo(
     )
     if (outcome.kind === 'refused') {
       if (outcome.refusal.code === 'bill_closed') {
-        if (proving) return 'not_back'
+        // Only the payment's own bill closed is no proof (#155, finding 5); a bill that is not its
+        // own closed by someone else leaves the payment's lines to prove.
+        if (proving && ownBill(bill, own)) return 'not_back'
+        for (const line of bill.lines) others.add(line.ref.pos)
         continue
       }
       // A waiter holding the bill, or the POS busy, passes: tried again for the read-back window
@@ -1428,7 +1578,52 @@ async function undo(
     }
   }
   if (!proving) return 'returned'
-  return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
+  return (await backOnTable(
+    pos,
+    moved.filter((line) => !others.has(line.pos)),
+  ))
+    ? 'returned'
+    : 'not_back'
+}
+
+/** The payment's own lines, as `ownBill` compares them. */
+async function ownLines(env: PaymentEnvironment, target: PaymentJob) {
+  const rows = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({
+        pos: paymentLines.posLineRef,
+        quantity: paymentLines.quantity,
+        amountMinor: paymentLines.posAmountMinor,
+      })
+      .from(paymentLines)
+      .where(eq(paymentLines.paymentId, target.paymentId)),
+  )
+  return rows
+}
+
+/**
+ * True when a bill on the payment table may be the payment's own: a line with one of its POS
+ * refs, or with one of its quantities and amounts, or no line at all. Whether a line keeps its ref
+ * across tables is not stated by the POS's docs, so a bill that may be its own is taken as its own
+ * (fail safe: a manager is asked again).
+ */
+function ownBill(
+  bill: TableBills['bills'][number],
+  own: readonly {
+    readonly pos: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): boolean {
+  if (bill.lines.length === 0 || own.length === 0) return true
+  return bill.lines.some((line) =>
+    own.some(
+      (mine) =>
+        mine.pos === line.ref.pos ||
+        (quantityKey(mine.quantity) === quantityKey(line.quantity) &&
+          mine.amountMinor === line.amountMinor),
+    ),
+  )
 }
 
 /**
@@ -1511,8 +1706,16 @@ const stepOf =
     return 'next'
   }
 
+/** Where a payment stands, as the route reads it. */
+type RouteState = Pick<PaymentRow, 'state' | 'reason' | 'paymentTableId' | 'kind'>
+
+/** True when the worker has a step to take for the payment (the recovery's question, #112). */
+export function hasNextStep(payment: RouteState): boolean {
+  return routeStep(payment) !== null
+}
+
 /** The step a payment takes next, or null where it waits for the guest, staff or nothing. */
-function routeStep(payment: PaymentRow): RouteStep | null {
+function routeStep(payment: RouteState): RouteStep | null {
   const { state, reason } = payment
   if (state === 'requested') return stepOf(price)
   if (state === 'priced') return stepOf(hold)
@@ -1538,8 +1741,23 @@ function routeStep(payment: PaymentRow): RouteStep | null {
 const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /** A provider payment that holds nothing and never will. */
-function isOver(payment: ProviderPayment): boolean {
+function isOver(
+  payment: ProviderPayment,
+): payment is ProviderPayment & { readonly status: 'released' | 'failed' } {
   return payment.status === 'released' || payment.status === 'failed'
+}
+
+/** The provider shows the hold gone: `payment.expired` (it changes nothing where it may not). */
+async function expire(env: PaymentEnvironment, target: PaymentJob, status: 'released' | 'failed') {
+  const expired = await apply(env, target, {
+    type: 'payment.expired',
+    paymentId: target.paymentId,
+    status,
+  })
+  if (expired.code !== null) {
+    env.log.warn({ paymentId: target.paymentId, code: expired.code }, 'an expiry was refused')
+  }
+  return expired
 }
 
 /** Queues the check of `target` in `afterMs`, under the deadline's own key. */
@@ -1552,7 +1770,7 @@ async function queueDeadlineCheck(env: PaymentEnvironment, target: PaymentJob, a
 }
 
 /** Queues the payment's next prepare step, at once or after `afterSeconds`. */
-async function queuePrepare(env: PaymentEnvironment, target: PaymentJob, afterSeconds = 0) {
+export async function queuePrepare(env: PaymentEnvironment, target: PaymentJob, afterSeconds = 0) {
   const job = prepareJob(JOB_NAMES.paymentPrepare, target)
   await env.queue.send(JOB_NAMES.paymentPrepare, job.data, {
     singletonKey: job.singletonKey,
@@ -1610,6 +1828,15 @@ export async function checkPayment(
     await queuePrepare(env, target)
     return { kind: 'at', state: payment.state }
   }
+  // A held payment waiting for a table or a manager's answer: its hold may run out (#112, R4).
+  const waiting =
+    (payment.state === 'held' || payment.state === 'queued') && payment.paymentTableId === null
+  const asking =
+    payment.state === 'unconfirmed' &&
+    (PAYMENT_UNCONFIRMED_REASONS as readonly (string | null)[]).includes(payment.reason)
+  if ((waiting || asking) && payment.providerPaymentRef !== null) {
+    return expiryCheck(env, target, payment, deps, payment.providerPaymentRef)
+  }
   if (payment.state !== 'awaiting_guest' || payment.providerPaymentRef === null) {
     return { kind: 'at', state: payment.state }
   }
@@ -1617,7 +1844,7 @@ export async function checkPayment(
   if (account === null || account.accountRef === null) {
     throw new PaymentStepRetry("the venue's account is gone while a hold may stand")
   }
-  const provider = providerOf(deps, payment.providerKind)
+  const provider = providerFor(env, target, deps, payment.providerKind)
   const reading = await provider.readPayment(
     providerRef(account.accountRef),
     providerRef(payment.providerPaymentRef),
@@ -1652,6 +1879,32 @@ export async function checkPayment(
     }
   }
   return { kind: 'at', state: checked.state ?? payment.state }
+}
+
+/**
+ * Reads a waiting payment's hold back from the provider: gone (it ran out, or the provider dropped
+ * it) settles the payment `released`, reason `expired`, and its open questions close; the prepare
+ * step then frees its payment table. Still held changes nothing.
+ */
+async function expiryCheck(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+  paymentRef: string,
+): Promise<PaymentRunOutcome> {
+  const account = await accountOf(env, target)
+  if (account === null || account.accountRef === null) {
+    throw new PaymentStepRetry("the venue's account is gone while a hold may stand")
+  }
+  const provider = providerFor(env, target, deps, payment.providerKind)
+  const read = await provider.readPayment(providerRef(account.accountRef), providerRef(paymentRef))
+  if (!read.complete) throw new PaymentStepRetry("the provider's payment could not be read")
+  if (!isOver(read.value)) return { kind: 'at', state: payment.state }
+  const expired = await expire(env, target, read.value.status)
+  if (expired.details.changed === true) await queuePrepare(env, target)
+  const after = await paymentOf(env, target)
+  return after === null ? { kind: 'missing' } : { kind: 'at', state: after.state }
 }
 
 /** The payment jobs: prepare and check, each one run at a time per payment. */

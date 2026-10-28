@@ -83,6 +83,17 @@ interface Strings {
   readonly paymentStrandedBody: (source: string) => string
   readonly paymentCaptureFailed: (venue: string, table: string) => string
   readonly paymentCaptureFailedBody: (source: string) => string
+  readonly paymentReleaseRefused: (venue: string, table: string) => string
+  readonly paymentReleaseRefusedBody: string
+  readonly paymentReleaseRefusedCapturedBody: string
+  readonly paymentHoldExpired: (venue: string, table: string) => string
+  readonly paymentHoldExpiredBody: (source: string) => string
+  readonly payingPaused: (venue: string) => string
+  readonly payingStillPaused: (venue: string) => string
+  readonly payingBack: (venue: string) => string
+  readonly payingPausedBody: (source: string) => string
+  readonly payingUnstable: (venue: string) => string
+  readonly paymentStuck: (venue: string, table: string) => string
   readonly paymentAccountLost: (venue: string) => string
   readonly paymentAccountLostBody: (reason: 'access_removed' | 'account_restricted') => string
   readonly reminder: (title: string) => string
@@ -125,6 +136,23 @@ const EN: Strings = {
     `${venue}: a closed bill’s card payment couldn’t be taken (${table})`,
   paymentCaptureFailedBody: (source) =>
     `The bill is closed in ${source}, but the card was not charged.`,
+  paymentReleaseRefused: (venue, table) =>
+    `${venue}: a cancelled card payment’s hold couldn’t be released (${table})`,
+  paymentReleaseRefusedBody:
+    'The card was not charged. Restro keeps checking until the bank drops the hold.',
+  paymentReleaseRefusedCapturedBody:
+    'The card was charged. Refund the guest with the payment provider if needed.',
+  paymentHoldExpired: (venue, table) =>
+    `${venue}: a card payment’s hold ran out before anyone answered (${table})`,
+  paymentHoldExpiredBody: (source) =>
+    `Nothing was charged. The bill may be closed in ${source}: if so, collect the payment. If not, move its items back from the payment table.`,
+  payingPaused: (venue) => `Card payments in the app are paused at ${venue}`,
+  payingStillPaused: (venue) => `Card payments in the app are still paused at ${venue}`,
+  payingBack: (venue) => `Card payments in the app are back at ${venue}`,
+  payingPausedBody: (source) =>
+    `The payment provider is not answering. Ordering goes on; take payments in ${source}.`,
+  payingUnstable: (venue) => `${venue}: card payments in the app are unstable`,
+  paymentStuck: (venue, table) => `${venue}: a card payment is not moving on (${table})`,
   paymentAccountLost: (venue) => `${venue}: card payments are paused`,
   paymentAccountLostBody: (reason) =>
     reason === 'access_removed'
@@ -176,6 +204,23 @@ const BG: Strings = {
     `${venue}: плащане с карта по приключена сметка не можа да бъде взето (${table})`,
   paymentCaptureFailedBody: (source) =>
     `Сметката е приключена в ${source}, но картата не е таксувана.`,
+  paymentReleaseRefused: (venue, table) =>
+    `${venue}: блокираната сума на отказано плащане с карта не можа да бъде освободена (${table})`,
+  paymentReleaseRefusedBody:
+    'Картата не е таксувана. Restro проверява, докато банката не освободи сумата.',
+  paymentReleaseRefusedCapturedBody:
+    'Картата е таксувана. Ако е нужно, върнете сумата на госта през доставчика на плащания.',
+  paymentHoldExpired: (venue, table) =>
+    `${venue}: блокираната сума на плащане с карта изтече преди някой да отговори (${table})`,
+  paymentHoldExpiredBody: (source) =>
+    `Нищо не е таксувано. Сметката може да е приключена в ${source}: ако е така, вземете плащането. Ако не, върнете артикулите от масата за плащане.`,
+  payingPaused: (venue) => `Плащането с карта в приложението е спряно в ${venue}`,
+  payingStillPaused: (venue) => `Плащането с карта в приложението все още е спряно в ${venue}`,
+  payingBack: (venue) => `Плащането с карта в приложението е пуснато отново в ${venue}`,
+  payingPausedBody: (source) =>
+    `Доставчикът на плащания не отговаря. Поръчките продължават; приемайте плащания в ${source}.`,
+  payingUnstable: (venue) => `${venue}: плащането с карта в приложението е нестабилно`,
+  paymentStuck: (venue, table) => `${venue}: плащане с карта не продължава (${table})`,
   paymentAccountLost: (venue) => `${venue}: плащанията с карта са спрени`,
   paymentAccountLostBody: (reason) =>
     reason === 'access_removed'
@@ -278,6 +323,32 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
         title: words.paymentCaptureFailed(venueName, table),
         body: words.paymentCaptureFailedBody(source),
       }
+    case 'payment_release_refused':
+      return {
+        title: words.paymentReleaseRefused(venueName, table),
+        // The provider's refusal says what happened to the card: captured is charged.
+        body:
+          alert.details.code === 'already_captured'
+            ? words.paymentReleaseRefusedCapturedBody
+            : words.paymentReleaseRefusedBody,
+      }
+    case 'payment_hold_expired':
+      return {
+        title: words.paymentHoldExpired(venueName, table),
+        body: words.paymentHoldExpiredBody(source),
+      }
+    case 'paying_paused': {
+      if (step === 'back') return { title: words.payingBack(venueName), body: '' }
+      const still = step === 'reminder' || step === 'still_paused'
+      return {
+        title: still ? words.payingStillPaused(venueName) : words.payingPaused(venueName),
+        body: words.payingPausedBody(source),
+      }
+    }
+    case 'payment_stuck':
+      return { title: words.paymentStuck(venueName, table), body: '' }
+    case 'paying_unstable':
+      return { title: words.payingUnstable(venueName), body: '' }
     case 'payment_account_lost':
       return {
         title: words.paymentAccountLost(venueName),

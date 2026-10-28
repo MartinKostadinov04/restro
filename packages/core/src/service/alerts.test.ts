@@ -167,6 +167,14 @@ describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
       expect(result).toMatchObject({ status: 'refused', code: 'alert_closes_itself' })
     })
 
+    it("has no Done for a card payment's question, which only its answer closes (#112)", async () => {
+      for (const kind of ['payment_unconfirmed', 'payment_lines_not_back']) {
+        const id = await seed(kind, { permission: 'money.follow_up' })
+        const { result } = await done(id, user(ownerId))
+        expect(result).toMatchObject({ status: 'refused', code: 'alert_needs_answer' })
+      }
+    })
+
     it('does not know an alert of another venue or one that is not there', async () => {
       const { result } = await done(newId('al'), user(ownerId))
       expect(result).toMatchObject({ status: 'refused', code: 'alert_missing' })
