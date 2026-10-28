@@ -100,6 +100,8 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
   const provider = createSimPayProvider({ env: 'test', engine })
   const tenantId = newId('tn')
   let log: Awaited<ReturnType<typeof createLogger>>
+  /** The worker's log lines, as JSON. */
+  const logged: string[] = []
   const clock = new Date()
   let demo: { venueId: VenueId; integrationId: IntegrationId }
   let tableId: `tb_${string}`
@@ -176,7 +178,11 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
       `insert into restro.auth_organization (id, name, slug) values ($1, 'Pay-first club', $2)`,
       [tenantId, `pay-first-${newId('tn').slice(3, 11)}`],
     )
-    log = await createLogger({ level: 'debug', pretty: false, destination: { write: () => {} } })
+    log = await createLogger({
+      level: 'debug',
+      pretty: false,
+      destination: { write: (line: string) => logged.push(line) },
+    })
     sim = createSimServer({ scenario: 'pay-first', print: () => {}, clock: simClock })
     const host = `127.0.0.1:${await sim.listen(0)}`
 
@@ -333,8 +339,8 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     ]),
   })
 
-  /** A guest adds two gins and sends them; the Send's answer. */
-  async function send(priceMinor = POS_PRICE) {
+  /** A guest adds two gins (with `note`) and sends them; the Send's answer. */
+  async function send(priceMinor = POS_PRICE, note = '') {
     const added = await applyService(
       pool,
       {
@@ -345,12 +351,12 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
         itemId: gin,
         optionIds: [],
         qty: 2,
-        note: '',
+        note,
       },
       guest(),
     )
     expect(added.result.status).toBe('accepted')
-    const line = { itemId: gin, optionIds: [], qty: 2, note: '' }
+    const line = { itemId: gin, optionIds: [], qty: 2, note }
     return (
       await applyService(
         pool,
@@ -373,8 +379,8 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
   }
 
   /** A pay-first Send, priced, held at the provider; the payment's id. */
-  async function held(priceMinor = POS_PRICE): Promise<string> {
-    const result = await send(priceMinor)
+  async function held(priceMinor = POS_PRICE, note = ''): Promise<string> {
+    const result = await send(priceMinor, note)
     expect(result).toMatchObject({ status: 'accepted' })
     const id = result.status === 'accepted' ? result.details.paymentId : null
     if (typeof id !== 'string') throw new Error('no payment')
@@ -548,6 +554,19 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     expect(holdOf(id)).toEqual([
       expect.objectContaining({ status: 'captured', capturedMinor: 2_200 }),
     ])
+  })
+
+  it("enters the round without the table's name where the guest's note leaves no room, and says so", async () => {
+    const note = 'x'.repeat(200)
+    const id = await held(POS_PRICE, note)
+    logged.length = 0
+    expect(await drive(id)).toMatchObject({ state: 'captured' })
+    expect(paymentBills()[0]?.rows).toEqual([[ARTICLE, expect.anything(), note]])
+    const warned = logged.filter((line) => line.includes('the table note fits on no line'))
+    expect(warned).toHaveLength(1)
+    expect(JSON.parse(warned[0] ?? '{}')).toMatchObject({ level: 40, paymentId: id })
+    // Never the guest's own text.
+    expect(warned[0]).not.toContain(note)
   })
 
   it("captures the POS's lower total, never more than the guest agreed", async () => {

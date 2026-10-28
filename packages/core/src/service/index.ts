@@ -153,6 +153,7 @@ export {
   type HumanCheckVerdict,
   hashPaymentHandle,
   type PaymentTarget,
+  paymentWorkerJob,
   projectGuestState,
   type QueuePayment,
 } from './guest'

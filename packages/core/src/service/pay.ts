@@ -65,6 +65,8 @@ export const PAY_REFUSALS = [
   'bill_changed',
   /** Below the venue's smallest card payment. */
   'below_minimum',
+  /** A tip where the POS can't put one on the receipt (D127; the phone hears `ordering.tips`). */
+  'tip_not_offered',
   /** Only a waiter can split this: a whole-bill discount, a part-paid bill, part of a line. */
   'ask_waiter_to_split',
   /** Turnstile said no. */
@@ -484,7 +486,7 @@ export function payStart() {
         tipMinor > 0 &&
         !(await readTableCapabilities(stx.tx, command.tableId)).recordTipOnClose
       ) {
-        return refused(command.actionId, 'invalid_command')
+        return refuse('tip_not_offered')
       }
       const amountMinor = addMinor(linesMinor, tipMinor)
       // The venue's own floor here; the provider's minimum is checked when the worker prices it.

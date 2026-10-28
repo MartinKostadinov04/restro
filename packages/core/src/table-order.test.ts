@@ -318,6 +318,18 @@ describe('the pay-first lines a Send holds for its payment (#113)', () => {
     })
   })
 
+  it('a "Send and pay" (`whole`) names every live pay-first line, or is refused', () => {
+    const both = () => true
+    const lime1 = { itemId: lime, optionIds: [], qty: 1, note: '' }
+    expect(holdPayFirstLines(order, [lime1], both, 'py_1', true)).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+    const held = holdPayFirstLines(order, [lime1, ginLine], both, 'py_1', true)
+    if (!held.ok) throw new Error(held.code)
+    expect(held.lines.map((line) => line.itemId)).toEqual([gin, lime])
+  })
+
   it('refuses a part that differs from the order, and one with nothing to pay first', () => {
     expect(holdPayFirstLines(order, [{ ...ginLine, qty: 3 }], isGin, 'py_1')).toEqual({
       ok: false,

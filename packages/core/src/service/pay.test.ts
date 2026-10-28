@@ -645,12 +645,12 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       expect((await stored(id))?.tip_minor).toBe('300')
     })
 
-    it('invalid_command: a tip where the POS records none on the close (D127)', async () => {
+    it('tip_not_offered: a tip where the POS records none on the close (D127)', async () => {
       await world.declareCapabilities({ recordTipOnClose: false })
       try {
         expect((await friendState()).ordering).toMatchObject({ tips: false })
         expect(await refusal(await start(phone(), ['L3'], { tipPercent: 10 }))).toBe(
-          'invalid_command',
+          'tip_not_offered',
         )
         // No tip is still a payment.
         paymentIdOf(await start(phone(), ['L3']))

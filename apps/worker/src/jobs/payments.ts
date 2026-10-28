@@ -1158,6 +1158,13 @@ async function enter(
   if (before.bills.length > 0)
     return { outcome: 'refused', billRef: null, code: 'payment_table_busy' }
   if (lines === null) return { outcome: 'refused', billRef: null, code: 'item_not_on_pos' }
+  if (lines.tableNoteDropped) {
+    // Staff find the round on the payment table without the guest's table named (no guest text).
+    env.log.warn(
+      { paymentId: payment.id },
+      'the table note fits on no line: the round goes without it',
+    )
+  }
   const { timezone, dayEndsAt } = lines.venue
   const ref = `${payment.id}-enter`
   const outcome = await writePos(env, target, pos, 'addLines', ref, () =>
@@ -1217,6 +1224,8 @@ async function enterLinesOf(
   readonly lines: OrderLine[]
   /** Each line's POS item, in order: what the check matches the bill against. */
   readonly items: readonly string[]
+  /** "For Table 7" was due on the ticket and fit on no line (`withTableNote`). */
+  readonly tableNoteDropped: boolean
   readonly venue: { readonly timezone: string; readonly dayEndsAt: string }
 } | null> {
   const sentOrderId = payment.sentOrderId
@@ -1274,10 +1283,12 @@ async function enterLinesOf(
   if (lines.length === 0) return null
   const items = lines.map((line) => line.item.pos)
   const label = read.table === null ? null : tableLabel(alertLocale(read.venue.locale), read.table)
-  if (!reach || label === null) return { lines, items, venue: read.venue }
+  if (!reach || label === null) return { lines, items, tableNoteDropped: false, venue: read.venue }
+  const noted = withTableNote(lines, payFirstTableNote(alertLocale(read.venue.locale), label))
   return {
-    lines: withTableNote(lines, payFirstTableNote(alertLocale(read.venue.locale), label)),
+    lines: noted,
     items,
+    tableNoteDropped: noted.every((line, index) => line.note === lines[index]?.note),
     venue: read.venue,
   }
 }

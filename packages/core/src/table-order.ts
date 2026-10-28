@@ -422,7 +422,8 @@ export function takeSentLines(
 /**
  * The pay-first part of a Send (#113): each line the Send names for paying first must be one of
  * the live, unheld lines `payFirst` picks, with its quantity, each line once (else
- * `order_changed`); the others stay as they are, for a later "Pay". The named lines stay on the
+ * `order_changed`); the others stay as they are, for a later "Pay". With `whole` (a "Send and
+ * pay", whose bill part goes too) the Send must name every one of them. The named lines stay on the
  * order, held by the payment (`heldBy`), until it enters them on the POS (`dropHeldLines`) or ends
  * without (`releaseHeldLines`).
  */
@@ -431,6 +432,7 @@ export function holdPayFirstLines(
   requested: readonly SendRequestLine[],
   payFirst: (line: TableOrderLine) => boolean,
   paymentId: string,
+  whole = false,
 ):
   | {
       readonly ok: true
@@ -453,6 +455,7 @@ export function holdPayFirstLines(
     picked.push(found)
     left.splice(at, 1)
   }
+  if (whole && left.length > 0) return { ok: false, code: 'order_changed' }
   // In the order's own order, as the round is entered.
   const lines = candidates.filter((line) => picked.includes(line))
   return {

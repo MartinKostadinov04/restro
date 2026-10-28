@@ -36,13 +36,14 @@
 
 import {
   alerts,
+  logEntries,
   paymentAccounts,
   paymentLines,
   paymentSteps,
   payments,
   venueTables,
 } from '@restro/db'
-import { and, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
@@ -937,6 +938,15 @@ export function paymentAnswer() {
           if (command.answer === 'no_receipt') return at(payment, payment.state, false)
           return refused(null, 'payment_answered', { answer: 'no_receipt' })
         }
+        // A pay-first round moved on by this same answer (a second tap, a second manager): the
+        // same answer again changes nothing.
+        if (
+          payment.kind === 'pay_first' &&
+          ENTRY_ANSWERS.includes(command.answer) &&
+          (await lastAnswer(stx, payment.id)) === command.answer
+        ) {
+          return at(payment, payment.state, false)
+        }
         return refused(null, 'payment_not_unconfirmed', { state: payment.state })
       }
       if (payment.reason === command.answer) return at(payment, payment.state, false)
@@ -1015,6 +1025,17 @@ export function paymentAnswer() {
       return at(payment, state, true, { answer: command.answer })
     },
   })
+}
+
+/** The last answer a manager gave about a payment, as the Log keeps it; null when none. */
+async function lastAnswer(stx: ServiceTx, id: string): Promise<string | null> {
+  const [last] = await stx.tx
+    .select({ reason: logEntries.reason })
+    .from(logEntries)
+    .where(and(eq(logEntries.paymentId, id), eq(logEntries.kind, 'payment.answered')))
+    .orderBy(desc(logEntries.seq))
+    .limit(1)
+  return last?.reason ?? null
 }
 
 // ---------------------------------------------------------------------------------------------

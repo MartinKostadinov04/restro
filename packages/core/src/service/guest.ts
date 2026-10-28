@@ -1334,7 +1334,7 @@ export interface GuestPaymentInput {
 }
 
 /** The states the worker moves on: a poll that finds one queues the step again. */
-const WORKER_STEP: Readonly<Record<string, 'prepare' | 'check'>> = {
+const WORKER_STEP: Readonly<Record<string, 'prepare'>> = {
   requested: 'prepare',
   priced: 'prepare',
   cancelling: 'prepare',
@@ -1342,12 +1342,31 @@ const WORKER_STEP: Readonly<Record<string, 'prepare' | 'check'>> = {
   held: 'prepare',
   queued: 'prepare',
   isolated: 'prepare',
+  // A pay-first round on the payment table (#113), after its entry or a manager's "On the till".
+  entered: 'prepare',
   checked: 'prepare',
   closed: 'prepare',
 }
 
 /** An unconfirmed close a manager or owner answered: the worker captures or puts the lines back. */
 const ANSWERED = ['receipt_printed', 'no_receipt']
+
+/**
+ * The worker job a payment waits on, or null where it waits on the guest, staff or nothing. The
+ * phone's poll queues it, and so does whoever moved the payment there (a manager's answer: "On the
+ * till" leaves it `entered`, "Not on the till" `cancelling`), so the worker never waits for
+ * recovery.
+ */
+export function paymentWorkerJob(payment: {
+  readonly state: string
+  readonly reason: string | null
+}): 'prepare' | null {
+  const step = WORKER_STEP[payment.state]
+  if (step !== undefined) return step
+  return payment.state === 'unconfirmed' && ANSWERED.includes(payment.reason ?? '')
+    ? 'prepare'
+    : null
+}
 
 /** A decimal quantity as the bill shows it: "2.000000" is "2", "0.500000" is "0.5". */
 function shownQuantity(quantity: string): string {
@@ -1405,11 +1424,7 @@ export async function guestPayment(
   if (found === null) return { ok: false, code: 'unknown_payment' }
   const { payment, lines } = found
 
-  const step =
-    WORKER_STEP[payment.state] ??
-    (payment.state === 'unconfirmed' && ANSWERED.includes(payment.reason ?? '')
-      ? 'prepare'
-      : undefined)
+  const step = paymentWorkerJob(payment)
   const overdue =
     payment.state === 'awaiting_guest' &&
     payment.confirmBy !== null &&

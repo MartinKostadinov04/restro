@@ -155,6 +155,8 @@ export const PAY_FIRST_SEND_REFUSALS = [
   'paying_not_offered',
   /** The round and its tip are below the venue's card minimum. */
   'below_minimum',
+  /** A tip where the POS can't put one on the receipt (D127; the phone hears `ordering.tips`). */
+  'tip_not_offered',
 ] as const
 
 /** The pay-first part of a Send, checked and priced: what `insertPayFirst` writes. */
@@ -172,7 +174,7 @@ export interface PayFirstPrepared {
 /**
  * Checks and prices a Send's pay-first part (#113) inside the Send's transaction, after its
  * on-the-bill part took its lines. The lines must be some of the order's live, unheld pay-first
- * lines (`order_changed`); they are priced from the published menu (rule 5); the POS must take a
+ * lines, all of them in a "Send and pay" (`order_changed`); they are priced from the published menu (rule 5); the POS must take a
  * pay-first round and paying be on (`paying_not_offered`, `paying_paused`). No cap, pace or repeat
  * guard: the guest pays before the round goes anywhere.
  */
@@ -184,6 +186,8 @@ export async function preparePayFirst(
     readonly part: PayFirstSendPart
     readonly menu: SendMenu
     readonly isPayFirst: (line: { readonly itemId: string }) => boolean
+    /** A "Send and pay" (the bill part goes too): every live pay-first line must be named. */
+    readonly whole: boolean
   },
 ): Promise<
   | ({ readonly ok: true } & PayFirstPrepared)
@@ -207,6 +211,7 @@ export async function preparePayFirst(
     input.part.lines,
     (line) => input.isPayFirst(line) && lineAvailable(menu, line),
     paymentId,
+    input.whole,
   )
   if (!held.ok) return { ok: false, code: held.code }
   const priced = priceSentLines(menu, held.lines)
@@ -229,7 +234,7 @@ export async function preparePayFirst(
   if (input.part.tip.kind === 'amount' && tipMinor > priced.totalMinor) {
     return { ok: false, code: 'invalid_command' }
   }
-  if (tipMinor > 0 && !capabilities.recordTipOnClose) return { ok: false, code: 'invalid_command' }
+  if (tipMinor > 0 && !capabilities.recordTipOnClose) return { ok: false, code: 'tip_not_offered' }
   // The venue's own floor here; the provider's minimum is checked when the worker prices it.
   const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
   if (addMinor(priced.totalMinor, tipMinor) < Math.max(floor, 1)) {
@@ -420,6 +425,11 @@ export interface RoundLine {
  * item, no more of it and for no more. Lines the POS dropped or lowered are allowed (the check
  * captures the lower total); anything else (a waiter's line, a line of another item, a higher
  * amount) is someone else's bill.
+ *
+ * The match is line for line, and fails safe (unconfirmed, for a manager): the service connector
+ * must read bill lines in the round's shape, one line per line entered, its option rows folded
+ * into it and a quantity the POS split across rows summed back. A connector that can't is a
+ * connector gap, never a looser match here.
  */
 export function billIsRound(
   round: readonly RoundLine[],

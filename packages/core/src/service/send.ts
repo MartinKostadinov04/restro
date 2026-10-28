@@ -20,8 +20,9 @@
 //    reads (K7Q), each line's note is kept apart (`sent_order_notes`), and the table is touched.
 // Pay-first lines (#113) are a Send's second part (`payFirst`): never on the bill, they are held on
 // the order for a payment of kind `pay_first` with its own `waiting` sent order (`pay-first.ts`).
-// A Send may have either part, or both; its pay-first part names the lines the guest pays for now,
-// any of the order's pay-first lines no payment holds.
+// A Send may have either part, or both; its pay-first part names the lines the guest pays for now:
+// any of the order's pay-first lines no payment holds, or all of them where the bill part goes too
+// ("Send and pay").
 // The worker takes it from there (`sent-order.ts`): Restro never calls the POS here.
 
 import { randomInt } from 'node:crypto'
@@ -208,7 +209,14 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
   const payFirst =
     payFirstPart === undefined
       ? null
-      : await preparePayFirst(stx, { tableId, order, part: payFirstPart, menu, isPayFirst })
+      : await preparePayFirst(stx, {
+          tableId,
+          order,
+          part: payFirstPart,
+          menu,
+          isPayFirst,
+          whole: command.lines.length > 0,
+        })
   if (payFirst !== null && !payFirst.ok) {
     return refused(actionId, payFirst.code, payFirst.details ?? {})
   }

@@ -18,7 +18,7 @@ import {
 import { createPool, type DbPool, fieldValues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 import type pg from 'pg'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { makePng } from '../../../../../packages/assets/src/test-images'
 import { storeImage } from '../assets/upload'
@@ -37,6 +37,14 @@ import {
   setImage,
 } from './service'
 import type { ItemSheetData, SheetField, SheetResult } from './types'
+
+// Whether pay-first can take effect at the venue (paying and a POS that opens a bill) is core's
+// own test (pay-first-route.test.ts); here, only that the sheet follows its answer.
+const payFirst = vi.hoisted(() => ({ possible: false }))
+vi.mock('@restro/core/service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@restro/core/service')>()),
+  payFirstPossibleAt: async () => payFirst.possible,
+}))
 
 class MemoryStore implements AssetStore {
   readonly objects = new Map<string, Uint8Array>()
@@ -246,6 +254,17 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
       expect(field(data, 'name')).toMatchObject({ provenance: 'till', access: { kind: 'edit' } })
       expect(field(data, 'description')).toMatchObject({ provenance: 'none', value: null })
       expect(field(data, 'order_mode')).toMatchObject({ provenance: 'none', value: 'orderable' })
+    })
+
+    it('shows the payment mode, after the order mode, where pay-first can take effect (#113)', async () => {
+      payFirst.possible = true
+      try {
+        const keys = (await sheet(linked)).fields.map((f) => f.key)
+        expect(keys).toContain('payment_mode')
+        expect(keys.indexOf('payment_mode')).toBeGreaterThan(keys.indexOf('order_mode'))
+      } finally {
+        payFirst.possible = false
+      }
     })
 
     it('locks the price of a linked item: "Change this in barsy"', async () => {
