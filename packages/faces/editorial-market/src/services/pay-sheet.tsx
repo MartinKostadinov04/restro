@@ -35,7 +35,7 @@ import {
   type TipChoice,
   togglePick,
 } from '@restro/shell'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { newActionId } from './command'
 import { StatePanel } from './parts'
@@ -314,6 +314,38 @@ export function PaySheet() {
 
 /** This phone's payment, from "Preparing your bill…" to its end. */
 /** This phone's payment, from "Preparing your bill…" to its end. */
+/**
+ * One screen of a payment. The screen changes under the guest's finger (the button they pressed is
+ * gone), so each new screen takes the focus itself, which keeps it inside the sheet and lets a
+ * screen reader read what the screen says.
+ */
+function Screen({
+  kind,
+  end,
+  children,
+}: {
+  readonly kind: string
+  readonly end?: string
+  readonly children: ReactNode
+}) {
+  const root = useRef<HTMLDivElement>(null)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the screen is a new one when its kind or end changes
+  useEffect(() => {
+    root.current?.focus({ preventScroll: true })
+  }, [kind, end])
+  return (
+    <div
+      className="ro-sheet"
+      ref={root}
+      tabIndex={-1}
+      data-pay-screen={kind}
+      {...(end === undefined ? {} : { 'data-pay-end': end })}
+    >
+      {children}
+    </div>
+  )
+}
+
 function PaymentScreen({
   payment,
   money,
@@ -378,7 +410,7 @@ function PaymentScreen({
     case 'preparing':
     case 'card':
       return (
-        <div className="ro-sheet" data-pay-screen={screen.kind}>
+        <Screen kind={screen.kind}>
           {screen.kind === 'preparing' ? (
             <StatePanel tone="wait" title={w.preparing} />
           ) : (
@@ -417,17 +449,17 @@ function PaymentScreen({
               {refusal}
             </p>
           )}
-        </div>
+        </Screen>
       )
     case 'waiting':
       return (
-        <div className="ro-sheet" data-pay-screen="waiting">
+        <Screen kind="waiting">
           <StatePanel tone="wait" title={w.waiting} />
-        </div>
+        </Screen>
       )
     case 'paid':
       return (
-        <div className="ro-sheet" data-pay-screen="paid">
+        <Screen kind="paid">
           <StatePanel tone="ok" title={w.paid}>
             <p>{w.paidNumber}</p>
             <p className="ro-pay-number" data-slot="pay.number">
@@ -437,20 +469,20 @@ function PaymentScreen({
             <p>{w.paidReceipt}</p>
             {back}
           </StatePanel>
-        </div>
+        </Screen>
       )
     case 'checking':
       return (
-        <div className="ro-sheet" data-pay-screen="checking">
+        <Screen kind="checking">
           <StatePanel tone="plain" title={w.checkingTitle} hint={w.checkingBody}>
             {call}
             {back}
           </StatePanel>
-        </div>
+        </Screen>
       )
     case 'ended':
       return (
-        <div className="ro-sheet" data-pay-screen="ended" data-pay-end={screen.end}>
+        <Screen kind="ended" end={screen.end}>
           <StatePanel tone="bad" title={w.ended[screen.end]}>
             {screen.again ? (
               <button
@@ -465,7 +497,7 @@ function PaymentScreen({
             {call}
             {back}
           </StatePanel>
-        </div>
+        </Screen>
       )
   }
 }
