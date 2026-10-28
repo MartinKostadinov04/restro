@@ -329,6 +329,8 @@ export interface LogLineView {
   readonly paymentState: string | null
   readonly paymentAnswer: 'ok' | 'no' | null
   readonly sentOrdersOfDay: number | null
+  /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
+  readonly callKinds: readonly string[]
 }
 
 /** The Log's day as the screen draws it. */
@@ -387,6 +389,7 @@ export function logLineView(
     paymentAnswer:
       line.kind === 'payment.answered' ? (line.toState === 'receipt_printed' ? 'ok' : 'no') : null,
     sentOrdersOfDay: line.sentOrdersOfDay,
+    callKinds: line.callKinds,
   }
 }
 

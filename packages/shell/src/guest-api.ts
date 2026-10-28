@@ -19,7 +19,7 @@ import {
   LocalizedTextSchema,
 } from '@restro/core'
 import { z } from 'zod'
-
+import { SERVICE_KINDS } from './features'
 import { GUEST_REFUSAL_CODES } from './service-vocabulary'
 import { GuestCommandSchema, SERVICE_LIMITS } from './services'
 
@@ -175,6 +175,8 @@ export const GuestTableStateSchema = z.strictObject({
     .strictObject({
       id: idSchema('wc'),
       state: z.enum(['open', 'done', 'lapsed']),
+      /** What the table asked for (#180), in the venue's list order. */
+      kinds: z.array(z.enum(SERVICE_KINDS)).min(1).max(SERVICE_KINDS.length),
       calledAgoSeconds: seconds,
     })
     .nullable(),

@@ -253,6 +253,13 @@
       "when": 1793119721854,
       "tag": "0035_pay_connection",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793188003947,
+      "tag": "0036_waiter_call_kinds",
+      "breakpoints": true
     }
   ]
 }

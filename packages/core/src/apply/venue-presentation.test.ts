@@ -20,14 +20,14 @@ import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from '.
 const PRESENTATION = { face: 'editorial-market', options: { layout: 'two', compact: true } }
 const FEATURES: GuestFeatures = {
   filters: true,
-  call_waiter: { enabled: true, kinds: ['other', 'bill', 'waiter'] },
+  call_waiter: { enabled: true, kinds: ['terminal', 'bill', 'waiter'] },
   bill: true,
   ordering: false,
   pay: false,
 }
 const CANONICAL: GuestFeatures = {
   ...FEATURES,
-  call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'other'] },
+  call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'terminal'] },
 }
 
 describe('module boundary', () => {

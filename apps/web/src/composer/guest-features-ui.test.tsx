@@ -102,11 +102,15 @@ describe('the guest features panel', () => {
     expect(save().hasAttribute('disabled')).toBe(true)
   })
 
-  it('checks "Waiter" when "Call a waiter" goes on with no kind chosen, and saves it', async () => {
+  it('ticks every kind but the card terminal when "Call a waiter" goes on, "Waiter" fixed on, and saves them', async () => {
     setup()
     await userEvent.click(switchNamed('Call a waiter'))
     expect(checkboxNamed('Waiter').getAttribute('aria-checked')).toBe('true')
-    expect(checkboxNamed('Bill').getAttribute('aria-checked')).toBe('false')
+    expect(checkboxNamed('Waiter').hasAttribute('disabled')).toBe(true)
+    for (const name of ['The bill', 'Ice', 'Water', 'Glasses', 'Clean the table']) {
+      expect(checkboxNamed(name).getAttribute('aria-checked')).toBe('true')
+    }
+    expect(checkboxNamed('Card terminal').getAttribute('aria-checked')).toBe('false')
 
     await userEvent.click(save())
     await waitFor(() => expect(saveGuestFeaturesAction).toHaveBeenCalledTimes(1))
@@ -114,7 +118,10 @@ describe('the guest features panel', () => {
       venueId: VENUE,
       features: {
         filters: true,
-        call_waiter: { enabled: true, kinds: ['waiter'] },
+        call_waiter: {
+          enabled: true,
+          kinds: ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table'],
+        },
         bill: false,
         ordering: false,
         pay: false,
@@ -127,36 +134,20 @@ describe('the guest features panel', () => {
   it('keeps the request kinds in the order of the vocabulary', async () => {
     setup()
     await userEvent.click(switchNamed('Call a waiter'))
-    await userEvent.click(checkboxNamed('Other'))
-    await userEvent.click(checkboxNamed('Bill'))
-    await userEvent.click(checkboxNamed('Waiter'))
+    for (const name of ['The bill', 'Ice', 'Water', 'Glasses', 'Clean the table']) {
+      await userEvent.click(checkboxNamed(name))
+    }
+    await userEvent.click(checkboxNamed('Card terminal'))
+    await userEvent.click(checkboxNamed('Ice'))
     await userEvent.click(save())
     await waitFor(() => expect(saveGuestFeaturesAction).toHaveBeenCalledTimes(1))
     expect(saveGuestFeaturesAction).toHaveBeenCalledWith(
       expect.objectContaining({
         features: expect.objectContaining({
-          call_waiter: { enabled: true, kinds: ['bill', 'other'] },
+          call_waiter: { enabled: true, kinds: ['waiter', 'ice', 'terminal'] },
         }),
       }),
     )
-  })
-
-  it('will not save "Call a waiter" with no request ticked, and says why', async () => {
-    setup()
-    await userEvent.click(switchNamed('Call a waiter'))
-    expect(screen.queryByTestId('call-kinds-none')).toBeNull()
-
-    await userEvent.click(checkboxNamed('Waiter'))
-    expect(screen.getByRole('alert').textContent).toBe(
-      'Tick at least one request, or switch Call a waiter off.',
-    )
-    expect(save().hasAttribute('disabled')).toBe(true)
-
-    // Switching it off is a valid way out: nothing changed, so nothing to save, and no alert.
-    await userEvent.click(switchNamed('Call a waiter'))
-    expect(screen.queryByTestId('call-kinds-none')).toBeNull()
-    expect(save().hasAttribute('disabled')).toBe(true)
-    expect(saveGuestFeaturesAction).not.toHaveBeenCalled()
   })
 
   it('shows the Stage 4 note under waiter, bill and ordering, and the Stage 5 note under pay', () => {

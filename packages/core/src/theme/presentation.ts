@@ -51,18 +51,35 @@ export const PresentationSchema = z.strictObject({
 /** The venue's template and its options. */
 export type Presentation = z.output<typeof PresentationSchema>
 
-/** What a guest can ask staff for (the designer's six request kinds, handover §12). */
+/**
+ * What a guest can ask staff for (#180): a fixed list the venue ticks from. A venue's own list is
+ * kept in this order; `waiter` is always in it while the feature is on.
+ */
 export const CALL_WAITER_KINDS = [
   'waiter',
   'bill',
+  'ice',
   'water',
-  'cutlery',
+  'glasses',
+  'clean_table',
   'terminal',
-  'other',
 ] as const
+
+/** Kinds an earlier list had (the designer's six, #71): read and dropped, never a failed parse. */
+const RETIRED_CALL_WAITER_KINDS = ['cutlery', 'other'] as const
+
+/** What "Call a waiter" offers when a venue switches it on: every kind but the card terminal. */
+export const DEFAULT_CALL_WAITER_KINDS: readonly CallWaiterKind[] = CALL_WAITER_KINDS.filter(
+  (kind) => kind !== 'terminal',
+)
 
 /** One request kind. */
 export type CallWaiterKind = (typeof CALL_WAITER_KINDS)[number]
+
+/** True for a kind of the current list (not a dropped one). */
+export function isCallWaiterKind(value: string): value is CallWaiterKind {
+  return (CALL_WAITER_KINDS as readonly string[]).includes(value)
+}
 
 /** The guest services a venue can switch on (D71), as stored and as published. */
 export const GuestFeaturesSchema = z.strictObject({
@@ -72,9 +89,11 @@ export const GuestFeaturesSchema = z.strictObject({
   call_waiter: z.strictObject({
     enabled: z.boolean(),
     kinds: z
-      .array(z.enum(CALL_WAITER_KINDS))
-      .max(CALL_WAITER_KINDS.length)
-      .refine((kinds) => new Set(kinds).size === kinds.length, 'request kinds must not repeat'),
+      .array(z.enum([...CALL_WAITER_KINDS, ...RETIRED_CALL_WAITER_KINDS]))
+      .max(CALL_WAITER_KINDS.length + RETIRED_CALL_WAITER_KINDS.length)
+      .refine((kinds) => new Set(kinds).size === kinds.length, 'request kinds must not repeat')
+      // A stored or published list that still holds a dropped kind reads without it (#180).
+      .transform((kinds) => kinds.filter((kind): kind is CallWaiterKind => isCallWaiterKind(kind))),
   }),
   /** The table's running bill. */
   bill: z.boolean(),
@@ -124,9 +143,13 @@ export function readGuestFeatures(settings: unknown): GuestFeatures {
   return parsed.success ? canonicalFeatures(parsed.data) : DEFAULT_GUEST_FEATURES
 }
 
-/** The features with the request kinds in the vocabulary's order (a set: order carries nothing). */
+/**
+ * The features with the request kinds in the vocabulary's order (a set: order carries nothing),
+ * and `waiter` among them while Call a waiter is on.
+ */
 export function canonicalFeatures(features: GuestFeatures): GuestFeatures {
-  const present = new Set(features.call_waiter.kinds)
+  const present = new Set<CallWaiterKind>(features.call_waiter.kinds)
+  if (features.call_waiter.enabled) present.add('waiter')
   return {
     ...features,
     call_waiter: {

@@ -3,7 +3,7 @@
 // Calling a waiter (brief SH-06 test 5): only the kinds the venue allows, "on the way" only when
 // the host's request says so, and cancel sends `service.cancel`.
 
-import type { ViewModel } from '@restro/shell'
+import type { ServiceKind, ViewModel } from '@restro/shell'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -30,9 +30,7 @@ const pick = (sheet: HTMLElement, name: string) =>
   fireEvent.click(within(sheet).getByRole('radio', { name }))
 const sendButton = (sheet: HTMLElement) => within(sheet).getByRole('button', { name: 'Send' })
 
-const withKinds = (
-  kinds: ('waiter' | 'bill' | 'water' | 'cutlery' | 'terminal' | 'other')[],
-): ViewModel => ({
+const withKinds = (kinds: ServiceKind[]): ViewModel => ({
   ...view,
   features: { ...view.features, callWaiter: { kinds } },
 })
@@ -60,40 +58,35 @@ describe('the waiter button', () => {
 
 describe('the kinds', () => {
   it("shows every kind the venue allows, in the venue's order, and no other", () => {
-    drawFace(fakeHost(), withKinds(['water', 'waiter', 'other']))
+    drawFace(fakeHost(), withKinds(['water', 'waiter', 'glasses']))
     const sheet = openCall()
     expect(
       within(sheet)
         .getAllByRole('radio')
         .map((button) => button.textContent),
-    ).toEqual(['Water', 'Call waiter', 'Something else'])
-    for (const name of ['Bring the bill', 'Cutlery', 'Card terminal']) {
+    ).toEqual(['Water', 'Call waiter', 'Glasses'])
+    for (const name of ['Bring the bill', 'Ice', 'Card terminal']) {
       expect(within(sheet).queryByRole('radio', { name })).toBeNull()
     }
   })
 
-  it('shows all six when the venue allows all six', () => {
+  it('shows all seven when the venue allows all seven', () => {
     drawFace(fakeHost())
-    expect(within(openCall()).getAllByRole('radio')).toHaveLength(6)
+    expect(within(openCall()).getAllByRole('radio')).toHaveLength(7)
   })
 
-  it('sends the chosen kind, and "something else" only with a note', async () => {
+  it('sends the chosen kind, and no note', async () => {
     const host = fakeHost()
     drawFace(host)
     const sheet = openCall()
     expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
-    pick(sheet, 'Something else')
-    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
-    fireEvent.change(within(sheet).getByRole('textbox'), { target: { value: '  a high chair  ' } })
+    pick(sheet, 'Ice')
+    expect(within(sheet).queryByRole('textbox')).toBeNull()
     expect(sendButton(sheet).hasAttribute('disabled')).toBe(false)
     fireEvent.click(sendButton(sheet))
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
     const { command } = host.of('service.request')[0] ?? {}
-    expect(command).toMatchObject({
-      kind: 'service.request',
-      request: 'other',
-      note: 'a high chair',
-    })
+    expect(command).toMatchObject({ kind: 'service.request', request: 'ice', note: '' })
     expect(command?.actionId).toMatch(/^[0-9a-f-]{36}$/)
   })
 
@@ -163,7 +156,7 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).queryByRole('button', { name: 'Cancel request' })).toBeNull()
     // Then the guest can ask again.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
-    expect(within(sheet).getAllByRole('radio')).toHaveLength(6)
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
   it('says so when the cancel is refused or fails, and keeps the request as it is', async () => {
@@ -203,7 +196,7 @@ describe('after sending: only what the host says', () => {
       }),
     )
     const sheet = openCall()
-    expect(within(sheet).getAllByRole('radio')).toHaveLength(6)
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
   it("says a rejected request was not taken, with the host's reason, and lets the guest ask again", async () => {
@@ -213,7 +206,7 @@ describe('after sending: only what the host says', () => {
     expect(sheet.textContent).toContain('The bar is closed.')
     expect(sheet.textContent).not.toContain('on the way')
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
-    expect(within(sheet).getAllByRole('radio')).toHaveLength(6)
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
   it('keeps the choice after a thrown error and retries with the same actionId', async () => {

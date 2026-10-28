@@ -38,6 +38,7 @@ import {
 import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
+import { callKindsText } from './call-kinds'
 import { PauseBanners } from './pause-banners'
 import { RunProvider, useTonightRun } from './run'
 import { useTableName } from './table-name'
@@ -169,7 +170,10 @@ function Content({ view }: { view: TonightView }) {
       fresh
         .map((row) =>
           row.kind === 'call'
-            ? t('c_t', { table: tableName(row.table, row.numbered) })
+            ? t('c_t', {
+                table: tableName(row.table, row.numbered),
+                kinds: callKindsText(t, row.callKinds ?? ['waiter']),
+              })
             : row.kind === 'paused'
               ? t('g_t', { table: tableName(row.table, row.numbered) })
               : row.kind === 'approval'
