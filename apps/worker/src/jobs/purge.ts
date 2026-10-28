@@ -15,7 +15,8 @@
 //                 deleted areas and tables, versions past the rule in ../../core's
 //                 `versionsToPurge`, the change log past two months, and the service rows past
 //                 their retention (#84, D111, D122 §7: `purgeService`), the payments 18 months
-//                 after they settled among them (#112).
+//                 after they settled among them (#112), and the provider's notices 18 months
+//                 after they arrived (#166: `purgeProviderNotices`, outside any organisation).
 //
 // A venue's payments are money records kept 18 months (D122 §9): a deleted venue is purged only
 // once every payment of it is due (#112, with D83), so its purge waits (`payments_kept`) while one
@@ -56,7 +57,13 @@ import {
   versionsToPurge,
 } from '@restro/core'
 import { codeFileNames, venueServesTill } from '@restro/core/apply'
-import { ALERT_RULES, NIGHT_RETENTION_DAYS, serviceRetentionCutoffs } from '@restro/core/service'
+import {
+  ALERT_RULES,
+  monthsBefore,
+  NIGHT_RETENTION_DAYS,
+  RECORD_RETENTION_MONTHS,
+  serviceRetentionCutoffs,
+} from '@restro/core/service'
 import {
   areas,
   authOrganization,
@@ -86,7 +93,7 @@ import {
   withSystem,
   withTenant,
 } from '@restro/db'
-import { type PurgeTx, withTenantPurge } from '@restro/db/purge'
+import { type PurgeTx, withSystemPurge, withTenantPurge } from '@restro/db/purge'
 import { and, eq, inArray, isNotNull, isNull, lt, lte, notExists, type SQL, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
@@ -952,6 +959,25 @@ export async function purgeChangeLog(
   })
 }
 
+/**
+ * Erases the provider's notices received 18 months ago or more (#166; D111, D127, the same
+ * retention as the payments they are about). They belong to no venue, so this runs once per tick
+ * outside any tenant, as `restro_purge`; nothing younger goes. Answers how many it erased.
+ */
+export async function purgeProviderNotices(
+  deps: { readonly purgePool: DbPool },
+  input: { readonly now: Date },
+): Promise<{ notices: number }> {
+  return withSystemPurge(deps.purgePool, async (tx) => {
+    const rows = await deleteRows(
+      tx,
+      'provider_notices',
+      sql`received_at <= ${monthsBefore(input.now, RECORD_RETENTION_MONTHS).toISOString()}::timestamptz`,
+    )
+    return { notices: rows.length }
+  })
+}
+
 /** The alert kinds that end by themselves (`closesItself`): nobody presses Done on them. */
 const SELF_CLOSING_KINDS = Object.entries(ALERT_RULES)
   .filter(([, rule]) => rule.closesItself)
@@ -1238,6 +1264,14 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
       )
       const purgePool = openPurgePool()
       try {
+        // Platform-level, no organisation: its own step, so a failure here never stops the
+        // organisations' runs.
+        try {
+          const { notices } = await purgeProviderNotices({ purgePool }, { now })
+          if (notices > 0) context.log.info({ notices }, 'purge: provider notices erased')
+        } catch (error) {
+          context.log.warn({ err: error }, 'purge: provider notices failed')
+        }
         for (const { id: tenantId } of organizations) {
           await trackedRun(
             { pool: context.pool, log: context.log, now: context.now },

@@ -22,7 +22,7 @@ import { createPool, type DbPool } from '@restro/db'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { purgeService, purgeVenue } from '../src/jobs/purge'
+import { purgeProviderNotices, purgeService, purgeVenue } from '../src/jobs/purge'
 import { closeServiceDays, dueServiceDays } from '../src/jobs/service-day'
 import {
   allowSlowSetup,
@@ -458,6 +458,51 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     expect(await exists('push_subscriptions', ids.pushKept ?? '', 'endpoint_hash')).toBe(false)
     expect(await exists('push_subscriptions', ids.pushLive ?? '', 'endpoint_hash')).toBe(true)
     expect(await exists('staff_members', ids.staffLater ?? '')).toBe(false)
+  })
+
+  it('erases the provider notices 18 months after they were received, as the purge role only (#166)', async () => {
+    const notice = async (eventId: string, receivedAt: string, handled: boolean) => {
+      await query(
+        `insert into restro.provider_notices
+           (provider_kind, event_id, live, type, kind, received_at, handled_at, source, actor, job_id)
+         values ('sim', $1, false, 'payment.updated', 'payment', $2::timestamptz,
+                 case when $3::boolean then $2::timestamptz end, $4, $5, $6)`,
+        [eventId, receivedAt, handled, ...SEED],
+      )
+    }
+    const present = async (eventId: string) =>
+      (await query('select 1 from restro.provider_notices where event_id = $1', [eventId]))
+        .length === 1
+    await notice('evt_due_handled', '2025-04-26T12:00:00Z', true)
+    await notice('evt_due_waiting', '2025-04-01T12:00:00Z', false)
+    await notice('evt_kept_by_a_moment', '2025-04-26T12:00:01Z', true)
+    await notice('evt_recent', '2026-10-01T12:00:00Z', false)
+    // The app role cannot erase one, nor can the pool of any other role run the step.
+    const client = new pg.Client({ connectionString: db.appUrl })
+    await client.connect()
+    try {
+      await expect(client.query('delete from restro.provider_notices')).rejects.toMatchObject({
+        code: '42501',
+      })
+    } finally {
+      await client.end()
+    }
+    await expect(purgeProviderNotices({ purgePool: pool }, { now: NOW })).rejects.toThrow(
+      /restro_purge/,
+    )
+    expect(await present('evt_due_handled')).toBe(true)
+
+    expect(await purgeProviderNotices({ purgePool }, { now: NOW })).toEqual({ notices: 2 })
+    expect(await present('evt_due_handled')).toBe(false)
+    expect(await present('evt_due_waiting')).toBe(false)
+    expect(await present('evt_kept_by_a_moment')).toBe(true)
+    expect(await present('evt_recent')).toBe(true)
+    // A moment later the third is due too.
+    expect(
+      await purgeProviderNotices({ purgePool }, { now: new Date(NOW.getTime() + 1000) }),
+    ).toEqual({ notices: 1 })
+    expect(await present('evt_kept_by_a_moment')).toBe(false)
+    expect(await present('evt_recent')).toBe(true)
   })
 
   it('refuses the app role any delete', async () => {
