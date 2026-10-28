@@ -41,6 +41,7 @@ export {
   ShellContextSchema,
   SOLD_OUT_DISPLAYS,
 } from './context'
+export * from './design'
 export type { FaceHostProps } from './face-props'
 export { SERVICE_KINDS, type ServiceKind } from './features'
 export {
