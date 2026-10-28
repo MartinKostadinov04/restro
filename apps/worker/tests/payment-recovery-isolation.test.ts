@@ -21,7 +21,13 @@ vi.mock('@restro/db', async (original) => {
     ...db,
     withSystem: () => Promise.resolve(world.organisations.map((id) => ({ id }))),
     withTenant: (_pool: unknown, tenantId: string) => {
-      if (world.failing.has(tenantId)) return Promise.reject(new Error('could not read: Anna P.'))
+      if (world.failing.has(tenantId))
+        return Promise.reject(
+          // As Drizzle wraps a Postgres error: the query with its values, and the error that failed it.
+          new Error('Failed query: select ... params: Anna P.', {
+            cause: Object.assign(new Error('key (name)=(Anna P.) is taken'), { code: '23505' }),
+          }),
+        )
       const call = world.calls.get(tenantId) ?? 0
       world.calls.set(tenantId, call + 1)
       return Promise.resolve(call === 0 ? (world.rows.get(tenantId) ?? []) : [])
@@ -45,7 +51,7 @@ const untouched = (id: string, venueId: string) => ({
 })
 
 describe('the payment recovery across organisations', () => {
-  it('logs one organisation’s failure without its message and recovers the ones after it', async () => {
+  it('logs one organisation’s failure by type and SQLSTATE, never its message and recovers the ones after it', async () => {
     const broken = newId('tn')
     const fine = newId('tn')
     const payment = newId('py')
@@ -75,7 +81,10 @@ describe('the payment recovery across organisations', () => {
     // The failure is logged with the organisation and the kind of error, never its message.
     expect(warn).toHaveBeenCalledTimes(1)
     const [fields] = warn.mock.calls[0] as unknown as [Record<string, unknown>]
-    expect(fields).toEqual({ tenantId: broken, err: 'Error' })
+    expect(fields).toEqual({
+      tenantId: broken,
+      failure: { types: ['Error', 'Error'], codes: ['23505'] },
+    })
     expect(JSON.stringify(warn.mock.calls)).not.toContain('Anna')
   })
 })

@@ -57,7 +57,13 @@ import {
   versionsToPurge,
 } from '@restro/core'
 import { codeFileNames, venueServesTill } from '@restro/core/apply'
-import { ALERT_RULES, NIGHT_RETENTION_DAYS, serviceRetentionCutoffs } from '@restro/core/service'
+import {
+  ALERT_RULES,
+  monthsBefore,
+  NIGHT_RETENTION_DAYS,
+  RECORD_RETENTION_MONTHS,
+  serviceRetentionCutoffs,
+} from '@restro/core/service'
 import {
   areas,
   authOrganization,
@@ -966,7 +972,7 @@ export async function purgeProviderNotices(
     const rows = await deleteRows(
       tx,
       'provider_notices',
-      sql`received_at <= ${input.now.toISOString()}::timestamptz - interval '18 months'`,
+      sql`received_at <= ${monthsBefore(input.now, RECORD_RETENTION_MONTHS).toISOString()}::timestamptz`,
     )
     return { notices: rows.length }
   })

@@ -52,7 +52,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import { PaymentBreakers, watchedProvider } from '../src/jobs/payment-breaker'
-import { recoverPayments } from '../src/jobs/payment-recovery'
+import { FINAL_TABLE_READ_SECONDS, recoverPayments } from '../src/jobs/payment-recovery'
 import { checkPayment, type PaymentJobDeps, preparePayment } from '../src/jobs/payments'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
 import type { JobQueue } from '../src/jobs/types'
@@ -539,6 +539,31 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     ])
   })
 
+  it("reads a final payment's payment table 5 minutes later, never at once (#166)", async () => {
+    const { id } = await pay(0)
+    // Final, with its lines still on the payment table: the table is read to free it.
+    await query(
+      `update restro.payments set state = 'released', reason = 'test', settled_at = now(),
+         payment_table_id = (select id from restro.tables where venue_id = $2 and number = 'PM1')
+       where id = $1`,
+      [id, demo.venueId],
+    )
+    try {
+      await untouched(id)
+      sent.length = 0
+      await recoverPayments({ pool, log, now: () => clock, queue }, deps())
+      const ofPayment = sent.filter(
+        (job) =>
+          job.name === JOB_NAMES.paymentPrepare &&
+          (job.options as { singletonKey?: string } | undefined)?.singletonKey === id,
+      )
+      expect(ofPayment).toHaveLength(1)
+      expect(ofPayment[0]?.options).toMatchObject({ startAfter: FINAL_TABLE_READ_SECONDS })
+    } finally {
+      await query('update restro.payments set payment_table_id = null where id = $1', [id])
+    }
+  })
+
   it('settles a hold the provider refuses, and ungreys the lines', async () => {
     const { id } = await pay(0)
     engine.fault('createHold', { kind: 'refuse', code: 'account_restricted' })
@@ -727,6 +752,36 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
         seconds(20)
         expect((await breakers.record(probeEnv, ref, good))?.open?.goodInRow).toBe(2)
         seconds(20)
+        await breakers.record(probeEnv, ref, good)
+        expect(await pausedAt(demo.venueId)).toBe(false)
+      } finally {
+        await query('update restro.payment_accounts set paying_paused_at = null, breaker = null')
+      }
+    })
+
+    it('lets a late failed probe reset the good ones: 3 in a row lift, not 3 in all (D120, #166)', async () => {
+      const breakers = new PaymentBreakers(() => 0.5)
+      const ref = { tenantId, venueId: demo.venueId }
+      const probeEnv = { pool, log, now: () => clock }
+      const good = { kind: 'probe', outcome: 'good', cause: null } as const
+      const bad = { kind: 'probe', outcome: 'bad', cause: null } as const
+      try {
+        await breakers.state(probeEnv, ref)
+        for (const gap of [0, 20, 20, 21]) {
+          seconds(gap)
+          await breakers.record(probeEnv, ref, { kind: 'call', ok: false })
+        }
+        seconds(61)
+        expect((await breakers.record(probeEnv, ref, good))?.open?.goodInRow).toBe(1)
+        // A failed reading comes in before the next probe is due: it still counts.
+        expect((await breakers.record(probeEnv, ref, bad))?.open?.goodInRow).toBe(0)
+        seconds(61)
+        expect((await breakers.record(probeEnv, ref, good))?.open?.goodInRow).toBe(1)
+        seconds(16)
+        expect((await breakers.record(probeEnv, ref, good))?.open?.goodInRow).toBe(2)
+        // Three good ones in all, but not in a row: still paused.
+        expect(await pausedAt(demo.venueId)).toBe(true)
+        seconds(16)
         await breakers.record(probeEnv, ref, good)
         expect(await pausedAt(demo.venueId)).toBe(false)
       } finally {

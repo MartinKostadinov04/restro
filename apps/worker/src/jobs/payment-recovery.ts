@@ -40,6 +40,7 @@ import {
 } from '@restro/db'
 import { and, eq, isNotNull, isNull, like, or, sql } from 'drizzle-orm'
 
+import { describeError, type SafeError } from '../errors'
 import type { Logger } from '../logger'
 import { SHARED_PAYMENT_BREAKERS } from './payment-breaker'
 import { hasNextStep, type PaymentJobDeps } from './payments'
@@ -124,8 +125,19 @@ export interface RecoverySummary {
   readonly probed: number
 }
 
-/** What a failure says about itself without its message, which can quote a row. */
-const errorKind = (error: unknown) => (error instanceof Error ? error.name : 'unknown')
+/**
+ * What a failure says about itself without its message, which Postgres can fill with a value: the
+ * types and SQLSTATE codes down its cause chain (Drizzle wraps the Postgres error).
+ */
+function failureKind(error: unknown): { types: string[]; codes: string[] } {
+  const types: string[] = []
+  const codes: string[] = []
+  for (let link: SafeError | undefined = describeError(error); link; link = link.cause) {
+    types.push(link.type)
+    if (link.code !== undefined) codes.push(link.code)
+  }
+  return { types, codes }
+}
 
 const ms = (value: string | null) => Number(value ?? 0)
 
@@ -205,7 +217,7 @@ export async function recoverPayments(
               )
               if (result.status === 'accepted' && result.details.changed === true) stuck += 1
             } else {
-              await send(
+              const queued = await send(
                 env,
                 JOB_NAMES.paymentPrepare,
                 target,
@@ -215,7 +227,8 @@ export async function recoverPayments(
                     ? FINAL_TABLE_READ_SECONDS
                     : 0,
               )
-              prepared += 1
+              // A payment already queued (stately) answers no job id: nothing new was queued.
+              if (queued) prepared += 1
             }
           }
         } catch (error) {
@@ -272,9 +285,9 @@ export async function recoverPayments(
       }
     } catch (error) {
       // One organisation's failed query never stops the run for the ones after it (#166). Only the
-      // organisation's id and the kind of failure are logged: no row, no personal data.
+      // organisation's id and the failure's types and SQLSTATE codes are logged: no message, no row.
       env.log.warn(
-        { tenantId, err: errorKind(error) },
+        { tenantId, failure: failureKind(error) },
         'the payment recovery of an organisation failed',
       )
     }
@@ -287,12 +300,13 @@ async function send(
   name: typeof JOB_NAMES.paymentPrepare | typeof JOB_NAMES.paymentCheck,
   target: { readonly tenantId: string; readonly venueId: string; readonly paymentId: string },
   afterSeconds: number,
-): Promise<void> {
+): Promise<boolean> {
   const job = prepareJob(name, target)
-  await env.queue.send(name, job.data, {
+  const id = await env.queue.send(name, job.data, {
     singletonKey: job.singletonKey,
     ...(afterSeconds > 0 ? { startAfter: afterSeconds } : {}),
   })
+  return id !== null
 }
 
 const sleepFor = (ms: number, signal?: AbortSignal) =>

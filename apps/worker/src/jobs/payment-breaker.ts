@@ -131,24 +131,44 @@ export class PaymentBreakers {
   }
 
   /** Feeds the breaker what happened and writes what it answers. Never throws. */
-  record(
+  async record(
     env: PayingBreakerEnvironment,
     ref: PayingRef,
     event: BreakerEvent,
+    /** For a probe: when its reading started, against which "a probe is due" is judged. */
+    startedAt?: Date,
   ): Promise<BreakerState | null> {
+    return (await this.#step(env, ref, event, startedAt)).state
+  }
+
+  /** `record`, and whether the event was kept (not ignored, read and written). */
+  #step(
+    env: PayingBreakerEnvironment,
+    ref: PayingRef,
+    event: BreakerEvent,
+    startedAt?: Date,
+  ): Promise<{ state: BreakerState | null; counted: boolean }> {
     return this.#serial(ref, async () => {
       let before: BreakerState
       try {
         before = await this.#load(env, ref)
       } catch (error) {
         env.log.warn({ venueId: ref.venueId, err: error }, 'the paying breaker could not be read')
-        return null
+        return { state: null, counted: false }
       }
       const now = env.now().getTime()
-      // A probe counts only when one was due (R7, #166): a recovery tick that overruns can overlap
-      // the next, and its second probe of the same moment must not add to the good ones in a row
-      // (D120 lifts on 3).
-      if (event.kind === 'probe' && !probeDue(before, now)) return before
+      // A good probe counts only when one was due (R7, #166): a recovery tick that overruns can
+      // overlap the next, and the second good reading of the same moment must not add to the good
+      // ones in a row (D120 lifts on 3). It is judged at the reading's start, so a slow write
+      // cannot make it due. A bad or refused probe always counts: a late failed reading still
+      // resets the good ones.
+      if (
+        event.kind === 'probe' &&
+        event.outcome === 'good' &&
+        !probeDue(before, startedAt?.getTime() ?? now)
+      ) {
+        return { state: before, counted: false }
+      }
       const stepped = stepBreaker(before, event, now, this.#random)
       const after = stepped.state
       try {
@@ -163,14 +183,17 @@ export class PaymentBreakers {
       } catch (error) {
         // Nothing kept: the breaker stays where the database is, and the next event steps again.
         env.log.error({ venueId: ref.venueId, err: error }, 'a paying breaker step failed')
-        return before
+        return { state: before, counted: false }
       }
       this.#states.set(keyOf(ref), after)
-      return after
+      return { state: after, counted: true }
     })
   }
 
-  /** Probes the account when a probe is due: a read of the account, good when quick and whole. */
+  /**
+   * Probes the account when a probe is due: a read of the account, good when quick and whole.
+   * True when the probe was recorded.
+   */
   async probeIfDue(
     env: PayingBreakerEnvironment,
     ref: PayingRef,
@@ -178,7 +201,8 @@ export class PaymentBreakers {
     accountRef: ProviderRef,
   ): Promise<boolean> {
     const state = await this.state(env, ref)
-    if (!probeDue(state, env.now().getTime())) return false
+    const startedAt = env.now()
+    if (!probeDue(state, startedAt.getTime())) return false
     const started = Date.now()
     let good = false
     try {
@@ -187,8 +211,13 @@ export class PaymentBreakers {
     } catch (error) {
       env.log.warn({ venueId: ref.venueId, err: error }, 'the paying probe threw')
     }
-    await this.record(env, ref, { kind: 'probe', outcome: good ? 'good' : 'bad', cause: null })
-    return true
+    const { counted } = await this.#step(
+      env,
+      ref,
+      { kind: 'probe', outcome: good ? 'good' : 'bad', cause: null },
+      startedAt,
+    )
+    return counted
   }
 }
 
