@@ -258,6 +258,12 @@ export {
   tipOf,
 } from './pay'
 export {
+  type PayFirstCheck,
+  type PayFirstState,
+  payFirstCheck,
+  payFirstTableNote,
+} from './pay-first'
+export {
   type LastCheck,
   lastCheck,
   PAYMENT_ANSWERS,

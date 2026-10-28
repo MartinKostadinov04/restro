@@ -183,6 +183,7 @@ const STANDARD_ITEM_FIELDS: ReadonlySet<string> = new Set([
   'tags',
   'availability',
   'order_mode',
+  'payment_mode',
   'for_sale',
   'visible',
 ])
@@ -331,6 +332,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     // Visible items are `orderable` or `ask_waiter`; anything else is shown the cautious way.
     const orderMode: SnapshotItem['order_mode'] =
       orderModeValue === 'orderable' ? 'orderable' : 'ask_waiter'
+    const paymentMode = read('item', fields, 'payment_mode')
     const soldOut = read('item', fields, 'for_sale') === false
     const dietary = inVocabularyOrder(read('item', fields, 'dietary'), DIETARY_LABELS)
     const tagValue = read('item', fields, 'tags')
@@ -365,6 +367,10 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       orderable: item.computed.orderable === true && orderMode === 'orderable' && !soldOut,
       modifier_groups: [],
       fields: custom,
+      // D113: written only when the item sets its own; without one it takes the venue's default.
+      ...(paymentMode === 'on_bill' || paymentMode === 'pay_first'
+        ? { payment_mode: paymentMode }
+        : {}),
     }
     // Registered before its groups so a repeated placement finds it; groups fill in after.
     items[item.id] = entry

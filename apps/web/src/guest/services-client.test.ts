@@ -31,7 +31,12 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
     version,
     next: lines.length > 0 ? 2_000 : 10_000,
     table: { label: '7' },
-    ordering: { state: 'on', notesAndOptions: false, night: { state: 'open', at: null } },
+    ordering: {
+      state: 'on',
+      notesAndOptions: false,
+      payFirst: 'off',
+      night: { state: 'open', at: null },
+    },
     location: {
       state: location,
       passSeconds: location === 'held' ? 7_000 : null,
@@ -132,6 +137,7 @@ describe('the services client', () => {
     expect(h.client.getState().ordering).toEqual({
       state: 'on',
       notesAndOptions: false,
+      payFirst: 'off',
       night: { state: 'open', at: null },
     })
     expect(h.nextWait()).toBe(10_000)

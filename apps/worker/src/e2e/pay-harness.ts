@@ -10,7 +10,13 @@
 //      Pay is priced and held, and the bill is read again when a phone asks;
 //   4. it prints one JSON line `pay_harness_ready` with the table's code, then reads commands on
 //      stdin: `pay <paymentId>` is the guest finishing the card form (`guest.pay`), answered by a
-//      `pay_harness_paid` line. Closing stdin stops everything.
+//      `pay_harness_paid` line; `bills` prints the payment tables' bills on the POS
+//      (`pay_harness_bills`). Closing stdin stops everything.
+//
+// With `PAY_HARNESS_MODE=pay-first` (apps/web/e2e/guest-pay-first.spec.ts, #113) the POS runs the
+// `pay-first` scenario (its first items open a bill that names itself), table 1 has no round, and
+// step 2 publishes a menu of one item, the POS's Aperol Spritz, paid first: its id is in the ready
+// line.
 //
 // It refuses a database that is not on this machine, and the simulated provider refuses
 // production. Its own log goes to stderr, so stdout carries only the JSON lines.
@@ -27,11 +33,18 @@ import {
   type VenueId,
 } from '@restro/core'
 import {
+  appendSourceRecords,
+  apply,
   createIntegration,
   mapBarsyVenue,
+  provisionMenu,
   provisionTenant,
   provisionVenue,
+  publishMenu,
   setFloorSource,
+  setGuestFeatures,
+  setVenuePresentation,
+  updateIntegration,
   upsertBarsyVenues,
 } from '@restro/core/apply'
 import { createPool } from '@restro/db'
@@ -48,6 +61,12 @@ import { startWorker } from '../worker'
 
 /** Demo Bar's table 1 on the simulator. */
 const POS_TABLE = '30001'
+/** Demo Bar's two payment tables in the main hall, on the simulator. */
+const PAYMENT_TABLES = ['39001', 'pay main 2']
+/** The pay-first run (#113): its scenario, and the POS article its one item is (an Aperol Spritz). */
+const PAY_FIRST = process.env.PAY_HARNESS_MODE === 'pay-first'
+const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
+const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
 /** This run's key for the bill's line ids (the e2e worker reads no bill). */
 const BILL_ID_KEY = `e2e-pay-harness-${randomUUID()}`.padEnd(48, 'x')
 const SEED = ['restro', 'system', 'e2e-pay-harness'] as const
@@ -91,7 +110,7 @@ async function main(): Promise<void> {
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
   const query = async <Row extends object>(sql: string, values: unknown[] = []) =>
     (await owner.query(sql, values)).rows as Row[]
-  const sim = createSimServer({ scenario: 'demo-bar', print: () => {} })
+  const sim = createSimServer({ scenario: SCENARIO, print: () => {} })
   const host = `127.0.0.1:${await sim.listen(0)}`
   // A run of its own: the refs of an earlier run on the same database stay unique.
   const engine = new SimPayEngine({
@@ -110,6 +129,10 @@ async function main(): Promise<void> {
   ])
   const integrationId = (await createIntegration(pool, tenantId, { kind: 'sim', host }))
     .id as IntegrationId
+  // The connector declares what the scenario's switches allow; the floor reading records it.
+  if (PAY_FIRST) {
+    await updateIntegration(pool, tenantId, integrationId, { config: { sim_scenario: SCENARIO } })
+  }
   const venue = await provisionVenue(pool, tenantId, {
     name: 'Pay Bar',
     slug: `pay-bar-${tenantId.slice(3, 13).toLowerCase()}`,
@@ -168,22 +191,27 @@ async function main(): Promise<void> {
     [newId('st'), tenantId, venueId, table.id, new Date().toISOString().slice(0, 10), ...SEED],
   )
 
-  // 2. The waiter's round, read onto the bill.
-  sim.host.engine.waiter.addRound(POS_TABLE, [
-    { article: '2001' },
-    { article: '2002', quantity: '2' },
-  ])
-  const reading = await readTableOf(
-    { pool, ...env },
-    { tenantId, venueId, tableId: table.id },
-    {
-      sim: config.sim,
-      billIdKey: BILL_ID_KEY,
-      budgets: new InstanceBudgets(),
-      readingBudgets: new ReadingBudgets(),
-    },
-  )
-  if (reading.kind !== 'recorded') throw new Error(`the bill was not read: ${reading.kind}`)
+  // 2. The waiter's round, read onto the bill; for pay-first, the menu with its one item.
+  let itemId: string | null = null
+  if (PAY_FIRST) {
+    itemId = await publishPayFirstMenu(pool, { tenantId, venueId, integrationId })
+  } else {
+    sim.host.engine.waiter.addRound(POS_TABLE, [
+      { article: '2001' },
+      { article: '2002', quantity: '2' },
+    ])
+    const reading = await readTableOf(
+      { pool, ...env },
+      { tenantId, venueId, tableId: table.id },
+      {
+        sim: config.sim,
+        billIdKey: BILL_ID_KEY,
+        budgets: new InstanceBudgets(),
+        readingBudgets: new ReadingBudgets(),
+      },
+    )
+    if (reading.kind !== 'recorded') throw new Error(`the bill was not read: ${reading.kind}`)
+  }
 
   // 3. The worker: the table reading and the payment jobs only. It shares the e2e worker's queue,
   // so it leaves the schedules alone: its short list would remove that worker's ticks for the
@@ -213,10 +241,20 @@ async function main(): Promise<void> {
   }
 
   // 4. Ready, then the test's commands.
-  print({ event: 'pay_harness_ready', code })
+  print({ event: 'pay_harness_ready', code, itemId })
   const lines = createInterface({ input: process.stdin })
   lines.on('line', (line) => {
     const [command, paymentId] = line.trim().split(/\s+/)
+    if (command === 'bills') {
+      const bills = sim.host.engine.state.bills
+        .filter((bill) => PAYMENT_TABLES.includes(bill.table))
+        .map((bill) => ({
+          state: bill.state,
+          rows: bill.rows.map((row) => ({ article: row.article, note: row.note })),
+        }))
+      print({ event: 'pay_harness_bills', bills })
+      return
+    }
     if (command !== 'pay' || paymentId === undefined) return
     void (async () => {
       const [row] = await query<{ ref: string | null }>(
@@ -236,6 +274,112 @@ async function main(): Promise<void> {
   lines.on('close', () => void stop(0))
   process.on('SIGTERM', () => void stop(0))
   process.on('SIGINT', () => void stop(0))
+}
+
+/**
+ * The pay-first run's menu (#113): one section with the POS's Aperol Spritz, linked to its article
+ * as a menu sync links it, with the venue's ordering on and the item paid first; published as the
+ * publish job does (the snapshot a Send prices its lines from). The item's id.
+ */
+async function publishPayFirstMenu(
+  pool: ReturnType<typeof createPool>,
+  target: { tenantId: string; venueId: VenueId; integrationId: IntegrationId },
+): Promise<string> {
+  const { tenantId, venueId, integrationId } = target
+  const menu = await provisionMenu(pool, tenantId, venueId)
+  const article = PAY_FIRST_ARTICLE
+  const [record] = await appendSourceRecords(pool, tenantId, integrationId, [
+    {
+      externalType: 'article',
+      externalId: article.id,
+      scope: 'master',
+      raw: JSON.stringify(article),
+      payload: {},
+    },
+  ])
+  if (record === undefined) throw new Error('the article record was not stored')
+  const section = newId('nd')
+  const item = newId('nd')
+  const link = { integration: integrationId, externalType: 'article', externalId: article.id }
+  const changeSet = (source: string, actor: string, ops: unknown[]) =>
+    ({
+      id: newId('cs'),
+      source,
+      jobId: newId('jb'),
+      actor,
+      observedAt: new Date().toISOString(),
+      ops,
+    }) as Parameters<typeof apply>[2]
+  const till = (fieldKey: string, value: unknown, scope = 'master') => ({
+    op: 'setField',
+    node: { link },
+    fieldKey,
+    layer: 'till',
+    scope,
+    value,
+    sourceRecordId: record.id,
+    mappingVersion: 1,
+  })
+  const manual = (node: string, fieldKey: string, value: unknown) => ({
+    op: 'setField',
+    node: { id: node },
+    fieldKey,
+    layer: 'manual',
+    scope: 'master',
+    value,
+  })
+  const steps = [
+    changeSet(`till:${integrationId}`, `integration:${integrationId}`, [
+      { op: 'createNode', id: item, nodeType: 'item', parent: null, status: 'active' },
+      { op: 'linkSource', node: { id: item }, link },
+      till('name', { bg_BG: article.name, en_US: article.name }),
+      till('price', { amount_minor: article.priceMinor, currency: 'EUR' }, `venue:${venueId}`),
+      till('for_sale', true, `venue:${venueId}`),
+      till('visible', true),
+      till('allergens', []),
+    ]),
+    changeSet('manual', 'system', [
+      {
+        op: 'createNode',
+        id: section,
+        nodeType: 'section',
+        parent: { id: menu.id },
+        status: 'active',
+        sortKey: 'end',
+      },
+      manual(section, 'title', { bg_BG: 'Коктейли', en_US: 'Cocktails' }),
+      manual(item, 'payment_mode', 'pay_first'),
+      { op: 'setPlacement', item: { id: item }, section: { id: section }, sortKey: 'end' },
+    ]),
+  ]
+  for (const step of steps) {
+    const applied = await apply(pool, tenantId, step)
+    if (applied.rejected.length > 0) {
+      throw new Error(`the pay-first menu was refused: ${JSON.stringify(applied.rejected)}`)
+    }
+  }
+  await setVenuePresentation(pool, tenantId, {
+    venueId,
+    presentation: { face: 'qr-phone', options: {} },
+  })
+  await setGuestFeatures(pool, tenantId, {
+    venueId,
+    features: {
+      filters: true,
+      call_waiter: { enabled: false, kinds: [] },
+      bill: true,
+      ordering: true,
+      pay: true,
+    },
+  })
+  const published = await publishMenu(pool, tenantId, {
+    menuId: menu.id,
+    venueId,
+    reason: 'manual',
+    actor: 'system',
+  })
+  if (published.status === 'held') throw new Error('the pay-first menu was held, not published')
+  return item
 }
 
 main().catch((error: unknown) => {

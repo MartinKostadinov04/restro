@@ -122,9 +122,19 @@ export type GuestCommand =
   | {
       readonly kind: 'order.send'
       readonly actionId: string
+      /** The on-the-bill lines; empty when the Send has only pay-first lines. */
       readonly lines: readonly OrderLine[]
       /** The sent order a duplicate check named, when the guest chose "Send another" (#78). */
       readonly confirmDuplicateOf?: string
+      /**
+       * The pay-first lines the guest pays for at this Send (#113, D113), with the tip (at most one
+       * of the two; neither is no tip). They become one payment; the host answers its handle.
+       */
+      readonly payFirst?: {
+        readonly lines: readonly OrderLine[]
+        readonly tipMinor: number | null
+        readonly tipPercent: number | null
+      }
     }
   | {
       readonly kind: 'service.request'
@@ -216,12 +226,28 @@ export const GuestCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('location.check'),
     actionId: ActionIdSchema,
   }),
-  z.strictObject({
-    kind: z.literal('order.send'),
-    actionId: ActionIdSchema,
-    lines: z.array(OrderLineSchema).min(1).max(SERVICE_LIMITS.lines),
-    confirmDuplicateOf: idSchema('so').optional(),
-  }),
+  z
+    .strictObject({
+      kind: z.literal('order.send'),
+      actionId: ActionIdSchema,
+      lines: z.array(OrderLineSchema).max(SERVICE_LIMITS.lines),
+      confirmDuplicateOf: idSchema('so').optional(),
+      payFirst: z
+        .strictObject({
+          lines: z.array(OrderLineSchema).min(1).max(SERVICE_LIMITS.lines),
+          tipMinor: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
+          tipPercent: z.int().min(1).max(SERVICE_LIMITS.tipPercentMax).nullable(),
+        })
+        .refine((part) => part.tipMinor === null || part.tipPercent === null, {
+          message: 'set either tipMinor or tipPercent, not both',
+          path: ['tipPercent'],
+        })
+        .optional(),
+    })
+    .refine((command) => command.lines.length > 0 || command.payFirst !== undefined, {
+      message: 'a Send names at least one line',
+      path: ['lines'],
+    }),
   z.strictObject({
     kind: z.literal('service.request'),
     actionId: ActionIdSchema,
@@ -486,6 +512,12 @@ export interface ServiceState {
   readonly ordering?: {
     readonly state: 'on' | 'paused' | 'closed'
     readonly notesAndOptions?: boolean
+    /**
+     * Pay-first at this table (#113): `on`, a pay-first line goes with the Send and is paid there;
+     * `paused` (paying paused) or `off` (not offered here), it says "Order this from your waiter"
+     * and stays on the order. Absent where the host does not say: treated as `off`.
+     */
+    readonly payFirst?: 'on' | 'paused' | 'off'
     /**
      * The venue's night (#82): `last_orders` shows "Last orders at {at}", `closed` "Ordering from
      * phones has closed for tonight" and `opens_later` the opening time; the last two take the

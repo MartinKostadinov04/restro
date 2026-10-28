@@ -43,7 +43,12 @@ function state(version = 1) {
     version,
     next: 2_000,
     table: { label: '7' },
-    ordering: { state: 'on', notesAndOptions: false, night: { state: 'open', at: null } },
+    ordering: {
+      state: 'on',
+      notesAndOptions: false,
+      payFirst: 'off',
+      night: { state: 'open', at: null },
+    },
     location: { state: 'held', passSeconds: 600, dayEndsInSeconds: 3_600, venueName: 'Club' },
     order: { lines: [], removed: [], earlier: null },
     sentOrders: [],

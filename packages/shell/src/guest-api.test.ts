@@ -22,7 +22,12 @@ const STATE = {
   version: 3,
   next: 2_000,
   table: { label: '12' },
-  ordering: { state: 'on', notesAndOptions: false, night: { state: 'open', at: null } },
+  ordering: {
+    state: 'on',
+    notesAndOptions: false,
+    payFirst: 'off',
+    night: { state: 'open', at: null },
+  },
   location: { state: 'off', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
   order: {
     lines: [

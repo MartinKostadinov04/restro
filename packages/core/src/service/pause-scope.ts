@@ -10,6 +10,8 @@
 import { pauses } from '@restro/db'
 import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 
+import type { ServiceTx } from './definition'
+
 /** The details key that lists the venues a connection pause covers. */
 export const COVERED_VENUES_KEY = 'venueIds'
 
@@ -40,4 +42,21 @@ export function activePausesOfTable(table: {
       connectionCovers(table.venueId),
     ),
   ) as SQL
+}
+
+/**
+ * True when ordering at this table is paused: the table itself, its bar, the whole venue, or the
+ * POS connection the venue orders through (#79).
+ */
+export async function orderingPaused(
+  stx: ServiceTx,
+  tableId: string,
+  barId: string | null,
+): Promise<boolean> {
+  const [active] = await stx.tx
+    .select({ id: pauses.id })
+    .from(pauses)
+    .where(activePausesOfTable({ id: tableId, venueId: stx.venueId, barId }))
+    .limit(1)
+  return active !== undefined
 }

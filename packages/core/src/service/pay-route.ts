@@ -61,18 +61,20 @@ import {
   takePaymentTable,
 } from './leases'
 import { recordRetainUntil } from './log'
+import { orderingPaused } from './pause-scope'
 import {
   closeAttempted,
   isFinalPaymentState,
+  lockSentOrder,
   logPayment,
   PAYMENT_QUEUE_MS,
   type PaymentRow,
   quantityKey,
   signedSumMinor,
 } from './pay'
+import { settlePayFirstSentOrder } from './pay-first-sent-order'
 import type { Permission } from './permissions'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
-import { orderingPaused } from './send'
 import { BUDGET_WAIT_MS, LEASE_MARGIN_MS } from './send-timings'
 
 /** The pause before each POS write of the route, inside the POS's calls per second (5 for the pilot). */
@@ -105,19 +107,28 @@ export const PAYMENT_QUESTIONS = ['close', 'lines_not_back'] as const
 /**
  * Why a close is unconfirmed, waiting for an answer: the POS didn't answer, or refused after the
  * close was attempted; or, after "No receipt", the lines were not proven back on the table (#153).
+ * A pay-first round (#113): its entry's outcome is not known, or its bill failed the check.
  */
-const UNCONFIRMED_REASONS = ['close_unknown', 'close_refused', 'lines_not_back'] as const
+const UNCONFIRMED_REASONS = [
+  'close_unknown',
+  'close_refused',
+  'lines_not_back',
+  'enter_unknown',
+  'entered_check_failed',
+] as const
 
 const paymentId = idSchema('py')
 const tableId = idSchema('tb')
-const CodeSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
-const MinorSchema = z.int().nonnegative().max(Number.MAX_SAFE_INTEGER)
-const PosRefSchema = z.string().min(1).max(200)
+export const CodeSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
+export const MinorSchema = z.int().nonnegative().max(Number.MAX_SAFE_INTEGER)
+export const PosRefSchema = z.string().min(1).max(200)
 
 // ---------------------------------------------------------------------------------------------
 // Locks
 
-interface Locked {
+// The helpers below are shared with the pay-first route (`pay-first.ts`, #113).
+
+export interface Locked {
   readonly payment: PaymentRow
   readonly tableOpen: boolean
   readonly leases: Map<string, { readonly holder: string | null; readonly fence: number }>
@@ -127,9 +138,10 @@ interface Locked {
 
 /**
  * Locks a payment and what its step may touch, in the fixed order: the table's order (sitting
- * share), the leases, the alerts it may raise or close, then the payment.
+ * share), a pay-first payment's sent order, the leases, the alerts it may raise or close, then the
+ * payment.
  */
-async function lockRoute(
+export async function lockRoute(
   stx: ServiceTx,
   id: string,
   touches: {
@@ -143,11 +155,16 @@ async function lockRoute(
   // The table never changes on a payment; the payment table only under the payment's lock, so a
   // step that finds it changed meanwhile refuses and the worker runs it again.
   const [found] = await stx.tx
-    .select({ tableId: payments.tableId, paymentTableId: payments.paymentTableId })
+    .select({
+      tableId: payments.tableId,
+      paymentTableId: payments.paymentTableId,
+      sentOrderId: payments.sentOrderId,
+    })
     .from(payments)
     .where(and(eq(payments.id, id), eq(payments.venueId, stx.venueId)))
   if (found === undefined) return refused(null, 'payment_missing')
   const order = await stx.rows.tableOrder(found.tableId)
+  if (found.sentOrderId !== null) await lockSentOrder(stx, found.sentOrderId)
   const leases = await lockLeases(stx, touches.leases?.(found) ?? [])
   const kinds = touches.alertKinds ?? []
   const open = new Map<string, { readonly id: string; readonly doneAt: Date | null }>()
@@ -182,7 +199,7 @@ const turnLease = (key: string): LeaseKey => ({ scope: 'order_slot', key })
 // Writes
 
 /** Moves the payment to `state` (with more columns), logs it, and touches the table. */
-async function move(
+export async function move(
   stx: ServiceTx,
   locked: Locked,
   state: string,
@@ -210,7 +227,7 @@ async function move(
 }
 
 /** Raises one alert of `kind` about the payment, once (its key is claimed by `lockRoute`). */
-async function raise(
+export async function raise(
   stx: ServiceTx,
   locked: Locked,
   kind: string,
@@ -247,7 +264,7 @@ async function raise(
 }
 
 /** An accepted answer naming the payment and where it stands. */
-function at(
+export function at(
   payment: { readonly id: string },
   state: string,
   changed: boolean,
@@ -257,7 +274,8 @@ function at(
 }
 
 /** True when `lockRoute` refused instead of locking. */
-const refusedLock = (locked: Locked | ServiceResult): locked is ServiceResult => 'status' in locked
+export const refusedLock = (locked: Locked | ServiceResult): locked is ServiceResult =>
+  'status' in locked
 
 // ---------------------------------------------------------------------------------------------
 // The queue
@@ -867,7 +885,20 @@ export function paymentAnswer() {
         return refused(null, 'payment_answered', { answer: payment.reason })
       }
       let state = payment.state
-      if (payment.reason === 'lines_not_back' && command.answer === 'no_receipt') {
+      if (payment.kind === 'pay_first') {
+        // A pay-first round has no real table to go back to (#113): "No receipt" releases the
+        // hold, and staff deal with the round on the payment table; "Receipt printed" captures.
+        if (command.answer === 'no_receipt') {
+          state = 'cancelling'
+          await move(stx, locked, state, { reason: 'no_receipt' })
+        } else {
+          await stx.tx
+            .update(payments)
+            .set({ reason: command.answer, ...stx.provenance, updatedAt: sql`now()` })
+            .where(eq(payments.id, payment.id))
+        }
+        await settlePayFirstSentOrder(stx, payment, command.answer)
+      } else if (payment.reason === 'lines_not_back' && command.answer === 'no_receipt') {
         // The manager checked the till again with the items missing: released, the lines stranded.
         state = 'cancelling'
         await move(stx, locked, state, { reason: 'stranded' })

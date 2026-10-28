@@ -38,6 +38,7 @@ export const ITEM_SAMPLE_VALUES: Readonly<Record<string, unknown>> = {
   },
   internal_note: 'Поръчвайте Кампари всеки понеделник.\nПортокалови кори в хладилника.',
   order_mode: 'orderable',
+  payment_mode: 'on_bill',
   for_sale: true,
   visible: true,
 }
@@ -56,6 +57,7 @@ export const ITEM_SAMPLE_PROVENANCE: Readonly<Record<string, Provenance>> = {
   availability: 'owned',
   internal_note: 'owned',
   order_mode: 'owned',
+  payment_mode: 'owned',
   for_sale: 'till',
   visible: 'stale',
 }

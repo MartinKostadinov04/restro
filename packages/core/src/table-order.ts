@@ -420,6 +420,76 @@ export function takeSentLines(
 }
 
 /**
+ * The pay-first part of a Send (#113): the live, unheld lines `payFirst` picks must be exactly the
+ * lines the Send names for paying first, each once with its quantity (else `order_changed`). They
+ * stay on the order, held by the payment (`heldBy`), until it enters them on the POS
+ * (`dropHeldLines`) or ends without (`releaseHeldLines`).
+ */
+export function holdPayFirstLines(
+  order: TableOrderDraft,
+  requested: readonly SendRequestLine[],
+  payFirst: (line: TableOrderLine) => boolean,
+  paymentId: string,
+):
+  | {
+      readonly ok: true
+      readonly order: TableOrderDraft
+      readonly lines: readonly TableOrderLine[]
+    }
+  | { readonly ok: false; readonly code: 'order_changed' | 'order_empty' } {
+  const candidates = order.lines.filter(
+    (line) => live(line) && line.heldBy === null && payFirst(line),
+  )
+  if (candidates.length === 0) return { ok: false, code: 'order_empty' }
+  if (requested.length !== candidates.length) return { ok: false, code: 'order_changed' }
+  const wanted = new Map<string, number>()
+  for (const line of requested) {
+    const key = `${orderLineKey(line)}|${line.qty}`
+    wanted.set(key, (wanted.get(key) ?? 0) + 1)
+  }
+  for (const line of candidates) {
+    const key = `${orderLineKey(line)}|${line.qty}`
+    const left = wanted.get(key) ?? 0
+    if (left === 0) return { ok: false, code: 'order_changed' }
+    wanted.set(key, left - 1)
+  }
+  return {
+    ok: true,
+    order: {
+      ...order,
+      lines: order.lines.map((line) =>
+        candidates.includes(line) ? { ...line, heldBy: paymentId, rev: line.rev + 1 } : line,
+      ),
+    },
+    lines: candidates,
+  }
+}
+
+/** The order without the lines `paymentId` holds: they are on the POS now, or may be (#113). */
+export function dropHeldLines(
+  order: TableOrderDraft,
+  paymentId: string,
+  now: number,
+): TableOrderDraft {
+  const lines = order.lines.filter((line) => line.heldBy !== paymentId)
+  return {
+    lines,
+    earlier: order.earlier,
+    idleExpiresAt: lines.some(live) ? (order.idleExpiresAt ?? now + ORDER_IDLE_MS) : null,
+  }
+}
+
+/** The order with the lines `paymentId` held free again: the payment ended before the POS (#113). */
+export function releaseHeldLines(order: TableOrderDraft, paymentId: string): TableOrderDraft {
+  return {
+    ...order,
+    lines: order.lines.map((line) =>
+      line.heldBy === paymentId ? { ...line, heldBy: null, rev: line.rev + 1 } : line,
+    ),
+  }
+}
+
+/**
  * Puts the lines of a sent order that was not sent back on the order (D116: "your lines are back,
  * Try again"), each merged into an identical live line where the merge stays within the quantity
  * limit, else as a line of its own. Never refused and never dropped: the limits bound what a guest

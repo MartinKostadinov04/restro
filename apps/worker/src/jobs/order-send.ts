@@ -517,7 +517,7 @@ async function prepare(
 }
 
 /** A sent line as the POS takes it; null when its item or an option has no POS link. */
-function toOrderLine(
+export function toOrderLine(
   line: SentOrderLine,
   link: ReadonlyMap<string, string>,
   notesReachTicket: boolean,
@@ -575,7 +575,14 @@ export async function slotTargets(
         .selectDistinct({ venueId: sentOrders.venueId, tableId: sentOrders.tableId })
         .from(sentOrders)
         .leftJoin(locks, and(eq(locks.scope, 'order_slot'), eq(locks.key, sentOrders.tableId)))
-        .where(and(eq(sentOrders.state, 'waiting'), or(isNull(locks.holder), isNull(locks.key))))
+        .where(
+          and(
+            eq(sentOrders.state, 'waiting'),
+            // A pay-first round goes with its payment (#113), never through the table's slot.
+            eq(sentOrders.kind, 'on_bill'),
+            or(isNull(locks.holder), isNull(locks.key)),
+          ),
+        )
       for (const row of queued) waiting.push({ tenantId: organisation.id, ...row })
     })
   }

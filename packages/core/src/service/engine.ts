@@ -22,8 +22,16 @@
 
 import type { KeyObject } from 'node:crypto'
 
-import { areas, type DbPool, sentOrders, sittings, tableOrders, venueTables } from '@restro/db'
-import { type WriteTx, withTenantWrite } from '@restro/db/write'
+import {
+  areas,
+  type DbPool,
+  payments,
+  sentOrders,
+  sittings,
+  tableOrders,
+  venueTables,
+} from '@restro/db'
+import { withTenantWrite } from '@restro/db/write'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
@@ -263,7 +271,7 @@ export async function executeCommand(
         if (order === null) throw new Refusal(refused(actionId, 'table_not_open'))
         const first = ring
           ? findInRing(order.recentActions, actionId)
-          : await sentOrderAnswer(tx, actionId)
+          : await sentOrderAnswer(stx, actionId, payFirstHandleOf(command))
         if (first !== null) return first
       }
       if (
@@ -331,11 +339,50 @@ export async function executeCommand(
 }
 
 /** The answer a Send with this action id got: the sent order it made, or null. */
-async function sentOrderAnswer(tx: WriteTx, actionId: string): Promise<ServiceResult | null> {
-  const [sent] = await tx
+async function sentOrderAnswer(
+  stx: ServiceTx,
+  actionId: string,
+  handleHash: string | null,
+): Promise<ServiceResult | null> {
+  const [sent] = await stx.tx
     .select({ id: sentOrders.id, reference: sentOrders.reference })
     .from(sentOrders)
     .where(eq(sentOrders.actionId, actionId))
-  if (sent === undefined) return null
-  return accepted(actionId, { ref: sent.reference, details: { sentOrderId: sent.id } })
+  // A Send with pay-first lines made a payment under the same action id (#113), with or without
+  // an on-the-bill sent order. The phone that repeats never got the first answer (or lost it), so
+  // the handle it holds now is the new one: the hash is replaced, as `pay.start` does.
+  const [payment] = await stx.tx
+    .select({ id: payments.id, state: payments.state, sentOrderId: payments.sentOrderId })
+    .from(payments)
+    .where(and(eq(payments.actionId, actionId), eq(payments.kind, 'pay_first')))
+  if (sent === undefined && payment === undefined) return null
+  if (payment !== undefined && handleHash !== null) {
+    stx.rows.claim('payment', [payment.id])
+    await stx.tx
+      .update(payments)
+      .set({ handleHash, ...stx.provenance, updatedAt: sql`now()` })
+      .where(eq(payments.id, payment.id))
+  }
+  let reference = sent?.reference ?? null
+  if (reference === null && payment?.sentOrderId != null) {
+    const [own] = await stx.tx
+      .select({ reference: sentOrders.reference })
+      .from(sentOrders)
+      .where(eq(sentOrders.id, payment.sentOrderId))
+    reference = own?.reference ?? null
+  }
+  return accepted(actionId, {
+    ...(reference === null ? {} : { ref: reference }),
+    details: {
+      ...(sent === undefined ? {} : { sentOrderId: sent.id }),
+      ...(payment === undefined ? {} : { paymentId: payment.id, state: payment.state }),
+    },
+  })
+}
+
+/** The handle hash of a Send's pay-first part, or null (#113). */
+function payFirstHandleOf(command: object): string | null {
+  const part = (command as { readonly payFirst?: unknown }).payFirst
+  if (typeof part !== 'object' || part === null || !('handleHash' in part)) return null
+  return typeof part.handleHash === 'string' ? part.handleHash : null
 }

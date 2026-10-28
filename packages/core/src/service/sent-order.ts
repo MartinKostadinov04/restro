@@ -82,12 +82,21 @@ function slotOf(table: string): { readonly scope: 'order_slot'; readonly key: st
   return { scope: 'order_slot', key: table }
 }
 
-/** The waiting sent orders of a table, oldest first (not locked). */
+/**
+ * The waiting sent orders of a table, oldest first (not locked). On the bill only: a pay-first
+ * round goes with its payment (#113), never through the table's slot.
+ */
 async function waitingOf(stx: ServiceTx, table: string): Promise<string[]> {
   const rows = await stx.tx
     .select({ id: sentOrders.id })
     .from(sentOrders)
-    .where(and(eq(sentOrders.tableId, table), eq(sentOrders.state, 'waiting')))
+    .where(
+      and(
+        eq(sentOrders.tableId, table),
+        eq(sentOrders.state, 'waiting'),
+        eq(sentOrders.kind, 'on_bill'),
+      ),
+    )
     .orderBy(asc(sentOrders.createdAt), asc(sentOrders.id))
   return rows.map((row) => row.id)
 }
@@ -332,7 +341,14 @@ export async function settleWaiting(stx: ServiceTx, tableIds: readonly string[])
   const rows = await stx.tx
     .select({ id: sentOrders.id })
     .from(sentOrders)
-    .where(and(inArray(sentOrders.tableId, [...tableIds]), eq(sentOrders.state, 'waiting')))
+    .where(
+      and(
+        inArray(sentOrders.tableId, [...tableIds]),
+        eq(sentOrders.state, 'waiting'),
+        // A pay-first round waits for its payment, which the pause stops at the queue (#113).
+        eq(sentOrders.kind, 'on_bill'),
+      ),
+    )
   if (rows.length === 0) return 0
   const locked = await stx.rows.sentOrders(rows.map((row) => row.id))
   let settled = 0
