@@ -10,7 +10,7 @@
 // it is the end of the record (D83); what it did is in `purge_log`, without content.
 import { sql } from 'drizzle-orm'
 
-import { type DbPool, runForTenant, type Transaction } from '../internal/pool'
+import { type DbPool, runForTenant, runScoped, type Transaction } from '../internal/pool'
 import { PURGE_ROLE } from '../table-access'
 
 /** A tenant-scoped read-write transaction on the purge role (every Drizzle query builder). */
@@ -40,6 +40,21 @@ export function withTenantPurge<T>(
   fn: (tx: PurgeTx) => Promise<T>,
 ): Promise<T> {
   return runForTenant(pool, tenantId, 'read write', async (tx) => {
+    const result = await tx.execute<{ role: string }>(sql`select current_user as role`)
+    const role = result.rows[0]?.role ?? 'unknown'
+    if (role !== PURGE_ROLE) throw new NotThePurgeRoleError(role)
+    return fn(tx)
+  })
+}
+
+/**
+ * Runs `fn` in a READ WRITE transaction with no tenant on the purge role: for the platform-level
+ * tables that belong to no venue (the provider's notices, #166), the only system table the
+ * purge role may delete from. Every tenant table returns zero rows here and rejects writes. Same
+ * role check as `withTenantPurge`.
+ */
+export function withSystemPurge<T>(pool: DbPool, fn: (tx: PurgeTx) => Promise<T>): Promise<T> {
+  return runScoped(pool, '', 'read write', async (tx) => {
     const result = await tx.execute<{ role: string }>(sql`select current_user as role`)
     const role = result.rows[0]?.role ?? 'unknown'
     if (role !== PURGE_ROLE) throw new NotThePurgeRoleError(role)
