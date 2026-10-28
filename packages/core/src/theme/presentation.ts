@@ -73,6 +73,13 @@ export const DEFAULT_CALL_WAITER_KINDS: readonly CallWaiterKind[] = CALL_WAITER_
   (kind) => kind !== 'terminal',
 )
 
+/** A list without the kinds an earlier list had; anything that is not a list is left to the schema. */
+function dropRetiredKinds(value: unknown): unknown {
+  return Array.isArray(value)
+    ? value.filter((kind) => !(RETIRED_CALL_WAITER_KINDS as readonly unknown[]).includes(kind))
+    : value
+}
+
 /** One request kind. */
 export type CallWaiterKind = (typeof CALL_WAITER_KINDS)[number]
 
@@ -88,12 +95,15 @@ export const GuestFeaturesSchema = z.strictObject({
   /** Calling staff to the table, with the request kinds offered. */
   call_waiter: z.strictObject({
     enabled: z.boolean(),
-    kinds: z
-      .array(z.enum([...CALL_WAITER_KINDS, ...RETIRED_CALL_WAITER_KINDS]))
-      .max(CALL_WAITER_KINDS.length + RETIRED_CALL_WAITER_KINDS.length)
-      .refine((kinds) => new Set(kinds).size === kinds.length, 'request kinds must not repeat')
-      // A stored or published list that still holds a dropped kind reads without it (#180).
-      .transform((kinds) => kinds.filter((kind): kind is CallWaiterKind => isCallWaiterKind(kind))),
+    // A stored or published list that still holds a dropped kind reads without it (#180). The
+    // preprocess keeps the JSON Schema for faces (its output side) the plain list of kinds.
+    kinds: z.preprocess(
+      dropRetiredKinds,
+      z
+        .array(z.enum(CALL_WAITER_KINDS))
+        .max(CALL_WAITER_KINDS.length)
+        .refine((kinds) => new Set(kinds).size === kinds.length, 'request kinds must not repeat'),
+    ),
   }),
   /** The table's running bill. */
   bill: z.boolean(),
