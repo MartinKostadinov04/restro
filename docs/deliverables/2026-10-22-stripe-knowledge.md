@@ -10,6 +10,7 @@ The one place for what Restro knows about Stripe, the possible second payment pr
 - **S26**: docs.stripe.com, read by the #108 agent (the provider notice inbox) on 10-26. Each line names the page.
 - **S27**: the #107 agent (the Stripe provider package) on 10-26: docs.stripe.com pages (each line names the page) and **[SANDBOX]** answers of "Restro Sandbox" through stripe-node 23.0.1 (API `2026-09-30.endive`), on connected accounts made there.
 - **L26**: the part 2 lead (#29) on 10-26: **[SANDBOX]** answers of "Restro Sandbox" to #107's conformance suite in record mode and to one `startConnection`, run with the restricted key `restro-platform-sandbox` (stripe-node 23.0.1, API `2026-09-30.endive`) instead of the secret key.
+- **L29**: the part 2 lead on 10-29: **[SANDBOX]** list calls with the local development key, on Restro's own account and on one connected account of "Restro Sandbox".
 
 Tags: **[DOC]** developer documentation, **[SANDBOX]** what Stripe's sandbox answered, **[PRICE PAGE]** a stripe.com price page, **[READING]** our interpretation, **[NOT FOUND]** the docs don't say.
 
@@ -72,6 +73,12 @@ Tags: **[DOC]** developer documentation, **[SANDBOX]** what Stripe's sandbox ans
 - 2026-10-25 · S25 [DOC] (stripe-apps/reference/permissions) "Payment Intents" write covers "create, update, confirm, capture, cancel, redact, increment authorizations, decrement authorizations, and reauthorize". "Charges and Refunds" write covers "create, update, capture, and redact charges, and create, update, and cancel refunds". Refunds on a captured payment are made through that second resource.
 - 2026-10-25 · S25 [DOC] (refunds) A payment in `requires_capture` can't be refunded; "You must cancel the PaymentIntent". Cancelling needs only PaymentIntent write.
 - 2026-10-25 · S25 [READING] So a restricted key with Payment Intents write, Charges and Refunds None or Read, and Payment Method Domains write can create, capture and cancel but should not create a refund. This limit lives in Restro's own key, which the venue can't inspect, and the venue's Dashboard can still refund. Not tested: confirm a refused `POST /v1/refunds` in a sandbox.
+- 2026-10-29 · L29 [SANDBOX] The restricted key for local development (in `.env.local`, Martin set its permissions 10-29). The payments are direct charges on the venue's account (`Stripe-Account` header, `provider.ts`), so the payment resources go in the **Connect** column:
+  - Connect column: PaymentIntents Write, Charges Read, Disputes Read, Payment Method Domains Write;
+  - platform column: Accounts (v2 core) Write, Account Links Write;
+  - Refunds: None in both.
+
+  With the key's Connect column set this way, a list call on a connected account in "Restro Sandbox" returns 200 for payment_intents, charges, disputes and payment_method_domains. Before Charges was set in the Connect column, `GET /v1/charges` there returned 403 `more_permissions_required`. The same key returns 403 for payment_intents on the platform's own account, which the app never calls. Still not tested: a refused `POST /v1/refunds`.
 - 2026-10-25 · S25 [DOC] (connect/direct-charges) "Create a refund using your platform's secret key while authenticated as the connected account." Stripe debits the connected account for refunds on direct charges (refunds).
 - 2026-10-25 · S25 [DOC] (stripe-apps/api-authentication/oauth, stripe-apps/reference/permissions) A Stripe App installed through the Marketplace OAuth link (`marketplace.stripe.com/oauth/v2/authorize`) shows the installer a list of permissions it must accept; the token carries those permissions. Public distribution needs an app review and the public install links "don't work until the app is published". [NOT FOUND] whether such an app can create PaymentIntents server-side for a venue, or whether Stripe permits this use; [READING] a possible way to give the venue a visible no-refund grant, not checked further.
 - 2026-10-25 · S25 [NOT FOUND] A setting on the connected account (or in the OAuth grant for Standard accounts) that stops the platform from refunding. Only the platform's own key can be narrowed, as far as the docs show.
