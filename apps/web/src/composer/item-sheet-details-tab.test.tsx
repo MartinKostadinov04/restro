@@ -54,7 +54,7 @@ describe('the Details tab', () => {
       el.getAttribute('data-field-key'),
     )
     expect(keys).toEqual(ITEM_GROUPS.flatMap((group) => group.keys))
-    expect(keys).toHaveLength(14)
+    expect(keys).toHaveLength(15)
     for (const name of [
       'Content',
       'Price and portion',

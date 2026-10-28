@@ -228,6 +228,7 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         'availability',
         'internal_note',
         'order_mode',
+        'payment_mode',
         'for_sale',
         'visible',
       ])
