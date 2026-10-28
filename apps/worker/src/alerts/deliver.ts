@@ -302,6 +302,7 @@ async function deliverForVenue(
       doneAt: row.doneAt,
       delivery: readDelivery(row.details),
       telegramRef: row.telegramMessageRef,
+      captureBefore: instantOf(row.details.captureBefore),
     },
     permission: row.permission,
     details: row.details,
@@ -569,9 +570,10 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
           await record()
           return true
         }
-        // A button only where a person can answer it: not on a pause, nor on "back".
-        const answerable =
-          step.step === 'new' && !ruleOf(alert.planned.kind, alert.planned.audience).closesItself
+        // A button only where a person can answer it: not on a pause, nor on "back", nor on a card
+        // payment's question, which is answered in Restro (#112).
+        const rule = ruleOf(alert.planned.kind, alert.planned.audience)
+        const answerable = step.step === 'new' && !rule.closesItself && !rule.closesByAnswer
         const sentMessage = await telegram.sendMessage(chatId, linkedMessage(message), {
           ...(answerable ? { doneFor: alert.planned.id, doneLabel: doneButtonText(locale) } : {}),
         })
@@ -608,6 +610,13 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
 }
 
 /** `chat:message` as the alert keeps a Telegram message. */
+/** An instant kept in an alert's details (a card's `captureBefore`, #112), or null. */
+function instantOf(value: unknown): Date | null {
+  if (typeof value !== 'string') return null
+  const at = new Date(value)
+  return Number.isNaN(at.getTime()) ? null : at
+}
+
 function parseRef(text: string | null): MessageRef | null {
   const match = text === null ? null : /^(-?\d+):(\d+)$/.exec(text)
   return match === null ? null : { chatId: match[1] as string, messageId: Number(match[2]) }

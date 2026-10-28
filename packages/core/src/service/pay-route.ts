@@ -34,8 +34,15 @@
 // Paying pauses only stop a payment from joining the queue: once its lines moved, the route runs
 // to its end, whatever the sitting does (staff may end a sitting at any time).
 
-import { alerts, paymentAccounts, paymentLines, payments, venueTables } from '@restro/db'
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import {
+  alerts,
+  paymentAccounts,
+  paymentLines,
+  paymentSteps,
+  payments,
+  venueTables,
+} from '@restro/db'
+import { and, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
@@ -45,8 +52,11 @@ import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 import {
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
+  PAYMENT_HOLD_EXPIRED_KIND,
   PAYMENT_LINES_NOT_BACK_KIND,
+  PAYMENT_RELEASE_REFUSED_KIND,
   PAYMENT_STRANDED_KIND,
+  PAYMENT_STUCK_KIND,
   PAYMENT_UNCONFIRMED_KIND,
 } from './alert-rules'
 import { defineCommand, type ServiceTx } from './definition'
@@ -70,6 +80,7 @@ import {
   quantityKey,
   signedSumMinor,
 } from './pay'
+import { payingPaused } from './paying-pause'
 import type { Permission } from './permissions'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import { orderingPaused } from './send'
@@ -106,7 +117,12 @@ export const PAYMENT_QUESTIONS = ['close', 'lines_not_back'] as const
  * Why a close is unconfirmed, waiting for an answer: the POS didn't answer, or refused after the
  * close was attempted; or, after "No receipt", the lines were not proven back on the table (#153).
  */
-const UNCONFIRMED_REASONS = ['close_unknown', 'close_refused', 'lines_not_back'] as const
+export const PAYMENT_UNCONFIRMED_REASONS = [
+  'close_unknown',
+  'close_refused',
+  'lines_not_back',
+] as const
+const UNCONFIRMED_REASONS = PAYMENT_UNCONFIRMED_REASONS
 
 const paymentId = idSchema('py')
 const tableId = idSchema('tb')
@@ -215,6 +231,7 @@ async function raise(
   locked: Locked,
   kind: string,
   permission: Permission,
+  more: Readonly<Record<string, string>> = {},
 ): Promise<void> {
   if (locked.alerts.has(kind)) return
   const { payment } = locked
@@ -228,12 +245,15 @@ async function raise(
     subjectId: payment.id,
     permission,
     // What staff need at the till: the table and the amounts. Never a POS id or a guest's data.
+    // Until when the hold may be captured: a question is reminded again as it runs out (#112).
     details: {
       paymentId: payment.id,
       tableId: payment.tableId,
       amountMinor: payment.amountMinor,
       tipMinor: payment.tipMinor,
       currency: payment.currency,
+      captureBefore: payment.captureBefore?.toISOString() ?? null,
+      ...more,
     },
     ...stx.provenance,
     updatedAt: sql`now()`,
@@ -300,7 +320,8 @@ export function paymentClaimTable() {
 
       const now = (await stx.dbNow()).getTime()
       const endsAt = payment.queueEndsAt ?? new Date(now + PAYMENT_QUEUE_MS)
-      const paused = await orderingPaused(stx, payment.tableId, payment.barId)
+      const paused =
+        (await orderingPaused(stx, payment.tableId, payment.barId)) || (await payingPaused(stx))
       // The payments ahead in the same queue: waiting longer, with no table yet.
       const sameQueue =
         payment.barId === null ? isNull(payments.barId) : eq(payments.barId, payment.barId)
@@ -313,6 +334,8 @@ export function paymentClaimTable() {
             inArray(payments.state, ['held', 'queued']),
             isNull(payments.paymentTableId),
             sameQueue,
+            // A payment whose wait already ran out is cancelled at its own turn, never ahead (P8).
+            gt(payments.queueEndsAt, new Date(now)),
             or(
               lt(payments.queueEndsAt, endsAt),
               and(eq(payments.queueEndsAt, endsAt), lt(payments.id, payment.id)),
@@ -681,6 +704,10 @@ export function paymentChecked() {
  * `payment.closed`: the close's outcome. Proof of the close (`done`, or the POS's "already done")
  * → `closed`, with the receipt's numbers. Anything else, once the close was attempted, is
  * `unconfirmed`: never undone or released until a manager or owner answers.
+ *
+ * The POS's answer to the close (`step`) is recorded with it, in the same transaction (#112): a
+ * worker that dies after the answer never leaves a proven close without its state, nor its
+ * receipt number behind. The answer is kept whatever the payment's state.
  */
 export function paymentClosed() {
   return defineCommand({
@@ -691,6 +718,14 @@ export function paymentClosed() {
       code: CodeSchema.nullable(),
       receiptNumber: z.string().min(1).max(64).nullable(),
       fiscalMemoryNumber: z.string().min(1).max(64).nullable(),
+      step: z
+        .strictObject({
+          outcome: z.enum(['done', 'refused']),
+          answer: CodeSchema.nullable(),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$/),
+        })
+        .nullable()
+        .default(null),
     }),
     origins: ['worker'],
     permission: null,
@@ -701,6 +736,19 @@ export function paymentClosed() {
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
+      if (command.step !== null) {
+        await stx.tx.insert(paymentSteps).values({
+          tenantId: stx.tenantId,
+          venueId: stx.venueId,
+          paymentId: payment.id,
+          step: 'payAndClose',
+          outcome: command.step.outcome,
+          answer: command.step.answer,
+          idempotencyKey: command.step.idempotencyKey,
+          lines: null,
+          ...stx.provenance,
+        })
+      }
       if (payment.state !== 'checked') return at(payment, payment.state, false)
       if (command.outcome === 'done') {
         await move(stx, locked, 'closed', {
@@ -908,6 +956,186 @@ export function paymentAnswer() {
   })
 }
 
+// ---------------------------------------------------------------------------------------------
+// Recovery (#112)
+
+/**
+ * `payment.release_refused`: the provider refused to release the hold of a cancelled payment and
+ * still holds it. Nothing Restro may do about it (it never refunds): the payment stays
+ * `cancelling`, the worker reads it back until the provider drops the hold, and the owners and
+ * Restro's team are told once.
+ */
+export function paymentReleaseRefused() {
+  return defineCommand({
+    schema: z.strictObject({
+      type: z.literal('payment.release_refused'),
+      paymentId,
+      code: CodeSchema,
+    }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    async handle(stx, command) {
+      const locked = await lockRoute(stx, command.paymentId, {
+        alertKinds: [PAYMENT_RELEASE_REFUSED_KIND],
+      })
+      if (refusedLock(locked)) return locked
+      const { payment } = locked
+      if (payment.state !== 'cancelling') return at(payment, payment.state, false)
+      if (locked.alerts.has(PAYMENT_RELEASE_REFUSED_KIND)) return at(payment, payment.state, false)
+      // The refusal's code picks the words: `already_captured` means the card was charged.
+      await raise(stx, locked, PAYMENT_RELEASE_REFUSED_KIND, 'money.follow_up', {
+        code: command.code,
+      })
+      await logPayment(stx, payment, payment.state, 'release_refused', { code: command.code })
+      return at(payment, payment.state, true)
+    },
+  })
+}
+
+/** The open questions an expiry closes: the unconfirmed close and the items not back (#155). */
+const QUESTION_KINDS = [PAYMENT_UNCONFIRMED_KIND, PAYMENT_LINES_NOT_BACK_KIND] as const
+
+/**
+ * `payment.expired`: the provider shows the payment's hold gone (it ran out, or the provider
+ * dropped it) while Restro still counted on it (design §5.3, #112). Settles it `released` with
+ * reason `expired`, kept for the end of the night's list:
+ * - `held`, or `queued` with no payment table yet: nothing moved on the POS;
+ * - `cancelling`: a release the provider refused, now over (its alert closes);
+ * - `unconfirmed`, waiting for an answer: its open question closes too, both kinds, and the Log
+ *   says so; the owners and Restro's team are told (`payment_hold_expired`), since the bill may be
+ *   closed in the till with nothing charged. Answered, the route goes on (a capture of an expired
+ *   hold fails and tells the owners).
+ * Anything else changes nothing: once the lines moved, the route runs to its end.
+ */
+export function paymentExpired() {
+  return defineCommand({
+    schema: z.strictObject({
+      type: z.literal('payment.expired'),
+      paymentId,
+      /** The provider's status that shows the hold gone. */
+      status: z.enum(['released', 'failed']),
+    }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    async handle(stx, command) {
+      const locked = await lockRoute(stx, command.paymentId, {
+        alertKinds: [...QUESTION_KINDS, PAYMENT_RELEASE_REFUSED_KIND, PAYMENT_HOLD_EXPIRED_KIND],
+      })
+      if (refusedLock(locked)) return locked
+      const { payment } = locked
+      const waiting =
+        (payment.state === 'held' || payment.state === 'queued') && payment.paymentTableId === null
+      const asking =
+        payment.state === 'unconfirmed' &&
+        (UNCONFIRMED_REASONS as readonly (string | null)[]).includes(payment.reason)
+      const cancelling = payment.state === 'cancelling'
+      if (!waiting && !asking && !cancelling) return at(payment, payment.state, false)
+      if (
+        cancelling &&
+        payment.reason !== 'no_receipt' &&
+        payment.reason !== 'stranded' &&
+        (await closeAttempted(stx, payment.id))
+      ) {
+        return refused(null, 'close_attempted')
+      }
+      // Stranded lines stay stranded: staff were told to move them back.
+      const state = cancelling && payment.reason === 'stranded' ? 'stranded' : 'released'
+      const reason = state === 'stranded' ? 'stranded' : 'expired'
+      const closing: readonly string[] = cancelling
+        ? [PAYMENT_RELEASE_REFUSED_KIND]
+        : asking
+          ? QUESTION_KINDS
+          : []
+      const closed: string[] = []
+      for (const kind of closing) {
+        const alert = locked.alerts.get(kind)
+        if (alert === undefined || alert.doneAt !== null) continue
+        await stx.tx
+          .update(alerts)
+          .set({
+            doneAt: sql`now()`,
+            doneBy: stx.provenance.actor,
+            via: stx.via,
+            nextRepeatAt: null,
+            ...stx.provenance,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(alerts.id, alert.id))
+        closed.push(kind)
+      }
+      // Nobody answered before the hold ran out: the owners sort the bill out in the till.
+      if (asking) await raise(stx, locked, PAYMENT_HOLD_EXPIRED_KIND, 'money.follow_up')
+      // An unconfirmed payment was settled already: its 18 months start again from the release.
+      const settled = payment.settledAt !== null
+      await move(
+        stx,
+        locked,
+        state,
+        {
+          reason,
+          formValues: null,
+          ...(settled ? { retainUntil: recordRetainUntil(await stx.dbNow()) } : {}),
+        },
+        {
+          status: command.status,
+          ...(closed.length === 0 ? {} : { questionClosed: closed.join(',') }),
+        },
+      )
+      return at(payment, state, true, { closed: closed.join(',') })
+    },
+  })
+}
+
+/** The states a payment may stay in only briefly: the worker's own, with no guest or staff wait. */
+const STUCK_STATES: readonly string[] = ['requested', 'priced', 'cancelling']
+
+/**
+ * `payment.stuck`: the recovery tried a payment again and it still stays where it was past its
+ * bound (#112). Restro's team is told once; the payment itself is not changed (the recovery keeps
+ * trying it).
+ */
+export function paymentStuck() {
+  return defineCommand({
+    schema: z.strictObject({ type: z.literal('payment.stuck'), paymentId }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    async handle(stx, command) {
+      const locked = await lockRoute(stx, command.paymentId, { alertKinds: [PAYMENT_STUCK_KIND] })
+      if (refusedLock(locked)) return locked
+      const { payment } = locked
+      if (!STUCK_STATES.includes(payment.state) || locked.alerts.has(PAYMENT_STUCK_KIND)) {
+        return at(payment, payment.state, false)
+      }
+      const id = newId('al')
+      await stx.tx.insert(alerts).values({
+        id,
+        tenantId: stx.tenantId,
+        venueId: stx.venueId,
+        serviceDate: stx.serviceDate,
+        kind: PAYMENT_STUCK_KIND,
+        audience: 'restro',
+        subjectId: payment.id,
+        permission: null,
+        // Counts and codes only: never an amount (the team's texts carry none).
+        details: { paymentId: payment.id, tableId: payment.tableId, state: payment.state },
+        ...stx.provenance,
+        updatedAt: sql`now()`,
+      })
+      await stx.log({
+        kind: 'alert.raised',
+        tableId: payment.tableId,
+        sittingId: payment.sittingId,
+        reason: PAYMENT_STUCK_KIND,
+        details: { alertId: id },
+      })
+      return at(payment, payment.state, true)
+    },
+  })
+}
+
 /** The route's commands, for the registry. */
 export const PAY_ROUTE_COMMANDS = {
   'payment.claim_table': paymentClaimTable(),
@@ -919,4 +1147,7 @@ export const PAY_ROUTE_COMMANDS = {
   'payment.captured': paymentCaptured(),
   'payment.undone': paymentUndone(),
   'payment.answer': paymentAnswer(),
+  'payment.release_refused': paymentReleaseRefused(),
+  'payment.expired': paymentExpired(),
+  'payment.stuck': paymentStuck(),
 } as const

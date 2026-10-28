@@ -30,6 +30,7 @@ import { createConnectionJobs } from './connection'
 import { createFloorJobs } from './floor'
 import { createSendJobs } from './order-send'
 import { orderTidyTick } from './order-tidy'
+import { createPaymentRecoveryJob } from './payment-recovery'
 import { createPaymentJobs } from './payments'
 import { createProviderNoticesJob } from './provider-notices'
 import { createPublishJobs } from './publish'
@@ -78,8 +79,14 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const floorJobs = [
     ...createFloorJobs({ sim: config.sim }),
     ...(billIdKey === null ? [] : createReadingJobs({ sim: config.sim, billIdKey })),
-    // Paying (#110) prices from a fresh POS reading and holds through a provider.
-    ...(providers.size === 0 ? [] : createPaymentJobs({ sim: config.sim, providers })),
+    // Paying (#110) prices from a fresh POS reading and holds through a provider; the recovery
+    // (#112) takes every open payment on from its last step.
+    ...(providers.size === 0
+      ? []
+      : [
+          ...createPaymentJobs({ sim: config.sim, providers }),
+          createPaymentRecoveryJob({ sim: config.sim, providers }),
+        ]),
   ]
   // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a
   // `sim` instance is refused in production inside it.
