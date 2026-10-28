@@ -1,7 +1,7 @@
 // The end of a service day clears the night's open alerts (#162; Martin 10-27) on a real Postgres,
 // as the restro_app role: every open venue alert of the closing day is Done in the close's own
 // transaction with one `alert.cleared` Log entry each, except a pause (it ends by itself), a
-// payment question only an answer closes and Restro's own alerts. A Done by staff, another day's
+// payment question only an answer closes (never Done, #112) and Restro's own alerts. A Done by staff, another day's
 // alert and another venue's are left alone, and a close that is refused clears nothing. Skipped
 // without a database.
 import { randomUUID } from 'node:crypto'
@@ -215,8 +215,9 @@ describe.skipIf(!hasDatabase)('closing a service day clears its open alerts (res
     expect(day?.totals.alerts).toBe(8)
   })
 
-  it('leaves a payment question open to be answered the next day', async () => {
-    const answeredToday = await applyService(
+  it('leaves a payment question open to be answered the next day, never by Done (#112)', async () => {
+    expect((await alertRow(paymentUnconfirmed))?.done_at).toBeNull()
+    const doneToday = await applyService(
       world.app,
       { type: 'alert.done', alertId: paymentUnconfirmed },
       {
@@ -228,11 +229,9 @@ describe.skipIf(!hasDatabase)('closing a service day clears its open alerts (res
         via: 'tonight',
       },
     )
-    expect(answeredToday.result).toMatchObject({ status: 'accepted' })
-    expect(await alertRow(paymentUnconfirmed)).toMatchObject({
-      via: 'tonight',
-      done_by: `user:${ownerId}`,
-    })
+    // Only the payment's answer closes it (pay.test.ts, payment-route.test.ts).
+    expect(doneToday.result).toMatchObject({ status: 'refused', code: 'alert_needs_answer' })
+    expect((await alertRow(paymentUnconfirmed))?.done_at).toBeNull()
   })
 
   it('does nothing more when the day is closed again', async () => {

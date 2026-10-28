@@ -168,7 +168,7 @@ describe.skipIf(!hasDatabase)('the end-of-night message retry (as the restro_app
 
   it('marks the days closed before the column with their close time (the migration)', async () => {
     const statement = readFileSync(
-      new URL('../../../packages/db/migrations/0036_night_report_sent.sql', import.meta.url),
+      new URL('../../../packages/db/migrations/0037_night_report_sent.sql', import.meta.url),
       'utf8',
     )
       .split('--> statement-breakpoint')[1]

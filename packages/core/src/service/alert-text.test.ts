@@ -183,6 +183,20 @@ const KINDS: readonly [string, Record<string, unknown>, Step, string, string][] 
     'Club Nova: a closed bill’s card payment couldn’t be taken (Table 7)',
     'Club Nova: плащане с карта по приключена сметка не можа да бъде взето (Маса 7)',
   ],
+  [
+    'paying_unstable',
+    {},
+    'new',
+    'Club Nova: card payments in the app are unstable',
+    'Club Nova: плащането с карта в приложението е нестабилно',
+  ],
+  [
+    'payment_hold_expired',
+    {},
+    'new',
+    'Club Nova: a card payment’s hold ran out before anyone answered (Table 7)',
+    'Club Nova: блокираната сума на плащане с карта изтече преди някой да отговори (Маса 7)',
+  ],
   ['something_new', { secret: 'x' }, 'new', 'Club Nova: something_new', 'Club Nova: something_new'],
 ]
 
@@ -215,6 +229,30 @@ describe('alertMessage, in both languages, for every kind', () => {
       }
     },
   )
+
+  it('says a refused release charged the card only when the provider says it captured (#112)', () => {
+    const refused = (code: string, locale: 'en' | 'bg') =>
+      alertMessage({ kind: 'payment_release_refused', details: { code } }, context(locale), 'new')
+        .body
+    expect(refused('key_reused', 'en')).toBe(
+      'The card was not charged. Restro keeps checking until the bank drops the hold.',
+    )
+    expect(refused('already_captured', 'en')).toBe(
+      'The card was charged. Refund the guest with the payment provider if needed.',
+    )
+    expect(refused('already_captured', 'bg')).toMatch(/^Картата е таксувана\./)
+    expect(refused('key_reused', 'bg')).toMatch(/^Картата не е таксувана\./)
+    // A hold that ran out unanswered: nothing charged, and where to look; never an amount.
+    const expired = alertMessage(
+      { kind: 'payment_hold_expired', details: { amountMinor: 2200 } },
+      context('en'),
+      'new',
+    )
+    expect(expired.body).toBe(
+      'Nothing was charged. The bill may be closed in barsy: if so, collect the payment. If not, move its items back from the payment table.',
+    )
+    expect(`${expired.title} ${expired.body}`).not.toMatch(/22/)
+  })
 
   it('names a table that has no label as just "a table"', () => {
     const none = { ...context('en'), tableLabel: null }

@@ -2907,12 +2907,23 @@ export const paymentAccounts = restro.table(
     checks: jsonb('checks').$type<Record<string, unknown>>().notNull().default({}),
     checkedAt: timestamp('checked_at', { withTimezone: true }),
     connectedAt: timestamp('connected_at', { withTimezone: true }),
+    /**
+     * Since when the provider's breaker pauses paying in the app at the venue (#112, D127 3.8), or
+     * null while paying flows. Ordering never stops for it.
+     */
+    payingPausedAt: timestamp('paying_paused_at', { withTimezone: true }),
+    /** The breaker's state (core's `BreakerStateSchema`), so a restarted worker restores it. */
+    breaker: jsonb('breaker').$type<Record<string, unknown>>(),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     primaryKey({ name: 'payment_accounts_pk', columns: [t.tenantId, t.venueId] }),
+    check(
+      'payment_accounts_breaker',
+      sql`${t.breaker} is null or jsonb_typeof(${t.breaker}) = 'object'`,
+    ),
     venueFk('payment_accounts', t),
     // A notice names the account and the worker finds its venue by it: an account is one venue's.
     uniqueIndex('payment_accounts_account_unique')

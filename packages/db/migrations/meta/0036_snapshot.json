@@ -1,5 +1,5 @@
 {
-  "id": "7430355f-7d46-4a01-8e59-7743bd350e42",
+  "id": "eb4c2e49-b832-437f-9ae4-4f0b375a1291",
   "prevId": "fac3d428-d125-4f69-84a4-38573e02c263",
   "version": "7",
   "dialect": "postgresql",
@@ -3673,6 +3673,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "paying_paused_at": {
+          "name": "paying_paused_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "breaker": {
+          "name": "breaker",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source": {
           "name": "source",
           "type": "text",
@@ -3761,6 +3773,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "payment_accounts_breaker": {
+          "name": "payment_accounts_breaker",
+          "value": "\"restro\".\"payment_accounts\".\"breaker\" is null or jsonb_typeof(\"restro\".\"payment_accounts\".\"breaker\") = 'object'"
+        },
         "payment_accounts_provider_kind": {
           "name": "payment_accounts_provider_kind",
           "value": "\"restro\".\"payment_accounts\".\"provider_kind\" ~ '^[a-z][a-z0-9-]{0,31}$'"
@@ -6061,12 +6077,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "report_sent_at": {
-          "name": "report_sent_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         },
         "source": {
           "name": "source",

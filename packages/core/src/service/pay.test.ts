@@ -488,6 +488,16 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       [id],
     )
     expect(rows[0]?.stretched).toBe(true)
+    // At the session's limit it is cancelled, the bank's step or not (#112).
+    await world.owner.query(
+      `update restro.payments set session_ends_at = now() - interval '1 second' where id = $1`,
+      [id],
+    )
+    expect(
+      await check(id, 1_000, { status: 'awaiting_guest', heldMinor: 0, needsGuestAction: true }),
+    ).toMatchObject({ details: { state: 'cancelling' } })
+    expect(await stored(id)).toMatchObject({ reason: 'expired', form_values: null })
+    await worker({ type: 'payment.settle', paymentId: id, from: 'cancelling', reason: 'cancelled' })
   })
 
   describe('refusals', () => {
@@ -504,6 +514,20 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
       await setAccount('lost_access')
       expect(await refusal(await start(phone(), ['L1']))).toBe('paying_paused')
+      // The provider's breaker (#112): paying pauses at the venue, connected or not.
+      await setAccount('connected')
+      await world.owner.query(
+        'update restro.payment_accounts set paying_paused_at = now() where venue_id = $1',
+        [world.venueId],
+      )
+      try {
+        expect(await refusal(await start(phone(), ['L1']))).toBe('paying_paused')
+      } finally {
+        await world.owner.query(
+          'update restro.payment_accounts set paying_paused_at = null where venue_id = $1',
+          [world.venueId],
+        )
+      }
     })
 
     it('paying_not_offered while any check of D125 2.3 is missing, even with the account connected (#109)', async () => {
