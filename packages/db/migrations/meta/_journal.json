@@ -260,6 +260,13 @@
       "when": 1793174968458,
       "tag": "0036_paying_breaker",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793191334098,
+      "tag": "0037_night_report_sent",
+      "breakpoints": true
     }
   ]
 }

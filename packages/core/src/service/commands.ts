@@ -38,6 +38,7 @@ import {
 import { closeAtClosingHour } from './closing-hour'
 import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import { markNightReportSent } from './night-report-sent'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
 import {
   AlertChangesSchema,
@@ -642,6 +643,17 @@ export const SERVICE_COMMANDS = {
     permission: null,
     idempotency: 'by_state',
     handle: closeServiceDay,
+  }),
+  // #179: Telegram accepted a closed day's end-of-night message; the hourly tick stops sending it.
+  'service_day.report_sent': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('service_day.report_sent'),
+      serviceDate: z.iso.date(),
+    }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    handle: markNightReportSent,
   }),
 } as const satisfies Record<string, CommandDefinition>
 
