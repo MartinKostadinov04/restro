@@ -229,6 +229,7 @@ Proposals only. Nothing here is edited into `docs/decisions/`.
    - drop "the POS producer's written authorisation under Н-18 чл. 52з, ал. 5" as a legal gate while the POS is unlisted;
    - add the venue's written confirmation that it has filed no Annex 32 at the site;
    - re-run the NRA register search the week before go-live and at any change of POS (§1).
+   - **Martin 10-28:** keep it simple: we ask Mistral and the venue whether the till is registered and what it means for us, and their answer decides (pilot readiness L5).
 3. **D122 §8, the receipt at the pilot:** paper, handed over at the table at payment. No email field (§2).
 4. **D122 §8, the pay screen:**
    - **must carry:** the lines and total in euro with VAT, the tip at zero with presets allowed, who handles complaints and refunds (the venue), and a "Плати X €" button;
