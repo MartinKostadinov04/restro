@@ -41,7 +41,32 @@ export {
   ShellContextSchema,
   SOLD_OUT_DISPLAYS,
 } from './context'
-export * from './design'
+export {
+  DESIGN_MARKER,
+  DESIGN_MARKER_PAGES,
+  DESIGN_OPTIONS,
+  DESIGN_PAGES,
+  DESIGN_TOKEN,
+  DESIGN_TOKEN_MAX,
+  type DesignChoiceOption,
+  type DesignColoursOption,
+  type DesignLabel,
+  type DesignOption,
+  type DesignPage,
+  type DesignPageEntry,
+  type DesignPageId,
+  type DesignStyleOption,
+  type DesignValue,
+  type DesignValues,
+  DesignValuesSchema,
+  PREMADE_STYLES,
+  type PremadeStyleId,
+  PremadeStyleIdSchema,
+  type StyleFile,
+  StyleFileSchema,
+  type StyleValues,
+  StyleValuesSchema,
+} from './design'
 export type { FaceHostProps } from './face-props'
 export { SERVICE_KINDS, type ServiceKind } from './features'
 export {

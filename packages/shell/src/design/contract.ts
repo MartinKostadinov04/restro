@@ -5,8 +5,10 @@
 //
 // Everything that needs the list reads it from here: the design record and its snapshot block, the
 // renderer, the Studio's pages and tiles, the leak guard's allowed words and every Style file.
-// Nothing else in the repo lists an option's values. docs/decisions/D129.md is the same table in
-// words; scripts/design-contract.test.ts fails when either changes alone.
+// Nothing else in the repo lists an option's values, except the theme's font list in core, which
+// packages/shell/src/design/design.test.ts holds equal until the theme record retires.
+// docs/decisions/D129.md is the same table in words; scripts/design-contract.test.ts fails when
+// either changes alone.
 //
 // Mirrors the Platform's passport-design-contract.json, without the passport's `show` parts
 // (content is content, D128) and without a mode gate (Simple hides pages, it never ignores a
@@ -74,8 +76,6 @@ const RULED = { id: 'ruled', en: 'Ruled', bg: 'С линии' } as const
 const ROWS = { id: 'rows', en: 'Rows', bg: 'Редове' } as const
 const LIST = { id: 'list', en: 'List', bg: 'Списък' } as const
 const CENTRED = { id: 'centred', en: 'Centred', bg: 'Центрирано' } as const
-const COMPACT = { id: 'compact', en: 'Compact', bg: 'Стегнато' } as const
-const DETAILED = { id: 'detailed', en: 'Detailed', bg: 'Подробно' } as const
 const ON = { id: 'on', en: 'On', bg: 'Включено' } as const
 const OFF = { id: 'off', en: 'Off', bg: 'Изключено' } as const
 const SAME = { id: 'same', en: 'Same as body font', bg: 'Като основния шрифт' } as const
@@ -117,7 +117,7 @@ export const DESIGN_PAGES = [
         en: 'Screen',
         bg: 'Екран',
         values: [
-          { id: 'auto', en: 'Follows the phone', bg: 'Както е на телефона' },
+          { id: 'auto', en: 'Follows the phone', bg: 'Според телефона' },
           { id: 'light', en: 'Light', bg: 'Светъл' },
           { id: 'dark', en: 'Dark', bg: 'Тъмен' },
         ],
@@ -210,7 +210,7 @@ export const DESIGN_PAGES = [
         bg: 'Подредба',
         values: [
           { id: 'stacked', en: 'Stacked', bg: 'Една под друга' },
-          CENTRED,
+          { id: 'centred', en: 'Centred', bg: 'Центрирана' },
           { id: 'compact', en: 'One line', bg: 'На един ред' },
         ],
       },
@@ -240,7 +240,7 @@ export const DESIGN_PAGES = [
         id: 'marker',
         kind: 'choice',
         en: 'Marker',
-        bg: 'Отметка',
+        bg: 'Означение на раздела',
         values: [
           { id: 'underline', en: 'Underline', bg: 'Подчертаване' },
           { id: 'pills', en: 'Pills', bg: 'Заоблени бутони' },
@@ -251,10 +251,7 @@ export const DESIGN_PAGES = [
         kind: 'choice',
         en: 'Band',
         bg: 'Лента',
-        values: [
-          { id: 'page', en: 'Page colour', bg: 'Цвят на страницата' },
-          { id: 'header', en: 'Header band', bg: 'Като заглавната част' },
-        ],
+        values: [PAGE, { id: 'header', en: 'Header band', bg: 'Като заглавната част' }],
       },
     ],
   },
@@ -319,7 +316,7 @@ export const DESIGN_PAGES = [
         bg: 'Рамка',
         values: [
           ROWS,
-          { id: 'cards', en: 'Cards', bg: 'Карти' },
+          { id: 'cards', en: 'Cards', bg: 'Картички' },
           { id: 'open', en: 'Open', bg: 'Без рамка' },
         ],
       },
@@ -418,7 +415,7 @@ export const DESIGN_PAGES = [
         id: 'fit',
         kind: 'choice',
         en: 'Fit',
-        bg: 'Побиране',
+        bg: 'Побиране на снимката',
         values: [
           { id: 'cover', en: 'Fill the frame', bg: 'Запълва рамката' },
           { id: 'contain', en: 'Show whole photo', bg: 'Цялата снимка' },
@@ -552,15 +549,18 @@ export const DESIGN_PAGES = [
         id: 'rows',
         kind: 'choice',
         en: 'Rows',
-        bg: 'Редове',
+        bg: 'Разделяне на редовете',
         values: [RULED, { id: 'zebra', en: 'Alternating bands', bg: 'Редуващи се ленти' }],
       },
       {
         id: 'lines',
         kind: 'choice',
         en: 'Lines',
-        bg: 'Редове на сметката',
-        values: [DETAILED, COMPACT],
+        bg: 'Подробност на редовете',
+        values: [
+          { id: 'detailed', en: 'Detailed', bg: 'Подробни' },
+          { id: 'compact', en: 'Compact', bg: 'Стегнати' },
+        ],
       },
     ],
   },
@@ -613,7 +613,7 @@ export const DESIGN_PAGES = [
         kind: 'choice',
         en: 'Tip',
         bg: 'Бакшиш',
-        values: [{ id: 'chips', en: 'Chips', bg: 'Бутони' }, ROWS],
+        values: [{ id: 'chips', en: 'Chips', bg: 'Малки бутони' }, ROWS],
       },
     ],
   },
@@ -627,7 +627,7 @@ export const DESIGN_PAGES = [
         id: 'venue_block',
         kind: 'choice',
         en: 'Venue block',
-        bg: 'Блок на заведението',
+        bg: 'Данни за заведението',
         values: [
           { id: 'name', en: 'Name', bg: 'Име' },
           { id: 'logo', en: 'Logo', bg: 'Лого' },
