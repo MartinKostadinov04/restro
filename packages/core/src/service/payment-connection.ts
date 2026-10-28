@@ -22,6 +22,8 @@
 // so a disconnect and a payment starting at the same moment cannot both win. It is taken after the
 // rows of the fixed order (`lock-order.ts`) and never before them.
 
+import { randomUUID } from 'node:crypto'
+
 import { alerts, type DbPool, paymentAccounts, payments, venueTables, withTenant } from '@restro/db'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -154,6 +156,16 @@ async function openLostAlert(stx: ServiceTx): Promise<{ readonly id: string } | 
   return open ?? null
 }
 
+/** The open alert, if there is one, says why paying stopped; nothing is raised when there is none. */
+async function updateLostAlertReason(stx: ServiceTx, reason: LostReason): Promise<void> {
+  const open = await openLostAlert(stx)
+  if (open === null) return
+  await stx.tx
+    .update(alerts)
+    .set({ details: { reason }, ...stx.provenance, updatedAt: sql`now()` })
+    .where(eq(alerts.id, open.id))
+}
+
 /** One alert for owners and managers, once while it stays open. No amount, no guest data. */
 async function raiseLostAlert(stx: ServiceTx, reason: LostReason): Promise<void> {
   const open = await openLostAlert(stx)
@@ -227,23 +239,33 @@ export async function connectAccount(
   stx: ServiceTx,
   command: z.infer<typeof ConnectSchema>,
 ): Promise<ServiceResult> {
-  const row = await lockAccount(stx, 'update')
+  let row = await lockAccount(stx, 'update')
   if (row === null) {
-    await stx.tx.insert(paymentAccounts).values({
-      tenantId: stx.tenantId,
-      venueId: stx.venueId,
-      providerKind: command.providerKind,
-      accountRef: null,
-      state: 'connecting',
-      checks: NO_CHECKS,
-      ...stx.provenance,
-    })
-    await stx.log({
-      kind: 'settings.changed',
-      reason: 'payments_connect',
-      toState: 'connecting',
-    })
-    return accepted(null, { details: { state: 'connecting', changed: true } })
+    // Two first presses at once both find no row: one inserts, the other waits for it, does
+    // nothing, and carries on with the row the first made (locked, as every writer here does).
+    const inserted = await stx.tx
+      .insert(paymentAccounts)
+      .values({
+        tenantId: stx.tenantId,
+        venueId: stx.venueId,
+        providerKind: command.providerKind,
+        accountRef: null,
+        state: 'connecting',
+        checks: { ...NO_CHECKS, connectAttempt: randomUUID() },
+        ...stx.provenance,
+      })
+      .onConflictDoNothing({ target: [paymentAccounts.tenantId, paymentAccounts.venueId] })
+      .returning({ venueId: paymentAccounts.venueId })
+    if (inserted.length > 0) {
+      await stx.log({
+        kind: 'settings.changed',
+        reason: 'payments_connect',
+        toState: 'connecting',
+      })
+      return accepted(null, { details: { state: 'connecting', changed: true } })
+    }
+    row = await lockAccount(stx, 'update')
+    if (row === null) return refused(null, 'account_missing')
   }
 
   const checks = readAccountChecks(row.checks)
@@ -270,9 +292,14 @@ export async function connectAccount(
       accountRef: keepRef ? row.accountRef : null,
       accountName: keepRef ? row.accountName : null,
       state: 'connecting',
-      // The till's tick belongs to the venue; the account's own checks start again.
+      // The till's tick belongs to the venue; the account's own checks start again. The guest host
+      // is the web app's, not the account's, and a registration stays with the account it was made
+      // for: both are kept on the same account, and only the registration goes with a new one.
       checks: {
         ...NO_CHECKS,
+        connectAttempt: randomUUID(),
+        guestHost: checks.guestHost,
+        domainHost: keepRef ? checks.domainHost : null,
         ticks: { cardTypeInTill: checks.ticks.cardTypeInTill, receiptEmailsOff: null },
       },
       checkedAt: null,
@@ -571,7 +598,15 @@ export async function accountLost(
     fromState: row.state,
     toState: 'lost_access',
   })
-  await raiseLostAlert(stx, 'access_removed')
+  // Nobody is told "card payments are paused" unless paying was on: an account still being
+  // connected, or connected but never allowed to take cards, had nothing to pause. It is still
+  // abandoned (the mark above), and an alert already open (the account was restricted before the
+  // owner started to reconnect) now says the real reason.
+  if ((row.state === 'connected' && checks.cardPayments) || row.state === 'lost_access') {
+    await raiseLostAlert(stx, 'access_removed')
+  } else {
+    await updateLostAlertReason(stx, 'access_removed')
+  }
   return accepted(null, { details: { state: 'lost_access', changed: true } })
 }
 

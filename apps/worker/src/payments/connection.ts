@@ -17,6 +17,7 @@
 // that the provider did not say. A partial reading concludes nothing.
 
 import { randomUUID } from 'node:crypto'
+
 import { type PaymentProvider, providerRef, readAccountChecks } from '@restro/core'
 import { applyService, type ServiceContext } from '@restro/core/service'
 import { type DbPool, paymentAccounts, withTenant } from '@restro/db'
@@ -110,14 +111,21 @@ export async function startAccountConnection(
   const account = await accountOf(env, target)
   if (account === null) return { kind: 'failed', failure: { refused: 'account_missing' } }
 
-  // A fresh key for every press: the link is single-use, so a repeat must make a new one. An
-  // account that was never recorded (a timeout) is made again, and the unused one stays unused.
+  // The link is single-use, so once there is an account every press makes a new link with a fresh
+  // key. While no account is recorded the key stays the same for the whole connecting attempt
+  // (`connect` names it in the checks): a double press, a timeout, or a tick in between then gets
+  // the same provider account again, not a second one left behind. A row from before attempts were
+  // named has none and gets a fresh key, as it always did.
+  const attempt =
+    account.accountRef === null
+      ? (readAccountChecks(account.checks).connectAttempt ?? randomUUID())
+      : randomUUID()
   const outcome = await provider.startConnection({
     venueId: context.venueId as `vn_${string}`,
     accountRef: account.accountRef === null ? null : providerRef(account.accountRef),
     returnUrl: request.returnUrl,
     refreshUrl: request.refreshUrl,
-    idempotencyKey: `connect:${context.venueId}:${randomUUID()}`,
+    idempotencyKey: `connect:${context.venueId}:${attempt}`,
   })
   if (outcome.kind === 'unknown') {
     env.log.warn({ venueId: context.venueId }, 'the provider did not answer a connection start')
@@ -208,38 +216,86 @@ export async function readAccount(
   return { kind: 'read', state }
 }
 
-/** Registers the guest page's host for wallets, once per host (D125 3.6); wallets are optional. */
+/** What a registration attempt came to. */
+export type DomainOutcome =
+  /** Nothing to do: no host named, or its host is registered already. */
+  | 'not_due'
+  | 'registered'
+  /** The provider did not take it, or it could not be recorded: tried again by the next pass. */
+  | 'failed'
+
+/**
+ * The scheduled retry of a registration that did not go through (`wallet-domain` job): a venue
+ * whose account takes cards and whose guest host is not registered yet is tried again on its own
+ * schedule, not only when some other reading happens. Nothing is asked of a provider for an account
+ * that is not connected, cannot take cards, or has its host registered already.
+ */
+export async function retryDomainRegistration(
+  env: ConnectionEnv,
+  target: { readonly tenantId: string; readonly venueId: string },
+  providers: ReadonlyMap<string, ConnectionProvider>,
+): Promise<DomainOutcome> {
+  const account = await accountOf(env, target)
+  if (account === null || account.accountRef === null || account.state !== 'connected') {
+    return 'not_due'
+  }
+  if (!readAccountChecks(account.checks).cardPayments) return 'not_due'
+  const provider = providers.get(account.providerKind)
+  if (provider === undefined) return 'not_due'
+  return registerDomain(env, target, provider, account.accountRef)
+}
+
+/**
+ * Registers the guest page's host for wallets, once per host (D125 3.6); wallets are optional.
+ * Every attempt has its own idempotency key: the provider keeps the answer of a key for a day,
+ * failures included (https://docs.stripe.com/api/idempotent_requests.md: the first result is
+ * saved "regardless of whether it succeeded or failed", errors included), so a key shared by every
+ * attempt would repeat the first failure. Registering a host again under a new key answers the
+ * registration that is there: the sandbox line "2026-10-26 · S27 [SANDBOX]" under "The provider
+ * package against the sandbox" in docs/deliverables/2026-10-22-stripe-knowledge.md, so an attempt
+ * after one that landed but timed out is harmless.
+ */
 async function registerDomain(
   env: ConnectionEnv,
   target: { readonly tenantId: string; readonly venueId: string },
   provider: ConnectionProvider,
   accountRef: string,
-): Promise<void> {
+): Promise<DomainOutcome> {
   const row = await accountOf(env, target)
   const checks = readAccountChecks(row?.checks)
   const host = checks.guestHost
-  if (host === null || checks.domainHost === host) return
+  if (host === null || checks.domainHost === host) return 'not_due'
   try {
     const outcome = await provider.prepareDomain({
       accountRef: providerRef(accountRef),
       host,
-      idempotencyKey: `domain:${target.venueId}:${host}`,
+      idempotencyKey: `domain:${target.venueId}:${randomUUID()}`,
     })
     if (outcome.kind !== 'done') {
-      // Wallets stay off for this venue until a later reading tries again; paying itself works.
+      // Wallets stay off for this venue until the `wallet-domain` job (or a later reading) tries
+      // again; paying itself works.
       env.log.warn(
         { venueId: target.venueId, outcome: outcome.kind },
         'the guest domain was not registered for wallets',
       )
-      return
+      return 'failed'
     }
-    await applyService(
+    const { result } = await applyService(
       env.pool,
       { type: 'payment_account.domain', accountRef, host },
       asWorker(env, target),
     )
+    if (result.status === 'refused') {
+      env.log.warn(
+        { venueId: target.venueId, code: result.code },
+        'the registered guest domain was not recorded',
+      )
+      return 'failed'
+    }
+    return 'registered'
   } catch (error) {
     env.log.warn({ venueId: target.venueId, err: error }, 'registering the guest domain failed')
+    return 'failed'
   }
 }
 
