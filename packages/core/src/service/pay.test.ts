@@ -291,6 +291,8 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
     await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
       world.tables[3],
     ])
+    // The table's POS records a tip on the close (D127): a tip can be given.
+    await world.declareCapabilities({ recordTipOnClose: true })
   })
 
   afterAll(async () => {
@@ -641,6 +643,21 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       expect(await refusal(await start(phone(), ['L3'], { tipMinor: 301 }))).toBe('invalid_command')
       const id = paymentIdOf(await start(phone(), ['L3'], { tipMinor: 300 }))
       expect((await stored(id))?.tip_minor).toBe('300')
+    })
+
+    it('tip_not_offered: a tip where the POS records none on the close (D127)', async () => {
+      await world.declareCapabilities({ recordTipOnClose: false })
+      try {
+        expect((await friendState()).ordering).toMatchObject({ tips: false })
+        expect(await refusal(await start(phone(), ['L3'], { tipPercent: 10 }))).toBe(
+          'tip_not_offered',
+        )
+        // No tip is still a payment.
+        paymentIdOf(await start(phone(), ['L3']))
+      } finally {
+        await world.declareCapabilities({ recordTipOnClose: true })
+      }
+      expect((await friendState()).ordering).toMatchObject({ tips: true })
     })
 
     it('ask_waiter_to_split: part of a line', async () => {

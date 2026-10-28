@@ -49,6 +49,8 @@ async function answer(
   await stx.rows.tableOrder(found.tableId)
   const sent = (await stx.rows.sentOrders([command.sentOrderId])).get(command.sentOrderId)
   if (sent === undefined) return refused(null, 'sent_order_missing')
+  // A pay-first round is answered through its payment (`payment.answer`, #113).
+  if (sent.kind === 'pay_first') return refused(null, 'sent_order_settled', { state: sent.state })
 
   if (sent.state !== 'unconfirmed') {
     // The same answer again changes nothing; a different one, or any other state, is refused.
@@ -72,6 +74,7 @@ async function answer(
       and(
         eq(sentOrders.tableId, sent.tableId),
         eq(sentOrders.state, 'unconfirmed'),
+        eq(sentOrders.kind, 'on_bill'),
         ne(sentOrders.id, sent.id),
       ),
     )

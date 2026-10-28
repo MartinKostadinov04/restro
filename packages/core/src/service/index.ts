@@ -153,6 +153,7 @@ export {
   type HumanCheckVerdict,
   hashPaymentHandle,
   type PaymentTarget,
+  paymentWorkerJob,
   projectGuestState,
   type QueuePayment,
 } from './guest'
@@ -261,6 +262,15 @@ export {
   TABLE_OPEN_PAYMENTS,
   tipOf,
 } from './pay'
+export {
+  billIsRound,
+  type PayFirstCheck,
+  type PayFirstState,
+  payFirstCheck,
+  payFirstPossibleAt,
+  payFirstTableNote,
+  type RoundLine,
+} from './pay-first'
 export {
   type LastCheck,
   lastCheck,

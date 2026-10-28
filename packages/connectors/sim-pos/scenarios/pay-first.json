@@ -1,0 +1,7 @@
+{
+  "name": "pay-first",
+  "extends": "demo-bar",
+  "description": "Pay-first items (#113): Demo Bar on a POS whose first items open a bill that names itself (firstItemsOpenBill) and whose notes reach the ticket (notesReachTicket), so a guest pays a pay-first round at Send and Restro enters it on a free payment table. No open bills, no faults.",
+  "switches": { "firstItemsOpenBill": true, "notesReachTicket": true },
+  "bills": []
+}

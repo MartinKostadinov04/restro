@@ -53,6 +53,8 @@ const STUCK_STATES: readonly string[] = ['requested', 'priced', 'cancelling']
 
 /** What one pass reads of a payment. */
 export interface RecoveryRow {
+  /** `on_bill` or `pay_first` (#113): a queued pay-first payment is entered, not moved. */
+  readonly kind: string
   readonly state: string
   readonly reason: string | null
   readonly paymentTableId: string | null
@@ -123,6 +125,7 @@ export async function recoverPayments(
         .select({
           id: payments.id,
           venueId: payments.venueId,
+          kind: payments.kind,
           state: payments.state,
           reason: payments.reason,
           paymentTableId: payments.paymentTableId,
@@ -151,6 +154,7 @@ export async function recoverPayments(
       const target = { tenantId, venueId: row.venueId, paymentId: row.id } as const
       try {
         const actions = recoveryActions({
+          kind: row.kind,
           state: row.state,
           reason: row.reason,
           paymentTableId: row.paymentTableId,

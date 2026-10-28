@@ -420,6 +420,81 @@ export function takeSentLines(
 }
 
 /**
+ * The pay-first part of a Send (#113): each line the Send names for paying first must be one of
+ * the live, unheld lines `payFirst` picks, with its quantity, each line once (else
+ * `order_changed`); the others stay as they are, for a later "Pay". With `whole` (a "Send and
+ * pay", whose bill part goes too) the Send must name every one of them. The named lines stay on the
+ * order, held by the payment (`heldBy`), until it enters them on the POS (`dropHeldLines`) or ends
+ * without (`releaseHeldLines`).
+ */
+export function holdPayFirstLines(
+  order: TableOrderDraft,
+  requested: readonly SendRequestLine[],
+  payFirst: (line: TableOrderLine) => boolean,
+  paymentId: string,
+  whole = false,
+):
+  | {
+      readonly ok: true
+      readonly order: TableOrderDraft
+      readonly lines: readonly TableOrderLine[]
+    }
+  | { readonly ok: false; readonly code: 'order_changed' | 'order_empty' } {
+  const candidates = order.lines.filter(
+    (line) => live(line) && line.heldBy === null && payFirst(line),
+  )
+  if (candidates.length === 0) return { ok: false, code: 'order_empty' }
+  if (requested.length === 0) return { ok: false, code: 'order_changed' }
+  const left = [...candidates]
+  const picked: TableOrderLine[] = []
+  for (const line of requested) {
+    const key = `${orderLineKey(line)}|${line.qty}`
+    const at = left.findIndex((candidate) => `${orderLineKey(candidate)}|${candidate.qty}` === key)
+    const found = left[at]
+    if (found === undefined) return { ok: false, code: 'order_changed' }
+    picked.push(found)
+    left.splice(at, 1)
+  }
+  if (whole && left.length > 0) return { ok: false, code: 'order_changed' }
+  // In the order's own order, as the round is entered.
+  const lines = candidates.filter((line) => picked.includes(line))
+  return {
+    ok: true,
+    order: {
+      ...order,
+      lines: order.lines.map((line) =>
+        lines.includes(line) ? { ...line, heldBy: paymentId, rev: line.rev + 1 } : line,
+      ),
+    },
+    lines,
+  }
+}
+
+/** The order without the lines `paymentId` holds: they are on the POS now, or may be (#113). */
+export function dropHeldLines(
+  order: TableOrderDraft,
+  paymentId: string,
+  now: number,
+): TableOrderDraft {
+  const lines = order.lines.filter((line) => line.heldBy !== paymentId)
+  return {
+    lines,
+    earlier: order.earlier,
+    idleExpiresAt: lines.some(live) ? (order.idleExpiresAt ?? now + ORDER_IDLE_MS) : null,
+  }
+}
+
+/** The order with the lines `paymentId` held free again: the payment ended before the POS (#113). */
+export function releaseHeldLines(order: TableOrderDraft, paymentId: string): TableOrderDraft {
+  return {
+    ...order,
+    lines: order.lines.map((line) =>
+      line.heldBy === paymentId ? { ...line, heldBy: null, rev: line.rev + 1 } : line,
+    ),
+  }
+}
+
+/**
  * Puts the lines of a sent order that was not sent back on the order (D116: "your lines are back,
  * Try again"), each merged into an identical live line where the merge stays within the quantity
  * limit, else as a line of its own. Never refused and never dropped: the limits bound what a guest

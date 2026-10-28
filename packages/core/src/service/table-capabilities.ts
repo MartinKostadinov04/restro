@@ -2,8 +2,8 @@
 // `integrations.config.service_capabilities` (#78): the table's place names its POS instance.
 // All false for a table no POS instance serves, or one whose instance recorded nothing readable.
 
-import { integrations, places, type ReadTx } from '@restro/db'
-import { and, eq, ne } from 'drizzle-orm'
+import { integrations, places, type ReadTx, venueTables } from '@restro/db'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 
 import {
   type RecordedServiceCapabilities,
@@ -22,4 +22,24 @@ export async function readTableCapabilities(
     .where(and(eq(places.tableId, tableId), ne(places.state, 'deleted')))
     .limit(1)
   return readServiceCapabilities(row?.config)
+}
+
+/** The recorded capabilities of every POS instance that serves one of the venue's tables. */
+export async function readVenueCapabilities(
+  tx: ReadTx,
+  venueId: string,
+): Promise<RecordedServiceCapabilities[]> {
+  const rows = await tx
+    .selectDistinct({ id: integrations.id, config: integrations.config })
+    .from(places)
+    .innerJoin(integrations, eq(integrations.id, places.integrationId))
+    .innerJoin(venueTables, eq(venueTables.id, places.tableId))
+    .where(
+      and(
+        eq(venueTables.venueId, venueId),
+        ne(places.state, 'deleted'),
+        isNull(integrations.removedAt),
+      ),
+    )
+  return rows.map((row) => readServiceCapabilities(row.config))
 }

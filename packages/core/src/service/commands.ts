@@ -67,7 +67,9 @@ import {
   paymentStep,
   payReturned,
   payStart,
+  TipSchema,
 } from './pay'
+import { PAY_FIRST_COMMANDS } from './pay-first'
 import { PAY_ROUTE_COMMANDS } from './pay-route'
 import { payingBreaker } from './paying-pause'
 import {
@@ -140,6 +142,14 @@ const ageMs = z
   .nonnegative()
   .max(24 * 60 * 60_000)
 const lineId = idSchema('ol')
+
+/** One line of a Send as the phone saw it. */
+const SendLineSchema = z.strictObject({
+  itemId: idSchema('nd'),
+  optionIds: z.array(idSchema('nd')).max(ORDER_LIMITS.options),
+  qty: z.int().min(1).max(ORDER_LIMITS.quantity),
+  note: z.string().max(ORDER_LIMITS.note),
+})
 
 /** A guest edit of the table's order (the guest API's, #75): remembered in the ring, 30 s old at most. */
 function orderEdit<T extends string, F extends z.ZodRawShape>(type: T, fields: F) {
@@ -244,24 +254,28 @@ export const SERVICE_COMMANDS = {
   // action made. A deliberate repeat after the duplicate warning is a new action naming the sent
   // order it repeats (#78).
   'order.send': defineCommand({
-    schema: z.strictObject({
-      type: z.literal('order.send'),
-      tableId,
-      actionId,
-      ageMs,
-      confirmDuplicateOf: idSchema('so').optional(),
-      lines: z
-        .array(
-          z.strictObject({
-            itemId: idSchema('nd'),
-            optionIds: z.array(idSchema('nd')).max(ORDER_LIMITS.options),
-            qty: z.int().min(1).max(ORDER_LIMITS.quantity),
-            note: z.string().max(ORDER_LIMITS.note),
-          }),
-        )
-        .min(1)
-        .max(ORDER_LIMITS.lines),
-    }),
+    schema: z
+      .strictObject({
+        type: z.literal('order.send'),
+        tableId,
+        actionId,
+        ageMs,
+        confirmDuplicateOf: idSchema('so').optional(),
+        /** The lines for the bill; empty when the Send has pay-first lines only. */
+        lines: z.array(SendLineSchema).max(ORDER_LIMITS.lines),
+        /**
+         * The lines the guest pays for first (#113), with the tip; the guest API adds the hash of
+         * the payment handle it hands the phone.
+         */
+        payFirst: z
+          .strictObject({
+            lines: z.array(SendLineSchema).min(1).max(ORDER_LIMITS.lines),
+            tip: TipSchema,
+            handleHash: z.string().regex(/^[0-9a-f]{64}$/),
+          })
+          .optional(),
+      })
+      .refine((command) => command.lines.length > 0 || command.payFirst !== undefined),
     origins: ['guest'],
     permission: null,
     idempotency: 'sent_order',
@@ -569,6 +583,8 @@ export const SERVICE_COMMANDS = {
   // #111: the route after the hold: the queue, the turn, the move, the last check, the close, the
   // capture, the undo, and a manager's answer to an unconfirmed close.
   ...PAY_ROUTE_COMMANDS,
+  // #113: a pay-first round entered on a payment table, and its check before the close.
+  ...PAY_FIRST_COMMANDS,
   // #109: what the provider answered about a venue's account: its account, a reading, the access
   // lost, the guest domain registered. A provider notice only nudges the worker to read.
   'payment_account.started': defineCommand({

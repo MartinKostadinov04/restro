@@ -741,7 +741,17 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
   })
 
   it('releases a tipped Pay where the connector records no tip', async () => {
-    const { id } = await pay(0, 100)
+    // The record still says a tip reaches the receipt (so `pay.start` takes it); the connector the
+    // worker holds no longer does: the worker's own check releases it.
+    const tips = (on: boolean) =>
+      query(
+        `update restro.integrations
+            set config = jsonb_set(config, '{service_capabilities,record_tip_on_close}', $2::jsonb)
+          where id = $1`,
+        [demo.integrationId, JSON.stringify(on)],
+      )
+    await tips(true)
+    const { id } = await pay(0, 100).finally(() => tips(false))
     const noTip: typeof serviceConnectorFor = (integration, sim) => {
       const connector = serviceConnectorFor(integration, sim)
       return { ...connector, capabilities: { ...connector.capabilities, recordTipOnClose: false } }

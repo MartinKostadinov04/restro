@@ -34,6 +34,12 @@
 //   receipt" the hold is released only once a fresh read shows the lines back on the real table;
 //   otherwise a manager is asked again (#153).
 //   An unknown capture is read back from the provider and tried again with the same key.
+// - Pay-first (#113): a `pay_first` payment's lines are not on the POS. It is priced from what the
+//   guest saw at Send, and once queued its round is entered on the free payment table
+//   (`addLines`, a note naming the guest's table where notes reach the ticket). An entry whose
+//   outcome stays unknown after the read-back window is `unconfirmed`, never sent again. After
+//   it is entered, the check reads the payment table's bill only (`payment.pay_first_checked`),
+//   then the close and the capture are the route's own: nothing after the entry releases the hold.
 // - Recovery (#112): a hold is asked for once (D127 3.15): one whose outcome is unknown, or that
 //   an earlier run left without its state, is cancelled, and the cancel finds and releases it; never
 //   asked for again with its key. A release the provider refused is read back until the provider
@@ -54,6 +60,7 @@ import {
   IsolatedBillSchema,
   type IsolatedHandle,
   JOB_NAMES,
+  type OrderLine,
   PaymentIdSchema,
   type PaymentJob,
   PaymentJobSchema,
@@ -68,13 +75,16 @@ import {
   SERVICE_TIMINGS,
   type ServiceConnector,
   type ServiceTimings,
+  serviceDayStartsAt,
   type TableBills,
   TableBillsSchema,
   type WriteOutcome,
 } from '@restro/core'
 import {
+  alertLocale,
   applyService,
   BUDGET_WAIT_MS,
+  billIsRound,
   isFinalPaymentState,
   LEASE_MARGIN_MS,
   PAYMENT_CONFIRM_MS,
@@ -84,8 +94,12 @@ import {
   PAYMENT_WRITE_PAUSE_MS,
   type PaymentStepLines,
   PaymentStepLinesSchema,
+  payFirstTableNote,
   quantityKey,
   READ_BACK_EVERY_MS,
+  type RoundLine,
+  sentOrderLinesOf,
+  tableLabel,
 } from '@restro/core/service'
 import {
   type DbPool,
@@ -96,6 +110,9 @@ import {
   paymentSteps,
   payments,
   places,
+  sentOrderNotes,
+  sentOrders,
+  sourceLinks,
   venues,
   venueTables,
   withTenant,
@@ -110,6 +127,7 @@ import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../servic
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
 import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
+import { toOrderLine } from './order-send'
 import { type PaymentBreakers, SHARED_PAYMENT_BREAKERS, watchedProvider } from './payment-breaker'
 import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
 
@@ -388,7 +406,8 @@ async function price(
   let tipAllowed = false
   if (pos !== null) {
     if (pos.paused) throw new PaymentStepRetry('the connection is paused')
-    lines = linesOf(await readPos(pos, pos.table))
+    // A pay-first round is not on the POS yet: priced at Send, it is never read here (#113).
+    if (payment.kind === 'on_bill') lines = linesOf(await readPos(pos, pos.table))
     tipAllowed = pos.connector.capabilities.recordTipOnClose
   }
   // No POS table (any more): the picked lines are gone, which `payment.price` releases.
@@ -522,6 +541,22 @@ async function cancel(
       from: 'cancelling',
       reason: 'cancelled',
     })
+  // A pay-first round that may be on the POS is never released on its own (D127 3.13): without a
+  // manager's answer the cancel is turned into a question, before the provider is called.
+  if (
+    payment.kind === 'pay_first' &&
+    payment.reason !== 'no_receipt' &&
+    payment.reason !== 'not_on_till' &&
+    (await entryAttempted(env, target))
+  ) {
+    await route(env, target, {
+      type: 'payment.entered',
+      outcome: 'unknown',
+      billRef: null,
+      code: 'cancel_after_entry',
+    })
+    return
+  }
   const account = await accountOf(env, target)
   // No account, no hold: `createHold` needs the account.
   if (account === null || account.accountRef === null) {
@@ -626,6 +661,25 @@ async function cancel(
   await settle()
 }
 
+/**
+ * True once a pay-first payment's round may be on the POS: an `addLines` left with no answer yet,
+ * or one that landed or whose outcome is unknown (as core's `enterAttempted`).
+ */
+async function entryAttempted(env: PaymentEnvironment, target: PaymentJob): Promise<boolean> {
+  const steps = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ outcome: paymentSteps.outcome })
+      .from(paymentSteps)
+      .where(and(eq(paymentSteps.paymentId, target.paymentId), eq(paymentSteps.step, 'addLines')))
+      .orderBy(desc(paymentSteps.seq)),
+  )
+  const [latest] = steps
+  return (
+    latest?.outcome === 'attempting' ||
+    steps.some((step) => step.outcome === 'done' || step.outcome === 'unknown')
+  )
+}
+
 // ---------------------------------------------------------------------------------------------
 // The route after the hold (#111)
 
@@ -721,6 +775,9 @@ function linesOf(bills: TableBills) {
   )
 }
 
+/** The route's POS writes, as `payment.step` records them. */
+type RouteWrite = 'isolateLines' | 'undoIsolate' | 'payAndClose' | 'addLines'
+
 /**
  * One POS write of the route. It is recorded `attempting` inside the instance's turn, right before
  * the call, so a write that never left is never counted (a close that never left is no close).
@@ -730,7 +787,7 @@ async function writePos<R>(
   env: PaymentEnvironment,
   target: PaymentJob,
   pos: PaymentPos,
-  step: 'isolateLines' | 'undoIsolate' | 'payAndClose',
+  step: RouteWrite,
   ref: string,
   call: () => Promise<WriteOutcome<R>>,
   lines: PaymentStepLines | null = null,
@@ -743,9 +800,13 @@ async function writePos<R>(
   let answer: Bounded<WriteOutcome<R>>
   try {
     answer = await bounded(pos.budget, pos.timings.writeTimeoutMs, async () => {
-      // A close is sent once: another run of this payment that got its turn first has sent it.
-      if (step === 'payAndClose' && (await callsOf(env, target, step)) !== null) {
-        throw new PaymentStepRetry('the close was attempted already')
+      // A close is sent once, and an entry once unless the POS refused it (nothing written):
+      // another run of this payment that got its turn first has sent it.
+      if (step === 'payAndClose' || step === 'addLines') {
+        const earlier = await callsOf(env, target, step)
+        if (earlier !== null && (step === 'payAndClose' || earlier.outcome !== 'refused')) {
+          throw new PaymentStepRetry(`the ${step} was attempted already`)
+        }
       }
       await record('attempting')
       attempted = true
@@ -806,7 +867,7 @@ interface StepCalls {
 async function callsOf(
   env: PaymentEnvironment,
   target: PaymentJob,
-  step: 'isolateLines' | 'undoIsolate' | 'payAndClose',
+  step: RouteWrite,
 ): Promise<StepCalls | null> {
   const left = sql`${paymentSteps.outcome} = 'attempting'`
   const [row] = await withTenant(env.pool, target.tenantId, (tx) =>
@@ -1019,6 +1080,250 @@ function quantityText(quantity: string): string {
   return quantity.includes('.') ? quantity.replace(/\.?0+$/, '') : quantity
 }
 
+/** What `payment.entered` takes: the outcome of the entry, the bill it opened, a refusal's code. */
+type Entry = {
+  readonly outcome: 'entered' | 'refused' | 'unknown'
+  /** The POS bill's id, kept in the backend (rule 3). */
+  readonly billRef: string | null
+  readonly code: string | null
+}
+
+/**
+ * A pay-first payment `queued` with a table (#113): enter its round on the payment table
+ * (`addLines`), then `payment.entered`. Only the payment table is written, which the payment
+ * holds: the real table's turn is not taken.
+ */
+const enterStep: RouteStep = async (env, target, payment, deps) => {
+  const pos = await posOf(env, target, payment, deps)
+  if (pos === null) {
+    // Nothing was sent: no POS place for the table any more.
+    await route(env, target, {
+      type: 'payment.entered',
+      outcome: 'refused',
+      billRef: null,
+      code: 'pos_table_missing',
+    })
+    return 'next'
+  }
+  if (pos.paused) throw new PaymentStepRetry('the connection is paused')
+  const paymentTable = await paymentTableOf(env, target, payment)
+  const entry = await enter(env, target, payment, pos, paymentTable)
+  if (entry === 'later') {
+    await queuePrepare(env, target, READ_BACK_SECONDS)
+    return 'wait'
+  }
+  await route(env, target, { type: 'payment.entered', ...entry })
+  return 'next'
+}
+
+/**
+ * The entry, or `later` while one whose outcome is unknown may still land. After an earlier call,
+ * the payment table's one bill is that call, landed, only when its lines are the round's
+ * (`billIsRound`): a waiter's bill there is not the round. An earlier call not seen there past the
+ * read-back window is unknown (it may land later, C52): never sent again, a manager is asked. A
+ * first call is sent only to an empty payment table.
+ */
+async function enter(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  pos: PaymentPos,
+  paymentTable: PosRef,
+): Promise<Entry | 'later'> {
+  const lines = await enterLinesOf(env, target, payment, pos)
+  const round = lines === null ? null : await roundOf(env, target, lines.items)
+  const landed = (bills: TableBills): Entry | null => {
+    const [bill] = bills.bills
+    if (bills.bills.length !== 1 || bill === undefined || round === null) return null
+    const read = bill.lines.map((line) => ({
+      item: line.item?.pos ?? null,
+      quantity: line.quantity,
+      amountMinor: line.amountMinor,
+    }))
+    return billIsRound(round, read)
+      ? { outcome: 'entered', billRef: bill.ref.pos, code: null }
+      : null
+  }
+  // The table is read before the calls so far: a run that sees a bill there sees the attempt of
+  // the call that made it too (it is recorded before the call leaves).
+  const before = await readPos(pos, paymentTable)
+  const earlier = await callsOf(env, target, 'addLines')
+  if (earlier !== null && earlier.outcome !== 'refused') {
+    const found = landed(before)
+    if (found !== null) return found
+    if (mayStillLand(earlier, pos.timings)) return 'later'
+    return { outcome: 'unknown', billRef: null, code: 'not_found' }
+  }
+  // A waiter's bill on the payment table: nothing is sent, the hold is released.
+  if (before.bills.length > 0)
+    return { outcome: 'refused', billRef: null, code: 'payment_table_busy' }
+  if (lines === null) return { outcome: 'refused', billRef: null, code: 'item_not_on_pos' }
+  if (lines.tableNoteDropped) {
+    // Staff find the round on the payment table without the guest's table named (no guest text).
+    env.log.warn(
+      { paymentId: payment.id },
+      'the table note fits on no line: the round goes without it',
+    )
+  }
+  const { timezone, dayEndsAt } = lines.venue
+  const ref = `${payment.id}-enter`
+  const outcome = await writePos(env, target, pos, 'addLines', ref, () =>
+    pos.connector.addLines(pos.context, {
+      table: paymentTable,
+      lines: lines.lines,
+      ref,
+      serviceDayStartsAt: serviceDayStartsAt(env.now(), timezone, dayEndsAt).toISOString(),
+      excludeBills: [],
+    }),
+  )
+  if (outcome.kind === 'done' && outcome.result.bill !== null) {
+    return { outcome: 'entered', billRef: outcome.result.bill.pos, code: null }
+  }
+  if (outcome.kind === 'refused') {
+    return { outcome: 'refused', billRef: null, code: outcome.refusal.code }
+  }
+  // Done with no bill named, or unknown: read it back now, and on the next runs for the window.
+  return landed(await readPos(pos, paymentTable)) ?? 'later'
+}
+
+/**
+ * The round as it was entered: each line's POS item (`items`, in the sent order's order), with the
+ * quantity and the amount the payment keeps for it. Null where the two don't line up.
+ */
+async function roundOf(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  items: readonly string[],
+): Promise<RoundLine[] | null> {
+  const lines = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ quantity: paymentLines.quantity, amountMinor: paymentLines.posAmountMinor })
+      .from(paymentLines)
+      .where(eq(paymentLines.paymentId, target.paymentId))
+      .orderBy(paymentLines.position),
+  )
+  if (lines.length !== items.length) return null
+  return lines.map((line, index) => ({
+    item: items[index] ?? '',
+    quantity: line.quantity,
+    amountMinor: line.amountMinor,
+  }))
+}
+
+/**
+ * The round's lines as the POS takes them, from the payment's sent order: its items' POS links,
+ * and the guest's table as a note on the first line where notes reach the ticket. Null where an
+ * item has no POS link (nothing is sent).
+ */
+async function enterLinesOf(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  pos: PaymentPos,
+): Promise<{
+  readonly lines: OrderLine[]
+  /** Each line's POS item, in order: what the check matches the bill against. */
+  readonly items: readonly string[]
+  /** "For Table 7" was due on the ticket and fit on no line (`withTableNote`). */
+  readonly tableNoteDropped: boolean
+  readonly venue: { readonly timezone: string; readonly dayEndsAt: string }
+} | null> {
+  const sentOrderId = payment.sentOrderId
+  const found = await placeOf(env, target, payment.tableId)
+  if (sentOrderId === null || found === null) return null
+  const read = await withTenant(env.pool, target.tenantId, async (tx) => {
+    const [sent] = await tx
+      .select({ lines: sentOrders.lines })
+      .from(sentOrders)
+      .where(eq(sentOrders.id, sentOrderId))
+    const [venue] = await tx
+      .select({
+        timezone: venues.timezone,
+        dayEndsAt: venues.serviceDayEndsAt,
+        locale: venues.defaultLocale,
+      })
+      .from(venues)
+      .where(eq(venues.id, target.venueId))
+    const [table] = await tx
+      .select({ name: venueTables.name, number: venueTables.number })
+      .from(venueTables)
+      .where(eq(venueTables.id, payment.tableId))
+    if (sent === undefined || venue === undefined) return null
+    const lines = sentOrderLinesOf(sent.lines)
+    const nodeIds = [...new Set(lines.flatMap((line) => [line.itemId, ...line.optionIds]))]
+    const links =
+      nodeIds.length === 0
+        ? []
+        : await tx
+            .select({ nodeId: sourceLinks.nodeId, externalId: sourceLinks.externalId })
+            .from(sourceLinks)
+            .where(
+              and(
+                eq(sourceLinks.integrationId, found.integration.id),
+                inArray(sourceLinks.nodeId, nodeIds),
+                eq(sourceLinks.state, 'active'),
+              ),
+            )
+    const notes = await tx
+      .select({ lineId: sentOrderNotes.lineId, note: sentOrderNotes.note })
+      .from(sentOrderNotes)
+      .where(eq(sentOrderNotes.sentOrderId, sentOrderId))
+    return { lines, venue, table: table ?? null, links, notes }
+  })
+  if (read === null) return null
+  const reach = pos.connector.capabilities.notesReachTicket
+  const link = new Map(read.links.map((row) => [row.nodeId, row.externalId]))
+  const notes = new Map(read.notes.map((row) => [row.lineId, row.note]))
+  const lines: OrderLine[] = []
+  for (const line of read.lines) {
+    const mapped = toOrderLine(line, link, reach, notes)
+    if (mapped === null) return null
+    lines.push(mapped)
+  }
+  if (lines.length === 0) return null
+  const items = lines.map((line) => line.item.pos)
+  const label = read.table === null ? null : tableLabel(alertLocale(read.venue.locale), read.table)
+  if (!reach || label === null) return { lines, items, tableNoteDropped: false, venue: read.venue }
+  const noted = withTableNote(lines, payFirstTableNote(alertLocale(read.venue.locale), label))
+  return {
+    lines: noted,
+    items,
+    tableNoteDropped: noted.every((line, index) => line.note === lines[index]?.note),
+    venue: read.venue,
+  }
+}
+
+/** The longest note a POS line takes (`OrderLineSchema`). */
+const NOTE_MAX = 200
+
+/**
+ * The round's lines with the guest's table ("for Table 7") on the first line it fits on, before
+ * the guest's own note; never cutting the guest's text. Where it fits on no line, it is left out.
+ */
+export function withTableNote(lines: readonly OrderLine[], forTable: string): OrderLine[] {
+  const noted = (note: string | null) => (note === null ? forTable : `${forTable} · ${note}`)
+  const at = lines.findIndex((line) => noted(line.note).length <= NOTE_MAX)
+  return lines.map((line, index) => (index === at ? { ...line, note: noted(line.note) } : line))
+}
+
+/** True when the payment table's bill is the one the pay-first entry opened, or that is unknown. */
+async function enteredBill(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  bill: PosRef,
+): Promise<boolean> {
+  const sentOrderId = payment.sentOrderId
+  if (sentOrderId === null) return true
+  const [sent] = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ posBillRef: sentOrders.posBillRef })
+      .from(sentOrders)
+      .where(eq(sentOrders.id, sentOrderId)),
+  )
+  return sent?.posBillRef === null || sent?.posBillRef === undefined || sent.posBillRef === bill.pos
+}
+
 /**
  * `isolated` (or `checked` with no close attempted): the last check on a reading of the isolated
  * bill and a fresh one of the real table (`payment.checked`), then the close (`payAndClose`) with
@@ -1099,7 +1404,9 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // read counts towards the POS's calls per second.)
   const found = lines.reduce((sum, line) => addMinor(sum, line.amountMinor), payment.tipMinor)
   const short = payment.amountMinor === null || found < payment.amountMinor
-  const real = isolated !== null && short ? linesOf(await readPos(pos, pos.table)) : []
+  // A pay-first round was never on the real table: only the payment table's bill is checked.
+  const onBill = payment.kind === 'on_bill'
+  const real = onBill && isolated !== null && short ? linesOf(await readPos(pos, pos.table)) : []
   const provider = providerFor(env, target, deps, payment.providerKind)
   // The hold, read again right before the close: one cancelled or run out at the provider stops
   // the payment here, before a receipt is printed for a card that can't be charged.
@@ -1112,26 +1419,55 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     providerRef(payment.providerPaymentRef),
   )
   if (!hold.complete) throw new PaymentStepRetry('the hold could not be read')
-  const checked = await route(env, target, {
-    type: 'payment.checked',
-    isolated:
-      isolated === null
-        ? null
-        : {
-            bills: onTable.bills.length,
-            totalMinor:
-              bill?.totalMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.totalMinor), 0),
-            paidMinor:
-              bill?.paidMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.paidMinor), 0),
-            lines: lines.map((line) => ({
-              quantity: line.quantity,
-              amountMinor: line.amountMinor,
-            })),
-          },
-    real,
-    partialCapture: provider.capabilities.partialCapture,
-    heldMinor: hold.value.status === 'held' ? hold.value.heldMinor : 0,
-  })
+  const reading =
+    isolated === null
+      ? null
+      : {
+          bills: onTable.bills.length,
+          totalMinor:
+            bill?.totalMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.totalMinor), 0),
+          paidMinor:
+            bill?.paidMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.paidMinor), 0),
+          lines: lines.map((line) => ({
+            quantity: line.quantity,
+            amountMinor: line.amountMinor,
+          })),
+        }
+  // A pay-first check names each bill line's POS item, and the round's, to tell the round from
+  // someone else's bill (kept in the backend, rule 3).
+  const roundItems =
+    onBill || isolated === null
+      ? null
+      : ((await enterLinesOf(env, target, payment, pos))?.items ?? null)
+  const partialCapture = provider.capabilities.partialCapture
+  const heldMinor = hold.value.status === 'held' ? hold.value.heldMinor : 0
+  const checked = onBill
+    ? await route(env, target, {
+        type: 'payment.checked',
+        isolated: reading,
+        real,
+        partialCapture,
+        heldMinor,
+      })
+    : await route(env, target, {
+        type: 'payment.pay_first_checked',
+        // Another bill than the one the entry opened is not the round: the check fails.
+        bill:
+          reading === null ||
+          (first !== undefined && !(await enteredBill(env, target, payment, first.ref)))
+            ? null
+            : {
+                ...reading,
+                lines: lines.map((line) => ({
+                  item: line.item?.pos ?? null,
+                  quantity: line.quantity,
+                  amountMinor: line.amountMinor,
+                })),
+              },
+        items: roundItems,
+        partialCapture,
+        heldMinor,
+      })
   if (checked.state !== 'checked' || isolated === null) return 'next'
 
   const now = await paymentOf(env, target)
@@ -1485,7 +1821,7 @@ const stepOf =
   }
 
 /** Where a payment stands, as the route reads it. */
-type RouteState = Pick<PaymentRow, 'state' | 'reason' | 'paymentTableId'>
+type RouteState = Pick<PaymentRow, 'state' | 'reason' | 'paymentTableId' | 'kind'>
 
 /** True when the worker has a step to take for the payment (the recovery's question, #112). */
 export function hasNextStep(payment: RouteState): boolean {
@@ -1501,12 +1837,15 @@ function routeStep(payment: RouteState): RouteStep | null {
   if ((state === 'held' || state === 'queued') && payment.paymentTableId === null) {
     return queueStep
   }
-  if (state === 'queued') return isolateStep
+  if (state === 'queued') return payment.kind === 'pay_first' ? enterStep : isolateStep
   if (state === 'isolated' && reason === 'check_failed') return undoStep
-  if (state === 'isolated' || state === 'checked') return checkAndClose
+  if (state === 'isolated' || state === 'entered' || state === 'checked') return checkAndClose
   if (state === 'closed') return captureStep
   if (state === 'unconfirmed' && reason === 'receipt_printed') return captureStep
-  if (state === 'unconfirmed' && reason === 'no_receipt') return undoStep
+  // A pay-first round has no lines to put back: "No receipt" cancels it (`cancelling`).
+  if (state === 'unconfirmed' && reason === 'no_receipt' && payment.kind === 'on_bill') {
+    return undoStep
+  }
   if (state !== 'unconfirmed' && isFinalPaymentState(state) && payment.paymentTableId !== null) {
     return freeStep
   }

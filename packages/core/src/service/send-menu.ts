@@ -14,6 +14,7 @@ import { resolveRoutes } from '../apply/menu-routes'
 import { loadCurrentSnapshot, loadLiveOverlay } from '../apply/publish'
 import type { LocalizedText } from '../locales'
 import { addMinor, type Currency, multiplyMinor } from '../money'
+import type { PaymentMode } from '../templates/venue-menu'
 
 /** One option of an item, as a Send prices it. */
 export interface SendMenuOption {
@@ -31,6 +32,8 @@ export interface SendMenuItem {
   readonly options: ReadonlyMap<string, SendMenuOption>
   /** A modifier group of the item asks for at least one choice (`min` 1 or more). */
   readonly requiredOptions?: boolean
+  /** The item's own payment mode (D113), or null where it takes the venue's default. */
+  readonly paymentMode?: PaymentMode | null
 }
 
 /** The table's menu for a Send. */
@@ -109,6 +112,7 @@ export async function loadSendMenu(
       soldOut: soldOut.has(id) || item.availability.state === 'sold_out',
       name: nameOf(id, item.name),
       options,
+      paymentMode: item.payment_mode ?? null,
     })
   }
   return { currency: body.currency, items }

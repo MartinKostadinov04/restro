@@ -8,7 +8,7 @@ export const ITEM_GROUPS = [
   { id: 'content', keys: ['name', 'description', 'image'] },
   { id: 'pricing', keys: ['price', 'portion', 'abv'] },
   { id: 'attributes', keys: ['allergens', 'dietary', 'tags'] },
-  { id: 'ordering', keys: ['availability', 'order_mode', 'for_sale', 'visible'] },
+  { id: 'ordering', keys: ['availability', 'order_mode', 'payment_mode', 'for_sale', 'visible'] },
   { id: 'internal', keys: ['internal_note'] },
 ] as const
 

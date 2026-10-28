@@ -25,10 +25,18 @@ const BreakerJson = z.record(z.string(), z.unknown())
 
 /** True while the provider's breaker pauses paying in the app at the venue. */
 export async function payingPaused(stx: ServiceTx): Promise<boolean> {
-  const [account] = await stx.tx
+  return payingPausedAt(stx.tx, stx.venueId)
+}
+
+/** `payingPaused` in a read's own transaction (the guest state, #113). */
+export async function payingPausedAt(
+  tx: Pick<ServiceTx['tx'], 'select'>,
+  venueId: string,
+): Promise<boolean> {
+  const [account] = await tx
     .select({ pausedAt: paymentAccounts.payingPausedAt })
     .from(paymentAccounts)
-    .where(eq(paymentAccounts.venueId, stx.venueId))
+    .where(eq(paymentAccounts.venueId, venueId))
   return account !== undefined && account.pausedAt !== null
 }
 

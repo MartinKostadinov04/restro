@@ -3,13 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { isId, newId } from './ids'
 import {
   applyOrderEdit,
+  dropHeldLines,
   EMPTY_TABLE_ORDER,
+  holdPayFirstLines,
   nextOrderChangeAt,
   ORDER_IDLE_MS,
   type OrderEdit,
   orderFromRow,
   orderLineIdFor,
   orderToRow,
+  releaseHeldLines,
   returnSentLines,
   type TableOrderDraft,
   takeSentLines,
@@ -267,5 +270,91 @@ describe('the lines a Send takes and gives back (#77)', () => {
     expect(back.lines).toHaveLength(2)
     expect(back.lines.find((line) => line.itemId === gin)).toMatchObject({ qty: 3 })
     expect(back.lines.find((line) => line.itemId === lime)).toMatchObject({ qty: 1 })
+  })
+})
+
+describe('the pay-first lines a Send holds for its payment (#113)', () => {
+  const order = run(run(EMPTY_TABLE_ORDER, add(2)).order, {
+    type: 'order.add',
+    itemId: lime,
+    optionIds: [],
+    qty: 1,
+    note: '',
+  }).order
+  const isGin = (line: { readonly itemId: string }) => line.itemId === gin
+  const ginLine = { itemId: gin, optionIds: [], qty: 2, note: '' }
+
+  it('holds exactly the live pay-first lines, and leaves the others alone', () => {
+    const held = holdPayFirstLines(order, [ginLine], isGin, 'py_1')
+    if (!held.ok) throw new Error(held.code)
+    expect(held.lines.map((line) => line.itemId)).toEqual([gin])
+    expect(held.order.lines.find((line) => line.itemId === gin)?.heldBy).toBe('py_1')
+    expect(held.order.lines.find((line) => line.itemId === lime)?.heldBy).toBeNull()
+  })
+
+  it('holds the pay-first lines the Send names, leaving the others for a later Pay', () => {
+    // The gin and the lime both paid first.
+    const both = () => true
+    const held = holdPayFirstLines(
+      order,
+      [{ itemId: lime, optionIds: [], qty: 1, note: '' }],
+      both,
+      'py_1',
+    )
+    if (!held.ok) throw new Error(held.code)
+    expect(held.lines.map((line) => line.itemId)).toEqual([lime])
+    expect(held.order.lines.find((line) => line.itemId === gin)?.heldBy).toBeNull()
+    // The same line twice is one line too many.
+    expect(
+      holdPayFirstLines(
+        held.order,
+        [{ itemId: lime, optionIds: [], qty: 1, note: '' }],
+        both,
+        'py_2',
+      ),
+    ).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+  })
+
+  it('a "Send and pay" (`whole`) names every live pay-first line, or is refused', () => {
+    const both = () => true
+    const lime1 = { itemId: lime, optionIds: [], qty: 1, note: '' }
+    expect(holdPayFirstLines(order, [lime1], both, 'py_1', true)).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+    const held = holdPayFirstLines(order, [lime1, ginLine], both, 'py_1', true)
+    if (!held.ok) throw new Error(held.code)
+    expect(held.lines.map((line) => line.itemId)).toEqual([gin, lime])
+  })
+
+  it('refuses a part that differs from the order, and one with nothing to pay first', () => {
+    expect(holdPayFirstLines(order, [{ ...ginLine, qty: 3 }], isGin, 'py_1')).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+    expect(holdPayFirstLines(order, [], isGin, 'py_1')).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+    expect(holdPayFirstLines(order, [ginLine], () => false, 'py_1')).toEqual({
+      ok: false,
+      code: 'order_empty',
+    })
+  })
+
+  it('drops the held lines once on the POS, and frees them when the payment ends before it', () => {
+    const held = holdPayFirstLines(order, [ginLine], isGin, 'py_1')
+    if (!held.ok) throw new Error(held.code)
+    expect(dropHeldLines(held.order, 'py_1', NOW).lines.map((line) => line.itemId)).toEqual([lime])
+    const freed = releaseHeldLines(held.order, 'py_1')
+    const line = freed.lines.find((other) => other.itemId === gin)
+    expect(line?.heldBy).toBeNull()
+    // A new revision: the phone sees the line changed and names it afresh.
+    const before = held.order.lines.find((other) => other.itemId === gin)?.rev ?? 0
+    expect(line?.rev).toBe(before + 1)
+    expect(releaseHeldLines(held.order, 'py_2')).toEqual(held.order)
   })
 })

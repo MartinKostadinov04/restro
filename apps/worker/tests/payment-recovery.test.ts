@@ -16,6 +16,7 @@ import {
 } from '../src/jobs/payment-recovery'
 
 const row = (partial: Partial<RecoveryRow>): RecoveryRow => ({
+  kind: 'on_bill',
   state: 'priced',
   reason: null,
   paymentTableId: null,
@@ -71,12 +72,29 @@ describe('one pass of the payment recovery', () => {
         'check',
       ])
     }
-    for (const reason of ['close_unknown', 'close_refused', 'lines_not_back']) {
+    for (const reason of [
+      'close_unknown',
+      'close_refused',
+      'lines_not_back',
+      'enter_unknown',
+      'entered_check_failed',
+    ]) {
       expect(recoveryActions(row({ state: 'unconfirmed', reason, idleMs: 86_400_000 }))).toEqual([])
       expect(recoveryActions(row({ state: 'unconfirmed', reason, captureDue: true }))).toEqual([
         'check',
       ])
     }
+  })
+
+  it('takes a pay-first round on again from its entry or its check (#113)', () => {
+    const payFirst = { kind: 'pay_first', paymentTableId: 'tb_payment', idleMs: PAYMENT_STALE_MS }
+    for (const state of ['queued', 'entered', 'checked', 'closed']) {
+      expect(recoveryActions(row({ ...payFirst, state }))).toEqual(['prepare'])
+    }
+    // "No receipt" on a pay-first round cancels it at once: nothing is left at `unconfirmed`.
+    expect(
+      recoveryActions(row({ ...payFirst, state: 'unconfirmed', reason: 'no_receipt' })),
+    ).toEqual([])
   })
 
   it('reads a refused release back later, never releasing it at once', () => {

@@ -139,6 +139,10 @@
       "orderable": "Can be ordered",
       "ask_waiter": "Ask your waiter",
       "hidden": "Hidden"
+    },
+    "payment_mode": {
+      "on_bill": "On the bill",
+      "pay_first": "Pay first"
     }
   },
   "devFields": {

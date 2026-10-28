@@ -100,6 +100,13 @@ export const GuestTableStateSchema = z.strictObject({
   ordering: z.strictObject({
     state: z.enum(['on', 'paused', 'closed']),
     notesAndOptions: z.boolean(),
+    /**
+     * Pay-first at this table (#113): `on` where the POS opens a bill with a first round, pay-first
+     * applies here and paying is on; `paused` while paying is paused; else `off`. No ids.
+     */
+    payFirst: z.enum(['on', 'paused', 'off']),
+    /** A tip can be given when paying here (D127: the POS records it on the receipt). */
+    tips: z.boolean(),
     /** The venue's night (#82): `at` is the wall-clock time the words name, `HH:MM`. */
     night: z.strictObject({
       state: z.enum(NIGHT_STATES),

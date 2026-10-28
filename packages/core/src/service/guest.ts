@@ -75,6 +75,7 @@ import {
   sealLocationPass,
 } from './location-pass'
 import { isFinalPaymentState } from './pay'
+import type { PayFirstState } from './pay-first'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
@@ -139,8 +140,12 @@ export interface GuestTableState {
   readonly ordering: {
     readonly state: 'on' | 'paused' | 'closed'
     readonly notesAndOptions: boolean
+    /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
+    readonly tips: boolean
     /** The venue's night (#82): "Last orders at 04:30", "closed for tonight", opening later. */
     readonly night: GuestNight
+    /** Whether pay-first items can be paid at Send here now (#113, #114); no ids. */
+    readonly payFirst: PayFirstState
   }
   readonly location: GuestLocation
   /** The table's order; null without a pass where the venue checks location (D122 §4). */
@@ -392,6 +397,9 @@ const SENT_ORDER_STATES: Readonly<Record<string, GuestTableState['sentOrders'][n
     unconfirmed: 'unconfirmed',
   }
 
+/** A pay-first sent order's states the phone hears of only through its payment (#113). */
+const PAY_FIRST_UNSHOWN: readonly string[] = ['waiting', 'not_sent', 'unconfirmed']
+
 const seconds = (ms: number) => Math.max(0, Math.ceil(ms / 1000))
 
 /** The poll cadence for a screen: fast on the order and the bill, and while a Send is in flight. */
@@ -434,6 +442,9 @@ export function projectGuestState(
   const sentOrders = (sees ? read.sentOrders : []).flatMap((sent) => {
     const state = SENT_ORDER_STATES[sent.state]
     if (state === undefined) return []
+    // A pay-first round not on the bill (#113): waiting for its payment, Not sent or unconfirmed,
+    // the payment's own screen speaks for it, never a word of a sent order's.
+    if (sent.kind === 'pay_first' && PAY_FIRST_UNSHOWN.includes(sent.state)) return []
     const ended = sent.settledAt !== null && now - sent.settledAt.getTime() > ENDED_SENT_ORDER_MS
     return ended
       ? []
@@ -452,6 +463,10 @@ export function projectGuestState(
     (sent) => sent.state === 'sending' || sent.state === 'awaiting_approval',
   )
   const bill = sees ? read.bill : null
+  // An item paid first at this table (#113): the face sends it with Pay, or offers it through
+  // the waiter while pay-first is off.
+  const modeOf = (itemId: string) =>
+    read.payFirst.items.has(itemId) ? ('pay_first' as const) : ('on_bill' as const)
   return {
     unchanged: false,
     version: read.version,
@@ -460,6 +475,8 @@ export function projectGuestState(
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       notesAndOptions: read.notesAndOptions,
+      tips: read.tips,
+      payFirst: read.sitting === null ? 'off' : read.payFirst.state,
       night,
     },
     location,
@@ -475,8 +492,7 @@ export function projectGuestState(
               qty: line.qty,
               note: line.note,
               rev: line.rev,
-              // Nothing in the menu says an item is paid first yet: every line is on the bill.
-              mode: 'on_bill' as const,
+              mode: modeOf(line.itemId),
               held: line.heldBy,
             })),
           removed: (order?.lines ?? []).flatMap((line) =>
@@ -505,7 +521,7 @@ export function projectGuestState(
                     optionIds: line.optionIds,
                     qty: line.qty,
                     note: line.note,
-                    mode: 'on_bill' as const,
+                    mode: modeOf(line.itemId),
                   })),
                 },
         },
@@ -796,7 +812,10 @@ export interface GuestActed {
   readonly pass: string | null
   /** Seconds the phone should wait before it tries again (a rate trip), or null. */
   readonly retryAfter: number | null
-  /** The payment handle, only in the answer to a `pay.start` that made or repeats a payment. */
+  /**
+   * The payment handle, only in the answer to a `pay.start`, or a Send with pay-first lines
+   * (#113), that made or repeats a payment.
+   */
   readonly handle: string | null
 }
 
@@ -824,18 +843,30 @@ const GUARDED_HERE: ReadonlySet<string> = new Set(['location.check'])
 
 /**
  * True for a command that must come from a phone at the venue (D121, D122 §4): one that adds or
- * changes an on-the-bill line, a Send with on-the-bill lines, and the phone's own check. Removing a
- * line and Undo never are. Every line is on the bill until the menu can say an item is paid first,
- * so every addition, change and Send is.
+ * changes a line, a Send with on-the-bill lines, and the phone's own check. Removing a line and
+ * Undo never are. A Send of pay-first lines alone is not (#113): it is paid before it goes.
+ * An addition is located whatever its item: the order does not know yet how it will be sent.
  */
-function isLocated(type: string): boolean {
+function isLocated(command: GuestActInput['command'], type: string): boolean {
+  if (type === 'order.send') return !Array.isArray(command.lines) || command.lines.length > 0
   return (
     type === 'order.add' ||
     type === 'order.change' ||
     type === 'order.restore' ||
-    type === 'order.send' ||
     type === 'location.check'
   )
+}
+
+/** The pay-first part of a Send as the shell's schema parsed it (#113), or null. */
+function payFirstOf(command: GuestActInput['command']): {
+  readonly lines: unknown
+  readonly tipMinor: unknown
+  readonly tipPercent: unknown
+} | null {
+  const part = command.payFirst
+  return typeof part === 'object' && part !== null && 'lines' in part
+    ? (part as { lines: unknown; tipMinor: unknown; tipPercent: unknown })
+    : null
 }
 
 /** The per-phone limits a command counts against. */
@@ -847,6 +878,8 @@ function phoneLimits(command: GuestActInput['command'], withPosition: boolean): 
     (command.type === 'order.change' && typeof command.delta === 'number' && command.delta > 0)
   if (addition) names.push('additions')
   if (command.type === 'order.send') names.push('sendGap', 'sends')
+  // A Send that pays (#113) counts as a Pay too.
+  if (command.type === 'order.send' && payFirstOf(command) !== null) names.push('payGap', 'pays')
   return names
 }
 
@@ -894,7 +927,11 @@ export async function guestAct(
   // A Send's first answer comes before every guard, Turnstile's siteverify above all (its token
   // works once): a repeat skips the phone's limits, the location and Turnstile, and the engine
   // answers it with the sent order it made.
-  const repeatSend = type === 'order.send' && (await sentOrderMade(pool, target, actionId))
+  const payFirst = type === 'order.send' ? payFirstOf(input.command) : null
+  const repeatSend =
+    type === 'order.send' &&
+    ((await sentOrderMade(pool, target, actionId)) ||
+      (payFirst !== null && (await paymentByAction(pool, target, actionId)) !== null))
 
   const position = input.check?.location
   if (!repeatSend) {
@@ -908,6 +945,13 @@ export async function guestAct(
       return limited(phoneLimit)
     }
   }
+  const limits = input.limiter ?? limiter
+  const subject = `${target.hash}:${input.phone}`
+  if (payFirst !== null && !repeatSend) {
+    // One open payment per phone, as at Pay (D127 §Limits).
+    const open = limits.openPayment(subject)
+    if (open !== null && !(await paymentEnded(pool, target, open))) return reject('rate_limited')
+  }
 
   const guard = await readGuard(pool, target)
   if (guard === null) return { ok: false, code: 'code_retired' }
@@ -915,7 +959,7 @@ export async function guestAct(
   const checks = guard.settings.locationCheck
   let claims = checks ? heldClaims(input.pass, input.passKey, target, guard.sittingId, now) : null
   let pass: string | null = null
-  const located = checks && isLocated(type) && !repeatSend
+  const located = checks && isLocated(input.command, type) && !repeatSend
 
   if (located && claims === null) {
     if (position === undefined || input.check?.consentVersion !== LOCATION_CONSENT_VERSION) {
@@ -946,7 +990,7 @@ export async function guestAct(
   }
 
   if (type === 'order.send' && !repeatSend) {
-    // Turnstile at an on-the-bill Send only (D119, D121): every line is on the bill for now.
+    // Turnstile at every Send (D119, D121), one token for both of its parts (#113).
     const token = input.check?.humanToken
     const verdict =
       token === undefined || input.humanCheck === undefined
@@ -1000,6 +1044,8 @@ export async function guestAct(
     }
   }
 
+  // A Send that pays gets a fresh handle, a repeat too: the engine stores its hash (#113).
+  const handle = payFirst === null ? null : randomBytes(16).toString('base64url')
   const command =
     type === 'waiter.call'
       ? {
@@ -1009,7 +1055,20 @@ export async function guestAct(
           kind: input.command.request,
           ageMs: input.ageMs,
         }
-      : { ...input.command, tableId: target.tableId, ageMs: input.ageMs }
+      : {
+          ...input.command,
+          tableId: target.tableId,
+          ageMs: input.ageMs,
+          ...(payFirst === null || handle === null
+            ? {}
+            : {
+                payFirst: {
+                  lines: payFirst.lines,
+                  tip: tipOfCommand(payFirst),
+                  handleHash: hashPaymentHandle(handle),
+                },
+              }),
+        }
   // A Send prices its lines from the table's menu, read before the transaction; the pass's consent
   // version goes on the sent order with the pass's sitting (D119).
   const sendMenu =
@@ -1029,12 +1088,27 @@ export async function guestAct(
   if (result.status === 'refused' && result.code === 'code_retired') {
     return { ok: false, code: 'code_retired' }
   }
-  if (type === 'order.send' && result.status === 'accepted' && input.queueSend !== undefined) {
+  if (
+    type === 'order.send' &&
+    result.status === 'accepted' &&
+    typeof result.details.sentOrderId === 'string' &&
+    input.queueSend !== undefined
+  ) {
     await input.queueSend({
       tenantId: target.tenantId,
       venueId: target.venueId,
       tableId: target.tableId,
     })
+  }
+  // The Send's payment (#113): the worker prices it and makes the hold, as after a Pay.
+  const paymentId = result.details.paymentId
+  const paying = result.status === 'accepted' && typeof paymentId === 'string'
+  if (paying) {
+    limits.setOpenPayment(subject, paymentId)
+    await input.queuePayment?.(
+      { tenantId: target.tenantId, venueId: target.venueId, paymentId },
+      'prepare',
+    )
   }
   // The engine refuses a located command whose pass names a sitting that has since ended.
   const lost = result.status === 'refused' && result.code === 'location_needed'
@@ -1060,7 +1134,7 @@ export async function guestAct(
     state: projected,
     pass: holds ? pass : null,
     retryAfter: result.status === 'refused' && result.code === 'rate_limited' ? 10 : null,
-    handle: null,
+    handle: paying ? handle : null,
   }
 }
 
@@ -1104,8 +1178,8 @@ async function paymentEnded(pool: DbPool, target: CodeTarget, paymentId: string)
   })
 }
 
-/** The tip a `pay.start` names, in the engine's words: it starts at zero (D127). */
-function tipOfCommand(command: GuestActInput['command']) {
+/** The tip a `pay.start` (or a Send's pay-first part) names, in the engine's words: zero first (D127). */
+function tipOfCommand(command: Readonly<Record<string, unknown>>) {
   const { tipMinor, tipPercent } = command
   if (typeof tipMinor === 'number' && tipMinor > 0) return { kind: 'amount', minor: tipMinor }
   if (typeof tipPercent === 'number') return { kind: 'percent', percent: tipPercent }
@@ -1270,7 +1344,7 @@ export interface GuestPaymentInput {
 }
 
 /** The states the worker moves on: a poll that finds one queues the step again. */
-const WORKER_STEP: Readonly<Record<string, 'prepare' | 'check'>> = {
+const WORKER_STEP: Readonly<Record<string, 'prepare'>> = {
   requested: 'prepare',
   priced: 'prepare',
   cancelling: 'prepare',
@@ -1278,12 +1352,31 @@ const WORKER_STEP: Readonly<Record<string, 'prepare' | 'check'>> = {
   held: 'prepare',
   queued: 'prepare',
   isolated: 'prepare',
+  // A pay-first round on the payment table (#113), after its entry or a manager's "On the till".
+  entered: 'prepare',
   checked: 'prepare',
   closed: 'prepare',
 }
 
 /** An unconfirmed close a manager or owner answered: the worker captures or puts the lines back. */
 const ANSWERED = ['receipt_printed', 'no_receipt']
+
+/**
+ * The worker job a payment waits on, or null where it waits on the guest, staff or nothing. The
+ * phone's poll queues it, and so does whoever moved the payment there (a manager's answer: "On the
+ * till" leaves it `entered`, "Not on the till" `cancelling`), so the worker never waits for
+ * recovery.
+ */
+export function paymentWorkerJob(payment: {
+  readonly state: string
+  readonly reason: string | null
+}): 'prepare' | null {
+  const step = WORKER_STEP[payment.state]
+  if (step !== undefined) return step
+  return payment.state === 'unconfirmed' && ANSWERED.includes(payment.reason ?? '')
+    ? 'prepare'
+    : null
+}
 
 /** A decimal quantity as the bill shows it: "2.000000" is "2", "0.500000" is "0.5". */
 function shownQuantity(quantity: string): string {
@@ -1341,11 +1434,7 @@ export async function guestPayment(
   if (found === null) return { ok: false, code: 'unknown_payment' }
   const { payment, lines } = found
 
-  const step =
-    WORKER_STEP[payment.state] ??
-    (payment.state === 'unconfirmed' && ANSWERED.includes(payment.reason ?? '')
-      ? 'prepare'
-      : undefined)
+  const step = paymentWorkerJob(payment)
   const overdue =
     payment.state === 'awaiting_guest' &&
     payment.confirmBy !== null &&

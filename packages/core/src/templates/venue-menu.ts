@@ -1,7 +1,7 @@
 // The default template `venue-menu@1`: the doc's "Standard Item fields" with their owners and
-// combinators from the ownership matrix, the brief's additions (order_mode, abv, internal_note,
-// for_sale, visible), and the Section, Menu, Modifier group and Option fields. Tenants get a copy
-// they can extend; this constant itself is frozen.
+// combinators from the ownership matrix, the brief's additions (order_mode, payment_mode, abv,
+// internal_note, for_sale, visible), and the Section, Menu, Modifier group and Option fields.
+// Tenants get a copy they can extend; this constant itself is frozen.
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
 import type { FieldDefinition } from '../field-definition'
@@ -13,6 +13,16 @@ export const ORDER_MODES = ['orderable', 'ask_waiter', 'hidden'] as const
 
 /** One of the ordering modes. */
 export type OrderMode = (typeof ORDER_MODES)[number]
+
+/**
+ * An item's payment mode (D113, D122 §5): paid with the table's bill, or paid before it reaches
+ * the POS. Restro's own enrichment, never a POS field; an item without one takes the venue's
+ * default (`pay-first-settings.ts`).
+ */
+export const PAYMENT_MODES = ['on_bill', 'pay_first'] as const
+
+/** One of the payment modes. */
+export type PaymentMode = (typeof PAYMENT_MODES)[number]
 
 /**
  * How a section lays out its items on the guest page (D92): a vertical list, or a horizontal row
@@ -154,6 +164,14 @@ const itemFields: FieldDefinition[] = [
     critical: true,
     options: [...ORDER_MODES],
     default: 'orderable',
+    ...BUILDER,
+  }),
+  // No default: an item without its own payment mode takes the venue's (D113).
+  field({
+    key: 'payment_mode',
+    type: 'enum',
+    label: label('Начин на плащане', 'Payment mode'),
+    options: [...PAYMENT_MODES],
     ...BUILDER,
   }),
   // The till's for-sale flag (per venue) AND builder sold-out marks; builder layers may only say false.

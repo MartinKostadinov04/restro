@@ -31,6 +31,8 @@ import {
 } from '@restro/db'
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
+import type { AreaId, BarId, TableId } from '../ids'
+import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { serviceDate } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
@@ -39,6 +41,7 @@ import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
+import { type PayFirstState, payFirstItems, payFirstState } from './pay-first'
 import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
 import { readTableCapabilities } from './table-capabilities'
@@ -142,6 +145,13 @@ export interface TableStateRead {
    * draws no note field and items that must have options are ordered from the waiter.
    */
   readonly notesAndOptions: boolean
+  /** A tip can be given when paying here: the table's POS records it on the receipt (D127). */
+  readonly tips: boolean
+  /**
+   * Pay-first items at the table (#113, #114): whether they are offered now, and the items of the
+   * table's menu that are paid first (none where pay-first doesn't apply at the table).
+   */
+  readonly payFirst: { readonly state: PayFirstState; readonly items: ReadonlySet<string> }
   /** When the table's bill was last read, or null. */
   readonly reading: {
     readonly readSeq: number
@@ -386,6 +396,29 @@ export async function readTableState(
       }
     }
     const capabilities = await readTableCapabilities(tx, table.id)
+    const [venue] = await tx
+      .select({ settings: venues.settings })
+      .from(venues)
+      .where(eq(venues.id, table.venueId))
+    const payFirstSettings = readPayFirstSettings(venue?.settings ?? {})
+    const payFirst = payFirstApplies(payFirstSettings, {
+      tableId: table.id as TableId,
+      barId: table.barId as BarId | null,
+      areaId: table.areaId as AreaId,
+    })
+      ? {
+          state: await payFirstState(tx, {
+            venueId: table.venueId,
+            tableId: table.id,
+            paused: active.length > 0,
+          }),
+          items: await payFirstItems(tx, {
+            venueId: table.venueId,
+            tableId: table.id,
+            itemMode: payFirstSettings.itemMode,
+          }),
+        }
+      : { state: 'off' as const, items: new Set<string>() }
     return {
       unchanged: false,
       version,
@@ -441,6 +474,8 @@ export async function readTableState(
       ),
       pauses: active,
       notesAndOptions: capabilities.notesReachTicket,
+      tips: capabilities.recordTipOnClose,
+      payFirst,
       reading:
         reading === undefined
           ? null

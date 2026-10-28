@@ -18,21 +18,33 @@
 //    or past its pace refuses (`guard_tripped`) and pauses the table for "ask your waiter";
 // 5. the lines leave the order, a `waiting` sent order is written with a short reference a waiter
 //    reads (K7Q), each line's note is kept apart (`sent_order_notes`), and the table is touched.
+// Pay-first lines (#113) are a Send's second part (`payFirst`): never on the bill, they are held on
+// the order for a payment of kind `pay_first` with its own `waiting` sent order (`pay-first.ts`).
+// A Send may have either part, or both; its pay-first part names the lines the guest pays for now:
+// any of the order's pay-first lines no payment holds, or all of them where the bill part goes too
+// ("Send and pay").
 // The worker takes it from there (`sent-order.ts`): Restro never calls the POS here.
 
 import { randomInt } from 'node:crypto'
 
-import { pauses, sentOrderNotes, sentOrders, venueTables } from '@restro/db'
-import { and, eq, inArray } from 'drizzle-orm'
+import { sentOrderNotes, sentOrders, venueTables } from '@restro/db'
+import { eq, inArray } from 'drizzle-orm'
 
-import { newId } from '../ids'
+import { type AreaId, type BarId, newId, type TableId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
+import { itemPaymentMode, payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { guestNight, phonesMaySend } from '../service-hours'
 import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '../table-order'
 import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
-import { activePausesOfTable } from './pause-scope'
+import { orderingPaused } from './pause-scope'
+import {
+  insertPayFirst,
+  PAY_FIRST_SEND_REFUSALS,
+  type PayFirstSendPart,
+  preparePayFirst,
+} from './pay-first'
 import { accepted, refused, type ServiceResult } from './results'
 import {
   findDuplicate,
@@ -41,7 +53,7 @@ import {
   tableHasNoPosBill,
   tripGuard,
 } from './send-guards'
-import { lineAvailable, priceSentLines } from './send-menu'
+import { lineAvailable, type PricedLine, priceSentLines } from './send-menu'
 import { type SentOrderLine, SentOrderLineSchema } from './sent-lines'
 import { readTableCapabilities } from './table-capabilities'
 
@@ -72,6 +84,8 @@ export const SEND_REFUSALS = [
   'needs_first_item',
   'duplicate_order',
   'guard_tripped',
+  // A Send with pay-first lines (#113).
+  ...PAY_FIRST_SEND_REFUSALS,
 ] as const
 
 export { type SentOrderLine, SentOrderLineSchema, sentOrderLinesOf } from './sent-lines'
@@ -83,24 +97,11 @@ export interface SendCommand {
   readonly lines: readonly SendRequestLine[]
   /** The sent order the guest's "Send another" answered (a new action after `duplicate_order`). */
   readonly confirmDuplicateOf?: string | undefined
+  /** The lines the guest pays for first, with the tip and the handle's hash (#113). */
+  readonly payFirst?: PayFirstSendPart | undefined
 }
 
-/**
- * True when ordering at this table is paused: the table itself, its bar, the whole venue, or the
- * POS connection the venue orders through (#79, `pause-scope.ts`).
- */
-export async function orderingPaused(
-  stx: ServiceTx,
-  tableId: string,
-  barId: string | null,
-): Promise<boolean> {
-  const [active] = await stx.tx
-    .select({ id: pauses.id })
-    .from(pauses)
-    .where(activePausesOfTable({ id: tableId, venueId: stx.venueId, barId }))
-    .limit(1)
-  return active !== undefined
-}
+export { orderingPaused } from './pause-scope'
 
 /** Sends the table's order (the engine holds the order row). */
 export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<ServiceResult> {
@@ -108,7 +109,7 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
   const row = stx.rows.heldOrder(tableId)
   if (row === null) return refused(actionId, 'table_not_open')
   const [table] = await stx.tx
-    .select({ barId: venueTables.barId })
+    .select({ barId: venueTables.barId, areaId: venueTables.areaId })
     .from(venueTables)
     .where(eq(venueTables.id, tableId))
   const barId = table?.barId ?? null
@@ -126,58 +127,165 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
 
   const now = await stx.dbNow()
   const current = tidyOrder(orderFromRow(row), now.getTime()).order
+  // Pay-first items (#113): where pay-first applies at the table, an item paid first (its own
+  // mode, else the venue's default) goes in the Send's pay-first part, never on the bill.
+  const payFirstSettings = readPayFirstSettings(stx.venue.settings)
+  const applies =
+    table !== undefined &&
+    payFirstApplies(payFirstSettings, {
+      tableId: tableId as TableId,
+      barId: barId as BarId | null,
+      areaId: table.areaId as AreaId,
+    })
+  const isPayFirst = (line: { readonly itemId: string }) =>
+    applies &&
+    itemPaymentMode(menu.items.get(line.itemId)?.paymentMode, payFirstSettings) === 'pay_first'
   const keptBack = (line: { readonly itemId: string; readonly optionIds: readonly string[] }) =>
-    !lineAvailable(menu, line)
-  const named = command.lines.find(keptBack)
+    !lineAvailable(menu, line) || isPayFirst(line)
+  const payFirstPart = command.payFirst
+  const named = [...command.lines, ...(payFirstPart?.lines ?? [])].find(
+    (line) => !lineAvailable(menu, line),
+  )
   if (named !== undefined) {
     const others = current.lines.filter(
-      (line) => line.removedAt === null && line.heldBy === null && !keptBack(line),
+      (line) => line.removedAt === null && line.heldBy === null && lineAvailable(menu, line),
     ).length
     return refused(actionId, 'item_unavailable', { itemId: named.itemId, others })
   }
-  const taken = takeSentLines(current, command.lines, now.getTime(), keptBack)
-  if (!taken.ok) return refused(actionId, taken.code)
-  const priced = priceSentLines(menu, taken.lines)
-  if (!priced.ok) return refused(actionId, priced.code, { itemId: priced.itemId })
+  // A pay-first line named on the bill: the phone's order is not the server's.
+  if (command.lines.some(isPayFirst)) return refused(actionId, 'order_changed')
 
-  const capabilities = await readTableCapabilities(stx.tx, tableId)
-  if (!capabilities.notesReachTicket) {
-    const waiter = taken.lines.find(
-      (line) =>
-        line.optionIds.length > 0 ||
-        line.note.trim() !== '' ||
-        menu.items.get(line.itemId)?.requiredOptions === true,
-    )
-    if (waiter !== undefined)
-      return refused(actionId, 'order_from_waiter', { itemId: waiter.itemId })
-  }
-  if (!capabilities.firstItemsOpenBill && (await tableHasNoPosBill(stx, tableId, now))) {
-    return refused(actionId, 'needs_first_item')
-  }
-
+  let order = current
+  let onBill: { readonly lines: SentOrderLine[]; readonly totalMinor: number } | null = null
+  let notes: { readonly id: string; readonly note: string }[] = []
   const target = { tableId, sittingId: row.sittingId }
-  const duplicate = await findDuplicate(stx, target, taken.lines, now)
-  if (duplicate !== null && command.confirmDuplicateOf !== duplicate.sentOrderId) {
-    return refused(actionId, 'duplicate_order', {
-      duplicateOf: duplicate.sentOrderId,
-      minutesAgo: duplicate.minutesAgo,
-    })
+  if (command.lines.length > 0 || payFirstPart === undefined) {
+    const taken = takeSentLines(current, command.lines, now.getTime(), keptBack)
+    if (!taken.ok) return refused(actionId, taken.code)
+    const priced = priceSentLines(menu, taken.lines)
+    if (!priced.ok) return refused(actionId, priced.code, { itemId: priced.itemId })
+
+    const capabilities = await readTableCapabilities(stx.tx, tableId)
+    if (!capabilities.notesReachTicket) {
+      const waiter = taken.lines.find(
+        (line) =>
+          line.optionIds.length > 0 ||
+          line.note.trim() !== '' ||
+          menu.items.get(line.itemId)?.requiredOptions === true,
+      )
+      if (waiter !== undefined)
+        return refused(actionId, 'order_from_waiter', { itemId: waiter.itemId })
+    }
+    if (!capabilities.firstItemsOpenBill && (await tableHasNoPosBill(stx, tableId, now))) {
+      return refused(actionId, 'needs_first_item')
+    }
+
+    const duplicate = await findDuplicate(stx, target, taken.lines, now)
+    if (duplicate !== null && command.confirmDuplicateOf !== duplicate.sentOrderId) {
+      return refused(actionId, 'duplicate_order', {
+        duplicateOf: duplicate.sentOrderId,
+        minutesAgo: duplicate.minutesAgo,
+      })
+    }
+    const settings = readOrderingSettings(stx.venue.settings)
+    const trip = (guard: SendGuard, details: Readonly<Record<string, number>>): ServiceResult => {
+      stx.keepOnRefusal(() => tripGuard(stx, { guard, ...target, details }))
+      return refused(actionId, 'guard_tripped', { guard, ...details })
+    }
+    if (settings.capMinor !== null && priced.totalMinor > settings.capMinor) {
+      return trip('cap', { capMinor: settings.capMinor, totalMinor: priced.totalMinor })
+    }
+    const pace = settings.pacePer15Minutes
+    if (pace !== null && (await recentSentOrders(stx, tableId, now)) >= pace) {
+      return trip('pace', { pacePer15Minutes: pace })
+    }
+    order = taken.order
+    onBill = { lines: sentLinesOf(taken.lines, priced.lines), totalMinor: priced.totalMinor }
+    notes = taken.lines.filter((line) => line.note !== '')
   }
-  const settings = readOrderingSettings(stx.venue.settings)
-  const trip = (guard: SendGuard, details: Readonly<Record<string, number>>): ServiceResult => {
-    stx.keepOnRefusal(() => tripGuard(stx, { guard, ...target, details }))
-    return refused(actionId, 'guard_tripped', { guard, ...details })
-  }
-  if (settings.capMinor !== null && priced.totalMinor > settings.capMinor) {
-    return trip('cap', { capMinor: settings.capMinor, totalMinor: priced.totalMinor })
-  }
-  const pace = settings.pacePer15Minutes
-  if (pace !== null && (await recentSentOrders(stx, tableId, now)) >= pace) {
-    return trip('pace', { pacePer15Minutes: pace })
+  // A Send of pay-first lines alone ("Pay {x}" again, or one of several) leaves the lines for the
+  // bill waiting on the order, a friend's among them.
+
+  const payFirst =
+    payFirstPart === undefined
+      ? null
+      : await preparePayFirst(stx, {
+          tableId,
+          order,
+          part: payFirstPart,
+          menu,
+          isPayFirst,
+          whole: command.lines.length > 0,
+        })
+  if (payFirst !== null && !payFirst.ok) {
+    return refused(actionId, payFirst.code, payFirst.details ?? {})
   }
 
-  const lines: SentOrderLine[] = taken.lines.map((line, index) => {
-    const price = priced.lines[index]
+  const sittingId = row.sittingId
+  const made: { id: string; reference: string } | null =
+    onBill === null
+      ? null
+      : await insertSentOrder(stx, {
+          kind: 'on_bill',
+          tableId,
+          sittingId,
+          barId,
+          actionId,
+          lines: onBill.lines,
+          totalMinor: onBill.totalMinor,
+          notes,
+          now,
+        })
+  let paid: { id: string; reference: string; paymentId: string } | null = null
+  if (payFirst !== null && payFirstPart !== undefined) {
+    const sent = await insertSentOrder(stx, {
+      kind: 'pay_first',
+      tableId,
+      sittingId,
+      barId,
+      // The action id names the payment; a sent order holds it only for the bill's part.
+      actionId: null,
+      lines: sentLinesOf(payFirst.lines, payFirst.priced),
+      totalMinor: payFirst.totalMinor,
+      notes: payFirst.lines.filter((line) => line.note !== ''),
+      now,
+    })
+    await insertPayFirst(stx, payFirst, {
+      tableId,
+      sittingId,
+      barId,
+      sentOrderId: sent.id,
+      actionId,
+      handleHash: payFirstPart.handleHash,
+      currency: menu.currency,
+    })
+    order = payFirst.order
+    paid = { ...sent, paymentId: payFirst.paymentId }
+  }
+
+  await writeOrder(stx, row, order)
+  const reference = made?.reference ?? paid?.reference
+  return accepted(actionId, {
+    ...(reference === undefined ? {} : { ref: reference }),
+    details: {
+      ...(made === null ? {} : { sentOrderId: made.id }),
+      ...(paid === null ? {} : { paymentId: paid.paymentId, state: 'requested' }),
+    },
+  })
+}
+
+/** A Send's lines as the sent order keeps them, each with its price. */
+function sentLinesOf(
+  taken: readonly {
+    readonly id: string
+    readonly itemId: string
+    readonly optionIds: readonly string[]
+    readonly qty: number
+  }[],
+  priced: readonly PricedLine[],
+): SentOrderLine[] {
+  return taken.map((line, index) => {
+    const price = priced[index]
     if (price === undefined) throw new Error('a priced line is missing')
     return SentOrderLineSchema.parse({
       id: line.id,
@@ -189,7 +297,26 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
       optionNames: price.optionNames,
     })
   })
+}
 
+/**
+ * Writes a `waiting` sent order with a short reference a waiter reads (K7Q), its lines' notes
+ * kept apart, and logs it.
+ */
+async function insertSentOrder(
+  stx: ServiceTx,
+  input: {
+    readonly kind: 'on_bill' | 'pay_first'
+    readonly tableId: string
+    readonly sittingId: string
+    readonly barId: string | null
+    readonly actionId: string | null
+    readonly lines: readonly SentOrderLine[]
+    readonly totalMinor: number
+    readonly notes: readonly { readonly id: string; readonly note: string }[]
+    readonly now: Date
+  },
+): Promise<{ readonly id: string; readonly reference: string }> {
   const id = newId('so')
   let reference: string | null = null
   for (let attempt = 0; attempt < 12 && reference === null; attempt++) {
@@ -200,18 +327,18 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
         id,
         tenantId: stx.tenantId,
         venueId: stx.venueId,
-        tableId,
-        sittingId: row.sittingId,
-        barId,
+        tableId: input.tableId,
+        sittingId: input.sittingId,
+        barId: input.barId,
         serviceDate: stx.serviceDate,
-        kind: 'on_bill',
+        kind: input.kind,
         reference: candidate,
         state: 'waiting',
-        lines,
-        totalMinor: priced.totalMinor,
-        actionId,
+        lines: [...input.lines],
+        totalMinor: input.totalMinor,
+        actionId: input.actionId,
         consentVersion: stx.consentVersion,
-        retainUntil: recordRetainUntil(now),
+        retainUntil: recordRetainUntil(input.now),
         ...stx.provenance,
       })
       .onConflictDoNothing({
@@ -222,10 +349,9 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
   }
   if (reference === null) throw new Error('no free reference for the sent order')
 
-  const notes = taken.lines.filter((line) => line.note !== '')
-  if (notes.length > 0) {
+  if (input.notes.length > 0) {
     await stx.tx.insert(sentOrderNotes).values(
-      notes.map((line) => ({
+      input.notes.map((line) => ({
         tenantId: stx.tenantId,
         venueId: stx.venueId,
         sentOrderId: id,
@@ -236,17 +362,15 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
       })),
     )
   }
-
-  await writeOrder(stx, row, taken.order)
   await stx.log({
     kind: 'sent_order.state',
     sentOrderId: id,
-    tableId,
-    sittingId: row.sittingId,
+    tableId: input.tableId,
+    sittingId: input.sittingId,
     toState: 'waiting',
-    details: { lines: lines.length, totalMinor: priced.totalMinor },
+    details: { lines: input.lines.length, totalMinor: input.totalMinor },
   })
-  return accepted(actionId, { ref: reference, details: { sentOrderId: id } })
+  return { id, reference }
 }
 
 /** The notes of a sent order's lines, by line id. */

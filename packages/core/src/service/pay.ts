@@ -26,21 +26,32 @@
 // and the form's values are restated here in the database's words. No payer, phone or handle is
 // stored: only the handle's sha-256 (`handle_hash`).
 
-import { billReadings, paymentLines, paymentSteps, payments, venueTables } from '@restro/db'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import {
+  billReadings,
+  paymentLines,
+  paymentSteps,
+  payments,
+  sentOrders,
+  venueTables,
+} from '@restro/db'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
 import { addMinor, percentOfMinor, sumSignedMinor } from '../money'
 import { readPayingSettings } from '../paying-settings'
 import { DecimalQuantitySchema } from '../quantity'
+import { orderFromRow, releaseHeldLines } from '../table-order'
 import { parseStoredBills, type StoredBill, type StoredBillLine } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
+import { writeOrder } from './order'
+import { orderingPaused } from './pause-scope'
+import { movePayFirstSentOrder } from './pay-first-sent-order'
 import { payingPaused } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import { accepted, refused, type ServiceResult } from './results'
-import { orderingPaused } from './send'
+import { readTableCapabilities } from './table-capabilities'
 
 /** Why a guest's pay command was refused (design §3; the template words each, #45). */
 export const PAY_REFUSALS = [
@@ -54,6 +65,8 @@ export const PAY_REFUSALS = [
   'bill_changed',
   /** Below the venue's smallest card payment. */
   'below_minimum',
+  /** A tip where the POS can't put one on the receipt (D127; the phone hears `ordering.tips`). */
+  'tip_not_offered',
   /** Only a waiter can split this: a whole-bill discount, a part-paid bill, part of a line. */
   'ask_waiter_to_split',
   /** Turnstile said no. */
@@ -137,7 +150,7 @@ const PickSchema = z.discriminatedUnion('kind', [
 ])
 
 /** The tip: none, an amount, or a whole percent of the lines (rounded half-up, rule 8). */
-const TipSchema = z.discriminatedUnion('kind', [
+export const TipSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),
   z.strictObject({ kind: z.literal('amount'), minor: MinorSchema }),
   z.strictObject({ kind: z.literal('percent'), percent: z.int().min(1).max(100) }),
@@ -203,11 +216,13 @@ async function lockPayment(
       : and(eq(payments.handleHash, where.handleHash), eq(payments.tableId, where.tableId))
   // The table never changes on a payment, so it is read before the locks it decides.
   const [found] = await stx.tx
-    .select({ id: payments.id, tableId: payments.tableId })
+    .select({ id: payments.id, tableId: payments.tableId, sentOrderId: payments.sentOrderId })
     .from(payments)
     .where(and(condition, eq(payments.venueId, stx.venueId)))
   if (found === undefined) return null
   const order = await stx.rows.tableOrder(found.tableId)
+  // A pay-first payment's sent order, in its place in the lock order (#113): `release` ends it.
+  if (found.sentOrderId !== null) await lockSentOrder(stx, found.sentOrderId)
   stx.rows.claim('payment', [found.id])
   const [payment] = await stx.tx
     .select()
@@ -216,6 +231,16 @@ async function lockPayment(
     .for('update')
   if (payment === undefined) return null
   return { payment, tableOpen: order !== null }
+}
+
+/** Locks a pay-first payment's sent order (`sent_order` rank: after the order, before the payment). */
+export async function lockSentOrder(stx: ServiceTx, id: string): Promise<void> {
+  stx.rows.claim('sent_order', [id])
+  await stx.tx
+    .select({ id: sentOrders.id })
+    .from(sentOrders)
+    .where(eq(sentOrders.id, id))
+    .for('update')
 }
 
 /** The stored bills of the table's latest reading, when it was read in this sitting. */
@@ -257,6 +282,27 @@ export async function release(
     .where(eq(payments.id, payment.id))
   if (tableOpen) stx.rows.touch(payment.tableId)
   await logPayment(stx, payment, state, reason)
+  if (payment.kind === 'pay_first') await endPayFirstBeforePos(stx, payment, reason)
+}
+
+/**
+ * A pay-first payment that ended before its round reached the POS (#113): its lines are free on the
+ * order again, and its sent order, still waiting, is Not sent. Once the round was entered or may
+ * have been, the sent order and the lines stay as the route left them.
+ */
+export async function endPayFirstBeforePos(
+  stx: ServiceTx,
+  payment: Pick<PaymentRow, 'id' | 'tableId' | 'sentOrderId'>,
+  reason: string,
+): Promise<void> {
+  const row = stx.rows.heldOrder(payment.tableId)
+  if (row !== null) {
+    const order = orderFromRow(row)
+    if (order.lines.some((line) => line.heldBy === payment.id)) {
+      await writeOrder(stx, row, releaseHeldLines(order, payment.id))
+    }
+  }
+  await movePayFirstSentOrder(stx, payment, ['waiting'], 'not_sent', { reason })
 }
 
 /** The Log's line of a payment's step on its route (#111): a money record, kept 18 months. */
@@ -435,6 +481,13 @@ export function payStart() {
       if (command.tip.kind === 'amount' && tipMinor > linesMinor) {
         return refused(command.actionId, 'invalid_command')
       }
+      // No tip where the POS can't put it on the receipt (D127): the phone was told none is possible.
+      if (
+        tipMinor > 0 &&
+        !(await readTableCapabilities(stx.tx, command.tableId)).recordTipOnClose
+      ) {
+        return refuse('tip_not_offered')
+      }
       const amountMinor = addMinor(linesMinor, tipMinor)
       // The venue's own floor here; the provider's minimum is checked when the worker prices it.
       const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
@@ -607,14 +660,18 @@ export function paymentPrice() {
         .from(paymentLines)
         .where(eq(paymentLines.paymentId, payment.id))
       const fresh = new Map(command.lines.map((line) => [line.pos, line]))
-      const changed = picked.some((line) => {
-        const now = line.posLineRef === null ? undefined : fresh.get(line.posLineRef)
-        return (
-          now === undefined ||
-          !sameQuantity(now.quantity, line.quantity) ||
-          now.amountMinor !== line.posAmountMinor
-        )
-      })
+      // A pay-first payment's lines are not on the POS yet: priced from the published menu at
+      // Send (on a POS venue, the POS's own prices; rule 5), never from a reading.
+      const changed =
+        payment.kind === 'on_bill' &&
+        picked.some((line) => {
+          const now = line.posLineRef === null ? undefined : fresh.get(line.posLineRef)
+          return (
+            now === undefined ||
+            !sameQuantity(now.quantity, line.quantity) ||
+            now.amountMinor !== line.posAmountMinor
+          )
+        })
       const releaseFor = async (reason: string) => {
         await release(stx, payment, tableOpen, reason)
         return at(command, payment, 'released', true)
@@ -818,10 +875,15 @@ export function paymentSettle() {
       const { payment, tableOpen } = locked
       if (payment.state !== command.from) return at(command, payment, payment.state, false)
       const reason = payment.reason ?? command.reason
-      // `stranded` comes only from `payment.undone`, which keeps the same rule itself.
-      const answered = reason === 'no_receipt' || reason === 'stranded'
+      // `stranded` comes only from `payment.undone`, which keeps the same rule itself;
+      // `not_on_till` is a manager's answer that a pay-first round is not on the till (#113).
+      const answered = reason === 'no_receipt' || reason === 'stranded' || reason === 'not_on_till'
       if (!answered && (await closeAttempted(stx, payment.id))) {
         return refused(null, 'close_attempted')
+      }
+      // A pay-first round entered on the POS, or that may have been: never released on its own.
+      if (!answered && (await enterAttempted(stx, payment.id))) {
+        return refused(null, 'enter_attempted')
       }
       const state = reason === 'stranded' ? 'stranded' : 'released'
       await release(stx, payment, tableOpen, reason, state)
@@ -872,7 +934,29 @@ export const PAYMENT_STEP_NAMES = [
   'undoIsolate',
   'payAndClose',
   'capture',
+  // Pay-first (#113): the round entered on a payment table.
+  'addLines',
 ] as const
+
+/** The POS writes a payment makes once: a second `attempting` is refused (#113). */
+const ONCE_STEPS: readonly string[] = ['payAndClose', 'addLines']
+
+/**
+ * True once a pay-first payment's round may be on the POS (#113): its `addLines` landed, or its
+ * outcome is not known. A refused `addLines` wrote nothing.
+ */
+export async function enterAttempted(stx: ServiceTx, id: string): Promise<boolean> {
+  const steps = await stx.tx
+    .select({ outcome: paymentSteps.outcome })
+    .from(paymentSteps)
+    .where(and(eq(paymentSteps.paymentId, id), eq(paymentSteps.step, 'addLines')))
+    .orderBy(desc(paymentSteps.seq))
+  const [latest] = steps
+  return (
+    latest?.outcome === 'attempting' ||
+    steps.some((step) => step.outcome === 'done' || step.outcome === 'unknown')
+  )
+}
 
 /** True once a close of the payment's bill was attempted: from then on it is never undone (#111). */
 export async function closeAttempted(stx: ServiceTx, id: string): Promise<boolean> {
@@ -911,11 +995,29 @@ export function paymentStep() {
     permission: null,
     idempotency: 'by_state',
     async handle(stx, command) {
+      // Locked: two runs that both try to start a close or an entry are taken one at a time.
       const [payment] = await stx.tx
         .select({ id: payments.id })
         .from(payments)
         .where(and(eq(payments.id, command.paymentId), eq(payments.venueId, stx.venueId)))
+        .for('update')
       if (payment === undefined) return refused(null, 'payment_missing')
+      if (command.outcome === 'attempting' && ONCE_STEPS.includes(command.step)) {
+        // A close is sent once; an entry once unless the POS refused it (nothing written). A run
+        // that finds another's attempt backs off before it calls the POS (#113).
+        const [latest] = await stx.tx
+          .select({ outcome: paymentSteps.outcome })
+          .from(paymentSteps)
+          .where(and(eq(paymentSteps.paymentId, payment.id), eq(paymentSteps.step, command.step)))
+          .orderBy(desc(paymentSteps.seq))
+          .limit(1)
+        if (
+          latest !== undefined &&
+          (command.step === 'payAndClose' || latest.outcome !== 'refused')
+        ) {
+          return refused(null, 'step_attempted', { step: command.step })
+        }
+      }
       await stx.tx.insert(paymentSteps).values({
         tenantId: stx.tenantId,
         venueId: stx.venueId,
