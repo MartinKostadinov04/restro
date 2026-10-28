@@ -2,7 +2,7 @@
 //
 //   seed     the demo venue gets a barsy venue (if it has none) with eight tables in four halls
 //            (`Главна зала`, `Тераса`, `VIP зона` and one with no hall), no codes, no names and the
-//            default QR address; the token files of any codes an earlier run made are removed; and
+//            default QR address, the areas called what the till calls them; the token files of any codes an earlier run made are removed; and
 //            the job queue the tab sends to exists (pg-boss tables and the queue, as the worker would
 //            create them). Idempotent.
 //   worker   waits for the REAL worker, which runs beside the e2e servers (since S3-05), to take
@@ -149,6 +149,14 @@ async function seed(): Promise<void> {
     await owner.query(`update restro.venues set settings = settings - 'qr' where id = $1`, [
       venueId,
     ])
+    // Areas go back to the till's hall names: a test that renamed one and then timed out cannot
+    // restore it, and its retry would meet the leftover name. (An area keyed by hall name carries
+    // it after `name:`.)
+    await owner.query(
+      `update restro.areas set name = substr(source_key, 6)
+       where venue_id = $1 and source_key like 'name:%' and name <> substr(source_key, 6)`,
+      [venueId],
+    )
     // No menu routes of an earlier run, and no second menu left behind by one that failed.
     await removeSecondMenu(owner)
     await owner.query('delete from restro.menu_routes where venue_id = $1', [venueId])

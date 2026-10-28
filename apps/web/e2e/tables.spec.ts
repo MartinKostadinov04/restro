@@ -335,6 +335,12 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
 })
 
 test('an area is renamed and moved; a table is hidden (its file goes), shown again and moved', async () => {
+  // Three `runWorker()` calls each start a tsx process and wait for the real worker's one-second
+  // poll (up to 30 s before the stand-in takes over), beside some forty clicks that each wait for a
+  // server action: on a busy CI machine that does not fit the default 30 s (#191). A timeout cannot
+  // run the `finally` below (its page calls get no time left), so the next `seed` also puts the
+  // areas' names back.
+  test.setTimeout(120_000)
   await page.goto(tabUrl)
   const terrace = areaOfRow(rowOf('6'))
   const original = await terrace.getByTestId('hall-name').inputValue()
