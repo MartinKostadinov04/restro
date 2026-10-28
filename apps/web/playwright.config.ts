@@ -134,8 +134,6 @@ export default defineConfig({
     },
     {
       command: 'pnpm --filter @restro/worker exec tsx src/index.ts',
-      stdout: 'pipe',
-      stderr: 'pipe',
       url: `http://127.0.0.1:${WORKER_PORT}/health`,
       reuseExistingServer: false,
       timeout: 120_000,
