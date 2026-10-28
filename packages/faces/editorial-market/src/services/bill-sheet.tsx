@@ -61,15 +61,6 @@ export function BillSheet() {
           </div>
         </>
       )}
-      {features.pay && state.receipt !== null ? (
-        <button
-          type="button"
-          className="ro-ghost"
-          onClick={(event) => o.openSheet('receipt', event.currentTarget)}
-        >
-          {words.viewReceipt}
-        </button>
-      ) : null}
       {features.pay && owed !== null ? (
         <button
           type="button"

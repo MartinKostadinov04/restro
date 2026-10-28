@@ -33,6 +33,7 @@ import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 import type { AreaId, BarId, TableId } from '../ids'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
+import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import { serviceDate } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
@@ -41,7 +42,13 @@ import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
-import { type PayFirstState, payFirstItems, payFirstState } from './pay-first'
+import {
+  type PayFirstState,
+  type PayingState,
+  payFirstItems,
+  payFirstState,
+  payingOffer,
+} from './pay-first'
 import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
 import { readTableCapabilities } from './table-capabilities'
@@ -152,6 +159,16 @@ export interface TableStateRead {
    * table's menu that are paid first (none where pay-first doesn't apply at the table).
    */
   readonly payFirst: { readonly state: PayFirstState; readonly items: ReadonlySet<string> }
+  /**
+   * Paying on the bill (#114): whether it is offered at the venue now, and the smallest card
+   * payment the venue asks (its own floor, else the platform's; minor units).
+   */
+  readonly paying: {
+    readonly state: PayingState
+    /** The provider's kind (a public word), or null while none is connected. */
+    readonly provider: string | null
+    readonly minCardMinor: number
+  }
   /** When the table's bill was last read, or null. */
   readonly reading: {
     readonly readSeq: number
@@ -419,6 +436,11 @@ export async function readTableState(
           }),
         }
       : { state: 'off' as const, items: new Set<string>() }
+    const offer = await payingOffer(tx, { venueId: table.venueId, paused: active.length > 0 })
+    const paying = {
+      ...offer,
+      minCardMinor: smallestCardMinor(readPayingSettings(venue?.settings ?? {}), CARD_FLOOR_MINOR),
+    }
     return {
       unchanged: false,
       version,
@@ -476,6 +498,7 @@ export async function readTableState(
       notesAndOptions: capabilities.notesReachTicket,
       tips: capabilities.recordTipOnClose,
       payFirst,
+      paying,
       reading:
         reading === undefined
           ? null

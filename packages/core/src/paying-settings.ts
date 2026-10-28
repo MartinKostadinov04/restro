@@ -6,6 +6,12 @@
 
 import { z } from 'zod'
 
+/**
+ * What a phone is told as the smallest card payment when the venue set none: €0.50, the lowest
+ * charge the pilot's provider takes (D127). The provider's own check at pricing stays the truth.
+ */
+export const CARD_FLOOR_MINOR = 50
+
 /** The largest smallest-card-payment a venue may set: €1,000 in minor units. */
 export const MIN_CARD_MAX_MINOR = 100_000
 

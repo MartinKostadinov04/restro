@@ -1,0 +1,5 @@
+{
+  "script": ["https://js.stripe.com", "https://*.js.stripe.com"],
+  "frame": ["https://js.stripe.com", "https://*.js.stripe.com", "https://hooks.stripe.com"],
+  "connect": ["https://api.stripe.com"]
+}

@@ -192,7 +192,13 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     >
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant stylesheets from css.ts and services/services-css.ts, no user input; React would escape `>` and quotes in them */}
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <ServicesProvider view={view} services={services} openDish={dish.open} dishOpen={dish.isOpen}>
+      <ServicesProvider
+        view={view}
+        services={services}
+        tableLabel={tableLabel}
+        openDish={dish.open}
+        dishOpen={dish.isOpen}
+      >
         <Header
           view={view}
           ctx={ctx}

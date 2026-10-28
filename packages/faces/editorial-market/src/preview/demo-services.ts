@@ -1,6 +1,6 @@
 // A demo host for the service screens, for the admin's preview only (`@restro/editorial-market/
 // preview`): it keeps a make-believe table in its own state, so the composer can show the bag, the
-// bill, the waiter, the payment and the receipt working before any platform exists behind them.
+// bill, the waiter and the payment working before any platform exists behind them.
 // The guest page never imports this file (a dependency rule forbids it); a real host binds its own
 // `ServiceBinding`.
 //
@@ -9,9 +9,10 @@
 //     go received, preparing, served on a timer. A repeat of the same `actionId` gets the first answer.
 //   - one staff round is on the bill from the start;
 //   - a waiter request is sent, then "on the way" a moment later; a cancel cancels it;
-//   - `pay.quote` is a quote of the bill (a whole table, an equal share, or the guest's own items) with
-//     a tip, 20 % VAT (a demo constant) and the code DEMO10; `pay.start` is accepted after a moment and
-//     issues a receipt.
+//   - the bill is also the table's bill for paying (`tableBill`); `pay.start` of ticked lines starts a
+//     payment that waits for the card (the demo's form is a button in the form slot, no provider),
+//     then is held, and captured a moment later: the paid lines leave the bill. `pay.cancel` before
+//     the card lets it go.
 // `state.preview` is true, so every service sheet carries the "Preview" marker.
 //
 // All the money here is core's: integer minor units through `@restro/shell/money`, half-up, never a float.
@@ -23,24 +24,19 @@ import {
   type BillView,
   type CommandResult,
   type GuestCommand,
-  type PayMethod,
-  type PayQuote,
-  type ReceiptView,
+  type PayFormSlot,
+  type PaymentView,
   type RequestView,
   resolveBag,
   type ServiceBinding,
   type ServiceState,
+  type TableBillLineView,
+  type TableBillView,
   type ViewModel,
   type ViewMoney,
   type ViewText,
 } from '@restro/shell'
-import {
-  addMinor,
-  percentOfMinor,
-  ratioOfMinor,
-  subtractMinor,
-  viewMinor,
-} from '@restro/shell/money'
+import { addMinor, ratioOfMinor, viewMinor } from '@restro/shell/money'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /** The demo's pace, in milliseconds. */
@@ -53,21 +49,11 @@ export const DEMO_DELAYS = {
   /** A waiter request is answered, and the waiter is on the way. */
   request: 300,
   onTheWay: 1500,
-  /** A quote, a payment, a receipt action. */
-  quote: 250,
-  pay: 1400,
-  receiptAction: 400,
+  /** A payment is accepted, held and captured. */
+  pay: 400,
+  hold: 900,
+  capture: 1400,
 } as const
-
-/** The VAT rate of the demo, in whole percent (a demo constant: the real rate comes from the venue). */
-const DEMO_VAT_PERCENT = 20
-/** The tip the demo's host suggests when the guest has not chosen, and the tips it offers. */
-const DEMO_DEFAULT_TIP_PERCENT = 10
-const DEMO_TIP_PERCENTS = [5, 10, 15] as const
-/** The one promo code of the demo: ten percent off. */
-const DEMO_PROMO = 'DEMO10'
-const DEMO_PROMO_PERCENT = 10
-const DEMO_METHODS: readonly PayMethod[] = ['apple', 'google', 'card', 'waiter']
 
 /** One line of a round, with the minor units behind its total. */
 interface Line {
@@ -91,8 +77,7 @@ interface Store {
   readonly revision: number
   readonly rounds: readonly Round[]
   readonly requests: readonly RequestView[]
-  readonly quote: PayQuote | null
-  readonly receipt: ReceiptView | null
+  readonly payment: PaymentView | null
 }
 
 const clock = (locale: string) =>
@@ -141,7 +126,7 @@ function startingStore(view: ViewModel): Store {
       },
     ],
   }
-  return { revision: 1, rounds: [staff], requests: [], quote: null, receipt: null }
+  return { revision: 1, rounds: [staff], requests: [], payment: null }
 }
 
 const lineTotal = (line: Line) => (line.status === 'cancelled' ? 0 : line.totalMinor)
@@ -183,125 +168,43 @@ function stateOf(store: Store, view: ViewModel): ServiceState {
     preview: true,
     bill,
     requests: store.requests,
-    quote: store.quote,
-    receipt: store.receipt,
-  }
-}
-
-/** A quote of the demo bill: a whole table, an equal share or the guest's own items, with a tip, VAT and a code. */
-function quoteOf(
-  store: Store,
-  view: ViewModel,
-  id: string,
-  command: Extract<GuestCommand, { kind: 'pay.quote' }>,
-): PayQuote {
-  const money = (minor: number): ViewMoney => viewMinor(minor, view.currency, view.locale)
-  const bulgarian = view.locale === 'bg_BG'
-  const whole = billMinor(store.rounds)
-  const scoped =
-    command.scope === 'full'
-      ? whole
-      : command.scope === 'split'
-        ? ratioOfMinor(whole, 1, command.people ?? 2)
-        : mineMinor(store.rounds)
-
-  const code = command.promo ?? ''
-  const accepted = code.toUpperCase() === DEMO_PROMO
-  const subtotal = accepted
-    ? subtractMinor(scoped, percentOfMinor(scoped, DEMO_PROMO_PERCENT))
-    : scoped
-  const tipMinor =
-    command.tipMinor !== null
-      ? command.tipMinor
-      : percentOfMinor(subtotal, command.tipPercent ?? DEMO_DEFAULT_TIP_PERCENT)
-
-  const promoMessage = (en: string, bg: string): ViewText => ({
-    text: bulgarian ? bg : en,
-    lang: view.locale,
-  })
-  return {
-    id,
-    scope: command.scope,
-    people: command.scope === 'split' ? command.people : null,
-    subtotal: money(subtotal),
-    tipOptions: DEMO_TIP_PERCENTS.map((percent) => ({
-      percent,
-      amount: money(percentOfMinor(subtotal, percent)),
-    })),
-    tip: money(tipMinor),
-    vat: [
-      {
-        rate: `${DEMO_VAT_PERCENT}%`,
-        amount: money(ratioOfMinor(subtotal, DEMO_VAT_PERCENT, 100 + DEMO_VAT_PERCENT)),
-      },
-    ],
-    total: money(addMinor(subtotal, tipMinor)),
-    methods: DEMO_METHODS,
-    promo: {
-      code,
-      accepted,
-      message:
-        code === ''
-          ? null
-          : accepted
-            ? promoMessage('Demo code: 10% off', 'Демо код: 10% отстъпка')
-            : promoMessage('Demo: try DEMO10', 'Демо: опитайте DEMO10'),
+    ordering: { state: 'on', tips: true },
+    paying: {
+      state: 'on',
+      minCardMinor: 50,
+      processor: 'Demo',
+      venueName: 'Demo venue',
+      electronicReceipt: false,
+      recent: null,
     },
+    payment: store.payment,
+    tableBill: tableBillOf(store, view),
   }
 }
 
-/** The receipt of a payment of the demo bill. */
-function receiptOf(
-  store: Store,
-  view: ViewModel,
-  id: string,
-  quote: PayQuote,
-  method: PayMethod,
-): ReceiptView {
-  const bulgarian = view.locale === 'bg_BG'
-  const money = (minor: number): ViewMoney => viewMinor(minor, view.currency, view.locale)
-  const covered =
-    quote.scope === 'mine' ? store.rounds.filter((round) => round.origin === 'guest') : store.rounds
-  const lines: BillLineView[] =
-    quote.scope === 'split'
-      ? [
-          {
-            id: 'demo-share',
-            name: {
-              text: bulgarian
-                ? `Равен дял (${quote.people ?? 2} души)`
-                : `Equal share (${quote.people ?? 2} people)`,
-              lang: view.locale,
-            },
-            qty: 1,
-            total: quote.subtotal,
-            status: 'served',
-            options: [],
-          },
-        ]
-      : covered.flatMap((round) =>
-          round.lines.map((line) => ({
-            id: line.id,
-            name: line.name,
-            qty: line.qty,
-            total: money(line.totalMinor),
-            status: line.status,
-            options: line.options,
-          })),
-        )
+/** The demo bill as the table's bill for paying: the POS-like lines with their own amounts. */
+function tableBillOf(store: Store, view: ViewModel): TableBillView | null {
+  const lines = store.rounds.flatMap((round) =>
+    round.lines
+      .filter((line) => line.status !== 'cancelled')
+      .map((line) => ({
+        id: line.id,
+        name: { [view.locale]: line.name.text } as NonNullable<TableBillLineView['name']>,
+        quantity: String(line.qty),
+        amountMinor: line.totalMinor,
+        beingPaid: false,
+      })),
+  )
+  if (lines.length === 0) return null
+  const total = sum(lines.map((line) => line.amountMinor))
   return {
-    id,
-    reference: `R-${id.slice(-4).toUpperCase()}`,
-    fiscalReference: `FR-${id.slice(-4).toUpperCase()}`,
-    venueName: bulgarian ? 'Демо заведение' : 'Demo venue',
-    tableLabel: '12',
-    issuedAt: new Date().toLocaleString(view.locale.replace('_', '-')),
-    lines,
-    vat: quote.vat,
-    tip: quote.tip,
-    total: quote.total,
-    method,
-    actions: { pdf: true, email: true, print: true },
+    readAgoSeconds: 0,
+    complete: true,
+    currency: 'EUR',
+    totalMinor: total,
+    paidMinor: 0,
+    owedMinor: total,
+    parts: [{ id: 'demo-bill', beingPaid: false, totalMinor: total, paidMinor: 0, lines }],
   }
 }
 
@@ -319,6 +222,8 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
   // What each action was answered, by `actionId`: a repeat gets the same promise (idempotency).
   const handled = useRef(new Map<string, Promise<CommandResult>>())
   const counter = useRef(0)
+  /** The bill lines of the payment in hand: they leave the bill once it is captured. */
+  const paidLines = useRef<ReadonlySet<string>>(new Set())
 
   useEffect(() => {
     const pending = timers.current
@@ -465,47 +370,56 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
           return answer(command, 'accepted')
         }
 
-        case 'pay.quote': {
-          await wait(DEMO_DELAYS.quote)
-          const quote = quoteOf(storeRef.current, now, nextId('demo-quote'), command)
-          commit((current) => ({ ...current, quote }))
-          return answer(command, 'accepted')
-        }
-
         case 'pay.start': {
           await wait(DEMO_DELAYS.pay)
-          const quote = storeRef.current.quote
-          if (quote === null || quote.id !== command.quoteId) {
+          const picked = new Set(command.seen.map((line) => line.lineId))
+          const lines = storeRef.current.rounds
+            .flatMap((round) => round.lines)
+            .filter((line) => picked.has(line.id))
+          if (lines.length === 0 || storeRef.current.payment !== null) {
             return answer(
               command,
               'rejected',
-              say('Demo: this quote has expired.', 'Демо: офертата е изтекла.'),
+              say('Demo: the bill changed.', 'Демо: сметката се промени.'),
             )
           }
-          const receipt = receiptOf(
-            storeRef.current,
-            now,
-            nextId('demo-receipt'),
-            quote,
-            command.method,
-          )
-          commit((current) => ({
-            ...current,
-            receipt,
-            // Paying the whole table settles the bill.
-            rounds: quote.scope === 'full' ? [] : current.rounds,
-            quote: null,
-          }))
+          const linesMinor = sum(lines.map(lineTotal))
+          const tipMinor =
+            command.tipMinor ??
+            (command.tipPercent === null ? 0 : ratioOfMinor(linesMinor, command.tipPercent, 100))
+          const payment: PaymentView = {
+            id: nextId('py-demo'),
+            number: 'DEMO7',
+            state: 'awaiting_guest',
+            reason: null,
+            currency: 'EUR',
+            amountMinor: addMinor(linesMinor, tipMinor),
+            tipMinor,
+            lines: lines.map((line) => ({
+              name: line.name.text,
+              quantity: String(line.qty),
+              amountMinor: line.totalMinor,
+            })),
+            form: { confirmSeconds: 120 },
+          }
+          paidLines.current = picked
+          commit((current) => ({ ...current, payment }))
           return answer(command, 'accepted')
         }
 
-        case 'receipt.action': {
-          await wait(DEMO_DELAYS.receiptAction)
-          return answer(
-            command,
-            'accepted',
-            say('Demo: sent to your phone.', 'Демо: изпратено към телефона ви.'),
-          )
+        case 'pay.returned':
+          return answer(command, 'accepted')
+
+        case 'pay.cancel': {
+          const current = storeRef.current.payment
+          if (current === null || current.state !== 'awaiting_guest') {
+            return answer(command, 'rejected')
+          }
+          commit((state) => ({
+            ...state,
+            payment: { ...current, state: 'released', reason: 'cancelled', form: null },
+          }))
+          return answer(command, 'accepted')
         }
 
         // The table's shared order (#75): this template keeps its own bag, so the demo has none.
@@ -534,6 +448,51 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
     [handle],
   )
 
+  // The demo has no provider: its "card form" is one button. Pressing it holds the card, then the
+  // payment is captured a moment later and the paid lines leave the bill.
+  const payForm = useMemo<PayFormSlot>(
+    () => ({
+      mount(target, props) {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = props.buttonClass
+        button.textContent = props.label
+        button.dataset.slot = 'pay.form.submit'
+        button.addEventListener('click', () => {
+          button.disabled = true
+          const current = storeRef.current.payment
+          if (current === null) return
+          commit((state) => ({ ...state, payment: { ...current, state: 'held', form: null } }))
+          later(DEMO_DELAYS.capture - DEMO_DELAYS.hold, () => {
+            commit((state) => ({
+              ...state,
+              payment: state.payment === null ? null : { ...state.payment, state: 'captured' },
+              rounds: state.rounds.map((round) => ({
+                ...round,
+                lines: round.lines.filter((line) => !paidLines.current.has(line.id)),
+              })),
+            }))
+          })
+        })
+        ;(target as HTMLElement).replaceChildren(button)
+        return {
+          update: (next) => {
+            button.textContent = next.label
+          },
+          unmount: () => (target as HTMLElement).replaceChildren(),
+        }
+      },
+    }),
+    [commit, later],
+  )
+  const payControls = useMemo(
+    () => ({ dismiss: () => commit((state) => ({ ...state, payment: null })) }),
+    [commit],
+  )
+
   const state = useMemo(() => stateOf(store, view), [store, view])
-  return useMemo(() => ({ state, dispatch }), [state, dispatch])
+  return useMemo(
+    () => ({ state, dispatch, payForm, payControls }),
+    [state, dispatch, payForm, payControls],
+  )
 }

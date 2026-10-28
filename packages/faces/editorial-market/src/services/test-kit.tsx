@@ -10,12 +10,15 @@ import {
   type CommandResult,
   EMPTY_SERVICE_STATE,
   type GuestCommand,
-  type PayQuote,
-  type ReceiptView,
+  type PayFormSlot,
+  type PayingView,
+  type PaymentView,
   type RequestView,
   SERVICE_KINDS,
   type ServiceBinding,
   type ServiceState,
+  type TableBillLineView,
+  type TableBillView,
   type ViewItem,
   type ViewModel,
   type ViewMoney,
@@ -178,40 +181,71 @@ export function request(
   return { id, actionId, kind, status, note: '' }
 }
 
-export function quoteOf(changes: Partial<PayQuote> = {}): PayQuote {
+/** One line of the table's bill for paying: the POS's own amount. */
+export function tableLine(
+  id: number,
+  name: string,
+  amountMinor: number,
+  options: { beingPaid?: boolean; quantity?: string } = {},
+): TableBillLineView {
   return {
-    id: 'q-1',
-    scope: 'full',
-    people: null,
-    subtotal: eur(2000),
-    tipOptions: [
-      { percent: 5, amount: eur(100) },
-      { percent: 10, amount: eur(200) },
-      { percent: 15, amount: eur(300) },
-    ],
-    tip: eur(200),
-    vat: [{ rate: '20%', amount: eur(333) }],
-    total: eur(2200),
-    methods: ['apple', 'google', 'card', 'waiter'],
-    promo: null,
+    id: `bn_${String(id).padStart(22, '0')}`,
+    name: { en_US: name, bg_BG: name },
+    quantity: options.quantity ?? '1',
+    amountMinor,
+    beingPaid: options.beingPaid ?? false,
+  }
+}
+
+/** The table's bill for paying, with one bill part holding the lines. */
+export function tableBillOf(
+  lines: readonly TableBillLineView[] = [
+    tableLine(1, 'House wine', 1250),
+    tableLine(2, 'Mojito', 1000),
+  ],
+  changes: Partial<TableBillView> = {},
+): TableBillView {
+  const total = lines.reduce((sum, line) => sum + line.amountMinor, 0)
+  return {
+    readAgoSeconds: 4,
+    complete: true,
+    currency: 'EUR',
+    totalMinor: total,
+    paidMinor: 0,
+    owedMinor: total,
+    parts: [{ id: 'bill-1', beingPaid: false, totalMinor: total, paidMinor: 0, lines }],
     ...changes,
   }
 }
 
-export function receiptOf(changes: Partial<ReceiptView> = {}): ReceiptView {
+/** Paying at the venue: on, with the smallest card payment of €0.50. */
+export function payingOf(changes: Partial<PayingView> = {}): PayingView {
   return {
-    id: 'rc-1',
-    reference: 'R-0001',
-    fiscalReference: 'FR-123',
-    venueName: 'Test venue',
-    tableLabel: '12',
-    issuedAt: '07.10.2026 21:00',
-    lines: [billLine('l1', 'Hummus', 2, 1400, 'served')],
-    vat: [{ rate: '20%', amount: eur(233) }],
-    tip: eur(140),
-    total: eur(1540),
-    method: 'card',
-    actions: { pdf: true, email: true, print: true },
+    state: 'on',
+    minCardMinor: 50,
+    processor: 'The processor',
+    venueName: 'Club X',
+    electronicReceipt: false,
+    recent: null,
+    ...changes,
+  }
+}
+
+/** This phone's payment as the host reads it. */
+export function paymentOf(changes: Partial<PaymentView> = {}): PaymentView {
+  return {
+    id: 'py_1',
+    number: 'K7Q4M',
+    state: 'awaiting_guest',
+    reason: null,
+    currency: 'EUR',
+    amountMinor: 2250,
+    tipMinor: 0,
+    lines: [
+      { name: 'House wine', quantity: '1', amountMinor: 1250 },
+      { name: 'Mojito', quantity: '1', amountMinor: 1000 },
+    ],
+    form: { confirmSeconds: 120 },
     ...changes,
   }
 }
@@ -234,6 +268,17 @@ export interface FakeHost {
   readonly calls: Call[]
   /** The binding to give the face, with the state as it is now. */
   readonly binding: () => ServiceBinding
+  /** The card form slot's mounts: the element it was given, its props, and whether it is still up. */
+  readonly forms: {
+    target: object
+    label: string
+    buttonClass: string
+    locale: string
+    failedText: string
+    mounted: boolean
+  }[]
+  /** How many times the payment's screen was dismissed ("Back to the bill"). */
+  readonly dismissed: () => number
   readonly state: () => ServiceState
   readonly set: (patch: Partial<ServiceState>) => void
   /** The calls of one kind. */
@@ -246,6 +291,29 @@ export interface FakeHost {
 export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
   let state: ServiceState = { ...EMPTY_SERVICE_STATE, ...initial }
   const calls: Call[] = []
+  const forms: FakeHost['forms'] = []
+  let dismissed = 0
+  const payForm: PayFormSlot = {
+    mount(target, props) {
+      const form = {
+        target,
+        label: props.label,
+        buttonClass: props.buttonClass,
+        locale: props.locale,
+        failedText: props.failedText,
+        mounted: true,
+      }
+      forms.push(form)
+      return {
+        update: (next) => {
+          form.label = next.label
+        },
+        unmount: () => {
+          form.mounted = false
+        },
+      }
+    },
+  }
   const dispatch = (command: GuestCommand) =>
     new Promise<CommandResult>((resolve, reject) => {
       calls.push({
@@ -263,7 +331,18 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
     })
   return {
     calls,
-    binding: () => ({ state, dispatch }),
+    binding: () => ({
+      state,
+      dispatch,
+      payForm,
+      payControls: {
+        dismiss: () => {
+          dismissed += 1
+        },
+      },
+    }),
+    forms,
+    dismissed: () => dismissed,
     state: () => state,
     set: (patch) => {
       state = { ...state, ...patch }
