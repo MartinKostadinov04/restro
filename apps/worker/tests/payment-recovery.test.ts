@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  FINAL_TABLE_READ_SECONDS,
   PAYMENT_STALE_MS,
   PAYMENT_STUCK_MS,
   type RecoveryRow,
@@ -101,6 +102,17 @@ describe('one pass of the payment recovery', () => {
     expect(
       recoveryActions(row({ state: 'cancelling', releaseRefused: true, changedMs: 3_600_000 })),
     ).toEqual(['read_back_later'])
+  })
+
+  it('reads the payment table of a final payment later, never on every pass (#166)', () => {
+    expect(FINAL_TABLE_READ_SECONDS).toBeGreaterThanOrEqual(5 * 60)
+    expect(FINAL_TABLE_READ_SECONDS).toBeLessThanOrEqual(10 * 60)
+    for (const state of ['captured', 'released', 'stranded', 'capture_failed']) {
+      const left = row({ state, paymentTableId: 'tb_payment', idleMs: PAYMENT_STALE_MS })
+      expect(recoveryActions(left)).toEqual(['free_later'])
+      // Not touched for a minute yet: nothing is queued.
+      expect(recoveryActions({ ...left, idleMs: PAYMENT_STALE_MS - 1 })).toEqual([])
+    }
   })
 
   it('leaves a final payment and an answered one alone', () => {

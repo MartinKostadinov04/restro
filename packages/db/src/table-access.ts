@@ -172,9 +172,10 @@ export const TABLE_ACCESS = {
   payment_accounts: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   // The provider's notices: platform-level, no tenant (the worker maps the account to a venue).
   // The web app and the worker share the app role, so the route's insert-only reach is pinned
-  // by dependency-cruiser (`notice-route-records-only`), not by a grant; no role deletes a row
-  // until #112 sets their retention.
-  provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'] },
+  // by dependency-cruiser (`notice-route-records-only`), not by a grant. The app never deletes
+  // one; the purge role erases them 18 months after they were received (#166; D111, D127), the
+  // one system table it may delete from.
+  provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
 
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
