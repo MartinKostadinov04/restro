@@ -1429,9 +1429,33 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         }),
         {
           numRuns: 25,
-          // A close that lands after the read-back window, after a manager answered "No receipt"
-          // too early and before the worker puts the lines back.
           examples: [
+            // The provider cancels the hold while a late close waits for its answer: the payment
+            // is released as expired (Restro sends no release) and the owners are told (CI seed
+            // -1494489421).
+            [
+              {
+                picks: [0, null],
+                pos: [{ on: 'closeBill', fault: { kind: 'landsLate' } }],
+                provider: null,
+                slip: false,
+                order: [0],
+                happenings: [
+                  {
+                    kind: 'provider',
+                    at: { before: 'undoIsolate', nth: 1 },
+                    payment: 0,
+                    event: 'cancelled',
+                    notice: 'now',
+                  },
+                ],
+                tapsAgain: false,
+                lateLanding: 20_000,
+                lag: 0,
+              },
+            ],
+            // A close that lands after the read-back window, after a manager answered "No receipt"
+            // too early and before the worker puts the lines back.
             [
               {
                 picks: [1, null],
@@ -1825,6 +1849,13 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         const proven = closeProof >= 0 || answered === 'receipt_printed'
         const capture = at('capture', 'attempting')
         const [provider] = engine.paymentsOf(providerRef(accountRef), id as never)
+        // The one release after a close Restro did not send: the provider dropped the hold itself
+        // while the close waited for an answer, and the owners are told (#112).
+        const expired = row?.state === 'released' && row.reason === 'expired'
+        if (expired && closeAttempt >= 0) {
+          expect(played.dropped.has(id)).toBe(true)
+          expect(await alertsOf(id)).toContain('payment_hold_expired:money.follow_up')
+        }
         // 1. A capture only after proof of a close: the POS's, or a manager's "Receipt printed".
         if (capture >= 0) {
           expect(proven).toBe(true)
@@ -1834,7 +1865,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         // 2. No release once a close was attempted, unless a manager answered "No receipt".
         if (closeAttempt >= 0 && answered !== 'no_receipt') {
           expect(own.slice(closeAttempt).some((step) => step.step === 'release')).toBe(false)
-          expect(row?.state).not.toBe('released')
+          if (!expired) expect(row?.state).not.toBe('released')
           if (!played.dropped.has(id)) expect(provider?.status).not.toBe('released')
         }
         const till = played.till(id)
@@ -1849,7 +1880,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           expect(till.closed).toBe(true)
           expect(provider.capturedMinor).toBe(till.cardMinor)
         }
-        if (till.closed && !againNoReceipt) {
+        if (till.closed && !againNoReceipt && !expired) {
           expect(['captured', 'capture_failed']).toContain(row?.state)
         }
         // After a second "No receipt" the hold was released with the items missing: staff are told
