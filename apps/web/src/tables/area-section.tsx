@@ -35,9 +35,10 @@ import {
   renameAreaAction,
   setAreaHiddenAction,
 } from '@/server/tables/actions'
-import type { HallView, MenuChoice } from '@/server/tables/view'
+import type { HallView, MenuChoice, PayFirstTabView } from '@/server/tables/view'
 
 import { ConfirmDialog } from './confirm-dialog'
+import { PayFirstPicker } from './pay-first-picker'
 import { RoutePicker } from './route-picker'
 import { type PaymentTableAccess, TableCard } from './table-card'
 import { useRun } from './use-run'
@@ -52,6 +53,7 @@ export function AreaSection({
   menus,
   areas,
   payment,
+  payFirst,
 }: {
   hall: HallView
   /** The area's place among the venue's areas, and how many areas there are. */
@@ -65,6 +67,8 @@ export function AreaSection({
   areas: readonly { readonly id: string; readonly name: string; readonly tableCount: number }[]
   /** Payment tables, where a connector can take payments; null elsewhere. */
   payment: PaymentTableAccess | null
+  /** Pay first rows, where pay first can take effect; null elsewhere. */
+  payFirst: PayFirstTabView | null
 }) {
   const t = useTranslations('tables')
   const { pending, run } = useRun()
@@ -171,6 +175,16 @@ export function AreaSection({
             effective={hall.menu}
             canManage={canManage}
           />
+          {payFirst !== null && hall.payFirst !== null ? (
+            <PayFirstPicker
+              venueId={venueId}
+              target={{ areaId: hall.id }}
+              targetName={t('route.area', { name: hall.name })}
+              payFirst={hall.payFirst}
+              canSet={payFirst.canSet}
+              email={payFirst.email}
+            />
+          ) : null}
         </div>
 
         {canManage ? (
@@ -329,6 +343,7 @@ export function AreaSection({
               fromTill={fromTill}
               areaPublic={hall.isPublic}
               payment={payment}
+              payFirst={payFirst}
               menus={menus}
               otherAreas={otherAreas}
               index={position}

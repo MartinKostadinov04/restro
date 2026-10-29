@@ -209,6 +209,7 @@ function Panel({ view: given }: { view: TablesView }) {
               menus={view.menus}
               areas={areas}
               payment={payment}
+              payFirst={view.payFirst}
             />
           ))}
         </div>

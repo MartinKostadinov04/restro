@@ -374,6 +374,128 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       }
     })
 
+    it('carries pay first per area and table, with the level that decides it, only where it can take effect (#217)', async () => {
+      const before = await owner.query<{ config: Record<string, unknown>; settings: object }>(
+        `select i.config, v.settings from restro.integrations i, restro.venues v
+          where i.id = $1 and v.id = $2`,
+        [integrationId, venue.id],
+      )
+      const ids = async (): Promise<{
+        areas: Record<string, string>
+        tables: Record<string, string>
+      }> => {
+        const read = await view()
+        return {
+          areas: Object.fromEntries(read.halls.map((hall) => [hall.name, hall.id])),
+          tables: Object.fromEntries(
+            read.halls.flatMap((hall) => hall.tables.map((row) => [row.number ?? '', row.id])),
+          ),
+        }
+      }
+      const { areas: areaIds, tables: tableIds } = await ids()
+      const setPayFirst = (payFirst: object) =>
+        owner.query(
+          `update restro.venues set settings = settings || jsonb_build_object('payFirst', $2::jsonb) where id = $1`,
+          [venue.id, JSON.stringify(payFirst)],
+        )
+      try {
+        // No paying account and no declaration: no row anywhere, and the tab carries none.
+        const plain = await view()
+        expect(plain.payFirst).toBeNull()
+        expect(plain.halls.every((hall) => hall.payFirst === null)).toBe(true)
+
+        await owner.query(
+          `update restro.integrations
+              set config = config || jsonb_build_object('service_capabilities', $2::jsonb)
+            where id = $1`,
+          [integrationId, JSON.stringify({ first_items_open_bill: true })],
+        )
+        await owner.query(
+          `insert into restro.payment_accounts
+             (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+           values ($1, $2, 'sim-pay', 'acct_tablestab', 'lost_access', '{}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+          [tenant, venue.id],
+        )
+        // The venue's switch is on and nothing is set: every row follows the venue.
+        const follows = await view({ person: { canMarkPaymentTables: true, email: 'o@club.test' } })
+        expect(follows.payFirst).toEqual({ canSet: true, email: 'o@club.test' })
+        const terrace = follows.halls[1]
+        expect(terrace?.payFirst).toEqual({
+          own: null,
+          applies: true,
+          level: 'venue',
+          inherited: { applies: true, level: 'venue' },
+        })
+        expect(terrace?.tables[0]?.payFirst).toEqual({
+          own: null,
+          applies: true,
+          level: 'venue',
+          inherited: { applies: true, level: 'venue' },
+        })
+
+        // Venue off, the Terrace on, table 10 off.
+        await setPayFirst({
+          itemMode: 'on_bill',
+          applies: false,
+          groups: { [areaIds.Terrace ?? '']: true },
+          tables: { [tableIds['10'] ?? '']: false },
+        })
+        const set = await view()
+        const row = (number: string) =>
+          set.halls.flatMap((hall) => hall.tables).find((r) => r.number === number)
+        expect(set.halls[1]?.payFirst).toEqual({
+          own: true,
+          applies: true,
+          level: 'area',
+          inherited: { applies: false, level: 'venue' },
+        })
+        // Table 2 follows its area; table 10 has its own choice over the area's.
+        expect(row('2')?.payFirst).toEqual({
+          own: null,
+          applies: true,
+          level: 'area',
+          inherited: { applies: true, level: 'area' },
+        })
+        expect(row('10')?.payFirst).toEqual({
+          own: false,
+          applies: false,
+          level: 'table',
+          inherited: { applies: true, level: 'area' },
+        })
+        // Main hall follows the venue (off).
+        expect(set.halls[0]?.payFirst).toMatchObject({ own: null, applies: false, level: 'venue' })
+
+        // A payment table has no row, and a venue made by hand has none at all.
+        await owner.query('update restro.tables set is_payment_table = true where id = $1', [
+          tableIds['10'],
+        ])
+        expect((await view()).halls[1]?.tables[1]?.payFirst).toBeNull()
+        expect((await handView()).payFirst).toBeNull()
+
+        // A disconnected account hides it all again (the choices are kept).
+        await owner.query(
+          `update restro.payment_accounts set state = 'disconnected' where venue_id = $1`,
+          [venue.id],
+        )
+        const off = await view()
+        expect(off.payFirst).toBeNull()
+        expect(off.halls.every((hall) => hall.payFirst === null)).toBe(true)
+      } finally {
+        await owner.query('update restro.tables set is_payment_table = false where id = $1', [
+          tableIds['10'],
+        ])
+        await owner.query('delete from restro.payment_accounts where venue_id = $1', [venue.id])
+        await owner.query('update restro.integrations set config = $2 where id = $1', [
+          integrationId,
+          before.rows[0]?.config,
+        ])
+        await owner.query('update restro.venues set settings = $2 where id = $1', [
+          venue.id,
+          JSON.stringify(before.rows[0]?.settings),
+        ])
+      }
+    })
+
     it("another organisation's tab is empty, and a member who may not manage reads without acting", async () => {
       const other = await loadTablesView(
         { ...(await scope()), tenantId: otherTenant },

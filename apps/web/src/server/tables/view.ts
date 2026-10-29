@@ -16,6 +16,22 @@ export interface MenuShown<Level extends MenuLevel = MenuLevel> {
   readonly level: Level
 }
 
+/** Which level's setting decides whether pay first applies (D122 §5), as `MenuShown.level` does for menus. */
+export type PayFirstLevel = 'table' | 'bar' | 'area' | 'venue'
+
+/**
+ * Pay first at one area or table (#217). `own` is the row's own choice (null: it follows the level
+ * above); `applies` and `level` are what holds there now; `inherited` is what would hold without the
+ * row's own choice, for the "Same as …" option. A bar's stored choice is honoured and reads as
+ * level `bar` though no screen sets one.
+ */
+export interface PayFirstShown {
+  readonly own: boolean | null
+  readonly applies: boolean
+  readonly level: PayFirstLevel
+  readonly inherited: { readonly applies: boolean; readonly level: Exclude<PayFirstLevel, 'table'> }
+}
+
 /** One of the venue's menus a route can name (the ones in the bin are not offered). */
 export interface MenuChoice {
   readonly id: string
@@ -59,6 +75,8 @@ export interface TableRowView {
   readonly isPaymentTable: boolean
   /** The bar the POS gives the table (D124), or null when it names none. */
   readonly bar: { readonly id: string; readonly name: string } | null
+  /** Pay first at the table; null where it can't take effect (#217) or at a payment table. */
+  readonly payFirst: PayFirstShown | null
 }
 
 /** The tables of one area (D95), in the area's order. */
@@ -72,6 +90,8 @@ export interface HallView {
   readonly menu: MenuShown<'area' | 'venue'> | null
   /** The menu the area's own entry names, or null (it takes the venue's live menu). */
   readonly routeMenuId: string | null
+  /** Pay first for the area's tables; null unless any of them can take it (#217). */
+  readonly payFirst: PayFirstShown | null
   readonly tables: readonly TableRowView[]
 }
 
@@ -86,6 +106,14 @@ export interface PaymentTablesView {
    * last (`name` null). Empty once every queue has one.
    */
   readonly missing: readonly { readonly name: string | null }[]
+}
+
+/** What pay first adds to the tab; null where it can't take effect: card payments off, or no POS opens a bill (#217). */
+export interface PayFirstTabView {
+  /** The signed-in person holds `settings.payment_tables` on their own sign-in (never a PIN). */
+  readonly canSet: boolean
+  /** The signed-in person's email, for the password again. */
+  readonly email: string
 }
 
 /** The whole tab. */
@@ -107,6 +135,8 @@ export interface TablesView {
   readonly menus: readonly MenuChoice[]
   /** Payment tables: null where no connector takes payments, and always at a venue made by hand. */
   readonly paying: PaymentTablesView | null
+  /** Pay first rows: null where pay first can't take effect (#217). */
+  readonly payFirst: PayFirstTabView | null
   readonly halls: readonly HallView[]
   readonly total: number
   /** Tables with a code that leads somewhere (a hidden table's paused code is not counted). */

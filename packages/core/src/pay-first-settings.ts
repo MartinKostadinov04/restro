@@ -52,18 +52,37 @@ export interface PayFirstPlace {
   readonly areaId: AreaId
 }
 
+/** The level of the setting that decided whether pay-first applies at a table. */
+export type PayFirstLevel = 'table' | 'bar' | 'area' | 'venue'
+
+/** Whether pay-first applies at a table, and which level's setting said so (as `MenuShown.level` does). */
+export interface PayFirstReading {
+  readonly applies: boolean
+  readonly level: PayFirstLevel
+}
+
 /**
- * Whether pay-first rules apply at a table (D122 §5): the table's own setting, else its bar's,
- * else its hall's, else the venue's. A bar is the narrower group: it is the service that makes
- * the drinks, a hall only where the table stands.
+ * Whether pay-first rules apply at a table (D122 §5), and which level decided it: the table's own
+ * setting, else its bar's, else its hall's, else the venue's. A bar is the narrower group: it is
+ * the service that makes the drinks, a hall only where the table stands. No screen sets a bar's
+ * choice, but a stored one is still honoured.
  */
+export function payFirstAppliesAt(
+  settings: PayFirstSettings,
+  place: PayFirstPlace,
+): PayFirstReading {
+  const own = settings.tables[place.tableId]
+  if (own !== undefined) return { applies: own, level: 'table' }
+  const bar = place.barId === null ? undefined : settings.groups[place.barId]
+  if (bar !== undefined) return { applies: bar, level: 'bar' }
+  const area = settings.groups[place.areaId]
+  if (area !== undefined) return { applies: area, level: 'area' }
+  return { applies: settings.applies, level: 'venue' }
+}
+
+/** Whether pay-first rules apply at a table (D122 §5): `payFirstAppliesAt` without the level. */
 export function payFirstApplies(settings: PayFirstSettings, place: PayFirstPlace): boolean {
-  return (
-    settings.tables[place.tableId] ??
-    (place.barId === null ? undefined : settings.groups[place.barId]) ??
-    settings.groups[place.areaId] ??
-    settings.applies
-  )
+  return payFirstAppliesAt(settings, place).applies
 }
 
 /** An item's payment mode: its own, else the venue's default. */
