@@ -9,6 +9,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   CirclePauseIcon,
+  CreditCardIcon,
   HourglassIcon,
   SearchCheckIcon,
 } from 'lucide-react'
@@ -30,6 +31,7 @@ const TILE = {
   check: { Icon: SearchCheckIcon, word: 'w_order' },
   approval: { Icon: HourglassIcon, word: 'w_appr' },
   call: { Icon: BellRingIcon, word: 'w_call' },
+  payment: { Icon: CreditCardIcon, word: 'w_pay' },
 } as const satisfies Record<TileState, unknown>
 
 function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOpen: () => void }) {
@@ -44,7 +46,9 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
   const tapOpens = closed && view.can.openClose
   const className = cn(
     'flex min-h-20 min-w-0 flex-col items-start justify-between gap-1 rounded-lg border p-2.5 text-left',
-    needs && 'border-info/40 bg-info/10 text-info',
+    needs && tile.state !== 'payment' && 'border-info/40 bg-info/10 text-info',
+    // Red is only for money held on a guest's card (paying plan; screen 1).
+    tile.state === 'payment' && 'border-destructive/40 bg-destructive/10 text-destructive',
     tile.state === 'open' && 'bg-card',
     closed && 'border-dashed bg-transparent text-muted-foreground',
   )

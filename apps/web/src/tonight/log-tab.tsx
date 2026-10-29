@@ -26,7 +26,8 @@ import { LogExport } from './log-export'
 import { logSentence, type Say } from './log-sentence'
 import { useMoney } from './money'
 import { PAGE } from './pages'
-import { PAYMENT_STATE_WORDS } from './payment-state-words'
+import { PaymentSheet } from './payment-sheet'
+import { paymentStateWords } from './payment-state-words'
 import { RunProvider } from './run'
 import { SearchField, useDebounced } from './search-field'
 import { SentOrderSheet } from './sent-sheet'
@@ -61,6 +62,7 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
   const [group, setGroup] = useState<(typeof GROUPS)[number][0]>('all')
   const [limit, setLimit] = useState(PAGE)
   const [open, setOpen] = useState<string | null>(null)
+  const [payment, setPayment] = useState<string | null>(null)
   const day = initial.day
 
   const feed = useLiveFeed<LogView>({
@@ -93,7 +95,7 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
       who,
       money: (minor) => money(minor, frame.currency),
       source: frame.source,
-      paymentStates: PAYMENT_STATE_WORDS,
+      paymentStates: paymentStateWords(say),
     })
 
   const body = (() => {
@@ -107,7 +109,7 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
         {shown.rows.map((line) => {
           const words = sentence(line)
           if (words === null) return null
-          const opens = line.sentOrderId
+          const opens = line.sentOrderId ?? line.paymentId
           const content = (
             <>
               <span className="w-12 shrink-0 text-sm tabular-nums text-muted-foreground">
@@ -156,7 +158,7 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
                 <button
                   type="button"
                   className="flex min-h-11 w-full items-start gap-3 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => setOpen(opens)}
+                  onClick={() => (line.sentOrderId === null ? setPayment(opens) : setOpen(opens))}
                 >
                   {content}
                 </button>
@@ -221,6 +223,9 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
           <ShowEarlier onClick={() => setLimit((before) => before + PAGE)} />
         ) : null}
       </div>
+      {payment === null ? null : (
+        <PaymentSheet frame={frame} paymentId={payment} onClose={() => setPayment(null)} />
+      )}
       {open === null ? null : (
         <SentOrderSheet
           frame={frame}

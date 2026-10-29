@@ -12,6 +12,7 @@ import { logError } from '@/server/log'
 import { getAccess } from '@/server/session'
 import { nightCsvRows } from '@/server/tonight/night-csv'
 import { loadNight, loadSentOrders } from '@/server/tonight/night-load'
+import { loadNightPayments } from '@/server/tonight/payment-load'
 import { getVenue } from '@/server/venues'
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
@@ -41,8 +42,11 @@ export async function GET(
     if (!night.ok || !night.night.full) return new Response('Forbidden', { status: 403 })
     const sent = await loadSentOrders(scope, { day: night.night.day, limit: 2000 })
     if (!sent.ok) return new Response('Forbidden', { status: 403 })
+    const paid = await loadNightPayments(scope, { day: night.night.day, all: 2000 })
+    if (!paid.ok) return new Response('Forbidden', { status: 403 })
     const t = await getTranslations('tonight')
     const rows = nightCsvRows(night.night, sent.list.rows, {
+      payments: paid.payments.rows,
       say: (key, values) => t(key as never, values as never),
       source: night.frame.source,
       timezone: night.frame.timezone,

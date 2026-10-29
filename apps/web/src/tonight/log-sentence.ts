@@ -69,6 +69,14 @@ function stateWordText(state: NonNullable<LogLineView['state']>, c: SentenceCont
   return state === 'approval' ? c.say('st_approval', { source: c.source }) : c.say(`st_${state}`)
 }
 
+/** The Log's word for each answer a manager gives: the receipt's or the till's own, never swapped. */
+const PAYMENT_ANSWER_LOG_WORDS = {
+  receipt_printed: 'lg_pay_ok',
+  no_receipt: 'lg_pay_no',
+  on_till: 'lg_pay_till',
+  not_on_till: 'lg_pay_notill',
+} as const
+
 /** The sentence of each shown kind; `null` is the one kind that never shows. */
 export const SENTENCES = {
   'sitting.opened': (l, c) => c.say('lg_opened', { table: c.table(l) }),
@@ -121,7 +129,7 @@ export const SENTENCES = {
   'payment.answered': (l, c) =>
     c.say('lg_pay_answer', {
       table: c.table(l),
-      answer: c.say(l.paymentAnswer === 'ok' ? 'lg_pay_ok' : 'lg_pay_no'),
+      answer: c.say(PAYMENT_ANSWER_LOG_WORDS[l.paymentAnswer ?? 'no_receipt']),
     }),
   'lease.taken_over': null,
 } as const satisfies Record<LogKind, Sentence | null>

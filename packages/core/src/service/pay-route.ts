@@ -41,6 +41,7 @@ import {
   paymentLines,
   paymentSteps,
   payments,
+  sentOrders,
   venueTables,
 } from '@restro/db'
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
@@ -264,6 +265,8 @@ export async function raise(
   const earlier = locked.alerts.get(kind)
   if (earlier !== undefined && (!again || earlier.doneAt === null)) return
   const { payment } = locked
+  // A pay-first round's order, as staff know it by its short reference (Tonight's meta line).
+  const reference = await referenceOf(stx, payment.sentOrderId)
   await stx.tx.insert(alerts).values({
     id: newId('al'),
     tenantId: stx.tenantId,
@@ -282,6 +285,7 @@ export async function raise(
       tipMinor: payment.tipMinor,
       currency: payment.currency,
       captureBefore: payment.captureBefore?.toISOString() ?? null,
+      ...(reference === null ? {} : { reference }),
       ...more,
     },
     ...stx.provenance,
@@ -293,6 +297,16 @@ export async function raise(
     sittingId: payment.sittingId,
     reason: kind,
   })
+}
+
+/** The reference of a payment's sent order (a pay-first round), or null. */
+async function referenceOf(stx: ServiceTx, sentOrderId: string | null): Promise<string | null> {
+  if (sentOrderId === null) return null
+  const [order] = await stx.tx
+    .select({ reference: sentOrders.reference })
+    .from(sentOrders)
+    .where(eq(sentOrders.id, sentOrderId))
+  return order?.reference ?? null
 }
 
 /** An accepted answer naming the payment and where it stands. */

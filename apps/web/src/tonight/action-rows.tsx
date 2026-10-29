@@ -32,10 +32,11 @@ import {
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { handleWaiterCallAction, resumeTableAction } from '@/server/tonight/actions'
-import type { ActionRow, RowKind, TonightView } from '@/server/tonight/view'
+import type { ActionRow, RowKind } from '@/server/tonight/view'
 
 import { callKindsText } from './call-kinds'
 import { useMoney } from './money'
+import { MONEY_ICONS, type MoneyFrame, useMoneyRowParts } from './money-rows'
 import { useTonightRun } from './run'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useTableName } from './table-name'
@@ -45,6 +46,10 @@ const ICONS = {
   approval: HourglassIcon,
   paused: CirclePauseIcon,
   call: BellRingIcon,
+  pay: MONEY_ICONS.pay.Icon,
+  failed: MONEY_ICONS.failed.Icon,
+  stuck: MONEY_ICONS.stuck.Icon,
+  stopped: MONEY_ICONS.stopped.Icon,
 } as const satisfies Record<RowKind, unknown>
 
 /** The most items a row or notice lists before "+k more" (plan §12 A). */
@@ -60,7 +65,7 @@ export function useAgo(now: string) {
 }
 
 /** What a row of "Needs you" needs of the screen: the same on the end-of-night page (#86). */
-export type ActionRowView = Pick<TonightView, 'venueId' | 'source' | 'currency' | 'device' | 'can'>
+export type ActionRowView = MoneyFrame
 
 /** One row of "Needs you". `primary` is true only for the first. */
 export function ActionRowItem({
@@ -80,6 +85,7 @@ export function ActionRowItem({
   const tableName = useTableName()
   const name = tableName(row.table, row.numbered)
   const Icon = ICONS[row.kind]
+  const moneyParts = useMoneyRowParts(row, view, name)
   const variant = primary ? 'default' : 'outline'
   const button = 'h-12 min-w-32 whitespace-normal'
 
@@ -87,7 +93,11 @@ export function ActionRowItem({
   let body: ReactNode = null
   let answer: ReactNode = null
 
-  if (row.kind === 'call') {
+  if (moneyParts !== null) {
+    title = moneyParts.title
+    body = moneyParts.body
+    answer = moneyParts.answer
+  } else if (row.kind === 'call') {
     title = t('c_t', { table: name, kinds: callKindsText(t, row.callKinds ?? ['waiter']) })
     // "Handled": no PIN even on a shared device; the Log names the device's account (Martin 10-26).
     if (view.can.answer) {
@@ -196,7 +206,11 @@ export function ActionRowItem({
       data-kind={row.kind}
     >
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
+        <span
+          className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md ${
+            row.kind === 'pay' ? 'bg-destructive/10 text-destructive' : 'bg-info/10 text-info'
+          }`}
+        >
           <Icon aria-hidden className="size-5" />
         </span>
         <div className="min-w-0 flex-1 space-y-2">

@@ -58,6 +58,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
+  paymentId: null,
   sentOrdersOfDay: null,
   callKinds: [],
   ...fields,
@@ -111,13 +112,13 @@ describe("the Log's sentences", () => {
           guard: 'pin',
           setting: 'pay_table',
           scope: { kind: 'connection', name: null },
-          paymentAnswer: 'no',
+          paymentAnswer: 'no_receipt',
         }),
         line(kind, {
           scope: { kind: 'bar', name: 'Main bar' },
           cause: 'vanished',
           state: 'approval',
-          paymentAnswer: 'ok',
+          paymentAnswer: 'receipt_printed',
         }),
         line(kind, { scope: { kind: 'table', name: null }, cause: 'unreachable', guard: 'other' }),
       ]) {
@@ -226,11 +227,25 @@ describe("the Log's sentences", () => {
     expect(logSentence(line('payment.state', base), withWord)).toBe(
       'Payment for Table 7, €38.00: captured',
     )
-    expect(logSentence(line('payment.answered', { paymentAnswer: 'ok' }), none)).toBe(
+    expect(logSentence(line('payment.answered', { paymentAnswer: 'receipt_printed' }), none)).toBe(
       'Payment for Table 7: Receipt printed',
     )
-    expect(logSentence(line('payment.answered', { paymentAnswer: 'no' }), none)).toBe(
+    expect(logSentence(line('payment.answered', { paymentAnswer: 'no_receipt' }), none)).toBe(
       'Payment for Table 7: No receipt',
+    )
+  })
+
+  it("words a pay-first round's answers as the till's, never as a receipt's (#115)", () => {
+    const none = context('en', new Set())
+    expect(logSentence(line('payment.answered', { paymentAnswer: 'on_till' }), none)).toBe(
+      'Payment for Table 7: On the till',
+    )
+    expect(logSentence(line('payment.answered', { paymentAnswer: 'not_on_till' }), none)).toBe(
+      'Payment for Table 7: Not on the till',
+    )
+    const bg = context('bg', new Set())
+    expect(logSentence(line('payment.answered', { paymentAnswer: 'on_till' }), bg)).toContain(
+      'В касата е',
     )
   })
 })

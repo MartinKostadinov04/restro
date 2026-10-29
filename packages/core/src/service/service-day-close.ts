@@ -54,6 +54,13 @@ export interface ServiceDayTotals {
    */
   readonly capturedMinor: number
   readonly tipMinor: number
+  /**
+   * The day's payments that ended `unconfirmed` and are still unanswered (#115): a settled state,
+   * so the close lets the day go while a card hold waits on a manager.
+   */
+  readonly paymentsUnconfirmed: number
+  /** What those hold on the guests' cards, in minor units. */
+  readonly unconfirmedMinor: number
 }
 
 /**
@@ -95,7 +102,13 @@ export async function serviceDayTotals(
         where venue_id = ${venueId} and service_date = ${day}) as "capturedMinor",
       (select coalesce(sum(tip_minor), 0) from restro.payments
         where venue_id = ${venueId} and service_date = ${day} and captured_minor is not null)
-        as "tipMinor"`)
+        as "tipMinor",
+      (select count(*) from restro.payments
+        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed')
+        as "paymentsUnconfirmed",
+      (select coalesce(sum(amount_minor), 0) from restro.payments
+        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed')
+        as "unconfirmedMinor"`)
   const row = result.rows[0]
   if (row === undefined) throw new Error('the day totals query returned no row')
   return Object.fromEntries(

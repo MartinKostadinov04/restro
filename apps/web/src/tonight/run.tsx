@@ -58,11 +58,14 @@ export function RunProvider({ children }: { children: ReactNode }) {
                 onClick: () => {
                   void undo(done).then((result) => {
                     if (!result.ok) {
-                      toast.error(failureText(result.error, result.retryAfterSeconds), {
-                        id: `${spec.id}:undo`,
-                        duration: Number.POSITIVE_INFINITY,
-                        closeButton: true,
-                      })
+                      toast.error(
+                        failureText(result.error, result.retryAfterSeconds, result.details),
+                        {
+                          id: `${spec.id}:undo`,
+                          duration: Number.POSITIVE_INFINITY,
+                          closeButton: true,
+                        },
+                      )
                     }
                   })
                 },
@@ -95,7 +98,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       }
       void execute(spec).then((result) => {
         if (!result.ok) {
-          toast.error(failureText(result.error, result.retryAfterSeconds), {
+          toast.error(failureText(result.error, result.retryAfterSeconds, result.details), {
             id: spec.id,
             duration: Number.POSITIVE_INFINITY,
             closeButton: true,

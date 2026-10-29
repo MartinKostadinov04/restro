@@ -64,7 +64,7 @@ export type Who =
 /** The refusals of these reads. */
 export type NightRefusal = TonightRefusal
 
-interface Reader {
+export interface Reader {
   readonly venue: {
     readonly id: string
     readonly name: string
@@ -87,18 +87,18 @@ export interface NightAccess {
   readonly today: string
 }
 
-const accessOf = (reader: Reader): NightAccess => ({
+export const accessOf = (reader: Reader): NightAccess => ({
   venue: reader.venue,
   permissions: [...reader.held],
   device: reader.device,
   today: reader.today,
 })
 
-type Opened =
+export type Opened =
   | { readonly ok: true; readonly reader: Reader }
   | { readonly ok: false; readonly code: NightRefusal }
 
-interface ReadInput {
+export interface ReadInput {
   readonly tenantId: string
   readonly venueId: string
   readonly actor: ServiceActor
@@ -106,7 +106,7 @@ interface ReadInput {
 }
 
 /** The actor's grants at the venue, as `readTonight` checks them. */
-async function open(tx: ReadTx, input: ReadInput): Promise<Opened> {
+export async function open(tx: ReadTx, input: ReadInput): Promise<Opened> {
   if (
     input.actor.kind !== 'user' &&
     input.actor.kind !== 'staff' &&
@@ -154,7 +154,7 @@ export async function readNightAccess(
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
 /** The day asked for, or today: a day that is not a date, or lies ahead, is today. */
-function dayOf(asked: string | undefined, today: string): string {
+export function dayOf(asked: string | undefined, today: string): string {
   return asked !== undefined && DAY.test(asked) && asked <= today ? asked : today
 }
 
@@ -164,7 +164,7 @@ function like(text: string): string {
 }
 
 /** Who the actors are: a person's name, Restro, or a guest's phone. */
-async function whoOf(tx: ReadTx, actors: readonly string[]): Promise<Map<string, Who>> {
+export async function whoOf(tx: ReadTx, actors: readonly string[]): Promise<Map<string, Who>> {
   const named = new Map<string, Who>()
   const memberIds: string[] = []
   const accountIds: string[] = []
@@ -204,7 +204,7 @@ async function whoOf(tx: ReadTx, actors: readonly string[]): Promise<Map<string,
   return named
 }
 
-const RESTRO: Who = { kind: 'restro' }
+export const RESTRO: Who = { kind: 'restro' }
 
 // ───────────────────────────── sent orders ─────────────────────────────
 
@@ -812,6 +812,9 @@ export interface NightMoney {
   readonly payments: number
   readonly capturedMinor: number
   readonly tipMinor: number
+  /** Payments left `unconfirmed` and what they hold on cards (#115): answered after the close. */
+  readonly paymentsUnconfirmed: number
+  readonly unconfirmedMinor: number
 }
 
 /** The end of one service day. */
@@ -834,7 +837,10 @@ export interface NightRead {
     readonly notAdded: SentOrderPage
   }
   /** Part 1's totals: no payments, no tips. */
-  readonly totals: Omit<ServiceDayTotals, 'payments' | 'capturedMinor' | 'tipMinor'>
+  readonly totals: Omit<
+    ServiceDayTotals,
+    'payments' | 'capturedMinor' | 'tipMinor' | 'paymentsUnconfirmed' | 'unconfirmedMinor'
+  >
   readonly money: NightMoney | null
 }
 
@@ -998,7 +1004,14 @@ export async function readNight(
       }
     })
 
-    const { payments: paymentCount, capturedMinor, tipMinor, ...part1 } = totals
+    const {
+      payments: paymentCount,
+      capturedMinor,
+      tipMinor,
+      paymentsUnconfirmed,
+      unconfirmedMinor,
+      ...part1
+    } = totals
     const dayList = await tx.execute<{ day: string }>(sql`
       select day::text as day from (
         select service_date as day from restro.service_days where venue_id = ${venue.id}
@@ -1026,7 +1039,13 @@ export async function readNight(
         sent: { counts: sent.counts, notAdded: sent },
         totals: part1,
         money: reader.held.has('money.follow_up')
-          ? { payments: paymentCount, capturedMinor, tipMinor }
+          ? {
+              payments: paymentCount,
+              capturedMinor,
+              tipMinor,
+              paymentsUnconfirmed,
+              unconfirmedMinor,
+            }
           : null,
       },
     } as const

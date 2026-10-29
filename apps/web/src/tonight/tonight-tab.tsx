@@ -111,7 +111,7 @@ export async function TonightTab({
         key={result.night.day}
         view={result.night}
         frame={result.frame}
-        slots={nightSlots(result.night, result.frame)}
+        slots={await nightSlots(scope, result.night, result.frame)}
       />
     ) : (
       <NightFailed />
