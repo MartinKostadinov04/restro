@@ -45,7 +45,10 @@ export function moveRows(
 export function closeBill(
   client: SimClient,
   bill: string,
-  body: { readonly payments: readonly { readonly type?: string; readonly amount: string }[] },
+  body: {
+    readonly payments: readonly { readonly type?: string; readonly amount: string }[]
+    readonly receiptEmail?: string
+  },
   signal: AbortSignal,
 ): Promise<Sent> {
   return client.post(`/api/bills/${segment(bill)}/close`, body, signal)

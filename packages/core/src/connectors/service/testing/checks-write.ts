@@ -490,6 +490,63 @@ export const tipOnCloseCheck: Check<WriteHarness> = async (harness) => {
   return [...problems, ...(await closedWithTipProblems(harness, setUp))]
 }
 
+/** The guest's address the kit gives: a made-up one on a reserved test domain. */
+export const KIT_RECEIPT_EMAIL = 'kit-guest@example.test'
+
+/**
+ * An electronic receipt on close (D127, #186), on a bill isolated as the payment route does it:
+ *   - `electronicReceiptFile` is declared only with `electronicReceipt`;
+ *   - where `electronicReceipt` is declared, a close with an email is done, and its result carries
+ *     the POS's receipt file exactly where `electronicReceiptFile` is declared;
+ *   - undeclared, a close with an email is refused `not_supported` and nothing reaches the POS.
+ */
+export const electronicReceiptCheck: Check<WriteHarness> = async (harness) => {
+  const connector: ServiceConnector = harness.connector
+  const caps = connector.capabilities
+  const problems: string[] = []
+  if (caps.electronicReceiptFile && !caps.electronicReceipt) {
+    problems.push('electronicReceiptFile is declared without electronicReceipt')
+  }
+  const setUp = await tipSetUp(harness)
+  if (typeof setUp === 'string') return [...problems, setUp]
+  const callsBefore = harness.pos.calls().length
+  const outcome = await connector.payAndClose(kitContext(harness), {
+    isolated: setUp.handle,
+    amountMinor: setUp.linesMinor,
+    tipMinor: 0,
+    paymentType: null,
+    receiptEmail: KIT_RECEIPT_EMAIL,
+    ref: 'kit-close-receipt',
+  })
+  problems.push(...outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome))
+
+  if (!caps.electronicReceipt) {
+    if (outcome.kind !== 'refused' || outcome.refusal.code !== 'not_supported') {
+      problems.push(
+        `electronicReceipt is not declared, but a close with an email came back ${describe(outcome)}, not not_supported`,
+      )
+    }
+    const wrote = harness.pos
+      .calls()
+      .slice(callsBefore)
+      .filter((call) => call.write)
+    for (const call of wrote) problems.push(`a refused email still wrote to the POS: ${call.name}`)
+    return problems
+  }
+
+  if (outcome.kind !== 'done') {
+    return [...problems, `the close with an email came back ${describe(outcome)}`]
+  }
+  const file = outcome.result.receiptFile
+  if (caps.electronicReceiptFile && file === undefined) {
+    problems.push('electronicReceiptFile is declared, but the close gave no receipt file')
+  }
+  if (!caps.electronicReceiptFile && file !== undefined) {
+    problems.push('the close gives a receipt file, but electronicReceiptFile is not declared')
+  }
+  return problems
+}
+
 /**
  * A retried close with a tip (D115, D127), where `recordTipOnClose` is declared: the close's
  * first write lands and its answer never comes, so the close is unknown; the same close sent

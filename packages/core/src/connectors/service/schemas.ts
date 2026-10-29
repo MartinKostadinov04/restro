@@ -340,6 +340,9 @@ export type IsolateLinesRequest = z.output<typeof IsolateLinesRequestSchema>
 export const IsolateLinesResultSchema = z.strictObject({ isolated: IsolatedHandleSchema })
 export type IsolateLinesResult = z.output<typeof IsolateLinesResultSchema>
 
+/** A guest's email for an electronic receipt: one valid address, nothing else (D127, #186). */
+export const ReceiptEmailSchema = z.email().max(254)
+
 /** Close the isolated bill with its payment (D122 §8 step 4). */
 export const PayAndCloseRequestSchema = z
   .strictObject({
@@ -353,6 +356,12 @@ export const PayAndCloseRequestSchema = z
     tipMinor: MinorSchema,
     /** The POS's payment type, where `closeWithPaymentType` is declared; else null. */
     paymentType: PosRefSchema.nullable(),
+    /**
+     * The guest's email, where `electronicReceipt` is declared: the close asks the POS for the
+     * sale as an electronic receipt to this address (D127, #186). Absent for paper. Personal
+     * data: carried to this one close and never recorded, logged or sent anywhere else.
+     */
+    receiptEmail: ReceiptEmailSchema.optional(),
     ref: WriteRefSchema,
   })
   .refine((request) => request.tipMinor <= request.amountMinor, {
@@ -361,9 +370,38 @@ export const PayAndCloseRequestSchema = z
   })
 export type PayAndCloseRequest = z.output<typeof PayAndCloseRequestSchema>
 
+/** The largest receipt file Restro will send on: a fiscal receipt is a page or two. */
+export const RECEIPT_FILE_MAX_BYTES = 2_000_000
+
+/**
+ * The POS's own receipt file, where `electronicReceiptFile` is declared: passed on unchanged,
+ * never drawn, read or edited by Restro, and never stored (D127, #186).
+ */
+export const ReceiptFileSchema = z.strictObject({
+  /** The file's name as the POS gave it. */
+  filename: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  contentType: z.enum(['application/pdf', 'text/html', 'text/plain']),
+  /** The bytes, base64 as sent over the wire. */
+  contentBase64: z
+    .string()
+    .min(1)
+    .max(Math.ceil((RECEIPT_FILE_MAX_BYTES * 4) / 3) + 4)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+})
+export type ReceiptFile = z.output<typeof ReceiptFileSchema>
+
 export const PayAndCloseResultSchema = z.strictObject({
   /** Where `receiptNumberOnClose` is declared; else null. Backend only. */
   receiptNumber: z.string().min(1).max(100).nullable(),
+  /**
+   * The receipt as a file, only where `electronicReceiptFile` is declared and the close was given
+   * an email. Absent where the POS sends the receipt itself, or for paper.
+   */
+  receiptFile: ReceiptFileSchema.optional(),
 })
 export type PayAndCloseResult = z.output<typeof PayAndCloseResultSchema>
 

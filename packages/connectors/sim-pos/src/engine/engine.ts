@@ -98,6 +98,22 @@ interface CallMods {
 
 const NO_MODS: CallMods = { partlyRows: null, noReceipt: false, dropItem: false }
 
+/** The POS's electronic receipt as a file: bytes of its own, named by the receipt number. */
+function receiptFileOf(number: string): {
+  readonly filename: string
+  readonly contentType: 'application/pdf'
+  readonly contentBase64: string
+} {
+  return {
+    filename: `receipt-${number}.pdf`,
+    contentType: 'application/pdf',
+    contentBase64: Buffer.from(`%PDF-1.4
+sim-pos electronic receipt ${number}
+%%EOF
+`).toString('base64'),
+  }
+}
+
 export class SimEngine {
   readonly switches: SimSwitches
   readonly clock: Clock
@@ -717,7 +733,14 @@ export class SimEngine {
       throw new UndefinedBehaviour('an electronic receipt', 'Q38')
     }
     const receipt = this.#takePayments(bill, call.payments, login, noReceipt, call.receiptEmail)
-    return { bill: bill.id, ...(receipt !== null && s.receiptNumberOnClose ? { receipt } : {}) }
+    return {
+      bill: bill.id,
+      ...(receipt !== null && s.receiptNumberOnClose ? { receipt } : {}),
+      // The POS's own file, where it returns it rather than sending: with a receipt printed.
+      ...(receipt !== null && call.receiptEmail !== null && s.electronicReceiptFile
+        ? { receiptFile: receiptFileOf(receipt) }
+        : {}),
+    }
   }
 
   #sale(
@@ -789,7 +812,9 @@ export class SimEngine {
     bill.payments.push(...taken)
     bill.state = 'closed'
     bill.closedAt = at
-    bill.receipt = { number, email }
+    const delivery =
+      email === null || number === null ? null : s.electronicReceiptFile ? 'returned' : 'sent'
+    bill.receipt = { number, email: delivery === null ? null : email, delivery }
     return number
   }
 

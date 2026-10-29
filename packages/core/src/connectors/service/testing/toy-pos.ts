@@ -14,7 +14,14 @@ import {
 import { NO_SERVICE_CAPABILITIES, type ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector, ServiceContext } from '../connector'
 import { type PosRef, posRef } from '../pos-ref'
-import type { BillLine, PosBill, Reading, TableBills, WriteOutcome } from '../schemas'
+import type {
+  BillLine,
+  PayAndCloseResult,
+  PosBill,
+  Reading,
+  TableBills,
+  WriteOutcome,
+} from '../schemas'
 import { chooseTargetBill } from '../target-bill'
 import type { PosCall, WaiterDriver, WriteHarness } from './harness'
 
@@ -54,6 +61,13 @@ export const TOY_PAYMENT_TABLE = 'tbl/pay'
 /** The toy's tip item: a tip is one line of it, of the tip's amount (D127's tip line). */
 export const TOY_TIP_ITEM = 'art#tip'
 
+/** The toy POS's receipt file, for the shape where the close returns it. */
+export const TOY_RECEIPT_FILE = {
+  filename: 'receipt-toy.pdf',
+  contentType: 'application/pdf',
+  contentBase64: 'JVBERi0xLjQgdG95IHJlY2VpcHQ=',
+} as const
+
 export class ToyPos {
   tables = new Map<string, { name: string; area: string }>()
   bills: ToyBill[] = []
@@ -66,6 +80,8 @@ export class ToyPos {
   /** Reads fail from this read count on; null when they answer. */
   failFrom: number | null = null
   closeBeforeWrite: string | null = null
+  /** The addresses the toy POS sent an electronic receipt to (the "POS sends it" shape). */
+  receiptsSent: string[] = []
   seq = 0
 
   reset(): void {
@@ -79,6 +95,7 @@ export class ToyPos {
     this.stalled = false
     this.stalledWrites = false
     this.stallNextWrite = false
+    this.receiptsSent = []
     this.readsSeen = 0
     this.failFrom = null
     this.closeBeforeWrite = null
@@ -361,7 +378,10 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
       if (request.tipMinor > 0 && !capabilities.recordTipOnClose) {
         return Promise.resolve(refused('not_supported'))
       }
-      return write(ctx, 'bills.close', () => {
+      if (request.receiptEmail !== undefined && !capabilities.electronicReceipt) {
+        return Promise.resolve(refused('not_supported'))
+      }
+      return write(ctx, 'bills.close', (): WriteOutcome<PayAndCloseResult> => {
         const bill = pos.bills.find((b) => b.id === request.isolated.ref.pos)
         if (bill === undefined || bill.closed) return refused('already_done')
         const total = bill.lines.reduce((sum, line) => addMinor(sum, line.amountMinor), 0)
@@ -378,7 +398,16 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
           })
         }
         bill.closed = true
-        return { kind: 'done', result: { receiptNumber: null } }
+        if (request.receiptEmail === undefined)
+          return { kind: 'done', result: { receiptNumber: null } }
+        if (!capabilities.electronicReceiptFile) {
+          pos.receiptsSent.push(request.receiptEmail)
+          return { kind: 'done', result: { receiptNumber: null } }
+        }
+        return {
+          kind: 'done',
+          result: { receiptNumber: null, receiptFile: TOY_RECEIPT_FILE },
+        }
       })
     },
     undoIsolate(ctx, request) {

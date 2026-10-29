@@ -12,6 +12,7 @@ import {
   tableFailedPartCheck,
 } from './checks-read'
 import {
+  electronicReceiptCheck,
   KIT_TIP_MINOR,
   newBillReferenceCheck,
   paymentRouteCheck,
@@ -39,6 +40,15 @@ const TIP_ON_CLOSE: ServiceCapabilities = {
   recordTipOnClose: true,
 }
 
+/** The same, and the POS sends the electronic receipt itself (D127, #186). */
+const POS_SENDS_RECEIPT: ServiceCapabilities = { ...TIP_ON_CLOSE, electronicReceipt: true }
+
+/** The same, and the close returns the POS's receipt file for Restro to send. */
+const RETURNS_RECEIPT_FILE: ServiceCapabilities = {
+  ...POS_SENDS_RECEIPT,
+  electronicReceiptFile: true,
+}
+
 // The kit on a connector that is right (the whole suite passes) and on connectors that are wrong
 // on purpose (each check finds its fault). The toy POS is the kit's own test double, not #68.
 
@@ -51,6 +61,19 @@ serviceConnectorSuite(
 )
 serviceConnectorSuite(
   toyHarness((pos) => toyConnector(pos, TIP_ON_CLOSE), 'toy recording a tip on close'),
+)
+
+serviceConnectorSuite(
+  toyHarness(
+    (pos) => toyConnector(pos, POS_SENDS_RECEIPT),
+    'toy whose POS sends the electronic receipt',
+  ),
+)
+serviceConnectorSuite(
+  toyHarness(
+    (pos) => toyConnector(pos, RETURNS_RECEIPT_FILE),
+    'toy whose close returns the electronic receipt file',
+  ),
 )
 
 function variant(
@@ -325,6 +348,57 @@ describe('the kit catches a connector that is wrong', () => {
       ),
     ).toBe(true)
     expect(problems).toContain('a refused tip still wrote to the POS: bills.close')
+  })
+
+  it('an email closed onto the bill where electronicReceipt is not declared', async () => {
+    const harness = variant((pos) => ({
+      payAndClose(ctx, request) {
+        return toyConnector(pos, POS_SENDS_RECEIPT).payAndClose(ctx, request)
+      },
+    }))
+    const problems = await electronicReceiptCheck(harness)
+    expect(
+      problems.some((p) =>
+        p.startsWith('electronicReceipt is not declared, but a close with an email came back done'),
+      ),
+    ).toBe(true)
+    expect(problems).toContain('a refused email still wrote to the POS: bills.close')
+  })
+
+  it('a receipt file returned where only the POS sending is declared, and not where it is', async () => {
+    const dropped = variant(
+      (_pos, base) => ({
+        async payAndClose(ctx, request) {
+          const outcome = await base.payAndClose(ctx, request)
+          if (outcome.kind !== 'done') return outcome
+          return { kind: 'done', result: { receiptNumber: null } }
+        },
+      }),
+      RETURNS_RECEIPT_FILE,
+    )
+    expect(await electronicReceiptCheck(dropped)).toContain(
+      'electronicReceiptFile is declared, but the close gave no receipt file',
+    )
+    const extra = variant(
+      (pos) => ({
+        payAndClose(ctx, request) {
+          return toyConnector(pos, RETURNS_RECEIPT_FILE).payAndClose(ctx, request)
+        },
+      }),
+      POS_SENDS_RECEIPT,
+    )
+    expect(await electronicReceiptCheck(extra)).toContain(
+      'the close gives a receipt file, but electronicReceiptFile is not declared',
+    )
+  })
+
+  it('a file shape declared without the capability', async () => {
+    const harness = toyHarness((pos) =>
+      toyConnector(pos, { ...TIP_ON_CLOSE, electronicReceiptFile: true }),
+    )
+    expect(await electronicReceiptCheck(harness)).toContain(
+      'electronicReceiptFile is declared without electronicReceipt',
+    )
   })
 
   it('a tip dropped on close where recordTipOnClose is declared', async () => {

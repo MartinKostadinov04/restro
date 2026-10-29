@@ -26,6 +26,7 @@ import {
   type PosRef,
   posRef,
   type Reading,
+  ReceiptFileSchema,
   type Refusal,
   type RefusalCode,
   type RefusalScope,
@@ -102,7 +103,11 @@ const RowItem = z.object({
 })
 const AddAnswer = z.object({ bill: Id, opened: z.boolean() })
 const MoveAnswer = z.object({ bill: Id })
-const CloseAnswer = z.object({ bill: Id, receipt: z.string().min(1).optional() })
+const CloseAnswer = z.object({
+  bill: Id,
+  receipt: z.string().min(1).optional(),
+  receiptFile: ReceiptFileSchema.optional(),
+})
 const PingAnswer = z.object({ mode: z.enum(['live', 'training']).optional() })
 const ErrorAnswer = z.object({
   error: z.string(),
@@ -471,6 +476,10 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       if (!capabilities.closeWithPaymentType) {
         return refusal('not_supported', 'bill', 'the POS takes no payment from Restro')
       }
+      // D127: an email asks for an electronic receipt, or it isn't taken. Nothing is written.
+      if (request.receiptEmail !== undefined && !capabilities.electronicReceipt) {
+        return refusal('not_supported', 'bill', 'the POS issues no electronic receipt')
+      }
       if (request.tipMinor > 0 && tipItem !== null) {
         // The tip row and the close are two calls: read first, so a bill that won't close for
         // this amount gets no tip row; then the row, as a waiter adds it at the till, then the
@@ -526,6 +535,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
             amount: minorToDecimal(request.amountMinor),
           },
         ],
+        ...(request.receiptEmail === undefined ? {} : { receiptEmail: request.receiptEmail }),
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
         write.closeBill(client, request.isolated.ref.pos, body, signal),
@@ -534,7 +544,15 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       const answer = parse(CloseAnswer, sent.body, 'the close')
       inFlight.delete(request.isolated.ref.pos)
       const receiptNumber = capabilities.receiptNumberOnClose ? (answer.receipt ?? null) : null
-      return { kind: 'done', result: { receiptNumber } }
+      // The POS's file, passed on as it came, only where this POS returns it for an email.
+      const receiptFile =
+        capabilities.electronicReceiptFile && request.receiptEmail !== undefined
+          ? answer.receiptFile
+          : undefined
+      return {
+        kind: 'done',
+        result: { receiptNumber, ...(receiptFile === undefined ? {} : { receiptFile }) },
+      }
     },
 
     async undoIsolate(ctx, request) {
