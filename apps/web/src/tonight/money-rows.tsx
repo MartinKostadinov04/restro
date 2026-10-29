@@ -121,7 +121,9 @@ export function useMoneyRowParts(
 
   if (m.variant === 'question') {
     const words = QUESTION_WORDS[m.question ?? 'close']
+    // The table first: a manager must know which one the question is about.
     const meta = [
+      name,
       m.question === 'till' && m.reference !== null ? t('m_pf_meta', { ref: m.reference }) : null,
       t('m_tag', { amt }),
       m.holdUntil === null

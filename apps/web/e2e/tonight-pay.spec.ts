@@ -208,8 +208,12 @@ test("an owner answers in one tap, and the Log words a till answer as the till's
   // The Log, Money kind: each answer in its own words, none of the till's as "Receipt printed".
   await page.goto(`${venueUrl(page)}?tab=tonight&view=log`)
   await expect(page.getByTestId('tonight-log')).toBeVisible()
-  await page.getByTestId('kind-button').click()
-  await page.getByTestId('kind-money').click()
+  // A menu still closing from the last pick can eat the click that opens it: open until it's there.
+  await expect(async () => {
+    const item = page.getByTestId('kind-money')
+    if (!(await item.isVisible())) await page.getByTestId('kind-button').click()
+    await item.click({ timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
   const log = page.getByTestId('log-list')
   await expect(log).toContainText('Payment for Table 1: Receipt printed')
   await expect(log).toContainText('Payment for Table 3: On the till')
@@ -222,7 +226,7 @@ test("an owner answers in one tap, and the Log words a till answer as the till's
   const sheet = page.getByTestId('payment-sheet')
   await expect(sheet).toBeVisible()
   await expect(sheet).toContainText('Payment for Table 1')
-  await sheet.getByRole('button', { name: 'Close' }).click()
+  await page.keyboard.press('Escape')
   await expect(sheet).toHaveCount(0)
 })
 

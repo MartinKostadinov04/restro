@@ -50,6 +50,7 @@ import {
   type Who,
   whoOf,
 } from './night-read'
+import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
 import { payingPausedAt } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import type { Permission } from './permissions'
@@ -280,7 +281,12 @@ export function problemOf(row: {
   readonly reason: string | null
   readonly receiptNumber: string | null
 }): NightPayProblem | null {
-  if (row.state === 'unconfirmed') return 'unconfirmed'
+  // Answered ("Receipt printed", "No receipt") it waits for the worker, no longer for a person.
+  if (row.state === 'unconfirmed') {
+    return (PAYMENT_UNCONFIRMED_REASONS as readonly (string | null)[]).includes(row.reason)
+      ? 'unconfirmed'
+      : null
+  }
   if (row.state === 'capture_failed') return 'capture_failed'
   if (row.state === 'stranded') return 'stranded'
   if (row.state === 'released' && row.reason === 'expired') return 'expired'
@@ -289,7 +295,11 @@ export function problemOf(row: {
 }
 
 const FIX_CONDITION = or(
-  inArray(payments.state, ['unconfirmed', 'capture_failed', 'stranded']),
+  and(
+    eq(payments.state, 'unconfirmed'),
+    inArray(payments.reason, [...PAYMENT_UNCONFIRMED_REASONS]),
+  ),
+  inArray(payments.state, ['capture_failed', 'stranded']),
   and(eq(payments.state, 'released'), eq(payments.reason, 'expired')),
   and(eq(payments.state, 'captured'), sql`${payments.receiptNumber} is null`),
 )
