@@ -23,7 +23,7 @@
 // Locks, in the fixed order: the tables' sittings and orders, their waiting sent orders, then the
 // pause, then the alert.
 
-import { alerts, bars, pauses, venueTables } from '@restro/db'
+import { alerts, bars, logEntries, pauses, venueTables } from '@restro/db'
 import { and, eq, inArray, isNull, lte, notInArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -33,6 +33,7 @@ import { TABLE_VANISHED_CAUSE } from './floor-pause'
 import { COVERED_VENUES_KEY } from './pause-scope'
 import { accepted, refused, type ServiceResult } from './results'
 import { ORDER_UNCONFIRMED_CAUSE, settleWaiting } from './sent-order'
+import { changedSince, UndoTokenSchema } from './undo'
 
 /** The cause of a staff pause. */
 export const STAFF_PAUSE_CAUSE = 'staff'
@@ -170,14 +171,30 @@ async function insertStaffPause(
   return id
 }
 
-/** `ordering.pause`: staff pause all bars (`barId` null) or one bar. */
+/**
+ * `ordering.pause`: staff pause all bars (`barId` null) or one bar. With an `undo` token it is the
+ * Undo of a lift (#219): refused `undo_stale` when someone paused this scope again since.
+ */
 export function pauseOrdering() {
   return defineCommand({
-    schema: z.strictObject({ type: z.literal('ordering.pause'), barId: idSchema('br').nullable() }),
+    schema: z.strictObject({
+      type: z.literal('ordering.pause'),
+      barId: idSchema('br').nullable(),
+      undo: UndoTokenSchema.optional(),
+    }),
     origins: ['staff'],
     permission: 'ordering.pause',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
+    undoable: true,
+    undoStale: (stx, command, entry) =>
+      changedSince(
+        stx,
+        entry,
+        sql`${logEntries.kind} = 'pause.started'
+          and ${logEntries.details} ->> 'scope' = ${command.barId === null ? 'venue' : 'bar'}
+          and ${logEntries.details} ->> 'barId' is not distinct from ${command.barId}`,
+      ),
     async handle(stx, command) {
       const barId = command.barId
       if (barId !== null) {
@@ -225,10 +242,23 @@ export function pauseOrdering() {
  */
 export function liftOrdering() {
   return defineCommand({
-    schema: z.strictObject({ type: z.literal('ordering.lift'), pauseId: idSchema('pa') }),
+    schema: z.strictObject({
+      type: z.literal('ordering.lift'),
+      pauseId: idSchema('pa'),
+      undo: UndoTokenSchema.optional(),
+    }),
     origins: ['staff'],
     permission: 'ordering.lift',
     idempotency: 'by_nature',
+    undoable: true,
+    // With an `undo` token this is the Undo of a pause (#219): stale when the pause was lifted since.
+    undoStale: (stx, command, entry) =>
+      changedSince(
+        stx,
+        entry,
+        sql`${logEntries.kind} = 'pause.lifted'
+          and ${logEntries.details} ->> 'pauseId' = ${command.pauseId}`,
+      ),
     async handle(stx, command) {
       const [pause] = await stx.tx.select().from(pauses).where(eq(pauses.id, command.pauseId))
       if (pause === undefined) return refused(null, 'pause_missing')

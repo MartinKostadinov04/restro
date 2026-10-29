@@ -37,6 +37,13 @@ export const ORDER_LIMITS = {
 /** How long "Removed · Undo" lasts (D117: a few seconds). */
 export const UNDO_WINDOW_MS = 10_000
 
+/**
+ * How long a staff Undo on Tonight is accepted after the write it undoes (#219): the toast's 8
+ * seconds, its pauses (Sonner holds it while the pointer is on it or the tab is hidden) and a slow
+ * network. Checked by core, not the browser.
+ */
+export const STAFF_UNDO_WINDOW_MS = 30_000
+
 /** The idle time after which an order nobody touched moves aside (D117: 30 minutes by default). */
 export const ORDER_IDLE_MS = 30 * 60_000
 

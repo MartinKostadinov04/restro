@@ -53,6 +53,7 @@ import { isSettingsPermission } from './permissions'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
 import type { SendMenu } from './send-menu'
+import { UNDO_AT_KEY, UNDO_ENTRY_KEY, undoExpired } from './undo'
 
 /** How long a service write waits for a row lock before it answers `busy` (design §2.3). */
 export const SERVICE_LOCK_TIMEOUT = '2s'
@@ -109,6 +110,8 @@ interface Envelope {
   readonly actionId?: string
   /** Milliseconds since the guest's tap, for a command with a `maxAgeMs`. */
   readonly ageMs?: number
+  /** For a staff Undo: the Log entry of the write it undoes (#219). */
+  readonly undo?: { readonly entry: number }
 }
 
 /**
@@ -228,6 +231,7 @@ export async function executeCommand(
         return clock
       }
       const kept: (() => Promise<void>)[] = []
+      let logged: { readonly seq: number; readonly at: Date } | null = null
       const stx: ServiceTx = {
         tx,
         tenantId: context.tenantId,
@@ -247,12 +251,14 @@ export async function executeCommand(
         consentVersion: context.consentVersion ?? null,
         sendMenu: options.sendMenu ?? null,
         dbNow,
-        log: (entry) =>
-          appendLogEntry(
+        log: async (entry) => {
+          logged = await appendLogEntry(
             tx,
             { tenantId: context.tenantId, venueId: venue.id, serviceDate: day, provenance, via },
             entry,
-          ),
+          )
+        },
+        lastLogged: () => logged,
         keepOnRefusal: (write) => {
           kept.push(write)
         },
@@ -291,11 +297,22 @@ export async function executeCommand(
         }
       }
 
+      // A staff Undo with its token (#219): too old is refused before anything is read or written.
+      const undo = command.undo
+      if (undo !== undefined && (await undoExpired(stx, undo))) {
+        throw new Refusal(refused(actionId, 'undo_expired'))
+      }
+
       await tx.execute(sql`savepoint service_command`)
       let result: ServiceResult
       try {
         result = await definition.handle(stx, parsed.data)
         if (result.status === 'refused') throw new HandlerRefusal(result)
+        // Changed again since the write it undoes: rolled back with the handler's writes, so the
+        // newer change stands.
+        if (undo !== undefined && (await definition.undoStale?.(stx, parsed.data, undo.entry))) {
+          throw new HandlerRefusal(refused(actionId, 'undo_stale'))
+        }
         await tx.execute(sql`release savepoint service_command`)
       } catch (error) {
         if (!(error instanceof HandlerRefusal)) throw error
@@ -303,6 +320,24 @@ export async function executeCommand(
         rows.discardTouches()
         result = error.result
         for (const write of kept) await write()
+      }
+
+      // The token of a write Tonight offers an Undo for: the Log entry it wrote and its time.
+      const written = logged as { readonly seq: number; readonly at: Date } | null
+      if (
+        result.status === 'accepted' &&
+        definition.undoable === true &&
+        via === 'tonight' &&
+        written !== null
+      ) {
+        result = {
+          ...result,
+          details: {
+            ...result.details,
+            [UNDO_ENTRY_KEY]: written.seq,
+            [UNDO_AT_KEY]: written.at.toISOString(),
+          },
+        }
       }
 
       const versions = await rows.bumpTouched()

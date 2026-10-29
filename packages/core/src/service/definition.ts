@@ -62,6 +62,8 @@ export interface ServiceTx extends LeaseTx {
   dbNow(): Promise<Date>
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
+  /** The last Log entry this command appended (its place and time), or null when it logged none. */
+  lastLogged(): { readonly seq: number; readonly at: Date } | null
   /**
    * Sets writes aside for the handler's refusal: they run after its savepoint is rolled back, in
    * the same transaction, so what a refusal leaves behind (a guard trip's pause, Log entry and
@@ -114,6 +116,19 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
    */
   readonly quickOnSharedDevice?: boolean
   readonly idempotency: Idempotency
+  /**
+   * A staff write whose Undo Tonight offers (#219): when it came via Tonight and logged something,
+   * the accepted answer carries `undoEntry` (the Log entry's `seq`) and `undoAt` (its time), which
+   * the inverse command sends back as its `undo` token.
+   */
+  readonly undoable?: boolean
+  /**
+   * For an inverse command that takes an `undo` token: whether the thing it touched changed after
+   * the token's entry. Run after the handler wrote, under the handler's own locks, so a change
+   * committed meanwhile is seen or waited for; true rolls the handler back and the answer is
+   * `undo_stale`. Use `changedSince`, which leaves out this command's own entries.
+   */
+  undoStale?(stx: ServiceTx, command: z.infer<S>, entry: number): Promise<boolean>
   /**
    * The oldest a command may be, in milliseconds since the guest's tap (its `ageMs`): an older one
    * is refused `stale_action` after the repeat check, so a phone back from a lost signal never

@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { liftOrderingAction, pauseOrderingAction } from '@/server/tonight/actions'
 import type { PauseBanner, TonightView } from '@/server/tonight/view'
 
-import { useTonightRun } from './run'
+import { useTonightRun, wroteSomething } from './run'
 
 function StaffBanner({ banner, view }: { banner: PauseBanner; view: TonightView }) {
   const t = useTranslations('tonight')
@@ -46,7 +46,9 @@ function StaffBanner({ banner, view }: { banner: PauseBanner; view: TonightView 
               act: (pin) => liftOrderingAction({ venueId: view.venueId, pauseId: banner.id, pin }),
               done: t('lift_toast'),
               // Undo pauses the same scope again (it only makes the menu more cautious).
-              undo: () => pauseOrderingAction({ venueId: view.venueId, barId: banner.barId }),
+              undo: (_, undo) =>
+                pauseOrderingAction({ venueId: view.venueId, barId: banner.barId, undo }),
+              undoWhen: wroteSomething,
             })
           }
         >
