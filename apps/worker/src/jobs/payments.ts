@@ -33,7 +33,8 @@
 //   window (a later landing is not ruled out, C52). A close is sent once. After a manager's "No
 //   receipt" the hold is released only once a fresh read shows the lines back on the real table;
 //   otherwise a manager is asked again (#153).
-//   An unknown capture is read back from the provider and tried again with the same key.
+//   An unknown capture is read back from the provider and tried again with the same key; a hold
+//   the read shows gone fails the capture (`capture_failed`, the owners are told).
 // - Pay-first (#113): a `pay_first` payment's lines are not on the POS. It is priced from what the
 //   guest saw at Send, and once queued its round is entered on the free payment table
 //   (`addLines`, a note naming the guest's table where notes reach the ticket). An entry whose
@@ -1532,7 +1533,8 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
 
 /**
  * `closed`, or `unconfirmed` with "Receipt printed": capture the closed amount with the payment's
- * key. An unknown capture is read back from the provider; still held, it runs again with the key.
+ * key. An unknown capture is read back from the provider; still held, it runs again with the key;
+ * gone, the capture failed.
  */
 const captureStep: RouteStep = async (env, target, payment, deps) => {
   const account = await accountOf(env, target)
@@ -1594,6 +1596,18 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
       outcome: 'captured',
       capturedMinor: reading.value.capturedMinor,
       code: null,
+    })
+    return 'next'
+  }
+  // The hold is gone (it ran out, or the provider dropped it): no capture can land any more, with
+  // this key or a new one. Tried again, a server error kept under the key would be answered
+  // forever; the capture failed, and the owners are told, as the provider's own refusal would.
+  if (reading.complete && isOver(reading.value)) {
+    await route(env, target, {
+      type: 'payment.captured',
+      outcome: 'refused',
+      capturedMinor: null,
+      code: 'not_held',
     })
     return 'next'
   }

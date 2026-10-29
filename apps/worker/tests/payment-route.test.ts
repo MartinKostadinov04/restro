@@ -1012,6 +1012,26 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     expect(rowsOn(POS_TABLE)).toEqual(['2001'])
   })
 
+  it('fails a capture whose server error the provider keeps under its key once the hold is gone', async () => {
+    const id = await held(1)
+    fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+    expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+    expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
+    // The capture's server error is answered again for its key; the hold runs out meanwhile.
+    engine.fault('capture', { kind: 'server_error' })
+    payClock.advance(engine.switches.holdDays * 24 * 60 * 60 * 1000)
+    const { row } = await drive(id)
+    expect(row).toMatchObject({ state: 'capture_failed', reason: 'not_held', settled: true })
+    expect(await steps(id)).toContain('capture:unknown:unknown')
+    expect(await alertsOf(id)).toEqual([
+      'payment_capture_failed:money.follow_up',
+      'payment_unconfirmed:money.follow_up',
+    ])
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released', capturedMinor: 0 }),
+    ])
+  })
+
   it('waits while a send holds the real table’s turn, then moves the lines', async () => {
     const id = await held(1)
     await query(
@@ -1520,6 +1540,30 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
                 tapsAgain: false,
                 lateLanding: PAST_WINDOW_MS,
                 lag: 30_000,
+              },
+            ],
+            // "Receipt printed", then a capture whose server error the provider keeps under its key
+            // while every hold runs out: the capture failed, never tried again forever (CI seed
+            // 1085069335).
+            [
+              {
+                picks: [1, 0],
+                pos: [{ on: 'closeBill', fault: { kind: 'landsThenHangs' } }],
+                provider: ['capture', { kind: 'server_error' }],
+                slip: true,
+                order: [0],
+                happenings: [
+                  {
+                    kind: 'provider',
+                    at: { before: 'undoIsolate', nth: 2 },
+                    payment: 0,
+                    event: 'expired',
+                    notice: 'now',
+                  },
+                ],
+                tapsAgain: false,
+                lateLanding: 20_000,
+                lag: 0,
               },
             ],
           ],
