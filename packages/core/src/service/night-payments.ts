@@ -23,6 +23,7 @@ import {
   type DbPool,
   logEntries,
   paymentLines,
+  paymentRefunds,
   payments,
   type ReadTx,
   sentOrders,
@@ -31,7 +32,7 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-
+import { serviceDate } from '../service-day'
 import {
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
@@ -41,6 +42,7 @@ import {
   PAYMENT_STRANDED_KIND,
   PAYMENT_UNCONFIRMED_KIND,
 } from './alert-rules'
+import type { DisputeEvidenceInput, EvidenceWho } from './dispute-evidence'
 import type { NightPayWhat } from './night-export'
 import {
   accessOf,
@@ -58,6 +60,7 @@ import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
 import { payingPausedAt } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import { paymentNumberOf } from './payment-number'
+import { refundsToDo } from './payment-todos'
 import type { Permission } from './permissions'
 import { type ReceiptNotBrought, receiptsNotBrought } from './receipt-rows'
 import { withoutTipMinor } from './staff-amount'
@@ -158,26 +161,54 @@ export interface NightMoneyAlert {
 /** The money of the day beyond the payments themselves, for managers and owners. */
 export interface NightMoneySections {
   readonly alerts: readonly NightMoneyAlert[]
-  /** Refunds seen on the day's payments, as `payment.observe` read them back. */
-  readonly refunds: readonly {
-    readonly paymentId: string
-    readonly table: string
-    readonly numbered: boolean
-    readonly refundedMinor: number
-    readonly currency: string
-  }[]
+  /**
+   * The refunds seen on the day, then every refund of an earlier day still waiting for its storno
+   * (#222; decision log 5.17), as `payment.observe` recorded them.
+   */
+  readonly refunds: readonly NightRefund[]
   readonly disputes: {
-    readonly rows: readonly {
-      readonly paymentId: string
-      readonly table: string
-      readonly numbered: boolean
-      readonly amountMinor: number | null
-      readonly currency: string
-      readonly state: string
-    }[]
+    /** The disputes opened on the day. */
+    readonly rows: readonly NightDispute[]
     /** Disputes still open at the venue, whatever their day. */
     readonly openCount: number
   }
+}
+
+/** One refund of section 5. */
+export interface NightRefund {
+  readonly refundId: string
+  readonly paymentId: string
+  readonly paymentNumber: string
+  readonly table: string
+  readonly numbered: boolean
+  readonly amountMinor: number
+  readonly currency: string
+  /** The POS's receipt number of the payment, where it gave one. */
+  readonly receiptNumber: string | null
+  /** The service day the refund was seen on. */
+  readonly serviceDate: string
+  /** Seen on an earlier day and still waiting for its storno. */
+  readonly earlier: boolean
+  /** The refund did not go through at the provider. */
+  readonly failed: boolean
+  /** Who said the storno was made, and when; null while it waits. */
+  readonly storno: { readonly who: Who; readonly via: string | null; readonly at: Date } | null
+}
+
+/** One dispute of section 6. */
+export interface NightDispute {
+  readonly paymentId: string
+  readonly paymentNumber: string
+  readonly table: string
+  readonly numbered: boolean
+  readonly amountMinor: number | null
+  readonly currency: string
+  readonly state: string
+  /** The payment's service day. */
+  readonly serviceDate: string
+  readonly openedAt: Date | null
+  /** The provider's answer-by date, where it gave one. */
+  readonly dueAt: Date | null
 }
 
 /** The day's payments for the end-of-night page. */
@@ -194,15 +225,32 @@ export interface NightPayments {
   readonly fix: readonly NightPayFix[]
   /** Paper receipts of the day never marked Brought (#200): table and payment number, no amount. */
   readonly notBrought: readonly ReceiptNotBrought[]
+  /**
+   * Refunds still waiting for a storno, from any day (#222; decision log 5.17), on today's page for
+   * those who answer them: one line each, no amount.
+   */
+  readonly stornoFix: readonly {
+    readonly refundId: string
+    readonly paymentId: string
+    readonly paymentNumber: string
+    readonly table: string
+    readonly numbered: boolean
+    /** The service day the refund was seen on. */
+    readonly serviceDate: string
+  }[]
   /** The ones that did not end charged first; every payment after "Show all" (`all`). */
   readonly rows: readonly NightPaymentRow[]
   readonly hasMore: boolean
   /** Only today: why card payments in the app are still stopped. */
   readonly paying: 'paused' | 'lost' | 'restricted' | null
+  /** The venue's payment provider (its kind), for the words that name it; null with no account. */
+  readonly providerKind: string | null
   readonly money: NightMoneySections | null
 }
 
 const PAGE = 100
+
+const DAY_MS = 86_400_000
 
 /** The question an unconfirmed payment asks, from why it is unconfirmed. */
 export function questionOf(reason: string | null): PayQuestion {
@@ -231,6 +279,8 @@ type PaymentSelect = {
   capturedMinor: number | null
   refundedMinor: number
   dispute: string | null
+  disputeOpenedAt: Date | null
+  disputeDueAt: Date | null
   receiptNumber: string | null
   currency: string
   at: Date
@@ -255,6 +305,8 @@ const columns = {
   capturedMinor: payments.capturedMinor,
   refundedMinor: payments.refundedMinor,
   dispute: payments.dispute,
+  disputeOpenedAt: payments.disputeOpenedAt,
+  disputeDueAt: payments.disputeDueAt,
   receiptNumber: payments.receiptNumber,
   currency: payments.currency,
   at: payments.createdAt,
@@ -485,8 +537,20 @@ export async function readNightPayments(
     const rows = listed.slice(0, pageSize).map((row) => rowOf(row, full))
 
     const notBrought = (await receiptsNotBrought(tx, venue.id, day)).rows
-    const money = full ? await moneySections(tx, venue.id, day) : null
+    const stornoFix =
+      sees && day === reader.today
+        ? (await refundsToDo(tx, venue.id)).map((refund) => ({
+            refundId: refund.refundId,
+            paymentId: refund.paymentId,
+            paymentNumber: refund.paymentNumber,
+            table: refund.name ?? refund.number ?? '',
+            numbered: refund.name === null && refund.number !== null,
+            serviceDate: refund.serviceDate,
+          }))
+        : []
+    const money = full ? await moneySections(tx, venue, day) : null
     const paying = day === reader.today ? await payingProblem(tx, venue.id) : null
+    const providerKind = (await loadPayingConnection(tx, venue.id)).providerKind
 
     return {
       ok: true,
@@ -502,9 +566,11 @@ export async function readNightPayments(
         },
         fix,
         notBrought,
+        stornoFix,
         rows,
         hasMore: listed.length > pageSize,
         paying,
+        providerKind,
         money,
       },
     } as const
@@ -522,10 +588,10 @@ async function payingProblem(tx: ReadTx, venueId: string): Promise<NightPayments
 
 async function moneySections(
   tx: ReadTx,
-  venueId: string,
+  venue: { readonly id: string; readonly timezone: string; readonly dayEndsAt: string },
   day: string,
 ): Promise<NightMoneySections> {
-  const day_ = and(eq(payments.venueId, venueId), eq(payments.serviceDate, day))
+  const venueId = venue.id
   const raised = await tx
     .select({
       id: alerts.id,
@@ -634,34 +700,112 @@ async function moneySections(
     }
   })
 
-  const refunded = await paymentQuery(tx)
-    .where(and(day_, sql`${payments.refundedMinor} > 0`))
-    .orderBy(asc(payments.createdAt), asc(payments.id))
+  // Section 5: the refunds seen on the day, then every earlier one still waiting for a storno.
+  const refundRows = await tx
+    .select({
+      refundId: paymentRefunds.id,
+      paymentId: paymentRefunds.paymentId,
+      name: venueTables.name,
+      number: venueTables.number,
+      amountMinor: paymentRefunds.amountMinor,
+      currency: payments.currency,
+      receiptNumber: payments.receiptNumber,
+      serviceDate: paymentRefunds.serviceDate,
+      seenAt: paymentRefunds.seenAt,
+      failedAt: paymentRefunds.failedAt,
+      stornoAt: paymentRefunds.stornoAt,
+      stornoBy: paymentRefunds.stornoBy,
+      stornoVia: sql<string | null>`(select l.via from ${logEntries} l
+        where l.venue_id = ${paymentRefunds.venueId} and l.kind = 'payment.storno'
+          and l.to_state = 'done' and l.details ->> 'refundId' = ${paymentRefunds.id}
+        order by l.seq desc limit 1)`,
+    })
+    .from(paymentRefunds)
+    .innerJoin(payments, eq(payments.id, paymentRefunds.paymentId))
+    .innerJoin(venueTables, eq(venueTables.id, payments.tableId))
+    .where(
+      and(
+        eq(paymentRefunds.venueId, venue.id),
+        or(
+          eq(paymentRefunds.serviceDate, day),
+          and(
+            lt(paymentRefunds.serviceDate, day),
+            sql`${paymentRefunds.stornoAt} is null and ${paymentRefunds.failedAt} is null`,
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(paymentRefunds.serviceDate), asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+    .limit(PAYMENTS_MAX_ROWS)
+  const stornoNames = await whoOf(
+    tx,
+    refundRows.flatMap((row) => (row.stornoBy === null ? [] : [row.stornoBy])),
+  )
+  // Section 6: the disputes opened on the day (a dispute read before its times were kept belongs
+  // to its payment's day), and how many are open now.
+  const nearDay = new Date(`${day}T12:00:00Z`).getTime()
   const disputed = await paymentQuery(tx)
-    .where(and(day_, sql`${payments.dispute} is not null`))
-    .orderBy(asc(payments.createdAt), asc(payments.id))
+    .where(
+      and(
+        eq(payments.venueId, venue.id),
+        sql`${payments.dispute} is not null`,
+        or(
+          and(sql`${payments.disputeOpenedAt} is null`, eq(payments.serviceDate, day)),
+          sql`${payments.disputeOpenedAt} between ${new Date(nearDay - 3 * DAY_MS)} and ${new Date(nearDay + 3 * DAY_MS)}`,
+        ),
+      ),
+    )
+    .orderBy(asc(payments.disputeOpenedAt), asc(payments.createdAt), asc(payments.id))
   const [open] = await tx
     .select({ n: sql<string>`count(*)` })
     .from(payments)
-    .where(and(eq(payments.venueId, venueId), eq(payments.dispute, 'open')))
+    .where(and(eq(payments.venueId, venue.id), eq(payments.dispute, 'open')))
   return {
     alerts: alertRows,
-    refunds: refunded.map((row) => ({
-      paymentId: row.id,
-      table: row.tableName ?? row.tableNumber ?? '',
-      numbered: row.tableName === null && row.tableNumber !== null,
-      refundedMinor: row.refundedMinor,
-      currency: row.currency,
-    })),
-    disputes: {
-      rows: disputed.map((row) => ({
-        paymentId: row.id,
-        table: row.tableName ?? row.tableNumber ?? '',
-        numbered: row.tableName === null && row.tableNumber !== null,
+    refunds: refundRows.map(
+      (row): NightRefund => ({
+        refundId: row.refundId,
+        paymentId: row.paymentId,
+        paymentNumber: paymentNumberOf(row.paymentId),
+        table: row.name ?? row.number ?? '',
+        numbered: row.name === null && row.number !== null,
         amountMinor: row.amountMinor,
         currency: row.currency,
-        state: row.dispute ?? '',
-      })),
+        receiptNumber: row.receiptNumber,
+        serviceDate: row.serviceDate,
+        earlier: row.serviceDate !== day,
+        failed: row.failedAt !== null,
+        storno:
+          row.stornoAt === null || row.stornoBy === null
+            ? null
+            : {
+                who: stornoNames.get(row.stornoBy) ?? RESTRO,
+                via: row.stornoVia,
+                at: row.stornoAt,
+              },
+      }),
+    ),
+    disputes: {
+      rows: disputed.flatMap((row): NightDispute[] => {
+        const openedAt = row.disputeOpenedAt
+        if (openedAt !== null && serviceDate(openedAt, venue.timezone, venue.dayEndsAt) !== day) {
+          return []
+        }
+        return [
+          {
+            paymentId: row.id,
+            paymentNumber: paymentNumberOf(row.id),
+            table: row.tableName ?? row.tableNumber ?? '',
+            numbered: row.tableName === null && row.tableNumber !== null,
+            amountMinor: row.amountMinor,
+            currency: row.currency,
+            state: row.dispute ?? '',
+            serviceDate: row.serviceDate,
+            openedAt,
+            dueAt: row.disputeDueAt,
+          },
+        ]
+      }),
       openCount: Number(open?.n ?? 0),
     },
   }
@@ -692,6 +836,31 @@ export interface PaymentDetail {
     readonly amountMinor: number
   }[]
   readonly steps: readonly PaymentStep[]
+  /** The provider's kind (`payments.provider_kind`), for the screen to name it. */
+  readonly providerKind: string
+  /** The refunds the venue made at the provider, oldest first; empty for a reader who sees no tips. */
+  readonly refunds: readonly PaymentRefundLine[]
+  /** Where a dispute stands, with its times; null for none. */
+  readonly dispute: {
+    readonly state: string
+    readonly openedAt: Date | null
+    readonly dueAt: Date | null
+    readonly closedAt: Date | null
+  } | null
+  /**
+   * The "Dispute evidence" of the payment: for `money.follow_up` only (it holds the provider's
+   * payment id), else null. The text is `disputeEvidenceText` of it.
+   */
+  readonly evidence: DisputeEvidenceInput | null
+}
+
+/** One refund of a payment in its sheet. */
+export interface PaymentRefundLine {
+  readonly refundId: string
+  readonly amountMinor: number
+  readonly seenAt: Date
+  readonly failed: boolean
+  readonly storno: { readonly who: Who; readonly via: string | null; readonly at: Date } | null
 }
 
 /**
@@ -745,25 +914,146 @@ export async function readPaymentDetail(
         ),
       )
       .orderBy(asc(logEntries.seq))
-    const names = await whoOf(
-      tx,
-      steps.map((step) => step.actor),
+    const [extra] = await tx
+      .select({
+        providerPaymentRef: payments.providerPaymentRef,
+        threeDsResult: payments.threeDsResult,
+        authorisationCode: payments.authorisationCode,
+        fiscalMemoryNumber: payments.fiscalMemoryNumber,
+        disputeOpenedAt: payments.disputeOpenedAt,
+        disputeClosedAt: payments.disputeClosedAt,
+        disputeDueAt: payments.disputeDueAt,
+        providerKind: payments.providerKind,
+      })
+      .from(payments)
+      .where(eq(payments.id, row.id))
+    const refundRows = full
+      ? await tx
+          .select({
+            refundId: paymentRefunds.id,
+            amountMinor: paymentRefunds.amountMinor,
+            seenAt: paymentRefunds.seenAt,
+            failedAt: paymentRefunds.failedAt,
+            stornoAt: paymentRefunds.stornoAt,
+            stornoBy: paymentRefunds.stornoBy,
+          })
+          .from(paymentRefunds)
+          .where(eq(paymentRefunds.paymentId, row.id))
+          .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+      : []
+    const names = await whoOf(tx, [
+      ...steps.map((step) => step.actor),
+      ...refundRows.flatMap((refund) => (refund.stornoBy === null ? [] : [refund.stornoBy])),
+    ])
+    const stornoVias =
+      refundRows.length === 0
+        ? []
+        : await tx
+            .select({ details: logEntries.details, via: logEntries.via })
+            .from(logEntries)
+            .where(
+              and(
+                eq(logEntries.venueId, reader.venue.id),
+                eq(logEntries.paymentId, row.id),
+                eq(logEntries.kind, 'payment.storno'),
+                eq(logEntries.toState, 'done'),
+              ),
+            )
+            .orderBy(asc(logEntries.seq))
+    const viaOf = (refundId: string) =>
+      stornoVias.filter((entry) => entry.details.refundId === refundId).at(-1)?.via ?? null
+    const stepViews = steps.map((step) => ({
+      at: step.at,
+      kind: step.kind as PaymentStep['kind'],
+      toState: step.toState,
+      reason: step.reason,
+      who: names.get(step.actor) ?? RESTRO,
+      via: step.via,
+    }))
+    const refunds = refundRows.map(
+      (refund): PaymentRefundLine => ({
+        refundId: refund.refundId,
+        amountMinor: refund.amountMinor,
+        seenAt: refund.seenAt,
+        failed: refund.failedAt !== null,
+        storno:
+          refund.stornoAt === null || refund.stornoBy === null
+            ? null
+            : {
+                who: names.get(refund.stornoBy) ?? RESTRO,
+                via: viaOf(refund.refundId),
+                at: refund.stornoAt,
+              },
+      }),
     )
+    const payment = rowOf(row, full)
+    const dispute =
+      row.dispute === null
+        ? null
+        : {
+            state: row.dispute,
+            openedAt: extra?.disputeOpenedAt ?? null,
+            dueAt: extra?.disputeDueAt ?? null,
+            closedAt: extra?.disputeClosedAt ?? null,
+          }
+    const evidenceWho = (by: Who): EvidenceWho => by
+    const evidence: DisputeEvidenceInput | null = mayRead('money.follow_up')
+      ? {
+          paymentNumber: paymentNumberOf(row.id),
+          serviceDate: row.serviceDate,
+          timeZone: reader.venue.timezone,
+          currency: row.currency as DisputeEvidenceInput['currency'],
+          amountMinor: payment.amountMinor,
+          tipMinor: payment.tipMinor ?? 0,
+          capturedMinor: payment.capturedMinor,
+          table: payment.table,
+          tableNumbered: payment.numbered,
+          payTable: payment.payTable,
+          payTableNumbered: row.payTableName === null && row.payTableNumber !== null,
+          bar: payment.bar,
+          lines: lines.map((line) => ({
+            name: line.name,
+            quantity: line.quantity,
+            amountMinor: line.amountMinor,
+          })),
+          steps: stepViews.map((step) => ({ ...step, who: evidenceWho(step.who) })),
+          threeDs: extra?.threeDsResult ?? null,
+          providerPaymentRef: extra?.providerPaymentRef ?? null,
+          authorisationCode: extra?.authorisationCode ?? null,
+          receiptNumber: row.receiptNumber,
+          fiscalMemoryNumber: extra?.fiscalMemoryNumber ?? null,
+          dispute:
+            dispute === null
+              ? null
+              : {
+                  state: dispute.state as 'open' | 'won' | 'lost',
+                  openedAt: dispute.openedAt,
+                  dueAt: dispute.dueAt,
+                  closedAt: dispute.closedAt,
+                },
+          refunds: refunds.map((refund) => ({
+            amountMinor: refund.amountMinor,
+            seenAt: refund.seenAt,
+            failed: refund.failed,
+            storno:
+              refund.storno === null
+                ? null
+                : { who: evidenceWho(refund.storno.who), at: refund.storno.at },
+          })),
+        }
+      : null
     return {
       ok: true,
       access: accessOf(reader),
       detail: {
-        payment: rowOf(row, full),
+        payment,
         number: paymentNumberOf(row.id),
         lines,
-        steps: steps.map((step) => ({
-          at: step.at,
-          kind: step.kind as PaymentStep['kind'],
-          toState: step.toState,
-          reason: step.reason,
-          who: names.get(step.actor) ?? RESTRO,
-          via: step.via,
-        })),
+        steps: stepViews,
+        providerKind: extra?.providerKind ?? row.kind,
+        refunds,
+        dispute,
+        evidence,
       },
     } as const
   })
@@ -800,6 +1090,7 @@ export async function readNightPaymentsReport(
       .orderBy(asc(payments.createdAt), asc(payments.id))
       .limit(PAYMENTS_MAX_ROWS)
     const notBrought = (await receiptsNotBrought(tx, input.venueId, input.day)).rows
+    const stornoNotDone = await refundsToDo(tx, input.venueId)
     return {
       taken: Number(taken?.n ?? 0),
       fix: [
@@ -828,6 +1119,12 @@ export async function readNightPaymentsReport(
           number: row.number,
           what: 'receipt_not_brought' as const,
           paymentNumber: row.paymentNumber,
+        })),
+        // A refund with no storno, from any day, without its amount (decision log 5.8, 5.17).
+        ...stornoNotDone.map((refund) => ({
+          name: refund.name,
+          number: refund.number,
+          what: 'storno_not_done' as const,
         })),
       ],
     }

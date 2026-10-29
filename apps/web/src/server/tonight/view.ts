@@ -10,7 +10,7 @@ import type { Tonight } from '@restro/core/service'
  * question, a card not charged after the bill closed, items stuck on a payment table, then part 1's
  * sent order to check, approval, paused table and waiter call, and last a payment stopped before
  * closing (shown under "Later"). The to-dos come last of the rows that need a person now: a
- * receipt to bring (#200); the storno and the dispute wait for #54.
+ * receipt to bring (#200), the storno of a refund and an open card dispute (#222).
  */
 export const ROW_RANK = {
   pay: 0,
@@ -21,6 +21,9 @@ export const ROW_RANK = {
   paused: 3,
   call: 4,
   receipt: 5,
+  storno: 5,
+  dispute: 5,
+  refund_failed: 5,
   stopped: 6,
 } as const
 
@@ -63,6 +66,36 @@ export interface ActionRow {
     /** The POS's receipt number, when the close gave one. */
     readonly receiptNumber: string | null
     /** What was charged, tip included. */
+    readonly amountMinor: number
+  }
+  /** A refund the venue made in its provider's dashboard that waits for a storno (#222). */
+  readonly storno?: {
+    readonly refundId: string
+    readonly paymentId: string
+    readonly paymentNumber: string
+    /** The refund's amount. */
+    readonly amountMinor: number
+    /** The payment's service day, `YYYY-MM-DD`. */
+    readonly serviceDate: string
+    /** What the storno at the till asks for; null where the POS gave none. */
+    readonly receiptNumber: string | null
+    /** The receipt's day and time in the venue's zone, `YYYY-MM-DD HH:mm`. */
+    readonly receiptTime: string | null
+    readonly fiscalMemoryNumber: string | null
+  }
+  /** A card dispute still open (#222). */
+  readonly dispute?: {
+    readonly paymentId: string
+    readonly paymentNumber: string
+    readonly amountMinor: number | null
+    readonly serviceDate: string
+    /** The provider's answer-by date, in the venue's zone; null where it gave none. */
+    readonly due: { readonly date: string; readonly time: string } | null
+  }
+  /** A refund that did not go through after its storno was made: the accountant is asked (#222). */
+  readonly refundFailed?: {
+    readonly refundId: string
+    readonly paymentId: string
     readonly amountMinor: number
   }
   /** A waiter call's requests (#180), in the venue's list order. */
@@ -228,6 +261,12 @@ export function holdOf(
       timeZone: timezone,
     }).format(before),
   }
+}
+
+/** `YYYY-MM-DD HH:mm` of an instant in the venue's zone: the receipt's day and time. */
+function receiptStamp(at: Date, timezone: string): string | null {
+  const stamp = holdOf(at, timezone)
+  return stamp === null ? null : `${stamp.date} ${stamp.time}`
 }
 
 /** The row of a payment alert, or null for any other alert. */
@@ -472,6 +511,60 @@ export function buildTonightView(input: {
         paymentNumber: receipt.paymentNumber,
         receiptNumber: receipt.receiptNumber,
         amountMinor: receipt.amountMinor,
+      },
+    })
+  }
+  // The storno and dispute to-dos (#222): present only for those who may see them.
+  for (const refund of tonight.refunds?.storno ?? []) {
+    const stamp = refund.receiptAt === null ? null : receiptStamp(refund.receiptAt, timezone)
+    rows.push({
+      id: `storno:${refund.refundId}`,
+      kind: 'storno',
+      tableId: refund.tableId,
+      table: refund.name ?? refund.number ?? '',
+      numbered: refund.name === null && refund.number !== null,
+      at: refund.seenAt.toISOString(),
+      storno: {
+        refundId: refund.refundId,
+        paymentId: refund.paymentId,
+        paymentNumber: refund.paymentNumber,
+        amountMinor: refund.amountMinor,
+        serviceDate: refund.serviceDate,
+        receiptNumber: refund.receiptNumber,
+        receiptTime: stamp,
+        fiscalMemoryNumber: refund.fiscalMemoryNumber,
+      },
+    })
+  }
+  for (const refund of tonight.refunds?.failed ?? []) {
+    rows.push({
+      id: `refund_failed:${refund.refundId}`,
+      kind: 'refund_failed',
+      tableId: refund.tableId,
+      table: refund.name ?? refund.number ?? '',
+      numbered: refund.name === null && refund.number !== null,
+      at: refund.failedAt.toISOString(),
+      refundFailed: {
+        refundId: refund.refundId,
+        paymentId: refund.paymentId,
+        amountMinor: refund.amountMinor,
+      },
+    })
+  }
+  for (const dispute of tonight.refunds?.disputes ?? []) {
+    rows.push({
+      id: `dispute:${dispute.paymentId}`,
+      kind: 'dispute',
+      tableId: dispute.tableId,
+      table: dispute.name ?? dispute.number ?? '',
+      numbered: dispute.name === null && dispute.number !== null,
+      at: (dispute.openedAt ?? input.now).toISOString(),
+      dispute: {
+        paymentId: dispute.paymentId,
+        paymentNumber: dispute.paymentNumber,
+        amountMinor: dispute.amountMinor,
+        serviceDate: dispute.serviceDate,
+        due: holdOf(dispute.dueAt, timezone),
       },
     })
   }

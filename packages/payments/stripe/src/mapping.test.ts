@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PaymentIntentSchema, type StripeCharge, type StripePaymentIntent } from './api'
 import {
   connectionStatus,
+  disputeDueAt,
   disputeState,
   paymentStatus,
   providerPayment,
@@ -78,6 +79,27 @@ describe('disputeState (#108)', () => {
   })
 })
 
+describe('disputeDueAt (#222)', () => {
+  const dispute = (due_by: number | null | undefined) =>
+    ({
+      id: 'dp_1',
+      object: 'dispute' as const,
+      status: 'needs_response',
+      created: 1_793_000_000,
+      evidence_details: due_by === undefined ? undefined : { due_by },
+    }) as Parameters<typeof disputeDueAt>[0]
+
+  it("reads the answer-by date from the dispute's evidence details", () => {
+    expect(disputeDueAt(dispute(1_794_000_000))).toBe(new Date(1_794_000_000 * 1000).toISOString())
+  })
+
+  it('reads none where Stripe gives none, never a date in 1970', () => {
+    expect(disputeDueAt(dispute(0))).toBeNull()
+    expect(disputeDueAt(dispute(null))).toBeNull()
+    expect(disputeDueAt(dispute(undefined))).toBeNull()
+  })
+})
+
 describe('threeDsResult', () => {
   it("maps the bank's result, and none for data shared only", () => {
     expect(threeDsResult('authenticated')).toBe('authenticated')
@@ -126,6 +148,22 @@ describe('providerPayment', () => {
       refundedMinor: 500,
       dispute: 'open',
     })
+  })
+
+  it('carries the dispute’s answer-by date only with a dispute on a captured payment', () => {
+    const due = '2026-11-12T09:00:00.000Z'
+    const captured = intent({ status: 'succeeded', amount_received: 750 })
+    const open = providerPayment(captured, charge(), 'open', due)
+    expect(open.ok && open.value.disputeDueAt).toBe(due)
+    const none = providerPayment(captured, charge(), null, due)
+    expect(none.ok && none.value.disputeDueAt).toBeNull()
+    const held = providerPayment(
+      intent({ status: 'requires_capture', amount_capturable: 1050 }),
+      charge(),
+      'open',
+      due,
+    )
+    expect(held.ok && held.value.disputeDueAt).toBeNull()
   })
 
   it('says a payment whose bank asks for a step needs the guest', () => {

@@ -63,9 +63,11 @@ const read = (fixes: readonly NightPayFix[]): NightPayments => ({
   counts: { all: 0, captured: 0, released: 0, unconfirmed: 0 },
   fix: fixes,
   notBrought: [],
+  stornoFix: [],
   rows: [],
   hasMore: false,
   paying: null,
+  providerKind: null,
   money: null,
 })
 

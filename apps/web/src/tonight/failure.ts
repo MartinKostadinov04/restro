@@ -21,6 +21,8 @@ export function useFailureText() {
         return word === undefined ? t('errors.failed') : t('m_err_answered', { answer: t(word) })
       }
       if (error === 'payment_not_unconfirmed') return t('m_err_moved')
+      // The storno was answered first (#222): the second answer is refused, in the same words.
+      if (error === 'storno_answered') return t('m_err_answered', { answer: t('st_ok') })
       return t.has(key) ? t(key) : t('errors.failed')
     },
     [t],

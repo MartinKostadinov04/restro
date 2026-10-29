@@ -69,6 +69,18 @@ export const PAYMENT_STUCK_KIND = 'payment_stuck'
  */
 export const PAYMENT_ACCOUNT_LOST_KIND = 'payment_account_lost'
 
+/**
+ * The venue made a refund in its provider's dashboard (#222; decision log 5.3, 5.8): the group is
+ * told once, with the table and no amount. The storno itself is a to-do read from the refund rows,
+ * not this alert; it closes when that to-do is answered or the refund did not go through.
+ */
+export const PAYMENT_REFUNDED_KIND = 'payment_refunded'
+/**
+ * A card payment was disputed with the guest's bank (#222; decision log 5.11): the group is told
+ * once, with the table and the payment's day and no amount. It closes when the dispute closes.
+ */
+export const PAYMENT_DISPUTED_KIND = 'payment_disputed'
+
 const MINUTE = 60_000
 
 /** How one receiver is told about one kind. */
@@ -263,6 +275,12 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // Lost access to the venue's payment account (#109; D125 2.4): paying is paused, so owners and
   // managers (who hold `money.follow_up`) are pushed at once and the owners are reminded after an
   // hour; the venue's group and the Restro team are told once. Its words carry no amounts.
+  // A refund and a dispute are paperwork with a deadline in days, never minutes (decision log
+  // 5.3, 5.11): the venue's group is told once, with no push and no reminder. The alert closes
+  // when the storno is answered or the dispute closes; the day's close may clear one nobody
+  // closed, since the to-do itself is read from the payment records (#162).
+  [PAYMENT_REFUNDED_KIND]: { ...NOBODY, venueTelegram: venueGroup },
+  [PAYMENT_DISPUTED_KIND]: { ...NOBODY, venueTelegram: venueGroup },
   [PAYMENT_ACCOUNT_LOST_KIND]: {
     ...NOBODY,
     // It is a pause of paying: it ends when the reconnection lifts it, so nobody presses Done and the

@@ -604,6 +604,27 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     const s = ids.keptSitting ?? ''
     const due = await settledPayment(v, t, s, UNTIL_DUE)
     const later = await settledPayment(v, t, s, UNTIL_KEPT)
+    // A dispute that closed keeps its payment until its retention, extended to close + 6 months
+    // by `payment.observe` (#222, M6): not before.
+    const closedDispute = await settledPayment(
+      v,
+      t,
+      s,
+      '2099-01-01T00:00:00Z',
+      'released',
+      'cancelled',
+      'lost',
+    )
+    // A refund row goes with its payment, and stays with one that is kept.
+    const refund = (paymentId: string) =>
+      query(
+        `insert into restro.payment_refunds
+           (id, tenant_id, venue_id, payment_id, amount_minor, service_date, source, actor, job_id)
+         values ($1, $2, $3, $4, 300, $5, $6, $7, $8)`,
+        [newId('rf'), tenantId, v, paymentId, OLD_DAY, ...SEED],
+      )
+    await refund(due)
+    await refund(later)
     // Waiting for a manager's answer, or disputed and still open: kept, however old.
     const asking = await settledPayment(v, t, s, UNTIL_DUE, 'unconfirmed', 'close_unknown')
     const disputed = await settledPayment(v, t, s, UNTIL_DUE, 'released', 'cancelled', 'open')
@@ -623,7 +644,19 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     const leaseOf = (key: string) =>
       query('select holder from restro.locks where scope = $1 and key = $2', ['payment_table', key])
     const { counts } = await purgeService({ purgePool }, { tenantId, now: NOW })
-    expect(counts).toMatchObject({ payments: 1, payment_lines: 1, payment_steps: 1, locks: 1 })
+    expect(counts).toMatchObject({
+      payments: 1,
+      payment_lines: 1,
+      payment_steps: 1,
+      payment_refunds: 1,
+      locks: 1,
+    })
+    expect(
+      await query('select 1 from restro.payment_refunds where payment_id = $1', [due]),
+    ).toEqual([])
+    expect(
+      await query('select 1 from restro.payment_refunds where payment_id = $1', [later]),
+    ).toHaveLength(1)
     expect(await leaseOf(dueLease)).toEqual([])
     expect(await leaseOf(laterLease)).toEqual([{ holder: later }])
     expect(await exists('payments', due)).toBe(false)
@@ -633,7 +666,7 @@ describe.skipIf(!hasPurge)('the service purge (as the restro_purge role)', () =>
     expect(await query('select 1 from restro.payment_steps where payment_id = $1', [due])).toEqual(
       [],
     )
-    for (const kept of [later, asking, disputed, ids.payment ?? '']) {
+    for (const kept of [later, closedDispute, asking, disputed, ids.payment ?? '']) {
       expect(await exists('payments', kept)).toBe(true)
     }
     expect(

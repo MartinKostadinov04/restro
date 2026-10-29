@@ -143,6 +143,7 @@ export async function databaseError(work: Promise<unknown>): Promise<string> {
  * Their tenancy is tested in payment-tables.test.ts.
  */
 export const PAYING_TABLES_CHILDREN_FIRST = [
+  'payment_refunds',
   'payment_steps',
   'payment_lines',
   'payments',

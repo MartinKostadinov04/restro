@@ -169,6 +169,9 @@ export const TABLE_ACCESS = {
   payments: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   payment_lines: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   payment_steps: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  // The refunds the venue made in its provider's dashboard (#222): written by `applyService`,
+  // erased with their payment.
+  payment_refunds: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   payment_accounts: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   // The provider's notices: platform-level, no tenant (the worker maps the account to a venue).
   // The web app and the worker share the app role, so the route's insert-only reach is pinned

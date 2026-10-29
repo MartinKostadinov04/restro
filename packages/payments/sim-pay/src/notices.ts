@@ -20,6 +20,7 @@ export interface SimPayEvent {
     | 'payment.held'
     | 'payment.failed'
     | 'refund.made'
+    | 'refund.failed'
     | 'dispute.opened'
     | 'dispute.closed'
     | 'account.updated'
@@ -41,7 +42,7 @@ export interface SimPayWireNotice {
 /** The platform's kind of a simulator event type; anything it does not know is `other`. */
 export function simPayNoticeKind(type: string): ProviderNoticeKind {
   if (type === 'payment.held' || type === 'payment.failed') return 'payment'
-  if (type === 'refund.made') return 'refund'
+  if (type === 'refund.made' || type === 'refund.failed') return 'refund'
   if (type === 'dispute.opened' || type === 'dispute.closed') return 'dispute'
   if (type === 'account.updated') return 'account'
   if (type === 'account.access_revoked') return 'access_lost'

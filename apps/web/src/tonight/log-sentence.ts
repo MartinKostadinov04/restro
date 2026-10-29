@@ -137,6 +137,25 @@ export const SENTENCES = {
       table: c.table(l),
       answer: c.say(PAYMENT_ANSWER_LOG_WORDS[l.paymentAnswer ?? 'no_receipt']),
     }),
+  // A refund the venue made at its provider (#222). A refund that did not go through says so, in
+  // the sheet's words; the storno taken back by Undo has the lead's words, awaiting Martin.
+  'payment.refund_seen': (l, c) => {
+    const provider = l.provider ?? c.say('pb_provider_none')
+    return l.refundFailed
+      ? c.say('py_refund_failed', { provider })
+      : c.say('lg_pay_refund', { amt: c.money(l.amountMinor ?? 0), provider })
+  },
+  'payment.storno': (l, c) => c.say(l.stornoUndone ? 'lg_pay_storno_undone' : 'lg_pay_storno'),
+  'payment.dispute': (l, c) =>
+    c.say('lg_pay_dispute', {
+      state: c.say(
+        l.disputeState === 'open' || l.disputeState === null
+          ? 'py_disputed'
+          : l.disputeState === 'lost'
+            ? 'd_lost'
+            : 'd_won',
+      ),
+    }),
   'lease.taken_over': null,
 } as const satisfies Record<LogKind, Sentence | null>
 

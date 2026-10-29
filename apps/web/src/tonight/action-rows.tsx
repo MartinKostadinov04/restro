@@ -11,7 +11,10 @@ import {
   HourglassIcon,
   PackageXIcon,
   ReceiptTextIcon,
+  RotateCcwIcon,
   SearchCheckIcon,
+  ShieldAlertIcon,
+  TriangleAlertIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactNode, useState } from 'react'
@@ -37,12 +40,16 @@ import {
   receiptBroughtAction,
   receiptUnbroughtAction,
   resumeTableAction,
+  stornoDoneAction,
+  stornoUndoAction,
 } from '@/server/tonight/actions'
 import type { ActionRow, RowKind } from '@/server/tonight/view'
 
 import { callKindsText } from './call-kinds'
+import { useDateText } from './day-picker'
 import { useMoney } from './money'
 import { MONEY_ICONS, type MoneyFrame, useMoneyRowParts } from './money-rows'
+import { PaymentSheet } from './payment-sheet'
 import { useTonightRun, wroteSomething } from './run'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useTableName } from './table-name'
@@ -53,6 +60,9 @@ const ICONS = {
   paused: CirclePauseIcon,
   call: BellRingIcon,
   receipt: ReceiptTextIcon,
+  storno: RotateCcwIcon,
+  dispute: ShieldAlertIcon,
+  refund_failed: TriangleAlertIcon,
   pay: MONEY_ICONS.pay.Icon,
   failed: MONEY_ICONS.failed.Icon,
   stuck: MONEY_ICONS.stuck.Icon,
@@ -88,9 +98,12 @@ export function ActionRowItem({
 }) {
   const t = useTranslations('tonight')
   const money = useMoney()
+  const dateText = useDateText()
   const { run, busy } = useTonightRun()
   const tableName = useTableName()
+  const [evidence, setEvidence] = useState(false)
   const name = tableName(row.table, row.numbered)
+  const provider = view.provider ?? t('pb_provider_none')
   const Icon = ICONS[row.kind]
   const moneyParts = useMoneyRowParts(row, view, name)
   const variant = primary ? 'default' : 'outline'
@@ -174,6 +187,97 @@ export function ActionRowItem({
         </Button>
       )
     }
+  } else if (row.kind === 'storno' && row.storno !== undefined) {
+    const { storno } = row
+    // What the storno at the till asks for (decision log 5.6). A number the POS gave none of is a dash.
+    const dash = '–'
+    title = t('st_t', { source: view.source })
+    body = (
+      <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
+        {t('st_d', {
+          amt: money(storno.amountMinor, view.currency),
+          table: name,
+          date: dateText(storno.serviceDate),
+          rcpt: storno.receiptNumber ?? dash,
+          rcptTime: storno.receiptTime ?? dash,
+          fm: storno.fiscalMemoryNumber ?? dash,
+        })}
+      </p>
+    )
+    // "Storno done": a manager's PIN on the shared tablet (its sheet says what is recorded), one
+    // tap on a manager's own session; nothing on a staff member's own phone. The Undo gets the
+    // same PIN, so the same person takes it back.
+    if (view.can.followUp || view.device) {
+      answer = (
+        <Button
+          type="button"
+          variant={variant}
+          className={button}
+          disabled={busy}
+          onClick={() =>
+            run({
+              id: `storno:${storno.refundId}`,
+              ...(view.device
+                ? {
+                    pin: {
+                      level: 'manager' as const,
+                      title: t('st_ok'),
+                      body: t('st_b', { source: view.source }),
+                    },
+                  }
+                : {}),
+              act: (pin) =>
+                stornoDoneAction({ venueId: view.venueId, refundId: storno.refundId, pin }),
+              done: t('st_toast'),
+              undo: (_, undo, pin) =>
+                stornoUndoAction({ venueId: view.venueId, refundId: storno.refundId, undo, pin }),
+              undoWhen: wroteSomething,
+            })
+          }
+        >
+          {t('st_ok')}
+        </Button>
+      )
+    }
+  } else if (row.kind === 'dispute' && row.dispute !== undefined) {
+    const { dispute } = row
+    title = t('d_t')
+    body = (
+      <div className="space-y-0.5 text-sm text-muted-foreground">
+        <p className="[overflow-wrap:anywhere]">
+          {t('d_d', {
+            amt: money(dispute.amountMinor ?? 0, view.currency),
+            table: name,
+            date: dateText(dispute.serviceDate),
+          })}
+        </p>
+        {dispute.due === null ? null : (
+          <p className="font-medium text-foreground [overflow-wrap:anywhere]">
+            {t('d_due', { provider, date: dateText(dispute.due.date) })}
+          </p>
+        )}
+      </div>
+    )
+    // The evidence is on the payment's page, for managers and owners (the tablet's own account
+    // holds no such right). The row leaves by itself when the provider says won or lost.
+    if (view.can.followUp) {
+      answer = (
+        <Button
+          type="button"
+          variant={variant}
+          className={button}
+          onClick={() => setEvidence(true)}
+        >
+          {t('d_ok')}
+        </Button>
+      )
+    }
+  } else if (row.kind === 'refund_failed' && row.refundFailed !== undefined) {
+    // The storno was made, then the refund did not go through: nothing to press, ask the accountant.
+    title = t('rf_fail_t', {
+      amt: money(row.refundFailed.amountMinor, view.currency),
+      provider,
+    })
   } else if (row.kind === 'paused') {
     title = t('g_t', { table: name })
     body = <p className="text-sm text-muted-foreground">{t('g_d')}</p>
@@ -276,6 +380,13 @@ export function ActionRowItem({
           {answer === null ? null : <div className="flex flex-wrap gap-2 pt-1">{answer}</div>}
         </div>
       </div>
+      {evidence && row.dispute !== undefined ? (
+        <PaymentSheet
+          frame={view}
+          paymentId={row.dispute.paymentId}
+          onClose={() => setEvidence(false)}
+        />
+      ) : null}
     </li>
   )
 }

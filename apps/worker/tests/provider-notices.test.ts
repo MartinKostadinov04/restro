@@ -160,6 +160,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     capturedMinor: 2_000,
     refundedMinor,
     dispute,
+    disputeDueAt: dispute === null ? null : '2026-11-05T09:00:00.000Z',
     captureBefore: null,
     threeDs: 'authenticated',
     authorisationCode: null,
@@ -280,6 +281,15 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     await notice('dispute', 'dp_1')
     await run()
     expect(await stored(target.id)).toMatchObject({ dispute: 'open' })
+    // The provider's answer-by date and the opening time are kept (#222).
+    const [times] = await query<{ opened: Date | null; due: Date | null; closed: Date | null }>(
+      `select dispute_opened_at as opened, dispute_due_at as due, dispute_closed_at as closed
+         from restro.payments where id = $1`,
+      [target.id],
+    )
+    expect(times?.opened).toBeInstanceOf(Date)
+    expect(times?.due?.toISOString()).toBe('2026-11-05T09:00:00.000Z')
+    expect(times?.closed).toBeNull()
     readings.set('dp_1', reading(target, 0, 'lost'))
     await notice('dispute', 'dp_1')
     await run()

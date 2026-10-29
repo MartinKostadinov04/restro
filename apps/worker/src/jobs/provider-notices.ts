@@ -273,6 +273,7 @@ export async function handleProviderNotice(
         capturedMinor: payment.capturedMinor,
         refundedMinor: payment.refundedMinor,
         dispute: payment.dispute,
+        disputeDueAt: payment.disputeDueAt,
       },
       {
         tenantId: venue.tenantId,

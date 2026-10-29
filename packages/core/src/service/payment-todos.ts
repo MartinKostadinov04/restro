@@ -1,0 +1,190 @@
+// The rows behind the storno and dispute to-dos (#222; decision log 5.3, 5.7, 5.11, 5.17): the
+// refunds still waiting for a storno, the disputes still open, and the refunds that did not go
+// through after their storno was made. Plain reads on a transaction the caller opened (Tonight's
+// read, the end of the night's, the payment's sheet); they check no right. They read the payment
+// records by their state, never the alerts (a cleared alert hides no money work, #162). Our ids
+// and public fields only (rule 3).
+
+import { logEntries, paymentRefunds, payments, type ReadTx, venueTables } from '@restro/db'
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull } from 'drizzle-orm'
+
+import { paymentNumberOf } from './payment-number'
+
+/** The most rows one read returns: a night's refunds are far below it. */
+export const MAX_TODOS = 2000
+
+/** One refund still waiting for a storno, as the row needs it (decision log 5.6). */
+export interface RefundToDo {
+  readonly refundId: string
+  readonly paymentId: string
+  readonly paymentNumber: string
+  readonly tableId: string
+  readonly name: string | null
+  readonly number: string | null
+  /** The refund's amount, in minor units. */
+  readonly amountMinor: number
+  readonly currency: string
+  /** The payment's service day: the "night of" the storno asks for. */
+  readonly serviceDate: string
+  /** What the storno at the till asks for: the receipt's number, its time and the fiscal memory. */
+  readonly receiptNumber: string | null
+  readonly receiptAt: Date | null
+  readonly fiscalMemoryNumber: string | null
+  readonly seenAt: Date
+}
+
+/** A refund that did not go through after its storno was made: check with the accountant. */
+export interface RefundFailedAfterStorno {
+  readonly refundId: string
+  readonly paymentId: string
+  readonly tableId: string
+  readonly name: string | null
+  readonly number: string | null
+  readonly amountMinor: number
+  readonly currency: string
+  readonly failedAt: Date
+  readonly serviceDate: string
+}
+
+/** One dispute still open. */
+export interface DisputeToDo {
+  readonly paymentId: string
+  readonly paymentNumber: string
+  readonly tableId: string
+  readonly name: string | null
+  readonly number: string | null
+  /** The payment's amount (without the tip where the reader sees none). */
+  readonly amountMinor: number | null
+  readonly tipMinor: number
+  readonly currency: string
+  /** The payment's service day. */
+  readonly serviceDate: string
+  readonly openedAt: Date | null
+  /** The provider's answer-by date; null where it gave none. */
+  readonly dueAt: Date | null
+}
+
+/** The time the POS closed a payment's bill: the receipt's time, else the capture's. */
+async function receiptTimes(
+  tx: ReadTx,
+  venueId: string,
+  paymentIds: readonly string[],
+): Promise<ReadonlyMap<string, Date>> {
+  if (paymentIds.length === 0) return new Map()
+  const closed = await tx
+    .select({ paymentId: logEntries.paymentId, at: logEntries.at })
+    .from(logEntries)
+    .where(
+      and(
+        eq(logEntries.venueId, venueId),
+        eq(logEntries.kind, 'payment.state'),
+        eq(logEntries.toState, 'closed'),
+        inArray(logEntries.paymentId, [...paymentIds]),
+      ),
+    )
+    .orderBy(asc(logEntries.seq))
+  const times = new Map<string, Date>()
+  for (const row of closed) if (row.paymentId !== null) times.set(row.paymentId, row.at)
+  return times
+}
+
+/**
+ * The refunds still waiting for a storno, oldest first, whatever their day: a refund of an earlier
+ * night stays until a person answers (decision log 5.3).
+ */
+export async function refundsToDo(tx: ReadTx, venueId: string): Promise<readonly RefundToDo[]> {
+  const rows = await tx
+    .select({
+      refundId: paymentRefunds.id,
+      paymentId: paymentRefunds.paymentId,
+      tableId: payments.tableId,
+      name: venueTables.name,
+      number: venueTables.number,
+      amountMinor: paymentRefunds.amountMinor,
+      currency: payments.currency,
+      serviceDate: payments.serviceDate,
+      receiptNumber: payments.receiptNumber,
+      fiscalMemoryNumber: payments.fiscalMemoryNumber,
+      settledAt: payments.settledAt,
+      seenAt: paymentRefunds.seenAt,
+    })
+    .from(paymentRefunds)
+    .innerJoin(payments, eq(payments.id, paymentRefunds.paymentId))
+    .innerJoin(venueTables, eq(venueTables.id, payments.tableId))
+    .where(
+      and(
+        eq(paymentRefunds.venueId, venueId),
+        isNull(paymentRefunds.stornoAt),
+        isNull(paymentRefunds.failedAt),
+      ),
+    )
+    .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+    .limit(MAX_TODOS)
+  const times = await receiptTimes(tx, venueId, [...new Set(rows.map((row) => row.paymentId))])
+  return rows.map(({ settledAt, ...row }) => ({
+    ...row,
+    paymentNumber: paymentNumberOf(row.paymentId),
+    receiptAt: times.get(row.paymentId) ?? settledAt,
+  }))
+}
+
+/**
+ * The refunds that did not go through after their storno was made, failed after `failedFrom`: the
+ * venue checks with its accountant (decision log 5.7). The caller keeps those of its service day.
+ */
+export async function refundsFailedAfterStorno(
+  tx: ReadTx,
+  venueId: string,
+  failedFrom: Date,
+): Promise<readonly RefundFailedAfterStorno[]> {
+  return tx
+    .select({
+      refundId: paymentRefunds.id,
+      paymentId: paymentRefunds.paymentId,
+      tableId: payments.tableId,
+      name: venueTables.name,
+      number: venueTables.number,
+      amountMinor: paymentRefunds.amountMinor,
+      currency: payments.currency,
+      failedAt: paymentRefunds.failedAt,
+      serviceDate: paymentRefunds.serviceDate,
+    })
+    .from(paymentRefunds)
+    .innerJoin(payments, eq(payments.id, paymentRefunds.paymentId))
+    .innerJoin(venueTables, eq(venueTables.id, payments.tableId))
+    .where(
+      and(
+        eq(paymentRefunds.venueId, venueId),
+        isNotNull(paymentRefunds.stornoAt),
+        gt(paymentRefunds.failedAt, failedFrom),
+      ),
+    )
+    .orderBy(asc(paymentRefunds.failedAt), asc(paymentRefunds.id))
+    .limit(MAX_TODOS)
+    .then((rows) =>
+      rows.flatMap((row) => (row.failedAt === null ? [] : [{ ...row, failedAt: row.failedAt }])),
+    )
+}
+
+/** The disputes still open at the venue, the earliest answer-by date first. */
+export async function disputesToDo(tx: ReadTx, venueId: string): Promise<readonly DisputeToDo[]> {
+  const rows = await tx
+    .select({
+      paymentId: payments.id,
+      tableId: payments.tableId,
+      name: venueTables.name,
+      number: venueTables.number,
+      amountMinor: payments.amountMinor,
+      tipMinor: payments.tipMinor,
+      currency: payments.currency,
+      serviceDate: payments.serviceDate,
+      openedAt: payments.disputeOpenedAt,
+      dueAt: payments.disputeDueAt,
+    })
+    .from(payments)
+    .innerJoin(venueTables, eq(venueTables.id, payments.tableId))
+    .where(and(eq(payments.venueId, venueId), eq(payments.dispute, 'open')))
+    .orderBy(asc(payments.disputeDueAt), desc(payments.disputeOpenedAt), asc(payments.id))
+    .limit(MAX_TODOS)
+  return rows.map((row) => ({ ...row, paymentNumber: paymentNumberOf(row.paymentId) }))
+}

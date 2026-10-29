@@ -27,7 +27,13 @@ describe("the Log screen's kinds", () => {
   })
 
   it('puts the payment kinds under "Money"', () => {
-    expect(logKindsOf('money')).toEqual(['payment.state', 'payment.answered'])
+    expect(logKindsOf('money')).toEqual([
+      'payment.state',
+      'payment.answered',
+      'payment.refund_seen',
+      'payment.storno',
+      'payment.dispute',
+    ])
   })
 })
 
@@ -187,6 +193,20 @@ describe('the message at the close of the service day', () => {
     )
     expect(nightMessage('bg', { ...base, fix: [], payments })).toContain(
       '· Плащане, Table 7: бележката не е занесена · плащане KQ7MD',
+    )
+    expect(nightMessage('en', { ...base, fix: [], payments })).not.toMatch(/[€$]|EUR|\d+[.,]\d\d/)
+  })
+
+  it('lists a refund with no storno by its table, with no amount (#222)', () => {
+    const payments = {
+      taken: 2,
+      fix: [{ table: 'Table 7', what: 'storno_not_done' as const }],
+    }
+    expect(nightMessage('en', { ...base, fix: [], payments })).toContain(
+      '· Payment, Table 7: storno not done',
+    )
+    expect(nightMessage('bg', { ...base, fix: [], payments })).toContain(
+      '· Плащане, Table 7: сторното не е направено',
     )
     expect(nightMessage('en', { ...base, fix: [], payments })).not.toMatch(/[€$]|EUR|\d+[.,]\d\d/)
   })

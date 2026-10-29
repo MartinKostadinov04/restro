@@ -2677,6 +2677,13 @@ export const payments = restro.table(
     refundedMinor: bigint('refunded_minor', { mode: 'number' }).notNull().default(0),
     /** A dispute on the payment, as last read back (`PAYMENT_DISPUTE_STATES`); null for none. */
     dispute: text('dispute'),
+    /**
+     * When the latest dispute was first read as open, when it was read closed (`won` or `lost`)
+     * and the provider's answer-by date (#222; D122 §8). Set by `payment.observe` only.
+     */
+    disputeOpenedAt: timestamp('dispute_opened_at', { withTimezone: true }),
+    disputeClosedAt: timestamp('dispute_closed_at', { withTimezone: true }),
+    disputeDueAt: timestamp('dispute_due_at', { withTimezone: true }),
     /** ISO 4217, upper case. */
     currency: text('currency').notNull(),
     /** The phone must confirm by then (design §6: 2 minutes, extended while the bank asks). */
@@ -2793,6 +2800,10 @@ export const payments = restro.table(
       'payments_dispute',
       sql`${t.dispute} is null or ${t.dispute} in ${sqlWords(PAYMENT_DISPUTE_STATES)}`,
     ),
+    check(
+      'payments_dispute_times',
+      sql`(${t.disputeClosedAt} is null or ${t.disputeOpenedAt} is not null) and (${t.disputeDueAt} is null or ${t.disputeOpenedAt} is not null)`,
+    ),
     check('payments_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check('payments_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
     check(
@@ -2824,6 +2835,62 @@ export const payments = restro.table(
       sql`(${t.settledAt} is not null) = (${t.state} in ${sqlWords(PAYMENT_FINAL_STATES)})`,
     ),
     ...provenanceChecks('payments', t),
+  ],
+)
+
+/**
+ * One refund the venue made in its provider's dashboard, as Restro read it back (#222; D122 §8,
+ * decision log 5.1): each rise of the payment's refund total is one row, with the amount of the
+ * rise, when it was seen and on which service day. The storno is the venue's own work at the till:
+ * "Storno done" records who and when (`storno_at`, `storno_by`). A refund total that falls marks
+ * the row `failed_at` ("didn't go through"). Written only by `payment.observe` and the storno
+ * commands; goes with its payment when the payment is purged.
+ */
+export const paymentRefunds = restro.table(
+  'payment_refunds',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    /** The rise in the payment's refund total, in minor units (rule 8). */
+    amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
+    /** When Restro read the rise. */
+    seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The venue's service day it was seen on. */
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    /** Set when the payment's refund total fell back: the refund did not go through. */
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    /** When staff said the storno was made at the till, and the account that said so. */
+    stornoAt: timestamp('storno_at', { withTimezone: true }),
+    stornoBy: text('storno_by'),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('payment_refunds_tenant_id_id_unique').on(t.tenantId, t.id),
+    venueFk('payment_refunds', t),
+    foreignKey({
+      name: 'payment_refunds_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    index('payment_refunds_payment_idx').on(t.paymentId, t.seenAt),
+    // Tonight's storno to-dos: the refunds still waiting for a storno, whatever their day.
+    index('payment_refunds_open_idx')
+      .on(t.venueId, t.seenAt)
+      .where(sql`${t.stornoAt} is null and ${t.failedAt} is null`),
+    index('payment_refunds_day_idx').on(t.venueId, t.serviceDate),
+    check('payment_refunds_id_format', sql`${t.id} ~ '^rf_[0-9A-Za-z]+$'`),
+    check('payment_refunds_amount', sql`${t.amountMinor} > 0`),
+    check(
+      'payment_refunds_storno',
+      sql`(${t.stornoAt} is null) = (${t.stornoBy} is null) and (${t.stornoBy} is null or ${t.stornoBy} ~ ${SERVICE_ACTOR_PATTERN})`,
+    ),
+    ...provenanceChecks('payment_refunds', t),
   ],
 )
 

@@ -13,7 +13,7 @@ import { z } from 'zod'
  * or other group of tables, D95). Ordering (D122 §9, D124): `br` bar, `st` sitting, `to` table
  * order, `ol` order line, `so` sent order, `wc` waiter call, `al` alert, `pa` pause, `rl` venue
  * role, `sm` staff member, `dv` shared device. Paying (D127): `py` payment. Readings (#74): `rd`
- * one POS bill of a table's reading, `bn` one line of it.
+ * one POS bill of a table's reading, `bn` one line of it. Refunds (#222): `rf` one refund the venue made in its provider's dashboard.
  */
 export const ID_KINDS = [
   'nd',
@@ -45,6 +45,7 @@ export const ID_KINDS = [
   'py',
   'rd',
   'bn',
+  'rf',
 ] as const
 
 /** One of the id kind prefixes. */

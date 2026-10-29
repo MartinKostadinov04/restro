@@ -47,6 +47,9 @@ export async function GET(
     const t = await getTranslations('tonight')
     const rows = nightCsvRows(night.night, sent.list.rows, {
       payments: paid.payments.rows,
+      ...(paid.payments.money === null
+        ? {}
+        : { money: { sections: paid.payments.money, provider: paid.payments.provider } }),
       say: (key, values) => t(key as never, values as never),
       source: night.frame.source,
       timezone: night.frame.timezone,

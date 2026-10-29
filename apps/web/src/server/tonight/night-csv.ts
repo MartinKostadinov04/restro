@@ -9,7 +9,7 @@ import type { CsvRow } from '@restro/core/service'
 import { PAYMENT_STATE_WORDS, releaseReasonWord } from '@/tonight/payment-state-words'
 
 import type { NightView, SentRowView, WhoView } from './night-view'
-import type { PaymentRowView } from './payment-view'
+import type { MoneySectionsView, PaymentRowView } from './payment-view'
 
 /** The translator of the `tonight` messages. */
 export type Say = (key: string, values?: Record<string, string | number>) => string
@@ -74,6 +74,55 @@ export function paymentCsvRow(row: PaymentRowView, say: Say): CsvRow {
 }
 
 /**
+ * The rows of sections 5 and 6 (#222; decision log 5.17): `what` is `refund` or `dispute`. The
+ * reference is our payment id (rule 3), never the provider's.
+ */
+export function moneyCsvRows(
+  money: MoneySectionsView,
+  input: { readonly say: Say; readonly provider: string | null },
+): CsvRow[] {
+  const { say } = input
+  const provider = input.provider ?? say('pb_provider_none')
+  const refunds = money.refunds.map(
+    (refund): CsvRow => ({
+      section: say('nt_refunds'),
+      time: refund.storno?.time ?? '',
+      table: tableText(say, refund.table, refund.numbered),
+      reference: refund.paymentId,
+      what: 'refund',
+      state: refund.failed
+        ? say('py_refund_failed', { provider })
+        : refund.storno === null
+          ? say('nt_fix_storno')
+          : say('st_ok'),
+      ...(refund.storno === null ? {} : { who: whoText(say, refund.storno.by) }),
+      amountMinor: refund.amountMinor,
+      detail: refund.receiptNumber ?? '',
+    }),
+  )
+  const disputes = money.disputes.map(
+    (dispute): CsvRow => ({
+      section: say('nt_disputes'),
+      table: tableText(say, dispute.table, dispute.numbered),
+      reference: dispute.paymentId,
+      what: 'dispute',
+      state:
+        dispute.state === 'won'
+          ? say('d_won')
+          : dispute.state === 'lost'
+            ? say('d_lost')
+            : say('py_disputed'),
+      reason:
+        dispute.state === 'open' && dispute.due !== null
+          ? say('d_due', { provider, date: `${dispute.due.date} ${dispute.due.time}` })
+          : '',
+      ...(dispute.amountMinor === null ? {} : { amountMinor: dispute.amountMinor }),
+    }),
+  )
+  return [...refunds, ...disputes]
+}
+
+/**
  * The rows of one night. `sent` is every sent order of the day (the page shows the not added first)
  * and `payments` every payment of it (#115), after the sent orders as on the page.
  */
@@ -85,6 +134,8 @@ export function nightCsvRows(
     readonly source: string
     readonly timezone: string
     readonly payments?: readonly PaymentRowView[]
+    /** Sections 5 and 6, for managers and owners (#222). */
+    readonly money?: { readonly sections: MoneySectionsView; readonly provider: string | null }
   },
 ): CsvRow[] {
   const { say, source } = input
@@ -128,6 +179,9 @@ export function nightCsvRows(
 
   for (const row of sent) rows.push(sentCsvRow(row, { say, source }))
   for (const row of input.payments ?? []) rows.push(paymentCsvRow(row, say))
+  if (input.money !== undefined) {
+    rows.push(...moneyCsvRows(input.money.sections, { say, provider: input.money.provider }))
+  }
 
   const totals = night.totals
   const section = say('nt_totals')

@@ -32,6 +32,7 @@ export async function nightSlots(
     payments.fix.length +
     payments.noReceipt.length +
     payments.notBrought.length +
+    payments.stornoFix.length +
     (payments.paying === null ? 0 : 1)
 
   const sections: NightSectionSlot[] = [
@@ -70,12 +71,23 @@ export async function nightSlots(
       money.alerts.length,
       <NightMoneyAlerts alerts={money.alerts} />,
     )
-    add('refunds', t('nt_refunds'), money.refunds.length, <NightRefunds refunds={money.refunds} />)
+    add(
+      'refunds',
+      t('nt_refunds'),
+      money.refunds.length,
+      <NightRefunds refunds={money.refunds} frame={frame} provider={payments.provider} />,
+    )
     add(
       'disputes',
       t('nt_disputes'),
       money.disputes.length,
-      <NightDisputes day={payments.day} openCount={money.openDisputes} disputes={money.disputes} />,
+      <NightDisputes
+        day={payments.day}
+        openCount={money.openDisputes}
+        disputes={money.disputes}
+        frame={frame}
+        provider={payments.provider}
+      />,
     )
   }
 

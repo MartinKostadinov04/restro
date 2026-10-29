@@ -13,7 +13,12 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { Frame, NightView } from '@/server/tonight/night-view'
 import { nightPaymentsAction } from '@/server/tonight/payment-actions'
-import type { MoneyAlertView, PaymentRowView, PaymentsView } from '@/server/tonight/payment-view'
+import type {
+  MoneyAlertView,
+  MoneySectionsView,
+  PaymentRowView,
+  PaymentsView,
+} from '@/server/tonight/payment-view'
 
 import { ActionRowItem } from './action-rows'
 import { useDateText } from './day-picker'
@@ -98,6 +103,18 @@ export function NightPayFixRows({
           {t('nt_fix_pay', {
             table: tableName(entry.table, entry.numbered),
             what: t('nt_fix_notbrought', { n: entry.paymentNumber }),
+          })}
+        </li>
+      ))}
+      {payments.stornoFix.map((entry) => (
+        <li
+          key={entry.refundId}
+          className="rounded-lg border bg-card p-4 text-sm"
+          data-testid="night-fix-storno"
+        >
+          {t('nt_fix_pay', {
+            table: tableName(entry.table, entry.numbered),
+            what: `${t('nt_fix_storno')} · ${t('py_number', { ref: entry.paymentNumber })}`,
           })}
         </li>
       ))}
@@ -289,76 +306,124 @@ export function NightMoneyAlerts({ alerts }: { alerts: readonly MoneyAlertView[]
   )
 }
 
-/** Section 5: refunds the venue made at its provider, as `payment.observe` read them back. */
+/**
+ * Section 5: the refunds the venue made at its provider, as `payment.observe` read them back, with
+ * who made the storno and when; then every refund of an earlier night still waiting for one
+ * (#222). Each row opens the payment's sheet.
+ */
 export function NightRefunds({
   refunds,
+  frame,
+  provider,
 }: {
-  refunds: readonly {
-    paymentId: string
-    table: string
-    numbered: boolean
-    refundedMinor: number
-    currency: string
-  }[]
+  refunds: MoneySectionsView['refunds']
+  frame: Frame
+  provider: string | null
 }) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const tableName = useTableName()
+  const who = useWho()
+  const [open, setOpen] = useState<string | null>(null)
+  if (refunds.length === 0) {
+    return <p className="text-sm text-muted-foreground">{t('nt_rf_none')}</p>
+  }
   return (
-    <ul className="divide-y rounded-lg border" data-testid="night-refunds-list">
-      {refunds.map((refund) => (
-        <li key={refund.paymentId} className="p-3 text-sm [overflow-wrap:anywhere]">
-          {t('lg_pay_refund', {
-            amount: money(refund.refundedMinor, refund.currency),
-            table: tableName(refund.table, refund.numbered),
-          })}
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="divide-y rounded-lg border" data-testid="night-refunds-list">
+        {refunds.map((refund) => {
+          const state = refund.failed
+            ? t('py_refund_failed', { provider: provider ?? t('pb_provider_none') })
+            : refund.storno === null
+              ? t('nt_fix_storno')
+              : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })
+          return (
+            <li key={refund.refundId} className="p-3 text-sm">
+              <button
+                type="button"
+                className="min-h-11 w-full text-left [overflow-wrap:anywhere]"
+                data-testid="night-refund"
+                onClick={() => setOpen(refund.paymentId)}
+              >
+                {joinedMeta(t.raw('nt_rf_row'), {
+                  table: tableName(refund.table, refund.numbered),
+                  rcpt: refund.receiptNumber,
+                  amt: money(refund.amountMinor, refund.currency),
+                  storno: state,
+                })}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      {open === null ? null : (
+        <PaymentSheet frame={frame} paymentId={open} onClose={() => setOpen(null)} />
+      )}
+    </>
   )
 }
 
-/** Section 6: disputes opened on the night's payments, and how many are still open. */
+/**
+ * Section 6: the disputes opened on the night's payments, each with its answer-by date, and how
+ * many are still open (#222). Each row opens the payment's sheet and its evidence.
+ */
 export function NightDisputes({
   day,
   openCount,
   disputes,
+  frame,
+  provider,
 }: {
   day: string
   openCount: number
-  disputes: readonly {
-    paymentId: string
-    table: string
-    numbered: boolean
-    amountMinor: number | null
-    currency: string
-  }[]
+  disputes: MoneySectionsView['disputes']
+  frame: Frame
+  provider: string | null
 }) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const tableName = useTableName()
   const dateText = useDateText()
+  const [open, setOpen] = useState<string | null>(null)
   return (
     <div className="space-y-2">
-      {openCount === 0 ? null : (
-        <p className="text-sm text-muted-foreground" data-testid="night-disputes-open">
-          {t('nt_disp_open', { n: openCount })}
-        </p>
-      )}
       <ul className="divide-y rounded-lg border" data-testid="night-disputes-list">
         {disputes.map((dispute) => (
-          <li key={dispute.paymentId} className="space-y-0.5 p-3 text-sm">
-            <span className="block font-medium">{t('d_t')}</span>
-            <span className="block text-muted-foreground [overflow-wrap:anywhere]">
-              {t('d_d', {
-                amt: money(dispute.amountMinor ?? 0, dispute.currency),
-                table: tableName(dispute.table, dispute.numbered),
-                date: dateText(day),
-              })}
-            </span>
+          <li key={dispute.paymentId} className="p-3 text-sm">
+            <button
+              type="button"
+              className="min-h-11 w-full space-y-0.5 text-left"
+              data-testid="night-dispute"
+              onClick={() => setOpen(dispute.paymentId)}
+            >
+              <span className="block font-medium">{t('d_t')}</span>
+              <span className="block text-muted-foreground [overflow-wrap:anywhere]">
+                {t('d_d', {
+                  amt: money(dispute.amountMinor ?? 0, dispute.currency),
+                  table: tableName(dispute.table, dispute.numbered),
+                  date: dateText(dispute.serviceDate || day),
+                })}
+              </span>
+              {dispute.state === 'open' && dispute.due !== null ? (
+                <span className="block [overflow-wrap:anywhere]">
+                  {t('d_due', {
+                    provider: provider ?? t('pb_provider_none'),
+                    date: dateText(dispute.due.date),
+                  })}
+                </span>
+              ) : null}
+            </button>
           </li>
         ))}
       </ul>
+      {openCount === 0 ? null : (
+        <p className="text-sm text-muted-foreground" data-testid="night-disputes-open">
+          {t('nt_d_open', { n: openCount })}
+        </p>
+      )}
+      {open === null ? null : (
+        <PaymentSheet frame={frame} paymentId={open} onClose={() => setOpen(null)} />
+      )}
     </div>
   )
 }
