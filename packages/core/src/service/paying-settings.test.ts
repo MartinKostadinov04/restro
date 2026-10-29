@@ -147,6 +147,28 @@ describe.skipIf(!hasDatabase)('the paying choices command (as the restro_app rol
     expect(await stored()).toEqual(before)
   })
 
+  it('keeps both of two saves that meet on the venue row, one field each', async () => {
+    await run({
+      type: 'settings.paying_set',
+      changes: { minCardMinor: null, legalDetails: null },
+      providerMinMinor: 50,
+    })
+    const results = await world.saveTogether([
+      () =>
+        run({ type: 'settings.paying_set', changes: { minCardMinor: 700 }, providerMinMinor: 50 }),
+      () =>
+        run({
+          type: 'settings.paying_set',
+          changes: { legalDetails: LEGAL },
+          providerMinMinor: 50,
+        }),
+    ])
+    for (const result of results) expect(result.status).toBe('accepted')
+    const settings = await stored()
+    expect(readPayingSettings(settings)).toEqual({ minCardMinor: 700 })
+    expect(readLegalDetails(settings)).toEqual(LEGAL)
+  })
+
   it('clears the details with null', async () => {
     await run({
       type: 'settings.paying_set',
