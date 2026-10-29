@@ -152,4 +152,24 @@ describe('the message at the close of the service day', () => {
       ].join('\n'),
     )
   })
+
+  it('lists the receipts not brought by table and payment number, with no amount (#200)', () => {
+    const payments = {
+      taken: 2,
+      fix: [{ table: 'Table 7', what: 'receipt_not_brought' as const, paymentNumber: 'KQ7MD' }],
+    }
+    expect(nightMessage('en', { ...base, fix: [], payments })).toBe(
+      [
+        'Club Luna · night of 26 October',
+        'Sent orders: 84 (added 79, not sent 3, unconfirmed 2)',
+        'Payments: 2 taken, 1 to fix',
+        'To fix (1):',
+        '· Payment, Table 7: receipt not brought · payment KQ7MD',
+      ].join('\n'),
+    )
+    expect(nightMessage('bg', { ...base, fix: [], payments })).toContain(
+      '· Плащане, Table 7: бележката не е занесена · плащане KQ7MD',
+    )
+    expect(nightMessage('en', { ...base, fix: [], payments })).not.toMatch(/[€$]|EUR|\d+[.,]\d\d/)
+  })
 })

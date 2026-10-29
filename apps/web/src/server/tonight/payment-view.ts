@@ -99,6 +99,13 @@ export interface PaymentsView {
     readonly table: string
     readonly numbered: boolean
   }[]
+  /** Paper receipts never marked Brought (#200): a line with the payment number, no answer. */
+  readonly notBrought: readonly {
+    readonly paymentId: string
+    readonly paymentNumber: string
+    readonly table: string
+    readonly numbered: boolean
+  }[]
   readonly rows: readonly PaymentRowView[]
   readonly hasMore: boolean
   readonly paying: NightPayments['paying']
@@ -162,6 +169,12 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
         table: fix.payment.table,
         numbered: fix.payment.numbered,
       })),
+    notBrought: read.notBrought.map((entry) => ({
+      paymentId: entry.paymentId,
+      paymentNumber: entry.paymentNumber,
+      table: entry.name ?? entry.number ?? '',
+      numbered: entry.name === null && entry.number !== null,
+    })),
     rows: read.rows.map((row) => paymentRowView(row, clock)),
     hasMore: read.hasMore,
     paying: read.paying,

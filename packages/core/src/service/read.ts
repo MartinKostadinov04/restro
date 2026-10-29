@@ -54,6 +54,7 @@ import {
 import { payingPausedAt } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import type { Permission } from './permissions'
+import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
 import { sentOrderLinesOf } from './send'
 import { readTableCapabilities } from './table-capabilities'
 import { orderedKinds } from './waiter-call'
@@ -656,6 +657,11 @@ export interface Tonight {
    * `sent_order.landed_late`). It changes nothing: staff still answer (D116).
    */
   readonly landedLate: readonly { readonly sentOrderId: string; readonly at: Date }[]
+  /**
+   * Paper receipts of tonight's card payments still to be brought (#200), for those who mark them
+   * Brought (`alerts.answer`); null otherwise.
+   */
+  readonly receipts: readonly ReceiptToBring[] | null
   /** Open waiter calls, for those who answer them (`alerts.answer`); null otherwise. */
   readonly waiterCalls:
     | readonly {
@@ -832,6 +838,8 @@ export async function readTonight(
           .orderBy(waiterCalls.calledAt)
       : null
 
+    const receipts = held.has('alerts.answer') ? await receiptsToBring(tx, venue.id, day) : null
+
     const active = await tx
       .select({
         id: pauses.id,
@@ -946,6 +954,7 @@ export async function readTonight(
       landedLate: landed.flatMap((row) =>
         row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
       ),
+      receipts,
       waiterCalls:
         calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
       paying,

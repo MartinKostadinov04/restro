@@ -112,6 +112,8 @@ export interface NightMessageInput {
     readonly fix: readonly {
       readonly table: string | null
       readonly what: NightPayWhat
+      /** The payment number a receipt not brought is found by (#200). */
+      readonly paymentNumber?: string
     }[]
   }
 }
@@ -124,6 +126,7 @@ export type NightPayWhat =
   | 'capture_failed'
   | 'expired'
   | 'no_receipt'
+  | 'receipt_not_brought'
 
 interface Words {
   readonly head: (venue: string, date: string) => string
@@ -132,7 +135,7 @@ interface Words {
   readonly none: string
   readonly line: (ref: string, table: string | null) => string
   readonly pay: (n: number, k: number) => string
-  readonly payLine: (table: string | null, what: NightPayWhat) => string
+  readonly payLine: (table: string | null, what: NightPayWhat, paymentNumber?: string) => string
 }
 
 const PAY_WHAT: Readonly<Record<AlertLocale, Readonly<Record<NightPayWhat, string>>>> = {
@@ -143,6 +146,7 @@ const PAY_WHAT: Readonly<Record<AlertLocale, Readonly<Record<NightPayWhat, strin
     capture_failed: 'картата не е таксувана след приключване на сметката',
     expired: 'задържаната сума изтече преди някой да отговори',
     no_receipt: 'таксувано, без номер на бележка',
+    receipt_not_brought: 'бележката не е занесена',
   },
   en: {
     unconfirmed: 'not confirmed',
@@ -151,6 +155,7 @@ const PAY_WHAT: Readonly<Record<AlertLocale, Readonly<Record<NightPayWhat, strin
     capture_failed: 'card not charged after the bill closed',
     expired: 'a card hold ran out before anyone answered',
     no_receipt: 'charged, no receipt number',
+    receipt_not_brought: 'receipt not brought',
   },
 }
 
@@ -162,8 +167,8 @@ const WORDS: Readonly<Record<AlertLocale, Words>> = {
     none: 'Няма нищо за оправяне.',
     line: (ref, table) => `· Поръчка ${ref}${table === null ? '' : `, ${table}`}: още непотвърдена`,
     pay: (n, k) => `Плащания: ${n} взети, ${k} за оправяне`,
-    payLine: (table, what) =>
-      `· Плащане${table === null ? '' : `, ${table}`}: ${PAY_WHAT.bg[what]}`,
+    payLine: (table, what, paymentNumber) =>
+      `· Плащане${table === null ? '' : `, ${table}`}: ${PAY_WHAT.bg[what]}${paymentNumber === undefined ? '' : ` · плащане ${paymentNumber}`}`,
   },
   en: {
     head: (venue, date) => `${venue} · night of ${date}`,
@@ -173,8 +178,8 @@ const WORDS: Readonly<Record<AlertLocale, Words>> = {
     line: (ref, table) =>
       `· Sent order ${ref}${table === null ? '' : `, ${table}`}: still unconfirmed`,
     pay: (n, k) => `Payments: ${n} taken, ${k} to fix`,
-    payLine: (table, what) =>
-      `· Payment${table === null ? '' : `, ${table}`}: ${PAY_WHAT.en[what]}`,
+    payLine: (table, what, paymentNumber) =>
+      `· Payment${table === null ? '' : `, ${table}`}: ${PAY_WHAT.en[what]}${paymentNumber === undefined ? '' : ` · payment ${paymentNumber}`}`,
   },
 }
 
@@ -207,7 +212,9 @@ export function nightMessage(locale: AlertLocale, input: NightMessageInput): str
   else {
     lines.push(words.fix(count))
     for (const problem of input.fix) lines.push(words.line(problem.reference, problem.table))
-    for (const problem of pay?.fix ?? []) lines.push(words.payLine(problem.table, problem.what))
+    for (const problem of pay?.fix ?? []) {
+      lines.push(words.payLine(problem.table, problem.what, problem.paymentNumber))
+    }
   }
   return lines.join('\n')
 }

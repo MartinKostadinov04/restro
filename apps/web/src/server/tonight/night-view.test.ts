@@ -5,7 +5,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { REFUSAL_CODES } from '@restro/core'
-import type { LogLine, NightRead, SentOrderRow } from '@restro/core/service'
+import {
+  type LogLine,
+  type NightRead,
+  paymentNumberOf,
+  type SentOrderRow,
+} from '@restro/core/service'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -210,6 +215,31 @@ describe('a Log line', () => {
     const view = logLineView(line({ kind: 'alert.raised', reason: 'order_unconfirmed' }), input)
     expect(view.alertTitle).toBeTruthy()
     expect(view.alertTitle).not.toContain('order_unconfirmed')
+  })
+
+  it('marks a receipt line as the mark or its Undo, with the number the guest shows (#200)', () => {
+    const marked = logLineView(
+      line({
+        kind: 'receipt.brought',
+        paymentId: 'py_A1',
+        fromState: 'to_bring',
+        toState: 'brought',
+      }),
+      input,
+    )
+    const undone = logLineView(
+      line({
+        kind: 'receipt.brought',
+        paymentId: 'py_A1',
+        fromState: 'brought',
+        toState: 'to_bring',
+      }),
+      input,
+    )
+    expect(marked.receipt).toEqual({ undone: false, paymentNumber: paymentNumberOf('py_A1') })
+    expect(undone.receipt).toEqual({ undone: true, paymentNumber: paymentNumberOf('py_A1') })
+    // Every other kind is untouched.
+    expect('receipt' in logLineView(line(), input)).toBe(false)
   })
 
   it('words a guard and a setting, and falls back to a plain word for an unknown one', () => {

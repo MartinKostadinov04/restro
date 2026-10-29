@@ -87,6 +87,18 @@ export function NightPayFixRows({
           })}
         </li>
       ))}
+      {payments.notBrought.map((entry) => (
+        <li
+          key={entry.paymentId}
+          className="rounded-lg border bg-card p-4 text-sm"
+          data-testid="night-fix-notbrought"
+        >
+          {t('nt_fix_pay', {
+            table: tableName(entry.table, entry.numbered),
+            what: t('nt_fix_notbrought', { n: entry.paymentNumber }),
+          })}
+        </li>
+      ))}
       {payments.paying === null ? null : (
         <li
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 text-sm"

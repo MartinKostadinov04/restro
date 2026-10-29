@@ -41,6 +41,8 @@ export type TableCommand =
       readonly answer: 'found' | 'not_found'
     }
   | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
+  | { readonly type: 'receipt.brought'; readonly paymentId: string }
+  | { readonly type: 'receipt.unbrought'; readonly paymentId: string }
   | { readonly type: 'alert.done'; readonly alertId: string }
   | {
       readonly type: 'payment.answer'

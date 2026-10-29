@@ -73,6 +73,9 @@ export async function sendNightReport(
           fix: paid.fix.map((problem) => ({
             table: tableLabel(locale, problem),
             what: problem.what,
+            ...(problem.paymentNumber === undefined
+              ? {}
+              : { paymentNumber: problem.paymentNumber }),
           })),
         },
       }),

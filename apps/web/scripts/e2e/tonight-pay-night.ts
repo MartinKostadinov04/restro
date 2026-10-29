@@ -20,9 +20,50 @@ export interface PayNightWorld {
 
 export async function seedPayNight(
   world: PayNightWorld,
-  scene: 'pay' | 'pay-stuck' = 'pay',
+  scene: 'pay' | 'pay-stuck' | 'receipts' = 'pay',
 ): Promise<void> {
   const { owner, tenantId, venueId, day, tables, sitting } = world
+  if (scene === 'receipts') {
+    // Paper receipts to bring (#200), as a capture leaves them: Table 1's has the POS's receipt
+    // number, Table 2's has none (a manager answered "Receipt printed"), Table 3's was brought
+    // already. Table 1 was captured first.
+    const captured = async (
+      number: string,
+      receiptNumber: string | null,
+      minutesAgo: number,
+      broughtBy: string | null,
+    ) => {
+      const sittingId = await sitting(number)
+      const id = newId('py')
+      await owner.query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+            amount_minor, tip_minor, captured_minor, currency, provider_kind, receipt_number,
+            settled_at, receipt_to_bring_at, receipt_brought_at, receipt_brought_by, source, actor,
+            job_id)
+         values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 3800, 200, 3800, 'EUR',
+                 'sim-pay', $8, now(), now() - make_interval(mins => $9),
+                 case when $10::text is not null then now() end, $10, 'worker', 'system',
+                 'e2e-seed')`,
+        [
+          id,
+          tenantId,
+          venueId,
+          tables[number],
+          sittingId,
+          day,
+          createHash('sha256').update(id).digest('hex'),
+          receiptNumber,
+          minutesAgo,
+          broughtBy,
+        ],
+      )
+    }
+    await captured('1', 'R-000123', 6, null)
+    await captured('2', null, 3, null)
+    await captured('3', 'R-000125', 9, 'system')
+    return
+  }
   if (scene === 'pay-stuck') {
     // Items stuck on a payment table at Table 5: a staff member marks them moved back.
     const sittingId = await sitting('5')

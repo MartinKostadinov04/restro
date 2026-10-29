@@ -40,6 +40,7 @@ function tonight(overrides: Partial<Tonight> = {}): Tonight {
     paying: null,
     payingProvider: null,
     landedLate: [],
+    receipts: [],
     waiterCalls: [],
     pauses: [],
     log: null,
@@ -130,6 +131,61 @@ describe('Needs you, in the order of what costs most to leave', () => {
       sentAt: '23:19',
       items: [{ name: 'Mojito', options: ['no ice'], qty: 2 }],
     })
+  })
+
+  it('puts a receipt to bring after the waiter calls and before a payment stopped (#200)', () => {
+    const t = tonight({
+      waiterCalls: [
+        {
+          id: 'wc_1',
+          tableId: 'tb_000000000000000000003',
+          kinds: ['waiter'] as const,
+          calledAt: new Date('2026-10-27T21:00:00Z'),
+        },
+      ],
+      receipts: [
+        {
+          paymentId: 'py_2',
+          paymentNumber: 'KQ7MD',
+          tableId: 'tb_000000000000000000001',
+          name: null,
+          number: '1',
+          receiptNumber: null,
+          amountMinor: 3800,
+          currency: 'EUR',
+          raisedAt: new Date('2026-10-27T21:20:00Z'),
+        },
+        {
+          paymentId: 'py_1',
+          paymentNumber: 'AB3CD',
+          tableId: 'tb_000000000000000000003',
+          name: null,
+          number: '3',
+          receiptNumber: 'R-000123',
+          amountMinor: 1450,
+          currency: 'EUR',
+          raisedAt: new Date('2026-10-27T21:10:00Z'),
+        },
+      ],
+    })
+    const rows = view(t).rows
+    expect(rows.map((row) => row.kind)).toEqual(['call', 'receipt', 'receipt'])
+    expect(ROW_RANK.receipt).toBeGreaterThan(ROW_RANK.call)
+    expect(ROW_RANK.receipt).toBeLessThan(ROW_RANK.stopped)
+    // Oldest first, with the number the guest shows and the receipt number when the POS gave one;
+    // a receipt row never turns a tile red.
+    expect(rows.slice(1).map((row) => row.receipt)).toEqual([
+      { paymentId: 'py_1', paymentNumber: 'AB3CD', receiptNumber: 'R-000123', amountMinor: 1450 },
+      { paymentId: 'py_2', paymentNumber: 'KQ7MD', receiptNumber: null, amountMinor: 3800 },
+    ])
+    expect(rows[1]).toMatchObject({ tableId: 'tb_000000000000000000003', table: 'Table 3' })
+    expect(
+      view(t)
+        .groups.flatMap((g) => g.tables)
+        .map((x) => x.state),
+    ).not.toContain('payment')
+    // Someone who may not mark it Brought is given none.
+    expect(view(tonight({ receipts: null })).rows).toEqual([])
   })
 
   it('orders calls of one rank oldest first', () => {

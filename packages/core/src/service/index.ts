@@ -307,6 +307,7 @@ export {
   paymentTableFacts,
   readPayingConnection,
 } from './payment-connection'
+export { PAYMENT_NUMBER_LENGTH, paymentNumberOf } from './payment-number'
 export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,
@@ -345,10 +346,10 @@ export {
   type ReceiptNotBrought,
   type ReceiptsNotBrought,
   type ReceiptToBring,
-  readReceiptsNotBrought,
-  readReceiptsToBring,
   receiptsNotBrought,
-} from './receipts'
+  receiptsToBring,
+} from './receipt-rows'
+export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
 export {
   REFUSAL_CODES,
   type RefusalCode,

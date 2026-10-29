@@ -10,6 +10,7 @@ import {
   CirclePauseIcon,
   HourglassIcon,
   PackageXIcon,
+  ReceiptTextIcon,
   SearchCheckIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -31,7 +32,12 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { handleWaiterCallAction, resumeTableAction } from '@/server/tonight/actions'
+import {
+  handleWaiterCallAction,
+  receiptBroughtAction,
+  receiptUnbroughtAction,
+  resumeTableAction,
+} from '@/server/tonight/actions'
 import type { ActionRow, RowKind } from '@/server/tonight/view'
 
 import { callKindsText } from './call-kinds'
@@ -46,6 +52,7 @@ const ICONS = {
   approval: HourglassIcon,
   paused: CirclePauseIcon,
   call: BellRingIcon,
+  receipt: ReceiptTextIcon,
   pay: MONEY_ICONS.pay.Icon,
   failed: MONEY_ICONS.failed.Icon,
   stuck: MONEY_ICONS.stuck.Icon,
@@ -117,6 +124,49 @@ export function ActionRowItem({
           }
         >
           {t('c_ok')}
+        </Button>
+      )
+    }
+  } else if (row.kind === 'receipt' && row.receipt !== undefined) {
+    const { receipt } = row
+    title = t('r_t')
+    body = (
+      <div className="space-y-0.5 text-sm text-muted-foreground">
+        <p className="[overflow-wrap:anywhere]">
+          {t('r_d', {
+            table: name,
+            ref: receipt.paymentNumber,
+            amt: money(receipt.amountMinor, view.currency),
+          })}
+        </p>
+        {receipt.receiptNumber === null ? null : (
+          <p className="[overflow-wrap:anywhere]">{t('r_rcpt', { rcpt: receipt.receiptNumber })}</p>
+        )}
+      </div>
+    )
+    // "Brought": one tap, no PIN even on a shared device; the Log names the device's account
+    // (D122 §7, Martin 10-26). The Undo toast is offered only when this tap changed something: a
+    // repeat finds it marked already and must not undo someone else's mark.
+    if (view.can.answer) {
+      answer = (
+        <Button
+          type="button"
+          variant={variant}
+          className={button}
+          disabled={busy}
+          onClick={() =>
+            run({
+              id: `receipt:${receipt.paymentId}`,
+              act: () =>
+                receiptBroughtAction({ venueId: view.venueId, paymentId: receipt.paymentId }),
+              done: t('r_toast', { table: name }),
+              undo: () =>
+                receiptUnbroughtAction({ venueId: view.venueId, paymentId: receipt.paymentId }),
+              undoWhen: (done) => done.details.changed === true,
+            })
+          }
+        >
+          {t('r_ok')}
         </Button>
       )
     }

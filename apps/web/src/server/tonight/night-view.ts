@@ -14,6 +14,7 @@ import {
   type NightAccess,
   type NightFixRow,
   type NightRead,
+  paymentNumberOf,
   type SentOrderDetail,
   type SentOrderPage,
   type SentOrderRow,
@@ -357,6 +358,11 @@ export interface LogLineView {
   readonly sentOrdersOfDay: number | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
+  /**
+   * A paper receipt's mark (#200), for `receipt.brought` lines only: `undone` is Undo of the mark
+   * (the receipt is to be brought again), `paymentNumber` the number the guest shows.
+   */
+  readonly receipt?: { readonly undone: boolean; readonly paymentNumber: string | null }
 }
 
 /** The Log's day as the screen draws it. */
@@ -416,6 +422,14 @@ export function logLineView(
     paymentId: line.paymentId,
     sentOrdersOfDay: line.sentOrdersOfDay,
     callKinds: line.callKinds,
+    ...(line.kind === 'receipt.brought'
+      ? {
+          receipt: {
+            undone: line.toState === 'to_bring',
+            paymentNumber: line.paymentId === null ? null : paymentNumberOf(line.paymentId),
+          },
+        }
+      : {}),
   }
 }
 
