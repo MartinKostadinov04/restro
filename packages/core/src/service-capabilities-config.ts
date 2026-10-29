@@ -34,6 +34,10 @@ export interface RecordedServiceCapabilities {
   readonly firstItemsOpenBill: boolean
   /** A tip reaches the fiscal receipt on the close (D127): else a tip above 0 is refused. */
   readonly recordTipOnClose: boolean
+  /** A bill closes with the card payment type (D125 2.3, #116): else paying is not offered. */
+  readonly closeWithPaymentType: boolean
+  /** Lines move to a payment table, the route every in-app payment takes (D122 §8, #116). */
+  readonly moveLinesToTable: boolean
 }
 
 /** Nothing declared: the cautious answer. */
@@ -41,6 +45,8 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   notesReachTicket: false,
   firstItemsOpenBill: false,
   recordTipOnClose: false,
+  closeWithPaymentType: false,
+  moveLinesToTable: false,
 })
 
 function snakeCase(name: string): string {
@@ -65,5 +71,7 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     notesReachTicket: stored.notes_reach_ticket === true,
     firstItemsOpenBill: stored.first_items_open_bill === true,
     recordTipOnClose: stored.record_tip_on_close === true,
+    closeWithPaymentType: stored.close_with_payment_type === true,
+    moveLinesToTable: stored.move_lines_to_table === true,
   }
 }

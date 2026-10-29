@@ -72,6 +72,7 @@ import {
 import { PAY_FIRST_COMMANDS } from './pay-first'
 import { PAY_ROUTE_COMMANDS } from './pay-route'
 import { payingBreaker } from './paying-pause'
+import { SetPayingSchema, setPayingChoices } from './paying-settings'
 import {
   accountLost,
   accountObserved,
@@ -477,6 +478,15 @@ export const SERVICE_COMMANDS = {
     freshSignIn: true,
     idempotency: 'by_nature',
     handle: disconnectAccount,
+  }),
+  // #116: the smallest card payment and the venue's legal details (#198), by the same right.
+  'settings.paying_set': defineCommand({
+    schema: SetPayingSchema,
+    origins: ['staff'],
+    permission: CONNECT_PERMISSION,
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: setPayingChoices,
   }),
   'payment_account.tick': defineCommand({
     schema: TickCheckSchema,

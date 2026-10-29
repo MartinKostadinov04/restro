@@ -32,6 +32,8 @@ describe('the recorded service capabilities (#78)', () => {
       notesReachTicket: true,
       firstItemsOpenBill: false,
       recordTipOnClose: false,
+      closeWithPaymentType: false,
+      moveLinesToTable: false,
     })
     expect(
       readServiceCapabilities({
@@ -40,7 +42,13 @@ describe('the recorded service capabilities (#78)', () => {
           firstItemsOpenBill: true,
         }),
       }),
-    ).toEqual({ notesReachTicket: false, firstItemsOpenBill: true, recordTipOnClose: false })
+    ).toEqual({
+      notesReachTicket: false,
+      firstItemsOpenBill: true,
+      recordTipOnClose: false,
+      closeWithPaymentType: false,
+      moveLinesToTable: false,
+    })
     expect(
       readServiceCapabilities({
         service_capabilities: storedServiceCapabilities({

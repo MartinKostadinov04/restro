@@ -287,8 +287,10 @@ export {
   CONNECT_PERMISSION,
   loadPayingConnection,
   type PayingConnection,
+  type PayingOffer,
   paymentTableFacts,
   readPayingConnection,
+  readPayingOffer,
 } from './payment-connection'
 export {
   DEFAULT_ROLE_KINDS,
