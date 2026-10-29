@@ -236,7 +236,7 @@ function Content({ view }: { view: TonightView }) {
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
       done: t('oa_toast', { k: closedIds.length }),
-      undo: (_, undo) => undoOpenAllAction({ venueId: view.venueId, tableIds: closedIds, undo }),
+      undo: (_, undo) => undoOpenAllAction({ venueId: view.venueId, undo }),
       undoWhen: wroteSomething,
     })
   }

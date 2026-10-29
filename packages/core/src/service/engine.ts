@@ -231,7 +231,7 @@ export async function executeCommand(
         return clock
       }
       const kept: (() => Promise<void>)[] = []
-      let logged: { readonly seq: number; readonly at: Date } | null = null
+      const logged: { readonly seq: number; readonly at: Date; readonly kind: string }[] = []
       const stx: ServiceTx = {
         tx,
         tenantId: context.tenantId,
@@ -252,13 +252,15 @@ export async function executeCommand(
         sendMenu: options.sendMenu ?? null,
         dbNow,
         log: async (entry) => {
-          logged = await appendLogEntry(
+          const written = await appendLogEntry(
             tx,
             { tenantId: context.tenantId, venueId: venue.id, serviceDate: day, provenance, via },
             entry,
           )
+          logged.push({ ...written, kind: entry.kind })
         },
-        lastLogged: () => logged,
+        lastLogged: (kinds) =>
+          logged.findLast((entry) => kinds.includes(entry.kind as never)) ?? null,
         keepOnRefusal: (write) => {
           kept.push(write)
         },
@@ -323,13 +325,11 @@ export async function executeCommand(
       }
 
       // The token of a write Tonight offers an Undo for: the Log entry it wrote and its time.
-      const written = logged as { readonly seq: number; readonly at: Date } | null
-      if (
-        result.status === 'accepted' &&
-        definition.undoable === true &&
-        via === 'tonight' &&
-        written !== null
-      ) {
+      const written =
+        result.status === 'accepted' && definition.undoable !== undefined && via === 'tonight'
+          ? stx.lastLogged(definition.undoable.kinds)
+          : null
+      if (result.status === 'accepted' && written !== null) {
         result = {
           ...result,
           details: {

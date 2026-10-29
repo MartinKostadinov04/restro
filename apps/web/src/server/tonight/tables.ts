@@ -41,6 +41,7 @@ export type TableCommand =
   | { readonly type: 'table.close'; readonly tableId: string; readonly undo?: UndoToken }
   | { readonly type: 'table.new_guests'; readonly tableId: string; readonly sittingId?: string }
   | { readonly type: 'tables.open_all' }
+  | { readonly type: 'tables.undo_open_all'; readonly undo: UndoToken }
   | { readonly type: 'tables.close_all' }
   | { readonly type: 'table.resume'; readonly tableId: string }
   | {

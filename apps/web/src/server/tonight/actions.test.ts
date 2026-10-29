@@ -208,19 +208,38 @@ describe('the undo token of a staff Undo (#219)', () => {
     ])
   })
 
-  it('sends the token of Open all with the close of every table, and stops at the first refusal', async () => {
+  it('undoes Open all with one command that carries only its token', async () => {
     const undo = { entry: 77 }
-    const other = 'tb_ZYXWVUTSRQPONMLKJIHGFE'
-    runTableCommand
-      .mockResolvedValueOnce(ok)
-      .mockResolvedValueOnce({ ok: false, error: 'undo_stale' })
-    expect(
-      await undoOpenAllAction({ venueId: VENUE, tableIds: [TABLE, other, TABLE], undo }),
-    ).toEqual({ ok: false, error: 'undo_stale' })
-    expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
-      { type: 'table.close', tableId: TABLE, undo },
-      { type: 'table.close', tableId: other, undo },
-    ])
+    runTableCommand.mockResolvedValueOnce({ ok: true, details: { closed: 4, skipped: 0 } })
+    expect(await undoOpenAllAction({ venueId: VENUE, undo })).toEqual({
+      ok: true,
+      details: { closed: 4, skipped: 0 },
+    })
+    expect(runTableCommand).toHaveBeenCalledTimes(1)
+    expect(runTableCommand.mock.calls[0]?.[1]).toEqual({ type: 'tables.undo_open_all', undo })
+  })
+
+  it('passes on the refusal of an Open all a guest has used, with the tables it names', async () => {
+    runTableCommand.mockResolvedValueOnce({
+      ok: false,
+      error: 'undo_stale',
+      details: { count: 1, tables: TABLE },
+    })
+    expect(await undoOpenAllAction({ venueId: VENUE, undo: { entry: 77 } })).toEqual({
+      ok: false,
+      error: 'undo_stale',
+      details: { count: 1, tables: TABLE },
+    })
+  })
+
+  it("refuses Open all's Undo without a token, or with a list of tables, before any command", async () => {
+    for (const input of [
+      { venueId: VENUE },
+      { venueId: VENUE, undo: { entry: 77 }, tableIds: [TABLE] },
+    ]) {
+      expect(await undoOpenAllAction(input)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
   })
 
   it('passes on the two refusals as they are', async () => {

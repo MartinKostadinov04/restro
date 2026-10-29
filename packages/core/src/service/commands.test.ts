@@ -39,6 +39,8 @@ describe('the service commands', () => {
       'table.close',
       'table.new_guests',
       'table.open',
+      // #219: the Undo of Open all, which closed tables one by one as `table.close` before.
+      'tables.undo_open_all',
       'waiter_call.done',
     ])
     for (const type of quick) {

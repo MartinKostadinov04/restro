@@ -166,6 +166,33 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       await closeEverything()
     })
 
+    it('refuses the Undo of an open when a guest has used the table, and leaves it open', async () => {
+      const tableId = table(0)
+      const opened = await accepted({ type: 'table.open', tableId })
+      await world.owner.query(
+        `update restro.table_orders set lines = '[{"id":"ol_x","qty":1,"note":""}]'
+          where sitting_id = $1`,
+        [opened.sittingId],
+      )
+      expect(await run({ type: 'table.close', tableId, undo: tokenOf(opened) })).toMatchObject({
+        status: 'refused',
+        code: 'undo_stale',
+      })
+      expect(await isOpen(tableId)).toBe(true)
+      // The same close without the token is a normal command.
+      expect(await accepted({ type: 'table.close', tableId })).toMatchObject({ closed: true })
+    })
+
+    it("refuses the Undo of an open with a token that is not this table's open", async () => {
+      const other = await accepted({ type: 'table.open', tableId: table(1) })
+      await accepted({ type: 'table.open', tableId: table(0) })
+      expect(
+        await run({ type: 'table.close', tableId: table(0), undo: tokenOf(other) }),
+      ).toMatchObject({ code: 'invalid_command' })
+      expect(await isOpen(table(0))).toBe(true)
+      await closeEverything()
+    })
+
     it('refuses a token that names no entry of this venue as expired', async () => {
       const tableId = table(0)
       await accepted({ type: 'table.open', tableId })
@@ -183,36 +210,95 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
     })
   })
 
-  describe('Open all', () => {
-    it('answers with a token; its Undo closes each table, but not one changed since', async () => {
+  describe('Open all and its Undo', () => {
+    /** A guest in the cart of the table's open sitting. */
+    const guestAt = (tableId: string) =>
+      world.owner.query(
+        `update restro.table_orders set lines = '[{"id":"ol_x","qty":1,"note":""}]'
+          where sitting_id = (select id from restro.sittings where table_id = $1 and ended_at is null)`,
+        [tableId],
+      )
+    const undoAll = (token: { entry: number }) => run({ type: 'tables.undo_open_all', undo: token })
+
+    it('answers with a token, and its Undo ends every sitting it began in one command', async () => {
       const opened = await accepted({ type: 'tables.open_all' })
       expect(opened).toMatchObject({ opened: 4 })
-      const token = tokenOf(opened)
+      expect(await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })).toMatchObject(
+        { closed: 4, skipped: 0 },
+      )
+      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(false)
+    })
 
-      // Another member closed the first table, then opened it again.
+    it('skips a table already closed, and leaves one that was opened again alone', async () => {
+      const opened = await accepted({ type: 'tables.open_all' })
       await accepted({ type: 'table.close', tableId: table(0) })
-      await accepted({ type: 'table.open', tableId: table(0) })
-      expect(await run({ type: 'table.close', tableId: table(0), undo: token })).toMatchObject({
-        code: 'undo_stale',
-      })
-      expect(await isOpen(table(0))).toBe(true)
-
-      for (const index of [1, 2, 3]) {
-        expect(
-          await accepted({ type: 'table.close', tableId: table(index), undo: token }),
-        ).toMatchObject({ closed: true })
-        expect(await isOpen(table(index))).toBe(false)
-      }
+      await accepted({ type: 'table.close', tableId: table(1) })
+      const theirs = await accepted({ type: 'table.open', tableId: table(1) })
+      expect(await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })).toMatchObject(
+        { closed: 2, skipped: 2 },
+      )
+      expect(await isOpen(table(0))).toBe(false)
+      expect(await isOpen(table(2))).toBe(false)
+      // The new sitting of the second table is not Open all's: still theirs.
+      const { rows } = await world.owner.query<{ id: string }>(
+        'select id from restro.sittings where table_id = $1 and ended_at is null',
+        [table(1)],
+      )
+      expect(rows[0]?.id).toBe(theirs.sittingId)
       await closeEverything()
     })
 
-    it('is too late for every table after the window', async () => {
+    it('ends none when a guest has used one of them, and names the table', async () => {
+      const opened = await accepted({ type: 'tables.open_all' })
+      await guestAt(table(2))
+      expect(await undoAll(tokenOf(opened))).toMatchObject({
+        status: 'refused',
+        code: 'undo_stale',
+        details: { count: 1, tables: table(2) },
+      })
+      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(true)
+      await closeEverything()
+    })
+
+    it('counts a sent order as use, and ends all once there is none', async () => {
+      const opened = await accepted({ type: 'tables.open_all' })
+      const sitting = await world.owner.query<{ id: string }>(
+        'select id from restro.sittings where table_id = $1 and ended_at is null',
+        [table(3)],
+      )
+      await world.addSentOrder({
+        tableId: table(3),
+        sittingId: sitting.rows[0]?.id as string,
+        actionId: randomUUID(),
+        reference: 'AB12',
+      })
+      expect(await undoAll(tokenOf(opened))).toMatchObject({ code: 'undo_stale' })
+      await world.owner.query('delete from restro.sent_orders where table_id = $1', [table(3)])
+      // Nothing left but the open: the same token now ends all four.
+      expect(await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })).toMatchObject(
+        { closed: 4 },
+      )
+    })
+
+    it("refuses a token that is not Open all's, or names no entry, and closes nothing", async () => {
+      const one = await accepted({ type: 'table.open', tableId: table(0) })
+      const opened = await accepted({ type: 'tables.open_all' })
+      // A single open's token, a close's token and a made-up one close nothing in bulk.
+      expect(await undoAll(tokenOf(one))).toMatchObject({ code: 'invalid_command' })
+      const closed = await accepted({ type: 'table.close', tableId: table(1) })
+      expect(await undoAll(tokenOf(closed))).toMatchObject({ code: 'invalid_command' })
+      expect(await undoAll({ entry: 999_999_999_999 })).toMatchObject({ code: 'undo_expired' })
+      // Without a token the command is not valid at all.
+      expect(await run({ type: 'tables.undo_open_all' })).toMatchObject({ code: 'invalid_command' })
+      for (const index of [0, 2, 3]) expect(await isOpen(table(index))).toBe(true)
+      await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })
+    })
+
+    it('is too late after the window, and ends nothing', async () => {
       const opened = await accepted({ type: 'tables.open_all' })
       await ageBeyondWindow(tokenOf(opened).entry)
-      expect(
-        await run({ type: 'table.close', tableId: table(2), undo: tokenOf(opened) }),
-      ).toMatchObject({ code: 'undo_expired' })
-      expect(await isOpen(table(2))).toBe(true)
+      expect(await undoAll(tokenOf(opened))).toMatchObject({ code: 'undo_expired' })
+      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(true)
       await closeEverything()
     })
 
@@ -275,12 +361,26 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       await liftAll()
     })
 
-    it('gives no token to a repeat that found the pause already there', async () => {
+    it('gives no token to a repeat that found the pause already there, even if it logged', async () => {
       await liftAll()
       await accepted({ type: 'ordering.pause', barId: null })
+      // A waiting order the repeat settles writes a Log entry of its own (`sent_order.state`), but
+      // not the one that says a pause began: no token, so no Undo that lifts their pause.
+      const sittingId = await world.openSitting(table(2))
+      await world.addSentOrder({
+        tableId: table(2),
+        sittingId,
+        actionId: randomUUID(),
+        reference: 'CD34',
+      })
       const again = await accepted({ type: 'ordering.pause', barId: null })
-      expect(again).toMatchObject({ already: true })
+      expect(again).toMatchObject({ already: true, settled: 1 })
       expect(again).not.toHaveProperty('undoEntry')
+      await world.owner.query('delete from restro.sent_orders where table_id = $1', [table(2)])
+      await world.owner.query(
+        'update restro.sittings set ended_at = now(), end_reason = $2 where id = $1',
+        [sittingId, 'staff_closed'],
+      )
       await liftAll()
     })
 

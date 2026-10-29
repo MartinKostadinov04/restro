@@ -70,7 +70,7 @@ export function receiptBrought() {
     permission: 'alerts.answer',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
-    undoable: true,
+    undoable: { kinds: ['receipt.brought'] },
     handle: (stx, command) => mark(stx, command, true),
   })
 }

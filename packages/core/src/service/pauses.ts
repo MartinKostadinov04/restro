@@ -186,7 +186,7 @@ export function pauseOrdering() {
     permission: 'ordering.pause',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
-    undoable: true,
+    undoable: { kinds: ['pause.started'] },
     undoStale: (stx, command, entry) =>
       changedSince(
         stx,
@@ -250,7 +250,7 @@ export function liftOrdering() {
     origins: ['staff'],
     permission: 'ordering.lift',
     idempotency: 'by_nature',
-    undoable: true,
+    undoable: { kinds: ['pause.lifted'] },
     // With an `undo` token this is the Undo of a pause (#219): stale when the pause was lifted since.
     undoStale: (stx, command, entry) =>
       changedSince(

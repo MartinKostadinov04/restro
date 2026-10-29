@@ -171,12 +171,7 @@ const OnSentOrder = z.strictObject({
   answer: z.enum(['found', 'not_found']),
   pin,
 })
-const OnTables = z.strictObject({
-  venueId,
-  tableIds: z.array(tableId).min(1).max(200),
-  pin,
-  undo,
-})
+const UndoOpenAll = z.strictObject({ venueId, pin, undo: undo.unwrap() })
 const OnTableRead = z.strictObject({ venueId, tableId })
 
 /** Marks a waiter call handled: no PIN, the device's account is named in the Log (D122 §7). */
@@ -271,25 +266,17 @@ export async function answerSentOrderAction(input: unknown): Promise<TonightResu
 }
 
 /**
- * Undoes "Open all": closes the tables that were closed when it was pressed. Each is a
- * `table.close` of the same person with Open all's undo token, stopping at the first refusal: a
- * table closed or opened by someone else since is `undo_stale`, and the ones before it stay closed.
+ * Undoes "Open all" with its token (#219): one command ends the sittings Open all began, all or
+ * none. If a guest has used one of them it ends none and answers `undo_stale`; a table closed or
+ * opened again by someone else is left alone.
  */
 export async function undoOpenAllAction(input: unknown): Promise<TonightResult> {
-  const parsed = OnTables.safeParse(input)
+  const parsed = UndoOpenAll.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform(parsed.data, async (scope) => {
-    let last: TonightResult = { ok: true, details: {} }
-    for (const id of parsed.data.tableIds) {
-      last = await command(scope, {
-        type: 'table.close',
-        tableId: id,
-        ...(parsed.data.undo === undefined ? {} : { undo: parsed.data.undo }),
-      })
-      if (!last.ok) return last
-    }
-    return last
-  })
+  const { undo: token } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'tables.undo_open_all', undo: token }),
+  )
 }
 
 /** The bill of a table as last read, for its sheet (read-only). */

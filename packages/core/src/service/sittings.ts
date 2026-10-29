@@ -28,6 +28,7 @@ import {
   logEntries,
   pauses,
   payments,
+  sentOrders,
   sittings,
   tableOrders,
   venueTables,
@@ -42,6 +43,7 @@ import { lockLeases } from './leases'
 import { LIFT_REASONS, liftTablePauses } from './pauses'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import type { Sitting } from './rows'
+import { changedSince, type UndoToken } from './undo'
 
 /** Why a sitting ended (the `end_reason` column's list). */
 export const SITTING_END_REASONS = [
@@ -293,6 +295,138 @@ export async function closeTable(
   }
   await endSitting(stx, open, 'staff_closed')
   return accepted(null, { details: { closed: true, sittingId: open.id } })
+}
+
+/** The Log entry a token names: its kind, table, sitting, job and details; null when none. */
+async function tokenEntry(stx: ServiceTx, token: UndoToken) {
+  const [entry] = await stx.tx
+    .select({
+      kind: logEntries.kind,
+      tableId: logEntries.tableId,
+      sittingId: logEntries.sittingId,
+      jobId: logEntries.jobId,
+      details: logEntries.details,
+    })
+    .from(logEntries)
+    .where(and(eq(logEntries.seq, token.entry), eq(logEntries.venueId, stx.venueId)))
+  return entry ?? null
+}
+
+/**
+ * Whether anyone but staff has been at this open sitting since the token's entry: lines in its
+ * cart, a sent order or a payment of it, or a Log entry for it from another job. Opening a table
+ * and a bare scan of its code leave none of these. The caller holds the sitting and its order row.
+ */
+async function sittingHasActivity(
+  stx: ServiceTx,
+  sitting: Sitting,
+  entry: number,
+): Promise<boolean> {
+  const order = await stx.rows.tableOrder(sitting.tableId)
+  if (order !== null && order.lines.length > 0) return true
+  const [sent] = await stx.tx
+    .select({ id: sentOrders.id })
+    .from(sentOrders)
+    .where(eq(sentOrders.sittingId, sitting.id))
+    .limit(1)
+  if (sent !== undefined) return true
+  const [paid] = await stx.tx
+    .select({ id: payments.id })
+    .from(payments)
+    .where(eq(payments.sittingId, sitting.id))
+    .limit(1)
+  if (paid !== undefined) return true
+  return changedSince(stx, entry, eq(logEntries.sittingId, sitting.id))
+}
+
+/**
+ * `table.close`, also the Undo of an open (#219). With an `undo` token the table must still be in
+ * the sitting that open began, and no guest may have used it: otherwise `undo_stale`, and the
+ * sitting stays. Without a token it is the normal close.
+ */
+export async function closeTableUndoing(
+  stx: ServiceTx,
+  command: { readonly tableId: string; readonly undo?: UndoToken | undefined },
+): Promise<ServiceResult> {
+  if (command.undo === undefined) return closeTable(stx, command)
+  const opened = await tokenEntry(stx, command.undo)
+  if (
+    opened === null ||
+    opened.kind !== 'sitting.opened' ||
+    opened.tableId !== command.tableId ||
+    opened.sittingId === null
+  ) {
+    return refused(null, 'invalid_command')
+  }
+  const open = await stx.rows.openSitting(command.tableId, 'update')
+  if (open === null || open.id !== opened.sittingId) return refused(null, 'undo_stale')
+  if (await sittingHasActivity(stx, open, command.undo.entry)) return refused(null, 'undo_stale')
+  return closeTable(stx, command)
+}
+
+/** How many table ids a refusal names: its details hold 200 characters. */
+function idsThatFit(ids: readonly string[]): string {
+  let text = ''
+  for (const id of ids) {
+    const next = text === '' ? id : `${text},${id}`
+    if (next.length > 200) break
+    text = next
+  }
+  return text
+}
+
+/**
+ * `tables.undo_open_all`: the Undo of Open all (#219), all or nothing. The token must be the entry
+ * of a `sitting.opened` that Open all wrote (`how: all`); the sittings are those of that job. A
+ * sitting already ended, or whose table was opened again since, is left alone (the new sitting is
+ * not ours). If a sitting we opened and that is still open shows activity, nothing is closed and
+ * the answer is `undo_stale` with the tables named; otherwise every one ends `staff_closed`.
+ */
+export async function undoOpenAll(
+  stx: ServiceTx,
+  command: { readonly undo: UndoToken },
+): Promise<ServiceResult> {
+  const token = await tokenEntry(stx, command.undo)
+  if (token === null || token.kind !== 'sitting.opened' || token.details.how !== 'all') {
+    return refused(null, 'invalid_command')
+  }
+  const ours = await stx.tx
+    .select({ tableId: logEntries.tableId, sittingId: logEntries.sittingId })
+    .from(logEntries)
+    .where(
+      and(
+        eq(logEntries.venueId, stx.venueId),
+        eq(logEntries.jobId, token.jobId),
+        eq(logEntries.kind, 'sitting.opened'),
+        sql`${logEntries.details} ->> 'how' = 'all'`,
+      ),
+    )
+  const byTable = new Map<string, string>()
+  for (const row of ours) {
+    if (row.tableId !== null && row.sittingId !== null) byTable.set(row.tableId, row.sittingId)
+  }
+  const tableIds = [...byTable.keys()].sort()
+  const open = await stx.rows.openSittings(tableIds, 'update')
+  await stx.rows.tableOrders(tableIds)
+  const mine: Sitting[] = []
+  for (const tableId of tableIds) {
+    const sitting = open.get(tableId)
+    // Closed already, or opened again by someone else: not ours to touch.
+    if (sitting !== null && sitting !== undefined && sitting.id === byTable.get(tableId)) {
+      mine.push(sitting)
+    }
+  }
+  const used: string[] = []
+  for (const sitting of mine) {
+    if (await sittingHasActivity(stx, sitting, command.undo.entry)) used.push(sitting.tableId)
+  }
+  if (used.length > 0) {
+    return refused(null, 'undo_stale', { count: used.length, tables: idsThatFit(used) })
+  }
+  for (const sitting of mine) await endSitting(stx, sitting, 'staff_closed')
+  return accepted(null, {
+    details: { closed: mine.length, skipped: tableIds.length - mine.length },
+  })
 }
 
 /**
