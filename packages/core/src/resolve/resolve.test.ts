@@ -74,6 +74,7 @@ describe('a complete till item', () => {
       'tags',
       'availability',
       'order_mode',
+      'payment_mode',
       'for_sale',
       'visible',
     ])

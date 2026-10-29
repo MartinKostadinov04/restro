@@ -5,7 +5,7 @@ import type { KeyObject } from 'node:crypto'
 
 import { z } from 'zod'
 
-import type { SealContext } from './envelope'
+import type { IntegrationSealContext } from './envelope'
 import { SealError } from './errors'
 import { sealSecret } from './seal'
 
@@ -21,7 +21,7 @@ export type BarsyCredentials = z.output<typeof BarsyCredentialsSchema>
 /** Seals barsy credentials for the worker, bound to the integration's tenant, id and host. */
 export function sealBarsyCredentials(
   credentials: BarsyCredentials,
-  context: SealContext & { readonly publicKey: KeyObject | string },
+  context: IntegrationSealContext & { readonly publicKey: KeyObject | string },
 ): string {
   const parsed = BarsyCredentialsSchema.safeParse(credentials)
   if (!parsed.success) {

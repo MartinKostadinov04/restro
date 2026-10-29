@@ -10,7 +10,7 @@
 //   move it to another area, and the manager everything else (name, order, hidden). A
 //   non-public or placeholder ("--") place starts hidden (D95); the manager may show it;
 // - a place the till deleted (concluded after a complete read, rule 6) archives its table and
-//   retires its code (the token stays on the archived row, for the purge's tombstone, D83); one
+//   retires its code (the hash stays on the archived row, for the purge's tombstone, D83); one
 //   listed again brings the table back, without a code;
 // - a table of the venue that none of the till venue's places points to (it came from a till
 //   venue the venue served before, or was made by hand before the till was linked) is archived
@@ -26,6 +26,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm'
 
 import { newId } from '../ids'
 import { sortKeyBetween } from '../sort-keys'
+import { codeFileNames } from './code-files'
 
 /** One place of the till venue as the connector stored it, with its platform table (if any). */
 export interface MirroredPlace {
@@ -44,7 +45,7 @@ export interface MirroredPlace {
 export interface MirrorResult {
   /** Place id → table id, for the places that got a table in this run. */
   readonly linked: ReadonlyMap<string, string>
-  /** The tokens of tables archived in this run (their files must go). */
+  /** The code files of tables archived in this run (they must go; `codeFileNames`). */
   readonly retiredTokens: readonly string[]
   readonly areasCreated: number
   readonly tablesCreated: number
@@ -177,7 +178,7 @@ export async function mirrorTillTables(
   for (const table of existingTables) {
     if (table.archivedAt !== null || pointedTo.has(table.id)) continue
     await tx.update(venueTables).set({ archivedAt: now }).where(eq(venueTables.id, table.id))
-    if (table.qrToken !== null) retiredTokens.push(table.qrToken)
+    retiredTokens.push(...codeFileNames(table))
   }
 
   for (const place of [...input.places].sort(comparePlaceNumbers)) {
@@ -187,7 +188,7 @@ export async function mirrorTillTables(
     if (place.state === 'deleted') {
       if (table !== undefined && table.archivedAt === null) {
         await tx.update(venueTables).set({ archivedAt: now }).where(eq(venueTables.id, table.id))
-        if (table.qrToken !== null) retiredTokens.push(table.qrToken)
+        retiredTokens.push(...codeFileNames(table))
       }
       continue
     }
@@ -218,7 +219,14 @@ export async function mirrorTillTables(
       continue
     }
     // The till's number and hall follow the till; the manager's name, order and hidden stay.
-    const changes: Partial<{ number: string; areaId: string; archivedAt: null; qrToken: null }> = {}
+    const changes: Partial<{
+      number: string
+      areaId: string
+      archivedAt: null
+      qrToken: null
+      qrCodeHash: null
+      qrCodeSealed: null
+    }> = {}
     const wantedNumber = number ?? (table.name === null ? '—' : table.number)
     if (wantedNumber !== null && wantedNumber !== table.number) changes.number = wantedNumber
     if (table.areaId !== area.id) changes.areaId = area.id
@@ -226,6 +234,8 @@ export async function mirrorTillTables(
     if (table.archivedAt !== null) {
       changes.archivedAt = null
       changes.qrToken = null
+      changes.qrCodeHash = null
+      changes.qrCodeSealed = null
     }
     if (Object.keys(changes).length > 0) {
       await tx.update(venueTables).set(changes).where(eq(venueTables.id, table.id))

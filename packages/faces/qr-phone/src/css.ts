@@ -147,6 +147,27 @@ export const FACE_CSS = `
   @keyframes rq-fade { from { opacity: 0; } }
   @keyframes rq-pulse { 50% { opacity: 0.55; } }
 }
+/* The table's shared order (#75): plain controls, at least 44px to tap. */
+.rq-add, .rq-order button { min-height: 44px; min-width: 44px; padding: 0 14px; border: 1px solid var(--rq-border, ButtonBorder); border-radius: var(--rq-radius, 8px); background: var(--rq-surface, Canvas); color: var(--rq-text, CanvasText); font: inherit; }
+.rq-add { justify-self: start; }
+.rq-order { margin-top: 24px; padding: 16px; border: 1px solid var(--rq-border, ButtonBorder); border-radius: var(--rq-radius, 8px); background: var(--rq-surface, Canvas); }
+.rq-order-lines { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.rq-order-controls { display: inline-flex; gap: 6px; margin-left: 8px; }
+.rq-order-hint { color: var(--rq-muted, GrayText); }
+/* The legal block's two controls (ticket 198): the hint's look, 44px to tap. */
+[data-slot="pay.legal"] a { display: inline-flex; align-items: center; min-height: 44px; }
+[data-slot="pay.legal"] summary { box-sizing: border-box; min-height: 44px; padding-block: 12px; cursor: pointer; }
+/* Lines already paid (D127 1.2): greyed, nothing to tick. The confirmation (D127 1.4): a plain card. */
+.rq-order-lines li[data-paid-in-app] { color: var(--rq-muted, GrayText); }
+.rq-confirm { display: grid; gap: 8px; margin: 8px 0; padding: 16px; border: 1px solid var(--rq-border, ButtonBorder); border-radius: var(--rq-radius, 8px); }
+.rq-confirm p { margin: 0; }
+.rq-location, .rq-ask { display: grid; gap: 8px; margin: 8px 0 16px; justify-items: start; }
+/* Send (#77): the sent orders, and the panel a guest shows a waiter: dark on light whatever the
+   theme (the light scheme's Canvas and CanvasText, D120's 21:1), the reference at 48px. */
+.rq-send { margin-top: 8px; font-weight: 600; }
+.rq-sent { margin-top: 16px; }
+.rq-waiter { margin-top: 12px; padding: 16px; border-radius: var(--rq-radius, 8px); color-scheme: light; background: Canvas; color: CanvasText; }
+.rq-waiter-ref { margin: 0; font-size: 48px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.1; }
 @media (prefers-reduced-motion: reduce) {
   .rq-root * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -15,7 +15,9 @@ Read only what your task needs; the big documents are for looking things up (Mar
 Fact precedence: official POS docs (barsy: docs.lukanet.com) > the architecture doc > the tracker.
 
 ## Scope right now
-QR → phone only (D38). Current phase (D79): the platform's own functionality, data structure and UI on clean connector data (`docs/adjustments/adjustments_01.md`); the connector foundation (CF-05 to CF-08) and the Mistral connector are parked. Open on the `or/` stage branches: ordering (D122) and Stripe payments (D126, D125).
+QR → phone only (D38). Current phase (D79): ordering from the menu is open (Martin 10-21, map #29). Part 1, ordering onto the table's bill and the Tonight screen, is built on the stage branch `or/foundation` from spec #64 and its tickets, against the simulated POS (`sim-pos`) until Mistral answers. Paying in the app (part 2) follows its own spec, with Stripe as the provider (D126, D125). Parked: the connector foundation (CF-05 to CF-08) and the Mistral connector (#48). Never: POS webhooks or POS-registration code (D41; a payment provider's notices are fine, D125), or any write to a live venue's POS (rule 7).
+
+The guest template's service screens (bag, bill, call a waiter, pay, receipt) exist in the face (D71). Guests see them only once the platform supports them, and they follow D72: no local success.
 
 ## Three layers (keep them apart)
 1. **Platform:** everything once the data is in our own model (venues, menus, composer, design, tables, publishing, the guest page); no vendor name, no POS-specific field.
@@ -26,7 +28,7 @@ QR → phone only (D38). Current phase (D79): the platform's own functionality, 
 
 ## The nine rules (non-negotiable)
 1. **One write path.** Every change from every source goes through `core.apply(changeSet)`. Nothing else writes `field_values`, `events`, resolved documents or snapshots.
-2. **Provenance.** Every stored value carries its layer, source and job (NOT NULL). `events` is append-only.
+2. **Provenance.** Every stored value carries its layer, source and job (NOT NULL). `events` is append-only. Service data (orders, payments, the Log) has no layer: it carries its source, actor and job (D122 §9).
 3. **POS ids stay in the backend.** Snapshots, the shell, faces and URLs carry only our prefixed ids (`nd_`, `as_`, `sn_`, `tb_`) and public fields: no POS ids, internal names, cost prices or internal fields. One exception (D75): when barsy has no public name for an item, option or category, its own name (`article_name`, `cat_name`) is shown and the composer warns.
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
 5. **Our layers only make the menu more cautious than the POS.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
@@ -39,7 +41,7 @@ QR → phone only (D38). Current phase (D79): the platform's own functionality, 
 - `packages/shell` and `packages/faces/*` never import `db`, a connector, `apps/*`, or anything with I/O.
 - A face imports only its own package, `react`, `react-dom` and `@restro/shell` (not `@restro/core`, not `@restro/shell/testing` outside tests); guest pages never import a face's `/preview`, and only a face's `preview/` folder may use `@restro/shell/money`.
 - Only `core/apply` imports the write side of `db`.
-- Only `apps/worker` imports a connector package (`barsy`).
+- Only `apps/worker` imports a connector package (`barsy`) or a payment provider package. The web app checks a provider's notice signatures and loads its card form only through `apps/web/src/connectors/<kind>/` (D127).
 - Packages never import apps.
 
 ## Never

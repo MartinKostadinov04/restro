@@ -9,7 +9,7 @@ import {
   type Template,
   templateRef,
 } from './template'
-import { ORDER_MODES, VENUE_MENU_TEMPLATE } from './templates/venue-menu'
+import { ORDER_MODES, PAYMENT_MODES, VENUE_MENU_TEMPLATE } from './templates/venue-menu'
 
 /** A deep, mutable copy of the default template for negative cases. */
 function copyOfDefault(): Template {
@@ -66,6 +66,7 @@ describe('venue-menu@1', () => {
       availability: ['availability', 'builder', 'builder_first'],
       internal_note: ['long_text', 'builder', 'builder_first'],
       order_mode: ['enum', 'builder', 'builder_first'],
+      payment_mode: ['enum', 'builder', 'builder_first'],
       for_sale: ['boolean', 'till', 'all_true'],
       visible: ['boolean', 'till', 'all_true'],
     }
@@ -97,6 +98,13 @@ describe('venue-menu@1', () => {
       options: [...ORDER_MODES],
       default: 'orderable',
     })
+    // D113: builder-owned payment mode with no default (an item without one takes the venue's).
+    expect(itemField(t, 'payment_mode')).toMatchObject({
+      owner: 'builder',
+      required: false,
+      options: [...PAYMENT_MODES],
+    })
+    expect(itemField(t, 'payment_mode').default).toBeUndefined()
     expect(itemField(t, 'internal_note').visibility).toBe('internal')
     expect(itemField(t, 'abv')).toMatchObject({ unit: '%', constraints: { min: 0, max: 100 } })
   })

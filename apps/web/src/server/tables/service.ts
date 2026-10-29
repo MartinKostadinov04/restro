@@ -3,13 +3,25 @@
 // who may ask (owners and admins, like the Integration tab), checks that what is named belongs to
 // the venue, shapes the answers, and queues the worker's `publish-table-tokens` job whenever a
 // public file must go or change. The web app never writes the publish store: the job is the one
-// writer of the `t/<token>.json` files.
+// writer of the `t/<hash>.json` files.
 //
-// Nothing here fetches an address. The codes lead to this installation's address (address.ts, D94).
+// A code is stored as its hash and a copy sealed for the worker (#70, D122 §9): the tab draws the
+// codes the worker reveals to the signed-in owner or admin (`revealCodes`: once per page load and
+// once per new code, never in the tab's own render, so an action's refresh waits on no worker),
+// and a new code for a table that has one is a re-issue through the service write path
+// (`table_code.reissue`, a `record` Log entry). Nothing here fetches an address: the codes lead to
+// this installation's address (address.ts, D94).
+import { createHash } from 'node:crypto'
+
 import {
+  type AreaId,
+  type BarId,
   JOB_NAMES,
   type JobPayload,
+  newId,
+  type PayFirstSettings,
   type ProducedJobName,
+  payFirstAppliesAt,
   type TenantId,
   type VenueId,
 } from '@restro/core'
@@ -42,11 +54,20 @@ import {
   tableLabel,
   type VenueTable,
 } from '@restro/core/apply'
+import {
+  applyService,
+  type PaymentTableBoard,
+  type RefusalCode,
+  readPayFirstTablesBoard,
+  readPayingOffer,
+  readPaymentTableBoard,
+} from '@restro/core/service'
 import { type DbPool, integrations, type Venue, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
 import { tillVenueLinks } from '../../connectors/till-venues'
 import { logError } from '../log'
+import { type RevealActor, type RevealCodes, revealNothing } from '../reveal'
 import { tillLabelOfKind } from '../till-label'
 import { codeAddress, codeBaseUrl } from './address'
 import { qrSvg } from './qr-image'
@@ -55,6 +76,9 @@ import type {
   MenuChoice,
   MenuLevel,
   MenuShown,
+  PayFirstShown,
+  RevealCodesResult,
+  RevealedCode,
   TableRowView,
   TablesActionResult,
   TablesErrorCode,
@@ -66,23 +90,34 @@ export interface TablesScope {
   readonly pool: DbPool
   /** The person's organisation: never taken from the request. */
   readonly tenantId: string
-  readonly venue: Pick<Venue, 'id' | 'name'>
+  readonly venue: Pick<Venue, 'id' | 'name'> & Partial<Pick<Venue, 'settings'>>
   /** An owner or admin of the organisation. */
   readonly canManage: boolean
+  /** The signed-in person and their session, for a re-issue's Log entry; null when not known. */
+  readonly actor?: RevealActor | null
+  /**
+   * The signed-in person, for payment tables: whether they hold `settings.payment_tables` (and are
+   * not on a shared device, the page decides) and their email for the password again.
+   */
+  readonly person?: { readonly canMarkPaymentTables: boolean; readonly email: string }
 }
 
-/** What the actions need besides the database: the queue (`enqueueJob`; a fake in tests). */
+/**
+ * What the actions need besides the database: the queue (`enqueueJob`; a fake in tests) and the
+ * worker's public seal key (`SEAL_PUBLIC_KEY`), which every new code is sealed with.
+ */
 export interface TablesServices {
   readonly enqueue: <N extends ProducedJobName>(
     name: N,
     data: JobPayload<N>,
   ) => Promise<string | null>
+  readonly sealPublicKey: string | undefined
 }
 
 // --- reading ------------------------------------------------------------------------------------
 
 /** The till's name when a till serves the venue (its areas and tables are the till's, D95), else null. */
-async function tillLabelOfVenue(
+export async function tillLabelOfVenue(
   pool: DbPool,
   tenantId: string,
   venueId: string,
@@ -123,27 +158,95 @@ function shown<Level extends MenuLevel>(
   return name === undefined ? null : { id: menuId, name, level }
 }
 
+/**
+ * The card's name for a code (`TableRowView.codeKey`): taken from the stored hash, so it changes
+ * with the code, but it is neither the code nor its hash (the hash names the code's public file).
+ */
+function codeKeyOf(codeHash: string): string {
+  return createHash('sha256').update(`code-key:${codeHash}`).digest('base64url').slice(0, 22)
+}
+
 async function toRow(
   table: VenueTable,
+  code: string | null,
   active: boolean,
   baseUrl: string | null,
   render: (text: string) => Promise<string>,
   menu: MenuShown | null,
   routeMenuId: string | null,
+  canReveal: boolean,
+  bar: TableRowView['bar'],
+  payFirst: PayFirstShown | null,
 ): Promise<TableRowView> {
-  // A hidden table keeps its token for when it is shown again, but its code leads nowhere now.
-  const text = table.token === null || !active ? null : codeAddress(baseUrl, table.token)
+  // A hidden table keeps its code for when it is shown again, but its code leads nowhere now.
+  const text = code === null || !active ? null : codeAddress(baseUrl, code)
   return {
     id: table.id,
     number: table.number,
     label: table.name,
     shownAs: tableLabel(table),
     isPublic: !table.hidden,
-    token: table.token,
+    hasCode: table.codeHash !== null,
+    codeKey:
+      canReveal && active && baseUrl !== null && table.codeHash !== null
+        ? codeKeyOf(table.codeHash)
+        : null,
     address: text,
     qrSvg: text === null ? null : await render(text),
     menu,
     routeMenuId,
+    isPaymentTable: table.isPaymentTable,
+    bar,
+    payFirst,
+  }
+}
+
+/** The payment-table part of the tab, only where a connector can take payments (never by hand). */
+function payingOf(
+  board: PaymentTableBoard | null,
+  person: TablesScope['person'],
+): TablesView['paying'] {
+  if (board === null) return null
+  return {
+    canMark: person?.canMarkPaymentTables === true,
+    email: person?.email ?? '',
+    missing: board.queuesMissing.map((queue) => ({ name: queue.barName })),
+  }
+}
+
+/** Pay first at a table that can take it: its own choice, what holds there, and what it would inherit. */
+function payFirstOfTable(
+  settings: PayFirstSettings,
+  table: VenueTable,
+  barId: string | undefined,
+): PayFirstShown {
+  const place = {
+    tableId: table.id,
+    barId: (barId as BarId | undefined) ?? null,
+    areaId: table.areaId as AreaId,
+  }
+  const reading = payFirstAppliesAt(settings, place)
+  const { [table.id]: own, ...otherTables } = settings.tables
+  const inherited = payFirstAppliesAt({ ...settings, tables: otherTables }, place)
+  return {
+    own: own ?? null,
+    applies: reading.applies,
+    level: reading.level,
+    inherited: {
+      applies: inherited.applies,
+      level: inherited.level === 'table' ? 'venue' : inherited.level,
+    },
+  }
+}
+
+/** Pay first for an area: its own choice over the venue's. */
+function payFirstOfArea(settings: PayFirstSettings, areaId: string): PayFirstShown {
+  const own = settings.groups[areaId as AreaId] ?? null
+  return {
+    own,
+    applies: own ?? settings.applies,
+    level: own === null ? 'venue' : 'area',
+    inherited: { applies: settings.applies, level: 'venue' },
   }
 }
 
@@ -151,21 +254,34 @@ async function toRow(
  * Reads the tab: the venue's tables by area, in the areas' and the tables' order, with their
  * codes drawn and the menu each area and table shows, and the venue's menus. `defaultBaseUrl` is
  * the installation's address from the environment (D94); `render` makes the SVG of a code (tests
- * pass a plain function).
+ * pass a plain function); `reveal` opens the codes of the shown tables that have one, in one
+ * batch (the worker's reveal endpoint, asked only for an owner or admin; a code it does not give
+ * is drawn as none). The print sheet passes one; the tab does not: its codes come from
+ * `revealCodes` once the page is up, so its refresh after each action waits on no worker.
  */
 export async function loadTablesView(
   scope: TablesScope,
   defaultBaseUrl: string | null,
   render: (text: string) => Promise<string> = qrSvg,
+  reveal: RevealCodes = revealNothing,
 ): Promise<TablesView> {
-  const [areas, tables, summaries, routes, resolved, till] = await Promise.all([
-    listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
-    listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
-    listMenus(scope.pool, scope.tenantId, scope.venue.id),
-    listMenuRoutes(scope.pool, scope.tenantId, scope.venue.id),
-    resolveRoutes(scope.pool, scope.tenantId, scope.venue.id),
-    tillLabelOfVenue(scope.pool, scope.tenantId, scope.venue.id),
-  ])
+  const [areas, tables, summaries, routes, resolved, till, offer, payFirstBoard] =
+    await Promise.all([
+      listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
+      listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
+      listMenus(scope.pool, scope.tenantId, scope.venue.id),
+      listMenuRoutes(scope.pool, scope.tenantId, scope.venue.id),
+      resolveRoutes(scope.pool, scope.tenantId, scope.venue.id),
+      tillLabelOfVenue(scope.pool, scope.tenantId, scope.venue.id),
+      readPayingOffer(scope.pool, scope.tenantId, scope.venue.id),
+      scope.venue.settings === undefined
+        ? null
+        : readPayFirstTablesBoard(scope.pool, scope.tenantId, scope.venue.id, scope.venue.settings),
+    ])
+  // Payment tables are read only where a connector can take payments, never at a venue by hand.
+  const board = offer.offered
+    ? await readPaymentTableBoard(scope.pool, scope.tenantId, scope.venue.id)
+    : null
   const baseUrl = codeBaseUrl(defaultBaseUrl)
   const choices = menuChoices(summaries, scope.venue.name)
   const names = new Map(choices.map((menu) => [menu.id, menu.name] as const))
@@ -180,9 +296,24 @@ export async function loadTablesView(
   }
 
   const areaHidden = new Map(areas.map((area) => [area.id as string, area.hidden] as const))
+  const isActive = (table: VenueTable) => !table.hidden && areaHidden.get(table.areaId) === false
+  // Only the codes that lead somewhere are drawn, so only those are revealed.
+  const revealable = tables.filter((table) => table.codeHash !== null && isActive(table))
+  const codes =
+    scope.canManage && baseUrl !== null && revealable.length > 0
+      ? await reveal(revealable.map((table) => table.id))
+      : new Map<string, string>()
   const rows = await Promise.all(
     tables.map((table) => {
-      const active = !table.hidden && areaHidden.get(table.areaId) === false
+      const bar = board?.barOfTable.get(table.id) ?? null
+      const payFirst =
+        payFirstBoard !== null &&
+        payFirstBoard.possible &&
+        !table.isPaymentTable &&
+        payFirstBoard.capable.has(table.id)
+          ? payFirstOfTable(payFirstBoard.settings, table, payFirstBoard.barOfTable.get(table.id))
+          : null
+      const active = isActive(table)
       const resolvedId = resolved.tables.get(table.id) ?? null
       const own = routeOfTable.get(table.id) ?? null
       const level: MenuLevel =
@@ -191,7 +322,18 @@ export async function loadTablesView(
           : routeOfArea.get(table.areaId) === resolvedId
             ? 'area'
             : 'venue'
-      return toRow(table, active, baseUrl, render, shown(names, resolvedId, level), own)
+      return toRow(
+        table,
+        codes.get(table.id) ?? null,
+        active,
+        baseUrl,
+        render,
+        shown(names, resolvedId, level),
+        own,
+        scope.canManage,
+        bar,
+        payFirst,
+      )
     }),
   )
   const rowsByArea = new Map<string, TableRowView[]>()
@@ -211,15 +353,20 @@ export async function loadTablesView(
       isPublic: !area.hidden,
       menu: shown(names, resolvedId, own !== null && own === resolvedId ? 'area' : 'venue'),
       routeMenuId: own,
+      payFirst:
+        payFirstBoard !== null &&
+        (rowsByArea.get(area.id) ?? []).some((row) => row.payFirst !== null)
+          ? payFirstOfArea(payFirstBoard.settings, area.id)
+          : null,
       tables: rowsByArea.get(area.id) ?? [],
     }
   })
   const withCode = tables.flatMap((table, index) => {
     const row = rows[index]
-    const active = !table.hidden && areaHidden.get(table.areaId) === false
-    return row !== undefined && active && table.token !== null ? [row] : []
+    return row !== undefined && isActive(table) && table.codeHash !== null ? [row] : []
   })
-  const first = withCode[0]
+  const firstShown = withCode.find((row) => codes.has(row.id))
+  const firstCode = firstShown === undefined ? undefined : codes.get(firstShown.id)
   return {
     venueId: scope.venue.id,
     venueName: scope.venue.name,
@@ -228,20 +375,74 @@ export async function loadTablesView(
     sourceLabel: till ?? '',
     baseUrl,
     menus: choices,
+    paying: payingOf(board, scope.person),
+    payFirst: payFirstBoard?.possible
+      ? { canSet: scope.person?.canMarkPaymentTables === true, email: scope.person?.email ?? '' }
+      : null,
     halls,
     total: rows.length,
     coded: withCode.length,
     sample:
-      first === undefined || first.token === null
+      firstShown === undefined || firstCode === undefined
         ? null
-        : { token: first.token, shownAs: first.shownAs },
+        : { token: firstCode, shownAs: firstShown.shownAs },
   }
+}
+
+/**
+ * Opens the codes of the tab's tables (#70): the ones asked for that have a code leading
+ * somewhere, in one call to the worker, each with its address and picture. Only an owner or admin
+ * may; a code the worker does not give is left out. Writes nothing itself (the worker writes the
+ * reveal's Log entry) and refreshes nothing.
+ */
+export async function revealCodes(
+  scope: TablesScope,
+  defaultBaseUrl: string | null,
+  tableIds: readonly string[],
+  reveal: RevealCodes,
+  render: (text: string) => Promise<string> = qrSvg,
+): Promise<RevealCodesResult> {
+  if (!scope.canManage) return { ok: false, error: 'forbidden' }
+  const baseUrl = codeBaseUrl(defaultBaseUrl)
+  if (baseUrl === null) return { ok: true, codes: [] }
+  const [areas, tables] = await Promise.all([
+    listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
+    listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
+  ])
+  const asked = new Set(tableIds)
+  const areaHidden = new Map(areas.map((area) => [area.id as string, area.hidden] as const))
+  const revealable = tables.filter(
+    (table) =>
+      asked.has(table.id) &&
+      table.codeHash !== null &&
+      !table.hidden &&
+      areaHidden.get(table.areaId) === false,
+  )
+  if (revealable.length === 0) return { ok: true, codes: [] }
+  const codes = await reveal(revealable.map((table) => table.id))
+  const revealed = await Promise.all(
+    revealable.map(async (table): Promise<RevealedCode | null> => {
+      const token = codes.get(table.id)
+      if (token === undefined || table.codeHash === null) return null
+      const address = codeAddress(baseUrl, token)
+      if (address === null) return null
+      return {
+        id: table.id,
+        codeKey: codeKeyOf(table.codeHash),
+        token,
+        address,
+        qrSvg: await render(address),
+      }
+    }),
+  )
+  return { ok: true, codes: revealed.filter((code) => code !== null) }
 }
 
 // --- the actions ---------------------------------------------------------------------------------
 
 const FORBIDDEN: TablesActionResult = { ok: false, error: 'forbidden' }
 const NOT_FOUND: TablesActionResult = { ok: false, error: 'not_found' }
+const FAILED: TablesActionResult = { ok: false, error: 'failed' }
 const DONE: TablesActionResult = { ok: true, queued: true }
 
 const REFUSALS: Record<TableWriteRefusal['error'], TablesErrorCode> = {
@@ -254,6 +455,30 @@ const REFUSALS: Record<TableWriteRefusal['error'], TablesErrorCode> = {
   no_label: 'no_label',
   hidden: 'hidden',
   from_till: 'from_till',
+  // Another person's change crossed this one (the screen was stale): nothing was written.
+  has_code: 'failed',
+  no_code: 'failed',
+  payment_table: 'payment_table',
+}
+
+/** The service write path's refusals of a re-issue, as the screen says them. */
+function serviceRefusal(code: RefusalCode | (string & {})): TablesErrorCode {
+  switch (code) {
+    case 'permission_denied':
+    case 'own_sign_in_required':
+    case 'actor_unknown':
+      return 'forbidden'
+    case 'venue_missing':
+    case 'venue_archived':
+    case 'table_missing':
+      return 'not_found'
+    case 'hidden':
+      return 'hidden'
+    case 'payment_table':
+      return 'payment_table'
+    default:
+      return 'failed'
+  }
 }
 
 const ROUTE_REFUSALS: Record<MenuRouteError, TablesErrorCode> = {
@@ -271,7 +496,7 @@ function refused(refusal: TableWriteRefusal): TablesActionResult {
 }
 
 /**
- * Queues the worker's job that writes the venue's `t/<token>.json` files and removes the retired
+ * Queues the worker's job that writes the venue's `t/<hash>.json` files and removes the retired
  * ones. A failure is logged and reported as `queued: false` (the change is saved; the public file
  * is late): the next change to any code of the venue writes every file again.
  */
@@ -322,25 +547,62 @@ function afterFor(siblings: readonly { readonly id: string }[], position: number
   return at === 0 ? null : (siblings[at - 1]?.id ?? null)
 }
 
-/** Gives a table a code, or a new one (the old sticker stops working). */
+/** The worker's public seal key, or null (logged: the operator has to set SEAL_PUBLIC_KEY). */
+function sealKeyOf(services: TablesServices): string | null {
+  if (services.sealPublicKey !== undefined) return services.sealPublicKey
+  logError('table_code_seal_key_missing', new Error('SEAL_PUBLIC_KEY is not set'))
+  return null
+}
+
+/**
+ * Gives a table a code, or a new one (the old sticker stops working at once). A first code is
+ * core/apply's; a new one is a re-issue through the service write path, which also counts the
+ * table's code generation and writes a `record` Log entry, so it needs the person's own sign-in.
+ */
 export async function issueCode(
   scope: TablesScope,
   services: TablesServices,
   tableId: string,
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
-  const result = await issueTableToken(scope.pool, scope.tenantId, tableId)
-  if (!result.ok) return refused(result)
-  const queued = await queueTokenFiles(
-    scope,
-    services,
-    result.venueId,
-    result.retired === null ? [] : [result.retired],
+  const table = await tableOfVenue(scope, tableId)
+  if (table === null) return NOT_FOUND
+  const sealPublicKey = sealKeyOf(services)
+  if (sealPublicKey === null) return FAILED
+  if (table.codeHash === null) {
+    const result = await issueTableToken(scope.pool, scope.tenantId, tableId, sealPublicKey)
+    if (!result.ok) return refused(result)
+    return {
+      ok: true,
+      queued: await queueTokenFiles(scope, services, result.venueId, result.retired),
+    }
+  }
+  if (scope.actor === undefined || scope.actor === null) return FORBIDDEN
+  const { result } = await applyService(
+    scope.pool,
+    { type: 'table_code.reissue', tableId },
+    {
+      tenantId: scope.tenantId,
+      venueId: scope.venue.id,
+      origin: 'staff',
+      actor: { kind: 'user', userId: scope.actor.userId, sessionId: scope.actor.sessionId },
+      jobId: newId('jb'),
+    },
+    { sealPublicKey },
   )
-  return { ok: true, queued }
+  if (result.status !== 'accepted') {
+    return {
+      ok: false,
+      error: result.status === 'refused' ? serviceRefusal(result.code) : 'failed',
+    }
+  }
+  const retired = String(result.details.retired ?? '')
+    .split(',')
+    .filter((name) => name !== '')
+  return { ok: true, queued: await queueTokenFiles(scope, services, scope.venue.id, retired) }
 }
 
-/** Turns a table's code off: `/t/<token>` says "code not active" from then on. */
+/** Turns a table's code off: `/t/<code>` says "code not active" from then on. */
 export async function turnOffCode(
   scope: TablesScope,
   services: TablesServices,
@@ -349,10 +611,10 @@ export async function turnOffCode(
   if (!scope.canManage) return FORBIDDEN
   const result = await retireTableToken(scope.pool, scope.tenantId, tableId)
   if (!result.ok) return refused(result)
-  if (result.retired === null) return DONE
+  if (result.retired.length === 0) return DONE
   return {
     ok: true,
-    queued: await queueTokenFiles(scope, services, result.venueId, [result.retired]),
+    queued: await queueTokenFiles(scope, services, result.venueId, result.retired),
   }
 }
 
@@ -367,7 +629,7 @@ export async function renameTable(
   const result = await setTableName(scope.pool, scope.tenantId, tableId, label)
   if (!result.ok) return refused(result)
   // Only a table with a code has a file that says its name.
-  return answer(scope, services, result.venueId, [], result.table.token !== null)
+  return answer(scope, services, result.venueId, [], result.table.codeHash !== null)
 }
 
 /** Gives every shown table that has none a code. */
@@ -376,7 +638,14 @@ export async function createAllCodes(
   services: TablesServices,
 ): Promise<TablesActionResult> {
   if (!scope.canManage) return FORBIDDEN
-  const result = await issueAllTableTokens(scope.pool, scope.tenantId, scope.venue.id)
+  const sealPublicKey = sealKeyOf(services)
+  if (sealPublicKey === null) return FAILED
+  const result = await issueAllTableTokens(
+    scope.pool,
+    scope.tenantId,
+    scope.venue.id,
+    sealPublicKey,
+  )
   if (!result.ok) return refused(result)
   const queued =
     result.issued === 0 ? true : await queueTokenFiles(scope, services, result.venueId, [])
@@ -475,10 +744,10 @@ export async function renumberTable(
   const result = await setTableNumber(scope.pool, scope.tenantId, tableId, number)
   if (!result.ok) return refused(result)
   // The number is what the file says while the table has no name.
-  return answer(scope, services, result.venueId, [], result.table.token !== null)
+  return answer(scope, services, result.venueId, [], result.table.codeHash !== null)
 }
 
-/** Hides a table (its file goes, its token stays) or shows it again (its file comes back). */
+/** Hides a table (its file goes, its code stays) or shows it again (its file comes back). */
 export async function hideTable(
   scope: TablesScope,
   services: TablesServices,
@@ -493,8 +762,8 @@ export async function hideTable(
     scope,
     services,
     result.venueId,
-    result.retired === null ? [] : [result.retired],
-    !hidden && result.table.token !== null,
+    result.retired,
+    !hidden && result.table.codeHash !== null,
   )
 }
 
@@ -539,7 +808,7 @@ export async function moveTableOf(
     services,
     result.venueId,
     [],
-    target !== table.areaId && result.table.token !== null && !result.table.hidden,
+    target !== table.areaId && result.table.codeHash !== null && !result.table.hidden,
   )
 }
 
@@ -553,13 +822,7 @@ export async function removeTable(
   if ((await tableOfVenue(scope, tableId)) === null) return NOT_FOUND
   const result = await deleteTable(scope.pool, scope.tenantId, tableId)
   if (!result.ok) return refused(result)
-  return answer(
-    scope,
-    services,
-    result.venueId,
-    result.retired === null ? [] : [result.retired],
-    false,
-  )
+  return answer(scope, services, result.venueId, result.retired, false)
 }
 
 // --- menu routing (brief S5, D95) ------------------------------------------------------------------

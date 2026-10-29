@@ -1,0 +1,242 @@
+// The command list (design §2.1; spec #64, 3 and 12): every command says where it may come from and
+// what it needs, and the context names an actor that fits its origin.
+import { describe, expect, it } from 'vitest'
+
+import { SERVICE_COMMANDS, ServiceCommandSchema } from './commands'
+import { actorText, ServiceContextSchema } from './context'
+import { isSettingsPermission, type Permission } from './permissions'
+
+const TENANT = 'tn_0123456789ABCDEFGHIJKL'
+const VENUE = 'vn_0123456789ABCDEFGHIJKL'
+const TABLE = 'tb_0123456789ABCDEFGHIJKL'
+
+describe('the service commands', () => {
+  it('gives a permission to every staff command and none to guest or worker commands', () => {
+    for (const [type, definition] of Object.entries(SERVICE_COMMANDS)) {
+      expect(definition.origins.length, type).toBeGreaterThan(0)
+      if (definition.origins.includes('staff')) {
+        expect(definition.permission, type).not.toBeNull()
+      } else {
+        expect(definition.permission, type).toBeNull()
+      }
+    }
+  })
+
+  it('lets a shared device run only the quick answers, never a settings change (#85)', () => {
+    // A shared device's own account holds what Staff hold for exactly these commands; every other
+    // staff command asks the person's PIN (`pin_required`), and a PIN never unlocks settings.
+    const quick = Object.entries(SERVICE_COMMANDS)
+      .filter(
+        ([, definition]) => 'quickOnSharedDevice' in definition && definition.quickOnSharedDevice,
+      )
+      .map(([type]) => type)
+      .sort()
+    expect(quick).toEqual([
+      'ordering.pause',
+      // D122 §7: "Handled" and "Brought" are the two quick answers that name no person (#200).
+      'receipt.brought',
+      'receipt.unbrought',
+      'table.close',
+      'table.new_guests',
+      'table.open',
+      'waiter_call.done',
+    ])
+    for (const type of quick) {
+      const definition = SERVICE_COMMANDS[type as keyof typeof SERVICE_COMMANDS]
+      expect(definition.origins, type).toEqual(['staff'])
+      expect(isSettingsPermission(definition.permission as Permission), type).toBe(false)
+      expect('freshSignIn' in definition && definition.freshSignIn, type).toBeFalsy()
+    }
+  })
+
+  it('makes every guest command carry an action id', () => {
+    for (const [type, definition] of Object.entries(SERVICE_COMMANDS)) {
+      if (!definition.origins.includes('guest')) continue
+      const parsed = definition.schema.safeParse({ type, tableId: TABLE })
+      expect(parsed.success, type).toBe(false)
+    }
+  })
+
+  it('builds the table-code commands (#70), both needing settings.codes', () => {
+    for (const type of ['table_code.reissue', 'table_code.reveal'] as const) {
+      expect(SERVICE_COMMANDS[type].permission, type).toBe('settings.codes')
+      expect(SERVICE_COMMANDS[type].handle, type).not.toBeNull()
+    }
+    const reveal = SERVICE_COMMANDS['table_code.reveal'].schema
+    expect(reveal.safeParse({ type: 'table_code.reveal', tableIds: [] }).success).toBe(false)
+    expect(reveal.safeParse({ type: 'table_code.reveal', tableIds: [TABLE] }).success).toBe(true)
+  })
+
+  it('builds the people commands (#72): settings.roles, from a person, with a fresh sign-in', () => {
+    const types = [
+      'role.copy',
+      'role.update',
+      'role.archive',
+      'staff.add',
+      'staff.rename',
+      'staff.assign',
+      'staff.unassign',
+      'staff.archive',
+      'staff.link_account',
+      'pin.reset',
+      'pin.reveal',
+      'device.mark_shared',
+      'device.revoke',
+    ] as const
+    for (const type of types) {
+      const definition = SERVICE_COMMANDS[type]
+      expect(definition.permission, type).toBe('settings.roles')
+      expect(definition.origins, type).toEqual(['staff'])
+      expect(definition.freshSignIn, type).toBe(true)
+      expect(definition.handle, type).not.toBeNull()
+    }
+    const add = SERVICE_COMMANDS['staff.add'].schema
+    expect(add.safeParse({ type: 'staff.add', displayName: 'Ana', roleId: 'staff' }).success).toBe(
+      true,
+    )
+    expect(add.safeParse({ type: 'staff.add', displayName: 'Ana', roleId: 'boss' }).success).toBe(
+      false,
+    )
+    expect(add.safeParse({ type: 'staff.add', displayName: '', roleId: 'staff' }).success).toBe(
+      false,
+    )
+    const update = SERVICE_COMMANDS['role.update'].schema
+    expect(
+      update.safeParse({
+        type: 'role.update',
+        roleId: 'rl_0123456789ABCDEFGHIJKL',
+        permissions: ['x'],
+      }).success,
+    ).toBe(false)
+  })
+
+  it('builds pay_first.set (#216): one change, each shape on its own right, a fresh sign-in', () => {
+    const command = SERVICE_COMMANDS['pay_first.set']
+    expect(command.origins).toEqual(['staff'])
+    expect(command.freshSignIn).toBe(true)
+    expect(command.venueLock).toBe('update')
+    expect(command.handle).not.toBeNull()
+    const AREA = 'ar_0123456789ABCDEFGHIJKL'
+    const need = (change: Record<string, unknown>) => {
+      const parsed = command.schema.parse({ type: 'pay_first.set', change })
+      return command.permissionOf?.(parsed)
+    }
+    expect(need({ itemMode: 'pay_first' })).toBe('settings.connect_payments')
+    expect(need({ applies: false })).toBe('settings.connect_payments')
+    expect(need({ group: AREA, value: null })).toBe('settings.payment_tables')
+    expect(need({ table: TABLE, value: true })).toBe('settings.payment_tables')
+    for (const change of [
+      {},
+      { itemMode: 'pay_first', applies: true },
+      { itemMode: 'later' },
+      { table: AREA, value: true },
+      { group: TABLE, value: true },
+      { group: 'br_0123456789ABCDEFGHIJKL', value: true },
+      { table: TABLE },
+      { applies: 'yes' },
+    ]) {
+      expect(
+        command.schema.safeParse({ type: 'pay_first.set', change }).success,
+        JSON.stringify(change),
+      ).toBe(false)
+    }
+  })
+
+  it('builds the sitting commands (#73) on tables.open_close, and the payment-table mark', () => {
+    const types = [
+      'table.open',
+      'table.close',
+      'table.new_guests',
+      'tables.open_all',
+      'tables.close_all',
+    ] as const
+    for (const type of types) {
+      const definition = SERVICE_COMMANDS[type]
+      expect(definition.permission, type).toBe('tables.open_close')
+      expect(definition.origins, type).toEqual(['staff'])
+      expect(definition.idempotency, type).toBe('by_nature')
+      expect(definition.handle, type).not.toBeNull()
+    }
+    const renew = SERVICE_COMMANDS['table.new_guests'].schema
+    expect(renew.safeParse({ type: 'table.new_guests', tableId: TABLE }).success).toBe(true)
+    expect(
+      renew.safeParse({ type: 'table.new_guests', tableId: TABLE, sittingId: TABLE }).success,
+    ).toBe(false)
+    const mark = SERVICE_COMMANDS['table.mark_payment']
+    expect(mark.permission).toBe('settings.payment_tables')
+    expect(mark.freshSignIn).toBe(true)
+    expect(
+      mark.schema.safeParse({ type: 'table.mark_payment', tableId: TABLE, isPaymentTable: true })
+        .success,
+    ).toBe(true)
+  })
+
+  it('parses a command through the union and refuses unknown fields', () => {
+    const add = {
+      type: 'order.add',
+      tableId: TABLE,
+      actionId: crypto.randomUUID(),
+      ageMs: 120,
+      itemId: `nd_${'1'.repeat(22)}`,
+      optionIds: [],
+      qty: 1,
+      note: '',
+    }
+    expect(ServiceCommandSchema.parse(add)).toEqual(add)
+    expect(ServiceCommandSchema.safeParse({ ...add, priceMinor: 1 }).success).toBe(false)
+  })
+})
+
+describe('the service context', () => {
+  const base = { tenantId: TENANT, venueId: VENUE, jobId: 'req-1' }
+
+  it('accepts an actor that fits the origin', () => {
+    expect(
+      ServiceContextSchema.safeParse({ ...base, origin: 'guest', actor: { kind: 'guest' } })
+        .success,
+    ).toBe(true)
+    expect(
+      ServiceContextSchema.safeParse({
+        ...base,
+        origin: 'staff',
+        actor: { kind: 'user', userId: 'u1', sessionId: 's1' },
+        via: 'telegram',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('refuses a guest carrying a staff actor, or a guest write via Telegram', () => {
+    expect(
+      ServiceContextSchema.safeParse({
+        ...base,
+        origin: 'guest',
+        actor: { kind: 'user', userId: 'u1', sessionId: 's1' },
+      }).success,
+    ).toBe(false)
+    expect(
+      ServiceContextSchema.safeParse({
+        ...base,
+        origin: 'guest',
+        actor: { kind: 'guest' },
+        via: 'telegram',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('refuses a missing or malformed job id (rule 2: job_id NOT NULL)', () => {
+    const context = {
+      tenantId: TENANT,
+      venueId: VENUE,
+      origin: 'worker',
+      actor: { kind: 'system' },
+    }
+    expect(ServiceContextSchema.safeParse(context).success).toBe(false)
+    expect(ServiceContextSchema.safeParse({ ...context, jobId: ' bad' }).success).toBe(false)
+  })
+
+  it('writes actors as the database pattern expects', () => {
+    expect(actorText({ kind: 'guest' })).toBe('guest')
+    expect(actorText({ kind: 'staff', staffMemberId: 'sm_1', sessionId: 's' })).toBe('staff:sm_1')
+    expect(actorText({ kind: 'operator', userId: 'u9' })).toBe('operator:u9')
+  })
+})

@@ -14,7 +14,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
+  NO_SETTINGS_RIGHTS,
   SETTINGS_SECTION_DEFS,
+  type SettingsRights,
   type SettingsSectionValue,
   settingsSectionOf,
   settingsSectionsOf,
@@ -146,18 +148,21 @@ export function WorkspaceTabs({ contents }: WorkspaceTabsProps) {
  */
 export function SettingsSections({
   hasTill,
+  rights = NO_SETTINGS_RIGHTS,
   contents,
 }: {
   hasTill: boolean
+  /** What the person holds: Staff and roles and Alerts show only with their right. */
+  rights?: SettingsRights
   /** The content of each section the venue has. */
   contents: Partial<Record<SettingsSectionValue, ReactNode>>
 }) {
   const t = useTranslations('workspace')
-  const sections = settingsSectionsOf(hasTill)
+  const sections = settingsSectionsOf(hasTill, rights)
   const defs = SETTINGS_SECTION_DEFS.filter((def) => sections.includes(def.value))
   const [current, select] = useUrlTab<SettingsSectionValue>(
     'section',
-    (requested) => settingsSectionOf(requested, hasTill),
+    (requested) => settingsSectionOf(requested, hasTill, rights),
     (value): value is SettingsSectionValue => sections.some((section) => section === value),
   )
   return (

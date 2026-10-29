@@ -83,8 +83,13 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       prettyLogs: false,
       seal: world.keys,
       barsy: policy as WorkerConfig['barsy'],
+      sim: { env: 'test', allowHosts: [] },
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
+      revealToken: null,
+      billIdKey: null,
+      posSync: true,
+      send: false,
     }
     worker = await startWorker(config, {
       logger,
@@ -323,7 +328,10 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
 describe('buildJobs', () => {
   const configWithoutKeys = {
     seal: null,
+    posSync: true,
+    send: true,
     barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+    sim: { env: 'test', allowHosts: [] },
     assets: { kind: 'local', dir: tmpdir() },
     publish: { kind: 'local', dir: tmpdir() },
   } as unknown as WorkerConfig
@@ -336,6 +344,25 @@ describe('buildJobs', () => {
     const jobs = await buildJobs(configWithoutKeys, log)
     expect(jobs.map((job) => job.name)).toEqual([
       'worker-heartbeat',
+      // The idle order job (#75) needs nothing but the database.
+      JOB_NAMES.orderTidyTick,
+      // The end of the service day (#84) neither.
+      JOB_NAMES.serviceDayTick,
+      // The closing hour (#82) needs nothing but the database.
+      JOB_NAMES.serviceHoursTick,
+      // The floor reading (#71) needs no sealing keys: the simulated POS has no credentials.
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
+      // The Send (#77) needs no sealing keys either.
+      JOB_NAMES.orderSend,
+      JOB_NAMES.orderSlotSweep,
+      // Stock from the POS (#80) runs with the Send.
+      JOB_NAMES.stockTick,
+      // The connection probe (#79) runs wherever a POS is read or written to.
+      JOB_NAMES.connectionProbe,
+      JOB_NAMES.connectionTick,
+      // The pre-opening check (#82) probes a POS like the connection probe.
+      JOB_NAMES.preOpeningTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -344,15 +371,21 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      // The provider notices (#108) need no POS and no sealing key.
+      JOB_NAMES.providerNotices,
+      JOB_NAMES.walletDomain,
     ])
-    // One warning per missing setting: the sealing keys, and the purge connection (D83).
-    expect(warnings).toHaveLength(2)
+    // One warning per missing setting: the sealing keys, the purge connection (D83), the
+    // bill-id key of the table readings (#74) and the receipt email's from-address (#186).
+    expect(warnings).toHaveLength(4)
     expect(warnings.some((warning) => warning.includes('SEAL_PUBLIC_KEY'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('BILL_ID_KEY'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('RECEIPT_FROM_ADDRESS'))).toBe(true)
     for (const warning of warnings) expect(warning).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
-  it('with the keys it adds the five sync jobs and the one tick to the publish jobs', async () => {
+  it('with the keys it adds the five sync jobs, the one tick and seal-table-codes to the publish jobs', async () => {
     const world = await import('../src/config').then(async ({ loadConfig }) => {
       const { generateSealKeyPair } = await import('@restro/core/seal-open')
       const pair = generateSealKeyPair()
@@ -365,12 +398,29 @@ describe('buildJobs', () => {
     const jobs = await buildJobs(world, { warn: () => undefined } as never)
     expect(jobs.map((job) => job.name)).toEqual([
       'worker-heartbeat',
+      // The idle order job (#75) needs nothing but the database.
+      JOB_NAMES.orderTidyTick,
+      // The end of the service day (#84) neither.
+      JOB_NAMES.serviceDayTick,
+      // The closing hour (#82) needs nothing but the database.
+      JOB_NAMES.serviceHoursTick,
       JOB_NAMES.barsyConnect,
       JOB_NAMES.barsyFullPull,
       JOB_NAMES.barsyIncremental,
       JOB_NAMES.placesRead,
       JOB_NAMES.assetFetch,
       JOB_NAMES.barsySyncTick,
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
+      // The Send (#77) needs no sealing keys either.
+      JOB_NAMES.orderSend,
+      JOB_NAMES.orderSlotSweep,
+      // Stock from the POS (#80) runs with the Send.
+      JOB_NAMES.stockTick,
+      JOB_NAMES.connectionProbe,
+      JOB_NAMES.connectionTick,
+      // The pre-opening check (#82) probes a POS like the connection probe.
+      JOB_NAMES.preOpeningTick,
       JOB_NAMES.publishMenu,
       JOB_NAMES.publishFiles,
       JOB_NAMES.publishLive,
@@ -378,7 +428,51 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      JOB_NAMES.providerNotices,
+      JOB_NAMES.walletDomain,
+      JOB_NAMES.sealTableCodes,
     ])
+  })
+
+  it('with the keys and WORKER_POS_SYNC=off it seals table codes but registers no sync job, and warns', async () => {
+    const config = await import('../src/config').then(async ({ loadConfig }) => {
+      const { generateSealKeyPair } = await import('@restro/core/seal-open')
+      const pair = generateSealKeyPair()
+      return loadConfig({
+        DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+        SEAL_PUBLIC_KEY: pair.publicKey,
+        SEAL_PRIVATE_KEY: pair.privateKey,
+        WORKER_POS_SYNC: 'off',
+      })
+    })
+    const warnings: string[] = []
+    const jobs = await buildJobs(config, {
+      warn: (message: string) => warnings.push(message),
+    } as never)
+    const names = jobs.map((job) => job.name)
+    expect(names).toContain(JOB_NAMES.sealTableCodes)
+    expect(names).toContain(JOB_NAMES.publishTableTokens)
+    expect(names).not.toContain(JOB_NAMES.barsyFullPull)
+    expect(names).not.toContain(JOB_NAMES.barsySyncTick)
+    // The Send follows the sync unless WORKER_SEND says otherwise (#77).
+    expect(names).not.toContain(JOB_NAMES.orderSend)
+    expect(warnings.some((warning) => warning.includes('WORKER_POS_SYNC'))).toBe(true)
+  })
+
+  it('WORKER_SEND=on registers the Send with the sync off: the end-to-end worker (#77)', async () => {
+    const { loadConfig } = await import('../src/config')
+    const config = loadConfig({
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      WORKER_POS_SYNC: 'off',
+      WORKER_SEND: 'on',
+    })
+    const names = (await buildJobs(config, { warn: () => undefined } as never)).map(
+      (job) => job.name,
+    )
+    expect(names).toContain(JOB_NAMES.orderSend)
+    expect(names).toContain(JOB_NAMES.orderSlotSweep)
+    expect(names).toContain(JOB_NAMES.stockTick)
+    expect(names).not.toContain(JOB_NAMES.floorRead)
   })
 
   it('with DATABASE_URL_PURGE it adds the two purge jobs (D83); without it, nothing is ever erased', async () => {
@@ -396,5 +490,27 @@ describe('buildJobs', () => {
       JOB_NAMES.purgeTick,
     ])
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(false)
+  })
+
+  it('with BILL_ID_KEY it adds the table reading and its tick beside the floor reading (#74)', async () => {
+    const { loadConfig } = await import('../src/config')
+    const config = loadConfig({
+      DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+      BILL_ID_KEY: 'k'.repeat(40),
+    })
+    const warnings: string[] = []
+    const jobs = await buildJobs(config, {
+      warn: (message: string) => warnings.push(message),
+    } as never)
+    const names = jobs.map((job) => job.name)
+    expect(
+      names.slice(names.indexOf(JOB_NAMES.floorRead), names.indexOf(JOB_NAMES.floorRead) + 4),
+    ).toEqual([
+      JOB_NAMES.floorRead,
+      JOB_NAMES.floorReadTick,
+      JOB_NAMES.tableRead,
+      JOB_NAMES.tableReadTick,
+    ])
+    expect(warnings.some((warning) => warning.includes('BILL_ID_KEY'))).toBe(false)
   })
 })

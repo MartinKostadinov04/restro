@@ -1,7 +1,7 @@
 // The worker process: pg-boss on our Postgres, the registered jobs, the health endpoint.
 //
 // Start order (any failure undoes what already started and rethrows):
-//   1. health endpoint (an unusable port fails fast; probes see 503 "starting" until step 5);
+//   1. health endpoint (an unusable port fails fast; probes see 503 "starting" until step 6);
 //   2. the @restro/db pool, and one scoped transaction to prove the database is reachable and
 //      that the role cannot bypass row-level security (UnsafeDatabaseRoleError otherwise). This
 //      happens BEFORE pg-boss, so a mistaken owner URL never gets to create tables;
@@ -9,28 +9,38 @@
 //      role may only use and create in it) and `migrate: true` (pg-boss installs and upgrades
 //      its own tables);
 //   4. the jobs from jobs/index.ts (registry.ts), plus one immediate heartbeat so /health turns
-//      green within seconds instead of after the first cron tick;
-//   5. "worker started".
+//      green within seconds instead of after the first cron tick, and one `seal-table-codes` run
+//      (#70) so a deploy moves the table codes still in plain at once, and one payment recovery
+//      pass (#112) so a payment a dead worker left goes on at once;
+//   5. the reveal endpoint, when REVEAL_SERVICE_TOKEN and the seal keys are set (reveal.ts);
+//   6. the Telegram long poll for Done presses, when TELEGRAM_BOT_TOKEN is set (#83);
+//   7. "worker started".
 //
 // Stop order (stop() is idempotent; the signal handling lives in shutdown.ts):
-//   1. /health starts answering 503 "stopping";
+//   1. /health starts answering 503 "stopping"; the Telegram poll stops;
 //   2. `boss.stop({ graceful: true, timeout: 20000 })`: no new work is fetched, running jobs get
 //      up to 20 seconds to finish, then are failed and retried by the next worker; pg-boss's own
 //      pool is closed;
 //   3. the @restro/db pool is closed;
 //   4. the health endpoint is closed last, so the process stays probe-able until the end.
+import { JOB_NAMES } from '@restro/core'
 import { createPool, type DbPool, withSystem } from '@restro/db'
 import { PgBoss } from 'pg-boss'
-
+import { createTelegramClient } from './alerts/telegram'
+import { createTelegramApi } from './alerts/telegram-link-api'
+import { type Poller, startTelegramPoller } from './alerts/telegram-poller'
 import type { WorkerConfig } from './config'
 import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
+import { paymentProviders } from './connectors'
 import { WorkerStatus } from './health'
 import { type HealthServer, startHealthServer } from './health-server'
 import { buildJobs } from './jobs'
 import type { JobDefinition, WorkerContext } from './jobs/types'
 import { WORKER_HEARTBEAT_JOB } from './jobs/worker-heartbeat'
 import type { Logger } from './logger'
+import { createConnectionApi } from './payments/connection-api'
 import { registerJobs } from './registry'
+import { reveal } from './reveal'
 import { WORKER_VERSION } from './version'
 
 /** How long running jobs get to finish when the worker stops. */
@@ -40,6 +50,11 @@ export interface StartWorkerOptions {
   readonly logger: Logger
   /** The jobs to run. Default: the list in jobs/index.ts. Tests pass their own. */
   readonly jobs?: readonly JobDefinition[]
+  /**
+   * False for a worker beside the deployment's own on the same queue (the e2e pay harness): it
+   * leaves the schedules alone (registry.ts). Default true.
+   */
+  readonly schedules?: boolean
   readonly now?: () => Date
   readonly version?: string
 }
@@ -76,9 +91,11 @@ export async function startWorker(
   let health: HealthServer | undefined
   let pool: DbPool | undefined
   let boss: PgBoss | undefined
+  let poller: Poller | undefined
 
   /** Closes whatever was opened. Every step runs; the first failure is rethrown at the end. */
   async function closeAll(graceful: boolean): Promise<void> {
+    health?.setRevealHandler(null)
     const failures: unknown[] = []
     const attempt = async (what: string, close: () => Promise<unknown>) => {
       try {
@@ -88,6 +105,7 @@ export async function startWorker(
         log.error({ err: error }, `could not close ${what}`)
       }
     }
+    if (poller) await attempt('the Telegram poll', () => (poller as Poller).stop())
     if (boss) {
       const queue = boss
       await attempt('pg-boss', () => queue.stop({ graceful, timeout: SHUTDOWN_TIMEOUT_MS }))
@@ -135,9 +153,60 @@ export async function startWorker(
       status,
       queue: boss,
     }
-    await registerJobs(boss, jobs, context)
+    await registerJobs(boss, jobs, context, { schedules: options.schedules ?? true })
     if (jobs.some((job) => job.name === WORKER_HEARTBEAT_JOB)) {
       await boss.send(WORKER_HEARTBEAT_JOB, {})
+    }
+    if (jobs.some((job) => job.name === JOB_NAMES.sealTableCodes)) {
+      await boss.send(JOB_NAMES.sealTableCodes, {})
+    }
+    // The payment recovery (#112) runs at once: a payment a dead worker left goes on now.
+    if (jobs.some((job) => job.name === JOB_NAMES.paymentRecoveryTick)) {
+      await boss.send(JOB_NAMES.paymentRecoveryTick, {})
+    }
+    if (config.revealToken !== null && config.seal !== null) {
+      const deps = { pool, privateKey: config.seal.privateKey }
+      health.setRevealHandler({
+        token: config.revealToken,
+        reveal: (request) => reveal(deps, request),
+        failed: (error) => log.error({ err: error }, 'a reveal failed'),
+      })
+    } else if (config.revealToken !== null) {
+      log.warn('REVEAL_SERVICE_TOKEN is set without the seal keys: the reveal endpoint is off')
+    }
+    // The owner's "Connect payments" (#109): the web app asks here for the provider's hosted onboarding
+    // link and for the account to be read back, over the private network, with the reveal token as
+    // a bearer. The provider's keys never leave this process.
+    const providers = paymentProviders()
+    if (config.revealToken !== null && providers.size > 0) {
+      const api = createConnectionApi({ pool, log, providers })
+      health.setConnectionHandler({
+        token: config.revealToken,
+        handle: api,
+        failed: (error) => log.error({ err: error }, 'a payment connection request failed'),
+      })
+    }
+    // "Done" from the venue's Telegram group (#83): long polling, so no public endpoint.
+    const telegramToken = config.alerts?.telegramToken ?? null
+    if (telegramToken !== null) {
+      const telegram = createTelegramClient({ token: telegramToken })
+      poller = startTelegramPoller({
+        pool,
+        telegram,
+        log,
+        now,
+        linkSecret: config.revealToken,
+      })
+      // The owner's "Link Telegram" (#87): the web app asks here for a link to open, over the
+      // private network, with the same token as the reveal endpoint, which also signs the link.
+      if (config.revealToken !== null) {
+        const api = createTelegramApi({ pool, telegram, secret: config.revealToken, now })
+        health.setTelegramHandler({
+          token: config.revealToken,
+          handle: api,
+          failed: (error) => log.error({ err: error }, 'a Telegram link request failed'),
+        })
+      }
     }
   } catch (error) {
     // Nothing is running yet that needs a grace period.

@@ -56,4 +56,21 @@ describe('createLogger', () => {
     expect(out.text()).not.toMatch(/p1|p2|p3/)
     expect(out.records()[0]).toMatchObject({ password: '[redacted]' })
   })
+
+  it('redacts a table code by name, in a request path and in its headers (#70)', async () => {
+    const out = capture()
+    const log = await createLogger({ level: 'info', pretty: false, destination: out.destination })
+    const code = 'Ab3dEfGh1jKlMnOpQrStUv'
+    log.info({ tableCode: code, result: { tableCodes: [code] } }, 'one')
+    log.info(
+      {
+        req: {
+          url: `/t/${code}`,
+          headers: { 'x-table-code': code, authorization: `Bearer ${code}` },
+        },
+      },
+      'two',
+    )
+    expect(out.text()).not.toContain(code)
+  })
 })

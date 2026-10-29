@@ -30,8 +30,18 @@ export const JOB_NAMES = {
   publishLiveTick: 'publish-live-tick',
   /** Make the webp variants of one photo for the publish store. */
   assetVariants: 'asset-variants',
-  /** Write the `t/<token>.json` files of a venue's table codes and remove the retired ones (S3-07). */
+  /**
+   * Write the `t/<code hash>.json` files of a venue's table codes and remove the retired ones
+   * (S3-07; named by the code's SHA-256 since #70).
+   */
   publishTableTokens: 'publish-table-tokens',
+  /**
+   * Scheduled, and sent by the worker at its start (#70, D122 §9): seals every table code still
+   * stored in plain, writes the venue's files under the codes' hashes, removes the files named by
+   * the plain code, then clears the plain code. Safe to run again; a run cut short is finished by
+   * the next. Not sent by anyone else.
+   */
+  sealTableCodes: 'seal-table-codes',
   /**
    * Write an organisation's index `o/<slug>.json` and the redirect files of its earlier slugs
    * (D84): after a rename of the organisation, a venue, or a change of a venue's state. The
@@ -63,12 +73,131 @@ export const JOB_NAMES = {
    */
   placesRead: 'places-read',
   /**
+   * Read the floor of one venue's till venue through the service connector (#71): its tables, the
+   * payment tables among them and the bars where the POS has them. Only the simulated POS reads
+   * a floor today; the worker refuses that kind in production.
+   */
+  floorRead: 'floor-read',
+  /**
+   * Scheduled, every minute (#71): queues `floor-read` for each mapped venue of a connector that
+   * reads its floor whose last read is older than the floor read interval. Not sent by anyone else.
+   */
+  floorReadTick: 'floor-read-tick',
+  /**
+   * Read one table's POS bills through the service connector and record the reading (#74): the
+   * bill every phone at the table is served, and the sitting's end when it shows the bill closed.
+   * One per table at a time. The minute tick queues it for open tables; the guest API queues it
+   * when a guest opens a bill read more than 15 s ago (`wantsFreshReading`).
+   */
+  tableRead: 'table-read',
+  /**
+   * Scheduled, every minute (#74): queues `table-read` for each table open for phones whose bill
+   * was not read within the table read interval. Not sent by anyone else.
+   */
+  tableReadTick: 'table-read-tick',
+  /**
+   * Scheduled, every minute (#75, D121): sets aside the order of each open table that nobody
+   * touched for the idle time ("Earlier order · Restore"), through `applyService` (`order.tidy`).
+   * A phone's read does the same at once; this tick covers the tables nobody is reading. Not sent
+   * by anyone else.
+   */
+  orderTidyTick: 'order-tidy-tick',
+  /**
+   * Scheduled, every hour (#84, D111): closes each venue's ended service days through
+   * `applyService` (`service_day.close`): the day's sittings and sent orders are kept 18 months,
+   * its action ids are cleared and its totals kept in `service_days`. Not sent by anyone else.
+   */
+  serviceDayTick: 'service-day-tick',
+  /**
+   * Send a table's waiting sent orders to its POS, one at a time (#77, D115): take the table's
+   * slot, read the bill, add the round once, and when the answer is unknown read it back for a
+   * minute. The guest API queues it after an accepted Send; the sweep queues it for a table with a
+   * waiting sent order and no slot holder. Stately per table: a Send while one runs waits behind it.
+   */
+  orderSend: 'order-send',
+  /**
+   * Scheduled, every minute (#77): settles the sent order of each table whose slot lease passed
+   * its deadline (`sent_order.expire`: Unconfirmed when it may have reached the POS), and queues
+   * `order-send` for each table with a waiting sent order and no slot holder. Not sent by anyone
+   * else.
+   */
+  orderSlotSweep: 'order-slot-sweep',
+  /**
+   * Probe one POS instance's connection (#79, D120): while it is paused, and for the five minutes
+   * after a lift. Each run sends the next at the breaker's next probe time. Stately per instance.
+   */
+  connectionProbe: 'connection-probe',
+  /**
+   * Scheduled, every minute (#79): queues `connection-probe` for each paused connection, so a
+   * restarted worker probes again at the time the pause row says. Not sent by anyone else.
+   */
+  connectionTick: 'connection-tick',
+  /**
+   * Scheduled, every minute (#82, D122 §4): at a venue's closing hour closes every table for
+   * phones (`hours.close_tables`, a Log entry per table). Not sent by anyone else.
+   */
+  serviceHoursTick: 'service-hours-tick',
+  /**
+   * Scheduled, every minute (#82, D120, D122 §4): from 2 hours before a venue opens, every 10
+   * minutes, checks that Restro can work with its POS (the connector's probe) and, from 30
+   * minutes before, alerts when it cannot. Nothing on a closed night. Not sent by anyone else.
+   */
+  preOpeningTick: 'pre-opening-tick',
+  /**
+   * Scheduled, every 5 minutes (#80): takes stock marks off again. It reads the marked items where
+   * the POS instance declares item availability (a complete reading that says one is back clears
+   * its mark), and lapses the marks of an earlier service day. Not sent by anyone else.
+   */
+  stockTick: 'stock-tick',
+  /**
    * Scheduled, every minute (S3-04): queues the change check and the full pull of each connected
    * venue that the integration's schedule settings say are due (`dueSyncs`). It replaced the two
    * fixed schedules `barsy-incremental-tick` (every 5 minutes) and `barsy-full-pull-tick`
    * (daily at 12:00).
    */
   barsySyncTick: 'barsy-sync-tick',
+  /**
+   * Scheduled, every minute (#108): handles the stored provider notices (the notice route only
+   * stores them): reads each one's payment back from its provider and records the refund total
+   * and the dispute (`payment.observe`). Not sent by anyone else.
+   */
+  providerNotices: 'provider-notices',
+  /**
+   * Scheduled, every 15 minutes (#167): registers the guest page's host for wallets on each
+   * connected account that takes cards and has no registration for it yet, so a registration the
+   * provider did not take is retried on its own schedule. Not sent by anyone else.
+   */
+  walletDomain: 'wallet-domain',
+  /**
+   * Scheduled, every minute (#83, D120): runs the alert delivery pass every few seconds for the
+   * minute: keeps pauses as alerts, then sends what is due by Web Push and Telegram. Not sent by
+   * anyone else.
+   */
+  alertDelivery: 'alert-delivery',
+  /**
+   * Scheduled, every minute (#83, D120): pings the outside watchdog (Healthchecks.io) after a
+   * database read. Not sent by anyone else.
+   */
+  healthcheckPing: 'healthcheck-ping',
+  /**
+   * Take one payment forward from where it stands (#110; design §5.1): read the table fresh and
+   * price it, create the hold, release a cancelled one. Queued by `pay.start`, and again by the
+   * paying phone's poll while the payment waits for the worker. One per payment at a time.
+   */
+  paymentPrepare: 'payment-prepare',
+  /**
+   * Read one payment's hold back from its provider (#110): queued by `pay.returned`, a provider's
+   * `payment` notice, a cancel and the paying phone's poll past the confirm deadline. Takes the
+   * payment forward the same way as `payment-prepare`. One per payment at a time.
+   */
+  paymentCheck: 'payment-check',
+  /**
+   * Scheduled, every minute, and sent once when the worker starts (#112): the payment recovery,
+   * twice a minute. Takes every open payment on from its last recorded step (a stale one is
+   * queued again), reads back the holds that may have run out, tells Restro's team of a payment
+   * that stays stuck, and probes a paused payment provider. Not sent by anyone else.
+   */
+  paymentRecoveryTick: 'payment-recovery-tick',
 } as const
 
 /** One of the queue names. */
@@ -88,6 +217,21 @@ export type BarsyConnectJob = z.output<typeof BarsyConnectJobSchema>
  */
 export const VenueSyncJobSchema = z.strictObject({ tenantId, integrationId, venueId })
 export type VenueSyncJob = z.output<typeof VenueSyncJobSchema>
+
+/**
+ * `table-read`: one table of one venue (`tb_`, never the POS's id for it). The worker finds the
+ * table's POS instance itself, so a sender needs no more than the guest API knows.
+ */
+export const TableReadJobSchema = z.strictObject({ tenantId, venueId, tableId: idSchema('tb') })
+export type TableReadJob = z.output<typeof TableReadJobSchema>
+
+/** `connection-probe`: one POS instance (the instance owns the connection, not a venue). */
+export const ConnectionProbeJobSchema = z.strictObject({ tenantId, integrationId })
+export type ConnectionProbeJob = z.output<typeof ConnectionProbeJobSchema>
+
+/** Payload of `order-send`: the table whose waiting sent orders go to its POS. */
+export const OrderSendJobSchema = TableReadJobSchema
+export type OrderSendJob = TableReadJob
 
 /** `barsy-full-pull` and `barsy-incremental`: `venueId` is OUR venue (`vn_`), never a barsy `bid`. */
 export const BarsyPullJobSchema = VenueSyncJobSchema
@@ -147,8 +291,9 @@ export type AssetVariantsJob = z.output<typeof AssetVariantsJobSchema>
 export const MAX_RETIRED_TOKENS = 500
 
 /**
- * `publish-table-tokens` (S3-07): the venue whose table files `t/<token>.json` are brought up to
- * date, and the tokens that stopped working since (their files are removed). The job writes the
+ * `publish-table-tokens` (S3-07): the venue whose table files `t/<code hash>.json` are brought up
+ * to date, and the hashes of the codes that stopped working since (their files are removed). The
+ * pattern also takes a plain code, so a job queued before #70 still removes its file. The job writes the
  * file of EVERY active code of the venue, so what it writes does not depend on the payload; only
  * `retired` does, which is why two jobs of one venue are merged only when `retired` is the same.
  */
@@ -163,6 +308,10 @@ export type PublishTableTokensJob = z.output<typeof PublishTableTokensJobSchema>
 export const PublishOrganizationIndexJobSchema = z.strictObject({ tenantId })
 export type PublishOrganizationIndexJob = z.output<typeof PublishOrganizationIndexJobSchema>
 
+/** `payment-prepare` and `payment-check`: one payment (`py_`) of one venue. */
+export const PaymentJobSchema = z.strictObject({ tenantId, venueId, paymentId: idSchema('py') })
+export type PaymentJob = z.output<typeof PaymentJobSchema>
+
 /** `purge-venue`: one deleted venue, erased now. */
 export const PurgeVenueJobSchema = z.strictObject({ tenantId, venueId })
 export type PurgeVenueJob = z.output<typeof PurgeVenueJobSchema>
@@ -174,6 +323,10 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyIncremental]: BarsyPullJobSchema,
   [JOB_NAMES.assetFetch]: AssetFetchJobSchema,
   [JOB_NAMES.placesRead]: VenueSyncJobSchema,
+  [JOB_NAMES.floorRead]: VenueSyncJobSchema,
+  [JOB_NAMES.tableRead]: TableReadJobSchema,
+  [JOB_NAMES.orderSend]: OrderSendJobSchema,
+  [JOB_NAMES.connectionProbe]: ConnectionProbeJobSchema,
   [JOB_NAMES.publishMenu]: PublishMenuJobSchema,
   [JOB_NAMES.publishFiles]: PublishScopeJobSchema,
   [JOB_NAMES.publishLive]: PublishScopeJobSchema,
@@ -181,6 +334,8 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.publishTableTokens]: PublishTableTokensJobSchema,
   [JOB_NAMES.publishOrganizationIndex]: PublishOrganizationIndexJobSchema,
   [JOB_NAMES.purgeVenue]: PurgeVenueJobSchema,
+  [JOB_NAMES.paymentPrepare]: PaymentJobSchema,
+  [JOB_NAMES.paymentCheck]: PaymentJobSchema,
 } as const
 
 /** The jobs a producer may send (the ticks are only ever created by the scheduler). */
@@ -206,6 +361,8 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.assetFetch,
   JOB_NAMES.assetVariants,
   JOB_NAMES.placesRead,
+  JOB_NAMES.floorRead,
+  JOB_NAMES.tableRead,
 ])
 
 /**
@@ -221,6 +378,12 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishTableTokens,
   JOB_NAMES.publishOrganizationIndex,
   JOB_NAMES.purgeVenue,
+  JOB_NAMES.orderSend,
+  JOB_NAMES.connectionProbe,
+  // A payment's step: a send while one runs waits behind it, so a notice that comes during a check
+  // is read again after it (#110).
+  JOB_NAMES.paymentPrepare,
+  JOB_NAMES.paymentCheck,
 ])
 
 /**
@@ -258,6 +421,16 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
       return (data as PublishOrganizationIndexJob).tenantId
     case JOB_NAMES.purgeVenue:
       return (data as PurgeVenueJob).venueId
+    case JOB_NAMES.paymentPrepare:
+    case JOB_NAMES.paymentCheck:
+      // One per payment (#110).
+      return (data as PaymentJob).paymentId
+    case JOB_NAMES.tableRead:
+      // One reading job per table (#74): a second send while one is queued or running is dropped.
+      return (data as TableReadJob).tableId
+    case JOB_NAMES.orderSend:
+      // One sender per table (#77); a Send while it runs queues one more run behind it.
+      return (data as OrderSendJob).tableId
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
       const scope = data as PublishScopeJob

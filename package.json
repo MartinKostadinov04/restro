@@ -24,6 +24,8 @@
     "keys:seal": "node scripts/seal-keys.mjs",
     "vendor-words:baseline": "node --disable-warning=ExperimentalWarning scripts/vendor-words-baseline.ts",
     "barsy:record": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env.local packages/barsy/src/record/cli.ts",
+    "sim:serve": "node --disable-warning=ExperimentalWarning --experimental-transform-types --import ./apps/web/scripts/register-ts.mjs packages/connectors/sim-pos/src/cli.ts serve",
+    "sim-pos": "node --disable-warning=ExperimentalWarning --experimental-transform-types --import ./apps/web/scripts/register-ts.mjs packages/connectors/sim-pos/src/cli.ts",
     "db:seed:dev": "pnpm --filter @restro/web run db:seed:dev"
   },
   "devDependencies": {

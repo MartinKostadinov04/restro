@@ -34,3 +34,19 @@ export const TAG_PUBLIC_ID = 'tagfixture01'
 // Like the tagged menu it has no venue row, so its public code is a fixed one.
 export const LOOK_SLUG = 'look-fixture'
 export const LOOK_PUBLIC_ID = 'lookfixture1'
+// The shared order (#75): two phones on one table of a venue of its own. The menu is the shell's
+// `features-on` fixture drawn by the reference template, under a fixed code like the look's; the
+// table, its code and its sitting are real rows (scripts/seed-order-e2e.ts prints the code).
+export const ORDER_SLUG = 'order-fixture'
+export const ORDER_PUBLIC_ID = 'orderfixture'
+// The order venue's spot for the location check (#76): the phones stand on it, or across town.
+export const ORDER_SPOT = { lat: 42.6977, lng: 23.3219 }
+
+// The Tonight screen's test (scripts/seed-tonight-e2e.ts): its own organisation and venue, an owner,
+// a waiter with a phone and a bar tablet's account (all with the demo password), and two people with
+// PINs: Maria (Staff, 1234) and Georgi (Manager, 4321). The pepper is the test servers' (the PIN
+// check uses it; playwright.config.ts gives it to them).
+export const TONIGHT_OWNER_EMAIL = 'tonight-owner@demo-club.test'
+export const TONIGHT_WAITER_EMAIL = 'tonight-waiter@demo-club.test'
+export const TONIGHT_TABLET_EMAIL = 'tonight-tablet@demo-club.test'
+export const TONIGHT_PIN_PEPPER = 'e2e-only-pin-pepper-not-used-anywhere-else-0123456789'

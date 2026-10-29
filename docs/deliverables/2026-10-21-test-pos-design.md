@@ -116,7 +116,8 @@ Tests of paying run on `pilot`. Everything else runs on both.
 | `ticketOnOneCallSale` | off | 13 | A one-call sale may not reach the bar. |
 | `receiptNumberOnClose` | off | 25, 39 | The receipt number is missing on the payment record, and staff are alerted per D122 §8. |
 | `closeSucceedsWithoutPrinter` | on | 25 | A close can succeed with no receipt (a fault, §2.6). |
-| `electronicReceipt` | off | 38 | Paper only. |
+| `electronicReceipt` | off | 38 | Paper only. On: the close takes the guest's email and the POS sends the electronic receipt itself (#186). |
+| `electronicReceiptFile` | off | 38 | Needs `electronicReceipt`. On: the close returns the POS's receipt file instead, and Restro sends it (#186). |
 | `closeCarriesNote` | off | 35 | No "for Table 7 · ref K7Q" on the close. |
 | `severalPaymentsPerClose` | off | 20 | One payer per close. |
 | `tipAsLine` | off | 41 | A tip is never written to the POS. It stays on Restro's payment record. |

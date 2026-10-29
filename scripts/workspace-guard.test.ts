@@ -136,6 +136,7 @@ describe('the real workspace', () => {
       'packages/db',
       'packages/barsy',
       'packages/faces/qr-phone',
+      'packages/connectors/sim-pos',
     ]) {
       expect(dirs).toContain(expected)
     }
@@ -146,7 +147,13 @@ describe('the real workspace', () => {
   })
 
   it('reads the globs of pnpm-workspace.yaml', () => {
-    expect(workspaceGlobs(repoRoot)).toEqual(['apps/*', 'packages/*', 'packages/faces/*'])
+    expect(workspaceGlobs(repoRoot)).toEqual([
+      'apps/*',
+      'packages/*',
+      'packages/faces/*',
+      'packages/connectors/*',
+      'packages/payments/*',
+    ])
   })
 })
 
@@ -185,19 +192,19 @@ describe('the guard itself (fake trees)', () => {
     expect(checkWorkspace(root)).toEqual([])
   })
 
-  it('fails a package at packages/connectors/x: no workspace glob, not a Vitest project', () => {
-    // The layout A3 proposes for connectors. Today nothing covers it; CF-06 adds the glob and the
-    // Vitest parent with the first such package, and this case then needs a new "uncovered" path.
+  it('fails a package at packages/plugins/x: no workspace glob, not a Vitest project', () => {
+    // A folder kind nothing covers. packages/connectors was this case until its first package
+    // (#68) added the glob and the Vitest parent; a new kind of folder needs both again.
     const root = fakeTree({
-      'packages/connectors/x/package.json': withTypecheck,
-      'packages/connectors/x/tsconfig.json': '{}',
+      'packages/plugins/x/package.json': withTypecheck,
+      'packages/plugins/x/tsconfig.json': '{}',
     })
     const problems = checkWorkspace(root)
     expect(problems).toHaveLength(2)
     expect(problems[0]).toMatch(
-      /^packages\/connectors\/x: not matched by any glob in pnpm-workspace\.yaml/,
+      /^packages\/plugins\/x: not matched by any glob in pnpm-workspace\.yaml/,
     )
-    expect(problems[1]).toMatch(/^packages\/connectors\/x: not a Vitest project/)
+    expect(problems[1]).toMatch(/^packages\/plugins\/x: not a Vitest project/)
   })
 
   it('fails a package without a tsconfig.json', () => {

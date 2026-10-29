@@ -1,11 +1,12 @@
 // The table QR code files (brief S3-07), against Postgres and the in-memory barsy installation,
 // through the real job handlers:
 //
-//   - `publish-table-tokens` writes `t/<token>.json` for every active code of a venue, with the
-//     table's name (the manager's, else barsy's number), and removes the files of retired codes;
+//   - `publish-table-tokens` writes `t/<hash>.json` for every active code of a venue (named by
+//     the code's hash since #70), with the table's name (the manager's, else barsy's number), and
+//     removes the files of retired codes;
 //   - it is idempotent: a second run puts nothing;
 //   - a full pull that concludes a table deleted takes its code off and queues this job with the
-//     token, so the file goes too; a table that is only missing keeps its code.
+//     code's hash, so the file goes too; a table that is only missing keeps its code.
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -134,15 +135,15 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     await pull()
     const listed = await tables()
     expect(listed.length).toBe(fake.places.length)
-    expect(await issueAllTableTokens(world.pool, world.tenantId, world.venueId)).toMatchObject({
-      ok: true,
-    })
+    expect(
+      await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText),
+    ).toMatchObject({ ok: true })
     await runTokenJob()
-    const coded = (await tables()).filter((table) => table.token !== null)
+    const coded = (await tables()).filter((table) => table.codeHash !== null)
     expect(coded.length).toBeGreaterThan(0)
     expect(store.puts).toHaveLength(coded.length)
     for (const table of coded) {
-      expect(await readTableTokenFile(store, table.token as string)).toMatchObject({
+      expect(await readTableTokenFile(store, table.codeHash as string)).toMatchObject({
         venue_public_id: world.venuePublicId,
         venue_slug: world.venueSlug,
         organization_slug: expect.stringMatching(/^sync-/),
@@ -170,26 +171,26 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     if (!first) throw new Error('no coded table')
     await setTableName(world.pool, world.tenantId, first.id, 'VIP 3')
     await runTokenJob()
-    expect(store.puts).toEqual([`t/${first.token}.json`])
-    expect(await readTableTokenFile(store, first.token as string)).toMatchObject({
+    expect(store.puts).toEqual([`t/${first.codeHash}.json`])
+    expect(await readTableTokenFile(store, first.codeHash as string)).toMatchObject({
       table_label: 'VIP 3',
     })
   })
 
   it('writes every file again, with the new slug and the same public code, after a venue rename', async () => {
     await pull()
-    await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+    await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
     await runTokenJob()
-    const coded = (await tables()).filter((table) => table.token !== null)
+    const coded = (await tables()).filter((table) => table.codeHash !== null)
     expect(coded.length).toBeGreaterThan(0)
 
     const renamed = testSlug('renamed-club')
     await renameVenueSlug(world.pool, world.tenantId, world.venueId, renamed)
     store.puts.length = 0
     await runTokenJob()
-    expect(store.puts.sort()).toEqual(coded.map((table) => `t/${table.token}.json`).sort())
+    expect(store.puts.sort()).toEqual(coded.map((table) => `t/${table.codeHash}.json`).sort())
     for (const table of coded) {
-      expect(await readTableTokenFile(store, table.token as string)).toMatchObject({
+      expect(await readTableTokenFile(store, table.codeHash as string)).toMatchObject({
         venue_public_id: world.venuePublicId,
         venue_slug: renamed,
       })
@@ -198,35 +199,37 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
 
   it('removes the files of retired codes: a turned-off table and a table given a new code', async () => {
     await pull()
-    await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+    await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
     await runTokenJob()
-    const [a, b] = (await tables()).filter((table) => table.token !== null)
+    const [a, b] = (await tables()).filter((table) => table.codeHash !== null)
     if (!a || !b) throw new Error('need two coded tables')
 
     const off = await retireTableToken(world.pool, world.tenantId, a.id)
-    const renewed = await issueTableToken(world.pool, world.tenantId, b.id)
-    if (!off.ok || !renewed.ok) throw new Error('the writers refused')
-    await runTokenJob([off.retired as string, renewed.retired as string])
+    // A new code for b: its old one off, then a fresh one (what a re-issue does, in one step).
+    const bOff = await retireTableToken(world.pool, world.tenantId, b.id)
+    const renewed = await issueTableToken(world.pool, world.tenantId, b.id, world.publicKeyText)
+    if (!off.ok || !bOff.ok || !renewed.ok) throw new Error('the writers refused')
+    await runTokenJob([...off.retired, ...bOff.retired])
 
-    expect(await readTableTokenFile(store, a.token as string)).toBeNull()
-    expect(await readTableTokenFile(store, b.token as string)).toBeNull()
-    expect(await readTableTokenFile(store, renewed.table.token as string)).toMatchObject({
+    expect(await readTableTokenFile(store, a.codeHash as string)).toBeNull()
+    expect(await readTableTokenFile(store, b.codeHash as string)).toBeNull()
+    expect(await readTableTokenFile(store, renewed.table.codeHash as string)).toMatchObject({
       venue_public_id: world.venuePublicId,
       venue_slug: world.venueSlug,
     })
-    expect(store.deletes.sort()).toEqual([`t/${a.token}.json`, `t/${b.token}.json`].sort())
+    expect(store.deletes.sort()).toEqual([`t/${a.codeHash}.json`, `t/${b.codeHash}.json`].sort())
     // Again: the files are gone already, and nothing fails.
-    await runTokenJob([off.retired as string])
+    await runTokenJob(off.retired)
   })
 
   it('never removes the file of a code that is active, whatever the job names', async () => {
     await pull()
-    await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+    await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
     await runTokenJob()
-    const active = (await tables()).find((table) => table.token !== null)
+    const active = (await tables()).find((table) => table.codeHash !== null)
     if (!active) throw new Error('no coded table')
-    await runTokenJob([active.token as string])
-    expect(await readTableTokenFile(store, active.token as string)).not.toBeNull()
+    await runTokenJob([active.codeHash as string])
+    expect(await readTableTokenFile(store, active.codeHash as string)).not.toBeNull()
   })
 
   it('does nothing for a venue the tenant does not have', async () => {
@@ -244,14 +247,14 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
   })
 
   describe('a full pull that finds a table gone', () => {
-    it('keeps the code of a missing table, retires the code of a deleted one and queues the job with its token', async () => {
+    it('keeps the code of a missing table, retires the code of a deleted one and queues the job with its hash', async () => {
       await pull()
-      await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+      await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
       await runTokenJob()
       const before = await tables()
-      const gone = before.find((table) => table.token !== null)
+      const gone = before.find((table) => table.codeHash !== null)
       if (!gone) throw new Error('no coded table')
-      const goneToken = gone.token as string
+      const goneToken = gone.codeHash as string
       // barsy stops listing that table (its place_id is the one we mapped it from).
       const [row] = await world.query<{ place_id: string }>(
         'select place_id from restro.places where table_id = $1',
@@ -263,7 +266,7 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
       await pull()
       // Missing: the table stays, with its code; only the place knows it was not listed.
       const missing = (await tables()).find((table) => table.id === gone.id)
-      expect(missing).toMatchObject({ token: goneToken })
+      expect(missing).toMatchObject({ codeHash: goneToken })
       expect(
         await world.query<{ state: string }>(
           'select state from restro.places where table_id = $1',
@@ -277,18 +280,18 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
       expect((await tables()).find((table) => table.id === gone.id)).toBeUndefined()
       const [stored] = await world.query<{
         state: string
-        qr_token: string | null
+        qr_code_hash: string | null
         archived: boolean
       }>(
-        `select p.state, t.qr_token, t.archived_at is not null as archived
+        `select p.state, t.qr_code_hash, t.archived_at is not null as archived
          from restro.places p join restro.tables t on t.id = p.table_id
          where t.id = $1`,
         [gone.id],
       )
-      // The token stays on the archived row, for the purge's tombstone (D83); its file is gone.
-      expect(stored).toEqual({ state: 'deleted', qr_token: goneToken, archived: true })
+      // The code stays on the archived row, for the purge's tombstone (D83); its file is gone.
+      expect(stored).toEqual({ state: 'deleted', qr_code_hash: goneToken, archived: true })
 
-      // The sync queued the job for the venue, naming the token.
+      // The sync queued the job for the venue, naming the code's file.
       expect(tableJobs()).toHaveLength(1)
       const queued = tableJobs()[0]
       expect(queued?.data).toEqual({
@@ -306,9 +309,9 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
 
     it('queues the job when barsy renames a table, so the guest page follows (unless it has its own name)', async () => {
       await pull()
-      await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+      await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
       await runTokenJob()
-      const coded = (await tables()).filter((table) => table.token !== null)
+      const coded = (await tables()).filter((table) => table.codeHash !== null)
       const target = coded[0]
       if (!target) throw new Error('no coded table')
       const [row] = await world.query<{ place_id: string }>(
@@ -323,14 +326,14 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
       expect(tableJobs()).toHaveLength(1)
       expect(tableJobs()[0]?.data).toMatchObject({ retired: [] })
       await runTokenJob()
-      expect(await readTableTokenFile(store, target.token as string)).toMatchObject({
+      expect(await readTableTokenFile(store, target.codeHash as string)).toMatchObject({
         table_label: 'Renamed 1',
       })
     })
 
     it('queues nothing when no table changed', async () => {
       await pull()
-      await issueAllTableTokens(world.pool, world.tenantId, world.venueId)
+      await issueAllTableTokens(world.pool, world.tenantId, world.venueId, world.publicKeyText)
       world.enqueued.length = 0
       await pull()
       expect(tableJobs()).toEqual([])

@@ -31,8 +31,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChosenFace, preloadFace } from '@/faces/chosen-face'
 import { faceEntry } from '@/faces/registry'
 import { FONT_STACKS } from '@/fonts'
+import { cleanAddressBar } from '../connectors/card-forms'
 import { CDN_BASE } from './cdn'
-import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
+import {
+  buildContext,
+  chooseLocale,
+  confirmedTable,
+  langParam,
+  readTableToken,
+  rememberedTable,
+  rememberTable,
+  tabStorage,
+  withCodeInFragment,
+} from './context'
 import {
   type GuestAddress,
   GuestLoadError,
@@ -46,6 +57,8 @@ import {
   loadSnapshot,
   refetchLiveForSnapshot,
 } from './load'
+import { PAY_RETURNED_KEY } from './services-client'
+import { SHARED_ORDER_FACES, useTableServices } from './use-table-services'
 
 type Phase =
   | { readonly kind: 'loading' }
@@ -103,12 +116,28 @@ export function GuestMenu(props: GuestMenuProps) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' })
   // The address and the browser are read after mount, so the first client render equals the server's.
   const [search, setSearch] = useState('')
+  const [fragment, setFragment] = useState('')
   const [browser, setBrowser] = useState<readonly string[]>([])
   const [now, setNow] = useState(() => new Date())
   const deps = useMemo<LoadDeps>(() => ({ fetch: (url) => fetch(url), base: CDN_BASE }), [])
 
   useEffect(() => {
+    // Back from a redirect of the card form: its values come out of the address before the
+    // page asks for anything (#114, design §11), and the tab notes that the guest came back so the
+    // services client sends `pay.returned`.
+    if (cleanAddressBar(window.location, window.history)) {
+      try {
+        tabStorage()?.setItem(PAY_RETURNED_KEY, '1')
+      } catch {
+        // Nothing kept: the payment's poll still finds where it stands.
+      }
+    }
+    // A table code in the query (a link of before #70) goes into the fragment, out of the address
+    // the page's later requests and a shared link would carry.
+    const moved = withCodeInFragment(window.location.href)
+    if (moved !== null) window.history.replaceState(null, '', moved)
     setSearch(window.location.search)
+    setFragment(window.location.hash)
     setBrowser(navigator.languages?.length > 0 ? navigator.languages : [navigator.language])
     // Nearly every venue uses the default template: fetch its code now, while the menu's files are
     // still on their way. (A venue that chose another one fetches that when its snapshot arrives.)
@@ -129,11 +158,18 @@ export function GuestMenu(props: GuestMenuProps) {
     }
     setPhase({ kind: 'loading' })
     // The table's code in the address goes with the load: its file may name the menu to show.
-    const token = readTableToken(window.location.search)
+    // Without one (a reload on a dish page, whose address took the fragment), the code this tab
+    // kept for the venue is checked instead.
+    const token = readTableToken(window.location.search, window.location.hash)
+    const storage = tabStorage()
+    const remembered = (venue: string) => rememberedTable(storage, venue)
     const loading =
-      address !== null ? loadMenuAt(deps, address, token) : loadMenu(deps, publicId ?? '', token)
+      address !== null
+        ? loadMenuAt(deps, address, token, remembered)
+        : loadMenu(deps, publicId ?? '', token, remembered)
     loading.then(
       (menu) => {
+        rememberTable(storage, menu.publicId, menu.table?.token ?? null)
         if (!cancelled) setPhase({ kind: 'ready', menu })
       },
       (error: unknown) => {
@@ -170,10 +206,11 @@ export function GuestMenu(props: GuestMenuProps) {
     window.history.replaceState(null, '', url)
   }, [canonicalOrganization, canonicalVenue, indexSlug, loadedPublicId])
 
-  // The code in the address is a claim until the published `t/<token>.json` answered for this venue
+  // The code in the address is a claim until the published `t/<hash>.json` answered for this venue
   // (the loader asked). The banner and the shell's context use the confirmed table only: an
   // unknown code is no code.
-  const requestedToken = readTableToken(search)
+  // Without a code in the address, the claim is the one the tab kept, which the load checked.
+  const requestedToken = readTableToken(search, fragment) ?? loaded?.table?.token ?? null
   const table = confirmedTable(requestedToken, loaded?.table ?? null)
   const tableToken = table?.token ?? null
   const tableLabel = table?.label ?? null
@@ -263,6 +300,11 @@ export function GuestMenu(props: GuestMenuProps) {
   // which photo sizes the shell asks for.
   const faceId = snapshot?.presentation?.face
   const entry = useMemo(() => faceEntry(faceId), [faceId])
+  // The table's shared order (#75), where the template draws it and the page has a table: the
+  // guest API's client, and ordering on in the shell's context (the venue's own switch for
+  // ordering, in the snapshot's features, still decides).
+  const sharedOrder = tableToken !== null && SHARED_ORDER_FACES.has(entry.id)
+  const services = useTableServices(sharedOrder ? tableToken : null)
   const view = useMemo(
     () =>
       snapshot === null
@@ -270,9 +312,9 @@ export function GuestMenu(props: GuestMenuProps) {
         : buildViewModel(
             snapshot,
             live,
-            buildContext({ locale, now, tableToken, manifest: entry.manifest }),
+            buildContext({ locale, now, tableToken, manifest: entry.manifest, sharedOrder }),
           ),
-    [snapshot, live, locale, now, tableToken, entry],
+    [snapshot, live, locale, now, tableToken, entry, sharedOrder],
   )
 
   const switchLanguage = useCallback((next: Locale) => {
@@ -340,6 +382,7 @@ export function GuestMenu(props: GuestMenuProps) {
       fontStacks={FONT_STACKS}
       scheme={view.theme.scheme}
       options={snapshot.presentation?.options}
+      {...(services === undefined ? {} : { services })}
     />
   )
 }

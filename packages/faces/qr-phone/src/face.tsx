@@ -26,6 +26,8 @@ import {
   sectionDomId,
   themeVariables,
 } from './model'
+import { PayPanel } from './pay-panel'
+import { OrderPanel, useOrderCommands } from './table-order'
 
 /**
  * What the host gives the face besides the view model: the same props for every face. This face
@@ -248,9 +250,19 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
     tableLabel = null,
     fontStacks,
     scheme = 'auto',
+    services,
   } = props
   const locale = view.locale
   const strings = stringsFor(locale).guest
+  const serviceStrings = stringsFor(locale).services
+  // The table's shared order (#75): only where the shell turned ordering on (R15).
+  const orderingOn = view.features.ordering
+  const { send, notice } = useOrderCommands(services, serviceStrings, view)
+  const notesAndOptions = services?.state.ordering?.notesAndOptions === true
+  const ordering = useMemo(
+    () => (orderingOn ? { strings: serviceStrings, send, notesAndOptions } : null),
+    [orderingOn, serviceStrings, send, notesAndOptions],
+  )
 
   // The chips are drawn only when the shell turned the filter control on (R15: the venue offers
   // filters and the menu has chips). The chip check is the shell's too; it is repeated here so a
@@ -284,8 +296,8 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
   }, [])
 
   const ctx = useMemo<CardContext>(
-    () => ({ locale, strings, assetBase, openAllergens }),
-    [locale, strings, assetBase, openAllergens],
+    () => ({ locale, strings, assetBase, openAllergens, ordering }),
+    [locale, strings, assetBase, openAllergens, ordering],
   )
   const hintStyle = useCallback(
     (color: string | null) =>
@@ -441,6 +453,28 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
             </div>
           ) : null}
         </main>
+
+        {orderingOn ? (
+          <PayPanel
+            services={services}
+            locale={locale}
+            words={stringsFor(locale).services.paying}
+            serviceWords={serviceStrings}
+            tableText={tableLabel == null ? null : strings.table(tableLabel)}
+            callWaiter={view.features.callWaiter !== null}
+            send={send}
+          />
+        ) : null}
+
+        {orderingOn ? (
+          <OrderPanel
+            view={view}
+            services={services}
+            strings={serviceStrings}
+            send={send}
+            notice={notice}
+          />
+        ) : null}
 
         <footer className="rq-footer">
           <h2>{strings.footerTitle}</h2>

@@ -118,6 +118,7 @@ test('Design is the composer’s subtab, and Settings no longer holds the Appear
   await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
     'Composer',
     'Tables & QR',
+    'Tonight',
     'Settings',
   ])
   await page.getByRole('tab', { name: 'Design' }).click()

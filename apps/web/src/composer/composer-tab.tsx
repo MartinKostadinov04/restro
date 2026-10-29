@@ -37,6 +37,7 @@ import { DesignSkeleton } from '@/design/design-skeleton'
 import { DesignTab } from '@/design/design-tab'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import { composerMenusOf } from '@/server/composer/menu'
+import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
 import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
 import { loadTillLabels, tillLabelOf } from '@/server/till-label'
@@ -101,21 +102,31 @@ async function StructureSubtab({
   const menuId = current.id as NodeId
 
   const pool = getPool()
-  const [document, unplaced, heldNewIds, tags, hasTill, tillLabels, nameFallbackIds] =
-    await Promise.all([
-      loadMenuDocument(pool, tenantId, menuId),
-      loadUnplacedItems(pool, tenantId, menuId),
-      // New items the sync hid for review (publish.new_items = hold): they get a badge.
-      loadHeldNewItemIds(pool, tenantId),
-      // The venue's tags in order, archived ones too (the Tags panel lists them to restore).
-      listTags(pool, tenantId, venue.id, { includeArchived: true }),
-      // A venue with a till gets its items from the till only (D66): no "New item" there.
-      venueHasTill(tenantId, venue.id),
-      // The name of the till, for "From {source}" and the like (brief CF-03).
-      loadTillLabels(pool, tenantId),
-      // Names that are the till's own, standing in for a missing public one: they get a warning (D75).
-      withTenant(pool, tenantId, (tx) => readNameFallbackNodeIds(tx)),
-    ])
+  const [
+    document,
+    unplaced,
+    heldNewIds,
+    tags,
+    hasTill,
+    tillLabels,
+    nameFallbackIds,
+    payFirstDefault,
+  ] = await Promise.all([
+    loadMenuDocument(pool, tenantId, menuId),
+    loadUnplacedItems(pool, tenantId, menuId),
+    // New items the sync hid for review (publish.new_items = hold): they get a badge.
+    loadHeldNewItemIds(pool, tenantId),
+    // The venue's tags in order, archived ones too (the Tags panel lists them to restore).
+    listTags(pool, tenantId, venue.id, { includeArchived: true }),
+    // A venue with a till gets its items from the till only (D66): no "New item" there.
+    venueHasTill(tenantId, venue.id),
+    // The name of the till, for "From {source}" and the like (brief CF-03).
+    loadTillLabels(pool, tenantId),
+    // Names that are the till's own, standing in for a missing public one: they get a warning (D75).
+    withTenant(pool, tenantId, (tx) => readNameFallbackNodeIds(tx)),
+    // Where pay first can take effect, an item's payment mode is set here (D122 §8, #218).
+    readItemPayFirstDefault(pool, tenantId, venue),
+  ])
   const merged = mergeDocumentParts(document, unplaced)
 
   const defaultLocale = venue.defaultLocale as Locale
@@ -167,10 +178,12 @@ async function StructureSubtab({
         defaultLocale={defaultLocale}
         enabledLocales={enabledLocales}
         currency={currency}
-        canMarkSoldOut={canMarkSoldOut(role)}
+        // On a POS venue the POS says what ran out: no sold-out switch here (D124 §6, #80).
+        canMarkSoldOut={canMarkSoldOut(role) && !hasTill}
         canCreateItem={manager}
         hasTill={hasTill}
         canDelete={manager}
+        payFirstDefault={payFirstDefault}
       />
     </div>
   )

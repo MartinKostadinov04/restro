@@ -62,7 +62,7 @@ const snapshotOf = (ctx = context(), builder = bar()) =>
 const PRESENTATION = { face: 'editorial-market', options: { layout: 'two', compact: true } }
 const FEATURES: GuestFeatures = {
   filters: false,
-  call_waiter: { enabled: true, kinds: ['other', 'bill', 'waiter'] },
+  call_waiter: { enabled: true, kinds: ['terminal', 'bill', 'waiter'] },
   bill: true,
   ordering: false,
   pay: false,
@@ -101,7 +101,7 @@ describe('buildSnapshot: look and services', () => {
     expect(snapshot.presentation).toEqual(PRESENTATION)
     expect(snapshot.features).toEqual({
       ...FEATURES,
-      call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'other'] },
+      call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'terminal'] },
     })
     // The same choices in another order are the same snapshot.
     const reordered = snapshotOf(
@@ -109,7 +109,7 @@ describe('buildSnapshot: look and services', () => {
         presentation: { face: 'editorial-market', options: { compact: true, layout: 'two' } },
         features: {
           ...FEATURES,
-          call_waiter: { enabled: true, kinds: ['bill', 'waiter', 'other'] },
+          call_waiter: { enabled: true, kinds: ['bill', 'waiter', 'terminal'] },
         },
       }),
     )
@@ -272,10 +272,12 @@ describe('the leak guard and the new words', () => {
       'ordering',
       'pay',
       'waiter',
+      'bill',
+      'ice',
       'water',
-      'cutlery',
+      'glasses',
+      'clean_table',
       'terminal',
-      'other',
     ]
     const doc = new DocBuilder().section(BAR, ROOT, 'active', 'a0').tillItem(WATER, 300)
     // A word that is no part of the snapshot's structure stays forbidden (the control).

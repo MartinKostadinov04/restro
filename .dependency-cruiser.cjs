@@ -23,6 +23,33 @@ const NODE_IO_BUILTINS = [
   'tls',
 ].map((name) => `^(node:)?${name}(/|$)`)
 
+/**
+ * Every connector package (CLAUDE.md "Three layers"): barsy's and those under packages/connectors/
+ * (the simulated POS today, D124). Rules that keep connectors out of a layer match all of them, so
+ * no connector, old or new, falls out of a guard.
+ */
+const CONNECTOR_PACKAGES = [
+  '^packages/barsy/',
+  '^@restro/barsy(/|$)',
+  '^packages/connectors/',
+  '^@restro/sim-pos(/|$)',
+]
+
+/**
+ * Every payment provider package (D127, #104): those under packages/payments/ (the simulated
+ * provider `sim-pay` and Stripe's). Only the worker calls a provider.
+ */
+const PAYMENT_PACKAGES = ['^packages/payments/', '^@restro/(sim-pay|stripe)(/|$)']
+
+/**
+ * A payment provider's own libraries, server SDK and browser card form alike (D126, D127). The web
+ * app reaches them only through its connector folders (apps/web/src/connectors/<kind>/).
+ */
+const PROVIDER_LIBRARIES = ['stripe', '@stripe'].flatMap((name) => [
+  `^${name}(/|$)`,
+  `(^|/)node_modules/${name}/`,
+])
+
 /** Database drivers and job queues: I/O that shell and faces must never reach. */
 const IO_PACKAGES = ['pg', 'pg-boss', 'postgres'].flatMap((name) => [
   `^${name}(/|$)`,
@@ -37,14 +64,15 @@ module.exports = {
       name: 'pure-layers-no-data-or-apps',
       severity: 'error',
       comment:
-        'packages/shell and packages/faces/* must not import @restro/db, @restro/barsy, @restro/assets or anything under apps/.',
+        'packages/shell and packages/faces/* must not import @restro/db, a connector, @restro/core/service, @restro/assets or anything under apps/.',
       from: { path: ['^packages/shell/', '^packages/faces/'] },
       to: {
         path: [
           '^packages/db/',
           '^@restro/db(/|$)',
-          '^packages/barsy/',
-          '^@restro/barsy(/|$)',
+          ...CONNECTOR_PACKAGES,
+          '^packages/core/src/service/',
+          '^@restro/core/service(/|$)',
           '^packages/assets/',
           '^@restro/assets(/|$)',
           '^apps/',
@@ -95,13 +123,16 @@ module.exports = {
       },
     },
 
-    // 2. One write path (rule 1): only apply() may use the write side of the db package, and
-    //    the package has exactly two doors.
+    // 2. One write path per side (rule 1 as D122 §9 puts it): only apply() (the menu side) and
+    //    applyService() (the service side) may use the write side of the db package, and the
+    //    package has exactly two doors. Which tables each one writes is pinned by
+    //    packages/core/src/write-targets.test.ts.
     {
-      name: 'db-write-only-from-core-apply',
+      name: 'db-write-only-from-core-write-paths',
       severity: 'error',
-      comment: 'Only files under packages/core/src/apply/ may import @restro/db/write.',
-      from: { pathNot: ['^packages/core/src/apply/', '^packages/db/'] },
+      comment:
+        'Only files under packages/core/src/apply/ and packages/core/src/service/ may import @restro/db/write.',
+      from: { pathNot: ['^packages/core/src/(apply|service)/', '^packages/db/'] },
       to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
     },
     {
@@ -134,20 +165,73 @@ module.exports = {
       to: { path: '^packages/db/src/(write|purge)(/|\\.|$)' },
     },
 
-    // 3 and 4. barsy is read by the worker only (CLAUDE.md "Never": web never calls barsy).
+    // The service write path is server code: the worker, the guest API's route handlers and the
+    // admin's server actions call it; the shell, a face or a guest page never do.
     {
-      name: 'barsy-only-from-worker',
+      name: 'core-service-only-from-service-callers',
       severity: 'error',
-      comment: 'Only apps/worker may import @restro/barsy (packages/barsy may import itself).',
-      from: { pathNot: ['^apps/worker/', '^packages/barsy/'] },
-      to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
+      comment:
+        "Only apps/worker, the web app's route handlers (apps/web/app/api/) and its server code (apps/web/src/server/, where the server actions live) may import @restro/core/service (packages/core/src/service/).",
+      from: {
+        pathNot: [
+          '^apps/worker/',
+          '^apps/web/app/api/',
+          '^apps/web/src/server/',
+          '^packages/core/src/service/',
+        ],
+      },
+      to: { path: ['^packages/core/src/service/', '^@restro/core/service(/|$)'] },
+    },
+
+    // 3 and 4. Connectors are called by the worker only (CLAUDE.md "Never": the web never calls a
+    //    POS). These replace barsy-only-from-worker and web-no-barsy and cover every connector
+    //    package (D67: a guard only tightens).
+    {
+      name: 'connectors-only-from-worker',
+      severity: 'error',
+      comment:
+        'Only apps/worker may import a connector package (@restro/barsy, anything under packages/connectors/); a connector package may import itself.',
+      from: { pathNot: ['^apps/worker/', '^packages/barsy/', '^packages/connectors/'] },
+      to: { path: CONNECTOR_PACKAGES },
     },
     {
-      name: 'web-no-barsy',
+      name: 'web-no-connectors',
       severity: 'error',
-      comment: 'apps/web must not import @restro/barsy. It reads barsy state from Postgres.',
+      comment:
+        'apps/web must not import a connector package. It reads what a connector reported from Postgres.',
       from: { path: '^apps/web/' },
-      to: { path: ['^packages/barsy/', '^@restro/barsy(/|$)'] },
+      to: { path: CONNECTOR_PACKAGES },
+    },
+
+    // Paying (D127, #104). The worker makes every call to a payment provider; the web app only
+    // checks a notice's signature and loads the provider's card form, each through its connector
+    // folder; the notice route records the notice and does nothing else.
+    {
+      name: 'payments-only-from-worker',
+      severity: 'error',
+      comment:
+        'Only apps/worker may import a payment provider package (anything under packages/payments/); a provider package may import itself.',
+      from: { pathNot: ['^apps/worker/', '^packages/payments/'] },
+      to: { path: PAYMENT_PACKAGES },
+    },
+    {
+      name: 'web-provider-only-through-connectors',
+      severity: 'error',
+      comment:
+        "apps/web may import a payment provider's libraries (stripe, @stripe/*) only in apps/web/src/connectors/<kind>/.",
+      from: { path: '^apps/web/', pathNot: '^apps/web/src/connectors/[^/]+/' },
+      to: { path: PROVIDER_LIBRARIES },
+    },
+    {
+      name: 'notice-route-records-only',
+      severity: 'error',
+      comment:
+        'The notice route (apps/web/app/api/payments/notices/) may import from @restro/core/service only its notices module (`@restro/core/service/notices`, a file or a folder, exporting `recordProviderNotice`): it stores the notice, and a worker job acts on it.',
+      from: { path: '^apps/web/app/api/payments/notices/' },
+      to: {
+        path: ['^packages/core/src/service/', '^@restro/core/service(/|$)'],
+        pathNot: ['^packages/core/src/service/notices(\\.ts$|/)', '^@restro/core/service/notices$'],
+      },
     },
 
     // Sealed credentials (D55): the web seals with the worker's public key; only the worker
@@ -174,14 +258,13 @@ module.exports = {
       name: 'assets-no-database-or-barsy',
       severity: 'error',
       comment:
-        'packages/assets (the asset store, shared by apps/web and apps/worker) must not import @restro/db, @restro/barsy or anything under apps/. The stores hold bytes and sign links; the apps own the database rows.',
+        'packages/assets (the asset store, shared by apps/web and apps/worker) must not import @restro/db, a connector or anything under apps/. The stores hold bytes and sign links; the apps own the database rows.',
       from: { path: '^packages/assets/' },
       to: {
         path: [
           '^packages/db/',
           '^@restro/db(/|$)',
-          '^packages/barsy/',
-          '^@restro/barsy(/|$)',
+          ...CONNECTOR_PACKAGES,
           '^apps/',
           '^@restro/(web|worker)(/|$)',
         ],
@@ -210,6 +293,49 @@ module.exports = {
       to: { path: ['^packages/shell/src/money-math\\.ts$', '^@restro/shell/money(/|$)'] },
     },
 
+    // The connector conformance kit (#65) is a test harness, like the shell's `testing` fixtures:
+    // its toy POS and fault switches must never reach a connector's or an app's own code.
+    {
+      name: 'connector-kit-only-from-tests',
+      severity: 'error',
+      comment:
+        'Only tests (*.test.ts) and test-* helpers may import the connector conformance kit, @restro/core/connectors/testing (packages/core/src/connectors/service/testing/); the kit may import its own files.',
+      from: {
+        pathNot: [
+          '\\.test\\.[jt]sx?$',
+          '(^|/)test-[^/]+\\.[jt]sx?$',
+          '^packages/core/src/connectors/service/testing/',
+        ],
+      },
+      to: {
+        path: [
+          '^packages/core/src/connectors/service/testing/',
+          '^@restro/core/connectors/testing(/|$)',
+        ],
+      },
+    },
+    // The payment conformance suite (#103) likewise: it registers Vitest tests and drives a
+    // provider through faults, so only a provider package's tests reach it.
+    {
+      name: 'payment-kit-only-from-tests',
+      severity: 'error',
+      comment:
+        'Only tests (*.test.ts) and test-* helpers may import the payment conformance suite, @restro/core/connectors/payment-testing (packages/core/src/connectors/payment/testing/); the suite may import its own files.',
+      from: {
+        pathNot: [
+          '\\.test\\.[jt]sx?$',
+          '(^|/)test-[^/]+\\.[jt]sx?$',
+          '^packages/core/src/connectors/payment/testing/',
+        ],
+      },
+      to: {
+        path: [
+          '^packages/core/src/connectors/payment/testing/',
+          '^@restro/core/connectors/payment-testing(/|$)',
+        ],
+      },
+    },
+
     // The guest page (rule 4): it reads published files and nothing else. Its code (app/m and
     // src/guest) never imports the database, apply(), the asset and publish stores, or the
     // server-only helpers of the web app; it calls no server action either.
@@ -217,7 +343,7 @@ module.exports = {
       name: 'guest-page-reads-published-files-only',
       severity: 'error',
       comment:
-        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
+        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/core/service, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
       from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
       to: {
         path: [
@@ -225,6 +351,8 @@ module.exports = {
           '^@restro/db(/|$)',
           '^packages/core/src/apply/',
           '^@restro/core/apply(/|$)',
+          '^packages/core/src/service/',
+          '^@restro/core/service(/|$)',
           '^packages/assets/',
           '^@restro/assets(/|$)',
           '^apps/web/src/server/',

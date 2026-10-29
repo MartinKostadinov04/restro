@@ -22,11 +22,15 @@
     "@restro/barsy": "workspace:*",
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
+    "@restro/sim-pos": "workspace:*",
+    "@restro/sim-pay": "workspace:*",
+    "@restro/stripe": "workspace:*",
     "drizzle-orm": "0.45.3",
     "pg": "8.23.0",
     "pg-boss": "12.35.1",
     "pino": "10.4.0",
     "sharp": "0.35.4",
+    "web-push": "3.6.7",
     "zod": "4.6.5"
   }
 }

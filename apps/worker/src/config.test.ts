@@ -4,6 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig, requireSealKeys } from './config'
 
 const URL = 'postgres://restro_app:s3cret-pw@localhost:54329/restro'
+/** What the alerts' settings are when none is set (#83). */
+const NO_ALERTS = { telegramToken: null, teamChatId: null, healthchecksUrl: null, vapid: null }
+/** A made-up bot token in the shape Telegram's BotFather gives. */
+const BOT_TOKEN = `123456789:${'A'.repeat(35)}`
+/** An obviously fake reveal token, long enough for the 32-character minimum. */
+const REVEAL_TOKEN = `test-reveal-token-${'x'.repeat(24)}`
 
 /** The lines of the error `loadConfig` throws for `env`. */
 function problemsOf(env: Record<string, string | undefined>, defaultWorkerId?: () => string) {
@@ -30,10 +36,17 @@ describe('loadConfig', () => {
       prettyLogs: true,
       seal: null,
       barsy: { env: 'development', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+      sim: { env: 'development', allowHosts: [] },
       // Local files under the repository's .local/assets unless told otherwise.
       assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
       // And the publish store under .local/cdn.
       publish: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]cdn$/) },
+      revealToken: null,
+      billIdKey: null,
+      posSync: true,
+      send: true,
+      alerts: NO_ALERTS,
+      receiptEmail: null,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -54,6 +67,11 @@ describe('loadConfig', () => {
         BARSY_ENV: ' Staging ',
         BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
+        SIM_POS_ALLOWED_HOSTS: 'Demo.Restro.test, sim.staging.example',
+        REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
+        BILL_ID_KEY: ` ${'k'.repeat(40)} `,
+        WORKER_POS_SYNC: ' OFF ',
+        WORKER_SEND: ' On ',
       }),
     ).toEqual({
       databaseUrl: URL,
@@ -68,9 +86,119 @@ describe('loadConfig', () => {
         allowedHostSuffixes: ['.barsyonline.com', '.barsy.test'],
         productionHosts: ['club.barsyonline.com', 'other.barsyonline.com'],
       },
+      // NODE_ENV is production here, so the simulated POS is refused whatever BARSY_ENV says.
+      sim: { env: 'production', allowHosts: ['demo.restro.test', 'sim.staging.example'] },
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
       publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
+      revealToken: REVEAL_TOKEN,
+      billIdKey: 'k'.repeat(40),
+      posSync: false,
+      send: true,
+      alerts: NO_ALERTS,
+      receiptEmail: null,
     })
+    // Unset, the Send follows the sync.
+    expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
+  })
+
+  it('reads the alerts’ settings (#83) and keeps the secrets out of the errors', () => {
+    const vapid = {
+      VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`,
+      VAPID_PRIVATE_KEY: 'q'.repeat(43),
+      VAPID_SUBJECT: 'mailto:ops@restro.example',
+    }
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        TELEGRAM_BOT_TOKEN: ` ${BOT_TOKEN} `,
+        TELEGRAM_TEAM_CHAT_ID: ' -1001234567890 ',
+        HEALTHCHECKS_PING_URL: ' https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee ',
+        ...vapid,
+      }).alerts,
+    ).toEqual({
+      telegramToken: BOT_TOKEN,
+      teamChatId: '-1001234567890',
+      healthchecksUrl: 'https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      vapid: {
+        publicKey: vapid.VAPID_PUBLIC_KEY,
+        privateKey: vapid.VAPID_PRIVATE_KEY,
+        subject: vapid.VAPID_SUBJECT,
+      },
+    })
+
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      TELEGRAM_BOT_TOKEN: 'not-a-token-s3cret',
+      TELEGRAM_TEAM_CHAT_ID: 'my-chat',
+      HEALTHCHECKS_PING_URL: 'http://hc-ping.com/plain',
+      VAPID_PUBLIC_KEY: vapid.VAPID_PUBLIC_KEY,
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'TELEGRAM_BOT_TOKEN',
+      'TELEGRAM_TEAM_CHAT_ID',
+      'HEALTHCHECKS_PING_URL',
+      'VAPID_PRIVATE_KEY',
+      'VAPID_SUBJECT',
+    ])
+    expect(lines.join('\n')).not.toMatch(/s3cret|my-chat|plain/)
+  })
+
+  it('reads the receipt email settings (#186): the address switches it on and needs the key, the key alone does not', () => {
+    const key = `re_${'k'.repeat(30)}`
+    const from = 'receipts@mail.restro.example'
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        RESEND_API_KEY: ` ${key} `,
+        RECEIPT_FROM_ADDRESS: ` ${from} `,
+      }).receiptEmail,
+    ).toEqual({ apiKey: key, fromAddress: from })
+    const names = (env: Record<string, string>) =>
+      problemsOf({ DATABASE_URL: URL, ...env }).map((line) => line.split(' ')[0])
+    // The key alone is the stack's email key for other mail: receipts stay off.
+    expect(loadConfig({ DATABASE_URL: URL, RESEND_API_KEY: key }).receiptEmail).toBeNull()
+    expect(names({ RECEIPT_FROM_ADDRESS: from })).toEqual(['RESEND_API_KEY'])
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      RESEND_API_KEY: 'sk-s3cret-not-a-resend-key',
+      RECEIPT_FROM_ADDRESS: 'not-an-address-s3cret',
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'RESEND_API_KEY',
+      'RECEIPT_FROM_ADDRESS',
+    ])
+    expect(lines.join('\n')).not.toMatch(/s3cret/)
+  })
+
+  it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {
+    const stores = {
+      ASSET_STORE: 'local',
+      LOCAL_ASSET_DIR: '/data/assets',
+      PUBLISH_STORE: 'local',
+      LOCAL_PUBLISH_DIR: '/data/cdn',
+    }
+    expect(loadConfig({ DATABASE_URL: URL, NODE_ENV: 'production', ...stores }).sim.env).toBe(
+      'production',
+    )
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'production' }).sim.env).toBe('production')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'staging' }).sim.env).toBe('staging')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'test' }).sim.env).toBe('test')
+    expect(loadConfig({ DATABASE_URL: URL }).sim).toEqual({ env: 'development', allowHosts: [] })
+  })
+
+  it('refuses a short reveal token or bill-id key and an unknown WORKER_POS_SYNC, without repeating them', () => {
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      REVEAL_SERVICE_TOKEN: 'short-token',
+      BILL_ID_KEY: 'short-key',
+      WORKER_POS_SYNC: 'sometimes',
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'REVEAL_SERVICE_TOKEN',
+      'BILL_ID_KEY',
+      'WORKER_POS_SYNC',
+    ])
+    expect(lines.join('\n')).not.toMatch(/short-token|short-key|sometimes/)
   })
 
   it('refuses unusable barsy and asset settings by name, without repeating the values', () => {

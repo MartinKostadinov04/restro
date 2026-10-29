@@ -38,6 +38,65 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The worker's reveal endpoint on the private network (#70), e.g.
+   * `http://worker.railway.internal:8081` (`http://localhost:8081` locally): the Tables screen asks
+   * it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
+   * counts as missing.
+   */
+  WORKER_REVEAL_URL: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    })
+    .pipe(z.url({ protocol: /^https?$/ }).optional()),
+  /**
+   * The PIN pepper (#72, D122 §7): the key of `HMAC(pepper, tenant ‖ pin)`, by which a shared
+   * device finds the person a PIN names. Web app only, 32 characters or more (checked where it is
+   * used, so a bad value never takes the whole app down). Without it no PIN is made or checked.
+   * Empty counts as missing. A new pepper makes every PIN unknown: each needs "New PIN".
+   */
+  STAFF_PIN_PEPPER: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
+   * The key that seals the guests' location passes (#76, D121): HMAC-SHA256, web app only, 32
+   * characters or more (checked where it is used). Without it no pass is issued, so a venue that
+   * checks location takes no additions from phones. A new key ends every pass: phones locate
+   * again. Empty counts as missing.
+   */
+  GUEST_PASS_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /**
+   * Turnstile's secret key (#76, D119): siteverify at an on-the-bill Send and at a Pay (#110).
+   * Without it every Send and Pay fails the check (fail closed). Empty counts as missing.
+   */
+  TURNSTILE_SECRET_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
+  /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
+  REVEAL_SERVICE_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
 })
 
 /** The settings the server needs. */

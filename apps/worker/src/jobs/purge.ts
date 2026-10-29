@@ -4,7 +4,8 @@
 //   purge-venue   a deleted venue, now ("Delete permanently"): its own rows go (areas, tables,
 //                 routes, menus with their sections, the items only its menus placed, its values
 //                 and change log, tags, versions, address names, the venue row), its public code
-//                 and table tokens are tombstoned (never reissued), its files are taken off the
+//                 and table codes are tombstoned (never reissued; a code by its hash since #70),
+//                 its files are taken off the
 //                 CDN and the organisation's index written again. Items the till or another
 //                 venue still uses stay.
 //   purge-tick    daily: what is due in every organisation: venues 30 days in the bin, binned
@@ -12,7 +13,14 @@
 //                 links, the items that came only from them and no menu places, their sections
 //                 that sit in no menu any more),
 //                 deleted areas and tables, versions past the rule in ../../core's
-//                 `versionsToPurge`, the change log past two months.
+//                 `versionsToPurge`, the change log past two months, and the service rows past
+//                 their retention (#84, D111, D122 §7: `purgeService`), the payments 18 months
+//                 after they settled among them (#112), and the provider's notices 18 months
+//                 after they arrived (#166: `purgeProviderNotices`, outside any organisation).
+//
+// A venue's payments are money records kept 18 months (D122 §9): a deleted venue is purged only
+// once every payment of it is due (#112, with D83), so its purge waits (`payments_kept`) while one
+// is not settled, waits for a manager's answer, has an open dispute, or is inside its 18 months.
 //
 // Every purge is one transaction on the purge role, scoped to the tenant (row-level security
 // applies to that role as to the app's), and ends with a content-free `purge_log` row. The files
@@ -48,10 +56,18 @@ import {
   type VersionRow,
   versionsToPurge,
 } from '@restro/core'
-import { venueServesTill } from '@restro/core/apply'
+import { codeFileNames, venueServesTill } from '@restro/core/apply'
+import {
+  ALERT_RULES,
+  monthsBefore,
+  NIGHT_RETENTION_DAYS,
+  RECORD_RETENTION_MONTHS,
+  serviceRetentionCutoffs,
+} from '@restro/core/service'
 import {
   areas,
   authOrganization,
+  billReadings,
   createPool,
   type DbPool,
   events,
@@ -77,8 +93,8 @@ import {
   withSystem,
   withTenant,
 } from '@restro/db'
-import { type PurgeTx, withTenantPurge } from '@restro/db/purge'
-import { and, eq, inArray, isNotNull, isNull, lt, lte, notExists, sql } from 'drizzle-orm'
+import { type PurgeTx, withSystemPurge, withTenantPurge } from '@restro/db/purge'
+import { and, eq, inArray, isNotNull, isNull, lt, lte, notExists, type SQL, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
@@ -264,10 +280,105 @@ async function tombstone(
     .onConflictDoNothing()
 }
 
+/**
+ * Deletes the rows of `table` (a constant name of this file, never input) matching `where`;
+ * answers one entry per row deleted.
+ */
+async function deleteRows(tx: PurgeTx, table: string, where: SQL): Promise<readonly unknown[]> {
+  const result = await tx.execute(
+    sql`delete from restro.${sql.raw(table)} where ${where} returning 1 as gone`,
+  )
+  return result.rows
+}
+
+/**
+ * Every service row of a venue (#84, D83: a venue purge erases all of them), children before the
+ * rows they name: the paying, the night's rows, the Log, the readings and locks, sent orders,
+ * sittings, the closed days, the venue's roles, assignments and shared devices. The organisation's
+ * staff members are not the venue's and stay (the staff step lets them go).
+ */
+const VENUE_SERVICE_TABLES = [
+  'payment_refunds',
+  'payment_steps',
+  'payment_lines',
+  'payments',
+  'payment_accounts',
+  'sent_order_notes',
+  'table_orders',
+  'waiter_calls',
+  'alerts',
+  'pauses',
+  'log_entries',
+  'bill_readings',
+  'locks',
+  // One statement for all of them: a duplicate's `duplicate_of` is checked at its end.
+  'sent_orders',
+  'sittings',
+  'service_days',
+  'staff_assignments',
+  'venue_roles',
+  'shared_devices',
+] as const
+
+/**
+ * A payment past its retention (#112): settled 18 months ago (`retain_until`), and neither waiting
+ * for a manager's answer nor disputed and still open. Its lines and steps go with it.
+ */
+function paymentDue(now: SQL | Date): SQL {
+  return sql`settled_at is not null and retain_until is not null and retain_until <= ${now}
+    and state <> 'unconfirmed' and (dispute is null or dispute <> 'open')`
+}
+
+/** True while a payment of the venue is not due: the venue's purge waits for it. */
+async function venueKeepsPayments(tx: PurgeTx, venueId: string): Promise<boolean> {
+  const kept = await tx.execute(
+    sql`select 1 from restro.payments
+         where venue_id = ${venueId} and not (${paymentDue(sql`now()`)}) limit 1`,
+  )
+  return kept.rows.length > 0
+}
+
+/** Erases the venue's payments past their retention, children first; nothing younger. */
+async function deleteDuePayments(
+  tx: PurgeTx,
+  venueId: string,
+  now: SQL | Date,
+  counts: Counts,
+): Promise<void> {
+  const due = sql`payment_id in (select id from restro.payments
+                                  where venue_id = ${venueId} and ${paymentDue(now)})`
+  // A payment that never freed its payment table gives its lease up with it (#112, R9): nothing
+  // else would free a lease whose holder is gone.
+  count(
+    counts,
+    'locks',
+    await deleteRows(
+      tx,
+      'locks',
+      sql`venue_id = ${venueId} and scope = 'payment_table' and holder in
+            (select id from restro.payments where venue_id = ${venueId} and ${paymentDue(now)})`,
+    ),
+  )
+  count(counts, 'payment_refunds', await deleteRows(tx, 'payment_refunds', due))
+  count(counts, 'payment_steps', await deleteRows(tx, 'payment_steps', due))
+  count(counts, 'payment_lines', await deleteRows(tx, 'payment_lines', due))
+  count(
+    counts,
+    'payments',
+    await deleteRows(tx, 'payments', sql`venue_id = ${venueId} and ${paymentDue(now)}`),
+  )
+}
+
+async function deleteVenueService(tx: PurgeTx, venueId: string, counts: Counts): Promise<void> {
+  for (const table of VENUE_SERVICE_TABLES) {
+    count(counts, table, await deleteRows(tx, table, sql`venue_id = ${venueId}`))
+  }
+}
+
 async function logPurge(
   tx: PurgeTx,
   tenantId: string,
-  kind: 'venue' | 'menu' | 'instance' | 'versions' | 'tables',
+  kind: 'venue' | 'menu' | 'instance' | 'versions' | 'tables' | 'service',
   subjectId: string,
   counts: Counts,
 ): Promise<void> {
@@ -280,10 +391,12 @@ export type PurgeVenueResult =
   | { readonly status: 'not_deleted' }
   /** The venue still serves a till venue: the link is released by a deletion; nothing is erased. */
   | { readonly status: 'still_linked' }
+  /** A payment of the venue is still kept (#112): the purge waits for it; nothing is erased. */
+  | { readonly status: 'payments_kept' }
   | {
       readonly status: 'purged'
       readonly counts: Counts
-      /** What was tombstoned. */
+      /** The table codes tombstoned, by their hashes. */
       readonly tokens: readonly string[]
       readonly publicId: string
       /** Files taken off the publish store. */
@@ -301,14 +414,14 @@ export async function purgeVenue(
     if (venue === undefined) return { status: 'missing' } as const
     if (venue.archivedAt === null) return { status: 'not_deleted' } as const
     if (await venueServesTill(tx, venueId)) return { status: 'still_linked' } as const
+    if (await venueKeepsPayments(tx, venueId)) return { status: 'payments_kept' } as const
 
     const counts: Counts = {}
-    const tokens = (
-      await tx
-        .select({ token: venueTables.qrToken })
-        .from(venueTables)
-        .where(and(eq(venueTables.venueId, venueId), isNotNull(venueTables.qrToken)))
-    ).flatMap((row) => (row.token === null ? [] : [row.token]))
+    const codes = await tx
+      .select({ qrToken: venueTables.qrToken, qrCodeHash: venueTables.qrCodeHash })
+      .from(venueTables)
+      .where(and(eq(venueTables.venueId, venueId), isNotNull(venueTables.qrCodeHash)))
+    const tokens = codes.flatMap((row) => (row.qrCodeHash === null ? [] : [row.qrCodeHash]))
     const menuRows = await tx
       .select({ id: menus.id, rootNodeId: menus.rootNodeId })
       .from(menus)
@@ -317,6 +430,7 @@ export async function purgeVenue(
       await tx.select({ id: snapshots.id }).from(snapshots).where(eq(snapshots.venueId, venueId))
     ).map((row) => row.id)
 
+    await deleteVenueService(tx, venueId, counts)
     count(
       counts,
       'menu_routes',
@@ -333,6 +447,8 @@ export async function purgeVenue(
         .where(eq(venueTables.venueId, venueId))
         .returning({ id: venueTables.id }),
     )
+    // After the tables, which name their bar.
+    count(counts, 'bars', await deleteRows(tx, 'bars', sql`venue_id = ${venueId}`))
     count(
       counts,
       'areas',
@@ -397,6 +513,7 @@ export async function purgeVenue(
       status: 'purged',
       counts,
       tokens,
+      codeFiles: codes.flatMap(codeFileNames),
       publicId: venue.publicId,
       menuIds: menuRows.map((menu) => menu.id),
       snapshotIds,
@@ -406,7 +523,7 @@ export async function purgeVenue(
 
   const files = [
     venueIndexPath(erased.publicId),
-    ...erased.tokens.map(tableTokenPath),
+    ...erased.codeFiles.map(tableTokenPath),
     ...erased.menuIds.flatMap((menuId) => [
       currentPath(menuId as NodeId, venueId as VenueId),
       livePath(menuId as NodeId, venueId as VenueId),
@@ -746,13 +863,26 @@ export async function purgeTables(
   const due = cutoff(now, TABLE_BIN_DAYS)
   const gone = await withTenantPurge(deps.purgePool, tenantId, async (tx) => {
     const tableRows = await tx
-      .select({ id: venueTables.id, token: venueTables.qrToken })
+      .select({
+        id: venueTables.id,
+        qrToken: venueTables.qrToken,
+        qrCodeHash: venueTables.qrCodeHash,
+      })
       .from(venueTables)
       .where(
         and(
           eq(venueTables.venueId, venueId),
           isNotNull(venueTables.archivedAt),
           lte(venueTables.archivedAt, due),
+          // A table its kept service rows still name waits for them (#84: 18 months for a
+          // sitting or a sent order); the service step lets them go first.
+          sql`not exists (select 1 from restro.sittings s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.sent_orders s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.table_orders s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.waiter_calls s where s.table_id = ${venueTables.id})`,
+          sql`not exists (select 1 from restro.payments s
+                           where s.table_id = ${venueTables.id}
+                              or s.payment_table_id = ${venueTables.id})`,
         ),
       )
     const areaRows = await tx
@@ -763,9 +893,17 @@ export async function purgeTables(
       )
     const tableIds = tableRows.map((row) => row.id)
     const areaIds = areaRows.map((row) => row.id)
-    if (tableIds.length === 0 && areaIds.length === 0) return { tables: 0, areas: 0, tokens: [] }
+    if (tableIds.length === 0 && areaIds.length === 0) return { tables: 0, areas: 0, files: [] }
     const counts: Counts = {}
     if (tableIds.length > 0) {
+      count(
+        counts,
+        'bill_readings',
+        await tx
+          .delete(billReadings)
+          .where(inArray(billReadings.tableId, tableIds))
+          .returning({ id: billReadings.tableId }),
+      )
       count(
         counts,
         'menu_routes',
@@ -798,12 +936,16 @@ export async function purgeTables(
         await tx.delete(areas).where(inArray(areas.id, areaIds)).returning({ id: areas.id }),
       )
     }
-    const tokens = tableRows.flatMap((row) => (row.token === null ? [] : [row.token]))
-    await tombstone(tx, tenantId, 'table_token', tokens)
+    const hashes = tableRows.flatMap((row) => (row.qrCodeHash === null ? [] : [row.qrCodeHash]))
+    await tombstone(tx, tenantId, 'table_token', hashes)
     await logPurge(tx, tenantId, 'tables', venueId, counts)
-    return { tables: tableIds.length, areas: areaIds.length, tokens }
+    return {
+      tables: tableIds.length,
+      areas: areaIds.length,
+      files: tableRows.flatMap(codeFileNames),
+    }
   })
-  for (const token of gone.tokens) await deps.store.delete(tableTokenPath(token))
+  for (const name of gone.files) await deps.store.delete(tableTokenPath(name))
   return { tables: gone.tables, areas: gone.areas }
 }
 
@@ -816,6 +958,199 @@ export async function purgeChangeLog(
   return withTenantPurge(deps.purgePool, input.tenantId, async (tx) => {
     const rows = await tx.delete(events).where(lt(events.at, before)).returning({ id: events.seq })
     return { events: rows.length }
+  })
+}
+
+/**
+ * Erases the provider's notices received 18 months ago or more (#166; D111, D127, the same
+ * retention as the payments they are about). They belong to no venue, so this runs once per tick
+ * outside any tenant, as `restro_purge`; nothing younger goes. Answers how many it erased.
+ */
+export async function purgeProviderNotices(
+  deps: { readonly purgePool: DbPool },
+  input: { readonly now: Date },
+): Promise<{ notices: number }> {
+  return withSystemPurge(deps.purgePool, async (tx) => {
+    const rows = await deleteRows(
+      tx,
+      'provider_notices',
+      sql`received_at <= ${monthsBefore(input.now, RECORD_RETENTION_MONTHS).toISOString()}::timestamptz`,
+    )
+    return { notices: rows.length }
+  })
+}
+
+/** The alert kinds that end by themselves (`closesItself`): nobody presses Done on them. */
+const SELF_CLOSING_KINDS = Object.entries(ALERT_RULES)
+  .filter(([, rule]) => rule.closesItself)
+  .map(([kind]) => kind)
+
+/** `id in (...)` over `ids`; false for none. */
+function idIn(column: string, ids: readonly string[]): SQL {
+  if (ids.length === 0) return sql`false`
+  return sql`${sql.raw(column)} in (${sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  )})`
+}
+
+/**
+ * The service rows of one organisation past their retention (#84; D111, D122 §7, design §4), in
+ * one transaction, children before the rows they name. Per venue, in its own time zone and
+ * service day (`serviceRetentionCutoffs`: a day is due only once it ended that long ago):
+ *
+ *   - after 31 days: the notes, the waiter calls, the alerts (but an open one of a kind that ends
+ *     by itself, a pause's, stays while it is open), the lifted pauses (an active pause is never
+ *     erased: it makes the menu more cautious, rule 5), the table orders of ended sittings, and
+ *     the `night` Log entries;
+ *   - after 18 months: the `record` Log entries;
+ *   - at their `retain_until` (18 months after their day ended, set by `service_day.close`): the
+ *     sent orders no payment and no kept duplicate names, then the ended sittings nothing names
+ *     any more. A row without `retain_until` is never due.
+ *   - at their `retain_until` (18 months after they settled, #112): the payments with their lines
+ *     and steps, first, so the sent orders and sittings they name may go in the same run. One
+ *     waiting for a manager's answer or with an open dispute is kept.
+ *
+ * Then the archived staff members past their `retain_until` that no `record` entry names any
+ * more, with their assignments, and the push subscriptions revoked 31 days ago (by the account or
+ * by the push service's 404/410; #83). An alert's delivery state is in its `details` and goes with
+ * it. `service_days` keeps the totals. A run that erases anything
+ * writes one content-free `purge_log` row of kind `service` with the counts.
+ */
+export async function purgeService(
+  deps: { readonly purgePool: DbPool },
+  input: { readonly tenantId: string; readonly now: Date },
+): Promise<{ counts: Counts }> {
+  const { tenantId, now } = input
+  return withTenantPurge(deps.purgePool, tenantId, async (tx) => {
+    const counts: Counts = {}
+    const venueRows = await tx
+      .select({ id: venues.id, timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
+      .from(venues)
+    for (const venue of venueRows) {
+      const { night, record } = serviceRetentionCutoffs(now, venue.timezone, venue.dayEndsAt)
+      const ofVenue = sql`venue_id = ${venue.id}`
+      await deleteDuePayments(tx, venue.id, now, counts)
+      // The sent orders due: past their date, named by no payment, and not the original of a
+      // kept duplicate (the kept rows are closed over `duplicate_of`).
+      const dueSent = await tx.execute<{ id: string }>(sql`
+        with recursive kept(id) as (
+          select o.id from restro.sent_orders o
+           where o.venue_id = ${venue.id}
+             and (o.retain_until is null or o.retain_until > ${now}
+                  or exists (select 1 from restro.payments p where p.sent_order_id = o.id))
+          union
+          select s.duplicate_of from restro.sent_orders s join kept on s.id = kept.id
+           where s.duplicate_of is not null
+        )
+        select o.id from restro.sent_orders o
+         where o.venue_id = ${venue.id}
+           and not exists (select 1 from kept where kept.id = o.id)`)
+      const sentIds = dueSent.rows.map((row) => row.id)
+      count(
+        counts,
+        'sent_order_notes',
+        await deleteRows(
+          tx,
+          'sent_order_notes',
+          sql`${ofVenue} and (service_date < ${night} or ${idIn('sent_order_id', sentIds)})`,
+        ),
+      )
+      count(
+        counts,
+        'table_orders',
+        await deleteRows(
+          tx,
+          'table_orders',
+          sql`${ofVenue} and sitting_id in (select id from restro.sittings
+                                             where venue_id = ${venue.id} and ended_at is not null
+                                               and service_date < ${night})`,
+        ),
+      )
+      count(
+        counts,
+        'waiter_calls',
+        await deleteRows(tx, 'waiter_calls', sql`${ofVenue} and service_date < ${night}`),
+      )
+      // An open alert that ends by itself (a pause's) stays while it is open: erased under a pause
+      // still on, it would be raised again as new and told to everyone a second time.
+      count(
+        counts,
+        'alerts',
+        await deleteRows(
+          tx,
+          'alerts',
+          sql`${ofVenue} and service_date < ${night}
+              and (done_at is not null or not (${idIn('kind', SELF_CLOSING_KINDS)}))`,
+        ),
+      )
+      count(
+        counts,
+        'pauses',
+        await deleteRows(
+          tx,
+          'pauses',
+          sql`${ofVenue} and service_date < ${night} and lifted_at is not null`,
+        ),
+      )
+      count(
+        counts,
+        'log_entries',
+        await deleteRows(
+          tx,
+          'log_entries',
+          sql`${ofVenue} and ((retention = 'night' and service_date < ${night})
+                           or (retention = 'record' and service_date < ${record}))`,
+        ),
+      )
+      count(counts, 'sent_orders', await deleteRows(tx, 'sent_orders', idIn('id', sentIds)))
+      count(
+        counts,
+        'sittings',
+        await deleteRows(
+          tx,
+          'sittings',
+          sql`${ofVenue} and ended_at is not null and retain_until is not null
+              and retain_until <= ${now}
+              and not exists (select 1 from restro.sent_orders s where s.sitting_id = sittings.id)
+              and not exists (select 1 from restro.table_orders s where s.sitting_id = sittings.id)
+              and not exists (select 1 from restro.waiter_calls s where s.sitting_id = sittings.id)
+              and not exists (select 1 from restro.payments s where s.sitting_id = sittings.id)`,
+        ),
+      )
+    }
+    // Archived staff members, once no record entry names them (as its actor or in its details).
+    const archivedAndFree = sql`archived_at is not null and retain_until is not null
+      and retain_until <= ${now}
+      and not exists (select 1 from restro.log_entries l
+                       where l.retention = 'record'
+                         and (l.actor = 'staff:' || staff_members.id
+                              or l.details ->> 'staffMemberId' = staff_members.id))`
+    count(
+      counts,
+      'staff_assignments',
+      await deleteRows(
+        tx,
+        'staff_assignments',
+        sql`staff_member_id in (select id from restro.staff_members where ${archivedAndFree})`,
+      ),
+    )
+    count(counts, 'staff_members', await deleteRows(tx, 'staff_members', archivedAndFree))
+    count(
+      counts,
+      'push_subscriptions',
+      await deleteRows(
+        tx,
+        'push_subscriptions',
+        // 31 days of 24 hours, as the night cutoff counts them (never the session's calendar days).
+        sql`revoked_at is not null
+            and revoked_at <= ${new Date(now.getTime() - NIGHT_RETENTION_DAYS * 86_400_000)}`,
+      ),
+    )
+    if (Object.values(counts).some((rows) => rows > 0)) {
+      await logPurge(tx, tenantId, 'service', tenantId, counts)
+    }
+    return { counts }
   })
 }
 
@@ -931,6 +1266,14 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
       )
       const purgePool = openPurgePool()
       try {
+        // Platform-level, no organisation: its own step, so a failure here never stops the
+        // organisations' runs.
+        try {
+          const { notices } = await purgeProviderNotices({ purgePool }, { now })
+          if (notices > 0) context.log.info({ notices }, 'purge: provider notices erased')
+        } catch (error) {
+          context.log.warn({ err: error }, 'purge: provider notices failed')
+        }
         for (const { id: tenantId } of organizations) {
           await trackedRun(
             { pool: context.pool, log: context.log, now: context.now },
@@ -945,6 +1288,7 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
                 tables: 0,
                 areas: 0,
                 events: 0,
+                service: 0,
               }
               const scoped = { purgePool, pool: context.pool, store: deps.publishStore }
               for (const venue of due.binnedVenues) {
@@ -979,6 +1323,8 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
                 counters.areas = (counters.areas ?? 0) + result.areas
               }
               counters.events = (await purgeChangeLog(scoped, { tenantId, now })).events
+              const service = await purgeService(scoped, { tenantId, now })
+              counters.service = Object.values(service.counts).reduce((sum, rows) => sum + rows, 0)
               return { counters, notes: ['the daily purge ran'] }
             },
           )

@@ -1,8 +1,9 @@
 // The manifest of the QR phone face (doc "The face contract"). It is validated when the module
 // loads: a face that breaks R6, R7 or R9 cannot even be imported, let alone installed.
 //
-// Stage 3 draws and does not order (D38), so `ordering` is false; the controls of R11 arrive with
-// the ordering stage.
+// It draws the table's shared order (#75) with the minimum controls the Playwright specs need: an
+// "Add" on each orderable item and the order panel (`menu.bag`), with Send and the sent orders'
+// states (#77).
 
 import { type FaceManifest, validateManifest } from '@restro/shell'
 
@@ -30,11 +31,12 @@ const CANDIDATE = {
   allergen_mode: 'inline_codes',
   // An item without a photo is a text card: no placeholder picture (R8, R10).
   no_image_layout: 'text_only',
-  ordering: false,
+  ordering: true,
   // The phone scrolls.
   paging: null,
-  // The guest controls this face draws (R15): the filter chips. It has no options of its own.
-  features: ['filters'],
+  // The guest controls this face draws (R15): the filter chips and the shared order. It has no
+  // options of its own.
+  features: ['filters', 'ordering'],
   tokens: [
     'color.background',
     'color.surface',

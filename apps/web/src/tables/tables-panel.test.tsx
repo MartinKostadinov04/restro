@@ -15,12 +15,14 @@ import {
   moveTableAction,
   renameAreaAction,
   renameTableAction,
+  revealCodesAction,
   setAreaHiddenAction,
   setMenuRouteAction,
   setTableHiddenAction,
   setTableNumberAction,
   turnOffCodeAction,
 } from '@/server/tables/actions'
+import type { TablesView } from '@/server/tables/view'
 import { renderWithIntl } from '@/test-utils'
 
 import { TablesPanel } from './tables-panel'
@@ -42,6 +44,7 @@ vi.mock('@/server/tables/actions', () => ({
   moveTableAction: vi.fn(),
   deleteTableAction: vi.fn(),
   setMenuRouteAction: vi.fn(),
+  revealCodesAction: vi.fn(),
 }))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() },
@@ -103,6 +106,8 @@ beforeEach(() => {
   vi.mocked(toast.error).mockReset()
   vi.mocked(toast.warning).mockReset()
   vi.mocked(toast.message).mockReset()
+  vi.mocked(revealCodesAction).mockReset()
+  vi.mocked(revealCodesAction).mockResolvedValue({ ok: true, codes: [] })
 })
 
 describe('the Tables & QR tab', () => {
@@ -195,6 +200,46 @@ describe('the Tables & QR tab', () => {
     expect(png.getAttribute('href')).toBe(`/api/tables/${CODED}/qr?format=png`)
     expect(svg.getAttribute('href')).toBe(`/api/tables/${CODED}/qr?format=svg`)
     expect(png.hasAttribute('download')).toBe(true)
+  })
+
+  it('asks the worker for its codes once the page is up, and not again when an action refreshes it', async () => {
+    const base = view()
+    /** The tab as the server draws it (#70): table 2's code named by `key`, not yet revealed. */
+    const drawnBy = (key: string): TablesView => ({
+      ...base,
+      sample: null,
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.id === CODED ? { ...row, codeKey: key, address: null, qrSvg: null } : row,
+        ),
+      })),
+    })
+    const address = `http://localhost:3000/t/${TOKEN_A}`
+    vi.mocked(revealCodesAction).mockResolvedValue({
+      ok: true,
+      codes: [{ id: CODED, codeKey: 'key-a', token: TOKEN_A, address, qrSvg: SVG }],
+    })
+    const { rerender } = renderWithIntl(<TablesPanel view={drawnBy('key-a')} />)
+    expect(within(cardOf(CODED)).queryByTestId('qr-thumb')).toBeNull()
+    await waitFor(() => expect(within(cardOf(CODED)).getByTestId('qr-thumb')).toBeTruthy())
+    expect(revealCodesAction).toHaveBeenCalledTimes(1)
+    expect(revealCodesAction).toHaveBeenCalledWith({ venueId: VENUE_ID, tableIds: [CODED] })
+    expect(screen.getByTestId('open-test-link').getAttribute('href')).toBe(address)
+
+    // An action's refresh brings the same codes: nothing is asked again, the picture stays.
+    rerender(<TablesPanel view={drawnBy('key-a')} />)
+    expect(within(cardOf(CODED)).getByTestId('qr-thumb')).toBeTruthy()
+    expect(revealCodesAction).toHaveBeenCalledTimes(1)
+
+    // A new code is asked for on its own; one the worker does not give draws none, once.
+    vi.mocked(revealCodesAction).mockResolvedValue({ ok: false, error: 'failed' })
+    rerender(<TablesPanel view={drawnBy('key-b')} />)
+    await waitFor(() => expect(revealCodesAction).toHaveBeenCalledTimes(2))
+    expect(revealCodesAction).toHaveBeenLastCalledWith({ venueId: VENUE_ID, tableIds: [CODED] })
+    expect(within(cardOf(CODED)).queryByTestId('qr-thumb')).toBeNull()
+    rerender(<TablesPanel view={drawnBy('key-b')} />)
+    expect(revealCodesAction).toHaveBeenCalledTimes(2)
   })
 
   it('creates codes for all tables and says how many, and what was left out', async () => {

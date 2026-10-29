@@ -17,6 +17,7 @@ import {
 import { BARSY_ENVS, type BarsyEnv, parseAllowedHosts } from '@restro/barsy'
 import { parseSealPublicKey } from '@restro/core/seal'
 import { isSealKeyPair, parseSealPrivateKey } from '@restro/core/seal-open'
+import type { SimEnv } from '@restro/sim-pos'
 import { z } from 'zod'
 
 /** Port of the health endpoint when WORKER_HEALTH_PORT is not set. */
@@ -52,10 +53,77 @@ export interface WorkerConfig {
   readonly seal: SealKeys | null
   /** Which barsy installations this process may talk to (CLAUDE.md rule 9). */
   readonly barsy: BarsyPolicy
+  /** Which simulated POS hosts this process may talk to, and whether it may at all (#71). */
+  readonly sim: SimPolicy
   /** Where barsy photos are stored: the same store the web app reads (`@restro/assets`). */
   readonly assets: AssetStoreConfig
   /** Where published menus and photo variants go: the store the `/cdn` route (later the CDN) serves. */
   readonly publish: PublishStoreConfig
+  /**
+   * The bearer token the web app's server presents to the reveal endpoint (REVEAL_SERVICE_TOKEN,
+   * #70), or null: the endpoint is then off. Needs the seal keys too.
+   */
+  readonly revealToken: string | null
+  /**
+   * The key of a reading's bill and line ids (BILL_ID_KEY, #74), or null: the table readings are
+   * then not registered.
+   */
+  readonly billIdKey: string | null
+  /**
+   * False (WORKER_POS_SYNC=off): no POS sync job is registered even with the seal keys set. For
+   * a worker that holds the keys only to seal and reveal table codes (the end-to-end tests).
+   */
+  readonly posSync: boolean
+  /**
+   * True: the Send jobs run (`order-send` and its sweep, #77), which add rounds to a POS as a
+   * waiter would (rule 7). WORKER_SEND, on or off; unset follows WORKER_POS_SYNC. The end-to-end
+   * tests turn it on with the sync off, against the simulated POS only.
+   */
+  readonly send: boolean
+  /**
+   * How alerts reach people (#83). Always set by {@link loadConfig}; optional in the type so a
+   * test's hand-written configuration need not name it. Never logged: it holds secrets.
+   */
+  readonly alerts?: AlertsConfig
+  /**
+   * The email service the venue's electronic receipt goes through (#186), or null: no receipt file
+   * is emailed. RECEIPT_FROM_ADDRESS switches receipt emails on; RESEND_API_KEY is the stack's one
+   * email key (it will serve login links and the digest too) and is needed only when that is set.
+   * Never logged: a secret.
+   */
+  readonly receiptEmail?: ReceiptEmailConfig | null
+}
+
+/** Where a receipt file is emailed from (#186; D127). */
+export interface ReceiptEmailConfig {
+  /** The email service's API key. A secret. */
+  readonly apiKey: string
+  /** An address on the sending domain verified with the service; the venue's name is its display name. */
+  readonly fromAddress: string
+}
+
+/**
+ * Where alerts go (#83; D120, D122 §7). Every part is optional: without the bot token nothing is
+ * sent to Telegram and no Done is heard; without the VAPID keys nothing is pushed; without the
+ * Healthchecks address Restro pings no watchdog.
+ */
+export interface AlertsConfig {
+  /** The bot's token (TELEGRAM_BOT_TOKEN). A secret: never logged, never in a URL we log. */
+  readonly telegramToken: string | null
+  /** The Restro team's own chat (TELEGRAM_TEAM_CHAT_ID), negative for a group. */
+  readonly teamChatId: string | null
+  /** The address Restro pings every minute (HEALTHCHECKS_PING_URL); the watchdog is outside. */
+  readonly healthchecksUrl: string | null
+  /** The Web Push identity of this Restro (VAPID_*), or null: nothing is pushed. */
+  readonly vapid: VapidKeys | null
+}
+
+/** The Web Push application server keys (RFC 8292). */
+export interface VapidKeys {
+  readonly publicKey: string
+  readonly privateKey: string
+  /** A `mailto:` or `https:` address the push services can reach us at. */
+  readonly subject: string
 }
 
 /**
@@ -69,6 +137,19 @@ export interface BarsyPolicy {
   readonly allowedHostSuffixes: readonly string[]
   /** Hosts of live venues: every environment except `production` refuses them. */
   readonly productionHosts: readonly string[]
+}
+
+/**
+ * The simulated POS's rules in this environment (#71; test-POS design §7 risk 3). `env` is
+ * `production` when NODE_ENV or the deployment's environment label says so (the same label the host
+ * rules above use), and then the worker refuses every `sim`
+ * instance: nothing real is ever pointed at a simulator, and no simulator at production. Outside
+ * production only a local host (localhost, 127.0.0.1, ::1, *.localhost, *.test) and the hosts
+ * listed in SIM_POS_ALLOWED_HOSTS (a staging demo's own host) are accepted.
+ */
+export interface SimPolicy {
+  readonly env: SimEnv
+  readonly allowHosts: readonly string[]
 }
 
 /** Default of BARSY_ALLOWED_HOST_SUFFIXES. */
@@ -120,6 +201,23 @@ const BAD_HOST_SUFFIXES =
   'must be a comma-separated list of host suffixes that start with a dot, e.g. .barsyonline.com.'
 const BAD_PRODUCTION_HOSTS =
   'must be a comma-separated list of bare host names (no scheme, port or path).'
+const BAD_REVEAL_TOKEN =
+  'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
+const BAD_BILL_ID_KEY =
+  'must be 32 to 256 characters without spaces (generate one with: openssl rand -base64 32).'
+const BAD_POS_SYNC = 'must be on or off.'
+const BAD_TELEGRAM_TOKEN = 'must be the bot token BotFather gave (digits, a colon, then letters).'
+const BAD_TELEGRAM_CHAT = 'must be a Telegram chat id: digits, with a minus sign for a group.'
+const BAD_HEALTHCHECKS_URL = 'must be an https:// address.'
+const BAD_RESEND_KEY = 'must be a Resend API key (it starts with re_).'
+const BAD_RECEIPT_FROM = 'must be one email address on the sending domain verified with Resend.'
+const RESEND_KEY_MISSING = 'is not set. Receipt emails (RECEIPT_FROM_ADDRESS) need it.'
+const BAD_VAPID_PUBLIC_KEY =
+  'must be a base64url public key (pnpm exec web-push generate-vapid-keys).'
+const BAD_VAPID_PRIVATE_KEY = 'must be a base64url private key. It goes with VAPID_PUBLIC_KEY.'
+const VAPID_PRIVATE_KEY_MISSING = 'is not set. It goes with VAPID_PUBLIC_KEY.'
+const VAPID_PUBLIC_KEY_MISSING = 'is not set. It goes with VAPID_PRIVATE_KEY.'
+const BAD_VAPID_SUBJECT = 'must be a mailto: or https: address. It goes with the VAPID keys.'
 
 const HOST_SUFFIX = /^\.[a-z0-9-]+(?:\.[a-z0-9-]+)+$/
 
@@ -205,6 +303,7 @@ function environmentSchema(defaultWorkerId: () => string) {
       ),
       BARSY_ALLOWED_HOST_SUFFIXES: z.preprocess(commaList, z.array(z.string()).optional()),
       BARSY_PRODUCTION_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
+      SIM_POS_ALLOWED_HOSTS: z.preprocess(commaList, z.array(z.string()).optional()),
       // Passed on to @restro/assets (assetStoreConfig), which names the problems itself.
       ASSET_STORE: z.string().optional(),
       LOCAL_ASSET_DIR: z.string().optional(),
@@ -219,6 +318,105 @@ function environmentSchema(defaultWorkerId: () => string) {
       R2_PUBLIC_BUCKET: z.string().optional(),
       SEAL_PUBLIC_KEY: sealKeySchema(parseSealPublicKey, BAD_SEAL_PUBLIC_KEY),
       SEAL_PRIVATE_KEY: sealKeySchema(parseSealPrivateKey, BAD_SEAL_PRIVATE_KEY),
+      REVEAL_SERVICE_TOKEN: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^\S{32,256}$/, { error: BAD_REVEAL_TOKEN })
+          .optional(),
+      ),
+      BILL_ID_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^\S{32,256}$/, { error: BAD_BILL_ID_KEY })
+          .optional(),
+      ),
+      WORKER_POS_SYNC: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .pipe(z.enum(['on', 'off'], { error: BAD_POS_SYNC }))
+          .default('on'),
+      ),
+      TELEGRAM_BOT_TOKEN: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^[0-9]{5,20}:[A-Za-z0-9_-]{30,80}$/, { error: BAD_TELEGRAM_TOKEN })
+          .optional(),
+      ),
+      TELEGRAM_TEAM_CHAT_ID: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^-?[0-9]{1,20}$/, { error: BAD_TELEGRAM_CHAT })
+          .optional(),
+      ),
+      HEALTHCHECKS_PING_URL: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^https:\/\/[^\s]+$/, { error: BAD_HEALTHCHECKS_URL })
+          .optional(),
+      ),
+      VAPID_PUBLIC_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9_-]{60,120}$/, { error: BAD_VAPID_PUBLIC_KEY })
+          .optional(),
+      ),
+      VAPID_PRIVATE_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z0-9_-]{30,80}$/, { error: BAD_VAPID_PRIVATE_KEY })
+          .optional(),
+      ),
+      VAPID_SUBJECT: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/, { error: BAD_VAPID_SUBJECT })
+          .optional(),
+      ),
+      RESEND_API_KEY: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .regex(/^re_[A-Za-z0-9_-]{8,200}$/, { error: BAD_RESEND_KEY })
+          .optional(),
+      ),
+      RECEIPT_FROM_ADDRESS: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .max(254)
+          .pipe(z.email({ error: BAD_RECEIPT_FROM }))
+          .optional(),
+      ),
+      WORKER_SEND: z.preprocess(
+        unsetWhenBlank,
+        z
+          .string()
+          .trim()
+          .toLowerCase()
+          .pipe(z.enum(['on', 'off'], { error: BAD_POS_SYNC }))
+          .optional(),
+      ),
     })
     .superRefine((env, ctx) => {
       const issue = (variable: string, message: string) =>
@@ -232,6 +430,18 @@ function environmentSchema(defaultWorkerId: () => string) {
       }
       if (publicKey !== null && privateKey !== null && !isSealKeyPair(publicKey, privateKey)) {
         issue('SEAL_PRIVATE_KEY', SEAL_KEYS_DO_NOT_MATCH)
+      }
+      if (env.VAPID_PUBLIC_KEY !== undefined && env.VAPID_PRIVATE_KEY === undefined) {
+        issue('VAPID_PRIVATE_KEY', VAPID_PRIVATE_KEY_MISSING)
+      }
+      if (env.VAPID_PUBLIC_KEY === undefined && env.VAPID_PRIVATE_KEY !== undefined) {
+        issue('VAPID_PUBLIC_KEY', VAPID_PUBLIC_KEY_MISSING)
+      }
+      if (env.VAPID_PUBLIC_KEY !== undefined && env.VAPID_SUBJECT === undefined) {
+        issue('VAPID_SUBJECT', BAD_VAPID_SUBJECT)
+      }
+      if (env.RESEND_API_KEY === undefined && env.RECEIPT_FROM_ADDRESS !== undefined) {
+        issue('RESEND_API_KEY', RESEND_KEY_MISSING)
       }
       if (env.BARSY_ALLOWED_HOST_SUFFIXES?.some((suffix) => !HOST_SUFFIX.test(suffix))) {
         issue('BARSY_ALLOWED_HOST_SUFFIXES', BAD_HOST_SUFFIXES)
@@ -284,6 +494,8 @@ function environmentSchema(defaultWorkerId: () => string) {
         ctx.addIssue({ code: 'custom', path: ['PUBLISH_STORE'], message })
         return z.NEVER
       }
+      // The deployment's environment label: the host rules and the simulated POS's policy share it.
+      const label = env.BARSY_ENV
       return {
         databaseUrl: env.DATABASE_URL,
         purgeDatabaseUrl: env.DATABASE_URL_PURGE ?? null,
@@ -296,12 +508,39 @@ function environmentSchema(defaultWorkerId: () => string) {
             ? { publicKey: env.SEAL_PUBLIC_KEY, privateKey: env.SEAL_PRIVATE_KEY }
             : null,
         barsy: {
-          env: env.BARSY_ENV,
+          env: label,
           allowedHostSuffixes: env.BARSY_ALLOWED_HOST_SUFFIXES ?? [...DEFAULT_BARSY_HOST_SUFFIXES],
           productionHosts: parseAllowedHosts(env.BARSY_PRODUCTION_HOSTS),
         },
+        sim: {
+          env: env.NODE_ENV === 'production' ? 'production' : label,
+          allowHosts: env.SIM_POS_ALLOWED_HOSTS ?? [],
+        },
         assets,
         publish,
+        revealToken: env.REVEAL_SERVICE_TOKEN ?? null,
+        billIdKey: env.BILL_ID_KEY ?? null,
+        posSync: env.WORKER_POS_SYNC === 'on',
+        send: (env.WORKER_SEND ?? env.WORKER_POS_SYNC) === 'on',
+        receiptEmail:
+          env.RESEND_API_KEY !== undefined && env.RECEIPT_FROM_ADDRESS !== undefined
+            ? { apiKey: env.RESEND_API_KEY, fromAddress: env.RECEIPT_FROM_ADDRESS }
+            : null,
+        alerts: {
+          telegramToken: env.TELEGRAM_BOT_TOKEN ?? null,
+          teamChatId: env.TELEGRAM_TEAM_CHAT_ID ?? null,
+          healthchecksUrl: env.HEALTHCHECKS_PING_URL ?? null,
+          vapid:
+            env.VAPID_PUBLIC_KEY !== undefined &&
+            env.VAPID_PRIVATE_KEY !== undefined &&
+            env.VAPID_SUBJECT !== undefined
+              ? {
+                  publicKey: env.VAPID_PUBLIC_KEY,
+                  privateKey: env.VAPID_PRIVATE_KEY,
+                  subject: env.VAPID_SUBJECT,
+                }
+              : null,
+        },
       }
     })
 }
@@ -327,7 +566,17 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `BARSY_ENV` | development, test, staging or production (the host rules below) | development |
  * | `BARSY_ALLOWED_HOST_SUFFIXES` | comma-separated; an integration host must end with one | .barsyonline.com |
  * | `BARSY_PRODUCTION_HOSTS` | comma-separated hosts of live venues; every env but production refuses them | none |
+ * | `SIM_POS_ALLOWED_HOSTS` | comma-separated hosts a staging demo's simulated POS runs on; local hosts are always allowed; production refuses a `sim` instance outright | none |
  * | `ASSET_STORE`, `LOCAL_ASSET_DIR`, `R2_*` | where barsy photos go (see @restro/assets) | local in development |
+ * | `REVEAL_SERVICE_TOKEN` | bearer token of the reveal endpoint (32+ characters); without it the endpoint is off | unset |
+ * | `BILL_ID_KEY` | key of a reading's `rd_` and `bn_` ids (32+ characters, #74); without it no table reading runs | unset |
+ * | `WORKER_POS_SYNC` | `off` registers no POS sync job even with the seal keys (end-to-end tests) | on |
+ * | `WORKER_SEND` | `on` or `off`: the Send jobs (#77), which add rounds to a POS | as `WORKER_POS_SYNC` |
+ * | `TELEGRAM_BOT_TOKEN` | the alerts bot's token (#83); without it nothing goes to Telegram | unset |
+ * | `TELEGRAM_TEAM_CHAT_ID` | the Restro team's Telegram chat; without it the team is not messaged | unset |
+ * | `HEALTHCHECKS_PING_URL` | the https address pinged every minute (the outside watchdog) | unset |
+ * | `RESEND_API_KEY`, `RECEIPT_FROM_ADDRESS` | the email service for the venue's electronic receipt ; RECEIPT_FROM_ADDRESS switches receipt emails on and needs the key; without it no receipt file is emailed (#186) | unset |
+ * | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web Push identity (all three, or none) | unset |
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,

@@ -1,8 +1,10 @@
-import { generateKeyPairSync } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { defineConfig, devices } from '@playwright/test'
+
+import { e2eSealEnvironment } from '../worker/src/e2e-seal-keys'
+import { TONIGHT_PIN_PEPPER } from './e2e/support'
 
 // The repo keeps one `.env.local` at its root (README): use it for the database address when
 // there is one. Values already in the environment win; CI sets DATABASE_URL itself.
@@ -27,14 +29,18 @@ process.env.LOCAL_ASSET_DIR = E2E_ASSET_DIR
 process.env.PUBLISH_STORE = 'local'
 process.env.LOCAL_PUBLISH_DIR = E2E_PUBLISH_DIR
 
-// A throwaway key pair for the Integration tab's test, made here because the web servers start
-// before the global setup runs. Only the public half (base64url DER, what `pnpm keys:seal` prints)
-// goes to the servers; the other half is dropped at once, since the worker that runs beside them
-// (below) holds no sealing keys and nothing needs to open what the tab seals. Without `SEAL_PUBLIC_KEY` the tab would show
-// the 'sync keys are not set up' message instead of the form.
-const SEAL_PUBLIC_KEY = generateKeyPairSync('x25519')
-  .publicKey.export({ type: 'spki', format: 'der' })
-  .toString('base64url')
+// A throwaway key pair, made here because the web servers start before the global setup runs.
+// The public half (base64url DER, what `pnpm keys:seal` prints) goes to the web servers: the
+// Integration tab seals with it (without it the tab shows 'sync keys are not set up') and every
+// new table code is sealed with it (#70). Both halves go to the worker only, which opens the table
+// codes for the Tables screen through its reveal endpoint (the worker's helper names them).
+const SEAL_KEYS = e2eSealEnvironment()
+// The bearer token of the worker's reveal endpoint, for the test servers only.
+const REVEAL_SERVICE_TOKEN = 'e2e-only-reveal-token-not-used-anywhere-else-0123456789'
+// The worker's health port, which also serves the reveal endpoint; it moves with E2E_PORT.
+const WORKER_PORT = PORT + 2
+// The simulated POS the Send's test adds rounds to (#77; never a real one); it moves with E2E_PORT.
+const SIM_PORT = PORT + 3
 
 const serverEnvironment = (origin: string) => ({
   ...(process.env as Record<string, string>),
@@ -47,30 +53,43 @@ const serverEnvironment = (origin: string) => ({
   LOCAL_ASSET_DIR: E2E_ASSET_DIR,
   PUBLISH_STORE: 'local',
   LOCAL_PUBLISH_DIR: E2E_PUBLISH_DIR,
-  SEAL_PUBLIC_KEY,
+  ...SEAL_KEYS.web,
+  REVEAL_SERVICE_TOKEN,
+  // The location pass's key (#76), for the test servers only; a real one comes from the environment.
+  GUEST_PASS_KEY:
+    process.env.GUEST_PASS_KEY ?? 'e2e-only-guest-pass-key-not-used-anywhere-else-0123456789',
+  // The PIN pepper (#72) for the Tonight screen's PIN sheet (#85), for the test servers only.
+  STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
+  PAYMENTS_PROVIDER: 'sim-pay',
+  // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
+  WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
+  // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test
+  // (#77) and the Pay's (#110): without a secret every Send and Pay fails the human check. The
+  // build needs the matching test site key, NEXT_PUBLIC_TURNSTILE_SITE_KEY (CI sets it; the test
+  // stubs Cloudflare's script).
+  TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY ?? '1x0000000000000000000000000000000AA',
 })
 
 // The REAL worker runs beside the web servers, for the Publish tab (brief S3-05): "Publish" only
-// queues a job, and the worker publishes it. It holds no sealing keys (a public key without the
-// private half would stop it), so it runs the publish jobs and the heartbeat and syncs no barsy.
-// Its health port moves with E2E_PORT.
-const WORKER_PORT = PORT + 2
-const workerEnvironment = Object.fromEntries(
-  Object.entries({
-    ...serverEnvironment(ORIGIN),
-    WORKER_ID: 'e2e-worker',
-    WORKER_HEALTH_PORT: String(WORKER_PORT),
-    LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
-  })
-    .filter(([name]) => !name.startsWith('SEAL_'))
-    // Blank, not absent: Playwright merges this over the runner's own environment, which may hold
-    // a developer's sealing keys from the root .env.local. Blank counts as unset for the worker.
-    .concat(
-      Object.keys(process.env)
-        .filter((name) => name.startsWith('SEAL_'))
-        .map((name) => [name, '']),
-    ),
-)
+// queues a job, and the worker publishes it. It holds this run's key pair (never a developer's
+// from the root .env.local: these values win over the runner's own environment), so it reveals
+// and seals table codes (#70); with WORKER_POS_SYNC=off it registers no POS sync job, so it never
+// calls a till. WORKER_SEND=on runs the Send (#77), which only reaches the simulated POS here.
+const workerEnvironment = {
+  ...serverEnvironment(ORIGIN),
+  WORKER_ID: 'e2e-worker',
+  WORKER_HEALTH_PORT: String(WORKER_PORT),
+  LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
+  ...SEAL_KEYS.worker,
+  WORKER_POS_SYNC: 'off',
+  WORKER_SEND: 'on',
+  // The owner's Paying settings (#116) connect to the simulated card provider, never a real one:
+  // the worker builds only it (no Stripe key), and the web servers name it for a venue that has not
+  // connected yet.
+  PAYMENTS_ENV: 'test',
+  STRIPE_SECRET_KEY: '',
+  WORKER_PAYMENTS_SIM: 'on',
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -126,6 +145,13 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: workerEnvironment,
+    },
+    {
+      // Starts on Demo Bar; the Send's test loads the scenario it needs through the control calls.
+      command: `pnpm --dir ../.. sim:serve --scenario demo-bar --port ${SIM_PORT}`,
+      url: `http://127.0.0.1:${SIM_PORT}/control`,
+      reuseExistingServer: false,
+      timeout: 60_000,
     },
   ],
 })

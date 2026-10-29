@@ -546,6 +546,50 @@ export const SERVICES_CSS = `
 .rm .ro-lines li[data-available="false"] {
   opacity: 0.75;
 }
+.rm .ro-lines li[data-being-paid],
+.rm .ro-lines li[data-paid-in-app] {
+  /* A line in some phone's payment, or already paid in the app (D127): greyed, nothing to tick.
+     The muted colour keeps its contrast, which a fade of the whole line would not. */
+  color: var(--rm-muted);
+}
+.rm .ro-confirm-note {
+  color: var(--rm-muted);
+  font-size: 0.9em;
+}
+.rm .ro-confirm {
+  /* The Payment confirmation (D127 1.4): a plain card, nothing of a receipt's look. */
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 12px;
+  text-align: left;
+}
+.rm .ro-confirm p {
+  margin: 0;
+}
+.rm .ro-lines label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+}
+.rm .ro-lines input[type="checkbox"] {
+  /* Drawn by us so its edge shows at 3:1 on every theme: 54 % of the text colour, as the inputs'. */
+  appearance: none;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid color-mix(in srgb, currentColor 54%, transparent);
+  border-radius: 6px;
+  background: transparent;
+}
+.rm .ro-lines input[type="checkbox"]:checked {
+  border-color: currentColor;
+  background: var(--rm-accent);
+  box-shadow: inset 0 0 0 3px var(--rm-bg);
+}
 .rm .ro-line-main {
   display: grid;
   gap: 4px;
@@ -726,6 +770,8 @@ export const SERVICES_CSS = `
 }
 .rm .ro-choicegrid [aria-checked="true"],
 .rm .ro-tips [aria-checked="true"],
+.rm .ro-tips [aria-pressed="true"],
+.rm .ro-sheet .ro-ghost[aria-pressed="true"],
 .rm .ro-scope [aria-checked="true"] {
   /* The chosen one: the accent fill, and a ring in the sheet's own text colour, so it stands out by
      more than hue (the accent can be as light as the sheet itself: 1.06:1 on Botanical dark). */
@@ -852,6 +898,19 @@ export const SERVICES_CSS = `
 .rm .ro-allergy {
   font-size: 13px;
   opacity: 0.75;
+}
+/* The legal block's two controls (ticket 198): the Privacy link and the "About the venue" disclosure keep
+   the hint's look but are 44 px to tap. */
+.rm .ro-allergy a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.rm .ro-allergy summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
 }
 .rm .ro-methods {
   display: grid;

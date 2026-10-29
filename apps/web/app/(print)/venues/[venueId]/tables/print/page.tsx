@@ -12,6 +12,7 @@ import { getAssetStore } from '@/server/assets'
 import { getPool } from '@/server/db'
 import { loadVenueLogo } from '@/server/design/service'
 import { defaultQrBaseUrl } from '@/server/env'
+import { revealConfig, revealFor } from '@/server/reveal'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadTablesView } from '@/server/tables/service'
@@ -24,20 +25,25 @@ export const metadata: Metadata = { robots: { index: false, follow: false } }
 export default async function PrintTablesPage({
   params,
 }: PageProps<'/venues/[venueId]/tables/print'>) {
-  const { organization } = await requireTenant()
+  const { organization, user, sessionId } = await requireTenant()
   // Another tenant's venue and a made-up id both come back as null (row-level security).
   const venue = await getVenue(organization.id, (await params).venueId)
   if (!venue) notFound()
 
   const t = await getTranslations('tables')
+  // The sheet prints the codes the worker reveals for the signed-in owner or admin (#70).
+  const actor = { userId: user.id, sessionId }
   const view = await loadTablesView(
     {
       pool: getPool(),
       tenantId: organization.id,
       venue,
       canManage: canManageIntegration(organization.role),
+      actor,
     },
     defaultQrBaseUrl(),
+    undefined,
+    revealFor(revealConfig(), { tenantId: organization.id, venueId: venue.id, actor }),
   )
   const logo = await loadVenueLogo(getPool(), organization.id, venue, getAssetStore)
 

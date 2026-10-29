@@ -1,0 +1,45 @@
+{
+  "name": "payment-trouble",
+  "extends": "demo-bar",
+  "description": "The cases the payment route must survive: a waiter's round slips in while lines are moved, a waiter voids a line after the guest confirmed, a close prints no receipt, a bill is locked on a terminal. Table 7 is open with the 46.00 EUR bill; Table 8 is locked.",
+  "bills": [
+    {
+      "table": "up 7",
+      "by": "maria",
+      "minutesAgo": 75,
+      "rows": [
+        { "article": "2001", "quantity": "1" },
+        { "article": "2002", "quantity": "1" },
+        { "article": "2003", "quantity": "1" },
+        { "article": "2102", "quantity": "2" },
+        { "article": "2202", "quantity": "2" }
+      ]
+    },
+    {
+      "table": "up 8",
+      "by": "ivan",
+      "minutesAgo": 50,
+      "rows": [{ "article": "2402", "quantity": "1" }]
+    },
+    {
+      "table": "30003",
+      "by": "maria",
+      "minutesAgo": 35,
+      "rows": [{ "article": "2007", "quantity": "2" }]
+    }
+  ],
+  "faults": [
+    {
+      "on": "moveRows",
+      "from": 1,
+      "times": 1,
+      "fault": { "kind": "waiterRoundSlipsIn", "identical": false }
+    },
+    { "on": "closeBill", "from": 1, "times": 1, "fault": { "kind": "noReceipt" } },
+    { "on": "closeBill", "from": 2, "times": 1, "fault": { "kind": "waiterVoidsLine" } }
+  ],
+  "setup": [
+    { "op": "lock-bill", "args": { "table": "up 8" } },
+    { "op": "sold-out", "args": { "article": "2105" } }
+  ]
+}

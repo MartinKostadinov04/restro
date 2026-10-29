@@ -21,7 +21,7 @@ import {
 } from '../resolve/fixtures'
 import type { ResolveContext } from '../resolve/types'
 import { sortKeysBetween } from '../sort-keys'
-import { ORDER_MODES, VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
+import { ORDER_MODES, PAYMENT_MODES, VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { ASSET_VARIANT_WIDTHS, buildSnapshot, type SnapshotContext } from './build'
 import { assertSnapshotSafe, collectForbiddenValues } from './leak-guard'
 
@@ -63,6 +63,7 @@ const VALUES: Record<string, fc.Arbitrary<unknown>> = {
   price: mostly(money),
   price_delta: mostly(money),
   order_mode: mostly(fc.constantFrom(...ORDER_MODES)),
+  payment_mode: mostly(fc.constantFrom(...PAYMENT_MODES)),
   name: mostly(localized),
   title: mostly(localized),
   description: mostly(localized),
@@ -81,6 +82,7 @@ const ITEM_FIELDS = [
   'for_sale',
   'price',
   'order_mode',
+  'payment_mode',
   'name',
   'description',
   'allergens',

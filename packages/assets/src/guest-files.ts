@@ -3,7 +3,7 @@
 // schemas); this is the store side:
 //
 //   v/<venue public code>.json  {venue_id, menu_id, slug}  which menu `/m/<slug>-<code>` shows
-//   t/<table token>.json        {venue_public_id, venue_slug, table_label}  what the QR code of a table means
+//   t/<code's SHA-256>.json     {venue_public_id, venue_slug, table_label}  what the QR code of a table means
 //
 // The worker writes the first with every publish (apps/worker, writePublishFiles). The second is
 // written when a table gets a code and removed when it is retired, both by the worker's
@@ -69,12 +69,15 @@ export async function readVenueIndex(
   return parseGuestFile(VenueIndexSchema, await store.get(venueIndexPath(publicId)))
 }
 
-/** What a table code means, or null for an unknown, retired or malformed token. */
+/**
+ * What a table code means, by the code's SHA-256 (`hashTableCode`), or null for an unknown,
+ * retired or malformed code.
+ */
 export async function readTableTokenFile(
   store: Pick<PublishStore, 'get'>,
-  token: string,
+  codeHash: string,
 ): Promise<TableTokenFile | null> {
-  return parseGuestFile(TableTokenFileSchema, await store.get(tableTokenPath(token)))
+  return parseGuestFile(TableTokenFileSchema, await store.get(tableTokenPath(codeHash)))
 }
 
 /** The bytes of a table code's file. */
@@ -82,20 +85,20 @@ export function tableTokenBytes(file: TableTokenFile): Uint8Array {
   return encode(TableTokenFileSchema.parse(file))
 }
 
-/** Writes the file behind a table code (the worker's `publish-table-tokens` job; tests). */
+/** Writes the file behind a table code, by its hash (the worker's `publish-table-tokens` job; tests). */
 export async function writeTableTokenFile(
   store: Pick<PublishStore, 'put'>,
-  token: string,
+  codeHash: string,
   file: TableTokenFile,
 ): Promise<void> {
-  const path = tableTokenPath(token)
+  const path = tableTokenPath(codeHash)
   await store.put(path, tableTokenBytes(file), publishPutOptions(path))
 }
 
-/** Removes the file behind a retired table code, so `/t/<token>` says "code not active". */
+/** Removes the file behind a retired table code (by its hash), so `/t/<code>` says "code not active". */
 export async function deleteTableTokenFile(
   store: Pick<PublishStore, 'delete'>,
-  token: string,
+  codeHash: string,
 ): Promise<void> {
-  await store.delete(tableTokenPath(token))
+  await store.delete(tableTokenPath(codeHash))
 }

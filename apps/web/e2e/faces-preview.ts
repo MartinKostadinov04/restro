@@ -1,6 +1,6 @@
 // How the audit of a template's service screens (brief SH-07, T89) reaches them: the Design tab's
 // phone preview of the demo venue, with "Preview guest services" on and demo data behind them.
-// A guest sees the bag, the table bill, the waiter, paying and the receipt only once the platform
+// A guest sees the bag, the table bill, the waiter and paying only once the platform
 // supports them (D71), so this is the one place they are drawn. Shared by
 // faces-a11y-services.spec.ts and faces-visual.spec.ts.
 //
@@ -36,8 +36,8 @@ if (!isFaceId(FACE_ID)) {
 /** The template's root inside the preview's phone frame. */
 export const PREVIEW_FACE = `[data-testid="phone-frame"] [data-face="${FACE_ID}"]:not([data-testid])`
 
-/** The five service screens, in the order a guest meets them. */
-export const SCREENS = ['bag', 'bill', 'call', 'pay', 'receipt'] as const
+/** The four service screens, in the order a guest meets them. */
+export const SCREENS = ['bag', 'bill', 'call', 'pay'] as const
 export type Screen = (typeof SCREENS)[number]
 
 async function withOwnerPool(run: (pool: pg.Pool) => Promise<void>): Promise<void> {
@@ -65,7 +65,7 @@ export async function servicesOn(): Promise<void> {
             filters: true,
             call_waiter: {
               enabled: true,
-              kinds: ['waiter', 'bill', 'water', 'cutlery', 'terminal', 'other'],
+              kinds: ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table', 'terminal'],
             },
             bill: true,
             ordering: true,
@@ -177,13 +177,12 @@ export async function chooseTheme(page: Page, theme: VisualTheme): Promise<void>
   }
 }
 
-/** The menu-level slot (guide §5.5) of each screen's feature; paying and the receipt share one. */
+/** The menu-level slot (guide §5.5) of each screen's feature. */
 const SLOT_OF: Record<Screen, string> = {
   bag: 'menu.bag',
   bill: 'menu.bill',
   call: 'menu.call_waiter',
   pay: 'menu.pay',
-  receipt: 'menu.pay',
 }
 
 /** The control of a menu-level slot inside the preview's template. */
@@ -250,25 +249,22 @@ export async function chooseLanguage(page: Page, lang: string): Promise<boolean>
 }
 
 /**
- * From the open pay sheet to the receipt, through the contract's pay markers (guide §10.2): pays
- * the demo bill with the first method that is a card or wallet (`pay.method`, not Apple Pay or
- * "pay the waiter"), waits for the paid screen's way on to the receipt (`pay.receipt_open`), and
- * opens it (`pay.receipt`).
+ * From the open pay sheet to the paid screen, through the contract's pay markers (D127, #114):
+ * ticks the whole bill (`pay.whole`), taps Pay (`pay.start`), waits for the card form's slot
+ * (`pay.form`, the demo's is one button), presses it, and waits for the payment number
+ * (`pay.number`) that only a captured payment shows.  The receipt screen of before is gone (D127 1.4);
+ * the payment confirmation page is a later piece.
  */
-export async function payAndOpenReceipt(page: Page): Promise<void> {
+export async function payTheBill(page: Page): Promise<void> {
   const sheet = dialogs(page).last()
-  const method = sheet
-    .locator('[data-slot="pay.method"]:not([data-method="apple"]):not([data-method="waiter"])')
-    .first()
-  await expect(
-    method,
-    `${FACE_ID}'s pay sheet marks a card or wallet method pay.method`,
-  ).toBeVisible()
-  await method.click()
-  const toReceipt = sheet.locator('[data-slot="pay.receipt_open"]')
-  await expect(toReceipt).toBeVisible({ timeout: 15_000 })
-  await toReceipt.click()
-  await expect(sheet.locator('[data-slot="pay.receipt"]')).toBeVisible()
+  await sheet.locator('[data-slot="pay.whole"]').click()
+  await sheet.locator('[data-slot="pay.start"]').click()
+  const form = sheet.locator('[data-slot="pay.form"] button')
+  await expect(form, `${FACE_ID}'s pay sheet fills the form slot (pay.form)`).toBeVisible({
+    timeout: 15_000,
+  })
+  await form.click()
+  await expect(sheet.locator('[data-slot="pay.number"]')).toBeVisible({ timeout: 15_000 })
 }
 
 /** Opens a screen and runs `check` on it; the screen is closed again afterwards. */
@@ -279,7 +275,6 @@ export async function onScreen(
 ): Promise<void> {
   await tryFillBag(page)
   await opener(page, screen).click()
-  if (screen === 'receipt') await payAndOpenReceipt(page)
   const sheet = dialogs(page).last()
   await expect(sheet).toBeVisible()
   await settled(page)

@@ -1,33 +1,120 @@
 // The one list of background jobs. A job exists when it is in this list (see ./types.ts for the
 // convention); removing it here stops its worker and removes its schedule on the next start.
 //
-// `jobs` are the ones every worker runs. The publish jobs (./publish.ts) need the asset store and
-// the publish store but no credentials, so every worker runs them. The barsy sync jobs need the
+// `jobs` are the ones every worker runs (the heartbeat, the idle order tick of #75 and the end of
+// the service day of #84, which need nothing but the database). The publish jobs (./publish.ts)
+// need the asset store and the publish store but no credentials, so every worker runs them. The barsy sync jobs need the
 // sealing keys (they open the integrations' credentials) and the asset store, so they are built
 // from the configuration by `buildJobs`: without SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY the worker
-// still starts, runs the heartbeat and the publish jobs, and registers no sync job (one warning
-// in the log).
+// still starts, runs the heartbeat, the floor reading, the publish jobs and the provider notices
+// (#108), and registers no sync job (one warning in the log). `seal-table-codes` (#70) needs only
+// the public key; WORKER_POS_SYNC=off keeps the sync jobs out while the keys are set. The table
+// readings (#74) run beside the floor reading when BILL_ID_KEY is set (one warning in the log
+// when it is not). The Send jobs (#77) add guests' rounds to a POS as a waiter would; WORKER_SEND
+// switches them (unset, they follow WORKER_POS_SYNC), and they need no sealing key. The closing-hour
+// tick (#82) needs nothing but the database. The connection probe (#79) runs wherever a POS is
+// read or written to: a breaker that pauses must probe to lift; the pre-opening check (#82) runs
+// with it.
+// The payment jobs (#110) read the POS too, so they run beside the floor reading when the worker
+// has a payment provider.
 import { randomBytes } from 'node:crypto'
 
 import { createAssetStore, createPublishStore } from '@restro/assets'
 
 import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '../config'
+import { paymentProviders } from '../connectors'
 import type { Logger } from '../logger'
+import { createResendSender } from '../receipts/email-sender'
+import { createAlertJobs, telegramClientOf } from './alerts'
 import { createBarsyJobs } from './barsy'
+import { createConnectionJobs } from './connection'
+import { createFloorJobs } from './floor'
+import { createSendJobs } from './order-send'
+import { orderTidyTick } from './order-tidy'
+import { createPaymentRecoveryJob } from './payment-recovery'
+import { createPaymentJobs } from './payments'
+import { createProviderNoticesJob } from './provider-notices'
 import { createPublishJobs } from './publish'
 import { createPurgeJobs } from './purge'
+import { createReadingJobs } from './readings'
+import { createSealTableCodesJob } from './seal-table-codes'
+import { createServiceDayJob, serviceDayTick } from './service-day'
+import { createPreOpeningJobs, serviceHoursTick } from './service-hours'
+import { createStockJobs } from './stock'
 import type { JobDefinition } from './types'
+import { createWalletDomainJob } from './wallet-domain'
 import { workerHeartbeat } from './worker-heartbeat'
 
-export const jobs: readonly JobDefinition[] = [workerHeartbeat]
+export const jobs: readonly JobDefinition[] = [
+  workerHeartbeat,
+  orderTidyTick,
+  serviceDayTick,
+  serviceHoursTick,
+]
 
 /** Every job this worker runs: the fixed ones, the publish jobs, and the sync jobs when the keys are set. */
 export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobDefinition[]> {
+  // With a Telegram bot token the end of the service day also sends the venue's group its
+  // end-of-night message (#86); without one the tick only closes the day.
+  const telegram = config.alerts === undefined ? null : telegramClientOf(config.alerts)
+  const fixedJobs = jobs.map((job) =>
+    job === serviceDayTick && telegram !== null ? createServiceDayJob({ telegram }) : job,
+  )
   // The worker only stores photos; the signing secret is for links the web app hands out, which
   // this process never makes. A random one keeps the local store's constructor satisfied.
   const assetStore = await createAssetStore(config.assets, randomBytes(32).toString('hex'))
   const publishStore = await createPublishStore(config.publish)
   const publishJobs = createPublishJobs({ publishStore, assetStore })
+  // The provider notices (#108) need no POS and no sealing key: every worker handles them.
+  const providers = paymentProviders()
+  const noticeJobs = [createProviderNoticesJob({ providers }), createWalletDomainJob({ providers })]
+  // The floor reading (#71) needs no credentials (the simulated POS has none) and no sealing keys,
+  // so every worker runs it unless WORKER_POS_SYNC is off (it is a POS read); a `sim` instance is
+  // refused in production inside it.
+  // The table readings (#74) are POS reads like the floor's; they need the bill-id key, without
+  // which no reading is recorded (the log says so once).
+  const billIdKey = config.billIdKey ?? null
+  if (config.posSync && billIdKey === null) {
+    log.warn('BILL_ID_KEY is not set: the table reading jobs are not registered')
+  }
+  // The venue's electronic receipt (#186): where a connector returns the POS's file, it is emailed
+  // through the stack's email service; with no sender (RECEIPT_FROM_ADDRESS unset) no guest is
+  // offered the email field there.
+  const receiptSender =
+    config.receiptEmail === null || config.receiptEmail === undefined
+      ? null
+      : createResendSender(config.receiptEmail)
+  if (receiptSender === null) {
+    log.warn(
+      'RECEIPT_FROM_ADDRESS is not set: no receipt file is emailed, and no guest is offered the receipt email where a POS returns the file',
+    )
+  }
+  const floorJobs = [
+    ...createFloorJobs({ sim: config.sim, receiptSender: receiptSender !== null }),
+    ...(billIdKey === null ? [] : createReadingJobs({ sim: config.sim, billIdKey })),
+    // Paying (#110) prices from a fresh POS reading and holds through a provider; the recovery
+    // (#112) takes every open payment on from its last step.
+    ...(providers.size === 0
+      ? []
+      : [
+          ...createPaymentJobs({ sim: config.sim, providers, receiptSender }),
+          createPaymentRecoveryJob({ sim: config.sim, providers, receiptSender }),
+        ]),
+  ]
+  // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a
+  // `sim` instance is refused in production inside it.
+  // Stock from the POS (#80) runs with it: a mark is found by a Send, and taken off by the tick.
+  const sendJobs = config.send
+    ? [...createSendJobs({ sim: config.sim }), ...createStockJobs({ sim: config.sim })]
+    : []
+  // The pre-opening check (#82) probes a POS like the connection probe does, so it runs with it.
+  const connectionJobs =
+    config.send || config.posSync
+      ? [...createConnectionJobs({ sim: config.sim }), ...createPreOpeningJobs({ sim: config.sim })]
+      : []
+  // The alerts (#83) need no POS and no sealing key: delivery runs where the Telegram token or the
+  // Web Push keys are set, and the watchdog ping where its address is.
+  const alertJobs = config.alerts === undefined ? [] : createAlertJobs({ alerts: config.alerts })
   // The purge (D83) runs only where the purge role's connection is set; without it nothing is
   // ever erased, and the log says so once.
   const purgeDatabaseUrl = config.purgeDatabaseUrl ?? null
@@ -43,14 +130,43 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error
     log.warn(
-      'SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY are not set: the barsy sync jobs are not registered',
+      'SEAL_PUBLIC_KEY and SEAL_PRIVATE_KEY are not set: the barsy sync jobs and seal-table-codes are not registered',
     )
-    return [...jobs, ...publishJobs, ...purgeJobs]
+    return [
+      ...fixedJobs,
+      ...(config.posSync ? floorJobs : []),
+      ...sendJobs,
+      ...connectionJobs,
+      ...publishJobs,
+      ...noticeJobs,
+      ...alertJobs,
+      ...purgeJobs,
+    ]
+  }
+  const sealJobs = [createSealTableCodesJob({ publishStore, publicKey: keys.publicKey })]
+  if (!config.posSync) {
+    log.warn('WORKER_POS_SYNC is off: the POS sync jobs are not registered')
+    return [
+      ...fixedJobs,
+      ...sendJobs,
+      ...connectionJobs,
+      ...publishJobs,
+      ...noticeJobs,
+      ...alertJobs,
+      ...purgeJobs,
+      ...sealJobs,
+    ]
   }
   return [
-    ...jobs,
+    ...fixedJobs,
     ...createBarsyJobs({ keys, policy: config.barsy, store: assetStore }),
+    ...floorJobs,
+    ...sendJobs,
+    ...connectionJobs,
     ...publishJobs,
+    ...noticeJobs,
+    ...alertJobs,
     ...purgeJobs,
+    ...sealJobs,
   ]
 }

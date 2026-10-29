@@ -16,6 +16,22 @@ export interface MenuShown<Level extends MenuLevel = MenuLevel> {
   readonly level: Level
 }
 
+/** Which level's setting decides whether pay first applies (D122 §5), as `MenuShown.level` does for menus. */
+export type PayFirstLevel = 'table' | 'bar' | 'area' | 'venue'
+
+/**
+ * Pay first at one area or table (#217). `own` is the row's own choice (null: it follows the level
+ * above); `applies` and `level` are what holds there now; `inherited` is what would hold without the
+ * row's own choice, for the "Same as …" option. A bar's stored choice is honoured and reads as
+ * level `bar` though no screen sets one.
+ */
+export interface PayFirstShown {
+  readonly own: boolean | null
+  readonly applies: boolean
+  readonly level: PayFirstLevel
+  readonly inherited: { readonly applies: boolean; readonly level: Exclude<PayFirstLevel, 'table'> }
+}
+
 /** One of the venue's menus a route can name (the ones in the bin are not offered). */
 export interface MenuChoice {
   readonly id: string
@@ -36,9 +52,18 @@ export interface TableRowView {
   readonly shownAs: string | null
   /** False for a hidden table (D95): no code that leads anywhere, no guest page. */
   readonly isPublic: boolean
-  /** The QR token, or null when the table has no code. */
-  readonly token: string | null
-  /** The address the code carries, or null (no code, or the installation has no address yet). */
+  /** True when the table has a code (stored as its hash and a sealed copy, #70). */
+  readonly hasCode: boolean
+  /**
+   * Names the code the card draws, for the reveal: it changes whenever the code does, and is not
+   * the code or its hash. Null when there is nothing to reveal: no code, the table or its area is
+   * hidden, the installation has no address, or the person may not see codes.
+   */
+  readonly codeKey: string | null
+  /**
+   * The address the code carries, or null: no code, the installation has no address yet, or the
+   * code was not revealed (only owners and admins see codes, through the worker).
+   */
   readonly address: string | null
   /** The code as SVG markup (dark on light, always), or null when there is no address or the table is hidden. */
   readonly qrSvg: string | null
@@ -46,6 +71,12 @@ export interface TableRowView {
   readonly menu: MenuShown | null
   /** The menu the table's own entry names, or null (it takes its area's). */
   readonly routeMenuId: string | null
+  /** A payment table of its bar (D122 §8): only Restro uses it, hidden and without a code. */
+  readonly isPaymentTable: boolean
+  /** The bar the POS gives the table (D124), or null when it names none. */
+  readonly bar: { readonly id: string; readonly name: string } | null
+  /** Pay first at the table; null where it can't take effect (#217) or at a payment table. */
+  readonly payFirst: PayFirstShown | null
 }
 
 /** The tables of one area (D95), in the area's order. */
@@ -59,7 +90,30 @@ export interface HallView {
   readonly menu: MenuShown<'area' | 'venue'> | null
   /** The menu the area's own entry names, or null (it takes the venue's live menu). */
   readonly routeMenuId: string | null
+  /** Pay first for the area's tables; null unless any of them can take it (#217). */
+  readonly payFirst: PayFirstShown | null
   readonly tables: readonly TableRowView[]
+}
+
+/** What paying adds to the tab; null where the venue's connector can't take payments (D122 §3). */
+export interface PaymentTablesView {
+  /** The signed-in person holds `settings.payment_tables` on their own sign-in (never a PIN). */
+  readonly canMark: boolean
+  /** The signed-in person's email, for the password again. */
+  readonly email: string
+  /**
+   * The queues with guest tables but no payment table, bars by name and the tables with no bar
+   * last (`name` null). Empty once every queue has one.
+   */
+  readonly missing: readonly { readonly name: string | null }[]
+}
+
+/** What pay first adds to the tab; null where it can't take effect: card payments off, or no POS opens a bill (#217). */
+export interface PayFirstTabView {
+  /** The signed-in person holds `settings.payment_tables` on their own sign-in (never a PIN). */
+  readonly canSet: boolean
+  /** The signed-in person's email, for the password again. */
+  readonly email: string
 }
 
 /** The whole tab. */
@@ -79,15 +133,56 @@ export interface TablesView {
   readonly baseUrl: string | null
   /** The venue's menus a route can name, in the venue's order. */
   readonly menus: readonly MenuChoice[]
+  /** Payment tables: null where no connector takes payments, and always at a venue made by hand. */
+  readonly paying: PaymentTablesView | null
+  /** Pay first rows: null where pay first can't take effect (#217). */
+  readonly payFirst: PayFirstTabView | null
   readonly halls: readonly HallView[]
   readonly total: number
   /** Tables with a code that leads somewhere (a hidden table's paused code is not counted). */
   readonly coded: number
   /**
-   * The first table with a code (by area and number), for the test link: its token and what the
-   * table is called. Null when no table has a code.
+   * The first table with a code that was revealed (by area and number), for the test link: its
+   * code and what the table is called. Null when no table has one.
    */
   readonly sample: { readonly token: string; readonly shownAs: string | null } | null
+}
+
+/** A code the worker revealed for the tab (#70): what its card draws. */
+export interface RevealedCode {
+  /** `tb_…`: the table. */
+  readonly id: string
+  /** The row's `codeKey` when it was revealed: a card with another key waits for its own. */
+  readonly codeKey: string
+  readonly token: string
+  readonly address: string
+  readonly qrSvg: string
+}
+
+/** What the reveal answers: the codes it could open (a table left out draws none). */
+export type RevealCodesResult =
+  | { readonly ok: true; readonly codes: readonly RevealedCode[] }
+  | { readonly ok: false; readonly error: 'invalid' | 'forbidden' | 'not_found' | 'failed' }
+
+/**
+ * The tab with the revealed codes drawn in: each card whose `codeKey` has a code gets its address
+ * and picture, and the test link takes the first such table in the order the tab shows them.
+ */
+export function withRevealed(
+  view: TablesView,
+  revealed: ReadonlyMap<string, RevealedCode>,
+): TablesView {
+  let sample: TablesView['sample'] = null
+  const halls = view.halls.map((hall) => ({
+    ...hall,
+    tables: hall.tables.map((row) => {
+      const code = row.codeKey === null ? undefined : revealed.get(row.codeKey)
+      if (code === undefined || code.id !== row.id) return row
+      sample ??= { token: code.token, shownAs: row.shownAs }
+      return { ...row, address: code.address, qrSvg: code.qrSvg }
+    }),
+  }))
+  return { ...view, halls, sample: sample ?? view.sample }
 }
 
 /** Why an action did not do what was asked. */
@@ -104,6 +199,8 @@ export type TablesErrorCode =
   | 'hidden'
   /** The venue's areas and tables come from its till: not created, deleted or renumbered here. */
   | 'from_till'
+  /** A payment table gets no code and no guest page (D122 §7): it stays hidden. */
+  | 'payment_table'
   /** The menu is not one of the venue's, or it is in the bin. */
   | 'unknown_menu'
   | 'failed'

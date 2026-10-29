@@ -26,7 +26,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D19](decisions/D19.md) | Payment route: barsy's payment link if it supports Apple/Google Pay, split payments… | superseded by D126 and D125 |
 | [D20](decisions/D20.md) | Our own section map, generated from barsy's category tree, editable per venue | firm; see D47 |
 | [D21](decisions/D21.md) | New barsy items publish automatically | firm; see D50 |
-| [D22](decisions/D22.md) | Sold-out items are greyed out with no order button | firm; source is D46; superseded by D130 (sold-out items are hidden) |
+| [D22](decisions/D22.md) | Sold-out items are greyed out with no order button | firm; source is D46; superseded by D131 (sold-out items are hidden) |
 | [D23](decisions/D23.md) | TypeScript end to end | firm |
 | [D24](decisions/D24.md) | A missing language is added by hand in the translations tab | firm |
 | [D25](decisions/D25.md) | Legal checks per country | firm |
@@ -73,7 +73,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D66](decisions/D66.md) | In a venue with a till, the till is the only source of items | firm |
 | [D67](decisions/D67.md) | Guardrails only tighten | applied |
 | [D68](decisions/D68.md) | Public address <base>/m/<slug>-<code> | refined by D84 (clean addresses; the code is internal only) |
-| [D69](decisions/D69.md) | Template gallery: a venue picks a face in the Design tab | firm; superseded in part by D127 (a template is a Style preset, not a code package) |
+| [D69](decisions/D69.md) | Template gallery: a venue picks a face in the Design tab | firm; superseded in part by D128 (a template is a Style preset, not a code package) |
 | [D70](decisions/D70.md) | Venue colours: Primary ~60%, Secondary ~30%, Tertiary ~10% | firm |
 | [D71](decisions/D71.md) | Guest features are venue settings in the composer | firm; refined by D100 |
 | [D72](decisions/D72.md) | Faces stay pure: a face draws the host's service state and sends commands with an… | firm |
@@ -96,7 +96,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D89](decisions/D89.md) | Hand-made venues: full create/edit/delete of menus, sections and items | firm |
 | [D90](decisions/D90.md) | Restore re-links a POS venue's till venue if still free, else refused | firm |
 | [D91](decisions/D91.md) | Organisation › General | firm |
-| [D92](decisions/D92.md) | Composer has Structure and Design subtabs | firm; revised by D127 and D128 (Style presets; the Studio tab; Simple and Advanced; the layout moves into the designer) |
+| [D92](decisions/D92.md) | Composer has Structure and Design subtabs | firm; revised by D128 and D129 (Style presets; the Studio tab; Simple and Advanced; the layout moves into the designer) |
 | [D93](decisions/D93.md) | Colour upgrades with D92 | firm |
 | [D94](decisions/D94.md) | Tables & QR shows the codes' address read-only | firm |
 | [D95](decisions/D95.md) | Areas and tables: barsy's halls and tables | firm |
@@ -109,7 +109,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm; refined by D120 (push alerts, the outside watchdog) |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
 | [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 |
-| [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69; refined by D127 (a template is a Style preset; how a Style is made) |
+| [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69; refined by D128 (a template is a Style preset; how a Style is made) |
 | [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109 |
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
@@ -126,14 +126,16 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D119](decisions/D119.md) | The location check's consent screen, its proof and paperwork, and Turnstile's settings | firm; refines D118; refined by D121 (a shorter consent screen); refined by D122 |
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117; refined by D122 |
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
-| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D126; refined by D128 (the guest-feature screens are pages of the designer from the start) |
+| [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D126; refined by D129 (the guest-feature screens are pages of the designer from the start) |
+| [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
+| [D124](decisions/D124.md) | Fitting any POS: an optional bar, never yesterday's bill, a fallback when a waiter's bill is closed to outside apps, card holds for paying, training mode only on a test installation, the POS's stock replaces the owner's sold-out switch | firm; refines D112, D115, D122 |
 | [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
-| [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
-| [D127](decisions/D127.md) | One renderer draws every guest menu from one option list; a Style is a preset of it | firm; supersedes D69 in part and D105's "how a template is made"; revises D92's "no presets" |
-| [D128](decisions/D128.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D127; revises D92; refines D122 |
-| [D129](decisions/D129.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D127 and D128 |
-| [D130](decisions/D130.md) | Sold-out and unavailable items are hidden; scheduled items are out of scope | firm; supersedes D22 |
+| [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
+| [D128](decisions/D128.md) | One renderer draws every guest menu from one option list; a Style is a preset of it | firm; supersedes D69 in part and D105's "how a template is made"; revises D92's "no presets" |
+| [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122 |
+| [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129 |
+| [D131](decisions/D131.md) | Sold-out and unavailable items are hidden; scheduled items are out of scope | firm; supersedes D22 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

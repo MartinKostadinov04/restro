@@ -293,3 +293,42 @@ The lead reviewed the plan and the prototype. Questions that are the lead's are 
 - **Q12, wording and the BG terms:** to Martin with the prototype.
 - **Q13:** the storno deadline stays off the row until the accountant answers (#52).
 - **Q14:** each job keeps its own word; "Done" only in Telegram.
+- **Martin 10-21 (#55):** stock lives in the POS, so Tonight has no "Sold out" tab. Its actions instead get a notice when an item runs out in the POS ("Out of stock in {source}: Mojito. Greyed out on the menu."), D122 §4.
+
+## 11. Martin's answers (10-26)
+
+Martin took every recommendation of §8 that waited for him.
+- **Q1:** his "Action screen" is this first tab, named "Actions and tables" (BG «Действия и маси»).
+- **Q3:** no PIN for "Handled" (waiter call) and "Brought" (receipt); every other split of §8 Q3 stands. D122 §7 now says so.
+- **Q10:** a new alert plays a short sound, which staff can mute on the device, beside the screen-reader announcement; no animation.
+- **Q12:** the strings of §9 stand as written: the storno and dispute to-dos, and the BG terms «гостуване» ("sitting"), «чака вас» ("needs you"), «отворена за телефони» ("open for phones") and «изпратена поръчка» ("sent order").
+
+## 12. Addendum: two rows the plan lacked (lead, 10-27, for #85)
+
+Both are read from what #79 and #80 built on `or/foundation`; nothing here changes their behaviour.
+
+**A. The out-of-stock notice (#80, D122 §4 Stock).** When a stock pass finds an item run out in the POS, core keeps one open alert per item (`item_out_of_stock`); it closes by itself when a later complete reading shows the item back, or when the service day ends. Nobody at the venue can act on it in Restro: stock lives in the POS (Martin 10-21).
+- **Where:** one row in "Needs you" → "Later", after the to-dos: the title names the POS, the body lists the items, comma-separated, in the order they ran out. Not one row per item: a busy night runs out of ten things, and ten rows would push the work down.
+- **No button,** so it is not counted in the "Needs you" count, plays no sound and has no Undo. Pattern: the alert row (§8 Q8 a) with no answers. The row shrinks as items come back and goes when the last one does.
+- **States:** the longest Bulgarian item names wrap in place; more than eight items show the first eight and "+{k} more", and tapping the row opens a sheet with all of them (Patterns: Everything about one thing).
+- **Who:** every role sees it, on every device; nobody answers it.
+
+**B. The bar-pause banner (#79).** A staff pause covers all bars (scope `venue`) or one (scope `bar`); Restro's own pause covers the venue's whole connection (`connection`), which §5 already shows.
+- **One banner per active pause,** stacked at the top, each naming its scope with `b_staff` ("Ordering at Main bar was paused by Maria at 23:10. …") and its own "Resume ordering" (manager's PIN on the tablet, as S5). A pause of all bars hides the bar banners it covers; Restro's connection pause hides the staff banners (it alone decides, and it lifts by itself).
+- **In "Tables":** the paused bar's heading carries the word and icon "Paused" (`w_paused`), and its tiles read "Paused"; the other bar's tables stay as they are. Tapping a paused tile still opens its sheet.
+- **"Pause ordering"** stays offered while one bar is paused; its scope list leaves out the bars already paused.
+- **States:** two bars paused separately show two banners; a long bar name wraps in the banner, never truncated. A role that may not lift it is sent to the manager's PIN (§5), never shown a disabled button.
+
+**New strings:**
+
+| Key | Bulgarian | English |
+|---|---|---|
+| `oos_t` | Изчерпано в {source} | Out of stock in {source} |
+| `oos_d` | {items}. Посивено в менюто. | {items}. Greyed out on the menu. |
+| `oos_more` | +{k} още | +{k} more |
+
+The bar banner reuses `b_staff`, `lift`, `lift_b`, `lift_toast` and `w_paused` with the bar's name as `{scope}`.
+
+**Taps:** neither row adds a story with taps: the notice is read (0), and lifting a bar's pause is S5.
+
+**Martin 10-27:** confirmed A and B as written.

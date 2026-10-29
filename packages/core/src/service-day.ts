@@ -139,3 +139,47 @@ export function isoInTimeZone(at: Date, timeZone: string): string {
     `${pad(local.second)}${sign}${pad(Math.floor(offset / 60))}:${pad(offset % 60)}`
   )
 }
+
+/**
+ * The instant the service day of `at` began (to the second): the end of the day before. What a
+ * connector compares a bill's opening with, so a bill left open from last night is never joined
+ * (#77). Found by halving the 26 hours before `at`, so a daylight-saving change needs no rule.
+ */
+export function serviceDayStartsAt(at: Date, timeZone: string, dayEndsAt: string): Date {
+  const today = serviceDate(at, timeZone, dayEndsAt)
+  let low = at.getTime() - 26 * 3_600_000
+  let high = at.getTime()
+  // `low` is always in an earlier day, `high` in today's.
+  while (high - low > 1_000) {
+    const middle = Math.floor((low + high) / 2)
+    if (serviceDate(new Date(middle), timeZone, dayEndsAt) === today) high = middle
+    else low = middle
+  }
+  return new Date(Math.floor(high / 1_000) * 1_000)
+}
+
+/**
+ * The instant at which the wall clocks of `timeZone` read `time` (`HH:MM`) on service day `day`: a
+ * time before `dayEndsAt` belongs to the next calendar date (a night that runs past midnight). A
+ * time lost to a daylight-saving jump lands an hour later, as the clocks themselves would.
+ */
+export function localInstant(day: string, time: string, timeZone: string, dayEndsAt: string): Date {
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number]
+  const clock = CLOCK_PATTERN.exec(time)
+  const end = CLOCK_PATTERN.exec(dayEndsAt)
+  if (clock === null || end === null) throw new RangeError('times must be HH:MM or HH:MM:SS')
+  const minutes = Number(clock[1]) * 60 + Number(clock[2])
+  const endMinutes = Number(end[1]) * 60 + Number(end[2])
+  const nextDay = minutes < endMinutes ? 1 : 0
+  // The wall time read as if it were UTC, then moved by the zone's offset; the offset is read at
+  // the first guess and again at the result, which settles a time near a change.
+  const asUtc = Date.UTC(year, month - 1, date + nextDay, 0, minutes)
+  let offset = wallClock(new Date(asUtc), timeZone).offsetMinutes
+  let instant = asUtc - offset * 60_000
+  const settled = wallClock(new Date(instant), timeZone).offsetMinutes
+  if (settled !== offset) {
+    offset = settled
+    instant = asUtc - offset * 60_000
+  }
+  return new Date(instant)
+}

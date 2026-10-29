@@ -570,7 +570,19 @@ test('saves the screenshots when SCREENSHOT_DIR is set', async ({ browser }) => 
     phone.target.getByRole('heading', { name: 'История на синхронизациите' }),
   ).toBeVisible()
   await snapshot('s1-integrations-bg-light-mobile.png', phone.target)
-  // No sideways scroll on the phone.
+  // No sideways scroll on the phone, with the connector's settings card on the page (#59: its
+  // select triggers sit in grid cells that need min-w-0), and no scrollbar on the tab strip when
+  // its tabs fit (trial finding 2.2).
+  await expect(phone.target.getByTestId('settings-form').first()).toBeVisible()
+  const strip = await phone.target
+    .getByRole('tablist')
+    .first()
+    .evaluate((list) => ({
+      vertical: list.scrollHeight - list.clientHeight,
+      horizontal: list.scrollWidth - list.clientWidth,
+    }))
+  expect(strip.vertical).toBeLessThanOrEqual(1)
+  expect(strip.horizontal).toBeLessThanOrEqual(1)
   const overflow = await phone.target.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )

@@ -26,11 +26,15 @@ export function row(overrides: Partial<TableRowView> & { id: string }): TableRow
     label: null,
     shownAs: null,
     isPublic: true,
-    token: null,
+    hasCode: false,
+    codeKey: null,
     address: null,
     qrSvg: null,
     menu: VENUE_MENU,
     routeMenuId: null,
+    isPaymentTable: false,
+    bar: null,
+    payFirst: null,
     ...overrides,
   }
 }
@@ -40,6 +44,7 @@ export function hall(overrides: Partial<HallView> & { id: string; name: string }
     isPublic: true,
     menu: VENUE_MENU,
     routeMenuId: null,
+    payFirst: null,
     tables: [],
     ...overrides,
   }
@@ -51,7 +56,7 @@ export function view(overrides: Partial<TablesView> = {}): TablesView {
     id: 'tb_0000000000000000000002',
     number: '2',
     shownAs: '2',
-    token: TOKEN_A,
+    hasCode: true,
     address: `http://localhost:3000/t/${TOKEN_A}`,
     qrSvg: SVG,
   })
@@ -63,6 +68,8 @@ export function view(overrides: Partial<TablesView> = {}): TablesView {
     sourceLabel: SAMPLE_TILL_LABEL,
     baseUrl: 'http://localhost:3000',
     menus: MENUS,
+    paying: null,
+    payFirst: null,
     halls: [
       hall({
         id: 'ar_0000000000000000000001',

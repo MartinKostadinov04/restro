@@ -34,5 +34,18 @@ export {
   snapshotFromSpec,
 } from './fixtures'
 export { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
+export {
+  PAID_LINES,
+  PAYING_LEGAL,
+  type PayScenario,
+  payingBill,
+  payingState,
+  payingView,
+  payment as payScenarioPayment,
+  payScenarios,
+  RECEIPT_LOOK,
+  recordSaving,
+  type SaveRecord,
+} from './paying'
 export { stubServices } from './services'
 export { type FaceContractSuiteOptions, faceContractSuite } from './suite'

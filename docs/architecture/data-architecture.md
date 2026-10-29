@@ -1,6 +1,6 @@
 # Menu Engine Data Architecture
 
-Oct 8, 2026 · @Martin · mirror brought up to date for Adjustments 01 on Oct 13, 2026 (D77–D97)
+Oct 8, 2026 · @Martin · mirror brought up to date for Adjustments 01 on Oct 13, 2026 (D77–D97), for ordering on Oct 22, 2026 (D110–D124) and for paying on Oct 25, 2026 (D125–D127)
 
 Every menu value enters through one of four collection paths (manual editor, Barsy full pull, Barsy webhook, Barsy reconciliation). Each lands as a typed, sourced value in its own layer of one internal data source. It reaches a screen only through a deterministic resolver and an immutable snapshot, which every face renders under the same population rules. Faces differ in look only.
 
@@ -8,9 +8,35 @@ Every menu value enters through one of four collection paths (manual editor, Bar
 
 &#91;embedded content: data pipeline · 4 collection paths, 1 write path, 5 faces\]
 
-Every source, the manual editor included, enters through `apply()`. Only the publisher writes what a shell reads, and orders leave through the outbox back to Barsy.
+Every source, the manual editor included, enters through `apply()`. Only the publisher writes what a shell reads. Service data (sittings, orders, the Log) has its own writer, `applyService`, and a sent order reaches a venue's POS through a connector (see Outbound: orders and tables).
 
 **Adjustments 01 (Oct 12–13, 2026; T79)** changed the supporting tables, the venue, menu and table model, the guest addresses and published files, the purge and the snapshot's layout and colour fields. It did not touch node types, field types, layers and resolution, the validation gates V1–V12, the population rules R1–R12, R14 and R15, or the outbound outline. A section that changed names the decisions (D77–D97) it follows.
+
+**Ordering, part 1 (Oct 22, 2026; D110–D124, spec #64)** rewrote Outbound: orders and tables and added the service write path to One write path. The rules below use the wording of `CLAUDE.md`, and the Vocabulary gained the ordering terms of the GLOSSARY. Ordering is built against a simulated POS until the pilot's POS answers; paying in the app waits for its own spec.
+
+**Paying in the app, part 2 (Oct 25, 2026; D125–D127, spec #102)** added the `PaymentProvider` seam beside the service connector, the payment tables and the platform-level `provider_notices` inbox (all written only in `core/service`), the payment route with its failure rules, and the guest pay commands. It is described in Paying in the app, under Outbound: orders and tables. The platform sections name no provider: the first one is named only in the connector section at the end and in the decision records (build order, decisions list). Paying is built against `sim-pay`, a simulated payment provider that stays as the test double, and the first real provider must pass the same conformance suite in its sandbox.
+
+## Core rules
+
+Nine rules hold everywhere; a CI check or a database constraint backs each one (Stack tab).
+
+1. **One write path.** Every change from every source goes through `core.apply(changeSet)`. Nothing else writes `field_values`, `events`, resolved documents or snapshots. Service data has its own writer (D122 §9, see Outbound: orders and tables).
+2. **Provenance.** Every stored value carries its layer, source and job (NOT NULL). `events` is append-only. Service data (orders, payments, the Log) has no layer: it carries its source, actor and job (D122 §9).
+3. **POS ids stay in the backend.** Snapshots, the shell, faces and URLs carry only our prefixed ids (`nd_`, `as_`, `sn_`, `tb_`) and public fields: no POS ids, internal names, cost prices or internal fields. One exception (D75): when barsy has no public name for an item, option or category, its own name (`article_name`, `cat_name`) is shown and the composer warns.
+4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
+5. **Our layers only make the menu more cautious than the POS.** We can hide or mark sold out; we can never un-hide, put back on sale, or change the price of an orderable item.
+6. **Absence is deletion only after a complete full read.** A read with any failed page concludes nothing.
+7. **Restro writes into a POS only as a waiter would (D110).** Through the API it does what a waiter does at the POS's front end: open a bill, add a round, split or move a bill, take a payment, ask for the bill or a receipt, cancel within the POS's own rules. Never back-office work (items, prices, settings, users). Menu sync stays read-only. No POS webhooks or registration (D41); provider notices are fine (D125). Development and tests never run against a live venue's POS.
+8. **Money is integer minor units** with the POS's rounding, through the `money` module only. barsy sends prices as JSON floats: parse losslessly, convert from the decimal string, round half-up. Never `x * 100`, never floats in storage.
+9. **POS accounts:** one API user per connection per environment; staging config refuses production hosts; (later) one POS-registration owner and server-generated order uuids.
+
+## Kickoff decisions (2026-10-08)
+
+- QR → phone is the only channel (D38); kiosk, TV, print and delivery-feed faces are out of scope. The face contract stays so several phone designs can plug in.
+- Freshness comes from polling (incremental every 5 minutes by default + nightly full pull); webhooks (path D) stay out (D41, D110).
+- Allergens are a plain attribute; V4 and V5 are warnings, not gates, until the legal answer.
+- The Barsy menu lands pre-mapped in a composer where items are moved, reordered, curated, hidden and enriched; placements keep layout apart from the schema.
+- Stages, scope and owner setup: the Stage plan tab of the live document (not mirrored here).
 
 ## Vocabulary
 
@@ -42,6 +68,21 @@ Every later section uses these terms in exactly this sense.
 | Shell | The runtime that loads a snapshot, applies population rules and builds the view model |
 | Face | A presentation design (a phone menu, A4 print, a TV board). Renders the view model; owns no data logic. In the venue admin a face is a "template" of the gallery (D69), not to be confused with the schema Template above |
 | Population rules | The shared, deterministic rules for what is shown, in which order, in which state |
+| POS bill | One bill as the venue's POS holds it: items owed plus the payments made against it. The table is an optional label on it, and a table can hold several open ones (D111) |
+| Bill | Everything still open at a table: its open POS bills, shown to guests as one bill per table (D111, D115) |
+| Order | The items the guests at a table have picked but not yet sent: one per table and sitting, shared by every phone at the table (D117, D122 §2). In code `tableOrder` |
+| Sent order | What one Send creates: it goes onto the table's POS bill and has states (D116, D122 §4). In code `sentOrder`; "order" alone never means a sent order |
+| Open for phones | A table where staff let phones order to the bill (D122 §4) |
+| Sitting | One group's time at a table, from opening it for phones to its end (D122 §4) |
+| Bar | The bar that serves a table, read from the POS where the POS has bars; optional (D122 §2, D124 §1) |
+| Payment table | A POS table only Restro uses to take a payment at a POS with one bill per table (D122 §2, part 2) |
+| Payment | One guest's card payment for chosen lines of the bill (or the whole bill) and an optional tip: a hold on the card, the lines moved to a payment table and closed on the POS, then the capture (D122 §8, D127). Ids start `py_` |
+| Payment provider | The company that moves a venue's card money. It plugs in through the `PaymentProvider` interface like a POS through a connector; the venue is the merchant on its own account and Restro never holds money (D98, D126) |
+| Hold | Card money reserved for exactly the payment's amount, not yet taken. Capture takes it; release lets it go |
+| Provider notice | A signed message from a payment provider to Restro. It is stored once and never trusted: the worker reads the object back from the provider (D125, D127) |
+| Capability | Something a connector declares its POS lets Restro do or read (D122 §3) |
+| Connection pause | A pause of one POS login, started and lifted by Restro; all connections paused is the venue pause (D120, D122 §6) |
+| Tonight | The staff screen in the venue admin used during service (D122 §7, D123) |
 
 ## Schema layer
 
@@ -164,11 +205,16 @@ The internal data source has four tiers, and data only ever moves down them: raw
 | `webhook_inbox` | `X-Webhook-ID` | Every webhook received: payload, signature check result, processing state |
 | `events` | sequence | Append-only changelog: node, field, layer, old → new, source, actor, job. The app role cannot delete it; only the purge erases rows (older than two months, and a purged venue's own, D96) |
 | `review_queue` | id | Proposed changes waiting for a person: new Barsy items, stale overrides, conflicts |
-| `outbox` | id | Outbound order commands to Barsy (see Outbound) |
+| Service tables: `sittings`, `table_orders`, `sent_orders`, `locks`, `bill_readings`, `log_entries`, `pauses`, `alerts` and more | id | Orders, sent orders, readings and the Log, written only by `applyService` (see Outbound: orders and tables) |
+| `payments` | id (`py_`) | Part 2 (D127), service data: one row per payment. Venue, real table, bar, sitting, kind (`on_bill` or `pay_first`), state, the hash of the paying phone's handle, amount and tip in minor units, currency, deadlines, payment table, provider kind and the provider's payment reference, `capture_before`, the receipt number and fiscal memory number once the close or a reading shows them, and the retention date. Tenant-scoped; written only in `core/service` |
+| `payment_lines` | (payment, position) | One row per picked line: the POS line reference (backend only, rule 3), the quantity, the POS's own amount and the name the guest saw. Tenant-scoped |
+| `payment_steps` | `seq` | Append-only, one row per POS or provider write attempt: the step, its outcome (`attempting`, `done`, `refused`, `unknown`), the answer in short, the idempotency key and the time. Tenant-scoped; SELECT and INSERT only |
+| `provider_notices` | `seq`; (provider kind, event id) unique | The inbox of provider notices, **platform-level with no venue and no tenant**: provider kind, event id, live or test, the provider's account reference (backend only), type, received and handled times. The notice route stores each event once; the worker maps the account to a venue when it handles the notice. A notice is written with source `provider`, actor `system` and the provider's event id as its job id. No role deletes a notice (retention comes with #112), and the notice route's reach is pinned by the dependency rule `notice-route-records-only`, which lets it import from `core/service` only `@restro/core/service/notices` (`recordProviderNotice`). Inserted only by `recordProviderNotice`; the worker's later updates (handled time, venue mapping) go through `applyService` |
+| `payment_accounts` | (tenant, venue) | A venue's account at its payment provider (D125): provider kind, the provider's account reference (backend only), the account's name, state (`connecting`, `connected`, `lost_access`, `disconnected`), the provider-side checks and what is missing (D125 2.3), and the checked and connected times. Tenant-scoped; written by the worker through `applyService` |
 
 **Venue lifecycle (D76, D83, D86).** Owners and admins rename a venue; only an owner deletes it, after typing its name. Deleting **archives** it (`venues.archived_at`, null = live): the venue goes to the bin and nothing is erased yet; it stays restorable for 30 days and is then purged (see Deletion and the purge). One transaction sets the flag, releases the till link (`barsy_venues.venue_id` goes back to null, so the till venue is free for another venue) and remembers the till venue it served in `settings.till_before_delete` (`{integration_id, bid}`); the venue's public code, menus, tables and QR tokens stay. Every core writer of one venue first locks its row (`FOR SHARE`, the delete takes `FOR UPDATE`) and refuses an archived one (`venue_archived`), so a save and a delete never interleave; `apply()` refuses writes into an archived venue's menus and its `venue:` scope. The admin's reads, the sync and its schedule, and the publish jobs leave an archived venue out. The worker withdraws the guest files by **removing** them (the venue index `v/<code>.json` and the table files `t/<token>.json`; no marker; the venue also drops out of the organisation's index `o/<organisation>.json`), keeping the QR tokens so a restore brings the same codes back, and whichever job runs last leaves what the database says. A restore clears the flag and links the remembered till venue again when it is still free; when another venue serves it now, the restore is refused (`till_taken`, naming that venue) and nothing changes. A restored venue comes back unpublished: its guest files, the table pages included, return with the next publish, and the same addresses work again. **Venue states (D86):** Draft (never published, or unpublished by the owner, `unpublished_at`, which any publish clears), Live (its live menu has a published version) and Archived (in the bin); one core function, `venueStateOf`, decides it for every screen and job.
 
-**Settings kept as JSON (D77, D81, D82, T76).** `tenants.settings.systems`: the connector kinds the organisation chose; an instance can only be added for a chosen system, and a system with instances cannot be unchosen. `venues.settings`: `sync` = `{mode: auto | manual, incremental_minutes, full_pull_time}` (the venue's sync mode, in its own time zone); `publish` = `{after_sync: auto | manual, auto_paused}` (the publishing rules and the pause after a rollback); `languages_report` (the connector's last report, see Barsy to canonical mapping); `till_before_delete` (above); and the look and guest-function settings of D69–D71, unchanged. A venue with no `sync` or `publish` of its own reads its integration's `config` of before D82, so nothing changes until someone saves.
+**Settings kept as JSON (D77, D81, D82, T76).** `tenants.settings.systems`: the connector kinds the organisation chose; an instance can only be added for a chosen system, and a system with instances cannot be unchosen. `venues.settings`: `sync` = `{mode: auto | manual, incremental_minutes, full_pull_time}` (the venue's sync mode, in its own time zone); `publish` = `{after_sync: auto | manual, auto_paused}` (the publishing rules and the pause after a rollback); `languages_report` (the connector's last report, see Barsy to canonical mapping); `till_before_delete` (above); `paying` = `{minCardMinor}` (the smallest card payment in minor units, null for the provider's minimum; set only through the `settings.paying_set` command, which refuses less than the provider's minimum, D127; the venue's legal details for the pay screen, #198, are `legalDetails` = `{name, eik, address, privacyUrl}`, saved by the same command); and the look and guest-function settings of D69–D71, unchanged. A venue with no `sync` or `publish` of its own reads its integration's `config` of before D82, so nothing changes until someone saves.
 
 One row in `field_values` looks like this:
 
@@ -202,6 +248,8 @@ No adapter writes to tiers 2–4. Each adapter produces a change set and hands i
 3. Skip writes whose `value_hash` equals the current value in that layer. Re-delivered webhooks and repeated pulls become no-ops.
 4. Upsert the remaining `field_values` rows and append one `events` row per change.
 5. Mark the affected menus dirty and queue a resolve.
+
+Service data is not the menu and has its own writer. `applyService(command)` in `core/service`, beside `apply()`, is the only writer of the service tables (sittings, orders and sent orders, readings, the Log and the rest, see Outbound: orders and tables). It never writes `field_values`, `events`, resolved documents or snapshots, and `apply()` never writes the service tables.
 
 Recommended storage: Postgres with `jsonb` for tiers 2–3 and the supporting tables, because change sets need transactions and placements and links need joins. Snapshots and assets go to object storage behind a CDN.
 
@@ -253,7 +301,7 @@ Each field shows its state, so the person always knows who controls it:
 | Linked to Barsy | Barsy-owned and not overridable (price when orderable) | Nothing. Refused with "Change this in Barsy" |
 | Any, inside a venue or service edition | fields the edition allows (hidden here, sold out today, featured) | `edition:<id>` layer |
 
-Translations (decided 2026-10-08): a language Barsy lacks is added by hand in the editor's translations tab and saved per locale to the `manual` layer. It is not an override. `localized_text` resolves per locale: Barsy's value where Barsy holds that locale, ours where it doesn't. A venue's menu languages are the ones the till fills enough plus the ones its owner switches on (D77, see Shared transforms). When Barsy's name for an item changes, our hand-added translations of it are flagged for review in the admin; they stay live meanwhile. A venue may later opt in to push our translations into its Barsy, if the API allows it; that would be an explicit, venue-approved exception to "sync never writes into Barsy" and is not researched yet.
+Translations (decided 2026-10-08): a language Barsy lacks is added by hand in the editor's translations tab and saved per locale to the `manual` layer. It is not an override. `localized_text` resolves per locale: Barsy's value where Barsy holds that locale, ours where it doesn't. A venue's menu languages are the ones the till fills enough plus the ones its owner switches on (D77, see Shared transforms). When Barsy's name for an item changes, our hand-added translations of it are flagged for review in the admin; they stay live meanwhile. A venue may later opt in to push our translations into its Barsy, if the API allows it; that writes item texts, which is back-office work that rule 7 excludes (D110), so it would need its own decision and is not researched yet.
 
 ### Creating structure by hand
 
@@ -284,8 +332,8 @@ Onboarding connects one Barsy installation once; the full pull then copies its c
 3. **Venues.** `Barsys_getlist` lists the instance's venues. A new venue is made from an instance by picking one of its till venues; nothing is typed, and the name, address name and languages are derived and editable later (D85). The link records the `bid` and is fixed for the venue's life (D87): another till venue is a new venue. The same read reports the menu roots the till designates for each venue (D88).
 4. **Settings to discover.** `Languages_getlist` (which locales exist), `Currencies_getlist`, `Articledetails_gettree` (which characteristic keys exist, so the admin can map one to allergens and another to calories), `Places_getlist` (halls and tables: they become the venue's areas and tables, D95, and serve ordering later).
 5. **Scope.** The catalog roots are the ones the till designates for each venue, one menu per root (D88); the earlier choice of a single root (D56) is no longer read by the sync. Public articles only (recommended), placement mode (mirror the Barsy category tree, or curate our own), and the price context used for display (venue plus Barsy client).
-6. **Ordering, later.** `Poses_register` once per venue; store the `pos_key` in `pos_registrations` with a single writer.
-7. **Start.** Run the first full pull, subscribe the webhooks (path D), start the reconciliation schedule (path E).
+6. **Ordering, later.** Registering Restro as a POS (`Poses_register`, with the `pos_key` kept in `pos_registrations` by a single writer) is setup, not a waiter action, and stays out until a decision brings it back (D41, D110).
+7. **Start.** Run the first full pull and start the reconciliation schedule (path E). Subscribing the webhooks (path D) stays out (D41, D110).
 
 ### The full pull, per venue
 
@@ -303,9 +351,21 @@ All calls carry `?bid=<venue>`, because prices and for-sale flags depend on the 
 
 Barsy publishes no rate limit beyond the 30-second limit per call. Keep at most two concurrent requests per installation, and prefer one multi-method request over many small calls.
 
+### Corrections from the official docs (verified 2026-10-08)
+
+- Per-venue for-sale exceptions (`is_for_sale_barsys`) come back only with the extra property `limits_by_barsys`; add it to step 3.
+- Without `order_by` the article list is not reordered, so offset paging can skip or repeat rows: page with `order_by` = `article_id` ascending.
+- The `delete_flag` filter defaults to 0, so deleted articles never appear in lists; the incremental loop cannot see deletions, only step 8 can.
+- Prices arrive as JSON floats (2.40): parse losslessly, convert from the decimal string, round half-up.
+- Examples show timestamps without an offset; keep the widened cursor overlap.
+- Barsy has 11 language keys: `bg_BG`, `en_US`, `de_DE`, `es_ES`, `fr_FR`, `it_IT`, `ro_RO`, `ru_RU`, `sr_RS`, `el_GR`, `tr_TR`.
+- A test environment is requested by email to helpme@lukanet.com; every example uses the demo installation demo.barsyonline.com (password via barsy.bg/demo).
+
 ## Collection path D: Barsy webhooks
 
 Webhooks are the main way Barsy changes reach us, typically within one to two minutes. A webhook only tells us which ids changed; the data itself is always fetched afterwards, through the same mapping and write path as the full pull.
+
+**Not used in the first stages (decided 2026-10-08; D41, D110).** Subscribing to webhooks is setup, not a waiter action, so it stays out: freshness comes from path E's incremental loop and the nightly full pull.
 
 ### Subscriptions
 
@@ -357,7 +417,7 @@ Reconciliation is the safety net under webhooks. It re-reads Barsy on a schedule
 
 | Loop | How often | Barsy call | Catches |
 | --- | --- | --- | --- |
-| Tree check | Every 10 min per venue | `Categories_getalltree` with the last `checksum` | Any structural change; skips all work when the checksum is unchanged |
+| Tree check | Every 5 min per venue | `Categories_getalltree` in lazy mode, hashed by us (no `checksum` parameter is documented) | Any structural change; skips all work when the checksum is unchanged |
 | Incremental articles | Every `incremental_minutes` per venue (default 5; 1, 5, 10, 15 or 30) | `Articles_getlist` with `filters.last_update = ">" + cursor` | Changed articles whose webhook was lost or delayed |
 | Stock (optional) | Every 5 min per venue, only if the venue wants stock-based sold out | `Articles_getlist` with `amount_last_update` and `has_amount` | Items that ran out |
 | Nightly full pull | Once a day at the venue's `full_pull_time` (default 12:00, in the venue's time zone; clubs close late) | Path C in full | Deletions with no webhook, category moves, modifier changes, anything else |
@@ -471,7 +531,7 @@ Staff often delete a Barsy article and create a new one instead of editing it, w
 
 ### Tables
 
-A table is the platform's own row (`tables`, a `tb_` id) in an area of a venue (D95). In a Barsy venue it mirrors a Barsy place, which `places` identifies by (integration, venue `bid`, `place_id`), and its area mirrors the place's hall, identified by the hall id (`areas.source_key`), never by name: halls can share a name. Its QR code carries a random 128-bit token (`tables.qr_token`, 22 characters, unique across all organisations) mapped to the table, never the `place_id` or the table id, so a guest cannot edit a URL to order onto another table. Tokens can be rotated without reprinting the Barsy setup. A purged venue's tokens are tombstoned and never issued again (D83).
+A table is the platform's own row (`tables`, a `tb_` id) in an area of a venue (D95). In a Barsy venue it mirrors a Barsy place, which `places` identifies by (integration, venue `bid`, `place_id`), and its area mirrors the place's hall, identified by the hall id (`areas.source_key`), never by name: halls can share a name. Its QR code carries a random 128-bit token (`tables.qr_token`, 22 characters, unique across all organisations) mapped to the table, never the `place_id` or the table id, so a guest cannot edit a URL to order onto another table. Tokens can be rotated without reprinting the Barsy setup. A purged venue's tokens are tombstoned and never issued again (D83). Ordering changes how a code is kept: at least 128 random bits stored as a hash with a sealed copy, and the published file named by the code's hash (D122 §9, see Outbound: orders and tables).
 
 ## Layers, ownership and resolution
 
@@ -735,9 +795,9 @@ Text pairs read at 4.5:1 and controls at 3:1 (WCAG 1.4.11); a scheme is checked 
 - **Fonts, corners, shadow.** Six families with Cyrillic letters (Inter, Manrope, Montserrat, Playfair Display, Lora, Unbounded), served by the web app itself so a guest's phone never calls a font host; corner radius 0–32 px; shadow 0–5.
 - **Older venues.** A venue that only set a brand colour, or nothing, publishes as before: its roles come from its palette.
 
-### The design record (D127–D129)
+### The design record (D128–D130)
 
-From 10-27 the venue's look is one **design record** per venue (D128): a value for every option of D129's list, a revision number, and the name of the Style it came from. It replaces `venues.settings.theme` and `presentation` (the template choice and per-face options) and absorbs the menu's `layout` and `layout_switch`; the three colours, the Advanced roles and the logo stay as this section describes, and the Styles (D127: Basic, Editorial, Soft, Classic, Club, plus an organisation's saved Styles) are presets of the same record. Writes go through `core.apply` with provenance (rule 1); a stale revision is refused. The snapshot publishes the record's values as the `design` block beside `theme`, every value a short lower-case token checked by the contract schema; the renderer draws from it, and the leak guard allows only the contract's words. Nothing in the record can hide an item, a price, allergens or a part of an item's row (D129's never-list; D130 hides sold-out items in the shell, not in the design). The option list itself lives in D129 and in the contract file the spec issue names; the two are kept equal by a test.
+From 10-27 the venue's look is one **design record** per venue (D129): a value for every option of D130's list, a revision number, and the name of the Style it came from. It replaces `venues.settings.theme` and `presentation` (the template choice and per-face options) and absorbs the menu's `layout` and `layout_switch`; the three colours, the Advanced roles and the logo stay as this section describes, and the Styles (D128: Basic, Editorial, Soft, Classic, Club, plus an organisation's saved Styles) are presets of the same record. Writes go through `core.apply` with provenance (rule 1); a stale revision is refused. The snapshot publishes the record's values as the `design` block beside `theme`, every value a short lower-case token checked by the contract schema; the renderer draws from it, and the leak guard allows only the contract's words. Nothing in the record can hide an item, a price, allergens or a part of an item's row (D130's never-list; D131 hides sold-out items in the shell, not in the design). The option list itself lives in D130 and in the contract file the spec issue names; the two are kept equal by a test.
 
 ### The face contract
 
@@ -810,11 +870,9 @@ The faces draw the bag, the table bill, call a waiter, pay and the receipt befor
 
 | Face | Channel | Paging | Ordering | Allergen mode |
 | --- | --- | --- | --- | --- |
-| QR mobile: Editorial Market (built, the default template) and `qr-phone` (built, hidden, the test reference) | `qr` | Scroll | Yes | Inline codes |
-| Kiosk | `kiosk` | Scroll, large touch targets | Yes | Inline icons |
-| A4 print | `print` | Fixed pages | No | Numbered legend |
-| TV board | `tv` | Rotating pages | No | Allergen-info QR code |
-| Delivery feed | none (JSON export) | n/a | n/a | Allergen codes as data |
+| QR phone: Editorial Market (built, the default template) and `qr-phone` (built, hidden, the test reference) | `qr` | Scroll | Yes | Inline codes |
+
+Decided 2026-10-08 (D38): QR → phone is the only channel. Kiosk, A4 print, TV board and delivery-feed faces are dropped from scope; further faces are alternative phone designs that pass the same contract.
 
 ### Contract tests
 
@@ -850,16 +908,16 @@ Four changes, followed from where they start to the guest's screen. A Barsy pric
 
 ### 4. The bar runs out of limes during service
 
-1. A waiter taps Sold out on the mojito in our editor. The save writes `sold_out = true` to the `edition:service` layer for today.
+1. At a hand-made venue, a manager taps Sold out on the mojito in our editor; hand-made venues keep that switch, while on a POS venue the POS says what ran out and nobody marks sold out in Restro (D124 §6). The save writes `sold_out = true` to the `edition:service` layer for today.
 2. The shell overlay `live.json` is regenerated: `{"nd_i7": {"sold_out": true}}`. No snapshot is published.
 3. Within 15 seconds every phone shows the mojito as sold out and hides its order button (rule R11).
-4. If staff instead take the mojito off sale in Barsy, an article webhook arrives and the change takes the trace 1 route, about two minutes end to end. When the venue turns on the optional stock loop, items that run out in Barsy's stock follow the same route.
+4. At a POS venue the mark comes from the POS: staff take the mojito off sale there, or a menu reading or the check right before a Send finds it unavailable. A sold-out mark sourced from the POS is written through `apply()` and the item greys out the same way (D122 §4, Stock). For Barsy the change is found by the next incremental read and takes the trace 1 route; when the venue turns on the optional stock loop, items that run out in Barsy's stock follow the same route.
 
 ## Failure modes and guarantees
 
 The system is built so that no failure empties a menu or shows a guest something unsafe. When in doubt it keeps serving the last good snapshot, and the only thing allowed to run ahead of a person is a change in the safe direction (hidden, off sale, sold out).
 
-This table covers the menu side. The ordering side's failure modes and the live-night safety kit (automatic menu-only mode, a manual switch for the manager, a phone alert when a paid order is not in Barsy within 60 seconds, a list of orphaned orders for staff to enter by hand) belong to the orders and payments spec, which is still to be written (tracker T29).
+This table covers the menu side and the failures of ordering onto the bill (D116, D120, D122 §4 and §6). The failures of paying in the app are set out under Paying in the app (unknown outcomes, deadlines and recovery, D127).
 
 | Failure | What happens | Guarantee |
 | --- | --- | --- |
@@ -878,32 +936,187 @@ This table covers the menu side. The ordering side's failure modes and the live-
 | A hand edit and a webhook touch the same Item | They write to different layers; the resolver decides. Same-layer edits are caught by the editor's base revision | No write silently overwrites another |
 | Allergen data disagrees between sources | V5 leaves the Item out until a person resolves it | A guest never sees allergen data that a source contradicts |
 | A bad snapshot is published | Move the pointer back to the previous snapshot | Rollback in one step, within 30 seconds at the edge |
+| A sent order gets no answer from the POS | The worker reads the table back and matches the new lines itself; it never sends the order a second time. If it still cannot tell, the sent order is Unconfirmed, the table pauses and staff are alerted | A sent order is never doubled and never silently lost (D116, D120, D122 §4) |
+| The POS stops answering for a login or the venue | A connection pause, or the venue pause when all connections are paused; phones show that ordering is paused; the Restro team is alerted; the pause lifts by itself after good probes | The menu keeps serving from files; nothing is sent while the POS is down (D102, D120, D122 §6) |
+| A POS reading is partial or fails | It counts as a failed reading: it ends no sitting, clears no order, lifts no pause and never says "Your bill changed" | Rule 6 |
+| The POS reports an item unavailable | A sold-out mark sourced from the POS is written through `apply()`, the item greys for every phone and Tonight gets a notice; it clears when a later complete reading shows the item available | Rule 5: our layers only make the menu more cautious (D122 §4, D124 §6) |
 
 ## Outbound: orders and tables
 
-Ordering is not built yet, but it is the reason Barsy ids, venue scopes and tables are modelled the way they are. The order path runs the opposite way to collection: the menu is pulled from Barsy and merged, while orders are pushed to Barsy as commands. Barsy remains the system of record for bills.
+Ordering from the menu is open (D79, map #29). Part 1 puts a guest's order onto the table's bill and gives staff the Tonight screen; it is specified in spec #64 and built on the stage branch against a simulated POS, because the pilot's POS (Mistral) has not answered yet. Paying in the app (part 2) is specified in spec #102 and described in Paying in the app below; it is built against a simulated payment provider. This section describes the seams those decisions fix; where it and a decision differ, the decision wins and the difference is a bug here.
 
-The face half of this path is built (D71, D72): see Guest services under The visualization shell. It fixes what the guest's phone sends (commands with an `actionId`, never a price) and what it draws (the host's state, never its own success). The platform half is the Stage 4 design in `docs/reviews/connector-architecture/A5-guest-outbound.md` section 5.1, where the order is our business object and a command is one delivery of it to a writer.
+The face half of this path is built (D71, D72): see Guest services under The visualization shell. It fixes what the guest's phone sends (commands with an `actionId`, never a price) and what it draws (the host's state, never its own success).
 
-This section is an outline, not a spec. The orders and payments spec is still to be written once Lukanet answers (tracker T29): table sessions, orders, order lines (price shown and price billed), payment shares, payments, refunds, a payment inbox and an append-only money-events table, each with its state machine, plus a failure table per payment route.
+The order path runs the opposite way to collection: the menu is read from a POS and merged, while an order is added to the POS's bill the way a waiter adds a round (D110). The POS stays the only truth of the bill; Restro keeps only its own orders and payments (D111). Nothing in the platform or the integration layer knows a specific POS: a connector does the safest thing its POS allows, and the platform only says "put these lines on this table's bill" (D115, D122 §1). The terms are the GLOSSARY's: order, sent order, POS bill, bill, sitting, open for phones, bar, payment table, Tonight.
 
-1. **The shell sends a cart, never prices:** `{table_token, client_uuid, items: [{node_id, qty, options: [node_id]}]}`. In the face's `order.send` command the lines are `{itemId, optionIds, qty, note}` and the key is its `actionId`; how that key maps onto the order API's own key is for Stage 4 to settle.
-2. **The order API resolves the context.** Token → table → venue, and, for a Barsy venue, its `bid` and `place_id` through `places`. Each `nd_` id → its active Barsy link; Options → supplements or modifiers. Items that are not `orderable` in the latest snapshot and overlay are refused.
-3. **It builds one `Accounts_place` call:** `account.uuid` = our server-generated order id (Barsy's official deduplication key; never the client's id, because Barsy would refuse a corrected cart retried under it after the guest has paid), `place_id`, `external_source` tagging our app, `lang_id` = the guest's language, `flag_close_account` = 0 (whether 1 creates and closes the account in one call is Q47). Rows carry `article_id`, `amount`, modifiers and supplements, and no price, so Barsy prices them.
-4. **Outbox.** The command is stored first, then sent by a worker with the venue's `pos_key`, because creating accounts requires a registered POS. On a timeout it retries with the same UUID; Barsy refuses a second account with that UUID.
-5. **Rounds.** v0 is pay per order (decided 2026-10-08): an order can hold many items and is paid when placed, and the guest app shows the table's orders together like a tab. Open (Q21): does each paid order become its own Barsy account, created and closed, or a round on one table account? In the round model, later orders call `Accounts_place` with the stored `account_id`.
-6. **Table state.** Account and order webhooks (types 2 and 5), plus `Places_getlistwithaccountsonly`, keep each table session in step with what staff do in the POS (move, merge, split, close).
-7. **Totals** are read back with `Accounts_get` and shown with Barsy's own formula.
-8. **Approval** happens in Barsy: incoming accounts land in "For confirmation" (POSX, Accounts > For confirmation) for the user assigned to the table's zone; if the place has no zone, or that user has no active session, every user sees it. Barsy's help pages describe no popup or sound for it. Barsy's web-order guide also describes an account that is created and closed automatically, with no staff review. Requirement (2026-10-08): with or without confirmation, the waiter must learn of every app order inside the venue's existing Barsy setup (POS, bar printer or screen), never on a separate device of ours. Whether bar tickets print for an automatically closed account is open.
-9. **Payment** uses `Accounts_getpaymentlink`. Confirm with Lukanet which flow produces exactly one fiscal receipt before building it. Preferred route (2026-10-08): Barsy's payment link, if it supports Apple/Google Pay and split payments and prints exactly one fiscal receipt; Stripe Connect is the fallback. Barsy's settings include how many hours a payment link stays active.
+### From the phone to the bill (D111–D117, D122 §4)
 
-Decided 2026-10-08 for v0: the QR token is the only table access control (orders are prepaid); delivery is to the table only; the time other guests have to pay their share of a split order is a venue setting; and no call that writes to Barsy is made against a live venue — a Barsy test installation is required first. How the bar ticket identifies an app order (order number, first name, table) follows what Barsy can carry; to check in the `Accounts_place` docs.
+- **The guests' order** is one per table and sitting, shared by every phone opened from the table code (D117). Pay-first items stay in it until someone pays for them (part 2).
+- **Send** turns the on-the-bill lines into one sent order for the table: priced on the server from the snapshot and the live overlay, never from the phone (D72, D121). One sent order is in flight per table. It goes onto the table's oldest open POS bill of the current service day, the way a waiter adds a round (D115, D124 §2); the guest still sees one bill (D111).
+- **The sent order's states** are those of D116 as refined by D122 §4: Waiting, Sending, Checking, Added, Not sent, Unconfirmed, and Awaiting approval only where the connector declares approval at the bar.
+- **Did it land?** A timeout tells Restro nothing, so it is never answered by a second write. The worker reads the table before sending and, after a timeout, reads it back and matches the new lines itself; only when it still cannot tell is the sent order Unconfirmed, the table pauses (D120) and staff are alerted (D122 §4).
+- **Only guests at the table can order** (D118, D119, D121, D122 §4): the table must be open for phones, the phone must hold a location pass from the table's current sitting, and each sent order and each table has a cap and a pace limit.
+- **Stock lives in the POS.** An item the POS reports as unavailable is marked sold out in the POS layer through `apply()` (rule 1, rule 5), greyed for every phone and reported to Tonight; on a POS venue nobody marks sold out in Restro (D122 §4, D124 §6).
+- **Pauses.** A failed POS connection pauses one POS login, and all connections paused is the venue pause; a table pauses when a sent order is Unconfirmed or a guard trips. Both lift by themselves or by a staff act as D120 and D122 §6 say, and a partial reading is a failed reading that concludes nothing (rule 6).
+
+### The connector seam: `ServiceConnector` and its conformance kit (D110, D122 §3, D124)
+
+The integration layer owns a POS-neutral `ServiceConnector` interface; connector packages implement it. It has `capabilities`, `probe`, `readFloor`, `readTable` and `addLines`, the four payment steps (`isolateLines`, `readIsolated`, `payAndClose`, `undoIsolate`), which part 2 uses and part 1 only declares and tests on the simulator, and an optional read of item availability right before an order, present only where that capability is declared.
+
+- **Two rules are part of the interface, not only its types.** A timeout is always `unknown`, never `refused`, and never a second write. A reading with any failed part is `complete: false` and concludes nothing.
+- **Refusals carry a scope** (this line or item, this bill, or the whole login or venue), so the first venue-scoped refusal pauses the connection at once.
+- **The probe never writes.** It reports "ok", the POS's mode where it gives one (training mode, D124 §5), "degraded", and the fiscal device's state where readable.
+- **A reading is grouped per POS bill**: the POS's own total, what is paid against it, its opening time where the POS gives one, whether it is the isolated bill of a payment in flight, and its lines. A line has a signed amount and a quantity carried as a decimal string, never a float, and its total is never recomputed from quantity × price (rule 8). POS ids stay in a backend-only reference type (rule 3).
+- **The floor** gives tables, payment tables and, where the POS knows them, bars. A bar is optional: never a made-up bar row (D124 §1).
+- **Part 2 adds three things** (D127): `payAndClose` takes `tipMinor`, the tip as its own amount in minor units; the capability `recordTipOnClose` says the connector puts the tip on the same bill and fiscal receipt, its own way; and `addLines` on an empty payment table returns the new bill's reference, where the capability "first items open a bill" is declared. Pay-first and tips are offered only where these are declared.
+- **Capabilities** are what a connector declares its POS lets Restro do or read (D122 §3), with "add to a staff-opened bill" added by D124 §3. A setting or guest feature that depends on one appears only where it is declared.
+- **Writes are waiter actions only** (rule 7, D110). The conformance kit carries the guard that every exported write is declared as one of them; it replaces the old empty-export-list test of `packages/barsy/src/write/`.
+- **The conformance kit** lives in the integration layer's test kit and runs the same checks on every connector: on `sim-pos` with both profiles in CI, and on barsy's fixtures for reads. Checks that depend on a capability, such as "adds to the oldest bill", apply only where it is declared.
+- **Dependency rules.** `barsy-only-from-worker` and `web-no-barsy` become `connectors-only-from-worker` and `web-no-connectors`, covering `packages/barsy/` and `packages/connectors/`; `packages/connectors/sim-pos/src` joins the vendor-word wall's zones. The guards only tighten (D67).
+
+### The service write path: `applyService` (D122 §9)
+
+Menu values, links and events still enter only through `apply()`. Service data, which is not the menu, has a write path of its own in `core/service`, beside `apply()`.
+
+- **`applyService(command)`** is the only writer of service tables. A command is one Zod-checked union member with the origins that may send it (guest, staff, worker) and the permission it needs. Its rows carry `source`, `actor` and `job_id`, NOT NULL, plus `via` (rule 2). Taking a lock is its one conditional statement; every other write locks its rows first, in one fixed order. The result is accepted or refused with a code, never a local success (D72). `readTableState` and `readTonight` are its read side, filtered by permission.
+- **What it writes:** sittings, the table's order and sent orders (with their notes), locks, readings per POS bill, the Log, waiter calls, alerts, pauses, service days, staff members, roles and shared devices, push subscriptions and the operator identity of Restro's admin team. Part 2 adds `payments`, `payment_lines`, `payment_steps`, `payment_accounts` (written by the worker through `applyService`) and the platform-level `provider_notices` (see Paying in the app).
+- **What `apply()` keeps:** the floor and the menu side: `bars`, and the `tables` columns `bar_id` and `is_payment_table`, written with POS provenance from a floor reading. A table that vanishes from a complete floor reading is marked through `apply()`, never deleted, and its open sitting pauses rather than ends. The venue's ordering settings are Zod-checked keys of `venues.settings`, written by `apply()`.
+- **Every service table** is tenant-scoped with row-level security in the existing pattern and has its entry in `table-access.ts`; append-only ones are SELECT and INSERT only. Log entries are kept by class (`night` or `record`) and the purge deletes by date through `restro_purge` (D83, D122 §9).
+- **Dependency rules.** `db-write-only-from-core-apply` widens to `db-write-only-from-core-write-paths` (`core/apply` and `core/service`); `@restro/core/service` may be imported only by the guest API routes, the admin's server actions, the worker, and the payment notice route, which may import only the subpath `@restro/core/service/notices` (`recordProviderNotice`) and so writes only `provider_notices` (D127). A write-target guard test pins which tables each path writes.
+- **Table codes** are random with at least 128 bits, stored as a hash with a sealed copy so stickers can be printed again, and a re-issue raises a `code_generation` that kills the passes. Only the worker opens seals (D55); showing a sealed value goes through an internal reveal endpoint of the worker's HTTP server (D122 §9).
+
+### The guest API (D121)
+
+Two endpoints on the web app, `GET /api/guest/state` and `POST /api/guest/actions`, with the table code in a header, strict Zod both ways, small bodies, `no-store` and a walk that refuses forbidden values on every answer (rule 3). Part 2 adds a third, `GET /api/guest/payment`, which answers only the paying phone (see Paying in the app).
+
+- **The web app never calls a POS.** Readings and writes are worker jobs, and their outcome reaches the phone through the state (rule 7, D121).
+- **`TableState`** carries the order, the sent orders' line states for every phone (progress only on the sending phone), the bill as the POS gives it with Restro's item names, and the ordering state: open for phones, paused, last orders, guards. From part 2 each line also carries `beingPaid` while it is in a payment that is not final, with no payer, amount or timer.
+- **Commands** change the order, Send it, or call a waiter. Every command carries an action id, so a repeat is a no-op, and its age, so a stale one is refused. Part 2 adds `pay.start`, `pay.returned` and `pay.cancel`, and a Send with pay-first lines carries its tip (D127).
+- **Polling, not push:** the order and bill every few seconds, the menu less often, none while the page is hidden, the server's `next` hint wins. Order edits are optimistic and rolled back on refusal; Send never is. One version per table is bumped by every writer that changes the state.
+- **The location pass** is a signed note over the venue, the code's generation, the sitting and an expiry; Restro keeps no copy and never stores a position (D118, D119, D121).
+- **The shell's services contract** (`@restro/shell`) carries every new shape and refusal code, and faces word the codes through shell strings (D72). The guest template is designed last, by its own agent (D122), so build tickets drive end-to-end tests through the hidden `qr-phone` test face.
+
+### The simulated POS: `sim-pos` (D122, spec #64 §2)
+
+`packages/connectors/sim-pos` (source kind `sim`) behaves like the one-bill POS the pilot runs, so the platform is built and tested without Mistral and without coming to depend on the fake.
+
+- **Parts:** a pure engine (injected clock, seeded random source, no I/O), a POS-shaped HTTP wire, the `ServiceConnector` adapter over that wire with a host guard, a standalone server with a CLI and a control page for waiter actions, and a `./testing` export with MSW handlers, an in-process transport and scenario files. State is in memory with an optional JSON snapshot; it never uses Postgres.
+- **Switches** default to the cautious answer, there are `cautious` and `pilot` profiles, and anything the POS has not stated answers HTTP 501 (`undefined_behaviour`). A new switch needs a Mistral question number. Faults are planned and deterministic, and seeded chaos prints its seed.
+- **Source kind `sim`** is accepted by core's connector maps and the kind check, refused by the worker in production and hidden from the source picker there; a test pins it.
+- **"Demo Bar"** is a dev-seed venue on a `sim` instance. Its menu is written through `apply()` with POS provenance from the scenario file, and its floor comes from `readFloor`.
+- **Deploying it** anywhere, staging included, needs Martin's OK.
+
+### Staff, Tonight and the Log (D120, D122 §7, D123)
+
+- **Tonight** is a screen of the venue admin where staff open tables for phones, see what needs a person (an order that could not be confirmed, a waiter call, an out-of-stock notice, a pause) and answer it with one tap. It is designed before it is coded (D123).
+- **Roles and PINs.** Venue roles come from a fixed permission list, copied to make a venue's own; organisation owners and admins hold every permission, and Restro's admin team is its own role across venues. Staff need no account: a generated PIN, stored with a lookup hash and a sealed copy, unlocks Tonight's actions on a shared device and never settings. Permissions are checked only on the server, inside `applyService` and `readTonight`.
+- **Alerts** are rows with a kind, a subject and the permission needed to answer. They reach staff by Web Push and, per venue, by one Telegram group read by long polling in the worker, so no public endpoint is added. The Restro team has its own Telegram alerts and an outside watchdog (D102, D120).
+- **The Log** records every state change of a sent order, sitting, pause, alert, waiter call, setting, role and permission (D120).
+
+### Fitting any POS (D124)
+
+A bar is optional (§1); a sent order never joins a POS bill from before the service day (§2); where a POS will not let outside apps add to a waiter's bill, the order joins the oldest open POS bill Restro itself opened (§3); card holds are a must-have for paying (§4); training mode is met only on a test installation (§5); on POS venues the owner's "sold out tonight" switch goes too (§6).
+
+### Paying in the app (D98, D125–D127, spec #102)
+
+Paying settles lines of the table's bill from the phone: a hold on the guest's card, the lines moved to a payment table and closed on the POS with the card payment, then the capture. It reuses everything above: the service write path, the guest API, the readings, the locks, the pauses and the payment tables. The venue is the merchant on its own account at the payment provider, and Restro never holds money (D98). The sections below name no provider; the last one names the first. Where they and a decision differ, the decision wins and the difference is a bug here.
+
+#### Where each piece runs (D127)
+
+| Piece | Runs in | Why |
+| --- | --- | --- |
+| The guest pay commands (`pay.start`, `pay.returned`, `pay.cancel`) | The web app, through `POST /api/guest/actions` (D121) | The same path as every guest command: table code header, action id, Turnstile, limits. The web app never calls a provider or a POS |
+| Pricing, the hold, the route, capture and release: every provider call | The worker, in pg-boss jobs on a queue of their own with a short check interval, one job per payment at a time | Only the worker imports a provider package, and the route already needs the worker for its POS writes |
+| The provider's notices | The web app, `POST /api/payments/notices/<kind>` | The endpoint must be public and the worker is not. It checks the signature and stores the notice, and does nothing else |
+| The card form | The guest page, in the browser, loaded from `apps/web/src/connectors/<kind>/` into a slot the template places | A face only places the slot and never loads a provider library (D72) |
+
+- **The worker creates the hold while the guest waits.** The paying phone shows "Preparing your bill…" and polls every 2 s (D121). Calling the worker straight from the web app was rejected: it would put a provider call on a web request and add a second route into the payment.
+- **Two provider values reach the paying phone only,** in that payment's answer: the payment's secret for the form and the venue's provider account reference. Neither is in a snapshot, a URL or another phone's state, and neither is a POS id (rule 3).
+- **The import rules** are in the Stack tab: only the worker imports a provider package, and the web app reaches `core/service` through one function, `recordProviderNotice` (D127).
+
+#### The `PaymentProvider` seam (D98, D127)
+
+The integration layer owns a provider-neutral `PaymentProvider` interface beside `ServiceConnector`. One package per provider implements it, and the platform knows no provider's name. The worker holds the implementations; the web app holds only the part that checks notices and the part that mounts the card form.
+
+- **Capabilities:** the shortest hold window the provider promises, whether it can capture less than it held, the wallets it offers (Apple Pay, Google Pay), whether it sends refund notices, and its smallest payment per currency.
+- **Connecting:** it starts a connection (the owner is sent to the provider's own hosted form), reads whether the account can take payments and what is missing, and registers the guest domain for wallets (D125).
+- **Paying:** it creates a hold, finds a payment again by Restro's payment id after a timeout, reads a payment (status, held amount, `capture_before`, the bank-check result, the authorisation code), captures an amount and releases a hold. Every write carries an idempotency key made from the payment id.
+- **No refund method.** D122 §8 and D125 take refunds out of Restro's key, which narrows D98's list. A guardrail test keeps it so. Refunds and disputes are observed through notices, never made (D127).
+- **Statuses are the platform's own:** awaiting the guest (with "needs guest action" while the guest's bank asks for a step), held, captured, released, failed. A timeout is `unknown` and a partial reading concludes nothing, as in the service connector.
+- **The page's form part** is the provider's browser code. It mounts the form into the template's slot, reports "returned" and never decides an outcome. **The notice part** checks a signature by hand over the raw body, so the web app needs no provider SDK.
+- **Conformance.** One suite runs on `sim-pay`, the simulated provider, and on the first real provider's sandbox, like the connector suites (D122 §9). `sim-pay` stays as the test double. Tests never run against a venue's live account (rule 7, D125).
+
+#### The payment route (D122 §8, D127)
+
+Every state change is a compare-and-set through `applyService`, from the state the job expects, so two jobs racing for the same change cannot both win. Every POS or provider write is recorded in `payment_steps` as `attempting` before the call, and as `done`, `refused` or `unknown` after.
+
+1. **Requested (web app).** The knock is checked against the latest reading, the lines are greyed for every phone, and `payment.prepare` is queued in the same transaction.
+2. **Priced (worker).** The real table is read fresh. A picked line that changed or went → `bill_changed`; a partial reading retries and concludes nothing. The amount is the POS's own line amounts for the picked quantities plus the tip, never price × quantity (rule 8). Below the smallest card payment → `below_minimum`.
+3. **Awaiting the guest.** The provider creates the hold with an idempotency key, and the form's values go to the paying phone.
+4. **Held.** On the phone's `pay.returned` or the provider's notice, whichever comes first, the worker reads the payment back and needs a hold for exactly the amount. The phone's word is a nudge, never a fact.
+5. **Queued.** The payment joins its bar's queue (the venue's where the table has no bar, D124 §1) and takes a free payment table after reading it empty. After 60 s of waiting the hold is released and the guest sees "busy". Every wait over 10 s is counted.
+6. **Isolated.** The picked quantities move to the payment table, holding the real table's write turn so no Send writes that bill at the same moment.
+7. **Checked.** The isolated POS bill must show exactly the confirmed lines and amounts, and be open. Any extra line, missing line or earlier close → move back (again holding the real table's write turn), release, alert staff. A lower amount is captured only after a fresh read of the real table shows the missing line was voided.
+8. **Closed.** The card payment closes that POS bill with the amount and the tip.
+9. **Captured.** The hold is captured for the closed amount, with an idempotency key. The guest sees "Paid".
+
+- **The states** are `requested`, `priced`, `awaiting_guest`, `held`, `queued`, `isolated`, `checked`, `closed` and `captured`; pay-first has `entered` in place of `isolated`, and a cancel passes through `cancelling`. `pay.cancel` works only before the hold: it is a compare-and-set to `cancelling` and is refused with `too_late` if the hold won the race. The refusals a phone can get are `paying_not_offered`, `paying_paused`, `being_paid`, `bill_changed`, `below_minimum`, `ask_waiter_to_split` (a whole-bill discount), `turnstile`, `rate_limited`, `sitting_ended`, `too_late`, `unknown_payment` and `busy`; the template words them (D72).
+- **Once a close has been attempted, Restro never undoes or releases** (D127). It captures on proof of the close: a done answer, the connector's `already_done`, or a closed bill carrying Restro's reference or a receipt number. Otherwise it keeps the hold as `unconfirmed` for a manager or owner to answer ("Receipt printed" → capture; "No receipt" → release and move the lines back). An empty payment table alone is no proof.
+- **A payment owns its payment table** from step 5 until it is final and a reading shows the table empty. A held `payment_table` lock has no deadline (the `locks_holder_deadline` check allows none for that scope), so it never runs out: the payment releases it when it is final and the table reads empty. A payment the worker lost is finished or undone by the recovery job, never overtaken by another.
+- **Pay-first** is offered only where the connector opens a bill on an empty table and returns its reference. The price is the published menu's, which on a POS venue is the POS's own (rule 5). The steps are the same, except that step 6 enters the lines on the payment table, with the note "for Table 7" where notes reach the ticket. They then print at the bar, so after it Restro never releases on its own: a lower POS amount is captured, a higher amount or a failed check keeps the hold as `unconfirmed`.
+- **Final states:** `captured`; `released` with a reason; `unconfirmed` (held, waiting for staff); `stranded` (lines could not be moved back, staff alerted); `capture_failed` (the bill is closed but the provider refused the capture; the owner is alerted because the venue is owed money).
+- **Unknown outcomes are read back, never guessed.** A hold creation that timed out is found by Restro's payment id; if none exists, whatever the key created is released and the guest sees "Try again". A stuck hold creation is released, never retried with the same key for ever. A move or undo that timed out is resumed from a reading of both tables. A pay-first entry that timed out is looked for on the payment table and, if not found, may still print, so the payment is `unconfirmed`. A close with no proof either way is `unconfirmed`. A capture that timed out is read back and retried with the same key; one that is refused is `capture_failed`.
+- **Deadlines:** 2 minutes to confirm, when the worker reads the provider's payment: if the guest's bank is still asking for a step, or the hold exists, the limit extends to the 10-minute provider session; otherwise the payment is cancelled and the lines ungreyed. At 10 minutes the same happens. The third is the 60 s wait for a payment table. A **recovery job** runs at worker start and every 30 s, finds payments whose last step has been `attempting` or unchanged too long, and acts from the last recorded step: before a close was attempted, finish or undo; after, prove the close and capture, or `unconfirmed`. Holds track `capture_before`; an `unconfirmed` payment reminds staff at half the time left and with 24 h left, and a hold that expires uncaptured is `released` with reason `expired`.
+- **The provider breaker** is per venue account and follows D120's rule: no provider call succeeded for 60 s, with at least 3 attempts, pauses paying, and it lifts the same way. Ordering to the bill goes on. Lost access pauses paying at once. A held, unfinished payment is never charged (D125).
+- **What every other phone sees:** `beingPaid` on each line in a payment that is not final, with no payer, amount or timer. A friend's `pay.start` on such a line is refused with `being_paid`.
+- **The payment handle** is a 128-bit random value held only by the paying phone. Only its hash is stored; it is never in a URL or a log, and the page keeps it in `sessionStorage`. `GET /api/guest/payment` reads with it.
+- **Tips** are chosen before Pay and are part of the hold: the tip is its own amount in minor units, and `amount = lines + tip`. A tip is offered only where the connector declares `recordTipOnClose`, so it lands on the same bill and fiscal receipt. It starts at zero with none preselected, says it goes to the venue and is never called a service charge (D127).
+- **Limits.** Turnstile at `pay.start` and at a Send with pay-first lines. Per phone: one start per 15 s, five per 10 minutes, one open payment. Per table: three open payments, and a line is in only one payment at a time. The smallest card payment is the venue setting `venues.settings.paying.minCardMinor`: null means the provider's minimum, and it is set only through the `settings.paying_set` command, which refuses less than the provider's minimum (D127, #61).
+
+#### Provider notices (D125, D127)
+
+- **Receiving.** `POST /api/payments/notices/<kind>` reads the raw body and checks the signature. It refuses and counts anything unsigned, stale, or whose live or test flag does not match this environment. While a signing secret is being rolled, any signature in the header may match. The secret lives only in the web app's environment.
+- **Storing.** `recordProviderNotice` inserts the notice by its event id and queues a worker job in the same transaction. A duplicate is answered 200 and dropped.
+- **Acting.** The job never trusts the event's copy: it reads the object back from the provider, so repeated or out-of-order events do no harm. Restro acts on: a hold arrived (step 4); a payment cancelled or failed (check against the record); a refund the venue made in its own dashboard (record it and add the storno to-do, #54); a dispute (mark the payment "Disputed", #54); a change to the account (check the connection, pause or lift paying); and lost access (pause paying at once).
+- **A missed notice** is covered by the recovery job, which reads every open payment back. A provider that sends refund notices needs no daily list (D122 §8).
+
+#### Records and evidence (D122 §9, D127)
+
+- The tables are listed under Supporting tables and written only in `core/service`; a write-target guard test pins them there. The tenant payment tables carry `source`, `actor` and `job_id`, NOT NULL (rule 2). The inbox is written by the web route before any job exists, so a notice carries source `provider`, actor `system` and the provider's event id as its job id.
+- **Dispute evidence** is read from `payments`, `payment_lines` and `payment_steps`, plus the bank-check result and the authorisation code read from the provider at capture. The receipt number and fiscal memory number are stored once the close or a reading shows them.
+- **No card digits and no phone, device or IP identifier are stored** (D111). Records are kept 18 months, set by the service path and purged by date through `restro_purge` (D83, D122 §9).
+- **The Log** records each step staff should see: held, moved, closed, captured, released, unconfirmed, capture failed, and staff answers.
+
+#### Connecting a payment account (D98, D125)
+
+- **One button** in the venue's settings opens the provider's own hosted form for the business, bank and ID details and its terms. Restro never sees a password or a key. Each venue gets a new account of its own through Restro; the venue owns it fully, and its money never passes through Restro.
+- **Connecting, changing and disconnecting are a permission** in D122 §7's list, held by organisation owners, Restro admins and the default Owner role, and needing a sign-in within the last 15 minutes. Disconnecting waits until no guest is mid-payment.
+- **Paying turns on only when every check passes:** the provider allows card payments on the account, the card payment type is chosen in the till, payment tables are marked, and the provider's own receipt emails to guests are off. Until then the settings show what is missing and pay-first items say "Order this from your waiter".
+- **Restro's own provider key** is restricted, lives only in the worker's environment, and cannot refund.
+
+#### Stripe, the first provider (D126, D125, D127)
+
+This is the connector layer, like barsy for the till. The package is `packages/payments/stripe` (the `stripe` library), and the page's part is `apps/web/src/connectors/stripe/` (`@stripe/stripe-js`); build tickets name the dependencies.
+
+- **Direct charges on the venue's own Stripe account,** created at connection (Accounts v2). Stripe charges its fees to the venue, and the venue carries its own disputes.
+- **Payment Intents with manual capture, not Checkout Sessions,** because completing a Checkout Session needs the guest's email and Restro never passes it on. Cards only, which include Apple Pay and Google Pay, with the bank's check (3-D Secure) requested on every payment. No receipt email and no customer on the payment, and Restro's payment id in its metadata.
+- **The restricted key:** Payment Intents write, Charges and Disputes read, Payment Method Domains write, Refunds none. The smallest payment is €0.50.
+- **Notices:** one endpoint for events from connected accounts. The signature is HMAC-SHA256 over the timestamp and the body, with Stripe's 5-minute tolerance.
+- **The page** mounts the Payment Element and confirms without a redirect where it can. For a redirect it strips Stripe's values from the address with `history.replaceState` before any request, then reads the handle from `sessionStorage` and sends `pay.returned`. The page's content policy allows Stripe's script, frame and API hosts.
+- **Before the pilot, six sandbox checks:** the key refuses a refund and still reads the charge; a hold is captured, also in part; a released hold costs nothing; a test account's notices arrive signed; Apple Pay and Google Pay show on a real phone with the domain registered by API; the bank's check completes inside the page.
+- **The pretend till stays** (D126): Stripe knows nothing of tables or bills, so paying runs against `sim-pos` and `sim-pay` until the pilot's till is connected. Going live with paying at the pilot club still needs that till, because a payment is matched against the club's actual bill.
+
+### Not built yet
+
+- **Paying in the app** (part 2) is specified (spec #102, D125–D127, above) and not yet built. The owner's connecting and settings screens (#61), the tip screens (#45) and the end-of-night page and storno to-do (#54) have their own tickets, and the guest template is designed last (D122). Until paying is live, pay-first items say "Order this from your waiter".
+- **The Mistral connector** gets its own spec when Mistral answers (#48). The barsy connector's writes (#47) are proven only on Lukanet's test installation (rule 7, D110), and the connector foundation (CF-05 to CF-08) is parked.
+- **What barsy documents** for that later work: `Accounts_place` deduplicates on `account.uuid`, which must be our server-generated id and never the client's; creating accounts requires a registered POS; incoming accounts wait in "For confirmation" for the user assigned to the table's zone; totals are read back with `Accounts_get`; payment uses `Accounts_getpaymentlink`. POS registration and webhooks are setup, not waiter actions, and stay out (D41, D110). Open barsy questions are in `docs/connector-questions.md`.
 
 ## Build order and open decisions
 
 Build the internal model and one face first, with no Barsy at all. Barsy then becomes one more source feeding a model that already works.
 
-Stack (decided 2026-10-08): TypeScript end to end: a Next.js web app and a pg-boss worker on Railway (EU), Postgres for data and jobs, Cloudflare R2 for files. AI coding agents write the code; Martin manages and makes the decisions. The build order below is not decided yet: planning comes first (see the Restro tracker, conflict C1).
+Stack (decided 2026-10-08): TypeScript end to end: a Next.js web app and a pg-boss worker on Railway (EU), Postgres on Supabase (EU) for data and jobs, Cloudflare R2 for files. AI coding agents write the code; Martin manages and makes the decisions. The build order was decided at kickoff (2026-10-08, tracker D39): a staged proof of concept on one venue, set out in the Stage plan tab of the live document; the list below is the original engine order.
 
 The full stack design, costs, environments and how CI enforces the nine rules are in the Stack tab.
 
@@ -911,7 +1124,7 @@ The full stack design, costs, environments and how CI enforces the nine rules ar
 2. **Barsy read.** Onboarding, full pull, mapping configuration, tier 1 replay, the matching screen. Done when a Barsy catalog becomes a published menu with photos.
 3. **Barsy live.** Webhook receiver and processor, reconciliation loops, subscription health. Done when a Barsy edit reaches a phone in under 3 minutes and a deliberately dropped webhook is caught within 10.
 4. **More faces.** Print and TV faces, the contract-test fixtures, the live sold-out overlay.
-5. **Ordering.** Outbox, POS registration, table sessions, payment, only after Lukanet confirms the fiscal flow.
+5. **Ordering.** Part 1 (D79), ordering onto the table's bill and Tonight, is built against `sim-pos` from spec #64; part 2, paying in the app (spec #102, D125–D127), follows with Stripe as the first provider (D126), built against the simulated provider `sim-pay`; the Mistral connector waits for Mistral (#48). Webhooks and POS registration stay out (D41, D110).
 
 ### Decisions for the owner
 
@@ -922,16 +1135,18 @@ The full stack design, costs, environments and how CI enforces the nine rules ar
 - [x] Languages: decided 2026-10-08, refined 2026-10-12 (D77). Per venue, from one core function: one main language, the languages its owner switched on, and the languages the till fills for about 20% of the texts or more; more are added by hand in our translations tab; BG + EN for the pilot. Open: should our translations later be written back to Barsy? That is back-office work, which rule 7 excludes (D110); it would need its own decision.
 - [x] Nightly pull time per venue (clubs close late): decided 2026-10-12 (D82). A venue setting, `full_pull_time` in the venue's time zone, default 12:00.
 - [x] Sold-out Items: decided 2026-10-08. Shown greyed out, with no order button.
-- [ ] Card payment: which Barsy flow prints exactly one fiscal receipt (ask Lukanet)? Preferred route (2026-10-08): Barsy's payment link, if it supports Apple/Google Pay and split payments and prints exactly one fiscal receipt; Stripe Connect is the fallback.
-- [ ] Service day: the hour a venue's day ends (proposed 07:00), used for sold-out resets, table tabs, stats and money reconciliation. Service editions are named by service day, not calendar date.
-- [ ] Barsy bill model (Q21): one Barsy account per paid order (recommended: the only model with documented deduplication) or rounds on one table account.
-- [ ] Split rules: how a bill is split, who pays the leftover cent, what happens when the payment window expires, and whether an order reaches the bar only when fully paid. The window must not outlast Barsy's payment-link lifetime.
+- [ ] Card payment: paying in the app is part 2 of the ordering spec (#102); the route, receipts and closing are D122 §8 as refined by D127, and card holds are a must-have (D124 §4). Which barsy flow prints exactly one fiscal receipt stays a question for Lukanet when its connector is built.
+- [x] Payment provider: decided 2026-10-25 (D126, D125). Stripe is the first provider, connected by the owner with one button on a new account of the venue's own; the venue is the merchant and Restro never holds money (D98). More providers follow through the same interface.
+- [ ] Tips: decided 2026-10-25 (D127) to offer one only where the till puts it on the same bill and fiscal receipt. Open: whether each connected POS's API can add a tip line to a bill, and in which fiscal group (a question per connector), and whether a day-end tip receipt is acceptable (the venue's accountant). Until answered, no tip is offered at that venue.
+- [x] Service day: decided 2026-10-08. Ends at 07:00 local, a per-venue setting; used for sold-out resets, table tabs, stats and money reconciliation. Service editions are named by service day.
+- [x] Bill model: decided 2026-10-18 (D115). A sent order is added as a round to the table's oldest open POS bill, and a new POS bill opens only where the table has none; how barsy does this stays a connector question (`docs/connector-questions.md`).
+- [ ] Split rules: paying one's own lines moves them onto a POS bill or payment table of their own (D112, D122 §8) and is part 2 (#102); group payment, the leftover cent and the payment window wait for group payment (D112).
 - [x] Writes into a POS: decided 2026-10-18 (D110). Restro writes only as a waiter would (bills, rounds, payments, cancels at the front end), never back-office; tests only on a test installation. Webhooks and POS registration stay out (D41).
-- [ ] Sold out: Barsy's for-sale flag or stock as the source, with our toggle for managers only, or our toggle for waiters too (trace 4 assumes waiters use our editor, which conflicts with "no separate device").
+- [x] Sold out: decided 2026-10-22 (D124 §6, D122 §4). On a POS venue the POS is the source (Barsy's for-sale flag, or its stock where the venue turns that on) and nobody marks sold out in Restro; hand-made venues keep the admin's switch.
 - [ ] Default order\_mode for items published automatically.
-- [ ] Call waiter and request bill in v0: only if Barsy's API can message staff (Q48).
+- [x] Call a waiter: decided 2026-10-21 (D122 §4). It is in the pilot and reaches staff in Tonight. Asking for the bill waits for part 2.
 - [x] Which menu each table or zone shows: decided 2026-10-12 (D95). Menu routes: venue (its live menu), area, table; the most specific published menu wins; one menu per code.
-- [ ] Allergens on drinks: check V4 covers "food" only and no field marks an item as food; EU rules may cover drinks too (legal check, Q42).
+- [ ] Allergens on drinks: check V4 covers "food" only and no field marks an item as food; EU rules may cover drinks too (legal check, Q42). Until then (2026-10-08) allergens are a plain attribute and V4/V5 are warnings, not gates.
 
 ## Sources
 
@@ -959,5 +1174,6 @@ Barsy help (public):
 
 Other:
 
+- Ordering: the decisions D110–D124 (`docs/decisions/`), spec #64 (part 1 of the POS-neutral ordering spec, map #29) and the filed research behind them (`docs/deliverables.md`).
 - [Lukanet Postman: Barsy API collection](https://www.postman.com/lukanet/lukanet-public/documentation/pm1rtc4/barsy-api)
 - Passport system: `SynexCloud/Platform` branch `main`, read for this document: `OntologyController`, `TemplateController`, `PassportController`, `SkuController`, `ImportController`, the `MassImportCoordinator` and `MassImportWorker` jobs, `Pages/Ontology/RenderGraph.jsx`, `Pages/Passport/View.jsx`.

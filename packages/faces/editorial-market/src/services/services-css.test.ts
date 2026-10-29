@@ -258,6 +258,8 @@ describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet'
     '.rm .ro-pill',
     '.rm .ro-bagbar button',
     '.rm .ro-acc summary',
+    '.rm .ro-allergy a',
+    '.rm .ro-allergy summary',
     '.rm .ro-note textarea',
     '.rm .ro-input input',
     '.rm .ro-promo input',

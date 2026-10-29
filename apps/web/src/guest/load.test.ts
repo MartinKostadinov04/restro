@@ -1,10 +1,21 @@
+import { createHash } from 'node:crypto'
 import { CurrentPointerSchema, VenueIndexSchema } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
 
 import { faceEntry } from '@/faces/registry'
 import { cdnBase } from './cdn'
-import { buildContext, chooseLocale, confirmedTable, langParam, readTableToken } from './context'
+import {
+  buildContext,
+  chooseLocale,
+  confirmedTable,
+  langParam,
+  readTableToken,
+  rememberedTable,
+  rememberTable,
+  type TabStorage,
+  withCodeInFragment,
+} from './context'
 import {
   files,
   GuestLoadError,
@@ -24,6 +35,8 @@ import {
 } from './load'
 
 const BASE = '/cdn'
+/** A table code's file is named after its SHA-256 (#70). */
+const sha = (code: string) => createHash('sha256').update(code).digest('hex')
 /** The public code of the venue in these tests; the slug is only decoration (D68). */
 const CODE = 'k3x9p2m7qa1z'
 
@@ -46,7 +59,7 @@ function publishedFiles(name = 'tags-dietary', code = CODE) {
     [files.current(BASE, index), pointer],
     [files.snapshot(BASE, pointer), snapshot],
     [files.live(BASE, index), overlay ?? { version: pointer.version, items: {} }],
-    [files.table(BASE, 'tb_0123456789ABCDEFGHIJKL'), table],
+    [files.table(BASE, sha('tb_0123456789ABCDEFGHIJKL')), table],
   ])
   const asked: string[] = []
   const deps = (overrides: Map<string, unknown> = new Map()): LoadDeps => ({
@@ -287,10 +300,11 @@ describe('an overlay made for another snapshot version (S3-10)', () => {
 describe('the table banner', () => {
   const token = 'tb_0123456789ABCDEFGHIJKL'
 
-  it('reads the label from t/<token>.json', async () => {
+  it('reads the label from t/<hash>.json: the code itself never goes over the wire', async () => {
     const f = publishedFiles()
     expect(await loadTableLabel(f.deps(), token, CODE)).toBe('12')
-    expect(f.asked.at(-1)).toBe(`${BASE}/t/${token}.json`)
+    expect(f.asked.at(-1)).toBe(`${BASE}/t/${sha(token)}.json`)
+    expect(f.asked.some((url) => url.includes(token))).toBe(false)
   })
 
   it('leaves the banner out for an unknown code, another venue, a bad token or a failure', async () => {
@@ -303,9 +317,83 @@ describe('the table banner', () => {
     expect(await loadTableLabel(f.deps(), '../x', CODE)).toBeNull()
     expect(f.asked.length).toBe(before)
     const broken = new Map<string, unknown>([
-      [files.table(BASE, token), new Response('x', { status: 500 })],
+      [files.table(BASE, sha(token)), new Response('x', { status: 500 })],
     ])
     expect(await loadTableLabel(f.deps(broken), token, CODE)).toBeNull()
+  })
+
+  it('checks the code this tab kept when the address has none, and the address code before it', async () => {
+    const f = publishedFiles()
+    const asked: string[] = []
+    const remembered = (publicId: string) => {
+      asked.push(publicId)
+      return token
+    }
+    // A reload on a dish page: no code in the address, the tab's copy is checked like any code.
+    const menu = await loadMenu(f.deps(), CODE, null, remembered)
+    expect(menu.table).toEqual({ token, label: '12' })
+    expect(asked).toEqual([CODE])
+    expect(f.asked).toContain(files.table(BASE, sha(token)))
+    // A code in the address wins: the tab's copy is not even asked for.
+    const other = await loadMenu(f.deps(), CODE, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', remembered)
+    expect(other.table).toBeNull()
+    expect(asked).toEqual([CODE])
+    // A kept code the files no longer know is no table.
+    expect(
+      (await loadMenu(f.deps(), CODE, null, () => 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')).table,
+    ).toBeNull()
+  })
+})
+
+describe('the table code a tab keeps', () => {
+  const code = 'tb_0123456789ABCDEFGHIJKL'
+  function memoryStorage(): TabStorage & { readonly items: Map<string, string> } {
+    const items = new Map<string, string>()
+    return {
+      items,
+      getItem: (key) => items.get(key) ?? null,
+      setItem: (key, value) => void items.set(key, value),
+      removeItem: (key) => void items.delete(key),
+    }
+  }
+
+  it('keeps one code per venue, replaces it with a newer one and forgets it on null', () => {
+    const storage = memoryStorage()
+    expect(rememberedTable(storage, CODE)).toBeNull()
+    rememberTable(storage, CODE, code)
+    expect(rememberedTable(storage, CODE)).toBe(code)
+    // Another venue has its own.
+    expect(rememberedTable(storage, 'zzzzzzzzzzzz')).toBeNull()
+    rememberTable(storage, CODE, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    expect(rememberedTable(storage, CODE)).toBe('tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    rememberTable(storage, CODE, null)
+    expect(rememberedTable(storage, CODE)).toBeNull()
+    expect(storage.items.size).toBe(0)
+  })
+
+  it('reads only a well-formed code back', () => {
+    const storage = memoryStorage()
+    storage.items.set(`restro.table.${CODE}`, '../../x')
+    expect(rememberedTable(storage, CODE)).toBeNull()
+  })
+
+  it('works without storage, or with one that throws (private mode): nothing is kept', () => {
+    const throwing: TabStorage = {
+      getItem: () => {
+        throw new DOMException('denied', 'SecurityError')
+      },
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError')
+      },
+      removeItem: () => {
+        throw new DOMException('denied', 'SecurityError')
+      },
+    }
+    for (const storage of [null, throwing]) {
+      expect(() => rememberTable(storage, CODE, code)).not.toThrow()
+      expect(() => rememberTable(storage, CODE, null)).not.toThrow()
+      expect(rememberedTable(storage, CODE)).toBeNull()
+    }
   })
 })
 
@@ -342,12 +430,29 @@ describe('the guest context', () => {
     expect(early('', ['de-DE'])).toBe('bg_BG')
   })
 
-  it('writes the short language form and reads only well-formed table tokens', () => {
+  it('writes the short language form and reads only well-formed table codes', () => {
+    const code = 'tb_0123456789ABCDEFGHIJKL'
     expect(langParam('bg_BG')).toBe('bg')
-    expect(readTableToken('?t=tb_0123456789ABCDEFGHIJKL')).toBe('tb_0123456789ABCDEFGHIJKL')
+    // The fragment first (D122), then the query of an older link.
+    expect(readTableToken('', `#t=${code}`)).toBe(code)
+    expect(readTableToken('?t=tb_ZZZZZZZZZZZZZZZZZZZZZZ', `#t=${code}`)).toBe(code)
+    expect(readTableToken(`?t=${code}`)).toBe(code)
     expect(readTableToken('?t=short')).toBeNull()
+    expect(readTableToken('', '#t=../../x')).toBeNull()
     expect(readTableToken('?t=../../x')).toBeNull()
-    expect(readTableToken('')).toBeNull()
+    expect(readTableToken('', '')).toBeNull()
+  })
+
+  it('moves a code in the query into the fragment, keeping the rest of the address', () => {
+    const code = 'tb_0123456789ABCDEFGHIJKL'
+    expect(withCodeInFragment(`https://x.test/m/a?t=${code}&lang=bg`)).toBe(
+      `https://x.test/m/a?lang=bg#t=${code}`,
+    )
+    // A code already in the fragment wins.
+    expect(withCodeInFragment(`https://x.test/m/a?t=other00000#t=${code}`)).toBe(
+      `https://x.test/m/a#t=${code}`,
+    )
+    expect(withCodeInFragment('https://x.test/m/a?lang=bg')).toBeNull()
   })
 
   it('tells the shell about a table only when the lookup of that very code found one (A5-F5)', () => {
@@ -421,7 +526,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     f.bodies.set(files.organization(BASE, 'old-group'), { redirect_to: ORG })
     f.bodies.set(files.current(BASE, secondIndex), secondPointer)
     f.bodies.set(files.live(BASE, secondIndex), { version: f.pointer.version, items: {} })
-    f.bodies.set(files.table(BASE, TABLE_CODE), {
+    f.bodies.set(files.table(BASE, sha(TABLE_CODE)), {
       venue_public_id: CODE,
       venue_slug: 'demo-club',
       organization_slug: ORG,
@@ -482,7 +587,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' }, TABLE_CODE)
     expect(menu.index.menu_id).toBe(SECOND_MENU)
     expect(menu.table).toEqual({ token: TABLE_CODE, label: '7' })
-    expect(f.asked).toContain(files.table(BASE, TABLE_CODE))
+    expect(f.asked).toContain(files.table(BASE, sha(TABLE_CODE)))
     expect(f.asked).toContain(
       files.current(BASE, { venue_id: f.index.venue_id, menu_id: SECOND_MENU }),
     )
@@ -493,7 +598,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     // A code of another venue, or one with no menu, leaves the live menu.
     const foreign = new Map<string, unknown>([
       [
-        files.table(BASE, TABLE_CODE),
+        files.table(BASE, sha(TABLE_CODE)),
         { venue_public_id: '000000000000', venue_slug: 'x', table_label: '1' },
       ],
     ])

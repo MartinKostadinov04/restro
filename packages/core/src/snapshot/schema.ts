@@ -16,7 +16,7 @@ import { FIELD_TYPE_NAMES, FIELD_VALUE_SCHEMAS, type FieldType } from '../field-
 import { LocaleSchema, LocalizedTextSchema } from '../locales'
 import { CurrencySchema, MoneySchema } from '../money'
 import { TagColorSchema } from '../tags'
-import { SECTION_LAYOUTS } from '../templates/venue-menu'
+import { PAYMENT_MODES, SECTION_LAYOUTS } from '../templates/venue-menu'
 import { GuestFeaturesSchema, PresentationSchema } from '../theme/presentation'
 import { THEME_SCHEMES, ThemeRolesSchema } from '../theme/roles'
 
@@ -212,6 +212,9 @@ const ItemSchema = z.strictObject({
   orderable: z.boolean(),
   modifier_groups: z.array(NodeIdSchema),
   fields: z.record(FieldKeySchema, z.json()),
+  // D113: the item's own payment mode, absent where it takes the venue's default (Restro's
+  // enrichment, never a POS field). Optional forever: a snapshot published before it still parses.
+  payment_mode: z.enum(PAYMENT_MODES).optional(),
 })
 
 const ModifierGroupSchema = z.strictObject({

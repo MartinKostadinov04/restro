@@ -136,6 +136,50 @@ export const TABLE_ACCESS = {
   tombstones: { tenancy: 'system', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },
   purge_log: { tenancy: 'tenant', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },
 
+  // A venue's bars (migration 0028; D124 §1): menu-side, written by `apply()`, archived by the
+  // app, erased by the purge.
+  bars: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
+  // Service data (migration 0028; D122 §9; ticket #66): written only by `applyService`. Rows are
+  // reused, emptied or ended by an update, never deleted by the app; the purge erases them when
+  // their retention ends (31 days, 18 months, or with the venue). The Log and the notes are
+  // append-only.
+  sittings: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  table_orders: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  sent_orders: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  sent_order_notes: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  locks: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  bill_readings: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  log_entries: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  waiter_calls: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  alerts: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  pauses: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  service_days: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  staff_members: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  venue_roles: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  staff_assignments: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  shared_devices: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  push_subscriptions: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // Restro's admin team (D122 §7): the app only reads it; granting is an operator task.
+  operators: { tenancy: 'system', app: ['SELECT'] },
+
+  // Service data for paying (migration 0030; D127 §Records; ticket #104): written only by
+  // `applyService`, never deleted by the app; the purge erases a payment's rows when its 18 months
+  // end, or with the venue. The steps are append-only (D127 3.9).
+  payments: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  payment_lines: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  payment_steps: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  // The refunds the venue made in its provider's dashboard (#222): written by `applyService`,
+  // erased with their payment.
+  payment_refunds: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  payment_accounts: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // The provider's notices: platform-level, no tenant (the worker maps the account to a venue).
+  // The web app and the worker share the app role, so the route's insert-only reach is pinned
+  // by dependency-cruiser (`notice-route-records-only`), not by a grant. The app never deletes
+  // one; the purge role erases them 18 months after they were received (#166; D111, D127), the
+  // one system table it may delete from.
+  provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes
@@ -170,6 +214,16 @@ export const APP_DELETE_TABLES = [
   'placements',
   'source_links',
 ] as const
+
+/**
+ * The only routines in `restro` a role may EXECUTE, by signature, with their grantees; `pnpm
+ * db:roles` revokes EXECUTE on every other routine. Today one: D121's guest lookup, the pinned
+ * SECURITY DEFINER function (migration 0029, tests/rls-guard.test.ts). Adding one is a
+ * guardrail change.
+ */
+export const ROUTINE_ACCESS = {
+  'guest_table_by_code_hash(text)': [APP_ROLE],
+} as const satisfies Record<string, readonly string[]>
 
 /** Schema privileges of the app role. It may never CREATE in `restro`. */
 export const APP_SCHEMA_PRIVILEGES = {

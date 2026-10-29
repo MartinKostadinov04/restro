@@ -6,13 +6,16 @@
 // menus; everyone else reads and prints. On a venue with a till the areas and tables are the
 // till's (renamed, reordered and hidden here); on a venue made by hand the owner makes them. The
 // data comes from the server component (tables-tab.tsx); every change is a server action that
-// refreshes it.
-import { PrinterIcon, QrCodeIcon, TableIcon } from 'lucide-react'
+// refreshes it. The codes themselves come from the worker once the page is up (use-revealed-codes).
+// Where a connector takes payments, a banner at the top names the bars that still have no payment
+// table; it stays while that holds (#215).
+import { LandmarkIcon, PrinterIcon, QrCodeIcon, TableIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useTransition } from 'react'
 import { toast } from 'sonner'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -24,12 +27,13 @@ import {
 } from '@/components/ui/empty'
 import { TillLabelProvider } from '@/fields/till-label'
 import { createAllCodesAction } from '@/server/tables/actions'
-import type { TablesView } from '@/server/tables/view'
+import { type TablesView, withRevealed } from '@/server/tables/view'
 
 import { AddAreaForm } from './add-area-form'
 import { AreaSection } from './area-section'
 import { QrAddressCard } from './qr-address-card'
 import { useFailureText } from './use-failure-text'
+import { useRevealedCodes } from './use-revealed-codes'
 
 export function TablesPanel({ view }: { view: TablesView }) {
   return (
@@ -39,10 +43,44 @@ export function TablesPanel({ view }: { view: TablesView }) {
   )
 }
 
-function Panel({ view }: { view: TablesView }) {
+/** How many bars the banner names before "and {count} more". */
+const BANNER_BARS = 3
+
+/** The bars that still have no payment table, until none is left (not dismissible). */
+function PaymentTablesBanner({
+  missing,
+}: {
+  missing: readonly { readonly name: string | null }[]
+}) {
+  const t = useTranslations('ownerSettings')
+  if (missing.length === 0) return null
+  const names = missing.map((queue) => queue.name ?? t('pt_no_bar_group'))
+  const bars =
+    names.length <= BANNER_BARS
+      ? names.join(', ')
+      : t('pt_banner_list', {
+          first: names.slice(0, BANNER_BARS).join(', '),
+          count: names.length - BANNER_BARS,
+        })
+  return (
+    <Alert
+      role="status"
+      className="border-warning/40 [&>svg]:text-warning"
+      data-testid="payment-tables-banner"
+    >
+      <LandmarkIcon aria-hidden />
+      <AlertDescription className="break-words text-foreground">
+        {t('pt_banner', { bars })}
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function Panel({ view: given }: { view: TablesView }) {
   const t = useTranslations('tables')
   const failureText = useFailureText()
   const [pending, startTransition] = useTransition()
+  const view = withRevealed(given, useRevealedCodes(given))
 
   if (view.fromTill && view.total === 0) {
     return (
@@ -91,8 +129,12 @@ function Panel({ view }: { view: TablesView }) {
   const live = view.menus.find((menu) => menu.live)
   const canAddAreas = view.canManage && !view.fromTill
 
+  const payment =
+    view.paying === null ? null : { canMark: view.paying.canMark, email: view.paying.email }
+
   return (
     <div className="space-y-8" data-testid="tables-tab">
+      {view.paying === null ? null : <PaymentTablesBanner missing={view.paying.missing} />}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h2 className="text-lg font-medium">{t('title')}</h2>
@@ -166,6 +208,8 @@ function Panel({ view }: { view: TablesView }) {
               fromTill={view.fromTill}
               menus={view.menus}
               areas={areas}
+              payment={payment}
+              payFirst={view.payFirst}
             />
           ))}
         </div>

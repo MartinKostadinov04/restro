@@ -4,7 +4,7 @@
 // venue out. The session and the job queue are the only fakes: they say which organisation and
 // role is asking, and record the jobs that would be queued.
 
-import { randomUUID } from 'node:crypto'
+import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import { JOB_NAMES, newId } from '@restro/core'
 import {
   createIntegration,
@@ -30,6 +30,9 @@ import {
   restoreVenueAction,
   unpublishVenueAction,
 } from './venues-actions'
+
+/** The worker's public seal key a new table code is sealed with (#70). */
+const { publicKey } = generateKeyPairSync('x25519')
 
 const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
 const revalidated = vi.hoisted(() => [] as string[])
@@ -102,9 +105,10 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
     )
     const codes: string[] = []
     for (const table of await listVenueTables(getPool(), tenant, made.venue.id)) {
-      const issued = await issueTableToken(getPool(), tenant, table.id)
+      const issued = await issueTableToken(getPool(), tenant, table.id, publicKey)
       if (!issued.ok) throw new Error(issued.reason)
-      codes.push(issued.table.token ?? '')
+      // A code's file is named after its hash, which is what a retired list carries (#70).
+      codes.push(issued.table.codeHash ?? '')
     }
     return { ...made, bid, codes }
   }
@@ -275,11 +279,11 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       expect(
         (await owner.query('select id from restro.menus where venue_id = $1', [venue.id])).rowCount,
       ).toBe(1)
-      const stored = await owner.query<{ qr_token: string }>(
-        'select qr_token from restro.tables where venue_id = $1',
+      const stored = await owner.query<{ qr_code_hash: string }>(
+        'select qr_code_hash from restro.tables where venue_id = $1',
         [venue.id],
       )
-      expect(stored.rows.map((row) => row.qr_token).sort()).toEqual([...codes].sort())
+      expect(stored.rows.map((row) => row.qr_code_hash).sort()).toEqual([...codes].sort())
     })
 
     it('trims what was typed, and queues one token job even for a venue without table codes', async () => {
@@ -387,7 +391,8 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
     })
 
     it('splits the table codes into batches the job accepts', async () => {
-      // 501 codes: two jobs. Made straight in the database; only their number matters here.
+      // 501 codes kept as before #70 (in plain beside the hash): each has two file names, its hash
+      // and itself, so 1,002 names in three jobs. Made straight in the database.
       const { venue } = await makeVenue(tenant, 'Many tables')
       bid += 1
       await upsertBarsyVenues(getPool(), tenant, integrationId, [{ bid, name: `Many ${bid}` }])
@@ -400,17 +405,17 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       )
       await owner.query(
         `insert into restro.tables
-           (id, tenant_id, venue_id, area_id, number, sort_key, qr_token)
+           (id, tenant_id, venue_id, area_id, number, sort_key, qr_token, qr_code_hash)
          select 'tb_many' || lpad(n::text, 15, '0'), $1, $2, $3, n::text, 'a' || lpad(n::text, 3, '0'),
-                $4 || lpad(n::text, 8, '0')
-         from generate_series(1, 501) as n`,
+                code, encode(sha256(convert_to(code, 'UTF8')), 'hex')
+         from generate_series(1, 501) as n, lateral (select $4 || lpad(n::text, 8, '0') as code) c`,
         [tenant, venue.id, area, randomUUID().replaceAll('-', '').slice(0, 14)],
       )
       expect(
         await deleteVenueAction({ venueId: venue.id, confirmName: 'Many tables' }),
       ).toMatchObject({ ok: true, filesQueued: true })
       const tokenJobs = queue.jobs.filter((job) => job.name === JOB_NAMES.publishTableTokens)
-      expect(tokenJobs.map((job) => (job.data.retired as string[]).length)).toEqual([500, 1])
+      expect(tokenJobs.map((job) => (job.data.retired as string[]).length)).toEqual([500, 500, 2])
     })
   })
 
@@ -431,7 +436,7 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
       // back (D86), so no job is queued here.
       expect(await linkedBid(venue.id)).toBe(till)
       expect(
-        (await listVenueTables(getPool(), tenant, venue.id)).map((table) => table.token).sort(),
+        (await listVenueTables(getPool(), tenant, venue.id)).map((table) => table.codeHash).sort(),
       ).toEqual([...codes].sort())
       expect(queue.jobs).toEqual([])
       expect(revalidated).toEqual(['/'])

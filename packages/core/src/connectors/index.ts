@@ -8,8 +8,12 @@
 
 import type { NodeType } from '../node-types'
 
-/** The connector kinds a tenant can configure (`integrations.kind`). */
-export const INTEGRATION_KINDS = ['barsy'] as const
+/**
+ * The connector kinds a tenant can configure (`integrations.kind`). `sim` is the simulated POS
+ * (`packages/connectors/sim-pos`, D124): for tests, demos and staging, never a real venue's till
+ * (the worker refuses it in production, #71).
+ */
+export const INTEGRATION_KINDS = ['barsy', 'sim'] as const
 
 /** One of the connector kinds. */
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number]
@@ -43,6 +47,16 @@ export const TILL_LINK_TYPES: { readonly [K in IntegrationKind]: TillLinkTypesOf
     option: ['modificator', 'supplement'],
     special: [],
   },
+  // The simulated POS's catalogue (test-POS design §2.2, §7): its menu is seeded through
+  // `apply()` with till provenance until the generic sync reads it.
+  sim: {
+    menu: ['menu_root'],
+    section: ['category'],
+    item: ['article'],
+    modifier_group: ['option_group'],
+    option: ['option'],
+    special: [],
+  },
 }
 
 /**
@@ -68,6 +82,7 @@ export function tillLinkTypeProblem(
 /** The name the admin shows for each connector kind (fills `{source}` in messages). */
 export const CONNECTOR_LABELS: { readonly [K in IntegrationKind]: string } = {
   barsy: 'barsy',
+  sim: 'test POS',
 }
 
 /** The label of a connector kind, for the admin's "Hidden by {source}" and similar messages. */

@@ -8,7 +8,12 @@
 // the venue wants; a guest sees a service only when the platform supports it, the channel is
 // interactive and a table is confirmed (the shell's R15). Saving goes through the server actions in
 // `@/server/composer/guest-features-actions`; a change reaches guests with the next publish.
-import { CALL_WAITER_KINDS, type CallWaiterKind, type GuestFeatures } from '@restro/core'
+import {
+  CALL_WAITER_KINDS,
+  type CallWaiterKind,
+  DEFAULT_CALL_WAITER_KINDS,
+  type GuestFeatures,
+} from '@restro/core'
 import { LockIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import { type ReactNode, useId, useState, useTransition } from 'react'
@@ -94,8 +99,6 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
   const dirty = featuresChanged || optionsChanged
   const locked = !canEdit || pending
   const callWaiter = draft.features.call_waiter
-  // Call a waiter with no request kind would show guests nothing (R15): it cannot be saved.
-  const noKinds = callWaiter.enabled && callWaiter.kinds.length === 0
 
   function setFeature(change: (current: GuestFeatures) => GuestFeatures) {
     setDraft((current) => ({ ...current, features: change(current.features) }))
@@ -110,10 +113,10 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
       ...current,
       call_waiter: {
         enabled,
-        // A service with no request kind asks nothing, so switching it on checks "waiter".
+        // Switching it on ticks every kind but the card terminal (#180); "Call the waiter" stays on.
         kinds:
           enabled && current.call_waiter.kinds.length === 0
-            ? ['waiter']
+            ? [...DEFAULT_CALL_WAITER_KINDS]
             : current.call_waiter.kinds,
       },
     }))
@@ -122,6 +125,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
   function setKind(kind: CallWaiterKind, on: boolean) {
     setFeature((current) => {
       const kinds = new Set<CallWaiterKind>(current.call_waiter.kinds)
+      if (kind === 'waiter') return current
       if (on) kinds.add(kind)
       else kinds.delete(kind)
       return {
@@ -166,7 +170,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
       className="grid gap-6"
       onSubmit={(event) => {
         event.preventDefault()
-        if (dirty && canEdit && !noKinds) save()
+        if (dirty && canEdit) save()
       }}
       data-testid="guest-features-form"
     >
@@ -225,8 +229,8 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
                     <div className="flex items-center gap-2 phone:min-h-11">
                       <Checkbox
                         id={`${ids}-kind-${kind}`}
-                        checked={callWaiter.kinds.includes(kind)}
-                        disabled={locked || !callWaiter.enabled}
+                        checked={kind === 'waiter' || callWaiter.kinds.includes(kind)}
+                        disabled={locked || !callWaiter.enabled || kind === 'waiter'}
                         onCheckedChange={(checked) => setKind(kind, checked === true)}
                         data-testid={`call-kind-${kind}`}
                       />
@@ -234,17 +238,9 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
                         {t(`kinds.${kind}`)}
                       </Label>
                     </div>
-                    {kind === 'other' ? (
-                      <p className="ps-6 text-xs text-muted-foreground">{t('otherNote')}</p>
-                    ) : null}
                   </div>
                 ))}
               </fieldset>
-              {noKinds ? (
-                <p role="alert" className="text-xs text-destructive" data-testid="call-kinds-none">
-                  {t('kindsNone')}
-                </p>
-              ) : null}
               <Note>{t('stage4')}</Note>
             </SwitchRow>
             <SwitchRow
@@ -282,11 +278,7 @@ function FeaturesForm({ venueId, features, options, canEdit }: GuestFeaturesCard
       </CardContent>
 
       <CardFooter className="justify-end">
-        <Button
-          type="submit"
-          disabled={locked || !dirty || noKinds}
-          data-testid="guest-features-save"
-        >
+        <Button type="submit" disabled={locked || !dirty} data-testid="guest-features-save">
           {t('save')}
         </Button>
       </CardFooter>

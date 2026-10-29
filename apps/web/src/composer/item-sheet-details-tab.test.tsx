@@ -20,6 +20,7 @@ function setup(
     onKeep: vi.fn(async () => true),
     onOpenMedia: vi.fn(),
     onSoldOut: vi.fn(async () => true),
+    onPaymentMode: vi.fn(async () => true),
   }
   renderWithIntl(<ItemSheetDetailsTab data={data} busy={false} {...handlers} {...props} />, {
     locale,
@@ -54,7 +55,7 @@ describe('the Details tab', () => {
       el.getAttribute('data-field-key'),
     )
     expect(keys).toEqual(ITEM_GROUPS.flatMap((group) => group.keys))
-    expect(keys).toHaveLength(14)
+    expect(keys).toHaveLength(15)
     for (const name of [
       'Content',
       'Price and portion',
@@ -288,5 +289,70 @@ describe('the Details tab', () => {
     const list = within(row('name')).getByTestId('locale-provenance')
     expect(within(list).getByText('From barsy')).toBeTruthy()
     expect(within(list).getByText('Owned here')).toBeTruthy()
+  })
+  describe('the payment mode row (#218)', () => {
+    const venue = (extra: Parameters<typeof sheetData>[0] = {}) =>
+      sheetData({ payFirstDefault: 'on_bill', ...extra })
+
+    it('is three radio cards, the venue’s default beside “Same as the venue”, in place of the generic editor', () => {
+      setup(venue())
+      const mode = row('payment_mode')
+      expect(within(mode).getByTestId('payment-mode-same').closest('label')?.textContent).toBe(
+        'Same as the venue (On the bill)',
+      )
+      expect(within(mode).getByTestId('payment-mode-pay_first')).toBeTruthy()
+      expect(within(mode).getByTestId('payment-mode-on_bill')).toBeTruthy()
+      expect((within(mode).getByTestId('payment-mode-same') as HTMLInputElement).checked).toBe(true)
+      expect(within(mode).queryByRole('button')).toBeNull()
+    })
+
+    it('picks the card of the saved mode', () => {
+      setup(venue({ fields: { payment_mode: { value: 'pay_first', provenance: 'owned' } } }))
+      const mode = row('payment_mode')
+      expect((within(mode).getByTestId('payment-mode-pay_first') as HTMLInputElement).checked).toBe(
+        true,
+      )
+    })
+
+    it('saves the tap at once; “Same as the venue” hands up null', async () => {
+      const handlers = setup(
+        venue({ fields: { payment_mode: { value: 'pay_first', provenance: 'owned' } } }),
+      )
+      const mode = row('payment_mode')
+      await userEvent.click(within(mode).getByTestId('payment-mode-on_bill'))
+      expect(handlers.onPaymentMode).toHaveBeenLastCalledWith('on_bill')
+      expect((within(mode).getByTestId('payment-mode-on_bill') as HTMLInputElement).checked).toBe(
+        true,
+      )
+      await userEvent.click(within(mode).getByTestId('payment-mode-same'))
+      expect(handlers.onPaymentMode).toHaveBeenLastCalledWith(null)
+    })
+
+    it('goes back to the saved card when the save is refused', async () => {
+      const onPaymentMode = vi.fn(async () => false)
+      setup(venue(), { onPaymentMode })
+      const mode = row('payment_mode')
+      await userEvent.click(within(mode).getByTestId('payment-mode-pay_first'))
+      await waitFor(() =>
+        expect((within(mode).getByTestId('payment-mode-same') as HTMLInputElement).checked).toBe(
+          true,
+        ),
+      )
+      expect((within(mode).getByTestId('payment-mode-pay_first') as HTMLInputElement).checked).toBe(
+        false,
+      )
+    })
+
+    it('keeps the generic row where pay first can’t take effect', () => {
+      setup(sheetData({ payFirstDefault: null }))
+      expect(within(row('payment_mode')).queryByTestId('payment-mode-same')).toBeNull()
+    })
+
+    it('words the venue’s default in lower case in Bulgarian', () => {
+      setup(venue(), {}, 'bg')
+      expect(
+        within(row('payment_mode')).getByTestId('payment-mode-same').closest('label')?.textContent,
+      ).toBe('Като на заведението (по сметката)')
+    })
   })
 })

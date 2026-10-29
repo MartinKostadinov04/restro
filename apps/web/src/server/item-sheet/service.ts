@@ -24,6 +24,7 @@ import {
   newId,
   type ResolvedField,
   type ResolvedItem,
+  readPayFirstSettings,
   readsLayer,
   resolve,
   saleStateOf,
@@ -31,6 +32,7 @@ import {
   VENUE_MENU_TEMPLATE,
 } from '@restro/core'
 import { apply, ItemNotFoundError, loadItemDocument } from '@restro/core/apply'
+import { payFirstPossibleAt } from '@restro/core/service'
 import { assets, type DbPool, events, venues, withTenant } from '@restro/db'
 import { and, desc, eq, isNull, lt } from 'drizzle-orm'
 
@@ -334,7 +336,14 @@ export async function loadItemSheet(
 ): Promise<ItemSheetData | null> {
   const state = await readState(scope)
   if (!state) return null
-  const fields = ITEM_FIELDS.map((definition) => buildField(state, scope.itemId, definition))
+  // An item's payment mode shows only where pay-first can take effect (D122 §8, #113).
+  const payFirst = await withTenant(scope.pool, scope.tenantId, (tx) =>
+    payFirstPossibleAt(tx, scope.venueId),
+  )
+  const payFirstDefault = payFirst ? readPayFirstSettings(state.venue.settings).itemMode : null
+  const fields = ITEM_FIELDS.filter(
+    (definition) => payFirst || definition.key !== 'payment_mode',
+  ).map((definition) => buildField(state, scope.itemId, definition))
   return {
     itemId: scope.itemId,
     venueId: scope.venueId,
@@ -350,6 +359,7 @@ export async function loadItemSheet(
     visible: state.item.visible,
     sale: { ...saleStateOf(state.item.fields.for_sale), canMark: scope.canMarkSoldOut === true },
     nameFromTill: state.nameFromTill,
+    payFirstDefault,
     fields,
     issues: state.item.issues.map((issue) => ({
       code: issue.code,
@@ -475,6 +485,13 @@ export async function saveField(
   if (!found) return failed('not_found')
   // An image has a file behind it: it is attached on the Media tab, with the upload.
   if (found.definition.type === 'image') return failed('read_only')
+  // The payment mode is on the sheet only where pay first can take effect (D122 §8): not to be made up.
+  if (
+    found.definition.key === 'payment_mode' &&
+    !(await withTenant(scope.pool, scope.tenantId, (tx) => payFirstPossibleAt(tx, scope.venueId)))
+  ) {
+    return failed('read_only')
+  }
   const edited = input.value === null ? undefined : input.value
   if (
     edited !== undefined &&

@@ -66,7 +66,7 @@ export function IntegrationsScreen({ view }: { view: IntegrationsView }) {
         <Tabs value={current} onValueChange={select} className="gap-6">
           <TabsList
             aria-label={t('tabs.label')}
-            className="max-w-full justify-start overflow-x-auto"
+            className="max-w-full justify-start overflow-x-auto overflow-y-hidden"
           >
             {tabs.map((system) => (
               <TabsTrigger key={system.kind} value={system.kind} data-testid="system-tab-trigger">

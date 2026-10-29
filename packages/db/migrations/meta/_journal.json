@@ -197,6 +197,111 @@
       "when": 1791843367151,
       "tag": "0027_integrations_removed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792629711769,
+      "tag": "0028_service_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792657412529,
+      "tag": "0029_table_code_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792930025977,
+      "tag": "0030_payment_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792966652682,
+      "tag": "0031_payment_observed",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793015565475,
+      "tag": "0032_payment_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793057637670,
+      "tag": "0033_landing_basis",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793093028124,
+      "tag": "0034_payment_step_lines",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793119721854,
+      "tag": "0035_pay_connection",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793174968458,
+      "tag": "0036_paying_breaker",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793191334098,
+      "tag": "0037_night_report_sent",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793193138784,
+      "tag": "0038_waiter_call_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793235634608,
+      "tag": "0039_receipt_brought",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793238669225,
+      "tag": "0040_paid_lines",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793265202389,
+      "tag": "0041_pay_receipt_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793289476738,
+      "tag": "0042_pay_refunds_disputes",
+      "breakpoints": true
     }
   ]
 }

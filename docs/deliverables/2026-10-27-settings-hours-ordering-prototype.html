@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="bg" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE (throwaway): Settings, Hours and Ordering</title>
+<style>
+/* PROTOTYPE, throwaway. Question it answers: can an owner set the club's nights and its ordering
+   rules on a phone, quickly, without reading a manual? Tokens as the Tonight prototypes
+   (apps/web/app/globals.css, shadcn zinc). System fonts, no external files. */
+:root{
+  --bg:oklch(1 0 0);--fg:oklch(.141 .005 285.823);--card:oklch(1 0 0);
+  --primary:oklch(.21 .006 285.885);--primary-fg:oklch(.985 0 0);
+  --muted:oklch(.967 .001 286.375);--muted-fg:oklch(.5 .016 285.938);
+  --border:oklch(.92 .004 286.32);--ctl:oklch(.6 .01 286);
+  --warn:oklch(.55 .15 60);--warn-tint:color-mix(in srgb,var(--warn) 9%,var(--card));
+  --danger:oklch(.55 .2 27);--scrim:oklch(0 0 0 / .45);
+}
+:root[data-theme=dark]{
+  --bg:oklch(.141 .005 285.823);--fg:oklch(.985 0 0);--card:oklch(.21 .006 285.885);
+  --primary:oklch(.92 .004 286.32);--primary-fg:oklch(.21 .006 285.885);
+  --muted:oklch(.274 .006 286.033);--muted-fg:oklch(.705 .015 286.067);
+  --border:oklch(1 0 0 / 10%);--ctl:oklch(.58 .01 286);
+  --warn:oklch(.8 .13 75);--danger:oklch(.7 .19 22);--scrim:oklch(0 0 0 / .6);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--muted);color:var(--fg);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms;transition-duration:.01ms}}
+
+/* prototype chrome */
+.pc{max-width:1240px;margin:0 auto;padding:16px}
+.pc h1{font-size:15px;margin:0 0 2px}
+.pc>p{margin:0 0 10px;color:var(--muted-fg);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.grp{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-fg)}
+.seg{display:inline-flex;border:1px solid var(--ctl);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:5px 10px;cursor:pointer;font-size:12px}
+.seg button[aria-pressed=true]{background:var(--primary);color:var(--primary-fg)}
+.stage{display:flex;justify-content:center;overflow-x:auto;padding-bottom:8px}
+
+/* the device */
+.dev{flex:none;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.dev.dt{width:1180px;height:820px}
+.dev.ph{width:390px;height:780px}
+.top{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border)}
+.top b{font-size:15px}
+.tabs{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--border)}
+.tabs span{padding:10px 12px;color:var(--muted-fg);border-bottom:2px solid transparent}
+.tabs span.on{color:var(--fg);border-color:var(--fg);font-weight:600}
+.body{flex:1;display:flex;min-height:0}
+.side{width:220px;flex:none;padding:16px 12px;border-right:1px solid var(--border)}
+.side button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:6px;cursor:pointer;min-height:36px}
+.side button.on{background:var(--muted);font-weight:600}
+.side .p2{color:var(--muted-fg)}
+.main{flex:1;overflow:auto;padding:24px 32px}
+.ph .main{padding:16px}
+.col{max-width:640px}
+.phsel{display:flex;flex-direction:column;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.fakesel{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--ctl);border-radius:6px;padding:0 12px;min-height:44px;background:var(--card)}
+h2{font-size:20px;margin:0 0 4px}
+.lede{color:var(--muted-fg);margin:0 0 16px}
+.note{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--warn);background:var(--warn-tint);border-radius:8px;padding:10px 12px;margin:0 0 16px}
+.ro{color:var(--muted-fg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:0 0 16px}
+.list{border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.rowx{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:56px;border-top:1px solid var(--border)}
+.rowx:first-child{border-top:0}
+.rowx .d{width:96px;flex:none;font-weight:600}
+.ph .rowx .d{width:72px}
+.rowx .t{flex:1;min-width:0;text-align:left;border:0;background:none;padding:6px 0;cursor:pointer}
+.rowx .t[disabled]{cursor:default}
+.rowx .t small{color:var(--muted-fg)}
+.rowx .t.cl{color:var(--muted-fg)}
+.sw{width:44px;height:26px;border-radius:13px;border:0;background:var(--ctl);position:relative;cursor:pointer;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--card)}
+.sw[aria-checked=true]{background:var(--primary)}
+.sw[aria-checked=true]::after{left:21px;background:var(--primary-fg)}
+.box{border:1px solid var(--border);border-radius:8px;background:var(--card);padding:4px 14px;margin-bottom:16px}
+.it{display:flex;align-items:center;gap:12px;padding:10px 0;min-height:56px;border-top:1px solid var(--border);flex-wrap:wrap}
+.it:first-child{border-top:0}
+.it .l{flex:1;min-width:200px}
+.ph .it .l{min-width:0;flex-basis:100%}
+.it .sub{color:var(--muted-fg);font-size:13px;flex-basis:100%;margin-top:-4px}
+.val{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums;font-weight:600}
+.icon{border:1px solid var(--border);background:var(--card);border-radius:6px;min-width:44px;min-height:44px;cursor:pointer}
+.btn{border:1px solid var(--ctl);background:var(--card);border-radius:6px;padding:0 14px;min-height:44px;cursor:pointer}
+.btn.pri{background:var(--primary);color:var(--primary-fg);border-color:var(--primary)}
+select.sel,input.inp{border:1px solid var(--ctl);border-radius:6px;min-height:44px;padding:0 10px;background:var(--card)}
+input.inp{width:110px}
+.more{border:0;background:none;padding:12px 0;cursor:pointer;font-weight:600;min-height:44px}
+.link{color:inherit;text-decoration:underline}
+.sk{height:56px;border-top:1px solid var(--border);background:linear-gradient(90deg,var(--muted),var(--card),var(--muted))}
+/* dialog and toast */
+.scrim{position:absolute;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:16px}
+.ph .scrim{align-items:flex-end;padding:0}
+.dlg{background:var(--card);border-radius:12px;padding:20px;width:440px;max-width:100%}
+.ph .dlg{border-radius:12px 12px 0 0;width:100%}
+.dlg h3{margin:0 0 4px;font-size:17px}
+.fld{display:flex;flex-direction:column;gap:4px;margin-top:12px}
+.err{color:var(--danger);font-size:13px}
+.days{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.days label{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:6px;padding:0 10px;min-height:44px}
+.acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.toast{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);background:var(--fg);color:var(--bg);border-radius:8px;padding:10px 14px;display:none;gap:12px;align-items:center;max-width:calc(100% - 32px)}
+.toast.on{display:flex}
+.toast button{border:0;background:none;color:inherit;text-decoration:underline;cursor:pointer;min-height:36px}
+</style>
+</head>
+<body>
+<div class="pc">
+  <h1>PROTOTYPE (throwaway) · Settings › Hours and Ordering</h1>
+  <p>Plan: <code>2026-10-27-settings-hours-ordering-plan.md</code>. Switches save at once with an 8-second Undo; nothing is stored. "Use this spot" fakes the browser's location.</p>
+  <div class="bar">
+    <div class="grp">Device <span class="seg" data-k="dev"><button type="button" data-v="dt" aria-pressed="true">Desktop</button><button type="button" data-v="ph" aria-pressed="false">Phone</button></span></div>
+    <div class="grp">Section <span class="seg" data-k="sec"><button type="button" data-v="hours" aria-pressed="true">Hours</button><button type="button" data-v="ordering" aria-pressed="false">Ordering</button></span></div>
+    <div class="grp">Venue <span class="seg" data-k="st"><button type="button" data-v="first" aria-pressed="true">First visit</button><button type="button" data-v="set" aria-pressed="false">Set up</button><button type="button" data-v="loading" aria-pressed="false">Loading</button><button type="button" data-v="failed" aria-pressed="false">Failed</button></span></div>
+    <div class="grp">Signed in <span class="seg" data-k="role"><button type="button" data-v="owner" aria-pressed="true">Owner</button><button type="button" data-v="old" aria-pressed="false">Owner, 20 min ago</button><button type="button" data-v="manager" aria-pressed="false">Manager</button></span></div>
+    <div class="grp">Language <span class="seg" data-k="lang"><button type="button" data-v="bg" aria-pressed="true">BG</button><button type="button" data-v="en" aria-pressed="false">EN</button></span></div>
+    <div class="grp">Theme <span class="seg" data-k="theme"><button type="button" data-v="light" aria-pressed="true">Light</button><button type="button" data-v="dark" aria-pressed="false">Dark</button></span></div>
+  </div>
+  <div class="stage"><div id="dev" class="dev dt"></div></div>
+  <div id="live" aria-live="polite" style="position:absolute;left:-9999px"></div>
+</div>
+<script>
+const DAYS={bg:['Понеделник','Вторник','Сряда','Четвъртък','Петък','Събота','Неделя'],en:['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']};
+const T={
+ bg:{venue:'Клуб Демо',tabs:['Композитор','Маси и QR','Тази вечер','Настройки'],secs:['Общи','Работно време','Поръчки','Плащане','Персонал и роли','Известия','Публикуване','Версии'],
+  hours:'Работно време',hoursLede:'Кога гостите могат да поръчват от телефона. Вечерта свършва в 07:00; часовете след полунощ са от същата вечер.',none:'Телефоните не могат да поръчват, докато не отворите поне една вечер.',
+  closed:'Затворено',last:'последни поръчки',next:'(на сутринта)',opens:'Отваря',lastL:'Последни поръчки',closes:'Затваря',same:'Същите часове в',save:'Запази',cancel:'Отказ',
+  eLast:'Последните поръчки трябва да са след отварянето.',eClose:'Затварянето не може да е преди последните поръчки.',eEnd:'Затварянето трябва да е преди края на вечерта (07:00).',e15:'Последните поръчки трябва да са поне 15 минути преди края на вечерта (07:00).',eEmpty:'Попълнете трите часа.',
+  pre:(s,e,a)=>`От ${s} преди отваряне Restro проверява връзката с касата на всеки ${e}; ако още не работи ${a} преди отваряне, получавате известие.`,change:'Промени',preT:'Проверка преди отваряне',preS:'Започва',preE:'На всеки',preA:'Известие, ако не работи',
+  ordering:'Поръчки',ordLede:'Правила за поръчките, които гостите пишат на сметката на масата. Не важат за артикулите, платени предварително.',openOnly:'Само на маси, отворени от сервитьор',
+  cap:'Най-голяма поръчка на сметка без предварително плащане',spotUnset:'Задайте мястото на заведението, иначе никой не може да поръчва на сметка, докато проверката на местоположението е включена.',spotUse:'В заведението съм – използвай това място',
+  spotSet:'Зададено на 27 окт., 21:40',map:'Виж на картата',spotAgain:'Използвай къде съм сега',spotT:'Мястото на заведението',more:'Още',loc:'Проверка дали гостите са в заведението',locOff:'Всеки със снимка на кода на масата ще може да поръчва на сметката ѝ.',
+  radius:'Колко далеч от мястото се брои за вътре',pass:'Колко трае една успешна проверка',pace:'Най-много поръчки на маса за 15 минути',off:'Изключено',call:'Повикването на сервитьор чака',callWhere:'Повикването на сервитьор се включва в Композитора, в „Функции за гостите“.',
+  ro:'Само човек с право да променя настройките може да ги промени.',fail:'Настройките не се заредиха. Проверете връзката; ще опита отново сам.',saved:'Запазено',undo:'Отмени',locating:'Търси местоположението…',pw:'Въведете паролата си, за да промените настройките',pwB:'Влязохте преди повече от 15 минути.',pwL:'Парола',go:'Продължи',p2:'(част 2)',min:'мин',h:'ч',m:'м'},
+ en:{venue:'Club Demo',tabs:['Composer','Tables & QR','Tonight','Settings'],secs:['General','Hours','Ordering','Paying','Staff and roles','Alerts','Publish','Versioning'],
+  hours:'Hours',hoursLede:'When guests can order from their phones. A night ends at 07:00; times after midnight belong to the same night.',none:"Phones can't order until you open at least one night.",
+  closed:'Closed',last:'last orders',next:'(next morning)',opens:'Opens',lastL:'Last orders',closes:'Closes',same:'Same hours on',save:'Save',cancel:'Cancel',
+  eLast:'Last orders must come after opening.',eClose:"Closing can't come before last orders.",eEnd:'Closing must be before the night ends (07:00).',e15:'Last orders must be at least 15 minutes before the night ends (07:00).',eEmpty:'Fill in the three times.',
+  pre:(s,e,a)=>`From ${s} before opening Restro checks the connection to the till every ${e}; if it still fails ${a} before opening, you get an alert.`,change:'Change',preT:'The check before opening',preS:'Starts',preE:'Every',preA:'Alert if it still fails',
+  ordering:'Ordering',ordLede:"Rules for orders guests put on the table's bill. Pay-first items are not limited by these.",openOnly:'Only at tables a waiter has opened',
+  cap:'Largest order on the bill without paying first',spotUnset:"Set the venue's spot, or nobody can order on the bill while the location check is on.",spotUse:"I'm at the venue – use this spot",
+  spotSet:'Set on 27 Oct, 21:40',map:'See on a map',spotAgain:'Use where I am now',spotT:"The venue's spot",more:'More',loc:'Check guests are in the venue',locOff:"Anyone with a photo of a table code could order onto that table's bill.",
+  radius:'How far from the spot counts as inside',pass:'How long a passed check lasts',pace:'Most orders per table in 15 minutes',off:'Off',call:'A waiter call waits',callWhere:'Call a waiter is switched on in the Composer, under Guest features.',
+  ro:'Only someone with the right to change settings can change these.',fail:"Couldn't load the settings. Check the connection; it tries again by itself.",saved:'Saved',undo:'Undo',locating:'Finding your location…',pw:'Enter your password to change settings',pwB:'You signed in more than 15 minutes ago.',pwL:'Password',go:'Continue',p2:'(part 2)',min:'min',h:'h',m:'m'}
+};
+const S={dev:'dt',sec:'hours',st:'first',role:'owner',lang:'bg',theme:'light',dlg:null,more:false,capEdit:false,pwOk:false,after:null};
+const fresh=()=>({hours:[null,null,null,null,null,null,null],saved:[null,null,null,null,null,null,null],pre:{s:120,e:10,a:30},openOnly:true,cap:150,capOn:true,spot:false,loc:true,radius:150,pass:120,pace:6,call:15});
+const setUp=()=>{const d=fresh();const n={o:'23:00',l:'04:30',c:'05:00'};d.hours=[null,null,null,{...n},{...n},{...n},null];d.saved=[...d.hours];d.spot=true;return d};
+let D=fresh();
+let toastTimer=0;
+const mins=(t)=>{const[a,b]=t.split(':').map(Number);return a*60+b};
+const since=(t)=>(mins(t)-mins('07:00')+1440)%1440;
+function problem(h){if(!h.o||!h.l||!h.c)return 'eEmpty';const o=since(h.o);const l=since(h.l);const c=since(h.c)||1440;if(!(o<l))return 'eLast';if(!(l<=c))return 'eClose';if(c>=1440)return 'eEnd';if(l>1440-15)return 'e15';return null}
+const nm=(t)=>mins(t)<mins('07:00');
+const dur=(m)=>{const L=T[S.lang];return m>=60&&m%60===0?`${m/60} ${L.h}`:`${m} ${L.min}`};
+const can=()=>S.role!=='manager';
+function sw(on,attrs){return `<button type="button" class="sw" role="switch" aria-checked="${on}" ${attrs}${can()?'':' hidden'}></button>`}
+function sidebar(L){return `<nav class="side">${L.secs.map((s,i)=>{const v=['general','hours','ordering','paying','staff','alerts','publish','versioning'][i];return `<button type="button" data-sec="${v}" class="${v===S.sec?'on':''} ${v==='paying'?'p2':''}">${s}${v==='paying'?` <small>${L.p2}</small>`:''}</button>`}).join('')}</nav>`}
+function hoursHtml(L){
+ let h=`<h2>${L.hours}</h2><p class="lede">${L.hoursLede}</p>`;
+ if(!can())h+=`<p class="ro">${L.ro}</p>`;
+ if(D.hours.every((x)=>!x))h+=`<div class="note" role="status">${L.none}</div>`;
+ h+='<div class="list">';
+ DAYS[S.lang].forEach((d,i)=>{const x=D.hours[i];const txt=x?`${x.o} – ${x.c}${nm(x.c)?` <small>${L.next}</small>`:''} · <small>${L.last} ${x.l}</small>`:L.closed;
+  h+=`<div class="rowx"><span class="d">${d}</span><button type="button" class="t ${x?'':'cl'}" data-row="${i}" ${x&&can()?'':'disabled'}>${txt}</button>${sw(!!x,`data-day="${i}" aria-label="${d}"`)}</div>`});
+ h+='</div>';
+ h+=`<div class="box" style="margin-top:16px"><div class="it"><span class="l">${L.pre(dur(D.pre.s),dur(D.pre.e),dur(D.pre.a))}</span>${can()?`<button type="button" class="btn" data-pre>${L.change}</button>`:''}</div></div>`;
+ return h}
+function sel(name,opts,cur){return can()?`<select class="sel" data-sel="${name}">${opts.map((o)=>`<option value="${o[0]}" ${String(o[0])===String(cur)?'selected':''}>${o[1]}</option>`).join('')}</select>`:`<span class="val">${(opts.find((o)=>String(o[0])===String(cur))||opts[0])[1]}</span>`}
+function orderingHtml(L){
+ let h=`<h2>${L.ordering}</h2><p class="lede">${L.ordLede}</p>`;
+ if(!can())h+=`<p class="ro">${L.ro}</p>`;
+ if(!D.spot&&D.loc)h+=`<div class="note" role="status">${L.spotUnset}</div>`;
+ h+='<div class="box">';
+ h+=`<div class="it"><span class="l">${L.openOnly}</span>${sw(D.openOnly,'data-tog="openOnly"')}</div>`;
+ const capVal=D.capOn?(S.capEdit?`<input class="inp" id="capin" inputmode="decimal" value="${D.cap}" aria-label="${L.cap}"> €`:`<span class="val">€${D.cap}</span>${can()?`<button type="button" class="icon" data-capedit aria-label="${L.change}">✎</button>`:''}`):`<span class="val">${L.off}</span>`;
+ h+=`<div class="it"><span class="l">${L.cap}</span>${capVal}${sw(D.capOn,'data-tog="capOn"')}</div>`;
+ h+=`<div class="it"><span class="l">${L.spotT}</span>${D.spot?`<span class="sub">${L.spotSet} · <a class="link" href="#map" data-map>${L.map}</a></span>${can()?`<button type="button" class="btn" data-spot>${L.spotAgain}</button>`:''}`:can()?`<button type="button" class="btn pri" data-spot>${L.spotUse}</button>`:''}</div>`;
+ h+='</div>';
+ h+=`<button type="button" class="more" aria-expanded="${S.more}" data-more>${S.more?'▾':'▸'} ${L.more}</button>`;
+ if(S.more){h+='<div class="box">';
+  h+=`<div class="it"><span class="l">${L.loc}</span>${sw(D.loc,'data-tog="loc"')}${D.loc?'':`<span class="sub">${L.locOff}</span>`}</div>`;
+  h+=`<div class="it"><span class="l">${L.radius}</span>${sel('radius',[100,150,200,300,500].map((v)=>[v,`${v} ${L.m}`]),D.radius)}</div>`;
+  h+=`<div class="it"><span class="l">${L.pass}</span>${sel('pass',[30,60,120,180,240,360].map((v)=>[v,dur(v)]),D.pass)}</div>`;
+  h+=`<div class="it"><span class="l">${L.pace}</span>${sel('pace',[['off',L.off],...Array.from({length:18},(_,i)=>[i+3,String(i+3)])],D.pace)}</div>`;
+  h+=`<div class="it"><span class="l">${L.call}</span>${sel('call',[5,10,15,20,30,45,60].map((v)=>[v,dur(v)]),D.call)}<span class="sub"><a class="link" href="#composer">${L.callWhere}</a></span></div>`;
+  h+='</div>'}
+ return h}
+function dialogHtml(L){
+ if(S.dlg?.kind==='pw')return `<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dh"><h3 id="dh">${L.pw}</h3><p class="lede">${L.pwB}</p><div class="fld"><label for="pwi">${L.pwL}</label><input id="pwi" class="inp" style="width:100%" type="password" autocomplete="current-password"></div><div class="acts"><button type="button" class="btn" data-x>${L.cancel}</button><button type="button" class="btn pri" data-pwok>${L.go}</button></div></div></div>`;
+ if(S.dlg?.kind==='pre'){const p=S.dlg.v;const o=(n,arr)=>`<select class="sel" data-pv="${n}">${arr.map((v)=>`<option value="${v}" ${v===p[n]?'selected':''}>${dur(v)}</option>`).join('')}</select>`;
+  return `<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dh"><h3 id="dh">${L.preT}</h3><div class="fld"><label>${L.preS}</label>${o('s',[60,90,120,180,240])}</div><div class="fld"><label>${L.preE}</label>${o('e',[5,10,15,30])}</div><div class="fld"><label>${L.preA}</label>${o('a',[15,30,45,60])}</div><div class="acts"><button type="button" class="btn" data-x>${L.cancel}</button><button type="button" class="btn pri" data-presave>${L.save}</button></div></div></div>`}
+ if(S.dlg?.kind==='day'){const v=S.dlg.v;const e=S.dlg.err;const f=(k,lab)=>`<div class="fld"><label for="f${k}">${lab}</label><input id="f${k}" class="inp" type="time" value="${v[k]||''}" data-f="${k}"></div>`;
+  return `<div class="scrim"><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dh"><h3 id="dh">${DAYS[S.lang][S.dlg.i]}</h3><div style="display:flex;gap:10px;flex-wrap:wrap">${f('o',L.opens)}${f('l',L.lastL)}${f('c',L.closes)}</div>${e?`<p class="err" role="alert">${L[e]}</p>`:''}<div class="fld"><span>${L.same}</span><div class="days">${DAYS[S.lang].map((d,i)=>i===S.dlg.i?'':`<label><input type="checkbox" data-same="${i}" ${S.dlg.same.includes(i)?'checked':''}>${d.slice(0,3)}</label>`).join('')}</div></div><div class="acts"><button type="button" class="btn" data-x>${L.cancel}</button><button type="button" class="btn pri" data-daysave>${L.save}</button></div></div></div>`}
+ return ''}
+function render(){
+ const L=T[S.lang];document.documentElement.lang=S.lang;document.documentElement.dataset.theme=S.theme;
+ const d=document.getElementById('dev');d.className=`dev ${S.dev}`;
+ let body='';
+ if(S.st==='loading')body=`<div class="list" aria-busy="true">${'<div class="sk"></div>'.repeat(7)}</div>`;
+ else if(S.st==='failed')body=`<div class="note" role="alert">${L.fail}</div>`;
+ else body=S.sec==='hours'?hoursHtml(L):orderingHtml(L);
+ const tabs=`<div class="tabs">${L.tabs.map((t,i)=>`<span class="${i===3?'on':''}">${t}</span>`).join('')}</div>`;
+ const secName=L.secs[S.sec==='hours'?1:2];
+ const nav=S.dev==='dt'?`${tabs}<div class="body">${sidebar(L)}<main class="main"><div class="col">${body}</div></main></div>`:`<div class="phsel"><span class="fakesel">${L.tabs[3]} <span>▾</span></span><button type="button" class="fakesel" data-phsec>${secName} <span>▾</span></button></div><div class="body"><main class="main">${body}</main></div>`;
+ d.innerHTML=`<div class="top"><b>${L.venue}</b></div>${nav}${dialogHtml(L)}<div class="toast" id="toast"><span id="tt"></span><button type="button" id="tu">${L.undo}</button></div>`;
+ wire()}
+function guard(fn){if(S.role==='old'&&!S.pwOk){S.after=fn;S.dlg={kind:'pw'};render();return}fn()}
+function toast(text,undo){const t=document.getElementById('toast');document.getElementById('tt').textContent=text;document.getElementById('live').textContent=text;const u=document.getElementById('tu');u.hidden=!undo;u.onclick=()=>{undo();t.classList.remove('on')};t.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.classList.remove('on')},8000)}
+function change(mutate,label){guard(()=>{const before=JSON.parse(JSON.stringify(D));mutate();render();toast(label||T[S.lang].saved,()=>{D=before;render()})})}
+function wire(){
+ const L=T[S.lang];
+ document.querySelectorAll('[data-sec]').forEach((b)=>{b.onclick=()=>{const v=b.dataset.sec;if(v==='hours'||v==='ordering'){S.sec=v;sync();render()}}});
+ const ps=document.querySelector('[data-phsec]');if(ps)ps.onclick=()=>{S.sec=S.sec==='hours'?'ordering':'hours';sync();render()};
+ document.querySelectorAll('[data-day]').forEach((b)=>{b.onclick=()=>{const i=+b.dataset.day;if(D.hours[i]){change(()=>{D.saved[i]=D.hours[i];D.hours[i]=null},`${DAYS[S.lang][i]}: ${L.closed}`)}else{guard(()=>{const near=D.saved[i]||D.hours.find((x)=>x)||{o:'',l:'',c:''};S.dlg={kind:'day',i,v:{...near},same:[],err:null};render()})}}});
+ document.querySelectorAll('[data-row]').forEach((b)=>{b.onclick=()=>{const i=+b.dataset.row;guard(()=>{S.dlg={kind:'day',i,v:{...D.hours[i]},same:[],err:null};render()})}});
+ document.querySelectorAll('[data-f]').forEach((f)=>{f.onchange=()=>{S.dlg.v[f.dataset.f]=f.value}});
+ document.querySelectorAll('[data-same]').forEach((c)=>{c.onchange=()=>{const i=+c.dataset.same;S.dlg.same=c.checked?[...S.dlg.same,i]:S.dlg.same.filter((x)=>x!==i)}});
+ const ds=document.querySelector('[data-daysave]');if(ds)ds.onclick=()=>{const p=problem(S.dlg.v);if(p){S.dlg.err=p;render();return}const g=S.dlg;S.dlg=null;change(()=>{[g.i,...g.same].forEach((i)=>{D.hours[i]={...g.v};D.saved[i]={...g.v}})})};
+ document.querySelectorAll('[data-x]').forEach((b)=>{b.onclick=()=>{S.dlg=null;S.after=null;render()}});
+ const pw=document.querySelector('[data-pwok]');if(pw)pw.onclick=()=>{S.pwOk=true;S.dlg=null;const f=S.after;S.after=null;render();if(f)f()};
+ const pre=document.querySelector('[data-pre]');if(pre)pre.onclick=()=>{guard(()=>{S.dlg={kind:'pre',v:{...D.pre}};render()})};
+ document.querySelectorAll('[data-pv]').forEach((s)=>{s.onchange=()=>{S.dlg.v[s.dataset.pv]=+s.value}});
+ const prs=document.querySelector('[data-presave]');if(prs)prs.onclick=()=>{const v=S.dlg.v;S.dlg=null;change(()=>{D.pre=v})};
+ document.querySelectorAll('[data-tog]').forEach((b)=>{b.onclick=()=>{const k=b.dataset.tog;change(()=>{D[k]=!D[k]})}});
+ const ce=document.querySelector('[data-capedit]');if(ce)ce.onclick=()=>{guard(()=>{S.capEdit=true;render();const i=document.getElementById('capin');i.focus();i.select()})};
+ const ci=document.getElementById('capin');if(ci)ci.onkeydown=(e)=>{if(e.key==='Escape'){S.capEdit=false;render()}if(e.key==='Enter'){const n=Math.round(Number(ci.value.replace(',','.')));S.capEdit=false;if(n>0&&n<=10000)change(()=>{D.cap=n});else render()}};
+ const sp=document.querySelector('[data-spot]');if(sp)sp.onclick=()=>{guard(()=>{toast(L.locating);setTimeout(()=>{change(()=>{D.spot=true})},900)})};
+ const mo=document.querySelector('[data-more]');if(mo)mo.onclick=()=>{S.more=!S.more;render()};
+ document.querySelectorAll('[data-sel]').forEach((s)=>{s.onchange=()=>{const k=s.dataset.sel;const v=s.value==='off'?'off':+s.value;change(()=>{D[k]=v})}});
+}
+function sync(){document.querySelectorAll('.bar .seg').forEach((g)=>{g.querySelectorAll('button').forEach((x)=>{x.setAttribute('aria-pressed',x.dataset.v===S[g.dataset.k])})})}
+document.querySelectorAll('.bar .seg').forEach((g)=>{g.querySelectorAll('button').forEach((b)=>{b.onclick=()=>{S[g.dataset.k]=b.dataset.v;if(g.dataset.k==='st'){D=b.dataset.v==='set'?setUp():fresh()}if(g.dataset.k==='role')S.pwOk=false;S.dlg=null;S.capEdit=false;sync();render()}})});
+render();
+</script>
+</body>
+</html>
