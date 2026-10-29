@@ -88,6 +88,12 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     )
     const venue = await provisionVenue(pool, tenantId, { name: 'Club', slug: testSlug('connect') })
     venueId = venue.id
+    // The venue's legal details are part of what turns paying on (#198); these tests are about the
+    // provider's notices and the owner's ticks, so they are filled in.
+    await query(
+      `update restro.venues set settings = settings || '{"legalDetails":{"name":"Club EOOD","eik":"123456789","address":"Sofia, 1 Vitosha Blvd","privacyUrl":"https://club.example/privacy"}}'::jsonb where id = $1`,
+      [venueId],
+    )
     const area = await createArea(pool, tenantId, venueId, 'Hall')
     if (!area.ok) throw new Error('no area')
     const table = await createTable(pool, tenantId, {

@@ -3,9 +3,9 @@
 // (#198). Rule 1 keeps every write of the venue's data in core/apply; the service command
 // `settings.paying_set` (the owner's Paying screen, #116) calls this and nothing else does.
 
-import { paymentAccounts, venues } from '@restro/db'
+import { venues } from '@restro/db'
 import type { WriteTx } from '@restro/db/write'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { type LegalDetails, LegalDetailsSchema, readLegalDetails } from '../legal-details'
@@ -95,20 +95,6 @@ export async function patchPayingSettingsIn(
       throw new PayingSettingsError('invalid_input', z.prettifyError(legal.error))
     }
     const after = legal === null ? null : legal.data
-    // Clearing them would turn card payments off with no signal to the staff (#198): the owner
-    // disconnects the account first, or replaces the details.
-    if (after === null && readLegalDetails(settings) !== null) {
-      const [connected] = await tx
-        .select({ venueId: paymentAccounts.venueId })
-        .from(paymentAccounts)
-        .where(and(eq(paymentAccounts.venueId, venueId), eq(paymentAccounts.state, 'connected')))
-      if (connected !== undefined) {
-        throw new PayingSettingsError(
-          'invalid_input',
-          'the legal details cannot be cleared while the venue has a connected payment account',
-        )
-      }
-    }
     if (JSON.stringify(after) !== JSON.stringify(readLegalDetails(settings))) {
       changed.push('legalDetails')
       if (after === null) delete next.legalDetails

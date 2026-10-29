@@ -6,10 +6,12 @@
 // The provider's smallest charge comes from the web app's server action, which knows the venue's
 // provider; the browser never names it.
 
+import { paymentAccounts, venues } from '@restro/db'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { PayingSettingsError, patchPayingSettingsIn } from '../apply/paying-settings'
-import { LegalDetailsSchema } from '../legal-details'
+import { LegalDetailsSchema, readLegalDetails } from '../legal-details'
 import { MIN_CARD_MAX_MINOR } from '../paying-settings'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
@@ -30,6 +32,25 @@ export async function setPayingChoices(
   stx: ServiceTx,
   command: z.infer<typeof SetPayingSchema>,
 ): Promise<ServiceResult> {
+  // Clearing the legal details would turn card payments off with no signal to the staff (#198):
+  // the owner disconnects the account first, or replaces the details.
+  if (command.changes.legalDetails === null) {
+    const [venue] = await stx.tx
+      .select({ settings: venues.settings })
+      .from(venues)
+      .where(eq(venues.id, stx.venueId))
+    const [connected] = await stx.tx
+      .select({ venueId: paymentAccounts.venueId })
+      .from(paymentAccounts)
+      .where(and(eq(paymentAccounts.venueId, stx.venueId), eq(paymentAccounts.state, 'connected')))
+      .for('share')
+    if (connected !== undefined && readLegalDetails(venue?.settings ?? {}) !== null) {
+      return refused(null, 'invalid_settings', {
+        problem:
+          'the legal details cannot be cleared while the venue has a connected payment account',
+      })
+    }
+  }
   try {
     const done = await patchPayingSettingsIn(
       stx.tx,
