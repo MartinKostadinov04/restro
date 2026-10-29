@@ -25,7 +25,12 @@ vi.mock('../guest-api', () => ({ queuePaymentStep }))
 vi.mock('./load', () => ({ loadTableBill: vi.fn() }))
 vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn() }))
 
-import { answerPaymentAction, doneAlertAction } from './actions'
+import {
+  answerPaymentAction,
+  doneAlertAction,
+  receiptBroughtAction,
+  receiptUnbroughtAction,
+} from './actions'
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
 const PAYMENT = 'py_0123456789ABCDEFGHIJKL'
@@ -129,5 +134,46 @@ describe('acknowledging an alert (Moved back, Seen, Sorted)', () => {
       ok: false,
       error: 'alert_needs_answer',
     })
+  })
+})
+
+describe('marking a paper receipt Brought (#200)', () => {
+  it('sends receipt.brought with no PIN, and passes on what the service path answered', async () => {
+    runTableCommand.mockResolvedValueOnce({
+      ok: true,
+      details: { paymentId: PAYMENT, brought: true, changed: true },
+    })
+    expect(await receiptBroughtAction({ venueId: VENUE, paymentId: PAYMENT })).toEqual({
+      ok: true,
+      details: { paymentId: PAYMENT, brought: true, changed: true },
+    })
+    expect(runTableCommand.mock.calls[0]?.[1]).toEqual({
+      type: 'receipt.brought',
+      paymentId: PAYMENT,
+    })
+    expect(queuePaymentStep).not.toHaveBeenCalled()
+  })
+
+  it('sends receipt.unbrought for Undo, and passes on a refusal', async () => {
+    runTableCommand.mockResolvedValueOnce({ ok: false, error: 'no_receipt_to_bring' })
+    expect(await receiptUnbroughtAction({ venueId: VENUE, paymentId: PAYMENT })).toEqual({
+      ok: false,
+      error: 'no_receipt_to_bring',
+    })
+    expect(runTableCommand.mock.calls[0]?.[1]).toEqual({
+      type: 'receipt.unbrought',
+      paymentId: PAYMENT,
+    })
+  })
+
+  it('refuses a PIN, a payment id of another kind, or an extra field, before any command', async () => {
+    for (const input of [
+      { venueId: VENUE, paymentId: PAYMENT, pin: '1234' },
+      { venueId: VENUE, paymentId: ALERT },
+      { venueId: VENUE },
+    ]) {
+      expect(await receiptBroughtAction(input)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
   })
 })
