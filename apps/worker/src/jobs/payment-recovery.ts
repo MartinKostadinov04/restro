@@ -28,6 +28,7 @@ import {
   applyService,
   isFinalPaymentState,
   PAYMENT_UNCONFIRMED_REASONS,
+  RECEIPT_EMAIL_KEPT_MS,
 } from '@restro/core/service'
 import {
   authOrganization,
@@ -170,6 +171,9 @@ export async function recoverPayments(
             * 1000)::text`,
             changedMs: sql<string>`(extract(epoch from now() - ${payments.updatedAt}) * 1000)::text`,
             captureDue: sql<boolean>`coalesce(${payments.captureBefore} <= now(), false)`,
+            // The guest's email, kept past any payment's time (#186): erased below.
+            emailKept: sql<boolean>`(${payments.receiptEmail} is not null
+              and ${payments.createdAt} < now() - make_interval(secs => ${RECEIPT_EMAIL_KEPT_MS / 1000}))`,
             releaseRefused: sql<boolean>`coalesce((select s.outcome = 'refused'
               and s.answer is distinct from 'not_found'
             from restro.payment_steps s
@@ -189,6 +193,27 @@ export async function recoverPayments(
       for (const row of rows) {
         const target = { tenantId, venueId: row.venueId, paymentId: row.id } as const
         try {
+          if (row.emailKept === true) {
+            // Its own try: an erase that fails must never block this payment's recovery.
+            try {
+              await applyService(
+                env.pool,
+                { type: 'payment.erase_receipt_email', paymentId: row.id },
+                {
+                  tenantId,
+                  venueId: row.venueId,
+                  origin: 'worker',
+                  actor: { kind: 'system' },
+                  jobId: `payment-recovery-${row.id}`,
+                },
+              )
+            } catch (error) {
+              env.log.warn(
+                { paymentId: row.id, error: error instanceof Error ? error.name : 'error' },
+                'the guest’s receipt email could not be erased',
+              )
+            }
+          }
           const actions = recoveryActions({
             kind: row.kind,
             state: row.state,

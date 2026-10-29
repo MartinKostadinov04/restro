@@ -121,32 +121,41 @@ describe('confirmationOf', () => {
         locale,
         words,
       })
-      const emailed = confirmationOf({
-        payment: captured,
-        venueName: 'Club X',
-        otherItem: 'Other item',
-        locale,
-        words,
-        receiptEmail: 'ana@example.com',
-      })
+      const said = (receiptEmailed: 'sent' | 'requested' | null, receiptEmail: string | null) =>
+        confirmationOf({
+          payment: { ...captured, receiptEmailed, receiptEmail },
+          venueName: 'Club X',
+          otherItem: 'Other item',
+          locale,
+          words,
+        })
+      const emailed = said('sent', 'ana@example.com')
+      const requested = said('requested', 'ana@example.com')
       expect(plain?.note).toBe(words.confirmNotReceipt)
       expect(emailed?.note).toBe(words.confirmReceiptEmailed('ana@example.com'))
+      expect(requested?.note).toBe(words.confirmReceiptRequested('ana@example.com'))
       expect(emailed?.note).toContain('ana@example.com')
       expect(emailed?.note).not.toContain(words.confirmNotReceipt.slice(-20))
+      // No electronic receipt went out, or the address is not known here: the waiter's line.
+      expect(said(null, 'ana@example.com')?.note).toBe(words.confirmNotReceipt)
+      expect(said('sent', null)?.note).toBe(words.confirmNotReceipt)
     }
   })
 
   it('never has the look or the words of a receipt, in either language', () => {
     for (const locale of LOCALES) {
       const words = stringsFor(locale).services.paying
-      for (const receiptEmail of [null, 'ana@example.com']) {
+      for (const receiptEmailed of [null, 'sent', 'requested'] as const) {
         const view = confirmationOf({
-          payment: captured,
+          payment: {
+            ...captured,
+            receiptEmailed,
+            receiptEmail: receiptEmailed === null ? null : 'ana@example.com',
+          },
           venueName: 'Club X',
           otherItem: 'Other item',
           locale,
           words,
-          receiptEmail,
         })
         expect(view).not.toBeNull()
         const shown = [
@@ -156,6 +165,10 @@ describe('confirmationOf', () => {
           words.paidByCard,
           words.confirmNotReceipt,
           words.confirmReceiptEmailed('ana@example.com'),
+          words.confirmReceiptRequested('ana@example.com'),
+          words.paidReceiptEmailed('ana@example.com'),
+          words.paidReceiptRequested('ana@example.com'),
+          words.receiptEmail,
           words.confirmSave,
         ]
         for (const text of shown) {

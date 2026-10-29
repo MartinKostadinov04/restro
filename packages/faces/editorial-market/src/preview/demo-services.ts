@@ -403,6 +403,8 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
               amountMinor: line.totalMinor,
             })),
             paidAt: null,
+            receiptEmailed: null,
+            receiptEmail: null,
             timeZone: 'Europe/Sofia',
             form: { confirmSeconds: 120 },
           }

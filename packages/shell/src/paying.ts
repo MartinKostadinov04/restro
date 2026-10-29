@@ -28,14 +28,15 @@ import { fallbackChain, pickText } from './text'
 
 export { PAY_ENDS, type PayEnd }
 
-import type {
-  GuestCommand,
-  PayingView,
-  PaymentView,
-  PaySeenLine,
-  ServiceState,
-  TableBillLineView,
-  TableBillView,
+import {
+  type GuestCommand,
+  type PayingView,
+  type PaymentView,
+  type PaySeenLine,
+  ReceiptEmailSchema,
+  type ServiceState,
+  type TableBillLineView,
+  type TableBillView,
 } from './services'
 
 /** The tip presets in whole percent of the chosen lines (D127). */
@@ -146,6 +147,30 @@ export function choosePay(picks: Picks, chosen: TipChoice, tipsOffered: boolean)
   }
 }
 
+/**
+ * The address typed in the receipt field, as the command carries it: trimmed, and null for none.
+ * Anything typed that is not one valid address is `invalid` (the field is never silently dropped:
+ * the guest asked for a receipt there, and Pay stays greyed until it is fixed or emptied).
+ */
+export function receiptEmailOf(
+  typed: string,
+  offered: boolean,
+):
+  | { readonly kind: 'none' }
+  | { readonly kind: 'valid'; readonly email: string }
+  | { readonly kind: 'invalid' } {
+  const text = typed.trim()
+  if (!offered || text === '') return { kind: 'none' }
+  return ReceiptEmailSchema.safeParse(text).success
+    ? { kind: 'valid', email: text }
+    : { kind: 'invalid' }
+}
+
+/** Whether the pay screen offers the receipt email field: the table's POS can issue the receipt. */
+export function offersReceiptEmail(paying: PayingView | null | undefined): boolean {
+  return paying?.electronicReceipt === true
+}
+
 /** Why Pay is greyed; the guest's words are in `strings.pay`. */
 export type PayBlock =
   | 'cards_paused'
@@ -153,6 +178,8 @@ export type PayBlock =
   | 'nothing_picked'
   | 'below_minimum'
   | 'tip_too_big'
+  /** An address was typed in the receipt field and is not a valid one (no words: the field says). */
+  | 'bad_email'
 
 /**
  * Why Pay is greyed now, or null. Paying off at the venue shows no Pay button at all
@@ -164,6 +191,7 @@ export function payBlock(
   picks: Picks,
   tip: TipChoice,
   tipsOffered: boolean,
+  receiptEmail = '',
 ): PayBlock | null {
   if (paying.state === 'paused') return 'cards_paused'
   if (!bill.complete) return 'not_up_to_date'
@@ -172,6 +200,9 @@ export function payBlock(
   if (!totals.tipValid) return 'tip_too_big'
   // The smallest card payment is measured on what is held: the lines plus the tip (D127).
   if (totals.totalMinor < paying.minCardMinor) return 'below_minimum'
+  if (receiptEmailOf(receiptEmail, offersReceiptEmail(paying)).kind === 'invalid') {
+    return 'bad_email'
+  }
   return null
 }
 
@@ -181,8 +212,12 @@ export function payStartCommand(
   picks: Picks,
   chosen: TipChoice,
   tipsOffered: boolean,
+  /** What was typed in the receipt field; sent only where it is a valid address (#186). */
+  receiptEmail: string | null = null,
+  receiptEmailOffered = false,
 ): Extract<GuestCommand, { kind: 'pay.start' }> {
   const tip = tipsOffered ? chosen : NO_TIP
+  const typed = receiptEmailOf(receiptEmail ?? '', receiptEmailOffered)
   const totals = choosePay(picks, tip, tipsOffered)
   const seen = [...picks.values()]
   return {
@@ -196,7 +231,21 @@ export function payStartCommand(
     // A preset goes as its percent (the server prices it), an amount as the amount.
     tipPercent: tip.kind === 'percent' ? tip.percent : null,
     tipMinor: tip.kind === 'other' && totals.tipMinor > 0 ? totals.tipMinor : null,
+    ...(typed.kind === 'valid' ? { receiptEmail: typed.email } : {}),
   }
+}
+
+/**
+ * The Paid screen's second line (#186, D127): where the guest's electronic receipt went out, it
+ * says to whom ("was sent" where Restro sent the POS's file, "was requested" where the POS sends it
+ * itself); otherwise the waiter brings paper.
+ */
+export function paidReceiptText(payment: PaymentView, words: PayingStrings): string {
+  const email = payment.receiptEmail
+  if (payment.receiptEmailed === null || email === null || email === '') return words.paidReceipt
+  return payment.receiptEmailed === 'sent'
+    ? words.paidReceiptEmailed(email)
+    : words.paidReceiptRequested(email)
 }
 
 /** Whether the bill screen offers Pay: a bill, paying on or paused, and no payment of this phone's. */

@@ -265,6 +265,14 @@ export interface PayingStrings {
   readonly paid: string
   readonly paidNumber: string
   readonly paidReceipt: string
+  /** The pay screen's optional email field (#186): "Receipt by email (optional)". */
+  readonly receiptEmail: string
+  /** Under the field when the address typed is not valid; Pay stays greyed (the lead's words, awaiting Martin). */
+  readonly emailInvalid: string
+  /** The Paid screen's line where Restro sent the POS's receipt file to the guest's email (#186). */
+  readonly paidReceiptEmailed: (email: string) => string
+  /** The same where the POS sends the receipt itself and Restro can only say it was asked (#186). */
+  readonly paidReceiptRequested: (email: string) => string
   /** The bill's section of lines paid in the app in this sitting (D127 1.2). */
   readonly paidInApp: string
   /** The Paid screen's button and the title of the Payment confirmation (D127 1.4). */
@@ -274,6 +282,8 @@ export interface PayingStrings {
   readonly confirmNotReceipt: string
   /** The same line where an electronic receipt went to an email (#186). */
   readonly confirmReceiptEmailed: (email: string) => string
+  /** The same where the POS sends the receipt itself (#186). */
+  readonly confirmReceiptRequested: (email: string) => string
   readonly confirmSave: string
   /**
    * A Save that failed (the lead's words, awaiting Martin 10-30). No "Saved" line exists: the
@@ -603,12 +613,20 @@ const EN: Strings = {
       paid: 'Paid',
       paidNumber: 'Payment number',
       paidReceipt: 'Show this number to your waiter. Your waiter brings your receipt.',
+      receiptEmail: 'Receipt by email (optional)',
+      emailInvalid: 'Check the email address',
+      paidReceiptEmailed: (email) =>
+        `Show this number to your waiter. Your receipt was sent to ${email}.`,
+      paidReceiptRequested: (email) =>
+        `Show this number to your waiter. Your receipt was requested to ${email}.`,
       paidInApp: 'Paid in the app',
       confirmTitle: 'Payment confirmation',
       paidByCard: 'Paid by card',
       confirmNotReceipt: 'This is not your receipt. Your waiter brings the venue’s receipt.',
       confirmReceiptEmailed: (email) =>
         `This is not your receipt. Your receipt was sent to ${email}.`,
+      confirmReceiptRequested: (email) =>
+        `This is not your receipt. Your receipt was requested to ${email}.`,
       confirmSave: 'Save',
       confirmSaveFailed: 'Couldn’t save. Try again.',
       backToBill: 'Back to the bill',
@@ -936,6 +954,12 @@ const BG: Strings = {
       paid: 'Платено',
       paidNumber: 'Номер на плащането',
       paidReceipt: 'Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка.',
+      receiptEmail: 'Касова бележка по имейл (по желание)',
+      emailInvalid: 'Проверете имейл адреса',
+      paidReceiptEmailed: (email) =>
+        `Покажете този номер на сервитьора. Касовата бележка е изпратена на ${email}.`,
+      paidReceiptRequested: (email) =>
+        `Покажете този номер на сервитьора. Поискахте касова бележка на ${email}.`,
       paidInApp: 'Платено в приложението',
       confirmTitle: 'Потвърждение за плащане',
       paidByCard: 'Платено с карта',
@@ -943,6 +967,8 @@ const BG: Strings = {
         'Това не е касова бележка. Касовата бележка за плащането ви носи сервитьорът.',
       confirmReceiptEmailed: (email) =>
         `Това не е касова бележка. Касовата бележка е изпратена на ${email}.`,
+      confirmReceiptRequested: (email) =>
+        `Това не е касова бележка. Поискахте касова бележка на ${email}.`,
       confirmSave: 'Запази',
       confirmSaveFailed: 'Не успяхме да запазим. Опитайте отново.',
       backToBill: 'Към сметката',

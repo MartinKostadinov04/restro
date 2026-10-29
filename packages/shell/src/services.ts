@@ -160,6 +160,11 @@ export type GuestCommand =
       readonly seen: readonly PaySeenLine[]
       readonly tipMinor: number | null
       readonly tipPercent: number | null
+      /**
+       * The guest's email for the venue's electronic receipt (#186), only where
+       * `paying.electronicReceipt` is true: one valid address. Absent: the waiter brings paper.
+       */
+      readonly receiptEmail?: string
     }
   /** The phone is back from the card form (a nudge: Restro reads the hold from the provider). */
   | { readonly kind: 'pay.returned'; readonly actionId: string }
@@ -194,6 +199,9 @@ const OrderLineSchema = z.strictObject({
 
 const BillLineIdSchema = idSchema('bn')
 
+/** A guest's email for the venue's electronic receipt: one valid address, nothing else (#186). */
+export const ReceiptEmailSchema = z.email().max(254)
+
 /** `pay.start`: whole lines of the bill (a line's whole quantity) or the whole bill (D127). */
 export const PayStartSchema = z
   .strictObject({
@@ -221,6 +229,7 @@ export const PayStartSchema = z
       .max(SERVICE_LIMITS.payLines),
     tipMinor: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
     tipPercent: z.int().min(1).max(SERVICE_LIMITS.tipPercentMax).nullable(),
+    receiptEmail: ReceiptEmailSchema.optional(),
   })
   .refine((command) => command.tipMinor === null || command.tipPercent === null, {
     message: 'set either tipMinor or tipPercent, not both',
@@ -438,7 +447,11 @@ export interface PayingView {
    * check is off. The venue's legal name and links come with a later ticket (D127 1.6).
    */
   readonly venueName: string
-  /** Reserved for #186: true when a receipt email may be offered. The host sets it false. */
+  /**
+   * True when the pay screen offers the optional receipt email (#186, D127): the table's POS can
+   * issue the venue's electronic receipt, and where it returns a file, Restro has a way to send
+   * it. False: no field, and the waiter brings paper.
+   */
   readonly electronicReceipt: boolean
   /**
    * The last payment this phone made, for "Same amount as 4 minutes ago. Pay again?" (D127): its
@@ -476,6 +489,16 @@ export interface PaymentView {
   readonly lines: readonly PaymentLineView[]
   /** When it reached its final state (an ISO instant), or null: the confirmation's time. */
   readonly paidAt: string | null
+  /**
+   * The guest's electronic receipt once paid (#186): `sent` where Restro sent the POS's file,
+   * `requested` where the POS sends it itself; null where none went out (the waiter brings paper).
+   */
+  readonly receiptEmailed: 'sent' | 'requested' | null
+  /**
+   * The address this phone gave for the receipt, kept by the host in the browser with the payment's
+   * handle (the server erases its copy at the close), or null. Never sent to the server again.
+   */
+  readonly receiptEmail: string | null
   /** The venue's time zone (IANA): the Payment confirmation shows the time there (D127 1.4). */
   readonly timeZone: string
   /** The card form is ready for the guest (the state is `awaiting_guest`); the slot is filled. */
@@ -606,9 +629,8 @@ export interface ServiceState {
   readonly tableBill?: TableBillView | null
   /**
    * Paying on the bill here (#114): `state` is on, paused or off (no ids), `minCardMinor` the
-   * smallest card payment. `electronicReceipt` is reserved for #186 (an optional email on the pay
-   * screen where the POS can issue the venue's electronic receipt): the host leaves it false until
-   * a connector declares the capability.
+   * smallest card payment. `electronicReceipt` (#186) is true where the pay screen offers the
+   * optional receipt email: the table's POS can issue the venue's electronic receipt.
    */
   readonly paying?: PayingView | null
   /**

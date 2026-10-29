@@ -809,3 +809,100 @@ describe('the Payment confirmation (#197, D127 1.4)', () => {
     )
   })
 })
+
+describe('the venue’s electronic receipt (#186, D127)', () => {
+  const withReceipt = () => ({ ...base(), paying: payingOf({ electronicReceipt: true }) })
+  const field = (sheet: HTMLElement) =>
+    sheet.querySelector<HTMLInputElement>('[data-slot="pay.receipt.email"]')
+
+  it('draws the email field only where the host offers it, under the guide’s words', () => {
+    const { sheet } = openPay(fakeHost(withReceipt()))
+    const input = field(sheet)
+    expect(input?.type).toBe('email')
+    expect(within(sheet).getByLabelText('Receipt by email (optional)')).toBe(input)
+    expect(input?.value).toBe('')
+    cleanup()
+    const off = openPay(fakeHost(base())).sheet
+    expect(field(off)).toBeNull()
+    expect(off.textContent).not.toContain('Receipt by email')
+  })
+
+  it('sends the typed address with Pay, nothing when it is empty, and greys Pay for a bad one', async () => {
+    const host = fakeHost(withReceipt())
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    expect('receiptEmail' in (host.of('pay.start')[0]?.command ?? {})).toBe(false)
+    await act(async () =>
+      host.of('pay.start')[0]?.answer({ status: 'rejected', code: 'bill_changed' }),
+    )
+
+    fireEvent.change(field(sheet) as HTMLElement, { target: { value: 'ana@' } })
+    expect(field(sheet)?.getAttribute('aria-invalid')).toBe('true')
+    // The reason is on the screen and the field points at it.
+    const help = sheet.querySelector('[data-slot="pay.blocked"]')
+    expect(help?.textContent).toBe('Check the email address')
+    expect(field(sheet)?.getAttribute('aria-describedby')).toBe(help?.id)
+    expect(payButton(sheet, 'Pay €22.50').hasAttribute('disabled')).toBe(true)
+
+    fireEvent.change(field(sheet) as HTMLElement, { target: { value: ' ana@example.com ' } })
+    expect(field(sheet)?.getAttribute('aria-invalid')).toBe('false')
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(2))
+    expect(host.of('pay.start')[1]?.command).toMatchObject({ receiptEmail: 'ana@example.com' })
+  })
+
+  it('never sends an address where none is offered', async () => {
+    const host = fakeHost(base())
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    expect('receiptEmail' in (host.of('pay.start')[0]?.command ?? {})).toBe(false)
+  })
+
+  const paid = (receiptEmailed: 'sent' | 'requested' | null, receiptEmail: string | null) => ({
+    ...base(),
+    payment: paymentOf({
+      state: 'captured',
+      form: null,
+      tipMinor: 250,
+      amountMinor: 2500,
+      paidAt: '2026-10-29T19:42:00.000Z',
+      receiptEmailed,
+      receiptEmail,
+    }),
+  })
+
+  it('says on the Paid screen what went out: sent, requested, or the waiter’s paper', () => {
+    const { sheet } = openPay(fakeHost(paid('sent', 'ana@example.com')))
+    expect(sheet.querySelector('[data-slot="pay.receipt.line"]')?.textContent).toBe(
+      'Show this number to your waiter. Your receipt was sent to ana@example.com.',
+    )
+    cleanup()
+    const requested = openPay(fakeHost(paid('requested', 'ana@example.com'))).sheet
+    expect(requested.querySelector('[data-slot="pay.receipt.line"]')?.textContent).toBe(
+      'Show this number to your waiter. Your receipt was requested to ana@example.com.',
+    )
+    cleanup()
+    const paper = openPay(fakeHost(paid(null, null))).sheet
+    expect(paper.querySelector('[data-slot="pay.receipt.line"]')?.textContent).toBe(
+      'Show this number to your waiter. Your waiter brings your receipt.',
+    )
+  })
+
+  it('says it on the confirmation page too, never looking like a receipt', () => {
+    for (const [kind, expected] of [
+      ['sent', 'This is not your receipt. Your receipt was sent to ana@example.com.'],
+      ['requested', 'This is not your receipt. Your receipt was requested to ana@example.com.'],
+    ] as const) {
+      const { sheet } = openPay(fakeHost(paid(kind, 'ana@example.com')))
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Payment confirmation' }))
+      const note = sheet.querySelector('[data-slot="pay.confirmation.note"]')?.textContent ?? ''
+      expect(note).toBe(expected)
+      for (const pattern of RECEIPT_LOOK) expect(note).not.toMatch(pattern)
+      cleanup()
+    }
+  })
+})
