@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   disconnectPayingAction,
   finishConnectionAction,
+  savePayFirstAction,
   savePayingAction,
   startConnectionAction,
   tickPayingCheckAction,
@@ -20,6 +21,7 @@ import { PayingPanel } from './paying-panel'
 vi.mock('@/server/settings/paying-actions', () => ({
   disconnectPayingAction: vi.fn(),
   finishConnectionAction: vi.fn(),
+  savePayFirstAction: vi.fn(),
   savePayingAction: vi.fn(),
   startConnectionAction: vi.fn(),
   tickPayingCheckAction: vi.fn(),
@@ -71,6 +73,7 @@ function view(overrides: Partial<PayingView> = {}): PayingView {
     provider: 'Testpay',
     source: 'Testtill',
     tips: false,
+    payFirst: null,
     email: 'owner@example.com',
     ...overrides,
     legal,
@@ -82,6 +85,7 @@ beforeEach(() => {
   for (const action of [
     disconnectPayingAction,
     finishConnectionAction,
+    savePayFirstAction,
     savePayingAction,
     startConnectionAction,
     tickPayingCheckAction,
@@ -90,6 +94,7 @@ beforeEach(() => {
   }
   vi.mocked(disconnectPayingAction).mockResolvedValue(OK)
   vi.mocked(savePayingAction).mockResolvedValue(OK)
+  vi.mocked(savePayFirstAction).mockResolvedValue(OK)
   vi.mocked(tickPayingCheckAction).mockResolvedValue(OK)
   vi.mocked(finishConnectionAction).mockResolvedValue({ ...OK, ready: false })
   vi.mocked(toast.success).mockReset()
@@ -337,5 +342,99 @@ describe('Settings › Paying', () => {
     expect(screen.getByTestId('paying-tips').textContent).toBe(
       "Tips aren't offered: Testtill can't put a tip on the same receipt yet.",
     )
+  })
+
+  describe('the Pay first card (#216)', () => {
+    const card = { itemMode: 'on_bill', applies: true, overrides: 0 } as const
+
+    it('is not drawn where pay first cannot take effect', () => {
+      renderWithIntl(<PayingPanel view={view({ payFirst: null })} connection={undefined} />)
+      expect(screen.queryByTestId('paying-pay-first')).toBeNull()
+    })
+
+    it('shows the venue default picked and the switch on, with nothing about areas yet', () => {
+      renderWithIntl(<PayingPanel view={view({ payFirst: card })} connection={undefined} />)
+      const section = screen.getByTestId('paying-pay-first')
+      expect(
+        (within(section).getByTestId('paying-pf-mode-on_bill') as HTMLInputElement).checked,
+      ).toBe(true)
+      expect(within(section).getByRole('switch').getAttribute('aria-checked')).toBe('true')
+      expect(screen.queryByTestId('paying-pf-overrides')).toBeNull()
+      expect(screen.queryByTestId('paying-pf-off-d')).toBeNull()
+    })
+
+    it('saves the item default at once, with Undo that puts the previous one back', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(<PayingPanel view={view({ payFirst: card })} connection={undefined} />)
+      await user.click(screen.getByTestId('paying-pf-mode-pay_first'))
+      await waitFor(() =>
+        expect(savePayFirstAction).toHaveBeenCalledWith({
+          venueId: VENUE,
+          change: { itemMode: 'pay_first' },
+        }),
+      )
+      const toasted = vi.mocked(toast.success).mock.calls[0]
+      expect(toasted?.[0]).toBe('Items without their own choice: Pay first')
+      const options = toasted?.[1] as { action: { onClick: () => void } } | undefined
+      options?.action.onClick()
+      await waitFor(() =>
+        expect(savePayFirstAction).toHaveBeenLastCalledWith({
+          venueId: VENUE,
+          change: { itemMode: 'on_bill' },
+        }),
+      )
+    })
+
+    it('saves the switch at once, with Undo, and says what off means', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(<PayingPanel view={view({ payFirst: card })} connection={undefined} />)
+      await user.click(within(screen.getByTestId('paying-pay-first')).getByRole('switch'))
+      await waitFor(() =>
+        expect(savePayFirstAction).toHaveBeenCalledWith({
+          venueId: VENUE,
+          change: { applies: false },
+        }),
+      )
+      expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Everything is ordered on the bill')
+      const options = vi.mocked(toast.success).mock.calls[0]?.[1] as
+        | { action: { onClick: () => void } }
+        | undefined
+      options?.action.onClick()
+      await waitFor(() =>
+        expect(savePayFirstAction).toHaveBeenLastCalledWith({
+          venueId: VENUE,
+          change: { applies: true },
+        }),
+      )
+    })
+
+    it('shows the consequence line when off and counts the areas and tables that differ', () => {
+      renderWithIntl(
+        <PayingPanel
+          view={view({ payFirst: { itemMode: 'pay_first', applies: false, overrides: 3 } })}
+          connection={undefined}
+        />,
+      )
+      expect(screen.getByTestId('paying-pf-off-d').textContent).toContain('Tables & QR')
+      const overrides = screen.getByTestId('paying-pf-overrides')
+      expect(overrides.textContent).toContain('3 areas and tables have their own choice.')
+      expect(
+        within(overrides).getByRole('link', { name: 'Go to Tables & QR' }).getAttribute('href'),
+      ).toBe(`/venues/${VENUE}?tab=tables`)
+    })
+
+    it('is text only without the right: no radios, no switch', () => {
+      renderWithIntl(
+        <PayingPanel
+          view={view({ canConnect: false, payFirst: { ...card, overrides: 1 } })}
+          connection={undefined}
+        />,
+      )
+      const section = screen.getByTestId('paying-pay-first')
+      expect(within(section).queryAllByRole('radio')).toHaveLength(0)
+      expect(within(section).queryAllByRole('switch')).toHaveLength(0)
+      expect(screen.getByTestId('paying-pf-mode-text').textContent).toContain('On the bill')
+      expect(screen.getByTestId('paying-pf-applies-text').textContent).toBe('On')
+    })
   })
 })

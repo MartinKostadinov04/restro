@@ -16,6 +16,9 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 //   two ticks (with Undo), Tables & QR and the venue's details; the details are saved from their
 //   card (a malformed ЕИК is refused under its field); the smallest card payment is changed in
 //   place and refused below the provider's minimum; Disconnect asks first.
+//   Pay first (#216): the card is hidden while card payments are off; once they are on, the
+//   venue's item default (PF1) and "Pay first at every table" (PF2) each take 2 taps from Settings
+//   (the section, the control), save at once and are put back by Undo.
 //   A role without `settings.connect_payments` sees it all read-only; a POS venue whose POS
 //   declares nothing for paying has no Paying section (a venue no POS serves is a core test,
 //   service/paying-settings.test.ts); no sideways scroll at 390 px.
@@ -204,6 +207,65 @@ test('Disconnect asks first, then the venue is as never connected', async ({ bro
   await page.getByTestId('paying-disconnect-confirm').click()
   await expect(page.getByText(`${PROVIDER} е прекъснат`)).toBeVisible()
   await expect(page.getByTestId('paying-connect')).toBeVisible()
+  await context.close()
+})
+
+test('pay first: hidden while card payments are off, 2 taps with Undo once they are on', async ({
+  browser,
+}) => {
+  runScript('./e2e/paying-account.ts', 'connected')
+  const { context, page } = await open(browser, OWNER)
+  await page.goto(paying())
+  await expect(page.getByTestId('paying-account')).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId('paying-pay-first')).toHaveCount(0)
+
+  runScript('./e2e/paying-account.ts', 'on')
+  // From the Settings tab: tap 1 is the section, tap 2 is the control.
+  await page.goto(`/venues/${venueId}?tab=settings`)
+  await page.getByRole('tab', { name: 'Плащане' }).click()
+  const card = page.getByTestId('paying-pay-first')
+  await expect(card).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await expect(card.getByTestId('paying-pf-mode-on_bill')).toBeChecked()
+  await expect(card.getByTestId('paying-pf-applies')).toBeChecked()
+  await expect(card.getByTestId('paying-pf-overrides')).toHaveCount(0)
+  await snapshot(page, 'paying-pay-first.png')
+
+  // PF1: the whole menu paid first, then Undo.
+  await card.getByTestId('paying-pf-mode-pay_first').check()
+  await expect(page.getByText('Артикули без собствен избор: плаща се предварително')).toBeVisible()
+  await expect(card.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
+  await page.reload()
+  await expect(page.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
+  await page.getByRole('button', { name: 'Отмяна' }).click()
+  await expect(page.getByTestId('paying-pf-mode-on_bill')).toBeChecked()
+
+  // PF2: everything on the bill at every table, with its consequence line, then Undo.
+  await page.getByTestId('paying-pf-applies').click()
+  await expect(page.getByText('Всичко се поръчва по сметката', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('paying-pf-off-d')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('paying-pf-applies')).not.toBeChecked()
+  await page.getByRole('button', { name: 'Отмяна' }).click()
+  await expect(page.getByTestId('paying-pf-applies')).toBeChecked()
+  await expect(page.getByTestId('paying-pf-off-d')).toHaveCount(0)
+  await context.close()
+})
+
+test('pay first is text only for a role without the right, with no sideways scroll', async ({
+  browser,
+}) => {
+  runScript('./e2e/paying-account.ts', 'on')
+  const { context, page } = await open(browser, VIEWER, 390, 844)
+  await page.goto(paying())
+  const card = page.getByTestId('paying-pay-first')
+  await expect(card).toBeVisible()
+  await expect(card.getByRole('radio')).toHaveCount(0)
+  await expect(card.getByRole('switch')).toHaveCount(0)
+  await expect(card.getByTestId('paying-pf-mode-text')).toContainText('По сметката')
+  await snapshot(page, 'paying-pay-first-phone.png')
+  await noSidewaysScroll(page)
   await context.close()
 })
 

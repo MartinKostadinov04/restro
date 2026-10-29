@@ -174,3 +174,27 @@ export async function savePayingAction(input: unknown): Promise<SettingsResult> 
     return result
   })
 }
+
+const SavePayFirst = z.strictObject({
+  venueId,
+  /** One change: the command checks its shape (`itemMode`, `applies`, a group or a table). */
+  change: z.unknown(),
+})
+
+/**
+ * Changes one pay-first setting (#216): the venue's item default or whether it applies at every
+ * table (Settings › Paying), or an area's or a table's own choice (Tables & QR). Undo calls it again
+ * with the previous value. The right it needs depends on the change; the service path checks it.
+ */
+export async function savePayFirstAction(input: unknown): Promise<SettingsResult> {
+  const parsed = SavePayFirst.safeParse(input)
+  if (!parsed.success) return INVALID
+  return inSettingsScope(parsed.data.venueId, async (scope) => {
+    const result = await runSettingsCommand(scope, {
+      type: 'pay_first.set',
+      change: parsed.data.change,
+    })
+    if (result.ok) revalidatePath(`/venues/${scope.venueId}`)
+    return result
+  })
+}

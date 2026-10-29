@@ -8,10 +8,11 @@ import {
   type Currency,
   type LegalDetails,
   type PayingCheck,
+  type PaymentMode,
   readLegalDetails,
   readPayingSettings,
 } from '@restro/core'
-import { readPayingConnection, readPayingOffer } from '@restro/core/service'
+import { readPayFirstOverview, readPayingConnection, readPayingOffer } from '@restro/core/service'
 import type { Venue } from '@restro/db'
 
 import { providerOf } from '../../connectors/providers'
@@ -33,6 +34,16 @@ export interface PayingCheckView {
  * this folder).
  */
 export type PayingMissing = PayingCheck | 'legalDetails'
+
+/**
+ * The "Pay first" card (#216): the venue's item default, whether pay first applies at every table,
+ * and how many areas and tables have a choice of their own.
+ */
+export interface PayFirstCard {
+  readonly itemMode: PaymentMode
+  readonly applies: boolean
+  readonly overrides: number
+}
 
 /** Everything the Paying section draws about the account. */
 export interface PayingView {
@@ -63,6 +74,12 @@ export interface PayingView {
   readonly tips: boolean
   /** The venue's legal details (#198), or null until all four are filled in. */
   readonly legal: LegalDetails | null
+  /**
+   * The "Pay first" card, or null where it is not shown: no POS of the venue declares
+   * `firstItemsOpenBill`, or card payments are not on (connecting, details missing, disconnected).
+   * The saved choices are kept meanwhile (#216).
+   */
+  readonly payFirst: PayFirstCard | null
   /** The signed-in person's email, for the password again. */
   readonly email: string
 }
@@ -79,9 +96,10 @@ export async function loadPayingView(input: {
   const legal = readLegalDetails(input.venue.settings)
   const currency = CURRENCIES.find((c): c is Currency => c === input.venue.currency) ?? 'EUR'
   const provider = providerOf(connection.providerKind)
-  const [offer, source] = await Promise.all([
+  const [offer, source, payFirst] = await Promise.all([
     readPayingOffer(getPool(), input.tenantId, input.venue.id),
     tillLabelOfVenue(getPool(), input.tenantId, input.venue.id),
+    readPayFirstOverview(getPool(), input.tenantId, input.venue.id, input.venue.settings),
   ])
   return {
     venueId: input.venue.id,
@@ -99,6 +117,13 @@ export async function loadPayingView(input: {
     source: source ?? '',
     tips: offer.tips,
     legal,
+    payFirst: payFirst.possible
+      ? {
+          itemMode: payFirst.settings.itemMode,
+          applies: payFirst.settings.applies,
+          overrides: payFirst.overrides,
+        }
+      : null,
     email: input.email,
   }
 }

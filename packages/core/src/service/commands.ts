@@ -70,6 +70,7 @@ import {
   TipSchema,
 } from './pay'
 import { PAY_FIRST_COMMANDS } from './pay-first'
+import { payFirstPermissionOf, SetPayFirstSchema, setPayFirst } from './pay-first-settings'
 import { PAY_ROUTE_COMMANDS } from './pay-route'
 import { payingBreaker } from './paying-pause'
 import { SetPayingSchema, setPayingChoices } from './paying-settings'
@@ -492,6 +493,19 @@ export const SERVICE_COMMANDS = {
     freshSignIn: true,
     idempotency: 'by_nature',
     handle: setPayingChoices,
+  }),
+  // #216: pay first. The venue's choices (Paying) need the right to connect payments, an area's or a
+  // table's (Tables & QR) the right to mark payment tables. A settings change, serialised on the
+  // venue's row: two saves of different tables both stay.
+  'pay_first.set': defineCommand({
+    schema: SetPayFirstSchema,
+    origins: ['staff'],
+    permission: CONNECT_PERMISSION,
+    permissionOf: payFirstPermissionOf,
+    venueLock: 'update',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: setPayFirst,
   }),
   'payment_account.tick': defineCommand({
     schema: TickCheckSchema,
