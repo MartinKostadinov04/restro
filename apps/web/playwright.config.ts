@@ -60,6 +60,7 @@ const serverEnvironment = (origin: string) => ({
     process.env.GUEST_PASS_KEY ?? 'e2e-only-guest-pass-key-not-used-anywhere-else-0123456789',
   // The PIN pepper (#72) for the Tonight screen's PIN sheet (#85), for the test servers only.
   STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
+  PAYMENTS_PROVIDER: 'sim-pay',
   // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
   // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test
@@ -82,6 +83,12 @@ const workerEnvironment = {
   ...SEAL_KEYS.worker,
   WORKER_POS_SYNC: 'off',
   WORKER_SEND: 'on',
+  // The owner's Paying settings (#116) connect to the simulated card provider, never a real one:
+  // the worker builds only it (no Stripe key), and the web servers name it for a venue that has not
+  // connected yet.
+  PAYMENTS_ENV: 'test',
+  STRIPE_SECRET_KEY: '',
+  WORKER_PAYMENTS_SIM: 'on',
 }
 
 export default defineConfig({

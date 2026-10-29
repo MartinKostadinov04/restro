@@ -653,6 +653,24 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
       expect(calls('addRows')).toBe(1)
     })
 
+    it('the entry unknown, "on the till", then the close unknown: asked again; "Receipt printed" captures', async () => {
+      const id = await held()
+      fault({ on: 'addRows', fault: { kind: 'hang' } })
+      expect(await drive(id)).toMatchObject({ state: 'unconfirmed', reason: 'enter_unknown' })
+      sim.host.engine.waiter.addRound(await paymentPlace(id), [{ article: ARTICLE, quantity: '2' }])
+      expect(await answer(id, 'on_till')).toMatchObject({ status: 'accepted' })
+      // The first question is answered; the close then gets no answer from the POS.
+      expect(await alertsOf(id)).toEqual([])
+      fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+      expect(await drive(id)).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      // A fresh question for the close, one only.
+      expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+      expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
+      expect(await alertsOf(id)).toEqual([])
+      expect(await drive(id)).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(calls('closeBill')).toBe(1)
+    })
+
     it('a refusal after the entry was attempted (the POS place gone): unconfirmed, never released', async () => {
       const id = await held()
       fault({ on: 'addRows', fault: { kind: 'hang' } })

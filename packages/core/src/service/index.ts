@@ -304,8 +304,10 @@ export {
   CONNECT_PERMISSION,
   loadPayingConnection,
   type PayingConnection,
+  type PayingOffer,
   paymentTableFacts,
   readPayingConnection,
+  readPayingOffer,
 } from './payment-connection'
 export { PAYMENT_NUMBER_LENGTH, paymentNumberOf } from './payment-number'
 export {

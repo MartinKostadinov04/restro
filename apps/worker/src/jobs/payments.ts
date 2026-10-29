@@ -33,7 +33,9 @@
 //   window (a later landing is not ruled out, C52). A close is sent once. After a manager's "No
 //   receipt" the hold is released only once a fresh read shows the lines back on the real table;
 //   otherwise a manager is asked again (#153).
-//   An unknown capture is read back from the provider and tried again with the same key.
+//   An unknown capture is read back from the provider: captured is done; still held is tried
+//   again with a new key (`not_landed`); a read that tells nothing, again with the same key; a
+//   hold the read shows gone fails the capture (`capture_failed`, the owners are told).
 // - Pay-first (#113): a `pay_first` payment's lines are not on the POS. It is priced from what the
 //   guest saw at Send, and once queued its round is entered on the free payment table
 //   (`addLines`, a note naming the guest's table where notes reach the ticket). An entry whose
@@ -345,14 +347,18 @@ async function providerKey(
   return missed.length === 0 ? base : `${base}:${missed.length + 1}`
 }
 
-/** What a read of the provider says about a write whose outcome is unknown. */
+/**
+ * What a read of the provider says about a write whose outcome is unknown: `gone` is a hold that
+ * holds nothing and never will (released or failed) where that is not the write's landing.
+ */
 function landedAnswer(
   reading: Awaited<ReturnType<PaymentProvider['readPayment']>>,
   landed: (payment: ProviderPayment) => boolean,
-): 'landed' | 'not_landed' | 'unknown' {
+): 'landed' | 'not_landed' | 'gone' | 'unknown' {
   if (!reading.complete) return 'unknown'
   if (landed(reading.value)) return 'landed'
-  return reading.value.status === 'held' ? 'not_landed' : 'unknown'
+  if (reading.value.status === 'held') return 'not_landed'
+  return isOver(reading.value) ? 'gone' : 'unknown'
 }
 
 function currencyOf(payment: PaymentRow): Currency {
@@ -1532,7 +1538,9 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
 
 /**
  * `closed`, or `unconfirmed` with "Receipt printed": capture the closed amount with the payment's
- * key. An unknown capture is read back from the provider; still held, it runs again with the key.
+ * key. An unknown capture is read back from the provider: captured is done; still held, it runs
+ * again with a new key (`providerKey`, after `not_landed`); a read that tells nothing, again with
+ * the same key; gone, the capture failed.
  */
 const captureStep: RouteStep = async (env, target, payment, deps) => {
   const account = await accountOf(env, target)
@@ -1582,11 +1590,10 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
   }
   // Unknown, or captured already: read back. Still held is tried again with a new key.
   const reading = await provider.readPayment(accountRef, paymentRef)
+  const answer = landedAnswer(reading, (read) => read.status === 'captured')
   await step(
     outcome.kind === 'refused' ? 'refused' : 'unknown',
-    outcome.kind === 'refused'
-      ? outcome.refusal.code
-      : landedAnswer(reading, (read) => read.status === 'captured'),
+    outcome.kind === 'refused' ? outcome.refusal.code : answer,
   )
   if (reading.complete && reading.value.status === 'captured') {
     await route(env, target, {
@@ -1594,6 +1601,19 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
       outcome: 'captured',
       capturedMinor: reading.value.capturedMinor,
       code: null,
+    })
+    return 'next'
+  }
+  // The hold is gone (it ran out, or the provider dropped it): no capture can land any more, with
+  // this key or a new one. Tried again, a server error kept under the key would be answered
+  // forever; the capture failed, and the owners are told, with the code a provider's refusal of
+  // that capture gives: `hold_expired` once its capture deadline passed, `not_held` otherwise.
+  if (answer === 'gone' && reading.complete) {
+    await route(env, target, {
+      type: 'payment.captured',
+      outcome: 'refused',
+      capturedMinor: null,
+      code: ranOut(reading.value, env.now()) ? 'hold_expired' : 'not_held',
     })
     return 'next'
   }
@@ -1859,6 +1879,19 @@ function isOver(
   payment: ProviderPayment,
 ): payment is ProviderPayment & { readonly status: 'released' | 'failed' } {
   return payment.status === 'released' || payment.status === 'failed'
+}
+
+/**
+ * A released hold whose capture deadline has passed by the worker's clock: the provider dropped it
+ * as it ran out. The provider's read names no reason, so a clock a little off only picks
+ * `not_held` for `hold_expired` near the deadline; the payment ends `capture_failed` either way.
+ */
+function ranOut(payment: ProviderPayment, now: Date): boolean {
+  return (
+    payment.status === 'released' &&
+    payment.captureBefore !== null &&
+    now.getTime() >= Date.parse(payment.captureBefore)
+  )
 }
 
 /** The provider shows the hold gone: `payment.expired` (it changes nothing where it may not). */

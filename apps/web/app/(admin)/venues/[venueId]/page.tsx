@@ -23,9 +23,11 @@ import { guestPathOf } from '@/server/publish/summary'
 import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadSettingsAccess } from '@/server/settings/access'
+import { payingOffered } from '@/server/settings/paying-offer'
 import { getVenue, venueHasTill } from '@/server/venues'
 import { AlertsSection } from '@/settings/alerts-section'
 import { OrderingSection } from '@/settings/ordering-section'
+import { PayingSection } from '@/settings/paying-section'
 import { OwnSignInNotice } from '@/settings/section-notices'
 import { StaffSection } from '@/settings/staff-section'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
@@ -83,11 +85,16 @@ export default async function VenueWorkspacePage({
       })
     : null
   const held = access?.held ?? []
+  // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
+  const paying =
+    settingsOpen && access !== null && !access.sharedDevice
+      ? await payingOffered(organization.id, venue.id)
+      : false
   const onSharedDevice = access?.sharedDevice === true
   const rights: SettingsRights =
     access === null
       ? NO_SETTINGS_RIGHTS
-      : { roles: held.includes('settings.roles'), alerts: held.includes('settings.alerts') }
+      : { roles: held.includes('settings.roles'), alerts: held.includes('settings.alerts'), paying }
   const openSection = settingsSectionOf(query.section, hasTill, rights)
   const sectionOpen = (section: typeof openSection) => settingsOpen && openSection === section
 
@@ -203,6 +210,27 @@ export default async function VenueWorkspacePage({
                   ) : (
                     <SettingsSectionSkeleton />
                   ),
+                  ...(paying
+                    ? {
+                        paying: sectionOpen('paying') ? (
+                          <Suspense fallback={<SettingsSectionSkeleton />}>
+                            <PayingSection
+                              tenantId={organization.id}
+                              venue={venue}
+                              canConnect={held.includes('settings.connect_payments')}
+                              email={user.email}
+                              connection={
+                                query.connection === 'return' || query.connection === 'refresh'
+                                  ? query.connection
+                                  : undefined
+                              }
+                            />
+                          </Suspense>
+                        ) : (
+                          <SettingsSectionSkeleton />
+                        ),
+                      }
+                    : {}),
                   ...(rights.alerts
                     ? {
                         alerts: sectionOpen('alerts') ? (
