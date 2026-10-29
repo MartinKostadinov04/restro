@@ -27,6 +27,7 @@ import {
 } from './checks-read'
 import {
   closedBillCheck,
+  electronicReceiptCheck,
   emptyTableCheck,
   excludedBillCheck,
   newBillReferenceCheck,
@@ -164,6 +165,11 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
     check(
       'the payment route, by capability: isolating moves exactly the pick, undo, close once',
       paymentRouteCheck,
+      harness,
+    )
+    check(
+      'a close with the guest email asks for an electronic receipt only where declared, and returns its file only where declared',
+      electronicReceiptCheck,
       harness,
     )
     if (!harness.connector.capabilities.recordTipOnClose) {

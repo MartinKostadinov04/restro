@@ -30,6 +30,7 @@ import {
   type RefusalCode,
   type RefusalScope,
   type ServiceConnector,
+  safeReceiptFile,
   samePosRef,
   subtractMinor,
   type TableBills,
@@ -102,7 +103,13 @@ const RowItem = z.object({
 })
 const AddAnswer = z.object({ bill: Id, opened: z.boolean() })
 const MoveAnswer = z.object({ bill: Id })
-const CloseAnswer = z.object({ bill: Id, receipt: z.string().min(1).optional() })
+const CloseAnswer = z.object({
+  bill: Id,
+  receipt: z.string().min(1).optional(),
+  electronicReceipt: z.enum(['issued', 'not_issued']).optional(),
+  // Checked on its own (`safeReceiptFile`): a bad file never fails a finished close.
+  receiptFile: z.unknown().optional(),
+})
 const PingAnswer = z.object({ mode: z.enum(['live', 'training']).optional() })
 const ErrorAnswer = z.object({
   error: z.string(),
@@ -471,6 +478,10 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       if (!capabilities.closeWithPaymentType) {
         return refusal('not_supported', 'bill', 'the POS takes no payment from Restro')
       }
+      // D127: an email asks for an electronic receipt, or it isn't taken. Nothing is written.
+      if (request.receiptEmail !== undefined && !capabilities.electronicReceipt) {
+        return refusal('not_supported', 'bill', 'the POS issues no electronic receipt')
+      }
       if (request.tipMinor > 0 && tipItem !== null) {
         // The tip row and the close are two calls: read first, so a bill that won't close for
         // this amount gets no tip row; then the row, as a waiter adds it at the till, then the
@@ -526,6 +537,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
             amount: minorToDecimal(request.amountMinor),
           },
         ],
+        ...(request.receiptEmail === undefined ? {} : { receiptEmail: request.receiptEmail }),
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
         write.closeBill(client, request.isolated.ref.pos, body, signal),
@@ -534,7 +546,23 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       const answer = parse(CloseAnswer, sent.body, 'the close')
       inFlight.delete(request.isolated.ref.pos)
       const receiptNumber = capabilities.receiptNumberOnClose ? (answer.receipt ?? null) : null
-      return { kind: 'done', result: { receiptNumber } }
+      if (request.receiptEmail === undefined) return { kind: 'done', result: { receiptNumber } }
+      // The close is done whatever became of the receipt. A receipt not issued, or a file Restro
+      // cannot pass on, is "not issued": the waiter brings paper (D127, #186).
+      if (answer.electronicReceipt !== 'issued') {
+        return { kind: 'done', result: { receiptNumber, electronicReceipt: 'not_issued' } }
+      }
+      if (!capabilities.electronicReceiptFile) {
+        return { kind: 'done', result: { receiptNumber, electronicReceipt: 'sent' } }
+      }
+      const receiptFile = safeReceiptFile(answer.receiptFile)
+      return {
+        kind: 'done',
+        result:
+          receiptFile === null
+            ? { receiptNumber, electronicReceipt: 'not_issued' }
+            : { receiptNumber, electronicReceipt: 'file', receiptFile },
+      }
     },
 
     async undoIsolate(ctx, request) {

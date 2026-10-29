@@ -34,6 +34,8 @@ export interface RecordedServiceCapabilities {
   readonly firstItemsOpenBill: boolean
   /** A tip reaches the fiscal receipt on the close (D127): else a tip above 0 is refused. */
   readonly recordTipOnClose: boolean
+  /** The close can ask the POS for an electronic receipt to the guest's email (D127, #186). */
+  readonly electronicReceipt: boolean
 }
 
 /** Nothing declared: the cautious answer. */
@@ -41,6 +43,7 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   notesReachTicket: false,
   firstItemsOpenBill: false,
   recordTipOnClose: false,
+  electronicReceipt: false,
 })
 
 function snakeCase(name: string): string {
@@ -65,5 +68,6 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     notesReachTicket: stored.notes_reach_ticket === true,
     firstItemsOpenBill: stored.first_items_open_bill === true,
     recordTipOnClose: stored.record_tip_on_close === true,
+    electronicReceipt: stored.electronic_receipt === true,
   }
 }

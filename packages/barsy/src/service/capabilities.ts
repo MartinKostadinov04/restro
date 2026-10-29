@@ -32,8 +32,8 @@ export const BARSY_SERVICE_CAPABILITIES: ServiceCapabilities = {
   //   moveLinesToTable: Accounts_divide splits on the same table and Accounts_move moves a whole
   //     bill, two calls, not one move of lines (#51 §1: barsy isolates by divide);
   //   tableBar: barsy has halls (salons), which are areas, not bars (D122 §2, D124 §1);
-  //   notesReachTicket, receiptNumberOnClose, electronicFiscalReceipt, trainingMode,
-  //     itemAvailability: not stated;
+  //   notesReachTicket, receiptNumberOnClose, trainingMode, itemAvailability: not stated;
+  //   electronicReceipt, electronicReceiptFile: not stated; asked of Lukanet (open-items Q84);
   //   ownLineReference: order_ref_id exists, how it is set is not stated (C21, Q82.3);
   //   idempotentAdd: account.uuid guards a new bill only; a repeated add is open (C20);
   //   addToStaffOpenedBill: Accounts_place continues a bill by account_id, but the docs are
