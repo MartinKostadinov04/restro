@@ -50,6 +50,7 @@ import { pickLocalized } from '@/fields/localized'
 import { parseMoneyInput } from '@/fields/money-input'
 import { TillLabelProvider } from '@/fields/till-label'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
+import { cn } from '@/lib/utils'
 import type { ActionResult } from './action-result'
 import {
   createItemAction,
@@ -762,7 +763,15 @@ export function Composer({
           onDragEnd={onDragEnd}
           dragHandleUsageInstructions={t('dnd.instructions')}
         >
-          <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
+          <div
+            // The selection bar is fixed to the bottom of the screen: while it shows, the page
+            // scrolls far enough for the last rows to clear it (taller on a phone, where it wraps).
+            className={cn(
+              'grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]',
+              selected.size > 0 && 'pb-40 sm:pb-24',
+            )}
+            data-testid="composer"
+          >
             <aside className="grid content-start gap-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>

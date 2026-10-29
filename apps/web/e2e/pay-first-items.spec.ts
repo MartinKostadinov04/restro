@@ -181,6 +181,7 @@ test('PF8: several items at once from the selection bar, one change', async ({ b
   await openComposer(page)
 
   // The ticks, then 2 taps: "Payment mode…", the mode.
+  // The lowest row is ticked last, with the bar already showing: the page scrolls it clear of the bar.
   await itemRow(page, 'Мохито').getByTestId('item-select').check()
   await itemRow(page, 'Шприц').getByTestId('item-select').check()
   await itemRow(page, 'Кола').getByTestId('item-select').check()
