@@ -74,6 +74,9 @@ async function lockAccount(stx: ServiceTx, lock: 'update' | 'share'): Promise<Ac
   return row ?? null
 }
 
+/** The queue of the tables the POS gives no bar. */
+const NO_BAR_QUEUE = '-'
+
 /** A queue (a bar, or the tables with no bar) that has guest tables but no payment table yet. */
 export interface QueueWithoutPaymentTable {
   /** Our `br_` id of the bar; null for the tables the POS gives no bar. */
@@ -101,13 +104,13 @@ export async function paymentTableFacts(
     .from(venueTables)
     .where(and(eq(venueTables.venueId, venueId), isNull(venueTables.archivedAt)))
   // A payment table serves its bar's queue; tables with no bar share the venue's own queue.
-  const queueOf = (barId: string | null) => barId ?? '-'
+  const queueOf = (barId: string | null) => barId ?? NO_BAR_QUEUE
   const served = new Set(tables.filter((t) => t.isPaymentTable).map((t) => queueOf(t.barId)))
   const needing = new Set(
     tables.filter((t) => !t.isPaymentTable && !t.hidden).map((t) => queueOf(t.barId)),
   )
   const missing = [...needing].filter((queue) => !served.has(queue))
-  const barIds = missing.filter((queue) => queue !== '-')
+  const barIds = missing.filter((queue) => queue !== NO_BAR_QUEUE)
   const named =
     barIds.length === 0
       ? []
@@ -121,8 +124,8 @@ export async function paymentTableFacts(
     queuesWithoutOne: missing.length,
     queuesMissing: missing
       .map((queue) => ({
-        barId: queue === '-' ? null : queue,
-        barName: queue === '-' ? null : (nameOf.get(queue) ?? null),
+        barId: queue === NO_BAR_QUEUE ? null : queue,
+        barName: queue === NO_BAR_QUEUE ? null : (nameOf.get(queue) ?? null),
       }))
       // Bars by name, the no-bar queue last: the same order on every read.
       .sort(

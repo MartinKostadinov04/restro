@@ -19,7 +19,8 @@
 // permission check and the Log are the service path's own.
 //
 // Locks: the table rows first (`FOR SHARE` to open, `FOR UPDATE` to mark a payment table), so an
-// open and a mark never cross; then the sittings and the order rows in the fixed order (rows.ts).
+// open and a mark never cross; then the sittings and the order rows in the fixed order (rows.ts);
+// taking a mark away then locks the payment table's lease row, last (`paymentHoldsTable`).
 
 import {
   areas,

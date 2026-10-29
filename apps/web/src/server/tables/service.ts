@@ -195,11 +195,10 @@ async function toRow(
 
 /** The payment-table part of the tab, only where a connector can take payments (never by hand). */
 function payingOf(
-  offered: boolean,
-  board: PaymentTableBoard,
+  board: PaymentTableBoard | null,
   person: TablesScope['person'],
 ): TablesView['paying'] {
-  if (!offered) return null
+  if (board === null) return null
   return {
     canMark: person?.canMarkPaymentTables === true,
     email: person?.email ?? '',
@@ -222,7 +221,7 @@ export async function loadTablesView(
   render: (text: string) => Promise<string> = qrSvg,
   reveal: RevealCodes = revealNothing,
 ): Promise<TablesView> {
-  const [areas, tables, summaries, routes, resolved, till, offer, board] = await Promise.all([
+  const [areas, tables, summaries, routes, resolved, till, offer] = await Promise.all([
     listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
     listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
     listMenus(scope.pool, scope.tenantId, scope.venue.id),
@@ -230,8 +229,11 @@ export async function loadTablesView(
     resolveRoutes(scope.pool, scope.tenantId, scope.venue.id),
     tillLabelOfVenue(scope.pool, scope.tenantId, scope.venue.id),
     readPayingOffer(scope.pool, scope.tenantId, scope.venue.id),
-    readPaymentTableBoard(scope.pool, scope.tenantId, scope.venue.id),
   ])
+  // Payment tables are read only where a connector can take payments, never at a venue by hand.
+  const board = offer.offered
+    ? await readPaymentTableBoard(scope.pool, scope.tenantId, scope.venue.id)
+    : null
   const baseUrl = codeBaseUrl(defaultBaseUrl)
   const choices = menuChoices(summaries, scope.venue.name)
   const names = new Map(choices.map((menu) => [menu.id, menu.name] as const))
@@ -273,7 +275,7 @@ export async function loadTablesView(
         shown(names, resolvedId, level),
         own,
         scope.canManage,
-        board.barOfTable.get(table.id) ?? null,
+        board?.barOfTable.get(table.id) ?? null,
       )
     }),
   )
@@ -311,7 +313,7 @@ export async function loadTablesView(
     sourceLabel: till ?? '',
     baseUrl,
     menus: choices,
-    paying: payingOf(offer.offered, board, scope.person),
+    paying: payingOf(board, scope.person),
     halls,
     total: rows.length,
     coded: withCode.length,

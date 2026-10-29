@@ -102,10 +102,12 @@ describe('payment tables on Tables & QR', () => {
     expect(within(payment).getByTestId('table-bar').textContent).toBe('Bar: Roof bar')
     expect(within(payment).queryByTestId('code-status')).toBeNull()
     expect(within(payment).queryByTestId('table-hidden')).toBeNull()
-    // The coded table keeps its code badge and shows its bar; a table the POS gives no bar shows none.
+    // The coded table keeps its code badge and shows its bar; a table the POS gives no bar says so.
     expect(within(cardOf(CODED)).getByTestId('code-status').textContent).toBe('Code active')
     expect(within(cardOf(CODED)).getByTestId('table-bar').textContent).toBe('Bar: Roof bar')
-    expect(within(cardOf(NO_BAR)).queryByTestId('table-bar')).toBeNull()
+    expect(within(cardOf(NO_BAR)).getByTestId('table-bar').textContent).toBe(
+      'Bar: not known in barsy',
+    )
   })
 
   it('says a payment table’s bar is not known when the POS gives none', () => {

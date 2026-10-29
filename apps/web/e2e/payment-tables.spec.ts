@@ -166,8 +166,8 @@ test('PT2: stopping is 2 taps with Undo, and the table stays hidden without a co
   await expect(card(page, 3).getByTestId('payment-table-badge')).toHaveCount(0)
   await expect(card(page, 3).getByTestId('table-hidden')).toBeVisible()
   await expect(card(page, 3)).toHaveAttribute('data-has-code', 'false')
-  // The bar has none again.
-  await expect(page.getByTestId('payment-tables-banner')).toContainText('Roof bar')
+  // The table stays hidden, so the roof bar has no table for guests and needs no payment table.
+  await expect(page.getByTestId('payment-tables-banner')).not.toContainText('Roof bar')
 
   // Undo marks it again, with no dialog.
   await page.getByRole('button', { name: 'Отмяна' }).click()

@@ -370,7 +370,7 @@ export function TableCard({
             </Badge>
           </>
         )}
-        {payment !== null && (isPaymentTable || row.bar !== null) ? (
+        {payment !== null ? (
           <Badge variant="outline" className="h-auto whitespace-normal" data-testid="table-bar">
             {row.bar === null ? tp('pt_no_bar', { source }) : tp('pt_bar', { bar: row.bar.name })}
           </Badge>
