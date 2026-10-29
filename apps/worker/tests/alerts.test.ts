@@ -6,7 +6,10 @@
 // else, and the Log says "via Telegram".
 //
 // The clock is the real one plus an offset, because the database stamps what it records with its
-// own clock.
+// own clock (the alerts' raised and done times, and when each message was sent). So the clock
+// cannot be pinned to a fixed date. Instead the venue's time zone is set, once, to the whole-hour
+// zone in which it is about noon when the file starts (`middayZone`): the hours (ALL_DAYS end at
+// 07:00) are then hours away at whatever time of day the file runs, offsets of an hour included.
 import { randomUUID } from 'node:crypto'
 
 import { DEFAULT_ORDERING_SETTINGS, newId } from '@restro/core'
@@ -29,6 +32,18 @@ import {
 } from './database'
 
 allowSlowSetup()
+
+/**
+ * The fixed-offset zone (`Etc/GMT±n`, whole hours) in which it is between 11:30 and 12:30 at `at`.
+ * The test's clock runs up to 70 minutes past the start, so the venue is open for the whole file
+ * at any time of day; a real zone such as Europe/Sofia would be at 06:00–07:00 for an hour a day.
+ */
+function middayZone(at: Date): string {
+  const utcHours = at.getUTCHours() + at.getUTCMinutes() / 60
+  const shift = Math.round(12 - utcHours) // hours east of UTC that make it noon: -12 to 12
+  if (shift === 0) return 'Etc/UTC'
+  return `Etc/GMT${shift > 0 ? '-' : '+'}${Math.abs(shift)}` // the sign of Etc/GMT is inverted
+}
 
 const VENUE_CHAT = '-100500'
 const TEAM_CHAT = '-100999'
@@ -284,6 +299,10 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     await addStaff('Maria', ['alerts.answer'], answererId, '555')
     await addStaff('Pavel', ['tables.open_close'], plainId, '777')
     await setOrdering({})
+    await query('update restro.venues set timezone = $2 where id = $1', [
+      venueId,
+      middayZone(new Date()),
+    ])
     await subscribeDevices()
     await setLocale('en_US')
   }, 240_000)
